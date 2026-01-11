@@ -25,8 +25,6 @@
 #include "plain_server.hpp"
 #include "gssapi_client.hpp"
 #include "gssapi_server.hpp"
-#include "curve_client.hpp"
-#include "curve_server.hpp"
 #include "raw_decoder.hpp"
 
 //  Draft API message property names (kept for internal use)

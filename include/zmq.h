@@ -1,12 +1,4 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/*  *************************************************************************
-    NOTE to contributors. This file comprises the principal public contract
-    for ZeroMQ API users. Any change to this file supplied in a stable
-    release SHOULD not break existing applications.
-    In practice this means that the value of constants must not change, and
-    that old values may not be reused for new constants.
-    *************************************************************************
-*/
 
 #ifndef __ZMQ_H_INCLUDED__
 #define __ZMQ_H_INCLUDED__
@@ -79,27 +71,18 @@ typedef unsigned __int8 uint8_t;
 #endif
 
 #if !defined _WIN32
-// needed for sigset_t definition in zmq_ppoll
 #include <signal.h>
 #endif
 
-//  32-bit AIX's pollfd struct members are called reqevents and rtnevents so it
-//  defines compatibility macros for them. Need to include that header first to
-//  stop build failures since zmq_pollset_t defines them as events and revents.
 #ifdef ZMQ_HAVE_AIX
 #include <poll.h>
 #endif
 
-
 /******************************************************************************/
 /*  0MQ errors.                                                               */
 /******************************************************************************/
-
-/*  A number random enough not to collide with different errno ranges on      */
-/*  different OSes. The assumption is that error_t is at least 32-bit type.   */
 #define ZMQ_HAUSNUMERO 156384712
 
-/*  On Windows platform some of the standard POSIX errnos are not defined.    */
 #ifndef ENOTSUP
 #define ENOTSUP (ZMQ_HAUSNUMERO + 1)
 #endif
@@ -155,29 +138,18 @@ typedef unsigned __int8 uint8_t;
 #define ENETRESET (ZMQ_HAUSNUMERO + 18)
 #endif
 
-/*  Native 0MQ error codes.                                                   */
 #define EFSM (ZMQ_HAUSNUMERO + 51)
 #define ENOCOMPATPROTO (ZMQ_HAUSNUMERO + 52)
 #define ETERM (ZMQ_HAUSNUMERO + 53)
 #define EMTHREAD (ZMQ_HAUSNUMERO + 54)
 
-/*  This function retrieves the errno as it is known to 0MQ library. The goal */
-/*  of this function is to make the code 100% portable, including where 0MQ   */
-/*  compiled with certain CRT library (on Windows) is linked to an            */
-/*  application that uses different CRT library.                              */
 ZMQ_EXPORT int zmq_errno (void);
-
-/*  Resolves system errors and 0MQ errors to human-readable string.           */
 ZMQ_EXPORT const char *zmq_strerror (int errnum_);
-
-/*  Run-time API version detection                                            */
 ZMQ_EXPORT void zmq_version (int *major_, int *minor_, int *patch_);
 
 /******************************************************************************/
 /*  0MQ infrastructure (a.k.a. context) initialisation & termination.         */
 /******************************************************************************/
-
-/*  Context options                                                           */
 #define ZMQ_IO_THREADS 1
 #define ZMQ_MAX_SOCKETS 2
 #define ZMQ_SOCKET_LIMIT 3
@@ -189,7 +161,6 @@ ZMQ_EXPORT void zmq_version (int *major_, int *minor_, int *patch_);
 #define ZMQ_THREAD_AFFINITY_CPU_REMOVE 8
 #define ZMQ_THREAD_NAME_PREFIX 9
 
-/*  Default for new contexts                                                  */
 #define ZMQ_IO_THREADS_DFLT 1
 #define ZMQ_MAX_SOCKETS_DFLT 1023
 #define ZMQ_THREAD_PRIORITY_DFLT -1
@@ -201,20 +172,9 @@ ZMQ_EXPORT int zmq_ctx_shutdown (void *context_);
 ZMQ_EXPORT int zmq_ctx_set (void *context_, int option_, int optval_);
 ZMQ_EXPORT int zmq_ctx_get (void *context_, int option_);
 
-/*  Old (legacy) API                                                          */
-ZMQ_EXPORT void *zmq_init (int io_threads_);
-ZMQ_EXPORT int zmq_term (void *context_);
-ZMQ_EXPORT int zmq_ctx_destroy (void *context_);
-
-
 /******************************************************************************/
 /*  0MQ message definition.                                                   */
 /******************************************************************************/
-
-/* Some architectures, like sparc64 and some variants of aarch64, enforce pointer
- * alignment and raise sigbus on violations. Make sure applications allocate
- * zmq_msg_t on addresses aligned on a pointer-size boundary to avoid this issue.
- */
 typedef struct zmq_msg_t
 {
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
@@ -253,8 +213,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
-
-/*  Socket types.                                                             */
 #define ZMQ_PAIR 0
 #define ZMQ_PUB 1
 #define ZMQ_SUB 2
@@ -264,11 +222,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_XSUB 10
 #define ZMQ_STREAM 11
 
-/*  Deprecated aliases                                                        */
-#define ZMQ_XREQ ZMQ_DEALER
-#define ZMQ_XREP ZMQ_ROUTER
-
-/*  Socket options.                                                           */
 #define ZMQ_AFFINITY 4
 #define ZMQ_ROUTING_ID 5
 #define ZMQ_SUBSCRIBE 6
@@ -305,10 +258,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_PLAIN_SERVER 44
 #define ZMQ_PLAIN_USERNAME 45
 #define ZMQ_PLAIN_PASSWORD 46
-#define ZMQ_CURVE_SERVER 47
-#define ZMQ_CURVE_PUBLICKEY 48
-#define ZMQ_CURVE_SECRETKEY 49
-#define ZMQ_CURVE_SERVERKEY 50
 #define ZMQ_PROBE_ROUTER 51
 #define ZMQ_CONFLATE 54
 #define ZMQ_ZAP_DOMAIN 55
@@ -347,41 +296,19 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_ONLY_FIRST_SUBSCRIBE 108
 #define ZMQ_TOPICS_COUNT 116
 
-/*  Message options                                                           */
 #define ZMQ_MORE 1
 #define ZMQ_SHARED 3
 
-/*  Send/recv options.                                                        */
 #define ZMQ_DONTWAIT 1
 #define ZMQ_SNDMORE 2
 
-/*  Security mechanisms                                                       */
 #define ZMQ_NULL 0
 #define ZMQ_PLAIN 1
-#define ZMQ_CURVE 2
 #define ZMQ_GSSAPI 3
-
-/*  Deprecated options and aliases                                            */
-#define ZMQ_IDENTITY ZMQ_ROUTING_ID
-#define ZMQ_CONNECT_RID ZMQ_CONNECT_ROUTING_ID
-#define ZMQ_TCP_ACCEPT_FILTER 38
-#define ZMQ_IPC_FILTER_PID 58
-#define ZMQ_IPC_FILTER_UID 59
-#define ZMQ_IPC_FILTER_GID 60
-#define ZMQ_IPV4ONLY 31
-#define ZMQ_DELAY_ATTACH_ON_CONNECT ZMQ_IMMEDIATE
-#define ZMQ_NOBLOCK ZMQ_DONTWAIT
-#define ZMQ_FAIL_UNROUTABLE ZMQ_ROUTER_MANDATORY
-#define ZMQ_ROUTER_BEHAVIOR ZMQ_ROUTER_MANDATORY
-
-/*  Deprecated Message options                                                */
-#define ZMQ_SRCFD 2
 
 /******************************************************************************/
 /*  GSSAPI definitions                                                        */
 /******************************************************************************/
-
-/*  GSSAPI principal name types                                               */
 #define ZMQ_GSSAPI_NT_HOSTBASED 0
 #define ZMQ_GSSAPI_NT_USER_NAME 1
 #define ZMQ_GSSAPI_NT_KRB5_PRINCIPAL 2
@@ -389,9 +316,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 /******************************************************************************/
 /*  0MQ socket events and monitoring                                          */
 /******************************************************************************/
-
-/*  Socket transport events (TCP, IPC and TIPC only)                          */
-
 #define ZMQ_EVENT_CONNECTED 0x0001
 #define ZMQ_EVENT_CONNECT_DELAYED 0x0002
 #define ZMQ_EVENT_CONNECT_RETRIED 0x0004
@@ -404,17 +328,11 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_EVENT_DISCONNECTED 0x0200
 #define ZMQ_EVENT_MONITOR_STOPPED 0x0400
 #define ZMQ_EVENT_ALL 0xFFFF
-/*  Unspecified system errors during handshake. Event value is an errno.      */
 #define ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL 0x0800
-/*  Handshake complete successfully with successful authentication (if        *
- *  enabled). Event value is unused.                                          */
 #define ZMQ_EVENT_HANDSHAKE_SUCCEEDED 0x1000
-/*  Protocol errors between ZMTP peers or between server and ZAP handler.     *
- *  Event value is one of ZMQ_PROTOCOL_ERROR_*                                */
 #define ZMQ_EVENT_HANDSHAKE_FAILED_PROTOCOL 0x2000
-/*  Failed authentication requests. Event value is the numeric ZAP status     *
- *  code, i.e. 300, 400 or 500.                                               */
 #define ZMQ_EVENT_HANDSHAKE_FAILED_AUTH 0x4000
+
 #define ZMQ_PROTOCOL_ERROR_ZMTP_UNSPECIFIED 0x10000000
 #define ZMQ_PROTOCOL_ERROR_ZMTP_UNEXPECTED_COMMAND 0x10000001
 #define ZMQ_PROTOCOL_ERROR_ZMTP_INVALID_SEQUENCE 0x10000002
@@ -427,7 +345,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_READY 0x10000016
 #define ZMQ_PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_WELCOME 0x10000017
 #define ZMQ_PROTOCOL_ERROR_ZMTP_INVALID_METADATA 0x10000018
-// the following two may be due to erroneous configuration of a peer
 #define ZMQ_PROTOCOL_ERROR_ZMTP_CRYPTOGRAPHIC 0x11000001
 #define ZMQ_PROTOCOL_ERROR_ZMTP_MECHANISM_MISMATCH 0x11000002
 #define ZMQ_PROTOCOL_ERROR_ZAP_UNSPECIFIED 0x20000000
@@ -454,12 +371,7 @@ zmq_send_const (void *s_, const void *buf_, size_t len_, int flags_);
 ZMQ_EXPORT int zmq_recv (void *s_, void *buf_, size_t len_, int flags_);
 ZMQ_EXPORT int zmq_socket_monitor (void *s_, const char *addr_, int events_);
 
-/******************************************************************************/
-/*  Hide socket fd type; this was before zmq_poller_event_t typedef below     */
-/******************************************************************************/
-
 #if defined _WIN32
-// Windows uses a pointer-sized unsigned integer to store the socket fd.
 #if defined _WIN64
 typedef unsigned __int64 zmq_fd_t;
 #else
@@ -468,10 +380,6 @@ typedef unsigned int zmq_fd_t;
 #else
 typedef int zmq_fd_t;
 #endif
-
-/******************************************************************************/
-/*  Deprecated I/O multiplexing. Prefer using zmq_poller API                  */
-/******************************************************************************/
 
 #define ZMQ_POLLIN 1
 #define ZMQ_POLLOUT 2
@@ -490,75 +398,27 @@ typedef struct zmq_pollitem_t
 
 ZMQ_EXPORT int zmq_poll (zmq_pollitem_t *items_, int nitems_, long timeout_);
 
-/******************************************************************************/
-/*  Message proxying                                                          */
-/******************************************************************************/
-
 ZMQ_EXPORT int zmq_proxy (void *frontend_, void *backend_, void *capture_);
 ZMQ_EXPORT int zmq_proxy_steerable (void *frontend_,
                                     void *backend_,
                                     void *capture_,
                                     void *control_);
 
-/******************************************************************************/
-/*  Probe library capabilities                                                */
-/******************************************************************************/
-
-#define ZMQ_HAS_CAPABILITIES 1
 ZMQ_EXPORT int zmq_has (const char *capability_);
-
-/*  Deprecated aliases */
-#define ZMQ_STREAMER 1
-#define ZMQ_FORWARDER 2
-#define ZMQ_QUEUE 3
-
-/*  Deprecated methods */
-ZMQ_EXPORT int zmq_device (int type_, void *frontend_, void *backend_);
-ZMQ_EXPORT int zmq_sendmsg (void *s_, zmq_msg_t *msg_, int flags_);
-ZMQ_EXPORT int zmq_recvmsg (void *s_, zmq_msg_t *msg_, int flags_);
-struct iovec;
-ZMQ_EXPORT int
-zmq_sendiov (void *s_, struct iovec *iov_, size_t count_, int flags_);
-ZMQ_EXPORT int
-zmq_recviov (void *s_, struct iovec *iov_, size_t *count_, int flags_);
-
-/******************************************************************************/
-/*  Encryption functions                                                      */
-/******************************************************************************/
-
-/*  Encode data with Z85 encoding. Returns encoded data                       */
-ZMQ_EXPORT char *
-zmq_z85_encode (char *dest_, const uint8_t *data_, size_t size_);
-
-/*  Decode data with Z85 encoding. Returns decoded data                       */
-ZMQ_EXPORT uint8_t *zmq_z85_decode (uint8_t *dest_, const char *string_);
-
-/*  Generate z85-encoded public and private keypair with libsodium. */
-/*  Returns 0 on success.                                                     */
-ZMQ_EXPORT int zmq_curve_keypair (char *z85_public_key_, char *z85_secret_key_);
-
-/*  Derive the z85-encoded public key from the z85-encoded secret key.        */
-/*  Returns 0 on success.                                                     */
-ZMQ_EXPORT int zmq_curve_public (char *z85_public_key_,
-                                 const char *z85_secret_key_);
 
 /******************************************************************************/
 /*  Atomic utility methods                                                    */
 /******************************************************************************/
-
 ZMQ_EXPORT void *zmq_atomic_counter_new (void);
-ZMQ_EXPORT void zmq_atomic_counter_set (void *counter_, int value_);
-ZMQ_EXPORT int zmq_atomic_counter_inc (void *counter_);
-ZMQ_EXPORT int zmq_atomic_counter_dec (void *counter_);
-ZMQ_EXPORT int zmq_atomic_counter_value (void *counter_);
-ZMQ_EXPORT void zmq_atomic_counter_destroy (void **counter_p_);
+void zmq_atomic_counter_set (void *counter_, int value_);
+int zmq_atomic_counter_inc (void *counter_);
+int zmq_atomic_counter_dec (void *counter_);
+int zmq_atomic_counter_value (void *counter_);
+void zmq_atomic_counter_destroy (void **counter_p_);
 
 /******************************************************************************/
 /*  Scheduling timers                                                         */
 /******************************************************************************/
-
-#define ZMQ_HAVE_TIMERS
-
 typedef void (zmq_timer_fn) (int timer_id, void *arg);
 
 ZMQ_EXPORT void *zmq_timers_new (void);
@@ -572,40 +432,14 @@ ZMQ_EXPORT int zmq_timers_reset (void *timers, int timer_id);
 ZMQ_EXPORT long zmq_timers_timeout (void *timers);
 ZMQ_EXPORT int zmq_timers_execute (void *timers);
 
-
-/******************************************************************************/
-/*  These functions are not documented by man pages -- use at your own risk.  */
-/*  If you need these to be part of the formal ZMQ API, then (a) write a man  */
-/*  page, and (b) write a test case in tests.                                 */
-/******************************************************************************/
-
-/*  Helper functions are used by perf tests so that they don't have to care   */
-/*  about minutiae of time-related functions on different OS platforms.       */
-
-/*  Starts the stopwatch. Returns the handle to the watch.                    */
 ZMQ_EXPORT void *zmq_stopwatch_start (void);
-
-/*  Returns the number of microseconds elapsed since the stopwatch was        */
-/*  started, but does not stop or deallocate the stopwatch.                   */
 ZMQ_EXPORT unsigned long zmq_stopwatch_intermediate (void *watch_);
-
-/*  Stops the stopwatch. Returns the number of microseconds elapsed since     */
-/*  the stopwatch was started, and deallocates that watch.                    */
 ZMQ_EXPORT unsigned long zmq_stopwatch_stop (void *watch_);
-
-/*  Sleeps for specified number of seconds.                                   */
 ZMQ_EXPORT void zmq_sleep (int seconds_);
 
 typedef void (zmq_thread_fn) (void *);
-
-/* Start a thread. Returns a handle to the thread.                            */
 ZMQ_EXPORT void *zmq_threadstart (zmq_thread_fn *func_, void *arg_);
-
-/* Wait for thread to complete then free up resources.                        */
 ZMQ_EXPORT void zmq_threadclose (void *thread_);
-
-
-
 
 #undef ZMQ_EXPORT
 

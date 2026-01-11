@@ -23,8 +23,8 @@ void run_router(const std::string& transport, size_t msg_size, int msg_count) {
     zmq_setsockopt(client, ZMQ_SNDHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(client, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
-    zmq_setsockopt(client, ZMQ_IDENTITY, "CLIENT", 6);
-    zmq_setsockopt(server, ZMQ_IDENTITY, "SERVER", 6);
+    zmq_setsockopt(client, ZMQ_ROUTING_ID, "CLIENT", 6);
+    zmq_setsockopt(server, ZMQ_ROUTING_ID, "SERVER", 6);
     int handover = 1;
     zmq_setsockopt(server, ZMQ_ROUTER_HANDOVER, &handover, sizeof(handover));
 

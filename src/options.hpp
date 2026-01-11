@@ -24,20 +24,11 @@
 #include <type_traits>
 #endif
 
-//  Normal base 256 key is 32 bytes
-#define CURVE_KEYSIZE 32
-//  Key encoded using Z85 is 40 bytes
-#define CURVE_KEYSIZE_Z85 40
-
 namespace zmq
 {
 struct options_t
 {
     options_t ();
-
-    int set_curve_key (uint8_t *destination_,
-                       const void *optval_,
-                       size_t optvallen_);
 
     int setsockopt (int option_, const void *optval_, size_t optvallen_);
     int getsockopt (int option_, void *optval_, size_t *optvallen_) const;
@@ -171,11 +162,6 @@ struct options_t
     std::string plain_username;
     std::string plain_password;
 
-    //  Security credentials for CURVE mechanism
-    uint8_t curve_public_key[CURVE_KEYSIZE];
-    uint8_t curve_secret_key[CURVE_KEYSIZE];
-    uint8_t curve_server_key[CURVE_KEYSIZE];
-
     //  Principals for GSSAPI mechanism
     std::string gss_principal;
     std::string gss_service_principal;
@@ -191,7 +177,7 @@ struct options_t
     int socket_id;
 
     //  If true, socket conflates outgoing/incoming messages.
-    //  Applicable to dealer, push/pull, pub/sub socket types.
+    //  Applicable to dealer, pub/sub socket types.
     //  Cannot receive multi-part messages.
     //  Ignores hwm
     bool conflate;
@@ -238,13 +224,6 @@ struct options_t
 
     // Version of monitor events to emit
     int monitor_event_version;
-
-    //  WSS Keys
-    std::string wss_key_pem;
-    std::string wss_cert_pem;
-    std::string wss_trust_pem;
-    std::string wss_hostname;
-    bool wss_trust_system;
 
     //  Hello msg
     std::vector<unsigned char> hello_msg;

@@ -156,7 +156,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     typedef std::vector<uint32_t> empty_slots_t;
     empty_slots_t _empty_slots;
 
-    //  If true, zmq_init has been called but no socket has been created
+    //  If true, zmq_ctx_new has been called but no socket has been created
     //  yet. Launching of I/O threads is delayed.
     bool _starting;
 

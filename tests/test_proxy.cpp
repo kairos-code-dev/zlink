@@ -331,7 +331,7 @@ void test_proxy ()
         zmq_threadclose (threads[i]);
 
     TEST_ASSERT_SUCCESS_ERRNO (zmq_close (control));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (control_context));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (control_context));
 }
 
 int main (void)

@@ -34,7 +34,7 @@ void test_ctx_destroy ()
     TEST_ASSERT_SUCCESS_ERRNO (zmq_close (socket));
 
     // Destroy the context
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
 }
 
 void test_ctx_shutdown ()
@@ -62,7 +62,7 @@ void test_ctx_shutdown ()
     TEST_ASSERT_SUCCESS_ERRNO (zmq_close (socket));
 
     // Destroy the context, will now not hang as we have closed the socket.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
 }
 
 void test_ctx_shutdown_socket_opened_after ()
@@ -84,7 +84,7 @@ void test_ctx_shutdown_socket_opened_after ()
     TEST_ASSERT_FAILURE_ERRNO (ETERM, -1);
 
     // Destroy the context.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
 }
 
 void test_ctx_shutdown_only_socket_opened_after ()
@@ -101,7 +101,7 @@ void test_ctx_shutdown_only_socket_opened_after ()
     TEST_ASSERT_FAILURE_ERRNO (ETERM, -1);
 
     // Destroy the context.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
 }
 
 void test_zmq_ctx_term_null_fails ()
@@ -113,7 +113,7 @@ void test_zmq_ctx_term_null_fails ()
 
 void test_zmq_term_null_fails ()
 {
-    int rc = zmq_term (NULL);
+    int rc = zmq_ctx_term (NULL);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EFAULT, errno);
 }
@@ -182,7 +182,7 @@ void test_poller_exists_with_socket_on_zmq_ctx_term (const int socket_type_)
     }
 
     // Destroy the context
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_destroy (poller_test_data.ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (poller_test_data.ctx));
 
     zmq_threadclose (thread);
 

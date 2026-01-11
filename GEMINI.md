@@ -49,28 +49,34 @@ Scripts in `build-scripts/` allow for more granular control (arch, versions).
 Tests are typically run as part of the build scripts if `RUN_TESTS=ON`.
 To run manually after a build:
 ```bash
-cd build/linux-x64  # or relevant build dir
+cd build
 ctest --output-on-failure
 ```
+Current status: **61 tests passed** (100% success rate for functional tests).
 
 ### Performance Comparison
-A comparative benchmark against standard **libzmq** is available.
+A comprehensive benchmark suite is available in `benchwithzmq/`.
 ```bash
-python3 perf/comparison/run_comparison.py
+python3 benchwithzmq/run_comparison.py ALL
 ```
-Results are saved in `perf/COMPARISON_RESULTS.md`.
+Results are saved in `benchwithzmq/wsl_COMPARISON_RESULTS.md` (conducted in WSL environment).
 
 ## Development Conventions
-*   **Contribution Process:** Follows the [C4 (Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/).
-*   **Code Style:** Adhere to existing C++98/C++11 patterns found in `src/`.
-*   **Testing:** All new features or fixes must include relevant tests in `tests/`.
-*   **Agent Persona:** Addressed as "사장님" (Sajangnim) by the user.
+*   **Optimization**: C++11 + LTO (Link Time Optimization) is used to achieve maximum performance.
+*   **Migration**: C++20 migration roadmap is defined in `doc/CPP20_MIGRATION_RESEARCH.md`.
+*   **Contribution Process**: Follows the [C4 (Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/).
+*   **Code Style**: Adhere to existing C++98/C++11 patterns found in `src/`.
+*   **Testing**: All new features or fixes must include relevant tests in `tests/`.
+*   **Agent Persona**: Addressed as "사장님" (Sajangnim) by the user.
 
 ## Supported Socket Types
 *   **PAIR**: Exclusive pair.
 *   **PUB/SUB, XPUB/XSUB**: Publish-subscribe.
 *   **DEALER/ROUTER**: Async request-reply (Load balancing / Explicit routing).
 *   **STREAM**: Raw TCP.
+*   **ROUTER-to-ROUTER**: P2P and Broker patterns (Verified in benchmarks).
 
 ## Memories
 *   `msg_t` MUST be exactly 64 bytes and trivially copyable to survive bitwise moves in `ypipe_t` and cross-boundary calls.
+*   **LTO (Link Time Optimization)** is critical for `inproc` performance; ensure `-flto` is enabled in `CMakeLists.txt`.
+*   Always perform a `git pull --rebase` before pushing to avoid history conflicts.

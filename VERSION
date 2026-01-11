@@ -1,0 +1,15 @@
+# libzmq Native Build Version Information
+
+LIBZMQ_VERSION=4.3.5
+LIBSODIUM_VERSION=1.0.20
+
+# ENABLE_CURVE: ON to enable CURVE encryption (requires libsodium statically linked)
+#               OFF to build without CURVE/libsodium (avoids potential allocator issues)
+ENABLE_CURVE=ON
+
+# Release Date
+RELEASE_DATE=2025-12-14
+
+# Build Information
+# This file defines the versions of native libraries to be built
+# for cross-platform distribution.

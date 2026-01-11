@@ -1,0 +1,190 @@
+# Windows ARM64 Cross-Compilation Guide
+
+This document explains how to build ARM64 binaries of libzmq on Windows x64 machines.
+
+## Prerequisites
+
+- Windows 10/11 x64 machine
+- Visual Studio 2019 or later with ARM64 build tools installed
+- CMake 3.5 or later
+- Git
+- PowerShell
+
+### Installing ARM64 Build Tools
+
+1. Open Visual Studio Installer
+2. Click "Modify" on your Visual Studio installation
+3. Go to "Individual components" tab
+4. Search for and select:
+   - "MSVC v143 - VS 2022 C++ ARM64 build tools" (or equivalent for your VS version)
+   - "C++ ATL for latest v143 build tools (ARM64)" (optional)
+5. Click "Modify" to install
+
+## Usage
+
+### Building x64 (default)
+
+```powershell
+.\build-scripts\windows\build.ps1
+```
+
+Or explicitly:
+
+```powershell
+.\build-scripts\windows\build.ps1 -Architecture x64
+```
+
+### Building ARM64 (cross-compilation)
+
+```powershell
+.\build-scripts\windows\build.ps1 -Architecture arm64
+```
+
+### Full Example with All Parameters
+
+```powershell
+.\build-scripts\windows\build.ps1 `
+    -Architecture arm64 `
+    -LibzmqVersion "4.3.5" `
+    -LibsodiumVersion "1.0.19" `
+    -BuildType Release `
+    -OutputDir "dist\windows-arm64"
+```
+
+## Architecture-Specific Configurations
+
+| Parameter | x64 | arm64 |
+|-----------|-----|-------|
+| vcpkg triplet | `x64-windows-static` | `arm64-windows-static` |
+| CMake platform | `-A x64` | `-A ARM64` |
+| Build directory | `build/windows-x64` | `build/windows-arm64` |
+| Deps directory | `deps/windows-x64` | `deps/windows-arm64` |
+| Default output | `dist/windows-x64` | `dist/windows-arm64` |
+
+**Note:** vcpkg itself is shared across architectures at `deps/vcpkg` to save disk space and clone time.
+
+## Output Files
+
+After a successful build, you'll find these files in the output directory:
+
+- `libzmq.dll` - Main ZeroMQ library (ARM64 or x64)
+- `libzmq.lib` - Import library for linking
+- `msvcp140.dll` - VC++ runtime (matching architecture)
+- `vcruntime140.dll` - VC++ runtime (matching architecture)
+- `vcruntime140_1.dll` - VC++ runtime (matching architecture, if available)
+
+## Important Notes for ARM64 Builds
+
+### Cross-Compilation Limitations
+
+1. **Cannot execute on build host**: ARM64 binaries built on x64 machines cannot be executed on the x64 host
+2. **No test execution**: The build script disables tests (`-DBUILD_TESTS=OFF`) since they cannot run on x64
+3. **Deployment required**: To test ARM64 binaries, you must:
+   - Copy the DLLs to an ARM64 Windows device (e.g., Surface Pro X, Windows on ARM)
+   - Run your tests on the ARM64 device
+
+### Verification
+
+The script uses `dumpbin /headers` to verify the target architecture. For ARM64 builds, you should see:
+
+```
+AA64 machine (ARM64)
+```
+
+For x64 builds, you should see:
+
+```
+8664 machine (x64)
+```
+
+## Build Directory Structure
+
+```
+libzmq-native/
+├── build/
+│   ├── windows-x64/         # x64 build artifacts
+│   └── windows-arm64/       # ARM64 build artifacts
+├── deps/
+│   ├── vcpkg/               # Shared vcpkg installation
+│   ├── windows-x64/         # x64 dependencies
+│   │   └── zeromq-4.3.5/
+│   └── windows-arm64/       # ARM64 dependencies
+│       └── zeromq-4.3.5/
+└── dist/
+    ├── windows-x64/         # x64 output binaries
+    │   ├── libzmq.dll
+    │   ├── libzmq.lib
+    │   └── *.dll (runtime)
+    └── windows-arm64/       # ARM64 output binaries
+        ├── libzmq.dll
+        ├── libzmq.lib
+        └── *.dll (runtime)
+```
+
+## Troubleshooting
+
+### Error: "ARM64 compiler not found"
+
+**Solution:** Install ARM64 build tools in Visual Studio Installer (see Prerequisites section)
+
+### Error: "libsodium:arm64-windows-static not found"
+
+**Solution:** vcpkg will automatically download and build libsodium for ARM64. Ensure you have a stable internet connection.
+
+### Warning: "Cannot execute ARM64 binary"
+
+**Expected behavior:** This is normal when building ARM64 on x64. The binaries must be deployed to an ARM64 device for testing.
+
+### vcpkg takes long time on first ARM64 build
+
+**Expected behavior:** vcpkg must compile libsodium from source for ARM64, which takes several minutes on the first build. Subsequent builds will use the cached package.
+
+## CI/CD Integration
+
+For automated builds, you can build both architectures in parallel:
+
+```powershell
+# Build both architectures
+$jobs = @(
+    { .\build-scripts\windows\build.ps1 -Architecture x64 },
+    { .\build-scripts\windows\build.ps1 -Architecture arm64 }
+)
+
+$jobs | ForEach-Object { Start-Job -ScriptBlock $_ }
+Get-Job | Wait-Job | Receive-Job
+```
+
+## Parameter Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `-Architecture` | String (x64/arm64) | `x64` | Target architecture for compilation |
+| `-LibzmqVersion` | String | `4.3.5` | libzmq version to download and build |
+| `-LibsodiumVersion` | String | `1.0.19` | libsodium version (installed via vcpkg) |
+| `-BuildType` | String | `Release` | CMake build type (Release/Debug) |
+| `-OutputDir` | String | `dist\windows-{arch}` | Custom output directory for binaries |
+
+## Examples
+
+### Debug Build for ARM64
+
+```powershell
+.\build-scripts\windows\build.ps1 -Architecture arm64 -BuildType Debug
+```
+
+### Specific Versions
+
+```powershell
+.\build-scripts\windows\build.ps1 `
+    -Architecture arm64 `
+    -LibzmqVersion "4.3.6" `
+    -LibsodiumVersion "1.0.20"
+```
+
+### Custom Output Location
+
+```powershell
+.\build-scripts\windows\build.ps1 `
+    -Architecture arm64 `
+    -OutputDir "my-custom-output"
+```

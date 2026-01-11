@@ -1,344 +1,146 @@
-# CMake build script for ZeroMQ tests
-cmake_minimum_required(VERSION "2.8.1")
+cmake_minimum_required(VERSION 3.15)
+project(libzmq-tests C)
 
-# On Windows: solution file will be called tests.sln
-project(tests)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(tests
-  test_ancillaries
-  test_system
-  test_pair_inproc
-  test_pair_tcp
-  test_reqrep_inproc
-  test_reqrep_tcp
-  test_hwm
-  test_hwm_pubsub
-  test_reqrep_device
-  test_sub_forward
-  test_invalid_rep
-  test_msg_flags
-  test_msg_ffn
-  test_connect_resolve
-  test_immediate
-  test_last_endpoint
-  test_term_endpoint
-  test_router_mandatory
-  test_probe_router
-  test_stream
-  test_stream_empty
-  test_stream_disconnect
-  test_disconnect_inproc
-  test_unbind_wildcard
-  test_ctx_options
-  test_ctx_destroy
-  test_security_no_zap_handler
-  test_security_null
-  test_security_plain
-  test_security_zap
-  test_iov
-  test_spec_req
-  test_spec_rep
-  test_spec_dealer
-  test_spec_router
-  test_spec_pushpull
-  test_req_correlate
-  test_req_relaxed
-  test_conflate
-  test_inproc_connect
-  test_issue_566
-  test_shutdown_stress
-  test_timeo
-  test_many_sockets
-  test_diffserv
-  test_connect_rid
-  test_xpub_nodrop
-  test_pub_invert_matching
-  test_setsockopt
-  test_sockopt_hwm
-  test_heartbeats
-  test_atomics
-  test_bind_src_address
-  test_capabilities
-  test_metadata
-  test_router_handover
-  test_srcfd
-  test_stream_timeout
-  test_xpub_manual
-  test_xpub_topic
-  test_xpub_welcome_msg
-  test_xpub_verbose
-  test_base85
-  test_bind_after_connect_tcp
-  test_sodium
-  test_monitor
-  test_socket_null
-  test_reconnect_ivl
-  test_reconnect_options
-  test_tcp_accept_filter
-  test_mock_pub_sub)
-
-if(NOT WIN32)
-  list(APPEND tests test_security_gssapi test_socks test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
+# Use static MSVC runtime on Windows to match libzmq build
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
-if(ZMQ_HAVE_CURVE)
-  # TODO: always fails running under Github Actions via CMake
-  if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
-    list(APPEND tests test_security_curve)
-  endif()
-
-  if(NOT WIN32)
-    list(APPEND tests test_connect_curve_fuzzer test_bind_curve_fuzzer test_z85_decode_fuzzer)
-  endif()
-endif()
-
-option(ENABLE_CAPSH "Run tests that require sudo and capsh (for cap_net_admin)" OFF)
-
-if(ENABLE_CAPSH)
-  find_program(CAPSH_PROGRAM NAMES capsh)
-
-  if(CAPSH_PROGRAM)
-    list(APPEND tests test_pair_tcp_cap_net_admin)
-  else()
-    message(STATUS "capsh not found, skipping tests that require CAP_NET_ADMIN")
-  endif()
-endif()
-
-if(ZMQ_HAVE_IPC)
-  list(APPEND tests test_ipc_wildcard test_pair_ipc test_reqrep_ipc test_rebind_ipc)
-endif()
-
-if(NOT WIN32)
-  list(
-    APPEND
-    tests
-    test_proxy
-    test_proxy_hwm
-    test_proxy_single_socket
-    test_proxy_steerable
-    test_proxy_terminate
-    test_getsockopt_memset
-    test_filter_ipc
-    test_stream_exceeds_buffer
-    test_router_mandatory_hwm
-    test_use_fd
-    test_zmq_poll_fd)
-
-  if(HAVE_FORK)
-    list(APPEND tests test_fork)
-  endif()
-
-  if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-    list(APPEND tests test_abstract_ipc)
-
-    if(ZMQ_HAVE_TIPC)
-      list(
-        APPEND
-        tests
-        test_address_tipc
-        test_pair_tipc
-        test_reqrep_device_tipc
-        test_reqrep_tipc
-        test_router_mandatory_tipc
-        test_sub_forward_tipc
-        test_connect_delay_tipc
-        test_shutdown_stress_tipc
-        test_term_endpoint_tipc)
-    endif()
-  endif()
-endif()
-
-if(WITH_VMCI)
-  list(APPEND tests test_pair_vmci test_reqrep_vmci)
-endif()
-
-if(ENABLE_DRAFTS)
-  list(
-    APPEND
-    tests
-    test_poller
-    test_thread_safe
-    test_client_server
-    test_timers
-    test_radio_dish
-    test_scatter_gather
-    test_dgram
-    test_app_meta
-    test_router_notify
-    test_xpub_manual_last_value
-    test_peer
-    test_msg_init
-    test_channel
-    test_hello_msg
-    test_disconnect_msg
-    test_hiccup_msg
-    test_zmq_ppoll_fd
-    test_xsub_verbose
-    test_pubsub_topics_count
-  )
-
-  if(HAVE_FORK)
-    list(APPEND tests test_zmq_ppoll_signals)
-  endif()
-
-  if(ZMQ_HAVE_BUSY_POLL)
-    list(APPEND tests test_busy_poll)
-  endif()
-endif()
-
-if(ZMQ_HAVE_WS)
-  list(APPEND tests test_ws_transport)
-
-  if(ZMQ_HAVE_WSS)
-    list(APPEND tests test_wss_transport)
-  endif()
-endif()
-
-# add location of platform.hpp for Windows builds
+# Detect platform and set library paths
 if(WIN32)
-  add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
-  add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS)
-
-  # Same name on 64bit systems
-  link_libraries(ws2_32.lib)
-endif()
-
-add_library(
-  unity STATIC
-  "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.c" "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.h"
-  "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity_internals.h")
-set_target_properties(unity PROPERTIES PUBLIC_HEADER "${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.h")
-target_compile_definitions(unity PUBLIC "UNITY_USE_COMMAND_LINE_ARGS" "UNITY_EXCLUDE_FLOAT")
-target_include_directories(unity PUBLIC "${CMAKE_CURRENT_LIST_DIR}/../external/unity")
-
-set(TESTUTIL_SOURCES
-  testutil.cpp
-  testutil.hpp
-  testutil_monitoring.cpp
-  testutil_monitoring.hpp
-  testutil_security.cpp
-  testutil_security.hpp
-  testutil_unity.cpp
-  testutil_unity.hpp)
-
-if(BUILD_STATIC)
-  add_library(testutil-static STATIC ${TESTUTIL_SOURCES})
-  target_link_libraries(testutil-static libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
-endif()
-
-if(BUILD_SHARED)
-  add_library(testutil STATIC ${TESTUTIL_SOURCES})
-  target_link_libraries(testutil libzmq ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
-endif()
-
-if(BUILD_STATIC AND NOT BUILD_SHARED)
-  # use testutil-static for both tests and unit tests
-  set(TESTUTIL_LIB testutil-static)
-else()
-  # use testutil for tests and testutil-static for unit tests
-  set(TESTUTIL_LIB testutil)
-endif()
-
-if(MSVC_VERSION LESS 1700)
-  set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../external/unity/unity.c" PROPERTIES LANGUAGE CXX)
-endif()
-
-if(MSVC_VERSION LESS 1600)
-  target_compile_definitions(unity PUBLIC "UNITY_EXCLUDE_STDINT_H")
-endif()
-
-# add include dirs for all targets
-include_directories("${ZeroMQ_SOURCE_DIR}/../include" "${ZeroMQ_BINARY_DIR}")
-
-if(WIN32)
-  add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
-endif()
-
-# Does not work, times out every time
-if(WIN32)
-  list(REMOVE_ITEM tests test_many_sockets)
-endif()
-
-foreach(test ${tests})
-  # target_sources not supported before CMake 3.1
-  if(ZMQ_HAVE_CURVE AND ${test} MATCHES test_security_curve)
-    add_executable(${test} ${test}.cpp "../src/err.cpp" "../src/random.cpp" "../src/clock.cpp")
-  else()
-    add_executable(${test} ${test}.cpp)
-  endif()
-
-  target_link_libraries(${test} ${TESTUTIL_LIB})
-
-  if(WIN32)
-    # This is the output for Debug dynamic builds on Visual Studio 6.0 You should provide the correct directory, don't
-    # know how to do it automatically
-    find_path(LIBZMQ_PATH "libzmq.lib" PATHS "../bin/Win32/Debug/v120/dynamic")
-
-    if(NOT ${LIBZMQ_PATH} STREQUAL "LIBZMQ_PATH-NOTFOUND")
-      set_target_properties(${test} PROPERTIES LINK_FLAGS "/LIBPATH:${LIBZMQ_PATH}")
-    endif()
-  else()
-    # per-test directories not generated on OS X / Darwin
-    if(NOT APPLE)
-      link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")
-    endif()
-  endif()
-
-  if(RT_LIBRARY)
-    target_link_libraries(${test} ${RT_LIBRARY})
-  endif()
-
-  if(CMAKE_SYSTEM_NAME MATCHES "QNX")
-    target_link_libraries(${test} socket)
-    target_link_libraries(${test} m)
-  endif()
-
-  if(WIN32)
-    add_test(
-      NAME ${test}
-      WORKING_DIRECTORY ${LIBRARY_OUTPUT_PATH}
-      COMMAND ${test})
-  else()
-    if(${test} MATCHES "_cap_net_admin")
-      add_test(NAME ${test} COMMAND sh -c "sudo ${CAPSH_PROGRAM} --caps=cap_net_admin+eip -- -c $<TARGET_FILE:${test}>")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(PLATFORM_DIR "windows-x64")
     else()
-      add_test(NAME ${test} COMMAND ${test})
+        set(PLATFORM_DIR "windows-x86")
     endif()
-  endif()
-
-  set_tests_properties(${test} PROPERTIES TIMEOUT 10)
-  set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
-
-  if(QNX)
-    install(TARGETS ${test} RUNTIME DESTINATION bin/)
-  endif()
-endforeach()
-
-# override timeout for these tests
-set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
-
-if(WIN32 AND ENABLE_DRAFTS)
-  set_tests_properties(test_radio_dish PROPERTIES TIMEOUT 30)
+    set(ZMQ_LIB_NAME "libzmq.dll")
+    set(ZMQ_IMPORT_LIB "libzmq.lib")
+elseif(APPLE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        set(PLATFORM_DIR "macos-arm64")
+    else()
+        set(PLATFORM_DIR "macos-x86_64")
+    endif()
+    set(ZMQ_LIB_NAME "libzmq.dylib")
+elseif(UNIX)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        set(PLATFORM_DIR "linux-arm64")
+    else()
+        set(PLATFORM_DIR "linux-x64")
+    endif()
+    set(ZMQ_LIB_NAME "libzmq.so")
 endif()
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
-  if(ZMQ_HAVE_CURVE)
-    set_tests_properties(test_security_curve PROPERTIES TIMEOUT 60)
-  endif()
+# Set library search path
+set(DIST_DIR "${CMAKE_SOURCE_DIR}/../dist/${PLATFORM_DIR}")
+
+# Find libzmq
+if(WIN32)
+    # Windows uses import library
+    find_library(ZMQ_LIBRARY
+        NAMES zmq libzmq ${ZMQ_IMPORT_LIB}
+        PATHS "${DIST_DIR}"
+        NO_DEFAULT_PATH
+    )
+    # Also need the DLL for runtime
+    set(ZMQ_DLL "${DIST_DIR}/${ZMQ_LIB_NAME}")
+else()
+    find_library(ZMQ_LIBRARY
+        NAMES zmq
+        PATHS "${DIST_DIR}"
+        NO_DEFAULT_PATH
+    )
 endif()
 
-set_tests_properties(test_security_zap PROPERTIES TIMEOUT 60)
-set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
+if(NOT ZMQ_LIBRARY)
+    message(FATAL_ERROR "libzmq not found in ${DIST_DIR}. Please build libzmq first.")
+endif()
 
-# Check whether all tests in the current folder are present
-file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
-file(GLOB ALL_TEST_SOURCES "test_*.cpp")
+message(STATUS "Found libzmq: ${ZMQ_LIBRARY}")
+message(STATUS "Platform: ${PLATFORM_DIR}")
 
-foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
-  get_filename_component(TESTNAME "${TEST_SOURCE}" NAME_WE)
-  string(REGEX MATCH "${TESTNAME}" MATCH_TESTNAME "${CURRENT_LIST_FILE_CONTENT}")
+# Include directory (assumes headers are installed or available)
+# For testing, we'll use system zmq.h or provide a minimal one
+if(WIN32)
+    find_path(ZMQ_INCLUDE_DIR zmq.h
+        PATHS "${CMAKE_SOURCE_DIR}/../build/${PLATFORM_DIR}/install/include"
+              "${CMAKE_SOURCE_DIR}/../build/windows-x64/install/include"
+              "${DIST_DIR}/include"
+    )
+else()
+    find_path(ZMQ_INCLUDE_DIR zmq.h
+        PATHS "${CMAKE_SOURCE_DIR}/../build/${PLATFORM_DIR}/install/include"
+              "${DIST_DIR}/include"
+              "/usr/include"
+              "/usr/local/include"
+              "${CMAKE_SOURCE_DIR}/../build/libzmq/include"
+    )
+endif()
 
-  if(NOT MATCH_TESTNAME)
-    message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")
-  endif()
-endforeach()
+if(NOT ZMQ_INCLUDE_DIR)
+    message(WARNING "zmq.h not found. Tests may fail to compile.")
+endif()
+
+# Test executables
+add_executable(test_basic test_basic.c)
+add_executable(test_curve test_curve.c)
+
+# Link libraries
+target_link_libraries(test_basic ${ZMQ_LIBRARY})
+target_link_libraries(test_curve ${ZMQ_LIBRARY})
+
+if(ZMQ_INCLUDE_DIR)
+    target_include_directories(test_basic PRIVATE ${ZMQ_INCLUDE_DIR})
+    target_include_directories(test_curve PRIVATE ${ZMQ_INCLUDE_DIR})
+endif()
+
+# Windows-specific: Copy all DLLs to test directory
+if(WIN32)
+    # Copy all DLLs from dist folder (includes libzmq.dll and VC++ runtime DLLs)
+    file(GLOB DIST_DLLS "${DIST_DIR}/*.dll")
+    foreach(DLL_FILE ${DIST_DLLS})
+        # Copy DLLs for test_basic
+        add_custom_command(TARGET test_basic POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${DLL_FILE}" "$<TARGET_FILE_DIR:test_basic>"
+            COMMENT "Copying ${DLL_FILE} to test_basic directory"
+        )
+        # Copy DLLs for test_curve (may be in same directory, but ensures both targets have DLLs)
+        add_custom_command(TARGET test_curve POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${DLL_FILE}" "$<TARGET_FILE_DIR:test_curve>"
+            COMMENT "Copying ${DLL_FILE} to test_curve directory"
+        )
+    endforeach()
+endif()
+
+# Linux/macOS: Set RPATH
+if(UNIX)
+    set_target_properties(test_basic PROPERTIES
+        BUILD_RPATH "${DIST_DIR}"
+        INSTALL_RPATH "${DIST_DIR}"
+    )
+    set_target_properties(test_curve PROPERTIES
+        BUILD_RPATH "${DIST_DIR}"
+        INSTALL_RPATH "${DIST_DIR}"
+    )
+endif()
+
+# Enable testing
+enable_testing()
+add_test(NAME BasicFunctionality COMMAND test_basic)
+add_test(NAME CurveEncryption COMMAND test_curve)
+
+# Test properties
+set_tests_properties(BasicFunctionality PROPERTIES
+    TIMEOUT 30
+    FAIL_REGULAR_EXPRESSION "FAILED"
+)
+
+set_tests_properties(CurveEncryption PROPERTIES
+    TIMEOUT 30
+    FAIL_REGULAR_EXPRESSION "FAILED"
+)

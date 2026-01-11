@@ -126,3 +126,7 @@ zeromq-*.zip
 core
 
 mybuild
+
+# Build output directories
+deps/
+dist/

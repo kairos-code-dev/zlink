@@ -5,22 +5,41 @@ import sys
 import statistics
 import json
 
+# OS Detection
+IS_WINDOWS = os.name == 'nt'
+EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
+
 # Configuration
-BUILD_DIR = "build/benchwithzmq"
-LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
+if IS_WINDOWS:
+    # Windows typically builds in a Release/Debug subfolder
+    BUILD_DIR = "build/windows-x64/benchwithzmq/Release"
+    LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/bin")
+else:
+    # Linux typically builds directly in the target folder
+    # Support both 'build/benchwithzmq' and 'build/linux-x64/benchwithzmq'
+    possible_paths = ["build/benchwithzmq", "build/linux-x64/benchwithzmq"]
+    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build/benchwithzmq")
+    LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
+
 NUM_RUNS = 10 
 CACHE_FILE = "benchwithzmq/libzmq_cache.json"
 
 # Settings for loop
-TRANSPORTS = ["tcp", "inproc", "ipc"]
+TRANSPORTS = ["tcp", "inproc"]
+if not IS_WINDOWS:
+    TRANSPORTS.append("ipc") # IPC is more stable for benchmarks on Linux
+
 MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
 env = os.environ.copy()
-env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+if IS_WINDOWS:
+    env["PATH"] = f"{LIBZMQ_LIB_DIR};{env.get('PATH', '')}"
+else:
+    env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
 
 def run_single_test(binary_name, lib_name, transport, size):
     """Runs a single binary for one specific config."""
-    binary_path = os.path.join(BUILD_DIR, binary_name)
+    binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     try:
         # Args: [lib_name] [transport] [size]
         result = subprocess.run([binary_path, lib_name, transport, str(size)], 
@@ -34,7 +53,9 @@ def run_single_test(binary_name, lib_name, transport, size):
                 if len(p) >= 7:
                     parsed.append({"metric": p[5], "value": float(p[6])})
         return parsed
-    except: return []
+    except Exception as e:
+        # print(f"Error running {binary_name}: {e}")
+        return []
 
 def collect_data(binary_name, lib_name, pattern_name):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
@@ -67,14 +88,19 @@ def main():
     refresh = "--refresh-libzmq" in sys.argv
     p_req = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "ALL"
     
-    if not os.path.exists(os.path.join(BUILD_DIR, "comp_zlink_pair")):
-        print("Error: Binaries not found. Please run ./build.sh first.")
+    # Check if any target binary exists
+    check_bin = os.path.join(BUILD_DIR, "comp_zlink_pair" + EXE_SUFFIX)
+    if not os.path.exists(check_bin):
+        print(f"Error: Binaries not found at {BUILD_DIR}.")
+        print("Please build the project first.")
         return
 
     cache = {}
     if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, 'r') as f:
-            cache = json.load(f)
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                cache = json.load(f)
+        except: pass
 
     comparisons = [
         ("comp_std_zmq_pair", "comp_zlink_pair", "PAIR"),

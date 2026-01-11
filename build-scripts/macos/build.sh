@@ -140,27 +140,17 @@ else
     echo "Step 1: Skipping libsodium (ENABLE_CURVE=OFF)..."
 fi
 
-# Step 2: Download and extract libzmq
+# Step 2: Prepare local source
 echo ""
-echo "Step 2: Downloading libzmq ${LIBZMQ_VERSION}..."
-LIBZMQ_ARCHIVE="$DEPS_DIR/zeromq-${LIBZMQ_VERSION}.tar.gz"
-LIBZMQ_SRC="$DEPS_DIR/zeromq-${LIBZMQ_VERSION}"
+echo "Step 2: Using local repository source for libzmq..."
+# libzmq source is already in the project root
 
-if [ ! -f "$LIBZMQ_ARCHIVE" ]; then
-    curl -L "$LIBZMQ_URL" -o "$LIBZMQ_ARCHIVE"
-fi
-
-if [ ! -d "$LIBZMQ_SRC" ]; then
-    echo "Extracting libzmq..."
-    tar -xzf "$LIBZMQ_ARCHIVE" -C "$DEPS_DIR"
-fi
-
-# Step 3: Configure libzmq with CMake
+# Step 3: Configure libzmq with CMake for ${ARCH}
 echo ""
 echo "Step 3: Configuring libzmq with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
-LIBZMQ_SRC_ABS="$REPO_ROOT/$LIBZMQ_SRC"
+LIBZMQ_SRC_ABS="$REPO_ROOT"
 
 # Set architecture-specific CMake flags
 CMAKE_ARCH_FLAGS="-DCMAKE_OSX_ARCHITECTURES=$ARCH"

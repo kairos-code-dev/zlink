@@ -82,28 +82,17 @@ if (-not (Test-Path "$VCPKG_DIR")) {
 Write-Host "Installing libsodium:${VCPKG_TRIPLET}..."
 & "$VCPKG_DIR\vcpkg" install "libsodium:${VCPKG_TRIPLET}"
 
-# Step 2: Download and extract libzmq
+# Step 2: Ensure dependencies directory exists
 Write-Host ""
-Write-Host "Step 2: Downloading libzmq $LIBZMQ_VERSION..."
-$LIBZMQ_ARCHIVE = "$DEPS_DIR\zeromq-${LIBZMQ_VERSION}.tar.gz"
-$LIBZMQ_SRC = "$DEPS_DIR\zeromq-${LIBZMQ_VERSION}"
-
-if (-not (Test-Path $LIBZMQ_ARCHIVE)) {
-    $LIBZMQ_URL = "https://github.com/zeromq/libzmq/releases/download/v${LIBZMQ_VERSION}/zeromq-${LIBZMQ_VERSION}.tar.gz"
-    Invoke-WebRequest -Uri $LIBZMQ_URL -OutFile $LIBZMQ_ARCHIVE
-}
-
-if (-not (Test-Path $LIBZMQ_SRC)) {
-    Write-Host "Extracting libzmq..."
-    tar -xzf $LIBZMQ_ARCHIVE -C $DEPS_DIR
-}
+Write-Host "Step 2: Preparing dependencies..."
+# libzmq source is already in the project root
 
 # Step 3: Configure libzmq with CMake
 Write-Host ""
 Write-Host "Step 3: Configuring libzmq with CMake..."
 
 # Convert to absolute paths before changing directory
-$LIBZMQ_SRC_ABS = (Resolve-Path $LIBZMQ_SRC).Path
+$ROOT_DIR_ABS = (Resolve-Path ".").Path
 $CMAKE_TOOLCHAIN_ABS = (Resolve-Path "$VCPKG_DIR\scripts\buildsystems\vcpkg.cmake").Path
 $VCPKG_INSTALLED_ABS = (Resolve-Path "$VCPKG_DIR\installed\$VCPKG_TRIPLET").Path
 
@@ -122,8 +111,7 @@ try {
         $BUILD_TESTS_FLAG = "ON"
     }
 
-    cmake "$LIBZMQ_SRC_ABS" `
-        -G "Visual Studio 17 2022" `
+    cmake "$ROOT_DIR_ABS" `
         -A $CMAKE_ARCH `
         -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_ABS" `
         -DVCPKG_TARGET_TRIPLET=$VCPKG_TRIPLET `
@@ -149,12 +137,15 @@ try {
     cmake --install . --config $BuildType
 
     # Copy DLL to output
-    $DLL_PATH = "install\bin\libzmq-v*-mt-$(if ($BuildType -eq 'Debug') { 'gd-' } else { '' })*.dll"
-    $DLL_FILES = Get-ChildItem $DLL_PATH
+    $DLL_PATH = "Release\*zmq*.dll"
+    $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
     if ($DLL_FILES.Count -eq 0) {
-        # Try alternative path
-        $DLL_PATH = "bin\$BuildType\*.dll"
-        $DLL_FILES = Get-ChildItem $DLL_PATH
+        $DLL_PATH = "install\bin\*zmq*.dll"
+        $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
+    }
+    if ($DLL_FILES.Count -eq 0) {
+        $DLL_PATH = "bin\$BuildType\*zmq*.dll"
+        $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
     }
 
     if ($DLL_FILES.Count -gt 0) {
@@ -172,10 +163,14 @@ try {
         Write-Host "Copied: $SOURCE_DLL -> $TARGET_DLL"
 
         # Also copy the import library (.lib) for linking
-        $LIB_PATH = "install\lib\libzmq-v*-mt-$(if ($BuildType -eq 'Debug') { 'gd-' } else { '' })*.lib"
+        $LIB_PATH = "Release\*zmq*.lib"
         $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
         if ($LIB_FILES.Count -eq 0) {
-            $LIB_PATH = "lib\$BuildType\*.lib"
+            $LIB_PATH = "install\lib\*zmq*.lib"
+            $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
+        }
+        if ($LIB_FILES.Count -eq 0) {
+            $LIB_PATH = "lib\$BuildType\*zmq*.lib"
             $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
         }
         if ($LIB_FILES.Count -gt 0) {
@@ -246,8 +241,8 @@ try {
         Write-Host "Copying public headers..."
         $IncludeDir = "..\..\$OutputDir\include"
         New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
-        Copy-Item "install\include\zmq.h" $IncludeDir
-        Copy-Item "install\include\zmq_utils.h" $IncludeDir
+        Copy-Item "..\..\include\zmq.h" $IncludeDir
+        Copy-Item "..\..\include\zmq_utils.h" $IncludeDir
         Write-Host "Copied: zmq.h, zmq_utils.h -> $IncludeDir"
     } else {
         throw "libzmq.dll not found!"
@@ -265,6 +260,12 @@ try {
             # Run tests with ctest
             Write-Host "Running ctest..."
 
+            # Ensure the DLL directory is in the PATH so tests can find zmq.dll
+            $OLD_PATH = $env:PATH
+            $DLL_DIR = (Resolve-Path "Release").Path
+            $env:PATH = "$DLL_DIR;$env:PATH"
+            Write-Host "Temporarily added $DLL_DIR to PATH for testing"
+
             # Run ctest and capture exit code
             $ctestOutput = ""
             $ctestExitCode = 0
@@ -275,6 +276,9 @@ try {
                 $ctestExitCode = $LASTEXITCODE
             } catch {
                 $ctestExitCode = 1
+            } finally {
+                # Restore original path
+                $env:PATH = $OLD_PATH
             }
 
             if ($ctestExitCode -ne 0) {

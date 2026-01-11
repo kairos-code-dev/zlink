@@ -211,6 +211,15 @@ foreach(test ${tests})
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
   set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
+  # Automatically set library path for tests to find libzmq shared library
+  if(WIN32)
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzmq>;$ENV{PATH}")
+  elseif(APPLE)
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzmq>:$ENV{DYLD_LIBRARY_PATH}")
+  else()
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzmq>:$ENV{LD_LIBRARY_PATH}")
+  endif()
+
   if(QNX)
     install(TARGETS ${test} RUNTIME DESTINATION bin/)
   endif()

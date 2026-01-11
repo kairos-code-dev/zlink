@@ -16,9 +16,9 @@ if IS_WINDOWS:
     LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/bin")
 else:
     # Linux typically builds directly in the target folder
-    # Support both 'build/benchwithzmq' and 'build/linux-x64/benchwithzmq'
-    possible_paths = ["build/benchwithzmq", "build/linux-x64/benchwithzmq"]
-    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build/benchwithzmq")
+    # Support multiple possible build locations
+    possible_paths = ["build/linux-x64/bin", "build/benchwithzmq", "build/linux-x64/benchwithzmq"]
+    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build/linux-x64/bin")
     LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
 
 NUM_RUNS = 10 
@@ -42,8 +42,12 @@ def run_single_test(binary_name, lib_name, transport, size):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     try:
         # Args: [lib_name] [transport] [size]
-        result = subprocess.run([binary_path, lib_name, transport, str(size)], 
-                                env=env, capture_output=True, text=True, timeout=60)
+        # Use taskset on Linux to pin to CPU 1 for reduced variance
+        if IS_WINDOWS:
+            cmd = [binary_path, lib_name, transport, str(size)]
+        else:
+            cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
         if result.returncode != 0: return []
         
         parsed = []

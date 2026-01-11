@@ -11,6 +11,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.3.5. It produces pre-built native libraries with libsodium statically linked for CURVE encryption support.
 
+**Note**: Draft API has been completely removed from this build. Only stable socket types are available.
+
+### Supported Socket Types
+| Type | Description |
+|------|-------------|
+| PAIR | Exclusive pair for bidirectional communication |
+| PUB/SUB | Publish-subscribe pattern |
+| XPUB/XSUB | Extended pub-sub with subscription forwarding |
+| REQ/REP | Request-reply pattern |
+| DEALER/ROUTER | Async request-reply pattern |
+| PUSH/PULL | Pipeline pattern |
+| STREAM | Raw TCP stream |
+
+### Removed (Draft API)
+- Socket types: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
+- WebSocket transport (ws://, wss://)
+- Draft socket options: ZMQ_RECONNECT_STOP, ZMQ_SOCKS_USERNAME/PASSWORD, ZMQ_ZAP_ENFORCE_DOMAIN, etc.
+- NORM protocol support
+
 ### Target Platforms
 - Windows: x64, ARM64
 - Linux: x64, ARM64
@@ -51,6 +70,8 @@ Tests are integrated into build scripts via `RUN_TESTS=ON` parameter. Tests use 
 # Run ctest directly in build directory
 cd build/linux-x64 && ctest --output-on-failure
 ```
+
+**Test Count**: 106 tests (14 skipped: 7 fuzzer, 7 TIPC)
 
 ## Architecture
 
@@ -122,3 +143,10 @@ LSP findReferences src/ctx.cpp 100 15
 - **IPC tests**: Not available on Windows
 - **Windows ARM64**: Cross-compiled on x64 host, tests cannot run
 - **Fuzzer tests**: Require special build configuration, typically skipped
+
+## Version History
+
+| Version | Changes |
+|---------|---------|
+| v0.1.2 | Remove all Draft API (9 socket types, WebSocket, draft options) |
+| v0.1.1 | Initial release with full libzmq 4.3.5 |

@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.3.5. It produces pre-built native libraries with libsodium statically linked for CURVE encryption support.
+This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.3.5. It produces minimal pre-built native libraries without CURVE encryption support.
 
 **Note**: Draft API has been completely removed from this build. Only stable socket types are available.
 
@@ -43,14 +43,14 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 
 ### Linux
 ```bash
-./build-scripts/linux/build.sh [ARCH] [LIBZMQ_VERSION] [LIBSODIUM_VERSION] [ENABLE_CURVE] [RUN_TESTS]
-# Example: ./build-scripts/linux/build.sh x64 4.3.5 1.0.20 ON ON
+./build-scripts/linux/build.sh [ARCH] [RUN_TESTS]
+# Example: ./build-scripts/linux/build.sh x64 ON
 ```
 
 ### macOS
 ```bash
-./build-scripts/macos/build.sh [ARCH] [LIBZMQ_VERSION] [LIBSODIUM_VERSION] [ENABLE_CURVE] [RUN_TESTS]
-# Example: ./build-scripts/macos/build.sh arm64 4.3.5 1.0.20 ON ON
+./build-scripts/macos/build.sh [ARCH] [RUN_TESTS]
+# Example: ./build-scripts/macos/build.sh arm64 ON
 ```
 
 ### Windows (PowerShell)
@@ -69,7 +69,7 @@ Tests are integrated into build scripts via `RUN_TESTS=ON` parameter. Tests use 
 
 ```bash
 # Linux/macOS - run tests during build
-./build-scripts/linux/build.sh x64 4.3.5 1.0.20 ON ON
+./build-scripts/linux/build.sh x64 ON
 
 # Run ctest directly in build directory
 cd build/linux-x64 && ctest --output-on-failure
@@ -80,8 +80,8 @@ cd build/linux-x64 && ctest --output-on-failure
 ## Architecture
 
 ### Build System
-- **VERSION file**: Defines LIBZMQ_VERSION, LIBSODIUM_VERSION, ENABLE_CURVE
-- **build-scripts/**: Platform-specific build scripts that download, configure, and compile libzmq with static libsodium
+- **VERSION file**: Defines LIBZMQ_VERSION
+- **build-scripts/**: Platform-specific build scripts that configure and compile minimal libzmq
 - **tests/**: libzmq test suite using Unity framework
 
 ### CI/CD

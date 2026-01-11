@@ -2,11 +2,8 @@
 
 LIBZMQ_VERSION=4.3.5
 
-# ENABLE_CURVE: OFF - Removed libsodium for minimal build
-ENABLE_CURVE=OFF
-
 # Release Date
 RELEASE_DATE=2026-01-11
 
 # Build Information
-# Minimal build without libsodium and deprecated features.
+# Minimal build without CURVE/libsodium support

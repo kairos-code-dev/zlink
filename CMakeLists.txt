@@ -252,39 +252,7 @@ if(NOT MSVC)
   check_cxx_symbol_exists(strlcpy string.h ZMQ_HAVE_STRLCPY)
 endif()
 
-# Select curve encryption library, defaults to disabled To use libsodium instead, use --with-libsodium(must be
-# installed) To disable curve, use --disable-curve
-
-option(WITH_LIBSODIUM "Use libsodium" OFF)
-option(WITH_LIBSODIUM_STATIC "Use static libsodium library" OFF)
-option(ENABLE_LIBSODIUM_RANDOMBYTES_CLOSE "Automatically close libsodium randombytes. Not threadsafe without getrandom()" ON)
-option(ENABLE_CURVE "Enable CURVE security" OFF)
-
-if(ENABLE_CURVE)
-  if(WITH_LIBSODIUM)
-    find_package("sodium")
-    if(SODIUM_FOUND)
-      message(STATUS "Using libsodium for CURVE security")
-      include_directories(${SODIUM_INCLUDE_DIRS})
-      link_directories(${SODIUM_LIBRARY_DIRS})
-      if(WITH_LIBSODIUM_STATIC)
-        add_compile_definitions(SODIUM_STATIC)
-      endif()
-      set(ZMQ_USE_LIBSODIUM 1)
-      set(ZMQ_HAVE_CURVE 1)
-      if (ENABLE_LIBSODIUM_RANDOMBYTES_CLOSE)
-        set(ZMQ_LIBSODIUM_RANDOMBYTES_CLOSE 1)
-      endif()
-    else()
-      message(
-        ERROR
-          "libsodium not installed, you may want to install libsodium and run cmake again"
-      )
-    endif()
-  endif()
-else()
-  message(STATUS "CURVE security is disabled")
-endif()
+# zlink: CURVE security permanently disabled (libsodium removed)
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
@@ -1450,13 +1418,6 @@ if(BUILD_SHARED)
     target_link_libraries(libzmq ${LIBBSD_LIBRARIES})
   endif()
 
-  if(SODIUM_FOUND)
-    target_link_libraries(libzmq ${SODIUM_LIBRARIES})
-    # On Solaris, libsodium depends on libssp
-    if(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-      target_link_libraries(libzmq ssp)
-    endif()
-  endif()
 
   if(HAVE_WS2_32)
     target_link_libraries(libzmq ws2_32)
@@ -1498,14 +1459,6 @@ if(BUILD_STATIC)
 
   if(NSS3_FOUND)
     target_link_libraries(libzmq-static ${NSS3_LIBRARIES})
-  endif()
-
-  if(SODIUM_FOUND)
-    target_link_libraries(libzmq-static ${SODIUM_LIBRARIES})
-    # On Solaris, libsodium depends on libssp
-    if(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
-      target_link_libraries(libzmq-static ssp)
-    endif()
   endif()
 
   if(HAVE_WS2_32)

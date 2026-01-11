@@ -1,10 +1,9 @@
-# Windows build script for libzmq with static libsodium
-# Requires: Visual Studio 2019 or later, CMake, vcpkg
+# Windows build script for libzmq (minimal build without CURVE/libsodium)
+# Requires: Visual Studio 2022, CMake
 # Supports: x64 and ARM64 architectures (ARM64 is cross-compiled on x64 host)
 
 param(
     [string]$LibzmqVersion,
-    [string]$LibsodiumVersion,
     [string]$BuildType = "Release",
     [ValidateSet("x64", "arm64")]
     [string]$Architecture = "x64",
@@ -14,17 +13,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Load version information from parameters or defaults
-if ($LibzmqVersion) {
-    $LIBZMQ_VERSION = $LibzmqVersion
-} else {
-    $LIBZMQ_VERSION = "4.3.5"
+# Load version information from VERSION file or parameters
+$VERSION_FILE = "VERSION"
+
+if (Test-Path $VERSION_FILE) {
+    Write-Host "Reading VERSION file..."
+    $VersionContent = Get-Content $VERSION_FILE
+    foreach ($line in $VersionContent) {
+        if ($line -match '^LIBZMQ_VERSION=(.+)$') {
+            $FILE_LIBZMQ_VERSION = $matches[1]
+        }
+    }
 }
 
-if ($LibsodiumVersion) {
-    $LIBSODIUM_VERSION = $LibsodiumVersion
+# Parameters override VERSION file
+if ($LibzmqVersion) {
+    $LIBZMQ_VERSION = $LibzmqVersion
+} elseif ($FILE_LIBZMQ_VERSION) {
+    $LIBZMQ_VERSION = $FILE_LIBZMQ_VERSION
 } else {
-    $LIBSODIUM_VERSION = "1.0.19"
+    $LIBZMQ_VERSION = "4.3.5"
 }
 
 # Set architecture-specific configurations
@@ -43,16 +51,67 @@ if (-not $OutputDir) {
     $OutputDir = $DEFAULT_OUTPUT_DIR
 }
 
+# Check for Visual Studio 2022
+Write-Host "==================================="
+Write-Host "Checking Visual Studio 2022..."
+Write-Host "==================================="
+
+# Use vswhere.exe to detect VS 2022
+$CommonVSWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+if (-not (Test-Path $CommonVSWhere)) {
+    Write-Error ""
+    Write-Error "=========================================="
+    Write-Error "Visual Studio 2022 not found"
+    Write-Error "=========================================="
+    Write-Error "vswhere.exe not found at: $CommonVSWhere"
+    Write-Error ""
+    Write-Error "Please install Visual Studio 2022 first:"
+    Write-Error "  .\build-scripts\windows\setup-vs2022.ps1"
+    Write-Error ""
+    Write-Error "Or manually install Visual Studio 2022 Build Tools"
+    Write-Error "from: https://aka.ms/vs/17/release/vs_BuildTools.exe"
+    Write-Error "=========================================="
+    exit 1
+}
+
+# Check for VS 2022 installation (version range: 17.0 ~ 17.999)
+$VS2022_PATH = & "$CommonVSWhere" -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath
+
+if (-not $VS2022_PATH) {
+    Write-Error ""
+    Write-Error "=========================================="
+    Write-Error "Visual Studio 2022 not found"
+    Write-Error "=========================================="
+    Write-Error "Visual Studio 2022 with C++ Build Tools is required."
+    Write-Error ""
+    Write-Error "To install automatically, run:"
+    Write-Error "  .\build-scripts\windows\setup-vs2022.ps1"
+    Write-Error ""
+    Write-Error "Or manually install Visual Studio 2022 Build Tools"
+    Write-Error "from: https://aka.ms/vs/17/release/vs_BuildTools.exe"
+    Write-Error ""
+    Write-Error "Required workloads:"
+    Write-Error "  - Desktop development with C++"
+    Write-Error "  - C++ x64/x86 build tools"
+    Write-Error "  - C++ ARM64 build tools"
+    Write-Error "  - Windows 11 SDK (22621)"
+    Write-Error "=========================================="
+    exit 1
+}
+
+Write-Host "Visual Studio 2022 found at: $VS2022_PATH"
+
+Write-Host ""
 Write-Host "==================================="
 Write-Host "Windows Build Configuration"
 Write-Host "==================================="
 Write-Host "Architecture:      $Architecture"
 Write-Host "libzmq version:    $LIBZMQ_VERSION"
-Write-Host "libsodium version: $LIBSODIUM_VERSION"
+Write-Host "CURVE support:     Disabled"
 Write-Host "Build type:        $BuildType"
 Write-Host "RUN_TESTS:         $RunTests"
 Write-Host "Output directory:  $OutputDir"
-Write-Host "vcpkg triplet:     $VCPKG_TRIPLET"
 Write-Host "CMake platform:    $CMAKE_ARCH"
 if ($Architecture -eq "arm64") {
     Write-Host ""
@@ -64,44 +123,18 @@ Write-Host ""
 
 # Create build directories with architecture suffix
 $BUILD_DIR = "build\windows-$Architecture"
-$DEPS_DIR = "deps\windows-$Architecture"
 New-Item -ItemType Directory -Force -Path $BUILD_DIR | Out-Null
-New-Item -ItemType Directory -Force -Path $DEPS_DIR | Out-Null
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-# Step 1: Install libsodium using vcpkg (static)
-Write-Host "Step 1: Installing libsodium via vcpkg..."
-# vcpkg can be shared across architectures, so use a common location
-$VCPKG_DIR = "deps\vcpkg"
-if (-not (Test-Path "$VCPKG_DIR")) {
-    Write-Host "Cloning vcpkg..."
-    git clone https://github.com/microsoft/vcpkg.git "$VCPKG_DIR"
-    & "$VCPKG_DIR\bootstrap-vcpkg.bat"
-}
-
-Write-Host "Installing libsodium:${VCPKG_TRIPLET}..."
-& "$VCPKG_DIR\vcpkg" install "libsodium:${VCPKG_TRIPLET}"
-
-# Step 2: Ensure dependencies directory exists
-Write-Host ""
-Write-Host "Step 2: Preparing dependencies..."
+Write-Host "Step 1: Using repository source for libzmq..."
 # libzmq source is already in the project root
 
-# Step 3: Configure libzmq with CMake
+# Step 2: Configure libzmq with CMake
 Write-Host ""
-Write-Host "Step 3: Configuring libzmq with CMake..."
+Write-Host "Step 2: Configuring libzmq with CMake..."
 
 # Convert to absolute paths before changing directory
 $ROOT_DIR_ABS = (Resolve-Path ".").Path
-$CMAKE_TOOLCHAIN_ABS = (Resolve-Path "$VCPKG_DIR\scripts\buildsystems\vcpkg.cmake").Path
-$VCPKG_INSTALLED_ABS = (Resolve-Path "$VCPKG_DIR\installed\$VCPKG_TRIPLET").Path
-
-# Get libsodium paths from vcpkg installation
-$SODIUM_INCLUDE_DIR = "$VCPKG_INSTALLED_ABS\include"
-$SODIUM_LIBRARY = "$VCPKG_INSTALLED_ABS\lib\libsodium.lib"
-
-Write-Host "libsodium include: $SODIUM_INCLUDE_DIR"
-Write-Host "libsodium library: $SODIUM_LIBRARY"
 
 Push-Location $BUILD_DIR
 try {
@@ -111,29 +144,28 @@ try {
         $BUILD_TESTS_FLAG = "ON"
     }
 
+    # Build without CURVE/libsodium
     cmake "$ROOT_DIR_ABS" `
-        -A $CMAKE_ARCH `
-        -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_ABS" `
-        -DVCPKG_TARGET_TRIPLET=$VCPKG_TRIPLET `
-        -DCMAKE_BUILD_TYPE=$BuildType `
+        -G "Visual Studio 17 2022" `
+        -A "$CMAKE_ARCH" `
+        -DCMAKE_BUILD_TYPE="$BuildType" `
         -DCMAKE_POLICY_VERSION_MINIMUM="3.5" `
         -DBUILD_SHARED=ON `
         -DBUILD_STATIC=OFF `
-        -DBUILD_TESTS=$BUILD_TESTS_FLAG `
-        -DENABLE_CURVE=ON `
-        -DWITH_LIBSODIUM=ON `
-        -DSODIUM_INCLUDE_DIRS="$SODIUM_INCLUDE_DIR" `
-        -DSODIUM_LIBRARIES="$SODIUM_LIBRARY" `
+        -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
+        -DENABLE_CURVE=OFF `
+        -DWITH_LIBSODIUM=OFF `
+        -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install"
 
-    # Step 4: Build libzmq
+    # Step 3: Build libzmq
     Write-Host ""
-    Write-Host "Step 4: Building libzmq..."
+    Write-Host "Step 3: Building libzmq..."
     cmake --build . --config $BuildType --parallel
 
-    # Step 5: Install
+    # Step 4: Install
     Write-Host ""
-    Write-Host "Step 5: Installing to output directory..."
+    Write-Host "Step 4: Installing to output directory..."
     cmake --install . --config $BuildType
 
     # Copy DLL to output
@@ -248,10 +280,10 @@ try {
         throw "libzmq.dll not found!"
     }
 
-    # Step 5.5: Run tests (if enabled)
+    # Step 5: Run tests (if enabled)
     if ($RunTests -eq "ON") {
         Write-Host ""
-        Write-Host "Step 5.5: Running tests..."
+        Write-Host "Step 5: Running tests..."
 
         # Skip tests for ARM64 cross-compilation (cannot run ARM64 binaries on x64 host)
         if ($Architecture -eq "arm64") {
@@ -323,13 +355,6 @@ if (Test-Path $FINAL_DLL) {
         Write-Host ""
         Write-Host "DLL dependencies:"
         dumpbin /dependents $FINAL_DLL
-
-        Write-Host ""
-        Write-Host "Checking for libsodium symbols..."
-        $symbols = dumpbin /exports $FINAL_DLL | Select-String "sodium"
-        if ($symbols) {
-            Write-Host "libsodium symbols found (statically linked)"
-        }
 
         Write-Host ""
         Write-Host "DLL architecture:"

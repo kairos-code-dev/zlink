@@ -16,10 +16,6 @@ on:
         description: 'libzmq version to build (default: from VERSION file)'
         required: false
         type: string
-      libsodium_version:
-        description: 'libsodium version to build (default: from VERSION file)'
-        required: false
-        type: string
 
 env:
   ARTIFACT_RETENTION_DAYS: 30
@@ -30,7 +26,6 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       libzmq_version: ${{ steps.versions.outputs.libzmq_version }}
-      libsodium_version: ${{ steps.versions.outputs.libsodium_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,22 +34,15 @@ jobs:
         id: versions
         run: |
           LIBZMQ_VERSION=$(grep '^LIBZMQ_VERSION=' VERSION | cut -d'=' -f2)
-          LIBSODIUM_VERSION=$(grep '^LIBSODIUM_VERSION=' VERSION | cut -d'=' -f2)
 
           # Use manual input if provided, otherwise use VERSION file
           if [ -n "${{ github.event.inputs.libzmq_version }}" ]; then
             LIBZMQ_VERSION="${{ github.event.inputs.libzmq_version }}"
           fi
 
-          if [ -n "${{ github.event.inputs.libsodium_version }}" ]; then
-            LIBSODIUM_VERSION="${{ github.event.inputs.libsodium_version }}"
-          fi
-
           echo "libzmq_version=${LIBZMQ_VERSION}" >> $GITHUB_OUTPUT
-          echo "libsodium_version=${LIBSODIUM_VERSION}" >> $GITHUB_OUTPUT
 
           echo "Using libzmq version: ${LIBZMQ_VERSION}"
-          echo "Using libsodium version: ${LIBSODIUM_VERSION}"
 
   build-windows:
     name: Build Windows x64
@@ -64,20 +52,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup vcpkg cache
-        uses: actions/cache@v4
-        with:
-          path: deps/vcpkg
-          key: ${{ runner.os }}-x64-vcpkg-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-x64-vcpkg-
-
       - name: Build libzmq
         shell: pwsh
         run: |
           .\build-scripts\windows\build.ps1 `
-            -LibzmqVersion "${{ needs.read-versions.outputs.libzmq_version }}" `
-            -LibsodiumVersion "${{ needs.read-versions.outputs.libsodium_version }}" `
+            -Architecture x64 `
             -RunTests "ON"
 
       - name: Setup MSVC environment
@@ -135,21 +114,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup vcpkg cache
-        uses: actions/cache@v4
-        with:
-          path: deps/vcpkg
-          key: ${{ runner.os }}-arm64-vcpkg-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-arm64-vcpkg-
-
       - name: Build libzmq
         shell: pwsh
         run: |
           .\build-scripts\windows\build.ps1 `
-            -Architecture arm64 `
-            -LibzmqVersion "${{ needs.read-versions.outputs.libzmq_version }}" `
-            -LibsodiumVersion "${{ needs.read-versions.outputs.libsodium_version }}"
+            -Architecture arm64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -173,27 +142,13 @@ jobs:
             build-essential \
             cmake \
             git \
-            pkg-config \
-            libtool \
-            autoconf \
-            automake
-
-      - name: Cache libsodium build
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/libsodium
-          key: ${{ runner.os }}-x64-libsodium-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-x64-libsodium-
+            pkg-config
 
       - name: Build libzmq
         run: |
           chmod +x ./build-scripts/linux/build.sh
           ./build-scripts/linux/build.sh \
             x64 \
-            "${{ needs.read-versions.outputs.libzmq_version }}" \
-            "${{ needs.read-versions.outputs.libsodium_version }}" \
-            "ON" \
             "ON"
 
       - name: Upload artifacts
@@ -218,27 +173,13 @@ jobs:
             build-essential \
             cmake \
             git \
-            pkg-config \
-            libtool \
-            autoconf \
-            automake
-
-      - name: Cache libsodium build
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/libsodium
-          key: ${{ runner.os }}-arm64-libsodium-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-arm64-libsodium-
+            pkg-config
 
       - name: Build libzmq
         run: |
           chmod +x ./build-scripts/linux/build.sh
           ./build-scripts/linux/build.sh \
             arm64 \
-            "${{ needs.read-versions.outputs.libzmq_version }}" \
-            "${{ needs.read-versions.outputs.libsodium_version }}" \
-            "ON" \
             "ON"
 
       - name: Upload artifacts
@@ -260,27 +201,13 @@ jobs:
         run: |
           brew install \
             cmake \
-            pkg-config \
-            libtool \
-            autoconf \
-            automake
-
-      - name: Cache libsodium build
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/libsodium
-          key: ${{ runner.os }}-libsodium-x86_64-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-libsodium-x86_64-
+            pkg-config
 
       - name: Build libzmq
         run: |
           chmod +x ./build-scripts/macos/build.sh
           ./build-scripts/macos/build.sh \
             x86_64 \
-            "${{ needs.read-versions.outputs.libzmq_version }}" \
-            "${{ needs.read-versions.outputs.libsodium_version }}" \
-            "ON" \
             "ON"
 
       - name: Verify build
@@ -308,27 +235,13 @@ jobs:
         run: |
           brew install \
             cmake \
-            pkg-config \
-            libtool \
-            autoconf \
-            automake
-
-      - name: Cache libsodium build
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/libsodium
-          key: ${{ runner.os }}-libsodium-arm64-${{ needs.read-versions.outputs.libsodium_version }}
-          restore-keys: |
-            ${{ runner.os }}-libsodium-arm64-
+            pkg-config
 
       - name: Build libzmq
         run: |
           chmod +x ./build-scripts/macos/build.sh
           ./build-scripts/macos/build.sh \
             arm64 \
-            "${{ needs.read-versions.outputs.libzmq_version }}" \
-            "${{ needs.read-versions.outputs.libsodium_version }}" \
-            "ON" \
             "ON"
 
       - name: Upload artifacts
@@ -371,7 +284,6 @@ jobs:
           echo "## Build Verification Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**libzmq Version:** ${{ needs.read-versions.outputs.libzmq_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**libsodium Version:** ${{ needs.read-versions.outputs.libsodium_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "### Built Platforms" >> $GITHUB_STEP_SUMMARY
@@ -434,8 +346,7 @@ jobs:
             ## libzmq Native Libraries
 
             - **libzmq**: ${{ needs.read-versions.outputs.libzmq_version }}
-            - **libsodium**: ${{ needs.read-versions.outputs.libsodium_version }} (statically linked)
-            - **CURVE encryption**: Enabled
+            - **CURVE encryption**: Disabled (minimal build)
             - **Headers included**: `zmq.h`, `zmq_utils.h`
 
             ### Downloads
@@ -455,8 +366,8 @@ jobs:
 
             ### Verification
             All builds have been tested with:
-            - Basic socket operations (REQ/REP pattern)
-            - CURVE encryption communication
+            - Basic socket operations
+            - Core ZeroMQ functionality
           files: |
             artifacts/libzmq-windows-x64.zip
             artifacts/libzmq-windows-arm64.zip

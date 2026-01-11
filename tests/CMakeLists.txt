@@ -154,7 +154,8 @@ if(MSVC_VERSION LESS 1600)
 endif()
 
 # add include dirs for all targets
-include_directories("${ZeroMQ_SOURCE_DIR}/../include" "${ZeroMQ_BINARY_DIR}")
+# Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
+include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
 
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)

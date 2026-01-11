@@ -130,3 +130,4 @@ mybuild
 # Build output directories
 deps/
 dist/
+build_check/

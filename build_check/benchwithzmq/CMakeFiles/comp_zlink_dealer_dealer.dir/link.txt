@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/comp_zlink_dealer_dealer.dir/zlink/bench_zlink_dealer_dealer.cpp.o -o comp_zlink_dealer_dealer  -Wl,-rpath,/home/ulalax/project/ulalax/zlink-gemini/build_check ../libzmq.so 

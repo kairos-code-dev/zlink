@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/comp_std_zmq_pair.dir/libzmq/bench_zmq_pair.cpp.o -o comp_std_zmq_pair  -Wl,-rpath,/home/ulalax/project/ulalax/zlink-gemini/benchwithzmq/libzmq/libzmq_dist/lib /home/ulalax/project/ulalax/zlink-gemini/benchwithzmq/libzmq/libzmq_dist/lib/libzmq.so 

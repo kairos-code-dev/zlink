@@ -1,0 +1,13 @@
+/home/ulalax/project/ulalax/zlink-gemini/build_check/CMakeFiles/libzmq.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/CMakeFiles/edit_cache.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/CMakeFiles/rebuild_cache.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_std_zmq_pair.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_std_zmq_pubsub.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_std_zmq_dealer_dealer.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_std_zmq_dealer_router.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_zlink_pair.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_zlink_pubsub.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_zlink_dealer_dealer.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/comp_zlink_dealer_router.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/edit_cache.dir
+/home/ulalax/project/ulalax/zlink-gemini/build_check/benchwithzmq/CMakeFiles/rebuild_cache.dir

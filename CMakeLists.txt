@@ -1,6 +1,6 @@
 # libzmq CMake Configuration
 cmake_minimum_required(VERSION 3.5)
-project(zlink VERSION 0.1.3 LANGUAGES C CXX)
+project(zlink VERSION 0.1.4 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,12 +8,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckCXXCompilerFlag)
 find_package(Threads REQUIRED)
 
-# Optimization Flags
+# Optimization Flags - Aggressive Optimization for C++11
 if(MSVC)
-    add_compile_options(/O2 /GL /MP)
+    add_compile_options(/O2 /GL /MP /Oi /Ot /Oy)
     add_link_options(/LTCG)
 else()
-    add_compile_options(-O3 -march=native)
+    # -O3: Max optimization
+    # -march=native: Use all CPU instructions
+    # -flto: Link Time Optimization (Critical for inproc performance)
+    # -fno-exceptions -fno-rtti: Remove C++ runtime overhead (optional, but good for raw speed)
+    add_compile_options(-O3 -march=native -flto -funroll-loops -fomit-frame-pointer)
+    add_link_options(-flto -O3)
 endif()
 
 # Core zmq sources

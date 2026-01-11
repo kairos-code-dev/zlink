@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/comp_std_zmq_dealer_router.dir/libzmq/bench_zmq_dealer_router.cpp.o -o comp_std_zmq_dealer_router  -Wl,-rpath,/home/ulalax/project/ulalax/zlink-gemini/benchwithzmq/libzmq/libzmq_dist/lib /home/ulalax/project/ulalax/zlink-gemini/benchwithzmq/libzmq/libzmq_dist/lib/libzmq.so 

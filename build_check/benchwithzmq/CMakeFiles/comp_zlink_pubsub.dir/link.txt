@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/comp_zlink_pubsub.dir/zlink/bench_zlink_pubsub.cpp.o -o comp_zlink_pubsub  -Wl,-rpath,/home/ulalax/project/ulalax/zlink-gemini/build_check ../libzmq.so 

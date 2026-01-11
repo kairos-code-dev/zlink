@@ -183,7 +183,6 @@ if [ "$ENABLE_CURVE" = "ON" ]; then
         -DBUILD_STATIC=OFF \
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
         -DENABLE_CURVE=ON \
-        -DENABLE_DRAFTS=ON \
         -DWITH_LIBSODIUM=ON \
         -Dsodium_LIBRARY_RELEASE="$LIBSODIUM_INSTALL_ABS/lib/libsodium.a" \
         -Dsodium_INCLUDE_DIR="$LIBSODIUM_INSTALL_ABS/include" \
@@ -200,7 +199,6 @@ else
         -DBUILD_STATIC=OFF \
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
         -DENABLE_CURVE=OFF \
-        -DENABLE_DRAFTS=ON \
         -DWITH_LIBSODIUM=OFF \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DCMAKE_INSTALL_PREFIX="$(pwd)/install" \

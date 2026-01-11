@@ -19,15 +19,19 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 | PAIR | Exclusive pair for bidirectional communication |
 | PUB/SUB | Publish-subscribe pattern |
 | XPUB/XSUB | Extended pub-sub with subscription forwarding |
-| REQ/REP | Request-reply pattern |
 | DEALER/ROUTER | Async request-reply pattern |
-| PUSH/PULL | Pipeline pattern |
 | STREAM | Raw TCP stream |
 
-### Removed (Draft API)
-- Socket types: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
+### Removed Features
+**Socket Types:**
+- Draft API: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
+- REQ/REP: Request-reply pattern
+- PUSH/PULL: Pipeline pattern
+
+**Other:**
 - WebSocket transport (ws://, wss://)
 - Draft socket options: ZMQ_RECONNECT_STOP, ZMQ_SOCKS_USERNAME/PASSWORD, ZMQ_ZAP_ENFORCE_DOMAIN, etc.
+- ZMQ_EVENT_PIPES_STATS and zmq_socket_monitor_pipes_stats()
 - NORM protocol support
 
 ### Target Platforms
@@ -71,7 +75,7 @@ Tests are integrated into build scripts via `RUN_TESTS=ON` parameter. Tests use 
 cd build/linux-x64 && ctest --output-on-failure
 ```
 
-**Test Count**: 106 tests (14 skipped: 7 fuzzer, 7 TIPC)
+**Test Count**: 67 tests (8 skipped: 5 fuzzer, 3 TIPC)
 
 ## Architecture
 
@@ -148,5 +152,6 @@ LSP findReferences src/ctx.cpp 100 15
 
 | Version | Changes |
 |---------|---------|
+| v0.1.3 | Remove REQ/REP, PUSH/PULL socket types and ZMQ_EVENT_PIPES_STATS |
 | v0.1.2 | Remove all Draft API (9 socket types, WebSocket, draft options) |
 | v0.1.1 | Initial release with full libzmq 4.3.5 |

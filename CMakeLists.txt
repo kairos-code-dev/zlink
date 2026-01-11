@@ -815,9 +815,6 @@ set(cxx-sources
     address.cpp
     clock.cpp
     ctx.cpp
-    curve_mechanism_base.cpp
-    curve_client.cpp
-    curve_server.cpp
     dealer.cpp
     devpoll.cpp
     dist.cpp
@@ -910,10 +907,6 @@ set(cxx-sources
     condition_variable.hpp
     config.hpp
     ctx.hpp
-    curve_client.hpp
-    curve_client_tools.hpp
-    curve_mechanism_base.hpp
-    curve_server.hpp
     dbuffer.hpp
     dealer.hpp
     decoder.hpp

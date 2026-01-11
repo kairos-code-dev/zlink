@@ -287,7 +287,9 @@ int is_tipc_available ()
 #else
     int tipc = 0;
 
-    void *ctx = zmq_init (1);
+    void *ctx = zmq_ctx_new ();
+    if (ctx)
+        zmq_ctx_set (ctx, ZMQ_IO_THREADS, 1);
     TEST_ASSERT_NOT_NULL (ctx);
     void *router = zmq_socket (ctx, ZMQ_ROUTER);
     TEST_ASSERT_NOT_NULL (router);

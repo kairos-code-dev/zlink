@@ -37,11 +37,8 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zmq_has ("norm"));
 #endif
 
-#if defined(ZMQ_HAVE_CURVE)
-    TEST_ASSERT_TRUE (zmq_has ("curve"));
-#else
+    // CURVE is removed
     TEST_ASSERT_TRUE (!zmq_has ("curve"));
-#endif
 
 #if defined(HAVE_LIBGSSAPI_KRB5)
     TEST_ASSERT_TRUE (zmq_has ("gssapi"));

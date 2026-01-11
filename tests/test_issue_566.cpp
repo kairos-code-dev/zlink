@@ -57,8 +57,8 @@ void test_issue_566 ()
         close_zero_linger (dealer);
     }
     zmq_close (router);
-    zmq_ctx_destroy (ctx1);
-    zmq_ctx_destroy (ctx2);
+    zmq_ctx_term (ctx1);
+    zmq_ctx_term (ctx2);
 }
 
 int main ()

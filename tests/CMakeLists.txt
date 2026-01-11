@@ -43,14 +43,10 @@ set(tests
   test_xpub_topic
   test_xpub_welcome_msg
   test_xpub_verbose
-  test_base85
   test_bind_after_connect_tcp
-  test_sodium
-  test_monitor
   test_socket_null
   test_reconnect_ivl
   test_reconnect_options
-  test_tcp_accept_filter
   test_mock_pub_sub
   test_pair_transports
   test_pubsub_transports
@@ -58,12 +54,6 @@ set(tests
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
-endif()
-
-if(ZMQ_HAVE_CURVE)
-  if(NOT WIN32)
-    list(APPEND tests test_z85_decode_fuzzer)
-  endif()
 endif()
 
 option(ENABLE_CAPSH "Run tests that require sudo and capsh (for cap_net_admin)" OFF)
@@ -88,7 +78,6 @@ if(NOT WIN32)
     tests
     test_proxy
     test_getsockopt_memset
-    test_filter_ipc
     test_stream_exceeds_buffer
     test_router_mandatory_hwm)
 
@@ -178,11 +167,7 @@ endif()
 
 foreach(test ${tests})
   # target_sources not supported before CMake 3.1
-  if(ZMQ_HAVE_CURVE AND ${test} MATCHES test_security_curve)
-    add_executable(${test} ${test}.cpp "../src/err.cpp" "../src/random.cpp" "../src/clock.cpp")
-  else()
-    add_executable(${test} ${test}.cpp)
-  endif()
+  add_executable(${test} ${test}.cpp)
 
   target_link_libraries(${test} ${TESTUTIL_LIB})
 

@@ -172,10 +172,10 @@ void test_ctx_option_max_sockets ()
 void test_ctx_option_socket_limit ()
 {
 #if defined(ZMQ_USE_SELECT)
-    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zmq_ctx_get (ctx, ZMQ_SOCKET_LIMIT));
+    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zmq_ctx_get (get_test_context (), ZMQ_SOCKET_LIMIT));
 #elif defined(ZMQ_USE_POLL) || defined(ZMQ_USE_EPOLL)                          \
   || defined(ZMQ_USE_DEVPOLL) || defined(ZMQ_USE_KQUEUE)
-    TEST_ASSERT_EQUAL_INT (65535, zmq_ctx_get (ctx, ZMQ_SOCKET_LIMIT));
+    TEST_ASSERT_EQUAL_INT (65535, zmq_ctx_get (get_test_context (), ZMQ_SOCKET_LIMIT));
 #endif
 }
 

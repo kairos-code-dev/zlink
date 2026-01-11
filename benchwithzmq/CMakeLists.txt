@@ -33,12 +33,14 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND EXISTS "${STD_LIBZMQ_LIBRARY}")
     add_std_zmq_bench(comp_std_zmq_pubsub libzmq/bench_zmq_pubsub.cpp)
     add_std_zmq_bench(comp_std_zmq_dealer_dealer libzmq/bench_zmq_dealer_dealer.cpp)
     add_std_zmq_bench(comp_std_zmq_dealer_router libzmq/bench_zmq_dealer_router.cpp)
+    add_std_zmq_bench(comp_std_zmq_router_router libzmq/bench_zmq_router_router.cpp)
 
     # --- zlink ---
     add_zlink_bench(comp_zlink_pair zlink/bench_zlink_pair.cpp)
     add_zlink_bench(comp_zlink_pubsub zlink/bench_zlink_pubsub.cpp)
     add_zlink_bench(comp_zlink_dealer_dealer zlink/bench_zlink_dealer_dealer.cpp)
     add_zlink_bench(comp_zlink_dealer_router zlink/bench_zlink_dealer_router.cpp)
+    add_zlink_bench(comp_zlink_router_router zlink/bench_zlink_router_router.cpp)
 
 else()
     message(WARNING "Standard libzmq not found. Comparative benchmarks will be skipped.")

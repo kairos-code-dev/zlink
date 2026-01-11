@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(zlink VERSION 0.1.4 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(CheckCXXCompilerFlag)
@@ -54,6 +54,17 @@ add_library(libzmq SHARED ${libzmq_sources})
 set_target_properties(libzmq PROPERTIES OUTPUT_NAME zmq)
 target_include_directories(libzmq PUBLIC include src)
 target_link_libraries(libzmq PRIVATE Threads::Threads)
+
+# --- Configuration for Tests ---
+set(ZeroMQ_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(ZeroMQ_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
+set(BUILD_SHARED ON)
+set(BUILD_STATIC OFF) 
+# Note: We are building SHARED by default. 
+# tests/CMakeLists.txt expects 'testutil' to link against 'libzmq'.
+
+enable_testing()
+add_subdirectory(tests)
 
 # Add Benchmarks
 add_subdirectory(benchwithzmq)

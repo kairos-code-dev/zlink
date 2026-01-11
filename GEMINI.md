@@ -53,6 +53,13 @@ cd build/linux-x64  # or relevant build dir
 ctest --output-on-failure
 ```
 
+### Performance Comparison
+A comparative benchmark against standard **libzmq** is available.
+```bash
+python3 perf/comparison/run_comparison.py
+```
+Results are saved in `perf/COMPARISON_RESULTS.md`.
+
 ## Development Conventions
 *   **Contribution Process:** Follows the [C4 (Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/).
 *   **Code Style:** Adhere to existing C++98/C++11 patterns found in `src/`.

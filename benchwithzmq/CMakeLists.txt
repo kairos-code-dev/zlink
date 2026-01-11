@@ -13,7 +13,7 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND EXISTS "${STD_LIBZMQ_LIBRARY}")
         target_link_libraries(${name} PRIVATE ${STD_LIBZMQ_LIBRARY} Threads::Threads)
         target_include_directories(${name} PRIVATE ${STD_LIBZMQ_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-        target_compile_features(${name} PRIVATE cxx_std_20)
+        target_compile_features(${name} PRIVATE cxx_std_11)
         set_target_properties(${name} PROPERTIES 
             BUILD_RPATH "${STD_LIBZMQ_ROOT}/lib"
             INSTALL_RPATH "${STD_LIBZMQ_ROOT}/lib"
@@ -25,7 +25,7 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND EXISTS "${STD_LIBZMQ_LIBRARY}")
         target_link_libraries(${name} PRIVATE libzmq Threads::Threads)
         target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
         target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-        target_compile_features(${name} PRIVATE cxx_std_20)
+        target_compile_features(${name} PRIVATE cxx_std_11)
     endfunction()
 
     # --- standard libzmq ---

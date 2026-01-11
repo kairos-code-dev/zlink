@@ -1583,7 +1583,10 @@ if(BUILD_SHARED)
       remote_thr
       inproc_lat
       inproc_thr
-      proxy_thr)
+      proxy_thr
+      bench_pair
+      bench_pubsub
+      bench_router)
 
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug") # Why?
     option(WITH_PERF_TOOL "Build with perf-tools" ON)

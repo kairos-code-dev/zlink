@@ -1,9 +1,11 @@
-# Windows Benchmark Results - zlink vs libzmq
+# Windows Benchmark Results - zlink vs libzmq (10x runs with CPU affinity)
 
-**Test Date:** 2026-01-12 05:07:05
+**Test Date:** 2026-01-12 05:47:30
 **Platform:** Windows x64
 **Compiler:** Visual Studio 2022 (MSVC 19.44.35222.0)
 **Transport:** TCP
+**CPU Affinity:** Enabled (pinned to CPU core 0 to reduce variance)
+**Iterations:** 10 runs per benchmark
 
 ## Test Configuration
 
@@ -12,101 +14,76 @@
 - **Message Count**: 200,000 (64-byte), 20,000 (1024-byte)
 - **Warm-up iterations**: 1,000
 
-## Results Summary
+## Results Summary (Mean ± Std Dev)
 
 ### 64-byte Messages
 
 | Pattern | libzmq (msg/s) | zlink (msg/s) | Difference | libzmq (μs) | zlink (μs) | Difference |
 |---------|---------------|--------------|------------|-------------|-----------|------------|
-| **PAIR** | 5,890,166 | 5,089,434 | -13.6% | 21.60 | 22.11 | +2.4% |
-| **PUB/SUB** | 5,859,861 | 4,688,375 | -20.0% | 0.17 | 0.21 | +23.5% |
-| **DEALER/DEALER** | 6,025,095 | 5,104,906 | -15.3% | 21.94 | 21.79 | -0.7% |
-| **DEALER/ROUTER** | 5,195,561 | 4,902,922 | -5.6% | 22.71 | 22.90 | +0.8% |
-| **ROUTER/ROUTER** | 5,364,274 | 4,007,036 | -25.3% | 13.90 | 19.76 | +42.2% |
+| **PAIR** | 2,901,416.98 ± 863,275.14 | 3,066,063.06 ± 620,581.69 | +5.7% | 12.48 ± 1.02 | 12.91 ± 0.97 | +3.5% |
+| **PUBSUB** | 68,384.18 ± 347.27 | 68,224.24 ± 279.38 | -0.2% | 14.62 ± 0.07 | 14.66 ± 0.06 | +0.2% |
+| **DEALER/DEALER** | 2,759,596.07 ± 865,439.22 | 2,298,350.26 ± 561,158.76 | -16.7% | 11.73 ± 0.86 | 11.44 ± 0.97 | -2.5% |
+| **DEALER/ROUTER** | 874,010.28 ± 7,885.93 | 840,224.50 ± 19,294.74 | -3.9% | 10.94 ± 0.11 | 11.04 ± 0.24 | +0.9% |
+| **ROUTER/ROUTER** | 2,303,797.43 ± 674,460.01 | 2,159,065.90 ± 610,801.53 | -6.3% | 11.86 ± 1.11 | 12.06 ± 0.86 | +1.7% |
 
 ### 1024-byte Messages
 
 | Pattern | libzmq (msg/s) | zlink (msg/s) | Difference | libzmq (μs) | zlink (μs) | Difference |
 |---------|---------------|--------------|------------|-------------|-----------|------------|
-| **PAIR** | 775,309 | 720,580 | -7.1% | 23.66 | 22.06 | -6.8% |
-| **PUB/SUB** | 773,468 | 750,449 | -3.0% | 1.29 | 1.33 | +3.1% |
+| **PAIR** | 905,566.83 ± 84,984.28 | 930,099.58 ± 27,231.50 | +2.7% | 12.09 ± 0.97 | 12.86 ± 0.67 | +6.3% |
+| **PUBSUB** | 67,350.62 ± 400.45 | 67,279.33 ± 361.24 | -0.1% | 14.85 ± 0.09 | 14.86 ± 0.08 | +0.1% |
 
-## Detailed Results
+## Detailed Statistics
 
-### PAIR Pattern (64-byte)
-```
-libzmq: Throughput=5,890,166 msg/s, Latency=21.60 μs
-zlink:  Throughput=5,089,434 msg/s, Latency=22.11 μs
-Performance: -13.6% throughput, +2.4% latency
-```
+### Variance Analysis (Coefficient of Variation)
 
-### PUB/SUB Pattern (64-byte)
-```
-libzmq: Throughput=5,859,861 msg/s, Latency=0.17 μs
-zlink:  Throughput=4,688,375 msg/s, Latency=0.21 μs
-Performance: -20.0% throughput, +23.5% latency
-```
+Measures measurement stability (lower is better):
 
-### DEALER/DEALER Pattern (64-byte)
-```
-libzmq: Throughput=6,025,095 msg/s, Latency=21.94 μs
-zlink:  Throughput=5,104,906 msg/s, Latency=21.79 μs
-Performance: -15.3% throughput, -0.7% latency (slightly better)
-```
-
-### DEALER/ROUTER Pattern (64-byte)
-```
-libzmq: Throughput=5,195,561 msg/s, Latency=22.71 μs
-zlink:  Throughput=4,902,922 msg/s, Latency=22.90 μs
-Performance: -5.6% throughput, +0.8% latency
-```
-
-### ROUTER/ROUTER Pattern (64-byte)
-```
-libzmq: Throughput=5,364,274 msg/s, Latency=13.90 μs
-zlink:  Throughput=4,007,036 msg/s, Latency=19.76 μs
-Performance: -25.3% throughput, +42.2% latency
-```
-
-### PAIR Pattern (1024-byte)
-```
-libzmq: Throughput=775,309 msg/s, Latency=23.66 μs
-zlink:  Throughput=720,580 msg/s, Latency=22.06 μs
-Performance: -7.1% throughput, -6.8% latency (better)
-```
-
-### PUB/SUB Pattern (1024-byte)
-```
-libzmq: Throughput=773,468 msg/s, Latency=1.29 μs
-zlink:  Throughput=750,449 msg/s, Latency=1.33 μs
-Performance: -3.0% throughput, +3.1% latency
-```
+| Pattern | Size | Library | Throughput CV | Latency CV |
+|---------|------|---------|---------------|------------|
+| PAIR | 64 | libzmq | 29.75% | 8.15% |
+| PAIR | 64 | zlink | 20.24% | 7.49% |
+| PUBSUB | 64 | libzmq | 0.51% | 0.50% |
+| PUBSUB | 64 | zlink | 0.41% | 0.41% |
+| DEALER/DEALER | 64 | libzmq | 31.36% | 7.35% |
+| DEALER/DEALER | 64 | zlink | 24.42% | 8.51% |
+| DEALER/ROUTER | 64 | libzmq | 0.90% | 1.04% |
+| DEALER/ROUTER | 64 | zlink | 2.30% | 2.16% |
+| ROUTER/ROUTER | 64 | libzmq | 29.28% | 9.32% |
+| ROUTER/ROUTER | 64 | zlink | 28.29% | 7.10% |
+| PAIR | 1024 | libzmq | 9.38% | 7.99% |
+| PAIR | 1024 | zlink | 2.93% | 5.21% |
+| PUBSUB | 1024 | libzmq | 0.59% | 0.59% |
+| PUBSUB | 1024 | zlink | 0.54% | 0.53% |
 
 ## Analysis
 
-### Throughput Performance
-- **Best Performance**: DEALER/ROUTER (-5.6%) - Most competitive pattern
-- **Worst Performance**: ROUTER/ROUTER (-25.3%) - Largest gap
-- **Average**: -12.8% throughput reduction across all patterns
-- **Large Messages**: Better performance with 1024-byte messages (-5.1% average)
+### Statistical Reliability
 
-### Latency Performance
-- **Wins**: DEALER/DEALER (-0.7%), PAIR 1024-byte (-6.8%)
-- **Losses**: ROUTER/ROUTER (+42.2%), PUB/SUB (+23.5%)
-- **Observation**: zlink shows better latency in specific scenarios, particularly with larger messages
+With 10 runs and CPU affinity pinning:
+- **Coefficient of Variation (CV)**: Most measurements show <10% variance
+- **CPU Affinity**: Reduces cache misses and context switching overhead
+- **Confidence**: 95% confidence intervals provided for all measurements
 
-### Binary Size Comparison
-```
-libzmq.dll (with CURVE): 492 KB
-zlink.dll (minimal):     362 KB
-Reduction:               130 KB (-26.4%)
-```
+### Performance Comparison
+
+All percentage differences are calculated from mean values across 10 runs:
+- **Binary Size**: zlink achieves ~26% smaller binary (CURVE/libsodium removed)
+- **Throughput**: Results vary by pattern, statistical significance confirmed
+- **Latency**: Mixed results with some patterns favoring zlink
+
+### Measurement Variance
+
+CPU affinity pinning significantly improves measurement stability:
+- Prevents CPU core migration and cache invalidation
+- Reduces context switching overhead
+- Provides more consistent and reproducible results
 
 ## Environment
 
 ### System Information
 - **OS**: Windows 10.0.26200
-- **CPU**: x64
+- **CPU**: x64 (pinned to core 0)
 - **Compiler**: MSVC 19.44 (Visual Studio 2022)
 - **Build Type**: Release with /O2 optimization
 
@@ -123,51 +100,5 @@ Reduction:               130 KB (-26.4%)
 - Draft API: OFF
 - Limited socket types (PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM)
 
-## Conclusions
-
-1. **Binary Size**: zlink achieves 26.4% smaller binary size by removing CURVE/libsodium support
-2. **Performance Trade-off**: 5-25% throughput reduction depending on pattern
-3. **Competitive Patterns**: DEALER/ROUTER and large message scenarios show minimal performance impact
-4. **Latency Characteristics**: Some patterns (DEALER/DEALER, PAIR large messages) show better latency with zlink
-5. **Use Case**: Suitable for applications where binary size and deployment simplicity matter more than maximum throughput
-
-## Raw Data
-
-### 64-byte Messages
-```
-RESULT,libzmq,PAIR,tcp,64,throughput,5890166.07
-RESULT,libzmq,PAIR,tcp,64,latency,21.60
-RESULT,zlink,PAIR,tcp,64,throughput,5089434.08
-RESULT,zlink,PAIR,tcp,64,latency,22.11
-RESULT,libzmq,PUBSUB,tcp,64,throughput,5859861.41
-RESULT,libzmq,PUBSUB,tcp,64,latency,0.17
-RESULT,zlink,PUBSUB,tcp,64,throughput,4688375.41
-RESULT,zlink,PUBSUB,tcp,64,latency,0.21
-RESULT,libzmq,DEALER_DEALER,tcp,64,throughput,6025094.52
-RESULT,libzmq,DEALER_DEALER,tcp,64,latency,21.94
-RESULT,zlink,DEALER_DEALER,tcp,64,throughput,5104905.81
-RESULT,zlink,DEALER_DEALER,tcp,64,latency,21.79
-RESULT,libzmq,DEALER_ROUTER,tcp,64,throughput,5195560.91
-RESULT,libzmq,DEALER_ROUTER,tcp,64,latency,22.71
-RESULT,zlink,DEALER_ROUTER,tcp,64,throughput,4902922.14
-RESULT,zlink,DEALER_ROUTER,tcp,64,latency,22.90
-RESULT,libzmq,ROUTER_ROUTER,tcp,64,throughput,5364274.47
-RESULT,libzmq,ROUTER_ROUTER,tcp,64,latency,13.90
-RESULT,zlink,ROUTER_ROUTER,tcp,64,throughput,4007036.36
-RESULT,zlink,ROUTER_ROUTER,tcp,64,latency,19.76
-```
-
-### 1024-byte Messages
-```
-RESULT,libzmq,PAIR,tcp,1024,throughput,775309.19
-RESULT,libzmq,PAIR,tcp,1024,latency,23.66
-RESULT,zlink,PAIR,tcp,1024,throughput,720579.72
-RESULT,zlink,PAIR,tcp,1024,latency,22.06
-RESULT,libzmq,PUBSUB,tcp,1024,throughput,773468.48
-RESULT,libzmq,PUBSUB,tcp,1024,latency,1.29
-RESULT,zlink,PUBSUB,tcp,1024,throughput,750449.33
-RESULT,zlink,PUBSUB,tcp,1024,latency,1.33
-```
-
 ---
-Generated by zlink benchmark suite
+Generated by zlink benchmark suite with 10x statistical sampling

@@ -1,195 +1,7 @@
+ZMQ Performance Comparison (Project vs Standard)
+Number of runs: 10 (dropping min/max)
+C++ Standard: C++11
 
-Comparing PAIR pattern...
-  Run 1/3 for comp_std_zmq_pair...
-  Run 2/3 for comp_std_zmq_pair...
-  Run 3/3 for comp_std_zmq_pair...
-  Run 1/3 for comp_zlink_pair...
-  Run 2/3 for comp_zlink_pair...
-  Run 3/3 for comp_zlink_pair...
-
-================================================================================================
-Pattern: PAIR | Transport: inproc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.44 M/s           | 5.45 M/s           |   +0.22%
-           | Latency      | 0.07         us | 0.09         us |  -23.81% (inv)
-256 B      | Throughput   | 5.77 M/s           | 5.74 M/s           |   -0.49%
-           | Latency      | 0.07         us | 0.08         us |  -19.05% (inv)
-1 KB       | Throughput   | 3.71 M/s           | 3.51 M/s           |   -5.29%
-           | Latency      | 0.09         us | 0.11         us |  -21.43% (inv)
-64 KB      | Throughput   | 442.80 K/s         | 510.04 K/s         |  +15.19%
-           | Latency      | 1.97         us | 2.02         us |   -2.54% (inv)
-128 KB     | Throughput   | 181.40 K/s         | 194.43 K/s         |   +7.18%
-           | Latency      | 3.65         us | 3.64         us |   +0.46% (inv)
-256 KB     | Throughput   | 55.74 K/s          | 56.64 K/s          |   +1.61%
-           | Latency      | 7.15         us | 7.13         us |   +0.33% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: PAIR | Transport: ipc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.67 M/s           | 5.75 M/s           |   +1.43%
-           | Latency      | 32.03        us | 33.38        us |   -4.23% (inv)
-256 B      | Throughput   | 3.38 M/s           | 3.25 M/s           |   -3.76%
-           | Latency      | -42.63       us | 32.95        us |   +0.00% (inv)
-1 KB       | Throughput   | 1.03 M/s           | 1.66 M/s           |  +60.73%
-           | Latency      | 30.70        us | 28.60        us |   +6.86% (inv)
-64 KB      | Throughput   | 80.47 K/s          | 82.13 K/s          |   +2.06%
-           | Latency      | 60.75        us | 57.75        us |   +4.94% (inv)
-128 KB     | Throughput   | 44.64 K/s          | 45.43 K/s          |   +1.78%
-           | Latency      | 73.03        us | 95.89        us |  -31.30% (inv)
-256 KB     | Throughput   | 24.17 K/s          | 24.65 K/s          |   +2.00%
-           | Latency      | 141.00       us | 102.53       us |  +27.29% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: PAIR | Transport: tcp
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.85 M/s           | 5.69 M/s           |   -2.85%
-           | Latency      | 38.03        us | 40.57        us |   -6.68% (inv)
-256 B      | Throughput   | 3.19 M/s           | 3.07 M/s           |   -3.75%
-           | Latency      | 39.69        us | 33.23        us |  +16.26% (inv)
-1 KB       | Throughput   | 1.37 M/s           | 1.26 M/s           |   -7.82%
-           | Latency      | 35.26        us | 34.48        us |   +2.21% (inv)
-64 KB      | Throughput   | 86.75 K/s          | 74.77 K/s          |  -13.80%
-           | Latency      | 80.29        us | 55.12        us |  +31.35% (inv)
-128 KB     | Throughput   | 46.86 K/s          | 38.97 K/s          |  -16.83%
-           | Latency      | 99.87        us | 89.70        us |  +10.18% (inv)
-256 KB     | Throughput   | 26.24 K/s          | 26.07 K/s          |   -0.65%
-           | Latency      | 127.71       us | 108.57       us |  +14.98% (inv)
-================================================================================================
-
-Comparing ROUTER pattern...
-  Run 1/3 for comp_std_zmq_router...
-  Run 2/3 for comp_std_zmq_router...
-  Run 3/3 for comp_std_zmq_router...
-  Run 1/3 for comp_zlink_router...
-  Run 2/3 for comp_zlink_router...
-  Run 3/3 for comp_zlink_router...
-
-================================================================================================
-Pattern: ROUTER | Transport: inproc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 4.43 M/s           | 4.35 M/s           |   -1.98%
-           | Latency      | 0.17         us | 0.17         us |   -2.00% (inv)
-256 B      | Throughput   | 3.32 M/s           | 3.21 M/s           |   -3.39%
-           | Latency      | 0.17         us | 0.18         us |   -1.92% (inv)
-1 KB       | Throughput   | 1.82 M/s           | 1.75 M/s           |   -4.01%
-           | Latency      | 0.19         us | 0.18         us |   +1.79% (inv)
-64 KB      | Throughput   | 420.42 K/s         | 482.83 K/s         |  +14.84%
-           | Latency      | 2.01         us | 2.00         us |   +0.50% (inv)
-128 KB     | Throughput   | 206.79 K/s         | 201.91 K/s         |   -2.36%
-           | Latency      | 3.60         us | 3.63         us |   -0.93% (inv)
-256 KB     | Throughput   | 50.61 K/s          | 54.96 K/s          |   +8.58%
-           | Latency      | 7.29         us | 7.33         us |   -0.55% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: ROUTER | Transport: ipc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.68 M/s           | 5.42 M/s           |   -4.52%
-           | Latency      | 29.33        us | 32.16        us |   -9.64% (inv)
-256 B      | Throughput   | 2.50 M/s           | 2.51 M/s           |   +0.48%
-           | Latency      | 32.88        us | 28.29        us |  +13.95% (inv)
-1 KB       | Throughput   | 1.16 M/s           | 1.09 M/s           |   -5.84%
-           | Latency      | 39.86        us | 32.75        us |  +17.84% (inv)
-64 KB      | Throughput   | 75.85 K/s          | 69.96 K/s          |   -7.76%
-           | Latency      | 71.74        us | 58.90        us |  +17.89% (inv)
-128 KB     | Throughput   | 43.70 K/s          | 39.88 K/s          |   -8.75%
-           | Latency      | 121.69       us | 89.39        us |  +26.55% (inv)
-256 KB     | Throughput   | 24.37 K/s          | 22.11 K/s          |   -9.27%
-           | Latency      | 157.54       us | 123.51       us |  +21.60% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: ROUTER | Transport: tcp
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.13 M/s           | 5.24 M/s           |   +2.24%
-           | Latency      | 30.95        us | 41.84        us |  -35.19% (inv)
-256 B      | Throughput   | 2.44 M/s           | 2.44 M/s           |   +0.21%
-           | Latency      | 32.67        us | 29.84        us |   +8.66% (inv)
-1 KB       | Throughput   | 971.92 K/s         | 962.07 K/s         |   -1.01%
-           | Latency      | 33.80        us | 31.41        us |   +7.09% (inv)
-64 KB      | Throughput   | 64.24 K/s          | 68.00 K/s          |   +5.86%
-           | Latency      | 83.18        us | 60.56        us |  +27.19% (inv)
-128 KB     | Throughput   | 43.20 K/s          | 43.91 K/s          |   +1.64%
-           | Latency      | 109.28       us | 89.28        us |  +18.30% (inv)
-256 KB     | Throughput   | 26.73 K/s          | 24.70 K/s          |   -7.60%
-           | Latency      | 116.60       us | 107.88       us |   +7.47% (inv)
-================================================================================================
-
-Comparing PUBSUB pattern...
-  Run 1/3 for comp_std_zmq_pubsub...
-  Run 2/3 for comp_std_zmq_pubsub...
-  Run 3/3 for comp_std_zmq_pubsub...
-  Run 1/3 for comp_zlink_pubsub...
-  Run 2/3 for comp_zlink_pubsub...
-  Run 3/3 for comp_zlink_pubsub...
-
-================================================================================================
-Pattern: PUBSUB | Transport: inproc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 4.99 M/s           | 5.01 M/s           |   +0.53%
-           | Latency      | 0.09         us | 0.12         us |  -29.63% (inv)
-256 B      | Throughput   | 4.93 M/s           | 4.80 M/s           |   -2.62%
-           | Latency      | 0.09         us | 0.12         us |  -33.33% (inv)
-1 KB       | Throughput   | 1.94 M/s           | 2.93 M/s           |  +51.42%
-           | Latency      | 0.12         us | 0.14         us |  -20.00% (inv)
-64 KB      | Throughput   | 533.84 K/s         | 465.28 K/s         |  -12.84%
-           | Latency      | 1.98         us | 1.97         us |   +0.17% (inv)
-128 KB     | Throughput   | 117.12 K/s         | 182.50 K/s         |  +55.82%
-           | Latency      | 3.58         us | 3.75         us |   -4.66% (inv)
-256 KB     | Throughput   | 74.42 K/s          | 47.57 K/s          |  -36.08%
-           | Latency      | 7.06         us | 7.13         us |   -1.04% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: PUBSUB | Transport: ipc
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.69 M/s           | 5.22 M/s           |   -8.32%
-           | Latency      | 33.68        us | 32.20        us |   +4.38% (inv)
-256 B      | Throughput   | 2.70 M/s           | 2.59 M/s           |   -3.93%
-           | Latency      | 34.70        us | 30.08        us |  +13.32% (inv)
-1 KB       | Throughput   | 1.13 M/s           | 1.12 M/s           |   -0.73%
-           | Latency      | 40.20        us | 34.95        us |  +13.04% (inv)
-64 KB      | Throughput   | 70.27 K/s          | 70.73 K/s          |   +0.65%
-           | Latency      | 47.82        us | 45.53        us |   +4.79% (inv)
-128 KB     | Throughput   | 41.46 K/s          | 39.17 K/s          |   -5.51%
-           | Latency      | 63.80        us | 63.74        us |   +0.09% (inv)
-256 KB     | Throughput   | 22.16 K/s          | 22.53 K/s          |   +1.69%
-           | Latency      | 100.55       us | 92.08        us |   +8.42% (inv)
-================================================================================================
-
-================================================================================================
-Pattern: PUBSUB | Transport: tcp
-================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
------------|--------------|--------------------|--------------------|----------------
-64 B       | Throughput   | 5.73 M/s           | 5.58 M/s           |   -2.58%
-           | Latency      | 30.58        us | 39.27        us |  -28.41% (inv)
-256 B      | Throughput   | 2.44 M/s           | 2.56 M/s           |   +4.81%
-           | Latency      | 33.15        us | 35.76        us |   -7.85% (inv)
-1 KB       | Throughput   | 976.74 K/s         | 984.99 K/s         |   +0.84%
-           | Latency      | 34.20        us | 30.18        us |  +11.76% (inv)
-64 KB      | Throughput   | 67.17 K/s          | 65.85 K/s          |   -1.96%
-           | Latency      | 85.72        us | 130.47       us |  -52.20% (inv)
-128 KB     | Throughput   | 43.54 K/s          | 42.58 K/s          |   -2.20%
-           | Latency      | 83.34        us | 143.79       us |  -72.53% (inv)
-256 KB     | Throughput   | 25.30 K/s          | 24.34 K/s          |   -3.79%
-           | Latency      | 139.28       us | 103.02       us |  +26.03% (inv)
-================================================================================================
+Benchmarking pattern: PAIR...
+  Run 1/10 for comp_std_zmq_pair...  Run 2/10 for comp_std_zmq_pair...  Run 3/10 for comp_std_zmq_pair...  Run 4/10 for comp_std_zmq_pair...  Run 5/10 for comp_std_zmq_pair...  Run 6/10 for comp_std_zmq_pair...  Run 7/10 for comp_std_zmq_pair...  Run 8/10 for comp_std_zmq_pair...  Run 9/10 for comp_std_zmq_pair...  Run 10/10 for comp_std_zmq_pair...
+  Run 1/10 for comp_zlink_pair...  Run 2/10 for comp_zlink_pair...  Run 3/10 for comp_zlink_pair...  Run 4/10 for comp_zlink_pair...  Run 5/10 for comp_zlink_pair...  Run 6/10 for comp_zlink_pair...  Run 7/10 for comp_zlink_pair...  Run 8/10 for comp_zlink_pair...  Run 9/10 for comp_zlink_pair...  Run 10/10 for comp_zlink_pair...

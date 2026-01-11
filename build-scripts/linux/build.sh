@@ -2,11 +2,9 @@
 
 # Linux build script for libzmq
 # Supports both x64 and arm64 architectures
-# Requires: gcc, g++, make, cmake, pkg-config, autoconf, automake, libtool
+# Requires: gcc, g++, make, cmake, pkg-config
 #
-# Build options:
-# - ENABLE_CURVE=ON requires libsodium (statically linked)
-# - ENABLE_CURVE=OFF skips libsodium entirely
+# Minimal build without CURVE/libsodium support
 
 set -e
 
@@ -14,12 +12,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Parse arguments: ARCH LIBZMQ_VERSION LIBSODIUM_VERSION ENABLE_CURVE RUN_TESTS
+# Read VERSION file
+if [ -f "$REPO_ROOT/VERSION" ]; then
+    LIBZMQ_VERSION=$(grep '^LIBZMQ_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
+else
+    LIBZMQ_VERSION="4.3.5"
+fi
+
+# Parse arguments: ARCH RUN_TESTS
 ARCH="${1:-$(uname -m)}"
-LIBZMQ_VERSION="${2:-4.3.5}"
-LIBSODIUM_VERSION="${3:-1.0.19}"
-ENABLE_CURVE="${4:-ON}"  # Set to OFF to build without libsodium
-RUN_TESTS="${5:-OFF}"    # Set to ON to build and run tests
+RUN_TESTS="${2:-OFF}"
 BUILD_TYPE="Release"
 
 # Normalize architecture name
@@ -38,18 +40,13 @@ fi
 
 OUTPUT_DIR="dist/linux-${ARCH}"
 
-# Set URLs
-LIBZMQ_URL="https://github.com/zeromq/libzmq/releases/download/v${LIBZMQ_VERSION}/zeromq-${LIBZMQ_VERSION}.tar.gz"
-LIBSODIUM_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}-RELEASE/libsodium-${LIBSODIUM_VERSION}.tar.gz"
-
 echo ""
 echo "==================================="
 echo "Linux Build Configuration"
 echo "==================================="
 echo "Architecture:      ${ARCH}"
 echo "libzmq version:    ${LIBZMQ_VERSION}"
-echo "libsodium version: ${LIBSODIUM_VERSION}"
-echo "ENABLE_CURVE:      ${ENABLE_CURVE}"
+echo "CURVE support:     Disabled"
 echo "RUN_TESTS:         ${RUN_TESTS}"
 echo "Build type:        ${BUILD_TYPE}"
 echo "Output directory:  ${OUTPUT_DIR}"
@@ -61,91 +58,14 @@ cd "$REPO_ROOT"
 
 # Create build directories
 BUILD_DIR="build/linux-${ARCH}"
-DEPS_DIR="deps/linux-${ARCH}"
 mkdir -p "$BUILD_DIR"
-mkdir -p "$DEPS_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-# Step 1: Download and build libsodium (static) - only if ENABLE_CURVE=ON
-if [ "$ENABLE_CURVE" = "ON" ]; then
-    echo "Step 1: Building libsodium ${LIBSODIUM_VERSION} for ${ARCH}..."
-    LIBSODIUM_ARCHIVE="$DEPS_DIR/libsodium-${LIBSODIUM_VERSION}.tar.gz"
-    LIBSODIUM_SRC="$DEPS_DIR/libsodium-${LIBSODIUM_VERSION}"
-    LIBSODIUM_INSTALL="$DEPS_DIR/libsodium-install"
+echo "Step 1: Using repository source for libzmq..."
 
-    # Create install directory
-    mkdir -p "$LIBSODIUM_INSTALL"
-
-    if [ ! -f "$LIBSODIUM_ARCHIVE" ]; then
-        echo "Downloading libsodium..."
-        curl -L "$LIBSODIUM_URL" -o "$LIBSODIUM_ARCHIVE"
-    fi
-
-    if [ ! -d "$LIBSODIUM_SRC" ]; then
-        echo "Extracting libsodium..."
-        tar -xzf "$LIBSODIUM_ARCHIVE" -C "$DEPS_DIR"
-        # Handle libsodium-stable directory naming
-        if [ -d "$DEPS_DIR/libsodium-stable" ] && [ ! -d "$LIBSODIUM_SRC" ]; then
-            mv "$DEPS_DIR/libsodium-stable" "$LIBSODIUM_SRC"
-        fi
-    fi
-
-    # Get absolute paths
-    LIBSODIUM_INSTALL_ABS="$REPO_ROOT/$LIBSODIUM_INSTALL"
-
-    if [ ! -f "$LIBSODIUM_INSTALL_ABS/lib/libsodium.a" ]; then
-        echo "Building libsodium (static with -fPIC for ${ARCH})..."
-        cd "$LIBSODIUM_SRC"
-
-        # Set architecture-specific flags for cross-compilation
-        CURRENT_ARCH=$(uname -m)
-        # Normalize current architecture
-        if [ "$CURRENT_ARCH" = "x86_64" ]; then
-            CURRENT_ARCH="x64"
-        elif [ "$CURRENT_ARCH" = "aarch64" ]; then
-            CURRENT_ARCH="arm64"
-        fi
-
-        echo "Current machine architecture: $CURRENT_ARCH"
-        echo "Target architecture: $ARCH"
-
-        # Set host flag for cross-compilation if needed
-        HOST_FLAG=""
-        if [ "$ARCH" = "arm64" ] && [ "$CURRENT_ARCH" != "arm64" ]; then
-            HOST_FLAG="--host=aarch64-linux-gnu"
-        elif [ "$ARCH" = "x64" ] && [ "$CURRENT_ARCH" != "x64" ]; then
-            HOST_FLAG="--host=x86_64-linux-gnu"
-        fi
-
-        # Configure with static library and PIC
-        ./configure \
-            $HOST_FLAG \
-            --prefix="$LIBSODIUM_INSTALL_ABS" \
-            --disable-shared \
-            --enable-static \
-            --with-pic \
-            CFLAGS="-fPIC -O3" \
-            CXXFLAGS="-fPIC -O3"
-
-        make -j$(nproc)
-        make install
-
-        cd "$REPO_ROOT"
-        echo "libsodium built successfully for ${ARCH}"
-    else
-        echo "libsodium already built for ${ARCH}"
-    fi
-else
-    echo "Step 1: Skipping libsodium (ENABLE_CURVE=OFF)..."
-fi
-
-# Step 2: Use repository source instead of downloading
+# Step 2: Configure libzmq with CMake
 echo ""
-echo "Step 2: Using repository source for libzmq..."
-
-# Step 3: Configure libzmq with CMake
-echo ""
-echo "Step 3: Configuring libzmq with CMake for ${ARCH}..."
+echo "Step 2: Configuring libzmq with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
 LIBZMQ_SRC_ABS="$REPO_ROOT"
@@ -164,46 +84,27 @@ if [ "$RUN_TESTS" = "ON" ]; then
     BUILD_TESTS_FLAG="ON"
 fi
 
-if [ "$ENABLE_CURVE" = "ON" ]; then
-    # Set PKG_CONFIG_PATH for libsodium
-    export PKG_CONFIG_PATH="$LIBSODIUM_INSTALL_ABS/lib/pkgconfig:$PKG_CONFIG_PATH"
+# Build without CURVE/libsodium
+cmake "$LIBZMQ_SRC_ABS" \
+    $CMAKE_ARCH_FLAGS \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DBUILD_SHARED=ON \
+    -DBUILD_STATIC=OFF \
+    -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
+    -DENABLE_CURVE=OFF \
+    -DWITH_LIBSODIUM=OFF \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
 
-    cmake "$LIBZMQ_SRC_ABS" \
-        $CMAKE_ARCH_FLAGS \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DBUILD_SHARED=ON \
-        -DBUILD_STATIC=OFF \
-        -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
-        -DENABLE_CURVE=ON \
-        -DWITH_LIBSODIUM=ON \
-        -Dsodium_LIBRARY_RELEASE="$LIBSODIUM_INSTALL_ABS/lib/libsodium.a" \
-        -Dsodium_INCLUDE_DIR="$LIBSODIUM_INSTALL_ABS/include" \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
-else
-    # Build without CURVE/libsodium
-    cmake "$LIBZMQ_SRC_ABS" \
-        $CMAKE_ARCH_FLAGS \
-        -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DBUILD_SHARED=ON \
-        -DBUILD_STATIC=OFF \
-        -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
-        -DENABLE_CURVE=OFF \
-        -DWITH_LIBSODIUM=OFF \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
-fi
-
-# Step 4: Build libzmq
+# Step 3: Build libzmq
 echo ""
-echo "Step 4: Building libzmq for ${ARCH}..."
+echo "Step 3: Building libzmq for ${ARCH}..."
 make -j$(nproc)
 
-# Step 5: Install
+# Step 4: Install
 echo ""
-echo "Step 5: Installing to output directory..."
+echo "Step 4: Installing to output directory..."
 make install
 
 # Copy .so to output
@@ -232,10 +133,10 @@ echo "Copied: zmq.h, zmq_utils.h -> $INCLUDE_DIR/"
 
 cd "$REPO_ROOT"
 
-# Step 6: Run tests (if enabled)
+# Step 5: Run tests (if enabled)
 if [ "$RUN_TESTS" = "ON" ]; then
     echo ""
-    echo "Step 6: Running tests..."
+    echo "Step 5: Running tests..."
     cd "$BUILD_DIR"
 
     # Build test executables
@@ -258,9 +159,9 @@ if [ "$RUN_TESTS" = "ON" ]; then
     cd "$REPO_ROOT"
 fi
 
-# Step 7: Verify build
+# Step 6: Verify build
 echo ""
-echo "Step 7: Verifying build for ${ARCH}..."
+echo "Step 6: Verifying build for ${ARCH}..."
 FINAL_SO="$OUTPUT_DIR/libzmq.so"
 
 if [ -f "$FINAL_SO" ]; then

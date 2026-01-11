@@ -58,6 +58,28 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 .\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
+### Build with Benchmarks
+```bash
+# Enable benchmark tools for performance comparison
+cmake -B build -DBUILD_BENCHMARKS=ON
+cmake --build build
+```
+
+### Build with C++20 (or other standards)
+```bash
+# Build with C++20 standard
+cmake -B build -DZMQ_CXX_STANDARD=20
+cmake --build build
+
+# Supported values: 11, 14, 17, 20, 23, latest (MSVC)
+# Default is C++11 if not specified
+
+# Combined with other options
+cmake -B build -DZMQ_CXX_STANDARD=20 -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
+```
+
+See [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md) for detailed C++ standard build instructions.
+
 ### Build Output
 - Linux: `dist/linux-{arch}/libzmq.so`
 - macOS: `dist/macos-{arch}/libzmq.dylib`

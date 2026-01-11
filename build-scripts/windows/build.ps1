@@ -155,6 +155,7 @@ try {
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
         -DENABLE_CURVE=OFF `
         -DWITH_LIBSODIUM=OFF `
+        -DZMQ_CXX_STANDARD=20 `
         -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install"
 

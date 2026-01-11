@@ -1633,6 +1633,13 @@ if(ZMQ_BUILD_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
+# benchmarks
+option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
+if(BUILD_BENCHMARKS AND BUILD_SHARED)
+  add_subdirectory(benchwithzmq)
+endif()
+
+# -----------------------------------------------------------------------------
 # installer
 
 if(MSVC AND (BUILD_SHARED OR BUILD_STATIC))

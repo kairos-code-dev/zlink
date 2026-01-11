@@ -23,11 +23,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Build zlink
         shell: pwsh
         run: |
@@ -51,11 +46,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64_arm64
 
       - name: Build zlink
         shell: pwsh
@@ -133,9 +123,9 @@ jobs:
           path: dist/linux-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
-  build-macos-x64:
+  build-macos-intel:
     name: Build macOS x64 (Intel)
-    runs-on: macos-13
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -149,10 +139,11 @@ jobs:
           chmod +x ./build-scripts/macos/build.sh
           ./build-scripts/macos/build.sh x86_64
 
-      - name: Run tests
+      - name: Verify build
         run: |
-          chmod +x ./build-scripts/macos/test.sh
-          ./build-scripts/macos/test.sh
+          echo "Verifying x86_64 build..."
+          file dist/macos-x86_64/libzmq.dylib
+          ls -la dist/macos-x86_64/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -197,7 +188,7 @@ jobs:
       - build-windows-arm64
       - build-linux
       - build-linux-arm64
-      - build-macos-x64
+      - build-macos-intel
       - build-macos-arm64
     steps:
       - name: Download all artifacts

@@ -1,56 +1,83 @@
 #!/bin/bash
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-ARCH="${1:-arm64}"
+ARCH="${1:-$(uname -m)}"
+BUILD_TYPE="Release"
 
-case "$ARCH" in
-    x64|x86_64)
-        ARCH_NAME="x86_64"
-        CMAKE_OSX_ARCH="x86_64"
-        ;;
-    arm64|aarch64)
-        ARCH_NAME="arm64"
-        CMAKE_OSX_ARCH="arm64"
-        ;;
-    *)
-        echo "Unknown architecture: $ARCH"
-        exit 1
-        ;;
-esac
+# Normalize architecture name
+if [ "$ARCH" = "x64" ]; then
+    ARCH="x86_64"
+fi
 
-BUILD_DIR="$PROJECT_ROOT/build-$ARCH_NAME"
-DIST_DIR="$PROJECT_ROOT/dist/macos-$ARCH_NAME"
+if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "arm64" ]; then
+    echo "Error: Invalid architecture '$ARCH'. Use 'x86_64' or 'arm64'"
+    exit 1
+fi
 
-echo "=== Building zlink for macOS $ARCH_NAME ==="
+BUILD_DIR="$PROJECT_ROOT/build/macos-${ARCH}"
+OUTPUT_DIR="$PROJECT_ROOT/dist/macos-${ARCH}"
 
-# Clean and create build directory
+echo ""
+echo "==================================="
+echo "macOS Build Configuration"
+echo "==================================="
+echo "Architecture:      ${ARCH}"
+echo "Build type:        ${BUILD_TYPE}"
+echo "Output directory:  ${OUTPUT_DIR}"
+echo "==================================="
+echo ""
+
+# Clean and create directories
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
-mkdir -p "$DIST_DIR"
+mkdir -p "$OUTPUT_DIR"
 
 cd "$BUILD_DIR"
 
-# Configure
+# Configure with CMake
+echo "Configuring with CMake..."
 cmake "$PROJECT_ROOT" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_OSX_ARCHITECTURES="$CMAKE_OSX_ARCH" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DBUILD_SHARED=ON \
+    -DBUILD_STATIC=OFF \
     -DBUILD_TESTS=ON \
     -DWITH_DOCS=OFF \
-    -DBUILD_SHARED=ON \
-    -DBUILD_STATIC=ON
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DCMAKE_MACOSX_RPATH=ON
 
 # Build
+echo "Building..."
 make -j$(sysctl -n hw.ncpu)
 
 # Copy artifacts
-cp -f lib/libzmq*.dylib "$DIST_DIR/" 2>/dev/null || true
-cp -f lib/libzmq.a "$DIST_DIR/" 2>/dev/null || true
-cp -f "$PROJECT_ROOT/include/zmq.h" "$DIST_DIR/"
-cp -f "$PROJECT_ROOT/include/zmq_utils.h" "$DIST_DIR/"
+echo "Copying artifacts..."
+DYLIB_FILE=$(find lib -name "libzmq.5.dylib" 2>/dev/null | head -n 1)
+if [ -z "$DYLIB_FILE" ]; then
+    DYLIB_FILE=$(find . -name "libzmq.5.dylib" 2>/dev/null | head -n 1)
+fi
 
-echo "=== Build complete ==="
-echo "Artifacts in: $DIST_DIR"
-ls -la "$DIST_DIR"
+if [ -n "$DYLIB_FILE" ]; then
+    cp "$DYLIB_FILE" "$OUTPUT_DIR/libzmq.dylib"
+    install_name_tool -id "@rpath/libzmq.dylib" "$OUTPUT_DIR/libzmq.dylib"
+    echo "Copied: $DYLIB_FILE -> $OUTPUT_DIR/libzmq.dylib"
+else
+    echo "Error: libzmq.dylib not found!"
+    exit 1
+fi
+
+# Copy headers
+cp "$PROJECT_ROOT/include/zmq.h" "$OUTPUT_DIR/"
+cp "$PROJECT_ROOT/include/zmq_utils.h" "$OUTPUT_DIR/"
+
+echo ""
+echo "==================================="
+echo "Build completed successfully!"
+echo "Output: $OUTPUT_DIR"
+echo "==================================="
+ls -la "$OUTPUT_DIR"

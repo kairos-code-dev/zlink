@@ -10,10 +10,10 @@
 #include "fd.hpp"
 #include "config.hpp"
 #include "command.hpp"
-#include "ypipe.hpp"
 #include "mutex.hpp"
-#include "i_mailbox.hpp"
 #include "condition_variable.hpp"
+#include "ypipe.hpp"
+#include "i_mailbox.hpp"
 
 namespace zmq
 {

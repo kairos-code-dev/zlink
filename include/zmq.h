@@ -258,12 +258,8 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_PAIR 0
 #define ZMQ_PUB 1
 #define ZMQ_SUB 2
-#define ZMQ_REQ 3
-#define ZMQ_REP 4
 #define ZMQ_DEALER 5
 #define ZMQ_ROUTER 6
-#define ZMQ_PULL 7
-#define ZMQ_PUSH 8
 #define ZMQ_XPUB 9
 #define ZMQ_XSUB 10
 #define ZMQ_STREAM 11
@@ -314,8 +310,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_CURVE_SECRETKEY 49
 #define ZMQ_CURVE_SERVERKEY 50
 #define ZMQ_PROBE_ROUTER 51
-#define ZMQ_REQ_CORRELATE 52
-#define ZMQ_REQ_RELAXED 53
 #define ZMQ_CONFLATE 54
 #define ZMQ_ZAP_DOMAIN 55
 #define ZMQ_ROUTER_HANDOVER 56
@@ -349,6 +343,9 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_GSSAPI_PRINCIPAL_NAMETYPE 90
 #define ZMQ_GSSAPI_SERVICE_PRINCIPAL_NAMETYPE 91
 #define ZMQ_BINDTODEVICE 92
+#define ZMQ_XPUB_MANUAL_LAST_VALUE 98
+#define ZMQ_ONLY_FIRST_SUBSCRIBE 108
+#define ZMQ_TOPICS_COUNT 116
 
 /*  Message options                                                           */
 #define ZMQ_MORE 1

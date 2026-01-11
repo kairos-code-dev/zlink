@@ -51,11 +51,6 @@ void test_socket_pair (pre_allocate_sock_fun_t pre_allocate_sock_fun_,
     test_context_socket_close (sb);
 }
 
-void test_req_rep (pre_allocate_sock_fun_t pre_allocate_sock_fun_)
-{
-    test_socket_pair (pre_allocate_sock_fun_, ZMQ_REP, ZMQ_REQ);
-}
-
 void test_pair (pre_allocate_sock_fun_t pre_allocate_sock_fun_)
 {
     test_socket_pair (pre_allocate_sock_fun_, ZMQ_PAIR, ZMQ_PAIR);
@@ -118,11 +113,6 @@ void test_client_server (pre_allocate_sock_fun_t pre_allocate_sock_fun_)
 #endif
 }
 
-void test_req_rep_tcp ()
-{
-    test_req_rep (pre_allocate_sock_tcp);
-}
-
 void test_pair_tcp ()
 {
     test_pair (pre_allocate_sock_tcp);
@@ -143,13 +133,6 @@ void pre_allocate_sock_ipc (void *sb_, char *my_endpoint_)
     TEST_ASSERT_SUCCESS_ERRNO (
       zmq_setsockopt (sb_, ZMQ_USE_FD, &s, sizeof (s)));
     strcpy (ipc_endpoint, strchr (my_endpoint_, '/') + 2);
-}
-
-void test_req_rep_ipc ()
-{
-    test_req_rep (pre_allocate_sock_ipc);
-
-    TEST_ASSERT_SUCCESS_ERRNO (unlink (ipc_endpoint));
 }
 
 void test_pair_ipc ()
@@ -173,11 +156,9 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_req_rep_tcp);
     RUN_TEST (test_pair_tcp);
     RUN_TEST (test_client_server_tcp);
 
-    RUN_TEST (test_req_rep_ipc);
     RUN_TEST (test_pair_ipc);
     RUN_TEST (test_client_server_ipc);
 

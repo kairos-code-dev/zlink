@@ -332,8 +332,6 @@ void test_heartbeat_timeout_router_mock_ping ()
     }
 
 DEFINE_TESTS (dealer, router, ZMQ_DEALER, ZMQ_ROUTER)
-DEFINE_TESTS (req, rep, ZMQ_REQ, ZMQ_REP)
-DEFINE_TESTS (pull, push, ZMQ_PULL, ZMQ_PUSH)
 DEFINE_TESTS (sub, pub, ZMQ_SUB, ZMQ_PUB)
 DEFINE_TESTS (pair, pair, ZMQ_PAIR, ZMQ_PAIR)
 
@@ -391,8 +389,6 @@ int main (void)
     RUN_TEST (test_heartbeat_timeout_router_mock_ping);
 
     RUN_TEST (test_heartbeat_ttl_dealer_router);
-    RUN_TEST (test_heartbeat_ttl_req_rep);
-    RUN_TEST (test_heartbeat_ttl_pull_push);
     RUN_TEST (test_heartbeat_ttl_sub_pub);
     RUN_TEST (test_heartbeat_ttl_pair_pair);
 
@@ -401,14 +397,10 @@ int main (void)
     RUN_TEST (test_setsockopt_heartbeat_ttl_near_zero);
 
     RUN_TEST (test_heartbeat_notimeout_dealer_router);
-    RUN_TEST (test_heartbeat_notimeout_req_rep);
-    RUN_TEST (test_heartbeat_notimeout_pull_push);
     RUN_TEST (test_heartbeat_notimeout_sub_pub);
     RUN_TEST (test_heartbeat_notimeout_pair_pair);
 
     RUN_TEST (test_heartbeat_notimeout_dealer_router_with_curve);
-    RUN_TEST (test_heartbeat_notimeout_req_rep_with_curve);
-    RUN_TEST (test_heartbeat_notimeout_pull_push_with_curve);
     RUN_TEST (test_heartbeat_notimeout_sub_pub_with_curve);
     RUN_TEST (test_heartbeat_notimeout_pair_pair_with_curve);
 

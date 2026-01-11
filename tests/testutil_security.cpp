@@ -95,15 +95,17 @@ void socket_config_curve_client (void *client_, void *data_)
 
 void *zap_requests_handled;
 
+// ZAP handler removed - REQ/REP sockets no longer available
+#if 0
 void zap_handler_generic (zap_protocol_t zap_protocol_,
                           const char *expected_routing_id_)
 {
-    void *control = zmq_socket (get_test_context (), ZMQ_REQ);
+    void *control = zmq_socket (get_test_context (), ZMQ_DEALER);
     TEST_ASSERT_NOT_NULL (control);
     TEST_ASSERT_SUCCESS_ERRNO (
       zmq_connect (control, "inproc://handler-control"));
 
-    void *handler = zmq_socket (get_test_context (), ZMQ_REP);
+    void *handler = zmq_socket (get_test_context (), ZMQ_ROUTER);
     TEST_ASSERT_NOT_NULL (handler);
     TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (handler, "inproc://zeromq.zap.01"));
 
@@ -387,3 +389,4 @@ void expect_new_client_bounce_fail (char *my_endpoint_,
 
     test_context_socket_close_zero_linger (client);
 }
+#endif

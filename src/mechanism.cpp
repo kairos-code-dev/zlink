@@ -55,29 +55,36 @@ const zmq::blob_t &zmq::mechanism_t::get_user_id () const
 const char socket_type_pair[] = "PAIR";
 const char socket_type_pub[] = "PUB";
 const char socket_type_sub[] = "SUB";
-const char socket_type_req[] = "REQ";
-const char socket_type_rep[] = "REP";
 const char socket_type_dealer[] = "DEALER";
 const char socket_type_router[] = "ROUTER";
-const char socket_type_pull[] = "PULL";
-const char socket_type_push[] = "PUSH";
 const char socket_type_xpub[] = "XPUB";
 const char socket_type_xsub[] = "XSUB";
 const char socket_type_stream[] = "STREAM";
 
 const char *zmq::mechanism_t::socket_type_string (int socket_type_)
 {
-    // TODO the order must of the names must correspond to the values resp. order of ZMQ_* socket type definitions in zmq.h!
-    static const char *names[] = {socket_type_pair,   socket_type_pub,
-                                  socket_type_sub,    socket_type_req,
-                                  socket_type_rep,    socket_type_dealer,
-                                  socket_type_router, socket_type_pull,
-                                  socket_type_push,   socket_type_xpub,
-                                  socket_type_xsub,   socket_type_stream};
-    static const size_t names_count = sizeof (names) / sizeof (names[0]);
-    zmq_assert (socket_type_ >= 0
-                && socket_type_ < static_cast<int> (names_count));
-    return names[socket_type_];
+    // Map socket type to name string
+    switch (socket_type_) {
+        case ZMQ_PAIR:
+            return socket_type_pair;
+        case ZMQ_PUB:
+            return socket_type_pub;
+        case ZMQ_SUB:
+            return socket_type_sub;
+        case ZMQ_DEALER:
+            return socket_type_dealer;
+        case ZMQ_ROUTER:
+            return socket_type_router;
+        case ZMQ_XPUB:
+            return socket_type_xpub;
+        case ZMQ_XSUB:
+            return socket_type_xsub;
+        case ZMQ_STREAM:
+            return socket_type_stream;
+        default:
+            zmq_assert (false);
+            return NULL;
+    }
 }
 
 const size_t name_len_size = sizeof (unsigned char);
@@ -136,8 +143,7 @@ size_t zmq::mechanism_t::add_basic_properties (unsigned char *ptr_,
                          socket_type, strlen (socket_type));
 
     //  Add identity (aka routing id) property
-    if (options.type == ZMQ_REQ || options.type == ZMQ_DEALER
-        || options.type == ZMQ_ROUTER) {
+    if (options.type == ZMQ_DEALER || options.type == ZMQ_ROUTER) {
         ptr += add_property (ptr, ptr_capacity_ - (ptr - ptr_),
                              ZMTP_PROPERTY_IDENTITY, options.routing_id,
                              options.routing_id_size);
@@ -151,8 +157,7 @@ size_t zmq::mechanism_t::basic_properties_len () const
     const char *socket_type = socket_type_string (options.type);
 
     return property_len (ZMTP_PROPERTY_SOCKET_TYPE, strlen (socket_type))
-           + ((options.type == ZMQ_REQ || options.type == ZMQ_DEALER
-               || options.type == ZMQ_ROUTER)
+           + ((options.type == ZMQ_DEALER || options.type == ZMQ_ROUTER)
                 ? property_len (ZMTP_PROPERTY_IDENTITY, options.routing_id_size)
                 : 0);
 }
@@ -251,24 +256,12 @@ bool zmq::mechanism_t::check_socket_type (const char *type_,
                                           const size_t len_) const
 {
     switch (options.type) {
-        case ZMQ_REQ:
-            return strequals (type_, len_, socket_type_rep)
-                   || strequals (type_, len_, socket_type_router);
-        case ZMQ_REP:
-            return strequals (type_, len_, socket_type_req)
-                   || strequals (type_, len_, socket_type_dealer);
         case ZMQ_DEALER:
-            return strequals (type_, len_, socket_type_rep)
-                   || strequals (type_, len_, socket_type_dealer)
+            return strequals (type_, len_, socket_type_dealer)
                    || strequals (type_, len_, socket_type_router);
         case ZMQ_ROUTER:
-            return strequals (type_, len_, socket_type_req)
-                   || strequals (type_, len_, socket_type_dealer)
+            return strequals (type_, len_, socket_type_dealer)
                    || strequals (type_, len_, socket_type_router);
-        case ZMQ_PUSH:
-            return strequals (type_, len_, socket_type_pull);
-        case ZMQ_PULL:
-            return strequals (type_, len_, socket_type_push);
         case ZMQ_PUB:
             return strequals (type_, len_, socket_type_sub)
                    || strequals (type_, len_, socket_type_xsub);

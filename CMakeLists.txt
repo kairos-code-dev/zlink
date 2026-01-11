@@ -858,16 +858,12 @@ set(cxx-sources
     pollset.cpp
     proxy.cpp
     pub.cpp
-    pull.cpp
-    push.cpp
     radix_tree.cpp
     random.cpp
     raw_encoder.cpp
     raw_decoder.cpp
     raw_engine.cpp
     reaper.cpp
-    rep.cpp
-    req.cpp
     router.cpp
     select.cpp
     session_base.cpp
@@ -979,15 +975,11 @@ set(cxx-sources
     precompiled.hpp
     proxy.hpp
     pub.hpp
-    pull.hpp
-    push.hpp
     random.hpp
     raw_decoder.hpp
     raw_encoder.hpp
     raw_engine.hpp
     reaper.hpp
-    rep.hpp
-    req.hpp
     router.hpp
     secure_allocator.hpp
     select.hpp
@@ -1465,13 +1457,6 @@ endif()
 
 if(BUILD_SHARED)
   set(perf-tools
-      local_lat
-      remote_lat
-      local_thr
-      remote_thr
-      inproc_lat
-      inproc_thr
-      proxy_thr
       bench_pair
       bench_pubsub
       bench_router)

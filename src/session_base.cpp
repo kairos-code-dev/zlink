@@ -19,7 +19,6 @@
 #include "udp_engine.hpp"
 
 #include "ctx.hpp"
-#include "req.hpp"
 
 zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
                                                   bool active_,
@@ -29,19 +28,12 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
 {
     session_base_t *s = NULL;
     switch (options_.type) {
-        case ZMQ_REQ:
-            s = new (std::nothrow)
-              req_session_t (io_thread_, active_, socket_, options_, addr_);
-            break;
         case ZMQ_DEALER:
-        case ZMQ_REP:
         case ZMQ_ROUTER:
         case ZMQ_PUB:
         case ZMQ_XPUB:
         case ZMQ_SUB:
         case ZMQ_XSUB:
-        case ZMQ_PUSH:
-        case ZMQ_PULL:
         case ZMQ_PAIR:
         case ZMQ_STREAM:
             s = new (std::nothrow)
@@ -311,7 +303,7 @@ int zmq::session_base_t::zap_connect ()
         errno = ECONNREFUSED;
         return -1;
     }
-    zmq_assert (peer.options.type == ZMQ_REP || peer.options.type == ZMQ_ROUTER);
+    zmq_assert (peer.options.type == ZMQ_ROUTER);
 
     //  Create a bi-directional pipe that will connect
     //  session with zap socket.

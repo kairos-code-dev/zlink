@@ -18,7 +18,8 @@ void test_monitor_invalid_protocol_fails ()
     TEST_ASSERT_FAILURE_ERRNO (
       EPROTONOSUPPORT, zmq_socket_monitor (client, "tcp://127.0.0.1:*", 0));
 
-#ifdef ZMQ_EVENT_PIPES_STATS
+// zmq_socket_monitor_pipes_stats function removed with DRAFTS API
+#if 0
     //  Stats command needs to be called on a valid socket with monitoring
     //  enabled
     TEST_ASSERT_FAILURE_ERRNO (ENOTSOCK, zmq_socket_monitor_pipes_stats (NULL));
@@ -295,8 +296,11 @@ void test_monitor_versioned_stats (bind_function_t bind_function_,
     TEST_ASSERT_SUCCESS_ERRNO (zmq_socket_monitor_versioned (
       push, "inproc://monitor-push", ZMQ_EVENT_PIPES_STATS, 2, ZMQ_PAIR));
 
+// zmq_socket_monitor_pipes_stats function removed with DRAFTS API
+#if 0
     //  Should fail if there are no pipes to monitor
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zmq_socket_monitor_pipes_stats (push));
+#endif
 
     void *push_mon = test_context_socket (ZMQ_PAIR);
 
@@ -360,8 +364,11 @@ void test_monitor_versioned_stats (bind_function_t bind_function_,
     //  delivered via a message (send_activate_write)
     zmq_getsockopt (push, ZMQ_EVENTS, &dummy, &dummy_size);
 
+// zmq_socket_monitor_pipes_stats function removed with DRAFTS API
+#if 0
     //  Ask for stats and check that they match
     zmq_socket_monitor_pipes_stats (push);
+#endif
 
     msleep (SETTLE_TIME);
     zmq_getsockopt (push, ZMQ_EVENTS, &dummy, &dummy_size);

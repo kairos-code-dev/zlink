@@ -57,10 +57,6 @@
 #include "pair.hpp"
 #include "pub.hpp"
 #include "sub.hpp"
-#include "req.hpp"
-#include "rep.hpp"
-#include "pull.hpp"
-#include "push.hpp"
 #include "dealer.hpp"
 #include "router.hpp"
 #include "xpub.hpp"
@@ -127,23 +123,11 @@ zmq::socket_base_t *zmq::socket_base_t::create (int type_,
         case ZMQ_SUB:
             s = new (std::nothrow) sub_t (parent_, tid_, sid_);
             break;
-        case ZMQ_REQ:
-            s = new (std::nothrow) req_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_REP:
-            s = new (std::nothrow) rep_t (parent_, tid_, sid_);
-            break;
         case ZMQ_DEALER:
             s = new (std::nothrow) dealer_t (parent_, tid_, sid_);
             break;
         case ZMQ_ROUTER:
             s = new (std::nothrow) router_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_PULL:
-            s = new (std::nothrow) pull_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_PUSH:
-            s = new (std::nothrow) push_t (parent_, tid_, sid_);
             break;
         case ZMQ_XPUB:
             s = new (std::nothrow) xpub_t (parent_, tid_, sid_);
@@ -727,11 +711,11 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
     const bool is_single_connect =
       (options.type == ZMQ_DEALER || options.type == ZMQ_SUB
-       || options.type == ZMQ_PUB || options.type == ZMQ_REQ);
+       || options.type == ZMQ_PUB);
     if (unlikely (is_single_connect)) {
         if (0 != _endpoints.count (endpoint_uri_)) {
             // There is no valid use for multiple connects for SUB-PUB nor
-            // DEALER-ROUTER nor REQ-REP. Multiple connects produces
+            // DEALER-ROUTER. Multiple connects produces
             // nonsensical results.
             return 0;
         }
@@ -1075,7 +1059,7 @@ int zmq::socket_base_t::send (msg_t *msg_, int flags_)
     if (rc == 0) {
         return 0;
     }
-    //  Special case for ZMQ_PUSH: -2 means pipe is dead while a
+    //  Special case: -2 means pipe is dead while a
     //  multi-part send is in progress and can't be recovered, so drop
     //  silently when in blocking mode to keep backward compatibility.
     if (unlikely (rc == -2)) {
@@ -1378,44 +1362,6 @@ void zmq::socket_base_t::process_term_endpoint (std::string *endpoint_)
     delete endpoint_;
 }
 
-void zmq::socket_base_t::process_pipe_stats_publish (
-  uint64_t outbound_queue_count_,
-  uint64_t inbound_queue_count_,
-  endpoint_uri_pair_t *endpoint_pair_)
-{
-    uint64_t values[2] = {outbound_queue_count_, inbound_queue_count_};
-    event (*endpoint_pair_, values, 2, ZMQ_EVENT_PIPES_STATS);
-    delete endpoint_pair_;
-}
-
-/*
- * There are 2 pipes per connection, and the inbound one _must_ be queried from
- * the I/O thread. So ask the outbound pipe, in the application thread, to send
- * a message (pipe_peer_stats) to its peer. The message will carry the outbound
- * pipe stats and endpoint, and the reference to the socket object.
- * The inbound pipe on the I/O thread will then add its own stats and endpoint,
- * and write back a message to the socket object (pipe_stats_publish) which
- * will raise an event with the data.
- */
-int zmq::socket_base_t::query_pipes_stats ()
-{
-    {
-        scoped_lock_t lock (_monitor_sync);
-        if (!(_monitor_events & ZMQ_EVENT_PIPES_STATS)) {
-            errno = EINVAL;
-            return -1;
-        }
-    }
-    if (_pipes.size () == 0) {
-        errno = EAGAIN;
-        return -1;
-    }
-    for (pipes_t::size_type i = 0, size = _pipes.size (); i != size; ++i) {
-        _pipes[i]->send_stats_to_peer (this);
-    }
-
-    return 0;
-}
 
 void zmq::socket_base_t::update_pipe_options (int option_)
 {
@@ -1645,8 +1591,6 @@ int zmq::socket_base_t::monitor (const char *endpoint_,
         case ZMQ_PAIR:
             break;
         case ZMQ_PUB:
-            break;
-        case ZMQ_PUSH:
             break;
         default:
             errno = EINVAL;

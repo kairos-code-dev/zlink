@@ -266,8 +266,7 @@ inline bool get_effective_conflate_option (const options_t &options)
 {
     // conflate is only effective for some socket types
     return options.conflate
-           && (options.type == ZMQ_DEALER || options.type == ZMQ_PULL
-               || options.type == ZMQ_PUSH || options.type == ZMQ_PUB
+           && (options.type == ZMQ_DEALER || options.type == ZMQ_PUB
                || options.type == ZMQ_SUB);
 }
 

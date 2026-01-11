@@ -289,11 +289,11 @@ int is_tipc_available ()
 
     void *ctx = zmq_init (1);
     TEST_ASSERT_NOT_NULL (ctx);
-    void *rep = zmq_socket (ctx, ZMQ_REP);
-    TEST_ASSERT_NOT_NULL (rep);
-    tipc = zmq_bind (rep, "tipc://{5560,0,0}");
+    void *router = zmq_socket (ctx, ZMQ_ROUTER);
+    TEST_ASSERT_NOT_NULL (router);
+    tipc = zmq_bind (router, "tipc://{5560,0,0}");
 
-    zmq_close (rep);
+    zmq_close (router);
     zmq_ctx_term (ctx);
 
     return tipc == 0;

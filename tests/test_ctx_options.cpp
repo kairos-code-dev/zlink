@@ -136,11 +136,11 @@ void test_ctx_zero_copy ()
 
     // Create a TCP socket pair using the context and test that messages can be
     // received. Note that inproc sockets cannot be used for this test.
-    void *pull = zmq_socket (get_test_context (), ZMQ_PULL);
+    void *pull = zmq_socket (get_test_context (), ZMQ_DEALER);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pull, endpoint, sizeof endpoint);
 
-    void *push = zmq_socket (get_test_context (), ZMQ_PUSH);
+    void *push = zmq_socket (get_test_context (), ZMQ_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (push, endpoint));
 
     const char *small_str = "abcd";

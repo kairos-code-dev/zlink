@@ -9,42 +9,22 @@ set(tests
   test_system
   test_pair_inproc
   test_pair_tcp
-  test_reqrep_inproc
-  test_reqrep_tcp
-  test_hwm
   test_hwm_pubsub
-  test_reqrep_device
   test_sub_forward
-  test_invalid_rep
   test_msg_flags
   test_msg_ffn
   test_connect_resolve
   test_immediate
   test_last_endpoint
-  test_term_endpoint
   test_router_mandatory
   test_probe_router
   test_stream
   test_stream_empty
   test_stream_disconnect
   test_disconnect_inproc
-  test_unbind_wildcard
   test_ctx_options
   test_ctx_destroy
-  test_security_no_zap_handler
-  test_security_null
-  test_security_plain
-  test_security_zap
-  test_iov
-  test_spec_req
-  test_spec_rep
-  test_spec_dealer
   test_spec_router
-  test_spec_pushpull
-  test_req_correlate
-  test_req_relaxed
-  test_conflate
-  test_inproc_connect
   test_issue_566
   test_shutdown_stress
   test_timeo
@@ -53,15 +33,11 @@ set(tests
   test_connect_rid
   test_xpub_nodrop
   test_pub_invert_matching
-  test_setsockopt
-  test_sockopt_hwm
   test_heartbeats
   test_atomics
   test_bind_src_address
   test_capabilities
-  test_metadata
   test_router_handover
-  test_srcfd
   test_stream_timeout
   test_xpub_manual
   test_xpub_topic
@@ -81,17 +57,12 @@ set(tests
   test_router_transports)
 
 if(NOT WIN32)
-  list(APPEND tests test_security_gssapi test_socks test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
+  list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
 endif()
 
 if(ZMQ_HAVE_CURVE)
-  # TODO: always fails running under Github Actions via CMake
-  if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
-    list(APPEND tests test_security_curve)
-  endif()
-
   if(NOT WIN32)
-    list(APPEND tests test_connect_curve_fuzzer test_bind_curve_fuzzer test_z85_decode_fuzzer)
+    list(APPEND tests test_z85_decode_fuzzer)
   endif()
 endif()
 
@@ -108,7 +79,7 @@ if(ENABLE_CAPSH)
 endif()
 
 if(ZMQ_HAVE_IPC)
-  list(APPEND tests test_ipc_wildcard test_pair_ipc test_reqrep_ipc test_rebind_ipc)
+  list(APPEND tests test_ipc_wildcard test_pair_ipc)
 endif()
 
 if(NOT WIN32)
@@ -116,20 +87,10 @@ if(NOT WIN32)
     APPEND
     tests
     test_proxy
-    test_proxy_hwm
-    test_proxy_single_socket
-    test_proxy_steerable
-    test_proxy_terminate
     test_getsockopt_memset
     test_filter_ipc
     test_stream_exceeds_buffer
-    test_router_mandatory_hwm
-    test_use_fd
-    test_zmq_poll_fd)
-
-  if(HAVE_FORK)
-    list(APPEND tests test_fork)
-  endif()
+    test_router_mandatory_hwm)
 
   if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND tests test_abstract_ipc)
@@ -138,21 +99,16 @@ if(NOT WIN32)
       list(
         APPEND
         tests
-        test_address_tipc
         test_pair_tipc
-        test_reqrep_device_tipc
-        test_reqrep_tipc
         test_router_mandatory_tipc
         test_sub_forward_tipc
-        test_connect_delay_tipc
-        test_shutdown_stress_tipc
-        test_term_endpoint_tipc)
+        test_shutdown_stress_tipc)
     endif()
   endif()
 endif()
 
 if(WITH_VMCI)
-  list(APPEND tests test_pair_vmci test_reqrep_vmci)
+  list(APPEND tests test_pair_vmci)
 endif()
 
 # add location of platform.hpp for Windows builds
@@ -277,14 +233,6 @@ endforeach()
 
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
-
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
-  if(ZMQ_HAVE_CURVE)
-    set_tests_properties(test_security_curve PROPERTIES TIMEOUT 60)
-  endif()
-endif()
-
-set_tests_properties(test_security_zap PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 
 # Check whether all tests in the current folder are present

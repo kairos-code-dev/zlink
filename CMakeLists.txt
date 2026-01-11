@@ -152,96 +152,6 @@ if(APPLE)
   option(ZMQ_BUILD_FRAMEWORK "Build as OS X framework" OFF)
 endif()
 
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
-  option(ENABLE_DRAFTS "Build and install draft classes and methods" ON)
-else()
-  option(ENABLE_DRAFTS "Build and install draft classes and methods" OFF)
-endif()
-
-# Enable WebSocket transport and RadixTree
-if(ENABLE_DRAFTS)
-  message(STATUS "Building draft classes and methods")
-  option(ENABLE_WS "Enable WebSocket transport" ON)
-  option(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" ON)
-  set(pkg_config_defines "-DZMQ_BUILD_DRAFT_API=1")
-else()
-  message(STATUS "Not building draft classes and methods")
-  option(ENABLE_WS "Enable WebSocket transport" OFF)
-  option(ENABLE_RADIX_TREE "Use radix tree implementation to manage subscriptions" OFF)
-endif()
-
-if(ENABLE_RADIX_TREE)
-  message(STATUS "Using radix tree implementation to manage subscriptions")
-  set(ZMQ_USE_RADIX_TREE 1)
-endif()
-
-if(ENABLE_WS)
-  list(
-    APPEND
-    sources
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_decoder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_encoder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_listener.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_connecter.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_decoder.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_encoder.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_engine.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_listener.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_protocol.hpp)
-  set(ZMQ_HAVE_WS 1)
-
-  message(STATUS "Enable WebSocket transport")
-
-  option(WITH_TLS "Use TLS for WSS support" ON)
-  option(WITH_NSS "Use NSS instead of builtin sha1" OFF)
-
-  if(WITH_TLS)
-    find_package("GnuTLS" 3.6.7)
-    if(GNUTLS_FOUND)
-      set(pkg_config_names_private "${pkg_config_names_private} gnutls")
-      list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.hpp
-           ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_engine.hpp
-           ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_engine.cpp)
-
-      message(STATUS "Enable WSS transport")
-      set(ZMQ_USE_GNUTLS 1)
-      set(ZMQ_HAVE_WSS 1)
-    else()
-      message(WARNING "No WSS support, you may want to install GnuTLS and run cmake again")
-    endif()
-  endif()
-endif()
-
-if(NOT ZMQ_USE_GNUTLS)
-  if(WITH_NSS)
-    pkg_check_modules(NSS3 "nss")
-    if(NSS3_FOUND)
-      set(pkg_config_names_private "${pkg_config_names_private} nss")
-      message(STATUS "Using NSS")
-      set(ZMQ_USE_NSS 1)
-    else()
-      find_package("NSS3")
-      if(NSS3_FOUND)
-        set(pkg_config_libs_private "${pkg_config_libs_private} -lnss3")
-        message(STATUS "Using NSS")
-        set(ZMQ_USE_NSS 1)
-      else()
-        message(WARNING "No nss installed, if you don't want builtin SHA1, install NSS or GnuTLS")
-      endif()
-    endif()
-  endif()
-  if(NOT ZMQ_USE_NSS)
-    list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/external/sha1/sha1.c
-         ${CMAKE_CURRENT_SOURCE_DIR}/external/sha1/sha1.h)
-    message(STATUS "Using builtin sha1")
-    set(ZMQ_USE_BUILTIN_SHA1 1)
-  endif()
-endif()
-
 if(NOT MSVC)
   option(WITH_LIBBSD "Use libbsd instead of builtin strlcpy" ON)
   if(WITH_LIBBSD)
@@ -903,8 +813,6 @@ endif()
 set(cxx-sources
     precompiled.cpp
     address.cpp
-    channel.cpp
-    client.cpp
     clock.cpp
     ctx.cpp
     curve_mechanism_base.cpp
@@ -912,7 +820,6 @@ set(cxx-sources
     curve_server.cpp
     dealer.cpp
     devpoll.cpp
-    dgram.cpp
     dist.cpp
     endpoint.cpp
     epoll.cpp
@@ -939,7 +846,6 @@ set(cxx-sources
     own.cpp
     null_mechanism.cpp
     pair.cpp
-    peer.cpp
     pgm_receiver.cpp
     pgm_sender.cpp
     pgm_socket.cpp
@@ -954,6 +860,7 @@ set(cxx-sources
     pub.cpp
     pull.cpp
     push.cpp
+    radix_tree.cpp
     random.cpp
     raw_encoder.cpp
     raw_decoder.cpp
@@ -963,7 +870,6 @@ set(cxx-sources
     req.cpp
     router.cpp
     select.cpp
-    server.cpp
     session_base.cpp
     signaler.cpp
     socket_base.cpp
@@ -978,7 +884,6 @@ set(cxx-sources
     tcp_listener.cpp
     thread.cpp
     trie.cpp
-    radix_tree.cpp
     v1_decoder.cpp
     v1_encoder.cpp
     v2_decoder.cpp
@@ -992,12 +897,8 @@ set(cxx-sources
     socket_poller.cpp
     timers.cpp
     config.hpp
-    radio.cpp
-    dish.cpp
     udp_engine.cpp
     udp_address.cpp
-    scatter.cpp
-    gather.cpp
     ip_resolver.cpp
     zap_client.cpp
     zmtp_engine.cpp
@@ -1007,8 +908,6 @@ set(cxx-sources
     atomic_counter.hpp
     atomic_ptr.hpp
     blob.hpp
-    channel.hpp
-    client.hpp
     clock.hpp
     command.hpp
     compat.hpp
@@ -1024,8 +923,6 @@ set(cxx-sources
     decoder.hpp
     decoder_allocators.hpp
     devpoll.hpp
-    dgram.hpp
-    dish.hpp
     dist.hpp
     encoder.hpp
     endpoint.hpp
@@ -1033,7 +930,6 @@ set(cxx-sources
     err.hpp
     fd.hpp
     fq.hpp
-    gather.hpp
     generic_mtrie.hpp
     generic_mtrie_impl.hpp
     gssapi_client.hpp
@@ -1068,7 +964,6 @@ set(cxx-sources
     options.hpp
     own.hpp
     pair.hpp
-    peer.hpp
     pgm_receiver.hpp
     pgm_sender.hpp
     pgm_socket.hpp
@@ -1086,7 +981,6 @@ set(cxx-sources
     pub.hpp
     pull.hpp
     push.hpp
-    radio.hpp
     random.hpp
     raw_decoder.hpp
     raw_encoder.hpp
@@ -1095,10 +989,8 @@ set(cxx-sources
     rep.hpp
     req.hpp
     router.hpp
-    scatter.hpp
     secure_allocator.hpp
     select.hpp
-    server.hpp
     session_base.hpp
     signaler.hpp
     socket_base.hpp
@@ -1460,10 +1352,6 @@ foreach(target ${build_targets})
   target_include_directories(
     ${target} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
-
-  if(ENABLE_DRAFTS)
-    target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
-  endif()
 endforeach()
 
 if(BUILD_SHARED)
@@ -1632,15 +1520,6 @@ if(BUILD_SHARED)
         set_target_properties(${perf-tool} PROPERTIES LINK_FLAGS_DEBUG "/OPT:NOICF /OPT:NOREF")
       endif()
     endforeach()
-
-    if(BUILD_STATIC)
-      add_executable(benchmark_radix_tree perf/benchmark_radix_tree.cpp)
-      target_link_libraries(benchmark_radix_tree libzmq-static)
-      target_include_directories(benchmark_radix_tree PUBLIC "${CMAKE_CURRENT_LIST_DIR}/src")
-      if(ZMQ_HAVE_WINDOWS_UWP)
-        set_target_properties(benchmark_radix_tree PROPERTIES LINK_FLAGS_DEBUG "/OPT:NOICF /OPT:NOREF")
-      endif()
-    endif()
   elseif(WITH_PERF_TOOL)
     message(FATAL_ERROR "Shared library disabled - perf-tools unavailable.")
   endif()

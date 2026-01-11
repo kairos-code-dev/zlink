@@ -55,8 +55,7 @@ zmq::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZMQ_IO_THREADS_DFLT),
     _blocky (true),
-    _ipv6 (false),
-    _zero_copy (true)
+    _ipv6 (false)
 {
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -276,14 +275,6 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_ZERO_COPY_RECV:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _zero_copy = (value != 0);
-                return 0;
-            }
-            break;
-
         default: {
             return thread_ctx_t::set (option_, optval_, optvallen_);
         }
@@ -350,14 +341,6 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = sizeof (zmq_msg_t);
-                return 0;
-            }
-            break;
-
-        case ZMQ_ZERO_COPY_RECV:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _zero_copy;
                 return 0;
             }
             break;
@@ -808,13 +791,6 @@ void zmq::ctx_t::connect_inproc_sockets (
         pending_connection_.bind_pipe->set_hwms (-1, -1);
     }
 
-#ifdef ZMQ_BUILD_DRAFT_API
-    if (bind_options_.can_recv_disconnect_msg
-        && !bind_options_.disconnect_msg.empty ())
-        pending_connection_.connect_pipe->set_disconnect_msg (
-          bind_options_.disconnect_msg);
-#endif
-
     if (side_ == bind_side) {
         command_t cmd;
         cmd.type = command_t::bind;
@@ -835,14 +811,6 @@ void zmq::ctx_t::connect_inproc_sockets (
         && pending_connection_.endpoint.socket->check_tag ()) {
         send_routing_id (pending_connection_.bind_pipe, bind_options_);
     }
-
-#ifdef ZMQ_BUILD_DRAFT_API
-    //  If set, send the hello msg of the bind socket to the pending connection.
-    if (bind_options_.can_send_hello_msg
-        && bind_options_.hello_msg.size () > 0) {
-        send_hello_msg (pending_connection_.bind_pipe, bind_options_);
-    }
-#endif
 }
 
 #ifdef ZMQ_HAVE_VMCI

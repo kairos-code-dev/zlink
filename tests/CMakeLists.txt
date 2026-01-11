@@ -155,48 +155,6 @@ if(WITH_VMCI)
   list(APPEND tests test_pair_vmci test_reqrep_vmci)
 endif()
 
-if(ENABLE_DRAFTS)
-  list(
-    APPEND
-    tests
-    test_poller
-    test_thread_safe
-    test_client_server
-    test_timers
-    test_radio_dish
-    test_scatter_gather
-    test_dgram
-    test_app_meta
-    test_router_notify
-    test_xpub_manual_last_value
-    test_peer
-    test_msg_init
-    test_channel
-    test_hello_msg
-    test_disconnect_msg
-    test_hiccup_msg
-    test_zmq_ppoll_fd
-    test_xsub_verbose
-    test_pubsub_topics_count
-  )
-
-  if(HAVE_FORK)
-    list(APPEND tests test_zmq_ppoll_signals)
-  endif()
-
-  if(ZMQ_HAVE_BUSY_POLL)
-    list(APPEND tests test_busy_poll)
-  endif()
-endif()
-
-if(ZMQ_HAVE_WS)
-  list(APPEND tests test_ws_transport)
-
-  if(ZMQ_HAVE_WSS)
-    list(APPEND tests test_wss_transport)
-  endif()
-endif()
-
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
@@ -319,10 +277,6 @@ endforeach()
 
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
-
-if(WIN32 AND ENABLE_DRAFTS)
-  set_tests_properties(test_radio_dish PROPERTIES TIMEOUT 30)
-endif()
 
 if(NOT CMAKE_SYSTEM_NAME MATCHES "Linux")
   if(ZMQ_HAVE_CURVE)

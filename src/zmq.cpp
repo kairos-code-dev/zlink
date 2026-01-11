@@ -13,7 +13,6 @@
 
 #include "macros.hpp"
 #include "poller.hpp"
-#include "peer.hpp"
 
 #if !defined ZMQ_HAVE_POLLER
 //  On AIX platform, poll.h has to be included first to get consistent
@@ -84,6 +83,10 @@ struct iovec
 typedef char
   check_msg_t_size[sizeof (zmq::msg_t) == sizeof (zmq_msg_t) ? 1 : -1];
 
+//  Forward declarations for internal draft API functions
+int zmq_msg_init_buffer (zmq_msg_t *msg_, const void *buf_, size_t size_);
+int zmq_ctx_set_ext (void *ctx_, int option_, const void *optval_, size_t optvallen_);
+int zmq_poller_wait_all (void *poller_, zmq_poller_event_t *events_, int n_events_, long timeout_);
 
 void zmq_version (int *major_, int *minor_, int *patch_)
 {
@@ -314,23 +317,11 @@ int zmq_connect (void *s_, const char *addr_)
 
 uint32_t zmq_connect_peer (void *s_, const char *addr_)
 {
-    zmq::peer_t *s = static_cast<zmq::peer_t *> (s_);
-    if (!s_ || !s->check_tag ()) {
-        errno = ENOTSOCK;
-        return 0;
-    }
-
-    int socket_type;
-    size_t socket_type_size = sizeof (socket_type);
-    if (s->getsockopt (ZMQ_TYPE, &socket_type, &socket_type_size) != 0)
-        return 0;
-
-    if (socket_type != ZMQ_PEER) {
-        errno = ENOTSUP;
-        return 0;
-    }
-
-    return s->connect_peer (addr_);
+    (void) s_;
+    (void) addr_;
+    // ZMQ_PEER socket type is not available (draft API removed)
+    errno = ENOTSUP;
+    return 0;
 }
 
 
@@ -1788,10 +1779,6 @@ int zmq_has (const char *capability_)
 #endif
 #if defined(ZMQ_HAVE_VMCI)
     if (strcmp (capability_, zmq::protocol_name::vmci) == 0)
-        return true;
-#endif
-#if defined(ZMQ_BUILD_DRAFT_API)
-    if (strcmp (capability_, "draft") == 0)
         return true;
 #endif
 #if defined(ZMQ_HAVE_WS)

@@ -383,32 +383,21 @@ int zmq::curve_server_t::process_initiate (msg_t *msg_)
                               _cn_secret);
     zmq_assert (rc == 0);
 
-    //  Given this is a backward-incompatible change, it's behind a socket
-    //  option disabled by default.
-    if (zap_required () || !options.zap_enforce_domain) {
-        //  Use ZAP protocol (RFC 27) to authenticate the user.
-        rc = session->zap_connect ();
-        if (rc == 0) {
-            send_zap_request (client_key);
-            state = waiting_for_zap_reply;
+    //  Use ZAP protocol (RFC 27) to authenticate the user.
+    rc = session->zap_connect ();
+    if (rc == 0) {
+        send_zap_request (client_key);
+        state = waiting_for_zap_reply;
 
-            //  TODO actually, it is quite unlikely that we can read the ZAP
-            //  reply already, but removing this has some strange side-effect
-            //  (probably because the pipe's in_active flag is true until a read
-            //  is attempted)
-            if (-1 == receive_and_process_zap_reply ())
-                return -1;
-        } else if (!options.zap_enforce_domain) {
-            //  This supports the Stonehouse pattern (encryption without
-            //  authentication) in legacy mode (domain set but no handler).
-            state = sending_ready;
-        } else {
-            session->get_socket ()->event_handshake_failed_no_detail (
-              session->get_endpoint (), EFAULT);
+        //  TODO actually, it is quite unlikely that we can read the ZAP
+        //  reply already, but removing this has some strange side-effect
+        //  (probably because the pipe's in_active flag is true until a read
+        //  is attempted)
+        if (-1 == receive_and_process_zap_reply ())
             return -1;
-        }
     } else {
-        //  This supports the Stonehouse pattern (encryption without authentication).
+        //  This supports the Stonehouse pattern (encryption without
+        //  authentication) when ZAP is not configured.
         state = sending_ready;
     }
 

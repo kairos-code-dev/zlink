@@ -8,7 +8,6 @@
 #include "pipe.hpp"
 #include "likely.hpp"
 #include "tcp_connecter.hpp"
-#include "ws_connecter.hpp"
 #include "ipc_connecter.hpp"
 #include "tipc_connecter.hpp"
 #include "socks_connecter.hpp"
@@ -21,8 +20,6 @@
 
 #include "ctx.hpp"
 #include "req.hpp"
-#include "radio.hpp"
-#include "dish.hpp"
 
 zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
                                                   bool active_,
@@ -36,14 +33,6 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
             s = new (std::nothrow)
               req_session_t (io_thread_, active_, socket_, options_, addr_);
             break;
-        case ZMQ_RADIO:
-            s = new (std::nothrow)
-              radio_session_t (io_thread_, active_, socket_, options_, addr_);
-            break;
-        case ZMQ_DISH:
-            s = new (std::nothrow)
-              dish_session_t (io_thread_, active_, socket_, options_, addr_);
-            break;
         case ZMQ_DEALER:
         case ZMQ_REP:
         case ZMQ_ROUTER:
@@ -55,27 +44,9 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
         case ZMQ_PULL:
         case ZMQ_PAIR:
         case ZMQ_STREAM:
-        case ZMQ_SERVER:
-        case ZMQ_CLIENT:
-        case ZMQ_GATHER:
-        case ZMQ_SCATTER:
-        case ZMQ_DGRAM:
-        case ZMQ_PEER:
-        case ZMQ_CHANNEL:
-#ifdef ZMQ_BUILD_DRAFT_API
-            if (options_.can_send_hello_msg && options_.hello_msg.size () > 0)
-                s = new (std::nothrow) hello_msg_session_t (
-                  io_thread_, active_, socket_, options_, addr_);
-            else
-                s = new (std::nothrow) session_base_t (
-                  io_thread_, active_, socket_, options_, addr_);
-
-            break;
-#else
             s = new (std::nothrow)
               session_base_t (io_thread_, active_, socket_, options_, addr_);
             break;
-#endif
 
         default:
             errno = EINVAL;
@@ -340,8 +311,7 @@ int zmq::session_base_t::zap_connect ()
         errno = ECONNREFUSED;
         return -1;
     }
-    zmq_assert (peer.options.type == ZMQ_REP || peer.options.type == ZMQ_ROUTER
-                || peer.options.type == ZMQ_SERVER);
+    zmq_assert (peer.options.type == ZMQ_REP || peer.options.type == ZMQ_ROUTER);
 
     //  Create a bi-directional pipe that will connect
     //  session with zap socket.
@@ -576,8 +546,7 @@ void zmq::session_base_t::reconnect ()
     //  For subscriber sockets we hiccup the inbound pipe, which will cause
     //  the socket object to resend all the subscriptions.
     if (_pipe
-        && (options.type == ZMQ_SUB || options.type == ZMQ_XSUB
-            || options.type == ZMQ_DISH))
+        && (options.type == ZMQ_SUB || options.type == ZMQ_XSUB))
         _pipe->hiccup ();
 }
 
@@ -601,11 +570,6 @@ void zmq::session_base_t::start_connecting (bool wait_)
             connecter = new (std::nothrow) socks_connecter_t (
               io_thread, this, options, _addr, proxy_address, wait_);
             alloc_assert (connecter);
-            if (!options.socks_proxy_username.empty ()) {
-                reinterpret_cast<socks_connecter_t *> (connecter)
-                  ->set_auth_method_basic (options.socks_proxy_username,
-                                           options.socks_proxy_password);
-            }
         } else {
             connecter = new (std::nothrow)
               tcp_connecter_t (io_thread, this, options, _addr, wait_);
@@ -629,50 +593,9 @@ void zmq::session_base_t::start_connecting (bool wait_)
           vmci_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
-#if defined ZMQ_HAVE_WS
-    else if (_addr->protocol == protocol_name::ws) {
-        connecter = new (std::nothrow) ws_connecter_t (
-          io_thread, this, options, _addr, wait_, false, std::string ());
-    }
-#endif
-#if defined ZMQ_HAVE_WSS
-    else if (_addr->protocol == protocol_name::wss) {
-        connecter = new (std::nothrow) ws_connecter_t (
-          io_thread, this, options, _addr, wait_, true, _wss_hostname);
-    }
-#endif
     if (connecter != NULL) {
         alloc_assert (connecter);
         launch_child (connecter);
-        return;
-    }
-
-    if (_addr->protocol == protocol_name::udp) {
-        zmq_assert (options.type == ZMQ_DISH || options.type == ZMQ_RADIO
-                    || options.type == ZMQ_DGRAM);
-
-        udp_engine_t *engine = new (std::nothrow) udp_engine_t (options);
-        alloc_assert (engine);
-
-        bool recv = false;
-        bool send = false;
-
-        if (options.type == ZMQ_RADIO) {
-            send = true;
-            recv = false;
-        } else if (options.type == ZMQ_DISH) {
-            send = false;
-            recv = true;
-        } else if (options.type == ZMQ_DGRAM) {
-            send = true;
-            recv = true;
-        }
-
-        int rc = engine->init (_addr, send, recv);
-        errno_assert (rc == 0);
-
-        send_attach (this, engine);
-
         return;
     }
 

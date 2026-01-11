@@ -55,11 +55,7 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zmq_has ("vmci"));
 #endif
 
-#if defined(ZMQ_BUILD_DRAFT_API)
-    TEST_ASSERT_TRUE (zmq_has ("draft"));
-#else
     TEST_ASSERT_TRUE (!zmq_has ("draft"));
-#endif
 }
 
 int main ()

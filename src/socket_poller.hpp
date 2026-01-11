@@ -25,6 +25,15 @@
 #include "signaler.hpp"
 #include "polling_util.hpp"
 
+//  Draft API types (kept for internal use)
+typedef struct zmq_poller_event_t
+{
+    void *socket;
+    zmq_fd_t fd;
+    void *user_data;
+    short events;
+} zmq_poller_event_t;
+
 namespace zmq
 {
 class socket_poller_t

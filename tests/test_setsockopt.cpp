@@ -112,7 +112,6 @@ void test_setsockopt_bindtodevice ()
 
 void test_setsockopt_priority ()
 {
-#ifdef ZMQ_BUILD_DRAFT_API
 #ifdef ZMQ_HAVE_SO_PRIORITY
     void *socket = test_context_socket (ZMQ_PUSH);
 
@@ -137,10 +136,6 @@ void test_setsockopt_priority ()
 #else
     TEST_IGNORE_MESSAGE ("libzmq without ZMQ_PRIORITY support, "
                          "ignoring setsockopt_priority test");
-#endif
-#else
-    TEST_IGNORE_MESSAGE ("libzmq without DRAFT support, ignoring "
-                         "setsockopt_priority test");
 #endif
 }
 

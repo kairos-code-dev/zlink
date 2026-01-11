@@ -48,14 +48,7 @@ int zmq::null_mechanism_t::next_handshake_command (msg_t *msg_)
             errno = EAGAIN;
             return -1;
         }
-        //  Given this is a backward-incompatible change, it's behind a socket
-        //  option disabled by default.
         int rc = session->zap_connect ();
-        if (rc == -1 && options.zap_enforce_domain) {
-            session->get_socket ()->event_handshake_failed_no_detail (
-              session->get_endpoint (), EFAULT);
-            return -1;
-        }
         if (rc == 0) {
             send_zap_request ();
             _zap_request_sent = true;

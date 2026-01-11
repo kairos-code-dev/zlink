@@ -184,7 +184,6 @@ zmq::options_t::options_t () :
     linger (-1),
     connect_timeout (0),
     tcp_maxrt (0),
-    reconnect_stop (0),
     reconnect_ivl (100),
     reconnect_ivl_max (0),
     backlog (100),
@@ -215,13 +214,8 @@ zmq::options_t::options_t () :
     heartbeat_interval (0),
     heartbeat_timeout (-1),
     use_fd (-1),
-    zap_enforce_domain (false),
-    loopback_fastpath (false),
-    multicast_loop (true),
     in_batch_size (8192),
     out_batch_size (8192),
-    zero_copy (true),
-    router_notify (0),
     monitor_event_version (1),
     wss_trust_system (false),
     hello_msg (),
@@ -230,14 +224,6 @@ zmq::options_t::options_t () :
     can_recv_disconnect_msg (false),
     hiccup_msg (),
     can_recv_hiccup_msg (false),
-    norm_mode (ZMQ_NORM_CC),
-    norm_unicast_nacks (false),
-    norm_buffer_size (2048),
-    norm_segment_size (1400),
-    norm_block_size (16),
-    norm_num_parity (4),
-    norm_num_autoparity (0),
-    norm_push_enable (false),
     busy_poll (0)
 {
     memset (curve_public_key, 0, CURVE_KEYSIZE);
@@ -386,13 +372,6 @@ int zmq::options_t::setsockopt (int option_,
             }
             break;
 
-        case ZMQ_RECONNECT_STOP:
-            if (is_int) {
-                reconnect_stop = value;
-                return 0;
-            }
-            break;
-
         case ZMQ_RECONNECT_IVL:
             if (is_int && value >= -1) {
                 reconnect_ivl = value;
@@ -464,24 +443,6 @@ int zmq::options_t::setsockopt (int option_,
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &socks_proxy_address, SIZE_MAX);
 
-        case ZMQ_SOCKS_USERNAME:
-            /* Make empty string or NULL equivalent. */
-            if (optval_ == NULL || optvallen_ == 0) {
-                socks_proxy_username.clear ();
-                return 0;
-            } else {
-                return do_setsockopt_string_allow_empty_strict (
-                  optval_, optvallen_, &socks_proxy_username, 255);
-            }
-        case ZMQ_SOCKS_PASSWORD:
-            /* Make empty string or NULL equivalent. */
-            if (optval_ == NULL || optvallen_ == 0) {
-                socks_proxy_password.clear ();
-                return 0;
-            } else {
-                return do_setsockopt_string_allow_empty_strict (
-                  optval_, optvallen_, &socks_proxy_password, 255);
-            }
         case ZMQ_TCP_KEEPALIVE:
             if (is_int && (value == -1 || value == 0 || value == 1)) {
                 tcp_keepalive = value;
@@ -739,59 +700,6 @@ int zmq::options_t::setsockopt (int option_,
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &bound_device, BINDDEVSIZ);
 
-        case ZMQ_ZAP_ENFORCE_DOMAIN:
-            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
-                                                      &zap_enforce_domain);
-
-        case ZMQ_LOOPBACK_FASTPATH:
-            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
-                                                      &loopback_fastpath);
-
-        case ZMQ_METADATA:
-            if (optvallen_ > 0 && !is_int) {
-                const std::string s (static_cast<const char *> (optval_),
-                                     optvallen_);
-                const size_t pos = s.find (':');
-                if (pos != std::string::npos && pos != 0
-                    && pos != s.length () - 1) {
-                    const std::string key = s.substr (0, pos);
-                    if (key.compare (0, 2, "X-") == 0
-                        && key.length () <= UCHAR_MAX) {
-                        std::string val = s.substr (pos + 1, s.length ());
-                        app_metadata.insert (
-                          std::pair<std::string, std::string> (key, val));
-                        return 0;
-                    }
-                }
-            }
-            errno = EINVAL;
-            return -1;
-
-        case ZMQ_MULTICAST_LOOP:
-            return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
-                                                      &multicast_loop);
-
-#ifdef ZMQ_BUILD_DRAFT_API
-        case ZMQ_IN_BATCH_SIZE:
-            if (is_int && value > 0) {
-                in_batch_size = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_OUT_BATCH_SIZE:
-            if (is_int && value > 0) {
-                out_batch_size = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_BUSY_POLL:
-            if (is_int) {
-                busy_poll = value;
-                return 0;
-            }
-            break;
 #ifdef ZMQ_HAVE_WSS
         case ZMQ_WSS_KEY_PEM:
             // TODO: check if valid certificate
@@ -811,101 +719,6 @@ int zmq::options_t::setsockopt (int option_,
         case ZMQ_WSS_TRUST_SYSTEM:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &wss_trust_system);
-#endif
-
-#ifdef ZMQ_HAVE_NORM
-        case ZMQ_NORM_MODE:
-            if (is_int && value >= 0 && value <= 4) {
-                norm_mode = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_UNICAST_NACK:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &norm_unicast_nacks);
-
-        case ZMQ_NORM_BUFFER_SIZE:
-            if (is_int && value > 0) {
-                norm_buffer_size = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_SEGMENT_SIZE:
-            if (is_int && value > 0) {
-                norm_segment_size = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_BLOCK_SIZE:
-            if (is_int && value > 0 && value <= 255) {
-                norm_block_size = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_NUM_PARITY:
-            if (is_int && value >= 0 && value < 255) {
-                norm_num_parity = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_NUM_AUTOPARITY:
-            if (is_int && value >= 0 && value < 255) {
-                norm_num_autoparity = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_PUSH:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &norm_push_enable);
-#endif //ZMQ_HAVE_NORM
-
-        case ZMQ_HELLO_MSG:
-            if (optvallen_ > 0) {
-                unsigned char *bytes = (unsigned char *) optval_;
-                hello_msg =
-                  std::vector<unsigned char> (bytes, bytes + optvallen_);
-            } else {
-                hello_msg = std::vector<unsigned char> ();
-            }
-
-            return 0;
-
-        case ZMQ_DISCONNECT_MSG:
-            if (optvallen_ > 0) {
-                unsigned char *bytes = (unsigned char *) optval_;
-                disconnect_msg =
-                  std::vector<unsigned char> (bytes, bytes + optvallen_);
-            } else {
-                disconnect_msg = std::vector<unsigned char> ();
-            }
-
-            return 0;
-
-        case ZMQ_PRIORITY:
-            if (is_int && value >= 0) {
-                priority = value;
-                return 0;
-            }
-            break;
-
-        case ZMQ_HICCUP_MSG:
-            if (optvallen_ > 0) {
-                unsigned char *bytes = (unsigned char *) optval_;
-                hiccup_msg =
-                  std::vector<unsigned char> (bytes, bytes + optvallen_);
-            } else {
-                hiccup_msg = std::vector<unsigned char> ();
-            }
-
-            return 0;
-
-
 #endif
 
         default:
@@ -1034,13 +847,6 @@ int zmq::options_t::getsockopt (int option_,
             }
             break;
 
-        case ZMQ_RECONNECT_STOP:
-            if (is_int) {
-                *value = reconnect_stop;
-                return 0;
-            }
-            break;
-
         case ZMQ_RECONNECT_IVL:
             if (is_int) {
                 *value = reconnect_ivl;
@@ -1121,12 +927,6 @@ int zmq::options_t::getsockopt (int option_,
 
         case ZMQ_SOCKS_PROXY:
             return do_getsockopt (optval_, optvallen_, socks_proxy_address);
-
-        case ZMQ_SOCKS_USERNAME:
-            return do_getsockopt (optval_, optvallen_, socks_proxy_username);
-
-        case ZMQ_SOCKS_PASSWORD:
-            return do_getsockopt (optval_, optvallen_, socks_proxy_password);
 
         case ZMQ_TCP_KEEPALIVE:
             if (is_int) {
@@ -1289,123 +1089,6 @@ int zmq::options_t::getsockopt (int option_,
 
         case ZMQ_BINDTODEVICE:
             return do_getsockopt (optval_, optvallen_, bound_device);
-
-        case ZMQ_ZAP_ENFORCE_DOMAIN:
-            if (is_int) {
-                *value = zap_enforce_domain;
-                return 0;
-            }
-            break;
-
-        case ZMQ_LOOPBACK_FASTPATH:
-            if (is_int) {
-                *value = loopback_fastpath;
-                return 0;
-            }
-            break;
-
-        case ZMQ_MULTICAST_LOOP:
-            if (is_int) {
-                *value = multicast_loop;
-                return 0;
-            }
-            break;
-
-#ifdef ZMQ_BUILD_DRAFT_API
-        case ZMQ_ROUTER_NOTIFY:
-            if (is_int) {
-                *value = router_notify;
-                return 0;
-            }
-            break;
-
-        case ZMQ_IN_BATCH_SIZE:
-            if (is_int) {
-                *value = in_batch_size;
-                return 0;
-            }
-            break;
-
-        case ZMQ_OUT_BATCH_SIZE:
-            if (is_int) {
-                *value = out_batch_size;
-                return 0;
-            }
-            break;
-
-        case ZMQ_PRIORITY:
-            if (is_int) {
-                *value = priority;
-                return 0;
-            }
-            break;
-
-        case ZMQ_BUSY_POLL:
-            if (is_int) {
-                *value = busy_poll;
-            }
-            break;
-
-#ifdef ZMQ_HAVE_NORM
-        case ZMQ_NORM_MODE:
-            if (is_int) {
-                *value = norm_mode;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_UNICAST_NACK:
-            if (is_int) {
-                *value = norm_unicast_nacks;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_BUFFER_SIZE:
-            if (is_int) {
-                *value = norm_buffer_size;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_SEGMENT_SIZE:
-            if (is_int) {
-                *value = norm_segment_size;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_BLOCK_SIZE:
-            if (is_int) {
-                *value = norm_block_size;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_NUM_PARITY:
-            if (is_int) {
-                *value = norm_num_parity;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_NUM_AUTOPARITY:
-            if (is_int) {
-                *value = norm_num_autoparity;
-                return 0;
-            }
-            break;
-
-        case ZMQ_NORM_PUSH:
-            if (is_int) {
-                *value = norm_push_enable;
-                return 0;
-            }
-            break;
-#endif //ZMQ_HAVE_NORM
-
-#endif
-
 
         default:
 #if defined(ZMQ_ACT_MILITANT)

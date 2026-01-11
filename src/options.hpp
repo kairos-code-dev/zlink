@@ -92,10 +92,6 @@ struct options_t
     //  Default 0 (unused)
     int tcp_maxrt;
 
-    //  Disable reconnect under certain conditions
-    //  Default 0
-    int reconnect_stop;
-
     //  Minimum interval between attempts to reconnect, in milliseconds.
     //  Default 100ms
     int reconnect_ivl;
@@ -138,12 +134,6 @@ struct options_t
 
     //  Address of SOCKS proxy
     std::string socks_proxy_address;
-
-    // Credentials for SOCKS proxy.
-    // Connection method will be basic auth if username
-    // is not empty, no auth otherwise.
-    std::string socks_proxy_username;
-    std::string socks_proxy_password;
 
     //  TCP keep-alive settings.
     //  Defaults to -1 = do not change socket options
@@ -235,15 +225,6 @@ struct options_t
     // Device to bind the underlying socket to, eg. VRF or interface
     std::string bound_device;
 
-    //  Enforce a non-empty ZAP domain requirement for PLAIN auth
-    bool zap_enforce_domain;
-
-    // Use of loopback fastpath.
-    bool loopback_fastpath;
-
-    //  Loop sent multicast packets to local sockets
-    bool multicast_loop;
-
     //  Maximal batching size for engines with receiving functionality.
     //  So, if there are 10 messages that fit into the batch size, all of
     //  them may be read by a single 'recv' system call, thus avoiding
@@ -254,15 +235,6 @@ struct options_t
     //  them may be written by a single 'send' system call, thus avoiding
     //  unnecessary network stack traversals.
     int out_batch_size;
-
-    // Use zero copy strategy for storing message content when decoding.
-    bool zero_copy;
-
-    // Router socket ZMQ_NOTIFY_CONNECT/ZMQ_NOTIFY_DISCONNECT notifications
-    int router_notify;
-
-    // Application metadata
-    std::map<std::string, std::string> app_metadata;
 
     // Version of monitor events to emit
     int monitor_event_version;
@@ -285,16 +257,6 @@ struct options_t
     //  Hiccup msg
     std::vector<unsigned char> hiccup_msg;
     bool can_recv_hiccup_msg;
-
-    // NORM Options
-    int norm_mode;
-    bool norm_unicast_nacks;
-    int norm_buffer_size;
-    int norm_segment_size;
-    int norm_block_size;
-    int norm_num_parity;
-    int norm_num_autoparity;
-    bool norm_push_enable;
 
     //  This option removes several delays caused by scheduling, interrupts and context switching.
     int busy_poll;

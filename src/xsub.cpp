@@ -84,12 +84,6 @@ int zmq::xsub_t::xsetsockopt (int option_,
         _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
         return 0;
     }
-#ifdef ZMQ_BUILD_DRAFT_API
-    else if (option_ == ZMQ_XSUB_VERBOSE_UNSUBSCRIBE) {
-        _verbose_unsubs = (*static_cast<const int *> (optval_) != 0);
-        return 0;
-    }
-#endif
     errno = EINVAL;
     return -1;
 }

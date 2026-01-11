@@ -371,10 +371,6 @@ zmq::fd_t zmq::tcp_open_socket (const char *address_,
     if (options_.priority != 0)
         set_socket_priority (s, options_.priority);
 
-    // Set the socket to loopback fastpath if configured.
-    if (options_.loopback_fastpath)
-        tcp_tune_loopback_fast_path (s);
-
     // Bind the socket to a device if applicable
     if (!options_.bound_device.empty ())
         if (bind_to_device (s, options_.bound_device) == -1)

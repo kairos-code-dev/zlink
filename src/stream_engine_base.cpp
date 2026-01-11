@@ -28,6 +28,12 @@
 #include "curve_client.hpp"
 #include "curve_server.hpp"
 #include "raw_decoder.hpp"
+
+//  Draft API message property names (kept for internal use)
+#define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
+#define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
+#define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
+#define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
 #include "raw_encoder.hpp"
 #include "config.hpp"
 #include "err.hpp"
@@ -529,20 +535,6 @@ void zmq::stream_engine_base_t::mechanism_ready ()
         flush_session = true;
     }
 
-    if (_options.router_notify & ZMQ_NOTIFY_CONNECT) {
-        msg_t connect_notification;
-        connect_notification.init ();
-        const int rc = _session->push_msg (&connect_notification);
-        if (rc == -1 && errno == EAGAIN) {
-            // If the write is failing at this stage with
-            // an EAGAIN the pipe must be being shut down,
-            // so we can just bail out of the notification.
-            return;
-        }
-        errno_assert (rc == 0);
-        flush_session = true;
-    }
-
     if (flush_session)
         _session->flush ();
 
@@ -662,31 +654,12 @@ void zmq::stream_engine_base_t::error (error_reason_t reason_)
 {
     zmq_assert (_session);
 
-    if ((_options.router_notify & ZMQ_NOTIFY_DISCONNECT) && !_handshaking) {
-        // For router sockets with disconnect notification, rollback
-        // any incomplete message in the pipe, and push the disconnect
-        // notification message.
-        _session->rollback ();
-
-        msg_t disconnect_notification;
-        disconnect_notification.init ();
-        _session->push_msg (&disconnect_notification);
-    }
-
     // protocol errors have been signaled already at the point where they occurred
     if (reason_ != protocol_error
         && (_mechanism == NULL
             || _mechanism->status () == mechanism_t::handshaking)) {
         const int err = errno;
         _socket->event_handshake_failed_no_detail (_endpoint_uri_pair, err);
-        // special case: connecting to non-ZMTP process which immediately drops connection,
-        // or which never responds with greeting, should be treated as a protocol error
-        // (i.e. stop reconnect)
-        if (((reason_ == connection_error) || (reason_ == timeout_error))
-            && (_options.reconnect_stop
-                & ZMQ_RECONNECT_STOP_HANDSHAKE_FAILED)) {
-            reason_ = protocol_error;
-        }
     }
 
     _socket->event_disconnected (_endpoint_uri_pair, _s);

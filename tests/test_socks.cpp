@@ -415,37 +415,6 @@ void *setup_pull_client (const char *connect_address, const char *socks_proxy)
     return pull;
 }
 
-#ifdef ZMQ_BUILD_DRAFT_API
-void *setup_pull_client_with_auth (const char *connect_address,
-                                   const char *socks_proxy,
-                                   const char *username,
-                                   const char *password)
-{
-    int res;
-    void *pull = test_context_socket (ZMQ_PULL);
-
-    if (socks_proxy != NULL) {
-        res = zmq_setsockopt (pull, ZMQ_SOCKS_PROXY, socks_proxy,
-                              strlen (socks_proxy));
-        TEST_ASSERT_SUCCESS_ERRNO (res);
-        fprintf (stderr, "pull_client: use socks proxy: tcp://%s\n",
-                 socks_proxy);
-    }
-
-    res = zmq_setsockopt (pull, ZMQ_SOCKS_USERNAME, username,
-                          username == NULL ? 0 : strlen (username));
-    TEST_ASSERT_SUCCESS_ERRNO (res);
-
-    res = zmq_setsockopt (pull, ZMQ_SOCKS_PASSWORD, password,
-                          password == NULL ? 0 : strlen (password));
-    TEST_ASSERT_SUCCESS_ERRNO (res);
-
-    res = zmq_connect (pull, connect_address);
-    TEST_ASSERT_SUCCESS_ERRNO (res);
-    fprintf (stderr, "pull_client: connected to: %s\n", connect_address);
-    return pull;
-}
-#endif
 
 void communicate (void *push, void *pull)
 {
@@ -606,152 +575,26 @@ void test_socks_bind_before_connect (void)
 
 void test_socks_basic_auth (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (
-      connect_address, socks_server_address, "someuser", "somepass");
-    void *thread = zmq_threadstart (&socks_server_basic_auth, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 void test_socks_basic_auth_delay (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (
-      connect_address, socks_server_address, "someuser", "somepass");
-    void *thread = zmq_threadstart (&socks_server_basic_auth_delay, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 void test_socks_basic_auth_empty_user (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (connect_address,
-                                              socks_server_address, "", NULL);
-    void *thread = zmq_threadstart (&socks_server_no_auth, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 void test_socks_basic_auth_null_user (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (connect_address,
-                                              socks_server_address, NULL, NULL);
-    void *thread = zmq_threadstart (&socks_server_no_auth, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 void test_socks_basic_auth_empty_pass (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (
-      connect_address, socks_server_address, "someuser", "");
-    void *thread = zmq_threadstart (&socks_server_basic_auth_no_pass, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 void test_socks_basic_auth_null_pass (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char socks_server_address[MAX_SOCKET_STRING];
-    char connect_address[MAX_SOCKET_STRING];
-
-    void *socks =
-      setup_socks_server (socks_server_address, sizeof socks_server_address);
-    void *push = setup_push_server (connect_address, sizeof connect_address);
-    void *pull = setup_pull_client_with_auth (
-      connect_address, socks_server_address, "someuser", NULL);
-    void *thread = zmq_threadstart (&socks_server_basic_auth_no_pass, socks);
-
-    communicate (push, pull);
-
-    test_context_socket_close_zero_linger (push);
-    test_context_socket_close_zero_linger (pull);
-
-    zmq_threadclose (thread);
-#else
-    TEST_IGNORE_MESSAGE (
-      "libzmq without DRAFT support, ignoring socks basic auth test");
-#endif
 }
 
 
@@ -814,33 +657,6 @@ void test_socks_proxy_options (void)
 
 void test_socks_userpass_options (void)
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    char buffer[1024];
-    for (int i = 0; i < (int) sizeof buffer; i++) {
-        buffer[i] = 'a' + i % 26;
-    }
-
-    // NULL is equivalent to not-set or ""
-    test_opt_ok ("NULL username", ZMQ_SOCKS_USERNAME, NULL, 0, "", 0);
-    // Empty value is allowed for username, means no authentication
-    test_string_opt_ok ("empty username", ZMQ_SOCKS_USERNAME, "");
-    test_string_opt_ok ("valid username", ZMQ_SOCKS_USERNAME, "someuser");
-    test_opt_ok ("255 bytes username", ZMQ_SOCKS_USERNAME, buffer, 255, buffer,
-                 255);
-    test_opt_invalid ("too long username", ZMQ_SOCKS_USERNAME, buffer, 256);
-
-    // NULL is equivalent to not-set or ""
-    test_opt_ok ("NULL password", ZMQ_SOCKS_PASSWORD, NULL, 0, "", 0);
-    // Empty value allowed for password
-    test_string_opt_ok ("empty password", ZMQ_SOCKS_PASSWORD, "");
-    test_string_opt_ok ("valid password", ZMQ_SOCKS_PASSWORD, "someuser");
-    test_opt_ok ("255 bytes password", ZMQ_SOCKS_PASSWORD, buffer, 255, buffer,
-                 255);
-    test_opt_invalid ("too long password", ZMQ_SOCKS_PASSWORD, buffer, 256);
-#else
-    TEST_IGNORE_MESSAGE ("libzmq without DRAFT support, ignoring socks setopt "
-                         "username/password test");
-#endif
 }
 
 int main ()

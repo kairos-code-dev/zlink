@@ -12,6 +12,9 @@
 #include "atomic_counter.hpp"
 #include "metadata.hpp"
 
+//  Group functionality (originally from draft API)
+#define ZMQ_GROUP_MAX_LENGTH 255
+
 //  bits 2-5
 #define CMD_TYPE_MASK 0x1c
 

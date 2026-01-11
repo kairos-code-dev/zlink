@@ -118,21 +118,6 @@ void test_ctx_thread_opts ()
       zmq_ctx_set (get_test_context (), ZMQ_THREAD_NAME_PREFIX, 1234));
     TEST_ASSERT_EQUAL_INT (
       1234, zmq_ctx_get (get_test_context (), ZMQ_THREAD_NAME_PREFIX));
-
-#ifdef ZMQ_BUILD_DRAFT_API
-    // test STRING thread name prefix:
-
-    const char prefix[] = "MyPrefix9012345"; // max len is 16 chars
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set_ext (get_test_context (), ZMQ_THREAD_NAME_PREFIX, prefix,
-                       sizeof (prefix) / sizeof (char)));
-
-    char buf[16];
-    size_t buflen = sizeof (buf) / sizeof (char);
-    zmq_ctx_get_ext (get_test_context (), ZMQ_THREAD_NAME_PREFIX, buf, &buflen);
-    TEST_ASSERT_EQUAL_STRING (prefix, buf);
-#endif
 }
 
 void test_ctx_zero_copy ()

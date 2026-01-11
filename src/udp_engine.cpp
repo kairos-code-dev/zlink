@@ -109,9 +109,7 @@ void zmq::udp_engine_t::plug (io_thread_t *io_thread_, session_base_t *session_)
 
             if (out->is_multicast ()) {
                 const bool is_ipv6 = (out->family () == AF_INET6);
-                rc = rc
-                     | set_udp_multicast_loop (_fd, is_ipv6,
-                                               _options.multicast_loop);
+                rc = rc | set_udp_multicast_loop (_fd, is_ipv6, true);
 
                 if (_options.multicast_hops > 0) {
                     rc = rc

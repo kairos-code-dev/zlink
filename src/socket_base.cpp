@@ -23,13 +23,9 @@
 
 #include "socket_base.hpp"
 #include "tcp_listener.hpp"
-#include "ws_listener.hpp"
 #include "ipc_listener.hpp"
 #include "tipc_listener.hpp"
 #include "tcp_connecter.hpp"
-#ifdef ZMQ_HAVE_WS
-#include "ws_address.hpp"
-#endif
 #include "io_thread.hpp"
 #include "session_base.hpp"
 #include "config.hpp"
@@ -70,15 +66,6 @@
 #include "xpub.hpp"
 #include "xsub.hpp"
 #include "stream.hpp"
-#include "server.hpp"
-#include "client.hpp"
-#include "radio.hpp"
-#include "dish.hpp"
-#include "gather.hpp"
-#include "scatter.hpp"
-#include "dgram.hpp"
-#include "peer.hpp"
-#include "channel.hpp"
 
 void zmq::socket_base_t::inprocs_t::emplace (const char *endpoint_uri_,
                                              pipe_t *pipe_)
@@ -167,33 +154,6 @@ zmq::socket_base_t *zmq::socket_base_t::create (int type_,
         case ZMQ_STREAM:
             s = new (std::nothrow) stream_t (parent_, tid_, sid_);
             break;
-        case ZMQ_SERVER:
-            s = new (std::nothrow) server_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_CLIENT:
-            s = new (std::nothrow) client_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_RADIO:
-            s = new (std::nothrow) radio_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_DISH:
-            s = new (std::nothrow) dish_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_GATHER:
-            s = new (std::nothrow) gather_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_SCATTER:
-            s = new (std::nothrow) scatter_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_DGRAM:
-            s = new (std::nothrow) dgram_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_PEER:
-            s = new (std::nothrow) peer_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_CHANNEL:
-            s = new (std::nothrow) channel_t (parent_, tid_, sid_);
-            break;
         default:
             errno = EINVAL;
             return NULL;
@@ -233,7 +193,6 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZMQ_IPV6) != 0);
     options.linger.store (parent_->get (ZMQ_BLOCKY) ? -1 : 0);
-    options.zero_copy = parent_->get (ZMQ_ZERO_COPY_RECV) != 0;
 
     if (_thread_safe) {
         _mailbox = new (std::nothrow) mailbox_safe_t (&_sync);
@@ -367,9 +326,8 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
     }
 #endif
 
-    if (protocol_ == protocol_name::udp
-        && (options.type != ZMQ_DISH && options.type != ZMQ_RADIO
-            && options.type != ZMQ_DGRAM)) {
+    if (protocol_ == protocol_name::udp) {
+        // UDP is not supported (draft API removed)
         errno = ENOCOMPATPROTO;
         return -1;
     }
@@ -561,60 +519,9 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
 #endif
 
     if (protocol == protocol_name::udp) {
-        if (!(options.type == ZMQ_DGRAM || options.type == ZMQ_DISH)) {
-            errno = ENOCOMPATPROTO;
-            return -1;
-        }
-
-        //  Choose the I/O thread to run the session in.
-        io_thread_t *io_thread = choose_io_thread (options.affinity);
-        if (!io_thread) {
-            errno = EMTHREAD;
-            return -1;
-        }
-
-        address_t *paddr =
-          new (std::nothrow) address_t (protocol, address, this->get_ctx ());
-        alloc_assert (paddr);
-
-        paddr->resolved.udp_addr = new (std::nothrow) udp_address_t ();
-        alloc_assert (paddr->resolved.udp_addr);
-        rc = paddr->resolved.udp_addr->resolve (address.c_str (), true,
-                                                options.ipv6);
-        if (rc != 0) {
-            LIBZMQ_DELETE (paddr);
-            return -1;
-        }
-
-        session_base_t *session =
-          session_base_t::create (io_thread, true, this, options, paddr);
-        errno_assert (session);
-
-        //  Create a bi-directional pipe.
-        object_t *parents[2] = {this, session};
-        pipe_t *new_pipes[2] = {NULL, NULL};
-
-        int hwms[2] = {options.sndhwm, options.rcvhwm};
-        bool conflates[2] = {false, false};
-        rc = pipepair (parents, new_pipes, hwms, conflates);
-        errno_assert (rc == 0);
-
-        //  Attach local end of the pipe to the socket object.
-        attach_pipe (new_pipes[0], true, true);
-        pipe_t *const newpipe = new_pipes[0];
-
-        //  Attach remote end of the pipe to the session object later on.
-        session->attach_pipe (new_pipes[1]);
-
-        //  Save last endpoint URI
-        paddr->to_string (_last_endpoint);
-
-        //  TODO shouldn't this use _last_endpoint instead of endpoint_uri_? as in the other cases
-        add_endpoint (endpoint_uri_pair_t (endpoint_uri_, std::string (),
-                                           endpoint_type_none),
-                      static_cast<own_t *> (session), newpipe);
-
-        return 0;
+        // UDP is not supported (draft API removed)
+        errno = ENOCOMPATPROTO;
+        return -1;
     }
 
     //  Remaining transports require to be run in an I/O thread, so at this
@@ -645,35 +552,6 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         options.connected = true;
         return 0;
     }
-
-#ifdef ZMQ_HAVE_WS
-#ifdef ZMQ_HAVE_WSS
-    if (protocol == protocol_name::ws || protocol == protocol_name::wss) {
-        ws_listener_t *listener = new (std::nothrow) ws_listener_t (
-          io_thread, this, options, protocol == protocol_name::wss);
-#else
-    if (protocol == protocol_name::ws) {
-        ws_listener_t *listener =
-          new (std::nothrow) ws_listener_t (io_thread, this, options, false);
-#endif
-        alloc_assert (listener);
-        rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZMQ_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zmq_errno ());
-            return -1;
-        }
-
-        // Save last endpoint URI
-        listener->get_local_address (_last_endpoint);
-
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        return 0;
-    }
-#endif
 
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc) {
@@ -816,13 +694,6 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             //  the peer doesn't expect it.
             send_routing_id (new_pipes[0], options);
 
-#ifdef ZMQ_BUILD_DRAFT_API
-            //  If set, send the hello msg of the local socket to the peer.
-            if (options.can_send_hello_msg && options.hello_msg.size () > 0) {
-                send_hello_msg (new_pipes[0], options);
-            }
-#endif
-
             const endpoint_t endpoint = {this, options};
             pend_connection (std::string (endpoint_uri_), endpoint, new_pipes);
         } else {
@@ -835,23 +706,6 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
             if (options.recv_routing_id) {
                 send_routing_id (new_pipes[1], peer.options);
             }
-
-#ifdef ZMQ_BUILD_DRAFT_API
-            //  If set, send the hello msg of the local socket to the peer.
-            if (options.can_send_hello_msg && options.hello_msg.size () > 0) {
-                send_hello_msg (new_pipes[0], options);
-            }
-
-            //  If set, send the hello msg of the peer to the local socket.
-            if (peer.options.can_send_hello_msg
-                && peer.options.hello_msg.size () > 0) {
-                send_hello_msg (new_pipes[1], peer.options);
-            }
-
-            if (peer.options.can_recv_disconnect_msg
-                && peer.options.disconnect_msg.size () > 0)
-                new_pipes[0]->set_disconnect_msg (peer.options.disconnect_msg);
-#endif
 
             //  Attach remote end of the pipe to the peer socket. Note that peer's
             //  seqnum was incremented in find_endpoint function. We don't need it
@@ -976,20 +830,10 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
 #endif
 
     if (protocol == protocol_name::udp) {
-        if (options.type != ZMQ_RADIO) {
-            errno = ENOCOMPATPROTO;
-            LIBZMQ_DELETE (paddr);
-            return -1;
-        }
-
-        paddr->resolved.udp_addr = new (std::nothrow) udp_address_t ();
-        alloc_assert (paddr->resolved.udp_addr);
-        rc = paddr->resolved.udp_addr->resolve (address.c_str (), false,
-                                                options.ipv6);
-        if (rc != 0) {
-            LIBZMQ_DELETE (paddr);
-            return -1;
-        }
+        // UDP is not supported (draft API removed)
+        errno = ENOCOMPATPROTO;
+        LIBZMQ_DELETE (paddr);
+        return -1;
     }
 
     // TBD - Should we check address for ZMQ_HAVE_NORM???
@@ -1051,16 +895,14 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
 #if defined ZMQ_HAVE_OPENPGM && defined ZMQ_HAVE_NORM
     const bool subscribe_to_all =
       protocol == protocol_name::pgm || protocol == protocol_name::epgm
-      || protocol == protocol_name::norm || protocol == protocol_name::udp;
+      || protocol == protocol_name::norm;
 #elif defined ZMQ_HAVE_OPENPGM
     const bool subscribe_to_all = protocol == protocol_name::pgm
-                                  || protocol == protocol_name::epgm
-                                  || protocol == protocol_name::udp;
+                                  || protocol == protocol_name::epgm;
 #elif defined ZMQ_HAVE_NORM
-    const bool subscribe_to_all =
-      protocol == protocol_name::norm || protocol == protocol_name::udp;
+    const bool subscribe_to_all = protocol == protocol_name::norm;
 #else
-    const bool subscribe_to_all = protocol == protocol_name::udp;
+    const bool subscribe_to_all = false;
 #endif
     pipe_t *newpipe = NULL;
 
@@ -1193,10 +1035,6 @@ int zmq::socket_base_t::term_endpoint (const char *endpoint_uri_)
         term_child (it->second.first);
     }
     _endpoints.erase (range.first, range.second);
-
-    if (options.reconnect_stop & ZMQ_RECONNECT_STOP_AFTER_DISCONNECT) {
-        _disconnected = true;
-    }
 
     return 0;
 }

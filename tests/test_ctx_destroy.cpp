@@ -194,11 +194,7 @@ void test_poller_exists_with_socket_on_zmq_ctx_term (const int socket_type_)
 
 void test_poller_exists_with_socket_on_zmq_ctx_term_thread_safe_socket ()
 {
-#ifdef ZMQ_BUILD_DRAFT_API
-    test_poller_exists_with_socket_on_zmq_ctx_term (ZMQ_CLIENT);
-#else
     TEST_IGNORE_MESSAGE ("libzmq without DRAFT support, ignoring test");
-#endif
 }
 
 void test_poller_exists_with_socket_on_zmq_ctx_term_non_thread_safe_socket ()

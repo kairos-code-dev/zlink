@@ -29,9 +29,6 @@
 // 0MQ definitions and exported functions
 #include "../include/zmq.h"
 
-// 0MQ DRAFT definitions and exported functions
-#include "zmq_draft.h"
-
 // TODO: expand pch implementation to non-windows builds.
 #ifdef _MSC_VER
 

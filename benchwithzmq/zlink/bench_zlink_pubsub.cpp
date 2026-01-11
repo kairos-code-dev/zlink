@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
-    int count = (size <= 1024) ? 100000 : 2000;
+    int count = (size <= 1024) ? 200000 : 20000;
     run_pubsub(transport, size, count, lib_name);
     return 0;
 }

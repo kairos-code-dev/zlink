@@ -224,6 +224,15 @@ else
     exit 1
 fi
 
+# Copy public headers
+echo ""
+echo "Copying public headers..."
+INCLUDE_DIR="$REPO_ROOT/$OUTPUT_DIR/include"
+mkdir -p "$INCLUDE_DIR"
+cp install/include/zmq.h "$INCLUDE_DIR/"
+cp install/include/zmq_utils.h "$INCLUDE_DIR/"
+echo "Copied: zmq.h, zmq_utils.h -> $INCLUDE_DIR/"
+
 cd "$REPO_ROOT"
 
 # Step 6: Verify build

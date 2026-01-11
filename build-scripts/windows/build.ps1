@@ -232,6 +232,15 @@ try {
         if ($CopiedCount -eq 0) {
             Write-Host "Note: No VC++ runtime DLLs copied. Using static MSVC runtime (/MT)."
         }
+
+        # Copy public headers
+        Write-Host ""
+        Write-Host "Copying public headers..."
+        $IncludeDir = "..\..\$OutputDir\include"
+        New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
+        Copy-Item "install\include\zmq.h" $IncludeDir
+        Copy-Item "install\include\zmq_utils.h" $IncludeDir
+        Write-Host "Copied: zmq.h, zmq_utils.h -> $IncludeDir"
     } else {
         throw "libzmq.dll not found!"
     }

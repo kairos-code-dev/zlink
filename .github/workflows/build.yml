@@ -389,7 +389,7 @@ jobs:
         run: |
           echo "=== SHA256 Checksums ==="
           cd artifacts
-          find . -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" -o -name "*.a" -o -name "*.lib" \) -exec sha256sum {} \; | tee checksums.txt
+          find . -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" -o -name "*.a" -o -name "*.lib" -o -name "*.h" \) -exec sha256sum {} \; | tee checksums.txt
 
       - name: Build summary
         run: |
@@ -461,6 +461,7 @@ jobs:
             - **libzmq**: ${{ needs.read-versions.outputs.libzmq_version }}
             - **libsodium**: ${{ needs.read-versions.outputs.libsodium_version }} (statically linked)
             - **CURVE encryption**: Enabled
+            - **Headers included**: `zmq.h`, `zmq_utils.h`
 
             ### Downloads
             | Platform | File |
@@ -471,6 +472,11 @@ jobs:
             | Linux ARM64 | `libzmq-linux-arm64.zip` |
             | macOS x64 (Intel) | `libzmq-macos-x64.zip` |
             | macOS ARM64 (Apple Silicon) | `libzmq-macos-arm64.zip` |
+
+            ### Package Contents
+            Each archive contains:
+            - Native library (`.dll`/`.so`/`.dylib`)
+            - Public headers (`include/zmq.h`, `include/zmq_utils.h`)
 
             ### Verification
             All builds have been tested with:

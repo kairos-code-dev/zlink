@@ -2,6 +2,53 @@
 
 **Note**: These benchmarks were conducted in a WSL (Windows Subsystem for Linux) environment. While absolute numbers may differ from native Linux, the relative performance comparison between libzmq and zlink remains valid.
 
+---
+
+## Benchmark Variance Analysis
+
+To validate the reliability of these benchmarks, we tested **libzmq vs libzmq** (same library, same binary) to measure inherent measurement variance.
+
+### Variance by Iteration Count
+
+| Iterations | Observed Variance |
+|------------|-------------------|
+| 2 runs | ±60% (unreliable) |
+| 10 runs | ±5% (small/medium messages), ±20% (large messages) |
+
+### Variance by Message Size (10 iterations, libzmq vs libzmq)
+
+| Message Size | Throughput Variance | Notes |
+|--------------|---------------------|-------|
+| 64B ~ 1KB | ±3~5% | Stable, reliable comparison |
+| 64KB+ | ±15~20% | High variance due to system factors |
+
+### Raw Data Example (131KB inproc, 20 consecutive runs)
+
+```
+Min: 71,560 msg/s
+Max: 85,414 msg/s
+Variance: 19.4%
+```
+
+### Interpretation Guidelines
+
+| Observed Difference | Interpretation |
+|---------------------|----------------|
+| < 5% | Within measurement noise - **no real difference** |
+| 5% ~ 15% | Possible difference, needs verification |
+| > 20% | Likely a real performance difference |
+
+### Conclusion
+
+**zlink and libzmq have equivalent performance.** Most observed differences fall within the ±5% measurement variance of the benchmark itself. The WSL2 virtualization layer adds additional variance compared to native Linux.
+
+For more accurate measurements, consider:
+- Running on native Linux (not WSL2)
+- Using CPU pinning (`taskset`)
+- Setting CPU governor to `performance` mode
+- Increasing iteration count to 50+
+
+---
 
 ## PATTERN: PAIR
   [libzmq] Using cached baseline.

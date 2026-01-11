@@ -18,6 +18,17 @@ if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "arm64" ]; then
     exit 1
 fi
 
+# Detect if cross-compiling
+CURRENT_ARCH=$(uname -m)
+if [ "$ARCH" != "$CURRENT_ARCH" ]; then
+    IS_CROSS_COMPILE="ON"
+    BUILD_TESTS="OFF"
+    echo "Cross-compiling from $CURRENT_ARCH to $ARCH (tests disabled)"
+else
+    IS_CROSS_COMPILE="OFF"
+    BUILD_TESTS="ON"
+fi
+
 BUILD_DIR="$PROJECT_ROOT/build/macos-${ARCH}"
 OUTPUT_DIR="$PROJECT_ROOT/dist/macos-${ARCH}"
 
@@ -46,7 +57,7 @@ cmake "$PROJECT_ROOT" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DBUILD_SHARED=ON \
     -DBUILD_STATIC=OFF \
-    -DBUILD_TESTS=ON \
+    -DBUILD_TESTS="$BUILD_TESTS" \
     -DWITH_DOCS=OFF \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_MACOSX_RPATH=ON

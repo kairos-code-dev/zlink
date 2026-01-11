@@ -141,8 +141,9 @@ jobs:
 
       - name: Verify build
         run: |
-          echo "Verifying x86_64 build..."
+          echo "Verifying x86_64 build (cross-compiled, tests skipped)..."
           file dist/macos-x86_64/libzmq.dylib
+          lipo -info dist/macos-x86_64/libzmq.dylib
           ls -la dist/macos-x86_64/
 
       - name: Upload artifacts

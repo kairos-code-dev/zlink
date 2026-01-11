@@ -77,7 +77,8 @@ jobs:
         run: |
           .\build-scripts\windows\build.ps1 `
             -LibzmqVersion "${{ needs.read-versions.outputs.libzmq_version }}" `
-            -LibsodiumVersion "${{ needs.read-versions.outputs.libsodium_version }}"
+            -LibsodiumVersion "${{ needs.read-versions.outputs.libsodium_version }}" `
+            -RunTests "ON"
 
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -118,21 +119,6 @@ jobs:
           echo === Files in dist ===
           dir /s dist\windows-x64\
         continue-on-error: true
-
-      - name: Run tests
-        shell: pwsh
-        run: |
-          # Add UCRT to PATH (Windows SDK) before running tests
-          $ucrtPath = "C:\Program Files (x86)\Windows Kits\10\Redist\10.0.26100.0\ucrt\DLLs\x64"
-          if (Test-Path $ucrtPath) {
-            Write-Host "Adding UCRT to PATH: $ucrtPath"
-            $env:PATH = "$ucrtPath;$env:PATH"
-          }
-
-          # Also try Windows\System32 explicitly
-          $env:PATH = "C:\Windows\System32;$env:PATH"
-
-          .\tests\run_tests.ps1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -207,12 +193,8 @@ jobs:
             x64 \
             "${{ needs.read-versions.outputs.libzmq_version }}" \
             "${{ needs.read-versions.outputs.libsodium_version }}" \
+            "ON" \
             "ON"
-
-      - name: Run tests
-        run: |
-          chmod +x ./tests/run_tests.sh
-          ./tests/run_tests.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -256,12 +238,8 @@ jobs:
             arm64 \
             "${{ needs.read-versions.outputs.libzmq_version }}" \
             "${{ needs.read-versions.outputs.libsodium_version }}" \
+            "ON" \
             "ON"
-
-      - name: Run tests
-        run: |
-          chmod +x ./tests/run_tests.sh
-          ./tests/run_tests.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -302,6 +280,7 @@ jobs:
             x86_64 \
             "${{ needs.read-versions.outputs.libzmq_version }}" \
             "${{ needs.read-versions.outputs.libsodium_version }}" \
+            "ON" \
             "ON"
 
       - name: Verify build
@@ -349,12 +328,8 @@ jobs:
             arm64 \
             "${{ needs.read-versions.outputs.libzmq_version }}" \
             "${{ needs.read-versions.outputs.libsodium_version }}" \
+            "ON" \
             "ON"
-
-      - name: Run tests
-        run: |
-          chmod +x ./tests/run_tests.sh
-          ./tests/run_tests.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

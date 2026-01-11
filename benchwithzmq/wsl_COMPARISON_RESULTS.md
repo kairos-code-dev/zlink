@@ -1,3 +1,7 @@
+# Benchmark Results (WSL Environment)
+
+**Note**: These benchmarks were conducted in a WSL (Windows Subsystem for Linux) environment. While absolute numbers may differ from native Linux, the relative performance comparison between libzmq and zlink remains valid.
+
 
 ## PATTERN: PAIR
   [libzmq] Using cached baseline.

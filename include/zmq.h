@@ -220,7 +220,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_ROUTER 6
 #define ZMQ_XPUB 9
 #define ZMQ_XSUB 10
-#define ZMQ_STREAM 11
 
 #define ZMQ_AFFINITY 4
 #define ZMQ_ROUTING_ID 5
@@ -252,7 +251,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_TCP_KEEPALIVE_INTVL 37
 #define ZMQ_IMMEDIATE 39
 #define ZMQ_XPUB_VERBOSE 40
-#define ZMQ_ROUTER_RAW 41
 #define ZMQ_IPV6 42
 #define ZMQ_MECHANISM 43
 #define ZMQ_PLAIN_SERVER 44
@@ -269,12 +267,10 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_GSSAPI_SERVICE_PRINCIPAL 64
 #define ZMQ_GSSAPI_PLAINTEXT 65
 #define ZMQ_HANDSHAKE_IVL 66
-#define ZMQ_SOCKS_PROXY 68
 #define ZMQ_XPUB_NODROP 69
 #define ZMQ_BLOCKY 70
 #define ZMQ_XPUB_MANUAL 71
 #define ZMQ_XPUB_WELCOME_MSG 72
-#define ZMQ_STREAM_NOTIFY 73
 #define ZMQ_INVERT_MATCHING 74
 #define ZMQ_HEARTBEAT_IVL 75
 #define ZMQ_HEARTBEAT_TTL 76
@@ -284,10 +280,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_TCP_MAXRT 80
 #define ZMQ_THREAD_SAFE 81
 #define ZMQ_MULTICAST_MAXTPDU 84
-#define ZMQ_VMCI_BUFFER_SIZE 85
-#define ZMQ_VMCI_BUFFER_MIN_SIZE 86
-#define ZMQ_VMCI_BUFFER_MAX_SIZE 87
-#define ZMQ_VMCI_CONNECT_TIMEOUT 88
 #define ZMQ_USE_FD 89
 #define ZMQ_GSSAPI_PRINCIPAL_NAMETYPE 90
 #define ZMQ_GSSAPI_SERVICE_PRINCIPAL_NAMETYPE 91

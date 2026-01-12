@@ -12,6 +12,8 @@ const char *x_routing_id = "X";
 const char *y_routing_id = "Y";
 const char *z_routing_id = "Z";
 
+// ZMQ_STREAM has been removed from zlink
+/*
 void test_stream_2_stream ()
 {
     char buff[256];
@@ -40,11 +42,11 @@ void test_stream_2_stream ()
                                                strlen (rconn1routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (rconn1, my_endpoint));
 
-    /*  Uncomment to test assert on duplicate routing id.
+    //  Uncomment to test assert on duplicate routing id.
     //  Test duplicate connect attempt.
     TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (rconn1, ZMQ_CONNECT_ROUTING_ID, rconn1routing_id, strlen(rconn1routing_id)));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (rconn1, bindip));
-*/
+
     //  Send data to the bound stream.
     send_string_expect_success (rconn1, rconn1routing_id, ZMQ_SNDMORE);
     send_string_expect_success (rconn1, msg, 0);
@@ -60,6 +62,7 @@ void test_stream_2_stream ()
     test_context_socket_close (rbind);
     test_context_socket_close (rconn1);
 }
+*/
 
 void test_router_2_router (bool named_)
 {
@@ -217,7 +220,7 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_stream_2_stream);
+    // RUN_TEST (test_stream_2_stream); // ZMQ_STREAM removed from zlink
     RUN_TEST (test_router_2_router_unnamed);
     RUN_TEST (test_router_2_router_named);
     RUN_TEST (test_router_2_router_while_receiving);

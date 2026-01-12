@@ -25,14 +25,12 @@
 #include "plain_server.hpp"
 #include "gssapi_client.hpp"
 #include "gssapi_server.hpp"
-#include "raw_decoder.hpp"
 
 //  Draft API message property names (kept for internal use)
 #define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
 #define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
 #define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
 #define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
-#include "raw_encoder.hpp"
 #include "config.hpp"
 #include "err.hpp"
 #include "ip.hpp"

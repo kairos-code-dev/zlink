@@ -79,8 +79,6 @@ const char *zmq::mechanism_t::socket_type_string (int socket_type_)
             return socket_type_xpub;
         case ZMQ_XSUB:
             return socket_type_xsub;
-        case ZMQ_STREAM:
-            return socket_type_stream;
         default:
             zmq_assert (false);
             return NULL;

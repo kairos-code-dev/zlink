@@ -57,11 +57,6 @@ struct iovec
 #include <sys/select.h>
 #endif
 
-#if defined ZMQ_HAVE_OPENPGM
-#define __PGM_WININT_H__
-#include <pgm/pgm.h>
-#endif
-
 //  Compile time check whether msg_t fits into zmq_msg_t.
 typedef char
   check_msg_t_size[sizeof (zmq::msg_t) == sizeof (zmq_msg_t) ? 1 : -1];
@@ -603,24 +598,8 @@ int zmq_has (const char *capability_)
     if (strcmp (capability_, zmq::protocol_name::ipc) == 0)
         return true;
 #endif
-#if defined(ZMQ_HAVE_OPENPGM)
-    if (strcmp (capability_, zmq::protocol_name::pgm) == 0)
-        return true;
-#endif
-#if defined(ZMQ_HAVE_TIPC)
-    if (strcmp (capability_, zmq::protocol_name::tipc) == 0)
-        return true;
-#endif
-#if defined(ZMQ_HAVE_NORM)
-    if (strcmp (capability_, zmq::protocol_name::norm) == 0)
-        return true;
-#endif
 #if defined(HAVE_LIBGSSAPI_KRB5)
     if (strcmp (capability_, "gssapi") == 0)
-        return true;
-#endif
-#if defined(ZMQ_HAVE_VMCI)
-    if (strcmp (capability_, zmq::protocol_name::vmci) == 0)
         return true;
 #endif
     return false;

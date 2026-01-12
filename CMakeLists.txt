@@ -913,15 +913,11 @@ set(cxx-sources
     metadata.cpp
     msg.cpp
     mtrie.cpp
-    norm_engine.cpp
     object.cpp
     options.cpp
     own.cpp
     null_mechanism.cpp
     pair.cpp
-    pgm_receiver.cpp
-    pgm_sender.cpp
-    pgm_socket.cpp
     pipe.cpp
     plain_client.cpp
     plain_server.cpp
@@ -932,18 +928,12 @@ set(cxx-sources
     proxy.cpp
     pub.cpp
     random.cpp
-    raw_encoder.cpp
-    raw_decoder.cpp
-    raw_engine.cpp
     reaper.cpp
     router.cpp
     select.cpp
     session_base.cpp
     signaler.cpp
     socket_base.cpp
-    socks.cpp
-    socks_connecter.cpp
-    stream.cpp
     stream_engine_base.cpp
     sub.cpp
     tcp.cpp
@@ -966,8 +956,6 @@ set(cxx-sources
     socket_poller.cpp
     timers.cpp
     config.hpp
-    udp_engine.cpp
-    udp_address.cpp
     ip_resolver.cpp
     zap_client.cpp
     zmtp_engine.cpp
@@ -1023,15 +1011,11 @@ set(cxx-sources
     msg.hpp
     mtrie.hpp
     mutex.hpp
-    norm_engine.hpp
     null_mechanism.hpp
     object.hpp
     options.hpp
     own.hpp
     pair.hpp
-    pgm_receiver.hpp
-    pgm_sender.hpp
-    pgm_socket.hpp
     pipe.hpp
     plain_client.hpp
     plain_common.hpp
@@ -1045,9 +1029,6 @@ set(cxx-sources
     proxy.hpp
     pub.hpp
     random.hpp
-    raw_decoder.hpp
-    raw_encoder.hpp
-    raw_engine.hpp
     reaper.hpp
     router.hpp
     secure_allocator.hpp
@@ -1056,10 +1037,7 @@ set(cxx-sources
     signaler.hpp
     socket_base.hpp
     socket_poller.hpp
-    socks.hpp
-    socks_connecter.hpp
     stdint.hpp
-    stream.hpp
     stream_engine_base.hpp
     stream_connecter_base.hpp
     stream_connecter_base.cpp
@@ -1072,22 +1050,13 @@ set(cxx-sources
     tcp_listener.hpp
     thread.hpp
     timers.hpp
-    tipc_address.hpp
-    tipc_connecter.hpp
-    tipc_listener.hpp
     trie.hpp
-    udp_address.hpp
-    udp_engine.hpp
     v1_decoder.hpp
     v1_encoder.hpp
     v2_decoder.hpp
     v2_encoder.hpp
     v3_1_encoder.hpp
     v2_protocol.hpp
-    vmci.hpp
-    vmci_address.hpp
-    vmci_connecter.hpp
-    vmci_listener.hpp
     windows.hpp
     wire.hpp
     xpub.hpp

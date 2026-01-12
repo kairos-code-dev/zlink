@@ -6,13 +6,7 @@
 #include "ctx.hpp"
 #include "err.hpp"
 #include "tcp_address.hpp"
-#include "udp_address.hpp"
 #include "ipc_address.hpp"
-#include "tipc_address.hpp"
-
-#if defined ZMQ_HAVE_VMCI
-#include "vmci_address.hpp"
-#endif
 
 #include <string>
 #include <sstream>
@@ -29,22 +23,10 @@ zmq::address_t::~address_t ()
 {
     if (protocol == protocol_name::tcp) {
         LIBZMQ_DELETE (resolved.tcp_addr);
-    } else if (protocol == protocol_name::udp) {
-        LIBZMQ_DELETE (resolved.udp_addr);
     }
 #if defined ZMQ_HAVE_IPC
     else if (protocol == protocol_name::ipc) {
         LIBZMQ_DELETE (resolved.ipc_addr);
-    }
-#endif
-#if defined ZMQ_HAVE_TIPC
-    else if (protocol == protocol_name::tipc) {
-        LIBZMQ_DELETE (resolved.tipc_addr);
-    }
-#endif
-#if defined ZMQ_HAVE_VMCI
-    else if (protocol == protocol_name::vmci) {
-        LIBZMQ_DELETE (resolved.vmci_addr);
     }
 #endif
 }
@@ -53,19 +35,9 @@ int zmq::address_t::to_string (std::string &addr_) const
 {
     if (protocol == protocol_name::tcp && resolved.tcp_addr)
         return resolved.tcp_addr->to_string (addr_);
-    if (protocol == protocol_name::udp && resolved.udp_addr)
-        return resolved.udp_addr->to_string (addr_);
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc && resolved.ipc_addr)
         return resolved.ipc_addr->to_string (addr_);
-#endif
-#if defined ZMQ_HAVE_TIPC
-    if (protocol == protocol_name::tipc && resolved.tipc_addr)
-        return resolved.tipc_addr->to_string (addr_);
-#endif
-#if defined ZMQ_HAVE_VMCI
-    if (protocol == protocol_name::vmci && resolved.vmci_addr)
-        return resolved.vmci_addr->to_string (addr_);
 #endif
 
     if (!protocol.empty () && !address.empty ()) {

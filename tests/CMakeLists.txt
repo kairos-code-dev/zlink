@@ -18,9 +18,6 @@ set(tests
   test_last_endpoint
   test_router_mandatory
   test_probe_router
-  test_stream
-  test_stream_empty
-  test_stream_disconnect
   test_disconnect_inproc
   test_ctx_options
   test_ctx_destroy
@@ -37,7 +34,6 @@ set(tests
   test_bind_src_address
   test_capabilities
   test_router_handover
-  test_stream_timeout
   test_xpub_manual
   test_xpub_topic
   test_xpub_welcome_msg
@@ -77,7 +73,6 @@ if(NOT WIN32)
     tests
     test_proxy
     test_getsockopt_memset
-    test_stream_exceeds_buffer
     test_router_mandatory_hwm)
 
   if(CMAKE_SYSTEM_NAME MATCHES "Linux")

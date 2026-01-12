@@ -27,7 +27,6 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
 {
     options.type = ZMQ_ROUTER;
     options.recv_routing_id = true;
-    options.raw_socket = false;
     options.can_send_hello_msg = true;
     options.can_recv_disconnect_msg = true;
 
@@ -82,17 +81,6 @@ int zmq::router_t::xsetsockopt (int option_,
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZMQ_ROUTER_RAW:
-            if (is_int && value >= 0) {
-                _raw_socket = (value != 0);
-                if (_raw_socket) {
-                    options.recv_routing_id = false;
-                    options.raw_socket = true;
-                }
-                return 0;
-            }
-            break;
-
         case ZMQ_ROUTER_MANDATORY:
             if (is_int && value >= 0) {
                 _mandatory = (value != 0);
@@ -200,10 +188,6 @@ int zmq::router_t::xsend (msg_t *msg_)
         errno_assert (rc == 0);
         return 0;
     }
-
-    //  Ignore the MORE flag for raw-sock or assert?
-    if (options.raw_socket)
-        msg_->reset_flags (msg_t::more);
 
     //  Check whether this is the last part of the message.
     _more_out = (msg_->flags () & msg_t::more) != 0;
@@ -426,14 +410,7 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
           connect_routing_id.length ());
         //  Not allowed to duplicate an existing rid
         zmq_assert (!has_out_pipe (routing_id));
-    } else if (
-      options
-        .raw_socket) { //  Always assign an integral routing id for raw-socket
-        unsigned char buf[5];
-        buf[0] = 0;
-        put_uint32 (buf + 1, _next_integral_routing_id++);
-        routing_id.set (buf, sizeof buf);
-    } else if (!options.raw_socket) {
+    } else {
         //  Pick up handshake cases and also case where next integral routing id is set
         msg.init ();
         const bool ok = pipe_->read (&msg);

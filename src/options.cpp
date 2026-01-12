@@ -164,8 +164,6 @@ zmq::options_t::options_t () :
     filter (false),
     invert_matching (false),
     recv_routing_id (false),
-    raw_socket (false),
-    raw_notify (true),
     tcp_keepalive (-1),
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
@@ -338,10 +336,6 @@ int zmq::options_t::setsockopt (int option_,
         case ZMQ_IPV6:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &ipv6);
-
-        case ZMQ_SOCKS_PROXY:
-            return do_setsockopt_string_allow_empty_strict (
-              optval_, optvallen_, &socks_proxy_address, SIZE_MAX);
 
         case ZMQ_TCP_KEEPALIVE:
             if (is_int && (value == -1 || value == 0 || value == 1)) {
@@ -640,9 +634,6 @@ int zmq::options_t::getsockopt (int option_,
                 return 0;
             }
             break;
-
-        case ZMQ_SOCKS_PROXY:
-            return do_getsockopt (optval_, optvallen_, socks_proxy_address);
 
         case ZMQ_TCP_KEEPALIVE:
             if (is_int) {

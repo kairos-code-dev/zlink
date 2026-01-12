@@ -9,14 +9,7 @@
 #include "likely.hpp"
 #include "tcp_connecter.hpp"
 #include "ipc_connecter.hpp"
-#include "tipc_connecter.hpp"
-#include "socks_connecter.hpp"
-#include "vmci_connecter.hpp"
-#include "pgm_sender.hpp"
-#include "pgm_receiver.hpp"
 #include "address.hpp"
-#include "norm_engine.hpp"
-#include "udp_engine.hpp"
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_connecter.hpp"
@@ -42,7 +35,6 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
         case ZMQ_SUB:
         case ZMQ_XSUB:
         case ZMQ_PAIR:
-        case ZMQ_STREAM:
             s = new (std::nothrow)
               session_base_t (io_thread_, active_, socket_, options_, addr_);
             break;
@@ -225,13 +217,7 @@ void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
         // Remove the pipe from the detached pipes set
         _terminating_pipes.erase (pipe_);
 
-    if (!is_terminating () && options.raw_socket) {
-        if (_engine) {
-            _engine->terminate ();
-            _engine = NULL;
-        }
-        terminate ();
-    }
+    // raw_socket has been removed
 
     //  If we are waiting for pending messages to be sent, at this point
     //  we are sure that there will be no more messages and we can proceed
@@ -519,7 +505,7 @@ void zmq::session_base_t::reconnect ()
 #ifdef ZMQ_HAVE_NORM
         && _addr->protocol != protocol_name::norm
 #endif
-        && _addr->protocol != protocol_name::udp) {
+        ) {
         _pipe->hiccup ();
         _pipe->terminate (false);
         _terminating_pipes.insert (_pipe);
@@ -561,41 +547,19 @@ void zmq::session_base_t::start_connecting (bool wait_)
     //  Create the connecter object.
     own_t *connecter = NULL;
     if (_addr->protocol == protocol_name::tcp) {
-        if (!options.socks_proxy_address.empty ()) {
-            address_t *proxy_address = new (std::nothrow)
-              address_t (protocol_name::tcp, options.socks_proxy_address,
-                         this->get_ctx ());
-            alloc_assert (proxy_address);
-            connecter = new (std::nothrow) socks_connecter_t (
-              io_thread, this, options, _addr, proxy_address, wait_);
-            alloc_assert (connecter);
-        } else {
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
-            //  Phase 1-B: Use ASIO-based connecter for async_connect
-            connecter = new (std::nothrow)
-              asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
+        //  Phase 1-B: Use ASIO-based connecter for async_connect
+        connecter = new (std::nothrow)
+          asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
 #else
-            connecter = new (std::nothrow)
-              tcp_connecter_t (io_thread, this, options, _addr, wait_);
+        connecter = new (std::nothrow)
+          tcp_connecter_t (io_thread, this, options, _addr, wait_);
 #endif
-        }
     }
 #if defined ZMQ_HAVE_IPC
     else if (_addr->protocol == protocol_name::ipc) {
         connecter = new (std::nothrow)
           ipc_connecter_t (io_thread, this, options, _addr, wait_);
-    }
-#endif
-#if defined ZMQ_HAVE_TIPC
-    else if (_addr->protocol == protocol_name::tipc) {
-        connecter = new (std::nothrow)
-          tipc_connecter_t (io_thread, this, options, _addr, wait_);
-    }
-#endif
-#if defined ZMQ_HAVE_VMCI
-    else if (_addr->protocol == protocol_name::vmci) {
-        connecter = new (std::nothrow)
-          vmci_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
@@ -610,78 +574,6 @@ void zmq::session_base_t::start_connecting (bool wait_)
         launch_child (connecter);
         return;
     }
-
-#ifdef ZMQ_HAVE_OPENPGM
-
-    //  Both PGM and EPGM transports are using the same infrastructure.
-    if (_addr->protocol == "pgm" || _addr->protocol == "epgm") {
-        zmq_assert (options.type == ZMQ_PUB || options.type == ZMQ_XPUB
-                    || options.type == ZMQ_SUB || options.type == ZMQ_XSUB);
-
-        //  For EPGM transport with UDP encapsulation of PGM is used.
-        bool const udp_encapsulation = _addr->protocol == "epgm";
-
-        //  At this point we'll create message pipes to the session straight
-        //  away. There's no point in delaying it as no concept of 'connect'
-        //  exists with PGM anyway.
-        if (options.type == ZMQ_PUB || options.type == ZMQ_XPUB) {
-            //  PGM sender.
-            pgm_sender_t *pgm_sender =
-              new (std::nothrow) pgm_sender_t (io_thread, options);
-            alloc_assert (pgm_sender);
-
-            int rc =
-              pgm_sender->init (udp_encapsulation, _addr->address.c_str ());
-            errno_assert (rc == 0);
-
-            send_attach (this, pgm_sender);
-        } else {
-            //  PGM receiver.
-            pgm_receiver_t *pgm_receiver =
-              new (std::nothrow) pgm_receiver_t (io_thread, options);
-            alloc_assert (pgm_receiver);
-
-            int rc =
-              pgm_receiver->init (udp_encapsulation, _addr->address.c_str ());
-            errno_assert (rc == 0);
-
-            send_attach (this, pgm_receiver);
-        }
-
-        return;
-    }
-#endif
-
-#ifdef ZMQ_HAVE_NORM
-    if (_addr->protocol == "norm") {
-        //  At this point we'll create message pipes to the session straight
-        //  away. There's no point in delaying it as no concept of 'connect'
-        //  exists with NORM anyway.
-        if (options.type == ZMQ_PUB || options.type == ZMQ_XPUB) {
-            //  NORM sender.
-            norm_engine_t *norm_sender =
-              new (std::nothrow) norm_engine_t (io_thread, options);
-            alloc_assert (norm_sender);
-
-            int rc = norm_sender->init (_addr->address.c_str (), true, false);
-            errno_assert (rc == 0);
-
-            send_attach (this, norm_sender);
-        } else { // ZMQ_SUB or ZMQ_XSUB
-
-            //  NORM receiver.
-            norm_engine_t *norm_receiver =
-              new (std::nothrow) norm_engine_t (io_thread, options);
-            alloc_assert (norm_receiver);
-
-            int rc = norm_receiver->init (_addr->address.c_str (), false, true);
-            errno_assert (rc == 0);
-
-            send_attach (this, norm_receiver);
-        }
-        return;
-    }
-#endif // ZMQ_HAVE_NORM
 
     zmq_assert (false);
 }

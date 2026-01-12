@@ -119,13 +119,6 @@ struct options_t
     //  If true, the routing id message is forwarded to the socket.
     bool recv_routing_id;
 
-    // if true, router socket accepts non-zmq tcp connections
-    bool raw_socket;
-    bool raw_notify; //  Provide connect notifications
-
-    //  Address of SOCKS proxy
-    std::string socks_proxy_address;
-
     //  TCP keep-alive settings.
     //  Defaults to -1 = do not change socket options
     int tcp_keepalive;
@@ -195,13 +188,6 @@ struct options_t
     int heartbeat_interval;
     //  Time in milliseconds to wait for a PING response before disconnecting
     int heartbeat_timeout;
-
-#if defined ZMQ_HAVE_VMCI
-    uint64_t vmci_buffer_size;
-    uint64_t vmci_buffer_min_size;
-    uint64_t vmci_buffer_max_size;
-    int vmci_connect_timeout;
-#endif
 
     //  When creating a new ZMQ socket, if this option is set the value
     //  will be used as the File Descriptor instead of allocating a new

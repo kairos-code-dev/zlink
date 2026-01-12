@@ -24,7 +24,6 @@
 #include "socket_base.hpp"
 #include "tcp_listener.hpp"
 #include "ipc_listener.hpp"
-#include "tipc_listener.hpp"
 #include "tcp_connecter.hpp"
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
@@ -45,21 +44,11 @@
 #include "address.hpp"
 #include "ipc_address.hpp"
 #include "tcp_address.hpp"
-#include "udp_address.hpp"
-#include "tipc_address.hpp"
 #include "mailbox.hpp"
 #include "mailbox_safe.hpp"
 
 #ifdef ZMQ_HAVE_WSS
 #include "wss_address.hpp"
-#endif
-#if defined ZMQ_HAVE_VMCI
-#include "vmci_address.hpp"
-#include "vmci_listener.hpp"
-#endif
-
-#ifdef ZMQ_HAVE_OPENPGM
-#include "pgm_socket.hpp"
 #endif
 
 #include "pair.hpp"
@@ -69,7 +58,6 @@
 #include "router.hpp"
 #include "xpub.hpp"
 #include "xsub.hpp"
-#include "stream.hpp"
 
 void zmq::socket_base_t::inprocs_t::emplace (const char *endpoint_uri_,
                                              pipe_t *pipe_)
@@ -142,9 +130,6 @@ zmq::socket_base_t *zmq::socket_base_t::create (int type_,
             break;
         case ZMQ_XSUB:
             s = new (std::nothrow) xsub_t (parent_, tid_, sid_);
-            break;
-        case ZMQ_STREAM:
-            s = new (std::nothrow) stream_t (parent_, tid_, sid_);
             break;
         default:
             errno = EINVAL;
@@ -279,48 +264,8 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
 #ifdef ZMQ_HAVE_WSS
         && protocol_ != protocol_name::wss
 #endif
-#if defined ZMQ_HAVE_OPENPGM
-        //  pgm/epgm transports only available if 0MQ is compiled with OpenPGM.
-        && protocol_ != protocol_name::pgm
-        && protocol_ != protocol_name::epgm
-#endif
-#if defined ZMQ_HAVE_TIPC
-        // TIPC transport is only available on Linux.
-        && protocol_ != protocol_name::tipc
-#endif
-#if defined ZMQ_HAVE_NORM
-        && protocol_ != protocol_name::norm
-#endif
-#if defined ZMQ_HAVE_VMCI
-        && protocol_ != protocol_name::vmci
-#endif
-        && protocol_ != protocol_name::udp) {
+    ) {
         errno = EPROTONOSUPPORT;
-        return -1;
-    }
-
-    //  Check whether socket type and transport protocol match.
-    //  Specifically, multicast protocols can't be combined with
-    //  bi-directional messaging patterns (socket types).
-#if defined ZMQ_HAVE_OPENPGM || defined ZMQ_HAVE_NORM
-#if defined ZMQ_HAVE_OPENPGM && defined ZMQ_HAVE_NORM
-    if ((protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm
-         || protocol_ == protocol_name::norm)
-#elif defined ZMQ_HAVE_OPENPGM
-    if ((protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm)
-#else // defined ZMQ_HAVE_NORM
-    if (protocol_ == protocol_name::norm
-#endif
-        && options.type != ZMQ_PUB && options.type != ZMQ_SUB
-        && options.type != ZMQ_XPUB && options.type != ZMQ_XSUB) {
-        errno = ENOCOMPATPROTO;
-        return -1;
-    }
-#endif
-
-    if (protocol_ == protocol_name::udp) {
-        // UDP is not supported (draft API removed)
-        errno = ENOCOMPATPROTO;
         return -1;
     }
 
@@ -509,12 +454,6 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return rc;
     }
 #endif
-
-    if (protocol == protocol_name::udp) {
-        // UDP is not supported (draft API removed)
-        errno = ENOCOMPATPROTO;
-        return -1;
-    }
 
     //  Remaining transports require to be run in an I/O thread, so at this
     //  point we'll choose one.
@@ -862,13 +801,6 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
         }
     }
 #endif
-
-    if (protocol == protocol_name::udp) {
-        // UDP is not supported (draft API removed)
-        errno = ENOCOMPATPROTO;
-        LIBZMQ_DELETE (paddr);
-        return -1;
-    }
 
     // TBD - Should we check address for ZMQ_HAVE_NORM???
 

@@ -16,8 +16,6 @@
 #include "../plain_server.hpp"
 #include "../gssapi_client.hpp"
 #include "../gssapi_server.hpp"
-#include "../raw_decoder.hpp"
-#include "../raw_encoder.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
 #include "../ip.hpp"

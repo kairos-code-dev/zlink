@@ -10,7 +10,6 @@
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
 #include "../zmtp_engine.hpp"
-#include "../raw_engine.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
 #include "../ip.hpp"
@@ -333,12 +332,8 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
       get_socket_name (fd_, socket_end_local),
       get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
 
-    i_engine *engine;
-    if (options.raw_socket)
-        engine = new (std::nothrow) raw_engine_t (fd_, options, endpoint_pair);
-    else
-        //  Phase 1-C: Use ASIO ZMTP engine for true proactor mode
-        engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+    //  Phase 1-C: Use ASIO ZMTP engine for true proactor mode
+    i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in. Given that we are already

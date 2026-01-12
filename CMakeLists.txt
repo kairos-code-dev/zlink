@@ -899,10 +899,8 @@ set(cxx-sources
     clock.cpp
     ctx.cpp
     dealer.cpp
-    devpoll.cpp
     dist.cpp
     endpoint.cpp
-    epoll.cpp
     err.cpp
     fq.cpp
     io_object.cpp
@@ -911,7 +909,6 @@ set(cxx-sources
     ipc_address.cpp
     ipc_connecter.cpp
     ipc_listener.cpp
-    kqueue.cpp
     lb.cpp
     mailbox.cpp
     mailbox_safe.cpp
@@ -928,16 +925,13 @@ set(cxx-sources
     pipe.cpp
     plain_client.cpp
     plain_server.cpp
-    poll.cpp
     poller_base.cpp
     polling_util.cpp
-    pollset.cpp
     proxy.cpp
     pub.cpp
     random.cpp
     reaper.cpp
     router.cpp
-    select.cpp
     session_base.cpp
     signaler.cpp
     socket_base.cpp
@@ -945,8 +939,6 @@ set(cxx-sources
     sub.cpp
     tcp.cpp
     tcp_address.cpp
-    tcp_connecter.cpp
-    tcp_listener.cpp
     thread.cpp
     trie.cpp
     radix_tree.cpp
@@ -965,7 +957,6 @@ set(cxx-sources
     config.hpp
     ip_resolver.cpp
     zap_client.cpp
-    zmtp_engine.cpp
     # at least for VS, the header files must also be listed
     address.hpp
     array.hpp
@@ -982,11 +973,9 @@ set(cxx-sources
     dealer.hpp
     decoder.hpp
     decoder_allocators.hpp
-    devpoll.hpp
     dist.hpp
     encoder.hpp
     endpoint.hpp
-    epoll.hpp
     err.hpp
     fd.hpp
     fq.hpp
@@ -1006,7 +995,6 @@ set(cxx-sources
     ipc_address.hpp
     ipc_connecter.hpp
     ipc_listener.hpp
-    kqueue.hpp
     lb.hpp
     likely.hpp
     macros.hpp
@@ -1027,11 +1015,9 @@ set(cxx-sources
     plain_client.hpp
     plain_common.hpp
     plain_server.hpp
-    poll.hpp
     poller.hpp
     poller_base.hpp
     polling_util.hpp
-    pollset.hpp
     precompiled.hpp
     proxy.hpp
     pub.hpp
@@ -1039,7 +1025,6 @@ set(cxx-sources
     reaper.hpp
     router.hpp
     secure_allocator.hpp
-    select.hpp
     session_base.hpp
     signaler.hpp
     socket_base.hpp
@@ -1053,8 +1038,6 @@ set(cxx-sources
     sub.hpp
     tcp.hpp
     tcp_address.hpp
-    tcp_connecter.hpp
-    tcp_listener.hpp
     thread.hpp
     timers.hpp
     trie.hpp
@@ -1072,8 +1055,7 @@ set(cxx-sources
     ypipe_base.hpp
     ypipe_conflate.hpp
     yqueue.hpp
-    zap_client.hpp
-    zmtp_engine.hpp)
+    zap_client.hpp)
 
 if(MINGW)
   # Generate the right type when using -m32 or -m64

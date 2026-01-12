@@ -166,6 +166,81 @@ vcpkg is a full platform package manager, you can easily install libzmq via vcpk
     ./bootstrap-vcpkg.sh # For bash
     ./vcpkg install zeromq
 
+## Boost.Asio Integration (zlink feature) <a name="asio"/>
+
+This fork (zlink) includes optional Boost.Asio integration for improved I/O performance using a true proactor pattern.
+
+### Features
+
+| Feature | CMake Option | Description |
+|---------|--------------|-------------|
+| ASIO Poller | `WITH_BOOST_ASIO=ON` | Replace epoll/select with Boost.Asio |
+| SSL/TLS | `WITH_ASIO_SSL=ON` | TLS 1.2+ encrypted connections |
+| WebSocket | `WITH_ASIO_WS=ON` | WebSocket transport (ws://) |
+| Secure WebSocket | Automatic with SSL+WS | WebSocket over TLS (wss://) |
+
+### Requirements
+
+- **Boost 1.82+** (header-only, bundled in `external/boost/`)
+- **OpenSSL 3.0+** (for SSL/TLS support)
+
+### Build with ASIO
+
+```bash
+# Basic ASIO (TCP only)
+cmake -B build -DWITH_BOOST_ASIO=ON -DBUILD_TESTS=ON
+cmake --build build
+
+# With SSL/TLS support
+cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_SSL=ON -DBUILD_TESTS=ON
+cmake --build build
+
+# With WebSocket support
+cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_WS=ON -DBUILD_TESTS=ON
+cmake --build build
+
+# Full ASIO (TCP + SSL + WebSocket)
+cmake -B build \
+    -DWITH_BOOST_ASIO=ON \
+    -DWITH_ASIO_SSL=ON \
+    -DWITH_ASIO_WS=ON \
+    -DBUILD_TESTS=ON
+cmake --build build
+```
+
+### Platform Support
+
+| Platform | ASIO Backend | Status |
+|----------|--------------|--------|
+| Linux x64/ARM64 | epoll via Asio | Tested |
+| macOS x64/ARM64 | kqueue via Asio | Tested |
+| Windows x64/ARM64 | IOCP via Asio | Implemented |
+
+### ASIO Tests
+
+```bash
+# Run all ASIO tests
+cd build && ctest -R asio --output-on-failure
+
+# Individual tests
+./bin/test_asio_poller   # Basic poller functionality
+./bin/test_asio_connect  # Connection establishment
+./bin/test_asio_tcp      # TCP data exchange
+./bin/test_asio_ssl      # SSL/TLS handshake and encryption
+./bin/test_asio_ws       # WebSocket handshake and messages
+```
+
+### Architecture
+
+The ASIO integration uses a true proactor pattern:
+
+1. **asio_poller_t** - Event loop integration with `io_context`
+2. **asio_tcp_listener_t** - Async TCP accept (`async_accept`)
+3. **asio_tcp_connecter_t** - Async TCP connect (`async_connect`)
+4. **asio_engine_t** - Async read/write (`async_read`, `async_write`)
+5. **ssl_context_helper_t** - SSL context management
+6. **ws_engine_t** - WebSocket frame handling with Boost.Beast
+
 ## Build from sources <a name="build"/>
 
 To build from sources, see the INSTALL file included with the distribution.

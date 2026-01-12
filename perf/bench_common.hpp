@@ -10,7 +10,11 @@
 
 // --- Configuration ---
 const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
+#if defined(ZMQ_HAVE_ASIO_WS)
+const std::vector<std::string> TRANSPORTS = {"tcp", "ws", "inproc", "ipc"};
+#else
 const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
+#endif
 
 // --- Stopwatch ---
 class stopwatch_t {
@@ -48,6 +52,9 @@ inline std::string make_endpoint(const std::string& transport, const std::string
         return "inproc://" + id;
     } else if (transport == "ipc") {
         return "ipc:///tmp/bench_" + id + ".ipc";
+    } else if (transport == "ws") {
+        static int ws_port = 6555;
+        return "ws://127.0.0.1:" + std::to_string(ws_port++);
     } else { // tcp
         static int port = 5555;
         return "tcp://127.0.0.1:" + std::to_string(port++);

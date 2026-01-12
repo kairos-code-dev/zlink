@@ -23,6 +23,11 @@
 
 #include <string.h>
 #include <atomic>
+#include <thread>
+
+namespace net = boost::asio;
+namespace ssl = boost::asio::ssl;
+using tcp = net::ip::tcp;
 
 //  Include test certificates (embedded PEM strings)
 #include "certs/test_certs.hpp"
@@ -39,16 +44,14 @@ void tearDown ()
 void test_ssl_context_creation ()
 {
     //  Test TLS 1.2 server context creation
-    boost::asio::ssl::context server_ctx (
-      boost::asio::ssl::context::tlsv12_server);
+    ssl::context server_ctx (ssl::context::tlsv12_server);
 
     //  Test TLS 1.2 client context creation
-    boost::asio::ssl::context client_ctx (
-      boost::asio::ssl::context::tlsv12_client);
+    ssl::context client_ctx (ssl::context::tlsv12_client);
 
     //  Test that we can set verification mode
-    client_ctx.set_verify_mode (boost::asio::ssl::verify_none);
-    server_ctx.set_verify_mode (boost::asio::ssl::verify_none);
+    client_ctx.set_verify_mode (ssl::verify_none);
+    server_ctx.set_verify_mode (ssl::verify_none);
 
     //  If we get here, context creation succeeded
     TEST_PASS ();
@@ -57,40 +60,38 @@ void test_ssl_context_creation ()
 //  Test 2: SSL certificate loading from PEM buffer
 void test_ssl_certificate_loading ()
 {
-    boost::asio::ssl::context server_ctx (
-      boost::asio::ssl::context::tlsv12_server);
+    ssl::context server_ctx (ssl::context::tlsv12_server);
 
     //  Try to load the server certificate
-    //  Note: Our test certs are placeholders - they may fail to parse
-    //  That's OK - we're testing the API works
     try {
         server_ctx.use_certificate_chain (
-          boost::asio::buffer (zmq::test_certs::server_cert_pem,
-                               strlen (zmq::test_certs::server_cert_pem)));
+          net::buffer (zmq::test_certs::server_cert_pem,
+                       strlen (zmq::test_certs::server_cert_pem)));
 
         server_ctx.use_private_key (
-          boost::asio::buffer (zmq::test_certs::server_key_pem,
-                               strlen (zmq::test_certs::server_key_pem)),
-          boost::asio::ssl::context::pem);
+          net::buffer (zmq::test_certs::server_key_pem,
+                       strlen (zmq::test_certs::server_key_pem)),
+          ssl::context::pem);
 
         TEST_PASS ();
     }
-    catch (const boost::system::system_error &) {
-        //  Expected with placeholder certificates
-        TEST_IGNORE_MESSAGE (
-          "Certificate loading failed - test certificates are placeholders");
+    catch (const boost::system::system_error &e) {
+        //  If certificate loading failed, report it
+        char msg[256];
+        snprintf (msg, sizeof (msg), "Certificate loading failed: %s",
+                  e.what ());
+        TEST_FAIL_MESSAGE (msg);
     }
 }
 
 //  Test 3: SSL stream creation
 void test_ssl_stream_creation ()
 {
-    boost::asio::io_context io_context;
-    boost::asio::ssl::context ssl_ctx (boost::asio::ssl::context::tlsv12_client);
+    net::io_context io_context;
+    ssl::context ssl_ctx (ssl::context::tlsv12_client);
 
     //  Create SSL stream
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream (
-      io_context, ssl_ctx);
+    ssl::stream<tcp::socket> ssl_stream (io_context, ssl_ctx);
 
     //  Check that the lowest layer (TCP socket) exists
     TEST_ASSERT_FALSE (ssl_stream.lowest_layer ().is_open ());
@@ -101,230 +102,197 @@ void test_ssl_stream_creation ()
 //  Test 4: TCP connection without SSL (baseline test)
 void test_tcp_connection_baseline ()
 {
-    boost::asio::io_context io_context;
+    net::io_context io_context;
+
+    //  Create work guard to keep io_context running
+    auto work = net::make_work_guard (io_context);
 
     //  Create acceptor on ephemeral port
-    boost::asio::ip::tcp::acceptor acceptor (
-      io_context, boost::asio::ip::tcp::endpoint (
-                    boost::asio::ip::address::from_string ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (
+      io_context,
+      tcp::endpoint (net::ip::address::from_string ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server socket
-    boost::asio::ip::tcp::socket server_socket (io_context);
+    tcp::socket server_socket (io_context);
 
     //  Client socket
-    boost::asio::ip::tcp::socket client_socket (io_context);
+    tcp::socket client_socket (io_context);
 
-    //  Async operations state
-    std::atomic<bool> accept_done{false};
-    std::atomic<bool> connect_done{false};
-    boost::system::error_code accept_ec;
-    boost::system::error_code connect_ec;
+    //  State tracking
+    std::atomic<bool> all_done{false};
+    std::atomic<int> completed{0};
+    boost::system::error_code accept_ec, connect_ec;
 
     //  Async accept
     acceptor.async_accept (server_socket,
                            [&] (const boost::system::error_code &ec) {
                                accept_ec = ec;
-                               accept_done = true;
+                               if (++completed >= 2) {
+                                   all_done = true;
+                                   work.reset ();
+                               }
                            });
 
     //  Async connect
     client_socket.async_connect (endpoint,
                                  [&] (const boost::system::error_code &ec) {
                                      connect_ec = ec;
-                                     connect_done = true;
+                                     if (++completed >= 2) {
+                                         all_done = true;
+                                         work.reset ();
+                                     }
                                  });
 
-    //  Run until both complete
-    while (!accept_done || !connect_done) {
-        io_context.poll_one ();
+    //  Run io_context in a separate thread
+    std::thread io_thread ([&] () { io_context.run (); });
+
+    //  Wait for completion with timeout (5 seconds)
+    for (int i = 0; i < 50 && !all_done; ++i) {
+        msleep (100);
     }
 
-    TEST_ASSERT_FALSE (accept_ec);
-    TEST_ASSERT_FALSE (connect_ec);
+    if (!all_done) {
+        work.reset ();
+        io_context.stop ();
+    }
+    io_thread.join ();
+
+    TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "TCP connection timed out");
+    TEST_ASSERT_FALSE_MESSAGE (accept_ec.failed (), accept_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (connect_ec.failed (), connect_ec.message ().c_str ());
     TEST_ASSERT_TRUE (server_socket.is_open ());
     TEST_ASSERT_TRUE (client_socket.is_open ());
-
-    //  Test data exchange
-    const char *test_msg = "Hello TCP!";
-    char recv_buf[64] = {0};
-
-    std::atomic<bool> write_done{false};
-    std::atomic<bool> read_done{false};
-    std::size_t bytes_read = 0;
-
-    boost::asio::async_write (
-      client_socket, boost::asio::buffer (test_msg, strlen (test_msg)),
-      [&] (const boost::system::error_code &, std::size_t) {
-          write_done = true;
-      });
-
-    server_socket.async_read_some (
-      boost::asio::buffer (recv_buf, sizeof (recv_buf)),
-      [&] (const boost::system::error_code &, std::size_t n) {
-          bytes_read = n;
-          read_done = true;
-      });
-
-    while (!write_done || !read_done) {
-        io_context.poll_one ();
-    }
-
-    TEST_ASSERT_EQUAL_UINT64 (strlen (test_msg), bytes_read);
-    TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
 }
 
 //  Test 5: SSL handshake with self-signed certificates
 void test_ssl_handshake ()
 {
-    boost::asio::io_context io_context;
+    net::io_context io_context;
+
+    //  Create work guard to keep io_context running
+    auto work = net::make_work_guard (io_context);
 
     //  Create SSL contexts
-    boost::asio::ssl::context server_ssl_ctx (
-      boost::asio::ssl::context::tlsv12_server);
-    boost::asio::ssl::context client_ssl_ctx (
-      boost::asio::ssl::context::tlsv12_client);
+    ssl::context server_ssl_ctx (ssl::context::tlsv12_server);
+    ssl::context client_ssl_ctx (ssl::context::tlsv12_client);
 
     //  Configure server context with test certificates
     try {
         server_ssl_ctx.use_certificate_chain (
-          boost::asio::buffer (zmq::test_certs::server_cert_pem,
-                               strlen (zmq::test_certs::server_cert_pem)));
+          net::buffer (zmq::test_certs::server_cert_pem,
+                       strlen (zmq::test_certs::server_cert_pem)));
         server_ssl_ctx.use_private_key (
-          boost::asio::buffer (zmq::test_certs::server_key_pem,
-                               strlen (zmq::test_certs::server_key_pem)),
-          boost::asio::ssl::context::pem);
+          net::buffer (zmq::test_certs::server_key_pem,
+                       strlen (zmq::test_certs::server_key_pem)),
+          ssl::context::pem);
     }
-    catch (const std::exception &) {
-        TEST_IGNORE_MESSAGE (
-          "Test certificates are placeholders - skipping SSL handshake test");
+    catch (const std::exception &e) {
+        char msg[256];
+        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s",
+                  e.what ());
+        TEST_FAIL_MESSAGE (msg);
         return;
     }
 
     //  Client: disable verification for self-signed certs
-    client_ssl_ctx.set_verify_mode (boost::asio::ssl::verify_none);
+    client_ssl_ctx.set_verify_mode (ssl::verify_none);
 
     //  Create acceptor
-    boost::asio::ip::tcp::acceptor acceptor (
-      io_context, boost::asio::ip::tcp::endpoint (
-                    boost::asio::ip::address::from_string ("127.0.0.1"), 0));
+    tcp::acceptor acceptor (
+      io_context,
+      tcp::endpoint (net::ip::address::from_string ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server SSL stream
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> server_stream (
-      io_context, server_ssl_ctx);
+    ssl::stream<tcp::socket> server_stream (io_context, server_ssl_ctx);
 
     //  Client SSL stream
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> client_stream (
-      io_context, client_ssl_ctx);
+    ssl::stream<tcp::socket> client_stream (io_context, client_ssl_ctx);
 
-    //  TCP connection state
-    std::atomic<bool> accept_done{false};
-    std::atomic<bool> connect_done{false};
-    boost::system::error_code accept_ec, connect_ec;
-
-    //  Async accept
-    acceptor.async_accept (server_stream.lowest_layer (),
-                           [&] (const boost::system::error_code &ec) {
-                               accept_ec = ec;
-                               accept_done = true;
-                           });
-
-    //  Async connect
-    client_stream.lowest_layer ().async_connect (
-      endpoint, [&] (const boost::system::error_code &ec) {
-          connect_ec = ec;
-          connect_done = true;
-      });
-
-    //  Run until TCP connect completes
-    while (!accept_done || !connect_done) {
-        io_context.poll_one ();
-    }
-
-    if (accept_ec || connect_ec) {
-        TEST_FAIL_MESSAGE ("TCP connection failed");
-        return;
-    }
-
-    //  SSL handshake state
-    std::atomic<bool> server_hs_done{false};
-    std::atomic<bool> client_hs_done{false};
+    //  State tracking
+    std::atomic<bool> all_done{false};
+    std::atomic<int> stage{0};
     boost::system::error_code server_hs_ec, client_hs_ec;
 
-    //  Server handshake
-    server_stream.async_handshake (
-      boost::asio::ssl::stream_base::server,
-      [&] (const boost::system::error_code &ec) {
-          server_hs_ec = ec;
-          server_hs_done = true;
+    //  Set up the chain of operations
+    //  1. Accept TCP connection
+    acceptor.async_accept (server_stream.lowest_layer (),
+                           [&] (const boost::system::error_code &ec) {
+                               if (ec) {
+                                   all_done = true;
+                                   work.reset ();
+                                   return;
+                               }
+
+                               //  2. Server: SSL handshake
+                               server_stream.async_handshake (
+                                 ssl::stream_base::server,
+                                 [&] (const boost::system::error_code &ec) {
+                                     server_hs_ec = ec;
+                                     if (++stage >= 2) {
+                                         all_done = true;
+                                         work.reset ();
+                                     }
+                                 });
+                           });
+
+    //  1. Client: TCP connect
+    client_stream.lowest_layer ().async_connect (
+      endpoint, [&] (const boost::system::error_code &ec) {
+          if (ec) {
+              all_done = true;
+              work.reset ();
+              return;
+          }
+
+          //  2. Client: SSL handshake
+          client_stream.async_handshake (
+            ssl::stream_base::client,
+            [&] (const boost::system::error_code &ec) {
+                client_hs_ec = ec;
+                if (++stage >= 2) {
+                    all_done = true;
+                    work.reset ();
+                }
+            });
       });
 
-    //  Client handshake
-    client_stream.async_handshake (
-      boost::asio::ssl::stream_base::client,
-      [&] (const boost::system::error_code &ec) {
-          client_hs_ec = ec;
-          client_hs_done = true;
-      });
+    //  Run io_context in a separate thread
+    std::thread io_thread ([&] () { io_context.run (); });
 
-    //  Run until handshakes complete
-    while (!server_hs_done || !client_hs_done) {
-        io_context.poll_one ();
+    //  Wait for completion with timeout (5 seconds)
+    for (int i = 0; i < 50 && !all_done; ++i) {
+        msleep (100);
     }
 
-    //  Handshake may fail with placeholder certificates
-    if (server_hs_ec || client_hs_ec) {
-        TEST_IGNORE_MESSAGE (
-          "SSL handshake failed - expected with placeholder test certificates");
-        return;
+    if (!all_done) {
+        work.reset ();
+        io_context.stop ();
     }
+    io_thread.join ();
 
-    //  Test encrypted data exchange
-    const char *test_msg = "Hello SSL!";
-    char recv_buf[64] = {0};
+    TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "SSL handshake timed out");
+    TEST_ASSERT_FALSE_MESSAGE (server_hs_ec.failed (),
+                               server_hs_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (client_hs_ec.failed (),
+                               client_hs_ec.message ().c_str ());
 
-    std::atomic<bool> write_done{false};
-    std::atomic<bool> read_done{false};
-    std::size_t bytes_read = 0;
-
-    boost::asio::async_write (
-      client_stream, boost::asio::buffer (test_msg, strlen (test_msg)),
-      [&] (const boost::system::error_code &, std::size_t) {
-          write_done = true;
-      });
-
-    server_stream.async_read_some (
-      boost::asio::buffer (recv_buf, sizeof (recv_buf)),
-      [&] (const boost::system::error_code &, std::size_t n) {
-          bytes_read = n;
-          read_done = true;
-      });
-
-    while (!write_done || !read_done) {
-        io_context.poll_one ();
-    }
-
-    TEST_ASSERT_EQUAL_UINT64 (strlen (test_msg), bytes_read);
-    TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
-
-    //  Clean shutdown
-    boost::system::error_code ec;
-    client_stream.shutdown (ec);
-    server_stream.shutdown (ec);
+    //  Note: Don't call sync shutdown - it can block
+    //  Let the streams destruct naturally
 }
 
 //  Test 6: Multiple SSL contexts can coexist
 void test_multiple_ssl_contexts ()
 {
-    boost::asio::ssl::context ctx1 (boost::asio::ssl::context::tlsv12_server);
-    boost::asio::ssl::context ctx2 (boost::asio::ssl::context::tlsv12_client);
-    boost::asio::ssl::context ctx3 (boost::asio::ssl::context::tlsv12_server);
+    ssl::context ctx1 (ssl::context::tlsv12_server);
+    ssl::context ctx2 (ssl::context::tlsv12_client);
+    ssl::context ctx3 (ssl::context::tlsv12_server);
 
     //  Each context should be independent
-    ctx1.set_verify_mode (boost::asio::ssl::verify_none);
-    ctx2.set_verify_mode (boost::asio::ssl::verify_peer);
-    ctx3.set_verify_mode (boost::asio::ssl::verify_fail_if_no_peer_cert);
+    ctx1.set_verify_mode (ssl::verify_none);
+    ctx2.set_verify_mode (ssl::verify_peer);
+    ctx3.set_verify_mode (ssl::verify_fail_if_no_peer_cert);
 
     TEST_PASS ();
 }
@@ -332,17 +300,14 @@ void test_multiple_ssl_contexts ()
 //  Test 7: SSL context reuse across multiple streams
 void test_ssl_context_reuse ()
 {
-    boost::asio::io_context io_context;
-    boost::asio::ssl::context ssl_ctx (boost::asio::ssl::context::tlsv12_client);
-    ssl_ctx.set_verify_mode (boost::asio::ssl::verify_none);
+    net::io_context io_context;
+    ssl::context ssl_ctx (ssl::context::tlsv12_client);
+    ssl_ctx.set_verify_mode (ssl::verify_none);
 
     //  Create multiple streams using same context
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> stream1 (
-      io_context, ssl_ctx);
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> stream2 (
-      io_context, ssl_ctx);
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> stream3 (
-      io_context, ssl_ctx);
+    ssl::stream<tcp::socket> stream1 (io_context, ssl_ctx);
+    ssl::stream<tcp::socket> stream2 (io_context, ssl_ctx);
+    ssl::stream<tcp::socket> stream3 (io_context, ssl_ctx);
 
     //  All streams should be independent but share context
     TEST_ASSERT_FALSE (stream1.lowest_layer ().is_open ());
@@ -350,6 +315,143 @@ void test_ssl_context_reuse ()
     TEST_ASSERT_FALSE (stream3.lowest_layer ().is_open ());
 
     TEST_PASS ();
+}
+
+//  Test 8: SSL encrypted data exchange
+void test_ssl_data_exchange ()
+{
+    net::io_context io_context;
+
+    //  Create work guard to keep io_context running
+    auto work = net::make_work_guard (io_context);
+
+    //  Create SSL contexts
+    ssl::context server_ssl_ctx (ssl::context::tlsv12_server);
+    ssl::context client_ssl_ctx (ssl::context::tlsv12_client);
+
+    //  Configure server context with test certificates
+    try {
+        server_ssl_ctx.use_certificate_chain (
+          net::buffer (zmq::test_certs::server_cert_pem,
+                       strlen (zmq::test_certs::server_cert_pem)));
+        server_ssl_ctx.use_private_key (
+          net::buffer (zmq::test_certs::server_key_pem,
+                       strlen (zmq::test_certs::server_key_pem)),
+          ssl::context::pem);
+    }
+    catch (const std::exception &e) {
+        char msg[256];
+        snprintf (msg, sizeof (msg), "Server certificate loading failed: %s",
+                  e.what ());
+        TEST_FAIL_MESSAGE (msg);
+        return;
+    }
+
+    //  Client: disable verification for self-signed certs
+    client_ssl_ctx.set_verify_mode (ssl::verify_none);
+
+    //  Create acceptor
+    tcp::acceptor acceptor (
+      io_context,
+      tcp::endpoint (net::ip::address::from_string ("127.0.0.1"), 0));
+    auto endpoint = acceptor.local_endpoint ();
+
+    //  Server SSL stream
+    ssl::stream<tcp::socket> server_stream (io_context, server_ssl_ctx);
+
+    //  Client SSL stream
+    ssl::stream<tcp::socket> client_stream (io_context, client_ssl_ctx);
+
+    //  Test data
+    const char *test_msg = "Hello SSL!";
+    char recv_buf[64] = {0};
+    std::size_t bytes_read = 0;
+
+    //  State tracking
+    std::atomic<bool> all_done{false};
+    boost::system::error_code write_ec, read_ec;
+
+    //  Set up the chain of operations
+    acceptor.async_accept (server_stream.lowest_layer (),
+                           [&] (const boost::system::error_code &ec) {
+                               if (ec) {
+                                   all_done = true;
+                                   work.reset ();
+                                   return;
+                               }
+
+                               //  Server: SSL handshake, then read
+                               server_stream.async_handshake (
+                                 ssl::stream_base::server,
+                                 [&] (const boost::system::error_code &ec) {
+                                     if (ec) {
+                                         all_done = true;
+                                         work.reset ();
+                                         return;
+                                     }
+
+                                     //  Server reads data
+                                     server_stream.async_read_some (
+                                       net::buffer (recv_buf, sizeof (recv_buf)),
+                                       [&] (const boost::system::error_code &ec,
+                                            std::size_t n) {
+                                           read_ec = ec;
+                                           bytes_read = n;
+                                           all_done = true;
+                                           work.reset ();
+                                       });
+                                 });
+                           });
+
+    //  Client: TCP connect, handshake, then write
+    client_stream.lowest_layer ().async_connect (
+      endpoint, [&] (const boost::system::error_code &ec) {
+          if (ec) {
+              all_done = true;
+              work.reset ();
+              return;
+          }
+
+          client_stream.async_handshake (
+            ssl::stream_base::client,
+            [&] (const boost::system::error_code &ec) {
+                if (ec) {
+                    all_done = true;
+                    work.reset ();
+                    return;
+                }
+
+                //  Client writes data
+                net::async_write (
+                  client_stream, net::buffer (test_msg, strlen (test_msg)),
+                  [&] (const boost::system::error_code &ec, std::size_t) {
+                      write_ec = ec;
+                  });
+            });
+      });
+
+    //  Run io_context in a separate thread
+    std::thread io_thread ([&] () { io_context.run (); });
+
+    //  Wait for completion with timeout (5 seconds)
+    for (int i = 0; i < 50 && !all_done; ++i) {
+        msleep (100);
+    }
+
+    if (!all_done) {
+        work.reset ();
+        io_context.stop ();
+    }
+    io_thread.join ();
+
+    TEST_ASSERT_TRUE_MESSAGE (all_done.load (), "SSL data exchange timed out");
+    TEST_ASSERT_FALSE_MESSAGE (write_ec.failed (), write_ec.message ().c_str ());
+    TEST_ASSERT_FALSE_MESSAGE (read_ec.failed (), read_ec.message ().c_str ());
+    TEST_ASSERT_EQUAL_UINT64 (strlen (test_msg), bytes_read);
+    TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
+
+    //  Note: Don't call sync shutdown - it can block
+    //  Let the streams destruct naturally
 }
 
 #else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_ASIO_SSL
@@ -384,6 +486,7 @@ int main ()
     RUN_TEST (test_ssl_handshake);
     RUN_TEST (test_multiple_ssl_contexts);
     RUN_TEST (test_ssl_context_reuse);
+    RUN_TEST (test_ssl_data_exchange);
 #else
     RUN_TEST (test_asio_ssl_not_enabled);
 #endif

@@ -9,6 +9,10 @@
  *
  * NOTE: These tests require Boost.Beast and are only compiled when
  * ZMQ_HAVE_ASIO_WS is defined.
+ *
+ * TODO (Phase 7): Add wss:// (WebSocket over SSL/TLS) tests.
+ *   This requires combining SSL streams with WebSocket streams:
+ *   websocket::stream<ssl::stream<tcp::socket>>
  */
 
 #include "testutil.hpp"

@@ -288,6 +288,16 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_ONLY_FIRST_SUBSCRIBE 108
 #define ZMQ_TOPICS_COUNT 116
 
+//  TLS protocol options
+#define ZMQ_TLS_CERT 95
+#define ZMQ_TLS_KEY 96
+#define ZMQ_TLS_CA 97
+#define ZMQ_TLS_VERIFY 98
+#define ZMQ_TLS_REQUIRE_CLIENT_CERT 99
+#define ZMQ_TLS_HOSTNAME 100
+#define ZMQ_TLS_TRUST_SYSTEM 101
+#define ZMQ_TLS_PASSWORD 102
+
 #define ZMQ_MORE 1
 #define ZMQ_SHARED 3
 

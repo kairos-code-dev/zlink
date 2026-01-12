@@ -60,7 +60,11 @@ zmq::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
     _current_reconnect_ivl (-1)
 {
     zmq_assert (_addr);
-    zmq_assert (_addr->protocol == protocol_name::tcp);
+    zmq_assert (_addr->protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+                || _addr->protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+#endif
+    );
     _addr->to_string (_endpoint_str);
 
     CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",

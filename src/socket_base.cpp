@@ -264,6 +264,9 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
 #ifdef ZMQ_HAVE_WSS
         && protocol_ != protocol_name::wss
 #endif
+#ifdef ZMQ_HAVE_TLS
+        && protocol_ != protocol_name::tls
+#endif
     ) {
         errno = EPROTONOSUPPORT;
         return -1;
@@ -463,7 +466,11 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return -1;
     }
 
-    if (protocol == protocol_name::tcp) {
+    if (protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+        || protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+#endif
+    ) {
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
         //  Phase 1-B: Use ASIO-based listener for async_accept
         asio_tcp_listener_t *listener =
@@ -722,7 +729,11 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     alloc_assert (paddr);
 
     //  Resolve address (if needed by the protocol)
-    if (protocol == protocol_name::tcp) {
+    if (protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+        || protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+#endif
+    ) {
         //  Do some basic sanity checks on tcp:// address syntax
         //  - hostname starts with digit or letter, with embedded '-' or '.'
         //  - IPv6 address may contain hex chars and colons.
@@ -982,7 +993,11 @@ int zmq::socket_base_t::term_endpoint (const char *endpoint_uri_)
     }
 
     const std::string resolved_endpoint_uri =
-      uri_protocol == protocol_name::tcp
+      (uri_protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+       || uri_protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+#endif
+      )
         ? resolve_tcp_addr (endpoint_uri_str, uri_path.c_str ())
         : endpoint_uri_str;
 

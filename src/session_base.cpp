@@ -546,7 +546,11 @@ void zmq::session_base_t::start_connecting (bool wait_)
 
     //  Create the connecter object.
     own_t *connecter = NULL;
-    if (_addr->protocol == protocol_name::tcp) {
+    if (_addr->protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+        || _addr->protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+#endif
+    ) {
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
         //  Phase 1-B: Use ASIO-based connecter for async_connect
         connecter = new (std::nothrow)

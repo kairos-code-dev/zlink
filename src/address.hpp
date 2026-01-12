@@ -35,6 +35,9 @@ static const char ws[] = "ws";
 #ifdef ZMQ_HAVE_WSS
 static const char wss[] = "wss";
 #endif
+#ifdef ZMQ_HAVE_TLS
+static const char tls[] = "tls";
+#endif
 #if defined ZMQ_HAVE_IPC
 static const char ipc[] = "ipc";
 #endif

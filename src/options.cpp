@@ -185,6 +185,12 @@ zmq::options_t::options_t () :
     out_batch_size (8192),
     monitor_event_version (1),
     busy_poll (0)
+#ifdef ZMQ_HAVE_TLS
+    ,
+    tls_verify (1),
+    tls_require_client_cert (0),
+    tls_trust_system (1)
+#endif
 {
 }
 
@@ -459,6 +465,49 @@ int zmq::options_t::setsockopt (int option_,
         case ZMQ_BINDTODEVICE:
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &bound_device, BINDDEVSIZ);
+
+#ifdef ZMQ_HAVE_TLS
+        case ZMQ_TLS_CERT:
+            return do_setsockopt_string_allow_empty_strict (
+              optval_, optvallen_, &tls_cert, 256);
+
+        case ZMQ_TLS_KEY:
+            return do_setsockopt_string_allow_empty_strict (
+              optval_, optvallen_, &tls_key, 256);
+
+        case ZMQ_TLS_CA:
+            return do_setsockopt_string_allow_empty_strict (
+              optval_, optvallen_, &tls_ca, 256);
+
+        case ZMQ_TLS_VERIFY:
+            if (is_int && (value == 0 || value == 1)) {
+                tls_verify = value;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_REQUIRE_CLIENT_CERT:
+            if (is_int && (value == 0 || value == 1)) {
+                tls_require_client_cert = value;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_HOSTNAME:
+            return do_setsockopt_string_allow_empty_strict (
+              optval_, optvallen_, &tls_hostname, 256);
+
+        case ZMQ_TLS_TRUST_SYSTEM:
+            if (is_int && (value == 0 || value == 1)) {
+                tls_trust_system = value;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_PASSWORD:
+            return do_setsockopt_string_allow_empty_strict (
+              optval_, optvallen_, &tls_password, 256);
+#endif
 
         default:
             break;
@@ -737,6 +786,44 @@ int zmq::options_t::getsockopt (int option_,
 
         case ZMQ_BINDTODEVICE:
             return do_getsockopt (optval_, optvallen_, bound_device);
+
+#ifdef ZMQ_HAVE_TLS
+        case ZMQ_TLS_CERT:
+            return do_getsockopt (optval_, optvallen_, tls_cert);
+
+        case ZMQ_TLS_KEY:
+            return do_getsockopt (optval_, optvallen_, tls_key);
+
+        case ZMQ_TLS_CA:
+            return do_getsockopt (optval_, optvallen_, tls_ca);
+
+        case ZMQ_TLS_VERIFY:
+            if (is_int) {
+                *value = tls_verify;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_REQUIRE_CLIENT_CERT:
+            if (is_int) {
+                *value = tls_require_client_cert;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_HOSTNAME:
+            return do_getsockopt (optval_, optvallen_, tls_hostname);
+
+        case ZMQ_TLS_TRUST_SYSTEM:
+            if (is_int) {
+                *value = tls_trust_system;
+                return 0;
+            }
+            break;
+
+        case ZMQ_TLS_PASSWORD:
+            return do_getsockopt (optval_, optvallen_, tls_password);
+#endif
 
         default:
             break;

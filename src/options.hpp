@@ -230,6 +230,18 @@ struct options_t
     //  Hostname for WSS (TLS SNI and certificate validation)
     std::string wss_hostname;
 #endif
+
+#ifdef ZMQ_HAVE_TLS
+    //  TLS protocol options
+    std::string tls_cert;              // Server certificate file path
+    std::string tls_key;               // Server private key file path
+    std::string tls_ca;                // CA certificate file path
+    int tls_verify;                    // Verify client certificate (default: 1)
+    int tls_require_client_cert;       // Require client certificate for mTLS (default: 0)
+    std::string tls_hostname;          // SNI + hostname verification
+    int tls_trust_system;              // Use system CA store (default: 1)
+    std::string tls_password;          // Private key password (optional)
+#endif
 };
 
 inline bool get_effective_conflate_option (const options_t &options)

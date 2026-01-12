@@ -166,12 +166,17 @@ option(WITH_NORM "Build with support for NORM" OFF)
 option(WITH_VMCI "Build with support for VMware VMCI socket" OFF)
 option(WITH_BOOST_ASIO "Build with Boost.Asio I/O backend" OFF)
 
-# Boost.Asio header detection (Phase 0: detection only, no source files added)
+# Boost.Asio header detection and poller configuration
 if(WITH_BOOST_ASIO)
   set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
   if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
     message(STATUS "Boost.Asio headers found at ${BUNDLED_BOOST_INCLUDE_DIR}")
     set(ZMQ_HAVE_BOOST_ASIO 1)
+    # Phase 1-A: Use Asio as the I/O poller backend
+    # This overrides the CACHE variable and any other poller selection
+    set(POLLER "asio" CACHE STRING "I/O thread polling system" FORCE)
+    set(ZMQ_USE_ASIO_POLLER ON)
+    message(STATUS "Using Boost.Asio as I/O backend (Phase 1-A: Reactor Mode)")
   else()
     message(FATAL_ERROR "Boost headers not found at ${BUNDLED_BOOST_INCLUDE_DIR}")
   endif()
@@ -295,7 +300,12 @@ set(API_POLLER
 set(POLLER
     ""
     CACHE STRING "Choose polling system for I/O threads. valid values are
-  kqueue, epoll, devpoll, pollset, poll or select [default=autodetect]")
+  kqueue, epoll, devpoll, pollset, poll, select, or asio [default=autodetect]")
+
+# Override POLLER with asio if Boost.Asio is enabled
+if(ZMQ_USE_ASIO_POLLER)
+  set(POLLER "asio" CACHE STRING "I/O thread polling system" FORCE)
+endif()
 
 if(WIN32)
   if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND CMAKE_SYSTEM_VERSION MATCHES "^10.0")
@@ -369,61 +379,65 @@ if(WIN32)
   add_definitions(-D_WIN32_WINNT=${ZMQ_WIN32_WINNT})
 endif(WIN32)
 
-if(NOT MSVC)
-  if(POLLER STREQUAL "")
-    check_cxx_symbol_exists(kqueue sys/event.h HAVE_KQUEUE)
-    if(HAVE_KQUEUE)
-      set(POLLER "kqueue")
+# Auto-detect poller only if not already set (e.g., by WITH_BOOST_ASIO)
+if(NOT POLLER)
+  if(NOT MSVC)
+    if(POLLER STREQUAL "")
+      check_cxx_symbol_exists(kqueue sys/event.h HAVE_KQUEUE)
+      if(HAVE_KQUEUE)
+        set(POLLER "kqueue")
+      endif()
     endif()
-  endif()
 
-  if(POLLER STREQUAL "")
-    check_cxx_symbol_exists(epoll_create sys/epoll.h HAVE_EPOLL)
-    if(HAVE_EPOLL)
-      set(POLLER "epoll")
-      check_cxx_symbol_exists(epoll_create1 sys/epoll.h HAVE_EPOLL_CLOEXEC)
-      if(HAVE_EPOLL_CLOEXEC)
-        set(ZMQ_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC 1)
+    if(POLLER STREQUAL "")
+      check_cxx_symbol_exists(epoll_create sys/epoll.h HAVE_EPOLL)
+      if(HAVE_EPOLL)
+        set(POLLER "epoll")
+        check_cxx_symbol_exists(epoll_create1 sys/epoll.h HAVE_EPOLL_CLOEXEC)
+        if(HAVE_EPOLL_CLOEXEC)
+          set(ZMQ_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC 1)
+        endif()
+      endif()
+    endif()
+
+    if(POLLER STREQUAL "")
+      check_include_files("sys/devpoll.h" HAVE_DEVPOLL)
+      if(HAVE_DEVPOLL)
+        set(POLLER "devpoll")
+      endif()
+    endif()
+
+    if(POLLER STREQUAL "")
+      check_cxx_symbol_exists(pollset_create sys/pollset.h HAVE_POLLSET)
+      if(HAVE_POLLSET)
+        set(POLLER "pollset")
+      endif()
+    endif()
+
+    if(POLLER STREQUAL "")
+      check_cxx_symbol_exists(poll poll.h HAVE_POLL)
+      if(HAVE_POLL)
+        set(POLLER "poll")
       endif()
     endif()
   endif()
 
   if(POLLER STREQUAL "")
-    check_include_files("sys/devpoll.h" HAVE_DEVPOLL)
-    if(HAVE_DEVPOLL)
-      set(POLLER "devpoll")
+    if(WIN32)
+      set(HAVE_SELECT 1)
+    else()
+      check_cxx_symbol_exists(select sys/select.h HAVE_SELECT)
     endif()
-  endif()
-
-  if(POLLER STREQUAL "")
-    check_cxx_symbol_exists(pollset_create sys/pollset.h HAVE_POLLSET)
-    if(HAVE_POLLSET)
-      set(POLLER "pollset")
-    endif()
-  endif()
-
-  if(POLLER STREQUAL "")
-    check_cxx_symbol_exists(poll poll.h HAVE_POLL)
-    if(HAVE_POLL)
-      set(POLLER "poll")
+    if(HAVE_SELECT)
+      set(POLLER "select")
+    else()
+      message(FATAL_ERROR "Could not autodetect polling method")
     endif()
   endif()
 endif()
 
-if(POLLER STREQUAL "")
-  if(WIN32)
-    set(HAVE_SELECT 1)
-  else()
-    check_cxx_symbol_exists(select sys/select.h HAVE_SELECT)
-  endif()
-  if(HAVE_SELECT)
-    set(POLLER "select")
-  else()
-    message(FATAL_ERROR "Could not autodetect polling method")
-  endif()
-endif()
-
-if(POLLER STREQUAL "kqueue"
+if(POLLER STREQUAL "asio"
+   OR POLLER STREQUAL "kqueue"
    OR POLLER STREQUAL "epoll"
    OR POLLER STREQUAL "devpoll"
    OR POLLER STREQUAL "pollset"
@@ -434,6 +448,13 @@ if(POLLER STREQUAL "kqueue"
   set(ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
 else()
   message(FATAL_ERROR "Invalid polling method")
+endif()
+
+# Add Asio poller source files when using Asio backend
+if(POLLER STREQUAL "asio")
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.hpp)
 endif()
 
 if(POLLER STREQUAL "epoll" AND WIN32)
@@ -1449,7 +1470,10 @@ foreach(target ${build_targets})
 
   if(WITH_BOOST_ASIO AND ZMQ_HAVE_BOOST_ASIO)
     target_include_directories(${target} PRIVATE ${BUNDLED_BOOST_INCLUDE_DIR})
-    target_compile_definitions(${target} PRIVATE ZMQ_HAVE_BOOST_ASIO=1)
+    # Use standalone Asio mode (no dependency on other Boost libraries like boost/config.hpp)
+    target_compile_definitions(${target} PRIVATE
+      BOOST_ASIO_STANDALONE=1
+      BOOST_ASIO_NO_DEPRECATED=1)
   endif()
 endforeach()
 

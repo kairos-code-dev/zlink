@@ -99,6 +99,9 @@ if(WITH_VMCI)
   list(APPEND tests test_pair_vmci)
 endif()
 
+# Asio poller test (runs with or without Asio enabled - skips tests if not enabled)
+list(APPEND tests test_asio_poller)
+
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)

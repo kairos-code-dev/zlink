@@ -3,7 +3,8 @@
 #ifndef __ZMQ_POLLER_HPP_INCLUDED__
 #define __ZMQ_POLLER_HPP_INCLUDED__
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_KQUEUE                                     \
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO                                       \
+    + defined ZMQ_IOTHREAD_POLLER_USE_KQUEUE                                   \
     + defined ZMQ_IOTHREAD_POLLER_USE_EPOLL                                    \
     + defined ZMQ_IOTHREAD_POLLER_USE_DEVPOLL                                  \
     + defined ZMQ_IOTHREAD_POLLER_USE_POLLSET                                  \
@@ -13,7 +14,9 @@
 #error More than one of the ZMQ_IOTHREAD_POLLER_USE_* macros defined
 #endif
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_KQUEUE
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#include "asio/asio_poller.hpp"
+#elif defined ZMQ_IOTHREAD_POLLER_USE_KQUEUE
 #include "kqueue.hpp"
 #elif defined ZMQ_IOTHREAD_POLLER_USE_EPOLL
 #include "epoll.hpp"

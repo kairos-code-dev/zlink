@@ -19,8 +19,11 @@ if(WIN32)
   link_libraries(ws2_32.lib)
 endif()
 
-include_directories("${ZeroMQ_SOURCE_DIR}/include" "${ZeroMQ_SOURCE_DIR}/src" "${ZeroMQ_BINARY_DIR}")
-include_directories("${ZeroMQ_SOURCE_DIR}/external/unity")
+# Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
+include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}")
+include_directories("${CMAKE_SOURCE_DIR}/external/unity")
+# Add Boost headers for ASIO poller
+include_directories("${CMAKE_SOURCE_DIR}/external/boost")
 
 foreach(test ${unittests})
   # target_sources not supported before CMake 3.1

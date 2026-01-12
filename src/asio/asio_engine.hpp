@@ -11,6 +11,7 @@
 #include <boost/asio/posix/stream_descriptor.hpp>
 #endif
 
+#include <memory>
 #include <vector>
 
 #include "../fd.hpp"
@@ -129,6 +130,8 @@ class asio_engine_t : public i_engine
     unsigned char *_inpos;
     size_t _insize;
     i_decoder *_decoder;
+    //  True when _inpos/_insize refer to data read into the decoder buffer.
+    bool _input_in_decoder_buffer;
 
     unsigned char *_outpos;
     size_t _outsize;
@@ -201,14 +204,14 @@ class asio_engine_t : public i_engine
 
 #if defined ZMQ_HAVE_WINDOWS
     //  Windows: Use socket handle (allocated during plug())
-    boost::asio::ip::tcp::socket *_socket_handle;
+    std::unique_ptr<boost::asio::ip::tcp::socket> _socket_handle;
 #else
     //  POSIX: Use stream_descriptor for FD (allocated during plug())
-    boost::asio::posix::stream_descriptor *_stream_descriptor;
+    std::unique_ptr<boost::asio::posix::stream_descriptor> _stream_descriptor;
 #endif
 
     //  Timers for handshake and heartbeat (allocated during plug())
-    boost::asio::steady_timer *_timer;
+    std::unique_ptr<boost::asio::steady_timer> _timer;
 
     //  Current timer ID
     int _current_timer_id;

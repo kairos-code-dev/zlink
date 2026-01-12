@@ -165,6 +165,8 @@ option(WITH_OPENPGM "Build with support for OpenPGM" OFF)
 option(WITH_NORM "Build with support for NORM" OFF)
 option(WITH_VMCI "Build with support for VMware VMCI socket" OFF)
 option(WITH_BOOST_ASIO "Build with Boost.Asio I/O backend" OFF)
+option(WITH_ASIO_SSL "Build with Boost.Asio SSL support (requires OpenSSL)" OFF)
+option(WITH_ASIO_WS "Build with Boost.Beast WebSocket support" OFF)
 
 # Boost.Asio header detection and poller configuration
 if(WITH_BOOST_ASIO)
@@ -179,6 +181,39 @@ if(WITH_BOOST_ASIO)
     message(STATUS "Using Boost.Asio as I/O backend (Phase 1-A: Reactor Mode)")
   else()
     message(FATAL_ERROR "Boost headers not found at ${BUNDLED_BOOST_INCLUDE_DIR}")
+  endif()
+endif()
+
+# Phase 2: SSL support using Boost.Asio SSL (requires OpenSSL)
+if(WITH_ASIO_SSL)
+  if(NOT WITH_BOOST_ASIO)
+    message(FATAL_ERROR "WITH_ASIO_SSL requires WITH_BOOST_ASIO=ON")
+  endif()
+  find_package(OpenSSL REQUIRED)
+  if(OpenSSL_FOUND)
+    message(STATUS "OpenSSL found: ${OPENSSL_VERSION}")
+    set(ZMQ_HAVE_ASIO_SSL 1)
+  else()
+    message(FATAL_ERROR "OpenSSL not found. Install libssl-dev or disable WITH_ASIO_SSL")
+  endif()
+endif()
+
+# Phase 3: WebSocket support using Boost.Beast
+if(WITH_ASIO_WS)
+  if(NOT WITH_BOOST_ASIO)
+    message(FATAL_ERROR "WITH_ASIO_WS requires WITH_BOOST_ASIO=ON")
+  endif()
+  set(BUNDLED_BEAST_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/external/boost/boost/beast.hpp")
+  if(EXISTS "${BUNDLED_BEAST_HEADER}")
+    message(STATUS "Boost.Beast headers found for WebSocket support")
+    set(ZMQ_HAVE_ASIO_WS 1)
+    # WSS (WebSocket Secure) requires both WS and SSL
+    if(ZMQ_HAVE_ASIO_SSL)
+      set(ZMQ_HAVE_ASIO_WSS 1)
+      message(STATUS "WSS (Secure WebSocket) support enabled")
+    endif()
+  else()
+    message(FATAL_ERROR "Boost.Beast headers not found at ${BUNDLED_BEAST_HEADER}")
   endif()
 endif()
 
@@ -464,7 +499,37 @@ if(POLLER STREQUAL "asio")
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.hpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.hpp
+    # Transport abstraction layer (R3 refactoring)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/i_asio_transport.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.hpp
+    # Utility headers (R2, R4 refactoring)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_debug.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_error_handler.hpp)
+endif()
+
+# Phase 2: Add SSL transport when enabled
+if(ZMQ_HAVE_ASIO_SSL)
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.hpp)
+endif()
+
+# Phase 3: Add WebSocket transport when enabled
+if(ZMQ_HAVE_ASIO_WS)
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ws_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ws_transport.hpp)
+endif()
+
+# Phase 3: Add WSS (Secure WebSocket) transport when both WS and SSL are enabled
+if(ZMQ_HAVE_ASIO_WSS)
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.hpp)
 endif()
 
 if(POLLER STREQUAL "epoll" AND WIN32)
@@ -1499,6 +1564,10 @@ if(BUILD_SHARED)
     target_include_directories(libzmq PRIVATE "${GNUTLS_INCLUDE_DIR}")
   endif()
 
+  if(ZMQ_HAVE_ASIO_SSL)
+    target_link_libraries(libzmq OpenSSL::SSL OpenSSL::Crypto)
+  endif()
+
   if(NSS3_FOUND)
     target_link_libraries(libzmq ${NSS3_LIBRARIES})
   endif()
@@ -1540,6 +1609,10 @@ if(BUILD_STATIC)
   if(GNUTLS_FOUND)
     target_link_libraries(libzmq-static ${GNUTLS_LIBRARIES})
     target_include_directories(libzmq-static PRIVATE "${GNUTLS_INCLUDE_DIR}")
+  endif()
+
+  if(ZMQ_HAVE_ASIO_SSL)
+    target_link_libraries(libzmq-static OpenSSL::SSL OpenSSL::Crypto)
   endif()
 
   if(LIBBSD_FOUND)

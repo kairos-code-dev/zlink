@@ -83,6 +83,7 @@ zmq::asio_engine_t::asio_engine_t (fd_t fd_,
     _inpos (NULL),
     _insize (0),
     _decoder (NULL),
+    _input_in_decoder_buffer (false),
     _outpos (NULL),
     _outsize (0),
     _encoder (NULL),
@@ -100,12 +101,6 @@ zmq::asio_engine_t::asio_engine_t (fd_t fd_,
     _peer_address (get_peer_address (fd_)),
     _has_handshake_stage (true),
     _io_context (NULL),
-#if defined ZMQ_HAVE_WINDOWS
-    _socket_handle (NULL),
-#else
-    _stream_descriptor (NULL),
-#endif
-    _timer (NULL),
     _current_timer_id (-1),
     _read_buffer (read_buffer_size),
     _fd (fd_),
@@ -166,13 +161,8 @@ zmq::asio_engine_t::~asio_engine_t ()
     LIBZMQ_DELETE (_decoder);
     LIBZMQ_DELETE (_mechanism);
 
-    //  Delete ASIO objects (they were allocated in plug())
-    LIBZMQ_DELETE (_timer);
-#if defined ZMQ_HAVE_WINDOWS
-    LIBZMQ_DELETE (_socket_handle);
-#else
-    LIBZMQ_DELETE (_stream_descriptor);
-#endif
+    //  Smart pointers will automatically clean up ASIO objects
+    //  (_timer, _socket_handle/_stream_descriptor)
 }
 
 void zmq::asio_engine_t::plug (io_thread_t *io_thread_,
@@ -197,20 +187,19 @@ void zmq::asio_engine_t::plug (io_thread_t *io_thread_,
     //  Allocate ASIO objects with the correct io_context
 #if defined ZMQ_HAVE_WINDOWS
     //  Windows: create socket and assign
-    _socket_handle =
-      new (std::nothrow) boost::asio::ip::tcp::socket (*_io_context);
-    alloc_assert (_socket_handle);
+    _socket_handle = std::unique_ptr<boost::asio::ip::tcp::socket> (
+      new boost::asio::ip::tcp::socket (*_io_context));
     _socket_handle->assign (boost::asio::ip::tcp::v4 (), _fd);
 #else
     //  POSIX: create stream_descriptor with fd
     _stream_descriptor =
-      new (std::nothrow) boost::asio::posix::stream_descriptor (*_io_context, _fd);
-    alloc_assert (_stream_descriptor);
+      std::unique_ptr<boost::asio::posix::stream_descriptor> (
+        new boost::asio::posix::stream_descriptor (*_io_context, _fd));
 #endif
 
     //  Allocate timer with correct io_context
-    _timer = new (std::nothrow) boost::asio::steady_timer (*_io_context);
-    alloc_assert (_timer);
+    _timer = std::unique_ptr<boost::asio::steady_timer> (
+      new boost::asio::steady_timer (*_io_context));
 
     _io_error = false;
 
@@ -287,7 +276,7 @@ void zmq::asio_engine_t::start_async_read ()
     if (_read_pending || _input_stopped || _io_error)
         return;
 
-    ENGINE_DBG ("start_async_read");
+    ENGINE_DBG ("start_async_read: insize=%zu", _insize);
 
     _read_pending = true;
 
@@ -296,11 +285,28 @@ void zmq::asio_engine_t::start_async_read ()
 
     if (_decoder) {
         _decoder->get_buffer (&_read_buffer_ptr, &read_size);
+
+        //  If we have partial data from previous read, move it to buffer start.
+        //  The decoder expects data to start from the beginning of its buffer.
+        if (_insize > 0 && _inpos != _read_buffer_ptr) {
+            ENGINE_DBG ("start_async_read: moving %zu partial bytes to buffer start",
+                        _insize);
+            memmove (_read_buffer_ptr, _inpos, _insize);
+            _inpos = _read_buffer_ptr;
+        }
+
+        //  Read into buffer after any existing partial data
+        if (_insize > 0 && read_size > _insize) {
+            _read_buffer_ptr += _insize;
+            read_size -= _insize;
+        }
     } else {
         //  During handshake, use internal buffer
         _read_buffer_ptr = _read_buffer.data ();
         read_size = _read_buffer.size ();
     }
+
+    ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
 
 #if defined ZMQ_HAVE_WINDOWS
     _socket_handle->async_read_some (
@@ -376,15 +382,25 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
         return;
     }
 
-    //  Set input buffer pointers - use the buffer where data was actually read
-    //  (_read_buffer_ptr was set in start_async_read before the async operation)
-    _inpos = _read_buffer_ptr;
-    _insize = bytes_transferred;
-
-    if (_decoder) {
-        //  Data was read directly into decoder buffer, resize to actual bytes read
-        _decoder->resize_buffer (bytes_transferred);
+    //  Handle buffer pointers based on whether we have partial data
+    if (_decoder && _insize > 0) {
+        //  We have partial data from previous read.
+        //  start_async_read() moved partial data to buffer start and set _inpos there.
+        //  New data was read right after the partial data.
+        const size_t partial_size = _insize;
+        _insize = partial_size + bytes_transferred;
+        ENGINE_DBG ("on_read_complete: total %zu bytes (partial=%zu + new=%zu)",
+                    _insize, partial_size, bytes_transferred);
+        //  Note: Do NOT call resize_buffer() here - it interferes with decoder's
+        //  internal state management. The decoder tracks its own buffer state.
+    } else {
+        //  Fresh read - set buffer pointers
+        _inpos = _read_buffer_ptr;
+        _insize = bytes_transferred;
+        //  Note: Do NOT call resize_buffer() here - let process_input() handle
+        //  decoder buffer management when data is copied to decoder buffer.
     }
+    _input_in_decoder_buffer = (_decoder != NULL);
 
     //  Process received data
     if (!process_input ()) {
@@ -398,7 +414,9 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
         return;
     }
 
-    //  Continue reading if not stopped
+    //  Continue reading if not stopped.
+    //  If _insize > 0, there's still unprocessed data (partial message) that
+    //  needs more data to complete. The new read will append to existing data.
     if (!_input_stopped)
         start_async_read ();
 }
@@ -475,15 +493,11 @@ bool zmq::asio_engine_t::process_input ()
         return true;
     }
 
-    //  Check if data is in the handshake buffer (not decoder buffer)
-    //  This happens when greeting + mechanism data arrive together
-    const bool data_in_handshake_buffer =
-      (_inpos >= _read_buffer.data ()
-       && _inpos < _read_buffer.data () + _read_buffer.size ());
+    const bool input_in_decoder_buffer = _input_in_decoder_buffer;
 
     ENGINE_DBG (
-      "process_input: after handshake, insize=%zu, data_in_handshake_buffer=%d",
-      _insize, data_in_handshake_buffer);
+      "process_input: after handshake, insize=%zu, input_in_decoder_buffer=%d",
+      _insize, input_in_decoder_buffer);
 
     int rc = 0;
     size_t processed = 0;
@@ -492,18 +506,19 @@ bool zmq::asio_engine_t::process_input ()
         unsigned char *decode_buf;
         size_t decode_size;
 
-        if (data_in_handshake_buffer) {
-            //  Data is in handshake buffer, need to copy to decoder buffer
+        decode_buf = _inpos;
+        decode_size = _insize;
+
+        if (!input_in_decoder_buffer) {
+            //  Data came from an external buffer (handshake/greeting); copy
+            //  into decoder buffer to preserve decoder buffer invariants.
             _decoder->get_buffer (&decode_buf, &decode_size);
             decode_size = std::min (_insize, decode_size);
             memcpy (decode_buf, _inpos, decode_size);
-            ENGINE_DBG ("process_input: copied %zu bytes from handshake buffer "
-                        "to decoder buffer",
+            _decoder->resize_buffer (decode_size);
+            ENGINE_DBG ("process_input: copied %zu bytes from external input "
+                        "buffer to decoder buffer",
                         decode_size);
-        } else {
-            //  Data was read directly into decoder buffer
-            decode_buf = _inpos;
-            decode_size = _insize;
         }
 
         ENGINE_DBG ("process_input: decode loop decode_size=%zu", decode_size);
@@ -622,12 +637,19 @@ bool zmq::asio_engine_t::restart_input ()
 
     while (_insize > 0) {
         size_t processed = 0;
-        unsigned char *data;
-        size_t size;
-        _decoder->get_buffer (&data, &size);
+        unsigned char *decode_buf = _inpos;
+        size_t decode_size = _insize;
 
-        rc = _decoder->decode (data, _insize, processed);
+        if (!_input_in_decoder_buffer) {
+            _decoder->get_buffer (&decode_buf, &decode_size);
+            decode_size = std::min (_insize, decode_size);
+            memcpy (decode_buf, _inpos, decode_size);
+            _decoder->resize_buffer (decode_size);
+        }
+
+        rc = _decoder->decode (decode_buf, decode_size, processed);
         zmq_assert (processed <= _insize);
+        _inpos += processed;
         _insize -= processed;
         if (rc == 0 || rc == -1)
             break;

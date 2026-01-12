@@ -256,6 +256,7 @@ bool zmq::asio_zmtp_engine_t::handshake_v1_0_unversioned ()
 
     _inpos = _greeting_recv;
     _insize = _greeting_bytes_read;
+    _input_in_decoder_buffer = false;
 
     if (_options.type == ZMQ_PUB || _options.type == ZMQ_XPUB)
         _subscription_required = true;

@@ -1,0 +1,96 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__
+#define __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__
+
+#include "../poller.hpp"
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+
+#include <boost/asio.hpp>
+#include <boost/system/error_code.hpp>
+#include <cstddef>
+#include <functional>
+
+namespace zmq
+{
+
+//  Transport abstraction interface for ASIO-based engines.
+//
+//  This interface abstracts the underlying stream transport (TCP, SSL, WebSocket)
+//  allowing asio_engine_t to be generic over different transport types.
+//
+//  Phase 1: TCP only (tcp_transport_t)
+//  Phase 2: SSL support (ssl_transport_t)
+//  Phase 3: WebSocket support (ws_transport_t)
+//
+//  Design rationale:
+//  - Uses boost::asio::mutable_buffer/const_buffer for efficient buffer handling
+//  - Completion callbacks use std::function for type erasure
+//  - Transport owns the underlying socket/stream object
+//  - Engine manages buffer lifecycle, transport handles I/O
+
+class i_asio_transport
+{
+  public:
+    //  Callback type for async operation completion
+    typedef std::function<void (const boost::system::error_code &, std::size_t)>
+      completion_handler_t;
+
+    virtual ~i_asio_transport () = default;
+
+    //  Open the transport with the given io_context and file descriptor.
+    //  Returns true on success, false on failure.
+    //  For TCP: assigns the fd to the socket
+    //  For SSL: wraps socket in SSL stream
+    //  For WS: wraps socket in Beast WebSocket stream
+    virtual bool open (boost::asio::io_context &io_context, fd_t fd) = 0;
+
+    //  Check if transport is open and ready for I/O
+    virtual bool is_open () const = 0;
+
+    //  Close the transport.
+    //  Gracefully shuts down the connection if possible.
+    virtual void close () = 0;
+
+    //  Start async read operation.
+    //  Reads up to buffer_size bytes into buffer.
+    //  Calls handler on completion with error code and bytes transferred.
+    virtual void async_read_some (unsigned char *buffer,
+                                  std::size_t buffer_size,
+                                  completion_handler_t handler) = 0;
+
+    //  Start async write operation.
+    //  Writes up to buffer_size bytes from buffer.
+    //  Calls handler on completion with error code and bytes written.
+    virtual void async_write_some (const unsigned char *buffer,
+                                   std::size_t buffer_size,
+                                   completion_handler_t handler) = 0;
+
+    //  Check if this transport requires a handshake phase.
+    //  TCP: false, SSL: true, WebSocket: true
+    virtual bool requires_handshake () const { return false; }
+
+    //  Start async handshake for transports that require it (SSL, WebSocket).
+    //  For TCP, this is a no-op that immediately calls handler with success.
+    //  handshake_type: 0 = client, 1 = server
+    virtual void async_handshake (int handshake_type, completion_handler_t handler)
+    {
+        //  Default: no handshake needed, succeed immediately
+        if (handler) {
+            handler (boost::system::error_code (), 0);
+        }
+    }
+
+    //  Check if transport is encrypted.
+    //  TCP: false, SSL: true, WSS: true, WS: false
+    virtual bool is_encrypted () const { return false; }
+
+    //  Get transport name for debugging
+    virtual const char *name () const = 0;
+};
+
+}  // namespace zmq
+
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+
+#endif  // __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__

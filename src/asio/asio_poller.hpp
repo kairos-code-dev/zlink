@@ -9,6 +9,7 @@
 
 #include <vector>
 #include <map>
+#include <memory>
 
 #include <boost/asio.hpp>
 #if !defined ZMQ_HAVE_WINDOWS

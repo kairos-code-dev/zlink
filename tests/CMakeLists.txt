@@ -108,6 +108,14 @@ list(APPEND tests test_asio_connect)
 # Asio TCP engine test (Phase 1-C: True Proactor Mode)
 list(APPEND tests test_asio_tcp)
 
+# Asio SSL test (Phase 2: SSL Support)
+# This test compiles with or without SSL, skipping tests if SSL is not enabled
+list(APPEND tests test_asio_ssl)
+
+# Asio WebSocket test (Phase 3: WebSocket Support)
+# This test compiles with or without WebSocket, skipping tests if WS is not enabled
+list(APPEND tests test_asio_ws)
+
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
@@ -164,6 +172,11 @@ endif()
 # add include dirs for all targets
 # Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
+
+# Add Boost include directory for ASIO tests (Phase 1-C, Phase 2, Phase 3)
+if(WITH_BOOST_ASIO)
+  include_directories("${CMAKE_SOURCE_DIR}/external/boost")
+endif()
 
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)

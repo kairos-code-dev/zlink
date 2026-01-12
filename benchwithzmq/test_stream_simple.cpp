@@ -2,13 +2,30 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <cstring>
+
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
+typedef SOCKET socket_t;
+#define CLOSE_SOCKET closesocket
+#else
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+typedef int socket_t;
+#define CLOSE_SOCKET close
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
+#endif
 
 int main() {
+#ifdef _WIN32
     WSADATA wsaData;
     WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
 
     // ZMQ STREAM socket
     void *ctx = zmq_ctx_new();
@@ -21,15 +38,37 @@ int main() {
 
     // Raw TCP socket
     std::cout << "Creating raw TCP socket..." << std::endl;
-    SOCKET tcp_sock = socket(AF_INET, SOCK_STREAM, 0);
+    socket_t tcp_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (tcp_sock == INVALID_SOCKET) {
+        std::cout << "Failed to create socket" << std::endl;
+        zmq_close(stream_sock);
+        zmq_ctx_term(ctx);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        return 1;
+    }
 
     sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(5560);
+#ifdef _WIN32
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+#else
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+#endif
 
     std::cout << "Connecting..." << std::endl;
-    connect(tcp_sock, (sockaddr*)&addr, sizeof(addr));
+    if (connect(tcp_sock, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
+        std::cout << "Failed to connect" << std::endl;
+        CLOSE_SOCKET(tcp_sock);
+        zmq_close(stream_sock);
+        zmq_ctx_term(ctx);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+        return 1;
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -65,10 +104,12 @@ int main() {
 
     std::cout << "SUCCESS!" << std::endl;
 
-    closesocket(tcp_sock);
+    CLOSE_SOCKET(tcp_sock);
     zmq_close(stream_sock);
     zmq_ctx_term(ctx);
+#ifdef _WIN32
     WSACleanup();
+#endif
 
     return 0;
 }

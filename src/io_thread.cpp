@@ -86,6 +86,14 @@ zmq::poller_t *zmq::io_thread_t::get_poller () const
     return _poller;
 }
 
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+boost::asio::io_context &zmq::io_thread_t::get_io_context () const
+{
+    zmq_assert (_poller);
+    return _poller->get_io_context ();
+}
+#endif
+
 void zmq::io_thread_t::process_stop ()
 {
     zmq_assert (_mailbox_handle);

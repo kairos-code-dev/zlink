@@ -26,6 +26,10 @@
 #include "ipc_listener.hpp"
 #include "tipc_listener.hpp"
 #include "tcp_connecter.hpp"
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#include "asio/asio_tcp_listener.hpp"
+#endif
 #include "io_thread.hpp"
 #include "session_base.hpp"
 #include "config.hpp"
@@ -517,8 +521,14 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     }
 
     if (protocol == protocol_name::tcp) {
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+        //  Phase 1-B: Use ASIO-based listener for async_accept
+        asio_tcp_listener_t *listener =
+          new (std::nothrow) asio_tcp_listener_t (io_thread, this, options);
+#else
         tcp_listener_t *listener =
           new (std::nothrow) tcp_listener_t (io_thread, this, options);
+#endif
         alloc_assert (listener);
         rc = listener->set_local_address (address.c_str ());
         if (rc != 0) {

@@ -454,7 +454,12 @@ endif()
 if(POLLER STREQUAL "asio")
   list(APPEND sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.hpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.hpp
+    # Phase 1-B: ASIO-based TCP listener and connecter
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.hpp)
 endif()
 
 if(POLLER STREQUAL "epoll" AND WIN32)

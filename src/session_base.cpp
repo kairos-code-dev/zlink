@@ -18,6 +18,10 @@
 #include "norm_engine.hpp"
 #include "udp_engine.hpp"
 
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#include "asio/asio_tcp_connecter.hpp"
+#endif
+
 #include "ctx.hpp"
 
 zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
@@ -563,8 +567,14 @@ void zmq::session_base_t::start_connecting (bool wait_)
               io_thread, this, options, _addr, proxy_address, wait_);
             alloc_assert (connecter);
         } else {
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+            //  Phase 1-B: Use ASIO-based connecter for async_connect
+            connecter = new (std::nothrow)
+              asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
+#else
             connecter = new (std::nothrow)
               tcp_connecter_t (io_thread, this, options, _addr, wait_);
+#endif
         }
     }
 #if defined ZMQ_HAVE_IPC

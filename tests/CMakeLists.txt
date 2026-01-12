@@ -102,6 +102,9 @@ endif()
 # Asio poller test (runs with or without Asio enabled - skips tests if not enabled)
 list(APPEND tests test_asio_poller)
 
+# Asio connect test (Phase 1-B: async_accept/async_connect)
+list(APPEND tests test_asio_connect)
+
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)

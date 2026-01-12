@@ -9,6 +9,10 @@
 #include "i_poll_events.hpp"
 #include "mailbox.hpp"
 
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#include <boost/asio.hpp>
+#endif
+
 namespace zmq
 {
 class ctx_t;
@@ -41,6 +45,12 @@ class io_thread_t ZMQ_FINAL : public object_t, public i_poll_events
 
     //  Used by io_objects to retrieve the associated poller object.
     poller_t *get_poller () const;
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+    //  Get access to the io_context for ASIO-based operations
+    //  (Phase 1-B: used by asio_tcp_listener and asio_tcp_connecter)
+    boost::asio::io_context &get_io_context () const;
+#endif
 
     //  Command handlers.
     void process_stop ();

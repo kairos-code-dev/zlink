@@ -19,23 +19,32 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zmq_has ("ipc"));
 #endif
 
-#if defined(ZMQ_HAVE_OPENPGM)
-    TEST_ASSERT_TRUE (zmq_has ("pgm"));
+#if defined(ZMQ_HAVE_TLS)
+    TEST_ASSERT_TRUE (zmq_has ("tls"));
 #else
+    TEST_ASSERT_TRUE (!zmq_has ("tls"));
+#endif
+
+#if defined(ZMQ_HAVE_WS)
+    TEST_ASSERT_TRUE (zmq_has ("ws"));
+#else
+    TEST_ASSERT_TRUE (!zmq_has ("ws"));
+#endif
+
+#if defined(ZMQ_HAVE_WSS)
+    TEST_ASSERT_TRUE (zmq_has ("wss"));
+#else
+    TEST_ASSERT_TRUE (!zmq_has ("wss"));
+#endif
+
+    // PGM is removed
     TEST_ASSERT_TRUE (!zmq_has ("pgm"));
-#endif
 
-#if defined(ZMQ_HAVE_TIPC)
-    TEST_ASSERT_TRUE (zmq_has ("tipc"));
-#else
+    // TIPC is removed
     TEST_ASSERT_TRUE (!zmq_has ("tipc"));
-#endif
 
-#if defined(ZMQ_HAVE_NORM)
-    TEST_ASSERT_TRUE (zmq_has ("norm"));
-#else
+    // NORM is removed
     TEST_ASSERT_TRUE (!zmq_has ("norm"));
-#endif
 
     // CURVE is removed
     TEST_ASSERT_TRUE (!zmq_has ("curve"));
@@ -46,12 +55,10 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zmq_has ("gssapi"));
 #endif
 
-#if defined(ZMQ_HAVE_VMCI)
-    TEST_ASSERT_TRUE (zmq_has ("vmci"));
-#else
+    // VMCI is removed
     TEST_ASSERT_TRUE (!zmq_has ("vmci"));
-#endif
 
+    // Draft API is removed
     TEST_ASSERT_TRUE (!zmq_has ("draft"));
 }
 

@@ -9,6 +9,10 @@
  *
  * NOTE: These tests require OpenSSL and are only compiled when
  * ZMQ_HAVE_ASIO_SSL is defined.
+ *
+ * TODO (Phase 7): Add end-to-end tls:// protocol tests using ZMQ sockets.
+ *   Current tests verify low-level Asio SSL primitives.
+ *   Need tests for zmq_bind("tls://...") and zmq_connect("tls://...").
  */
 
 #include "testutil.hpp"

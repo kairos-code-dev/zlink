@@ -95,6 +95,17 @@ class ssl_context_helper_t
     static bool load_ca_certificate_from_pem (boost::asio::ssl::context &ctx,
                                               const std::string &ca_cert_pem);
 
+    //  Set hostname verification callback for RFC2818 verification
+    //  This enables hostname verification against the server's certificate
+    static bool set_hostname_verification (boost::asio::ssl::context &ctx,
+                                            const std::string &hostname);
+
+    //  Configure server verification mode based on client cert requirement
+    //  If require_client_cert is true, sets verify_peer | verify_fail_if_no_peer_cert
+    //  If false, sets verify_none (optional client cert)
+    static bool configure_server_verification (boost::asio::ssl::context &ctx,
+                                                bool require_client_cert);
+
     //  Get OpenSSL error string
     static std::string get_ssl_error_string ();
 };

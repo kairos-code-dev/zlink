@@ -951,6 +951,7 @@ set(cxx-sources
     xsub.cpp
     zmq.cpp
     zmq_utils.cpp
+    zmtp_engine.cpp
     decoder_allocators.cpp
     socket_poller.cpp
     timers.cpp
@@ -1055,7 +1056,8 @@ set(cxx-sources
     ypipe_base.hpp
     ypipe_conflate.hpp
     yqueue.hpp
-    zap_client.hpp)
+    zap_client.hpp
+    zmtp_engine.hpp)
 
 if(MINGW)
   # Generate the right type when using -m32 or -m64

@@ -419,10 +419,20 @@ bool zmq::asio_tls_listener_t::create_ssl_context ()
         return false;
     }
 
-    //  If CA is specified, enable client certificate verification
-    if (!options.tls_ca.empty ()) {
+    //  Configure client certificate verification based on options
+    //  If tls_require_client_cert is set and CA is provided, enable mTLS
+    bool require_client_cert = (options.tls_require_client_cert != 0);
+
+    if (require_client_cert) {
+        //  mTLS mode requires CA certificate to verify client
+        if (options.tls_ca.empty ()) {
+            TLS_LISTENER_DBG (
+              "create_ssl_context: mTLS mode requires tls_ca to be set");
+            return false;
+        }
+
         TLS_LISTENER_DBG (
-          "create_ssl_context: enabling client certificate verification");
+          "create_ssl_context: enabling mTLS (client certificate required)");
 
         if (!ssl_context_helper_t::load_ca_certificate (*_ssl_context,
                                                          options.tls_ca)) {
@@ -430,15 +440,26 @@ bool zmq::asio_tls_listener_t::create_ssl_context ()
                               ssl_context_helper_t::get_ssl_error_string ().c_str ());
             return false;
         }
+    } else if (!options.tls_ca.empty ()) {
+        //  CA specified but client cert not required - optional client auth
+        TLS_LISTENER_DBG (
+          "create_ssl_context: loading CA for optional client certificate verification");
 
-        //  Require and verify client certificate
-        if (!ssl_context_helper_t::configure_verification (
-              *_ssl_context, ssl_context_helper_t::verify_client)) {
-            TLS_LISTENER_DBG (
-              "create_ssl_context: failed to configure verification: %s",
-              ssl_context_helper_t::get_ssl_error_string ().c_str ());
+        if (!ssl_context_helper_t::load_ca_certificate (*_ssl_context,
+                                                         options.tls_ca)) {
+            TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
+                              ssl_context_helper_t::get_ssl_error_string ().c_str ());
             return false;
         }
+    }
+
+    //  Configure server verification mode
+    if (!ssl_context_helper_t::configure_server_verification (*_ssl_context,
+                                                               require_client_cert)) {
+        TLS_LISTENER_DBG (
+          "create_ssl_context: failed to configure server verification: %s",
+          ssl_context_helper_t::get_ssl_error_string ().c_str ());
+        return false;
     }
 
     TLS_LISTENER_DBG ("create_ssl_context: SSL context created successfully");

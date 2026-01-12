@@ -484,6 +484,17 @@ bool zmq::asio_tls_connecter_t::create_ssl_context ()
         return false;
     }
 
+    //  Configure hostname verification if hostname is specified
+    if (!options.tls_hostname.empty ()) {
+        TLS_CONNECTER_DBG ("create_ssl_context: setting hostname verification: %s",
+                           options.tls_hostname.c_str ());
+        if (!ssl_context_helper_t::set_hostname_verification (*_ssl_context,
+                                                               options.tls_hostname)) {
+            TLS_CONNECTER_DBG ("create_ssl_context: failed to set hostname verification");
+            return false;
+        }
+    }
+
     TLS_CONNECTER_DBG ("create_ssl_context: SSL context created successfully");
     return true;
 }

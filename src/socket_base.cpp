@@ -33,6 +33,7 @@
 #include "ws_address.hpp"
 #endif
 #endif
+#include "ipc_listener.hpp"
 #include "io_thread.hpp"
 #include "session_base.hpp"
 #include "config.hpp"

@@ -10,6 +10,8 @@
 
 #include <boost/asio/buffer.hpp>
 #include <openssl/err.h>
+#include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 
 namespace zmq
 {
@@ -368,6 +370,64 @@ bool ssl_context_helper_t::load_ca_certificate_from_pem (
     }
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("Failed to load CA certificate from PEM: %s",
+                          e.what ());
+        return false;
+    }
+}
+
+bool ssl_context_helper_t::set_hostname_verification (
+  boost::asio::ssl::context &ctx, const std::string &hostname)
+{
+    if (hostname.empty ()) {
+        ASIO_GLOBAL_ERROR ("set_hostname_verification: hostname is empty");
+        return false;
+    }
+
+    //  Get the native SSL_CTX handle
+    SSL_CTX *native_ctx = ctx.native_handle ();
+
+    //  Enable hostname verification using OpenSSL's built-in support
+    //  This is supported in OpenSSL 1.0.2+ and uses X509_VERIFY_PARAM
+    X509_VERIFY_PARAM *param = SSL_CTX_get0_param (native_ctx);
+    if (!param) {
+        ASIO_GLOBAL_ERROR (
+          "set_hostname_verification: failed to get X509_VERIFY_PARAM");
+        return false;
+    }
+
+    //  Enable hostname checking (flags for DNS name verification)
+    X509_VERIFY_PARAM_set_hostflags (param,
+                                     X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+
+    //  Set the expected hostname for verification
+    if (!X509_VERIFY_PARAM_set1_host (param, hostname.c_str (),
+                                      hostname.size ())) {
+        ASIO_GLOBAL_ERROR (
+          "set_hostname_verification: failed to set hostname '%s'",
+          hostname.c_str ());
+        return false;
+    }
+
+    return true;
+}
+
+bool ssl_context_helper_t::configure_server_verification (
+  boost::asio::ssl::context &ctx, bool require_client_cert)
+{
+    try {
+        if (require_client_cert) {
+            //  mTLS mode: require and verify client certificate
+            ctx.set_verify_mode (boost::asio::ssl::verify_peer
+                                 | boost::asio::ssl::verify_fail_if_no_peer_cert
+                                 | boost::asio::ssl::verify_client_once);
+        } else {
+            //  TLS mode: do not require client certificate
+            ctx.set_verify_mode (boost::asio::ssl::verify_none);
+        }
+        return true;
+    }
+    catch (const boost::system::system_error &e) {
+        ASIO_GLOBAL_ERROR ("Failed to configure server verification: %s",
                           e.what ());
         return false;
     }

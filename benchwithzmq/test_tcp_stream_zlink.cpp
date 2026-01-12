@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <cstring>
 
 int main() {
     std::cout << "Testing STREAM socket with TCP transport (zlink build)" << std::endl;

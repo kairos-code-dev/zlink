@@ -9,9 +9,13 @@
 #endif
 
 void run_pair(const std::string& transport, size_t msg_size, int msg_count) {
+    std::cerr << "run_pair: " << transport << " " << msg_size << "B" << std::endl;
     void *ctx = zmq_ctx_new();
+    if (!ctx) { std::cerr << "ctx_new failed" << std::endl; return; }
     void *s_bind = zmq_socket(ctx, ZMQ_PAIR);
+    if (!s_bind) { std::cerr << "socket bind failed" << std::endl; return; }
     void *s_conn = zmq_socket(ctx, ZMQ_PAIR);
+    if (!s_conn) { std::cerr << "socket conn failed" << std::endl; return; }
 
     int nodelay = 1;
     zmq_setsockopt(s_bind, ZMQ_TCP_NODELAY, &nodelay, sizeof(nodelay));
@@ -22,8 +26,11 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count) {
     zmq_setsockopt(s_conn, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
     std::string endpoint = make_endpoint(transport, "zmq_pair");
-    zmq_bind(s_bind, endpoint.c_str());
-    zmq_connect(s_conn, endpoint.c_str());
+    std::cerr << "endpoint: " << endpoint << std::endl;
+    int rc = zmq_bind(s_bind, endpoint.c_str());
+    if (rc != 0) { std::cerr << "bind failed: " << zmq_strerror(errno) << std::endl; return; }
+    rc = zmq_connect(s_conn, endpoint.c_str());
+    if (rc != 0) { std::cerr << "connect failed: " << zmq_strerror(errno) << std::endl; return; }
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
@@ -65,6 +72,7 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count) {
 }
 
 int main() {
+    std::cerr << "=== comp_zlink_pair starting ===" << std::endl;
     auto get_count = [](size_t size) {
         if (size <= 1024) return 100000;
         if (size <= 65536) return 20000;

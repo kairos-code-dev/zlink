@@ -241,6 +241,59 @@ The ASIO integration uses a true proactor pattern:
 5. **ssl_context_helper_t** - SSL context management
 6. **ws_engine_t** - WebSocket frame handling with Boost.Beast
 
+## Benchmarks (benchwithzmq)
+
+The `benchwithzmq/` harness compares zlink against a reference libzmq build.
+It expects a baseline at `benchwithzmq/libzmq/libzmq_dist/`. Benchmarks are
+only built when `BUILD_BENCHMARKS=ON` and `BUILD_SHARED=ON`.
+
+### Build benchmarks
+
+```bash
+cmake -B build-bench-asio \
+  -DWITH_BOOST_ASIO=ON \
+  -DBUILD_BENCHMARKS=ON \
+  -DBUILD_SHARED=ON \
+  -DBUILD_TESTS=OFF
+cmake --build build-bench-asio
+```
+
+### Run comparison (Linux/macOS)
+
+```bash
+# Clean build + full comparison (refresh libzmq baseline)
+./benchwithzmq/run_benchmarks.sh --with-libzmq --runs 3
+
+# Clean build + reuse cached libzmq baseline
+./benchwithzmq/run_benchmarks.sh --skip-libzmq --runs 3
+
+# Single pattern
+./benchwithzmq/run_benchmarks.sh --pattern PAIR --runs 3
+
+# Direct runner (no clean build)
+python3 benchwithzmq/run_comparison.py ALL --refresh-libzmq --runs 3
+
+# Single pattern (uses cached baseline unless --refresh-libzmq is set)
+python3 benchwithzmq/run_comparison.py PAIR --runs 3
+```
+
+Notes:
+- The script pins to CPU core 1 via `taskset` on Linux.
+- Cached baseline results live in `benchwithzmq/libzmq_cache.json`.
+
+### Windows (PowerShell)
+
+1) Update `BENCH_DIR` and `$ITERATIONS` in `benchwithzmq/run_benchmarks_10x.ps1`
+or `benchwithzmq/run_zlink_only.ps1`.
+2) Run:
+```powershell
+.\benchwithzmq\run_benchmarks_10x.ps1
+```
+3) Optional analysis:
+```bash
+python3 benchwithzmq/analyze_results.py
+```
+
 ## Build from sources <a name="build"/>
 
 To build from sources, see the INSTALL file included with the distribution.

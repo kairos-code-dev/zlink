@@ -5,12 +5,12 @@ import sys
 import math
 
 # Configuration
-BUILD_DIR = "build/bin"
-LIBZMQ_LIB_DIR = os.path.abspath("perf/comparison/libzmq/libzmq_dist/lib")
+BUILD_DIR = "build-bench-asio/bin"
+ZLINK_LIB_DIR = os.path.abspath("build-bench-asio/lib")
+LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
 
-# Set up environment variables for shared libraries
-env = os.environ.copy()
-env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+# Base environment
+base_env = os.environ.copy()
 
 def run_benchmark(binary_name):
     """Runs a benchmark binary and returns parsed results."""
@@ -19,14 +19,21 @@ def run_benchmark(binary_name):
         print(f"Error: Binary {binary_path} not found. Did you build?")
         return []
 
+    # Use appropriate library path based on binary type
+    env = base_env.copy()
+    if binary_name.startswith("comp_zlink"):
+        env["LD_LIBRARY_PATH"] = f"{ZLINK_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+    else:
+        env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+
     print(f"Running {binary_name}...", file=sys.stderr)
     try:
         # Run binary and capture stdout
         result = subprocess.run(
-            [binary_path], 
-            env=env, 
-            capture_output=True, 
-            text=True, 
+            [binary_path],
+            env=env,
+            capture_output=True,
+            text=True,
             timeout=600 # 10 min timeout
         )
         if result.returncode != 0:

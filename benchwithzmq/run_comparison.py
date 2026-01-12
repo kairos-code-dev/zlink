@@ -17,11 +17,12 @@ if IS_WINDOWS:
 else:
     # Linux typically builds directly in the target folder
     # Support multiple possible build locations
-    possible_paths = ["build/linux-x64/bin", "build/benchwithzmq", "build/linux-x64/benchwithzmq"]
-    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build/linux-x64/bin")
+    possible_paths = ["build-bench-asio/bin", "build/linux-x64/bin", "build/benchwithzmq", "build/linux-x64/benchwithzmq"]
+    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build-bench-asio/bin")
     LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
+    ZLINK_LIB_DIR = os.path.abspath("build-bench-asio/lib")
 
-NUM_RUNS = 10 
+DEFAULT_NUM_RUNS = 3  # Reduced from 10 for faster testing
 CACHE_FILE = "benchwithzmq/libzmq_cache.json"
 
 # Settings for loop
@@ -31,15 +32,23 @@ if not IS_WINDOWS:
 
 MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
-env = os.environ.copy()
-if IS_WINDOWS:
-    env["PATH"] = f"{LIBZMQ_LIB_DIR};{env.get('PATH', '')}"
-else:
-    env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+base_env = os.environ.copy()
+
+def get_env_for_lib(lib_name):
+    env = base_env.copy()
+    if IS_WINDOWS:
+        env["PATH"] = f"{LIBZMQ_LIB_DIR};{env.get('PATH', '')}"
+    else:
+        if lib_name == "zlink":
+            env["LD_LIBRARY_PATH"] = f"{ZLINK_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+        else:
+            env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+    return env
 
 def run_single_test(binary_name, lib_name, transport, size):
     """Runs a single binary for one specific config."""
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
+    env = get_env_for_lib(lib_name)
     try:
         # Args: [lib_name] [transport] [size]
         # Use taskset on Linux to pin to CPU 1 for reduced variance
@@ -61,7 +70,7 @@ def run_single_test(binary_name, lib_name, transport, size):
         # print(f"Error running {binary_name}: {e}")
         return []
 
-def collect_data(binary_name, lib_name, pattern_name):
+def collect_data(binary_name, lib_name, pattern_name, num_runs):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
     final_stats = {} # (tr, size, metric) -> avg_value
     
@@ -70,7 +79,7 @@ def collect_data(binary_name, lib_name, pattern_name):
             print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
             metrics_raw = {} # metric_name -> list of values
             
-            for i in range(NUM_RUNS):
+            for i in range(num_runs):
                 print(f"{i+1} ", end="", flush=True)
                 results = run_single_test(binary_name, lib_name, tr, sz)
                 for r in results:
@@ -88,9 +97,44 @@ def collect_data(binary_name, lib_name, pattern_name):
             print("Done")
     return final_stats
 
+def parse_args():
+    refresh = False
+    p_req = "ALL"
+    num_runs = DEFAULT_NUM_RUNS
+
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--refresh-libzmq":
+            refresh = True
+        elif arg == "--runs":
+            if i + 1 >= len(sys.argv):
+                print("Error: --runs requires a value.", file=sys.stderr)
+                sys.exit(1)
+            try:
+                num_runs = int(sys.argv[i + 1])
+            except ValueError:
+                print("Error: --runs must be an integer.", file=sys.stderr)
+                sys.exit(1)
+            i += 1
+        elif arg.startswith("--runs="):
+            try:
+                num_runs = int(arg.split("=", 1)[1])
+            except ValueError:
+                print("Error: --runs must be an integer.", file=sys.stderr)
+                sys.exit(1)
+        elif not arg.startswith("--") and p_req == "ALL":
+            p_req = arg
+        i += 1
+
+    if num_runs < 1:
+        print("Error: --runs must be >= 1.", file=sys.stderr)
+        sys.exit(1)
+
+    return p_req, refresh, num_runs
+
 def main():
-    refresh = "--refresh-libzmq" in sys.argv
-    p_req = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "ALL"
+    p_req, refresh, num_runs = parse_args()
     
     # Check if any target binary exists
     check_bin = os.path.join(BUILD_DIR, "comp_zlink_pair" + EXE_SUFFIX)
@@ -120,14 +164,14 @@ def main():
         print(f"\n## PATTERN: {p_name}")
         
         if refresh or p_name not in cache:
-            s_stats = collect_data(std_bin, "libzmq", p_name)
+            s_stats = collect_data(std_bin, "libzmq", p_name, num_runs)
             cache[p_name] = s_stats
             with open(CACHE_FILE, 'w') as f: json.dump(cache, f, indent=2)
         else:
             print(f"  [libzmq] Using cached baseline.")
             s_stats = cache[p_name]
 
-        z_stats = collect_data(zlk_bin, "zlink", p_name)
+        z_stats = collect_data(zlk_bin, "zlink", p_name, num_runs)
 
         # Print Table
         for tr in TRANSPORTS:

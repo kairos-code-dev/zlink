@@ -459,7 +459,12 @@ if(POLLER STREQUAL "asio")
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.hpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.hpp
+    # Phase 1-C: ASIO engine (True Proactor Mode)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.hpp)
 endif()
 
 if(POLLER STREQUAL "epoll" AND WIN32)

@@ -105,6 +105,9 @@ list(APPEND tests test_asio_poller)
 # Asio connect test (Phase 1-B: async_accept/async_connect)
 list(APPEND tests test_asio_connect)
 
+# Asio TCP engine test (Phase 1-C: True Proactor Mode)
+list(APPEND tests test_asio_tcp)
+
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)

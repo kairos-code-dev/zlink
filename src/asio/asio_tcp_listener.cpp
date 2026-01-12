@@ -5,6 +5,7 @@
 
 #include "asio_tcp_listener.hpp"
 #include "asio_poller.hpp"
+#include "asio_zmtp_engine.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
@@ -336,7 +337,8 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
     if (options.raw_socket)
         engine = new (std::nothrow) raw_engine_t (fd_, options, endpoint_pair);
     else
-        engine = new (std::nothrow) zmtp_engine_t (fd_, options, endpoint_pair);
+        //  Phase 1-C: Use ASIO ZMTP engine for true proactor mode
+        engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in. Given that we are already

@@ -9,7 +9,8 @@
 | Phase 1-B: Listener/Connecter | **COMPLETE** | test_asio_connect passing |
 | Phase 1-C: True Proactor | **COMPLETE** | test_asio_tcp passing |
 | Phase 2: SSL/TLS | **COMPLETE** | 8 tests passing, real certificates |
-| Phase 3: WebSocket | **COMPLETE** | 5 tests passing |
+| Phase 3: WebSocket Infrastructure | **COMPLETE** | 5 tests passing (Beast layer) |
+| **Phase 3-B: WebSocket ZMQ Integration** | **PENDING** | zmq_bind/zmq_connect ws:// support |
 | Phase 4: Optimization | In Progress | Benchmarks pending |
 
 ### Test Results (All Passing)
@@ -31,6 +32,7 @@ cmake -B build \
 ```
 
 ### Remaining Tasks
+- [ ] **Phase 3-B: WebSocket ZMQ Integration** (zmq_bind/zmq_connect ws:// support)
 - [ ] Windows ASIO build verification (IOCP)
 - [ ] Performance benchmarks vs standard libzmq
 - [ ] Documentation completion
@@ -158,7 +160,8 @@ src/asio/
 | **Phase 1-B** | Asio Listener/Connecter | 연결 수립/해제 Asio로 전환 |
 | **Phase 1-C** | Asio Engine (True Proactor) | 진정한 Proactor 전환 + 성능 벤치마크 |
 | **Phase 2** | SSL 추가 (tcps://) | SSL 테스트 통과 |
-| **Phase 3** | WebSocket 추가 (ws://, wss://) | WS 테스트 통과 |
+| **Phase 3** | WebSocket 인프라 (Beast layer) | WS transport 테스트 통과 |
+| **Phase 3-B** | WebSocket ZMQ 통합 (ws://, wss://) | zmq_bind/zmq_connect ws:// 동작 |
 | **Phase 4** | 성능 최적화 + 정리 | 벤치마크 완료, 기존 코드 정리 |
 
 ---
@@ -1346,6 +1349,1048 @@ cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_SSL=ON -DWITH_ASIO_WS=ON -DBUILD
 # 서버 실행
 ./build/bin/test_ws_server &
 # 브라우저에서 ws://127.0.0.1:8080/zmq 연결 테스트
+```
+
+---
+
+## Phase 3-B: WebSocket ZMQ Integration (ws://, wss://)
+
+### 목표
+
+**ZMQ API 레벨에서 WebSocket 프로토콜 완전 지원**: `zmq_bind("ws://...")` 및 `zmq_connect("ws://...")`가 정상 동작하도록 통합
+
+현재 상태:
+- Phase 3 (완료): Boost.Beast 기반 `ws_transport_t`, `wss_transport_t` 구현됨
+- `test_asio_ws.cpp`: Beast 인프라 테스트 통과
+- **문제**: `zmq_bind("ws://...")` 호출 시 `errno 93` (Protocol not supported) 반환
+
+### 전제 조건
+
+- **Phase 1-C 완료**: TCP ASIO Proactor 동작
+- **Phase 2 완료**: SSL 지원 (wss:// 필요 시)
+- **Phase 3 완료**: ws_transport_t, wss_transport_t 인프라 구현
+
+---
+
+### Part 1: 기존 인프라 분석
+
+#### 1.1 프로토콜 이름 정의 (이미 존재)
+
+**파일**: `src/address.hpp` (라인 47-52)
+
+```cpp
+#ifdef ZMQ_HAVE_WS
+static const char ws[] = "ws";
+#endif
+#ifdef ZMQ_HAVE_WSS
+static const char wss[] = "wss";
+#endif
+```
+
+**상태**: 조건부 컴파일로 정의됨. `ZMQ_HAVE_WS` 매크로 필요.
+
+#### 1.2 주소 공용체 (이미 존재)
+
+**파일**: `src/address.hpp` (라인 83-88)
+
+```cpp
+union {
+    // ...
+#ifdef ZMQ_HAVE_WS
+    ws_address_t *ws_addr;
+#endif
+#ifdef ZMQ_HAVE_WSS
+    wss_address_t *wss_addr;
+#endif
+    // ...
+} resolved;
+```
+
+**상태**: `ws_address_t` 클래스 forward declaration 존재 (라인 21)
+
+#### 1.3 프로토콜 검증 (이미 존재)
+
+**파일**: `src/socket_base.cpp` (라인 272-277)
+
+```cpp
+#ifdef ZMQ_HAVE_WS
+    && protocol_ != protocol_name::ws
+#endif
+#ifdef ZMQ_HAVE_WSS
+    && protocol_ != protocol_name::wss
+#endif
+```
+
+**상태**: `ZMQ_HAVE_WS` 정의 시 ws:// 프로토콜이 유효한 것으로 인식됨
+
+#### 1.4 주소 해석 (이미 존재)
+
+**파일**: `src/socket_base.cpp` (라인 788-815)
+
+```cpp
+#ifdef ZMQ_HAVE_WS
+#ifdef ZMQ_HAVE_WSS
+    else if (protocol == protocol_name::ws || protocol == protocol_name::wss) {
+        if (protocol == protocol_name::wss) {
+            paddr->resolved.wss_addr = new (std::nothrow) wss_address_t ();
+            alloc_assert (paddr->resolved.wss_addr);
+            rc = paddr->resolved.wss_addr->resolve (address.c_str (), false, options.ipv6);
+        } else
+#else
+    else if (protocol == protocol_name::ws) {
+#endif
+        {
+            paddr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
+            alloc_assert (paddr->resolved.ws_addr);
+            rc = paddr->resolved.ws_addr->resolve (address.c_str (), false, options.ipv6);
+        }
+    }
+#endif
+```
+
+**상태**: 주소 해석 코드 존재. `ws_address_t::resolve()` 구현 필요.
+
+#### 1.5 Session Transport Factory (수정 필요)
+
+**파일**: `src/session_base.cpp` (라인 560+)
+
+현재 상태: `ws://` 프로토콜에 대한 connecter/engine 생성 로직 없음
+
+```cpp
+void zmq::session_base_t::start_connecting (bool wait_)
+{
+    // ...
+    if (_addr->protocol == protocol_name::tcp) {
+        // TCP connecter 생성
+    }
+    // ws:// 분기 없음! - 이 부분 추가 필요
+}
+```
+
+---
+
+### Part 2: 필수 파일 생성 및 수정
+
+#### 2.1 신규 파일 (ws_address_t 클래스)
+
+| 파일 | 설명 | 크기 |
+|------|------|------|
+| `src/ws_address.hpp` | WebSocket 주소 파서 인터페이스 | ~50줄 |
+| `src/ws_address.cpp` | host, port, path 파싱 및 resolve | ~150줄 |
+| `src/wss_address.hpp` | WSS 주소 (SSL WebSocket) | ~40줄 |
+| `src/wss_address.cpp` | WSS 주소 구현 | ~80줄 |
+| `src/asio/asio_ws_listener.hpp` | WebSocket 리스너 | ~80줄 |
+| `src/asio/asio_ws_listener.cpp` | HTTP Upgrade + Accept 처리 | ~250줄 |
+| `src/asio/asio_ws_connecter.hpp` | WebSocket 커넥터 | ~60줄 |
+| `src/asio/asio_ws_connecter.cpp` | TCP Connect + WS 핸드셰이크 | ~200줄 |
+| `src/asio/asio_ws_engine.hpp` | WebSocket ZMTP 엔진 | ~100줄 |
+| `src/asio/asio_ws_engine.cpp` | WS 프레임 위에 ZMTP 메시지 처리 | ~400줄 |
+
+#### 2.2 기존 파일 수정
+
+| 파일 | 수정 내용 | 난이도 |
+|------|----------|--------|
+| `CMakeLists.txt` | `ZMQ_HAVE_WS`, `ZMQ_HAVE_WSS` 정의 추가 | 낮음 |
+| `builds/cmake/platform.hpp.in` | `ZMQ_HAVE_WS`, `ZMQ_HAVE_WSS` 템플릿 | 낮음 |
+| `src/session_base.cpp` | ws:// connecter 생성 분기 추가 | 중간 |
+| `src/tcp_listener.cpp` | asio_ws_listener 참조 (선택) | 낮음 |
+| `src/address.cpp` | ws_address_t 포함 및 소멸자 처리 | 낮음 |
+
+---
+
+### Part 3: 상세 구현 계획
+
+#### 3.1 CMakeLists.txt 수정
+
+**위치**: `CMakeLists.txt` 라인 229-232 (기존 비활성화 블록)
+
+**현재 상태**:
+```cmake
+# zlink: Force WebSocket OFF (WS files have been removed)
+set(ENABLE_WS OFF CACHE BOOL "Enable WebSocket transport" FORCE)
+```
+
+**수정 후**:
+```cmake
+# Phase 3-B: Enable WebSocket when ASIO WS is enabled
+if(ZMQ_HAVE_ASIO_WS)
+    set(ZMQ_HAVE_WS 1)
+    message(STATUS "WebSocket transport enabled (ZMQ_HAVE_WS)")
+
+    list(APPEND sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_listener.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_connecter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_engine.cpp
+    )
+
+    if(ZMQ_HAVE_ASIO_WSS)
+        set(ZMQ_HAVE_WSS 1)
+        message(STATUS "Secure WebSocket transport enabled (ZMQ_HAVE_WSS)")
+        list(APPEND sources
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_wss_engine.cpp
+        )
+    endif()
+else()
+    # zlink: Force WebSocket OFF when ASIO WS is not enabled
+    set(ZMQ_HAVE_WS 0)
+    message(STATUS "WebSocket transport disabled")
+endif()
+```
+
+#### 3.2 platform.hpp.in 수정
+
+**파일**: `builds/cmake/platform.hpp.in`
+
+**추가 내용**:
+```cpp
+// WebSocket support (Phase 3-B)
+#cmakedefine ZMQ_HAVE_WS 1
+#cmakedefine ZMQ_HAVE_WSS 1
+```
+
+#### 3.3 ws_address_t 구현
+
+**파일**: `src/ws_address.hpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZMQ_WS_ADDRESS_HPP_INCLUDED__
+#define __ZMQ_WS_ADDRESS_HPP_INCLUDED__
+
+#include "ip_resolver.hpp"
+#include <string>
+
+namespace zmq
+{
+
+// WebSocket address class for ws:// protocol
+// URL format: ws://host:port/path
+class ws_address_t
+{
+  public:
+    ws_address_t ();
+    ~ws_address_t ();
+
+    //  Resolve the address (parse URL and resolve host)
+    //  Returns 0 on success, -1 on error (sets errno)
+    int resolve (const char *name_, bool local_, bool ipv6_);
+
+    //  Get the underlying TCP address for socket operations
+    const sockaddr *addr () const;
+    socklen_t addrlen () const;
+
+    //  Get the resolved TCP address for binding/connecting
+    const tcp_address_t &tcp_address () const { return _tcp_address; }
+
+    //  Get WebSocket-specific components
+    const std::string &host () const { return _host; }
+    const std::string &path () const { return _path; }
+    uint16_t port () const { return _port; }
+
+    //  Format address as string (ws://host:port/path)
+    int to_string (std::string &addr_) const;
+
+  protected:
+    int parse_url (const char *name_);
+
+    tcp_address_t _tcp_address;
+    std::string _host;
+    std::string _path;
+    uint16_t _port;
+};
+
+}  // namespace zmq
+
+#endif  // __ZMQ_WS_ADDRESS_HPP_INCLUDED__
+```
+
+**파일**: `src/ws_address.cpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+#include "ws_address.hpp"
+#include "err.hpp"
+#include "ip.hpp"
+
+#include <string.h>
+#include <stdlib.h>
+
+zmq::ws_address_t::ws_address_t () :
+    _path ("/"),
+    _port (0)
+{
+}
+
+zmq::ws_address_t::~ws_address_t ()
+{
+}
+
+int zmq::ws_address_t::parse_url (const char *name_)
+{
+    // Expected format: host:port/path or host:port (path defaults to "/")
+    // Examples:
+    //   127.0.0.1:8080/zmq
+    //   localhost:9000
+    //   [::1]:8080/zmq (IPv6)
+
+    const char *pos = name_;
+
+    // Handle IPv6 address in brackets
+    if (*pos == '[') {
+        const char *bracket = strchr (pos, ']');
+        if (!bracket) {
+            errno = EINVAL;
+            return -1;
+        }
+        _host.assign (pos + 1, bracket - pos - 1);
+        pos = bracket + 1;
+        if (*pos == ':')
+            pos++;
+        else {
+            errno = EINVAL;
+            return -1;
+        }
+    } else {
+        // IPv4 or hostname
+        const char *colon = strchr (pos, ':');
+        if (!colon) {
+            errno = EINVAL;
+            return -1;
+        }
+        _host.assign (pos, colon - pos);
+        pos = colon + 1;
+    }
+
+    // Parse port
+    char *endptr;
+    long port = strtol (pos, &endptr, 10);
+    if (port < 1 || port > 65535) {
+        errno = EINVAL;
+        return -1;
+    }
+    _port = static_cast<uint16_t> (port);
+
+    // Parse path (optional)
+    if (*endptr == '/') {
+        _path = endptr;
+    } else if (*endptr == '\0') {
+        _path = "/";
+    } else {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return 0;
+}
+
+int zmq::ws_address_t::resolve (const char *name_, bool local_, bool ipv6_)
+{
+    //  Parse the WebSocket URL
+    if (parse_url (name_) != 0)
+        return -1;
+
+    //  Resolve the TCP address (host:port)
+    std::string tcp_addr = _host + ":" + std::to_string (_port);
+    return _tcp_address.resolve (tcp_addr.c_str (), local_, ipv6_);
+}
+
+const sockaddr *zmq::ws_address_t::addr () const
+{
+    return _tcp_address.addr ();
+}
+
+socklen_t zmq::ws_address_t::addrlen () const
+{
+    return _tcp_address.addrlen ();
+}
+
+int zmq::ws_address_t::to_string (std::string &addr_) const
+{
+    addr_ = "ws://" + _host + ":" + std::to_string (_port) + _path;
+    return 0;
+}
+```
+
+#### 3.4 session_base.cpp 수정
+
+**파일**: `src/session_base.cpp`
+
+**추가 include** (라인 20 근처):
+```cpp
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#include "asio/asio_ws_connecter.hpp"
+#endif
+```
+
+**start_connecting 함수 수정** (라인 598 이후):
+```cpp
+    if (connecter != NULL) {
+        alloc_assert (connecter);
+        launch_child (connecter);
+        return;
+    }
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+    //  WebSocket transport (ws://)
+    if (_addr->protocol == protocol_name::ws) {
+        connecter = new (std::nothrow)
+          asio_ws_connecter_t (io_thread, this, options, _addr, wait_);
+        alloc_assert (connecter);
+        launch_child (connecter);
+        return;
+    }
+#ifdef ZMQ_HAVE_WSS
+    //  Secure WebSocket transport (wss://)
+    if (_addr->protocol == protocol_name::wss) {
+        connecter = new (std::nothrow)
+          asio_wss_connecter_t (io_thread, this, options, _addr, wait_);
+        alloc_assert (connecter);
+        launch_child (connecter);
+        return;
+    }
+#endif  // ZMQ_HAVE_WSS
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+
+#ifdef ZMQ_HAVE_OPENPGM
+    // ... (기존 PGM 코드)
+```
+
+#### 3.5 socket_base.cpp 수정 (add_endpoint)
+
+**파일**: `src/socket_base.cpp`
+
+`add_endpoint` 함수 내 리스너 생성 부분에 WebSocket 리스너 추가:
+
+```cpp
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+    if (protocol == protocol_name::ws) {
+        asio_ws_listener_t *listener =
+          new (std::nothrow) asio_ws_listener_t (io_thread, this, options);
+        alloc_assert (listener);
+        int rc = listener->set_local_address (paddr->resolved.ws_addr);
+        if (rc != 0) {
+            LIBZMQ_DELETE (listener);
+            LIBZMQ_DELETE (paddr);
+            return -1;
+        }
+        launch_child (listener);
+        return 0;
+    }
+#ifdef ZMQ_HAVE_WSS
+    if (protocol == protocol_name::wss) {
+        asio_wss_listener_t *listener =
+          new (std::nothrow) asio_wss_listener_t (io_thread, this, options);
+        alloc_assert (listener);
+        int rc = listener->set_local_address (paddr->resolved.wss_addr);
+        if (rc != 0) {
+            LIBZMQ_DELETE (listener);
+            LIBZMQ_DELETE (paddr);
+            return -1;
+        }
+        launch_child (listener);
+        return 0;
+    }
+#endif  // ZMQ_HAVE_WSS
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+```
+
+#### 3.6 asio_ws_engine_t 구현
+
+**파일**: `src/asio/asio_ws_engine.hpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
+#define __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
+
+#include "../poller.hpp"
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+
+#include "asio_engine.hpp"
+#include "ws_transport.hpp"
+
+namespace zmq
+{
+
+//  WebSocket ZMTP engine
+//  Wraps asio_engine_t with WebSocket transport layer
+//
+//  This engine handles:
+//  1. WebSocket handshake (client or server)
+//  2. WebSocket framing (binary mode)
+//  3. ZMTP protocol over WebSocket frames
+
+class asio_ws_engine_t : public asio_engine_t
+{
+  public:
+    asio_ws_engine_t (io_thread_t *io_thread_,
+                      const options_t &options_,
+                      const std::string &host_,
+                      const std::string &path_,
+                      bool is_client_);
+
+    ~asio_ws_engine_t ();
+
+    //  Override to use WebSocket transport
+    void plug (io_thread_t *io_thread_, session_base_t *session_) ZMQ_OVERRIDE;
+
+    //  Handshake is required for WebSocket
+    bool has_handshake_stage () const ZMQ_OVERRIDE { return true; }
+
+  protected:
+    //  Start WebSocket handshake after TCP connection
+    void start_ws_handshake ();
+
+    //  Handshake completion callback
+    void on_ws_handshake_complete (const boost::system::error_code &ec);
+
+  private:
+    std::string _host;
+    std::string _path;
+    bool _is_client;
+    ws_transport_t _ws_transport;
+
+    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_engine_t)
+};
+
+}  // namespace zmq
+
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+
+#endif  // __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
+```
+
+#### 3.7 asio_ws_listener_t 구현
+
+**파일**: `src/asio/asio_ws_listener.hpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
+#define __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
+
+#include "../poller.hpp"
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+
+#include <boost/asio.hpp>
+#include <string>
+
+#include "../fd.hpp"
+#include "../own.hpp"
+#include "../stdint.hpp"
+#include "../io_object.hpp"
+#include "../ws_address.hpp"
+
+namespace zmq
+{
+class io_thread_t;
+class socket_base_t;
+
+//  ASIO-based WebSocket listener
+//  Handles:
+//  1. TCP accept
+//  2. WebSocket upgrade handshake (server-side)
+//  3. Engine creation for accepted connections
+
+class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
+{
+  public:
+    asio_ws_listener_t (zmq::io_thread_t *io_thread_,
+                        zmq::socket_base_t *socket_,
+                        const options_t &options_);
+    ~asio_ws_listener_t ();
+
+    //  Set address to listen on
+    int set_local_address (const ws_address_t *addr_);
+
+    //  Get the bound address
+    int get_local_address (std::string &addr_) const;
+
+  private:
+    //  Handlers for incoming commands
+    void process_plug () ZMQ_FINAL;
+    void process_term (int linger_) ZMQ_FINAL;
+
+    //  Start accepting connections
+    void start_accept ();
+
+    //  Handle accept completion
+    void on_accept (const boost::system::error_code &ec);
+
+    //  Create engine for accepted connection
+    void create_engine (fd_t fd_);
+
+    //  Close the listener
+    void close ();
+
+    //  Reference to io_context from asio_poller
+    boost::asio::io_context &_io_context;
+
+    //  TCP acceptor
+    boost::asio::ip::tcp::acceptor _acceptor;
+
+    //  Socket for next accepted connection
+    boost::asio::ip::tcp::socket _accept_socket;
+
+    //  Socket the listener belongs to
+    zmq::socket_base_t *_socket;
+
+    //  WebSocket address
+    std::string _host;
+    std::string _path;
+    uint16_t _port;
+
+    //  String representation of endpoint
+    std::string _endpoint;
+
+    //  State flags
+    bool _accepting;
+    bool _terminating;
+    int _linger;
+
+    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_listener_t)
+};
+
+}  // namespace zmq
+
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+
+#endif  // __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
+```
+
+#### 3.8 asio_ws_connecter_t 구현
+
+**파일**: `src/asio/asio_ws_connecter.hpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#ifndef __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
+#define __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
+
+#include "../poller.hpp"
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+
+#include <boost/asio.hpp>
+#include <string>
+
+#include "../fd.hpp"
+#include "../own.hpp"
+#include "../io_object.hpp"
+
+namespace zmq
+{
+class io_thread_t;
+class session_base_t;
+struct address_t;
+
+//  ASIO-based WebSocket connecter
+//  Handles:
+//  1. TCP async_connect
+//  2. WebSocket upgrade handshake (client-side)
+//  3. Engine creation for established connections
+
+class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
+{
+  public:
+    asio_ws_connecter_t (zmq::io_thread_t *io_thread_,
+                         zmq::session_base_t *session_,
+                         const options_t &options_,
+                         address_t *addr_,
+                         bool delayed_start_);
+    ~asio_ws_connecter_t ();
+
+  private:
+    //  Handlers for incoming commands
+    void process_plug () ZMQ_FINAL;
+    void process_term (int linger_) ZMQ_FINAL;
+
+    //  Start connection process
+    void start_connecting ();
+
+    //  Handle connect completion
+    void on_connect (const boost::system::error_code &ec);
+
+    //  Handle reconnection timer
+    void on_reconnect_timer ();
+
+    //  Create engine for connected socket
+    void create_engine ();
+
+    //  Close and cleanup
+    void close ();
+
+    //  Reference to io_context
+    boost::asio::io_context &_io_context;
+
+    //  TCP socket for connecting
+    boost::asio::ip::tcp::socket _socket;
+
+    //  Reconnection timer
+    boost::asio::steady_timer _reconnect_timer;
+
+    //  Session to attach engine to
+    zmq::session_base_t *_session;
+
+    //  Address to connect to
+    address_t *_addr;
+
+    //  WebSocket-specific data
+    std::string _host;
+    std::string _path;
+
+    //  State flags
+    bool _delayed_start;
+    bool _connecting;
+    bool _terminating;
+
+    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_connecter_t)
+};
+
+}  // namespace zmq
+
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+
+#endif  // __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
+```
+
+---
+
+### Part 4: 테스트 계획
+
+#### 4.1 ZMQ API 레벨 테스트
+
+**파일**: `tests/test_asio_ws_zmq.cpp`
+
+```cpp
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "testutil.hpp"
+#include "testutil_unity.hpp"
+#include <unity.h>
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+
+void setUp () {}
+void tearDown () {}
+
+//  Test 1: Basic ws:// bind and connect
+void test_ws_bind_connect_basic ()
+{
+    void *ctx = zmq_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *server = zmq_socket (ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (server);
+
+    void *client = zmq_socket (ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (client);
+
+    //  Bind to WebSocket endpoint
+    int rc = zmq_bind (server, "ws://127.0.0.1:9010/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Connect to WebSocket endpoint
+    rc = zmq_connect (client, "ws://127.0.0.1:9010/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Allow connection to establish
+    msleep (100);
+
+    //  Send message
+    rc = zmq_send (client, "hello", 5, 0);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+
+    //  Receive message
+    char buf[32];
+    rc = zmq_recv (server, buf, sizeof (buf), 0);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+    TEST_ASSERT_EQUAL_MEMORY ("hello", buf, 5);
+
+    zmq_close (client);
+    zmq_close (server);
+    zmq_ctx_term (ctx);
+}
+
+//  Test 2: PUB/SUB over WebSocket
+void test_ws_pubsub ()
+{
+    void *ctx = zmq_ctx_new ();
+
+    void *pub = zmq_socket (ctx, ZMQ_PUB);
+    void *sub = zmq_socket (ctx, ZMQ_SUB);
+
+    int rc = zmq_bind (pub, "ws://127.0.0.1:9011/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    rc = zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    rc = zmq_connect (sub, "ws://127.0.0.1:9011/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    msleep (200);  // Allow subscription to propagate
+
+    rc = zmq_send (pub, "news", 4, 0);
+    TEST_ASSERT_EQUAL_INT (4, rc);
+
+    char buf[32];
+    rc = zmq_recv (sub, buf, sizeof (buf), 0);
+    TEST_ASSERT_EQUAL_INT (4, rc);
+
+    zmq_close (sub);
+    zmq_close (pub);
+    zmq_ctx_term (ctx);
+}
+
+//  Test 3: DEALER/ROUTER over WebSocket
+void test_ws_dealer_router ()
+{
+    void *ctx = zmq_ctx_new ();
+
+    void *router = zmq_socket (ctx, ZMQ_ROUTER);
+    void *dealer = zmq_socket (ctx, ZMQ_DEALER);
+
+    int rc = zmq_bind (router, "ws://127.0.0.1:9012/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    rc = zmq_connect (dealer, "ws://127.0.0.1:9012/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    msleep (100);
+
+    //  Send from dealer
+    rc = zmq_send (dealer, "request", 7, 0);
+    TEST_ASSERT_EQUAL_INT (7, rc);
+
+    //  Receive at router (identity + message)
+    char identity[256];
+    rc = zmq_recv (router, identity, sizeof (identity), 0);
+    TEST_ASSERT_GREATER_THAN_INT (0, rc);
+
+    char buf[32];
+    rc = zmq_recv (router, buf, sizeof (buf), 0);
+    TEST_ASSERT_EQUAL_INT (7, rc);
+    TEST_ASSERT_EQUAL_MEMORY ("request", buf, 7);
+
+    zmq_close (dealer);
+    zmq_close (router);
+    zmq_ctx_term (ctx);
+}
+
+//  Test 4: Multipart message over WebSocket
+void test_ws_multipart ()
+{
+    void *ctx = zmq_ctx_new ();
+
+    void *server = zmq_socket (ctx, ZMQ_PAIR);
+    void *client = zmq_socket (ctx, ZMQ_PAIR);
+
+    int rc = zmq_bind (server, "ws://127.0.0.1:9013/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    rc = zmq_connect (client, "ws://127.0.0.1:9013/zmq");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    msleep (100);
+
+    //  Send multipart message
+    rc = zmq_send (client, "part1", 5, ZMQ_SNDMORE);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+    rc = zmq_send (client, "part2", 5, 0);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+
+    //  Receive multipart message
+    char buf[32];
+    int more;
+    size_t more_size = sizeof (more);
+
+    rc = zmq_recv (server, buf, sizeof (buf), 0);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+    TEST_ASSERT_EQUAL_MEMORY ("part1", buf, 5);
+
+    rc = zmq_getsockopt (server, ZMQ_RCVMORE, &more, &more_size);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+    TEST_ASSERT_EQUAL_INT (1, more);
+
+    rc = zmq_recv (server, buf, sizeof (buf), 0);
+    TEST_ASSERT_EQUAL_INT (5, rc);
+    TEST_ASSERT_EQUAL_MEMORY ("part2", buf, 5);
+
+    zmq_close (client);
+    zmq_close (server);
+    zmq_ctx_term (ctx);
+}
+
+#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_WS
+
+void setUp () {}
+void tearDown () {}
+
+void test_ws_zmq_not_enabled ()
+{
+    TEST_IGNORE_MESSAGE ("WebSocket ZMQ integration not enabled");
+}
+
+#endif
+
+int main ()
+{
+    setup_test_environment ();
+    UNITY_BEGIN ();
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+    RUN_TEST (test_ws_bind_connect_basic);
+    RUN_TEST (test_ws_pubsub);
+    RUN_TEST (test_ws_dealer_router);
+    RUN_TEST (test_ws_multipart);
+#else
+    RUN_TEST (test_ws_zmq_not_enabled);
+#endif
+
+    return UNITY_END ();
+}
+```
+
+#### 4.2 WSS (Secure WebSocket) 테스트
+
+**파일**: `tests/test_asio_wss_zmq.cpp`
+
+WSS 테스트는 WS 테스트와 유사하되:
+- `wss://` 프로토콜 사용
+- SSL 인증서 설정 (ZMQ_TLS_CERTIFICATE, ZMQ_TLS_PRIVATE_KEY 옵션)
+- Phase 2 SSL 인프라 활용
+
+---
+
+### Part 5: 완료 체크리스트
+
+#### 5.1 CMake 구성
+
+- [ ] `ZMQ_HAVE_WS` 매크로가 `ZMQ_HAVE_ASIO_WS` 시 정의됨
+- [ ] `ZMQ_HAVE_WSS` 매크로가 `ZMQ_HAVE_ASIO_WSS` 시 정의됨
+- [ ] `builds/cmake/platform.hpp.in`에 매크로 템플릿 추가
+- [ ] 신규 소스 파일들이 빌드에 포함됨
+
+#### 5.2 주소 해석
+
+- [ ] `ws_address_t` 클래스 구현 (`src/ws_address.hpp/cpp`)
+- [ ] URL 파싱: `host:port/path` 형식 지원
+- [ ] IPv6 주소 지원: `[::1]:8080/zmq`
+- [ ] `wss_address_t` 클래스 구현 (선택)
+
+#### 5.3 Session Transport Factory
+
+- [ ] `session_base.cpp`에서 `ws://` 프로토콜 분기 추가
+- [ ] `asio_ws_connecter_t` 생성 로직
+- [ ] `asio_wss_connecter_t` 생성 로직 (선택)
+
+#### 5.4 리스너
+
+- [ ] `asio_ws_listener_t` 구현
+- [ ] TCP accept + WebSocket 서버 핸드셰이크
+- [ ] `asio_ws_engine_t` 생성
+
+#### 5.5 커넥터
+
+- [ ] `asio_ws_connecter_t` 구현
+- [ ] TCP async_connect + WebSocket 클라이언트 핸드셰이크
+- [ ] 재연결 타이머 지원
+
+#### 5.6 엔진
+
+- [ ] `asio_ws_engine_t` 구현
+- [ ] WebSocket 핸드셰이크 통합
+- [ ] ws_transport_t 활용한 프레임 I/O
+- [ ] ZMTP 메시지 처리
+
+#### 5.7 테스트
+
+- [ ] `test_asio_ws_zmq.cpp` 통과
+  - [ ] `zmq_bind("ws://...")` 성공 (errno 0)
+  - [ ] `zmq_connect("ws://...")` 성공
+  - [ ] 메시지 송수신 성공
+  - [ ] PUB/SUB 패턴 동작
+  - [ ] DEALER/ROUTER 패턴 동작
+  - [ ] 멀티파트 메시지 동작
+- [ ] `test_asio_wss_zmq.cpp` 통과 (선택)
+
+---
+
+### Part 6: 검증 방법
+
+```bash
+# 1. 빌드
+cmake -B build-ws \
+    -DWITH_BOOST_ASIO=ON \
+    -DWITH_ASIO_WS=ON \
+    -DBUILD_TESTS=ON
+cmake --build build-ws
+
+# 2. 매크로 확인
+grep "ZMQ_HAVE_WS" build-ws/platform.hpp
+# 출력: #define ZMQ_HAVE_WS 1
+
+# 3. 심볼 확인
+nm -C build-ws/lib/libzmq.so | grep -E "ws_address|asio_ws"
+# ws_address_t, asio_ws_listener_t, asio_ws_connecter_t, asio_ws_engine_t 심볼 존재
+
+# 4. 기본 연결 테스트
+./build-ws/bin/test_asio_ws_zmq
+
+# 5. 기존 TCP 테스트 유지 확인
+cd build-ws && ctest --output-on-failure
+
+# 6. WSS 테스트 (SSL 활성화 시)
+cmake -B build-wss \
+    -DWITH_BOOST_ASIO=ON \
+    -DWITH_ASIO_SSL=ON \
+    -DWITH_ASIO_WS=ON \
+    -DBUILD_TESTS=ON
+cmake --build build-wss
+./build-wss/bin/test_asio_wss_zmq
+```
+
+---
+
+### Part 7: 예상 작업량
+
+| 작업 | 예상 시간 | 난이도 |
+|------|----------|--------|
+| CMake 수정 및 매크로 정의 | 1시간 | 낮음 |
+| ws_address_t 구현 | 2시간 | 중간 |
+| asio_ws_listener_t 구현 | 4시간 | 높음 |
+| asio_ws_connecter_t 구현 | 3시간 | 중간 |
+| asio_ws_engine_t 구현 | 6시간 | 높음 |
+| session_base.cpp 수정 | 1시간 | 낮음 |
+| 테스트 작성 및 디버깅 | 4시간 | 중간 |
+| **총계** | **~21시간** | - |
+
+### Part 8: 의존성 관계
+
+```
+Phase 3 (완료)
+    └── ws_transport_t, wss_transport_t
+            │
+            ▼
+Phase 3-B (신규)
+    ├── ws_address_t (주소 파싱)
+    ├── asio_ws_listener_t (서버)
+    │       └── ws_transport_t (Phase 3)
+    │       └── asio_ws_engine_t
+    ├── asio_ws_connecter_t (클라이언트)
+    │       └── ws_transport_t (Phase 3)
+    │       └── asio_ws_engine_t
+    └── asio_ws_engine_t (ZMTP over WebSocket)
+            └── ws_transport_t (Phase 3)
+            └── asio_zmtp_engine_t (Phase 1-C)
 ```
 
 ---

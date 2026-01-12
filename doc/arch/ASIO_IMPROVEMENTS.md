@@ -15,6 +15,7 @@
 **변경**: `ZMQ_ASIO_DEBUG` 같은 빌드 옵션으로 분리하고 기본값 OFF.  
 **효과**: 불필요한 syscall/포맷 비용 제거, 벤치마크 안정화.  
 **검증**: 디버그 빌드에서만 로그 확인 가능하도록 컴파일 플래그 체크.
+**상태**: 적용됨 (ZMQ_ASIO_DEBUG 빌드 플래그로 제어).
 
 ### P0-2. write 버퍼 재사용 최적화
 **문제**: `_write_buffer.assign`은 재할당/복사를 유발.  
@@ -22,6 +23,7 @@
 **효과**: 재할당/캐시 미스 감소.  
 **리스크**: 낮음(기존 의미 동일).  
 **검증**: 동일 메시지 패턴에서 throughput 비교.
+**상태**: 적용됨 (reserve + resize + memcpy 경로로 변경).
 
 ## P1: 중간 리스크/중간 난이도
 
@@ -63,3 +65,10 @@
 2) P1-1 (Zero-copy write) 먼저 PoC, 안정성 확인 후 적용
 3) P1-2 (poller loop 개선)
 4) P2 항목은 별도 RFC로 검토
+
+## 테스트 상태 (WSL2 기준)
+- `ctest` 실행 결과: 71/71 통과.
+- 스킵: `test_connect_null_fuzzer`, `test_bind_null_fuzzer`, `test_connect_fuzzer`,
+  `test_bind_fuzzer` (fuzzer/도구 체인 필요),
+  `test_pair_tipc`, `test_sub_forward_tipc`, `test_shutdown_stress_tipc`
+  (WSL2에서 TIPC 미지원).

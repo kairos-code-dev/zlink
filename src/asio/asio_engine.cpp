@@ -23,8 +23,12 @@
 
 #include <sstream>
 
-// Debug logging for ASIO engine - set to 1 to enable
+// Debug logging for ASIO engine - enable with -DZMQ_ASIO_DEBUG=1
+#if defined(ZMQ_ASIO_DEBUG)
+#define ASIO_ENGINE_DEBUG 1
+#else
 #define ASIO_ENGINE_DEBUG 0
+#endif
 
 #if ASIO_ENGINE_DEBUG
 #include <cstdio>
@@ -591,8 +595,15 @@ void zmq::asio_engine_t::process_output ()
         }
     }
 
-    //  Copy data to write buffer
-    _write_buffer.assign (_outpos, _outpos + _outsize);
+    //  Copy data to write buffer (reuse capacity to avoid reallocations)
+    const size_t out_batch_size =
+      static_cast<size_t> (_options.out_batch_size);
+    const size_t target =
+      _outsize > out_batch_size ? _outsize : out_batch_size;
+    if (_write_buffer.capacity () < target)
+        _write_buffer.reserve (target);
+    _write_buffer.resize (_outsize);
+    memcpy (_write_buffer.data (), _outpos, _outsize);
 
     //  During handshake, advance _outpos but don't reset it to NULL
     //  so that receive_greeting_versioned() can check position correctly

@@ -84,23 +84,20 @@ void ws_transport_t::close ()
     if (_ws_stream) {
         boost::system::error_code ec;
 
-        //  Try graceful WebSocket close if handshake was complete
-        if (_handshake_complete) {
-            //  Note: We use sync close here as this is called during cleanup
-            //  A production implementation might want async_close
-            _ws_stream->close (boost::beast::websocket::close_code::normal, ec);
-            //  Ignore close errors - connection may already be closed
+        //  Close the underlying socket first - this cancels all pending async ops
+        //  The socket close will cause pending async_read/async_write to complete
+        //  with operation_aborted error
+        if (_ws_stream->next_layer ().is_open ()) {
+            _ws_stream->next_layer ().shutdown (
+              boost::asio::ip::tcp::socket::shutdown_both, ec);
+            _ws_stream->next_layer ().close (ec);
         }
 
-        //  Close the underlying socket
-        _ws_stream->next_layer ().close (ec);
-
-        _ws_stream.reset ();
+        //  Note: We don't reset the stream here - let the caller drain pending
+        //  handlers first. The stream will be cleaned up in destructor.
+        _handshake_complete = false;
     }
 
-    _read_buffer.reset ();
-
-    _handshake_complete = false;
     _frame_buffer.clear ();
     _frame_offset = 0;
 }

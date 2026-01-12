@@ -1,0 +1,889 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "../precompiled.hpp"
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+
+#include "asio_ws_engine.hpp"
+#include "asio_poller.hpp"
+#include "../io_thread.hpp"
+#include "../session_base.hpp"
+#include "../socket_base.hpp"
+#include "../null_mechanism.hpp"
+#include "../plain_client.hpp"
+#include "../plain_server.hpp"
+#include "../config.hpp"
+#include "../err.hpp"
+#include "../ip.hpp"
+#include "../tcp.hpp"
+#include "../likely.hpp"
+#include "../v1_decoder.hpp"
+#include "../v1_encoder.hpp"
+#include "../v2_decoder.hpp"
+#include "../v2_encoder.hpp"
+#include "../wire.hpp"
+
+#ifndef ZMQ_HAVE_WINDOWS
+#include <unistd.h>
+#endif
+
+#include <sstream>
+#include <cstring>
+
+//  Debug logging for ASIO WS engine - set to 1 to enable
+#define ASIO_WS_ENGINE_DEBUG 0
+
+#if ASIO_WS_ENGINE_DEBUG
+#include <cstdio>
+#define WS_ENGINE_DBG(fmt, ...)                                                \
+    fprintf (stderr, "[ASIO_WS_ENGINE] " fmt "\n", ##__VA_ARGS__)
+#else
+#define WS_ENGINE_DBG(fmt, ...)
+#endif
+
+//  Message property names
+#define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
+#define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
+#define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
+#define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
+
+static std::string get_peer_address (zmq::fd_t s_)
+{
+    std::string peer_address;
+    const int family = zmq::get_peer_ip_address (s_, peer_address);
+    if (family == 0)
+        peer_address.clear ();
+    return peer_address;
+}
+
+zmq::asio_ws_engine_t::asio_ws_engine_t (
+  fd_t fd_,
+  const options_t &options_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  const std::string &host_,
+  const std::string &path_,
+  bool is_client_) :
+    _host (host_),
+    _path (path_),
+    _is_client (is_client_),
+    _ws_handshake_complete (false),
+    _session (NULL),
+    _socket (NULL),
+    _fd (fd_),
+    _io_context (NULL),
+    _options (options_),
+    _endpoint_uri_pair (endpoint_uri_pair_),
+    _peer_address (get_peer_address (fd_)),
+    _inpos (NULL),
+    _insize (0),
+    _decoder (NULL),
+    _input_in_decoder_buffer (false),
+    _outpos (NULL),
+    _outsize (0),
+    _encoder (NULL),
+    _mechanism (NULL),
+    _next_msg (NULL),
+    _process_msg (NULL),
+    _metadata (NULL),
+    _plugged (false),
+    _handshaking (true),
+    _input_stopped (false),
+    _output_stopped (false),
+    _io_error (false),
+    _read_pending (false),
+    _write_pending (false),
+    _terminating (false),
+    _read_buffer (read_buffer_size),
+    _read_buffer_ptr (NULL),
+    _greeting_size (v3_greeting_size),
+    _greeting_bytes_read (0),
+    _subscription_required (false),
+    _heartbeat_timeout (0),
+    _current_timer_id (-1),
+    _has_handshake_timer (false),
+    _has_ttl_timer (false),
+    _has_timeout_timer (false),
+    _has_heartbeat_timer (false)
+{
+    WS_ENGINE_DBG ("Constructor: fd=%d, host=%s, path=%s, client=%d", fd_,
+                   host_.c_str (), path_.c_str (), is_client_);
+
+    int rc = _tx_msg.init ();
+    errno_assert (rc == 0);
+
+    rc = _routing_id_msg.init ();
+    errno_assert (rc == 0);
+
+    rc = _pong_msg.init ();
+    errno_assert (rc == 0);
+
+    //  Initialize greeting buffers
+    memset (_greeting_recv, 0, sizeof (_greeting_recv));
+    memset (_greeting_send, 0, sizeof (_greeting_send));
+
+    //  Create WebSocket transport
+    _ws_transport.reset (new ws_transport_t (_path, _host));
+
+    //  Put socket into non-blocking mode
+    unblock_socket (_fd);
+}
+
+zmq::asio_ws_engine_t::~asio_ws_engine_t ()
+{
+    WS_ENGINE_DBG ("Destructor called");
+
+    zmq_assert (!_plugged);
+
+    //  Close WebSocket transport (handles graceful close)
+    if (_ws_transport) {
+        _ws_transport->close ();
+        _ws_transport.reset ();
+    }
+
+    //  Close the underlying socket if still open
+    if (_fd != retired_fd) {
+#ifdef ZMQ_HAVE_WINDOWS
+        int rc = closesocket (_fd);
+        wsa_assert (rc != SOCKET_ERROR);
+#else
+        int rc = close (_fd);
+#if defined(__FreeBSD_kernel__) || defined(__FreeBSD__)
+        if (rc == -1 && errno == ECONNRESET)
+            rc = 0;
+#endif
+        errno_assert (rc == 0);
+#endif
+        _fd = retired_fd;
+    }
+
+    int rc = _tx_msg.close ();
+    errno_assert (rc == 0);
+
+    rc = _routing_id_msg.close ();
+    errno_assert (rc == 0);
+
+    rc = _pong_msg.close ();
+    errno_assert (rc == 0);
+
+    if (_metadata != NULL) {
+        if (_metadata->drop_ref ()) {
+            LIBZMQ_DELETE (_metadata);
+        }
+    }
+
+    LIBZMQ_DELETE (_encoder);
+    LIBZMQ_DELETE (_decoder);
+    LIBZMQ_DELETE (_mechanism);
+}
+
+void zmq::asio_ws_engine_t::plug (io_thread_t *io_thread_,
+                                   session_base_t *session_)
+{
+    WS_ENGINE_DBG ("plug called");
+
+    zmq_assert (!_plugged);
+    _plugged = true;
+
+    _session = session_;
+    _socket = _session->get_socket ();
+
+    //  Get reference to io_context
+    asio_poller_t *poller =
+      static_cast<asio_poller_t *> (io_thread_->get_poller ());
+    _io_context = &poller->get_io_context ();
+
+    //  Create timer
+    _timer.reset (new boost::asio::steady_timer (*_io_context));
+
+    //  Initialize WebSocket transport with the socket
+    if (!_ws_transport->open (*_io_context, _fd)) {
+        WS_ENGINE_DBG ("Failed to open WebSocket transport");
+        error (connection_error);
+        return;
+    }
+
+    //  Mark FD as taken by transport (don't close it in destructor)
+    _fd = retired_fd;
+
+    _io_error = false;
+
+    //  Start WebSocket handshake
+    start_ws_handshake ();
+}
+
+void zmq::asio_ws_engine_t::start_ws_handshake ()
+{
+    WS_ENGINE_DBG ("Starting WebSocket handshake, is_client=%d", _is_client);
+
+    //  Set handshake timer if configured
+    if (_options.handshake_ivl > 0) {
+        set_handshake_timer ();
+    }
+
+    //  Start WebSocket handshake (client or server)
+    int handshake_type =
+      _is_client ? ws_transport_t::client : ws_transport_t::server;
+
+    _ws_transport->async_handshake (
+      handshake_type,
+      [this] (const boost::system::error_code &ec, std::size_t) {
+          on_ws_handshake_complete (ec);
+      });
+}
+
+void zmq::asio_ws_engine_t::on_ws_handshake_complete (
+  const boost::system::error_code &ec)
+{
+    WS_ENGINE_DBG ("WebSocket handshake complete, ec=%s", ec.message ().c_str ());
+
+    if (_terminating)
+        return;
+
+    if (ec) {
+        WS_ENGINE_DBG ("WebSocket handshake failed");
+        error (connection_error);
+        return;
+    }
+
+    _ws_handshake_complete = true;
+
+    //  Cancel handshake timer if running (we'll restart for ZMTP handshake)
+    if (_has_handshake_timer) {
+        cancel_handshake_timer ();
+    }
+
+    //  Start ZMTP handshake over WebSocket
+    start_zmtp_handshake ();
+}
+
+void zmq::asio_ws_engine_t::start_zmtp_handshake ()
+{
+    WS_ENGINE_DBG ("Starting ZMTP handshake over WebSocket");
+
+    //  Set handshake timer for ZMTP phase
+    if (_options.handshake_ivl > 0) {
+        set_handshake_timer ();
+    }
+
+    //  Prepare ZMTP 3.x greeting
+    memset (_greeting_send, 0, v3_greeting_size);
+    _greeting_send[0] = 0xff;
+    put_uint64 (_greeting_send + 1, 0x7fffffffffffffffULL);
+    _greeting_send[9] = 0x7f;
+    _greeting_send[10] = 3;  // Major version
+    _greeting_send[11] = 1;  // Minor version
+
+    //  Set the security mechanism
+    const char *mechanism = "NULL";
+    memcpy (_greeting_send + 12, mechanism, strlen (mechanism));
+
+    //  as-server field
+    _greeting_send[32] = _options.as_server ? 1 : 0;
+
+    //  Send greeting
+    _outpos = _greeting_send;
+    _outsize = v3_greeting_size;
+
+    //  Start reading greeting from peer
+    _inpos = _greeting_recv;
+    _insize = 0;
+    _greeting_bytes_read = 0;
+
+    //  Start I/O
+    start_async_write ();
+    start_async_read ();
+}
+
+void zmq::asio_ws_engine_t::start_async_read ()
+{
+    if (_read_pending || _input_stopped || _io_error || !_ws_handshake_complete)
+        return;
+
+    WS_ENGINE_DBG ("start_async_read");
+
+    _read_pending = true;
+
+    //  Determine read target buffer
+    unsigned char *buffer;
+    size_t buffer_size;
+
+    if (_handshaking) {
+        //  During handshake, read into greeting buffer
+        buffer = _greeting_recv + _greeting_bytes_read;
+        buffer_size = _greeting_size - _greeting_bytes_read;
+    } else if (_decoder) {
+        //  Normal operation: read into decoder buffer
+        _decoder->get_buffer (&_read_buffer_ptr, &buffer_size);
+        buffer = _read_buffer_ptr;
+    } else {
+        //  Use internal buffer
+        buffer = _read_buffer.data ();
+        buffer_size = _read_buffer.size ();
+    }
+
+    _ws_transport->async_read_some (
+      buffer, buffer_size,
+      [this] (const boost::system::error_code &ec,
+              std::size_t bytes_transferred) {
+          on_read_complete (ec, bytes_transferred);
+      });
+}
+
+void zmq::asio_ws_engine_t::on_read_complete (
+  const boost::system::error_code &ec, std::size_t bytes_transferred)
+{
+    _read_pending = false;
+
+    WS_ENGINE_DBG ("on_read_complete: ec=%s, bytes=%zu", ec.message ().c_str (),
+                   bytes_transferred);
+
+    if (_terminating)
+        return;
+
+    if (ec) {
+        if (ec == boost::asio::error::operation_aborted)
+            return;
+        WS_ENGINE_DBG ("Read error");
+        error (connection_error);
+        return;
+    }
+
+    if (bytes_transferred == 0) {
+        WS_ENGINE_DBG ("Connection closed by peer");
+        error (connection_error);
+        return;
+    }
+
+    if (_handshaking) {
+        _greeting_bytes_read += bytes_transferred;
+        if (!handshake ()) {
+            //  Handshake not complete, continue reading
+            start_async_read ();
+            return;
+        }
+        //  Handshake complete, proceed to normal operation
+        _handshaking = false;
+
+        //  Cancel handshake timer
+        if (_has_handshake_timer) {
+            cancel_handshake_timer ();
+        }
+
+        //  Set up message processing
+        _next_msg = &asio_ws_engine_t::pull_msg_from_session;
+        _process_msg = &asio_ws_engine_t::push_msg_to_session;
+
+        //  Create encoder/decoder for v3.1
+        _encoder = new (std::nothrow) v2_encoder_t (_options.out_batch_size);
+        alloc_assert (_encoder);
+        _decoder = new (std::nothrow) v2_decoder_t (_options.in_batch_size, _options.maxmsgsize, true);
+        alloc_assert (_decoder);
+
+        //  Create NULL mechanism (no authentication for now)
+        _mechanism = new (std::nothrow) null_mechanism_t (_session, _peer_address, _options);
+        alloc_assert (_mechanism);
+
+        mechanism_ready ();
+    } else {
+        //  Normal operation: process received data
+        //  Data was read directly into decoder buffer via get_buffer()
+        _inpos = _read_buffer_ptr;
+        _insize = bytes_transferred;
+        _input_in_decoder_buffer = true;
+
+        WS_ENGINE_DBG ("on_read_complete: calling process_input, inpos=%p, insize=%zu",
+                       static_cast<void *> (_inpos), _insize);
+
+        if (!process_input ()) {
+            return;
+        }
+    }
+
+    //  Continue reading
+    start_async_read ();
+}
+
+void zmq::asio_ws_engine_t::start_async_write ()
+{
+    if (_write_pending || _output_stopped || _io_error || !_ws_handshake_complete)
+        return;
+
+    if (_outsize == 0) {
+        process_output ();
+        if (_outsize == 0) {
+            WS_ENGINE_DBG ("No data to write");
+            return;
+        }
+    }
+
+    WS_ENGINE_DBG ("start_async_write: %zu bytes", _outsize);
+
+    _write_pending = true;
+
+    _ws_transport->async_write_some (
+      _outpos, _outsize,
+      [this] (const boost::system::error_code &ec,
+              std::size_t bytes_transferred) {
+          on_write_complete (ec, bytes_transferred);
+      });
+}
+
+void zmq::asio_ws_engine_t::on_write_complete (
+  const boost::system::error_code &ec, std::size_t bytes_transferred)
+{
+    _write_pending = false;
+
+    WS_ENGINE_DBG ("on_write_complete: ec=%s, bytes=%zu", ec.message ().c_str (),
+                   bytes_transferred);
+
+    if (_terminating)
+        return;
+
+    if (ec) {
+        if (ec == boost::asio::error::operation_aborted)
+            return;
+        WS_ENGINE_DBG ("Write error");
+        error (connection_error);
+        return;
+    }
+
+    _outpos += bytes_transferred;
+    _outsize -= bytes_transferred;
+
+    //  Continue writing if more data
+    if (_outsize > 0) {
+        start_async_write ();
+    } else {
+        //  Try to get more data to send
+        process_output ();
+        if (_outsize > 0) {
+            start_async_write ();
+        }
+    }
+}
+
+bool zmq::asio_ws_engine_t::handshake ()
+{
+    WS_ENGINE_DBG ("handshake: bytes_read=%u, size=%zu", _greeting_bytes_read,
+                   _greeting_size);
+
+    //  Need at least signature (10 bytes) to detect protocol
+    if (_greeting_bytes_read < signature_size)
+        return false;
+
+    //  Check ZMTP signature
+    if (_greeting_recv[0] != 0xff || (_greeting_recv[9] & 0x01) == 0) {
+        //  Not ZMTP 3.x, check for older versions
+        if (_greeting_recv[0] != 0xff) {
+            WS_ENGINE_DBG ("Invalid ZMTP signature");
+            error (protocol_error);
+            return false;
+        }
+    }
+
+    //  Need full v3 greeting
+    if (_greeting_bytes_read < v3_greeting_size)
+        return false;
+
+    //  Verify the protocol version
+    if (_greeting_recv[10] != 3) {
+        WS_ENGINE_DBG ("Unsupported ZMTP version: %d", _greeting_recv[10]);
+        error (protocol_error);
+        return false;
+    }
+
+    WS_ENGINE_DBG ("ZMTP handshake complete, version 3.%d", _greeting_recv[11]);
+    return true;
+}
+
+void zmq::asio_ws_engine_t::mechanism_ready ()
+{
+    WS_ENGINE_DBG ("mechanism_ready");
+
+    if (_options.heartbeat_interval > 0) {
+        _heartbeat_timeout = _options.heartbeat_timeout;
+        if (_heartbeat_timeout == -1)
+            _heartbeat_timeout = _options.heartbeat_interval;
+    }
+
+    //  Compile metadata
+    properties_t properties;
+    init_properties (properties);
+
+    zmq_assert (_metadata == NULL);
+    if (!properties.empty ()) {
+        _metadata = new (std::nothrow) metadata_t (properties);
+        alloc_assert (_metadata);
+    }
+
+    //  Notify session that engine is ready to send/receive messages
+    if (_session) {
+        _session->engine_ready ();
+    }
+
+    //  Notify socket about successful handshake
+    if (_socket) {
+        _socket->event_handshake_succeeded (_endpoint_uri_pair, 0);
+    }
+
+    //  Trigger output to start sending any pending messages
+    if (!_output_stopped && !_write_pending) {
+        start_async_write ();
+    }
+}
+
+bool zmq::asio_ws_engine_t::process_input ()
+{
+    WS_ENGINE_DBG ("process_input: insize=%zu, inpos=%p, in_decoder_buffer=%d",
+                   _insize, static_cast<void *> (_inpos), _input_in_decoder_buffer);
+
+    if (!_decoder)
+        return true;
+
+    const bool input_in_decoder_buffer = _input_in_decoder_buffer;
+
+    int rc = 0;
+    size_t processed = 0;
+
+    while (_insize > 0) {
+        unsigned char *decode_buf;
+        size_t decode_size;
+
+        decode_buf = _inpos;
+        decode_size = _insize;
+
+        if (!input_in_decoder_buffer) {
+            //  Data came from external buffer (e.g., greeting); copy into
+            //  decoder buffer to preserve decoder buffer invariants.
+            _decoder->get_buffer (&decode_buf, &decode_size);
+            decode_size = std::min (_insize, decode_size);
+            memcpy (decode_buf, _inpos, decode_size);
+            _decoder->resize_buffer (decode_size);
+            WS_ENGINE_DBG ("process_input: copied %zu bytes from external buffer to decoder", decode_size);
+        }
+
+        WS_ENGINE_DBG ("process_input: calling decode with size=%zu", decode_size);
+        rc = _decoder->decode (decode_buf, decode_size, processed);
+        WS_ENGINE_DBG ("process_input: decode rc=%d, processed=%zu", rc, processed);
+
+        zmq_assert (processed <= decode_size);
+        _inpos += processed;
+        _insize -= processed;
+
+        if (rc == 0 || rc == -1)
+            break;
+
+        //  Message decoded, push to session
+        msg_t *msg = _decoder->msg ();
+        WS_ENGINE_DBG ("process_input: got message, size=%zu, flags=0x%x",
+                       msg->size (), msg->flags ());
+        rc = (this->*_process_msg) (msg);
+        WS_ENGINE_DBG ("process_input: process_msg rc=%d", rc);
+        if (rc == -1)
+            break;
+    }
+
+    //  Tear down connection on decode/process error
+    if (rc == -1) {
+        if (errno != EAGAIN) {
+            WS_ENGINE_DBG ("process_input: decode/process error, errno=%d", errno);
+            error (protocol_error);
+            return false;
+        }
+        _input_stopped = true;
+    }
+
+    //  Flush any messages to the socket
+    if (_session) {
+        _session->flush ();
+    }
+
+    return true;
+}
+
+void zmq::asio_ws_engine_t::process_output ()
+{
+    WS_ENGINE_DBG ("process_output");
+
+    if (!_encoder)
+        return;
+
+    //  If there's still data from previous encode, don't get more
+    if (_outsize > 0)
+        return;
+
+    //  Get initial data from encoder
+    _outpos = NULL;
+    _outsize = _encoder->encode (&_outpos, 0);
+
+    //  Fill the output buffer up to batch size
+    while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
+        msg_t msg;
+        int rc = msg.init ();
+        errno_assert (rc == 0);
+
+        rc = (this->*_next_msg) (&msg);
+        if (rc == -1) {
+            rc = msg.close ();
+            errno_assert (rc == 0);
+            if (errno == EAGAIN) {
+                _output_stopped = true;
+            } else {
+                error (protocol_error);
+            }
+            break;
+        }
+
+        _encoder->load_msg (&msg);
+        unsigned char *bufptr = _outpos + _outsize;
+        const size_t n =
+          _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
+        zmq_assert (n > 0);
+        if (_outpos == NULL)
+            _outpos = bufptr;
+        _outsize += n;
+    }
+}
+
+int zmq::asio_ws_engine_t::pull_msg_from_session (msg_t *msg_)
+{
+    return _session->pull_msg (msg_);
+}
+
+int zmq::asio_ws_engine_t::push_msg_to_session (msg_t *msg_)
+{
+    return _session->push_msg (msg_);
+}
+
+void zmq::asio_ws_engine_t::error (error_reason_t reason_)
+{
+    WS_ENGINE_DBG ("error: reason=%d", reason_);
+
+    _io_error = true;
+
+    if (_session) {
+        _session->engine_error (false, reason_);
+    }
+}
+
+void zmq::asio_ws_engine_t::terminate ()
+{
+    WS_ENGINE_DBG ("terminate: read_pending=%d, write_pending=%d",
+                   _read_pending, _write_pending);
+
+    _terminating = true;
+
+    //  Cancel all timers
+    if (_has_handshake_timer) {
+        cancel_timer (handshake_timer_id);
+        _has_handshake_timer = false;
+    }
+
+    if (_has_ttl_timer) {
+        cancel_timer (heartbeat_ttl_timer_id);
+        _has_ttl_timer = false;
+    }
+
+    if (_has_timeout_timer) {
+        cancel_timer (heartbeat_timeout_timer_id);
+        _has_timeout_timer = false;
+    }
+
+    if (_has_heartbeat_timer) {
+        cancel_timer (heartbeat_ivl_timer_id);
+        _has_heartbeat_timer = false;
+    }
+
+    //  Close WebSocket transport - this will cause pending async ops to fail
+    if (_ws_transport) {
+        _ws_transport->close ();
+    }
+
+    _plugged = false;
+    _session = NULL;
+
+    //  Run pending async handlers until they complete
+    //  The close() above will cause pending reads/writes to fail with
+    //  operation_aborted or eof, and our handlers check _terminating flag
+    if (_io_context) {
+        //  Run until no more pending handlers
+        int max_iterations = 100;
+        while ((_read_pending || _write_pending) && max_iterations-- > 0) {
+            WS_ENGINE_DBG ("terminate: polling, read_pending=%d, write_pending=%d",
+                           _read_pending, _write_pending);
+            size_t handled = _io_context->poll_one ();
+            if (handled == 0) {
+                WS_ENGINE_DBG ("terminate: poll_one returned 0");
+                break;
+            }
+        }
+    }
+
+    WS_ENGINE_DBG ("terminate: done, deleting this");
+    delete this;
+}
+
+bool zmq::asio_ws_engine_t::restart_input ()
+{
+    WS_ENGINE_DBG ("restart_input");
+
+    _input_stopped = false;
+
+    if (!_read_pending) {
+        start_async_read ();
+    }
+
+    return true;
+}
+
+void zmq::asio_ws_engine_t::restart_output ()
+{
+    WS_ENGINE_DBG ("restart_output");
+
+    _output_stopped = false;
+
+    if (!_write_pending) {
+        start_async_write ();
+    }
+}
+
+void zmq::asio_ws_engine_t::zap_msg_available ()
+{
+    //  ZAP not supported in this implementation
+}
+
+const zmq::endpoint_uri_pair_t &zmq::asio_ws_engine_t::get_endpoint () const
+{
+    return _endpoint_uri_pair;
+}
+
+void zmq::asio_ws_engine_t::set_handshake_timer ()
+{
+    add_timer (_options.handshake_ivl, handshake_timer_id);
+    _has_handshake_timer = true;
+}
+
+void zmq::asio_ws_engine_t::cancel_handshake_timer ()
+{
+    cancel_timer (handshake_timer_id);
+    _has_handshake_timer = false;
+}
+
+void zmq::asio_ws_engine_t::add_timer (int timeout_, int id_)
+{
+    if (!_timer)
+        return;
+
+    _current_timer_id = id_;
+
+    _timer->expires_after (std::chrono::milliseconds (timeout_));
+    _timer->async_wait ([this, id_] (const boost::system::error_code &ec) {
+        on_timer (id_, ec);
+    });
+}
+
+void zmq::asio_ws_engine_t::cancel_timer (int id_)
+{
+    if (!_timer)
+        return;
+
+    if (_current_timer_id == id_) {
+        _timer->cancel ();
+        _current_timer_id = -1;
+    }
+}
+
+void zmq::asio_ws_engine_t::on_timer (int id_,
+                                       const boost::system::error_code &ec)
+{
+    if (_terminating || ec == boost::asio::error::operation_aborted)
+        return;
+
+    WS_ENGINE_DBG ("on_timer: id=%d", id_);
+
+    if (id_ == handshake_timer_id) {
+        _has_handshake_timer = false;
+        error (timeout_error);
+    }
+}
+
+bool zmq::asio_ws_engine_t::init_properties (properties_t &properties_)
+{
+    if (_peer_address.empty ())
+        return false;
+
+    properties_.ZMQ_MAP_INSERT_OR_EMPLACE (
+      std::string (ZMQ_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
+
+    return true;
+}
+
+int zmq::asio_ws_engine_t::pull_and_encode (msg_t *msg_)
+{
+    return pull_msg_from_session (msg_);
+}
+
+int zmq::asio_ws_engine_t::decode_and_push (msg_t *msg_)
+{
+    return push_msg_to_session (msg_);
+}
+
+int zmq::asio_ws_engine_t::push_one_then_decode_and_push (msg_t *msg_)
+{
+    return push_msg_to_session (msg_);
+}
+
+int zmq::asio_ws_engine_t::next_handshake_command (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::process_handshake_command (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::write_credential (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::process_command_message (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::routing_id_msg (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+int zmq::asio_ws_engine_t::process_routing_id_msg (msg_t *msg_)
+{
+    LIBZMQ_UNUSED (msg_);
+    return -1;
+}
+
+#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS

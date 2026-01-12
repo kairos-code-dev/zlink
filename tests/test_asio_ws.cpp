@@ -347,6 +347,238 @@ void test_ws_binary_message ()
     //  Let the streams destruct naturally
 }
 
+//  ============================================================================
+//  Phase 3-B: ZMQ WebSocket Integration Tests
+//  ============================================================================
+//
+//  The following tests verify that ZMQ API works with WebSocket transport:
+//  - zmq_bind("ws://...") should work without errno 93 (Protocol not supported)
+//  - zmq_connect("ws://...") should work and establish connection
+//  - Message exchange should work over WebSocket transport
+
+#if defined ZMQ_HAVE_WS
+
+//  Global ZMQ context for Phase 3-B tests
+static void *g_ctx = NULL;
+
+static void setup_zmq_ctx ()
+{
+    g_ctx = zmq_ctx_new ();
+    TEST_ASSERT_NOT_NULL (g_ctx);
+}
+
+static void teardown_zmq_ctx ()
+{
+    if (g_ctx) {
+        int rc = zmq_ctx_term (g_ctx);
+        TEST_ASSERT_EQUAL_INT (0, rc);
+        g_ctx = NULL;
+    }
+}
+
+//  Test 6: ZMQ WebSocket bind should not return EPROTONOSUPPORT
+void test_zmq_ws_bind ()
+{
+    setup_zmq_ctx ();
+
+    void *socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    //  Bind to WebSocket endpoint - this should NOT return -1 with errno 93
+    int rc = zmq_bind (socket, "ws://127.0.0.1:*");
+    if (rc == -1) {
+        int err = zmq_errno ();
+        char msg[256];
+        snprintf (msg, sizeof (msg), "zmq_bind(ws://) failed with errno %d: %s",
+                  err, zmq_strerror (err));
+        TEST_FAIL_MESSAGE (msg);
+    }
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Get the actual bound endpoint
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Verify it's a ws:// endpoint
+    TEST_ASSERT_TRUE (strncmp (endpoint, "ws://", 5) == 0);
+
+    zmq_close (socket);
+    teardown_zmq_ctx ();
+}
+
+//  Test 7: ZMQ WebSocket connect should not return EPROTONOSUPPORT
+void test_zmq_ws_connect ()
+{
+    setup_zmq_ctx ();
+
+    //  First create a bind socket
+    void *bind_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (bind_socket);
+
+    int rc = zmq_bind (bind_socket, "ws://127.0.0.1:*");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Get the actual bound endpoint
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (bind_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Create connect socket
+    void *connect_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (connect_socket);
+
+    //  Connect to the WebSocket endpoint
+    rc = zmq_connect (connect_socket, endpoint);
+    if (rc == -1) {
+        int err = zmq_errno ();
+        char msg[256];
+        snprintf (msg, sizeof (msg),
+                  "zmq_connect(ws://) failed with errno %d: %s", err,
+                  zmq_strerror (err));
+        TEST_FAIL_MESSAGE (msg);
+    }
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    zmq_close (connect_socket);
+    zmq_close (bind_socket);
+    teardown_zmq_ctx ();
+}
+
+//  Test 8: ZMQ WebSocket PAIR message exchange
+void test_zmq_ws_pair_message ()
+{
+    setup_zmq_ctx ();
+
+    //  Create bind socket
+    void *bind_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (bind_socket);
+
+    int rc = zmq_bind (bind_socket, "ws://127.0.0.1:*");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Get the actual bound endpoint
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (bind_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Create connect socket
+    void *connect_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (connect_socket);
+
+    rc = zmq_connect (connect_socket, endpoint);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Give time for connection to establish (including WS handshake)
+    msleep (200);
+
+    //  Send a message from connect to bind
+    const char *test_msg = "Hello WebSocket";
+    rc = zmq_send (connect_socket, test_msg, strlen (test_msg), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
+
+    //  Receive the message
+    char recv_buf[256];
+    rc = zmq_recv (bind_socket, recv_buf, sizeof (recv_buf), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
+    recv_buf[rc] = '\0';
+    TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
+
+    //  Send a message back from bind to connect
+    const char *reply_msg = "Hello from bind";
+    rc = zmq_send (bind_socket, reply_msg, strlen (reply_msg), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (reply_msg)), rc);
+
+    //  Receive the reply
+    rc = zmq_recv (connect_socket, recv_buf, sizeof (recv_buf), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (reply_msg)), rc);
+    recv_buf[rc] = '\0';
+    TEST_ASSERT_EQUAL_STRING (reply_msg, recv_buf);
+
+    zmq_close (connect_socket);
+    zmq_close (bind_socket);
+    teardown_zmq_ctx ();
+}
+
+//  Test 9: ZMQ WebSocket PUB/SUB pattern
+void test_zmq_ws_pubsub ()
+{
+    setup_zmq_ctx ();
+
+    //  Create PUB socket
+    void *pub_socket = zmq_socket (g_ctx, ZMQ_PUB);
+    TEST_ASSERT_NOT_NULL (pub_socket);
+
+    int rc = zmq_bind (pub_socket, "ws://127.0.0.1:*");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Get the actual bound endpoint
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (pub_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Create SUB socket
+    void *sub_socket = zmq_socket (g_ctx, ZMQ_SUB);
+    TEST_ASSERT_NOT_NULL (sub_socket);
+
+    //  Subscribe to all messages
+    rc = zmq_setsockopt (sub_socket, ZMQ_SUBSCRIBE, "", 0);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    rc = zmq_connect (sub_socket, endpoint);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Give time for connection and subscription to propagate
+    msleep (300);
+
+    //  Send a message from PUB
+    const char *test_msg = "WebSocket PubSub Test";
+    rc = zmq_send (pub_socket, test_msg, strlen (test_msg), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
+
+    //  Receive the message on SUB
+    char recv_buf[256];
+    rc = zmq_recv (sub_socket, recv_buf, sizeof (recv_buf), 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
+    recv_buf[rc] = '\0';
+    TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
+
+    zmq_close (sub_socket);
+    zmq_close (pub_socket);
+    teardown_zmq_ctx ();
+}
+
+//  Test 10: ZMQ WebSocket with path
+void test_zmq_ws_with_path ()
+{
+    setup_zmq_ctx ();
+
+    void *socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    //  Bind to WebSocket endpoint with custom path
+    int rc = zmq_bind (socket, "ws://127.0.0.1:*/my/custom/path");
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Get the actual bound endpoint
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_EQUAL_INT (0, rc);
+
+    //  Verify the path is included in the endpoint
+    TEST_ASSERT_NOT_NULL (strstr (endpoint, "/my/custom/path"));
+
+    zmq_close (socket);
+    teardown_zmq_ctx ();
+}
+
+#endif  // ZMQ_HAVE_WS
+
 #else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_ASIO_WS
 
 void setUp ()
@@ -372,13 +604,23 @@ int main ()
     UNITY_BEGIN ();
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
-    //  Run basic tests
+    //  Phase 3: Beast WebSocket infrastructure tests
     RUN_TEST (test_ws_stream_creation);
     RUN_TEST (test_ws_stream_options);
-    //  Network-based tests
+    //  Network-based Beast tests
     RUN_TEST (test_tcp_connection_baseline);
     RUN_TEST (test_ws_handshake);
     RUN_TEST (test_ws_binary_message);
+
+#if defined ZMQ_HAVE_WS
+    //  Phase 3-B: ZMQ WebSocket API integration tests
+    RUN_TEST (test_zmq_ws_bind);
+    RUN_TEST (test_zmq_ws_connect);
+    RUN_TEST (test_zmq_ws_pair_message);
+    RUN_TEST (test_zmq_ws_pubsub);
+    RUN_TEST (test_zmq_ws_with_path);
+#endif  // ZMQ_HAVE_WS
+
 #else
     RUN_TEST (test_asio_ws_not_enabled);
 #endif

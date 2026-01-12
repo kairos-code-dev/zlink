@@ -239,6 +239,11 @@ struct options_t
 
     //  This option removes several delays caused by scheduling, interrupts and context switching.
     int busy_poll;
+
+#ifdef ZMQ_HAVE_WSS
+    //  Hostname for WSS (TLS SNI and certificate validation)
+    std::string wss_hostname;
+#endif
 };
 
 inline bool get_effective_conflate_option (const options_t &options)

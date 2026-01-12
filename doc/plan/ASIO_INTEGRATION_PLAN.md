@@ -10,7 +10,7 @@
 | Phase 1-C: True Proactor | **COMPLETE** | test_asio_tcp passing |
 | Phase 2: SSL/TLS | **COMPLETE** | 8 tests passing, real certificates |
 | Phase 3: WebSocket Infrastructure | **COMPLETE** | 5 tests passing (Beast layer) |
-| **Phase 3-B: WebSocket ZMQ Integration** | **PENDING** | zmq_bind/zmq_connect ws:// support |
+| **Phase 3-B: WebSocket ZMQ Integration** | **COMPLETE** | zmq_bind/zmq_connect ws:// working |
 | Phase 4: Optimization | In Progress | Benchmarks pending |
 
 ### Test Results (All Passing)
@@ -32,7 +32,7 @@ cmake -B build \
 ```
 
 ### Remaining Tasks
-- [ ] **Phase 3-B: WebSocket ZMQ Integration** (zmq_bind/zmq_connect ws:// support)
+- [x] **Phase 3-B: WebSocket ZMQ Integration** (zmq_bind/zmq_connect ws:// support) - **DONE**
 - [ ] Windows ASIO build verification (IOCP)
 - [ ] Performance benchmarks vs standard libzmq
 - [ ] Documentation completion

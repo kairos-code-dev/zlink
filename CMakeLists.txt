@@ -226,10 +226,20 @@ endif()
 set(ENABLE_DRAFTS OFF CACHE BOOL "Build and install draft classes and methods" FORCE)
 message(STATUS "Not building draft classes and methods (zlink: forced OFF)")
 
-# zlink: Force WebSocket OFF (WS files have been removed)
-set(ENABLE_WS OFF CACHE BOOL "Enable WebSocket transport" FORCE)
+# Phase 3-B: Enable WebSocket ZMQ integration when ASIO WS is enabled
+if(ZMQ_HAVE_ASIO_WS)
+  set(ZMQ_HAVE_WS 1)
+  message(STATUS "WebSocket transport enabled (ZMQ_HAVE_WS via ASIO)")
+  if(ZMQ_HAVE_ASIO_WSS)
+    set(ZMQ_HAVE_WSS 1)
+    message(STATUS "Secure WebSocket transport enabled (ZMQ_HAVE_WSS via ASIO)")
+  endif()
+else()
+  # zlink: Force WebSocket OFF when ASIO WS is not enabled
+  set(ENABLE_WS OFF CACHE BOOL "Enable WebSocket transport" FORCE)
+  message(STATUS "WebSocket transport disabled (zlink: ASIO WS not enabled)")
+endif()
 set(ENABLE_RADIX_TREE OFF CACHE BOOL "Use radix tree implementation to manage subscriptions" FORCE)
-message(STATUS "WebSocket transport disabled (zlink: forced OFF)")
 
 if(ENABLE_RADIX_TREE)
   message(STATUS "Using radix tree implementation to manage subscriptions")
@@ -530,6 +540,26 @@ if(ZMQ_HAVE_ASIO_WSS)
   list(APPEND sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/wss_transport.hpp)
+endif()
+
+# Phase 3-B: Add WebSocket ZMQ integration files (listener, connecter, engine, address)
+if(ZMQ_HAVE_WS)
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ws_address.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_listener.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_listener.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_connecter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_connecter.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ws_engine.hpp)
+endif()
+
+# Phase 3-B: Add WSS ZMQ integration files
+if(ZMQ_HAVE_WSS)
+  list(APPEND sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.hpp)
 endif()
 
 if(POLLER STREQUAL "epoll" AND WIN32)

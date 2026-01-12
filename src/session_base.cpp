@@ -20,6 +20,9 @@
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_connecter.hpp"
+#if defined ZMQ_HAVE_WS
+#include "asio/asio_ws_connecter.hpp"
+#endif
 #endif
 
 #include "ctx.hpp"
@@ -593,6 +596,13 @@ void zmq::session_base_t::start_connecting (bool wait_)
     else if (_addr->protocol == protocol_name::vmci) {
         connecter = new (std::nothrow)
           vmci_connecter_t (io_thread, this, options, _addr, wait_);
+    }
+#endif
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+    //  WebSocket transport (ws://)
+    else if (_addr->protocol == protocol_name::ws) {
+        connecter = new (std::nothrow)
+          asio_ws_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
     if (connecter != NULL) {

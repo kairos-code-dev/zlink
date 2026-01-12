@@ -29,6 +29,10 @@
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_listener.hpp"
+#if defined ZMQ_HAVE_WS
+#include "asio/asio_ws_listener.hpp"
+#include "ws_address.hpp"
+#endif
 #endif
 #include "io_thread.hpp"
 #include "session_base.hpp"
@@ -605,6 +609,42 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
+        listener->get_local_address (_last_endpoint);
+
+        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+                      static_cast<own_t *> (listener), NULL);
+        options.connected = true;
+        return 0;
+    }
+#endif
+
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+    if (protocol == protocol_name::ws) {
+        //  Resolve WebSocket address
+        ws_address_t *ws_addr = new (std::nothrow) ws_address_t ();
+        alloc_assert (ws_addr);
+        rc = ws_addr->resolve (address.c_str (), true, options.ipv6);
+        if (rc != 0) {
+            LIBZMQ_DELETE (ws_addr);
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
+                               zmq_errno ());
+            return -1;
+        }
+
+        //  Create ASIO-based WebSocket listener
+        asio_ws_listener_t *listener =
+          new (std::nothrow) asio_ws_listener_t (io_thread, this, options);
+        alloc_assert (listener);
+        rc = listener->set_local_address (ws_addr);
+        LIBZMQ_DELETE (ws_addr);
+        if (rc != 0) {
+            LIBZMQ_DELETE (listener);
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
+                               zmq_errno ());
+            return -1;
+        }
+
+        //  Save last endpoint URI
         listener->get_local_address (_last_endpoint);
 
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),

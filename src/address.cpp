@@ -21,7 +21,11 @@ zmq::address_t::address_t (const std::string &protocol_,
 
 zmq::address_t::~address_t ()
 {
-    if (protocol == protocol_name::tcp) {
+    if (protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+        || protocol == protocol_name::tls
+#endif
+    ) {
         LIBZMQ_DELETE (resolved.tcp_addr);
     }
 #if defined ZMQ_HAVE_IPC
@@ -33,7 +37,11 @@ zmq::address_t::~address_t ()
 
 int zmq::address_t::to_string (std::string &addr_) const
 {
-    if (protocol == protocol_name::tcp && resolved.tcp_addr)
+    if ((protocol == protocol_name::tcp
+#ifdef ZMQ_HAVE_TLS
+         || protocol == protocol_name::tls
+#endif
+        ) && resolved.tcp_addr)
         return resolved.tcp_addr->to_string (addr_);
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc && resolved.ipc_addr)

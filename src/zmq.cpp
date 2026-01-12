@@ -598,6 +598,10 @@ int zmq_has (const char *capability_)
     if (strcmp (capability_, zmq::protocol_name::ipc) == 0)
         return true;
 #endif
+#if defined(ZMQ_HAVE_TLS)
+    if (strcmp (capability_, "tls") == 0)
+        return true;
+#endif
 #if defined(HAVE_LIBGSSAPI_KRB5)
     if (strcmp (capability_, "gssapi") == 0)
         return true;

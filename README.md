@@ -166,80 +166,126 @@ vcpkg is a full platform package manager, you can easily install libzmq via vcpk
     ./bootstrap-vcpkg.sh # For bash
     ./vcpkg install zeromq
 
-## Boost.Asio Integration (zlink feature) <a name="asio"/>
+## zlink: Simplified ZeroMQ Build <a name="zlink"/>
 
-This fork (zlink) includes optional Boost.Asio integration for improved I/O performance using a true proactor pattern.
+**zlink** is a streamlined build of libzmq 4.3.5 focused on modern transport protocols and minimal dependencies.
 
-### Features
+### Key Features
 
-| Feature | CMake Option | Description |
-|---------|--------------|-------------|
-| ASIO Poller | `WITH_BOOST_ASIO=ON` | Replace epoll/select with Boost.Asio |
-| SSL/TLS | `WITH_ASIO_SSL=ON` | TLS 1.2+ encrypted connections |
-| WebSocket | `WITH_ASIO_WS=ON` | WebSocket transport (ws://) |
-| Secure WebSocket | Automatic with SSL+WS | WebSocket over TLS (wss://) |
+- **ASIO-based I/O**: Boost.Asio backend (bundled, no external dependency)
+- **TLS Support**: Native TLS transport (`tls://`) and WebSocket TLS (`wss://`)
+- **WebSocket**: Standard WebSocket transport (`ws://`, `wss://`)
+- **Simplified Protocols**: Focused on tcp, ipc, inproc, ws, wss, tls
+- **Minimal Dependencies**: No CURVE, no multicast protocols, no TIPC
 
-### Requirements
+### Supported Protocols
 
-- **Boost 1.82+** (header-only, bundled in `external/boost/`)
-- **OpenSSL 3.0+** (for SSL/TLS support)
+| Protocol | Description | Platforms |
+|----------|-------------|-----------|
+| tcp | Standard TCP transport | All |
+| ipc | Inter-process communication | Unix/Linux/macOS |
+| inproc | In-process messaging | All |
+| ws | WebSocket transport | All |
+| wss | WebSocket with TLS | All |
+| tls | Native TLS transport | All |
 
-### Build with ASIO
+### Supported Socket Types
+
+| Type | Description |
+|------|-------------|
+| PAIR | Exclusive pair pattern |
+| PUB/SUB | Publish-subscribe |
+| XPUB/XSUB | Extended pub-sub |
+| DEALER/ROUTER | Async request-reply |
+
+### Removed Features
+
+**Protocols:** TIPC, VMCI, PGM, EPGM, NORM, UDP, SOCKS
+**Socket Types:** STREAM, REQ/REP, PUSH/PULL, Draft API sockets
+**Encryption:** CURVE (use TLS instead)
+
+### Build Requirements
+
+- **CMake** 3.10+
+- **C++11 Compiler**: GCC 5+, Clang 3.8+, MSVC 2015+
+- **OpenSSL**: For TLS support (required)
+- **Boost.Asio**: Bundled in `external/boost/`
+
+### Quick Build
 
 ```bash
-# Basic ASIO (TCP only)
-cmake -B build -DWITH_BOOST_ASIO=ON -DBUILD_TESTS=ON
-cmake --build build
+# Linux
+./build-scripts/linux/build.sh x64 ON
 
-# With SSL/TLS support
-cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_SSL=ON -DBUILD_TESTS=ON
-cmake --build build
+# macOS
+./build-scripts/macos/build.sh arm64 ON
 
-# With WebSocket support
-cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_WS=ON -DBUILD_TESTS=ON
-cmake --build build
+# Windows (PowerShell)
+.\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
+```
 
-# Full ASIO (TCP + SSL + WebSocket)
+### CMake Options
+
+Default configuration (all enabled):
+- `WITH_ASIO=ON`: Use ASIO backend
+- `WITH_ASIO_SSL=ON`: Enable TLS support
+- `ENABLE_WS=ON`: Enable WebSocket transport
+- `BUILD_TESTS=ON`: Build test suite
+- `BUILD_BENCHMARKS=OFF`: Build benchmark tools
+
+Custom build:
+```bash
 cmake -B build \
-    -DWITH_BOOST_ASIO=ON \
+    -DWITH_ASIO=ON \
     -DWITH_ASIO_SSL=ON \
-    -DWITH_ASIO_WS=ON \
+    -DENABLE_WS=ON \
     -DBUILD_TESTS=ON
 cmake --build build
 ```
 
-### Platform Support
+### TLS Usage
 
-| Platform | ASIO Backend | Status |
-|----------|--------------|--------|
-| Linux x64/ARM64 | epoll via Asio | Tested |
-| macOS x64/ARM64 | kqueue via Asio | Tested |
-| Windows x64/ARM64 | IOCP via Asio | Implemented |
-
-### ASIO Tests
-
-```bash
-# Run all ASIO tests
-cd build && ctest -R asio --output-on-failure
-
-# Individual tests
-./bin/test_asio_poller   # Basic poller functionality
-./bin/test_asio_connect  # Connection establishment
-./bin/test_asio_tcp      # TCP data exchange
-./bin/test_asio_ssl      # SSL/TLS handshake and encryption
-./bin/test_asio_ws       # WebSocket handshake and messages
+**Server:**
+```c
+zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
+zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
+zmq_bind(socket, "tls://*:5555");
 ```
 
-### Architecture
+**Client:**
+```c
+zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
+zmq_setsockopt(socket, ZMQ_TLS_HOSTNAME, "server.example.com", ...);
+zmq_connect(socket, "tls://server.example.com:5555");
+```
 
-The ASIO integration uses a true proactor pattern:
+See [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md) for detailed TLS configuration.
 
-1. **asio_poller_t** - Event loop integration with `io_context`
-2. **asio_tcp_listener_t** - Async TCP accept (`async_accept`)
-3. **asio_tcp_connecter_t** - Async TCP connect (`async_connect`)
-4. **asio_engine_t** - Async read/write (`async_read`, `async_write`)
-5. **ssl_context_helper_t** - SSL context management
-6. **ws_engine_t** - WebSocket frame handling with Boost.Beast
+### Platform Support
+
+| Platform | Architecture | Backend | Status |
+|----------|--------------|---------|--------|
+| Linux | x64, ARM64 | epoll via ASIO | Tested |
+| macOS | x64, ARM64 | kqueue via ASIO | Tested |
+| Windows | x64, ARM64 | IOCP via ASIO | Tested |
+
+### Tests
+
+64 tests total (5 fuzzer tests skipped by default):
+
+```bash
+# Run tests during build
+./build-scripts/linux/build.sh x64 ON
+
+# Run tests directly
+cd build/linux-x64 && ctest --output-on-failure
+```
+
+### Documentation
+
+- [CLAUDE.md](CLAUDE.md): Project overview and build instructions
+- [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md): TLS configuration and examples
+- [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md): C++ standard selection
 
 ## Benchmarks (benchwithzmq)
 

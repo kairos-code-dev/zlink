@@ -1,0 +1,167 @@
+# Changelog
+
+All notable changes to zlink will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [0.2.0] - 2026-01-13
+
+### Added
+- **ASIO Backend**: Boost.Asio-based I/O using bundled Boost headers
+  - True proactor pattern with `async_accept`, `async_connect`, `async_read`, `async_write`
+  - Platform-specific optimizations: epoll (Linux), kqueue (macOS), IOCP (Windows)
+- **TLS Transport**: Native TLS protocol (`tls://`) using OpenSSL
+  - Socket options: `ZMQ_TLS_CERT`, `ZMQ_TLS_KEY`, `ZMQ_TLS_CA`, `ZMQ_TLS_HOSTNAME`
+  - Server and client authentication
+  - Mutual TLS support
+- **WebSocket Support**: Standard WebSocket transport
+  - `ws://` - Plain WebSocket
+  - `wss://` - WebSocket over TLS
+  - Uses Boost.Beast for WebSocket framing
+- **TLS Documentation**: Comprehensive TLS usage guide at `doc/TLS_USAGE_GUIDE.md`
+- **Version Tracking**: Added `ZLINK_VERSION` to VERSION file
+
+### Changed
+- **Default Build Configuration**: ASIO and TLS now enabled by default
+  - `WITH_ASIO=ON` (default)
+  - `WITH_ASIO_SSL=ON` (default)
+  - `ENABLE_WS=ON` (default)
+- **CMake Configuration**: Simplified build options focused on ASIO backend
+- **Documentation**: Updated CLAUDE.md and README.md to reflect current architecture
+
+### Removed
+- **Socket Types**:
+  - `ZMQ_STREAM`: Raw TCP stream socket (use WebSocket instead)
+  - `ZMQ_REQ/REP`: Request-reply pattern (removed in v0.1.3)
+  - `ZMQ_PUSH/PULL`: Pipeline pattern (removed in v0.1.3)
+
+- **Protocols**:
+  - `tipc://`: Transparent Inter-Process Communication
+  - `vmci://`: VMware Virtual Machine Communication Interface
+  - `pgm://`, `epgm://`: Pragmatic General Multicast
+  - `norm://`: NACK-Oriented Reliable Multicast
+  - `udp://`: Unicast and multicast UDP
+  - SOCKS proxy support
+
+- **Encryption**:
+  - CURVE encryption (replaced by TLS)
+  - libsodium dependency
+
+- **Tests**:
+  - TIPC protocol tests (3 tests removed)
+  - Tests now total 64 (down from 67)
+
+### Fixed
+- **Build System**: Proper dependency management for OpenSSL
+- **Test Suite**: Removed tests for unsupported protocols
+- **Platform Support**: Improved Windows ARM64 build configuration
+
+### Migration Notes
+- **From CURVE to TLS**: Applications using CURVE must migrate to TLS transport
+  - Replace `ZMQ_CURVE_*` options with `ZMQ_TLS_*` options
+  - Update connection strings from `tcp://` to `tls://`
+  - Use PEM-formatted certificates instead of binary keys
+- **From STREAM sockets**: Migrate to WebSocket (`ws://`, `wss://`)
+- **From removed protocols**: Migrate to `tcp://`, `ipc://`, or WebSocket
+
+## [0.1.3] - 2024-XX-XX
+
+### Removed
+- **Socket Types**:
+  - `ZMQ_REQ/REP`: Request-reply pattern
+  - `ZMQ_PUSH/PULL`: Pipeline pattern
+- **Monitoring**:
+  - `ZMQ_EVENT_PIPES_STATS` event
+  - `zmq_socket_monitor_pipes_stats()` function
+
+## [0.1.2] - 2024-XX-XX
+
+### Removed
+- **Draft API**: Completely removed all draft socket types and options
+  - Socket types: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
+  - WebSocket transport (was draft feature, re-added in v0.2.0 as stable)
+  - Draft socket options: `ZMQ_RECONNECT_STOP`, `ZMQ_SOCKS_USERNAME/PASSWORD`, `ZMQ_ZAP_ENFORCE_DOMAIN`, etc.
+
+## [0.1.1] - 2024-XX-XX
+
+### Added
+- Initial release based on libzmq 4.3.5
+- Cross-platform build scripts for Linux, macOS, Windows
+- Support for x64 and ARM64 architectures
+- 67 tests from upstream libzmq test suite
+
+### Features
+- Full libzmq 4.3.5 API (except CURVE encryption)
+- All standard socket types
+- All standard protocols (tcp, ipc, inproc, tipc, vmci, pgm, norm, udp)
+- CMake-based build system
+- GitHub Actions CI/CD pipeline
+
+---
+
+## Supported Platforms
+
+All versions support the following platforms:
+
+| Platform | Architectures | Build System |
+|----------|---------------|--------------|
+| Linux | x64, ARM64 | CMake + GCC/Clang |
+| macOS | x86_64, ARM64 | CMake + Clang |
+| Windows | x64, ARM64 | CMake + MSVC |
+
+## Build Requirements
+
+### v0.2.0+
+- CMake 3.10+
+- C++11 compiler (GCC 5+, Clang 3.8+, MSVC 2015+)
+- OpenSSL (for TLS support)
+- Boost.Asio (bundled in `external/boost/`)
+
+### v0.1.x
+- CMake 3.10+
+- C++11 compiler (GCC 5+, Clang 3.8+, MSVC 2015+)
+
+## Protocol Support by Version
+
+| Protocol | v0.1.1 | v0.1.2 | v0.1.3 | v0.2.0 |
+|----------|--------|--------|--------|--------|
+| tcp | ✓ | ✓ | ✓ | ✓ |
+| ipc | ✓ | ✓ | ✓ | ✓ |
+| inproc | ✓ | ✓ | ✓ | ✓ |
+| ws | - | - | - | ✓ |
+| wss | - | - | - | ✓ |
+| tls | - | - | - | ✓ |
+| tipc | ✓ | ✓ | ✓ | - |
+| vmci | ✓ | ✓ | ✓ | - |
+| pgm/epgm | ✓ | ✓ | ✓ | - |
+| norm | ✓ | ✓ | ✓ | - |
+| udp | ✓ | ✓ | ✓ | - |
+
+## Socket Type Support by Version
+
+| Socket Type | v0.1.1 | v0.1.2 | v0.1.3 | v0.2.0 |
+|-------------|--------|--------|--------|--------|
+| PAIR | ✓ | ✓ | ✓ | ✓ |
+| PUB/SUB | ✓ | ✓ | ✓ | ✓ |
+| XPUB/XSUB | ✓ | ✓ | ✓ | ✓ |
+| DEALER/ROUTER | ✓ | ✓ | ✓ | ✓ |
+| REQ/REP | ✓ | ✓ | - | - |
+| PUSH/PULL | ✓ | ✓ | - | - |
+| STREAM | ✓ | ✓ | ✓ | - |
+| Draft sockets* | ✓ | - | - | - |
+
+*Draft sockets: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
+
+## Encryption Support by Version
+
+| Encryption | v0.1.1 | v0.1.2 | v0.1.3 | v0.2.0 |
+|------------|--------|--------|--------|--------|
+| CURVE | - | - | - | - |
+| TLS | - | - | - | ✓ |
+
+---
+
+[0.2.0]: https://github.com/ulalax/zlink/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/ulalax/zlink/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/ulalax/zlink/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/ulalax/zlink/releases/tag/v0.1.1

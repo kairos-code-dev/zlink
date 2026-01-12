@@ -1,9 +1,15 @@
-# libzmq Native Build Version Information
+# zlink - libzmq 4.3.5 Simplified Build
 
 LIBZMQ_VERSION=4.3.5
+ZLINK_VERSION=0.2.0
 
 # Release Date
-RELEASE_DATE=2026-01-11
+RELEASE_DATE=2026-01-13
 
 # Build Information
-# Minimal build without CURVE/libsodium support
+# - ASIO backend with Boost.Asio (bundled)
+# - TLS support (tls://, wss://) via OpenSSL
+# - WebSocket transport (ws://, wss://)
+# - Simplified protocols: tcp, ipc, inproc, ws, wss, tls
+# - Socket types: PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
+# - Removed: CURVE, TIPC, VMCI, PGM, NORM, UDP, STREAM, REQ/REP, PUSH/PULL

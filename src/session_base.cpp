@@ -7,7 +7,6 @@
 #include "err.hpp"
 #include "pipe.hpp"
 #include "likely.hpp"
-#include "tcp_connecter.hpp"
 #include "ipc_connecter.hpp"
 #include "address.hpp"
 
@@ -550,14 +549,9 @@ void zmq::session_base_t::start_connecting (bool wait_)
     //  Create the connecter object.
     own_t *connecter = NULL;
     if (_addr->protocol == protocol_name::tcp) {
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
         //  Phase 1-B: Use ASIO-based connecter for async_connect
         connecter = new (std::nothrow)
           asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
-#else
-        connecter = new (std::nothrow)
-          tcp_connecter_t (io_thread, this, options, _addr, wait_);
-#endif
     }
 #ifdef ZMQ_HAVE_TLS
     else if (_addr->protocol == protocol_name::tls) {

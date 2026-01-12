@@ -13,6 +13,9 @@
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_connecter.hpp"
+#if defined ZMQ_HAVE_ASIO_SSL
+#include "asio/asio_tls_connecter.hpp"
+#endif
 #if defined ZMQ_HAVE_WS
 #include "asio/asio_ws_connecter.hpp"
 #endif
@@ -546,11 +549,7 @@ void zmq::session_base_t::start_connecting (bool wait_)
 
     //  Create the connecter object.
     own_t *connecter = NULL;
-    if (_addr->protocol == protocol_name::tcp
-#ifdef ZMQ_HAVE_TLS
-        || _addr->protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
-#endif
-    ) {
+    if (_addr->protocol == protocol_name::tcp) {
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
         //  Phase 1-B: Use ASIO-based connecter for async_connect
         connecter = new (std::nothrow)
@@ -560,6 +559,18 @@ void zmq::session_base_t::start_connecting (bool wait_)
           tcp_connecter_t (io_thread, this, options, _addr, wait_);
 #endif
     }
+#ifdef ZMQ_HAVE_TLS
+    else if (_addr->protocol == protocol_name::tls) {
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+        //  Phase 4: Use ASIO-based TLS connecter with SSL/TLS encryption
+        connecter = new (std::nothrow)
+          asio_tls_connecter_t (io_thread, this, options, _addr, wait_);
+#else
+        //  TLS requires ASIO and SSL support
+        zmq_assert (false);
+#endif
+    }
+#endif
 #if defined ZMQ_HAVE_IPC
     else if (_addr->protocol == protocol_name::ipc) {
         connecter = new (std::nothrow)

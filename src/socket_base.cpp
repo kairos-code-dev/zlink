@@ -28,6 +28,9 @@
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_listener.hpp"
+#if defined ZMQ_HAVE_ASIO_SSL
+#include "asio/asio_tls_listener.hpp"
+#endif
 #if defined ZMQ_HAVE_WS
 #include "asio/asio_ws_listener.hpp"
 #include "ws_address.hpp"
@@ -466,11 +469,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return -1;
     }
 
-    if (protocol == protocol_name::tcp
-#ifdef ZMQ_HAVE_TLS
-        || protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
-#endif
-    ) {
+    if (protocol == protocol_name::tcp) {
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
         //  Phase 1-B: Use ASIO-based listener for async_accept
         asio_tcp_listener_t *listener =
@@ -496,6 +495,36 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         options.connected = true;
         return 0;
     }
+
+#ifdef ZMQ_HAVE_TLS
+    if (protocol == protocol_name::tls) {
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+        //  Phase 4: Use ASIO-based TLS listener with SSL/TLS encryption
+        asio_tls_listener_t *listener =
+          new (std::nothrow) asio_tls_listener_t (io_thread, this, options);
+        alloc_assert (listener);
+        rc = listener->set_local_address (address.c_str ());
+        if (rc != 0) {
+            LIBZMQ_DELETE (listener);
+            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
+                               zmq_errno ());
+            return -1;
+        }
+
+        // Save last endpoint URI
+        listener->get_local_address (_last_endpoint);
+
+        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
+                      static_cast<own_t *> (listener), NULL);
+        options.connected = true;
+        return 0;
+#else
+        //  TLS requires ASIO and SSL support
+        errno = EPROTONOSUPPORT;
+        return -1;
+#endif
+    }
+#endif
 
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc) {

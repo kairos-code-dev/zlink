@@ -436,7 +436,12 @@ if(ZMQ_HAVE_ASIO_SSL)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_transport.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.hpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ssl_context_helper.hpp
+    # Phase 4: TLS connecter and listener with SSL/TLS encryption
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_connecter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_connecter.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_listener.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tls_listener.hpp)
 endif()
 
 # Phase 3: Add WebSocket transport when enabled

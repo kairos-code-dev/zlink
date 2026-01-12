@@ -39,6 +39,10 @@ inline void print_result(const std::string& lib_type,
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {
     if (transport == "inproc") return "inproc://" + id;
     if (transport == "ipc") return "ipc:///tmp/bench_" + id + ".ipc";
+    if (transport == "ws") {
+        static int ws_port = 6555;
+        return "ws://127.0.0.1:" + std::to_string(ws_port++);
+    }
     static int port = 5555;
     return "tcp://127.0.0.1:" + std::to_string(port++);
 }

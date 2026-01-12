@@ -161,48 +161,36 @@ set(pkg_config_libs_private "")
 set(pkg_config_names_private "")
 set(pkg_config_defines "")
 
-option(WITH_OPENPGM "Build with support for OpenPGM" OFF)
-option(WITH_NORM "Build with support for NORM" OFF)
-option(WITH_VMCI "Build with support for VMware VMCI socket" OFF)
-option(WITH_BOOST_ASIO "Build with Boost.Asio I/O backend" OFF)
-option(WITH_ASIO_SSL "Build with Boost.Asio SSL support (requires OpenSSL)" OFF)
-option(WITH_ASIO_WS "Build with Boost.Beast WebSocket support" OFF)
+option(WITH_BOOST_ASIO "Build with Boost.Asio I/O backend" ON)
+option(WITH_ASIO_SSL "Build with Boost.Asio SSL support (requires OpenSSL)" ON)
+option(WITH_ASIO_WS "Build with Boost.Beast WebSocket support" ON)
 
-# Boost.Asio header detection and poller configuration
-if(WITH_BOOST_ASIO)
-  set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
-  if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
-    message(STATUS "Boost.Asio headers found at ${BUNDLED_BOOST_INCLUDE_DIR}")
-    set(ZMQ_HAVE_BOOST_ASIO 1)
-    # Phase 1-A: Use Asio as the I/O poller backend
-    # This overrides the CACHE variable and any other poller selection
-    set(POLLER "asio" CACHE STRING "I/O thread polling system" FORCE)
-    set(ZMQ_USE_ASIO_POLLER ON)
-    message(STATUS "Using Boost.Asio as I/O backend (Phase 1-A: Reactor Mode)")
-  else()
-    message(FATAL_ERROR "Boost headers not found at ${BUNDLED_BOOST_INCLUDE_DIR}")
-  endif()
+# Boost.Asio is mandatory - always check and use it
+set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
+if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
+  message(STATUS "Boost.Asio headers found at ${BUNDLED_BOOST_INCLUDE_DIR}")
+  set(ZMQ_HAVE_BOOST_ASIO 1)
+  # Phase 1-A: Use Asio as the I/O poller backend (mandatory)
+  set(POLLER "asio" CACHE STRING "I/O thread polling system (forced to asio)" FORCE)
+  set(ZMQ_USE_ASIO_POLLER ON)
+  message(STATUS "Using Boost.Asio as I/O backend (Phase 1-A: Reactor Mode)")
+else()
+  message(FATAL_ERROR "Boost headers not found at ${BUNDLED_BOOST_INCLUDE_DIR} - ASIO is required")
 endif()
 
-# Phase 2: SSL support using Boost.Asio SSL (requires OpenSSL)
+# Phase 2: SSL support using Boost.Asio SSL (requires OpenSSL, enabled by default)
 if(WITH_ASIO_SSL)
-  if(NOT WITH_BOOST_ASIO)
-    message(FATAL_ERROR "WITH_ASIO_SSL requires WITH_BOOST_ASIO=ON")
-  endif()
   find_package(OpenSSL REQUIRED)
   if(OpenSSL_FOUND)
     message(STATUS "OpenSSL found: ${OPENSSL_VERSION}")
     set(ZMQ_HAVE_ASIO_SSL 1)
   else()
-    message(FATAL_ERROR "OpenSSL not found. Install libssl-dev or disable WITH_ASIO_SSL")
+    message(FATAL_ERROR "OpenSSL not found. Install libssl-dev (required for WITH_ASIO_SSL)")
   endif()
 endif()
 
-# Phase 3: WebSocket support using Boost.Beast
+# Phase 3: WebSocket support using Boost.Beast (enabled by default)
 if(WITH_ASIO_WS)
-  if(NOT WITH_BOOST_ASIO)
-    message(FATAL_ERROR "WITH_ASIO_WS requires WITH_BOOST_ASIO=ON")
-  endif()
   set(BUNDLED_BEAST_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/external/boost/boost/beast.hpp")
   if(EXISTS "${BUNDLED_BEAST_HEADER}")
     message(STATUS "Boost.Beast headers found for WebSocket support")
@@ -342,15 +330,7 @@ set(API_POLLER
     CACHE STRING "Choose polling system for zmq_poll(er)_*. valid values are
   poll or select [default=poll unless POLLER=select]")
 
-set(POLLER
-    ""
-    CACHE STRING "Choose polling system for I/O threads. valid values are
-  kqueue, epoll, devpoll, pollset, poll, select, or asio [default=autodetect]")
-
-# Override POLLER with asio if Boost.Asio is enabled
-if(ZMQ_USE_ASIO_POLLER)
-  set(POLLER "asio" CACHE STRING "I/O thread polling system" FORCE)
-endif()
+# POLLER is always 'asio' - no other options are supported
 
 if(WIN32)
   if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" AND CMAKE_SYSTEM_VERSION MATCHES "^10.0")
@@ -412,88 +392,17 @@ if(WIN32)
       "${ZMQ_WIN32_WINNT_DEFAULT}"
       CACHE STRING "Value to set _WIN32_WINNT to for building [default=autodetect from build environment]")
 
-  # On Windows Vista or greater, with MSVC 2013 or greater, default to epoll (which is required on Win 10 for ipc
-  # support)
-  if(ZMQ_WIN32_WINNT GREATER "0x05FF"
-     AND MSVC_VERSION GREATER 1799
-     AND POLLER STREQUAL ""
-     AND NOT ZMQ_HAVE_WINDOWS_UWP)
-    set(POLLER "epoll")
-  endif()
-
   add_definitions(-D_WIN32_WINNT=${ZMQ_WIN32_WINNT})
 endif(WIN32)
 
-# Auto-detect poller only if not already set (e.g., by WITH_BOOST_ASIO)
-if(NOT POLLER)
-  if(NOT MSVC)
-    if(POLLER STREQUAL "")
-      check_cxx_symbol_exists(kqueue sys/event.h HAVE_KQUEUE)
-      if(HAVE_KQUEUE)
-        set(POLLER "kqueue")
-      endif()
-    endif()
-
-    if(POLLER STREQUAL "")
-      check_cxx_symbol_exists(epoll_create sys/epoll.h HAVE_EPOLL)
-      if(HAVE_EPOLL)
-        set(POLLER "epoll")
-        check_cxx_symbol_exists(epoll_create1 sys/epoll.h HAVE_EPOLL_CLOEXEC)
-        if(HAVE_EPOLL_CLOEXEC)
-          set(ZMQ_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC 1)
-        endif()
-      endif()
-    endif()
-
-    if(POLLER STREQUAL "")
-      check_include_files("sys/devpoll.h" HAVE_DEVPOLL)
-      if(HAVE_DEVPOLL)
-        set(POLLER "devpoll")
-      endif()
-    endif()
-
-    if(POLLER STREQUAL "")
-      check_cxx_symbol_exists(pollset_create sys/pollset.h HAVE_POLLSET)
-      if(HAVE_POLLSET)
-        set(POLLER "pollset")
-      endif()
-    endif()
-
-    if(POLLER STREQUAL "")
-      check_cxx_symbol_exists(poll poll.h HAVE_POLL)
-      if(HAVE_POLL)
-        set(POLLER "poll")
-      endif()
-    endif()
-  endif()
-
-  if(POLLER STREQUAL "")
-    if(WIN32)
-      set(HAVE_SELECT 1)
-    else()
-      check_cxx_symbol_exists(select sys/select.h HAVE_SELECT)
-    endif()
-    if(HAVE_SELECT)
-      set(POLLER "select")
-    else()
-      message(FATAL_ERROR "Could not autodetect polling method")
-    endif()
-  endif()
+# POLLER is always 'asio' (set earlier in ASIO configuration)
+if(NOT POLLER STREQUAL "asio")
+  message(FATAL_ERROR "POLLER must be 'asio' - other pollers are not supported")
 endif()
 
-if(POLLER STREQUAL "asio"
-   OR POLLER STREQUAL "kqueue"
-   OR POLLER STREQUAL "epoll"
-   OR POLLER STREQUAL "devpoll"
-   OR POLLER STREQUAL "pollset"
-   OR POLLER STREQUAL "poll"
-   OR POLLER STREQUAL "select")
-  message(STATUS "Using polling method in I/O threads: ${POLLER}")
-  string(TOUPPER ${POLLER} UPPER_POLLER)
-  set(ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
-else()
-  message(FATAL_ERROR "Invalid polling method")
-endif()
+message(STATUS "Using polling method in I/O threads: ${POLLER}")
+string(TOUPPER ${POLLER} UPPER_POLLER)
+set(ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
 
 # Add Asio poller source files when using Asio backend
 if(POLLER STREQUAL "asio")
@@ -562,11 +471,7 @@ if(ZMQ_HAVE_WSS)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/wss_address.hpp)
 endif()
 
-if(POLLER STREQUAL "epoll" AND WIN32)
-  message(STATUS "Including wepoll")
-  list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/external/wepoll/wepoll.c
-       ${CMAKE_CURRENT_SOURCE_DIR}/external/wepoll/wepoll.h)
-endif()
+# wepoll is not needed with ASIO poller
 
 if(API_POLLER STREQUAL "")
   if(POLLER STREQUAL "select")
@@ -862,7 +767,7 @@ if (NOT MSVC)
     zmq_check_tcp_keepidle()
     zmq_check_tcp_keepintvl()
     zmq_check_tcp_keepalive()
-    zmq_check_tcp_tipc()
+    # zmq_check_tcp_tipc() removed - TIPC not supported
     zmq_check_getrandom()
   endif()
 endif()
@@ -892,67 +797,7 @@ find_package(AsciiDoc)
 cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" ON "ASCIIDOC_FOUND;NOT WIN32"
                        OFF) # Do not build docs on Windows due to issues with symlinks
 
-if(MSVC)
-  if(WITH_OPENPGM)
-    # set(OPENPGM_ROOT "" CACHE PATH "Location of OpenPGM")
-    set(OPENPGM_VERSION_MAJOR 5)
-    set(OPENPGM_VERSION_MINOR 2)
-    set(OPENPGM_VERSION_MICRO 122)
-    if(CMAKE_CL_64)
-      find_path(
-        OPENPGM_ROOT include/pgm/pgm.h
-        PATHS
-          "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Miru\\OpenPGM ${OPENPGM_VERSION_MAJOR}.${OPENPGM_VERSION_MINOR}.${OPENPGM_VERSION_MICRO}]"
-        NO_DEFAULT_PATH)
-      message(STATUS "OpenPGM x64 detected - ${OPENPGM_ROOT}")
-    else()
-      find_path(
-        OPENPGM_ROOT include/pgm/pgm.h
-        PATHS
-          "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Miru\\OpenPGM ${OPENPGM_VERSION_MAJOR}.${OPENPGM_VERSION_MINOR}.${OPENPGM_VERSION_MICRO}]"
-          "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Miru\\OpenPGM ${OPENPGM_VERSION_MAJOR}.${OPENPGM_VERSION_MINOR}.${OPENPGM_VERSION_MICRO}]"
-          NO_DEFAULT_PATH)
-      message(STATUS "OpenPGM x86 detected - ${OPENPGM_ROOT}")
-    endif()
-    set(OPENPGM_INCLUDE_DIRS ${OPENPGM_ROOT}/include)
-    set(OPENPGM_LIBRARY_DIRS ${OPENPGM_ROOT}/lib)
-    set(OPENPGM_LIBRARIES
-        optimized
-        libpgm${MSVC_TOOLSET}-mt-${OPENPGM_VERSION_MAJOR}_${OPENPGM_VERSION_MINOR}_${OPENPGM_VERSION_MICRO}.lib debug
-        libpgm${MSVC_TOOLSET}-mt-gd-${OPENPGM_VERSION_MAJOR}_${OPENPGM_VERSION_MINOR}_${OPENPGM_VERSION_MICRO}.lib)
-  endif()
-else()
-  if(WITH_OPENPGM)
-    # message(FATAL_ERROR "WITH_OPENPGM not implemented")
-
-    if(NOT OPENPGM_PKGCONFIG_NAME)
-      set(OPENPGM_PKGCONFIG_NAME "openpgm-5.2")
-    endif()
-
-    set(OPENPGM_PKGCONFIG_NAME
-        ${OPENPGM_PKGCONFIG_NAME}
-        CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths" FORCE)
-
-    pkg_check_modules(OPENPGM ${OPENPGM_PKGCONFIG_NAME})
-
-    if(OPENPGM_FOUND)
-      message(STATUS ${OPENPGM_PKGCONFIG_NAME}" found")
-      set(pkg_config_names_private "${pkg_config_names_private} ${OPENPGM_PKGCONFIG_NAME}")
-    else()
-      message(
-        FATAL_ERROR
-          ${OPENPGM_PKGCONFIG_NAME}"  not found. openpgm is searchd via `pkg-config ${OPENPGM_PKGCONFIG_NAME}`. Consider providing a valid OPENPGM_PKGCONFIG_NAME"
-      )
-    endif()
-
-    # DSO symbol visibility for openpgm
-    if(HAVE_FLAG_VISIBILITY_HIDDEN)
-
-    elseif(HAVE_FLAG_LDSCOPE_HIDDEN)
-
-    endif()
-  endif()
-endif()
+# OpenPGM, NORM, and VMCI support removed (not needed with ASIO)
 
 # -----------------------------------------------------------------------------
 # force off-tree build
@@ -1291,34 +1136,7 @@ set(readme-docs AUTHORS LICENSE NEWS)
 # -----------------------------------------------------------------------------
 # optional modules
 
-if(WITH_OPENPGM)
-  message(STATUS "Building with OpenPGM")
-  set(ZMQ_HAVE_OPENPGM 1)
-  include_directories(${OPENPGM_INCLUDE_DIRS})
-  link_directories(${OPENPGM_LIBRARY_DIRS})
-  set(OPTIONAL_LIBRARIES ${OPENPGM_LIBRARIES})
-endif()
-
-if(WITH_NORM)
-  find_package(norm)
-    if(norm_FOUND)
-      message(STATUS "Building with NORM")
-      set(ZMQ_HAVE_NORM 1)
-    else()
-      message(FATAL_ERROR "NORM not found")
-    endif()
-endif()
-
-if(WITH_VMCI)
-message(STATUS "Building with VMCI")
-  set(ZMQ_HAVE_VMCI 1)
-  include_directories(${VMCI_INCLUDE_DIRS})
-  list(APPEND cxx-sources vmci_address.cpp vmci_connecter.cpp vmci_listener.cpp vmci.cpp)
-endif()
-
-if(ZMQ_HAVE_TIPC)
-  list(APPEND cxx-sources tipc_address.cpp tipc_connecter.cpp tipc_listener.cpp)
-endif()
+# OpenPGM, NORM, VMCI, and TIPC support removed
 
 # -----------------------------------------------------------------------------
 # source generators
@@ -1624,14 +1442,6 @@ if(BUILD_SHARED)
   if(RT_LIBRARY)
     target_link_libraries(libzmq -lrt)
   endif()
-
-  if(norm_FOUND)
-      target_link_libraries(libzmq norm::norm)
-  endif()
-
-  if(OPENPGM_FOUND)
-      target_link_libraries(libzmq ${OPENPGM_LIBRARIES})
-  endif()
 endif()
 
 if(BUILD_STATIC)
@@ -1673,14 +1483,6 @@ if(BUILD_STATIC)
 
   if(CMAKE_SYSTEM_NAME MATCHES "QNX")
     add_definitions(-DUNITY_EXCLUDE_MATH_H)
-  endif()
-
-  if(norm_FOUND)
-      target_link_libraries(libzmq-static norm::norm)
-  endif()
-
-  if(OPENPGM_FOUND)
-      target_link_libraries(libzmq-static ${OPENPGM_LIBRARIES})
   endif()
 endif()
 

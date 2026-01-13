@@ -4,6 +4,9 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include "asio_zmtp_engine.hpp"
+#if defined ZMQ_HAVE_ASIO_SSL
+#include <boost/asio/ssl.hpp>
+#endif
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../v1_encoder.hpp"
@@ -70,6 +73,45 @@ zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
     memset (_greeting_recv, 0, sizeof (_greeting_recv));
     memset (_greeting_send, 0, sizeof (_greeting_send));
 }
+
+#if defined ZMQ_HAVE_ASIO_SSL
+zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
+  fd_t fd_,
+  const options_t &options_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  std::unique_ptr<i_asio_transport> transport_,
+  std::unique_ptr<boost::asio::ssl::context> ssl_context_) :
+    asio_engine_t (fd_, options_, endpoint_uri_pair_, std::move (transport_)),
+    _greeting_size (v2_greeting_size),
+    _greeting_bytes_read (0),
+    _subscription_required (false),
+    _heartbeat_timeout (0),
+    _ssl_context (std::move (ssl_context_))
+{
+    ZMTP_ENGINE_DBG ("Constructor called, fd=%d (custom transport)", fd_);
+
+    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
+      &asio_zmtp_engine_t::routing_id_msg);
+    _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
+      &asio_zmtp_engine_t::process_routing_id_msg);
+
+    int rc = _pong_msg.init ();
+    errno_assert (rc == 0);
+
+    rc = _routing_id_msg.init ();
+    errno_assert (rc == 0);
+
+    if (_options.heartbeat_interval > 0) {
+        _heartbeat_timeout = _options.heartbeat_timeout;
+        if (_heartbeat_timeout == -1)
+            _heartbeat_timeout = _options.heartbeat_interval;
+    }
+
+    //  Initialize greeting buffers
+    memset (_greeting_recv, 0, sizeof (_greeting_recv));
+    memset (_greeting_send, 0, sizeof (_greeting_send));
+}
+#endif
 
 zmq::asio_zmtp_engine_t::~asio_zmtp_engine_t ()
 {

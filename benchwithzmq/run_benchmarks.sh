@@ -93,7 +93,7 @@ cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
 
 cmake --build "${BUILD_DIR}"
 
-RUN_CMD=(python3 "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --runs "${RUNS}")
+RUN_CMD=(python3 "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 
 if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
   RUN_CMD+=(--refresh-libzmq)

@@ -5,25 +5,54 @@ import sys
 import statistics
 import json
 
-# OS Detection
+# Environment helpers
 IS_WINDOWS = os.name == 'nt'
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
+SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 
-# Configuration
+def resolve_linux_paths():
+    """Return build/library paths for Linux/WSL environments."""
+    possible_paths = [
+        os.path.join(ROOT_DIR, "build-bench-asio", "bin"),
+        os.path.join(ROOT_DIR, "build", "linux-x64", "bin"),
+        os.path.join(ROOT_DIR, "build", "benchwithzmq"),
+        os.path.join(ROOT_DIR, "build", "linux-x64", "benchwithzmq"),
+    ]
+    build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
+    libzmq_lib_dir = os.path.abspath(
+        os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist", "lib")
+    )
+    zlink_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build-bench-asio", "lib"))
+    return build_dir, libzmq_lib_dir, zlink_lib_dir
+
+def normalize_build_dir(path):
+    if not path:
+        return path
+    abs_path = os.path.abspath(path)
+    if os.path.isdir(abs_path):
+        bin_dir = os.path.join(abs_path, "bin")
+        if os.path.exists(os.path.join(abs_path, "comp_zlink_pair" + EXE_SUFFIX)):
+            return abs_path
+        if os.path.exists(os.path.join(bin_dir, "comp_zlink_pair" + EXE_SUFFIX)):
+            return bin_dir
+    return abs_path
+
+def derive_zlink_lib_dir(build_dir):
+    build_root = build_dir
+    if os.path.basename(build_root) == "bin":
+        build_root = os.path.dirname(build_root)
+    return os.path.abspath(os.path.join(build_root, "lib"))
+
 if IS_WINDOWS:
-    # Windows typically builds in a Release/Debug subfolder
-    BUILD_DIR = "build/windows-x64/benchwithzmq/Release"
-    LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/bin")
+    BUILD_DIR = os.path.join("build", "windows-x64", "benchwithzmq", "Release")
+    LIBZMQ_LIB_DIR = os.path.abspath(os.path.join("benchwithzmq", "libzmq", "libzmq_dist", "bin"))
+    ZLINK_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "benchwithzmq", "Release"))
 else:
-    # Linux typically builds directly in the target folder
-    # Support multiple possible build locations
-    possible_paths = ["build-bench-asio/bin", "build/linux-x64/bin", "build/benchwithzmq", "build/linux-x64/benchwithzmq"]
-    BUILD_DIR = next((p for p in possible_paths if os.path.exists(p)), "build-bench-asio/bin")
-    LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
-    ZLINK_LIB_DIR = os.path.abspath("build-bench-asio/lib")
+    BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 3  # Reduced from 10 for faster testing
-CACHE_FILE = "benchwithzmq/libzmq_cache.json"
+CACHE_FILE = os.path.join(ROOT_DIR, "benchwithzmq", "libzmq_cache.json")
 
 # Settings for loop
 TRANSPORTS = ["tcp", "inproc"]
@@ -101,6 +130,7 @@ def parse_args():
     refresh = False
     p_req = "ALL"
     num_runs = DEFAULT_NUM_RUNS
+    build_dir = ""
 
     i = 1
     while i < len(sys.argv):
@@ -123,6 +153,12 @@ def parse_args():
             except ValueError:
                 print("Error: --runs must be an integer.", file=sys.stderr)
                 sys.exit(1)
+        elif arg == "--build-dir":
+            if i + 1 >= len(sys.argv):
+                print("Error: --build-dir requires a value.", file=sys.stderr)
+                sys.exit(1)
+            build_dir = sys.argv[i + 1]
+            i += 1
         elif not arg.startswith("--") and p_req == "ALL":
             p_req = arg
         i += 1
@@ -131,16 +167,21 @@ def parse_args():
         print("Error: --runs must be >= 1.", file=sys.stderr)
         sys.exit(1)
 
-    return p_req, refresh, num_runs
+    return p_req, refresh, num_runs, build_dir
 
 def main():
-    p_req, refresh, num_runs = parse_args()
+    p_req, refresh, num_runs, build_dir = parse_args()
+    if build_dir:
+        build_dir = normalize_build_dir(build_dir)
+        global BUILD_DIR, ZLINK_LIB_DIR
+        BUILD_DIR = build_dir
+        ZLINK_LIB_DIR = derive_zlink_lib_dir(build_dir)
     
     # Check if any target binary exists
     check_bin = os.path.join(BUILD_DIR, "comp_zlink_pair" + EXE_SUFFIX)
     if not os.path.exists(check_bin):
         print(f"Error: Binaries not found at {BUILD_DIR}.")
-        print("Please build the project first.")
+        print("Please build the project first or pass --build-dir.")
         return
 
     cache = {}
@@ -149,6 +190,8 @@ def main():
             with open(CACHE_FILE, 'r') as f:
                 cache = json.load(f)
         except: pass
+    else:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
 
     comparisons = [
         ("comp_std_zmq_pair", "comp_zlink_pair", "PAIR"),

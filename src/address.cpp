@@ -41,8 +41,16 @@ int zmq::address_t::to_string (std::string &addr_) const
 #ifdef ZMQ_HAVE_TLS
          || protocol == protocol_name::tls
 #endif
-        ) && resolved.tcp_addr)
-        return resolved.tcp_addr->to_string (addr_);
+        ) && resolved.tcp_addr) {
+        const int rc = resolved.tcp_addr->to_string (addr_);
+#ifdef ZMQ_HAVE_TLS
+        if (rc == 0 && protocol == protocol_name::tls
+            && addr_.compare (0, 6, "tcp://") == 0) {
+            addr_.replace (0, 6, "tls://");
+        }
+#endif
+        return rc;
+    }
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc && resolved.ipc_addr)
         return resolved.ipc_addr->to_string (addr_);

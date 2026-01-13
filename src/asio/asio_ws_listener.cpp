@@ -6,6 +6,11 @@
 #include "asio_ws_listener.hpp"
 #include "asio_ws_engine.hpp"
 #include "asio_poller.hpp"
+#include "ssl_context_helper.hpp"
+#include "ws_transport.hpp"
+#if defined ZMQ_HAVE_WSS
+#include "wss_transport.hpp"
+#endif
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
@@ -35,6 +40,56 @@
 #define WS_LISTENER_DBG(fmt, ...)
 #endif
 
+#if defined ZMQ_HAVE_WSS
+namespace
+{
+std::unique_ptr<boost::asio::ssl::context>
+create_wss_server_context (const zmq::options_t &options_)
+{
+    //  Server requires certificate and private key
+    if (options_.tls_cert.empty () || options_.tls_key.empty ()) {
+        return std::unique_ptr<boost::asio::ssl::context> ();
+    }
+
+    std::unique_ptr<boost::asio::ssl::context> ssl_context =
+      zmq::ssl_context_helper_t::create_server_context (
+        options_.tls_cert, options_.tls_key, options_.tls_password);
+    if (!ssl_context)
+        return std::unique_ptr<boost::asio::ssl::context> ();
+
+    const bool require_client_cert = options_.tls_require_client_cert != 0;
+    const bool trust_system = options_.tls_trust_system != 0;
+
+    if (require_client_cert) {
+        if (options_.tls_ca.empty () && !trust_system) {
+            return std::unique_ptr<boost::asio::ssl::context> ();
+        }
+
+        if (!options_.tls_ca.empty ()) {
+            if (!zmq::ssl_context_helper_t::load_ca_certificate (
+                  *ssl_context, options_.tls_ca)) {
+                return std::unique_ptr<boost::asio::ssl::context> ();
+            }
+        } else if (trust_system) {
+            ssl_context->set_default_verify_paths ();
+        }
+    } else if (!options_.tls_ca.empty ()) {
+        if (!zmq::ssl_context_helper_t::load_ca_certificate (
+              *ssl_context, options_.tls_ca)) {
+            return std::unique_ptr<boost::asio::ssl::context> ();
+        }
+    }
+
+    if (!zmq::ssl_context_helper_t::configure_server_verification (
+          *ssl_context, require_client_cert)) {
+        return std::unique_ptr<boost::asio::ssl::context> ();
+    }
+
+    return ssl_context;
+}
+}
+#endif
+
 zmq::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
                                               socket_base_t *socket_,
                                               const options_t &options_) :
@@ -46,6 +101,7 @@ zmq::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
     _socket (socket_),
     _path ("/"),
     _port (0),
+    _secure (false),
     _accepting (false),
     _terminating (false),
     _linger (0)
@@ -58,11 +114,20 @@ zmq::asio_ws_listener_t::~asio_ws_listener_t ()
     WS_LISTENER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
 }
 
-int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_)
+int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
+                                                bool secure_)
 {
     WS_LISTENER_DBG ("set_local_address: host=%s, port=%u, path=%s",
                      addr_->host ().c_str (), addr_->port (),
                      addr_->path ().c_str ());
+
+    _secure = secure_;
+#if !defined ZMQ_HAVE_WSS
+    if (_secure) {
+        errno = EPROTONOSUPPORT;
+        return -1;
+    }
+#endif
 
     //  Store WebSocket-specific address components
     _host = addr_->host ();
@@ -155,10 +220,11 @@ int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_)
 
     //  Build endpoint string with actual bound port (not the input port)
     //  Format: ws://host:port/path or ws://[ipv6]:port/path
+    const std::string prefix = _secure ? "wss://" : "ws://";
     if (addr_->family () == AF_INET6) {
-        _endpoint = "ws://[" + _host + "]:" + std::to_string (_port) + _path;
+        _endpoint = prefix + "[" + _host + "]:" + std::to_string (_port) + _path;
     } else {
-        _endpoint = "ws://" + _host + ":" + std::to_string (_port) + _path;
+        _endpoint = prefix + _host + ":" + std::to_string (_port) + _path;
     }
 
     _socket->event_listening (make_unconnected_bind_endpoint_pair (_endpoint),
@@ -333,12 +399,57 @@ void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
     std::string local_addr = get_socket_name (fd_, socket_end_local);
     std::string remote_addr = get_socket_name (fd_, socket_end_remote);
 
-    const endpoint_uri_pair_t endpoint_pair (
-      "ws://" + local_addr + _path, "ws://" + remote_addr, endpoint_type_bind);
+    if (local_addr.compare (0, 6, "tcp://") == 0)
+        local_addr = local_addr.substr (6);
+    if (remote_addr.compare (0, 6, "tcp://") == 0)
+        remote_addr = remote_addr.substr (6);
 
-    //  Create WebSocket engine (server-side: is_client = false)
-    i_engine *engine = new (std::nothrow)
-      asio_ws_engine_t (fd_, options, endpoint_pair, _host, _path, false);
+    const std::string prefix = _secure ? "wss://" : "ws://";
+    const endpoint_uri_pair_t endpoint_pair (
+      prefix + local_addr + _path, prefix + remote_addr + _path,
+      endpoint_type_bind);
+
+    std::unique_ptr<i_asio_transport> transport;
+#if defined ZMQ_HAVE_WSS
+    std::unique_ptr<boost::asio::ssl::context> ssl_context;
+    if (_secure) {
+        ssl_context = create_wss_server_context (options);
+        if (!ssl_context) {
+            _socket->event_accept_failed (
+              make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
+#ifdef ZMQ_HAVE_WINDOWS
+            closesocket (fd_);
+#else
+            ::close (fd_);
+#endif
+            return;
+        }
+        std::unique_ptr<wss_transport_t> wss_transport (
+          new (std::nothrow)
+            wss_transport_t (*ssl_context, _path, _host));
+        alloc_assert (wss_transport);
+        transport.reset (wss_transport.release ());
+    } else
+#endif
+    {
+        std::unique_ptr<ws_transport_t> ws_transport (
+          new (std::nothrow) ws_transport_t (_path, _host));
+        alloc_assert (ws_transport);
+        transport.reset (ws_transport.release ());
+    }
+
+    i_engine *engine = NULL;
+#if defined ZMQ_HAVE_WSS
+    if (_secure) {
+        engine = new (std::nothrow) asio_ws_engine_t (
+          fd_, options, endpoint_pair, false, std::move (transport),
+          std::move (ssl_context));
+    } else
+#endif
+    {
+        engine = new (std::nothrow) asio_ws_engine_t (
+          fd_, options, endpoint_pair, false, std::move (transport));
+    }
     alloc_assert (engine);
 
     //  Choose I/O thread for engine

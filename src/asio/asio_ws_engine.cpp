@@ -26,6 +26,10 @@
 #include <unistd.h>
 #endif
 
+#if defined ZMQ_HAVE_ASIO_SSL
+#include <boost/asio/ssl.hpp>
+#endif
+
 #include <sstream>
 #include <cstring>
 
@@ -59,11 +63,9 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
-  const std::string &host_,
-  const std::string &path_,
-  bool is_client_) :
-    _host (host_),
-    _path (path_),
+  bool is_client_,
+  std::unique_ptr<i_asio_transport> transport_) :
+    _transport (std::move (transport_)),
     _is_client (is_client_),
     _ws_handshake_complete (false),
     _session (NULL),
@@ -104,8 +106,7 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     _has_timeout_timer (false),
     _has_heartbeat_timer (false)
 {
-    WS_ENGINE_DBG ("Constructor: fd=%d, host=%s, path=%s, client=%d", fd_,
-                   host_.c_str (), path_.c_str (), is_client_);
+    WS_ENGINE_DBG ("Constructor: fd=%d, client=%d", fd_, is_client_);
 
     int rc = _tx_msg.init ();
     errno_assert (rc == 0);
@@ -120,12 +121,84 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     memset (_greeting_recv, 0, sizeof (_greeting_recv));
     memset (_greeting_send, 0, sizeof (_greeting_send));
 
-    //  Create WebSocket transport
-    _ws_transport.reset (new ws_transport_t (_path, _host));
+    zmq_assert (_transport);
 
     //  Put socket into non-blocking mode
     unblock_socket (_fd);
 }
+
+#if defined ZMQ_HAVE_ASIO_SSL
+zmq::asio_ws_engine_t::asio_ws_engine_t (
+  fd_t fd_,
+  const options_t &options_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  bool is_client_,
+  std::unique_ptr<i_asio_transport> transport_,
+  std::unique_ptr<boost::asio::ssl::context> ssl_context_) :
+    _transport (std::move (transport_)),
+    _is_client (is_client_),
+    _ws_handshake_complete (false),
+    _session (NULL),
+    _socket (NULL),
+    _fd (fd_),
+    _io_context (NULL),
+    _options (options_),
+    _endpoint_uri_pair (endpoint_uri_pair_),
+    _peer_address (get_peer_address (fd_)),
+    _inpos (NULL),
+    _insize (0),
+    _decoder (NULL),
+    _input_in_decoder_buffer (false),
+    _outpos (NULL),
+    _outsize (0),
+    _encoder (NULL),
+    _mechanism (NULL),
+    _next_msg (NULL),
+    _process_msg (NULL),
+    _metadata (NULL),
+    _plugged (false),
+    _handshaking (true),
+    _input_stopped (false),
+    _output_stopped (false),
+    _io_error (false),
+    _read_pending (false),
+    _write_pending (false),
+    _terminating (false),
+    _read_buffer (read_buffer_size),
+    _read_buffer_ptr (NULL),
+    _greeting_size (v3_greeting_size),
+    _greeting_bytes_read (0),
+    _subscription_required (false),
+    _heartbeat_timeout (0),
+    _current_timer_id (-1),
+    _has_handshake_timer (false),
+    _has_ttl_timer (false),
+    _has_timeout_timer (false),
+    _has_heartbeat_timer (false),
+    _ssl_context (std::move (ssl_context_))
+{
+    WS_ENGINE_DBG ("Constructor: fd=%d, client=%d (custom transport)", fd_,
+                   is_client_);
+
+    int rc = _tx_msg.init ();
+    errno_assert (rc == 0);
+
+    rc = _routing_id_msg.init ();
+    errno_assert (rc == 0);
+
+    rc = _pong_msg.init ();
+    errno_assert (rc == 0);
+
+    //  Initialize greeting buffers
+    memset (_greeting_recv, 0, sizeof (_greeting_recv));
+    memset (_greeting_send, 0, sizeof (_greeting_send));
+
+    zmq_assert (_transport);
+
+    //  Put socket into non-blocking mode
+    unblock_socket (_fd);
+}
+#endif
 
 zmq::asio_ws_engine_t::~asio_ws_engine_t ()
 {
@@ -133,10 +206,10 @@ zmq::asio_ws_engine_t::~asio_ws_engine_t ()
 
     zmq_assert (!_plugged);
 
-    //  Close WebSocket transport (handles graceful close)
-    if (_ws_transport) {
-        _ws_transport->close ();
-        _ws_transport.reset ();
+    //  Close transport (handles graceful close)
+    if (_transport) {
+        _transport->close ();
+        _transport.reset ();
     }
 
     //  Close the underlying socket if still open
@@ -195,7 +268,7 @@ void zmq::asio_ws_engine_t::plug (io_thread_t *io_thread_,
     _timer.reset (new boost::asio::steady_timer (*_io_context));
 
     //  Initialize WebSocket transport with the socket
-    if (!_ws_transport->open (*_io_context, _fd)) {
+    if (!_transport->open (*_io_context, _fd)) {
         WS_ENGINE_DBG ("Failed to open WebSocket transport");
         error (connection_error);
         return;
@@ -220,10 +293,9 @@ void zmq::asio_ws_engine_t::start_ws_handshake ()
     }
 
     //  Start WebSocket handshake (client or server)
-    int handshake_type =
-      _is_client ? ws_transport_t::client : ws_transport_t::server;
+    const int handshake_type = _is_client ? 0 : 1;
 
-    _ws_transport->async_handshake (
+    _transport->async_handshake (
       handshake_type,
       [this] (const boost::system::error_code &ec, std::size_t) {
           on_ws_handshake_complete (ec);
@@ -320,7 +392,7 @@ void zmq::asio_ws_engine_t::start_async_read ()
         buffer_size = _read_buffer.size ();
     }
 
-    _ws_transport->async_read_some (
+    _transport->async_read_some (
       buffer, buffer_size,
       [this] (const boost::system::error_code &ec,
               std::size_t bytes_transferred) {
@@ -419,7 +491,7 @@ void zmq::asio_ws_engine_t::start_async_write ()
 
     _write_pending = true;
 
-    _ws_transport->async_write_some (
+    _transport->async_write_some (
       _outpos, _outsize,
       [this] (const boost::system::error_code &ec,
               std::size_t bytes_transferred) {
@@ -693,9 +765,9 @@ void zmq::asio_ws_engine_t::terminate ()
         _has_heartbeat_timer = false;
     }
 
-    //  Close WebSocket transport - this will cause pending async ops to fail
-    if (_ws_transport) {
-        _ws_transport->close ();
+    //  Close transport - this will cause pending async ops to fail
+    if (_transport) {
+        _transport->close ();
     }
 
     _plugged = false;

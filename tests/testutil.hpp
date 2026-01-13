@@ -10,6 +10,7 @@
 #endif
 #include "../include/zmq.h"
 #include "../src/stdint.hpp"
+#include <string>
 
 //  For AF_INET and IPPROTO_TCP
 #if defined _WIN32
@@ -40,8 +41,6 @@
 #define ENDPOINT_1 "tcp://127.0.0.1:5556"
 #define ENDPOINT_2 "tcp://127.0.0.1:5557"
 #define ENDPOINT_3 "tcp://127.0.0.1:5558"
-#define ENDPOINT_4 "udp://127.0.0.1:5559"
-#define ENDPOINT_5 "udp://127.0.0.1:5560"
 #define PORT_6 5561
 
 //  For tests that mock ZMTP
@@ -145,6 +144,18 @@ bool strneq (const char *lhs, const char *rhs);
 
 extern const char *SEQ_END;
 
+//  Temporary TLS test files (cert/key/CA) created from embedded PEMs.
+struct tls_test_files_t
+{
+    std::string dir;
+    std::string ca_cert;
+    std::string server_cert;
+    std::string server_key;
+};
+
+tls_test_files_t make_tls_test_files ();
+void cleanup_tls_test_files (const tls_test_files_t &files_);
+
 //  Sends a message composed of frames that are C strings or null frames.
 //  The list must be terminated by SEQ_END.
 //  Example: s_send_seq (req, "ABC", 0, "DEF", SEQ_END);
@@ -178,10 +189,6 @@ void msleep (int milliseconds_);
 // only way to reliably check is to actually open a socket and try to bind it
 int is_ipv6_available (void);
 
-// check if tipc is available (0/false if not, 1/true if it is)
-// only way to reliably check is to actually open a socket and try to bind it
-// as it depends on a non-default kernel module to be already loaded
-int is_tipc_available (void);
 
 //  Wrapper around 'inet_pton' for systems that don't support it (e.g. Windows
 //  XP)
@@ -190,7 +197,7 @@ int test_inet_pton (int af_, const char *src_, void *dst_);
 //  Binds an ipv4 BSD socket to an ephemeral port, returns the compiled sockaddr
 struct sockaddr_in bind_bsd_socket (int socket);
 
-//  Some custom definitions in addition to IPPROTO_TCP and IPPROTO_UDP
+//  Some custom definitions for WebSocket testing.
 #define IPPROTO_WS 10000
 #define IPPROTO_WSS 10001
 

@@ -19,10 +19,24 @@
 #include "../i_decoder.hpp"
 #include "../msg.hpp"
 #include "../metadata.hpp"
-#include "ws_transport.hpp"
+#include "i_asio_transport.hpp"
+
+#if defined ZMQ_HAVE_ASIO_SSL
+namespace boost
+{
+namespace asio
+{
+namespace ssl
+{
+class context;
+}
+}
+}
+#endif
 
 namespace zmq
 {
+
 class io_thread_t;
 class session_base_t;
 class mechanism_t;
@@ -59,9 +73,16 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     asio_ws_engine_t (fd_t fd_,
                       const options_t &options_,
                       const endpoint_uri_pair_t &endpoint_uri_pair_,
-                      const std::string &host_,
-                      const std::string &path_,
-                      bool is_client_);
+                      bool is_client_,
+                      std::unique_ptr<i_asio_transport> transport_);
+#if defined ZMQ_HAVE_ASIO_SSL
+    asio_ws_engine_t (fd_t fd_,
+                      const options_t &options_,
+                      const endpoint_uri_pair_t &endpoint_uri_pair_,
+                      bool is_client_,
+                      std::unique_ptr<i_asio_transport> transport_,
+                      std::unique_ptr<boost::asio::ssl::context> ssl_context_);
+#endif
 
     ~asio_ws_engine_t () ZMQ_OVERRIDE;
 
@@ -152,11 +173,9 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     void on_timer (int id_, const boost::system::error_code &ec);
 
     //  WebSocket transport layer
-    std::unique_ptr<ws_transport_t> _ws_transport;
+    std::unique_ptr<i_asio_transport> _transport;
 
     //  WebSocket-specific data
-    std::string _host;
-    std::string _path;
     bool _is_client;
     bool _ws_handshake_complete;
 
@@ -238,6 +257,10 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
 
     //  PONG message (for heartbeat)
     msg_t _pong_msg;
+
+#if defined ZMQ_HAVE_ASIO_SSL
+    std::unique_ptr<boost::asio::ssl::context> _ssl_context;
+#endif
 
     //  Timer
     std::unique_ptr<boost::asio::steady_timer> _timer;

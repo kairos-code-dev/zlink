@@ -171,8 +171,6 @@
       <File RelativePath="..\..\..\..\src\signaler.cpp" />
       <File RelativePath="..\..\..\..\src\socket_base.cpp" />
       <File RelativePath="..\..\..\..\src\socket_poller.cpp" />
-      <File RelativePath="..\..\..\..\src\socks_connecter.cpp" />
-      <File RelativePath="..\..\..\..\src\socks.cpp" />
       <File RelativePath="..\..\..\..\src\stream.cpp" />
       <File RelativePath="..\..\..\..\src\stream_engine.cpp" />
       <File RelativePath="..\..\..\..\src\sub.cpp" />
@@ -296,8 +294,6 @@
       <File RelativePath="..\..\..\..\src\signaler.hpp" />
       <File RelativePath="..\..\..\..\src\socket_base.hpp" />
       <File RelativePath="..\..\..\..\src\socket_poller.hpp" />
-      <File RelativePath="..\..\..\..\src\socks_connecter.hpp" />
-      <File RelativePath="..\..\..\..\src\socks.hpp" />
       <File RelativePath="..\..\..\..\src\stdint.hpp" />
       <File RelativePath="..\..\..\..\src\stream_engine.hpp" />
       <File RelativePath="..\..\..\..\src\stream.hpp" />

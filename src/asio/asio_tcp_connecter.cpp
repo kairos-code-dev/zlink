@@ -10,7 +10,6 @@
 #include "../session_base.hpp"
 #include "../address.hpp"
 #include "../tcp_address.hpp"
-#include "../zmtp_engine.hpp"
 #include "../random.hpp"
 #include "../err.hpp"
 #include "../ip.hpp"

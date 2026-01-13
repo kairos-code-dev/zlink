@@ -36,13 +36,9 @@ void test (const char *address)
     test_context_socket_close (subscriber);
 }
 
-void test_norm ()
+void test_tcp ()
 {
-#if defined ZMQ_HAVE_NORM
-    test ("norm://224.1.2.3:5556");
-#else
-    TEST_IGNORE_MESSAGE ("libzmq without NORM, ignoring test");
-#endif
+    test ("tcp://127.0.0.1:*");
 }
 
 int main ()
@@ -50,6 +46,6 @@ int main ()
     setup_test_environment ();
 
     UNITY_BEGIN ();
-    RUN_TEST (test_norm);
+    RUN_TEST (test_tcp);
     return UNITY_END ();
 }

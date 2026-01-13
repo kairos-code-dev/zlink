@@ -26,15 +26,87 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
 #include <string.h>
 #include <atomic>
 #include <vector>
 #include <thread>
 
+#ifndef ZMQ_HAVE_WINDOWS
+#include <unistd.h>
+#else
+#include <direct.h>
+#endif
+
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
+
+//  Include test certificates (embedded PEM strings)
+#include "certs/test_certs.hpp"
+
+struct tls_files_t
+{
+    std::string dir;
+    std::string ca_cert;
+    std::string server_cert;
+    std::string server_key;
+};
+
+static bool write_pem_file (const std::string &path_, const char *pem_)
+{
+    FILE *fp = fopen (path_.c_str (), "wb");
+    if (!fp)
+        return false;
+    const size_t len = strlen (pem_);
+    const size_t written = fwrite (pem_, 1, len, fp);
+    fclose (fp);
+    return written == len;
+}
+
+static tls_files_t create_tls_files ()
+{
+    tls_files_t files;
+#ifdef ZMQ_HAVE_WINDOWS
+    char tmp_dir[MAX_PATH] = "";
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
+    files.dir.assign (tmp_dir);
+#else
+    char tmp_dir[] = "zmq_tls_XXXXXX";
+    char *dir = mkdtemp (tmp_dir);
+    TEST_ASSERT_NOT_NULL (dir);
+    files.dir.assign (dir);
+#endif
+
+    files.ca_cert = files.dir + "/ca.crt";
+    files.server_cert = files.dir + "/server.crt";
+    files.server_key = files.dir + "/server.key";
+
+    TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
+                                      zmq::test_certs::ca_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
+                                      zmq::test_certs::server_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_key,
+                                      zmq::test_certs::server_key_pem));
+
+    return files;
+}
+
+static void cleanup_tls_files (const tls_files_t &files_)
+{
+    remove (files_.ca_cert.c_str ());
+    remove (files_.server_cert.c_str ());
+    remove (files_.server_key.c_str ());
+#ifdef ZMQ_HAVE_WINDOWS
+    _rmdir (files_.dir.c_str ());
+#else
+    rmdir (files_.dir.c_str ());
+#endif
+}
 
 void setUp ()
 {
@@ -581,6 +653,63 @@ void test_zmq_ws_with_path ()
     teardown_zmq_ctx ();
 }
 
+#if defined ZMQ_HAVE_WSS
+void test_zmq_wss_pair_message ()
+{
+    setup_zmq_ctx ();
+
+    const tls_files_t files = create_tls_files ();
+
+    void *server = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *client = zmq_socket (g_ctx, ZMQ_PAIR);
+    TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (server, ZMQ_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (client, ZMQ_LINGER, &zero, sizeof (zero)));
+
+    const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      client, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      server, ZMQ_TLS_CERT, files.server_cert.c_str (),
+      files.server_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (server, ZMQ_TLS_KEY, files.server_key.c_str (),
+                      files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      client, ZMQ_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+
+    const char hostname[] = "localhost";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (client, ZMQ_TLS_HOSTNAME, hostname, strlen (hostname)));
+
+    //  Bind server to WSS endpoint
+    int rc = zmq_bind (server, "wss://127.0.0.1:*");
+    TEST_ASSERT_SUCCESS_ERRNO (rc);
+
+    char endpoint[256];
+    size_t endpoint_len = sizeof (endpoint);
+    rc = zmq_getsockopt (server, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    TEST_ASSERT_SUCCESS_ERRNO (rc);
+
+    //  Connect client
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+
+    send_string_expect_success (client, "wss-hello", 0);
+    recv_string_expect_success (server, "wss-hello", 0);
+
+    zmq_close (client);
+    zmq_close (server);
+    cleanup_tls_files (files);
+    teardown_zmq_ctx ();
+}
+#endif  // ZMQ_HAVE_WSS
+
 #endif  // ZMQ_HAVE_WS
 
 #else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_ASIO_WS
@@ -623,6 +752,9 @@ int main ()
     RUN_TEST (test_zmq_ws_pair_message);
     RUN_TEST (test_zmq_ws_pubsub);
     RUN_TEST (test_zmq_ws_with_path);
+#if defined ZMQ_HAVE_WSS
+    RUN_TEST (test_zmq_wss_pair_message);
+#endif
 #endif  // ZMQ_HAVE_WS
 
 #else

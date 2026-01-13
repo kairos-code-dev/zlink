@@ -59,17 +59,12 @@ class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
     //  Handle TCP accept completion
     void on_tcp_accept (const boost::system::error_code &ec);
 
-    //  Handle SSL handshake completion
-    void on_ssl_handshake (const boost::system::error_code &ec,
-                           fd_t fd_,
-                           std::shared_ptr<boost::asio::ssl::stream<
-                             boost::asio::ip::tcp::socket>> ssl_stream);
-
     //  Create SSL context from options
-    bool create_ssl_context ();
+    std::unique_ptr<boost::asio::ssl::context> create_ssl_context () const;
 
-    //  Create engine for accepted+handshaked connection
-    void create_engine (fd_t fd_);
+    //  Create engine for accepted connection
+    void create_engine (fd_t fd_,
+                        std::unique_ptr<boost::asio::ssl::context> ssl_context_);
 
     //  Close the acceptor
     void close ();
@@ -93,9 +88,6 @@ class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
 
     //  Socket to accept into
     boost::asio::ip::tcp::socket _accept_socket;
-
-    //  SSL context (created from options)
-    std::unique_ptr<boost::asio::ssl::context> _ssl_context;
 
     //  Address being listened on
     tcp_address_t _address;

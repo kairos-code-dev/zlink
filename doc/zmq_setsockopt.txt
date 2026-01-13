@@ -120,9 +120,8 @@ Typical use is to set this socket option ahead of each zmq_connect() call.
 Each connection MUST be assigned a unique routing id. Assigning a
 routing id that is already in use is not allowed.
 
-Useful when connecting ROUTER to ROUTER, or STREAM to STREAM, as it
-allows for immediate sending to peers. Outbound routing id framing requirements
-for ROUTER and STREAM sockets apply.
+Useful when connecting ROUTER to ROUTER, as it allows for immediate sending
+to peers. Outbound routing id framing requirements for ROUTER sockets apply.
 
 The routing id must be from 1 to 255 bytes long and MAY NOT start with
 a zero byte (such routing ids are reserved for internal use by the 0MQ
@@ -132,7 +131,7 @@ infrastructure).
 Option value type:: binary data
 Option value unit:: N/A
 Default value:: NULL
-Applicable socket types:: ZMQ_ROUTER, ZMQ_STREAM
+Applicable socket types:: ZMQ_ROUTER
 
 
 ZMQ_CONFLATE: Keep only last message
@@ -362,7 +361,7 @@ The value 0 means no handshake time limit.
 Option value type:: int
 Option value unit:: milliseconds
 Default value:: 30000
-Applicable socket types:: all but ZMQ_STREAM, only for connection-oriented transports
+Applicable socket types:: all, only for connection-oriented transports
 
 ZMQ_HELLO_MSG: set an hello message that will be sent when a new peer connect
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -796,8 +795,7 @@ NOTE: in DRAFT state, not yet available in stable releases.
 Option value type:: int
 Option value unit:: 0, ZMQ_RECONNECT_STOP_CONN_REFUSED, ZMQ_RECONNECT_STOP_HANDSHAKE_FAILED, ZMQ_RECONNECT_STOP_CONN_REFUSED | ZMQ_RECONNECT_STOP_HANDSHAKE_FAILED
 Default value:: 0
-Applicable socket types:: all, only for connection-oriented transports (ZMQ_HANDSHAKE_IVL is
-not applicable for ZMQ_STREAM sockets)
+Applicable socket types:: all, only for connection-oriented transports
 
 
 ZMQ_RECOVERY_IVL: Set multicast recovery interval
@@ -891,24 +889,6 @@ Default value:: 0
 Applicable socket types:: ZMQ_ROUTER
 
 
-ZMQ_ROUTER_RAW: switch ROUTER socket to raw mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the raw mode on the ROUTER, when set to 1. When the ROUTER socket is in
-raw mode, and when using the tcp:// transport, it will read and write TCP data
-without 0MQ framing. This lets 0MQ applications talk to non-0MQ applications.
-When using raw mode, you cannot set explicit identities, and the ZMQ_SNDMORE
-flag is ignored when sending data messages. In raw mode you can close a specific
-connection by sending it a zero-length message (following the routing id frame).
-
-NOTE: This option is deprecated, please use ZMQ_STREAM sockets instead.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: 0
-Applicable socket types:: ZMQ_ROUTER
-
-
 ZMQ_ROUTING_ID: Set socket routing id
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The 'ZMQ_ROUTING_ID' option shall set the routing id of the specified 'socket'
@@ -985,66 +965,6 @@ Option value type:: int
 Option value unit:: milliseconds
 Default value:: -1 (infinite)
 Applicable socket types:: all
-
-
-ZMQ_SOCKS_PROXY: Set SOCKS5 proxy address
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the SOCKS5 proxy address that shall be used by the socket for the TCP
-connection(s). Supported authentication methods are: no authentication
-or basic authentication when setup with ZMQ_SOCKS_USERNAME. If the endpoints
-are domain names instead of addresses they shall not be resolved and they
-shall be forwarded unchanged to the SOCKS proxy service in the client
-connection request message (address type 0x03 domain name).
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_SOCKS_USERNAME: Set SOCKS username and select basic authentication
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the username for authenticated connection to the SOCKS5 proxy.
-If you set this to a non-null and non-empty value, the authentication
-method used for the SOCKS5 connection shall be basic authentication.
-In this case, use ZMQ_SOCKS_PASSWORD option in order to set the password.
-If you set this to a null value or empty value, the authentication method
-shall be no authentication, the default.
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_SOCKS_PASSWORD: Set SOCKS basic authentication password
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the password for authenticating to the SOCKS5 proxy server.
-This is used only when the SOCKS5 authentication method has been
-set to basic authentication through the ZMQ_SOCKS_USERNAME option.
-Setting this to a null value (the default) is equivalent to an
-empty password string.
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_STREAM_NOTIFY: send connect and disconnect notifications
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Enables connect and disconnect notifications on a STREAM socket, when set
-to 1. When notifications are enabled, the socket delivers a zero-length
-message when a peer connects or disconnects.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: 1
-Applicable socket types:: ZMQ_STREAM
 
 
 ZMQ_SUBSCRIBE: Establish message filter

@@ -10,6 +10,7 @@
 #include <boost/asio/ssl.hpp>
 
 #include <memory>
+#include <string>
 
 #include "i_asio_transport.hpp"
 
@@ -62,12 +63,15 @@ class ssl_transport_t : public i_asio_transport
     bool is_encrypted () const ZMQ_OVERRIDE { return true; }
     const char *name () const ZMQ_OVERRIDE { return "ssl"; }
 
+    void set_hostname (const std::string &hostname) { _hostname = hostname; }
+
   private:
     typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream_t;
 
     boost::asio::ssl::context &_ssl_ctx;
     std::unique_ptr<ssl_stream_t> _ssl_stream;
     bool _handshake_complete;
+    std::string _hostname;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (ssl_transport_t)
 };

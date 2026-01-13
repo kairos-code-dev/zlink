@@ -262,15 +262,6 @@ void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_)
     test_bind (socket_, "ipc://*", my_endpoint_, len_);
 }
 
-void bind_loopback_tipc (void *socket_, char *my_endpoint_, size_t len_)
-{
-    if (!is_tipc_available ()) {
-        TEST_IGNORE_MESSAGE ("tipc is not available");
-    }
-
-    test_bind (socket_, "tipc://<*>", my_endpoint_, len_);
-}
-
 #if defined(ZMQ_HAVE_IPC)
 void make_random_ipc_endpoint (char *out_endpoint_)
 {

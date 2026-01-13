@@ -111,6 +111,7 @@ ssl_context_helper_t::create_server_context_from_pem (
 
 std::unique_ptr<boost::asio::ssl::context>
 ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
+                                             bool trust_system,
                                              verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
@@ -133,7 +134,7 @@ ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
             if (!load_ca_certificate (*ctx, ca_cert_file)) {
                 return nullptr;
             }
-        } else {
+        } else if (trust_system) {
             //  Use system CA certificates
             ctx->set_default_verify_paths ();
         }
@@ -154,7 +155,7 @@ ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
 
 std::unique_ptr<boost::asio::ssl::context>
 ssl_context_helper_t::create_client_context_from_pem (
-  const std::string &ca_cert_pem, verification_mode mode)
+  const std::string &ca_cert_pem, bool trust_system, verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
     try {
@@ -171,9 +172,13 @@ ssl_context_helper_t::create_client_context_from_pem (
           ctx->native_handle (),
           "ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20:!aNULL:!MD5:!DSS");
 
-        //  Load CA certificate from PEM
-        if (!load_ca_certificate_from_pem (*ctx, ca_cert_pem)) {
-            return nullptr;
+        //  Load CA certificate from PEM or system store
+        if (!ca_cert_pem.empty ()) {
+            if (!load_ca_certificate_from_pem (*ctx, ca_cert_pem)) {
+                return nullptr;
+            }
+        } else if (trust_system) {
+            ctx->set_default_verify_paths ();
         }
 
         //  Configure verification
@@ -196,6 +201,7 @@ ssl_context_helper_t::create_client_context_with_cert (
   const std::string &client_cert_file,
   const std::string &client_key_file,
   const std::string &password,
+  bool trust_system,
   verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
@@ -222,9 +228,13 @@ ssl_context_helper_t::create_client_context_with_cert (
           ctx->native_handle (),
           "ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20:!aNULL:!MD5:!DSS");
 
-        //  Load CA certificate
-        if (!load_ca_certificate (*ctx, ca_cert_file)) {
-            return nullptr;
+        //  Load CA certificate or use system store
+        if (!ca_cert_file.empty ()) {
+            if (!load_ca_certificate (*ctx, ca_cert_file)) {
+                return nullptr;
+            }
+        } else if (trust_system) {
+            ctx->set_default_verify_paths ();
         }
 
         //  Load client certificate
@@ -254,6 +264,7 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
   const std::string &client_cert_pem,
   const std::string &client_key_pem,
   const std::string &password,
+  bool trust_system,
   verification_mode mode)
 {
     std::unique_ptr<boost::asio::ssl::context> ctx;
@@ -280,9 +291,13 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
           ctx->native_handle (),
           "ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20:!aNULL:!MD5:!DSS");
 
-        //  Load CA certificate from PEM
-        if (!load_ca_certificate_from_pem (*ctx, ca_cert_pem)) {
-            return nullptr;
+        //  Load CA certificate from PEM or system store
+        if (!ca_cert_pem.empty ()) {
+            if (!load_ca_certificate_from_pem (*ctx, ca_cert_pem)) {
+                return nullptr;
+            }
+        } else if (trust_system) {
+            ctx->set_default_verify_paths ();
         }
 
         //  Load client certificate from PEM buffer

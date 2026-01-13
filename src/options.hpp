@@ -226,11 +226,6 @@ struct options_t
     //  This option removes several delays caused by scheduling, interrupts and context switching.
     int busy_poll;
 
-#ifdef ZMQ_HAVE_WSS
-    //  Hostname for WSS (TLS SNI and certificate validation)
-    std::string wss_hostname;
-#endif
-
 #ifdef ZMQ_HAVE_TLS
     //  TLS protocol options
     std::string tls_cert;              // Server certificate file path

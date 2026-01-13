@@ -217,8 +217,6 @@
     <ClCompile Include="..\..\..\src\signaler.cpp" />
     <ClCompile Include="..\..\..\src\socket_base.cpp" />
     <ClCompile Include="..\..\..\src\socket_poller.cpp" />
-    <ClCompile Include="..\..\..\src\socks.cpp" />
-    <ClCompile Include="..\..\..\src\socks_connecter.cpp" />
     <ClCompile Include="..\..\..\src\stream.cpp" />
     <ClCompile Include="..\..\..\src\stream_engine.cpp" />
     <ClCompile Include="..\..\..\src\sub.cpp" />

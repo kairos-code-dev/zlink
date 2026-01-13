@@ -11,7 +11,8 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 echo "=== CMake Configure ==="
-cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DWITH_DOCS=OFF
+cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DWITH_DOCS=OFF \
+  -DWITH_ASIO_SSL=ON -DWITH_ASIO_WS=ON
 
 echo "=== Build ==="
 make -j$(nproc)

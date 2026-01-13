@@ -21,10 +21,6 @@ The plan is written so work can be resumed without prior context.
 - `ZMQ_STREAM` and `raw_socket` are removed.
 - Build options remain but default to ON for ASIO/SSL/WS.
 
-## Open Decisions (Need Explicit Confirmation)
-
-- SOCKS proxy support: remove entirely.
-
 ---
 
 ## Supported Matrix (Target)
@@ -117,12 +113,6 @@ Files (examples, not exhaustive):
    - `options.raw_socket`, `options.raw_notify`
 4) Update `zmq_has` to only expose remaining protocols:
    - `inproc`, `ipc`, `tcp`, `ws`, `wss`, `tls`
-
-Decision point:
-- `socks_connecter` uses `stream_connecter_base`. Remove SOCKS support
-  and delete these files with related options:
-  - `src/socks_connecter.*`, `src/socks.cpp`
-  - `ZMQ_SOCKS_PROXY`, `ZMQ_SOCKS_USERNAME`, `ZMQ_SOCKS_PASSWORD`
 
 ### Phase 3: Add `tls://` Protocol + TLS Options
 Files:

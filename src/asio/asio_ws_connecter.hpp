@@ -19,7 +19,7 @@ class io_thread_t;
 class session_base_t;
 struct address_t;
 
-//  Phase 3-B: ASIO-based WebSocket connecter
+//  Phase 3-B: ASIO-based WebSocket connecter (ws/wss)
 //
 //  This connecter handles:
 //  1. TCP async_connect using Boost.Asio
@@ -98,6 +98,8 @@ class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     //  WebSocket-specific data
     std::string _host;
     std::string _path;
+    std::string _tls_hostname;
+    bool _secure;
 
     //  State flags
     const bool _delayed_start;

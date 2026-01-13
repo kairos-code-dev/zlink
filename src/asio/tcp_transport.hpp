@@ -44,6 +44,9 @@ class tcp_transport_t : public i_asio_transport
                            std::size_t buffer_size,
                            completion_handler_t handler) ZMQ_OVERRIDE;
 
+    std::size_t write_some (const std::uint8_t *data,
+                            std::size_t len) ZMQ_OVERRIDE;
+
     const char *name () const ZMQ_OVERRIDE { return "tcp"; }
 
   private:

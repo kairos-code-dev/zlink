@@ -151,6 +151,15 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     void start_async_read ();
     void start_async_write ();
 
+    //  Speculative (synchronous) write attempt.
+    //  Tries to write immediately using transport->write_some().
+    //  Falls back to async write if would_block or partial write occurs.
+    void speculative_write ();
+
+    //  Prepare output buffer from encoder.
+    //  Returns true if data is available in _outpos/_outsize.
+    bool prepare_output_buffer ();
+
     void on_read_complete (const boost::system::error_code &ec,
                            std::size_t bytes_transferred);
     void on_write_complete (const boost::system::error_code &ec,

@@ -104,6 +104,11 @@ class asio_engine_t : public i_engine
     //  Start asynchronous write operation
     void start_async_write ();
 
+    //  Speculative (synchronous) write attempt.
+    //  Tries to write immediately using transport->write_some().
+    //  Falls back to async write if would_block or partial write occurs.
+    void speculative_write ();
+
     //  Handle read completion
     void on_read_complete (const boost::system::error_code &ec,
                            std::size_t bytes_transferred);
@@ -198,6 +203,10 @@ class asio_engine_t : public i_engine
 
     //  Fill output buffer and start async write
     void process_output ();
+
+    //  Prepare output buffer from encoder (called by speculative_write).
+    //  Returns true if data is available in _outpos/_outsize.
+    bool prepare_output_buffer ();
 
     //  Unplug the engine from the session.
     void unplug ();

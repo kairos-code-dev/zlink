@@ -23,6 +23,33 @@ namespace zmq
 //  Helper base class for encoders. It implements the state machine that
 //  fills the outgoing buffer. Derived classes should implement individual
 //  state machine actions.
+//
+//  BUFFER LIFETIME POLICY (for zero-copy optimization):
+//  =====================================================
+//  The encode() function may return a pointer directly to internal encoder
+//  buffer or message data (zero-copy path). This pointer is valid ONLY until:
+//
+//  1. The next call to encode() on this encoder
+//  2. The next call to load_msg() on this encoder
+//  3. The message's close() is called (invalidates message data pointer)
+//
+//  SYNCHRONOUS WRITE PATH (zero-copy safe):
+//  - Caller receives pointer from encode() and writes immediately
+//  - Buffer is valid during the synchronous write operation
+//  - After write completes, caller updates buffer position and may call
+//    encode() again for the next chunk
+//  - Example: speculative_write() in asio_engine_t
+//
+//  ASYNCHRONOUS WRITE PATH (requires copy):
+//  - Async I/O completion may occur after the next encode()/load_msg() call
+//  - Caller MUST copy the buffer to a stable location before starting async I/O
+//  - This ensures the data remains valid until async write completion
+//  - Example: start_async_write() copies to _write_buffer before async_write_some()
+//
+//  REENTRANCY PROTECTION:
+//  - The engine must ensure process_output()/prepare_output_buffer() is not
+//    called while an async write is pending (_write_pending flag)
+//  - This prevents buffer invalidation before async completion
 
 template <typename T> class encoder_base_t : public i_encoder
 {
@@ -43,7 +70,13 @@ template <typename T> class encoder_base_t : public i_encoder
 
     //  The function returns a batch of binary data. The data
     //  are filled to a supplied buffer. If no buffer is supplied (data_
-    //  points to NULL) decoder object will provide buffer of its own.
+    //  points to NULL) encoder object will provide buffer of its own.
+    //
+    //  ZERO-COPY NOTE: When *data_ is NULL and the message data can fit
+    //  entirely in the output, this function may return a pointer directly
+    //  to the message data (bypassing the internal buffer). This pointer
+    //  remains valid until the next encode() or load_msg() call.
+    //  See BUFFER LIFETIME POLICY above for safe usage patterns.
     size_t encode (unsigned char **data_, size_t size_) ZMQ_FINAL
     {
         unsigned char *buffer = !*data_ ? _buf : *data_;

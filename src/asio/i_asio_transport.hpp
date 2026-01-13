@@ -8,7 +8,9 @@
 
 #include <boost/asio.hpp>
 #include <boost/system/error_code.hpp>
+#include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 
 namespace zmq
@@ -65,6 +67,29 @@ class i_asio_transport
     virtual void async_write_some (const unsigned char *buffer,
                                    std::size_t buffer_size,
                                    completion_handler_t handler) = 0;
+
+    //  Synchronous write operation for speculative writes.
+    //
+    //  Attempts to write up to len bytes from data buffer synchronously.
+    //  This method is designed for non-blocking sockets and supports the
+    //  speculative write optimization pattern.
+    //
+    //  Parameters:
+    //    data: Pointer to data buffer to write
+    //    len: Number of bytes to write
+    //
+    //  Returns:
+    //    On success: Number of bytes actually written (may be less than len)
+    //    On would_block: 0, with errno set to EAGAIN or EWOULDBLOCK
+    //    On error: 0, with errno set to appropriate error code
+    //
+    //  Notes:
+    //    - For TCP/TLS: Performs partial write, returns bytes written
+    //    - For WebSocket: Frame-based, writes complete frame or returns 0
+    //    - Caller must check errno when return value is 0 to distinguish
+    //      would_block from actual errors
+    //    - Must be called only after handshake is complete (if required)
+    virtual std::size_t write_some (const std::uint8_t *data, std::size_t len) = 0;
 
     //  Check if this transport requires a handshake phase.
     //  TCP: false, SSL: true, WebSocket: true

@@ -117,6 +117,67 @@ void ssl_transport_t::async_write_some (const unsigned char *buffer,
                               handler);
 }
 
+std::size_t ssl_transport_t::write_some (const std::uint8_t *data,
+                                         std::size_t len)
+{
+    if (len == 0) {
+        return 0;
+    }
+
+    //  Check transport state
+    if (!_ssl_stream || !_handshake_complete) {
+        errno = ENOTCONN;
+        return 0;
+    }
+
+    if (!_ssl_stream->lowest_layer ().is_open ()) {
+        errno = EBADF;
+        return 0;
+    }
+
+    boost::system::error_code ec;
+    std::size_t bytes_written = 0;
+
+    //  Perform synchronous write_some on SSL stream
+    //  Note: SSL write_some may write fewer bytes than requested
+    bytes_written =
+      _ssl_stream->write_some (boost::asio::buffer (data, len), ec);
+
+    if (ec) {
+        //  Handle would_block case
+        if (ec == boost::asio::error::would_block
+            || ec == boost::asio::error::try_again) {
+            errno = EAGAIN;
+            return 0;
+        }
+
+        //  Handle SSL-specific errors
+        if (ec.category () == boost::asio::error::get_ssl_category ()) {
+            //  SSL errors - treat as generic I/O error
+            errno = EIO;
+            return 0;
+        }
+
+        //  Map boost error codes to errno
+        if (ec == boost::asio::error::broken_pipe
+            || ec == boost::asio::error::connection_reset) {
+            errno = EPIPE;
+        } else if (ec == boost::asio::error::not_connected) {
+            errno = ENOTCONN;
+        } else if (ec == boost::asio::error::bad_descriptor) {
+            errno = EBADF;
+        } else if (ec == boost::asio::error::eof) {
+            errno = ECONNRESET;
+        } else {
+            errno = EIO;
+        }
+        return 0;
+    }
+
+    errno = 0;
+    return bytes_written;
+}
+
 void ssl_transport_t::async_handshake (int handshake_type,
                                        completion_handler_t handler)
 {

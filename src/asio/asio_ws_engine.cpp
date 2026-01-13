@@ -479,20 +479,44 @@ void zmq::asio_ws_engine_t::start_async_write ()
     if (_write_pending || _output_stopped || _io_error || !_ws_handshake_complete)
         return;
 
-    if (_outsize == 0) {
+    WS_ENGINE_DBG ("start_async_write: outsize=%zu", _outsize);
+
+    //  If there is already data prepared in _outpos/_outsize (from speculative_write
+    //  fallback or partial write), copy it to _write_buffer for async operation.
+    //  This is necessary because encoder buffer may be invalidated before async
+    //  write completion.
+    if (_outsize > 0 && _outpos != NULL) {
+        //  Copy encoder buffer to write buffer for async lifetime safety
+        const size_t out_batch_size =
+          static_cast<size_t> (_options.out_batch_size);
+        const size_t target =
+          _outsize > out_batch_size ? _outsize : out_batch_size;
+        if (_write_buffer.capacity () < target)
+            _write_buffer.reserve (target);
+        _write_buffer.assign (_outpos, _outpos + _outsize);
+
+        WS_ENGINE_DBG ("start_async_write: copied %zu bytes for async", _outsize);
+
+        //  Clear _outpos/_outsize as data is now in _write_buffer
+        _outpos = NULL;
+        _outsize = 0;
+    } else {
+        //  No data prepared, try to get from encoder via process_output
         process_output ();
-        if (_outsize == 0) {
+
+        if (_write_buffer.empty ()) {
             WS_ENGINE_DBG ("No data to write");
+            _output_stopped = true;
             return;
         }
     }
 
-    WS_ENGINE_DBG ("start_async_write: %zu bytes", _outsize);
+    WS_ENGINE_DBG ("start_async_write: sending %zu bytes", _write_buffer.size ());
 
     _write_pending = true;
 
     _transport->async_write_some (
-      _outpos, _outsize,
+      _write_buffer.data (), _write_buffer.size (),
       [this] (const boost::system::error_code &ec,
               std::size_t bytes_transferred) {
           on_write_complete (ec, bytes_transferred);
@@ -518,19 +542,16 @@ void zmq::asio_ws_engine_t::on_write_complete (
         return;
     }
 
-    _outpos += bytes_transferred;
-    _outsize -= bytes_transferred;
+    //  Clear write buffer - async write is complete
+    _write_buffer.clear ();
 
-    //  Continue writing if more data
-    if (_outsize > 0) {
+    //  If still handshaking and there's nothing more to write, just return
+    if (_handshaking && _outsize == 0)
+        return;
+
+    //  Continue writing if more data available
+    if (!_output_stopped)
         start_async_write ();
-    } else {
-        //  Try to get more data to send
-        process_output ();
-        if (_outsize > 0) {
-            start_async_write ();
-        }
-    }
 }
 
 bool zmq::asio_ws_engine_t::handshake ()
@@ -672,9 +693,167 @@ bool zmq::asio_ws_engine_t::process_input ()
     return true;
 }
 
+bool zmq::asio_ws_engine_t::prepare_output_buffer ()
+{
+    WS_ENGINE_DBG ("prepare_output_buffer: outsize=%zu", _outsize);
+
+    //  If we already have data prepared, return true.
+    if (_outsize > 0)
+        return true;
+
+    if (!_encoder)
+        return false;
+
+    //  Get initial data from encoder
+    _outpos = NULL;
+    _outsize = _encoder->encode (&_outpos, 0);
+
+    //  Fill the output buffer up to batch size
+    while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
+        msg_t msg;
+        int rc = msg.init ();
+        errno_assert (rc == 0);
+
+        rc = (this->*_next_msg) (&msg);
+        if (rc == -1) {
+            rc = msg.close ();
+            errno_assert (rc == 0);
+            //  Note: we don't set _output_stopped here, let caller decide
+            break;
+        }
+
+        _encoder->load_msg (&msg);
+        unsigned char *bufptr = _outpos + _outsize;
+        const size_t n =
+          _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
+        zmq_assert (n > 0);
+        if (_outpos == NULL)
+            _outpos = bufptr;
+        _outsize += n;
+    }
+
+    WS_ENGINE_DBG ("prepare_output_buffer: prepared %zu bytes", _outsize);
+    return _outsize > 0;
+}
+
+void zmq::asio_ws_engine_t::speculative_write ()
+{
+    WS_ENGINE_DBG ("speculative_write: write_pending=%d, output_stopped=%d",
+                   _write_pending, _output_stopped);
+
+    //  Guard: If async write is already in progress, skip.
+    //  This ensures single write-in-flight invariant.
+    if (_write_pending)
+        return;
+
+    //  Guard: Don't write during I/O errors
+    if (_io_error)
+        return;
+
+    //  Guard: WebSocket handshake must be complete
+    if (!_ws_handshake_complete)
+        return;
+
+    //  Prepare output buffer from encoder
+    if (!prepare_output_buffer ()) {
+        _output_stopped = true;
+        WS_ENGINE_DBG ("speculative_write: no data to send, output_stopped=true");
+        return;
+    }
+
+    //  Attempt synchronous write using transport's write_some()
+    //  Note: For WebSocket, this writes a complete frame or returns 0 with EAGAIN
+    zmq_assert (_transport);
+    const std::size_t bytes =
+      _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
+                              _outsize);
+
+    WS_ENGINE_DBG ("speculative_write: write_some returned %zu, errno=%d", bytes,
+                   errno);
+
+    if (bytes == 0) {
+        //  Check if it's would_block (retry later) or actual error
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            //  would_block - fall back to async write.
+            WS_ENGINE_DBG ("speculative_write: would_block, falling back to async");
+            start_async_write ();
+            return;
+        }
+        //  Actual error
+        WS_ENGINE_DBG ("speculative_write: error, errno=%d", errno);
+        error (connection_error);
+        return;
+    }
+
+    //  For WebSocket, frame-based write means we either wrote the entire
+    //  frame or got would_block. Update buffer pointers.
+    _outpos += bytes;
+    _outsize -= bytes;
+
+    WS_ENGINE_DBG ("speculative_write: wrote %zu bytes, remaining=%zu", bytes,
+                   _outsize);
+
+    if (_outsize > 0) {
+        //  Partial write (shouldn't happen for WebSocket frame-based write,
+        //  but handle it for robustness).
+        WS_ENGINE_DBG ("speculative_write: partial write, async for remaining %zu",
+                       _outsize);
+        start_async_write ();
+    } else {
+        //  Complete write succeeded.
+        //  Try to get more data and continue speculative writing.
+        _output_stopped = false;
+
+        //  During handshake, don't loop - let handshake control flow proceed.
+        if (_handshaking)
+            return;
+
+        //  Try to prepare and write more data speculatively.
+        while (prepare_output_buffer ()) {
+            const std::size_t more_bytes = _transport->write_some (
+              reinterpret_cast<const std::uint8_t *> (_outpos), _outsize);
+
+            WS_ENGINE_DBG ("speculative_write loop: wrote %zu, errno=%d",
+                           more_bytes, errno);
+
+            if (more_bytes == 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    //  would_block - remaining data via async
+                    start_async_write ();
+                    return;
+                }
+                //  Actual error
+                error (connection_error);
+                return;
+            }
+
+            _outpos += more_bytes;
+            _outsize -= more_bytes;
+
+            if (_outsize > 0) {
+                //  Partial write - async for remaining
+                start_async_write ();
+                return;
+            }
+        }
+
+        //  No more data to send
+        _output_stopped = true;
+        WS_ENGINE_DBG ("speculative_write: all data sent, output_stopped=true");
+    }
+}
+
 void zmq::asio_ws_engine_t::process_output ()
 {
-    WS_ENGINE_DBG ("process_output");
+    WS_ENGINE_DBG ("process_output: outsize=%zu", _outsize);
+
+    //  This function is called from start_async_write() when there's no data
+    //  in _outpos/_outsize. It fills the encoder buffer and copies to _write_buffer
+    //  for async write operation.
+    //
+    //  NOTE: For zero-copy, speculative_write() uses prepare_output_buffer() which
+    //  sets _outpos/_outsize to point directly to encoder buffer. The copy here
+    //  is only for the async-only path (not via speculative_write).
 
     if (!_encoder)
         return;
@@ -714,6 +893,28 @@ void zmq::asio_ws_engine_t::process_output ()
             _outpos = bufptr;
         _outsize += n;
     }
+
+    //  If there is no data to send, return
+    if (_outsize == 0)
+        return;
+
+    //  Copy data to write buffer for async write operation.
+    //  This copy is necessary because encoder buffer may be invalidated before
+    //  async write completes. The copy is performed here (for async-only path)
+    //  or in start_async_write() (for speculative_write fallback path).
+    const size_t out_batch_size =
+      static_cast<size_t> (_options.out_batch_size);
+    const size_t target =
+      _outsize > out_batch_size ? _outsize : out_batch_size;
+    if (_write_buffer.capacity () < target)
+        _write_buffer.reserve (target);
+    _write_buffer.assign (_outpos, _outpos + _outsize);
+
+    WS_ENGINE_DBG ("process_output: copied %zu bytes to write buffer", _outsize);
+
+    //  Clear _outpos/_outsize as data is now in _write_buffer
+    _outpos = NULL;
+    _outsize = 0;
 }
 
 int zmq::asio_ws_engine_t::pull_msg_from_session (msg_t *msg_)
@@ -809,13 +1010,17 @@ bool zmq::asio_ws_engine_t::restart_input ()
 
 void zmq::asio_ws_engine_t::restart_output ()
 {
-    WS_ENGINE_DBG ("restart_output");
+    WS_ENGINE_DBG ("restart_output: io_error=%d, output_stopped=%d, write_pending=%d",
+                   _io_error, _output_stopped, _write_pending);
+
+    if (_io_error)
+        return;
 
     _output_stopped = false;
 
-    if (!_write_pending) {
-        start_async_write ();
-    }
+    //  Use speculative write for immediate transmission.
+    //  This tries synchronous write first, falling back to async if needed.
+    speculative_write ();
 }
 
 void zmq::asio_ws_engine_t::zap_msg_available ()

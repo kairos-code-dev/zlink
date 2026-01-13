@@ -6,6 +6,7 @@
 #include "asio_tls_listener.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "ssl_transport.hpp"
 #include "ssl_context_helper.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
@@ -155,6 +156,8 @@ int zmq::asio_tls_listener_t::set_local_address (const char *addr_)
 
     //  Get endpoint string for events (resolves wildcard port)
     _endpoint = get_socket_name (_acceptor.native_handle (), socket_end_local);
+    if (_endpoint.compare (0, 6, "tcp://") == 0)
+        _endpoint.replace (0, 6, "tls://");
 
     _socket->event_listening (make_unconnected_bind_endpoint_pair (_endpoint),
                               _acceptor.native_handle ());
@@ -300,103 +303,50 @@ void zmq::asio_tls_listener_t::on_tcp_accept (
         return;
     }
 
-    //  Wrap socket in SSL stream for handshake
-    typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream_t;
-    std::unique_ptr<ssl_stream_t> ssl_stream;
-
-    try {
-        ssl_stream = std::unique_ptr<ssl_stream_t> (
-          new ssl_stream_t (std::move (_accept_socket), *_ssl_context));
-    } catch (const std::bad_alloc &) {
-        TLS_LISTENER_DBG ("on_tcp_accept: failed to allocate SSL stream");
-        _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), ENOMEM);
-        //  Socket was moved, create new one
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
-        start_accept ();
-        return;
-    }
-
-    TLS_LISTENER_DBG ("on_tcp_accept: starting SSL handshake");
-
-    //  Start SSL handshake (server side)
-    //  Note: Boost.Asio requires copyable handlers in C++11,
-    //  so we use shared_ptr instead of unique_ptr
-    typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream_t;
-    std::shared_ptr<ssl_stream_t> ssl_stream_shared (ssl_stream.release ());
-
-    ssl_stream_shared->async_handshake (
-      boost::asio::ssl::stream_base::server,
-      [this, fd, ssl_stream_shared] (const boost::system::error_code &ec) {
-          on_ssl_handshake (ec, fd, ssl_stream_shared);
-      });
-
-    //  Note: We don't mark _accepting = true here because the handshake
-    //  is not an accept operation. We'll start the next accept after handshake.
-}
-
-void zmq::asio_tls_listener_t::on_ssl_handshake (
-  const boost::system::error_code &ec,
-  fd_t fd_,
-  std::shared_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>
-    ssl_stream)
-{
-    TLS_LISTENER_DBG ("on_ssl_handshake: ec=%s, fd=%d, terminating=%d",
-                      ec.message ().c_str (), fd_, _terminating);
-
-    if (_terminating) {
-        TLS_LISTENER_DBG ("on_ssl_handshake: terminating, closing connection");
-        //  shared_ptr will clean up automatically
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
-        return;
-    }
-
-    if (ec) {
-        TLS_LISTENER_DBG ("on_ssl_handshake: SSL handshake failed: %s",
-                          ec.message ().c_str ());
-        _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
-
-        //  shared_ptr will clean up automatically, prepare for next accept
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
-        start_accept ();
-        return;
-    }
-
-    TLS_LISTENER_DBG ("on_ssl_handshake: SSL handshake successful, fd=%d", fd_);
-
     //  Release socket from ASIO management (engine will take ownership)
-    ssl_stream->lowest_layer ().release ();
+    _accept_socket.release ();
 
     //  Tune the socket
-    if (tune_socket (fd_) != 0) {
-        TLS_LISTENER_DBG ("on_ssl_handshake: tune_socket failed");
+    if (tune_socket (fd) != 0) {
+        TLS_LISTENER_DBG ("on_tcp_accept: tune_socket failed");
         _socket->event_accept_failed (
           make_unconnected_bind_endpoint_pair (_endpoint), zmq_errno ());
 #ifdef ZMQ_HAVE_WINDOWS
-        closesocket (fd_);
+        closesocket (fd);
 #else
-        ::close (fd_);
+        ::close (fd);
 #endif
-        ssl_stream.reset ();
         _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
 
-    //  Create the engine (Phase 4-A: regular engine, Phase 4-B: SSL engine)
-    //  TODO: Create asio_zmtp_engine with SSL transport
-    create_engine (fd_);
+    std::unique_ptr<boost::asio::ssl::context> ssl_context =
+      create_ssl_context ();
+    if (!ssl_context) {
+        TLS_LISTENER_DBG ("on_tcp_accept: failed to create SSL context");
+        _socket->event_accept_failed (
+          make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
+#ifdef ZMQ_HAVE_WINDOWS
+        closesocket (fd);
+#else
+        ::close (fd);
+#endif
+        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
+        start_accept ();
+        return;
+    }
 
-    //  Clean up SSL stream (engine took ownership of fd)
-    ssl_stream.reset ();
+    //  Create engine with SSL transport
+    create_engine (fd, std::move (ssl_context));
 
     //  Prepare for next connection
     _accept_socket = boost::asio::ip::tcp::socket (_io_context);
     start_accept ();
 }
 
-bool zmq::asio_tls_listener_t::create_ssl_context ()
+std::unique_ptr<boost::asio::ssl::context>
+zmq::asio_tls_listener_t::create_ssl_context () const
 {
     TLS_LISTENER_DBG ("create_ssl_context: cert=%s, key=%s, ca=%s",
                       options.tls_cert.c_str (), options.tls_key.c_str (),
@@ -406,79 +356,97 @@ bool zmq::asio_tls_listener_t::create_ssl_context ()
     if (options.tls_cert.empty () || options.tls_key.empty ()) {
         TLS_LISTENER_DBG (
           "create_ssl_context: server requires tls_cert and tls_key");
-        return false;
+        return std::unique_ptr<boost::asio::ssl::context> ();
     }
 
     //  Create server SSL context
-    _ssl_context = ssl_context_helper_t::create_server_context (
-      options.tls_cert, options.tls_key, "");
+    std::unique_ptr<boost::asio::ssl::context> ssl_context =
+      ssl_context_helper_t::create_server_context (
+        options.tls_cert, options.tls_key, options.tls_password);
 
-    if (!_ssl_context) {
+    if (!ssl_context) {
         TLS_LISTENER_DBG ("create_ssl_context: failed to create SSL context: %s",
                           ssl_context_helper_t::get_ssl_error_string ().c_str ());
-        return false;
+        return std::unique_ptr<boost::asio::ssl::context> ();
     }
 
     //  Configure client certificate verification based on options
     //  If tls_require_client_cert is set and CA is provided, enable mTLS
     bool require_client_cert = (options.tls_require_client_cert != 0);
+    const bool trust_system = options.tls_trust_system != 0;
 
     if (require_client_cert) {
         //  mTLS mode requires CA certificate to verify client
-        if (options.tls_ca.empty ()) {
+        if (options.tls_ca.empty () && !trust_system) {
             TLS_LISTENER_DBG (
-              "create_ssl_context: mTLS mode requires tls_ca to be set");
-            return false;
+              "create_ssl_context: mTLS requires tls_ca or tls_trust_system");
+            return std::unique_ptr<boost::asio::ssl::context> ();
         }
 
         TLS_LISTENER_DBG (
           "create_ssl_context: enabling mTLS (client certificate required)");
 
-        if (!ssl_context_helper_t::load_ca_certificate (*_ssl_context,
-                                                         options.tls_ca)) {
-            TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
-                              ssl_context_helper_t::get_ssl_error_string ().c_str ());
-            return false;
+        if (!options.tls_ca.empty ()) {
+            if (!ssl_context_helper_t::load_ca_certificate (*ssl_context,
+                                                            options.tls_ca)) {
+                TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
+                                  ssl_context_helper_t::get_ssl_error_string ()
+                                    .c_str ());
+                return std::unique_ptr<boost::asio::ssl::context> ();
+            }
+        } else if (trust_system) {
+            ssl_context->set_default_verify_paths ();
         }
     } else if (!options.tls_ca.empty ()) {
         //  CA specified but client cert not required - optional client auth
         TLS_LISTENER_DBG (
           "create_ssl_context: loading CA for optional client certificate verification");
 
-        if (!ssl_context_helper_t::load_ca_certificate (*_ssl_context,
-                                                         options.tls_ca)) {
+        if (!ssl_context_helper_t::load_ca_certificate (*ssl_context,
+                                                        options.tls_ca)) {
             TLS_LISTENER_DBG ("create_ssl_context: failed to load CA: %s",
                               ssl_context_helper_t::get_ssl_error_string ().c_str ());
-            return false;
+            return std::unique_ptr<boost::asio::ssl::context> ();
         }
     }
 
     //  Configure server verification mode
-    if (!ssl_context_helper_t::configure_server_verification (*_ssl_context,
+    if (!ssl_context_helper_t::configure_server_verification (*ssl_context,
                                                                require_client_cert)) {
         TLS_LISTENER_DBG (
           "create_ssl_context: failed to configure server verification: %s",
           ssl_context_helper_t::get_ssl_error_string ().c_str ());
-        return false;
+        return std::unique_ptr<boost::asio::ssl::context> ();
     }
 
     TLS_LISTENER_DBG ("create_ssl_context: SSL context created successfully");
-    return true;
+    return ssl_context;
 }
 
-void zmq::asio_tls_listener_t::create_engine (fd_t fd_)
+void zmq::asio_tls_listener_t::create_engine (
+  fd_t fd_, std::unique_ptr<boost::asio::ssl::context> ssl_context_)
 {
     TLS_LISTENER_DBG ("create_engine: fd=%d", fd_);
 
-    const endpoint_uri_pair_t endpoint_pair (
-      get_socket_name (fd_, socket_end_local),
-      get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
+    std::string local_endpoint = get_socket_name (fd_, socket_end_local);
+    std::string remote_endpoint = get_socket_name (fd_, socket_end_remote);
+    if (local_endpoint.compare (0, 6, "tcp://") == 0)
+        local_endpoint.replace (0, 6, "tls://");
+    if (remote_endpoint.compare (0, 6, "tcp://") == 0)
+        remote_endpoint.replace (0, 6, "tls://");
 
-    //  Phase 4-A: Use regular ASIO ZMTP engine
-    //  Phase 4-B will use SSL-aware engine with ssl_transport_t
-    //  TODO: Create asio_zmtp_engine with SSL transport
+    const endpoint_uri_pair_t endpoint_pair (
+      local_endpoint, remote_endpoint, endpoint_type_bind);
+
+    std::unique_ptr<ssl_transport_t> transport (
+      new (std::nothrow) ssl_transport_t (*ssl_context_));
+    alloc_assert (transport);
+
     i_engine *engine =
-      new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+      new (std::nothrow) asio_zmtp_engine_t (
+        fd_, options, endpoint_pair, std::unique_ptr<i_asio_transport> (
+                                     transport.release ()),
+        std::move (ssl_context_));
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in

@@ -78,6 +78,11 @@ class wss_transport_t : public i_asio_transport
     bool is_encrypted () const ZMQ_OVERRIDE { return true; }
     const char *name () const ZMQ_OVERRIDE { return "wss"; }
 
+    void set_tls_hostname (const std::string &hostname)
+    {
+        _tls_hostname = hostname;
+    }
+
     //  Set the host for client handshake
     void set_host (const std::string &host) { _host = host; }
 
@@ -102,6 +107,7 @@ class wss_transport_t : public i_asio_transport
     bool _ssl_handshake_complete;
     bool _ws_handshake_complete;
     int _handshake_type;
+    std::string _tls_hostname;
 
     //  Temporary storage for async read results
     std::vector<unsigned char> _frame_buffer;

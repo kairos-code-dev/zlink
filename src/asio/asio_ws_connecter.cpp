@@ -6,6 +6,12 @@
 #include "asio_ws_connecter.hpp"
 #include "asio_ws_engine.hpp"
 #include "asio_poller.hpp"
+#include "ssl_context_helper.hpp"
+#include "ws_transport.hpp"
+#if defined ZMQ_HAVE_WSS
+#include "wss_transport.hpp"
+#include "../wss_address.hpp"
+#endif
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../address.hpp"
@@ -38,6 +44,52 @@
 #define WS_CONNECTER_DBG(fmt, ...)
 #endif
 
+#if defined ZMQ_HAVE_WSS
+namespace
+{
+std::unique_ptr<boost::asio::ssl::context>
+create_wss_client_context (const zmq::options_t &options_,
+                           const std::string &hostname_)
+{
+    const bool verify_peer = options_.tls_verify != 0;
+    const bool trust_system = options_.tls_trust_system != 0;
+
+    if (verify_peer && options_.tls_ca.empty () && !trust_system) {
+        return std::unique_ptr<boost::asio::ssl::context> ();
+    }
+
+    const bool has_client_cert =
+      !options_.tls_cert.empty () && !options_.tls_key.empty ();
+
+    const zmq::ssl_context_helper_t::verification_mode verify_mode =
+      verify_peer ? zmq::ssl_context_helper_t::verify_peer
+                  : zmq::ssl_context_helper_t::verify_none;
+
+    std::unique_ptr<boost::asio::ssl::context> ssl_context;
+    if (has_client_cert) {
+        ssl_context = zmq::ssl_context_helper_t::create_client_context_with_cert (
+          options_.tls_ca, options_.tls_cert, options_.tls_key,
+          options_.tls_password, trust_system, verify_mode);
+    } else {
+        ssl_context = zmq::ssl_context_helper_t::create_client_context (
+          options_.tls_ca, trust_system, verify_mode);
+    }
+
+    if (!ssl_context)
+        return std::unique_ptr<boost::asio::ssl::context> ();
+
+    if (verify_peer && !hostname_.empty ()) {
+        if (!zmq::ssl_context_helper_t::set_hostname_verification (
+              *ssl_context, hostname_)) {
+            return std::unique_ptr<boost::asio::ssl::context> ();
+        }
+    }
+
+    return ssl_context;
+}
+}
+#endif
+
 zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
                                                 session_base_t *session_,
                                                 const options_t &options_,
@@ -51,6 +103,11 @@ zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
     _session (session_),
     _socket_ptr (session_->get_socket ()),
     _path ("/"),
+#if defined ZMQ_HAVE_WSS
+    _secure (addr_ && addr_->protocol == protocol_name::wss),
+#else
+    _secure (false),
+#endif
     _delayed_start (delayed_start_),
     _reconnect_timer_started (false),
     _connect_timer_started (false),
@@ -60,7 +117,11 @@ zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
     _current_reconnect_ivl (-1)
 {
     zmq_assert (_addr);
-    zmq_assert (_addr->protocol == protocol_name::ws);
+    zmq_assert (_addr->protocol == protocol_name::ws
+#if defined ZMQ_HAVE_WSS
+                || _addr->protocol == protocol_name::wss
+#endif
+    );
     _addr->to_string (_endpoint_str);
 
     WS_CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",
@@ -140,16 +201,53 @@ void zmq::asio_ws_connecter_t::start_connecting ()
     WS_CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
     //  Resolve the WebSocket address if not already done
+#if defined ZMQ_HAVE_WSS
+    if (_secure) {
+        if (_addr->resolved.wss_addr != NULL) {
+            LIBZMQ_DELETE (_addr->resolved.wss_addr);
+        }
+        _addr->resolved.wss_addr = new (std::nothrow) wss_address_t ();
+        alloc_assert (_addr->resolved.wss_addr);
+    } else {
+        if (_addr->resolved.ws_addr != NULL) {
+            LIBZMQ_DELETE (_addr->resolved.ws_addr);
+        }
+        _addr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
+        alloc_assert (_addr->resolved.ws_addr);
+    }
+
+    int rc = 0;
+    if (_secure) {
+        rc = _addr->resolved.wss_addr->resolve (_addr->address.c_str (), false,
+                                                options.ipv6);
+    } else {
+        rc = _addr->resolved.ws_addr->resolve (_addr->address.c_str (), false,
+                                               options.ipv6);
+    }
+    if (rc != 0) {
+        WS_CONNECTER_DBG ("start_connecting: resolve failed");
+        if (_secure) {
+            LIBZMQ_DELETE (_addr->resolved.wss_addr);
+        } else {
+            LIBZMQ_DELETE (_addr->resolved.ws_addr);
+        }
+        add_reconnect_timer ();
+        return;
+    }
+
+    const ws_address_t *ws_addr =
+      _secure ? static_cast<const ws_address_t *> (_addr->resolved.wss_addr)
+              : _addr->resolved.ws_addr;
+#else
+    (void) _secure;
     if (_addr->resolved.ws_addr != NULL) {
         LIBZMQ_DELETE (_addr->resolved.ws_addr);
     }
-
     _addr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
     alloc_assert (_addr->resolved.ws_addr);
 
-    int rc =
-      _addr->resolved.ws_addr->resolve (_addr->address.c_str (), false,
-                                        options.ipv6);
+    int rc = _addr->resolved.ws_addr->resolve (_addr->address.c_str (), false,
+                                               options.ipv6);
     if (rc != 0) {
         WS_CONNECTER_DBG ("start_connecting: resolve failed");
         LIBZMQ_DELETE (_addr->resolved.ws_addr);
@@ -158,9 +256,16 @@ void zmq::asio_ws_connecter_t::start_connecting ()
     }
 
     const ws_address_t *ws_addr = _addr->resolved.ws_addr;
+#endif
 
     //  Store WebSocket-specific data for engine creation
-    _host = ws_addr->host () + ":" + std::to_string (ws_addr->port ());
+    const std::string host = ws_addr->host ();
+    _tls_hostname =
+      !options.tls_hostname.empty () ? options.tls_hostname : host;
+    if (host.find (':') != std::string::npos)
+        _host = "[" + host + "]:" + std::to_string (ws_addr->port ());
+    else
+        _host = host + ":" + std::to_string (ws_addr->port ());
     _path = ws_addr->path ();
 
     //  Create endpoint from resolved address
@@ -326,13 +431,65 @@ void zmq::asio_ws_connecter_t::create_engine (
     WS_CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
                       local_address_.c_str ());
 
-    const endpoint_uri_pair_t endpoint_pair ("ws://" + local_address_ + _path,
-                                             _endpoint_str,
-                                             endpoint_type_connect);
+    const std::string prefix = _secure ? "wss://" : "ws://";
 
-    //  Create WebSocket engine (client-side: is_client = true)
-    i_engine *engine = new (std::nothrow)
-      asio_ws_engine_t (fd_, options, endpoint_pair, _host, _path, true);
+    std::string local_endpoint = local_address_;
+    if (local_endpoint.compare (0, 6, "tcp://") == 0)
+        local_endpoint = local_endpoint.substr (6);
+    local_endpoint = prefix + local_endpoint + _path;
+
+    std::string remote_endpoint = _endpoint_str;
+    if (_secure && remote_endpoint.compare (0, 5, "ws://") == 0)
+        remote_endpoint.replace (0, 5, "wss://");
+    else if (!_secure && remote_endpoint.compare (0, 6, "wss://") == 0)
+        remote_endpoint.replace (0, 6, "ws://");
+
+    const endpoint_uri_pair_t endpoint_pair (
+      local_endpoint, remote_endpoint, endpoint_type_connect);
+
+    std::unique_ptr<i_asio_transport> transport;
+#if defined ZMQ_HAVE_WSS
+    std::unique_ptr<boost::asio::ssl::context> ssl_context;
+    if (_secure) {
+        ssl_context = create_wss_client_context (options, _tls_hostname);
+        if (!ssl_context) {
+            WS_CONNECTER_DBG ("create_engine: failed to create SSL context");
+#ifdef ZMQ_HAVE_WINDOWS
+            closesocket (fd_);
+#else
+            ::close (fd_);
+#endif
+            add_reconnect_timer ();
+            return;
+        }
+        std::unique_ptr<wss_transport_t> wss_transport (
+          new (std::nothrow)
+            wss_transport_t (*ssl_context, _path, _host));
+        alloc_assert (wss_transport);
+        if (!_tls_hostname.empty ())
+            wss_transport->set_tls_hostname (_tls_hostname);
+        transport.reset (wss_transport.release ());
+    } else
+#endif
+    {
+        std::unique_ptr<ws_transport_t> ws_transport (
+          new (std::nothrow) ws_transport_t (_path, _host));
+        alloc_assert (ws_transport);
+        transport.reset (ws_transport.release ());
+    }
+
+    i_engine *engine = NULL;
+#if defined ZMQ_HAVE_WSS
+    if (_secure) {
+        engine = new (std::nothrow) asio_ws_engine_t (
+          fd_, options, endpoint_pair, true, std::move (transport),
+          std::move (ssl_context));
+    } else
+#endif
+    {
+        engine = new (std::nothrow) asio_ws_engine_t (
+          fd_, options, endpoint_pair, true, std::move (transport));
+    }
     alloc_assert (engine);
 
     //  Attach the engine to the session

@@ -200,7 +200,7 @@ vcpkg is a full platform package manager, you can easily install libzmq via vcpk
 
 ### Removed Features
 
-**Protocols:** TIPC, VMCI, PGM, EPGM, NORM, UDP, SOCKS
+**Protocols:** TIPC, VMCI, PGM, EPGM, NORM, UDP
 **Socket Types:** STREAM, REQ/REP, PUSH/PULL, Draft API sockets
 **Encryption:** CURVE (use TLS instead)
 

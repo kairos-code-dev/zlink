@@ -118,10 +118,6 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
                           pipe_t **pipes_);
     void connect_pending (const char *addr_, zmq::socket_base_t *bind_socket_);
 
-#ifdef ZMQ_HAVE_VMCI
-    // Return family for the VMCI socket or -1 if it's not available.
-    int get_vmci_socket_family ();
-#endif
 
     enum
     {
@@ -230,11 +226,6 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
                             const pending_connection_t &pending_connection_,
                             side side_);
 
-#ifdef ZMQ_HAVE_VMCI
-    int _vmci_fd;
-    int _vmci_family;
-    mutex_t _vmci_sync;
-#endif
 };
 }
 

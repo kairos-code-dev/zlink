@@ -39,7 +39,7 @@ class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
     ~asio_ws_listener_t ();
 
     //  Set address to listen on
-    int set_local_address (const ws_address_t *addr_);
+    int set_local_address (const ws_address_t *addr_, bool secure_);
 
     //  Get the bound address
     int get_local_address (std::string &addr_) const;
@@ -88,6 +88,7 @@ class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
     std::string _host;
     std::string _path;
     uint16_t _port;
+    bool _secure;
 
     //  String representation of endpoint
     std::string _endpoint;

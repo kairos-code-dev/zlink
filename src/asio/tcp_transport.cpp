@@ -6,9 +6,21 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include "asio_debug.hpp"
+#include "../address.hpp"
 
 namespace zmq
 {
+namespace
+{
+boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
+{
+    sockaddr_storage ss;
+    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    if (sl != 0 && ss.ss_family == AF_INET6)
+        return boost::asio::ip::tcp::v6 ();
+    return boost::asio::ip::tcp::v4 ();
+}
+}
 
 tcp_transport_t::tcp_transport_t ()
 {
@@ -31,7 +43,7 @@ bool tcp_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     }
 
     boost::system::error_code ec;
-    _socket->assign (boost::asio::ip::tcp::v4 (), fd, ec);
+    _socket->assign (protocol_for_fd (fd), fd, ec);
     if (ec) {
         ASIO_GLOBAL_ERROR ("tcp_transport open failed: %s", ec.message ().c_str ());
         _socket.reset ();
@@ -106,15 +118,17 @@ void tcp_transport_t::async_write_some (const unsigned char *buffer,
 {
 #if defined ZMQ_HAVE_WINDOWS
     if (_socket) {
-        _socket->async_write_some (boost::asio::buffer (buffer, buffer_size),
-                                   handler);
+        boost::asio::async_write (*_socket,
+                                  boost::asio::buffer (buffer, buffer_size),
+                                  handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
 #else
     if (_stream_descriptor) {
-        _stream_descriptor->async_write_some (
-          boost::asio::buffer (buffer, buffer_size), handler);
+        boost::asio::async_write (*_stream_descriptor,
+                                  boost::asio::buffer (buffer, buffer_size),
+                                  handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }

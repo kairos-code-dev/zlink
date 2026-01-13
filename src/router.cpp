@@ -20,8 +20,6 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_out (false),
     _next_integral_routing_id (generate_random ()),
     _mandatory (false),
-    //  raw_socket functionality in ROUTER is deprecated
-    _raw_socket (false),
     _probe_router (false),
     _handover (false)
 {
@@ -194,19 +192,6 @@ int zmq::router_t::xsend (msg_t *msg_)
 
     //  Push the message into the pipe. If there's no out pipe, just drop it.
     if (_current_out) {
-        // Close the remote connection if user has asked to do so
-        // by sending zero length message.
-        // Pending messages in the pipe will be dropped (on receiving term- ack)
-        if (_raw_socket && msg_->size () == 0) {
-            _current_out->terminate (false);
-            int rc = msg_->close ();
-            errno_assert (rc == 0);
-            rc = msg_->init ();
-            errno_assert (rc == 0);
-            _current_out = NULL;
-            return 0;
-        }
-
         const bool ok = _current_out->write (msg_);
         if (unlikely (!ok)) {
             // Message failed to send - we must close it ourselves.

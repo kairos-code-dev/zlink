@@ -25,6 +25,9 @@
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_listener.hpp"
+#if defined ZMQ_HAVE_IPC
+#include "asio/asio_ipc_listener.hpp"
+#endif
 #if defined ZMQ_HAVE_ASIO_SSL
 #include "asio/asio_tls_listener.hpp"
 #endif
@@ -33,7 +36,6 @@
 #include "ws_address.hpp"
 #endif
 #endif
-#include "ipc_listener.hpp"
 #include "io_thread.hpp"
 #include "session_base.hpp"
 #include "config.hpp"
@@ -441,24 +443,6 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return rc;
     }
 
-#if defined ZMQ_HAVE_OPENPGM || defined ZMQ_HAVE_NORM
-#if defined ZMQ_HAVE_OPENPGM && defined ZMQ_HAVE_NORM
-    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm
-        || protocol == protocol_name::norm) {
-#elif defined ZMQ_HAVE_OPENPGM
-    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
-#else // defined ZMQ_HAVE_NORM
-    if (protocol == protocol_name::norm) {
-#endif
-        //  For convenience's sake, bind can be used interchangeable with
-        //  connect for PGM, EPGM, NORM transports.
-        rc = connect (endpoint_uri_);
-        if (rc != -1)
-            options.connected = true;
-        return rc;
-    }
-#endif
-
     //  Remaining transports require to be run in an I/O thread, so at this
     //  point we'll choose one.
     io_thread_t *io_thread = choose_io_thread (options.affinity);
@@ -521,8 +505,8 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
 
 #if defined ZMQ_HAVE_IPC
     if (protocol == protocol_name::ipc) {
-        ipc_listener_t *listener =
-          new (std::nothrow) ipc_listener_t (io_thread, this, options);
+        asio_ipc_listener_t *listener =
+          new (std::nothrow) asio_ipc_listener_t (io_thread, this, options);
         alloc_assert (listener);
         int rc = listener->set_local_address (address.c_str ());
         if (rc != 0) {
@@ -533,50 +517,6 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
 
         // Save last endpoint URI
-        listener->get_local_address (_last_endpoint);
-
-        add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        return 0;
-    }
-#endif
-#if defined ZMQ_HAVE_TIPC
-    if (protocol == protocol_name::tipc) {
-        tipc_listener_t *listener =
-          new (std::nothrow) tipc_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        int rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZMQ_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zmq_errno ());
-            return -1;
-        }
-
-        // Save last endpoint URI
-        listener->get_local_address (_last_endpoint);
-
-        // TODO shouldn't this use _last_endpoint as in the other cases?
-        add_endpoint (make_unconnected_bind_endpoint_pair (endpoint_uri_),
-                      static_cast<own_t *> (listener), NULL);
-        options.connected = true;
-        return 0;
-    }
-#endif
-#if defined ZMQ_HAVE_VMCI
-    if (protocol == protocol_name::vmci) {
-        vmci_listener_t *listener =
-          new (std::nothrow) vmci_listener_t (io_thread, this, options);
-        alloc_assert (listener);
-        int rc = listener->set_local_address (address.c_str ());
-        if (rc != 0) {
-            LIBZMQ_DELETE (listener);
-            event_bind_failed (make_unconnected_bind_endpoint_pair (address),
-                               zmq_errno ());
-            return -1;
-        }
-
         listener->get_local_address (_last_endpoint);
 
         add_endpoint (make_unconnected_bind_endpoint_pair (_last_endpoint),
@@ -587,9 +527,25 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
 #endif
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
-    if (protocol == protocol_name::ws) {
+    if (protocol == protocol_name::ws
+#if defined ZMQ_HAVE_WSS
+        || protocol == protocol_name::wss
+#endif
+    ) {
+        const bool secure =
+#if defined ZMQ_HAVE_WSS
+          protocol == protocol_name::wss;
+#else
+          false;
+#endif
+
         //  Resolve WebSocket address
-        ws_address_t *ws_addr = new (std::nothrow) ws_address_t ();
+        ws_address_t *ws_addr =
+#if defined ZMQ_HAVE_WSS
+          secure ? static_cast<ws_address_t *> (new (std::nothrow) wss_address_t ())
+                 :
+#endif
+                 new (std::nothrow) ws_address_t ();
         alloc_assert (ws_addr);
         rc = ws_addr->resolve (address.c_str (), true, options.ipv6);
         if (rc != 0) {
@@ -603,7 +559,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         asio_ws_listener_t *listener =
           new (std::nothrow) asio_ws_listener_t (io_thread, this, options);
         alloc_assert (listener);
-        rc = listener->set_local_address (ws_addr);
+        rc = listener->set_local_address (ws_addr, secure);
         LIBZMQ_DELETE (ws_addr);
         if (rc != 0) {
             LIBZMQ_DELETE (listener);
@@ -835,74 +791,13 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
 #endif
 
-    // TBD - Should we check address for ZMQ_HAVE_NORM???
-
-#ifdef ZMQ_HAVE_OPENPGM
-    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
-        struct pgm_addrinfo_t *res = NULL;
-        uint16_t port_number = 0;
-        int rc =
-          pgm_socket_t::init_address (address.c_str (), &res, &port_number);
-        if (res != NULL)
-            pgm_freeaddrinfo (res);
-        if (rc != 0 || port_number == 0) {
-            return -1;
-        }
-    }
-#endif
-#if defined ZMQ_HAVE_TIPC
-    else if (protocol == protocol_name::tipc) {
-        paddr->resolved.tipc_addr = new (std::nothrow) tipc_address_t ();
-        alloc_assert (paddr->resolved.tipc_addr);
-        int rc = paddr->resolved.tipc_addr->resolve (address.c_str ());
-        if (rc != 0) {
-            LIBZMQ_DELETE (paddr);
-            return -1;
-        }
-        const sockaddr_tipc *const saddr =
-          reinterpret_cast<const sockaddr_tipc *> (
-            paddr->resolved.tipc_addr->addr ());
-        // Cannot connect to random Port Identity
-        if (saddr->addrtype == TIPC_ADDR_ID
-            && paddr->resolved.tipc_addr->is_random ()) {
-            LIBZMQ_DELETE (paddr);
-            errno = EINVAL;
-            return -1;
-        }
-    }
-#endif
-#if defined ZMQ_HAVE_VMCI
-    else if (protocol == protocol_name::vmci) {
-        paddr->resolved.vmci_addr =
-          new (std::nothrow) vmci_address_t (this->get_ctx ());
-        alloc_assert (paddr->resolved.vmci_addr);
-        int rc = paddr->resolved.vmci_addr->resolve (address.c_str ());
-        if (rc != 0) {
-            LIBZMQ_DELETE (paddr);
-            return -1;
-        }
-    }
-#endif
-
     //  Create session.
     session_base_t *session =
       session_base_t::create (io_thread, true, this, options, paddr);
     errno_assert (session);
 
-    //  PGM does not support subscription forwarding; ask for all data to be
-    //  sent to this pipe. (same for NORM, currently?)
-#if defined ZMQ_HAVE_OPENPGM && defined ZMQ_HAVE_NORM
-    const bool subscribe_to_all =
-      protocol == protocol_name::pgm || protocol == protocol_name::epgm
-      || protocol == protocol_name::norm;
-#elif defined ZMQ_HAVE_OPENPGM
-    const bool subscribe_to_all = protocol == protocol_name::pgm
-                                  || protocol == protocol_name::epgm;
-#elif defined ZMQ_HAVE_NORM
-    const bool subscribe_to_all = protocol == protocol_name::norm;
-#else
+    //  No transports require subscription forwarding special-casing.
     const bool subscribe_to_all = false;
-#endif
     pipe_t *newpipe = NULL;
 
     if (options.immediate != 1 || subscribe_to_all) {

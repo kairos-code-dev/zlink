@@ -25,7 +25,7 @@ OBJS = ctx.o reaper.o dist.o err.o \
 	poller_base.o select.o poll.o epoll.o kqueue.o devpoll.o \
 	curve_client.o curve_server.o \
 	mechanism.o null_mechanism.o plain_client.o plain_server.o \
-	socks.o server.o decoder_allocators.o socks_connecter.o \
+	server.o decoder_allocators.o \
 	socket_poller.o mailbox_safe.o plain_server.o client.o timers.o \
 	zmq.o zmq_utils.o gather.o scatter.o dgram.o
 

@@ -88,8 +88,6 @@ class router_t : public routing_socket_base_t
     // If true, report EAGAIN to the caller instead of silently dropping
     // the message targeting an unknown peer.
     bool _mandatory;
-    bool _raw_socket;
-
     // if true, send an empty message to every connected router peer
     bool _probe_router;
 

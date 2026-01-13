@@ -41,7 +41,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `pgm://`, `epgm://`: Pragmatic General Multicast
   - `norm://`: NACK-Oriented Reliable Multicast
   - `udp://`: Unicast and multicast UDP
-  - SOCKS proxy support
 
 - **Encryption**:
   - CURVE encryption (replaced by TLS)
@@ -80,7 +79,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Draft API**: Completely removed all draft socket types and options
   - Socket types: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
   - WebSocket transport (was draft feature, re-added in v0.2.0 as stable)
-  - Draft socket options: `ZMQ_RECONNECT_STOP`, `ZMQ_SOCKS_USERNAME/PASSWORD`, `ZMQ_ZAP_ENFORCE_DOMAIN`, etc.
+  - Draft socket options: `ZMQ_RECONNECT_STOP`, `ZMQ_ZAP_ENFORCE_DOMAIN`, etc.
 
 ## [0.1.1] - 2024-XX-XX
 

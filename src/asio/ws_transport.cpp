@@ -6,12 +6,24 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
 
 #include "asio_debug.hpp"
+#include "../address.hpp"
 
 //  Debug logging for WebSocket transport
 #define ASIO_DBG_WS(fmt, ...) ASIO_DBG_THIS ("WS", fmt, ##__VA_ARGS__)
 
 namespace zmq
 {
+namespace
+{
+boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
+{
+    sockaddr_storage ss;
+    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    if (sl != 0 && ss.ss_family == AF_INET6)
+        return boost::asio::ip::tcp::v6 ();
+    return boost::asio::ip::tcp::v4 ();
+}
+}
 
 ws_transport_t::ws_transport_t (const std::string &path,
                                 const std::string &host) :
@@ -37,7 +49,7 @@ bool ws_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     boost::system::error_code ec;
 
     //  Assign the file descriptor to the socket
-    socket.assign (boost::asio::ip::tcp::v4 (), fd, ec);
+    socket.assign (protocol_for_fd (fd), fd, ec);
     if (ec) {
         ASIO_GLOBAL_ERROR ("ws_transport assign failed: %s",
                           ec.message ().c_str ());

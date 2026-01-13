@@ -6,6 +6,7 @@
 #include "asio_tls_connecter.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "ssl_transport.hpp"
 #include "ssl_context_helper.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
@@ -39,6 +40,37 @@
 #define TLS_CONNECTER_DBG(fmt, ...)
 #endif
 
+namespace
+{
+std::string extract_tls_hostname (const std::string &address)
+{
+    std::string target = address;
+    const std::string::size_type delim = target.rfind (';');
+    if (delim != std::string::npos)
+        target = target.substr (delim + 1);
+
+    if (target.empty ())
+        return std::string ();
+
+    if (target[0] == '[') {
+        const std::string::size_type end = target.find (']');
+        if (end == std::string::npos)
+            return std::string ();
+        return target.substr (1, end - 1);
+    }
+
+    const std::string::size_type colon = target.rfind (':');
+    if (colon == std::string::npos)
+        return std::string ();
+
+    const std::string host = target.substr (0, colon);
+    if (host.empty () || host == "*")
+        return std::string ();
+
+    return host;
+}
+}
+
 zmq::asio_tls_connecter_t::asio_tls_connecter_t (
   io_thread_t *io_thread_,
   session_base_t *session_,
@@ -55,9 +87,7 @@ zmq::asio_tls_connecter_t::asio_tls_connecter_t (
     _delayed_start (delayed_start_),
     _reconnect_timer_started (false),
     _connect_timer_started (false),
-    _handshake_timer_started (false),
     _tcp_connecting (false),
-    _ssl_handshaking (false),
     _terminating (false),
     _linger (0),
     _current_reconnect_ivl (-1)
@@ -75,7 +105,6 @@ zmq::asio_tls_connecter_t::~asio_tls_connecter_t ()
     TLS_CONNECTER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
     zmq_assert (!_reconnect_timer_started);
     zmq_assert (!_connect_timer_started);
-    zmq_assert (!_handshake_timer_started);
 }
 
 void zmq::asio_tls_connecter_t::process_plug ()
@@ -90,9 +119,8 @@ void zmq::asio_tls_connecter_t::process_plug ()
 
 void zmq::asio_tls_connecter_t::process_term (int linger_)
 {
-    TLS_CONNECTER_DBG ("process_term called, linger=%d, tcp_connecting=%d, "
-                       "ssl_handshaking=%d",
-                       linger_, _tcp_connecting, _ssl_handshaking);
+    TLS_CONNECTER_DBG ("process_term called, linger=%d, tcp_connecting=%d",
+                       linger_, _tcp_connecting);
 
     _terminating = true;
     _linger = linger_;
@@ -107,16 +135,11 @@ void zmq::asio_tls_connecter_t::process_term (int linger_)
         _connect_timer_started = false;
     }
 
-    if (_handshake_timer_started) {
-        cancel_timer (handshake_timer_id);
-        _handshake_timer_started = false;
-    }
-
     //  Close socket/stream - this cancels any pending operations
     close ();
 
     //  Process pending handlers while object is still alive
-    if (_tcp_connecting || _ssl_handshaking) {
+    if (_tcp_connecting) {
         _io_context.poll ();
     }
 
@@ -140,16 +163,6 @@ void zmq::asio_tls_connecter_t::timer_event (int id_)
         }
         close ();
         add_reconnect_timer ();
-    } else if (id_ == handshake_timer_id) {
-        _handshake_timer_started = false;
-        //  SSL handshake timed out
-        if (_ssl_handshaking) {
-            boost::system::error_code ec;
-            _ssl_stream.reset ();  // This cancels the handshake
-            _ssl_handshaking = false;
-        }
-        close ();
-        add_reconnect_timer ();
     } else {
         zmq_assert (false);
     }
@@ -159,8 +172,13 @@ void zmq::asio_tls_connecter_t::start_connecting ()
 {
     TLS_CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
+    //  Determine effective TLS hostname for SNI/verification
+    _tls_hostname = !options.tls_hostname.empty ()
+                      ? options.tls_hostname
+                      : extract_tls_hostname (_addr->address);
+
     //  Create SSL context if not already done
-    if (!_ssl_context && !create_ssl_context ()) {
+    if (!_ssl_context && !create_ssl_context (_tls_hostname)) {
         TLS_CONNECTER_DBG ("start_connecting: failed to create SSL context");
         add_reconnect_timer ();
         return;
@@ -299,86 +317,23 @@ void zmq::asio_tls_connecter_t::on_tcp_connect (
         return;
     }
 
-    TLS_CONNECTER_DBG ("on_tcp_connect: TCP connected, starting SSL handshake");
+    TLS_CONNECTER_DBG ("on_tcp_connect: TCP connected");
 
-    //  Wrap socket in SSL stream
-    try {
-        _ssl_stream = std::unique_ptr<ssl_stream_t> (
-          new ssl_stream_t (std::move (_socket), *_ssl_context));
-    } catch (const std::bad_alloc &) {
-        TLS_CONNECTER_DBG ("on_tcp_connect: failed to allocate SSL stream");
-        close ();
-        add_reconnect_timer ();
-        return;
-    }
+    //  Get the native handle before any further operations
+    fd_t fd = _socket.native_handle ();
+    TLS_CONNECTER_DBG ("on_tcp_connect: connected, fd=%d", fd);
 
-    //  Set SNI hostname if specified
-    if (!options.tls_hostname.empty ()) {
-        TLS_CONNECTER_DBG ("on_tcp_connect: setting SNI hostname to %s",
-                           options.tls_hostname.c_str ());
-        //  Enable SNI
-        SSL_set_tlsext_host_name (_ssl_stream->native_handle (),
-                                  options.tls_hostname.c_str ());
-    }
-
-    //  Start SSL handshake (client side)
-    _ssl_handshaking = true;
-    _ssl_stream->async_handshake (
-      boost::asio::ssl::stream_base::client,
-      [this] (const boost::system::error_code &ec) { on_ssl_handshake (ec); });
-
-    //  Add handshake timeout
-    add_handshake_timer ();
-}
-
-void zmq::asio_tls_connecter_t::on_ssl_handshake (
-  const boost::system::error_code &ec)
-{
-    _ssl_handshaking = false;
-    TLS_CONNECTER_DBG ("on_ssl_handshake: ec=%s, terminating=%d",
-                       ec.message ().c_str (), _terminating);
-
-    if (_terminating) {
-        TLS_CONNECTER_DBG ("on_ssl_handshake: terminating, ignoring callback");
-        return;
-    }
-
-    //  Cancel handshake timer
-    if (_handshake_timer_started) {
-        cancel_timer (handshake_timer_id);
-        _handshake_timer_started = false;
-    }
-
-    if (ec) {
-        if (ec == boost::asio::error::operation_aborted) {
-            TLS_CONNECTER_DBG ("on_ssl_handshake: operation aborted");
-            return;
-        }
-
-        TLS_CONNECTER_DBG ("on_ssl_handshake: SSL handshake failed: %s",
-                           ec.message ().c_str ());
-        close ();
-        add_reconnect_timer ();
-        return;
-    }
-
-    TLS_CONNECTER_DBG ("on_ssl_handshake: SSL handshake successful");
-
-    //  Get the underlying socket's native handle
-    fd_t fd = _ssl_stream->lowest_layer ().native_handle ();
-
-    //  Release socket from ASIO management
-    _ssl_stream->lowest_layer ().release ();
+    //  Release socket from ASIO management (transport takes ownership)
+    _socket.release ();
 
     //  Tune the socket
     if (!tune_socket (fd)) {
-        TLS_CONNECTER_DBG ("on_ssl_handshake: tune_socket failed");
+        TLS_CONNECTER_DBG ("on_tcp_connect: tune_socket failed");
 #ifdef ZMQ_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
 #endif
-        _ssl_stream.reset ();
         add_reconnect_timer ();
         return;
     }
@@ -387,12 +342,8 @@ void zmq::asio_tls_connecter_t::on_ssl_handshake (
     std::string local_address =
       get_socket_name<tcp_address_t> (fd, socket_end_local);
 
-    //  Create the engine (NOTE: Currently creates regular ASIO engine,
-    //  Phase 4-B will create SSL-aware engine)
+    //  Create the engine with SSL transport
     create_engine (fd, local_address);
-
-    //  Clean up SSL stream (engine took ownership of fd)
-    _ssl_stream.reset ();
 }
 
 void zmq::asio_tls_connecter_t::add_connect_timer ()
@@ -414,18 +365,6 @@ void zmq::asio_tls_connecter_t::add_reconnect_timer ()
         _socket_ptr->event_connect_retried (
           make_unconnected_connect_endpoint_pair (_endpoint_str), interval);
         _reconnect_timer_started = true;
-    }
-}
-
-void zmq::asio_tls_connecter_t::add_handshake_timer ()
-{
-    //  Use handshake_ivl option if available, otherwise use connect_timeout
-    int timeout = options.handshake_ivl > 0 ? options.handshake_ivl
-                                             : options.connect_timeout;
-    if (timeout > 0) {
-        TLS_CONNECTER_DBG ("add_handshake_timer: timeout=%d", timeout);
-        add_timer (timeout, handshake_timer_id);
-        _handshake_timer_started = true;
     }
 }
 
@@ -458,24 +397,38 @@ int zmq::asio_tls_connecter_t::get_new_reconnect_ivl ()
     }
 }
 
-bool zmq::asio_tls_connecter_t::create_ssl_context ()
+bool zmq::asio_tls_connecter_t::create_ssl_context (
+  const std::string &hostname_)
 {
     TLS_CONNECTER_DBG ("create_ssl_context: ca=%s, cert=%s, key=%s",
                        options.tls_ca.c_str (), options.tls_cert.c_str (),
                        options.tls_key.c_str ());
 
+    const bool verify_peer = options.tls_verify != 0;
+    const bool trust_system = options.tls_trust_system != 0;
+
     //  Determine if we're doing mutual TLS (client cert auth)
     bool has_client_cert = !options.tls_cert.empty () && !options.tls_key.empty ();
+
+    if (verify_peer && options.tls_ca.empty () && !trust_system) {
+        TLS_CONNECTER_DBG (
+          "create_ssl_context: tls_verify=1 requires tls_ca or tls_trust_system");
+        return false;
+    }
+
+    const ssl_context_helper_t::verification_mode verify_mode =
+      verify_peer ? ssl_context_helper_t::verify_peer
+                  : ssl_context_helper_t::verify_none;
 
     if (has_client_cert) {
         //  Client with certificate for mutual TLS
         _ssl_context = ssl_context_helper_t::create_client_context_with_cert (
-          options.tls_ca, options.tls_cert, options.tls_key, "",
-          ssl_context_helper_t::verify_peer);
+          options.tls_ca, options.tls_cert, options.tls_key,
+          options.tls_password, trust_system, verify_mode);
     } else {
         //  Client without certificate (server auth only)
         _ssl_context = ssl_context_helper_t::create_client_context (
-          options.tls_ca, ssl_context_helper_t::verify_peer);
+          options.tls_ca, trust_system, verify_mode);
     }
 
     if (!_ssl_context) {
@@ -484,12 +437,12 @@ bool zmq::asio_tls_connecter_t::create_ssl_context ()
         return false;
     }
 
-    //  Configure hostname verification if hostname is specified
-    if (!options.tls_hostname.empty ()) {
+    //  Configure hostname verification if enabled and hostname is specified
+    if (verify_peer && !hostname_.empty ()) {
         TLS_CONNECTER_DBG ("create_ssl_context: setting hostname verification: %s",
-                           options.tls_hostname.c_str ());
+                           hostname_.c_str ());
         if (!ssl_context_helper_t::set_hostname_verification (*_ssl_context,
-                                                               options.tls_hostname)) {
+                                                               hostname_)) {
             TLS_CONNECTER_DBG ("create_ssl_context: failed to set hostname verification");
             return false;
         }
@@ -505,14 +458,35 @@ void zmq::asio_tls_connecter_t::create_engine (fd_t fd_,
     TLS_CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
                        local_address_.c_str ());
 
-    const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint_str,
+    std::string local_endpoint = local_address_;
+    if (local_endpoint.compare (0, 6, "tcp://") == 0)
+        local_endpoint.replace (0, 6, "tls://");
+
+    std::string remote_endpoint = _endpoint_str;
+    if (remote_endpoint.compare (0, 6, "tcp://") == 0)
+        remote_endpoint.replace (0, 6, "tls://");
+
+    const endpoint_uri_pair_t endpoint_pair (local_endpoint, remote_endpoint,
                                              endpoint_type_connect);
 
-    //  Phase 4-A: Currently creates regular ASIO ZMTP engine
-    //  Phase 4-B will create SSL-aware engine that uses ssl_transport_t
-    //  TODO: Create asio_zmtp_engine with SSL transport
+    if (!_ssl_context) {
+        TLS_CONNECTER_DBG ("create_engine: SSL context missing");
+        close ();
+        add_reconnect_timer ();
+        return;
+    }
+
+    std::unique_ptr<ssl_transport_t> transport (
+      new (std::nothrow) ssl_transport_t (*_ssl_context));
+    alloc_assert (transport);
+    if (!_tls_hostname.empty ())
+        transport->set_hostname (_tls_hostname);
+
     i_engine *engine =
-      new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+      new (std::nothrow) asio_zmtp_engine_t (
+        fd_, options, endpoint_pair, std::unique_ptr<i_asio_transport> (
+                                     transport.release ()),
+        std::move (_ssl_context));
     alloc_assert (engine);
 
     //  Attach the engine to the session
@@ -538,13 +512,6 @@ bool zmq::asio_tls_connecter_t::tune_socket (fd_t fd_)
 void zmq::asio_tls_connecter_t::close ()
 {
     TLS_CONNECTER_DBG ("close called");
-
-    //  Close SSL stream if it exists
-    if (_ssl_stream) {
-        boost::system::error_code ec;
-        _ssl_stream->lowest_layer ().close (ec);
-        _ssl_stream.reset ();
-    }
 
     //  Close plain socket if open
     if (_socket.is_open ()) {

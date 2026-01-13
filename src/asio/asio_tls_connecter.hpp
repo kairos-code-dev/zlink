@@ -52,8 +52,7 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     enum
     {
         reconnect_timer_id = 1,
-        connect_timer_id = 2,
-        handshake_timer_id = 3
+        connect_timer_id = 2
     };
 
     //  Handlers for incoming commands.
@@ -69,19 +68,15 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     //  Handle TCP connect completion
     void on_tcp_connect (const boost::system::error_code &ec);
 
-    //  Handle SSL handshake completion
-    void on_ssl_handshake (const boost::system::error_code &ec);
-
     //  Internal function to add timers
     void add_connect_timer ();
     void add_reconnect_timer ();
-    void add_handshake_timer ();
 
     //  Internal function to return a reconnect backoff delay.
     int get_new_reconnect_ivl ();
 
     //  Create SSL context from options
-    bool create_ssl_context ();
+    bool create_ssl_context (const std::string &hostname_);
 
     //  Create engine for connected+handshaked socket
     void create_engine (fd_t fd_, const std::string &local_address_);
@@ -101,9 +96,8 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     //  SSL context (created from options)
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;
 
-    //  SSL stream (wraps socket after TCP connect)
-    typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream_t;
-    std::unique_ptr<ssl_stream_t> _ssl_stream;
+    //  Effective TLS hostname for SNI/verification
+    std::string _tls_hostname;
 
     //  Target endpoint for connection
     boost::asio::ip::tcp::endpoint _endpoint;
@@ -126,11 +120,9 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     //  Timer states
     bool _reconnect_timer_started;
     bool _connect_timer_started;
-    bool _handshake_timer_started;
 
     //  Connection states
     bool _tcp_connecting;       // TCP connect in progress
-    bool _ssl_handshaking;      // SSL handshake in progress
     bool _terminating;          // process_term called
 
     //  Linger value saved from process_term for deferred termination

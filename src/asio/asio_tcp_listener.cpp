@@ -9,7 +9,6 @@
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
-#include "../zmtp_engine.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
 #include "../ip.hpp"

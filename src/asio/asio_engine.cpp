@@ -5,6 +5,8 @@
 
 #include "asio_engine.hpp"
 #include "asio_poller.hpp"
+#include "i_asio_transport.hpp"
+#include "tcp_transport.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
@@ -80,9 +82,11 @@ static std::string get_peer_address (zmq::fd_t s_)
     return peer_address;
 }
 
-zmq::asio_engine_t::asio_engine_t (fd_t fd_,
-                                   const options_t &options_,
-                                   const endpoint_uri_pair_t &endpoint_uri_pair_) :
+zmq::asio_engine_t::asio_engine_t (
+  fd_t fd_,
+  const options_t &options_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  std::unique_ptr<i_asio_transport> transport_) :
     _options (options_),
     _inpos (NULL),
     _insize (0),
@@ -105,6 +109,7 @@ zmq::asio_engine_t::asio_engine_t (fd_t fd_,
     _peer_address (get_peer_address (fd_)),
     _has_handshake_stage (true),
     _io_context (NULL),
+    _transport (std::move (transport_)),
     _current_timer_id (-1),
     _read_buffer (read_buffer_size),
     _fd (fd_),
@@ -123,6 +128,12 @@ zmq::asio_engine_t::asio_engine_t (fd_t fd_,
     const int rc = _tx_msg.init ();
     errno_assert (rc == 0);
 
+    if (!_transport) {
+        _transport = std::unique_ptr<i_asio_transport> (
+          new (std::nothrow) tcp_transport_t ());
+        alloc_assert (_transport);
+    }
+
     //  Put the socket into non-blocking mode.
     unblock_socket (_fd);
 }
@@ -133,7 +144,9 @@ zmq::asio_engine_t::~asio_engine_t ()
 
     zmq_assert (!_plugged);
 
-    if (_fd != retired_fd) {
+    if (_transport) {
+        _transport->close ();
+    } else if (_fd != retired_fd) {
 #ifdef ZMQ_HAVE_WINDOWS
         const int rc = closesocket (_fd);
         wsa_assert (rc != SOCKET_ERROR);
@@ -188,24 +201,63 @@ void zmq::asio_engine_t::plug (io_thread_t *io_thread_,
       static_cast<asio_poller_t *> (io_thread_->get_poller ());
     _io_context = &poller->get_io_context ();
 
-    //  Allocate ASIO objects with the correct io_context
-#if defined ZMQ_HAVE_WINDOWS
-    //  Windows: create socket and assign
-    _socket_handle = std::unique_ptr<boost::asio::ip::tcp::socket> (
-      new boost::asio::ip::tcp::socket (*_io_context));
-    _socket_handle->assign (boost::asio::ip::tcp::v4 (), _fd);
-#else
-    //  POSIX: create stream_descriptor with fd
-    _stream_descriptor =
-      std::unique_ptr<boost::asio::posix::stream_descriptor> (
-        new boost::asio::posix::stream_descriptor (*_io_context, _fd));
-#endif
-
     //  Allocate timer with correct io_context
     _timer = std::unique_ptr<boost::asio::steady_timer> (
       new boost::asio::steady_timer (*_io_context));
 
     _io_error = false;
+
+    if (!_transport || !_transport->open (*_io_context, _fd)) {
+        error (connection_error);
+        return;
+    }
+
+    if (_transport->requires_handshake ()) {
+        start_transport_handshake ();
+        return;
+    }
+
+    plug_internal ();
+}
+
+void zmq::asio_engine_t::start_transport_handshake ()
+{
+    ENGINE_DBG ("start_transport_handshake");
+
+    if (_options.handshake_ivl > 0)
+        set_handshake_timer ();
+
+    const int handshake_type =
+      _endpoint_uri_pair.local_type == endpoint_type_connect ? 0 : 1;
+
+    _transport->async_handshake (
+      handshake_type,
+      [this] (const boost::system::error_code &ec, std::size_t) {
+          on_transport_handshake (ec);
+      });
+}
+
+void zmq::asio_engine_t::on_transport_handshake (
+  const boost::system::error_code &ec)
+{
+    ENGINE_DBG ("on_transport_handshake: ec=%s, terminating=%d",
+                ec.message ().c_str (), _terminating);
+
+    if (_terminating)
+        return;
+
+    if (!_plugged)
+        return;
+
+    if (_has_handshake_timer) {
+        cancel_timer (handshake_timer_id);
+        _has_handshake_timer = false;
+    }
+
+    if (ec) {
+        error (connection_error);
+        return;
+    }
 
     plug_internal ();
 }
@@ -238,19 +290,9 @@ void zmq::asio_engine_t::unplug ()
         _has_heartbeat_timer = false;
     }
 
-    //  Cancel pending async operations
-    boost::system::error_code ec;
-#if defined ZMQ_HAVE_WINDOWS
-    if (_socket_handle) {
-        _socket_handle->cancel (ec);
-        _socket_handle->release ();
-    }
-#else
-    if (_stream_descriptor) {
-        _stream_descriptor->cancel (ec);
-        _stream_descriptor->release ();
-    }
-#endif
+    //  Cancel pending async operations by closing the transport
+    if (_transport)
+        _transport->close ();
     if (_timer)
         _timer->cancel ();
 
@@ -312,19 +354,13 @@ void zmq::asio_engine_t::start_async_read ()
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
 
-#if defined ZMQ_HAVE_WINDOWS
-    _socket_handle->async_read_some (
-      boost::asio::buffer (_read_buffer_ptr, read_size),
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_read_complete (ec, bytes);
-      });
-#else
-    _stream_descriptor->async_read_some (
-      boost::asio::buffer (_read_buffer_ptr, read_size),
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_read_complete (ec, bytes);
-      });
-#endif
+    if (_transport) {
+        _transport->async_read_some (
+          _read_buffer_ptr, read_size,
+          [this] (const boost::system::error_code &ec, std::size_t bytes) {
+              on_read_complete (ec, bytes);
+          });
+    }
 }
 
 void zmq::asio_engine_t::start_async_write ()
@@ -344,19 +380,13 @@ void zmq::asio_engine_t::start_async_write ()
 
     _write_pending = true;
 
-#if defined ZMQ_HAVE_WINDOWS
-    boost::asio::async_write (
-      *_socket_handle, boost::asio::buffer (_write_buffer),
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_write_complete (ec, bytes);
-      });
-#else
-    boost::asio::async_write (
-      *_stream_descriptor, boost::asio::buffer (_write_buffer),
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_write_complete (ec, bytes);
-      });
-#endif
+    if (_transport) {
+        _transport->async_write_some (
+          _write_buffer.data (), _write_buffer.size (),
+          [this] (const boost::system::error_code &ec, std::size_t bytes) {
+              on_write_complete (ec, bytes);
+          });
+    }
 }
 
 void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,

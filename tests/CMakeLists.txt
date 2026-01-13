@@ -1,5 +1,5 @@
 # CMake build script for ZeroMQ tests
-cmake_minimum_required(VERSION "2.8.1")
+cmake_minimum_required(VERSION 3.10)
 
 # On Windows: solution file will be called tests.sln
 project(tests)
@@ -77,21 +77,7 @@ if(NOT WIN32)
 
   if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     list(APPEND tests test_abstract_ipc)
-
-    if(ZMQ_HAVE_TIPC)
-      list(
-        APPEND
-        tests
-        test_pair_tipc
-        test_router_mandatory_tipc
-        test_sub_forward_tipc
-        test_shutdown_stress_tipc)
-    endif()
   endif()
-endif()
-
-if(WITH_VMCI)
-  list(APPEND tests test_pair_vmci)
 endif()
 
 # Asio poller test (runs with or without Asio enabled - skips tests if not enabled)

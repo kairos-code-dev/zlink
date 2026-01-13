@@ -7,11 +7,13 @@
 #include "err.hpp"
 #include "pipe.hpp"
 #include "likely.hpp"
-#include "ipc_connecter.hpp"
 #include "address.hpp"
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 #include "asio/asio_tcp_connecter.hpp"
+#if defined ZMQ_HAVE_IPC
+#include "asio/asio_ipc_connecter.hpp"
+#endif
 #if defined ZMQ_HAVE_ASIO_SSL
 #include "asio/asio_tls_connecter.hpp"
 #endif
@@ -66,10 +68,6 @@ zmq::session_base_t::session_base_t (class io_thread_t *io_thread_,
     _io_thread (io_thread_),
     _has_linger_timer (false),
     _addr (addr_)
-#ifdef ZMQ_HAVE_WSS
-    ,
-    _wss_hostname (options_.wss_hostname)
-#endif
 {
 }
 
@@ -499,15 +497,7 @@ void zmq::session_base_t::reconnect ()
 {
     //  For delayed connect situations, terminate the pipe
     //  and reestablish later on
-    if (_pipe && options.immediate == 1
-#ifdef ZMQ_HAVE_OPENPGM
-        && _addr->protocol != protocol_name::pgm
-        && _addr->protocol != protocol_name::epgm
-#endif
-#ifdef ZMQ_HAVE_NORM
-        && _addr->protocol != protocol_name::norm
-#endif
-        ) {
+    if (_pipe && options.immediate == 1) {
         _pipe->hiccup ();
         _pipe->terminate (false);
         _terminating_pipes.insert (_pipe);
@@ -568,12 +558,16 @@ void zmq::session_base_t::start_connecting (bool wait_)
 #if defined ZMQ_HAVE_IPC
     else if (_addr->protocol == protocol_name::ipc) {
         connecter = new (std::nothrow)
-          ipc_connecter_t (io_thread, this, options, _addr, wait_);
+          asio_ipc_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
-    //  WebSocket transport (ws://)
-    else if (_addr->protocol == protocol_name::ws) {
+    //  WebSocket transport (ws://, wss://)
+    else if (_addr->protocol == protocol_name::ws
+#if defined ZMQ_HAVE_WSS
+             || _addr->protocol == protocol_name::wss
+#endif
+    ) {
         connecter = new (std::nothrow)
           asio_ws_connecter_t (io_thread, this, options, _addr, wait_);
     }

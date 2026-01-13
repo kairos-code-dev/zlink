@@ -7,9 +7,6 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include <boost/asio.hpp>
-#if !defined ZMQ_HAVE_WINDOWS
-#include <boost/asio/posix/stream_descriptor.hpp>
-#endif
 
 #include <memory>
 #include <vector>
@@ -22,12 +19,14 @@
 #include "../i_decoder.hpp"
 #include "../msg.hpp"
 #include "../metadata.hpp"
+#include "i_asio_transport.hpp"
 
 namespace zmq
 {
 class io_thread_t;
 class session_base_t;
 class mechanism_t;
+class i_asio_transport;
 
 //  Phase 1-C: True Proactor Mode ASIO Engine
 //
@@ -43,7 +42,9 @@ class asio_engine_t : public i_engine
   public:
     asio_engine_t (fd_t fd_,
                    const options_t &options_,
-                   const endpoint_uri_pair_t &endpoint_uri_pair_);
+                   const endpoint_uri_pair_t &endpoint_uri_pair_,
+                   std::unique_ptr<i_asio_transport> transport_ =
+                     std::unique_ptr<i_asio_transport> ());
     ~asio_engine_t () ZMQ_OVERRIDE;
 
     //  i_engine interface implementation.
@@ -185,6 +186,12 @@ class asio_engine_t : public i_engine
     //  Cancel a timer
     void cancel_timer (int id_);
 
+    //  Start transport handshake if required
+    void start_transport_handshake ();
+
+    //  Transport handshake completion handler
+    void on_transport_handshake (const boost::system::error_code &ec);
+
   private:
     //  Process incoming data after async read completes
     bool process_input ();
@@ -202,13 +209,8 @@ class asio_engine_t : public i_engine
     //  Pointer to io_context (set during plug())
     boost::asio::io_context *_io_context;
 
-#if defined ZMQ_HAVE_WINDOWS
-    //  Windows: Use socket handle (allocated during plug())
-    std::unique_ptr<boost::asio::ip::tcp::socket> _socket_handle;
-#else
-    //  POSIX: Use stream_descriptor for FD (allocated during plug())
-    std::unique_ptr<boost::asio::posix::stream_descriptor> _stream_descriptor;
-#endif
+    //  Transport abstraction (TCP/SSL/etc)
+    std::unique_ptr<i_asio_transport> _transport;
 
     //  Timers for handshake and heartbeat (allocated during plug())
     std::unique_ptr<boost::asio::steady_timer> _timer;

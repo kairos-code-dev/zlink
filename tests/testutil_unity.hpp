@@ -248,9 +248,6 @@ void bind_loopback_ipv6 (void *socket_, char *my_endpoint_, size_t len_);
 // If you need to do this, use make_random_ipc_endpoint instead.
 void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_);
 
-// Binds to an ipc endpoint using the tipc wildcard address.
-void bind_loopback_tipc (void *socket_, char *my_endpoint_, size_t len_);
-
 #if defined(ZMQ_HAVE_IPC)
 // utility function to create a random IPC endpoint, similar to what a ipc://*
 // wildcard binding does, but in a way it can be reused for multiple binds

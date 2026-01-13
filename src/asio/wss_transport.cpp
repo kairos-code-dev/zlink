@@ -7,12 +7,26 @@
   && defined ZMQ_HAVE_ASIO_SSL
 
 #include "asio_debug.hpp"
+#include "../address.hpp"
+
+#include <openssl/ssl.h>
 
 //  Debug logging for WSS transport
 #define ASIO_DBG_WSS(fmt, ...) ASIO_DBG_THIS ("WSS", fmt, ##__VA_ARGS__)
 
 namespace zmq
 {
+namespace
+{
+boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
+{
+    sockaddr_storage ss;
+    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    if (sl != 0 && ss.ss_family == AF_INET6)
+        return boost::asio::ip::tcp::v6 ();
+    return boost::asio::ip::tcp::v4 ();
+}
+}
 
 wss_transport_t::wss_transport_t (boost::asio::ssl::context &ssl_ctx,
                                   const std::string &path,
@@ -42,7 +56,7 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     boost::system::error_code ec;
 
     //  Assign the file descriptor to the socket
-    socket.assign (boost::asio::ip::tcp::v4 (), fd, ec);
+    socket.assign (protocol_for_fd (fd), fd, ec);
     if (ec) {
         ASIO_GLOBAL_ERROR ("wss_transport assign failed: %s",
                           ec.message ().c_str ());
@@ -93,19 +107,9 @@ void wss_transport_t::close ()
     if (_wss_stream) {
         boost::system::error_code ec;
 
-        //  Try graceful WebSocket close if handshake was complete
-        if (_ws_handshake_complete) {
-            _wss_stream->close (boost::beast::websocket::close_code::normal, ec);
-            //  Ignore close errors - connection may already be closed
-        }
-
-        //  Try graceful SSL shutdown
-        if (_ssl_handshake_complete) {
-            _wss_stream->next_layer ().shutdown (ec);
-            //  Ignore shutdown errors
-        }
-
-        //  Close the underlying socket
+        //  Avoid blocking WebSocket/SSL shutdown; just close the TCP layer.
+        _wss_stream->next_layer ().next_layer ().shutdown (
+          boost::asio::ip::tcp::socket::shutdown_both, ec);
         _wss_stream->next_layer ().next_layer ().close (ec);
 
         _wss_stream.reset ();
@@ -239,6 +243,16 @@ void wss_transport_t::async_handshake (int handshake_type,
     auto ssl_hs_type = (handshake_type == client)
                          ? boost::asio::ssl::stream_base::client
                          : boost::asio::ssl::stream_base::server;
+
+    if (handshake_type == client && !_tls_hostname.empty ()) {
+        if (!SSL_set_tlsext_host_name (_wss_stream->next_layer ().native_handle (),
+                                       _tls_hostname.c_str ())) {
+            if (handler) {
+                handler (boost::asio::error::invalid_argument, 0);
+            }
+            return;
+        }
+    }
 
     _wss_stream->next_layer ().async_handshake (
       ssl_hs_type, [this, handler] (const boost::system::error_code &ec) {

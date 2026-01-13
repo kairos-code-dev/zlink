@@ -25,6 +25,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
+#include <stdio.h>
 #include <string.h>
 #include <atomic>
 #include <thread>
@@ -35,6 +36,7 @@ using tcp = net::ip::tcp;
 
 //  Include test certificates (embedded PEM strings)
 #include "certs/test_certs.hpp"
+
 
 void setUp ()
 {
@@ -286,6 +288,56 @@ void test_ssl_handshake ()
     //  Let the streams destruct naturally
 }
 
+//  Test 6: ZMQ tls:// end-to-end
+void test_zmq_tls_pair ()
+{
+#if defined ZMQ_HAVE_TLS
+    setup_test_context ();
+    const tls_test_files_t files = make_tls_test_files ();
+
+    void *server = test_context_socket (ZMQ_PAIR);
+    void *client = test_context_socket (ZMQ_PAIR);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (server, ZMQ_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (client, ZMQ_LINGER, &zero, sizeof (zero)));
+
+    const int trust_system = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      client, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      server, ZMQ_TLS_CERT, files.server_cert.c_str (),
+      files.server_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (server, ZMQ_TLS_KEY, files.server_key.c_str (),
+                      files.server_key.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
+      client, ZMQ_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+
+    const char hostname[] = "localhost";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (client, ZMQ_TLS_HOSTNAME, hostname, strlen (hostname)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    test_bind (server, "tls://127.0.0.1:*", endpoint, sizeof (endpoint));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+
+    send_string_expect_success (client, "hello", 0);
+    recv_string_expect_success (server, "hello", 0);
+
+    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (server);
+    cleanup_tls_test_files (files);
+    teardown_test_context ();
+#else
+    TEST_IGNORE_MESSAGE ("TLS not available");
+#endif
+}
+
 //  Test 6: Multiple SSL contexts can coexist
 void test_multiple_ssl_contexts ()
 {
@@ -491,6 +543,7 @@ int main ()
     RUN_TEST (test_multiple_ssl_contexts);
     RUN_TEST (test_ssl_context_reuse);
     RUN_TEST (test_ssl_data_exchange);
+    RUN_TEST (test_zmq_tls_pair);
 #else
     RUN_TEST (test_asio_ssl_not_enabled);
 #endif

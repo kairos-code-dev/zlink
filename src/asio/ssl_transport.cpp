@@ -7,9 +7,23 @@
 
 #include "asio_debug.hpp"
 #include "asio_error_handler.hpp"
+#include "../address.hpp"
+
+#include <openssl/ssl.h>
 
 namespace zmq
 {
+namespace
+{
+boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
+{
+    sockaddr_storage ss;
+    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    if (sl != 0 && ss.ss_family == AF_INET6)
+        return boost::asio::ip::tcp::v6 ();
+    return boost::asio::ip::tcp::v4 ();
+}
+}
 
 ssl_transport_t::ssl_transport_t (boost::asio::ssl::context &ssl_ctx) :
     _ssl_ctx (ssl_ctx),
@@ -32,7 +46,7 @@ bool ssl_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     boost::system::error_code ec;
 
     //  Assign the file descriptor to the socket
-    socket.assign (boost::asio::ip::tcp::v4 (), fd, ec);
+    socket.assign (protocol_for_fd (fd), fd, ec);
     if (ec) {
         ASIO_GLOBAL_ERROR ("ssl_transport assign failed: %s",
                           ec.message ().c_str ());
@@ -62,13 +76,9 @@ void ssl_transport_t::close ()
     if (_ssl_stream) {
         boost::system::error_code ec;
 
-        //  Try graceful SSL shutdown
-        if (_handshake_complete) {
-            _ssl_stream->shutdown (ec);
-            //  Ignore shutdown errors - connection may already be closed
-        }
-
-        //  Close the underlying socket
+        //  Avoid blocking SSL shutdown on close; just close the TCP layer.
+        _ssl_stream->lowest_layer ().shutdown (
+          boost::asio::ip::tcp::socket::shutdown_both, ec);
         _ssl_stream->lowest_layer ().close (ec);
 
         _ssl_stream.reset ();
@@ -102,8 +112,9 @@ void ssl_transport_t::async_write_some (const unsigned char *buffer,
         return;
     }
 
-    _ssl_stream->async_write_some (boost::asio::buffer (buffer, buffer_size),
-                                   handler);
+    boost::asio::async_write (*_ssl_stream,
+                              boost::asio::buffer (buffer, buffer_size),
+                              handler);
 }
 
 void ssl_transport_t::async_handshake (int handshake_type,
@@ -120,6 +131,16 @@ void ssl_transport_t::async_handshake (int handshake_type,
       (handshake_type == 0)
         ? boost::asio::ssl::stream_base::client
         : boost::asio::ssl::stream_base::server;
+
+    if (handshake_type == client && !_hostname.empty ()) {
+        if (!SSL_set_tlsext_host_name (_ssl_stream->native_handle (),
+                                       _hostname.c_str ())) {
+            if (handler) {
+                handler (boost::asio::error::invalid_argument, 0);
+            }
+            return;
+        }
+    }
 
     _ssl_stream->async_handshake (
       hs_type,

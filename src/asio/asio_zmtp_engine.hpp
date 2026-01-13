@@ -8,8 +8,22 @@
 
 #include "asio_engine.hpp"
 
+#if defined ZMQ_HAVE_ASIO_SSL
+namespace boost
+{
+namespace asio
+{
+namespace ssl
+{
+class context;
+}
+}
+}
+#endif
+
 namespace zmq
 {
+
 //  Protocol revisions
 enum
 {
@@ -33,6 +47,13 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
     asio_zmtp_engine_t (fd_t fd_,
                         const options_t &options_,
                         const endpoint_uri_pair_t &endpoint_uri_pair_);
+#if defined ZMQ_HAVE_ASIO_SSL
+    asio_zmtp_engine_t (fd_t fd_,
+                        const options_t &options_,
+                        const endpoint_uri_pair_t &endpoint_uri_pair_,
+                        std::unique_ptr<i_asio_transport> transport_,
+                        std::unique_ptr<boost::asio::ssl::context> ssl_context_);
+#endif
     ~asio_zmtp_engine_t ();
 
   protected:
@@ -95,6 +116,10 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
     bool _subscription_required;
 
     int _heartbeat_timeout;
+
+#if defined ZMQ_HAVE_ASIO_SSL
+    std::unique_ptr<boost::asio::ssl::context> _ssl_context;
+#endif
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_zmtp_engine_t)
 };

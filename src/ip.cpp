@@ -45,14 +45,6 @@
 #include <sys/eventfd.h>
 #endif
 
-#if defined ZMQ_HAVE_OPENPGM
-#ifdef ZMQ_HAVE_WINDOWS
-#define __PGM_WININT_H__
-#endif
-
-#include <pgm/pgm.h>
-#endif
-
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -258,30 +250,6 @@ int zmq::bind_to_device (fd_t s_, const std::string &bound_device_)
 
 bool zmq::initialize_network ()
 {
-#if defined ZMQ_HAVE_OPENPGM
-
-    //  Init PGM transport. Ensure threading and timer are enabled. Find PGM
-    //  protocol ID. Note that if you want to use gettimeofday and sleep for
-    //  openPGM timing, set environment variables PGM_TIMER to "GTOD" and
-    //  PGM_SLEEP to "USLEEP".
-    pgm_error_t *pgm_error = NULL;
-    const bool ok = pgm_init (&pgm_error);
-    if (ok != TRUE) {
-        //  Invalid parameters don't set pgm_error_t
-        zmq_assert (pgm_error != NULL);
-        if (pgm_error->domain == PGM_ERROR_DOMAIN_TIME
-            && (pgm_error->code == PGM_ERROR_FAILED)) {
-            //  Failed to access RTC or HPET device.
-            pgm_error_free (pgm_error);
-            errno = EINVAL;
-            return false;
-        }
-
-        //  PGM_ERROR_DOMAIN_ENGINE: WSAStartup errors or missing WSARecvMsg.
-        zmq_assert (false);
-    }
-#endif
-
 #ifdef ZMQ_HAVE_WINDOWS
     //  Initialise Windows sockets. Note that WSAStartup can be called multiple
     //  times given that WSACleanup will be called for each WSAStartup.
@@ -303,12 +271,6 @@ void zmq::shutdown_network ()
     //  On Windows, uninitialise socket layer.
     const int rc = WSACleanup ();
     wsa_assert (rc != SOCKET_ERROR);
-#endif
-
-#if defined ZMQ_HAVE_OPENPGM
-    //  Shut down the OpenPGM library.
-    if (pgm_shutdown () != TRUE)
-        zmq_assert (false);
 #endif
 }
 

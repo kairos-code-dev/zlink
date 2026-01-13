@@ -1,15 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "certs/test_certs.hpp"
 
+#include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
 
 #if defined _WIN32
 #include "../src/windows.hpp"
+#include <direct.h>
 #if defined _MSC_VER
 #if defined ZMQ_HAVE_IPC
-#include <direct.h>
 #include <afunix.h>
 #endif
 #include <crtdbg.h>
@@ -280,28 +283,6 @@ int is_ipv6_available ()
 #endif // _WIN32_WINNT < 0x0600
 }
 
-int is_tipc_available ()
-{
-#ifndef ZMQ_HAVE_TIPC
-    return 0;
-#else
-    int tipc = 0;
-
-    void *ctx = zmq_ctx_new ();
-    if (ctx)
-        zmq_ctx_set (ctx, ZMQ_IO_THREADS, 1);
-    TEST_ASSERT_NOT_NULL (ctx);
-    void *router = zmq_socket (ctx, ZMQ_ROUTER);
-    TEST_ASSERT_NOT_NULL (router);
-    tipc = zmq_bind (router, "tipc://{5560,0,0}");
-
-    zmq_close (router);
-    zmq_ctx_term (ctx);
-
-    return tipc == 0;
-#endif // ZMQ_HAVE_TIPC
-}
-
 int test_inet_pton (int af_, const char *src_, void *dst_)
 {
 #if defined(ZMQ_HAVE_WINDOWS) && (_WIN32_WINNT < 0x0600)
@@ -358,9 +339,7 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
     //  OSX is very opinionated and wants the size to match the AF family type
     socklen_t addr_len;
     const fd_t s_pre = socket (af_, SOCK_STREAM,
-                               protocol_ == IPPROTO_UDP   ? IPPROTO_UDP
-                               : protocol_ == IPPROTO_TCP ? IPPROTO_TCP
-                                                          : 0);
+                               protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
 #ifdef ZMQ_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
@@ -383,8 +362,8 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
         memset (&hint, 0, sizeof (struct addrinfo));
         hint.ai_flags = AI_NUMERICSERV;
         hint.ai_family = af_;
-        hint.ai_socktype = protocol_ == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
-        hint.ai_protocol = protocol_ == IPPROTO_UDP ? IPPROTO_UDP : IPPROTO_TCP;
+        hint.ai_socktype = SOCK_STREAM;
+        hint.ai_protocol = IPPROTO_TCP;
 
         TEST_ASSERT_SUCCESS_RAW_ZERO_ERRNO (
           getaddrinfo (address, port, &hint, &in));
@@ -419,9 +398,7 @@ fd_t bind_socket_resolve_port (const char *address_,
     //  OSX is very opinionated and wants the size to match the AF family type
     socklen_t addr_len;
     const fd_t s_pre = socket (af_, SOCK_STREAM,
-                               protocol_ == IPPROTO_UDP   ? IPPROTO_UDP
-                               : protocol_ == IPPROTO_TCP ? IPPROTO_TCP
-                                                          : 0);
+                               protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
 #ifdef ZMQ_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
@@ -440,8 +417,8 @@ fd_t bind_socket_resolve_port (const char *address_,
         memset (&hint, 0, sizeof (struct addrinfo));
         hint.ai_flags = AI_NUMERICSERV;
         hint.ai_family = af_;
-        hint.ai_socktype = protocol_ == IPPROTO_UDP ? SOCK_DGRAM : SOCK_STREAM;
-        hint.ai_protocol = protocol_ == IPPROTO_UDP ? IPPROTO_UDP : IPPROTO_TCP;
+        hint.ai_socktype = SOCK_STREAM;
+        hint.ai_protocol = IPPROTO_TCP;
 
         TEST_ASSERT_SUCCESS_RAW_ERRNO (
           setsockopt (s_pre, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int)));
@@ -496,7 +473,6 @@ fd_t bind_socket_resolve_port (const char *address_,
         snprintf (
           my_endpoint_, 6 + strlen (address_) + 7 * sizeof (char), "%s://%s:%u",
           protocol_ == IPPROTO_TCP   ? "tcp"
-          : protocol_ == IPPROTO_UDP ? "udp"
           : protocol_ == IPPROTO_WSS ? "wss"
                                      : "ws",
           address_,
@@ -515,6 +491,58 @@ bool streq (const char *lhs_, const char *rhs_)
 bool strneq (const char *lhs_, const char *rhs_)
 {
     return strcmp (lhs_, rhs_) != 0;
+}
+
+static bool write_pem_file (const std::string &path_, const char *pem_)
+{
+    FILE *fp = fopen (path_.c_str (), "wb");
+    if (!fp)
+        return false;
+    const size_t len = strlen (pem_);
+    const size_t written = fwrite (pem_, 1, len, fp);
+    fclose (fp);
+    return written == len;
+}
+
+tls_test_files_t make_tls_test_files ()
+{
+    tls_test_files_t files;
+#ifdef ZMQ_HAVE_WINDOWS
+    char tmp_dir[MAX_PATH] = "";
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
+    TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
+    files.dir.assign (tmp_dir);
+#else
+    char tmp_dir[] = "zmq_tls_XXXXXX";
+    char *dir = mkdtemp (tmp_dir);
+    TEST_ASSERT_NOT_NULL (dir);
+    files.dir.assign (dir);
+#endif
+
+    files.ca_cert = files.dir + "/ca.crt";
+    files.server_cert = files.dir + "/server.crt";
+    files.server_key = files.dir + "/server.key";
+
+    TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
+                                      zmq::test_certs::ca_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
+                                      zmq::test_certs::server_cert_pem));
+    TEST_ASSERT_TRUE (write_pem_file (files.server_key,
+                                      zmq::test_certs::server_key_pem));
+
+    return files;
+}
+
+void cleanup_tls_test_files (const tls_test_files_t &files_)
+{
+    remove (files_.ca_cert.c_str ());
+    remove (files_.server_cert.c_str ());
+    remove (files_.server_key.c_str ());
+#ifdef ZMQ_HAVE_WINDOWS
+    _rmdir (files_.dir.c_str ());
+#else
+    rmdir (files_.dir.c_str ());
+#endif
 }
 
 #if defined _WIN32

@@ -56,12 +56,14 @@ class ssl_context_helper_t
     //  Returns nullptr on failure.
     static std::unique_ptr<boost::asio::ssl::context>
     create_client_context (const std::string &ca_cert_file = std::string (),
+                           bool trust_system = true,
                            verification_mode mode = verify_peer);
 
     //  Create a client SSL context with PEM CA certificate string.
     //  Returns nullptr on failure.
     static std::unique_ptr<boost::asio::ssl::context>
     create_client_context_from_pem (const std::string &ca_cert_pem,
+                                    bool trust_system = true,
                                     verification_mode mode = verify_peer);
 
     //  Create a client SSL context with client certificate for mutual TLS.
@@ -71,6 +73,7 @@ class ssl_context_helper_t
                                      const std::string &client_cert_file,
                                      const std::string &client_key_file,
                                      const std::string &password = std::string (),
+                                     bool trust_system = true,
                                      verification_mode mode = verify_peer);
 
     //  Create a client SSL context with client certificate from PEM strings.
@@ -81,6 +84,7 @@ class ssl_context_helper_t
       const std::string &client_cert_pem,
       const std::string &client_key_pem,
       const std::string &password = std::string (),
+      bool trust_system = true,
       verification_mode mode = verify_peer);
 
     //  Configure verification on an existing context

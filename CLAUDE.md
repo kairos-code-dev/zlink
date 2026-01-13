@@ -48,11 +48,10 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 - PGM/EPGM: Pragmatic General Multicast
 - NORM: NACK-Oriented Reliable Multicast
 - UDP: Unicast and multicast UDP
-- SOCKS: Proxy support
 
 **Other:**
 - CURVE encryption (use TLS instead)
-- Draft socket options: ZMQ_RECONNECT_STOP, ZMQ_SOCKS_USERNAME/PASSWORD, ZMQ_ZAP_ENFORCE_DOMAIN, etc.
+- Draft socket options: ZMQ_RECONNECT_STOP, ZMQ_ZAP_ENFORCE_DOMAIN, etc.
 - ZMQ_EVENT_PIPES_STATS and zmq_socket_monitor_pipes_stats()
 
 ### Target Platforms

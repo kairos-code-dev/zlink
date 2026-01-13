@@ -65,7 +65,7 @@ def generate_markdown(data):
 |---------|-------------------|--------------|-----------------|--------------|
 """
 
-    patterns_64 = ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'ROUTER_ROUTER', 'STREAM']
+    patterns_64 = ['PAIR', 'PUBSUB', 'DEALER_DEALER', 'DEALER_ROUTER', 'ROUTER_ROUTER']
 
     for pattern in patterns_64:
         thr_key = (pattern, 64, 'throughput')
@@ -86,7 +86,7 @@ def generate_markdown(data):
     md += "|---------|-------------------|--------------|-----------------|--------------|"
     md += "\n"
 
-    patterns_1024 = ['PAIR', 'PUBSUB', 'STREAM']
+    patterns_1024 = ['PAIR', 'PUBSUB']
 
     for pattern in patterns_1024:
         thr_key = (pattern, 1024, 'throughput')

@@ -1,7 +1,7 @@
 # CMake build script for ZeroMQ (zlink distribution)
 
 # Set minimum CMake version before project()
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 
 # Enable VERSION in project() command
 if(POLICY CMP0048)
@@ -215,14 +215,17 @@ set(ENABLE_DRAFTS OFF CACHE BOOL "Build and install draft classes and methods" F
 message(STATUS "Not building draft classes and methods (zlink: forced OFF)")
 
 # Phase 3-B: Enable WebSocket ZMQ integration when ASIO WS is enabled
+if(ZMQ_HAVE_ASIO_SSL)
+  set(ZMQ_HAVE_TLS 1)
+  message(STATUS "TLS transport enabled (ZMQ_HAVE_TLS via ASIO SSL)")
+endif()
+
 if(ZMQ_HAVE_ASIO_WS)
   set(ZMQ_HAVE_WS 1)
   message(STATUS "WebSocket transport enabled (ZMQ_HAVE_WS via ASIO)")
   if(ZMQ_HAVE_ASIO_WSS)
     set(ZMQ_HAVE_WSS 1)
-    set(ZMQ_HAVE_TLS 1)
     message(STATUS "Secure WebSocket transport enabled (ZMQ_HAVE_WSS via ASIO)")
-    message(STATUS "TLS transport enabled (ZMQ_HAVE_TLS via ASIO SSL)")
   endif()
 else()
   # zlink: Force WebSocket OFF when ASIO WS is not enabled
@@ -279,31 +282,7 @@ endif()
 #   endif()
 # endif()
 
-if(NOT ZMQ_USE_GNUTLS)
-  if(WITH_NSS)
-    pkg_check_modules(NSS3 "nss")
-    if(NSS3_FOUND)
-      set(pkg_config_names_private "${pkg_config_names_private} nss")
-      message(STATUS "Using NSS")
-      set(ZMQ_USE_NSS 1)
-    else()
-      find_package("NSS3")
-      if(NSS3_FOUND)
-        set(pkg_config_libs_private "${pkg_config_libs_private} -lnss3")
-        message(STATUS "Using NSS")
-        set(ZMQ_USE_NSS 1)
-      else()
-        message(WARNING "No nss installed, if you don't want builtin SHA1, install NSS or GnuTLS")
-      endif()
-    endif()
-  endif()
-  if(NOT ZMQ_USE_NSS)
-    list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/external/sha1/sha1.c
-         ${CMAKE_CURRENT_SOURCE_DIR}/external/sha1/sha1.h)
-    message(STATUS "Using builtin sha1")
-    set(ZMQ_USE_BUILTIN_SHA1 1)
-  endif()
-endif()
+# zlink: GNUTLS/NSS paths removed; ASIO SSL is handled via OpenSSL.
 
 if(NOT MSVC)
   option(WITH_LIBBSD "Use libbsd instead of builtin strlcpy" ON)
@@ -416,6 +395,10 @@ if(POLLER STREQUAL "asio")
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_connecter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_connecter.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_listener.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_ipc_listener.hpp
     # Phase 1-C: ASIO engine (True Proactor Mode)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
@@ -522,10 +505,8 @@ if(NOT WIN32)
   set(ZMQ_HAVE_IPC 1)
   set(ZMQ_HAVE_STRUCT_SOCKADDR_UN 1)
 else()
-  check_include_files("winsock2.h;afunix.h" ZMQ_HAVE_IPC)
-  if(ZMQ_HAVE_IPC)
-    check_struct_has_member("struct sockaddr_un" sun_path "winsock2.h;afunix.h" ZMQ_HAVE_STRUCT_SOCKADDR_UN)
-  endif()
+  # zlink: IPC is not supported on Windows.
+  set(ZMQ_HAVE_IPC OFF)
 endif()
 
 # ##################### BEGIN condition_variable_t selection
@@ -907,8 +888,6 @@ set(cxx-sources
     io_thread.cpp
     ip.cpp
     ipc_address.cpp
-    ipc_connecter.cpp
-    ipc_listener.cpp
     lb.cpp
     mailbox.cpp
     mailbox_safe.cpp
@@ -935,7 +914,6 @@ set(cxx-sources
     session_base.cpp
     signaler.cpp
     socket_base.cpp
-    stream_engine_base.cpp
     sub.cpp
     tcp.cpp
     tcp_address.cpp
@@ -951,7 +929,6 @@ set(cxx-sources
     xsub.cpp
     zmq.cpp
     zmq_utils.cpp
-    zmtp_engine.cpp
     decoder_allocators.cpp
     socket_poller.cpp
     timers.cpp
@@ -994,8 +971,6 @@ set(cxx-sources
     io_thread.hpp
     ip.hpp
     ipc_address.hpp
-    ipc_connecter.hpp
-    ipc_listener.hpp
     lb.hpp
     likely.hpp
     macros.hpp
@@ -1031,11 +1006,6 @@ set(cxx-sources
     socket_base.hpp
     socket_poller.hpp
     stdint.hpp
-    stream_engine_base.hpp
-    stream_connecter_base.hpp
-    stream_connecter_base.cpp
-    stream_listener_base.hpp
-    stream_listener_base.cpp
     sub.hpp
     tcp.hpp
     tcp_address.hpp
@@ -1056,8 +1026,7 @@ set(cxx-sources
     ypipe_base.hpp
     ypipe_conflate.hpp
     yqueue.hpp
-    zap_client.hpp
-    zmtp_engine.hpp)
+    zap_client.hpp)
 
 if(MINGW)
   # Generate the right type when using -m32 or -m64
@@ -1266,9 +1235,6 @@ else()
   if(NOT MINGW)
     add_library(objects OBJECT ${sources})
     set_property(TARGET objects PROPERTY POSITION_INDEPENDENT_CODE ON)
-    if(GNUTLS_FOUND)
-      target_include_directories(objects PRIVATE "${GNUTLS_INCLUDE_DIR}")
-    endif()
   endif()
 
   if(BUILD_SHARED)
@@ -1367,17 +1333,8 @@ if(BUILD_SHARED)
     target_link_libraries(libzmq -lsocket)
   endif()
 
-  if(GNUTLS_FOUND)
-    target_link_libraries(libzmq ${GNUTLS_LIBRARIES})
-    target_include_directories(libzmq PRIVATE "${GNUTLS_INCLUDE_DIR}")
-  endif()
-
   if(ZMQ_HAVE_ASIO_SSL)
     target_link_libraries(libzmq OpenSSL::SSL OpenSSL::Crypto)
-  endif()
-
-  if(NSS3_FOUND)
-    target_link_libraries(libzmq ${NSS3_LIBRARIES})
   endif()
 
   if(LIBBSD_FOUND)
@@ -1406,11 +1363,6 @@ endif()
 
 if(BUILD_STATIC)
   target_link_libraries(libzmq-static ${CMAKE_THREAD_LIBS_INIT})
-  if(GNUTLS_FOUND)
-    target_link_libraries(libzmq-static ${GNUTLS_LIBRARIES})
-    target_include_directories(libzmq-static PRIVATE "${GNUTLS_INCLUDE_DIR}")
-  endif()
-
   if(ZMQ_HAVE_ASIO_SSL)
     target_link_libraries(libzmq-static OpenSSL::SSL OpenSSL::Crypto)
   endif()
@@ -1419,9 +1371,6 @@ if(BUILD_STATIC)
     target_link_libraries(libzmq-static ${LIBBSD_LIBRARIES})
   endif()
 
-  if(NSS3_FOUND)
-    target_link_libraries(libzmq-static ${NSS3_LIBRARIES})
-  endif()
 
   if(HAVE_WS2_32)
     target_link_libraries(libzmq-static ws2_32)

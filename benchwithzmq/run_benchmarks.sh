@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BUILD_DIR="${ROOT_DIR}/build-bench-asio"
+BUILD_DIR="${ROOT_DIR}/build/bench"
 PATTERN="ALL"
 WITH_LIBZMQ=1
 OUTPUT_FILE=""
@@ -19,7 +19,7 @@ Options:
   --skip-libzmq        Skip libzmq baseline run (uses existing cache).
   --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: build-bench-asio).
+  --build-dir PATH     Build directory (default: build/bench).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
   --reuse-build        Reuse existing build dir without re-running CMake.
@@ -100,7 +100,6 @@ else
   cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARKS=ON \
-    -DWITH_BOOST_ASIO=ON \
     -DZMQ_CXX_STANDARD=20
 
   cmake --build "${BUILD_DIR}"

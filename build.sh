@@ -12,7 +12,7 @@ cd "$BUILD_DIR"
 
 echo "=== CMake Configure ==="
 cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DWITH_DOCS=OFF \
-  -DWITH_ASIO_SSL=ON -DWITH_ASIO_WS=ON
+  -DWITH_TLS=ON
 
 echo "=== Build ==="
 make -j$(nproc)

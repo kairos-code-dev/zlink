@@ -154,10 +154,8 @@ endif()
 # Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
 
-# Add Boost include directory for ASIO tests (Phase 1-C, Phase 2, Phase 3)
-if(WITH_BOOST_ASIO)
-  include_directories("${CMAKE_SOURCE_DIR}/external/boost")
-endif()
+# Add Boost include directory for ASIO tests (ASIO is mandatory)
+include_directories("${CMAKE_SOURCE_DIR}/external/boost")
 
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)

@@ -4,6 +4,38 @@ All notable changes to zlink will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Changed (BREAKING)
+- **CMake option cleanup**:
+  - `WITH_BOOST_ASIO` removed - ASIO backend is now mandatory
+  - `WITH_ASIO_SSL` renamed to `WITH_TLS` - controls TLS/WSS transport support
+  - `WITH_ASIO_WS` removed - WebSocket is now a core transport (always enabled)
+
+- **Build directory naming**:
+  - Benchmark default: `build-bench-asio` → `build/bench`
+  - Documentation examples updated
+
+### Migration Guide
+
+For existing build scripts:
+```bash
+# Before:
+cmake -B build -DWITH_BOOST_ASIO=ON -DWITH_ASIO_SSL=ON -DWITH_ASIO_WS=ON
+
+# After:
+cmake -B build -DWITH_TLS=ON
+# ASIO and WebSocket are now always enabled
+# TLS option controls both tls:// and wss:// transports
+```
+
+**Key changes:**
+- ASIO backend: Mandatory (not optional)
+- WebSocket (ws://): Mandatory (not optional)
+- TLS (tls://) and WSS (wss://): Optional via WITH_TLS (default ON)
+
+Internal C++ defines (`ZMQ_HAVE_ASIO_SSL`, `ZMQ_HAVE_ASIO_WS`) remain unchanged for compatibility.
+
 ## [0.2.0] - 2026-01-13
 
 ### Added
@@ -23,9 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - **Default Build Configuration**: ASIO and TLS now enabled by default
-  - `WITH_ASIO=ON` (default)
-  - `WITH_ASIO_SSL=ON` (default)
-  - `ENABLE_WS=ON` (default)
+  - ASIO backend is mandatory (no option needed)
+  - WebSocket is always enabled (no option needed)
+  - `WITH_TLS=ON` (default, replaces `WITH_ASIO_SSL`)
 - **CMake Configuration**: Simplified build options focused on ASIO backend
 - **Documentation**: Updated CLAUDE.md and README.md to reflect current architecture
 

@@ -125,13 +125,16 @@ zmq_connect(socket, "wss://server.example.com:8080");
 - **C++11 Compiler**: GCC 5+, Clang 3.8+, MSVC 2015+
 
 ### Build Configuration
-The following options are enabled by default:
-- `WITH_ASIO=ON`: Use ASIO backend (bundled Boost.Asio)
-- `WITH_ASIO_SSL=ON`: Enable TLS support via OpenSSL
-- `ENABLE_WS=ON`: Enable WebSocket transport
-- `BUILD_STATIC=OFF`: Build shared libraries
-- `BUILD_TESTS=ON`: Build test suite
-- `ENABLE_CURVE=OFF`: CURVE encryption disabled
+
+**Mandatory Components:**
+- **ASIO backend**: Always enabled (bundled Boost.Asio headers, no external dependency)
+- **WebSocket transport**: Always enabled (bundled Boost.Beast headers, no external dependency)
+
+**Optional Components:**
+- `WITH_TLS=ON`: Enable TLS and WSS transport support via OpenSSL (default: ON, can be disabled)
+- `BUILD_STATIC=OFF`: Build shared libraries (default: OFF)
+- `BUILD_TESTS=ON`: Build test suite (default: ON)
+- `ENABLE_CURVE=OFF`: CURVE encryption disabled (forced OFF)
 
 ## Build Commands
 

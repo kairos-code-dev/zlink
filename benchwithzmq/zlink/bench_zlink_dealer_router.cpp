@@ -5,6 +5,7 @@
 #include <cstring>
 
 void run_dealer_router(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
+    if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
     void *router = zmq_socket(ctx, ZMQ_ROUTER);
     void *dealer = zmq_socket(ctx, ZMQ_DEALER);
@@ -12,9 +13,20 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     // Set Routing ID for Dealer
     zmq_setsockopt(dealer, ZMQ_ROUTING_ID, "CLIENT", 6);
 
-    std::string endpoint = make_endpoint(transport, lib_name + "_dealer_router");
-    zmq_bind(router, endpoint.c_str());
-    zmq_connect(dealer, endpoint.c_str());
+    std::string endpoint = bind_and_resolve_endpoint(router, transport, lib_name + "_dealer_router");
+    if (endpoint.empty()) {
+        zmq_close(router);
+        zmq_close(dealer);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    if (!connect_checked(dealer, endpoint)) {
+        zmq_close(router);
+        zmq_close(dealer);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    settle();
 
     // Give it time to connect
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -84,7 +96,7 @@ int main(int argc, char** argv) {
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
-    int count = (size <= 1024) ? 50000 : 2000;
+    int count = resolve_msg_count(size);
     run_dealer_router(transport, size, count, lib_name);
     return 0;
 }

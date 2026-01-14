@@ -6,6 +6,7 @@
 #include "asio_ipc_listener.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "ipc_transport.hpp"
 #include "../address.hpp"
 #include "../err.hpp"
 #include "../io_thread.hpp"
@@ -15,6 +16,7 @@
 #include "../socket_base.hpp"
 
 #include <string.h>
+#include <memory>
 
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -277,8 +279,12 @@ void zmq::asio_ipc_listener_t::create_engine (fd_t fd_)
       get_socket_name<ipc_address_t> (fd_, socket_end_remote),
       endpoint_type_bind);
 
-    i_engine *engine =
-      new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+    std::unique_ptr<i_asio_transport> transport (
+      new (std::nothrow) ipc_transport_t ());
+    alloc_assert (transport.get ());
+
+    i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (
+      fd_, options, endpoint_pair, std::move (transport));
     alloc_assert (engine);
 
     io_thread_t *io_thread = choose_io_thread (options.affinity);

@@ -5,17 +5,31 @@
 #include <cstring>
 
 void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
+    if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
     void *s1 = zmq_socket(ctx, ZMQ_DEALER);
     void *s2 = zmq_socket(ctx, ZMQ_DEALER);
 
     int hwm = 0;
     zmq_setsockopt(s1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(s1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(s2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(s2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
 
-    std::string endpoint = make_endpoint(transport, lib_name + "_dealer_dealer");
-    zmq_bind(s1, endpoint.c_str());
-    zmq_connect(s2, endpoint.c_str());
+    std::string endpoint = bind_and_resolve_endpoint(s1, transport, lib_name + "_dealer_dealer");
+    if (endpoint.empty()) {
+        zmq_close(s1);
+        zmq_close(s2);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    if (!connect_checked(s2, endpoint)) {
+        zmq_close(s1);
+        zmq_close(s2);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    settle();
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
@@ -64,7 +78,7 @@ int main(int argc, char** argv) {
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
-    int count = (size <= 1024) ? 200000 : 20000;
+    int count = resolve_msg_count(size);
     run_dealer_dealer(transport, size, count, lib_name);
     return 0;
 }

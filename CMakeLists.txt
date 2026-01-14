@@ -407,6 +407,7 @@ if(POLLER STREQUAL "asio")
     # Transport abstraction layer (R3 refactoring)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/i_asio_transport.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ipc_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.hpp
     # Utility headers (R2, R4 refactoring)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_debug.hpp

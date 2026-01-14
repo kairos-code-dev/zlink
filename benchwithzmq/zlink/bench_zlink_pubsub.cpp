@@ -5,6 +5,7 @@
 #include <cstring>
 
 void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
+    if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
     void *pub = zmq_socket(ctx, ZMQ_PUB);
     void *sub = zmq_socket(ctx, ZMQ_SUB);
@@ -14,11 +15,21 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     zmq_setsockopt(sub, ZMQ_RCVHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(sub, ZMQ_SUBSCRIBE, "", 0);
 
-    std::string endpoint = make_endpoint(transport, lib_name + "_pubsub");
-    zmq_bind(pub, endpoint.c_str());
-    zmq_connect(sub, endpoint.c_str());
+    std::string endpoint = bind_and_resolve_endpoint(pub, transport, lib_name + "_pubsub");
+    if (endpoint.empty()) {
+        zmq_close(pub);
+        zmq_close(sub);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    if (!connect_checked(sub, endpoint)) {
+        zmq_close(pub);
+        zmq_close(sub);
+        zmq_ctx_term(ctx);
+        return;
+    }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    settle();
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
@@ -57,7 +68,7 @@ int main(int argc, char** argv) {
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
-    int count = (size <= 1024) ? 200000 : 20000;
+    int count = resolve_msg_count(size);
     run_pubsub(transport, size, count, lib_name);
     return 0;
 }

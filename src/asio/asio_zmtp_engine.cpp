@@ -50,28 +50,21 @@ zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
     _subscription_required (false),
     _heartbeat_timeout (0)
 {
-    ZMTP_ENGINE_DBG ("Constructor called, fd=%d", fd_);
+    init_zmtp_engine ();
+}
 
-    _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmtp_engine_t::routing_id_msg);
-    _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmtp_engine_t::process_routing_id_msg);
-
-    int rc = _pong_msg.init ();
-    errno_assert (rc == 0);
-
-    rc = _routing_id_msg.init ();
-    errno_assert (rc == 0);
-
-    if (_options.heartbeat_interval > 0) {
-        _heartbeat_timeout = _options.heartbeat_timeout;
-        if (_heartbeat_timeout == -1)
-            _heartbeat_timeout = _options.heartbeat_interval;
-    }
-
-    //  Initialize greeting buffers
-    memset (_greeting_recv, 0, sizeof (_greeting_recv));
-    memset (_greeting_send, 0, sizeof (_greeting_send));
+zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
+  fd_t fd_,
+  const options_t &options_,
+  const endpoint_uri_pair_t &endpoint_uri_pair_,
+  std::unique_ptr<i_asio_transport> transport_) :
+    asio_engine_t (fd_, options_, endpoint_uri_pair_, std::move (transport_)),
+    _greeting_size (v2_greeting_size),
+    _greeting_bytes_read (0),
+    _subscription_required (false),
+    _heartbeat_timeout (0)
+{
+    init_zmtp_engine ();
 }
 
 #if defined ZMQ_HAVE_ASIO_SSL
@@ -88,7 +81,22 @@ zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
     _heartbeat_timeout (0),
     _ssl_context (std::move (ssl_context_))
 {
-    ZMTP_ENGINE_DBG ("Constructor called, fd=%d (custom transport)", fd_);
+    init_zmtp_engine ();
+}
+#endif
+
+zmq::asio_zmtp_engine_t::~asio_zmtp_engine_t ()
+{
+    ZMTP_ENGINE_DBG ("Destructor called");
+
+    const int rc = _routing_id_msg.close ();
+    errno_assert (rc == 0);
+}
+
+void zmq::asio_zmtp_engine_t::init_zmtp_engine ()
+{
+    ZMTP_ENGINE_DBG ("Constructor initializing fd=%d%s", _fd,
+                     _transport ? " (custom transport)" : "");
 
     _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
       &asio_zmtp_engine_t::routing_id_msg);
@@ -107,18 +115,8 @@ zmq::asio_zmtp_engine_t::asio_zmtp_engine_t (
             _heartbeat_timeout = _options.heartbeat_interval;
     }
 
-    //  Initialize greeting buffers
     memset (_greeting_recv, 0, sizeof (_greeting_recv));
     memset (_greeting_send, 0, sizeof (_greeting_send));
-}
-#endif
-
-zmq::asio_zmtp_engine_t::~asio_zmtp_engine_t ()
-{
-    ZMTP_ENGINE_DBG ("Destructor called");
-
-    const int rc = _routing_id_msg.close ();
-    errno_assert (rc == 0);
 }
 
 void zmq::asio_zmtp_engine_t::plug_internal ()

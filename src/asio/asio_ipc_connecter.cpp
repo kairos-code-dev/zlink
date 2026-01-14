@@ -6,6 +6,7 @@
 #include "asio_ipc_connecter.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "ipc_transport.hpp"
 #include "../address.hpp"
 #include "../err.hpp"
 #include "../io_thread.hpp"
@@ -23,6 +24,7 @@
 #include <string.h>
 
 #include <limits>
+#include <memory>
 
 //  Debug logging for ASIO IPC connecter - set to 1 to enable
 #define ASIO_IPC_CONNECTER_DEBUG 0
@@ -283,8 +285,12 @@ void zmq::asio_ipc_connecter_t::create_engine (fd_t fd_,
     const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint_str,
                                              endpoint_type_connect);
 
-    i_engine *engine =
-      new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+    std::unique_ptr<i_asio_transport> transport (
+      new (std::nothrow) ipc_transport_t ());
+    alloc_assert (transport.get ());
+
+    i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (
+      fd_, options, endpoint_pair, std::move (transport));
     alloc_assert (engine);
 
     send_attach (_session, engine);

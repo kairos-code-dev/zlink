@@ -9,6 +9,7 @@ PATTERN="ALL"
 WITH_LIBZMQ=1
 OUTPUT_FILE=""
 RUNS=3
+REUSE_BUILD=0
 
 usage() {
   cat <<'USAGE'
@@ -21,6 +22,7 @@ Options:
   --build-dir PATH     Build directory (default: build-bench-asio).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
+  --reuse-build        Reuse existing build dir without re-running CMake.
   -h, --help           Show this help.
 USAGE
 }
@@ -36,6 +38,9 @@ while [[ $# -gt 0 ]]; do
     --pattern)
       PATTERN="${2:-}"
       shift
+      ;;
+    --reuse-build)
+      REUSE_BUILD=1
       ;;
     --build-dir)
       BUILD_DIR="${2:-}"
@@ -82,16 +87,24 @@ if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
   exit 1
 fi
 
-echo "Cleaning build directory: ${BUILD_DIR}"
-rm -rf "${BUILD_DIR}"
+if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+  echo "Reusing build directory: ${BUILD_DIR}"
+  if [[ ! -d "${BUILD_DIR}" ]]; then
+    echo "Error: build directory ${BUILD_DIR} does not exist" >&2
+    exit 1
+  fi
+else
+  echo "Cleaning build directory: ${BUILD_DIR}"
+  rm -rf "${BUILD_DIR}"
 
-cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DBUILD_BENCHMARKS=ON \
-  -DWITH_BOOST_ASIO=ON \
-  -DZMQ_CXX_STANDARD=20
+  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_BENCHMARKS=ON \
+    -DWITH_BOOST_ASIO=ON \
+    -DZMQ_CXX_STANDARD=20
 
-cmake --build "${BUILD_DIR}"
+  cmake --build "${BUILD_DIR}"
+fi
 
 RUN_CMD=(python3 "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 

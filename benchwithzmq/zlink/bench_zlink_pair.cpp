@@ -3,12 +3,14 @@
 #include <thread>
 #include <vector>
 #include <cstring>
+#include <cstdlib>
 
 #ifndef ZMQ_TCP_NODELAY
 #define ZMQ_TCP_NODELAY 26
 #endif
 
 void run_pair(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
+    if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
     void *s_bind = zmq_socket(ctx, ZMQ_PAIR);
     void *s_conn = zmq_socket(ctx, ZMQ_PAIR);
@@ -19,11 +21,24 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
 
     int hwm = 0; 
     zmq_setsockopt(s_bind, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(s_bind, ZMQ_RCVHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(s_conn, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(s_conn, ZMQ_SNDHWM, &hwm, sizeof(hwm));
 
-    std::string endpoint = make_endpoint(transport, lib_name + "_pair");
-    zmq_bind(s_bind, endpoint.c_str());
-    zmq_connect(s_conn, endpoint.c_str());
+    std::string endpoint = bind_and_resolve_endpoint(s_bind, transport, lib_name + "_pair");
+    if (endpoint.empty()) {
+        zmq_close(s_bind);
+        zmq_close(s_conn);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    if (!connect_checked(s_conn, endpoint)) {
+        zmq_close(s_bind);
+        zmq_close(s_conn);
+        zmq_ctx_term(ctx);
+        return;
+    }
+    settle();
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
@@ -69,7 +84,7 @@ int main(int argc, char** argv) {
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
-    int count = (size <= 1024) ? 200000 : 20000;
+    int count = resolve_msg_count(size);
     run_pair(transport, size, count, lib_name);
     return 0;
 }

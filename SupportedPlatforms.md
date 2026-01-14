@@ -1,32 +1,24 @@
-libzmq supports a large variety of platforms. The list of platforms can be found in the [README](README.md#platforms).
-The degree to which this support is tested varies.
+# Supported Platforms
 
-Platforms are currently assigned to one of the following categories:
-- supported platforms with primary CI (travis-ci.org, appveyor.com): https://travis-ci.org/zeromq/libzmq, https://ci.appveyor.com/project/zeromq/libzmq
-- supported platforms with secondary CI (openSUSE Build Service): https://build.opensuse.org/project/subprojects/network:messaging:zeromq
-- supported platforms with known active users
-- supported platforms without known active users
-- unsupported platforms
+**zlink** is a simplified, cross-platform build of libzmq. It is actively developed and tested on the following platforms.
 
-Supported platforms with primary CI
-- have builds and tests run for the master branch
-- have builds and tests run for every pull request
-- it is a precondition for merging a pull request that no builds or tests of these platforms are broken
-- contributors can easily enable these builds and tests for their branches in their fork
+## Primary Support
 
-Supported platforms with secondary CI
-- have builds and tests run for the master branch
-- these are monitored periodically by the project maintainers, and efforts are made to fix any broken builds or tests in a timely manner
-- it is a precondition for a release that no builds or tests of these platforms are broken
+These platforms are verified via CI/CD and are considered stable for production use.
 
-Supported platforms with known active users
-- have recently been reported to the maintainers (e.g. via pull requests modifying this document) as having working builds and possibly tests
+| Operating System | Architectures | Compiler | Build System | Status |
+|------------------|---------------|----------|--------------|--------|
+| **Linux** (Ubuntu/Debian/RHEL) | x64 (AMD64), ARM64 (aarch64) | GCC, Clang | CMake | ✅ Stable |
+| **macOS** | x64 (Intel), ARM64 (Apple Silicon) | Apple Clang | CMake | ✅ Stable |
+| **Windows** (10/11/Server) | x64, ARM64 | MSVC (Visual Studio) | CMake | ✅ Stable |
 
-Supported platforms without known active users
-- have some platform-specific code within libzmq, but it is not known if it is still working
-- have been reported to the maintainers as having working builds and possibly tests only significant time/changes ago 
-- or are assumed to work due to similarity to the above platforms
+## Notes
 
-Unsupported platforms
-- are either reported to be non-working for some reason that is not trivial to fix or are explicitly missing some required platform-specific code
+*   **Android**: Supported via cross-compilation (autotools/CMake), but secondary CI coverage.
+*   **iOS**: Supported via cross-compilation (CMake), secondary CI coverage.
+*   **Legacy Platforms**: Older platforms like Solaris, AIX, HP-UX, QNX (pre-7.0), and Windows CE are **not actively tested** with zlink configuration, though the underlying libzmq code may still support them. Use at your own risk.
 
+## Architectures
+
+*   **x64 (AMD64/x86_64)**: Primary development and deployment target.
+*   **ARM64 (aarch64)**: Fully supported on all OSes (Linux, macOS, Windows).

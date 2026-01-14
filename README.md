@@ -1,217 +1,61 @@
-# ZeroMQ
+# zlink: Simplified ZeroMQ Build
 
 [![Build Status](https://github.com/zeromq/libzmq/actions/workflows/CI.yaml/badge.svg)](https://github.com/zeromq/libzmq/actions/workflows/CI.yaml)
-[![Build status](https://ci.appveyor.com/api/projects/status/e2ks424yrs1un3wt?svg=true)](https://ci.appveyor.com/project/zeromq/libzmq)
-[![Coverage Status](https://coveralls.io/repos/github/zeromq/libzmq/badge.svg?branch=master)](https://coveralls.io/github/zeromq/libzmq?branch=master)
-[![Conan Center](https://shields.io/conan/v/zeromq)](https://conan.io/center/zeromq)
 
-## Welcome
+**zlink** is a cross-platform, streamlined native build of **libzmq (ZeroMQ) v4.3.5**. It is designed for modern transport protocols with minimal dependencies and a lightweight footprint.
 
-The ZeroMQ lightweight messaging kernel is a library which extends the
-standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. ZeroMQ sockets provide an
-abstraction of asynchronous message queues, multiple messaging patterns,
-message filtering (subscriptions), seamless access to multiple transport
-protocols and more.
+## Key Features
 
-## Supported platforms <a name="#platforms"/>
+- **ASIO-based I/O**: Boost.Asio backend (bundled, no external dependency) for high-performance async I/O.
+- **TLS Support**: Native TLS transport (`tls://`) and WebSocket TLS (`wss://`) via OpenSSL.
+- **WebSocket**: Standard WebSocket transport (`ws://`, `wss://`) for web compatibility.
+- **Simplified Protocols**: Focused set of transports: `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls`.
+- **Minimal Dependencies**:
+    - No `libsodium` (CURVE removed).
+    - No `libbsd` or other platform-specific extras.
+    - No multicast protocols (PGM, EPGM, NORM).
+    - No legacy transports (TIPC, VMCI, UDP).
 
-Libzmq is mainly written in C++98 with some optional C++11-fragments. For
-configuration either autotools or CMake is employed. See below for some lists
-of platforms, where libzmq has been successfully compiled on.
+## Supported Platforms
 
-### Supported platforms with primary CI
+zlink is actively tested and supported on the following platforms:
 
-| OS and version                         | Architecture            | Compiler and version          | Build system | Remarks                                                                                                                               |
-|----------------------------------------|-------------------------|-------------------------------|--------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| Android NDK r25                        | arm, arm64, x86, x86_64 | llvm (see NDK)                | autotools    | DRAFT                                                                                                                                       |
-| Ubuntu 14.04.5 LTS (trusty)            | amd64                   | clang 5.0.0                   | autotools    | STABLE, extras: GSSAPI, PGM, NORM, C++98 mode only                                                                                    |
-| Ubuntu 14.04.5 LTS (trusty)            | amd64                   | gcc 4.8.4                     | autotools    | STABLE, DRAFT, extras: GSSAPI, PGM, NORM, TIPC, IPV6, also POLLER=poll, POLLER=select, also valgrind and address sanitizer executions |
-| Ubuntu 14.04.5 LTS (trusty)            | amd64                   | gcc 4.8.4                     | CMake 3.12.2 | STABLE                                                                                                                                |
-| Windows Server 2012 R2                 | x86                     | Visual Studio 2008            | CMake 3.12.2 | DRAFT                                                                                                                                 |
-| Windows Server 2012 R2                 | x86                     | Visual Studio 2010 SP1        | CMake 3.12.2 | DRAFT                                                                                                                                 |
-| Windows Server 2012 R2                 | x86                     | Visual Studio 2012 Update 5   | CMake 3.12.2 | DRAFT                                                                                                                                 |
-| Windows Server 2012 R2                 | x86, amd64              | Visual Studio 2013 Update 5   | CMake 3.12.2 | DRAFT, STABLE (x86 Release only), also POLLER=epoll                                                                                   |
-| Windows Server 2012 R2                 | x86                     | Visual Studio 2015 Update 3   | CMake 3.12.2 | DRAFT                                                                                                                                 |
-| Windows Server 2016                    | x86                     | Visual Studio 2017 15.9.6     | CMake 3.13.3 | DRAFT                                                                                                                                 |
-| cygwin 3.0.0 on Windows Server 2012 R2 | amd64                   | gcc 7.4.0                     | CMake 3.6.2  | DRAFT                                                                                                                                 |
-| MSYS2 ? on Windows Server 2012 R2      | amd64                   | gcc 6.4.0                     | CMake ?      | DRAFT                                                                                                                                 |
-| Mac OS X 10.13                         | amd64                   | Xcode 9.4.1, Apple LLVM 9.1.0 | autotools    | STABLE, DRAFT                                                                                                                         |
-| Mac OS X 10.13                         | amd64                   | Xcode 9.4.1, Apple LLVM 9.1.0 | CMake 3.11.4 | DRAFT                                                                                                                                 |
+| Platform | Architectures | Compiler | Build System | Status |
+|----------|---------------|----------|--------------|--------|
+| **Linux** | x64, ARM64 | GCC / Clang | CMake | ✅ Stable |
+| **macOS** | x64, ARM64 | Apple Clang | CMake | ✅ Stable |
+| **Windows**| x64, ARM64 | MSVC | CMake | ✅ Stable |
 
-Note: the platforms are regularly updated by the service providers, so this information might get out of date
-without any changes on the side of libzmq. For Appveyor, refer to https://www.appveyor.com/updates/ regarding
-platform updates. For travis-ci, refer to https://changelog.travis-ci.com/ regarding platform updates.
+## Supported Socket Types
 
-### Supported platforms with secondary CI
-
-| OS and version               | Architecture               | Compiler and version | Build system | Remarks |
-|------------------------------|----------------------------|----------------------|--------------|---------|
-| CentOS 6                     | x86, amd64                 | ?                    | autotools    |         |
-| CentOS 7                     | amd64                      | ?                    | autotools    |         |
-| Debian 8.0                   | x86, amd64                 | ?                    | autotools    |         |
-| Debian 9.0                   | ARM64, x86, amd64          | ?                    | autotools    |         |
-| Fedora 28                    | ARM64, ARM32, amd64        | ?                    | autotools    |         |
-| Fedora 29                    | ARM64, ARM32, amd64        | ?                    | autotools    |         |
-| Fedora Rawhide               | ARM64, ARM32, amd64        | ?                    | autotools    |         |
-| RedHat Enterprise Linux 7    | amd64, ppc64               | ?                    | autotools    |         |
-| SuSE Linux Enterprise 12 SP4 | ARM64, amd64, ppc64, s390x | ?                    | autotools    |         |
-| SuSE Linux Enterprise 15     | amd64                      | ?                    | autotools    |         |
-| xUbuntu 12.04                | x86, amd64                 | ?                    | autotools    |         |
-| xUbuntu 14.04                | x86, amd64                 | ?                    | autotools    |         |
-| xUbuntu 16.04                | x86, amd64                 | ?                    | autotools    |         |
-| xUbuntu 18.04                | x86, amd64                 | ?                    | autotools    |         |
-| xUbuntu 18.10                | x86, amd64                 | ?                    | autotools    |         |
-
-### Supported platforms with known active users
-
-At the time of writing, no explicit reports have been available. Please report your experiences by opening a PR
-adding an entry or moving an entry from the section below.
-
-Under "last report", please name either the SHA1 in case of an unreleased version, or the version number in
-case of a released version.
-
-| OS and version | Architecture      | Compiler and version | Build system | Last report             | Remarks |
-|----------------|-------------------|----------------------|--------------|-------------------------|---------|
-| Solaris 10     | x86, amd64, sparc | GCC 8.1.0            | CMake        | 2019/03/18              |         |
-| DragonFly BSD  | amd64             | gcc 8.3              | autotools    | 2018/08/07 git-72854e63 |         |
-| IBM i          | ppc64             | gcc 6.3              | autotools    | 2019/10/02 git-25320a3  |         |
-| QNX 7.0        | x86_64            | gcc 5.4.0            | CMake        | 4.3.2                   |         |
-| Windows 10     | ARM64             | Visual Studio 2019   | CMake        | 2021/11/15 git-2375ca8b |         |
-| Windows 10     | ARM64             | clang                | CMake        | 2021/11/15 git-2375ca8b |         |
-
-### Supported platforms without known active users
-
-Note: this list is incomplete and inaccurate and still needs some work.
-
-| OS and version         | Architecture | Compiler and version     | Build system     | Remarks |
-|------------------------|--------------|--------------------------|------------------|---------|
-| Any Linux distribution | x86, amd64   | gcc ?+, clang ?+, icc ?+ | autotools, CMake |         |
-| SunOS, Solaris         | x86, amd64   | SunPro                   | autotools, CMake |         |
-| GNU/kFreeBSD           | ?            | ?                        | autotools, CMake |         |
-| FreeBSD                | ?            | ?                        | autotools, CMake |         |
-| NetBSD                 | ?            | ?                        | autotools, CMake |         |
-| OpenBSD                | ?            | ?                        | autotools, CMake |         |
-| DragonFly BSD          | amd64        | gcc 8.3                  | autotools, CMake |         |
-| HP-UX                  | ?            | ?                        | autotools, CMake |         |
-| GNU/Hurd               | ?            | ?                        | autotools        |         |
-| VxWorks 6.8            | ?            | ?                        | ?                |         |
-| Windows CE             | ?            | ?                        | ?                |         |
-| Windows UWP            | ?            | ?                        | ?                |         |
-| OpenVMS                | ?            | ?                        | ?                |         |
-
-### Unsupported platforms
-
-| OS and version | Architecture | Compiler and version | Remarks                                                                 |
-|----------------|--------------|----------------------|-------------------------------------------------------------------------|
-| QNX 6.3        | ?            | gcc 3.3.5            | see #3371, support was added by a user, but not contributed to upstream |
-
-For more details, see [here](SupportedPlatforms.md).
-
-For some platforms (Linux, Mac OS X), [prebuilt binary packages are supplied by the ZeroMQ organization](#installation).
-For other platforms, you need to [build your own binaries](#build).
-
-## Installation of binary packages <a name="installation"/>
-
-### Linux
-
-For Linux users, pre-built binary packages are available for most distributions.
-Note that DRAFT APIs can change at any time without warning, pick a STABLE build to
-avoid having them enabled.
-
-#### Latest releases
-
-##### DEB
-
-[![OBS release stable](https://img.shields.io/badge/OBS%20master-stable-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Arelease-stable&package=libzmq3-dev)
-[![OBS release draft](https://img.shields.io/badge/OBS%20master-draft-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Arelease-draft&package=libzmq3-dev)
-
-##### RPM
-
-[![OBS release stable](https://img.shields.io/badge/OBS%20master-stable-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Arelease-stable&package=zeromq-devel)
-[![OBS release draft](https://img.shields.io/badge/OBS%20master-draft-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Arelease-draft&package=zeromq-devel)
-
-#### Bleeding edge packages
-
-##### DEB
-
-[![OBS release stable](https://img.shields.io/badge/OBS%20master-stable-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Agit-stable&package=libzmq3-dev)
-[![OBS release draft](https://img.shields.io/badge/OBS%20master-draft-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Agit-draft&package=libzmq3-dev)
-
-##### RPM
-
-[![OBS release stable](https://img.shields.io/badge/OBS%20master-stable-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Agit-stable&package=zeromq-devel)
-[![OBS release draft](https://img.shields.io/badge/OBS%20master-draft-yellow.svg)](http://software.opensuse.org/download.html?project=network%3Amessaging%3Azeromq%3Agit-draft&package=zeromq-devel)
-
-#### Example: Debian 9 latest release, no DRAFT apis
-
-    echo "deb http://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/ ./" >> /etc/apt/sources.list
-    wget https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/Release.key -O- | sudo apt-key add
-    apt-get install libzmq3-dev
-
-### OSX
-
-For OSX users, packages are available via brew.
-
-    brew install zeromq
-
-## Installation of package manager <a name="package manager"/>
-
-### vcpkg
-
-vcpkg is a full platform package manager, you can easily install libzmq via vcpkg.
-
-    git clone https://github.com/microsoft/vcpkg.git
-    ./bootstrap-vcpkg.bat # For powershell
-    ./bootstrap-vcpkg.sh # For bash
-    ./vcpkg install zeromq
-
-## zlink: Simplified ZeroMQ Build <a name="zlink"/>
-
-**zlink** is a streamlined build of libzmq 4.3.5 focused on modern transport protocols and minimal dependencies.
-
-### Key Features
-
-- **ASIO-based I/O**: Boost.Asio backend (bundled, no external dependency)
-- **TLS Support**: Native TLS transport (`tls://`) and WebSocket TLS (`wss://`)
-- **WebSocket**: Standard WebSocket transport (`ws://`, `wss://`)
-- **Simplified Protocols**: Focused on tcp, ipc, inproc, ws, wss, tls
-- **Minimal Dependencies**: No CURVE, no multicast protocols, no TIPC
-
-### Supported Protocols
-
-| Protocol | Description | Platforms |
-|----------|-------------|-----------|
-| tcp | Standard TCP transport | All |
-| ipc | Inter-process communication | Unix/Linux/macOS |
-| inproc | In-process messaging | All |
-| ws | WebSocket transport | All |
-| wss | WebSocket with TLS | All |
-| tls | Native TLS transport | All |
-
-### Supported Socket Types
+zlink supports a core set of socket patterns required for modern distributed systems:
 
 | Type | Description |
 |------|-------------|
-| PAIR | Exclusive pair pattern |
-| PUB/SUB | Publish-subscribe |
-| XPUB/XSUB | Extended pub-sub |
-| DEALER/ROUTER | Async request-reply |
+| **PAIR** | Exclusive pair pattern for 1-to-1 communication. |
+| **PUB / SUB** | Publish-subscribe pattern for data distribution. |
+| **XPUB / XSUB** | Extended pub-sub with subscription forwarding. |
+| **DEALER / ROUTER** | Asynchronous request-reply, load balancing, and explicit routing. |
 
-### Removed Features
+## Removed Features
 
-**Protocols:** TIPC, VMCI, PGM, EPGM, NORM, UDP
-**Socket Types:** STREAM, REQ/REP, PUSH/PULL, Draft API sockets
-**Encryption:** CURVE (use TLS instead)
+To maintain simplicity and size, the following features from standard libzmq are **removed**:
 
-### Build Requirements
+*   **Socket Types:** `REQ`, `REP`, `PUSH`, `PULL`, `STREAM`, and all DRAFT sockets (Server, Client, Radio, Dish, etc.).
+*   **Protocols:** `udp`, `tipc`, `vmci`, `pgm`, `epgm`, `norm`.
+*   **Encryption:** CURVE (libsodium) is removed. Use standard TLS (`tls://` or `wss://`) instead.
 
-- **CMake** 3.10+
-- **C++11 Compiler**: GCC 5+, Clang 3.8+, MSVC 2015+
-- **OpenSSL**: For TLS support (required)
-- **Boost.Asio**: Bundled in `external/boost/`
+## Build Instructions
 
-### Quick Build
+### Prerequisites
+
+*   **CMake** 3.10+
+*   **C++11 Compiler** (GCC 5+, Clang 3.8+, MSVC 2015+)
+*   **OpenSSL** (Required for TLS support)
+
+### Quick Build Scripts
+
+We provide platform-specific scripts that handle configuration and testing:
 
 ```bash
 # Linux
@@ -224,150 +68,67 @@ vcpkg is a full platform package manager, you can easily install libzmq via vcpk
 .\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
-### CMake Options
+### Manual CMake Build
 
-Default configuration:
-- ASIO backend: Mandatory (always enabled)
-- WebSocket transport: Mandatory (always enabled)
-- `WITH_TLS=ON`: Enable TLS support (default: ON)
-- `BUILD_TESTS=ON`: Build test suite (default: ON)
-- `BUILD_BENCHMARKS=OFF`: Build benchmark tools (default: OFF)
-
-Custom build:
 ```bash
 cmake -B build \
     -DWITH_TLS=ON \
-    -DBUILD_TESTS=ON
+    -DBUILD_TESTS=ON \
+    -DBUILD_BENCHMARKS=OFF \
+    -DBUILD_SHARED=ON
 cmake --build build
 ```
 
-### TLS Usage
+### Configuration Options
 
-**Server:**
+*   `WITH_TLS` (Default: `ON`): Enable OpenSSL-based TLS.
+*   `BUILD_TESTS` (Default: `ON`): Build the Unity-based test suite.
+*   `BUILD_BENCHMARKS` (Default: `OFF`): Build performance comparison tools.
+
+## TLS Usage
+
+**zlink** uses standard OpenSSL for encryption.
+
+**Server Example:**
 ```c
 zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
 zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
 zmq_bind(socket, "tls://*:5555");
 ```
 
-**Client:**
+**Client Example:**
 ```c
 zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
 zmq_setsockopt(socket, ZMQ_TLS_HOSTNAME, "server.example.com", ...);
 zmq_connect(socket, "tls://server.example.com:5555");
 ```
 
-See [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md) for detailed TLS configuration.
+See [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md) for detailed configuration.
 
-### Platform Support
+## Benchmarks
 
-| Platform | Architecture | Backend | Status |
-|----------|--------------|---------|--------|
-| Linux | x64, ARM64 | epoll via ASIO | Tested |
-| macOS | x64, ARM64 | kqueue via ASIO | Tested |
-| Windows | x64, ARM64 | IOCP via ASIO | Tested |
-
-### Tests
-
-64 tests total (5 fuzzer tests skipped by default):
+This repository includes a `benchwithzmq/` directory to compare zlink performance against standard libzmq.
 
 ```bash
-# Run tests during build
-./build-scripts/linux/build.sh x64 ON
-
-# Run tests directly
-cd build/linux-x64 && ctest --output-on-failure
+# Run comparison benchmarks (Linux/macOS)
+python3 benchwithzmq/run_comparison.py ALL --runs 3
 ```
 
-### Documentation
+Results are output to `benchwithzmq/`.
 
-- [CLAUDE.md](CLAUDE.md): Project overview and build instructions
-- [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md): TLS configuration and examples
-- [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md): C++ standard selection
+## Documentation Resources
 
-## Benchmarks (benchwithzmq)
+*   [CLAUDE.md](CLAUDE.md): Detailed project overview and agent context.
+*   [GEMINI.md](GEMINI.md): Context for Gemini agent.
+*   [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md): TLS instructions.
+*   [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md): C++ standard selection guide.
 
-The `benchwithzmq/` harness compares zlink against a reference libzmq build.
-It expects a baseline at `benchwithzmq/libzmq/libzmq_dist/`. Benchmarks are
-only built when `BUILD_BENCHMARKS=ON` and `BUILD_SHARED=ON`.
+## License & Attribution
 
-### Build benchmarks
+**zlink** is based on [ZeroMQ (libzmq)](https://github.com/zeromq/libzmq).
 
-```bash
-cmake -B build/bench \
-  -DBUILD_BENCHMARKS=ON \
-  -DBUILD_SHARED=ON \
-  -DBUILD_TESTS=OFF
-cmake --build build/bench
-```
+The project license is specified in [LICENSE](LICENSE) (Mozilla Public License Version 2.0).
 
-### Run comparison (Linux/macOS)
-
-```bash
-# Clean build + full comparison (refresh libzmq baseline)
-./benchwithzmq/run_benchmarks.sh --with-libzmq --runs 3
-
-# Clean build + reuse cached libzmq baseline
-./benchwithzmq/run_benchmarks.sh --skip-libzmq --runs 3
-
-# Single pattern
-./benchwithzmq/run_benchmarks.sh --pattern PAIR --runs 3
-
-# Direct runner (no clean build)
-python3 benchwithzmq/run_comparison.py ALL --refresh-libzmq --runs 3
-
-# Single pattern (uses cached baseline unless --refresh-libzmq is set)
-python3 benchwithzmq/run_comparison.py PAIR --runs 3
-```
-
-Notes:
-- The script pins to CPU core 1 via `taskset` on Linux.
-- Cached baseline results live in `benchwithzmq/libzmq_cache.json`.
-
-### Windows (PowerShell)
-
-1) Update `BENCH_DIR` and `$ITERATIONS` in `benchwithzmq/run_benchmarks_10x.ps1`
-or `benchwithzmq/run_zlink_only.ps1`.
-2) Run:
-```powershell
-.\benchwithzmq\run_benchmarks_10x.ps1
-```
-3) Optional analysis:
-```bash
-python3 benchwithzmq/analyze_results.py
-```
-
-## Build from sources <a name="build"/>
-
-To build from sources, see the INSTALL file included with the distribution.
-
-### Android
-
-To build from source, see [README](./builds/android/README.md) file in the
-android build directory.
-
-## Resources
-
-Extensive documentation is provided with the distribution. Refer to
-doc/zmq.html, or "man zmq" after you have installed libzmq on your system.
-
-Website: http://www.zeromq.org/
-
-Development mailing list: zeromq-dev@lists.zeromq.org
-Announcements mailing list: zeromq-announce@lists.zeromq.org
-
-Git repository: http://github.com/zeromq/libzmq
-
-ZeroMQ developers can also be found on the IRC channel #zeromq, on the
-Libera Chat network (irc.libera.chat).
-
-## License
-
-The project license is specified in LICENSE.
-
-libzmq is free software; you can redistribute it and/or modify it under
-the terms of the Mozilla Public License Version 2.0.
-
-## Contributing
-
-This project uses [C4(Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/) process for contributions.
+Original Libzmq Resources:
+*   Website: http://www.zeromq.org/
+*   Git repository: http://github.com/zeromq/libzmq

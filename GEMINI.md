@@ -73,7 +73,6 @@ Results are saved in `benchwithzmq/wsl_COMPARISON_RESULTS.md` (conducted in WSL 
 *   **PAIR**: Exclusive pair.
 *   **PUB/SUB, XPUB/XSUB**: Publish-subscribe.
 *   **DEALER/ROUTER**: Async request-reply (Load balancing / Explicit routing).
-*   **STREAM**: Raw TCP.
 *   **ROUTER-to-ROUTER**: P2P and Broker patterns (Verified in benchmarks).
 
 ## Memories

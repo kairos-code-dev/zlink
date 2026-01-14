@@ -161,48 +161,47 @@ set(pkg_config_libs_private "")
 set(pkg_config_names_private "")
 set(pkg_config_defines "")
 
-option(WITH_BOOST_ASIO "Build with Boost.Asio I/O backend" ON)
-option(WITH_ASIO_SSL "Build with Boost.Asio SSL support (requires OpenSSL)" ON)
-option(WITH_ASIO_WS "Build with Boost.Beast WebSocket support" ON)
+# ASIO backend is mandatory in zlink - no option needed
+# WebSocket is always enabled - no option needed
+option(WITH_TLS "Build with TLS support (requires OpenSSL)" ON)
 
-# Boost.Asio is mandatory - always check and use it
+# ASIO backend is mandatory in zlink
 set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
 if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
-  message(STATUS "Boost.Asio headers found at ${BUNDLED_BOOST_INCLUDE_DIR}")
-  set(ZMQ_HAVE_BOOST_ASIO 1)
-  # Phase 1-A: Use Asio as the I/O poller backend (mandatory)
+  message(STATUS "ASIO headers found: ${BUNDLED_BOOST_INCLUDE_DIR}")
+  set(ZMQ_HAVE_ASIO 1)
+  # Force ASIO as the I/O poller backend
   set(POLLER "asio" CACHE STRING "I/O thread polling system (forced to asio)" FORCE)
-  set(ZMQ_USE_ASIO_POLLER ON)
-  message(STATUS "Using Boost.Asio as I/O backend (Phase 1-A: Reactor Mode)")
+  message(STATUS "Using ASIO as mandatory I/O backend")
 else()
-  message(FATAL_ERROR "Boost headers not found at ${BUNDLED_BOOST_INCLUDE_DIR} - ASIO is required")
+  message(FATAL_ERROR "ASIO headers not found at ${BUNDLED_BOOST_INCLUDE_DIR} - ASIO is mandatory")
 endif()
 
-# Phase 2: SSL support using Boost.Asio SSL (requires OpenSSL, enabled by default)
-if(WITH_ASIO_SSL)
+# TLS support using OpenSSL (enabled by default)
+if(WITH_TLS)
   find_package(OpenSSL REQUIRED)
   if(OpenSSL_FOUND)
     message(STATUS "OpenSSL found: ${OPENSSL_VERSION}")
+    # Internal flag kept as ZMQ_HAVE_ASIO_SSL for compatibility
     set(ZMQ_HAVE_ASIO_SSL 1)
   else()
-    message(FATAL_ERROR "OpenSSL not found. Install libssl-dev (required for WITH_ASIO_SSL)")
+    message(FATAL_ERROR "OpenSSL not found. Install libssl-dev (required for WITH_TLS)")
   endif()
 endif()
 
-# Phase 3: WebSocket support using Boost.Beast (enabled by default)
-if(WITH_ASIO_WS)
-  set(BUNDLED_BEAST_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/external/boost/boost/beast.hpp")
-  if(EXISTS "${BUNDLED_BEAST_HEADER}")
-    message(STATUS "Boost.Beast headers found for WebSocket support")
-    set(ZMQ_HAVE_ASIO_WS 1)
-    # WSS (WebSocket Secure) requires both WS and SSL
-    if(ZMQ_HAVE_ASIO_SSL)
-      set(ZMQ_HAVE_ASIO_WSS 1)
-      message(STATUS "WSS (Secure WebSocket) support enabled")
-    endif()
-  else()
-    message(FATAL_ERROR "Boost.Beast headers not found at ${BUNDLED_BEAST_HEADER}")
+# WebSocket support using Boost.Beast (always enabled in zlink)
+set(BUNDLED_BEAST_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/external/boost/boost/beast.hpp")
+if(EXISTS "${BUNDLED_BEAST_HEADER}")
+  message(STATUS "Beast headers found - WebSocket support enabled")
+  # Internal flags kept for compatibility
+  set(ZMQ_HAVE_ASIO_WS 1)
+  # WSS (WebSocket Secure) requires TLS
+  if(ZMQ_HAVE_ASIO_SSL)
+    set(ZMQ_HAVE_ASIO_WSS 1)
+    message(STATUS "WSS (Secure WebSocket) enabled with TLS")
   endif()
+else()
+  message(FATAL_ERROR "Beast headers not found at ${BUNDLED_BEAST_HEADER} - WebSocket is mandatory")
 endif()
 
 if(APPLE)
@@ -214,23 +213,20 @@ endif()
 set(ENABLE_DRAFTS OFF CACHE BOOL "Build and install draft classes and methods" FORCE)
 message(STATUS "Not building draft classes and methods (zlink: forced OFF)")
 
-# Phase 3-B: Enable WebSocket ZMQ integration when ASIO WS is enabled
+# Set feature flags for transport layer
 if(ZMQ_HAVE_ASIO_SSL)
   set(ZMQ_HAVE_TLS 1)
-  message(STATUS "TLS transport enabled (ZMQ_HAVE_TLS via ASIO SSL)")
+  message(STATUS "TLS transport enabled")
 endif()
 
+# WebSocket is always enabled in zlink
 if(ZMQ_HAVE_ASIO_WS)
   set(ZMQ_HAVE_WS 1)
-  message(STATUS "WebSocket transport enabled (ZMQ_HAVE_WS via ASIO)")
+  message(STATUS "WebSocket transport enabled")
   if(ZMQ_HAVE_ASIO_WSS)
     set(ZMQ_HAVE_WSS 1)
-    message(STATUS "Secure WebSocket transport enabled (ZMQ_HAVE_WSS via ASIO)")
+    message(STATUS "Secure WebSocket transport enabled")
   endif()
-else()
-  # zlink: Force WebSocket OFF when ASIO WS is not enabled
-  set(ENABLE_WS OFF CACHE BOOL "Enable WebSocket transport" FORCE)
-  message(STATUS "WebSocket transport disabled (zlink: ASIO WS not enabled)")
 endif()
 set(ENABLE_RADIX_TREE OFF CACHE BOOL "Use radix tree implementation to manage subscriptions" FORCE)
 
@@ -407,6 +403,7 @@ if(POLLER STREQUAL "asio")
     # Transport abstraction layer (R3 refactoring)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/i_asio_transport.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/ipc_transport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.hpp
     # Utility headers (R2, R4 refactoring)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_debug.hpp
@@ -1317,9 +1314,10 @@ foreach(target ${build_targets})
     target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
   endif()
 
-  if(WITH_BOOST_ASIO AND ZMQ_HAVE_BOOST_ASIO)
+  # ASIO is mandatory - always include headers and definitions
+  if(ZMQ_HAVE_ASIO)
     target_include_directories(${target} PRIVATE ${BUNDLED_BOOST_INCLUDE_DIR})
-    # Use standalone Asio mode (no dependency on other Boost libraries like boost/config.hpp)
+    # Use standalone Asio mode (no dependency on other Boost libraries)
     target_compile_definitions(${target} PRIVATE
       BOOST_ASIO_STANDALONE=1
       BOOST_ASIO_NO_DEPRECATED=1)

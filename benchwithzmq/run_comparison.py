@@ -14,7 +14,7 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 def resolve_linux_paths():
     """Return build/library paths for Linux/WSL environments."""
     possible_paths = [
-        os.path.join(ROOT_DIR, "build-bench-asio", "bin"),
+        os.path.join(ROOT_DIR, "build", "bench", "bin"),
         os.path.join(ROOT_DIR, "build", "linux-x64", "bin"),
         os.path.join(ROOT_DIR, "build", "benchwithzmq"),
         os.path.join(ROOT_DIR, "build", "linux-x64", "benchwithzmq"),
@@ -23,7 +23,7 @@ def resolve_linux_paths():
     libzmq_lib_dir = os.path.abspath(
         os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist", "lib")
     )
-    zlink_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build-bench-asio", "lib"))
+    zlink_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build", "bench", "lib"))
     return build_dir, libzmq_lib_dir, zlink_lib_dir
 
 def normalize_build_dir(path):

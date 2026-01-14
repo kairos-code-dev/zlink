@@ -47,6 +47,10 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
     asio_zmtp_engine_t (fd_t fd_,
                         const options_t &options_,
                         const endpoint_uri_pair_t &endpoint_uri_pair_);
+    asio_zmtp_engine_t (fd_t fd_,
+                        const options_t &options_,
+                        const endpoint_uri_pair_t &endpoint_uri_pair_,
+                        std::unique_ptr<i_asio_transport> transport_);
 #if defined ZMQ_HAVE_ASIO_SSL
     asio_zmtp_engine_t (fd_t fd_,
                         const options_t &options_,
@@ -71,6 +75,8 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
     //  Receive the greeting from the peer.
     int receive_greeting ();
     void receive_greeting_versioned ();
+
+    void init_zmtp_engine ();
 
     typedef bool (asio_zmtp_engine_t::*handshake_fun_t) ();
     static handshake_fun_t select_handshake_fun (bool unversioned,

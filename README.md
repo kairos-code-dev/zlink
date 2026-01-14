@@ -226,19 +226,17 @@ vcpkg is a full platform package manager, you can easily install libzmq via vcpk
 
 ### CMake Options
 
-Default configuration (all enabled):
-- `WITH_ASIO=ON`: Use ASIO backend
-- `WITH_ASIO_SSL=ON`: Enable TLS support
-- `ENABLE_WS=ON`: Enable WebSocket transport
-- `BUILD_TESTS=ON`: Build test suite
-- `BUILD_BENCHMARKS=OFF`: Build benchmark tools
+Default configuration:
+- ASIO backend: Mandatory (always enabled)
+- WebSocket transport: Mandatory (always enabled)
+- `WITH_TLS=ON`: Enable TLS support (default: ON)
+- `BUILD_TESTS=ON`: Build test suite (default: ON)
+- `BUILD_BENCHMARKS=OFF`: Build benchmark tools (default: OFF)
 
 Custom build:
 ```bash
 cmake -B build \
-    -DWITH_ASIO=ON \
-    -DWITH_ASIO_SSL=ON \
-    -DENABLE_WS=ON \
+    -DWITH_TLS=ON \
     -DBUILD_TESTS=ON
 cmake --build build
 ```
@@ -296,12 +294,11 @@ only built when `BUILD_BENCHMARKS=ON` and `BUILD_SHARED=ON`.
 ### Build benchmarks
 
 ```bash
-cmake -B build-bench-asio \
-  -DWITH_BOOST_ASIO=ON \
+cmake -B build/bench \
   -DBUILD_BENCHMARKS=ON \
   -DBUILD_SHARED=ON \
   -DBUILD_TESTS=OFF
-cmake --build build-bench-asio
+cmake --build build/bench
 ```
 
 ### Run comparison (Linux/macOS)

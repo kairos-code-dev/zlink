@@ -224,6 +224,85 @@ void wss_transport_t::async_write_some (const unsigned char *buffer,
       });
 }
 
+std::size_t wss_transport_t::write_some (const std::uint8_t *data,
+                                         std::size_t len)
+{
+    if (len == 0) {
+        return 0;
+    }
+
+    //  Check transport state - both SSL and WebSocket handshakes must be complete
+    if (!_wss_stream || !_ws_handshake_complete) {
+        errno = ENOTCONN;
+        return 0;
+    }
+
+    if (!_wss_stream->next_layer ().next_layer ().is_open ()) {
+        errno = EBADF;
+        return 0;
+    }
+
+    //  WebSocket over SSL is frame-based protocol.
+    //  We must write the complete frame atomically to maintain protocol integrity.
+    //  Unlike TCP/TLS, partial writes are not meaningful for WebSocket.
+    //
+    //  Beast's write() sends a complete frame synchronously over the SSL layer.
+    //  On would_block, we return 0 with errno = EAGAIN, and the caller
+    //  should retry via async path.
+    //
+    //  Important: This blocks until the entire frame is sent or an error occurs.
+    //  For speculative write optimization, this is acceptable because:
+    //  1. Small messages (typical ZMQ use case) fit in socket buffer
+    //  2. If buffer is full, we get would_block immediately
+    //  3. Large messages should use async path anyway
+
+    boost::system::error_code ec;
+    std::size_t bytes_written = 0;
+
+    //  Use write() to send complete frame (not write_some which is not
+    //  available for WebSocket in Beast)
+    bytes_written =
+      _wss_stream->write (boost::asio::buffer (data, len), ec);
+
+    if (ec) {
+        //  Handle would_block case
+        if (ec == boost::asio::error::would_block
+            || ec == boost::asio::error::try_again) {
+            errno = EAGAIN;
+            return 0;
+        }
+
+        //  Handle SSL-specific errors
+        if (ec.category () == boost::asio::error::get_ssl_category ()) {
+            errno = EIO;
+            ASIO_DBG_WSS ("write_some SSL error: %s", ec.message ().c_str ());
+            return 0;
+        }
+
+        //  Map boost error codes to errno
+        if (ec == boost::asio::error::broken_pipe
+            || ec == boost::asio::error::connection_reset) {
+            errno = EPIPE;
+        } else if (ec == boost::asio::error::not_connected) {
+            errno = ENOTCONN;
+        } else if (ec == boost::asio::error::bad_descriptor) {
+            errno = EBADF;
+        } else if (ec == boost::asio::error::eof
+                   || ec == boost::beast::websocket::error::closed) {
+            errno = ECONNRESET;
+        } else {
+            errno = EIO;
+        }
+
+        ASIO_DBG_WSS ("write_some error: %s", ec.message ().c_str ());
+        return 0;
+    }
+
+    ASIO_DBG_WSS ("write_some: wrote %zu bytes as frame", bytes_written);
+    errno = 0;
+    return bytes_written;
+}
+
 void wss_transport_t::async_handshake (int handshake_type,
                                        completion_handler_t handler)
 {

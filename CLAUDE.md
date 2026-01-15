@@ -119,6 +119,12 @@ zmq_connect(socket, "wss://server.example.com:8080");
 
 ## Build Requirements
 
+### Build System
+
+**zlink uses CMake exclusively** for all platforms as of v0.3.1. Legacy build systems (Autotools, GYP, MinGW Makefiles) have been removed.
+
+All build scripts in `build-scripts/` directory use CMake. The project requires CMake 3.10 or higher.
+
 ### Required Dependencies
 - **OpenSSL**: Required for TLS support (TLS and WebSocket TLS)
 - **CMake**: 3.10 or higher

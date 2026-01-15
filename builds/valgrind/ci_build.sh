@@ -1,34 +1,45 @@
 #!/usr/bin/env bash
+#
+# NOTE: zlink uses CMake build system (not autotools)
+# This script builds with valgrind memory checking support
 
 set -x
+set -e
 
-mkdir tmp
+mkdir -p tmp build_valgrind
 BUILD_PREFIX=$PWD/tmp
 
-CONFIG_OPTS=()
-CONFIG_OPTS+=("CFLAGS=-g")
-CONFIG_OPTS+=("CPPFLAGS=-I${BUILD_PREFIX}/include")
-CONFIG_OPTS+=("CXXFLAGS=-g")
-CONFIG_OPTS+=("LDFLAGS=-L${BUILD_PREFIX}/lib")
-CONFIG_OPTS+=("PKG_CONFIG_PATH=${BUILD_PREFIX}/lib/pkgconfig")
-CONFIG_OPTS+=("--prefix=${BUILD_PREFIX}")
-CONFIG_OPTS+=("--enable-valgrind")
-
-if [ -n "$TLS" ] && [ "$TLS" == "enabled" ]; then
-    CONFIG_OPTS+=("--with-tls=yes")
-fi
-
+# Build libsodium dependency if CURVE is enabled
 if [ -z $CURVE ]; then
-    CONFIG_OPTS+=("--disable-curve")
+    CURVE_OPTS="-DENABLE_CURVE=OFF"
 elif [ $CURVE == "libsodium" ]; then
-    CONFIG_OPTS+=("--with-libsodium=yes")
+    CURVE_OPTS="-DWITH_LIBSODIUM=ON"
 
     if ! ((command -v dpkg-query >/dev/null 2>&1 && dpkg-query --list libsodium-dev >/dev/null 2>&1) || \
             (command -v brew >/dev/null 2>&1 && brew ls --versions libsodium >/dev/null 2>&1)); then
+        # NOTE: libsodium (external dependency) uses autotools - this is intentional
         git clone --depth 1 -b stable https://github.com/jedisct1/libsodium.git
         ( cd libsodium; ./autogen.sh; ./configure --prefix=$BUILD_PREFIX; make install)
     fi
 fi
 
+# Build zlink with debug symbols for valgrind
+CMAKE_OPTS=()
+CMAKE_OPTS+=("-DCMAKE_BUILD_TYPE=Debug")
+CMAKE_OPTS+=("-DCMAKE_INSTALL_PREFIX=${BUILD_PREFIX}")
+CMAKE_OPTS+=("-DCMAKE_PREFIX_PATH=${BUILD_PREFIX}")
+CMAKE_OPTS+=("-DBUILD_TESTS=ON")
+CMAKE_OPTS+=("${CURVE_OPTS}")
+
+if [ -n "$TLS" ] && [ "$TLS" == "enabled" ]; then
+    CMAKE_OPTS+=("-DWITH_TLS=ON")
+fi
+
 # Build, check, and install from local source
-( cd ../..; ./autogen.sh && ./configure "${CONFIG_OPTS[@]}" && make -j5 && make VERBOSE=1 check-valgrind-memcheck) || exit 1
+(
+    cd build_valgrind &&
+    cmake ../.. "${CMAKE_OPTS[@]}" &&
+    cmake --build . -j5 &&
+    # Run tests under valgrind
+    ctest --verbose --timeout 300 -T memcheck --output-on-failure
+) || exit 1

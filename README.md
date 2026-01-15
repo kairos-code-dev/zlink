@@ -134,6 +134,21 @@ ctest --test-dir build/linux --output-on-failure
 *   `BUILD_TESTS` (Default: `ON`): Build the Unity-based test suite.
 *   `BUILD_BENCHMARKS` (Default: `OFF`): Build performance comparison tools.
 
+## Distribution and Consumption
+
+To support multiple environments, provide more than one consumption path.
+There is no single universal mechanism for C/C++.
+
+**Recommended options:**
+*   **Source build (CMake):** Works everywhere; use `find_package` for deps.
+*   **vcpkg / conan:** Easiest for developers on Windows and cross-platform.
+*   **OS packages:** deb/rpm for Linux distributions.
+*   **Prebuilt SDK:** zip/tar with `include/`, `lib/`, and required DLL/so.
+
+**Typical dependency flows:**
+*   OpenSSL via system package manager or vcpkg.
+*   Bundled Boost headers already live in `external/boost`.
+
 ## TLS Usage
 
 **zlink** uses standard OpenSSL for encryption.

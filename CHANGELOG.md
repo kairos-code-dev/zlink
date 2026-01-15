@@ -6,7 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Changed (BREAKING)
+## [0.3.0] - 2026-01-15
+
+### Breaking Changes
+
+**ASIO-Only Backend Migration**
+
+The project has migrated to use ASIO as the only I/O backend. This is a **breaking change** that requires rebuilding any applications linked against this library.
+
+- **Removed:** Conditional compilation for I/O backend selection
+- **Change:** ASIO (Boost.Asio) is now the mandatory I/O backend
+- **Impact:** Applications must be rebuilt; no source code changes required
+- **ABI Compatibility:** ABI has changed; dynamic linking requires library update
+
+### Changed
+
 - **CMake option cleanup**:
   - `WITH_BOOST_ASIO` removed - ASIO backend is now mandatory
   - `WITH_ASIO_SSL` renamed to `WITH_TLS` - controls TLS/WSS transport support
@@ -15,6 +29,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Build directory naming**:
   - Benchmark default: `build-bench-asio` → `build/bench`
   - Documentation examples updated
+
+- **Build system simplification**:
+  - Removed I/O poller selection logic
+  - Removed `ZMQ_IOTHREAD_POLLER_USE_ASIO` conditional compilation guards
+  - Cleaned up 10 conditional compilation blocks across source files
+
+### Performance
+
+Benchmark results show all metrics within ±10% tolerance of baseline:
+
+- PAIR TCP: -1.4% (within acceptable range)
+- PUBSUB TCP: -3.4% (within acceptable range)
+- DEALER/ROUTER TCP: +4.0% (improved)
 
 ### Migration Guide
 
@@ -35,6 +62,25 @@ cmake -B build -DWITH_TLS=ON
 - TLS (tls://) and WSS (wss://): Optional via WITH_TLS (default ON)
 
 Internal C++ defines (`ZMQ_HAVE_ASIO_SSL`, `ZMQ_HAVE_ASIO_WS`) remain unchanged for compatibility.
+
+### Migration Details
+
+This migration was completed in 5 phases:
+- **Phase 1:** Transport Layer cleanup (session_base.cpp, socket_base.cpp)
+- **Phase 2:** I/O Thread Layer cleanup (io_thread.hpp, io_thread.cpp)
+- **Phase 3:** Build system cleanup (CMakeLists.txt, poller.hpp)
+- **Phase 4:** Documentation updates
+- **Phase 5:** Final validation and performance testing
+
+For detailed migration documentation, see `docs/team/20260115_asio-only/`
+
+### Technical Details
+
+- Total conditional compilation blocks removed: 10
+- Total phase references removed: 20
+- Test coverage: 61/61 tests passing (100%)
+- Binary size: Unchanged (5.9 MB)
+- Supported platforms: Windows, Linux, macOS (x64 and ARM64)
 
 ## [0.2.0] - 2026-01-13
 

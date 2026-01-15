@@ -4,6 +4,7 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include "asio_poller.hpp"
+#include "../likely.hpp"
 
 #if !defined ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -190,8 +191,8 @@ void zmq::asio_poller_t::start_wait_read (poll_entry_t *entry_)
                     _stopping);
 
           //  Check if the entry has been retired or pollin disabled
-          if (ec || entry_->fd == retired_fd || !entry_->pollin_enabled
-              || _stopping) {
+          if (unlikely (ec || entry_->fd == retired_fd || !entry_->pollin_enabled
+              || _stopping)) {
               ASIO_DBG ("read callback: returning early for fd=%d", entry_->fd);
               return;
           }
@@ -232,8 +233,8 @@ void zmq::asio_poller_t::start_wait_write (poll_entry_t *entry_)
                     _stopping);
 
           //  Check if the entry has been retired or pollout disabled
-          if (ec || entry_->fd == retired_fd || !entry_->pollout_enabled
-              || _stopping) {
+          if (unlikely (ec || entry_->fd == retired_fd || !entry_->pollout_enabled
+              || _stopping)) {
               return;
           }
 

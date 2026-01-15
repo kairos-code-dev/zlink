@@ -138,13 +138,13 @@ int zmq::router_t::xsend (msg_t *msg_)
 {
     //  If this is the first part of the message it's the ID of the
     //  peer to send the message to.
-    if (!_more_out) {
+    if (unlikely (!_more_out)) {
         zmq_assert (!_current_out);
 
         //  If we have malformed message (prefix with no subsequent message)
         //  then just silently ignore it.
         //  TODO: The connections should be killed instead.
-        if (msg_->flags () & msg_t::more) {
+        if (likely (msg_->flags () & msg_t::more)) {
             _more_out = true;
 
             //  Find the pipe associated with the routing id stored in the prefix.
@@ -154,11 +154,11 @@ int zmq::router_t::xsend (msg_t *msg_)
               blob_t (static_cast<unsigned char *> (msg_->data ()),
                       msg_->size (), zmq::reference_tag_t ()));
 
-            if (out_pipe) {
+            if (likely (out_pipe != NULL)) {
                 _current_out = out_pipe->pipe;
 
                 // Check whether pipe is closed or not
-                if (!_current_out->check_write ()) {
+                if (unlikely (!_current_out->check_write ())) {
                     // Check whether pipe is full or not
                     const bool pipe_full = !_current_out->check_hwm ();
                     out_pipe->active = false;
@@ -191,7 +191,7 @@ int zmq::router_t::xsend (msg_t *msg_)
     _more_out = (msg_->flags () & msg_t::more) != 0;
 
     //  Push the message into the pipe. If there's no out pipe, just drop it.
-    if (_current_out) {
+    if (likely (_current_out != NULL)) {
         const bool ok = _current_out->write (msg_);
         if (unlikely (!ok)) {
             // Message failed to send - we must close it ourselves.
@@ -221,7 +221,7 @@ int zmq::router_t::xsend (msg_t *msg_)
 
 int zmq::router_t::xrecv (msg_t *msg_)
 {
-    if (_prefetched) {
+    if (unlikely (_prefetched)) {
         if (!_routing_id_sent) {
             const int rc = msg_->move (_prefetched_id);
             errno_assert (rc == 0);
@@ -258,10 +258,10 @@ int zmq::router_t::xrecv (msg_t *msg_)
     zmq_assert (pipe != NULL);
 
     //  If we are in the middle of reading a message, just return the next part.
-    if (_more_in) {
+    if (likely (_more_in)) {
         _more_in = (msg_->flags () & msg_t::more) != 0;
 
-        if (!_more_in) {
+        if (unlikely (!_more_in)) {
             if (_terminate_current_in) {
                 _current_in->terminate (true);
                 _terminate_current_in = false;

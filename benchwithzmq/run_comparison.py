@@ -199,6 +199,8 @@ def main():
         ("comp_std_zmq_dealer_dealer", "comp_zlink_dealer_dealer", "DEALER_DEALER"),
         ("comp_std_zmq_dealer_router", "comp_zlink_dealer_router", "DEALER_ROUTER"),
         ("comp_std_zmq_router_router", "comp_zlink_router_router", "ROUTER_ROUTER"),
+        ("comp_std_zmq_router_router_poll", "comp_zlink_router_router_poll",
+         "ROUTER_ROUTER_POLL"),
     ]
 
     for std_bin, zlk_bin, p_name in comparisons:

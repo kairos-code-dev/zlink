@@ -234,9 +234,25 @@ set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
 file(GLOB ALL_TEST_SOURCES "test_*.cpp")
 
+set(UNREGISTERED_TEST_ALLOWLIST
+    test_bind_ws_fuzzer
+    test_connect_fuzzer
+    test_connect_null_fuzzer
+    test_socket_options_fuzzer
+    test_use_fd
+    test_z85_decode_fuzzer)
+
 foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   get_filename_component(TESTNAME "${TEST_SOURCE}" NAME_WE)
   string(REGEX MATCH "${TESTNAME}" MATCH_TESTNAME "${CURRENT_LIST_FILE_CONTENT}")
+
+  if(TESTNAME MATCHES "_fuzzer$")
+    continue()
+  endif()
+  list(FIND UNREGISTERED_TEST_ALLOWLIST "${TESTNAME}" TEST_ALLOWLIST_INDEX)
+  if(TEST_ALLOWLIST_INDEX GREATER -1)
+    continue()
+  endif()
 
   if(NOT MATCH_TESTNAME)
     message(AUTHOR_WARNING "Test '${TESTNAME}' is not known to CTest.")

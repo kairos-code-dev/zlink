@@ -22,7 +22,8 @@ $benchmarks = @(
     @{pattern="PUBSUB"; zlink="comp_zlink_pubsub.exe"; libzmq="comp_std_zmq_pubsub.exe"; sizes=@(64, 1024)},
     @{pattern="DEALER_DEALER"; zlink="comp_zlink_dealer_dealer.exe"; libzmq="comp_std_zmq_dealer_dealer.exe"; sizes=@(64)},
     @{pattern="DEALER_ROUTER"; zlink="comp_zlink_dealer_router.exe"; libzmq="comp_std_zmq_dealer_router.exe"; sizes=@(64)},
-    @{pattern="ROUTER_ROUTER"; zlink="comp_zlink_router_router.exe"; libzmq="comp_std_zmq_router_router.exe"; sizes=@(64)}
+    @{pattern="ROUTER_ROUTER"; zlink="comp_zlink_router_router.exe"; libzmq="comp_std_zmq_router_router.exe"; sizes=@(64)},
+    @{pattern="ROUTER_ROUTER_POLL"; zlink="comp_zlink_router_router_poll.exe"; libzmq="comp_std_zmq_router_router_poll.exe"; sizes=@(64)}
 )
 
 # CSV Header

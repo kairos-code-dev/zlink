@@ -782,7 +782,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   add_definitions(-D_DARWIN_C_SOURCE)
 endif()
 
-find_package(AsciiDoc)
+find_package(AsciiDoc QUIET)
 
 cmake_dependent_option(WITH_DOC "Build Reference Guide documentation(requires DocBook)" ON "ASCIIDOC_FOUND;NOT WIN32"
                        OFF) # Do not build docs on Windows due to issues with symlinks

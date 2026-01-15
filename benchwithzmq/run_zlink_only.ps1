@@ -21,6 +21,7 @@ $benchmarks = @(
     @{pattern="DEALER_DEALER"; prog="comp_zlink_dealer_dealer.exe"; sizes=@(64)},
     @{pattern="DEALER_ROUTER"; prog="comp_zlink_dealer_router.exe"; sizes=@(64)},
     @{pattern="ROUTER_ROUTER"; prog="comp_zlink_router_router.exe"; sizes=@(64)},
+    @{pattern="ROUTER_ROUTER_POLL"; prog="comp_zlink_router_router_poll.exe"; sizes=@(64)},
 )
 
 # CSV Header

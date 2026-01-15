@@ -43,9 +43,9 @@ set(tests
   test_reconnect_ivl
   test_reconnect_options
   test_mock_pub_sub
-  test_pair_transports
-  test_pubsub_transports
-  test_router_transports)
+  test_pubsub_filter_xpub
+  test_router_multiple_dealers
+  test_transport_matrix)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -230,6 +230,7 @@ endforeach()
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
+set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

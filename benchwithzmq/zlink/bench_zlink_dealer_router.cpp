@@ -13,6 +13,12 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     // Set Routing ID for Dealer
     zmq_setsockopt(dealer, ZMQ_ROUTING_ID, "CLIENT", 6);
 
+    int hwm = 0;
+    set_sockopt_int(router, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    set_sockopt_int(router, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
+    set_sockopt_int(dealer, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
+    set_sockopt_int(dealer, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+
     std::string endpoint = bind_and_resolve_endpoint(router, transport, lib_name + "_dealer_router");
     if (endpoint.empty()) {
         zmq_close(router);
@@ -26,6 +32,8 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
         zmq_ctx_term(ctx);
         return;
     }
+    apply_debug_timeouts(router, transport);
+    apply_debug_timeouts(dealer, transport);
     settle();
 
     // Give it time to connect
@@ -37,34 +45,35 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     stopwatch_t sw;
 
     // --- Warmup (1,000 roundtrips) ---
-    for (int i = 0; i < 1000; ++i) {
-        zmq_send(dealer, buffer.data(), msg_size, 0);
+    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    for (int i = 0; i < warmup_count; ++i) {
+        bench_send(dealer, buffer.data(), msg_size, 0, "warmup send");
         
         // Router receives: [Identity] [Data]
-        int id_len = zmq_recv(router, id, 256, 0);
-        zmq_recv(router, recv_buf.data(), msg_size, 0);
+        int id_len = bench_recv(router, id, 256, 0, "warmup recv id");
+        bench_recv(router, recv_buf.data(), msg_size, 0, "warmup recv data");
         
         // Router replies: [Identity] [Data]
-        zmq_send(router, id, id_len, ZMQ_SNDMORE);
-        zmq_send(router, buffer.data(), msg_size, 0);
+        bench_send(router, id, id_len, ZMQ_SNDMORE, "warmup send id");
+        bench_send(router, buffer.data(), msg_size, 0, "warmup send data");
         
         // Dealer receives: [Data]
-        zmq_recv(dealer, recv_buf.data(), msg_size, 0);
+        bench_recv(dealer, recv_buf.data(), msg_size, 0, "warmup recv");
     }
 
     // --- Latency (1,000 roundtrips) ---
-    int lat_count = 1000;
+    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        zmq_send(dealer, buffer.data(), msg_size, 0);
+        bench_send(dealer, buffer.data(), msg_size, 0, "lat send");
         
-        int id_len = zmq_recv(router, id, 256, 0);
-        zmq_recv(router, recv_buf.data(), msg_size, 0);
+        int id_len = bench_recv(router, id, 256, 0, "lat recv id");
+        bench_recv(router, recv_buf.data(), msg_size, 0, "lat recv data");
         
-        zmq_send(router, id, id_len, ZMQ_SNDMORE);
-        zmq_send(router, buffer.data(), msg_size, 0);
+        bench_send(router, id, id_len, ZMQ_SNDMORE, "lat send id");
+        bench_send(router, buffer.data(), msg_size, 0, "lat send data");
         
-        zmq_recv(dealer, recv_buf.data(), msg_size, 0);
+        bench_recv(dealer, recv_buf.data(), msg_size, 0, "lat recv");
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
@@ -72,14 +81,14 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     std::thread receiver([&]() {
         char id_inner[256];
         for (int i = 0; i < msg_count; ++i) {
-            zmq_recv(router, id_inner, 256, 0); // Identity
-            zmq_recv(router, recv_buf.data(), msg_size, 0); // Data
+            bench_recv(router, id_inner, 256, 0, "thr recv id"); // Identity
+            bench_recv(router, recv_buf.data(), msg_size, 0, "thr recv data"); // Data
         }
     });
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        zmq_send(dealer, buffer.data(), msg_size, 0);
+        bench_send(dealer, buffer.data(), msg_size, 0, "thr send");
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);

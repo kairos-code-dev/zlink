@@ -4,12 +4,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-BUILD_DIR="${ROOT_DIR}/build/bench"
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    IS_WINDOWS=1
+    ;;
+esac
+
+if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+  BUILD_DIR="${ROOT_DIR}/build/windows-x64"
+else
+  BUILD_DIR="${ROOT_DIR}/build/bench"
+fi
 PATTERN="ALL"
 WITH_LIBZMQ=1
 OUTPUT_FILE=""
 RUNS=3
 REUSE_BUILD=0
+ZLINK_ONLY=0
 
 usage() {
   cat <<'USAGE'
@@ -22,6 +34,7 @@ Options:
   --build-dir PATH     Build directory (default: build/bench).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
+  --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
   -h, --help           Show this help.
 USAGE
@@ -53,6 +66,9 @@ while [[ $# -gt 0 ]]; do
     --runs)
       RUNS="${2:-}"
       shift
+      ;;
+    --zlink-only)
+      ZLINK_ONLY=1
       ;;
     -h|--help)
       usage
@@ -97,24 +113,66 @@ else
   echo "Cleaning build directory: ${BUILD_DIR}"
   rm -rf "${BUILD_DIR}"
 
-  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_BENCHMARKS=ON \
-    -DZMQ_CXX_STANDARD=20
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+    CMAKE_ARCH="${CMAKE_ARCH:-x64}"
+    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+      -G "${CMAKE_GENERATOR}" \
+      -A "${CMAKE_ARCH}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_BENCHMARKS=ON \
+      -DZMQ_CXX_STANDARD=20
+  else
+    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_BENCHMARKS=ON \
+      -DZMQ_CXX_STANDARD=20
+  fi
 
-  cmake --build "${BUILD_DIR}"
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    cmake --build "${BUILD_DIR}" --config Release
+  else
+    cmake --build "${BUILD_DIR}"
+  fi
 fi
 
-RUN_CMD=(python3 "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
-
-if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
-  RUN_CMD+=(--refresh-libzmq)
-else
-  CACHE_FILE="${ROOT_DIR}/benchwithzmq/libzmq_cache.json"
-  if [[ ! -f "${CACHE_FILE}" ]]; then
-    echo "libzmq cache not found: ${CACHE_FILE}" >&2
-    echo "Run with --with-libzmq once to generate the baseline." >&2
+PYTHON_BIN=()
+if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+  if command -v py >/dev/null 2>&1; then
+    PYTHON_BIN=(py -3)
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN=(python)
+  elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN=(python3)
+  else
+    echo "Python not found. Install Python 3 or ensure it is on PATH." >&2
     exit 1
+  fi
+else
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN=(python3)
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN=(python)
+  else
+    echo "Python not found. Install Python 3 or ensure it is on PATH." >&2
+    exit 1
+  fi
+fi
+
+RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+
+if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
+  RUN_CMD+=(--zlink-only)
+else
+  if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
+    RUN_CMD+=(--refresh-libzmq)
+  else
+    CACHE_FILE="${ROOT_DIR}/benchwithzmq/libzmq_cache.json"
+    if [[ ! -f "${CACHE_FILE}" ]]; then
+      echo "libzmq cache not found: ${CACHE_FILE}" >&2
+      echo "Run with --with-libzmq once to generate the baseline." >&2
+      exit 1
+    fi
   fi
 fi
 

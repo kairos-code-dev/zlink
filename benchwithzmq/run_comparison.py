@@ -32,34 +32,68 @@ def normalize_build_dir(path):
     abs_path = os.path.abspath(path)
     if os.path.isdir(abs_path):
         bin_dir = os.path.join(abs_path, "bin")
+        release_dir = os.path.join(bin_dir, "Release")
+        debug_dir = os.path.join(bin_dir, "Debug")
         if os.path.exists(os.path.join(abs_path, "comp_zlink_pair" + EXE_SUFFIX)):
             return abs_path
         if os.path.exists(os.path.join(bin_dir, "comp_zlink_pair" + EXE_SUFFIX)):
             return bin_dir
+        if os.path.exists(os.path.join(release_dir, "comp_zlink_pair" + EXE_SUFFIX)):
+            return release_dir
+        if os.path.exists(os.path.join(debug_dir, "comp_zlink_pair" + EXE_SUFFIX)):
+            return debug_dir
     return abs_path
 
 def derive_zlink_lib_dir(build_dir):
     build_root = build_dir
-    if os.path.basename(build_root) == "bin":
+    base = os.path.basename(build_root)
+    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+        bin_root = os.path.dirname(build_root)
+        if os.path.basename(bin_root) == "bin":
+            build_root = os.path.dirname(bin_root)
+    elif base == "bin":
         build_root = os.path.dirname(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 if IS_WINDOWS:
-    BUILD_DIR = os.path.join("build", "windows-x64", "benchwithzmq", "Release")
+    BUILD_DIR = os.path.join("build", "windows-x64", "bin", "Release")
     LIBZMQ_LIB_DIR = os.path.abspath(os.path.join("benchwithzmq", "libzmq", "libzmq_dist", "bin"))
-    ZLINK_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "benchwithzmq", "Release"))
+    ZLINK_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "bin", "Release"))
 else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 3  # Reduced from 10 for faster testing
 CACHE_FILE = os.path.join(ROOT_DIR, "benchwithzmq", "libzmq_cache.json")
 
-# Settings for loop
-TRANSPORTS = ["tcp", "inproc"]
-if not IS_WINDOWS:
-    TRANSPORTS.append("ipc") # IPC is more stable for benchmarks on Linux
+def parse_env_list(name, cast_fn):
+    val = os.environ.get(name)
+    if not val:
+        return None
+    items = []
+    for part in val.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            items.append(cast_fn(part))
+        except ValueError:
+            continue
+    return items or None
 
-MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
+# Settings for loop
+_env_transports = parse_env_list("BENCH_TRANSPORTS", str)
+if _env_transports:
+    TRANSPORTS = _env_transports
+else:
+    TRANSPORTS = ["tcp", "inproc"]
+    if not IS_WINDOWS:
+        TRANSPORTS.append("ipc")  # IPC is more stable for benchmarks on Linux
+
+_env_sizes = parse_env_list("BENCH_MSG_SIZES", int)
+if _env_sizes:
+    MSG_SIZES = _env_sizes
+else:
+    MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
 base_env = os.environ.copy()
 
@@ -86,7 +120,8 @@ def run_single_test(binary_name, lib_name, transport, size):
         else:
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
-        if result.returncode != 0: return []
+        if result.returncode != 0:
+            return []
         
         parsed = []
         for line in result.stdout.splitlines():
@@ -95,22 +130,33 @@ def run_single_test(binary_name, lib_name, transport, size):
                 if len(p) >= 7:
                     parsed.append({"metric": p[5], "value": float(p[6])})
         return parsed
-    except Exception as e:
-        # print(f"Error running {binary_name}: {e}")
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception:
         return []
 
 def collect_data(binary_name, lib_name, pattern_name, num_runs):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
     final_stats = {} # (tr, size, metric) -> avg_value
+    failures = []
     
     for tr in TRANSPORTS:
         for sz in MSG_SIZES:
             print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
             metrics_raw = {} # metric_name -> list of values
+            failed_runs = 0
             
             for i in range(num_runs):
                 print(f"{i+1} ", end="", flush=True)
                 results = run_single_test(binary_name, lib_name, tr, sz)
+                if results is None:
+                    failed_runs += 1
+                    failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    continue
+                if not results:
+                    failed_runs += 1
+                    failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                    continue
                 for r in results:
                     m = r['metric']
                     if m not in metrics_raw: metrics_raw[m] = []
@@ -123,20 +169,25 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs):
                 else:
                     avg = statistics.mean(vals) if vals else 0
                 final_stats[f"{tr}|{sz}|{m}"] = avg
+            if failed_runs:
+                print(f"(failures={failed_runs}) ", end="", flush=True)
             print("Done")
-    return final_stats
+    return final_stats, failures
 
 def parse_args():
     refresh = False
     p_req = "ALL"
     num_runs = DEFAULT_NUM_RUNS
     build_dir = ""
+    zlink_only = False
 
     i = 1
     while i < len(sys.argv):
         arg = sys.argv[i]
         if arg == "--refresh-libzmq":
             refresh = True
+        elif arg == "--zlink-only":
+            zlink_only = True
         elif arg == "--runs":
             if i + 1 >= len(sys.argv):
                 print("Error: --runs requires a value.", file=sys.stderr)
@@ -167,10 +218,10 @@ def parse_args():
         print("Error: --runs must be >= 1.", file=sys.stderr)
         sys.exit(1)
 
-    return p_req, refresh, num_runs, build_dir
+    return p_req, refresh, num_runs, build_dir, zlink_only
 
 def main():
-    p_req, refresh, num_runs, build_dir = parse_args()
+    p_req, refresh, num_runs, build_dir, zlink_only = parse_args()
     if build_dir:
         build_dir = normalize_build_dir(build_dir)
         global BUILD_DIR, ZLINK_LIB_DIR
@@ -185,13 +236,15 @@ def main():
         return
 
     cache = {}
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, 'r') as f:
-                cache = json.load(f)
-        except: pass
-    else:
-        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+    if not zlink_only:
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'r') as f:
+                    cache = json.load(f)
+            except:
+                pass
+        else:
+            os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
 
     comparisons = [
         ("comp_std_zmq_pair", "comp_zlink_pair", "PAIR"),
@@ -203,35 +256,55 @@ def main():
          "ROUTER_ROUTER_POLL"),
     ]
 
+    all_failures = []
     for std_bin, zlk_bin, p_name in comparisons:
         if p_req != "ALL" and p_name != p_req: continue
         
         print(f"\n## PATTERN: {p_name}")
         
-        if refresh or p_name not in cache:
-            s_stats = collect_data(std_bin, "libzmq", p_name, num_runs)
-            cache[p_name] = s_stats
-            with open(CACHE_FILE, 'w') as f: json.dump(cache, f, indent=2)
+        if zlink_only:
+            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs)
+            all_failures.extend(failures)
         else:
-            print(f"  [libzmq] Using cached baseline.")
-            s_stats = cache[p_name]
+            if refresh or p_name not in cache:
+                s_stats, failures = collect_data(std_bin, "libzmq", p_name, num_runs)
+                all_failures.extend(failures)
+                cache[p_name] = s_stats
+                with open(CACHE_FILE, 'w') as f: json.dump(cache, f, indent=2)
+            else:
+                print(f"  [libzmq] Using cached baseline.")
+                s_stats = cache[p_name]
 
-        z_stats = collect_data(zlk_bin, "zlink", p_name, num_runs)
+            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs)
+            all_failures.extend(failures)
 
         # Print Table
         for tr in TRANSPORTS:
             print(f"\n### Transport: {tr}")
-            print(f"| Size | Metric | Standard libzmq | zlink | Diff (%) |")
-            print(f"|------|--------|-----------------|-------|----------|")
+            if zlink_only:
+                print("| Size | Metric | zlink |")
+                print("|------|--------|-------|")
+            else:
+                print("| Size | Metric | Standard libzmq | zlink | Diff (%) |")
+                print("|------|--------|-----------------|-------|----------|")
             for sz in MSG_SIZES:
-                st = s_stats.get(f"{tr}|{sz}|throughput", 0)
                 zt = z_stats.get(f"{tr}|{sz}|throughput", 0)
-                td = ((zt - st) / st * 100) if st > 0 else 0
-                sl = s_stats.get(f"{tr}|{sz}|latency", 0)
                 zl = z_stats.get(f"{tr}|{sz}|latency", 0)
-                ld = ((sl - zl) / sl * 100) if sl > 0 else 0
-                print(f"| {sz}B | Throughput | {st/1e6:6.2f} M/s | {zt/1e6:6.2f} M/s | {td:>+7.2f}% |")
-                print(f"| | Latency | {sl:8.2f} us | {zl:8.2f} us | {ld:>+7.2f}% (inv) |")
+                if zlink_only:
+                    print(f"| {sz}B | Throughput | {zt/1e6:6.2f} M/s |")
+                    print(f"| | Latency | {zl:8.2f} us |")
+                else:
+                    st = s_stats.get(f"{tr}|{sz}|throughput", 0)
+                    td = ((zt - st) / st * 100) if st > 0 else 0
+                    sl = s_stats.get(f"{tr}|{sz}|latency", 0)
+                    ld = ((sl - zl) / sl * 100) if sl > 0 else 0
+                    print(f"| {sz}B | Throughput | {st/1e6:6.2f} M/s | {zt/1e6:6.2f} M/s | {td:>+7.2f}% |")
+                    print(f"| | Latency | {sl:8.2f} us | {zl:8.2f} us | {ld:>+7.2f}% (inv) |")
+
+    if all_failures:
+        print("\n## Failures")
+        for pattern, lib_name, tr, sz, reason in all_failures:
+            print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
 
 if __name__ == "__main__":
     main()

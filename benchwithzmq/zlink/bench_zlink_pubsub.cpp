@@ -11,8 +11,8 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     void *sub = zmq_socket(ctx, ZMQ_SUB);
 
     int hwm = 0;
-    zmq_setsockopt(pub, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(sub, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    set_sockopt_int(pub, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    set_sockopt_int(sub, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
     zmq_setsockopt(sub, ZMQ_SUBSCRIBE, "", 0);
 
     std::string endpoint = bind_and_resolve_endpoint(pub, transport, lib_name + "_pubsub");
@@ -29,6 +29,8 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
         return;
     }
 
+    apply_debug_timeouts(pub, transport);
+    apply_debug_timeouts(sub, transport);
     settle();
 
     std::vector<char> buffer(msg_size, 'a');
@@ -36,21 +38,22 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     stopwatch_t sw;
 
     // Warmup
-    for (int i = 0; i < 1000; ++i) {
-        zmq_send(pub, buffer.data(), msg_size, 0);
-        zmq_recv(sub, recv_buf.data(), msg_size, 0);
+    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    for (int i = 0; i < warmup_count; ++i) {
+        bench_send(pub, buffer.data(), msg_size, 0, "warmup send");
+        bench_recv(sub, recv_buf.data(), msg_size, 0, "warmup recv");
     }
 
     // Throughput (Simple latency for pubsub is hard, use total time / count)
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
-            zmq_recv(sub, recv_buf.data(), msg_size, 0);
+            bench_recv(sub, recv_buf.data(), msg_size, 0, "thr recv");
         }
     });
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        zmq_send(pub, buffer.data(), msg_size, 0);
+        bench_send(pub, buffer.data(), msg_size, 0, "thr send");
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);

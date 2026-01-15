@@ -118,9 +118,8 @@ void tcp_transport_t::async_write_some (const unsigned char *buffer,
 {
 #if defined ZMQ_HAVE_WINDOWS
     if (_socket) {
-        boost::asio::async_write (*_socket,
-                                  boost::asio::buffer (buffer, buffer_size),
-                                  handler);
+        _socket->async_write_some (boost::asio::buffer (buffer, buffer_size),
+                                   handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }

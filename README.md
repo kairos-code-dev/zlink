@@ -53,6 +53,30 @@ To maintain simplicity and size, the following features from standard libzmq are
 *   **C++11 Compiler** (GCC 5+, Clang 3.8+, MSVC 2015+)
 *   **OpenSSL** (Required for TLS support)
 
+### OpenSSL Setup (Recommended)
+
+Keep OpenSSL external (OS package manager or vcpkg). Vendoring is not
+recommended due to security updates and platform-specific builds.
+
+**Windows (vcpkg):**
+```powershell
+.\vcpkg install openssl:x64-windows
+# Configure CMake with:
+# -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install libssl-dev
+```
+
+**macOS (Homebrew):**
+```bash
+brew install openssl@3
+# Configure CMake with:
+# -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+```
+
 ### Quick Build Scripts
 
 We provide platform-specific scripts that handle configuration and testing:

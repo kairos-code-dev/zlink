@@ -198,6 +198,35 @@ cd build/linux-x64 && ctest --output-on-failure
 
 **Note**: TIPC tests have been removed along with TIPC protocol support.
 
+### Transport Matrix Tests
+
+The test suite includes a comprehensive transport matrix test (`test_transport_matrix`) that validates all socket patterns across all supported transports:
+
+**Socket Patterns Tested:**
+- PAIR: Bidirectional communication
+- PUB/SUB: Publish-subscribe with empty filter
+- ROUTER/DEALER: Identity-based routing with single dealer
+- ROUTER/ROUTER: Bidirectional routing between routers
+
+**Transport Coverage:**
+- **tcp, inproc, ipc**: All socket patterns tested
+  - IPC automatically skipped on Windows (not supported)
+- **ws, wss, tls**: Only PAIR and PUB/SUB patterns tested
+  - WebSocket and TLS transports are skipped if not available at runtime
+  - Uses `zmq_has()` for runtime capability detection
+
+**Specialized Tests (Not in Matrix):**
+- **Topic Filtering**: `test_pubsub_filter_xpub` includes tests for `ZMQ_SUBSCRIBE` topic filtering
+- **XPUB/XSUB**: `test_pubsub_filter_xpub` includes tests for extended pub/sub with subscription forwarding messages
+- **Multiple Dealers**: `test_router_multiple_dealers` tests router handling multiple concurrent dealer connections
+
+**Test File Organization:**
+- `test_transport_matrix.cpp` - Comprehensive matrix of socket types × transports (basic patterns)
+- `test_pubsub_filter_xpub.cpp` - PUB/SUB topic filtering and XPUB/XSUB advanced features
+- `test_router_multiple_dealers.cpp` - ROUTER socket with multiple concurrent DEALER clients
+
+The matrix test automatically adapts to platform capabilities, skipping unsupported transports gracefully with `TEST_IGNORE` status.
+
 ## Architecture
 
 ### Build System

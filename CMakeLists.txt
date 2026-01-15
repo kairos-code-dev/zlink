@@ -383,15 +383,15 @@ if(NOT POLLER STREQUAL "asio")
 endif()
 
 message(STATUS "Using polling method in I/O threads: ${POLLER}")
-string(TOUPPER ${POLLER} UPPER_POLLER)
-set(ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
+# ASIO is the only supported I/O poller backend
+set(ZMQ_IOTHREAD_POLLER_USE_ASIO 1)
 
 # Add Asio poller source files when using Asio backend
 if(POLLER STREQUAL "asio")
   list(APPEND sources
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_poller.hpp
-    # Phase 1-B: ASIO-based TCP listener and connecter
+    # ASIO-based TCP listener and connecter
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_listener.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_tcp_connecter.cpp

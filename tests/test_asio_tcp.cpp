@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 /*
- * Test suite for the ASIO TCP engine (Phase 1-C: True Proactor Mode)
+ * Test suite for the ASIO TCP engine (True Proactor Mode)
  *
  * These tests verify that the ASIO-based engine using async_read/async_write
  * works correctly for ZMTP message exchange.

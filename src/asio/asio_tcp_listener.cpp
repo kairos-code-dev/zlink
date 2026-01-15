@@ -331,7 +331,7 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
       get_socket_name (fd_, socket_end_local),
       get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
 
-    //  Phase 1-C: Use ASIO ZMTP engine for true proactor mode
+    //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 

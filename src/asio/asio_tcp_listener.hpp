@@ -21,8 +21,7 @@ class io_thread_t;
 class socket_base_t;
 
 //  ASIO-based TCP listener using async_accept for connection handling.
-//  This is Phase 1-B: connection establishment uses ASIO, but once connected,
-//  the FD is passed to the existing stream_engine for data transfer.
+//  Connections are handled using true proactor mode with asio_zmtp_engine.
 
 class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
 {

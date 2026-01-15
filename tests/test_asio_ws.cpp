@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 /*
- * Test suite for the ASIO WebSocket infrastructure (Phase 3: WebSocket Support)
+ * Test suite for the ASIO WebSocket infrastructure
  *
  * These tests verify that the Boost.Beast WebSocket layer works correctly
  * for WebSocket connections. The actual ZMQ WebSocket integration will
@@ -9,10 +9,6 @@
  *
  * NOTE: These tests require Boost.Beast and are only compiled when
  * ZMQ_HAVE_ASIO_WS is defined.
- *
- * TODO (Phase 7): Add wss:// (WebSocket over SSL/TLS) tests.
- *   This requires combining SSL streams with WebSocket streams:
- *   websocket::stream<ssl::stream<tcp::socket>>
  */
 
 #include "testutil.hpp"
@@ -424,7 +420,7 @@ void test_ws_binary_message ()
 }
 
 //  ============================================================================
-//  Phase 3-B: ZMQ WebSocket Integration Tests
+//  ZMQ WebSocket Integration Tests
 //  ============================================================================
 //
 //  The following tests verify that ZMQ API works with WebSocket transport:
@@ -434,7 +430,7 @@ void test_ws_binary_message ()
 
 #if defined ZMQ_HAVE_WS
 
-//  Global ZMQ context for Phase 3-B tests
+//  Global ZMQ context for WebSocket integration tests
 static void *g_ctx = NULL;
 
 static void setup_zmq_ctx ()
@@ -737,7 +733,7 @@ int main ()
     UNITY_BEGIN ();
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
-    //  Phase 3: Beast WebSocket infrastructure tests
+    //  Beast WebSocket infrastructure tests
     RUN_TEST (test_ws_stream_creation);
     RUN_TEST (test_ws_stream_options);
     //  Network-based Beast tests
@@ -746,7 +742,7 @@ int main ()
     RUN_TEST (test_ws_binary_message);
 
 #if defined ZMQ_HAVE_WS
-    //  Phase 3-B: ZMQ WebSocket API integration tests
+    //  ZMQ WebSocket API integration tests
     RUN_TEST (test_zmq_ws_bind);
     RUN_TEST (test_zmq_ws_connect);
     RUN_TEST (test_zmq_ws_pair_message);

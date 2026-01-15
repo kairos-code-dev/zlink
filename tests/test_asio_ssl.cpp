@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 /*
- * Test suite for the ASIO SSL infrastructure (Phase 2: SSL Support)
+ * Test suite for the ASIO SSL infrastructure
  *
  * These tests verify that the Boost.Asio SSL layer works correctly
  * for encrypted TCP connections. The actual ZMQ SSL integration will
@@ -9,10 +9,6 @@
  *
  * NOTE: These tests require OpenSSL and are only compiled when
  * ZMQ_HAVE_ASIO_SSL is defined.
- *
- * TODO (Phase 7): Add end-to-end tls:// protocol tests using ZMQ sockets.
- *   Current tests verify low-level Asio SSL primitives.
- *   Need tests for zmq_bind("tls://...") and zmq_connect("tls://...").
  */
 
 #include "testutil.hpp"

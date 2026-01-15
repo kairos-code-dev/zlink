@@ -57,6 +57,7 @@ libunity.a
 *~
 .*~
 .libs
+__pycache__/
 
 # /src
 ## Ignore generated files in configuration process

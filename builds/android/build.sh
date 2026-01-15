@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 #
+# Android NDK build script for zlink and dependencies
+#
+# This script uses autotools for building dependencies (e.g., libsodium)
+# through the android_build_helper.sh utility functions.
+#
+# The android_build_helper.sh provides generic autotools support for
+# cross-compiling dependencies to Android targets. This is intentional
+# as many dependencies (like libsodium) use autotools build systems.
+#
+# zlink itself is built via CMake in the android_build_library() function,
+# but the helper script checks for autotools first for dependency compatibility.
+
 #   Exit if any step fails
 set -e
 

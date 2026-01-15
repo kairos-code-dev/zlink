@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
+#
+# NOTE: zlink uses CMake build system (not autotools)
+# This script no longer creates distribution tarballs - zlink is a direct CMake project
 
 set -x -e
 
 cd ../..
-
-# always install custom builds from dist
-# to make sure that `make dist` doesn't omit any files required to build & test
-if [ -z "$DO_CLANG_FORMAT_CHECK" -a -z "$CLANG_TIDY" ]; then
-    ./autogen.sh
-    ./configure
-    make -j5 dist-gzip
-    V=$(./version.sh)
-    tar -xzf zeromq-$V.tar.gz
-    cd zeromq-$V
-fi
 
 mkdir tmp || true
 BUILD_PREFIX=$PWD/tmp
@@ -44,6 +36,7 @@ elif [ $CURVE == "libsodium" ]; then
 
     if ! ((command -v dpkg-query >/dev/null 2>&1 && dpkg-query --list libsodium-dev >/dev/null 2>&1) || \
             (command -v brew >/dev/null 2>&1 && brew ls --versions libsodium >/dev/null 2>&1)); then
+        # NOTE: libsodium (external dependency) uses autotools - this is intentional
         git clone --depth 1 -b stable https://github.com/jedisct1/libsodium.git
         ( cd libsodium; ./autogen.sh; ./configure --prefix=$BUILD_PREFIX; make install)
     fi

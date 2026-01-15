@@ -4,18 +4,19 @@ set -x
 set -e
 
 if [ $BUILD_TYPE = "default" ]; then
-    mkdir tmp
+    mkdir -p build tmp
     BUILD_PREFIX=$PWD/tmp
 
-    source config.sh
-    set_config_opts
-
+    # zlink uses CMake build system (not autotools)
     # Build and check this project
     (
-        ./autogen.sh &&
-        ./configure "${CONFIG_OPTS[@]}" &&
-        export DISTCHECK_CONFIGURE_FLAGS="${CONFIG_OPTS[@]}" &&
-        make VERBOSE=1 -j5 ${CHECK}
+        cd build &&
+        cmake .. \
+            -DCMAKE_INSTALL_PREFIX="${BUILD_PREFIX}" \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STATIC=OFF &&
+        cmake --build . --verbose -j5 &&
+        ctest --output-on-failure
     ) || exit 1
 else
     cd ./builds/${BUILD_TYPE} && ./ci_build.sh

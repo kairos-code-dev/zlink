@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
+#
+# LEGACY SCRIPT: ABI/API Compliance Checker for upstream libzmq
+#
+# This script is NOT used for zlink builds. It's a legacy CI tool that:
+# 1. Builds the current HEAD of upstream libzmq using autotools
+# 2. Builds the latest release tag of upstream libzmq using autotools
+# 3. Compares ABI/API compatibility between versions
+#
+# zlink uses CMake, but this script uses autotools because it's checking
+# compatibility with upstream libzmq releases which use autotools.
+#
+# This script should only be used for upstream libzmq compatibility analysis.
 
 set -x
 set -e

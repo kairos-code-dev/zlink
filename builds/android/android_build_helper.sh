@@ -35,11 +35,18 @@
 # https://github.com/jemc/android_build_helper
 #   android_build_helper.sh
 #
+# NOTE: This is a GENERIC helper script for building autotools-based libraries
+# for Android NDK targets. The autotools support in this script is INTENTIONAL.
+#
 # The following is a helper script for setting up android builds for
 # "native" libraries maintained with an autotools build system.
 # It merely helps to create the proper cross-compile environment.
 # It makes no attempt to wrap the library or make it accessible to Java code;
 # the intention is to make the bare library available to other "native" code.
+#
+# For zlink: This script is used to build autotools-based DEPENDENCIES
+# (e.g., libsodium) for Android. zlink itself uses CMake, but many of its
+# potential dependencies use autotools, so this helper provides that support.
 #
 # To get the latest version of this script, please download from:
 #   https://github.com/jemc/android_build_helper
@@ -544,6 +551,11 @@ function android_clone_library {
 }
 
 # Caller must set CONFIG_OPTS[], before call.
+#
+# NOTE: This function supports building autotools-based libraries.
+# For zlink dependencies (like libsodium), this autotools support is intentional.
+# If the library has a CMakeLists.txt and no configure script, you should
+# modify this function to use cmake instead of autotools.
 function android_build_library {
     local tag=$1 ; shift
     local root=$1 ; shift
@@ -567,6 +579,7 @@ function android_build_library {
         android_show_configure_opts "${tag}" "${CONFIG_OPTS[@]}"
 
         cd "${root}"
+        # Autotools build path for dependencies like libsodium
         if [ -e autogen.sh ]; then
             ./autogen.sh 2> /dev/null
         fi

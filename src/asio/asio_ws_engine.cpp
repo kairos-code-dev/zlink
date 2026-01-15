@@ -440,9 +440,14 @@ void zmq::asio_ws_engine_t::on_read_complete (
             cancel_handshake_timer ();
         }
 
-        //  Set up message processing
-        _next_msg = &asio_ws_engine_t::pull_msg_from_session;
-        _process_msg = &asio_ws_engine_t::push_msg_to_session;
+        //  Check if subscription message is required for PUB/XPUB sockets
+        if (_options.type == ZMQ_PUB || _options.type == ZMQ_XPUB)
+            _subscription_required = true;
+
+        //  Set up message processing for routing_id exchange
+        //  Just like asio_zmtp_engine_t, we start with routing_id exchange
+        _next_msg = &asio_ws_engine_t::routing_id_msg;
+        _process_msg = &asio_ws_engine_t::process_routing_id_msg;
 
         //  Create encoder/decoder for v3.1
         _encoder = new (std::nothrow) v2_encoder_t (_options.out_batch_size);
@@ -1153,14 +1158,40 @@ int zmq::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
 
 int zmq::asio_ws_engine_t::routing_id_msg (msg_t *msg_)
 {
-    LIBZMQ_UNUSED (msg_);
-    return -1;
+    const int rc = msg_->init_size (_options.routing_id_size);
+    errno_assert (rc == 0);
+    if (_options.routing_id_size > 0)
+        memcpy (msg_->data (), _options.routing_id, _options.routing_id_size);
+    _next_msg = &asio_ws_engine_t::pull_msg_from_session;
+    return 0;
 }
 
 int zmq::asio_ws_engine_t::process_routing_id_msg (msg_t *msg_)
 {
-    LIBZMQ_UNUSED (msg_);
-    return -1;
+    if (_options.recv_routing_id) {
+        msg_->set_flags (msg_t::routing_id);
+        const int rc = _session->push_msg (msg_);
+        errno_assert (rc == 0);
+    } else {
+        int rc = msg_->close ();
+        errno_assert (rc == 0);
+        rc = msg_->init ();
+        errno_assert (rc == 0);
+    }
+
+    if (_subscription_required) {
+        msg_t subscription;
+
+        int rc = subscription.init_size (1);
+        errno_assert (rc == 0);
+        *static_cast<unsigned char *> (subscription.data ()) = 1;
+        rc = _session->push_msg (&subscription);
+        errno_assert (rc == 0);
+    }
+
+    _process_msg = &asio_ws_engine_t::push_msg_to_session;
+
+    return 0;
 }
 
 #endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS

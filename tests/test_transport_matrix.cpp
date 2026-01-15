@@ -267,29 +267,6 @@ static void test_transport_matrix (const char *transport_)
     fflush (stderr);
 }
 
-// WebSocket and TLS transports only support PAIR and PUB/SUB patterns reliably.
-// ROUTER patterns have known compatibility issues with these transports due to
-// framing and handshake protocol differences. This is a known limitation.
-static void test_transport_matrix_ws_tls (const char *transport_)
-{
-    fprintf (stderr, "Testing transport: %s (PAIR and PUB/SUB only)\n",
-             transport_);
-    fflush (stderr);
-
-    run_pair (transport_);
-    fprintf (stderr, "  PAIR complete\n");
-    fflush (stderr);
-
-    run_pubsub (transport_);
-    fprintf (stderr, "  PUB/SUB complete\n");
-    fflush (stderr);
-
-    // Skip ROUTER patterns for ws/wss/tls due to known compatibility issues
-    fprintf (stderr,
-             "  ROUTER patterns skipped (not supported on WebSocket/TLS)\n");
-    fflush (stderr);
-}
-
 void test_matrix_tcp ()
 {
     test_transport_matrix ("tcp");
@@ -307,12 +284,12 @@ void test_matrix_ipc ()
 
 void test_matrix_ws ()
 {
-    test_transport_matrix_ws_tls ("ws");
+    test_transport_matrix ("ws");
 }
 
 void test_matrix_wss ()
 {
-    test_transport_matrix_ws_tls ("wss");
+    test_transport_matrix ("wss");
 }
 
 void test_matrix_tls ()

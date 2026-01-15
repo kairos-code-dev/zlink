@@ -79,6 +79,31 @@ cmake -B build \
 cmake --build build
 ```
 
+### Windows (VS 2022 / CLion)
+
+Prereqs: Visual Studio 2022 (Desktop C++), CMake, OpenSSL.
+If OpenSSL is installed via vcpkg, set `CMAKE_TOOLCHAIN_FILE` to the vcpkg toolchain.
+
+```powershell
+cmake -S . -B build\win ^
+  -G "Visual Studio 17 2022" -A x64 ^
+  -DWITH_TLS=ON -DBUILD_TESTS=ON -DBUILD_SHARED=ON ^
+  -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake --build build\win --config Release
+ctest --test-dir build\win --output-on-failure -C Release
+```
+
+### Linux
+
+Prereqs (Ubuntu/Debian): `sudo apt-get install build-essential cmake pkg-config libssl-dev`
+
+```bash
+cmake -S . -B build/linux \
+  -DWITH_TLS=ON -DBUILD_TESTS=ON -DBUILD_SHARED=ON
+cmake --build build/linux
+ctest --test-dir build/linux --output-on-failure
+```
+
 ### Configuration Options
 
 *   `WITH_TLS` (Default: `ON`): Enable OpenSSL-based TLS.

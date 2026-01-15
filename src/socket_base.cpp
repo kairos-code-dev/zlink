@@ -1812,7 +1812,13 @@ zmq::routing_socket_base_t::lookup_out_pipe (const blob_t &routing_id_)
 {
     // TODO we could probably avoid constructor a temporary blob_t to call this function
     out_pipes_t::iterator it = _out_pipes.find (routing_id_);
-    return it == _out_pipes.end () ? NULL : &it->second;
+    if (it != _out_pipes.end ()) {
+        //  Prefetch the out_pipe structure into L1 cache for next access
+        //  This improves cache efficiency as the caller will immediately use the result
+        __builtin_prefetch (&it->second, 0, 3);
+        return &it->second;
+    }
+    return NULL;
 }
 
 const zmq::routing_socket_base_t::out_pipe_t *
@@ -1820,7 +1826,12 @@ zmq::routing_socket_base_t::lookup_out_pipe (const blob_t &routing_id_) const
 {
     // TODO we could probably avoid constructor a temporary blob_t to call this function
     const out_pipes_t::const_iterator it = _out_pipes.find (routing_id_);
-    return it == _out_pipes.end () ? NULL : &it->second;
+    if (it != _out_pipes.end ()) {
+        //  Prefetch the out_pipe structure into L1 cache for next access
+        __builtin_prefetch (&it->second, 0, 3);
+        return &it->second;
+    }
+    return NULL;
 }
 
 void zmq::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)

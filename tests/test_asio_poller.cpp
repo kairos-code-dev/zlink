@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 /*
- * Test suite for the Asio poller (Phase 1-A: Reactor Mode)
+ * Test suite for the Asio poller
  *
- * These tests verify that the Asio-based poller works correctly
- * as a drop-in replacement for the native pollers (epoll, kqueue, etc.)
+ * These tests verify that the Asio-based poller works correctly.
+ * ASIO is now the only supported I/O backend for zlink.
  */
 
 #include "testutil.hpp"

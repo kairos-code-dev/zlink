@@ -28,7 +28,7 @@ class session_base_t;
 class mechanism_t;
 class i_asio_transport;
 
-//  Phase 1-C: True Proactor Mode ASIO Engine
+//  True Proactor Mode ASIO Engine
 //
 //  This engine uses Boost.Asio's async_read/async_write for true
 //  asynchronous I/O operations, as opposed to the reactor mode

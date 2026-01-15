@@ -538,7 +538,7 @@ void zmq::session_base_t::start_connecting (bool wait_)
     //  Create the connecter object.
     own_t *connecter = NULL;
     if (_addr->protocol == protocol_name::tcp) {
-        //  Phase 1-B: Use ASIO-based connecter for async_connect
+        //  Use ASIO-based connecter for async_connect
         connecter = new (std::nothrow)
           asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
     }

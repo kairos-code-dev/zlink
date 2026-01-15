@@ -49,7 +49,7 @@ enum
     WS_ZMTP_3_x = 3
 };
 
-//  Phase 3-B: WebSocket ZMTP Engine
+//  WebSocket ZMTP Engine
 //
 //  This engine implements ZMTP protocol over WebSocket transport.
 //  It uses ws_transport_t for WebSocket framing and Beast I/O,

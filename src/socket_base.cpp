@@ -451,7 +451,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     }
 
     if (protocol == protocol_name::tcp) {
-        //  Phase 1-B: Use ASIO-based listener for async_accept
+        //  Use ASIO-based listener for async_accept
         asio_tcp_listener_t *listener =
           new (std::nothrow) asio_tcp_listener_t (io_thread, this, options);
         alloc_assert (listener);
@@ -702,7 +702,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     //  Resolve address (if needed by the protocol)
     if (protocol == protocol_name::tcp
 #ifdef ZMQ_HAVE_TLS
-        || protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+        || protocol == protocol_name::tls  // TLS uses TCP address format
 #endif
     ) {
         //  Do some basic sanity checks on tcp:// address syntax
@@ -905,7 +905,7 @@ int zmq::socket_base_t::term_endpoint (const char *endpoint_uri_)
     const std::string resolved_endpoint_uri =
       (uri_protocol == protocol_name::tcp
 #ifdef ZMQ_HAVE_TLS
-       || uri_protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+       || uri_protocol == protocol_name::tls  // TLS uses TCP address format
 #endif
       )
         ? resolve_tcp_addr (endpoint_uri_str, uri_path.c_str ())

@@ -21,8 +21,7 @@ class session_base_t;
 struct address_t;
 
 //  ASIO-based TCP connecter using async_connect for connection handling.
-//  This is Phase 1-B: connection establishment uses ASIO, but once connected,
-//  the FD is passed to the existing stream_engine for data transfer.
+//  Connections are handled using true proactor mode with asio_zmtp_engine.
 
 class asio_tcp_connecter_t ZMQ_FINAL : public own_t, public io_object_t
 {

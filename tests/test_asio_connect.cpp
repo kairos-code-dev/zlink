@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 /*
- * Test suite for the ASIO TCP listener and connecter (Phase 1-B)
+ * Test suite for the ASIO TCP listener and connecter
  *
  * These tests verify that the ASIO-based async_accept and async_connect
  * work correctly for connection establishment.

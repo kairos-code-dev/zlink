@@ -1,14 +1,31 @@
 #!/usr/bin/env bash
+#
+# NOTE: zlink uses CMake build system (not autotools)
+# This script builds with code coverage support using CMake and gcov/lcov
 
 set -x
+set -e
 
-mkdir tmp
+mkdir -p tmp build_coverage
 BUILD_PREFIX=$PWD/tmp
 
-source ../../config.sh
-set_config_opts
+# Build with code coverage enabled
+# Requires: gcov, lcov, genhtml
+(
+    cd build_coverage &&
+    cmake ../.. \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_INSTALL_PREFIX="${BUILD_PREFIX}" \
+        -DCMAKE_C_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+        -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+        -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+        -DBUILD_TESTS=ON &&
+    cmake --build . --verbose -j5 &&
+    ctest --output-on-failure &&
+    # Generate coverage report
+    lcov --capture --directory . --output-file lcov.info &&
+    lcov --remove lcov.info '/usr/*' '*/tests/*' '*/external/*' --output-file lcov.info &&
+    genhtml lcov.info --output-directory coverage
+) || exit 1
 
-CONFIG_OPTS+=("--enable-code-coverage")
-
-# Build, check, and install from local source
-( cd ../..; ./autogen.sh && ./configure "${CONFIG_OPTS[@]}" && make VERBOSE=1 -j5 check-code-coverage CODE_COVERAGE_OUTPUT_FILE=lcov.info CODE_COVERAGE_OUTPUT_DIRECTORY=coverage) || exit 1
+echo "Coverage report generated in build_coverage/coverage/"

@@ -317,7 +317,7 @@ void test_matrix_wss ()
 
 void test_matrix_tls ()
 {
-    test_transport_matrix_ws_tls ("tls");
+    test_transport_matrix ("tls");
 }
 
 int main ()

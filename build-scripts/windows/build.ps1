@@ -145,6 +145,12 @@ try {
     }
 
     # Build without CURVE/libsodium
+    $BoostIncludeArgs = @()
+    $BoostIncludeDir = Join-Path $ROOT_DIR_ABS "deps\\vcpkg\\installed\\$VCPKG_TRIPLET\\include"
+    if ((Test-Path "$BoostIncludeDir\\boost\\asio.hpp") -and (Test-Path "$BoostIncludeDir\\boost\\beast.hpp")) {
+        $BoostIncludeArgs += "-DZMQ_BOOST_INCLUDE_DIR=$BoostIncludeDir"
+    }
+
     cmake "$ROOT_DIR_ABS" `
         -G "Visual Studio 17 2022" `
         -A "$CMAKE_ARCH" `
@@ -157,7 +163,8 @@ try {
         -DWITH_LIBSODIUM=OFF `
         -DZMQ_CXX_STANDARD=20 `
         -DBUILD_BENCHMARKS=ON `
-        -DCMAKE_INSTALL_PREFIX="$PWD\install"
+        -DCMAKE_INSTALL_PREFIX="$PWD\install" `
+        $BoostIncludeArgs
 
     # Step 3: Build libzmq
     Write-Host ""
@@ -295,7 +302,7 @@ try {
 
             # Ensure the DLL directory is in the PATH so tests can find zmq.dll
             $OLD_PATH = $env:PATH
-            $DLL_DIR = (Resolve-Path "Release").Path
+            $DLL_DIR = (Resolve-Path ("bin\\$BuildType")).Path
             $env:PATH = "$DLL_DIR;$env:PATH"
             Write-Host "Temporarily added $DLL_DIR to PATH for testing"
 

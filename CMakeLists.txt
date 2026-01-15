@@ -166,7 +166,12 @@ set(pkg_config_defines "")
 option(WITH_TLS "Build with TLS support (requires OpenSSL)" ON)
 
 # ASIO backend is mandatory in zlink
-set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
+set(ZMQ_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bundled Boost)")
+if(ZMQ_BOOST_INCLUDE_DIR)
+  set(BUNDLED_BOOST_INCLUDE_DIR "${ZMQ_BOOST_INCLUDE_DIR}")
+else()
+  set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/boost")
+endif()
 if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
   message(STATUS "ASIO headers found: ${BUNDLED_BOOST_INCLUDE_DIR}")
   set(ZMQ_HAVE_ASIO 1)
@@ -190,7 +195,7 @@ if(WITH_TLS)
 endif()
 
 # WebSocket support using Boost.Beast (always enabled in zlink)
-set(BUNDLED_BEAST_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/external/boost/boost/beast.hpp")
+set(BUNDLED_BEAST_HEADER "${BUNDLED_BOOST_INCLUDE_DIR}/boost/beast.hpp")
 if(EXISTS "${BUNDLED_BEAST_HEADER}")
   message(STATUS "Beast headers found - WebSocket support enabled")
   # Internal flags kept for compatibility
@@ -1309,6 +1314,7 @@ foreach(target ${build_targets})
   target_include_directories(
     ${target} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
                      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
+  target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
   if(ENABLE_DRAFTS)
     target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
@@ -1333,6 +1339,9 @@ if(BUILD_SHARED)
 
   if(ZMQ_HAVE_ASIO_SSL)
     target_link_libraries(libzmq OpenSSL::SSL OpenSSL::Crypto)
+    if(WIN32)
+      target_link_libraries(libzmq crypt32)
+    endif()
   endif()
 
   if(LIBBSD_FOUND)

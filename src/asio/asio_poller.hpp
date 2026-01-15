@@ -60,11 +60,7 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     struct poll_entry_t
     {
         fd_t fd;
-#if defined ZMQ_HAVE_WINDOWS
-        // Windows: Use a different approach since stream_descriptor is POSIX-only
-        // For now, we'll need to implement a Windows-specific solution
-        // TODO: Implement Windows support using IOCP or overlapped I/O
-#else
+#if !defined ZMQ_HAVE_WINDOWS
         boost::asio::posix::stream_descriptor descriptor;
 #endif
         zmq::i_poll_events *events;
@@ -73,9 +69,7 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
         bool in_event_pending;
         bool out_event_pending;
 
-#if !defined ZMQ_HAVE_WINDOWS
         poll_entry_t (boost::asio::io_context &io_ctx_, fd_t fd_);
-#endif
     };
 
     //  Start async_wait for read readiness
@@ -97,6 +91,9 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     //  List of retired event sources (to be deleted after loop iteration)
     typedef std::vector<poll_entry_t *> retired_t;
     retired_t _retired;
+
+    //  Active poll entries (Windows uses WSAPoll for readiness checks)
+    std::vector<poll_entry_t *> _entries;
 
     //  Flag to track stopping state
     bool _stopping;

@@ -155,7 +155,7 @@ endif()
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
 
 # Add Boost include directory for ASIO tests (ASIO is mandatory)
-include_directories("${CMAKE_SOURCE_DIR}/external/boost")
+include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
 
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)

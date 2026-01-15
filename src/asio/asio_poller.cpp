@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../precompiled.hpp"
+#include "precompiled.hpp"
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include "asio_poller.hpp"
@@ -29,21 +29,20 @@
 #include "../config.hpp"
 #include "../i_poll_events.hpp"
 
-#if !defined ZMQ_HAVE_WINDOWS
-
 zmq::asio_poller_t::poll_entry_t::poll_entry_t (
   boost::asio::io_context &io_ctx_, fd_t fd_) :
     fd (fd_),
+#if !defined ZMQ_HAVE_WINDOWS
     descriptor (io_ctx_, fd_),
+#endif
     events (NULL),
     pollin_enabled (false),
     pollout_enabled (false),
     in_event_pending (false),
     out_event_pending (false)
 {
+    LIBZMQ_UNUSED (io_ctx_);
 }
-
-#endif  // !ZMQ_HAVE_WINDOWS
 
 zmq::asio_poller_t::asio_poller_t (const zmq::thread_ctx_t &ctx_) :
     worker_poller_base_t (ctx_),
@@ -72,23 +71,20 @@ zmq::asio_poller_t::add_fd (fd_t fd_, i_poll_events *events_)
     check_thread ();
     ASIO_DBG ("add_fd: fd=%d", fd_);
 
-#if defined ZMQ_HAVE_WINDOWS
-    //  Windows support is not implemented yet in Phase 1-A
-    //  TODO: Implement Windows support
-    errno_assert (false);
-    return NULL;
-#else
     poll_entry_t *pe = new (std::nothrow) poll_entry_t (_io_context, fd_);
     alloc_assert (pe);
 
     pe->events = events_;
+
+#if defined ZMQ_HAVE_WINDOWS
+    _entries.push_back (pe);
+#endif
 
     //  Increase the load metric of the thread.
     adjust_load (1);
 
     ASIO_DBG ("add_fd: done, load=%d", get_load ());
     return pe;
-#endif
 }
 
 void zmq::asio_poller_t::rm_fd (handle_t handle_)
@@ -99,7 +95,13 @@ void zmq::asio_poller_t::rm_fd (handle_t handle_)
     //  Cancel any pending async operations
     cancel_ops (pe);
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if defined ZMQ_HAVE_WINDOWS
+    std::vector<poll_entry_t *>::iterator it =
+      std::find (_entries.begin (), _entries.end (), pe);
+    if (it != _entries.end ()) {
+        _entries.erase (it);
+    }
+#else
     //  Release the native handle so the descriptor won't close the fd
     pe->descriptor.release ();
 #endif
@@ -173,8 +175,11 @@ int zmq::asio_poller_t::max_fds ()
 
 void zmq::asio_poller_t::start_wait_read (poll_entry_t *entry_)
 {
-#if !defined ZMQ_HAVE_WINDOWS
     ASIO_DBG ("start_wait_read: fd=%d", entry_->fd);
+#if defined ZMQ_HAVE_WINDOWS
+    LIBZMQ_UNUSED (entry_);
+    return;
+#else
     entry_->in_event_pending = true;
     entry_->descriptor.async_wait (
       boost::asio::posix::stream_descriptor::wait_read,
@@ -212,8 +217,11 @@ void zmq::asio_poller_t::start_wait_read (poll_entry_t *entry_)
 
 void zmq::asio_poller_t::start_wait_write (poll_entry_t *entry_)
 {
-#if !defined ZMQ_HAVE_WINDOWS
     ASIO_DBG ("start_wait_write: fd=%d", entry_->fd);
+#if defined ZMQ_HAVE_WINDOWS
+    LIBZMQ_UNUSED (entry_);
+    return;
+#else
     entry_->out_event_pending = true;
     entry_->descriptor.async_wait (
       boost::asio::posix::stream_descriptor::wait_write,
@@ -244,7 +252,9 @@ void zmq::asio_poller_t::start_wait_write (poll_entry_t *entry_)
 
 void zmq::asio_poller_t::cancel_ops (poll_entry_t *entry_)
 {
-#if !defined ZMQ_HAVE_WINDOWS
+#if defined ZMQ_HAVE_WINDOWS
+    LIBZMQ_UNUSED (entry_);
+#else
     boost::system::error_code ec;
     entry_->descriptor.cancel (ec);
     //  Ignore errors from cancel - the descriptor might already be closed
@@ -287,6 +297,88 @@ void zmq::asio_poller_t::loop ()
             _io_context.restart ();
         }
 
+#if defined ZMQ_HAVE_WINDOWS
+        static const int max_poll_timeout_ms = 10;
+        int poll_timeout_ms;
+        if (timeout > 0) {
+            poll_timeout_ms = static_cast<int> (
+              std::min (timeout, static_cast<uint64_t> (max_poll_timeout_ms)));
+        } else {
+            poll_timeout_ms = max_poll_timeout_ms;
+        }
+
+        ASIO_DBG ("loop: poll timeout %d ms", poll_timeout_ms);
+        //  Keep a short IOCP pump so WSAPoll can sleep for the remainder.
+        const int io_timeout_ms = std::min (poll_timeout_ms, 1);
+        _io_context.run_for (std::chrono::milliseconds (io_timeout_ms));
+        const int poll_wait_ms = poll_timeout_ms - io_timeout_ms;
+
+        if (load > 0) {
+            std::vector<WSAPOLLFD> fds;
+            std::vector<poll_entry_t *> entries;
+            fds.reserve (_entries.size ());
+            entries.reserve (_entries.size ());
+
+            for (size_t i = 0; i < _entries.size (); ++i) {
+                poll_entry_t *entry = _entries[i];
+                if (entry->fd == retired_fd)
+                    continue;
+
+                short events = 0;
+                if (entry->pollin_enabled)
+                    events |= POLLIN;
+                if (entry->pollout_enabled)
+                    events |= POLLOUT;
+                if (events == 0)
+                    continue;
+
+                WSAPOLLFD pfd;
+                pfd.fd = static_cast<SOCKET> (entry->fd);
+                pfd.events = events;
+                pfd.revents = 0;
+                fds.push_back (pfd);
+                entries.push_back (entry);
+            }
+
+            if (!fds.empty () && poll_wait_ms >= 0) {
+                const int rc =
+                  WSAPoll (&fds[0], static_cast<ULONG> (fds.size ()),
+                           poll_wait_ms);
+                if (rc != SOCKET_ERROR && rc > 0) {
+                    for (size_t i = 0; i < fds.size (); ++i) {
+                        poll_entry_t *entry = entries[i];
+                        if (entry->fd == retired_fd)
+                            continue;
+
+                        const short revents = fds[i].revents;
+                        if ((revents & (POLLIN | POLLERR | POLLHUP)) != 0
+                            && entry->pollin_enabled) {
+                            entry->events->in_event ();
+                        }
+
+                        if (entry->fd == retired_fd || _stopping)
+                            continue;
+
+                        if ((revents & POLLOUT) != 0 && entry->pollout_enabled) {
+                            entry->events->out_event ();
+                        }
+                    }
+                } else if (rc == SOCKET_ERROR) {
+                    const int last_error = WSAGetLastError ();
+                    if (last_error != WSAEINTR)
+                        wsa_assert (last_error == WSAEINTR);
+                }
+            } else if (poll_wait_ms > 0) {
+                std::this_thread::sleep_for (
+                  std::chrono::milliseconds (poll_wait_ms));
+            }
+        } else if (poll_wait_ms > 0) {
+            std::this_thread::sleep_for (
+              std::chrono::milliseconds (poll_wait_ms));
+        }
+
+        _io_context.poll ();
+#else
         //  Run the io_context for one iteration or until the next timer
         //  We use run_for with a maximum timeout to ensure we periodically
         //  check the load metric, even when no events are ready. This handles
@@ -303,6 +395,7 @@ void zmq::asio_poller_t::loop ()
         ASIO_DBG ("loop: run_for %d ms", poll_timeout_ms);
         _io_context.run_for (
           std::chrono::milliseconds (poll_timeout_ms));
+#endif
 
         //  Clean up retired entries that have no pending operations
         for (retired_t::iterator it = _retired.begin (); it != _retired.end ();) {

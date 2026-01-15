@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../precompiled.hpp"
+#include "precompiled.hpp"
 #include "ws_transport.hpp"
 
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS

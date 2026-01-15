@@ -12,7 +12,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && !defined ZMQ_HAVE_WINDOWS
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -256,7 +256,7 @@ void test_inproc_transport ()
     test_context_socket_close (server);
 }
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO
+#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || ZMQ_HAVE_WINDOWS
 
 void setUp ()
 {
@@ -280,7 +280,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && !defined ZMQ_HAVE_WINDOWS
     RUN_TEST (test_ctx_create_destroy);
     RUN_TEST (test_pair_tcp_basic);
     RUN_TEST (test_multiple_sockets);

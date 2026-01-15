@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "../precompiled.hpp"
+#include "precompiled.hpp"
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include "asio_tcp_connecter.hpp"
@@ -59,11 +59,12 @@ zmq::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
     _current_reconnect_ivl (-1)
 {
     zmq_assert (_addr);
-    zmq_assert (_addr->protocol == protocol_name::tcp
+    bool is_tcp_protocol = _addr->protocol == protocol_name::tcp;
 #ifdef ZMQ_HAVE_TLS
-                || _addr->protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+    // Phase 3: TLS uses TCP address format
+    is_tcp_protocol = is_tcp_protocol || _addr->protocol == protocol_name::tls;
 #endif
-    );
+    zmq_assert (is_tcp_protocol);
     _addr->to_string (_endpoint_str);
 
     CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",

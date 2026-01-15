@@ -154,7 +154,7 @@ void test_tcp_connection_baseline ()
 
     //  Create acceptor on ephemeral port
     tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::address::from_string ("127.0.0.1"), 0));
+                              net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Server socket
@@ -215,7 +215,7 @@ void test_ws_handshake ()
 
     //  Create acceptor on ephemeral port
     tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::address::from_string ("127.0.0.1"), 0));
+                              net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     //  Build host string for handshake
@@ -306,7 +306,7 @@ void test_ws_binary_message ()
 
     //  Create acceptor on ephemeral port
     tcp::acceptor acceptor (io_context, tcp::endpoint (
-                              net::ip::address::from_string ("127.0.0.1"), 0));
+                              net::ip::make_address ("127.0.0.1"), 0));
     auto endpoint = acceptor.local_endpoint ();
 
     std::string host =

@@ -22,7 +22,7 @@ endif()
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}")
 include_directories("${CMAKE_SOURCE_DIR}/external/unity")
 # Add Boost headers for ASIO poller
-include_directories("${CMAKE_SOURCE_DIR}/external/boost")
+include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
 
 foreach(test ${unittests})
   # target_sources not supported before CMake 3.1

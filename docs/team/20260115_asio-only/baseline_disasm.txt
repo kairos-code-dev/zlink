@@ -1,0 +1,80 @@
+
+/home/ulalax/project/ulalax/zlink/build/lib/libzmq.so.5.2.5:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000000e7160 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm>:
+   e7160:	f3 0f 1e fa          	endbr64
+   e7164:	41 55                	push   %r13
+   e7166:	41 54                	push   %r12
+   e7168:	55                   	push   %rbp
+   e7169:	53                   	push   %rbx
+   e716a:	48 83 ec 28          	sub    $0x28,%rsp
+   e716e:	64 48 8b 04 25 28 00 	mov    %fs:0x28,%rax
+   e7175:	00 00 
+   e7177:	48 89 44 24 18       	mov    %rax,0x18(%rsp)
+   e717c:	31 c0                	xor    %eax,%eax
+   e717e:	80 bf cb 05 00 00 00 	cmpb   $0x0,0x5cb(%rdi)
+   e7185:	c6 87 c9 05 00 00 00 	movb   $0x0,0x5c9(%rdi)
+   e718c:	0f 85 fe 00 00 00    	jne    e7290 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x130>
+   e7192:	80 bf 84 05 00 00 00 	cmpb   $0x0,0x584(%rdi)
+   e7199:	48 89 fb             	mov    %rdi,%rbx
+   e719c:	0f 84 ee 00 00 00    	je     e7290 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x130>
+   e71a2:	48 8b 46 10          	mov    0x10(%rsi),%rax
+   e71a6:	48 89 f5             	mov    %rsi,%rbp
+   e71a9:	a8 01                	test   $0x1,%al
+   e71ab:	0f 84 7f 00 00 00    	je     e7230 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0xd0>
+   e71b1:	48 83 f8 01          	cmp    $0x1,%rax
+   e71b5:	75 06                	jne    e71bd <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x5d>
+   e71b7:	8b 06                	mov    (%rsi),%eax
+   e71b9:	85 c0                	test   %eax,%eax
+   e71bb:	74 73                	je     e7230 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0xd0>
+   e71bd:	4c 8b 2d e4 9f 26 00 	mov    0x269fe4(%rip),%r13        # 3511a8 <_ZGVZN5boost6system15system_categoryEvE8instance@@Base-0x3c90>
+   e71c4:	41 0f b6 45 00       	movzbl 0x0(%r13),%eax
+   e71c9:	84 c0                	test   %al,%al
+   e71cb:	0f 84 df 00 00 00    	je     e72b0 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x150>
+   e71d1:	4c 8b 25 08 9d 26 00 	mov    0x269d08(%rip),%r12        # 350ee0 <_ZZN5boost6system15system_categoryEvE8instance@@Base-0x3f60>
+   e71d8:	48 89 e6             	mov    %rsp,%rsi
+   e71db:	48 89 ef             	mov    %rbp,%rdi
+   e71de:	4c 89 64 24 08       	mov    %r12,0x8(%rsp)
+   e71e3:	c7 04 24 7d 00 00 00 	movl   $0x7d,(%rsp)
+   e71ea:	48 c7 44 24 10 03 00 	movq   $0x3,0x10(%rsp)
+   e71f1:	00 00 
+   e71f3:	e8 18 ef f9 ff       	call   86110 <_ZN5boost6systemeqERKNS0_10error_codeES3_@plt>
+   e71f8:	84 c0                	test   %al,%al
+   e71fa:	0f 85 90 00 00 00    	jne    e7290 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x130>
+   e7200:	48 8b 44 24 18       	mov    0x18(%rsp),%rax
+   e7205:	64 48 2b 04 25 28 00 	sub    %fs:0x28,%rax
+   e720c:	00 00 
+   e720e:	0f 85 66 01 00 00    	jne    e737a <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x21a>
+   e7214:	48 8b 03             	mov    (%rbx),%rax
+   e7217:	48 89 df             	mov    %rbx,%rdi
+   e721a:	be 01 00 00 00       	mov    $0x1,%esi
+   e721f:	48 8b 40 48          	mov    0x48(%rax),%rax
+   e7223:	48 83 c4 28          	add    $0x28,%rsp
+   e7227:	5b                   	pop    %rbx
+   e7228:	5d                   	pop    %rbp
+   e7229:	41 5c                	pop    %r12
+   e722b:	41 5d                	pop    %r13
+   e722d:	ff e0                	jmp    *%rax
+   e722f:	90                   	nop
+   e7230:	48 85 d2             	test   %rdx,%rdx
+   e7233:	74 cb                	je     e7200 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0xa0>
+   e7235:	48 8b 83 58 04 00 00 	mov    0x458(%rbx),%rax
+   e723c:	48 85 c0             	test   %rax,%rax
+   e723f:	0f 84 cb 00 00 00    	je     e7310 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x1b0>
+   e7245:	48 8b 8b 50 04 00 00 	mov    0x450(%rbx),%rcx
+   e724c:	48 85 c9             	test   %rcx,%rcx
+   e724f:	0f 84 bb 00 00 00    	je     e7310 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x1b0>
+   e7255:	48 01 ca             	add    %rcx,%rdx
+   e7258:	48 89 93 50 04 00 00 	mov    %rdx,0x450(%rbx)
+   e725f:	48 85 c0             	test   %rax,%rax
+   e7262:	48 89 df             	mov    %rbx,%rdi
+   e7265:	0f 95 83 60 04 00 00 	setne  0x460(%rbx)
+   e726c:	e8 1f d8 f9 ff       	call   84a90 <_ZN3zmq13asio_engine_t13process_inputEv@plt>
+   e7271:	84 c0                	test   %al,%al
+   e7273:	0f 84 af 00 00 00    	je     e7328 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x1c8>
+   e7279:	80 bb b0 04 00 00 00 	cmpb   $0x0,0x4b0(%rbx)
+   e7280:	0f 84 d2 00 00 00    	je     e7358 <_ZN3zmq13asio_engine_t16on_read_completeERKN5boost6system10error_codeEm+0x1f8>
+   e7286:	66 2e 0f 1f 84 00 00 	cs nopw 0x0(%rax,%rax,1)

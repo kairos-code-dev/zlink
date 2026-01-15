@@ -1,0 +1,1 @@
+-rwxr-xr-x 1 ulalax ulalax 5.9M Jan 15 17:35 /home/ulalax/project/ulalax/zlink/build/lib/libzmq.so.5.2.5

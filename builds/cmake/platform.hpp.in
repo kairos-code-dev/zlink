@@ -6,10 +6,13 @@
 #cmakedefine ZMQ_USE_CV_IMPL_PTHREADS
 #cmakedefine ZMQ_USE_CV_IMPL_NONE
 
+// ASIO is the only supported I/O poller backend (always enabled)
 #cmakedefine ZMQ_IOTHREAD_POLLER_USE_ASIO
 #cmakedefine ZMQ_HAVE_ASIO_SSL
 #cmakedefine ZMQ_HAVE_ASIO_WS
 #cmakedefine ZMQ_HAVE_ASIO_WSS
+// Legacy poller macros (no longer used - ASIO is the only backend)
+// These are kept for potential compatibility but are never defined
 #cmakedefine ZMQ_IOTHREAD_POLLER_USE_KQUEUE
 #cmakedefine ZMQ_IOTHREAD_POLLER_USE_EPOLL
 #cmakedefine ZMQ_IOTHREAD_POLLER_USE_EPOLL_CLOEXEC

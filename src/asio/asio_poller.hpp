@@ -49,7 +49,7 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     static int max_fds ();
 
     //  Get access to the io_context for ASIO-based operations
-    //  (Phase 1-B: used by asio_tcp_listener and asio_tcp_connecter)
+    //  (used by asio_tcp_listener, asio_tcp_connecter, and other ASIO components)
     boost::asio::io_context &get_io_context () { return _io_context; }
 
   private:

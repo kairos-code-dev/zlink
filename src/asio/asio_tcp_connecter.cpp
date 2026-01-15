@@ -61,7 +61,7 @@ zmq::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
     zmq_assert (_addr);
     bool is_tcp_protocol = _addr->protocol == protocol_name::tcp;
 #ifdef ZMQ_HAVE_TLS
-    // Phase 3: TLS uses TCP address format
+    // TLS uses TCP address format
     is_tcp_protocol = is_tcp_protocol || _addr->protocol == protocol_name::tls;
 #endif
     zmq_assert (is_tcp_protocol);
@@ -372,8 +372,7 @@ void zmq::asio_tcp_connecter_t::create_engine (fd_t fd_,
     const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint_str,
                                              endpoint_type_connect);
 
-    //  Create the engine object for this connection.
-    //  Phase 1-C: Use ASIO ZMTP engine for true proactor mode
+    //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 

@@ -21,9 +21,11 @@ namespace zmq
 //  This interface abstracts the underlying stream transport (TCP, SSL, WebSocket)
 //  allowing asio_engine_t to be generic over different transport types.
 //
-//  Phase 1: TCP only (tcp_transport_t)
-//  Phase 2: SSL support (ssl_transport_t)
-//  Phase 3: WebSocket support (ws_transport_t)
+//  Supported transports:
+//  - tcp_transport_t: TCP socket transport
+//  - ssl_transport_t: SSL/TLS encrypted transport
+//  - ws_transport_t: WebSocket transport
+//  - wss_transport_t: WebSocket over SSL/TLS transport
 //
 //  Design rationale:
 //  - Uses boost::asio::mutable_buffer/const_buffer for efficient buffer handling

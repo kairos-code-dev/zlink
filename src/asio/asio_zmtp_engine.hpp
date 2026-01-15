@@ -36,7 +36,7 @@ class io_thread_t;
 class session_base_t;
 class mechanism_t;
 
-//  Phase 1-C: ZMTP Protocol Engine using True Proactor Mode
+//  ZMTP Protocol Engine using True Proactor Mode
 //
 //  This engine implements the ZMTP 3.x handshake and message framing
 //  using Boost.Asio's async_read/async_write operations.

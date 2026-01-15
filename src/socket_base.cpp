@@ -23,7 +23,7 @@
 
 #include "socket_base.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+// ASIO-only build: Transport listeners are always included
 #include "asio/asio_tcp_listener.hpp"
 #if defined ZMQ_HAVE_IPC
 #include "asio/asio_ipc_listener.hpp"
@@ -34,7 +34,6 @@
 #if defined ZMQ_HAVE_WS
 #include "asio/asio_ws_listener.hpp"
 #include "ws_address.hpp"
-#endif
 #endif
 #include "io_thread.hpp"
 #include "session_base.hpp"
@@ -452,7 +451,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     }
 
     if (protocol == protocol_name::tcp) {
-        //  Phase 1-B: Use ASIO-based listener for async_accept
+        //  Use ASIO-based listener for async_accept
         asio_tcp_listener_t *listener =
           new (std::nothrow) asio_tcp_listener_t (io_thread, this, options);
         alloc_assert (listener);
@@ -473,10 +472,9 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         return 0;
     }
 
-#ifdef ZMQ_HAVE_TLS
+#if defined ZMQ_HAVE_TLS && defined ZMQ_HAVE_ASIO_SSL
     if (protocol == protocol_name::tls) {
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
-        //  Phase 4: Use ASIO-based TLS listener with SSL/TLS encryption
+        //  ASIO-only: Use ASIO-based TLS listener with SSL/TLS encryption
         asio_tls_listener_t *listener =
           new (std::nothrow) asio_tls_listener_t (io_thread, this, options);
         alloc_assert (listener);
@@ -495,11 +493,6 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
                       static_cast<own_t *> (listener), NULL);
         options.connected = true;
         return 0;
-#else
-        //  TLS requires ASIO and SSL support
-        errno = EPROTONOSUPPORT;
-        return -1;
-#endif
     }
 #endif
 
@@ -526,7 +519,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
     }
 #endif
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZMQ_HAVE_WS
     if (protocol == protocol_name::ws
 #if defined ZMQ_HAVE_WSS
         || protocol == protocol_name::wss
@@ -555,7 +548,7 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
             return -1;
         }
 
-        //  Create ASIO-based WebSocket listener
+        //  ASIO-only: Use ASIO-based WebSocket listener
         asio_ws_listener_t *listener =
           new (std::nothrow) asio_ws_listener_t (io_thread, this, options);
         alloc_assert (listener);
@@ -709,7 +702,7 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     //  Resolve address (if needed by the protocol)
     if (protocol == protocol_name::tcp
 #ifdef ZMQ_HAVE_TLS
-        || protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+        || protocol == protocol_name::tls  // TLS uses TCP address format
 #endif
     ) {
         //  Do some basic sanity checks on tcp:// address syntax
@@ -912,7 +905,7 @@ int zmq::socket_base_t::term_endpoint (const char *endpoint_uri_)
     const std::string resolved_endpoint_uri =
       (uri_protocol == protocol_name::tcp
 #ifdef ZMQ_HAVE_TLS
-       || uri_protocol == protocol_name::tls  // Phase 3: TLS uses TCP address format
+       || uri_protocol == protocol_name::tls  // TLS uses TCP address format
 #endif
       )
         ? resolve_tcp_addr (endpoint_uri_str, uri_path.c_str ())

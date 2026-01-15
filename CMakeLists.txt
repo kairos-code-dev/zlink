@@ -383,8 +383,8 @@ if(NOT POLLER STREQUAL "asio")
 endif()
 
 message(STATUS "Using polling method in I/O threads: ${POLLER}")
-string(TOUPPER ${POLLER} UPPER_POLLER)
-set(ZMQ_IOTHREAD_POLLER_USE_${UPPER_POLLER} 1)
+# ASIO is the only supported I/O poller backend
+set(ZMQ_IOTHREAD_POLLER_USE_ASIO 1)
 
 # Add Asio poller source files when using Asio backend
 if(POLLER STREQUAL "asio")

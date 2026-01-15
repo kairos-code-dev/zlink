@@ -9,7 +9,7 @@
 #include "likely.hpp"
 #include "address.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+// ASIO-only build: Transport connecters are always included
 #include "asio/asio_tcp_connecter.hpp"
 #if defined ZMQ_HAVE_IPC
 #include "asio/asio_ipc_connecter.hpp"
@@ -19,7 +19,6 @@
 #endif
 #if defined ZMQ_HAVE_WS
 #include "asio/asio_ws_connecter.hpp"
-#endif
 #endif
 
 #include "ctx.hpp"
@@ -543,16 +542,11 @@ void zmq::session_base_t::start_connecting (bool wait_)
         connecter = new (std::nothrow)
           asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
     }
-#ifdef ZMQ_HAVE_TLS
+#if defined ZMQ_HAVE_TLS && defined ZMQ_HAVE_ASIO_SSL
     else if (_addr->protocol == protocol_name::tls) {
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
-        //  Phase 4: Use ASIO-based TLS connecter with SSL/TLS encryption
+        //  ASIO-only: Use ASIO-based TLS connecter with SSL/TLS encryption
         connecter = new (std::nothrow)
           asio_tls_connecter_t (io_thread, this, options, _addr, wait_);
-#else
-        //  TLS requires ASIO and SSL support
-        zmq_assert (false);
-#endif
     }
 #endif
 #if defined ZMQ_HAVE_IPC
@@ -561,7 +555,7 @@ void zmq::session_base_t::start_connecting (bool wait_)
           asio_ipc_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZMQ_HAVE_WS
     //  WebSocket transport (ws://, wss://)
     else if (_addr->protocol == protocol_name::ws
 #if defined ZMQ_HAVE_WSS

@@ -80,20 +80,20 @@ if(NOT WIN32)
   endif()
 endif()
 
-# Asio poller test (runs with or without Asio enabled - skips tests if not enabled)
+# ASIO poller test - verifies the ASIO-based I/O poller
 list(APPEND tests test_asio_poller)
 
-# Asio connect test (Phase 1-B: async_accept/async_connect)
+# ASIO connect test - tests async_accept/async_connect
 list(APPEND tests test_asio_connect)
 
-# Asio TCP engine test (Phase 1-C: True Proactor Mode)
+# ASIO TCP engine test - tests true proactor mode
 list(APPEND tests test_asio_tcp)
 
-# Asio SSL test (Phase 2: SSL Support)
+# ASIO SSL test - tests SSL/TLS support
 # This test compiles with or without SSL, skipping tests if SSL is not enabled
 list(APPEND tests test_asio_ssl)
 
-# Asio WebSocket test (Phase 3: WebSocket Support)
+# ASIO WebSocket test - tests WebSocket support
 # This test compiles with or without WebSocket, skipping tests if WS is not enabled
 list(APPEND tests test_asio_ws)
 

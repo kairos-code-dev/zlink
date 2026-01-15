@@ -20,7 +20,7 @@ namespace zmq
 class io_thread_t;
 class socket_base_t;
 
-//  Phase 3-B: ASIO-based WebSocket listener
+//  ASIO-based WebSocket listener
 //
 //  This listener handles:
 //  1. TCP accept using Boost.Asio async_accept

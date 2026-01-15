@@ -19,7 +19,7 @@ class io_thread_t;
 class session_base_t;
 struct address_t;
 
-//  Phase 3-B: ASIO-based WebSocket connecter (ws/wss)
+//  ASIO-based WebSocket connecter (ws/wss)
 //
 //  This connecter handles:
 //  1. TCP async_connect using Boost.Asio

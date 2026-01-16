@@ -103,7 +103,6 @@ void zmq::worker_poller_base_t::stop_worker ()
 
 void zmq::worker_poller_base_t::start (const char *name_)
 {
-    zmq_assert (get_load () > 0);
     _ctx.start_thread (_worker, worker_routine, this, name_);
 }
 

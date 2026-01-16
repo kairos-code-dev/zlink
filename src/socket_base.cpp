@@ -49,6 +49,8 @@
 #include "mailbox.hpp"
 #include "mailbox_safe.hpp"
 
+#include <boost/asio.hpp>
+
 #ifdef ZMQ_HAVE_WSS
 #include "wss_address.hpp"
 #endif
@@ -159,14 +161,14 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     _ctx_terminated (false),
     _destroyed (false),
     _poller (NULL),
-    _handle (static_cast<poller_t::handle_t> (NULL)),
     _last_tsc (0),
     _ticks (0),
     _rcvmore (false),
     _monitor_socket (NULL),
     _monitor_events (0),
     _thread_safe (thread_safe_),
-    _reaper_signaler (NULL),
+    _mailbox_refcnt (0),
+    _destroy_pending (false),
     _monitor_sync ()
 {
     options.socket_id = sid_;
@@ -179,13 +181,7 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     } else {
         mailbox_t *m = new (std::nothrow) mailbox_t ();
         zmq_assert (m);
-
-        if (m->get_fd () != retired_fd)
-            _mailbox = m;
-        else {
-            LIBZMQ_DELETE (m);
-            _mailbox = NULL;
-        }
+        _mailbox = m;
     }
 }
 
@@ -204,9 +200,6 @@ zmq::socket_base_t::~socket_base_t ()
 {
     if (_mailbox)
         LIBZMQ_DELETE (_mailbox);
-
-    if (_reaper_signaler)
-        LIBZMQ_DELETE (_reaper_signaler);
 
     scoped_lock_t lock (_monitor_sync);
     stop_monitor ();
@@ -344,15 +337,9 @@ int zmq::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZMQ_FD) {
-        if (_thread_safe) {
-            // thread safe socket doesn't provide file descriptor
-            errno = EINVAL;
-            return -1;
-        }
-
-        return do_getsockopt<fd_t> (
-          optval_, optvallen_,
-          (static_cast<mailbox_t *> (_mailbox))->get_fd ());
+        //  ASIO integration does not expose mailbox file descriptors.
+        errno = EINVAL;
+        return -1;
     }
 
     if (option_ == ZMQ_EVENTS) {
@@ -1144,32 +1131,38 @@ bool zmq::socket_base_t::has_out ()
     return xhas_out ();
 }
 
+void zmq::socket_base_t::reaper_mailbox_handler (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    self->in_event ();
+    self->dec_mailbox_ref ();
+}
+
+void zmq::socket_base_t::reaper_mailbox_pre_post (void *arg_)
+{
+    socket_base_t *self = static_cast<socket_base_t *> (arg_);
+    self->inc_mailbox_ref ();
+}
+
 void zmq::socket_base_t::start_reaping (poller_t *poller_)
 {
     //  Plug the socket to the reaper thread.
     _poller = poller_;
 
-    fd_t fd;
-
-    if (!_thread_safe)
-        fd = (static_cast<mailbox_t *> (_mailbox))->get_fd ();
-    else {
-        scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
-        _reaper_signaler = new (std::nothrow) signaler_t ();
-        zmq_assert (_reaper_signaler);
-
-        //  Add signaler to the safe mailbox
-        fd = _reaper_signaler->get_fd ();
-        (static_cast<mailbox_safe_t *> (_mailbox))
-          ->add_signaler (_reaper_signaler);
-
-        //  Send a signal to make sure reaper handle existing commands
-        _reaper_signaler->send ();
+    if (_thread_safe) {
+        mailbox_safe_t *mailbox =
+          static_cast<mailbox_safe_t *> (_mailbox);
+        mailbox->set_io_context (&_poller->get_io_context (),
+                                 &socket_base_t::reaper_mailbox_handler, this,
+                                 &socket_base_t::reaper_mailbox_pre_post);
+        mailbox->schedule_if_needed ();
+    } else {
+        mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+        mailbox->set_io_context (&_poller->get_io_context (),
+                                 &socket_base_t::reaper_mailbox_handler, this,
+                                 &socket_base_t::reaper_mailbox_pre_post);
+        mailbox->schedule_if_needed ();
     }
-
-    _handle = _poller->add_fd (fd, this);
-    _poller->set_pollin (_handle);
 
     //  Initialise the termination and check whether it can be deallocated
     //  immediately.
@@ -1349,20 +1342,23 @@ void zmq::socket_base_t::xhiccuped (pipe_t *)
 
 void zmq::socket_base_t::in_event ()
 {
-    //  This function is invoked only once the socket is running in the context
-    //  of the reaper thread. Process any commands from other threads/sockets
-    //  that may be available at the moment. Ultimately, the socket will
-    //  be destroyed.
-    {
-        scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
-        //  If the socket is thread safe we need to unsignal the reaper signaler
-        if (_thread_safe)
-            _reaper_signaler->recv ();
-
-        process_commands (0, false);
-    }
-    check_destroy ();
+    do {
+        //  This function is invoked only once the socket is running in the
+        //  context of the reaper thread. Process any commands from other
+        //  threads/sockets that may be available at the moment. Ultimately,
+        //  the socket will be destroyed.
+        {
+            scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+            process_commands (0, false);
+        }
+        if (_destroyed) {
+            check_destroy ();
+            return;
+        }
+    } while (_thread_safe
+               ? static_cast<mailbox_safe_t *> (_mailbox)
+                   ->reschedule_if_needed ()
+               : static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
 }
 
 void zmq::socket_base_t::out_event ()
@@ -1379,18 +1375,46 @@ void zmq::socket_base_t::check_destroy ()
 {
     //  If the object was already marked as destroyed, finish the deallocation.
     if (_destroyed) {
-        //  Remove the socket from the reaper's poller.
-        _poller->rm_fd (_handle);
+        _destroy_pending = true;
+        if (_mailbox_refcnt.add (0) != 0)
+            return;
 
-        //  Remove the socket from the context.
-        destroy_socket (this);
-
-        //  Notify the reaper about the fact.
-        send_reaped ();
-
-        //  Deallocate.
-        own_t::process_destroy ();
+        inc_mailbox_ref ();
+        if (_poller) {
+            boost::asio::post (_poller->get_io_context (), [this]() {
+                this->dec_mailbox_ref ();
+            });
+        } else {
+            dec_mailbox_ref ();
+        }
     }
+}
+
+void zmq::socket_base_t::inc_mailbox_ref ()
+{
+    _mailbox_refcnt.add (1);
+}
+
+void zmq::socket_base_t::dec_mailbox_ref ()
+{
+    if (_mailbox_refcnt.sub (1) || !_destroy_pending)
+        return;
+
+    finalize_destroy ();
+}
+
+void zmq::socket_base_t::finalize_destroy ()
+{
+    _destroy_pending = false;
+
+    //  Remove the socket from the context.
+    destroy_socket (this);
+
+    //  Notify the reaper about the fact.
+    send_reaped ();
+
+    //  Deallocate.
+    own_t::process_destroy ();
 }
 
 void zmq::socket_base_t::read_activated (pipe_t *pipe_)

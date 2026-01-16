@@ -33,8 +33,6 @@ tcp_transport_t::~tcp_transport_t ()
 
 bool tcp_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
 {
-#if defined ZMQ_HAVE_WINDOWS
-    //  Windows: Create TCP socket and assign native handle
     try {
         _socket = std::unique_ptr<boost::asio::ip::tcp::socket> (
           new boost::asio::ip::tcp::socket (io_context));
@@ -49,89 +47,47 @@ bool tcp_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
         _socket.reset ();
         return false;
     }
-#else
-    //  POSIX: Create stream descriptor from file descriptor
-    try {
-        _stream_descriptor =
-          std::unique_ptr<boost::asio::posix::stream_descriptor> (
-            new boost::asio::posix::stream_descriptor (io_context, fd));
-    } catch (const std::bad_alloc &) {
-        return false;
-    }
-#endif
 
     return true;
 }
 
 bool tcp_transport_t::is_open () const
 {
-#if defined ZMQ_HAVE_WINDOWS
     return _socket && _socket->is_open ();
-#else
-    return _stream_descriptor && _stream_descriptor->is_open ();
-#endif
 }
 
 void tcp_transport_t::close ()
 {
-#if defined ZMQ_HAVE_WINDOWS
     if (_socket) {
         boost::system::error_code ec;
         _socket->close (ec);
         //  Ignore close errors
         _socket.reset ();
     }
-#else
-    if (_stream_descriptor) {
-        boost::system::error_code ec;
-        _stream_descriptor->close (ec);
-        //  Ignore close errors
-        _stream_descriptor.reset ();
-    }
-#endif
 }
 
 void tcp_transport_t::async_read_some (unsigned char *buffer,
                                        std::size_t buffer_size,
                                        completion_handler_t handler)
 {
-#if defined ZMQ_HAVE_WINDOWS
     if (_socket) {
         _socket->async_read_some (boost::asio::buffer (buffer, buffer_size),
                                   handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
-#else
-    if (_stream_descriptor) {
-        _stream_descriptor->async_read_some (
-          boost::asio::buffer (buffer, buffer_size), handler);
-    } else if (handler) {
-        handler (boost::asio::error::bad_descriptor, 0);
-    }
-#endif
 }
 
 void tcp_transport_t::async_write_some (const unsigned char *buffer,
                                         std::size_t buffer_size,
                                         completion_handler_t handler)
 {
-#if defined ZMQ_HAVE_WINDOWS
     if (_socket) {
         _socket->async_write_some (boost::asio::buffer (buffer, buffer_size),
                                    handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
-#else
-    if (_stream_descriptor) {
-        boost::asio::async_write (*_stream_descriptor,
-                                  boost::asio::buffer (buffer, buffer_size),
-                                  handler);
-    } else if (handler) {
-        handler (boost::asio::error::bad_descriptor, 0);
-    }
-#endif
 }
 
 std::size_t tcp_transport_t::write_some (const std::uint8_t *data,
@@ -144,25 +100,14 @@ std::size_t tcp_transport_t::write_some (const std::uint8_t *data,
     boost::system::error_code ec;
     std::size_t bytes_written = 0;
 
-#if defined ZMQ_HAVE_WINDOWS
     if (!_socket || !_socket->is_open ()) {
         errno = EBADF;
         return 0;
     }
 
-    //  Perform synchronous write_some on Windows socket
+    //  Perform synchronous write_some on TCP socket
     bytes_written =
       _socket->write_some (boost::asio::buffer (data, len), ec);
-#else
-    if (!_stream_descriptor || !_stream_descriptor->is_open ()) {
-        errno = EBADF;
-        return 0;
-    }
-
-    //  Perform synchronous write_some on POSIX stream descriptor
-    bytes_written =
-      _stream_descriptor->write_some (boost::asio::buffer (data, len), ec);
-#endif
 
     if (ec) {
         //  Handle would_block case

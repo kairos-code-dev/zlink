@@ -6,6 +6,7 @@
 #include "err.hpp"
 
 #include <algorithm>
+#include <boost/asio.hpp>
 
 zmq::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
 {
@@ -14,6 +15,11 @@ zmq::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
     //  new command is posted.
     const bool ok = _cpipe.check_read ();
     zmq_assert (!ok);
+    _io_context = NULL;
+    _handler = NULL;
+    _handler_arg = NULL;
+    _pre_post = NULL;
+    _scheduled.store (false, std::memory_order_release);
 }
 
 zmq::mailbox_safe_t::~mailbox_safe_t ()
@@ -51,19 +57,18 @@ void zmq::mailbox_safe_t::send (const command_t &cmd_)
 {
     _sync->lock ();
     _cpipe.write (cmd_, false);
-    const bool ok = _cpipe.flush ();
+    _cpipe.flush ();
+    _cond_var.broadcast ();
 
-    if (!ok) {
-        _cond_var.broadcast ();
-
-        for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
-                                                 end = _signalers.end ();
-             it != end; ++it) {
-            (*it)->send ();
-        }
+    for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
+                                             end = _signalers.end ();
+         it != end; ++it) {
+        (*it)->send ();
     }
 
     _sync->unlock ();
+
+    schedule_if_needed ();
 }
 
 int zmq::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
@@ -95,4 +100,53 @@ int zmq::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
     }
 
     return 0;
+}
+
+void zmq::mailbox_safe_t::set_io_context (
+  boost::asio::io_context *io_context_,
+  mailbox_handler_t handler_,
+  void *handler_arg_,
+  mailbox_pre_post_t pre_post_)
+{
+    _io_context = io_context_;
+    _handler = handler_;
+    _handler_arg = handler_arg_;
+    _pre_post = pre_post_;
+}
+
+void zmq::mailbox_safe_t::schedule_if_needed ()
+{
+    if (!_io_context || !_handler)
+        return;
+
+    _sync->lock ();
+    const bool has_data = _cpipe.check_read ();
+    _sync->unlock ();
+
+    if (!has_data)
+        return;
+
+    if (!_scheduled.exchange (true, std::memory_order_acquire)) {
+        if (_pre_post)
+            _pre_post (_handler_arg);
+        boost::asio::post (*_io_context, [this]() {
+            if (_handler)
+                _handler (_handler_arg);
+        });
+    }
+}
+
+bool zmq::mailbox_safe_t::reschedule_if_needed ()
+{
+    _scheduled.store (false, std::memory_order_release);
+
+    _sync->lock ();
+    const bool has_data = _cpipe.check_read ();
+    _sync->unlock ();
+
+    if (!has_data)
+        return false;
+    if (_scheduled.exchange (true, std::memory_order_acquire))
+        return false;
+    return true;
 }

@@ -9,9 +9,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
-#ifndef ZMQ_HAVE_WINDOWS
-#include <boost/asio/posix/stream_descriptor.hpp>
-#endif
 
 #include <memory>
 
@@ -41,11 +38,7 @@ class ipc_transport_t ZMQ_FINAL : public i_asio_transport
     const char *name () const ZMQ_OVERRIDE { return "ipc_transport"; }
 
   private:
-#ifndef ZMQ_HAVE_WINDOWS
-    std::unique_ptr<boost::asio::posix::stream_descriptor> _stream_descriptor;
-#else
     std::unique_ptr<boost::asio::local::stream_protocol::socket> _socket;
-#endif
 };
 
 }  // namespace zmq

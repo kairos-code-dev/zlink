@@ -15,6 +15,15 @@
 #include "ypipe.hpp"
 #include "i_mailbox.hpp"
 
+#include <atomic>
+
+namespace boost
+{
+namespace asio
+{
+class io_context;
+}
+}
 namespace zmq
 {
 class mailbox_safe_t ZMQ_FINAL : public i_mailbox
@@ -30,6 +39,15 @@ class mailbox_safe_t ZMQ_FINAL : public i_mailbox
     void add_signaler (signaler_t *signaler_);
     void remove_signaler (signaler_t *signaler_);
     void clear_signalers ();
+
+    typedef void (*mailbox_handler_t) (void *arg_);
+    typedef void (*mailbox_pre_post_t) (void *arg_);
+    void set_io_context (boost::asio::io_context *io_context_,
+                         mailbox_handler_t handler_,
+                         void *handler_arg_,
+                         mailbox_pre_post_t pre_post_ = NULL);
+    void schedule_if_needed ();
+    bool reschedule_if_needed ();
 
 #ifdef HAVE_FORK
     // close the file descriptors in the signaller. This is used in a forked
@@ -53,6 +71,12 @@ class mailbox_safe_t ZMQ_FINAL : public i_mailbox
     mutex_t *const _sync;
 
     std::vector<zmq::signaler_t *> _signalers;
+
+    boost::asio::io_context *_io_context;
+    mailbox_handler_t _handler;
+    void *_handler_arg;
+    mailbox_pre_post_t _pre_post;
+    std::atomic<bool> _scheduled;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (mailbox_safe_t)
 };

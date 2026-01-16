@@ -34,12 +34,11 @@ class reaper_t ZMQ_FINAL : public object_t, public i_poll_events
     void process_stop ();
     void process_reap (zmq::socket_base_t *socket_);
     void process_reaped ();
+    void process_mailbox ();
+    static void mailbox_handler (void *arg_);
 
     //  Reaper thread accesses incoming commands via this mailbox.
     mailbox_t _mailbox;
-
-    //  Handle associated with mailbox' file descriptor.
-    poller_t::handle_t _mailbox_handle;
 
     //  I/O multiplexing is performed using a poller object.
     poller_t *_poller;

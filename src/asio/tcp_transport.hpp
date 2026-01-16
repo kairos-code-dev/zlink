@@ -7,9 +7,6 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
 
 #include <boost/asio.hpp>
-#if !defined ZMQ_HAVE_WINDOWS
-#include <boost/asio/posix/stream_descriptor.hpp>
-#endif
 
 #include <memory>
 
@@ -20,10 +17,7 @@ namespace zmq
 
 //  TCP transport implementation using Boost.Asio
 //
-//  On Windows: Uses boost::asio::ip::tcp::socket with native handle assignment
-//  On POSIX: Uses boost::asio::posix::stream_descriptor for file descriptor
-//
-//  This class owns the underlying socket/descriptor and manages its lifecycle.
+//  Uses boost::asio::ip::tcp::socket with native handle assignment.
 
 class tcp_transport_t : public i_asio_transport
 {
@@ -50,11 +44,7 @@ class tcp_transport_t : public i_asio_transport
     const char *name () const ZMQ_OVERRIDE { return "tcp"; }
 
   private:
-#if defined ZMQ_HAVE_WINDOWS
     std::unique_ptr<boost::asio::ip::tcp::socket> _socket;
-#else
-    std::unique_ptr<boost::asio::posix::stream_descriptor> _stream_descriptor;
-#endif
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (tcp_transport_t)
 };

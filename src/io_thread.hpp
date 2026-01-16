@@ -57,11 +57,11 @@ class io_thread_t ZMQ_FINAL : public object_t, public i_poll_events
     //  I/O thread accesses incoming commands via this mailbox.
     mailbox_t _mailbox;
 
-    //  Handle associated with mailbox' file descriptor.
-    poller_t::handle_t _mailbox_handle;
-
     //  I/O multiplexing is performed using a poller object.
     poller_t *_poller;
+
+    static void mailbox_handler (void *arg_);
+    void process_mailbox ();
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (io_thread_t)
 };

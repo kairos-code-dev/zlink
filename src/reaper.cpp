@@ -8,7 +8,6 @@
 
 zmq::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
     object_t (ctx_, tid_),
-    _mailbox_handle (static_cast<poller_t::handle_t> (NULL)),
     _poller (NULL),
     _sockets (0),
     _terminating (false)
@@ -18,11 +17,9 @@ zmq::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
 
     _poller = new (std::nothrow) poller_t (*ctx_);
     alloc_assert (_poller);
-
-    if (_mailbox.get_fd () != retired_fd) {
-        _mailbox_handle = _poller->add_fd (_mailbox.get_fd (), this);
-        _poller->set_pollin (_mailbox_handle);
-    }
+    _mailbox.set_io_context (&_poller->get_io_context (),
+                             &reaper_t::mailbox_handler, this, NULL);
+    _mailbox.schedule_if_needed ();
 
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -56,26 +53,7 @@ void zmq::reaper_t::stop ()
 
 void zmq::reaper_t::in_event ()
 {
-    while (true) {
-#ifdef HAVE_FORK
-        if (unlikely (_pid != getpid ())) {
-            //printf("zmq::reaper_t::in_event return in child process %d\n", (int)getpid());
-            return;
-        }
-#endif
-
-        //  Get the next command. If there is none, exit.
-        command_t cmd;
-        const int rc = _mailbox.recv (&cmd, 0);
-        if (rc != 0 && errno == EINTR)
-            continue;
-        if (rc != 0 && errno == EAGAIN)
-            break;
-        errno_assert (rc == 0);
-
-        //  Process the command.
-        cmd.destination->process_command (cmd);
-    }
+    process_mailbox ();
 }
 
 void zmq::reaper_t::out_event ()
@@ -95,7 +73,6 @@ void zmq::reaper_t::process_stop ()
     //  If there are no sockets being reaped finish immediately.
     if (!_sockets) {
         send_done ();
-        _poller->rm_fd (_mailbox_handle);
         _poller->stop ();
     }
 }
@@ -116,7 +93,38 @@ void zmq::reaper_t::process_reaped ()
     //  finish immediately.
     if (!_sockets && _terminating) {
         send_done ();
-        _poller->rm_fd (_mailbox_handle);
         _poller->stop ();
     }
+}
+
+void zmq::reaper_t::process_mailbox ()
+{
+    do {
+#ifdef HAVE_FORK
+        if (unlikely (_pid != getpid ())) {
+            //printf("zmq::reaper_t::process_mailbox return in child process %d\n", (int)getpid());
+            return;
+        }
+#endif
+
+        while (true) {
+            //  Get the next command. If there is none, exit.
+            command_t cmd;
+            const int rc = _mailbox.recv (&cmd, 0);
+            if (rc != 0 && errno == EINTR)
+                continue;
+            if (rc != 0 && errno == EAGAIN)
+                break;
+            errno_assert (rc == 0);
+
+            //  Process the command.
+            cmd.destination->process_command (cmd);
+        }
+    } while (_mailbox.reschedule_if_needed ());
+}
+
+void zmq::reaper_t::mailbox_handler (void *arg_)
+{
+    reaper_t *self = static_cast<reaper_t *> (arg_);
+    self->process_mailbox ();
 }

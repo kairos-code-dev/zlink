@@ -6,12 +6,8 @@
 #include <i_poll_events.hpp>
 #include <ip.hpp>
 
+#include <boost/asio.hpp>
 #include <unity.h>
-
-#ifndef _WIN32
-#include <unistd.h>
-#define closesocket close
-#endif
 
 void setUp ()
 {
@@ -39,17 +35,15 @@ void test_start_empty ()
 
 struct test_events_t : zmq::i_poll_events
 {
-    test_events_t (zmq::fd_t fd_, zmq::poller_t &poller_) :
-        _fd (fd_),
-        _poller (poller_)
+    test_events_t (zmq::poller_t &poller_) : _poller (poller_)
     {
-        (void) _fd;
     }
 
     void in_event () ZMQ_OVERRIDE
     {
-        _poller.rm_fd (_handle);
+        _poller.rm_socket (_handle);
         _handle = (zmq::poller_t::handle_t) NULL;
+        _poller.stop ();
 
         // this must only be incremented after rm_fd
         in_events.add (1);
@@ -65,8 +59,9 @@ struct test_events_t : zmq::i_poll_events
     void timer_event (int id_) ZMQ_OVERRIDE
     {
         LIBZMQ_UNUSED (id_);
-        _poller.rm_fd (_handle);
+        _poller.rm_socket (_handle);
         _handle = (zmq::poller_t::handle_t) NULL;
+        _poller.stop ();
 
         // this must only be incremented after rm_fd
         timer_events.add (1);
@@ -77,7 +72,6 @@ struct test_events_t : zmq::i_poll_events
     zmq::atomic_counter_t in_events, timer_events;
 
   private:
-    zmq::fd_t _fd;
     zmq::poller_t &_poller;
     zmq::poller_t::handle_t _handle;
 };
@@ -110,41 +104,43 @@ void wait_timer_events (test_events_t &events_)
     zmq_stopwatch_stop (watch);
 }
 
-void create_nonblocking_fdpair (zmq::fd_t *r_, zmq::fd_t *w_)
+void create_connected_tcp_pair (boost::asio::io_context &io_context_,
+                                boost::asio::ip::tcp::socket *server_,
+                                boost::asio::ip::tcp::socket *client_)
 {
-    int rc = zmq::make_fdpair (r_, w_);
-    TEST_ASSERT_EQUAL_INT (0, rc);
-    TEST_ASSERT_NOT_EQUAL (zmq::retired_fd, *r_);
-    TEST_ASSERT_NOT_EQUAL (zmq::retired_fd, *w_);
-    zmq::unblock_socket (*r_);
-    zmq::unblock_socket (*w_);
+    boost::system::error_code ec;
+    boost::asio::ip::tcp::acceptor acceptor (io_context_);
+    acceptor.open (boost::asio::ip::tcp::v4 (), ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+    acceptor.set_option (boost::asio::ip::tcp::acceptor::reuse_address (true),
+                         ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+    acceptor.bind (
+      boost::asio::ip::tcp::endpoint (boost::asio::ip::address_v4::loopback (),
+                                      0),
+      ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+    acceptor.listen (boost::asio::socket_base::max_listen_connections, ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+
+    const boost::asio::ip::tcp::endpoint endpoint =
+      acceptor.local_endpoint (ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+
+    client_->connect (endpoint, ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+    acceptor.accept (*server_, ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
 }
 
-void send_signal (zmq::fd_t w_)
+void send_tcp_signal (boost::asio::ip::tcp::socket *socket_)
 {
-#if defined ZMQ_HAVE_EVENTFD
-    const uint64_t inc = 1;
-    ssize_t sz = write (w_, &inc, sizeof (inc));
-    assert (sz == sizeof (inc));
-#else
-    {
-        char msg[] = "test";
-        int rc = send (w_, msg, sizeof (msg), 0);
-        assert (rc == sizeof (msg));
-    }
-#endif
-}
-
-void close_fdpair (zmq::fd_t w_, zmq::fd_t r_)
-{
-    int rc = closesocket (w_);
-    TEST_ASSERT_EQUAL_INT (0, rc);
-#if !defined ZMQ_HAVE_EVENTFD
-    rc = closesocket (r_);
-    TEST_ASSERT_EQUAL_INT (0, rc);
-#else
-    LIBZMQ_UNUSED (r_);
-#endif
+    static const char msg[] = "test";
+    boost::system::error_code ec;
+    const std::size_t bytes = boost::asio::write (
+      *socket_, boost::asio::buffer (msg, sizeof (msg)), ec);
+    TEST_ASSERT_EQUAL_INT (0, ec.value ());
+    TEST_ASSERT_EQUAL (sizeof (msg), bytes);
 }
 
 void test_add_fd_and_start_and_receive_data ()
@@ -152,95 +148,43 @@ void test_add_fd_and_start_and_receive_data ()
     zmq::thread_ctx_t thread_ctx;
     zmq::poller_t poller (thread_ctx);
 
-    zmq::fd_t r, w;
-    create_nonblocking_fdpair (&r, &w);
+    boost::asio::io_context &io_context = poller.get_io_context ();
+    boost::asio::ip::tcp::socket server (io_context);
+    boost::asio::ip::tcp::socket client (io_context);
+    create_connected_tcp_pair (io_context, &server, &client);
 
-    test_events_t events (r, poller);
+    test_events_t events (poller);
 
-    zmq::poller_t::handle_t handle = poller.add_fd (r, &events);
+    zmq::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
     events.set_handle (handle);
     poller.set_pollin (handle);
     poller.start ();
 
-    send_signal (w);
+    send_tcp_signal (&client);
 
     wait_in_events (events);
-
-    // required cleanup
-    close_fdpair (w, r);
 }
 
 void test_add_fd_and_remove_by_timer ()
 {
-    zmq::fd_t r, w;
-    create_nonblocking_fdpair (&r, &w);
-
     zmq::thread_ctx_t thread_ctx;
     zmq::poller_t poller (thread_ctx);
 
-    test_events_t events (r, poller);
+    boost::asio::io_context &io_context = poller.get_io_context ();
+    boost::asio::ip::tcp::socket server (io_context);
+    boost::asio::ip::tcp::socket client (io_context);
+    create_connected_tcp_pair (io_context, &server, &client);
 
-    zmq::poller_t::handle_t handle = poller.add_fd (r, &events);
+    test_events_t events (poller);
+
+    zmq::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
     events.set_handle (handle);
 
     poller.add_timer (50, &events, 0);
     poller.start ();
 
     wait_timer_events (events);
-
-    // required cleanup
-    close_fdpair (w, r);
 }
-
-#ifdef _WIN32
-void test_add_fd_with_pending_failing_connect ()
-{
-    zmq::thread_ctx_t thread_ctx;
-    zmq::poller_t poller (thread_ctx);
-
-    zmq::fd_t bind_socket = socket (AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr = {0};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    addr.sin_port = 0;
-    TEST_ASSERT_EQUAL_INT (0, bind (bind_socket,
-                                    reinterpret_cast<const sockaddr *> (&addr),
-                                    sizeof (addr)));
-
-    int addr_len = static_cast<int> (sizeof (addr));
-    TEST_ASSERT_EQUAL_INT (0, getsockname (bind_socket,
-                                           reinterpret_cast<sockaddr *> (&addr),
-                                           &addr_len));
-
-    zmq::fd_t connect_socket = socket (AF_INET, SOCK_STREAM, 0);
-    zmq::unblock_socket (connect_socket);
-
-    TEST_ASSERT_EQUAL_INT (
-      -1, connect (connect_socket, reinterpret_cast<const sockaddr *> (&addr),
-                   sizeof (addr)));
-    TEST_ASSERT_EQUAL_INT (WSAEWOULDBLOCK, WSAGetLastError ());
-
-    test_events_t events (connect_socket, poller);
-
-    zmq::poller_t::handle_t handle = poller.add_fd (connect_socket, &events);
-    events.set_handle (handle);
-    poller.set_pollin (handle);
-    poller.start ();
-
-    wait_in_events (events);
-
-    int value;
-    int value_len = sizeof (value);
-    TEST_ASSERT_EQUAL_INT (0, getsockopt (connect_socket, SOL_SOCKET, SO_ERROR,
-                                          reinterpret_cast<char *> (&value),
-                                          &value_len));
-    TEST_ASSERT_EQUAL_INT (WSAECONNREFUSED, value);
-
-    // required cleanup
-    close (connect_socket);
-    close (bind_socket);
-}
-#endif
 
 int main (void)
 {
@@ -252,10 +196,6 @@ int main (void)
     RUN_TEST (test_create);
     RUN_TEST (test_add_fd_and_start_and_receive_data);
     RUN_TEST (test_add_fd_and_remove_by_timer);
-
-#if defined _WIN32
-    RUN_TEST (test_add_fd_with_pending_failing_connect);
-#endif
 
     zmq::shutdown_network ();
 

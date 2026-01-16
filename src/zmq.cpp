@@ -471,6 +471,7 @@ int zmq_poll (zmq_pollitem_t *items_, int nitems_, long timeout_)
     }
 
     zmq::fast_vector_t<pollfd, ZMQ_POLLITEMS_DFLT> pollfds (nitems_);
+    bool socket_fd_unavailable = false;
 
     for (int i = 0; i != nitems_; i++) {
         if (items_[i].socket) {
@@ -478,6 +479,12 @@ int zmq_poll (zmq_pollitem_t *items_, int nitems_, long timeout_)
             if (zmq_getsockopt (items_[i].socket, ZMQ_FD, &pollfds[i].fd,
                                 &zmq_fd_size)
                 == -1) {
+                if (errno == EINVAL) {
+                    socket_fd_unavailable = true;
+                    pollfds[i].fd = -1;
+                    pollfds[i].events = 0;
+                    continue;
+                }
                 return -1;
             }
             pollfds[i].events = items_[i].events ? POLLIN : 0;
@@ -501,8 +508,22 @@ int zmq_poll (zmq_pollitem_t *items_, int nitems_, long timeout_)
         const zmq::timeout_t timeout =
           zmq::compute_timeout (first_pass, timeout_, now, end);
 
+        int poll_timeout = timeout;
+        if (socket_fd_unavailable) {
+            static const int max_poll_timeout_ms = 10;
+            if (timeout_ == 0) {
+                poll_timeout = 0;
+            } else if (timeout_ < 0) {
+                poll_timeout = max_poll_timeout_ms;
+            } else {
+                poll_timeout = timeout > max_poll_timeout_ms
+                                 ? max_poll_timeout_ms
+                                 : timeout;
+            }
+        }
+
         {
-            const int rc = poll (&pollfds[0], nitems_, timeout);
+            const int rc = poll (&pollfds[0], nitems_, poll_timeout);
             if (rc == -1 && errno == EINTR) {
                 return -1;
             }

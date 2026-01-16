@@ -943,6 +943,7 @@ set(cxx-sources
     atomic_counter.hpp
     atomic_ptr.hpp
     blob.hpp
+    blob_hash.hpp
     clock.hpp
     command.hpp
     compat.hpp

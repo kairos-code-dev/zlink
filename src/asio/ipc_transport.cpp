@@ -96,19 +96,12 @@ ipc_transport_t::~ipc_transport_t ()
 bool ipc_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
 {
     try {
-#ifndef ZMQ_HAVE_WINDOWS
-        _stream_descriptor =
-          std::unique_ptr<boost::asio::posix::stream_descriptor> (
-            new boost::asio::posix::stream_descriptor (io_context, fd));
-#else
         _socket = std::unique_ptr<boost::asio::local::stream_protocol::socket> (
           new boost::asio::local::stream_protocol::socket (io_context));
-#endif
     } catch (const std::bad_alloc &) {
         return false;
     }
 
-#ifdef ZMQ_HAVE_WINDOWS
     boost::asio::local::stream_protocol protocol;
     boost::system::error_code ec;
     _socket->assign (protocol, fd, ec);
@@ -118,35 +111,22 @@ bool ipc_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
         _socket.reset ();
         return false;
     }
-#endif
 
     return true;
 }
 
 bool ipc_transport_t::is_open () const
 {
-#ifndef ZMQ_HAVE_WINDOWS
-    return _stream_descriptor && _stream_descriptor->is_open ();
-#else
     return _socket && _socket->is_open ();
-#endif
 }
 
 void ipc_transport_t::close ()
 {
-#ifndef ZMQ_HAVE_WINDOWS
-    if (_stream_descriptor) {
-        boost::system::error_code ec;
-        _stream_descriptor->close (ec);
-        _stream_descriptor.reset ();
-    }
-#else
     if (_socket) {
         boost::system::error_code ec;
         _socket->close (ec);
         _socket.reset ();
     }
-#endif
 }
 
 void ipc_transport_t::async_read_some (
@@ -159,28 +139,6 @@ void ipc_transport_t::async_read_some (
         ++ipc_async_read_calls;
     }
 
-#ifndef ZMQ_HAVE_WINDOWS
-    if (_stream_descriptor) {
-        if (ipc_stats_enabled ()) {
-            _stream_descriptor->async_read_some (
-              boost::asio::buffer (buffer, buffer_size),
-              [handler](const boost::system::error_code &ec,
-                        std::size_t bytes) {
-                  if (ec)
-                      ++ipc_async_read_errors;
-                  else
-                      ipc_async_read_bytes += bytes;
-                  if (handler)
-                      handler (ec, bytes);
-              });
-        } else {
-            _stream_descriptor->async_read_some (
-              boost::asio::buffer (buffer, buffer_size), handler);
-        }
-    } else if (handler) {
-        handler (boost::asio::error::bad_descriptor, 0);
-    }
-#else
     if (_socket) {
         if (ipc_stats_enabled ()) {
             _socket->async_read_some (
@@ -201,7 +159,6 @@ void ipc_transport_t::async_read_some (
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
-#endif
 }
 
 void ipc_transport_t::async_write_some (
@@ -214,29 +171,6 @@ void ipc_transport_t::async_write_some (
         ++ipc_async_write_calls;
     }
 
-#ifndef ZMQ_HAVE_WINDOWS
-    if (_stream_descriptor) {
-        if (ipc_stats_enabled ()) {
-            boost::asio::async_write (
-              *_stream_descriptor, boost::asio::buffer (buffer, buffer_size),
-              [handler](const boost::system::error_code &ec,
-                        std::size_t bytes) {
-                  if (ec)
-                      ++ipc_async_write_errors;
-                  else
-                      ipc_async_write_bytes += bytes;
-                  if (handler)
-                      handler (ec, bytes);
-              });
-        } else {
-            boost::asio::async_write (
-              *_stream_descriptor, boost::asio::buffer (buffer, buffer_size),
-              handler);
-        }
-    } else if (handler) {
-        handler (boost::asio::error::bad_descriptor, 0);
-    }
-#else
     if (_socket) {
         if (ipc_stats_enabled ()) {
             boost::asio::async_write (
@@ -257,7 +191,6 @@ void ipc_transport_t::async_write_some (
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
-#endif
 }
 
 std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
@@ -267,17 +200,10 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         return 0;
     }
 
-#ifndef ZMQ_HAVE_WINDOWS
-    if (!_stream_descriptor || !_stream_descriptor->is_open ()) {
-        errno = EBADF;
-        return 0;
-    }
-#else
     if (!_socket || !_socket->is_open ()) {
         errno = EBADF;
         return 0;
     }
-#endif
 
     if (ipc_force_async () || !ipc_allow_sync_write ()) {
         errno = EAGAIN;
@@ -295,13 +221,8 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
     }
 
     boost::system::error_code ec;
-#ifndef ZMQ_HAVE_WINDOWS
-    const std::size_t bytes_written =
-      _stream_descriptor->write_some (boost::asio::buffer (data, len), ec);
-#else
     const std::size_t bytes_written =
       _socket->write_some (boost::asio::buffer (data, len), ec);
-#endif
 
     if (ec) {
         if (ec == boost::asio::error::would_block

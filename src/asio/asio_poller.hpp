@@ -12,9 +12,8 @@
 #include <memory>
 
 #include <boost/asio.hpp>
-#if !defined ZMQ_HAVE_WINDOWS
-#include <boost/asio/posix/stream_descriptor.hpp>
-#endif
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/local/stream_protocol.hpp>
 
 #include "../ctx.hpp"
 #include "../fd.hpp"
@@ -38,8 +37,13 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     ~asio_poller_t () ZMQ_OVERRIDE;
 
     //  "poller" concept.
-    handle_t add_fd (fd_t fd_, zmq::i_poll_events *events_);
-    void rm_fd (handle_t handle_);
+    handle_t add_tcp_socket (boost::asio::ip::tcp::socket *socket_,
+                             zmq::i_poll_events *events_);
+#if defined ZMQ_HAVE_IPC
+    handle_t add_ipc_socket (boost::asio::local::stream_protocol::socket *socket_,
+                             zmq::i_poll_events *events_);
+#endif
+    void rm_socket (handle_t handle_);
     void set_pollin (handle_t handle_);
     void reset_pollin (handle_t handle_);
     void set_pollout (handle_t handle_);
@@ -59,17 +63,22 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     //  Poll entry structure for tracking FD state
     struct poll_entry_t
     {
-        fd_t fd;
-#if !defined ZMQ_HAVE_WINDOWS
-        boost::asio::posix::stream_descriptor descriptor;
-#endif
+        enum socket_type_t
+        {
+            socket_type_none,
+            socket_type_tcp,
+            socket_type_ipc
+        };
+
+        socket_type_t type;
+        void *socket;
         zmq::i_poll_events *events;
         bool pollin_enabled;
         bool pollout_enabled;
         bool in_event_pending;
         bool out_event_pending;
 
-        poll_entry_t (boost::asio::io_context &io_ctx_, fd_t fd_);
+        poll_entry_t (socket_type_t type_, void *socket_);
     };
 
     //  Start async_wait for read readiness

@@ -5,11 +5,13 @@
 
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <stdarg.h>
 
 #include "own.hpp"
 #include "array.hpp"
 #include "blob.hpp"
+#include "blob_hash.hpp"
 #include "stdint.hpp"
 #include "poller.hpp"
 #include "i_poll_events.hpp"
@@ -17,6 +19,7 @@
 #include "clock.hpp"
 #include "pipe.hpp"
 #include "endpoint.hpp"
+#include "atomic_counter.hpp"
 
 extern "C" {
 void zmq_free_event (void *data_, void *hint_);
@@ -27,6 +30,7 @@ namespace zmq
 class ctx_t;
 class msg_t;
 class pipe_t;
+class signaler_t;
 
 class socket_base_t : public own_t,
                       public array_item_t<>,
@@ -263,6 +267,11 @@ class socket_base_t : public own_t,
     //  If throttle argument is true, commands are processed at most once
     //  in a predefined time period.
     int process_commands (int timeout_, bool throttle_);
+    void inc_mailbox_ref ();
+    void dec_mailbox_ref ();
+    void finalize_destroy ();
+    static void reaper_mailbox_handler (void *arg_);
+    static void reaper_mailbox_pre_post (void *arg_);
 
     //  Handlers for incoming commands.
     void process_stop () ZMQ_FINAL;
@@ -282,9 +291,8 @@ class socket_base_t : public own_t,
     typedef array_t<pipe_t, 3> pipes_t;
     pipes_t _pipes;
 
-    //  Reaper's poller and handle of this socket within it.
+    //  Reaper's poller.
     poller_t *_poller;
-    poller_t::handle_t _handle;
 
     //  Timestamp of when commands were processed the last time.
     uint64_t _last_tsc;
@@ -310,8 +318,8 @@ class socket_base_t : public own_t,
     // Indicate if the socket is thread safe
     const bool _thread_safe;
 
-    // Signaler to be used in the reaping stage
-    signaler_t *_reaper_signaler;
+    atomic_counter_t _mailbox_refcnt;
+    bool _destroy_pending;
 
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;
@@ -364,7 +372,10 @@ class routing_socket_base_t : public socket_base_t
 
   private:
     //  Outbound pipes indexed by the peer IDs.
-    typedef std::map<blob_t, out_pipe_t> out_pipes_t;
+    //  Using unordered_map with FNV-1a hash for O(1) average lookup
+    //  instead of std::map's O(log n). This significantly improves
+    //  ROUTER pattern performance with many connected peers.
+    typedef std::unordered_map<blob_t, out_pipe_t, blob_hash, blob_equal> out_pipes_t;
     out_pipes_t _out_pipes;
 
     // Next assigned name on a zmq_connect() call used by ROUTER and STREAM socket types

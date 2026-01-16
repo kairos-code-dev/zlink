@@ -10,16 +10,13 @@
 #include "ctx.hpp"
 
 zmq::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
-    object_t (ctx_, tid_),
-    _mailbox_handle (static_cast<poller_t::handle_t> (NULL))
+    object_t (ctx_, tid_)
 {
     _poller = new (std::nothrow) poller_t (*ctx_);
     alloc_assert (_poller);
-
-    if (_mailbox.get_fd () != retired_fd) {
-        _mailbox_handle = _poller->add_fd (_mailbox.get_fd (), this);
-        _poller->set_pollin (_mailbox_handle);
-    }
+    _mailbox.set_io_context (&_poller->get_io_context (),
+                             &io_thread_t::mailbox_handler, this, NULL);
+    _mailbox.schedule_if_needed ();
 }
 
 zmq::io_thread_t::~io_thread_t ()
@@ -53,19 +50,26 @@ int zmq::io_thread_t::get_load () const
 
 void zmq::io_thread_t::in_event ()
 {
+    process_mailbox ();
+}
+
+void zmq::io_thread_t::process_mailbox ()
+{
     //  TODO: Do we want to limit number of commands I/O thread can
     //  process in a single go?
 
-    command_t cmd;
-    int rc = _mailbox.recv (&cmd, 0);
+    do {
+        command_t cmd;
+        int rc = _mailbox.recv (&cmd, 0);
 
-    while (rc == 0 || errno == EINTR) {
-        if (rc == 0)
-            cmd.destination->process_command (cmd);
-        rc = _mailbox.recv (&cmd, 0);
-    }
+        while (rc == 0 || errno == EINTR) {
+            if (rc == 0)
+                cmd.destination->process_command (cmd);
+            rc = _mailbox.recv (&cmd, 0);
+        }
 
-    errno_assert (rc != 0 && errno == EAGAIN);
+        errno_assert (rc != 0 && errno == EAGAIN);
+    } while (_mailbox.reschedule_if_needed ());
 }
 
 void zmq::io_thread_t::out_event ()
@@ -94,7 +98,11 @@ boost::asio::io_context &zmq::io_thread_t::get_io_context () const
 
 void zmq::io_thread_t::process_stop ()
 {
-    zmq_assert (_mailbox_handle);
-    _poller->rm_fd (_mailbox_handle);
     _poller->stop ();
+}
+
+void zmq::io_thread_t::mailbox_handler (void *arg_)
+{
+    io_thread_t *self = static_cast<io_thread_t *> (arg_);
+    self->process_mailbox ();
 }

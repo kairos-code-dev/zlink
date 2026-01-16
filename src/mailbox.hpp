@@ -10,7 +10,7 @@
 #include "ypipe.hpp"
 #include "mutex.hpp"
 #include "i_mailbox.hpp"
-#include "condition_variable.hpp"
+#include "signaler.hpp"
 
 #include <atomic>
 #include <vector>
@@ -25,7 +25,6 @@ class io_context;
 
 namespace zmq
 {
-class signaler_t;
 
 class mailbox_t ZMQ_FINAL : public i_mailbox
 {
@@ -58,7 +57,7 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     // with the context in the parent process.
     void forked () ZMQ_FINAL
     {
-        // TODO: call fork on the condition variable
+        _signaler.forked ();
     }
 #endif
 
@@ -67,8 +66,9 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     typedef ypipe_t<command_t, command_pipe_granularity> cpipe_t;
     cpipe_t _cpipe;
 
-    //  Condition variable to signal waiting receivers.
-    condition_variable_t _cond_var;
+    //  Signaler to wake up a sleeping receiver.
+    signaler_t _signaler;
+    bool _active;
 
     //  There's only one thread receiving from the mailbox, but there
     //  is arbitrary number of threads sending. Given that ypipe requires

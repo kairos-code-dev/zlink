@@ -44,6 +44,8 @@ class tcp_transport_t : public i_asio_transport
     std::size_t write_some (const std::uint8_t *data,
                             std::size_t len) ZMQ_OVERRIDE;
 
+    bool supports_speculative_write () const ZMQ_OVERRIDE;
+
     const char *name () const ZMQ_OVERRIDE { return "tcp"; }
 
   private:

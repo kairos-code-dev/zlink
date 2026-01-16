@@ -12,6 +12,7 @@ zmq::mailbox_t::mailbox_t ()
 {
     const bool ok = _cpipe.check_read ();
     zmq_assert (!ok);
+    _active = false;
     _io_context = NULL;
     _handler = NULL;
     _handler_arg = NULL;
@@ -33,56 +34,46 @@ void zmq::mailbox_t::send (const command_t &cmd_)
 {
     _sync.lock ();
     _cpipe.write (cmd_, false);
-    _cpipe.flush ();
-    _cond_var.broadcast ();
+    const bool ok = _cpipe.flush ();
+    if (!ok) {
+        _signaler.send ();
 
-    // Signal all registered signalers for ZMQ_FD support
-    for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
-                                             end = _signalers.end ();
-         it != end; ++it) {
-        (*it)->send ();
+        // Signal all registered signalers for ZMQ_FD support
+        for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
+                                                 end = _signalers.end ();
+             it != end; ++it) {
+            (*it)->send ();
+        }
     }
-
     _sync.unlock ();
 
-    schedule_if_needed ();
+    if (!ok)
+        schedule_if_needed ();
 }
 
 int zmq::mailbox_t::recv (command_t *cmd_, int timeout_)
 {
-    _sync.lock ();
-
-    if (_cpipe.read (cmd_)) {
-        _sync.unlock ();
-        return 0;
-    }
-
-    if (timeout_ == 0) {
-        _sync.unlock ();
-        _sync.lock ();
-    } else {
-        const int rc = _cond_var.wait (&_sync, timeout_);
+    if (!_active) {
+        const int rc = _signaler.wait (timeout_);
         if (rc == -1) {
             errno_assert (errno == EAGAIN || errno == EINTR);
-            _sync.unlock ();
             return -1;
         }
+        _signaler.recv ();
+        _active = true;
     }
 
-    const bool ok = _cpipe.read (cmd_);
-    _sync.unlock ();
+    if (_cpipe.read (cmd_))
+        return 0;
 
-    if (!ok) {
-        errno = EAGAIN;
-        return -1;
-    }
-
-    return 0;
+    _active = false;
+    errno = EAGAIN;
+    return -1;
 }
 
 bool zmq::mailbox_t::valid () const
 {
-    return true;
+    return _signaler.valid ();
 }
 
 void zmq::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
@@ -101,13 +92,6 @@ void zmq::mailbox_t::schedule_if_needed ()
     if (!_io_context || !_handler)
         return;
 
-    _sync.lock ();
-    const bool has_data = _cpipe.check_read ();
-    _sync.unlock ();
-
-    if (!has_data)
-        return;
-
     if (!_scheduled.exchange (true, std::memory_order_acquire)) {
         if (_pre_post)
             _pre_post (_handler_arg);
@@ -121,9 +105,7 @@ void zmq::mailbox_t::schedule_if_needed ()
 bool zmq::mailbox_t::reschedule_if_needed ()
 {
     _scheduled.store (false, std::memory_order_release);
-    _sync.lock ();
     const bool has_data = _cpipe.check_read ();
-    _sync.unlock ();
 
     if (!has_data)
         return false;

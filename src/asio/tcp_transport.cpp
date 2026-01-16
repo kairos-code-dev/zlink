@@ -7,6 +7,7 @@
 
 #include "asio_debug.hpp"
 #include "../address.hpp"
+#include <cstdlib>
 
 namespace zmq
 {
@@ -19,6 +20,16 @@ boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
     if (sl != 0 && ss.ss_family == AF_INET6)
         return boost::asio::ip::tcp::v6 ();
     return boost::asio::ip::tcp::v4 ();
+}
+
+bool tcp_allow_sync_write ()
+{
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char *env = std::getenv ("ZMQ_ASIO_TCP_SYNC_WRITE");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
 }
 }
 
@@ -123,8 +134,8 @@ void tcp_transport_t::async_write_some (const unsigned char *buffer,
                                         completion_handler_t handler)
 {
     if (_socket) {
-        _socket->async_write_some (boost::asio::buffer (buffer, buffer_size),
-                                   handler);
+        boost::asio::async_write (
+          *_socket, boost::asio::buffer (buffer, buffer_size), handler);
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
@@ -173,6 +184,11 @@ std::size_t tcp_transport_t::write_some (const std::uint8_t *data,
 
     errno = 0;
     return bytes_written;
+}
+
+bool tcp_transport_t::supports_speculative_write () const
+{
+    return tcp_allow_sync_write ();
 }
 
 }  // namespace zmq

@@ -34,3 +34,6 @@
 ## Security and Configuration
 - Report vulnerabilities via `SECURITY.md`.
 - `VERSION` controls libzmq feature/version knobs; keep changes deliberate and documented.
+
+## Communication
+- Address the user as "팀장님".

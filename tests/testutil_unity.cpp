@@ -8,6 +8,8 @@
 #include <direct.h>
 #else
 #include <unistd.h>
+#include <limits.h>
+#include <stdio.h>
 #endif
 
 int test_assert_success_message_errno_helper (int rc_,
@@ -280,17 +282,19 @@ void make_random_ipc_endpoint (char *out_endpoint_)
     strcat (random_file, "/ipc");
 
 #else
-    char random_file[16];
-    strcpy (random_file, "tmpXXXXXX");
+    char random_file[PATH_MAX] = "";
+    const char *tmpdir = getenv ("TMPDIR");
+    if (!tmpdir || !*tmpdir)
+        tmpdir = "/tmp";
+    const int n =
+      snprintf (random_file, sizeof (random_file), "%s/zmqXXXXXX", tmpdir);
+    if (n <= 0 || static_cast<size_t> (n) >= sizeof (random_file))
+        strcpy (random_file, "/tmp/zmqXXXXXX");
 
-#ifdef HAVE_MKDTEMP
-    TEST_ASSERT_TRUE (mkdtemp (random_file));
-    strcat (random_file, "/ipc");
-#else
     int fd = mkstemp (random_file);
     TEST_ASSERT_TRUE (fd != -1);
     close (fd);
-#endif
+    unlink (random_file);
 #endif
 
     strcpy (out_endpoint_, "ipc://");

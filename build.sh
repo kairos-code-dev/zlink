@@ -4,6 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
+export TMPDIR=/tmp
 
 echo "=== Clean Build ==="
 rm -rf "$BUILD_DIR"

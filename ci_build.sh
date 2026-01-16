@@ -2,10 +2,12 @@
 
 set -x
 set -e
+export TMPDIR=/tmp
 
 if [ $BUILD_TYPE = "default" ]; then
     mkdir -p build tmp
     BUILD_PREFIX=$PWD/tmp
+    export TMPDIR=$PWD/tmp
 
     # zlink uses CMake build system (not autotools)
     # Build and check this project

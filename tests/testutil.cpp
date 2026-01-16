@@ -441,22 +441,22 @@ fd_t bind_socket_resolve_port (const char *address_,
         strcat (buffer, "/ipc");
 #else
         char buffer[PATH_MAX] = "";
-        strcpy (buffer, "tmpXXXXXX");
-#ifdef HAVE_MKDTEMP
-        TEST_ASSERT_TRUE (mkdtemp (buffer));
-        strcat (buffer, "/socket");
-#else
+        const char *tmpdir = getenv ("TMPDIR");
+        if (!tmpdir || !*tmpdir)
+            tmpdir = "/tmp";
+        const int n =
+          snprintf (buffer, sizeof (buffer), "%s/zmqXXXXXX", tmpdir);
+        if (n <= 0 || static_cast<size_t> (n) >= sizeof (buffer))
+            strcpy (buffer, "/tmp/zmqXXXXXX");
         int fd = mkstemp (buffer);
         TEST_ASSERT_TRUE (fd != -1);
         close (fd);
-#endif
+        unlink (buffer);
 #endif
         strcpy ((*(struct sockaddr_un *) &addr).sun_path, buffer);
         memcpy (my_endpoint_, "ipc://", 7);
         strcat (my_endpoint_, buffer);
 
-        // TODO check return value of unlink
-        unlink (buffer);
 #else
         return retired_fd;
 #endif

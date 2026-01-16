@@ -11,6 +11,7 @@ set -e
 # Get script directory and repo root early (before any cd commands)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export TMPDIR=/tmp
 
 # Read VERSION file
 if [ -f "$REPO_ROOT/VERSION" ]; then

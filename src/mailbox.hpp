@@ -13,6 +13,7 @@
 #include "condition_variable.hpp"
 
 #include <atomic>
+#include <vector>
 
 namespace boost
 {
@@ -24,6 +25,8 @@ class io_context;
 
 namespace zmq
 {
+class signaler_t;
+
 class mailbox_t ZMQ_FINAL : public i_mailbox
 {
   public:
@@ -43,6 +46,11 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
                          mailbox_pre_post_t pre_post_ = NULL);
     void schedule_if_needed ();
     bool reschedule_if_needed ();
+
+    // Signaler support for ZMQ_FD
+    void add_signaler (signaler_t *signaler_);
+    void remove_signaler (signaler_t *signaler_);
+    void clear_signalers ();
 
 #ifdef HAVE_FORK
     // close the file descriptors in the signaller. This is used in a forked
@@ -73,6 +81,9 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     void *_handler_arg;
     mailbox_pre_post_t _pre_post;
     std::atomic<bool> _scheduled;
+
+    //  Signalers for ZMQ_FD support
+    std::vector<signaler_t *> _signalers;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (mailbox_t)
 };

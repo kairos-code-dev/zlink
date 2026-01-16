@@ -241,6 +241,9 @@ class asio_engine_t : public i_engine
     //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
     std::deque<std::vector<unsigned char>> _pending_buffers;
 
+    //  Total bytes in _pending_buffers (O(1) tracking instead of O(n) iteration)
+    size_t _total_pending_bytes;
+
     //  Maximum total size of pending buffers (10MB default)
     static const size_t max_pending_buffer_size = 10 * 1024 * 1024;
 

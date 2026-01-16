@@ -59,6 +59,33 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 - Linux: x64, ARM64
 - macOS: x86_64, ARM64
 
+## Performance Notes
+
+### IPC Transport Performance Characteristics
+
+**Event-Driven Patterns:**
+- IPC provides **best throughput** among all transports (3.87 M/s vs TCP 3.00 M/s for ROUTER_ROUTER 64B)
+- Lowest latency for local communication (~16 us vs TCP ~20 us)
+- Use blocking recv/send or ASIO async I/O for optimal performance
+
+**Polling-Based Patterns (`zmq_poll()`):**
+- IPC provides **excellent performance** in polling patterns (3.59 M/s, +25% faster than TCP)
+- Synchronous writes are attempted by default for low latency
+- Falls back to async I/O only when socket would block
+
+**Environment Variables:**
+- `ZMQ_ASIO_IPC_FORCE_ASYNC`: Force async writes, disable sync attempts (default: OFF)
+- `ZMQ_ASIO_IPC_STATS`: Enable IPC statistics logging (default: OFF)
+
+**Performance Summary (ROUTER_ROUTER_POLL 64B):**
+- IPC: 3.59 M/s (best)
+- inproc: 3.88 M/s
+- TCP: 2.87 M/s
+
+**Recommendation:** IPC is the fastest transport for local communication in both event-driven and polling patterns.
+
+**Reference:** See `docs/team/20260116_proactor-optimization/ipc_poll_performance_analysis.md` and `ipc_fix_result.md` for detailed analysis.
+
 ## TLS Configuration
 
 zlink includes native TLS support using OpenSSL. Both native TLS transport (`tls://`) and WebSocket TLS (`wss://`) are available.

@@ -48,6 +48,7 @@
 #include "tcp_address.hpp"
 #include "mailbox.hpp"
 #include "mailbox_safe.hpp"
+#include "signaler.hpp"
 
 #include <boost/asio.hpp>
 
@@ -169,7 +170,8 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     _thread_safe (thread_safe_),
     _mailbox_refcnt (0),
     _destroy_pending (false),
-    _monitor_sync ()
+    _monitor_sync (),
+    _zmq_fd_signaler (NULL)
 {
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZMQ_IPV6) != 0);
@@ -198,6 +200,18 @@ int zmq::socket_base_t::get_peer_state (const void *routing_id_,
 
 zmq::socket_base_t::~socket_base_t ()
 {
+    //  Cleanup ZMQ_FD signaler if it was created
+    if (_zmq_fd_signaler) {
+        if (_mailbox) {
+            if (_thread_safe)
+                static_cast<mailbox_safe_t *> (_mailbox)->remove_signaler (_zmq_fd_signaler);
+            else
+                static_cast<mailbox_t *> (_mailbox)->remove_signaler (_zmq_fd_signaler);
+        }
+        LIBZMQ_DELETE (_zmq_fd_signaler);
+        _zmq_fd_signaler = NULL;
+    }
+
     if (_mailbox)
         LIBZMQ_DELETE (_mailbox);
 
@@ -337,9 +351,20 @@ int zmq::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZMQ_FD) {
-        //  ASIO integration does not expose mailbox file descriptors.
-        errno = EINVAL;
-        return -1;
+        //  Create signaler on first access for ZMQ_FD support
+        if (!_zmq_fd_signaler) {
+            _zmq_fd_signaler = new (std::nothrow) signaler_t ();
+            zmq_assert (_zmq_fd_signaler);
+
+            //  Add signaler to mailbox (works for both mailbox_t and mailbox_safe_t)
+            if (_thread_safe)
+                static_cast<mailbox_safe_t *> (_mailbox)->add_signaler (_zmq_fd_signaler);
+            else
+                static_cast<mailbox_t *> (_mailbox)->add_signaler (_zmq_fd_signaler);
+        }
+
+        return do_getsockopt<fd_t> (optval_, optvallen_,
+                                    _zmq_fd_signaler->get_fd ());
     }
 
     if (option_ == ZMQ_EVENTS) {

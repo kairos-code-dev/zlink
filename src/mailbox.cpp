@@ -3,8 +3,10 @@
 #include "precompiled.hpp"
 #include "mailbox.hpp"
 #include "err.hpp"
+#include "signaler.hpp"
 
 #include <boost/asio.hpp>
+#include <algorithm>
 
 zmq::mailbox_t::mailbox_t ()
 {
@@ -33,6 +35,14 @@ void zmq::mailbox_t::send (const command_t &cmd_)
     _cpipe.write (cmd_, false);
     _cpipe.flush ();
     _cond_var.broadcast ();
+
+    // Signal all registered signalers for ZMQ_FD support
+    for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
+                                             end = _signalers.end ();
+         it != end; ++it) {
+        (*it)->send ();
+    }
+
     _sync.unlock ();
 
     schedule_if_needed ();
@@ -120,4 +130,23 @@ bool zmq::mailbox_t::reschedule_if_needed ()
     if (_scheduled.exchange (true, std::memory_order_acquire))
         return false;
     return true;
+}
+
+void zmq::mailbox_t::add_signaler (signaler_t *signaler_)
+{
+    _signalers.push_back (signaler_);
+}
+
+void zmq::mailbox_t::remove_signaler (signaler_t *signaler_)
+{
+    const std::vector<signaler_t *>::iterator end = _signalers.end ();
+    const std::vector<signaler_t *>::iterator it =
+      std::find (_signalers.begin (), end, signaler_);
+    if (it != end)
+        _signalers.erase (it);
+}
+
+void zmq::mailbox_t::clear_signalers ()
+{
+    _signalers.clear ();
 }

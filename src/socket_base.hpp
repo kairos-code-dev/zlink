@@ -324,6 +324,9 @@ class socket_base_t : public own_t,
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;
 
+    //  Signaler for ZMQ_FD exposure (created on-demand)
+    signaler_t *_zmq_fd_signaler;
+
     ZMQ_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 
     // Add a flag for mark disconnect action

@@ -766,6 +766,12 @@ void zmq::asio_ws_engine_t::speculative_write ()
         return;
     }
 
+    if (!_transport->supports_speculative_write ()) {
+        WS_ENGINE_DBG ("speculative_write: transport prefers async");
+        start_async_write ();
+        return;
+    }
+
     //  Attempt synchronous write using transport's write_some()
     //  Note: For WebSocket, this writes a complete frame or returns 0 with EAGAIN
     zmq_assert (_transport);

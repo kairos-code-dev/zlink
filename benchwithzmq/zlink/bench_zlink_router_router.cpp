@@ -20,11 +20,12 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     zmq_setsockopt(router1, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
     zmq_setsockopt(router2, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
-    int hwm = 0;
-    set_sockopt_int(router1, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(router1, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(router2, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(router2, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    // Set very high HWM for benchmarking (default 1000 causes deadlock with IPC)
+    int hwm = 1000000;
+    zmq_setsockopt(router1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
     std::string endpoint = bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router");
     if (endpoint.empty()) {
@@ -56,7 +57,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
                    "handshake send id");
         int rc = bench_send(router2, "PING", 4, ZMQ_DONTWAIT,
                             "handshake send ping");
-        
+
         if (rc == 4) {
             // Check if R1 received it
             int len = bench_recv(router1, buf, 16, ZMQ_DONTWAIT,
@@ -71,7 +72,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     // Reply PONG to complete handshake
     bench_send(router1, "ROUTER2", 7, ZMQ_SNDMORE, "handshake send id back");
     bench_send(router1, "PONG", 4, 0, "handshake send pong");
-    
+
     bench_recv(router2, buf, 16, 0, "handshake recv id"); // ID
     bench_recv(router2, buf, 16, 0, "handshake recv pong"); // PONG
 
@@ -88,15 +89,15 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
         // R2 -> R1
         bench_send(router2, "ROUTER1", 7, ZMQ_SNDMORE, "lat send id");
         bench_send(router2, buffer.data(), msg_size, 0, "lat send data");
-        
+
         // R1 Recv
-        int id_len = bench_recv(router1, id, 256, 0, "lat recv id"); 
+        int id_len = bench_recv(router1, id, 256, 0, "lat recv id");
         bench_recv(router1, recv_buf.data(), msg_size, 0, "lat recv data");
-        
+
         // R1 -> R2 (Reply)
         bench_send(router1, id, id_len, ZMQ_SNDMORE, "lat send id back");
         bench_send(router1, buffer.data(), msg_size, 0, "lat send data back");
-        
+
         // R2 Recv
         bench_recv(router2, id, 256, 0, "lat recv id back");
         bench_recv(router2, recv_buf.data(), msg_size, 0, "lat recv data back");

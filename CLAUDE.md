@@ -61,30 +61,42 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 
 ## Performance Notes
 
-### IPC Transport Performance Characteristics
+### Transport Performance Characteristics (Phase 5 - Stable)
 
-**Event-Driven Patterns:**
-- IPC provides **best throughput** among all transports (3.87 M/s vs TCP 3.00 M/s for ROUTER_ROUTER 64B)
-- Lowest latency for local communication (~16 us vs TCP ~20 us)
-- Use blocking recv/send or ASIO async I/O for optimal performance
+**Comprehensive Benchmark Results (10K messages, Linux x64):**
 
-**Polling-Based Patterns (`zmq_poll()`):**
-- IPC provides **excellent performance** in polling patterns (3.59 M/s, +25% faster than TCP)
-- Synchronous writes are attempted by default for low latency
-- Falls back to async I/O only when socket would block
+| Pattern | TCP 64B | IPC 64B | inproc 64B | IPC Speedup |
+|---------|---------|---------|------------|-------------|
+| DEALER_DEALER | 2.90 M/s | **4.91 M/s** ⭐ | 4.34 M/s | **+69%** |
+| PAIR | 2.95 M/s | **4.78 M/s** | 4.60 M/s | **+62%** |
+| DEALER_ROUTER | 2.51 M/s | **4.56 M/s** | 4.08 M/s | **+81%** |
+| PUBSUB | 2.91 M/s | **4.55 M/s** | 4.01 M/s | **+56%** |
+| ROUTER_ROUTER | 2.25 M/s | **3.65 M/s** | 3.54 M/s | **+62%** |
+| ROUTER_ROUTER_POLL | 2.21 M/s | **3.35 M/s** | 3.37 M/s | **+52%** |
+
+**Key Findings:**
+- **IPC is fastest** for small messages (64B): 3.35 ~ 4.91 M/s
+- **inproc best for large messages** (1KB): 1.38 ~ 2.05 M/s
+- **Average IPC speedup**: +64% over TCP
+- **100% stability**: Zero deadlocks across all patterns and transports
+- **libzmq-ref parity**: 81-106% performance (PAIR/ipc/64B @ 200K messages: 4.77 M/s)
+
+**Latency Characteristics:**
+- inproc: 0.13 ~ 0.54 μs (ultra-low)
+- IPC: 13.33 ~ 52.55 μs (low)
+- TCP: 13.89 ~ 61.62 μs (low)
 
 **Environment Variables:**
-- `ZMQ_ASIO_IPC_FORCE_ASYNC`: Force async writes, disable sync attempts (default: OFF)
+- `ZMQ_ASIO_IPC_SYNC_WRITE`: Enable speculative sync writes for IPC (default: OFF for stability)
+- `ZMQ_ASIO_IPC_FORCE_ASYNC`: Force async writes, same as sync_write=OFF (default: OFF)
 - `ZMQ_ASIO_IPC_STATS`: Enable IPC statistics logging (default: OFF)
 
-**Performance Summary (ROUTER_ROUTER_POLL 64B):**
-- IPC: 3.59 M/s (best)
-- inproc: 3.88 M/s
-- TCP: 2.87 M/s
+**Recommendations:**
+1. **Use IPC for local communication** - 1.5-2× faster than TCP, stable
+2. **Use inproc for large messages** - Zero-copy advantage for 1KB+ payloads
+3. **Use TCP for network** - Solid 2.2-2.9 M/s performance
 
-**Recommendation:** IPC is the fastest transport for local communication in both event-driven and polling patterns.
-
-**Reference:** See `docs/team/20260116_proactor-optimization/ipc_poll_performance_analysis.md` and `ipc_fix_result.md` for detailed analysis.
+**Reference:** See `docs/team/20260116_ipc-deadlock-debug/final_benchmark_results.md` for complete analysis.
 
 ## TLS Configuration
 

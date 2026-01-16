@@ -205,6 +205,13 @@ class asio_engine_t : public i_engine
     //  Fill output buffer and start async write
     void process_output ();
 
+    //  Internal implementation of restart_input
+    bool restart_input_internal ();
+
+    //  Attempt a synchronous read to drain immediately available data.
+    //  Returns true if a read was attempted or an error occurred.
+    bool speculative_read ();
+
     //  Prepare output buffer from encoder (called by speculative_write).
     //  Returns true if data is available in _outpos/_outsize.
     bool prepare_output_buffer ();

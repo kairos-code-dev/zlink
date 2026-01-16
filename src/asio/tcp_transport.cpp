@@ -78,6 +78,46 @@ void tcp_transport_t::async_read_some (unsigned char *buffer,
     }
 }
 
+std::size_t tcp_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
+{
+    if (len == 0) {
+        errno = 0;
+        return 0;
+    }
+
+    if (!_socket || !_socket->is_open ()) {
+        errno = EBADF;
+        return 0;
+    }
+
+    boost::system::error_code ec;
+    const std::size_t bytes_read =
+      _socket->read_some (boost::asio::buffer (buffer, len), ec);
+
+    if (ec) {
+        if (ec == boost::asio::error::would_block
+            || ec == boost::asio::error::try_again) {
+            errno = EAGAIN;
+            return 0;
+        }
+        if (ec == boost::asio::error::eof
+            || ec == boost::asio::error::connection_reset
+            || ec == boost::asio::error::broken_pipe) {
+            errno = EPIPE;
+        } else if (ec == boost::asio::error::not_connected) {
+            errno = ENOTCONN;
+        } else if (ec == boost::asio::error::bad_descriptor) {
+            errno = EBADF;
+        } else {
+            errno = EIO;
+        }
+        return 0;
+    }
+
+    errno = 0;
+    return bytes_read;
+}
+
 void tcp_transport_t::async_write_some (const unsigned char *buffer,
                                         std::size_t buffer_size,
                                         completion_handler_t handler)

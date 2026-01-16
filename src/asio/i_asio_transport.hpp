@@ -63,6 +63,21 @@ class i_asio_transport
                                   std::size_t buffer_size,
                                   completion_handler_t handler) = 0;
 
+    //  Synchronous read operation for speculative reads.
+    //
+    //  Attempts to read up to len bytes into buffer synchronously.
+    //
+    //  Returns:
+    //    On success: Number of bytes actually read (may be less than len)
+    //    On would_block: 0, with errno set to EAGAIN or EWOULDBLOCK
+    //    On error: 0, with errno set to appropriate error code
+    //
+    //  Notes:
+    //    - For TCP/TLS/IPC: Non-blocking read_some on the underlying socket
+    //    - For WebSocket: May return EAGAIN if no buffered frame data exists
+    //    - Caller must check errno when return value is 0
+    virtual std::size_t read_some (std::uint8_t *buffer, std::size_t len) = 0;
+
     //  Start async write operation.
     //  Writes up to buffer_size bytes from buffer.
     //  Calls handler on completion with error code and bytes written.
@@ -92,6 +107,10 @@ class i_asio_transport
     //      would_block from actual errors
     //    - Must be called only after handshake is complete (if required)
     virtual std::size_t write_some (const std::uint8_t *data, std::size_t len) = 0;
+
+    //  Indicates whether the transport supports speculative synchronous writes.
+    //  Transports can opt out to force async write paths (e.g., IPC stability).
+    virtual bool supports_speculative_write () const { return true; }
 
     //  Check if this transport requires a handshake phase.
     //  TCP: false, SSL: true, WebSocket: true

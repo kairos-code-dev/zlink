@@ -31,11 +31,12 @@ void run_router_router_poll(const std::string &transport,
     zmq_setsockopt(router1, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
     zmq_setsockopt(router2, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
-    int hwm = 0;
-    set_sockopt_int(router1, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(router1, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(router2, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(router2, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    // Set very high HWM for benchmarking (default 1000 causes deadlock with IPC)
+    int hwm = 1000000;
+    zmq_setsockopt(router1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
     std::string endpoint =
       bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router_poll");
@@ -61,37 +62,57 @@ void run_router_router_poll(const std::string &transport,
     bool connected = false;
     char buf[16];
 
+    std::cerr << "DEBUG: Starting handshake..." << std::endl;
+    int handshake_attempts = 0;
     while (!connected) {
+        handshake_attempts++;
         bench_send(router2, "ROUTER1", 7, ZMQ_SNDMORE | ZMQ_DONTWAIT,
                    "handshake send id");
         int rc = bench_send(router2, "PING", 4, ZMQ_DONTWAIT,
                             "handshake send ping");
+        std::cerr << "DEBUG: Handshake attempt " << handshake_attempts << ", send rc=" << rc << std::endl;
         if (rc == 4) {
             if (wait_for_input(poll_r1, 0)) {
+                std::cerr << "DEBUG: poll_r1 has input" << std::endl;
                 int len = bench_recv(router1, buf, 16, ZMQ_DONTWAIT,
                                      "handshake recv id");
+                std::cerr << "DEBUG: recv id len=" << len << std::endl;
                 if (len > 0) {
                     bench_recv(router1, buf, 16, ZMQ_DONTWAIT,
                                "handshake recv ping");
                     connected = true;
+                    std::cerr << "DEBUG: Handshake connected!" << std::endl;
                 }
             }
         }
-        if (!connected)
+        if (!connected) {
+            if (handshake_attempts > 100) {
+                std::cerr << "ERROR: Handshake failed after 100 attempts!" << std::endl;
+                zmq_close(router1);
+                zmq_close(router2);
+                zmq_ctx_term(ctx);
+                return;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
 
+    std::cerr << "DEBUG: Sending PONG..." << std::endl;
     bench_send(router1, "ROUTER2", 7, ZMQ_SNDMORE, "handshake send id back");
     bench_send(router1, "PONG", 4, 0, "handshake send pong");
 
+    std::cerr << "DEBUG: Waiting for PONG on router2..." << std::endl;
     if (!wait_for_input(poll_r2, -1)) {
+        std::cerr << "ERROR: wait_for_input(poll_r2) failed!" << std::endl;
         zmq_close(router1);
         zmq_close(router2);
         zmq_ctx_term(ctx);
         return;
     }
+    std::cerr << "DEBUG: poll_r2 has input, receiving PONG..." << std::endl;
     bench_recv(router2, buf, 16, 0, "handshake recv id");
     bench_recv(router2, buf, 16, 0, "handshake recv pong");
+    std::cerr << "DEBUG: PONG received! Handshake complete." << std::endl;
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size + 256);
@@ -99,34 +120,59 @@ void run_router_router_poll(const std::string &transport,
     stopwatch_t sw;
 
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
+    std::cerr << "DEBUG: Starting latency test (" << lat_count << " iterations)..." << std::endl;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
+        if (i < 3 || i == lat_count - 1) {
+            std::cerr << "DEBUG: Latency iteration " << i << "/" << lat_count << std::endl;
+        }
         bench_send(router2, "ROUTER1", 7, ZMQ_SNDMORE, "lat send id");
         bench_send(router2, buffer.data(), msg_size, 0, "lat send data");
 
-        if (!wait_for_input(poll_r1, -1))
+        if (!wait_for_input(poll_r1, -1)) {
+            std::cerr << "ERROR: wait_for_input(poll_r1) failed at iteration " << i << std::endl;
             return;
+        }
         int id_len = bench_recv(router1, id, 256, 0, "lat recv id");
         bench_recv(router1, recv_buf.data(), msg_size, 0, "lat recv data");
 
         bench_send(router1, id, id_len, ZMQ_SNDMORE, "lat send id back");
         bench_send(router1, buffer.data(), msg_size, 0, "lat send data back");
 
-        if (!wait_for_input(poll_r2, -1))
+        if (!wait_for_input(poll_r2, -1)) {
+            std::cerr << "ERROR: wait_for_input(poll_r2) failed at iteration " << i << std::endl;
             return;
+        }
         bench_recv(router2, id, 256, 0, "lat recv id back");
         bench_recv(router2, recv_buf.data(), msg_size, 0, "lat recv data back");
     }
+    std::cerr << "DEBUG: Latency test complete!" << std::endl;
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
+    std::cerr << "DEBUG: Starting throughput test (" << msg_count << " messages)..." << std::endl;
     std::thread receiver([&]() {
         char id_inner[256];
         int received = 0;
 
+        std::cerr << "DEBUG: Receiver thread started" << std::endl;
         while (received < msg_count) {
-            if (!wait_for_input(poll_r1, -1))
-                return;
+            if (received % 10000 == 0) {
+                std::cerr << "DEBUG: Receiver calling wait_for_input (received=" << received << ")..." << std::endl;
+            }
+            if (!wait_for_input(poll_r1, received == 0 ? -1 : 100)) {
+                if (received % 10000 == 0) {
+                    std::cerr << "DEBUG: Poll timeout, checking ZMQ_EVENTS..." << std::endl;
+                }
+                // Check ZMQ_EVENTS to see if there's really no data
+                uint32_t events;
+                size_t events_size = sizeof(events);
+                zmq_getsockopt(router1, ZMQ_EVENTS, &events, &events_size);
+                if (!(events & ZMQ_POLLIN)) {
+                    continue;  // Really no data, wait again
+                }
+            }
 
+            int batch_count = 0;
             while (received < msg_count) {
                 int id_len = bench_recv(router1, id_inner, 256, ZMQ_DONTWAIT,
                                         "thr recv id");
@@ -136,16 +182,25 @@ void run_router_router_poll(const std::string &transport,
                 bench_recv(router1, recv_buf.data(), msg_size, ZMQ_DONTWAIT,
                            "thr recv data");
                 received++;
+                batch_count++;
+            }
+
+            if (batch_count > 0 && received % 10000 < batch_count) {
+                std::cerr << "DEBUG: Received batch of " << batch_count << " (total=" << received << "/" << msg_count << ")" << std::endl;
             }
         }
+        std::cerr << "DEBUG: Receiver thread complete: " << received << " messages" << std::endl;
     });
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Let receiver start
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
         bench_send(router2, "ROUTER1", 7, ZMQ_SNDMORE, "thr send id");
         bench_send(router2, buffer.data(), msg_size, 0, "thr send data");
     }
+    std::cerr << "DEBUG: Sent all " << msg_count << " messages, waiting for receiver..." << std::endl;
     receiver.join();
+    std::cerr << "DEBUG: Throughput test complete!" << std::endl;
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 
     print_result(lib_name, "ROUTER_ROUTER_POLL", transport, msg_size, throughput,

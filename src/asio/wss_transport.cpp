@@ -200,6 +200,37 @@ void wss_transport_t::async_read_some (unsigned char *buffer,
       });
 }
 
+std::size_t wss_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
+{
+    if (len == 0) {
+        errno = 0;
+        return 0;
+    }
+
+    if (!_wss_stream || !_ssl_handshake_complete || !_ws_handshake_complete) {
+        errno = ENOTCONN;
+        return 0;
+    }
+
+    if (_frame_offset < _frame_buffer.size ()) {
+        const std::size_t available = _frame_buffer.size () - _frame_offset;
+        const std::size_t to_copy = std::min (available, len);
+        std::memcpy (buffer, _frame_buffer.data () + _frame_offset, to_copy);
+        _frame_offset += to_copy;
+
+        if (_frame_offset >= _frame_buffer.size ()) {
+            _frame_buffer.clear ();
+            _frame_offset = 0;
+        }
+
+        errno = 0;
+        return to_copy;
+    }
+
+    errno = EAGAIN;
+    return 0;
+}
+
 void wss_transport_t::async_write_some (const unsigned char *buffer,
                                         std::size_t buffer_size,
                                         completion_handler_t handler)

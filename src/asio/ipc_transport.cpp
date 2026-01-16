@@ -16,6 +16,10 @@ namespace
 std::atomic<uint64_t> ipc_async_read_calls (0);
 std::atomic<uint64_t> ipc_async_read_bytes (0);
 std::atomic<uint64_t> ipc_async_read_errors (0);
+std::atomic<uint64_t> ipc_read_some_calls (0);
+std::atomic<uint64_t> ipc_read_some_bytes (0);
+std::atomic<uint64_t> ipc_read_some_eagain (0);
+std::atomic<uint64_t> ipc_read_some_errors (0);
 std::atomic<uint64_t> ipc_async_write_calls (0);
 std::atomic<uint64_t> ipc_async_write_bytes (0);
 std::atomic<uint64_t> ipc_async_write_errors (0);
@@ -59,11 +63,17 @@ void ipc_stats_dump ()
 {
     std::fprintf (stderr,
                   "[ASIO_IPC_STATS] async_read calls=%llu bytes=%llu errors=%llu\n"
+                  "[ASIO_IPC_STATS] read_some calls=%llu bytes=%llu eagain=%llu "
+                  "errors=%llu\n"
                   "[ASIO_IPC_STATS] async_write calls=%llu bytes=%llu errors=%llu\n"
                   "[ASIO_IPC_STATS] write_some calls=%llu bytes=%llu eagain=%llu errors=%llu\n",
                   static_cast<unsigned long long> (ipc_async_read_calls.load ()),
                   static_cast<unsigned long long> (ipc_async_read_bytes.load ()),
                   static_cast<unsigned long long> (ipc_async_read_errors.load ()),
+                  static_cast<unsigned long long> (ipc_read_some_calls.load ()),
+                  static_cast<unsigned long long> (ipc_read_some_bytes.load ()),
+                  static_cast<unsigned long long> (ipc_read_some_eagain.load ()),
+                  static_cast<unsigned long long> (ipc_read_some_errors.load ()),
                   static_cast<unsigned long long> (ipc_async_write_calls.load ()),
                   static_cast<unsigned long long> (ipc_async_write_bytes.load ()),
                   static_cast<unsigned long long> (ipc_async_write_errors.load ()),
@@ -161,6 +171,57 @@ void ipc_transport_t::async_read_some (
     }
 }
 
+std::size_t ipc_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
+{
+    if (len == 0) {
+        errno = 0;
+        return 0;
+    }
+
+    if (!_socket || !_socket->is_open ()) {
+        errno = EBADF;
+        return 0;
+    }
+
+    if (ipc_stats_enabled ()) {
+        ipc_stats_maybe_register ();
+        ++ipc_read_some_calls;
+    }
+
+    boost::system::error_code ec;
+    const std::size_t bytes_read =
+      _socket->read_some (boost::asio::buffer (buffer, len), ec);
+
+    if (ec) {
+        if (ec == boost::asio::error::would_block
+            || ec == boost::asio::error::try_again) {
+            errno = EAGAIN;
+            if (ipc_stats_enabled ())
+                ++ipc_read_some_eagain;
+            return 0;
+        }
+        if (ec == boost::asio::error::eof
+            || ec == boost::asio::error::connection_reset
+            || ec == boost::asio::error::broken_pipe) {
+            errno = EPIPE;
+        } else if (ec == boost::asio::error::not_connected) {
+            errno = ENOTCONN;
+        } else if (ec == boost::asio::error::bad_descriptor) {
+            errno = EBADF;
+        } else {
+            errno = EIO;
+        }
+        if (ipc_stats_enabled ())
+            ++ipc_read_some_errors;
+        return 0;
+    }
+
+    errno = 0;
+    if (ipc_stats_enabled ())
+        ipc_read_some_bytes += bytes_read;
+    return bytes_read;
+}
+
 void ipc_transport_t::async_write_some (
   const unsigned char *buffer,
   std::size_t buffer_size,
@@ -254,6 +315,11 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
     if (ipc_stats_enabled ())
         ipc_write_some_bytes += bytes_written;
     return bytes_written;
+}
+
+bool ipc_transport_t::supports_speculative_write () const
+{
+    return ipc_allow_sync_write () && !ipc_force_async ();
 }
 
 }  // namespace zmq

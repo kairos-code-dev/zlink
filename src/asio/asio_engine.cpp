@@ -375,6 +375,55 @@ void zmq::asio_engine_t::start_async_read ()
     }
 }
 
+bool zmq::asio_engine_t::speculative_read ()
+{
+    if (_read_pending || _io_error || !_transport)
+        return false;
+
+    //  Prepare read buffer the same way as start_async_read().
+    size_t read_size;
+
+    if (_decoder) {
+        _decoder->get_buffer (&_read_buffer_ptr, &read_size);
+
+        //  If we have partial data from previous read, move it to buffer start.
+        if (_insize > 0 && _inpos != _read_buffer_ptr) {
+            ENGINE_DBG ("speculative_read: moving %zu partial bytes to buffer start",
+                        _insize);
+            memmove (_read_buffer_ptr, _inpos, _insize);
+            _inpos = _read_buffer_ptr;
+        }
+
+        if (_insize > 0 && read_size > _insize) {
+            _read_buffer_ptr += _insize;
+            read_size -= _insize;
+        }
+    } else {
+        _read_buffer_ptr = _read_buffer.data ();
+        read_size = _read_buffer.size ();
+    }
+
+    if (read_size == 0)
+        return false;
+
+    errno = 0;
+    const std::size_t bytes =
+      _transport->read_some (reinterpret_cast<std::uint8_t *> (
+                               _read_buffer_ptr),
+                             read_size);
+
+    if (bytes == 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+            return false;
+        //  Treat EOF or other errors as connection error.
+        error (connection_error);
+        return true;
+    }
+
+    on_read_complete (boost::system::error_code (), bytes);
+    return true;
+}
+
 void zmq::asio_engine_t::start_async_write ()
 {
     if (_write_pending || _io_error)
@@ -718,6 +767,12 @@ void zmq::asio_engine_t::speculative_write ()
         return;
     }
 
+    if (!_transport->supports_speculative_write ()) {
+        ENGINE_DBG ("speculative_write: transport prefers async");
+        start_async_write ();
+        return;
+    }
+
     //  Attempt synchronous write using transport's write_some()
     zmq_assert (_transport);
     const std::size_t bytes =
@@ -892,6 +947,11 @@ void zmq::asio_engine_t::restart_output ()
 
 bool zmq::asio_engine_t::restart_input ()
 {
+    return restart_input_internal ();
+}
+
+bool zmq::asio_engine_t::restart_input_internal ()
+{
     zmq_assert (_input_stopped);
     zmq_assert (_session != NULL);
     zmq_assert (_decoder != NULL);
@@ -1044,16 +1104,34 @@ bool zmq::asio_engine_t::restart_input ()
         _pending_buffers.pop_front ();
     }
 
-    //  All pending data processed successfully
+    //  All pending data processed successfully - NOW safe to clear flag
     _input_stopped = false;
     _session->flush ();
 
     ENGINE_DBG ("restart_input: completed, input resumed");
 
-    //  True Proactor Pattern: Do NOT call start_async_read() here.
-    //  Async read is already pending (started in on_read_complete).
-    //  This eliminates unnecessary recvfrom() calls that would return EAGAIN.
+    //  CRITICAL FIX: Double-check for race condition AFTER flush()
+    //  Race scenario (discovered by Gemini):
+    //  - We cleared _input_stopped = false above
+    //  - _session->flush() may trigger pipe events that lead to on_read_complete()
+    //  - on_read_complete() sees _input_stopped = false, so it processes data directly
+    //  - BUT if it hits backpressure, it won't buffer (since _input_stopped = false)
+    //  Solution: Check if any buffers accumulated and re-enter stopped mode
+    if (!_pending_buffers.empty()) {
+        ENGINE_DBG ("restart_input: race detected AFTER flush, %zu buffers accumulated, re-entering stopped mode",
+                    _pending_buffers.size());
+        //  Re-enter stopped mode and recursively drain.
+        //  Call restart_input_internal() directly to keep state local.
+        _input_stopped = true;
+        return restart_input_internal();
+    }
 
+    //  Speculative read (libzmq pattern): drain immediately available data
+    //  before re-arming async read. This avoids missed wakeups on IPC.
+    if (speculative_read ())
+        return true;
+
+    start_async_read ();
     return true;
 }
 
@@ -1314,9 +1392,10 @@ void zmq::asio_engine_t::add_timer (int timeout_, int id_)
     zmq_assert (_timer);
     _current_timer_id = id_;
     _timer->expires_after (std::chrono::milliseconds (timeout_));
-    _timer->async_wait ([this, id_] (const boost::system::error_code &ec) {
-        on_timer (id_, ec);
-    });
+    _timer->async_wait (
+      [this, id_] (const boost::system::error_code &ec) {
+          on_timer (id_, ec);
+      });
 }
 
 void zmq::asio_engine_t::cancel_timer (int id_)

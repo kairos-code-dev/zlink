@@ -205,7 +205,10 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         return 0;
     }
 
-    if (ipc_force_async () || !ipc_allow_sync_write ()) {
+    //  Only force EAGAIN if explicitly requested via ZMQ_ASIO_IPC_FORCE_ASYNC.
+    //  Otherwise, attempt actual socket write like TCP transport does.
+    //  Since write_some() is non-blocking, there's no deadlock risk.
+    if (ipc_force_async ()) {
         errno = EAGAIN;
         if (ipc_stats_enabled ()) {
             ipc_stats_maybe_register ();

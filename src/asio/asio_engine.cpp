@@ -112,6 +112,7 @@ zmq::asio_engine_t::asio_engine_t (
     _transport (std::move (transport_)),
     _current_timer_id (-1),
     _read_buffer (read_buffer_size),
+    _total_pending_bytes (0),
     _fd (fd_),
     _plugged (false),
     _handshaking (true),
@@ -180,6 +181,7 @@ zmq::asio_engine_t::~asio_engine_t ()
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
+    _total_pending_bytes = 0;
 
     //  Smart pointers will automatically clean up ASIO objects
     //  (_timer, _socket_handle/_stream_descriptor)
@@ -301,6 +303,7 @@ void zmq::asio_engine_t::unplug ()
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
+    _total_pending_bytes = 0;
 
     _session = NULL;
 }
@@ -459,10 +462,9 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
     //  eliminating unnecessary recvfrom() EAGAIN calls when backpressure clears.
     if (_input_stopped) {
         //  Check buffer size limit to prevent memory exhaustion
-        size_t total_pending = 0;
-        for (const auto &buf : _pending_buffers) {
-            total_pending += buf.size ();
-        }
+        //  Bug fix: Include _insize (current partial data) in total calculation
+        //  Bug fix: Use _total_pending_bytes for O(1) instead of O(n) iteration
+        const size_t total_pending = _total_pending_bytes + _insize;
 
         if (total_pending + bytes_transferred > max_pending_buffer_size) {
             //  Buffer overflow - close connection to prevent memory exhaustion
@@ -476,9 +478,10 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
         std::vector<unsigned char> buffer (bytes_transferred);
         std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
         _pending_buffers.push_back (std::move (buffer));
+        _total_pending_bytes += bytes_transferred;
 
         ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
-                    bytes_transferred, total_pending + bytes_transferred);
+                    bytes_transferred, _total_pending_bytes);
 
         //  CRITICAL: Continue async read even during backpressure.
         //  This is the key to True Proactor pattern - we always have a
@@ -952,6 +955,7 @@ bool zmq::asio_engine_t::restart_input ()
     //  continued running.
     while (!_pending_buffers.empty ()) {
         std::vector<unsigned char> &buffer = _pending_buffers.front ();
+        const size_t original_buffer_size = buffer.size ();
 
         ENGINE_DBG ("restart_input: processing pending buffer of %zu bytes",
                     buffer.size ());
@@ -997,9 +1001,11 @@ bool zmq::asio_engine_t::restart_input ()
         //  If backpressure occurred, keep remaining data in buffer
         if (rc == -1 && errno == EAGAIN) {
             if (buffer_remaining > 0 && buffer_pos > 0) {
-                //  Trim processed data from buffer
+                //  Trim processed data from buffer and update tracking
+                const size_t bytes_consumed = buffer_pos;
                 buffer.erase (buffer.begin (),
                               buffer.begin () + static_cast<long> (buffer_pos));
+                _total_pending_bytes -= bytes_consumed;
                 ENGINE_DBG ("restart_input: partial pending buffer, %zu bytes "
                             "remaining",
                             buffer.size ());
@@ -1015,7 +1021,26 @@ bool zmq::asio_engine_t::restart_input ()
             return false;
         }
 
-        //  Buffer fully processed, remove it
+        //  Bug fix: rc == 0 means decoder needs more data but buffer_remaining
+        //  may still be > 0. In this case, we must preserve the remaining data.
+        if (rc == 0 && buffer_remaining > 0) {
+            if (buffer_pos > 0) {
+                //  Trim processed data from buffer and update tracking
+                const size_t bytes_consumed = buffer_pos;
+                buffer.erase (buffer.begin (),
+                              buffer.begin () + static_cast<long> (buffer_pos));
+                _total_pending_bytes -= bytes_consumed;
+                ENGINE_DBG ("restart_input: decoder needs more data, %zu bytes "
+                            "remaining in buffer",
+                            buffer.size ());
+            }
+            //  Don't pop_front - keep remaining data for next iteration
+            //  when more data arrives from network
+            break;
+        }
+
+        //  Buffer fully processed, remove it and update tracking
+        _total_pending_bytes -= original_buffer_size;
         _pending_buffers.pop_front ();
     }
 

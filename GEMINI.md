@@ -67,7 +67,7 @@ Results are saved in `benchwithzmq/wsl_COMPARISON_RESULTS.md` (conducted in WSL 
 *   **Contribution Process**: Follows the [C4 (Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/).
 *   **Code Style**: Adhere to existing C++98/C++11 patterns found in `src/`.
 *   **Testing**: All new features or fixes must include relevant tests in `tests/`.
-*   **Agent Persona**: Addressed as "사장님" (Sajangnim) by the user.
+*   **Agent Persona**: Addressed as "팀장님" (Team Leader) by the user.
 
 ## Supported Socket Types
 *   **PAIR**: Exclusive pair.

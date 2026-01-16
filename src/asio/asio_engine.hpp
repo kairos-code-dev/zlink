@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <vector>
+#include <deque>
 
 #include "../fd.hpp"
 #include "../i_engine.hpp"
@@ -233,6 +234,15 @@ class asio_engine_t : public i_engine
 
     //  Internal write buffer for async operations
     std::vector<unsigned char> _write_buffer;
+
+    //  True Proactor Pattern: Pending buffers for backpressure handling.
+    //  When _input_stopped is true, incoming data is stored here instead of
+    //  being processed. This allows async_read to continue without blocking,
+    //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
+    std::deque<std::vector<unsigned char>> _pending_buffers;
+
+    //  Maximum total size of pending buffers (10MB default)
+    static const size_t max_pending_buffer_size = 10 * 1024 * 1024;
 
     fd_t _fd;
 

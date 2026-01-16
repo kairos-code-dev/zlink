@@ -178,6 +178,9 @@ zmq::asio_engine_t::~asio_engine_t ()
     LIBZMQ_DELETE (_decoder);
     LIBZMQ_DELETE (_mechanism);
 
+    //  Clear pending buffers (True Proactor Pattern)
+    _pending_buffers.clear ();
+
     //  Smart pointers will automatically clean up ASIO objects
     //  (_timer, _socket_handle/_stream_descriptor)
 }
@@ -296,6 +299,9 @@ void zmq::asio_engine_t::unplug ()
     if (_timer)
         _timer->cancel ();
 
+    //  Clear pending buffers (True Proactor Pattern)
+    _pending_buffers.clear ();
+
     _session = NULL;
 }
 
@@ -319,7 +325,10 @@ void zmq::asio_engine_t::terminate ()
 
 void zmq::asio_engine_t::start_async_read ()
 {
-    if (_read_pending || _input_stopped || _io_error)
+    //  True Proactor Pattern: We no longer check _input_stopped here.
+    //  Async reads continue even during backpressure, with data being buffered
+    //  in _pending_buffers. This eliminates unnecessary recvfrom() EAGAIN calls.
+    if (_read_pending || _io_error)
         return;
 
     ENGINE_DBG ("start_async_read: insize=%zu", _insize);
@@ -421,8 +430,9 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
                                            std::size_t bytes_transferred)
 {
     _read_pending = false;
-    ENGINE_DBG ("on_read_complete: ec=%s, bytes=%zu, terminating=%d",
-                ec.message ().c_str (), bytes_transferred, _terminating);
+    ENGINE_DBG ("on_read_complete: ec=%s, bytes=%zu, terminating=%d, input_stopped=%d",
+                ec.message ().c_str (), bytes_transferred, _terminating,
+                _input_stopped);
 
     //  If terminating, just return - terminate() is draining handlers
     if (_terminating)
@@ -441,6 +451,39 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
     if (bytes_transferred == 0) {
         //  Connection closed by peer
         error (connection_error);
+        return;
+    }
+
+    //  True Proactor Pattern: If backpressure is active, buffer the data
+    //  instead of processing it. This keeps async_read always pending,
+    //  eliminating unnecessary recvfrom() EAGAIN calls when backpressure clears.
+    if (_input_stopped) {
+        //  Check buffer size limit to prevent memory exhaustion
+        size_t total_pending = 0;
+        for (const auto &buf : _pending_buffers) {
+            total_pending += buf.size ();
+        }
+
+        if (total_pending + bytes_transferred > max_pending_buffer_size) {
+            //  Buffer overflow - close connection to prevent memory exhaustion
+            ENGINE_DBG ("on_read_complete: pending buffer overflow (%zu + %zu > %zu)",
+                        total_pending, bytes_transferred, max_pending_buffer_size);
+            error (connection_error);
+            return;
+        }
+
+        //  Store data in pending buffer for later processing
+        std::vector<unsigned char> buffer (bytes_transferred);
+        std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
+        _pending_buffers.push_back (std::move (buffer));
+
+        ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
+                    bytes_transferred, total_pending + bytes_transferred);
+
+        //  CRITICAL: Continue async read even during backpressure.
+        //  This is the key to True Proactor pattern - we always have a
+        //  pending read, so when data arrives it's immediately buffered.
+        start_async_read ();
         return;
     }
 
@@ -476,11 +519,10 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
         return;
     }
 
-    //  Continue reading if not stopped.
-    //  If _insize > 0, there's still unprocessed data (partial message) that
-    //  needs more data to complete. The new read will append to existing data.
-    if (!_input_stopped)
-        start_async_read ();
+    //  True Proactor Pattern: Always continue reading.
+    //  If backpressure was triggered during process_input(), data will be
+    //  buffered in the next on_read_complete() call.
+    start_async_read ();
 }
 
 void zmq::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
@@ -851,17 +893,24 @@ bool zmq::asio_engine_t::restart_input ()
     zmq_assert (_session != NULL);
     zmq_assert (_decoder != NULL);
 
+    ENGINE_DBG ("restart_input: pending_buffers=%zu, insize=%zu",
+                _pending_buffers.size (), _insize);
+
+    //  First, try to process the previously failed message
     int rc = (this->*_process_msg) (_decoder->msg ());
     if (rc == -1) {
-        if (errno == EAGAIN)
+        if (errno == EAGAIN) {
+            //  Still backpressure - stay stopped
             _session->flush ();
-        else {
+            ENGINE_DBG ("restart_input: still backpressure on pending msg");
+        } else {
             error (protocol_error);
             return false;
         }
         return true;
     }
 
+    //  Process any remaining data in the current input buffer
     while (_insize > 0) {
         size_t processed = 0;
         unsigned char *decode_buf = _inpos;
@@ -885,21 +934,100 @@ bool zmq::asio_engine_t::restart_input ()
             break;
     }
 
-    if (rc == -1 && errno == EAGAIN)
+    //  Check for backpressure or errors after processing current buffer
+    if (rc == -1 && errno == EAGAIN) {
         _session->flush ();
-    else if (_io_error) {
+        ENGINE_DBG ("restart_input: backpressure after current buffer");
+        return true;
+    } else if (_io_error) {
         error (connection_error);
         return false;
     } else if (rc == -1) {
         error (protocol_error);
         return false;
-    } else {
-        _input_stopped = false;
-        _session->flush ();
-
-        //  Continue reading
-        start_async_read ();
     }
+
+    //  True Proactor Pattern: Process buffered data from _pending_buffers.
+    //  These buffers were accumulated during backpressure while async_read
+    //  continued running.
+    while (!_pending_buffers.empty ()) {
+        std::vector<unsigned char> &buffer = _pending_buffers.front ();
+
+        ENGINE_DBG ("restart_input: processing pending buffer of %zu bytes",
+                    buffer.size ());
+
+        //  Copy to decoder buffer and process
+        unsigned char *decode_buf;
+        size_t decode_size;
+        _decoder->get_buffer (&decode_buf, &decode_size);
+        decode_size = std::min (buffer.size (), decode_size);
+        memcpy (decode_buf, buffer.data (), decode_size);
+        _decoder->resize_buffer (decode_size);
+
+        size_t buffer_pos = 0;
+        size_t buffer_remaining = buffer.size ();
+
+        while (buffer_remaining > 0) {
+            size_t processed = 0;
+
+            //  If we've consumed the initial copy, get more buffer space
+            if (buffer_pos > 0) {
+                _decoder->get_buffer (&decode_buf, &decode_size);
+                const size_t to_copy = std::min (buffer_remaining, decode_size);
+                memcpy (decode_buf, buffer.data () + buffer_pos, to_copy);
+                _decoder->resize_buffer (to_copy);
+                decode_size = to_copy;
+            } else {
+                //  First iteration uses already copied data
+                decode_size = std::min (buffer_remaining, decode_size);
+            }
+
+            rc = _decoder->decode (decode_buf, decode_size, processed);
+            buffer_pos += processed;
+            buffer_remaining -= processed;
+
+            if (rc == 0 || rc == -1)
+                break;
+
+            rc = (this->*_process_msg) (_decoder->msg ());
+            if (rc == -1)
+                break;
+        }
+
+        //  If backpressure occurred, keep remaining data in buffer
+        if (rc == -1 && errno == EAGAIN) {
+            if (buffer_remaining > 0 && buffer_pos > 0) {
+                //  Trim processed data from buffer
+                buffer.erase (buffer.begin (),
+                              buffer.begin () + static_cast<long> (buffer_pos));
+                ENGINE_DBG ("restart_input: partial pending buffer, %zu bytes "
+                            "remaining",
+                            buffer.size ());
+            }
+            _session->flush ();
+            ENGINE_DBG ("restart_input: backpressure during pending buffer");
+            return true;
+        } else if (_io_error) {
+            error (connection_error);
+            return false;
+        } else if (rc == -1) {
+            error (protocol_error);
+            return false;
+        }
+
+        //  Buffer fully processed, remove it
+        _pending_buffers.pop_front ();
+    }
+
+    //  All pending data processed successfully
+    _input_stopped = false;
+    _session->flush ();
+
+    ENGINE_DBG ("restart_input: completed, input resumed");
+
+    //  True Proactor Pattern: Do NOT call start_async_read() here.
+    //  Async read is already pending (started in on_read_complete).
+    //  This eliminates unnecessary recvfrom() calls that would return EAGAIN.
 
     return true;
 }

@@ -57,18 +57,20 @@ void zmq::mailbox_safe_t::send (const command_t &cmd_)
 {
     _sync->lock ();
     _cpipe.write (cmd_, false);
-    _cpipe.flush ();
-    _cond_var.broadcast ();
+    const bool ok = _cpipe.flush ();
+    if (!ok) {
+        _cond_var.broadcast ();
 
-    for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
-                                             end = _signalers.end ();
-         it != end; ++it) {
-        (*it)->send ();
+        for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
+                                                 end = _signalers.end ();
+             it != end; ++it) {
+            (*it)->send ();
+        }
     }
-
     _sync->unlock ();
 
-    schedule_if_needed ();
+    if (!ok)
+        schedule_if_needed ();
 }
 
 int zmq::mailbox_safe_t::recv (command_t *cmd_, int timeout_)

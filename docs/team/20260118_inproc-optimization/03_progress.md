@@ -733,3 +733,38 @@ PUBSUB:             zlink 50,975.47  libzmq 70,242.44  (72.57%)
 
 - perf 미설치 상태 유지.
 - sudo 비밀번호 필요로 설치 실패.
+
+## Phase 27: strace -f 비교 (저하 패턴)
+
+### Goal
+
+- 저하 패턴의 syscall 분포 차이를 확인.
+
+### Actions
+
+1. `strace -f -c`로 zlink/libzmq 비교.
+2. 대상: DEALER_ROUTER(1K), DEALER_DEALER(64K/128K), PUBSUB(256K),
+   ROUTER_ROUTER(128K).
+
+### Results (strace -f -c 요약)
+
+- DEALER_ROUTER 1K (msg_count=1000)
+  - zlink: futex 102, read 114(99 errors), poll 2, getpid 23
+  - libzmq: epoll_wait 4, poll 125, getpid 166, read 18
+- DEALER_DEALER 64K (msg_count=500)
+  - zlink: futex 112, read 86(49 errors), poll 24, getpid 89
+  - libzmq: epoll_wait 4, poll 110, getpid 183, read 34
+- DEALER_DEALER 128K (msg_count=500)
+  - zlink: futex 148, read 126(66 errors), poll 47, getpid 158
+  - libzmq: epoll_wait 4, poll 149, getpid 248, read 47
+- PUBSUB 256K (msg_count=500)
+  - zlink: futex 113, read 116(51 errors), poll 51, getpid 171
+  - libzmq: epoll_wait 4, poll 137, getpid 240, read 49
+- ROUTER_ROUTER 128K (msg_count=500)
+  - zlink: futex 100, read 139(93 errors), poll 31, getpid 112
+  - libzmq: epoll_wait 4, poll 169, getpid 252, read 39
+
+### Status
+
+- zlink는 futex + read(EAGAIN) 비중이 높고, libzmq는 epoll_wait/poll 비중이 높음.
+- syscall 분포 차이는 보이지만 root 원인 단정은 어려움.

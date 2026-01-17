@@ -90,6 +90,31 @@
 - libzmq DEALER_ROUTER 벤치에 HWM=0을 적용해 zlink와 정렬.
 - size=1024에서 DEALER_ROUTER 100.9%로 회복, 131072에서도 97.9%.
 
+### Large-size refresh (Phase 29, inproc, 5-run avg)
+
+| Size | Pattern | libzmq-ref | zlink | 달성률 |
+|------|---------|------------|-------|--------|
+| 65536 | DEALER_DEALER | 0.16 M/s | 0.12 M/s | **71.7%** |
+| 131072 | DEALER_DEALER | 0.11 M/s | 0.08 M/s | **75.7%** |
+| 262144 | DEALER_DEALER | 0.07 M/s | 0.06 M/s | **84.6%** |
+| 65536 | PUBSUB | 0.16 M/s | 0.11 M/s | **70.1%** |
+| 131072 | PUBSUB | 0.11 M/s | 0.09 M/s | **76.4%** |
+| 262144 | PUBSUB | 0.07 M/s | 0.06 M/s | **85.1%** |
+| 65536 | ROUTER_ROUTER | 0.16 M/s | 0.11 M/s | **69.6%** |
+| 131072 | ROUTER_ROUTER | 0.11 M/s | 0.08 M/s | **74.5%** |
+| 262144 | ROUTER_ROUTER | 0.07 M/s | 0.05 M/s | **77.9%** |
+
+> Note: `BENCH_TRANSPORTS=inproc`, `BENCH_MSG_SIZES=65536,131072,262144`,
+> `--runs 5`, `--refresh-libzmq` 기준.
+
+### ROUTER_ROUTER_POLL large-size timeout (Phase 30)
+
+- run_comparison에서 size=262144가 timeout으로 중단됨.
+- msg_count=2000에서는 정상 완료:
+  - zlink throughput 129,638.30 / latency 9.04 us
+  - libzmq throughput 55,819.99 / latency 7.30 us
+- large-size poll 벤치는 msg_count 조정 또는 큐 압력 원인 분석 필요.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

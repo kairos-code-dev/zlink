@@ -796,3 +796,80 @@ DEALER_ROUTER:      zlink 81,907.67  libzmq 83,650.83  (97.92%)
 ### Status
 
 - 1024B DEALER_ROUTER 90% 미달 이슈 해소.
+
+## Phase 29: Large-size 재측정 (refresh + 5-run avg)
+
+### Goal
+
+- 64K 이상 사이즈에서 성능 저하가 유지되는지 재확인.
+
+### Actions
+
+1. libzmq 캐시 refresh 후 inproc만 64K/128K/256K 재측정.
+
+### Bench
+
+```
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py DEALER_DEALER --runs 5 --refresh-libzmq
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py PUBSUB --runs 5 --refresh-libzmq
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py ROUTER_ROUTER --runs 5 --refresh-libzmq
+```
+
+### Results (throughput, inproc, 5-run avg)
+
+```
+DEALER_DEALER
+65536B:  libzmq 0.16 M/s  zlink 0.12 M/s  (-28.30%)
+131072B: libzmq 0.11 M/s  zlink 0.08 M/s  (-24.28%)
+262144B: libzmq 0.07 M/s  zlink 0.06 M/s  (-15.37%)
+
+PUBSUB
+65536B:  libzmq 0.16 M/s  zlink 0.11 M/s  (-29.90%)
+131072B: libzmq 0.11 M/s  zlink 0.09 M/s  (-23.57%)
+262144B: libzmq 0.07 M/s  zlink 0.06 M/s  (-14.86%)
+
+ROUTER_ROUTER
+65536B:  libzmq 0.16 M/s  zlink 0.11 M/s  (-30.37%)
+131072B: libzmq 0.11 M/s  zlink 0.08 M/s  (-25.51%)
+262144B: libzmq 0.07 M/s  zlink 0.05 M/s  (-22.12%)
+```
+
+### Status
+
+- 64K/128K/256K 구간에서 15~30% 저하 지속.
+- large-size gap 해결 필요.
+
+## Phase 30: ROUTER_ROUTER_POLL large-size timeout 대응
+
+### Goal
+
+- 256K 구간에서 poll 벤치 timeout 원인 확인.
+
+### Actions
+
+1. run_comparison에서 256K 구간이 timeout으로 중단됨.
+2. msg_count 축소(2000)로 단일 벤치 확인.
+
+### Bench
+
+```
+BENCH_MSG_COUNT=2000 BENCH_LAT_COUNT=100 \
+  ./build/bin/comp_zlink_router_router_poll zlink inproc 262144
+BENCH_MSG_COUNT=2000 BENCH_LAT_COUNT=100 \
+  ./build/bin/comp_std_zmq_router_router_poll libzmq inproc 262144
+```
+
+### Results (msg_count=2000)
+
+```
+zlink:  throughput 129,638.30  latency 9.04 us
+libzmq: throughput 55,819.99   latency 7.30 us
+```
+
+### Status
+
+- msg_count=20000 구간은 timeout 발생, 2000에서는 정상 완료.
+- poll 벤치 large-size는 msg_count 조정 또는 내부 큐 압력 분석 필요.

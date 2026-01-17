@@ -1074,3 +1074,47 @@ BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=64,256,1024 \
 
 - small-size는 default msg_count 기준 90%+ 달성 확인.
 - large-size는 msg_count=2000 결과 유지.
+
+## Phase 36: -mtune=native 효과 확인
+
+### Goal
+
+- ISA 확장 없이 tuning만으로 large-size 개선 가능한지 확인.
+
+### Build
+
+```
+cmake -B build-tune -DBUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTS=ON -DWITH_DOCS=OFF -DWITH_TLS=ON \
+  -DCMAKE_CXX_FLAGS_RELEASE="-O3 -mtune=native"
+cmake --build build-tune
+```
+
+### Bench
+
+```
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py DEALER_DEALER --runs 3 --build-dir build-tune/bin
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py PUBSUB --runs 3 --build-dir build-tune/bin
+BENCH_TRANSPORTS=inproc BENCH_MSG_SIZES=65536,131072,262144 \
+  ./benchwithzmq/run_comparison.py ROUTER_ROUTER --runs 3 --build-dir build-tune/bin
+```
+
+### Results (throughput, inproc, 3-run avg)
+
+```
+DEALER_DEALER
+64K +8.51%  128K +9.42%  256K +6.55%
+
+PUBSUB
+64K +6.55%  128K +5.38%  256K +0.38%
+
+ROUTER_ROUTER
+64K +9.85%  128K +5.37%  256K -6.65%
+```
+
+### Status
+
+- `-mtune=native`만으로도 large-size 격차 대부분 해소.
+- 256K ROUTER_ROUTER는 -6.65% (93% 수준).

@@ -142,6 +142,12 @@
 - default msg_count 기준 64B/256B/1024B 모두 90%+ 확인.
 - large-size는 msg_count=2000 결과 유지.
 
+### -mtune=native 효과 (Phase 36)
+
+- ISA 확장 없이도 large-size 격차 대부분 해소.
+- DEALER_DEALER/PUBSUB 64K~256K는 +0~9% 범위.
+- ROUTER_ROUTER 256K는 -6.65% (93% 수준).
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

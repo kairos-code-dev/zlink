@@ -70,17 +70,11 @@
     "inproc|262144|latency": 6.84
   },
   "ROUTER_ROUTER_POLL": {
-    "inproc|64|throughput": 4528257.46,
-    "inproc|64|latency": 0.5,
-    "inproc|256|throughput": 3561424.78,
-    "inproc|256|latency": 0.5,
-    "inproc|1024|throughput": 1892623.88,
-    "inproc|1024|latency": 0.54,
-    "inproc|65536|throughput": 127402.36,
-    "inproc|65536|latency": 2.3,
-    "inproc|131072|throughput": 80910.02,
-    "inproc|131072|latency": 4.08,
-    "inproc|262144|throughput": 58896.01,
-    "inproc|262144|latency": 7.18
+    "inproc|64|throughput": 5798722.91,
+    "inproc|64|latency": 0.53,
+    "inproc|256|throughput": 5054579.86,
+    "inproc|256|latency": 0.53,
+    "inproc|1024|throughput": 2919803.64,
+    "inproc|1024|latency": 0.56
   }
 }

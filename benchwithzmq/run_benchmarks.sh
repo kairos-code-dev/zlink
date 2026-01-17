@@ -28,6 +28,7 @@ usage() {
 Usage: benchwithzmq/run_benchmarks.sh [options]
 
 Options:
+  -h, --help            Show this help.
   --skip-libzmq        Skip libzmq baseline run (uses existing cache).
   --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
@@ -36,7 +37,6 @@ Options:
   --runs N             Iterations per configuration (default: 3).
   --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
-  -h, --help           Show this help.
 USAGE
 }
 

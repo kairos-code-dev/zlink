@@ -498,3 +498,72 @@ ROUTER_ROUTER_POLL: zlink 4,274,233.54  libzmq 3,956,391.83  (108.0%)
 ### Status
 
 - ROUTER_ROUTER 90%+ 유지.
+
+## Phase 20: 메시지 사이즈별 성능 스윕
+
+### Goal
+
+- 메시지 크기별 성능 편차 확인.
+
+### Actions
+
+1. size: 64/256/1024/65536/131072/262144
+2. msg_count: size<=1024 → 10,000, size>1024 → 2,000
+3. 3회 평균으로 측정.
+
+### Bench (3-run avg, inproc)
+
+```
+size=64, msg_count=10000
+PAIR:               zlink 6,068,535.30  libzmq 6,281,406.82  (96.61%)
+PUBSUB:             zlink 5,507,097.17  libzmq 5,646,600.53  (97.53%)
+DEALER_DEALER:      zlink 5,766,416.21  libzmq 5,948,349.23  (96.94%)
+DEALER_ROUTER:      zlink 4,856,115.70  libzmq 5,225,760.57  (92.93%)
+ROUTER_ROUTER:      zlink 4,336,193.56  libzmq 4,792,639.83  (90.48%)
+ROUTER_ROUTER_POLL: zlink 4,180,083.23  libzmq 4,049,526.05  (103.22%)
+
+size=256, msg_count=10000
+PAIR:               zlink 5,019,088.58  libzmq 5,023,539.01  (99.91%)
+PUBSUB:             zlink 4,184,846.19  libzmq 4,404,453.49  (95.01%)
+DEALER_DEALER:      zlink 4,774,110.10  libzmq 4,976,054.94  (95.94%)
+DEALER_ROUTER:      zlink 3,686,812.98  libzmq 3,808,567.01  (96.80%)
+ROUTER_ROUTER:      zlink 3,114,331.95  libzmq 3,169,293.84  (98.27%)
+ROUTER_ROUTER_POLL: zlink 3,162,276.43  libzmq 3,173,354.92  (99.65%)
+
+size=1024, msg_count=10000
+PAIR:               zlink 2,609,926.71  libzmq 2,313,580.80  (112.81%)
+PUBSUB:             zlink 2,335,483.01  libzmq 2,348,675.84  (99.44%)
+DEALER_DEALER:      zlink 2,406,319.66  libzmq 2,514,377.83  (95.70%)
+DEALER_ROUTER:      zlink 1,899,698.14  libzmq 2,481,487.26  (76.55%)
+ROUTER_ROUTER:      zlink 1,816,322.58  libzmq 1,782,914.50  (101.87%)
+ROUTER_ROUTER_POLL: zlink 1,634,743.27  libzmq 1,746,273.12  (93.61%)
+
+size=65536, msg_count=2000
+PAIR:               zlink 217,016.01  libzmq 139,470.66  (155.60%)
+PUBSUB:             zlink 138,697.30  libzmq 131,754.36  (105.27%)
+DEALER_DEALER:      zlink 154,313.08  libzmq 214,685.55  (71.88%)
+DEALER_ROUTER:      zlink 150,040.25  libzmq 153,148.83  (97.97%)
+ROUTER_ROUTER:      zlink 149,258.78  libzmq 156,001.92  (95.68%)
+ROUTER_ROUTER_POLL: zlink 170,538.15  libzmq 158,444.07  (107.63%)
+
+size=131072, msg_count=2000
+PAIR:               zlink 160,513.25  libzmq 81,637.95  (196.62%)
+PUBSUB:             zlink 84,362.75  libzmq 103,239.55  (81.72%)
+DEALER_DEALER:      zlink 86,035.16  libzmq 107,702.73  (79.88%)
+DEALER_ROUTER:      zlink 80,294.10  libzmq 99,046.41  (81.07%)
+ROUTER_ROUTER:      zlink 83,330.60  libzmq 96,362.62  (86.48%)
+ROUTER_ROUTER_POLL: zlink 110,291.55  libzmq 90,955.81  (121.26%)
+
+size=262144, msg_count=2000
+PAIR:               zlink 49,816.90  libzmq 51,127.63  (97.44%)
+PUBSUB:             zlink 50,688.17  libzmq 69,724.01  (72.70%)
+DEALER_DEALER:      zlink 52,568.21  libzmq 50,314.74  (104.48%)
+DEALER_ROUTER:      zlink 49,915.45  libzmq 52,865.35  (94.42%)
+ROUTER_ROUTER:      zlink 49,165.08  libzmq 51,833.04  (94.85%)
+ROUTER_ROUTER_POLL: zlink 46,518.39  libzmq 57,528.99  (80.86%)
+```
+
+### Status
+
+- size별 평균은 90%+ 유지하나 개별 패턴 편차 큼.
+- 1024/65536/131072/262144 구간에서 특정 패턴 하락 확인.

@@ -20,6 +20,28 @@
 > Phase 17은 zlink 벤치에 `bench_send_fast/bench_recv_fast`를 확대 적용한 결과임.
 > Phase 15는 10회 평균으로 안정성 확인 결과임.
 
+## 메시지 사이즈별 성능 (Phase 20, inproc)
+
+### 3회 평균 요약
+
+| Size | msg_count | Avg 달성률 |
+|------|-----------|------------|
+| 64 | 10,000 | **96.3%** |
+| 256 | 10,000 | **97.6%** |
+| 1024 | 10,000 | **96.7%** |
+| 65536 | 2,000 | **105.7%** |
+| 131072 | 2,000 | **107.8%** |
+| 262144 | 2,000 | **90.8%** |
+
+### 하락 구간 (90% 미만)
+
+- size=1024: DEALER_ROUTER 76.6%
+- size=65536: DEALER_DEALER 71.9%
+- size=131072: PUBSUB 81.7%, DEALER_DEALER 79.9%, DEALER_ROUTER 81.1%, ROUTER_ROUTER 86.5%
+- size=262144: PUBSUB 72.7%, ROUTER_ROUTER_POLL 80.9%
+
+> Note: size>1024 구간은 msg_count=2,000으로 측정해 변동성 영향 가능.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

@@ -65,6 +65,11 @@
 - size=131072 DEALER_DEALER는 msg_count 500/1000/2000 모두 60~78%로 유지.
 - low ratio가 msg_count 편차만으로 설명되기 어렵다고 판단.
 
+### syscall 비교 (Phase 24)
+
+- strace -c 기준 zlink는 read(EAGAIN) 비중이 높고 libzmq는 poll 비중이 높음.
+- 총 syscall 규모는 유사하여 user-space 경로 차이 가능성 유지.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

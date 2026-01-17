@@ -663,3 +663,25 @@ msg_count=2000 DEALER_DEALER: zlink 90,491.21  libzmq 143,182.59  (63.20%)
 ### Status
 
 - msg_count 변화와 무관하게 60~78% 구간 유지.
+
+## Phase 24: syscall 분포 확인 (strace -c)
+
+### Goal
+
+- DEALER_DEALER 128K 저하가 syscall 차이인지 확인.
+
+### Actions
+
+1. `strace -c`로 zlink/libzmq 비교 (msg_count=500).
+
+### Results (strace -c, size=131072)
+
+```
+zlink: write 499, getpid 509, read 122(113 errors), poll 2
+libzmq: write 506, getpid 633, poll 119, read 7
+```
+
+### Status
+
+- syscall 종류/횟수는 큰 차이 없음.
+- zlink는 non-blocking read(EAGAIN) 비중이 높음.

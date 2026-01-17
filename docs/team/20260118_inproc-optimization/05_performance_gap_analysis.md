@@ -2,6 +2,58 @@
 
 ## 현재 상황
 
+### 최신 10회 평균 (Phase 18, 10K messages, 64B)
+
+| Pattern | zlink | libzmq-ref | Gap | 달성률 |
+|---------|-------|------------|-----|--------|
+| PAIR | 5.95 M/s | 6.05 M/s | **-0.10 M/s** | **98.4%** |
+| PUBSUB | 5.64 M/s | 5.42 M/s | **+0.22 M/s** | **104.0%** |
+| DEALER_DEALER | 5.85 M/s | 6.08 M/s | **-0.23 M/s** | **96.2%** |
+| DEALER_ROUTER | 4.92 M/s | 5.25 M/s | **-0.33 M/s** | **93.7%** |
+| ROUTER_ROUTER | 4.49 M/s | 4.85 M/s | **-0.37 M/s** | **92.4%** |
+| ROUTER_ROUTER_POLL | 4.12 M/s | 4.07 M/s | **+0.05 M/s** | **101.2%** |
+
+**평균 달성률: ~97.6%** ✅  
+**전 패턴 90%+ 유지**
+
+> Note: Phase 18은 ROUTER mandatory 경로에서 `check_hwm()` 중복 호출을 제거한 결과임.
+> Phase 17은 zlink 벤치에 `bench_send_fast/bench_recv_fast`를 확대 적용한 결과임.
+> Phase 15는 10회 평균으로 안정성 확인 결과임.
+
+### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
+
+| Pattern | zlink | libzmq-ref | Gap | 달성률 |
+|---------|-------|------------|-----|--------|
+| PAIR | 5.84 M/s | 6.07 M/s | **-0.23 M/s** | **96.1%** |
+| PUBSUB | 5.55 M/s | 5.32 M/s | **+0.23 M/s** | **104.4%** |
+| DEALER_DEALER | 5.94 M/s | 6.07 M/s | **-0.13 M/s** | **97.9%** |
+| DEALER_ROUTER | 5.45 M/s | 5.40 M/s | **+0.05 M/s** | **100.9%** |
+
+**평균 달성률: ~99.8%** ✅
+
+> Note: Phase 9는 벤치마크 핫패스(getenv) 오버헤드 제거로 측정값이 개선됨.
+
+### ROUTER 패턴 재측정 (Phase 11 이후, 10K messages, 64B)
+
+| Pattern | zlink | libzmq-ref | Gap | 달성률 |
+|---------|-------|------------|-----|--------|
+| ROUTER_ROUTER | 4.39 M/s | 4.69 M/s | **-0.30 M/s** | **93.6%** |
+| ROUTER_ROUTER_POLL | 3.90 M/s | 3.83 M/s | **+0.07 M/s** | **101.9%** |
+
+**ROUTER_ROUTER_POLL 갭 해소**  
+→ ZMQ_FD 경로에서 추가 signaler 제거 효과로 판단
+
+### 최신 5회 평균 (Phase 7 이후, 10K messages, 64B)
+
+| Pattern | zlink | libzmq-ref | Gap | 달성률 |
+|---------|-------|------------|-----|--------|
+| PAIR | 5.17 M/s | 5.95 M/s | **-0.78 M/s** | **86.8%** |
+| PUBSUB | 4.83 M/s | 5.56 M/s | **-0.73 M/s** | **86.9%** |
+| DEALER_DEALER | 5.20 M/s | 5.96 M/s | **-0.76 M/s** | **87.2%** |
+| DEALER_ROUTER | 4.85 M/s | 5.25 M/s | **-0.40 M/s** | **92.4%** |
+
+**평균 달성률: ~88.3%** (목표 90%+ 미달)
+
 ### 5회 평균 성능 비교 (10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

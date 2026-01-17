@@ -40,20 +40,20 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     // Warmup
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
-        bench_send(pub, buffer.data(), msg_size, 0, "warmup send");
-        bench_recv(sub, recv_buf.data(), msg_size, 0, "warmup recv");
+        bench_send_fast(pub, buffer.data(), msg_size, 0, "warmup send");
+        bench_recv_fast(sub, recv_buf.data(), msg_size, 0, "warmup recv");
     }
 
     // Throughput (Simple latency for pubsub is hard, use total time / count)
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
-            bench_recv(sub, recv_buf.data(), msg_size, 0, "thr recv");
+            bench_recv_fast(sub, recv_buf.data(), msg_size, 0, "thr recv");
         }
     });
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        bench_send(pub, buffer.data(), msg_size, 0, "thr send");
+        bench_send_fast(pub, buffer.data(), msg_size, 0, "thr send");
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);

@@ -48,29 +48,31 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
-        bench_send(s_conn, buffer.data(), msg_size, 0, "warmup send");
-        bench_recv(s_bind, recv_buf.data(), msg_size, 0, "warmup recv");
+        bench_send_fast(s_conn, buffer.data(), msg_size, 0, "warmup send");
+        bench_recv_fast(s_bind, recv_buf.data(), msg_size, 0, "warmup recv");
     }
 
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        bench_send(s_conn, buffer.data(), msg_size, 0, "lat send");
-        bench_recv(s_bind, recv_buf.data(), msg_size, 0, "lat recv");
-        bench_send(s_bind, recv_buf.data(), msg_size, 0, "lat send back");
-        bench_recv(s_conn, recv_buf.data(), msg_size, 0, "lat recv back");
+        bench_send_fast(s_conn, buffer.data(), msg_size, 0, "lat send");
+        bench_recv_fast(s_bind, recv_buf.data(), msg_size, 0, "lat recv");
+        bench_send_fast(s_bind, recv_buf.data(), msg_size, 0,
+                        "lat send back");
+        bench_recv_fast(s_conn, recv_buf.data(), msg_size, 0,
+                        "lat recv back");
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
-            bench_recv(s_bind, recv_buf.data(), msg_size, 0, "thr recv");
+            bench_recv_fast(s_bind, recv_buf.data(), msg_size, 0, "thr recv");
         }
     });
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        bench_send(s_conn, buffer.data(), msg_size, 0, "thr send");
+        bench_send_fast(s_conn, buffer.data(), msg_size, 0, "thr send");
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);

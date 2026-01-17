@@ -94,6 +94,12 @@ if(ENABLE_INTRINSICS)
   add_definitions(-DZMQ_HAVE_ATOMIC_INTRINSICS)
 endif()
 
+option(ENABLE_NATIVE_OPTIMIZATIONS "Enable -march=native for release builds" OFF)
+if(ENABLE_NATIVE_OPTIMIZATIONS AND NOT MSVC)
+  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+endif()
+
 set(ZMQ_OUTPUT_BASENAME
     "zmq"
     CACHE STRING "Output zmq library base name")

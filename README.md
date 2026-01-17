@@ -50,7 +50,7 @@ To maintain simplicity and size, the following features from standard libzmq are
 ### Prerequisites
 
 *   **CMake** 3.10+
-*   **C++11 Compiler** (GCC 5+, Clang 3.8+, MSVC 2015+)
+*   **C++20 Compiler** (GCC 10+, Clang 11+, MSVC 2019+)
 *   **OpenSSL** (Required for TLS support)
 
 ### OpenSSL Setup (Recommended)

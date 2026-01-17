@@ -175,6 +175,15 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs):
     return final_stats, failures
 
 def parse_args():
+    usage = (
+        "Usage: run_comparison.py [PATTERN] [options]\n\n"
+        "Options:\n"
+        "  --refresh-libzmq        Refresh libzmq baseline cache\n"
+        "  --zlink-only            Run only zlink benchmarks\n"
+        "  --runs N                Iterations per configuration (default: 3)\n"
+        "  --build-dir PATH        Build directory (default: build/bench)\n"
+        "  -h, --help              Show this help\n"
+    )
     refresh = False
     p_req = "ALL"
     num_runs = DEFAULT_NUM_RUNS
@@ -184,6 +193,9 @@ def parse_args():
     i = 1
     while i < len(sys.argv):
         arg = sys.argv[i]
+        if arg in ("-h", "--help"):
+            print(usage)
+            sys.exit(0)
         if arg == "--refresh-libzmq":
             refresh = True
         elif arg == "--zlink-only":

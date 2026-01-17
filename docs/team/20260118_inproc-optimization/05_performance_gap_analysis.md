@@ -42,6 +42,19 @@
 
 > Note: size>1024 구간은 msg_count=2,000으로 측정해 변동성 영향 가능.
 
+### 저하 패턴 재확인 (Phase 21, 5-run avg)
+
+| Size | Pattern | zlink | libzmq-ref | 달성률 |
+|------|---------|-------|------------|--------|
+| 1024 | DEALER_ROUTER | 1.98 M/s | 2.61 M/s | **76.2%** |
+| 65536 | DEALER_DEALER | 0.15 M/s | 0.21 M/s | **69.1%** |
+| 131072 | DEALER_DEALER | 0.09 M/s | 0.15 M/s | **60.7%** |
+| 131072 | ROUTER_ROUTER | 0.10 M/s | 0.12 M/s | **82.8%** |
+| 262144 | PUBSUB | 0.05 M/s | 0.07 M/s | **72.3%** |
+
+> Note: PUBSUB(131072)과 DEALER_ROUTER(131072), ROUTER_ROUTER_POLL(262144)은
+> 5회 평균에서 90%+로 회복.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

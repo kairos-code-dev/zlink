@@ -567,3 +567,38 @@ ROUTER_ROUTER_POLL: zlink 46,518.39  libzmq 57,528.99  (80.86%)
 
 - size별 평균은 90%+ 유지하나 개별 패턴 편차 큼.
 - 1024/65536/131072/262144 구간에서 특정 패턴 하락 확인.
+
+## Phase 21: 저하 패턴 재확인 (5-run)
+
+### Goal
+
+- 90% 미만 구간 재측정으로 편차 여부 확인.
+
+### Actions
+
+1. 저하 패턴만 5회 평균 재측정.
+
+### Bench (5-run avg, inproc)
+
+```
+size=1024, msg_count=10000
+DEALER_ROUTER:      zlink 1,984,321.10  libzmq 2,605,062.02  (76.17%)
+
+size=65536, msg_count=2000
+DEALER_DEALER:      zlink 145,120.97  libzmq 210,117.81  (69.07%)
+
+size=131072, msg_count=2000
+PUBSUB:             zlink 86,633.44  libzmq 90,878.64  (95.33%)
+DEALER_DEALER:      zlink 88,064.03  libzmq 145,003.07  (60.73%)
+DEALER_ROUTER:      zlink 82,906.64  libzmq 84,063.21  (98.62%)
+ROUTER_ROUTER:      zlink 97,507.01  libzmq 117,833.94  (82.75%)
+
+size=262144, msg_count=2000
+PUBSUB:             zlink 50,320.98  libzmq 69,616.75  (72.28%)
+ROUTER_ROUTER_POLL: zlink 53,082.59  libzmq 55,111.86  (96.32%)
+```
+
+### Status
+
+- DEALER_DEALER(64K/128K), DEALER_ROUTER(1K), PUBSUB(256K),
+  ROUTER_ROUTER(128K) 저하 구간 재확인.

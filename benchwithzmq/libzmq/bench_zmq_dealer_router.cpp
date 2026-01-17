@@ -13,6 +13,12 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     // Set Routing ID for Dealer
     zmq_setsockopt(dealer, ZMQ_IDENTITY, "CLIENT", 6);
 
+    int hwm = 0;
+    zmq_setsockopt(router, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(dealer, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(dealer, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+
     std::string endpoint = bind_and_resolve_endpoint(router, transport, lib_name + "_dealer_router");
     if (endpoint.empty()) {
         zmq_close(router);

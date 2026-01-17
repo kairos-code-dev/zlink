@@ -43,17 +43,21 @@ inline void print_result(const std::string& lib_type,
 }
 
 inline bool bench_debug_enabled() {
-    return std::getenv("BENCH_DEBUG") != nullptr;
+    static const bool enabled = std::getenv("BENCH_DEBUG") != nullptr;
+    return enabled;
 }
 
 inline int bench_trace_limit() {
-    if (!bench_debug_enabled())
-        return 0;
-    const char *env = std::getenv("BENCH_TRACE_LIMIT");
-    if (!env)
-        return 20;
-    const int val = std::atoi(env);
-    return val > 0 ? val : 0;
+    static const int limit = []() {
+        if (!bench_debug_enabled())
+            return 0;
+        const char *env = std::getenv("BENCH_TRACE_LIMIT");
+        if (!env)
+            return 20;
+        const int val = std::atoi(env);
+        return val > 0 ? val : 0;
+    }();
+    return limit;
 }
 
 inline int bench_trace_next_id() {
@@ -111,6 +115,13 @@ inline int bench_send(void *socket_, const void *buf_, size_t len_, int flags_,
     return rc;
 }
 
+inline int bench_send_fast(void *socket_, const void *buf_, size_t len_,
+                           int flags_, const char *tag_) {
+    if (!bench_debug_enabled())
+        return zmq_send(socket_, buf_, len_, flags_);
+    return bench_send(socket_, buf_, len_, flags_, tag_);
+}
+
 inline int bench_recv(void *socket_, void *buf_, size_t len_, int flags_,
                       const char *tag_) {
     int trace_id = 0;
@@ -131,6 +142,13 @@ inline int bench_recv(void *socket_, void *buf_, size_t len_, int flags_,
         std::cerr << "recv done #" << trace_id << " rc=" << rc << std::endl;
     }
     return rc;
+}
+
+inline int bench_recv_fast(void *socket_, void *buf_, size_t len_,
+                           int flags_, const char *tag_) {
+    if (!bench_debug_enabled())
+        return zmq_recv(socket_, buf_, len_, flags_);
+    return bench_recv(socket_, buf_, len_, flags_, tag_);
 }
 
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {

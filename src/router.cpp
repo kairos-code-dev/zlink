@@ -18,6 +18,7 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_in (false),
     _current_out (NULL),
     _more_out (false),
+    _last_out_pipe (NULL),
     _next_integral_routing_id (generate_random ()),
     _mandatory (false),
     _probe_router (false),
@@ -117,6 +118,10 @@ void zmq::router_t::xpipe_terminated (pipe_t *pipe_)
         pipe_->rollback ();
         if (pipe_ == _current_out)
             _current_out = NULL;
+        if (pipe_ == _last_out_pipe) {
+            _last_out_pipe = NULL;
+            _last_routing_id.clear ();
+        }
     }
 }
 
@@ -150,18 +155,47 @@ int zmq::router_t::xsend (msg_t *msg_)
             //  Find the pipe associated with the routing id stored in the prefix.
             //  If there's no such pipe just silently ignore the message, unless
             //  router_mandatory is set.
-            out_pipe_t *out_pipe = lookup_out_pipe (
-              blob_t (static_cast<unsigned char *> (msg_->data ()),
-                      msg_->size (), zmq::reference_tag_t ()));
+            out_pipe_t *out_pipe = NULL;
+            if (_last_out_pipe
+                && _last_routing_id.size () == msg_->size ()
+                && (_last_routing_id.size () == 0
+                    || memcmp (_last_routing_id.data (), msg_->data (),
+                               _last_routing_id.size ()) == 0)) {
+                _current_out = _last_out_pipe;
+            } else {
+                out_pipe = lookup_out_pipe (
+                  blob_t (static_cast<unsigned char *> (msg_->data ()),
+                          msg_->size (), zmq::reference_tag_t ()));
 
-            if (likely (out_pipe != NULL)) {
-                _current_out = out_pipe->pipe;
+                if (likely (out_pipe != NULL)) {
+                    _current_out = out_pipe->pipe;
+                    _last_out_pipe = _current_out;
+                    _last_routing_id.set (
+                      static_cast<const unsigned char *> (msg_->data ()),
+                      msg_->size ());
+                } else if (_mandatory) {
+                    _more_out = false;
+                    errno = EHOSTUNREACH;
+                    return -1;
+                }
+            }
 
+            if (likely (_current_out != NULL)) {
                 // Check whether pipe is closed or not
-                if (unlikely (!_current_out->check_write ())) {
-                    // Check whether pipe is full or not
-                    const bool pipe_full = !_current_out->check_hwm ();
-                    out_pipe->active = false;
+                bool pipe_full = false;
+                if (unlikely (!_current_out->check_write (&pipe_full))) {
+                    if (!out_pipe) {
+                        out_pipe = lookup_out_pipe (
+                          blob_t (
+                            static_cast<unsigned char *> (msg_->data ()),
+                            msg_->size (), zmq::reference_tag_t ()));
+                    }
+                    if (out_pipe)
+                        out_pipe->active = false;
+                    else if (_current_out == _last_out_pipe) {
+                        _last_out_pipe = NULL;
+                        _last_routing_id.clear ();
+                    }
                     _current_out = NULL;
 
                     if (_mandatory) {
@@ -173,10 +207,6 @@ int zmq::router_t::xsend (msg_t *msg_)
                         return -1;
                     }
                 }
-            } else if (_mandatory) {
-                _more_out = false;
-                errno = EHOSTUNREACH;
-                return -1;
             }
         }
 
@@ -435,6 +465,10 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 pipe_t *const old_pipe = existing_outpipe->pipe;
 
                 erase_out_pipe (old_pipe);
+                if (old_pipe == _last_out_pipe) {
+                    _last_out_pipe = NULL;
+                    _last_routing_id.clear ();
+                }
                 old_pipe->set_router_socket_routing_id (new_routing_id);
                 add_out_pipe (ZMQ_MOVE (new_routing_id), old_pipe);
 

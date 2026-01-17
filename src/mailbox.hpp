@@ -11,6 +11,7 @@
 #include "mutex.hpp"
 #include "i_mailbox.hpp"
 #include "signaler.hpp"
+#include "fd.hpp"
 
 #include <atomic>
 #include <vector>
@@ -32,6 +33,7 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     mailbox_t ();
     ~mailbox_t ();
 
+    fd_t get_fd () const;
     void send (const command_t &cmd_);
     int recv (command_t *cmd_, int timeout_);
 

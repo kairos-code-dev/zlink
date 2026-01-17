@@ -351,20 +351,22 @@ int zmq::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZMQ_FD) {
-        //  Create signaler on first access for ZMQ_FD support
+        if (!_thread_safe) {
+            return do_getsockopt<fd_t> (
+              optval_, optvallen_,
+              static_cast<mailbox_t *> (_mailbox)->get_fd ());
+        }
+
+        //  Create signaler on first access for ZMQ_FD support (thread-safe)
         if (!_zmq_fd_signaler) {
             _zmq_fd_signaler = new (std::nothrow) signaler_t ();
             zmq_assert (_zmq_fd_signaler);
-
-            //  Add signaler to mailbox (works for both mailbox_t and mailbox_safe_t)
-            if (_thread_safe)
-                static_cast<mailbox_safe_t *> (_mailbox)->add_signaler (_zmq_fd_signaler);
-            else
-                static_cast<mailbox_t *> (_mailbox)->add_signaler (_zmq_fd_signaler);
+            static_cast<mailbox_safe_t *> (_mailbox)->add_signaler (
+              _zmq_fd_signaler);
         }
 
-        return do_getsockopt<fd_t> (optval_, optvallen_,
-                                    _zmq_fd_signaler->get_fd ());
+        return do_getsockopt<fd_t> (
+          optval_, optvallen_, _zmq_fd_signaler->get_fd ());
     }
 
     if (option_ == ZMQ_EVENTS) {

@@ -206,16 +206,28 @@ bool zmq::pipe_t::read (msg_t *msg_)
 
 bool zmq::pipe_t::check_write ()
 {
-    if (unlikely (!_out_active || _state != active))
+    return check_write (NULL);
+}
+
+bool zmq::pipe_t::check_write (bool *pipe_full_)
+{
+    if (unlikely (!_out_active || _state != active)) {
+        if (pipe_full_)
+            *pipe_full_ = false;
         return false;
+    }
 
     const bool full = !check_hwm ();
 
     if (unlikely (full)) {
         _out_active = false;
+        if (pipe_full_)
+            *pipe_full_ = true;
         return false;
     }
 
+    if (pipe_full_)
+        *pipe_full_ = false;
     return true;
 }
 

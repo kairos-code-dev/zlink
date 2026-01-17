@@ -30,14 +30,17 @@ zmq::mailbox_t::~mailbox_t ()
     _sync.unlock ();
 }
 
+zmq::fd_t zmq::mailbox_t::get_fd () const
+{
+    return _signaler.get_fd ();
+}
+
 void zmq::mailbox_t::send (const command_t &cmd_)
 {
     _sync.lock ();
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
     if (!ok) {
-        _signaler.send ();
-
         // Signal all registered signalers for ZMQ_FD support
         for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
                                                  end = _signalers.end ();
@@ -47,19 +50,30 @@ void zmq::mailbox_t::send (const command_t &cmd_)
     }
     _sync.unlock ();
 
-    if (!ok)
+    if (!ok) {
+        _signaler.send ();
         schedule_if_needed ();
+    }
 }
 
 int zmq::mailbox_t::recv (command_t *cmd_, int timeout_)
 {
     if (!_active) {
-        const int rc = _signaler.wait (timeout_);
-        if (rc == -1) {
-            errno_assert (errno == EAGAIN || errno == EINTR);
-            return -1;
+        if (timeout_ == 0) {
+            // Avoid poll syscall on non-blocking checks.
+            const int rc = _signaler.recv_failable ();
+            if (rc == -1) {
+                errno_assert (errno == EAGAIN);
+                return -1;
+            }
+        } else {
+            const int rc = _signaler.wait (timeout_);
+            if (rc == -1) {
+                errno_assert (errno == EAGAIN || errno == EINTR);
+                return -1;
+            }
+            _signaler.recv ();
         }
-        _signaler.recv ();
         _active = true;
     }
 

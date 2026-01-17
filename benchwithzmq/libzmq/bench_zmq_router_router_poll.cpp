@@ -31,6 +31,13 @@ void run_router_router_poll(const std::string &transport,
     zmq_setsockopt(router1, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
     zmq_setsockopt(router2, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
+    // Match zlink bench: avoid deadlock on some transports by raising HWM.
+    int hwm = 1000000;
+    zmq_setsockopt(router1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+
     std::string endpoint =
       bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router_poll");
     if (endpoint.empty()) {

@@ -602,3 +602,42 @@ ROUTER_ROUTER_POLL: zlink 53,082.59  libzmq 55,111.86  (96.32%)
 
 - DEALER_DEALER(64K/128K), DEALER_ROUTER(1K), PUBSUB(256K),
   ROUTER_ROUTER(128K) 저하 구간 재확인.
+
+## Phase 22: atomic_counter intrinsics 우선 (Rollback)
+
+### Goal
+
+- large message 경로에서 refcount 오버헤드 감소 가능성 검증.
+
+### Actions
+
+1. `atomic_counter.hpp`에서 intrinsics 우선순위로 변경.
+2. 저하 패턴 및 64B 기준 재측정.
+
+### Bench (5-run avg, inproc)
+
+```
+size=1024, msg_count=10000
+DEALER_ROUTER:      zlink 1,984,119.16  libzmq 2,600,412.58  (76.30%)
+
+size=65536, msg_count=2000
+DEALER_DEALER:      zlink 150,831.73  libzmq 191,846.17  (78.62%)
+
+size=131072, msg_count=2000
+DEALER_DEALER:      zlink 90,224.33  libzmq 145,358.42  (62.07%)
+ROUTER_ROUTER:      zlink 99,709.04  libzmq 104,799.65  (95.14%)
+
+size=262144, msg_count=2000
+PUBSUB:             zlink 50,307.50  libzmq 75,263.86  (66.84%)
+```
+
+### 64B 기준 (5-run avg, 10K/64B)
+
+```
+DEALER_ROUTER:      zlink 4,752,032.52  libzmq 5,404,692.60  (87.92%)
+```
+
+### Status
+
+- 일부 large-size 개선(ROUTER_ROUTER 128K) 있었으나,
+  64B DEALER_ROUTER 90% 미달로 회귀 → 변경 롤백.

@@ -55,6 +55,11 @@
 > Note: PUBSUB(131072)과 DEALER_ROUTER(131072), ROUTER_ROUTER_POLL(262144)은
 > 5회 평균에서 90%+로 회복.
 
+### atomic_counter intrinsics 실험 (Phase 22)
+
+- large-size 일부 개선(ROUTER_ROUTER 128K 95.1%, DEALER_DEALER 64K 78.6%),
+  하지만 64B DEALER_ROUTER 87.9%로 회귀 → 롤백.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

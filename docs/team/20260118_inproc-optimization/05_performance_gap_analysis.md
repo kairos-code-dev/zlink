@@ -148,6 +148,11 @@
 - DEALER_DEALER/PUBSUB 64K~256K는 +0~9% 범위.
 - ROUTER_ROUTER 256K는 -6.65% (93% 수준).
 
+### native tune 옵션 추가 (Phase 37)
+
+- `ENABLE_NATIVE_TUNE=ON`으로 `-mtune=native`를 Release에 적용 가능.
+- 기본값 OFF, ISA 확장 없이 tuning만 적용.
+
 ### 최신 5회 평균 (Phase 9 이후, 10K messages, 64B)
 
 | Pattern | zlink | libzmq-ref | Gap | 달성률 |

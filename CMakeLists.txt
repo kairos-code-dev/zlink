@@ -100,6 +100,12 @@ if(ENABLE_NATIVE_OPTIMIZATIONS AND NOT MSVC)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
 endif()
 
+option(ENABLE_NATIVE_TUNE "Enable -mtune=native for release builds" OFF)
+if(ENABLE_NATIVE_TUNE AND NOT MSVC)
+  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mtune=native")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mtune=native")
+endif()
+
 set(ZMQ_OUTPUT_BASENAME
     "zmq"
     CACHE STRING "Output zmq library base name")

@@ -1118,3 +1118,19 @@ ROUTER_ROUTER
 
 - `-mtune=native`만으로도 large-size 격차 대부분 해소.
 - 256K ROUTER_ROUTER는 -6.65% (93% 수준).
+
+## Phase 37: native tune CMake 옵션 추가
+
+### Goal
+
+- ISA 확장 없이 tuning만 적용하는 옵션 제공.
+
+### Actions
+
+1. `ENABLE_NATIVE_TUNE` 옵션 추가.
+2. Release 빌드에서 `-mtune=native` 선택 적용.
+
+### Notes
+
+- 기본값 OFF (호환성 유지).
+- `ENABLE_NATIVE_OPTIMIZATIONS`와 병행 가능.

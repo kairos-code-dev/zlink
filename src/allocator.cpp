@@ -2,15 +2,13 @@
 
 #include "precompiled.hpp"
 #include "allocator.hpp"
+#include "macros.hpp"
 
 #include <cstddef>
-#include <cstdlib>
 #include <memory_resource>
 #include <new>
 
-#ifdef ZMQ_USE_MIMALLOC
 #include <mimalloc.h>
-#endif
 
 namespace zmq
 {
@@ -21,7 +19,6 @@ struct alignas (max_align_t) alloc_header_t
     std::size_t size;
 };
 
-#ifdef ZMQ_USE_MIMALLOC
 class mimalloc_resource_t : public std::pmr::memory_resource
 {
   private:
@@ -45,20 +42,11 @@ class mimalloc_resource_t : public std::pmr::memory_resource
         return this == &other_;
     }
 };
-#endif
 
 std::pmr::memory_resource *select_resource ()
 {
-    const char *env = std::getenv ("ZMQ_PMR_POOL");
-    if (env && env[0] != '\0' && env[0] != '0') {
-        static std::pmr::synchronized_pool_resource pool;
-        return &pool;
-    }
-#ifdef ZMQ_USE_MIMALLOC
     static mimalloc_resource_t mi_resource;
     return &mi_resource;
-#endif
-    return std::pmr::new_delete_resource ();
 }
 
 std::pmr::memory_resource *get_resource ()
@@ -80,13 +68,9 @@ void *allocate_with_header (std::pmr::memory_resource *res_,
 std::pmr::memory_resource *get_thread_local_resource ()
 {
     static thread_local std::pmr::memory_resource *res = [] () {
-        const char *env = std::getenv ("ZMQ_PMR_TL_POOL");
-        if (env && env[0] != '\0' && env[0] != '0') {
-            static thread_local std::pmr::unsynchronized_pool_resource pool (
-              get_resource ());
-            return static_cast<std::pmr::memory_resource *> (&pool);
-        }
-        return get_resource ();
+        static thread_local std::pmr::unsynchronized_pool_resource pool (
+          get_resource ());
+        return static_cast<std::pmr::memory_resource *> (&pool);
     }();
     return res;
 }

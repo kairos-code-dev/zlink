@@ -305,27 +305,26 @@ if(NOT MSVC)
 endif()
 
 # allocator options
-option(ZMQ_USE_MIMALLOC "Use mimalloc allocator for internal allocations" OFF)
+set(ZMQ_MIMALLOC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.deps/mimalloc")
+if(NOT EXISTS "${ZMQ_MIMALLOC_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "mimalloc submodule not found at ${ZMQ_MIMALLOC_DIR}")
+endif()
+set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(MI_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory("${ZMQ_MIMALLOC_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/mimalloc" EXCLUDE_FROM_ALL)
+if(TARGET mimalloc-static)
+  set(ZMQ_MIMALLOC_TARGET mimalloc-static)
+elseif(TARGET mimalloc)
+  set(ZMQ_MIMALLOC_TARGET mimalloc)
+else()
+  message(FATAL_ERROR "mimalloc target not found after add_subdirectory")
+endif()
 
 # zlink: CURVE security permanently disabled (libsodium removed)
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-if(ZMQ_USE_MIMALLOC)
-  find_package(mimalloc CONFIG QUIET)
-  if(TARGET mimalloc)
-    get_target_property(ZMQ_MIMALLOC_LIB mimalloc IMPORTED_LOCATION)
-  elseif(TARGET mimalloc-static)
-    get_target_property(ZMQ_MIMALLOC_LIB mimalloc-static IMPORTED_LOCATION)
-  endif()
-  if(NOT ZMQ_MIMALLOC_LIB)
-    find_library(ZMQ_MIMALLOC_LIB NAMES mimalloc mimalloc-static)
-  endif()
-
-  if(NOT ZMQ_MIMALLOC_LIB)
-    message(WARNING "ZMQ_USE_MIMALLOC=ON but mimalloc library not found")
-  endif()
-endif()
 
 option(WITH_MILITANT "Enable militant assertions" OFF)
 if(WITH_MILITANT)
@@ -1265,6 +1264,7 @@ else()
   if(NOT MINGW)
     add_library(objects OBJECT ${sources})
     set_property(TARGET objects PROPERTY POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(objects PRIVATE ${ZMQ_MIMALLOC_TARGET})
   endif()
 
   if(BUILD_SHARED)
@@ -1430,15 +1430,11 @@ if(BUILD_STATIC)
   endif()
 endif()
 
-if(ZMQ_MIMALLOC_LIB)
-  if(BUILD_SHARED)
-    target_link_libraries(libzmq ${ZMQ_MIMALLOC_LIB})
-    target_compile_definitions(libzmq PRIVATE ZMQ_USE_MIMALLOC=1)
-  endif()
-  if(BUILD_STATIC)
-    target_link_libraries(libzmq-static ${ZMQ_MIMALLOC_LIB})
-    target_compile_definitions(libzmq-static PRIVATE ZMQ_USE_MIMALLOC=1)
-  endif()
+if(BUILD_SHARED)
+  target_link_libraries(libzmq ${ZMQ_MIMALLOC_TARGET})
+endif()
+if(BUILD_STATIC)
+  target_link_libraries(libzmq-static ${ZMQ_MIMALLOC_TARGET})
 endif()
 
 if(BUILD_SHARED)
@@ -1552,6 +1548,10 @@ if(MSVC AND (BUILD_SHARED OR BUILD_STATIC))
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT SDK)
+  install(
+    TARGETS ${ZMQ_MIMALLOC_TARGET}
+    EXPORT ${PROJECT_NAME}-targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   if(MSVC_IDE)
     install(
       FILES ${PDB_OUTPUT_DIRECTORY}/\${CMAKE_INSTALL_CONFIG_NAME}/${PDB_NAME}.pdb
@@ -1580,6 +1580,10 @@ elseif(BUILD_SHARED OR BUILD_STATIC)
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     FRAMEWORK DESTINATION "Library/Frameworks"
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(
+    TARGETS ${ZMQ_MIMALLOC_TARGET}
+    EXPORT ${PROJECT_NAME}-targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
 foreach(readme ${readme-docs})

@@ -2,19 +2,13 @@
 
 ## Goal
 
-- Introduce a configurable allocator layer for high-frequency buffers.
-- Enable optional PMR pooling without changing default behavior.
+- Introduce an internal allocator layer for high-frequency buffers.
+- Use thread-local PMR pooling with mimalloc as the default backend.
 
 ## Design
 
 - New internal allocator wrapper (`src/allocator.hpp`, `src/allocator.cpp`).
-- Default allocation uses `std::pmr::new_delete_resource` (behaviorally close to malloc/free).
-- Optional pool resource via environment variable:
-  - `ZMQ_PMR_POOL=1` enables `std::pmr::synchronized_pool_resource`.
-- Optional thread-local pool:
-  - `ZMQ_PMR_TL_POOL=1` enables `std::pmr::unsynchronized_pool_resource` for thread-local allocations.
-- Optional allocator backend:
-  - `-DZMQ_USE_MIMALLOC=ON` links mimalloc and uses it as the global PMR resource.
+- Default allocation uses `std::pmr::unsynchronized_pool_resource` (thread-local) upstreamed to mimalloc.
 - Wrapper stores allocation size in a small header to allow size-less `dealloc()`.
 
 ## Applied Scope (initial)
@@ -41,7 +35,7 @@
 ## Next Steps
 
 - Extend allocator wrapper to remaining hot paths (e.g., trie/radix_tree).
-- Add benchmarks comparing default vs `ZMQ_PMR_POOL=1`.
+- If needed for research, use a dedicated branch to compare allocator-only variants.
 
 ## Build/Test
 
@@ -51,16 +45,7 @@
 
 - Result: 61 tests passed, 4 fuzzers skipped.
 
-Mimalloc option:
-
-```bash
-cmake -B build -DZMQ_BUILD_TESTS=ON -DZMQ_USE_MIMALLOC=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
-```
-
-- Result: 61 tests passed, 4 fuzzers skipped.
-- Note: mimalloc installed locally at `.deps/mimalloc/install` and used via `CMAKE_PREFIX_PATH`.
+Mimalloc is built from `.deps/mimalloc` and linked into libzmq by default.
 
 ## Benchmarks (Runs=3)
 
@@ -68,19 +53,12 @@ Commands:
 
 ```bash
 ./benchwithzmq/run_benchmarks.sh --runs 3
-ZMQ_PMR_POOL=1 ./benchwithzmq/run_benchmarks.sh --runs 3
 
-BENCH_NO_TASKSET=1 ZMQ_PMR_TL_POOL=1 \
+BENCH_NO_TASKSET=1 \
   python3 benchwithzmq/run_comparison.py --build-dir build/bench
 
-BENCH_NO_TASKSET=1 ZMQ_PMR_TL_POOL=1 \
-  python3 benchwithzmq/run_comparison.py --build-dir build/bench-mimalloc
-
-BENCH_NO_TASKSET=1 BENCH_IO_THREADS=2 ZMQ_PMR_TL_POOL=1 \
+BENCH_NO_TASKSET=1 BENCH_IO_THREADS=2 \
   python3 benchwithzmq/run_comparison.py --build-dir build/bench
-
-BENCH_NO_TASKSET=1 BENCH_IO_THREADS=2 ZMQ_PMR_TL_POOL=1 \
-  python3 benchwithzmq/run_comparison.py --build-dir build/bench-mimalloc
 
 # libzmq vs libzmq variance check (runs=3)
 ./benchwithzmq/run_benchmarks_zmq.sh --runs 3 --reuse-build \
@@ -98,13 +76,12 @@ Logs:
 - `docs/team/20260122_allocator_pmr/07_benchmark_tl_pool_no_mimalloc_io2.txt`
 - `docs/team/20260122_allocator_pmr/08_benchmark_tl_pool_mimalloc_io2.txt`
 - `docs/team/20260122_allocator_pmr/09_benchmark_libzmq_vs_libzmq.txt`
+- `docs/team/20260122_allocator_pmr/24_benchmark_runs10_all_sizes_summary.md`
 
 Summary:
 
 - Default allocator wrapper: results mostly close to libzmq with mixed +/- by pattern.
-- `ZMQ_PMR_POOL=1`: small/medium message throughput regresses across TCP/IPC/INPROC; large messages are mixed.
-- `ZMQ_PMR_TL_POOL=1` + mimalloc: small messages still regress; large messages mixed.
+- Default TL pool + mimalloc: small/medium messages are mixed across TCP/IPC; INPROC shows consistent gains.
 - I/O direct encode + yqueue pool (reverted): large-message TCP/IPC regressions grew in several patterns; small messages mixed.
-- `ZMQ_PMR_TL_POOL=1` (no mimalloc): baseline for allocator-only changes, no CPU pinning.
-- `ZMQ_PMR_TL_POOL=1` + mimalloc: throughput diffs improved vs no-mimalloc in 84/108 cases, 24 regressions; latency still dominated by zlink I/O path.
+- No-mimalloc baseline (historical logs): throughput diffs improved vs no-mimalloc in 84/108 cases, 24 regressions; latency still dominated by zlink I/O path.
 - libzmq vs libzmq variance (runs=3): throughput diff mean +0.88%, median +0.32% (min -18.33%, max +27.05%); latency diff mean +0.06%, median 0.00% (min -17.02%, max +16.50%).

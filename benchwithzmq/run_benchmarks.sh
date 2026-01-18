@@ -24,10 +24,6 @@ REUSE_BUILD=0
 ZLINK_ONLY=0
 NO_TASKSET=0
 BENCH_IO_THREADS=""
-PMR_POOL=0
-PMR_TL_POOL=0
-USE_MIMALLOC=0
-MIMALLOC_PREFIX=""
 BENCH_MSG_SIZES=""
 
 usage() {
@@ -46,9 +42,6 @@ Options:
   --reuse-build        Reuse existing build dir without re-running CMake.
   --no-taskset         Disable taskset CPU pinning on Linux.
   --io-threads N       Set BENCH_IO_THREADS for the benchmark run.
-  --pmr-pool           Enable ZMQ_PMR_POOL=1 for the run.
-  --pmr-tl-pool        Enable ZMQ_PMR_TL_POOL=1 for the run.
-  --mimalloc           Build with ZMQ_USE_MIMALLOC=ON (uses MIMALLOC_PREFIX).
   --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N             Convenience alias for --msg-sizes N.
 USAGE
@@ -90,15 +83,6 @@ while [[ $# -gt 0 ]]; do
     --io-threads)
       BENCH_IO_THREADS="${2:-}"
       shift
-      ;;
-    --pmr-pool)
-      PMR_POOL=1
-      ;;
-    --pmr-tl-pool)
-      PMR_TL_POOL=1
-      ;;
-    --mimalloc)
-      USE_MIMALLOC=1
       ;;
     --msg-sizes)
       BENCH_MSG_SIZES="${2:-}"
@@ -145,15 +129,6 @@ if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]
   exit 1
 fi
 
-if [[ "${USE_MIMALLOC}" -eq 1 ]]; then
-  MIMALLOC_PREFIX="${MIMALLOC_PREFIX:-${ROOT_DIR}/.deps/mimalloc/install}"
-  if [[ ! -d "${MIMALLOC_PREFIX}" ]]; then
-    echo "Mimalloc prefix not found: ${MIMALLOC_PREFIX}" >&2
-    echo "Set MIMALLOC_PREFIX or install mimalloc under .deps/mimalloc/install." >&2
-    exit 1
-  fi
-fi
-
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 
@@ -182,15 +157,10 @@ else
       -DBUILD_BENCHMARKS=ON \
       -DZMQ_CXX_STANDARD=20
   else
-    CMAKE_MIMALLOC_ARGS=()
-    if [[ "${USE_MIMALLOC}" -eq 1 ]]; then
-      CMAKE_MIMALLOC_ARGS=(-DZMQ_USE_MIMALLOC=ON -DCMAKE_PREFIX_PATH="${MIMALLOC_PREFIX}")
-    fi
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20 \
-      "${CMAKE_MIMALLOC_ARGS[@]}"
+      -DZMQ_CXX_STANDARD=20
   fi
 
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
@@ -230,12 +200,6 @@ if [[ "${NO_TASKSET}" -eq 1 ]]; then
 fi
 if [[ -n "${BENCH_IO_THREADS}" ]]; then
   RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")
-fi
-if [[ "${PMR_POOL}" -eq 1 ]]; then
-  RUN_ENV+=(ZMQ_PMR_POOL=1)
-fi
-if [[ "${PMR_TL_POOL}" -eq 1 ]]; then
-  RUN_ENV+=(ZMQ_PMR_TL_POOL=1)
 fi
 if [[ -n "${BENCH_MSG_SIZES}" ]]; then
   RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")

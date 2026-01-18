@@ -17,51 +17,32 @@ else
   BUILD_DIR="${ROOT_DIR}/build/bench"
 fi
 PATTERN="ALL"
-WITH_LIBZMQ=1
 OUTPUT_FILE=""
 RUNS=3
 REUSE_BUILD=0
-ZLINK_ONLY=0
 NO_TASKSET=0
 BENCH_IO_THREADS=""
-PMR_POOL=0
-PMR_TL_POOL=0
-USE_MIMALLOC=0
-MIMALLOC_PREFIX=""
-BENCH_MSG_SIZES=""
+CORE_SIZES=0
 
 usage() {
   cat <<'USAGE'
-Usage: benchwithzmq/run_benchmarks.sh [options]
+Usage: benchwithzmq/run_benchmarks_zmq_ab.sh [options]
 
 Options:
   -h, --help            Show this help.
-  --skip-libzmq        Skip libzmq baseline run (uses existing cache).
-  --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
   --build-dir PATH     Build directory (default: build/bench).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
-  --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
   --no-taskset         Disable taskset CPU pinning on Linux.
   --io-threads N       Set BENCH_IO_THREADS for the benchmark run.
-  --pmr-pool           Enable ZMQ_PMR_POOL=1 for the run.
-  --pmr-tl-pool        Enable ZMQ_PMR_TL_POOL=1 for the run.
-  --mimalloc           Build with ZMQ_USE_MIMALLOC=ON (uses MIMALLOC_PREFIX).
-  --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
-  --size N             Convenience alias for --msg-sizes N.
+  --core-sizes         Use core sizes only (64,1024,65536).
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-libzmq)
-      WITH_LIBZMQ=0
-      ;;
-    --with-libzmq)
-      WITH_LIBZMQ=1
-      ;;
     --pattern)
       PATTERN="${2:-}"
       shift
@@ -81,9 +62,6 @@ while [[ $# -gt 0 ]]; do
       RUNS="${2:-}"
       shift
       ;;
-    --zlink-only)
-      ZLINK_ONLY=1
-      ;;
     --no-taskset)
       NO_TASKSET=1
       ;;
@@ -91,22 +69,8 @@ while [[ $# -gt 0 ]]; do
       BENCH_IO_THREADS="${2:-}"
       shift
       ;;
-    --pmr-pool)
-      PMR_POOL=1
-      ;;
-    --pmr-tl-pool)
-      PMR_TL_POOL=1
-      ;;
-    --mimalloc)
-      USE_MIMALLOC=1
-      ;;
-    --msg-sizes)
-      BENCH_MSG_SIZES="${2:-}"
-      shift
-      ;;
-    --size)
-      BENCH_MSG_SIZES="${2:-}"
-      shift
+    --core-sizes)
+      CORE_SIZES=1
       ;;
     -h|--help)
       usage
@@ -139,21 +103,6 @@ if [[ -n "${BENCH_IO_THREADS}" && ! "${BENCH_IO_THREADS}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
-  echo "BENCH_MSG_SIZES must be a comma-separated list of integers." >&2
-  usage >&2
-  exit 1
-fi
-
-if [[ "${USE_MIMALLOC}" -eq 1 ]]; then
-  MIMALLOC_PREFIX="${MIMALLOC_PREFIX:-${ROOT_DIR}/.deps/mimalloc/install}"
-  if [[ ! -d "${MIMALLOC_PREFIX}" ]]; then
-    echo "Mimalloc prefix not found: ${MIMALLOC_PREFIX}" >&2
-    echo "Set MIMALLOC_PREFIX or install mimalloc under .deps/mimalloc/install." >&2
-    exit 1
-  fi
-fi
-
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 
@@ -182,15 +131,10 @@ else
       -DBUILD_BENCHMARKS=ON \
       -DZMQ_CXX_STANDARD=20
   else
-    CMAKE_MIMALLOC_ARGS=()
-    if [[ "${USE_MIMALLOC}" -eq 1 ]]; then
-      CMAKE_MIMALLOC_ARGS=(-DZMQ_USE_MIMALLOC=ON -DCMAKE_PREFIX_PATH="${MIMALLOC_PREFIX}")
-    fi
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20 \
-      "${CMAKE_MIMALLOC_ARGS[@]}"
+      -DZMQ_CXX_STANDARD=20
   fi
 
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
@@ -223,7 +167,7 @@ else
   fi
 fi
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzmq/run_comparison_zmq_ab.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
 if [[ "${NO_TASKSET}" -eq 1 ]]; then
   RUN_ENV+=(BENCH_NO_TASKSET=1)
@@ -231,29 +175,8 @@ fi
 if [[ -n "${BENCH_IO_THREADS}" ]]; then
   RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")
 fi
-if [[ "${PMR_POOL}" -eq 1 ]]; then
-  RUN_ENV+=(ZMQ_PMR_POOL=1)
-fi
-if [[ "${PMR_TL_POOL}" -eq 1 ]]; then
-  RUN_ENV+=(ZMQ_PMR_TL_POOL=1)
-fi
-if [[ -n "${BENCH_MSG_SIZES}" ]]; then
-  RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")
-fi
-
-if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
-  RUN_CMD+=(--zlink-only)
-else
-  if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
-    RUN_CMD+=(--refresh-libzmq)
-  else
-    CACHE_FILE="${ROOT_DIR}/benchwithzmq/libzmq_cache.json"
-    if [[ ! -f "${CACHE_FILE}" ]]; then
-      echo "libzmq cache not found: ${CACHE_FILE}" >&2
-      echo "Run with --with-libzmq once to generate the baseline." >&2
-      exit 1
-    fi
-  fi
+if [[ "${CORE_SIZES}" -eq 1 ]]; then
+  RUN_ENV+=(BENCH_MSG_SIZES="64,1024,65536")
 fi
 
 if [[ -n "${OUTPUT_FILE}" ]]; then

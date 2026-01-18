@@ -304,9 +304,28 @@ if(NOT MSVC)
   check_cxx_symbol_exists(strlcpy string.h ZMQ_HAVE_STRLCPY)
 endif()
 
+# allocator options
+option(ZMQ_USE_MIMALLOC "Use mimalloc allocator for internal allocations" OFF)
+
 # zlink: CURVE security permanently disabled (libsodium removed)
 
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
+if(ZMQ_USE_MIMALLOC)
+  find_package(mimalloc CONFIG QUIET)
+  if(TARGET mimalloc)
+    get_target_property(ZMQ_MIMALLOC_LIB mimalloc IMPORTED_LOCATION)
+  elseif(TARGET mimalloc-static)
+    get_target_property(ZMQ_MIMALLOC_LIB mimalloc-static IMPORTED_LOCATION)
+  endif()
+  if(NOT ZMQ_MIMALLOC_LIB)
+    find_library(ZMQ_MIMALLOC_LIB NAMES mimalloc mimalloc-static)
+  endif()
+
+  if(NOT ZMQ_MIMALLOC_LIB)
+    message(WARNING "ZMQ_USE_MIMALLOC=ON but mimalloc library not found")
+  endif()
+endif()
 
 option(WITH_MILITANT "Enable militant assertions" OFF)
 if(WITH_MILITANT)
@@ -884,6 +903,7 @@ endif()
 
 set(cxx-sources
     precompiled.cpp
+    allocator.cpp
     address.cpp
     clock.cpp
     ctx.cpp
@@ -948,6 +968,7 @@ set(cxx-sources
     array.hpp
     atomic_counter.hpp
     atomic_ptr.hpp
+    allocator.hpp
     blob.hpp
     blob_hash.hpp
     clock.hpp
@@ -1406,6 +1427,17 @@ if(BUILD_STATIC)
 
   if(CMAKE_SYSTEM_NAME MATCHES "QNX")
     add_definitions(-DUNITY_EXCLUDE_MATH_H)
+  endif()
+endif()
+
+if(ZMQ_MIMALLOC_LIB)
+  if(BUILD_SHARED)
+    target_link_libraries(libzmq ${ZMQ_MIMALLOC_LIB})
+    target_compile_definitions(libzmq PRIVATE ZMQ_USE_MIMALLOC=1)
+  endif()
+  if(BUILD_STATIC)
+    target_link_libraries(libzmq-static ${ZMQ_MIMALLOC_LIB})
+    target_compile_definitions(libzmq-static PRIVATE ZMQ_USE_MIMALLOC=1)
   endif()
 endif()
 

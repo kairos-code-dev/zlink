@@ -114,8 +114,10 @@ def run_single_test(binary_name, lib_name, transport, size):
     env = get_env_for_lib(lib_name)
     try:
         # Args: [lib_name] [transport] [size]
-        # Use taskset on Linux to pin to CPU 1 for reduced variance
+        # Use taskset on Linux to pin to CPU 1 for reduced variance unless disabled.
         if IS_WINDOWS:
+            cmd = [binary_path, lib_name, transport, str(size)]
+        elif os.environ.get("BENCH_NO_TASKSET"):
             cmd = [binary_path, lib_name, transport, str(size)]
         else:
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
@@ -163,16 +165,21 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs):
                     metrics_raw[m].append(r['value'])
             
             for m, vals in metrics_raw.items():
-                if len(vals) >= 3:
-                    sorted_v = sorted(vals)
-                    avg = statistics.mean(sorted_v[1:-1]) # Drop min/max
+                if vals:
+                    avg = statistics.median(vals)
                 else:
-                    avg = statistics.mean(vals) if vals else 0
+                    avg = 0
                 final_stats[f"{tr}|{sz}|{m}"] = avg
             if failed_runs:
                 print(f"(failures={failed_runs}) ", end="", flush=True)
             print("Done")
     return final_stats, failures
+
+def format_throughput(size, msgs_per_sec):
+    if size <= 1024:
+        return f"{msgs_per_sec/1e6:6.2f} Mmsg/s"
+    return f"{(msgs_per_sec * size)/1e6:6.2f} MB/s"
+
 
 def parse_args():
     usage = (
@@ -183,6 +190,9 @@ def parse_args():
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Build directory (default: build/bench)\n"
         "  -h, --help              Show this help\n"
+        "\n"
+        "Env:\n"
+        "  BENCH_NO_TASKSET=1      Disable taskset CPU pinning on Linux\n"
     )
     refresh = False
     p_req = "ALL"
@@ -291,27 +301,53 @@ def main():
             all_failures.extend(failures)
 
         # Print Table
+        size_w = 6
+        metric_w = 10
+        val_w = 16
+        diff_w = 9
         for tr in TRANSPORTS:
             print(f"\n### Transport: {tr}")
             if zlink_only:
-                print("| Size | Metric | zlink |")
-                print("|------|--------|-------|")
+                print(
+                    f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'zlink':>{val_w}} |"
+                )
+                print(
+                    f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|"
+                )
             else:
-                print("| Size | Metric | Standard libzmq | zlink | Diff (%) |")
-                print("|------|--------|-----------------|-------|----------|")
+                print(
+                    f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'Standard libzmq':>{val_w}} | {'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} |"
+                )
+                print(
+                    f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
+                )
             for sz in MSG_SIZES:
                 zt = z_stats.get(f"{tr}|{sz}|throughput", 0)
                 zl = z_stats.get(f"{tr}|{sz}|latency", 0)
                 if zlink_only:
-                    print(f"| {sz}B | Throughput | {zt/1e6:6.2f} M/s |")
-                    print(f"| | Latency | {zl:8.2f} us |")
+                    zt_s = format_throughput(sz, zt)
+                    zl_s = f"{zl:8.2f} us"
+                    print(
+                        f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {zt_s:>{val_w}} |"
+                    )
+                    print(
+                        f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {zl_s:>{val_w}} |"
+                    )
                 else:
                     st = s_stats.get(f"{tr}|{sz}|throughput", 0)
                     td = ((zt - st) / st * 100) if st > 0 else 0
                     sl = s_stats.get(f"{tr}|{sz}|latency", 0)
                     ld = ((sl - zl) / sl * 100) if sl > 0 else 0
-                    print(f"| {sz}B | Throughput | {st/1e6:6.2f} M/s | {zt/1e6:6.2f} M/s | {td:>+7.2f}% |")
-                    print(f"| | Latency | {sl:8.2f} us | {zl:8.2f} us | {ld:>+7.2f}% (inv) |")
+                    st_s = format_throughput(sz, st)
+                    zt_s = format_throughput(sz, zt)
+                    sl_s = f"{sl:8.2f} us"
+                    zl_s = f"{zl:8.2f} us"
+                    print(
+                        f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {st_s:>{val_w}} | {zt_s:>{val_w}} | {td:>+7.2f}% |"
+                    )
+                    print(
+                        f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {sl_s:>{val_w}} | {zl_s:>{val_w}} | {ld:>+7.2f}% |"
+                    )
 
     if all_failures:
         print("\n## Failures")

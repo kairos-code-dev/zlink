@@ -4,8 +4,8 @@
 #define __ZMQ_DECODER_ALLOCATORS_HPP_INCLUDED__
 
 #include <cstddef>
-#include <cstdlib>
 
+#include "allocator.hpp"
 #include "atomic_counter.hpp"
 #include "msg.hpp"
 #include "err.hpp"
@@ -18,12 +18,12 @@ class c_single_allocator
   public:
     explicit c_single_allocator (std::size_t bufsize_) :
         _buf_size (bufsize_),
-        _buf (static_cast<unsigned char *> (std::malloc (_buf_size)))
+        _buf (static_cast<unsigned char *> (alloc_tl (_buf_size)))
     {
         alloc_assert (_buf);
     }
 
-    ~c_single_allocator () { std::free (_buf); }
+    ~c_single_allocator () { dealloc_tl (_buf); }
 
     unsigned char *allocate () { return _buf; }
 

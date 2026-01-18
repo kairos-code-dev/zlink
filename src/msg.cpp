@@ -4,6 +4,7 @@
 #include "compat.hpp"
 #include "macros.hpp"
 #include "msg.hpp"
+#include "allocator.hpp"
 
 #include <string.h>
 #include <stdlib.h>
@@ -78,8 +79,8 @@ int zmq::msg_t::init_size (size_t size_)
         _u.lmsg.routing_id = 0;
         _u.lmsg.content = NULL;
         if (sizeof (content_t) + size_ > size_)
-            _u.lmsg.content =
-              static_cast<content_t *> (malloc (sizeof (content_t) + size_));
+            _u.lmsg.content = static_cast<content_t *> (
+              alloc (sizeof (content_t) + size_));
         if (unlikely (!_u.lmsg.content)) {
             errno = ENOMEM;
             return -1;
@@ -161,7 +162,7 @@ int zmq::msg_t::init_data (void *data_,
         _u.lmsg.group.type = group_type_short;
         _u.lmsg.routing_id = 0;
         _u.lmsg.content =
-          static_cast<content_t *> (malloc (sizeof (content_t)));
+          static_cast<content_t *> (alloc (sizeof (content_t)));
         if (!_u.lmsg.content) {
             errno = ENOMEM;
             return -1;
@@ -259,7 +260,7 @@ int zmq::msg_t::close ()
             if (_u.lmsg.content->ffn)
                 _u.lmsg.content->ffn (_u.lmsg.content->data,
                                       _u.lmsg.content->hint);
-            free (_u.lmsg.content);
+            dealloc (_u.lmsg.content);
         }
     }
 
@@ -292,7 +293,7 @@ int zmq::msg_t::close ()
             //  counter so we call the destructor explicitly now.
             _u.base.group.lgroup.content->refcnt.~atomic_counter_t ();
 
-            free (_u.base.group.lgroup.content);
+            dealloc (_u.base.group.lgroup.content);
         }
     }
 
@@ -607,7 +608,7 @@ bool zmq::msg_t::rm_refs (int refs_)
 
         if (_u.lmsg.content->ffn)
             _u.lmsg.content->ffn (_u.lmsg.content->data, _u.lmsg.content->hint);
-        free (_u.lmsg.content);
+        dealloc (_u.lmsg.content);
 
         return false;
     }
@@ -670,7 +671,7 @@ int zmq::msg_t::set_group (const char *group_, size_t length_)
     if (length_ > 14) {
         _u.base.group.lgroup.type = group_type_long;
         _u.base.group.lgroup.content =
-          (long_group_t *) malloc (sizeof (long_group_t));
+          (long_group_t *) alloc (sizeof (long_group_t));
         assert (_u.base.group.lgroup.content);
         new (&_u.base.group.lgroup.content->refcnt) zmq::atomic_counter_t ();
         _u.base.group.lgroup.content->refcnt.set (1);

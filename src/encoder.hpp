@@ -11,9 +11,9 @@
 
 #include <stddef.h>
 #include <string.h>
-#include <stdlib.h>
 #include <algorithm>
 
+#include "allocator.hpp"
 #include "err.hpp"
 #include "i_encoder.hpp"
 #include "msg.hpp"
@@ -60,13 +60,13 @@ template <typename T> class encoder_base_t : public i_encoder
         _next (NULL),
         _new_msg_flag (false),
         _buf_size (bufsize_),
-        _buf (static_cast<unsigned char *> (malloc (bufsize_))),
+        _buf (static_cast<unsigned char *> (alloc_tl (bufsize_))),
         _in_progress (NULL)
     {
         alloc_assert (_buf);
     }
 
-    ~encoder_base_t () ZMQ_OVERRIDE { free (_buf); }
+    ~encoder_base_t () ZMQ_OVERRIDE { dealloc_tl (_buf); }
 
     //  The function returns a batch of binary data. The data
     //  are filled to a supplied buffer. If no buffer is supplied (data_

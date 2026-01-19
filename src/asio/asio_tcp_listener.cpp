@@ -6,6 +6,7 @@
 #include "asio_tcp_listener.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "asio_zmp_engine.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
@@ -13,6 +14,7 @@
 #include "../err.hpp"
 #include "../ip.hpp"
 #include "../tcp.hpp"
+#include "../zmp_protocol.hpp"
 
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -332,7 +334,11 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
       get_socket_name (fd_, socket_end_remote), endpoint_type_bind);
 
     //  Create the engine object for this connection using true proactor mode.
-    i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+    i_engine *engine = NULL;
+    if (zmp_protocol_enabled ())
+        engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
+    else
+        engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in. Given that we are already

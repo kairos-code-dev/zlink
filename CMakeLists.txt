@@ -429,6 +429,8 @@ if(POLLER STREQUAL "asio")
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.hpp
     # Transport abstraction layer (R3 refactoring)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/i_asio_transport.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/tcp_transport.cpp
@@ -952,6 +954,8 @@ set(cxx-sources
     v2_decoder.cpp
     v2_encoder.cpp
     v3_1_encoder.cpp
+    zmp_decoder.cpp
+    zmp_encoder.cpp
     xpub.cpp
     xsub.cpp
     zmq.cpp
@@ -1046,6 +1050,9 @@ set(cxx-sources
     v2_decoder.hpp
     v2_encoder.hpp
     v3_1_encoder.hpp
+    zmp_decoder.hpp
+    zmp_encoder.hpp
+    zmp_protocol.hpp
     v2_protocol.hpp
     windows.hpp
     wire.hpp

@@ -126,9 +126,11 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
 
     //  Start ZMTP handshake after WebSocket handshake completes
     void start_zmtp_handshake ();
+    void start_zmp_handshake ();
 
     //  ZMTP handshake methods
     bool handshake ();
+    bool handshake_zmp ();
     int receive_greeting ();
     void receive_greeting_versioned ();
 
@@ -143,6 +145,10 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool handshake_v3_x (bool downgrade_sub);
     bool handshake_v3_0 ();
     bool handshake_v3_1 ();
+
+    bool receive_hello ();
+    bool parse_hello (const unsigned char *data_, size_t size_);
+    bool is_socket_type_compatible (int peer_type_) const;
 
     int routing_id_msg (msg_t *msg_);
     int process_routing_id_msg (msg_t *msg_);
@@ -252,11 +258,24 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     static const size_t signature_size = 10;
     static const size_t v2_greeting_size = 12;
     static const size_t v3_greeting_size = 64;
+    static const size_t zmp_hello_buf_size = 272;
 
     size_t _greeting_size;
     unsigned char _greeting_recv[v3_greeting_size];
     unsigned char _greeting_send[v3_greeting_size];
     unsigned int _greeting_bytes_read;
+
+    bool _zmp_mode;
+    bool _hello_sent;
+    bool _hello_received;
+    size_t _hello_header_bytes;
+    size_t _hello_body_bytes;
+    uint32_t _hello_body_len;
+    unsigned char _hello_recv[zmp_hello_buf_size];
+    unsigned char _hello_send[zmp_hello_buf_size];
+    size_t _hello_send_size;
+    unsigned char _peer_routing_id[256];
+    size_t _peer_routing_id_size;
 
     bool _subscription_required;
     int _heartbeat_timeout;

@@ -15,6 +15,7 @@
 #include "../plain_server.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
+#include "../zmp_protocol.hpp"
 #include "../ip.hpp"
 #include "../tcp.hpp"
 #include "../likely.hpp"
@@ -1368,7 +1369,7 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
     zmq_assert (_session);
 
     // protocol errors have been signaled already at the point where they occurred
-    if (reason_ != protocol_error
+    if (reason_ != protocol_error && !zmp_protocol_enabled ()
         && (_mechanism == NULL
             || _mechanism->status () == mechanism_t::handshaking)) {
         const int err = errno;

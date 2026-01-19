@@ -8,6 +8,14 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+static bool is_zmp_protocol_enabled ()
+{
+    const char *env = std::getenv ("ZLINK_PROTOCOL");
+    if (!env)
+        return false;
+    return strcmp (env, "zmp") == 0 || strcmp (env, "ZMP") == 0;
+}
+
 //  Read one event off the monitor socket; return value and address
 //  by reference, if not null, and event number by value. Returns -1
 //  in case of error.
@@ -116,6 +124,9 @@ static void prep_server_socket (void **server_out_,
 static void test_mock_pub_sub (bool mock_pub_)
 {
     int rc;
+
+    if (is_zmp_protocol_enabled ())
+        TEST_IGNORE_MESSAGE ("ZMTP-specific mock handshake not valid for ZMP");
     char my_endpoint[MAX_SOCKET_STRING];
 
     void *server, *server_mon;

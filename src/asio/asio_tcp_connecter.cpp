@@ -6,12 +6,14 @@
 #include "asio_tcp_connecter.hpp"
 #include "asio_poller.hpp"
 #include "asio_zmtp_engine.hpp"
+#include "asio_zmp_engine.hpp"
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../address.hpp"
 #include "../tcp_address.hpp"
 #include "../random.hpp"
 #include "../err.hpp"
+#include "../zmp_protocol.hpp"
 #include "../ip.hpp"
 #include "../tcp.hpp"
 
@@ -373,7 +375,11 @@ void zmq::asio_tcp_connecter_t::create_engine (fd_t fd_,
                                              endpoint_type_connect);
 
     //  Create the engine object for this connection using true proactor mode.
-    i_engine *engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
+    i_engine *engine = NULL;
+    if (zmp_protocol_enabled ())
+        engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
+    else
+        engine = new (std::nothrow) asio_zmtp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
     //  Attach the engine to the corresponding session object.

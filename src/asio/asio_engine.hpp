@@ -242,11 +242,22 @@ class asio_engine_t : public i_engine
     //  Internal write buffer for async operations
     std::vector<unsigned char> _write_buffer;
 
+    struct pending_buffer_t
+    {
+        std::vector<unsigned char> data;
+        size_t offset;
+
+        explicit pending_buffer_t (std::vector<unsigned char> &&data_) :
+            data (std::move (data_)), offset (0)
+        {
+        }
+    };
+
     //  True Proactor Pattern: Pending buffers for backpressure handling.
     //  When _input_stopped is true, incoming data is stored here instead of
     //  being processed. This allows async_read to continue without blocking,
     //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
-    std::deque<std::vector<unsigned char>> _pending_buffers;
+    std::deque<pending_buffer_t> _pending_buffers;
 
     //  Backpressure read buffers (avoid extra copy into _pending_buffers).
     std::vector<std::vector<unsigned char> > _pending_buffer_pool;

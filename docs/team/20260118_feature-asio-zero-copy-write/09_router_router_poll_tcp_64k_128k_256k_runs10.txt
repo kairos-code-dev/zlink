@@ -1,0 +1,20 @@
+
+## PATTERN: ROUTER_ROUTER_POLL
+  > Benchmarking libzmq for ROUTER_ROUTER_POLL...
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+  > Benchmarking zlink for ROUTER_ROUTER_POLL...
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 65536B | Throughput |     1426.66 MB/s |     1899.13 MB/s |  +33.12% |
+| 65536B | Latency    |         11.75 us |         16.23 us |  -38.11% |
+| 131072B | Throughput |     1665.63 MB/s |     2218.49 MB/s |  +33.19% |
+| 131072B | Latency    |         17.59 us |         33.41 us |  -89.99% |
+| 262144B | Throughput |     2111.91 MB/s |     2362.07 MB/s |  +11.85% |
+| 262144B | Latency    |         37.02 us |         63.36 us |  -71.15% |

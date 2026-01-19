@@ -40,3 +40,17 @@
   - 64K throughput +45.26% (latency -19.38%)
   - 128K throughput +34.69% (latency -51.31%)
   - 256K throughput +14.72% (latency -91.85%)
+
+## 추가 64K/128K/256K (TCP)
+- DEALER_DEALER: `docs/team/20260118_feature-asio-zero-copy-write/07_dealer_dealer_tcp_64k_128k_256k_runs10.txt`
+  - 64K throughput +22.51% (latency -22.59%)
+  - 128K throughput +26.41% (latency -66.32%)
+  - 256K throughput +9.85% (latency -98.42%)
+- ROUTER_ROUTER: `docs/team/20260118_feature-asio-zero-copy-write/08_router_router_tcp_64k_128k_256k_runs10.txt`
+  - 64K throughput +36.03% (latency -47.39%)
+  - 128K throughput +21.82% (latency -86.50%)
+  - 256K throughput +8.52% (latency -78.90%)
+- ROUTER_ROUTER_POLL: `docs/team/20260118_feature-asio-zero-copy-write/09_router_router_poll_tcp_64k_128k_256k_runs10.txt`
+  - 64K throughput +33.12% (latency -38.11%)
+  - 128K throughput +33.19% (latency -89.99%)
+  - 256K throughput +11.85% (latency -71.15%)

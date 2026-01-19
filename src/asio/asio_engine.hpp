@@ -248,6 +248,12 @@ class asio_engine_t : public i_engine
     //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
     std::deque<std::vector<unsigned char>> _pending_buffers;
 
+    //  Backpressure read buffers (avoid extra copy into _pending_buffers).
+    std::vector<std::vector<unsigned char> > _pending_buffer_pool;
+    std::vector<unsigned char> _pending_read_buffer;
+    bool _read_from_pending_pool;
+    enum { pending_buffer_pool_max = 4 };
+
     //  Total bytes in _pending_buffers (O(1) tracking instead of O(n) iteration)
     size_t _total_pending_bytes;
 

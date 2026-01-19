@@ -122,6 +122,7 @@ zmq::asio_engine_t::asio_engine_t (
     _async_zero_copy (false),
     _terminating (false),
     _read_buffer_ptr (NULL),
+    _read_from_pending_pool (false),
     _session (NULL),
     _socket (NULL)
 {
@@ -338,11 +339,24 @@ void zmq::asio_engine_t::start_async_read ()
     ENGINE_DBG ("start_async_read: insize=%zu", _insize);
 
     _read_pending = true;
+    _read_from_pending_pool = false;
 
     //  Get buffer from decoder if available
     size_t read_size;
 
-    if (_decoder) {
+    if (_decoder && _input_stopped) {
+        read_size = _options.in_batch_size;
+        if (read_size == 0)
+            read_size = read_buffer_size;
+
+        if (!_pending_buffer_pool.empty ()) {
+            _pending_read_buffer = std::move (_pending_buffer_pool.back ());
+            _pending_buffer_pool.pop_back ();
+        }
+        _pending_read_buffer.resize (read_size);
+        _read_buffer_ptr = _pending_read_buffer.data ();
+        _read_from_pending_pool = true;
+    } else if (_decoder) {
         _decoder->get_buffer (&_read_buffer_ptr, &read_size);
 
         //  If we have partial data from previous read, move it to buffer start.
@@ -442,6 +456,25 @@ void zmq::asio_engine_t::start_async_write ()
         return;
     }
 
+    //  Try a synchronous write first when supported (libzmq-like path).
+    if (_transport->supports_speculative_write ()) {
+        const std::size_t bytes =
+          _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
+                                  _outsize);
+        if (bytes == 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                error (connection_error);
+                return;
+            }
+        } else {
+            _outpos += bytes;
+            _outsize -= bytes;
+            if (_outsize == 0) {
+                return;
+            }
+        }
+    }
+
     _write_pending = true;
     _async_zero_copy = true;
 
@@ -486,6 +519,30 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
     //  instead of processing it. This keeps async_read always pending,
     //  eliminating unnecessary recvfrom() EAGAIN calls when backpressure clears.
     if (_input_stopped) {
+        if (_read_from_pending_pool) {
+            const size_t total_pending = _total_pending_bytes + _insize;
+
+            if (total_pending + bytes_transferred > max_pending_buffer_size) {
+                ENGINE_DBG ("on_read_complete: pending buffer overflow (%zu + %zu > %zu)",
+                            total_pending, bytes_transferred,
+                            max_pending_buffer_size);
+                _read_from_pending_pool = false;
+                error (connection_error);
+                return;
+            }
+
+            _pending_read_buffer.resize (bytes_transferred);
+            _pending_buffers.push_back (std::move (_pending_read_buffer));
+            _total_pending_bytes += bytes_transferred;
+            _read_from_pending_pool = false;
+
+            ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
+                        bytes_transferred, _total_pending_bytes);
+
+            start_async_read ();
+            return;
+        }
+
         //  Check buffer size limit to prevent memory exhaustion
         //  Bug fix: Include _insize (current partial data) in total calculation
         //  Bug fix: Use _total_pending_bytes for O(1) instead of O(n) iteration
@@ -977,9 +1034,7 @@ bool zmq::asio_engine_t::restart_input_internal ()
         return false;
     }
 
-    //  True Proactor Pattern: Process buffered data from _pending_buffers.
-    //  These buffers were accumulated during backpressure while async_read
-    //  continued running.
+    //  Process any buffered data from _pending_buffers (if present).
     while (!_pending_buffers.empty ()) {
         std::vector<unsigned char> &buffer = _pending_buffers.front ();
         const size_t original_buffer_size = buffer.size ();
@@ -1068,6 +1123,10 @@ bool zmq::asio_engine_t::restart_input_internal ()
 
         //  Buffer fully processed, remove it and update tracking
         _total_pending_bytes -= original_buffer_size;
+        if (_pending_buffer_pool.size () < pending_buffer_pool_max) {
+            buffer.clear ();
+            _pending_buffer_pool.push_back (std::move (buffer));
+        }
         _pending_buffers.pop_front ();
     }
 

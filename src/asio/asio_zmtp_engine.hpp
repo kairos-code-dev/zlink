@@ -78,16 +78,7 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
 
     void init_zmtp_engine ();
 
-    typedef bool (asio_zmtp_engine_t::*handshake_fun_t) ();
-    static handshake_fun_t select_handshake_fun (bool unversioned,
-                                                 unsigned char revision,
-                                                 unsigned char minor);
-
-    bool handshake_v1_0_unversioned ();
-    bool handshake_v1_0 ();
-    bool handshake_v2_0 ();
-    bool handshake_v3_x (bool downgrade_sub);
-    bool handshake_v3_0 ();
+    bool handshake_v3_x ();
     bool handshake_v3_1 ();
 
     int routing_id_msg (msg_t *msg_);

@@ -53,16 +53,14 @@ static void recv_with_retry (fd_t fd_, char *buffer_, int bytes_)
     }
 }
 
-static void mock_handshake (fd_t fd_, bool sub_command, bool mock_pub)
+static void mock_handshake (fd_t fd_, bool mock_pub)
 {
     char buffer[128];
     memset (buffer, 0, sizeof (buffer));
     memcpy (buffer, zmtp_greeting_null, sizeof (zmtp_greeting_null));
 
-    //  Mock ZMTP 3.1 which uses commands
-    if (sub_command) {
-        buffer[11] = 1;
-    }
+    //  ZMTP 3.1 uses command-based subscriptions.
+    buffer[11] = 1;
     int rc = TEST_ASSERT_SUCCESS_RAW_ERRNO (send (fd_, buffer, 64, 0));
     TEST_ASSERT_EQUAL_INT (64, rc);
 
@@ -115,7 +113,7 @@ static void prep_server_socket (void **server_out_,
     *mon_out_ = server_mon;
 }
 
-static void test_mock_pub_sub (bool sub_command_, bool mock_pub_)
+static void test_mock_pub_sub (bool mock_pub_)
 {
     int rc;
     char my_endpoint[MAX_SOCKET_STRING];
@@ -127,7 +125,7 @@ static void test_mock_pub_sub (bool sub_command_, bool mock_pub_)
     fd_t s = connect_socket (my_endpoint);
 
     // Mock a ZMTP 3 client so we can forcibly try sub commands
-    mock_handshake (s, sub_command_, mock_pub_);
+    mock_handshake (s, mock_pub_);
 
     // By now everything should report as connected
     rc = get_monitor_event (server_mon);
@@ -144,14 +142,8 @@ static void test_mock_pub_sub (bool sub_command_, bool mock_pub_)
         msleep (1);
         zmq_recv (server, buffer, 16, ZMQ_DONTWAIT);
 
-        if (sub_command_) {
-            recv_with_retry (s, buffer, 13);
-            TEST_ASSERT_EQUAL_INT (0,
-                                   memcmp (buffer, "\4\xb\x9SUBSCRIBEA", 13));
-        } else {
-            recv_with_retry (s, buffer, 4);
-            TEST_ASSERT_EQUAL_INT (0, memcmp (buffer, "\0\2\1A", 4));
-        }
+        recv_with_retry (s, buffer, 13);
+        TEST_ASSERT_EQUAL_INT (0, memcmp (buffer, "\4\xb\x9SUBSCRIBEA", 13));
 
         memcpy (buffer, "\0\4ALOL", 6);
         rc = TEST_ASSERT_SUCCESS_RAW_ERRNO (send (s, buffer, 6, 0));
@@ -162,18 +154,11 @@ static void test_mock_pub_sub (bool sub_command_, bool mock_pub_)
         TEST_ASSERT_EQUAL_INT (4, rc);
         TEST_ASSERT_EQUAL_INT (0, memcmp (buffer, "ALOL", 4));
     } else {
-        if (sub_command_) {
-            const uint8_t sub[13] = {4,   11,  9,   'S', 'U', 'B', 'S',
-                                     'C', 'R', 'I', 'B', 'E', 'A'};
-            rc = TEST_ASSERT_SUCCESS_RAW_ERRNO (
-              send (s, (const char *) sub, 13, 0));
-            TEST_ASSERT_EQUAL_INT (13, rc);
-        } else {
-            const uint8_t sub[4] = {0, 2, 1, 'A'};
-            rc = TEST_ASSERT_SUCCESS_RAW_ERRNO (
-              send (s, (const char *) sub, 4, 0));
-            TEST_ASSERT_EQUAL_INT (4, rc);
-        }
+        const uint8_t sub[13] = {4,   11,  9,   'S', 'U', 'B', 'S',
+                                 'C', 'R', 'I', 'B', 'E', 'A'};
+        rc = TEST_ASSERT_SUCCESS_RAW_ERRNO (
+          send (s, (const char *) sub, 13, 0));
+        TEST_ASSERT_EQUAL_INT (13, rc);
         rc = zmq_recv (server, buffer, 2, 0);
         TEST_ASSERT_EQUAL_INT (2, rc);
         TEST_ASSERT_EQUAL_INT (0, memcmp (buffer, "\1A", 2));
@@ -194,22 +179,12 @@ static void test_mock_pub_sub (bool sub_command_, bool mock_pub_)
 
 void test_mock_sub_command ()
 {
-    test_mock_pub_sub (true, false);
-}
-
-void test_mock_sub_legacy ()
-{
-    test_mock_pub_sub (false, false);
+    test_mock_pub_sub (false);
 }
 
 void test_mock_pub_command ()
 {
-    test_mock_pub_sub (true, true);
-}
-
-void test_mock_pub_legacy ()
-{
-    test_mock_pub_sub (false, true);
+    test_mock_pub_sub (true);
 }
 
 int main (void)
@@ -219,9 +194,7 @@ int main (void)
     UNITY_BEGIN ();
 
     RUN_TEST (test_mock_sub_command);
-    RUN_TEST (test_mock_sub_legacy);
     RUN_TEST (test_mock_pub_command);
-    RUN_TEST (test_mock_pub_legacy);
 
     return UNITY_END ();
 }

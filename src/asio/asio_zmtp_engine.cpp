@@ -9,16 +9,9 @@
 #endif
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
-#include "../v1_encoder.hpp"
-#include "../v1_decoder.hpp"
-#include "../v2_encoder.hpp"
 #include "../v2_decoder.hpp"
 #include "../v3_1_encoder.hpp"
 #include "../null_mechanism.hpp"
-#include "../plain_client.hpp"
-#include "../plain_server.hpp"
-#include "../gssapi_client.hpp"
-#include "../gssapi_server.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
 #include "../ip.hpp"
@@ -149,11 +142,22 @@ bool zmq::asio_zmtp_engine_t::handshake ()
     const int rc = receive_greeting ();
     if (rc == -1)
         return false;
-    const bool unversioned = rc != 0;
+    if (rc != 0) {
+        socket ()->event_handshake_failed_protocol (
+          session ()->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_UNSPECIFIED);
+        error (protocol_error);
+        return false;
+    }
 
-    if (!(this
-            ->*select_handshake_fun (unversioned, _greeting_recv[revision_pos],
-                                     _greeting_recv[minor_pos])) ())
+    if (_greeting_recv[revision_pos] != ASIO_ZMTP_3_x
+        || _greeting_recv[minor_pos] != 1) {
+        socket ()->event_handshake_failed_protocol (
+          session ()->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_UNSPECIFIED);
+        error (protocol_error);
+        return false;
+    }
+
+    if (!handshake_v3_1 ())
         return false;
 
     if (_outsize == 0)
@@ -218,16 +222,7 @@ void zmq::asio_zmtp_engine_t::receive_greeting_versioned ()
                 _outpos[_outsize++] = 1;
                 memset (_outpos + _outsize, 0, 20);
 
-                zmq_assert (_options.mechanism == ZMQ_NULL
-                            || _options.mechanism == ZMQ_PLAIN
-                            || _options.mechanism == ZMQ_GSSAPI);
-
-                if (_options.mechanism == ZMQ_NULL)
-                    memcpy (_outpos + _outsize, "NULL", 4);
-                else if (_options.mechanism == ZMQ_PLAIN)
-                    memcpy (_outpos + _outsize, "PLAIN", 5);
-                else if (_options.mechanism == ZMQ_GSSAPI)
-                    memcpy (_outpos + _outsize, "GSSAPI", 6);
+                memcpy (_outpos + _outsize, "NULL", 4);
                 _outsize += 20;
                 memset (_outpos + _outsize, 0, 32);
                 _outsize += 32;
@@ -237,178 +232,28 @@ void zmq::asio_zmtp_engine_t::receive_greeting_versioned ()
     }
 }
 
-zmq::asio_zmtp_engine_t::handshake_fun_t
-zmq::asio_zmtp_engine_t::select_handshake_fun (bool unversioned_,
-                                               unsigned char revision_,
-                                               unsigned char minor_)
+bool zmq::asio_zmtp_engine_t::handshake_v3_x ()
 {
-    if (unversioned_) {
-        return &asio_zmtp_engine_t::handshake_v1_0_unversioned;
-    }
-    switch (revision_) {
-        case ASIO_ZMTP_1_0:
-            return &asio_zmtp_engine_t::handshake_v1_0;
-        case ASIO_ZMTP_2_0:
-            return &asio_zmtp_engine_t::handshake_v2_0;
-        case ASIO_ZMTP_3_x:
-            switch (minor_) {
-                case 0:
-                    return &asio_zmtp_engine_t::handshake_v3_0;
-                default:
-                    return &asio_zmtp_engine_t::handshake_v3_1;
-            }
-        default:
-            return &asio_zmtp_engine_t::handshake_v3_1;
-    }
-}
-
-bool zmq::asio_zmtp_engine_t::handshake_v1_0_unversioned ()
-{
-    ZMTP_ENGINE_DBG ("handshake_v1_0_unversioned");
-
-    if (session ()->zap_enabled ()) {
-        error (protocol_error);
-        return false;
-    }
-
-    _encoder = new (std::nothrow) v1_encoder_t (_options.out_batch_size);
-    alloc_assert (_encoder);
-
-    _decoder = new (std::nothrow)
-      v1_decoder_t (_options.in_batch_size, _options.maxmsgsize);
-    alloc_assert (_decoder);
-
-    const size_t header_size =
-      _options.routing_id_size + 1 >= UCHAR_MAX ? 10 : 2;
-    unsigned char tmp[10], *bufferp = tmp;
-
-    int rc = _routing_id_msg.close ();
-    zmq_assert (rc == 0);
-    rc = _routing_id_msg.init_size (_options.routing_id_size);
-    zmq_assert (rc == 0);
-    memcpy (_routing_id_msg.data (), _options.routing_id,
-            _options.routing_id_size);
-    _encoder->load_msg (&_routing_id_msg);
-    const size_t buffer_size = _encoder->encode (&bufferp, header_size);
-    zmq_assert (buffer_size == header_size);
-
-    _inpos = _greeting_recv;
-    _insize = _greeting_bytes_read;
-    _input_in_decoder_buffer = false;
-
-    if (_options.type == ZMQ_PUB || _options.type == ZMQ_XPUB)
-        _subscription_required = true;
-
-    _next_msg = &asio_zmtp_engine_t::pull_msg_from_session;
-
-    _process_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
-      &asio_zmtp_engine_t::process_routing_id_msg);
-
-    return true;
-}
-
-bool zmq::asio_zmtp_engine_t::handshake_v1_0 ()
-{
-    ZMTP_ENGINE_DBG ("handshake_v1_0");
-
-    if (session ()->zap_enabled ()) {
-        error (protocol_error);
-        return false;
-    }
-
-    _encoder = new (std::nothrow) v1_encoder_t (_options.out_batch_size);
-    alloc_assert (_encoder);
-
-    _decoder = new (std::nothrow)
-      v1_decoder_t (_options.in_batch_size, _options.maxmsgsize);
-    alloc_assert (_decoder);
-
-    return true;
-}
-
-bool zmq::asio_zmtp_engine_t::handshake_v2_0 ()
-{
-    ZMTP_ENGINE_DBG ("handshake_v2_0");
-
-    if (session ()->zap_enabled ()) {
-        error (protocol_error);
-        return false;
-    }
-
-    _encoder = new (std::nothrow) v2_encoder_t (_options.out_batch_size);
-    alloc_assert (_encoder);
-
-    _decoder = new (std::nothrow)
-      v2_decoder_t (_options.in_batch_size, _options.maxmsgsize, true);
-    alloc_assert (_decoder);
-
-    return true;
-}
-
-bool zmq::asio_zmtp_engine_t::handshake_v3_x (const bool downgrade_sub_)
-{
-    LIBZMQ_UNUSED (downgrade_sub_);
 
     ZMTP_ENGINE_DBG ("handshake_v3_x");
 
-    if (_options.mechanism == ZMQ_NULL
-        && memcmp (_greeting_recv + 12, "NULL\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
-                   20)
-             == 0) {
-        _mechanism = new (std::nothrow)
-          null_mechanism_t (session (), _peer_address, _options);
-        alloc_assert (_mechanism);
-    } else if (_options.mechanism == ZMQ_PLAIN
-               && memcmp (_greeting_recv + 12,
-                          "PLAIN\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 20)
-                    == 0) {
-        if (_options.as_server)
-            _mechanism = new (std::nothrow)
-              plain_server_t (session (), _peer_address, _options);
-        else
-            _mechanism =
-              new (std::nothrow) plain_client_t (session (), _options);
-        alloc_assert (_mechanism);
-    }
-#ifdef HAVE_LIBGSSAPI_KRB5
-    else if (_options.mechanism == ZMQ_GSSAPI
-             && memcmp (_greeting_recv + 12,
-                        "GSSAPI\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 20)
-                  == 0) {
-        if (_options.as_server)
-            _mechanism = new (std::nothrow)
-              gssapi_server_t (session (), _peer_address, _options);
-        else
-            _mechanism =
-              new (std::nothrow) gssapi_client_t (session (), _options);
-        alloc_assert (_mechanism);
-    }
-#endif
-    else {
+    if (_options.mechanism != ZMQ_NULL
+        || memcmp (_greeting_recv + 12,
+                   "NULL\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 20)
+             != 0) {
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
           ZMQ_PROTOCOL_ERROR_ZMTP_MECHANISM_MISMATCH);
         error (protocol_error);
         return false;
     }
+    _mechanism = new (std::nothrow)
+      null_mechanism_t (session (), _peer_address, _options);
+    alloc_assert (_mechanism);
     _next_msg = &asio_zmtp_engine_t::next_handshake_command;
     _process_msg = &asio_zmtp_engine_t::process_handshake_command;
 
     return true;
-}
-
-bool zmq::asio_zmtp_engine_t::handshake_v3_0 ()
-{
-    ZMTP_ENGINE_DBG ("handshake_v3_0");
-
-    _encoder = new (std::nothrow) v2_encoder_t (_options.out_batch_size);
-    alloc_assert (_encoder);
-
-    _decoder = new (std::nothrow)
-      v2_decoder_t (_options.in_batch_size, _options.maxmsgsize, true);
-    alloc_assert (_decoder);
-
-    return zmq::asio_zmtp_engine_t::handshake_v3_x (true);
 }
 
 bool zmq::asio_zmtp_engine_t::handshake_v3_1 ()
@@ -422,7 +267,7 @@ bool zmq::asio_zmtp_engine_t::handshake_v3_1 ()
       v2_decoder_t (_options.in_batch_size, _options.maxmsgsize, true);
     alloc_assert (_decoder);
 
-    return zmq::asio_zmtp_engine_t::handshake_v3_x (false);
+    return zmq::asio_zmtp_engine_t::handshake_v3_x ();
 }
 
 int zmq::asio_zmtp_engine_t::routing_id_msg (msg_t *msg_)

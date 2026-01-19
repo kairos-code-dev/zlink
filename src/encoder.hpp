@@ -40,11 +40,11 @@ namespace zmq
 //    encode() again for the next chunk
 //  - Example: speculative_write() in asio_engine_t
 //
-//  ASYNCHRONOUS WRITE PATH (requires copy):
+//  ASYNCHRONOUS WRITE PATH:
 //  - Async I/O completion may occur after the next encode()/load_msg() call
-//  - Caller MUST copy the buffer to a stable location before starting async I/O
-//  - This ensures the data remains valid until async write completion
-//  - Example: start_async_write() copies to _write_buffer before async_write_some()
+//  - Zero-copy async is safe only if the engine guarantees no encode()/load_msg()
+//    will run until the async write completes
+//  - Otherwise, caller must copy to a stable buffer before async I/O
 //
 //  REENTRANCY PROTECTION:
 //  - The engine must ensure process_output()/prepare_output_buffer() is not

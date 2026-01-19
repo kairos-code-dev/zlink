@@ -272,6 +272,7 @@ class asio_engine_t : public i_engine
 
     //  True if async write is in progress
     bool _write_pending;
+    bool _async_zero_copy;
 
     //  True if engine is being terminated (prevents callback processing)
     bool _terminating;

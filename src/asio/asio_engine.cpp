@@ -119,6 +119,7 @@ zmq::asio_engine_t::asio_engine_t (
     _io_error (false),
     _read_pending (false),
     _write_pending (false),
+    _async_zero_copy (false),
     _terminating (false),
     _read_buffer_ptr (NULL),
     _session (NULL),
@@ -431,47 +432,22 @@ void zmq::asio_engine_t::start_async_write ()
 
     ENGINE_DBG ("start_async_write: outsize=%zu", _outsize);
 
-    //  If there is already data prepared in _outpos/_outsize (from speculative_write
-    //  fallback or partial write), copy it to _write_buffer for async operation.
-    //  This is necessary because encoder buffer may be invalidated before async
-    //  write completion.
-    if (_outsize > 0 && _outpos != NULL) {
-        //  Copy encoder buffer to write buffer for async lifetime safety
-        const size_t out_batch_size =
-          static_cast<size_t> (_options.out_batch_size);
-        const size_t target =
-          _outsize > out_batch_size ? _outsize : out_batch_size;
-        if (_write_buffer.capacity () < target)
-            _write_buffer.reserve (target);
-        _write_buffer.assign (_outpos, _outpos + _outsize);
-
-        ENGINE_DBG ("start_async_write: copied %zu bytes for async", _outsize);
-
-        //  During handshake, advance _outpos but don't reset it to NULL
-        //  so that receive_greeting_versioned() can check position correctly.
-        //  After handshake, reset both as the encoder manages the buffer.
-        if (_handshaking) {
-            _outpos += _outsize;
-            _outsize = 0;
-        } else {
-            _outpos = NULL;
-            _outsize = 0;
-        }
-    } else {
-        //  No data prepared, try to get from encoder via process_output
+    if (_outsize == 0 || _outpos == NULL) {
+        //  No data prepared, try to get from encoder via process_output.
         process_output ();
+    }
 
-        if (_write_buffer.empty ()) {
-            _output_stopped = true;
-            return;
-        }
+    if (_outsize == 0 || _outpos == NULL) {
+        _output_stopped = true;
+        return;
     }
 
     _write_pending = true;
+    _async_zero_copy = true;
 
     if (_transport) {
         _transport->async_write_some (
-          _write_buffer.data (), _write_buffer.size (),
+          _outpos, _outsize,
           [this] (const boost::system::error_code &ec, std::size_t bytes) {
               on_write_complete (ec, bytes);
           });
@@ -599,7 +575,30 @@ void zmq::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
         return;
     }
 
-    _write_buffer.clear ();
+    if (_async_zero_copy) {
+        if (bytes_transferred == 0) {
+            error (connection_error);
+            return;
+        }
+
+        _outpos += bytes_transferred;
+        _outsize -= bytes_transferred;
+
+        if (_outsize > 0) {
+            _write_pending = true;
+            if (_transport) {
+                _transport->async_write_some (
+                  _outpos, _outsize,
+                  [this] (const boost::system::error_code &wec,
+                          std::size_t bytes) {
+                      on_write_complete (wec, bytes);
+                  });
+            }
+            return;
+        }
+
+        _async_zero_copy = false;
+    }
 
     //  If still handshaking and there's nothing more to write, just return
     if (_handshaking && _outsize == 0)
@@ -859,14 +858,6 @@ void zmq::asio_engine_t::process_output ()
 {
     ENGINE_DBG ("process_output: outsize=%zu", _outsize);
 
-    //  This function is called from start_async_write() when there's no data
-    //  in _outpos/_outsize. It fills the encoder buffer and copies to _write_buffer
-    //  for async write operation.
-    //
-    //  NOTE: For zero-copy, speculative_write() uses prepare_output_buffer() which
-    //  sets _outpos/_outsize to point directly to encoder buffer. The copy here
-    //  is only for the async-only path (not via speculative_write).
-
     //  If write buffer is empty, try to read new data from the encoder.
     if (_outsize == 0) {
         //  Even when we stop as soon as there is no data to send,
@@ -901,30 +892,6 @@ void zmq::asio_engine_t::process_output ()
             _output_stopped = true;
             return;
         }
-    }
-
-    //  Copy data to write buffer for async write operation.
-    //  This copy is necessary because encoder buffer may be invalidated before
-    //  async write completes. The copy is performed here (for async-only path)
-    //  or in start_async_write() (for speculative_write fallback path).
-    const size_t out_batch_size =
-      static_cast<size_t> (_options.out_batch_size);
-    const size_t target =
-      _outsize > out_batch_size ? _outsize : out_batch_size;
-    if (_write_buffer.capacity () < target)
-        _write_buffer.reserve (target);
-    _write_buffer.assign (_outpos, _outpos + _outsize);
-
-    ENGINE_DBG ("process_output: copied %zu bytes to write buffer", _outsize);
-
-    //  During handshake, advance _outpos but don't reset it to NULL
-    //  so that receive_greeting_versioned() can check position correctly
-    if (_handshaking) {
-        _outpos += _outsize;
-        _outsize = 0;
-    } else {
-        _outpos = NULL;
-        _outsize = 0;
     }
 }
 

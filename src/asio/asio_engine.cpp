@@ -532,7 +532,8 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
             }
 
             _pending_read_buffer.resize (bytes_transferred);
-            _pending_buffers.push_back (std::move (_pending_read_buffer));
+            _pending_buffers.push_back (
+              pending_buffer_t (std::move (_pending_read_buffer)));
             _total_pending_bytes += bytes_transferred;
             _read_from_pending_pool = false;
 
@@ -559,7 +560,7 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
         //  Store data in pending buffer for later processing
         std::vector<unsigned char> buffer (bytes_transferred);
         std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
-        _pending_buffers.push_back (std::move (buffer));
+        _pending_buffers.push_back (pending_buffer_t (std::move (buffer)));
         _total_pending_bytes += bytes_transferred;
 
         ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
@@ -1036,7 +1037,8 @@ bool zmq::asio_engine_t::restart_input_internal ()
 
     //  Process any buffered data from _pending_buffers (if present).
     while (!_pending_buffers.empty ()) {
-        std::vector<unsigned char> &buffer = _pending_buffers.front ();
+        pending_buffer_t &pending = _pending_buffers.front ();
+        std::vector<unsigned char> &buffer = pending.data;
         const size_t original_buffer_size = buffer.size ();
 
         ENGINE_DBG ("restart_input: processing pending buffer of %zu bytes",
@@ -1050,8 +1052,8 @@ bool zmq::asio_engine_t::restart_input_internal ()
         memcpy (decode_buf, buffer.data (), decode_size);
         _decoder->resize_buffer (decode_size);
 
-        size_t buffer_pos = 0;
-        size_t buffer_remaining = buffer.size ();
+        size_t buffer_pos = pending.offset;
+        size_t buffer_remaining = buffer.size () - pending.offset;
 
         while (buffer_remaining > 0) {
             size_t processed = 0;
@@ -1082,15 +1084,14 @@ bool zmq::asio_engine_t::restart_input_internal ()
 
         //  If backpressure occurred, keep remaining data in buffer
         if (rc == -1 && errno == EAGAIN) {
-            if (buffer_remaining > 0 && buffer_pos > 0) {
-                //  Trim processed data from buffer and update tracking
-                const size_t bytes_consumed = buffer_pos;
-                buffer.erase (buffer.begin (),
-                              buffer.begin () + static_cast<long> (buffer_pos));
+            if (buffer_remaining > 0 && buffer_pos > pending.offset) {
+                //  Advance offset to preserve remaining data without reallocation
+                const size_t bytes_consumed = buffer_pos - pending.offset;
+                pending.offset = buffer_pos;
                 _total_pending_bytes -= bytes_consumed;
                 ENGINE_DBG ("restart_input: partial pending buffer, %zu bytes "
                             "remaining",
-                            buffer.size ());
+                            buffer_remaining);
             }
             _session->flush ();
             ENGINE_DBG ("restart_input: backpressure during pending buffer");
@@ -1106,15 +1107,14 @@ bool zmq::asio_engine_t::restart_input_internal ()
         //  Bug fix: rc == 0 means decoder needs more data but buffer_remaining
         //  may still be > 0. In this case, we must preserve the remaining data.
         if (rc == 0 && buffer_remaining > 0) {
-            if (buffer_pos > 0) {
-                //  Trim processed data from buffer and update tracking
-                const size_t bytes_consumed = buffer_pos;
-                buffer.erase (buffer.begin (),
-                              buffer.begin () + static_cast<long> (buffer_pos));
+            if (buffer_pos > pending.offset) {
+                //  Advance offset to preserve remaining data without reallocation
+                const size_t bytes_consumed = buffer_pos - pending.offset;
+                pending.offset = buffer_pos;
                 _total_pending_bytes -= bytes_consumed;
                 ENGINE_DBG ("restart_input: decoder needs more data, %zu bytes "
                             "remaining in buffer",
-                            buffer.size ());
+                            buffer_remaining);
             }
             //  Don't pop_front - keep remaining data for next iteration
             //  when more data arrives from network
@@ -1122,7 +1122,9 @@ bool zmq::asio_engine_t::restart_input_internal ()
         }
 
         //  Buffer fully processed, remove it and update tracking
-        _total_pending_bytes -= original_buffer_size;
+        const size_t remaining_bytes =
+          buffer.size () - pending.offset;
+        _total_pending_bytes -= remaining_bytes;
         if (_pending_buffer_pool.size () < pending_buffer_pool_max) {
             buffer.clear ();
             _pending_buffer_pool.push_back (std::move (buffer));

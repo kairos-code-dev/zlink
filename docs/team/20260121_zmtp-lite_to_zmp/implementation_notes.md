@@ -32,11 +32,11 @@
 - `src/zmp_decoder.cpp`
 - `src/zmp_protocol.hpp`
 
-### Changes (Planned)
-- Use fixed header and flags.
-- Replace greeting with HELLO.
-- Reuse Stage A engine flow.
-- Keep routing-id semantics identical to Stage A.
+### Changes (Done)
+- Added ZMP encoder/decoder and protocol header.
+- Implemented `asio_zmp_engine_t` for ZMP framing.
+- Wired TCP/IPC/TLS/WS engines to choose ZMP via `ZLINK_PROTOCOL=zmp`.
+- Kept routing-id handling aligned with ZMTP paths.
 
 ---
 

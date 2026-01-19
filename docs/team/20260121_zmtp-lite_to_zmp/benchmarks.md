@@ -60,3 +60,10 @@ Pattern-only (avoids long all-pattern timeouts):
   - `/tmp/bench_zmtp_lite_dealer_router.txt`
   - `/tmp/bench_zmtp_lite_router_router.txt`
   - `/tmp/bench_zmtp_lite_router_router_poll.txt`
+- Stage B (ZMP, runs=10) outputs:
+  - `/tmp/bench_zmp_pair.txt`
+  - `/tmp/bench_zmp_pubsub.txt`
+  - `/tmp/bench_zmp_dealer_dealer.txt`
+  - `/tmp/bench_zmp_dealer_router.txt`
+  - `/tmp/bench_zmp_router_router.txt`
+  - `/tmp/bench_zmp_router_router_poll.txt`

@@ -19,18 +19,23 @@ void zmq::zmp_encoder_t::header_ready ()
 {
     const msg_t *msg = in_progress ();
     const size_t size = msg->size ();
+    const unsigned char msg_flags = msg->flags ();
 
     unsigned char flags = 0;
-    if (msg->flags () & msg_t::more)
-        flags |= zmp_flag_more;
-    if (msg->flags () & msg_t::command)
-        flags |= zmp_flag_control;
-    if (msg->flags () & msg_t::routing_id)
-        flags |= zmp_flag_identity;
-    if (msg->is_subscribe ())
-        flags |= zmp_flag_subscribe;
-    if (msg->is_cancel ())
-        flags |= zmp_flag_cancel;
+    if (msg_flags != 0) {
+        if (msg_flags & msg_t::more)
+            flags |= zmp_flag_more;
+        if (msg_flags & msg_t::command)
+            flags |= zmp_flag_control;
+        if (msg_flags & msg_t::routing_id)
+            flags |= zmp_flag_identity;
+
+        const unsigned char cmd_type = msg_flags & CMD_TYPE_MASK;
+        if (cmd_type == msg_t::subscribe)
+            flags |= zmp_flag_subscribe;
+        else if (cmd_type == msg_t::cancel)
+            flags |= zmp_flag_cancel;
+    }
 
     _tmp_buf[0] = zmp_magic;
     _tmp_buf[1] = zmp_version;

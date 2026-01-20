@@ -28,7 +28,7 @@ class zmp_decoder_t ZMQ_FINAL
     unsigned char _tmpbuf[zmp_header_size];
     unsigned char _msg_flags;
     msg_t _in_progress;
-    const int64_t _max_msg_size;
+    const uint32_t _max_msg_size_effective;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (zmp_decoder_t)
 };

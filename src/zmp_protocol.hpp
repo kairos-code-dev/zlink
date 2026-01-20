@@ -19,7 +19,9 @@ enum
     zmp_flag_control = 0x02,
     zmp_flag_identity = 0x04,
     zmp_flag_subscribe = 0x08,
-    zmp_flag_cancel = 0x10
+    zmp_flag_cancel = 0x10,
+    zmp_flag_mask = zmp_flag_more | zmp_flag_control | zmp_flag_identity
+                    | zmp_flag_subscribe | zmp_flag_cancel
 };
 
 enum

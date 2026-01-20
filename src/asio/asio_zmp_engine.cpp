@@ -350,14 +350,15 @@ int zmq::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
         cancel_timer (heartbeat_ttl_timer_id);
     }
 
-    if (msg_->flags () & msg_t::command) {
+    const unsigned char msg_flags = msg_->flags ();
+    if (msg_flags & msg_t::command) {
         const int rc = process_command_message (msg_);
         if (rc != 0)
             return -1;
         return 0;
     }
 
-    if ((msg_->flags () & msg_t::routing_id) && !_options.recv_routing_id) {
+    if ((msg_flags & msg_t::routing_id) && !_options.recv_routing_id) {
         int rc = msg_->close ();
         errno_assert (rc == 0);
         rc = msg_->init ();

@@ -36,8 +36,8 @@ const uint32_t zmp_max_body_size = 256u * 1024u * 1024u;
 inline bool zmp_protocol_enabled ()
 {
     const char *env = std::getenv ("ZLINK_PROTOCOL");
-    if (!env)
-        return false;
+    if (!env || *env == '\0')
+        return true;
     return std::strcmp (env, "zmp") == 0 || std::strcmp (env, "ZMP") == 0;
 }
 }

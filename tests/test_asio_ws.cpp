@@ -29,6 +29,7 @@
 #include <atomic>
 #include <vector>
 #include <thread>
+#include <limits.h>
 
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -72,7 +73,14 @@ static tls_files_t create_tls_files ()
     TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
     files.dir.assign (tmp_dir);
 #else
-    char tmp_dir[] = "zmq_tls_XXXXXX";
+    char tmp_dir[PATH_MAX] = "";
+    const char *tmpdir = getenv ("TMPDIR");
+    if (!tmpdir || !*tmpdir)
+        tmpdir = "/tmp";
+    const int n =
+      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zmq_tls_XXXXXX", tmpdir);
+    if (n <= 0 || static_cast<size_t> (n) >= sizeof (tmp_dir))
+        strcpy (tmp_dir, "/tmp/zmq_tls_XXXXXX");
     char *dir = mkdtemp (tmp_dir);
     TEST_ASSERT_NOT_NULL (dir);
     files.dir.assign (dir);

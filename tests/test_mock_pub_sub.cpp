@@ -11,8 +11,8 @@ SETUP_TEARDOWN_TESTCONTEXT
 static bool is_zmp_protocol_enabled ()
 {
     const char *env = std::getenv ("ZLINK_PROTOCOL");
-    if (!env)
-        return false;
+    if (!env || *env == '\0')
+        return true;
     return strcmp (env, "zmp") == 0 || strcmp (env, "ZMP") == 0;
 }
 

@@ -112,6 +112,23 @@ class i_asio_transport
     //  Transports can opt out to force async write paths (e.g., IPC stability).
     virtual bool supports_speculative_write () const { return true; }
 
+    //  Indicates whether the transport supports async gather writes.
+    //  Default: false (unsupported).
+    virtual bool supports_gather_write () const { return false; }
+
+    //  Async gather write (header + body).
+    //  Default: not supported; handler receives operation_not_supported.
+    virtual void async_writev (const unsigned char *header,
+                               std::size_t header_size,
+                               const unsigned char *body,
+                               std::size_t body_size,
+                               completion_handler_t handler)
+    {
+        if (handler) {
+            handler (boost::asio::error::operation_not_supported, 0);
+        }
+    }
+
     //  Check if this transport requires a handshake phase.
     //  TCP: false, SSL: true, WebSocket: true
     virtual bool requires_handshake () const { return false; }

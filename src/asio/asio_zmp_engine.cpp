@@ -417,6 +417,43 @@ int zmq::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
     return 0;
 }
 
+bool zmq::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,
+                                                  unsigned char *buffer_,
+                                                  size_t buffer_size_,
+                                                  size_t &header_size_)
+{
+    if (buffer_size_ < zmp_header_size)
+        return false;
+
+    const size_t size = msg_.size ();
+    const unsigned char msg_flags = msg_.flags ();
+
+    unsigned char flags = 0;
+    if (msg_flags != 0) {
+        if (msg_flags & msg_t::more)
+            flags |= zmp_flag_more;
+        if (msg_flags & msg_t::command)
+            flags |= zmp_flag_control;
+        if (msg_flags & msg_t::routing_id)
+            flags |= zmp_flag_identity;
+
+        const unsigned char cmd_type = msg_flags & CMD_TYPE_MASK;
+        if (cmd_type == msg_t::subscribe)
+            flags |= zmp_flag_subscribe;
+        else if (cmd_type == msg_t::cancel)
+            flags |= zmp_flag_cancel;
+    }
+
+    buffer_[0] = zmp_magic;
+    buffer_[1] = zmp_version;
+    buffer_[2] = flags;
+    buffer_[3] = 0;
+    put_uint32 (buffer_ + 4, static_cast<uint32_t> (size));
+
+    header_size_ = zmp_header_size;
+    return true;
+}
+
 int zmq::asio_zmp_engine_t::push_one_then_decode (msg_t *msg_)
 {
     const int rc = session ()->push_msg (msg_);

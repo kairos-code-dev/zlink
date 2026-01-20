@@ -387,7 +387,7 @@ void zmq::xpub_t::send_unsubscription (zmq::mtrie_t::prefix_t data_,
         *unsub.data () = 0;
         if (size_ > 0)
             memcpy (unsub.data () + 1, data_, size_);
-        self_->_pending_data.ZMQ_LIST_APPEND (ZMQ_MOVE (unsub));
+        self_->_pending_data.ZMQ_PUSH_OR_EMPLACE_BACK (ZMQ_MOVE (unsub));
         self_->_pending_metadata.push_back (NULL);
         self_->_pending_flags.push_back (0);
 

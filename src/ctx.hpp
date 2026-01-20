@@ -208,6 +208,9 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     //  Is IPv6 enabled on this context?
     bool _ipv6;
 
+    //  Should we use zero copy message decoding in this context?
+    bool _zero_copy;
+
     ZMQ_NON_COPYABLE_NOR_MOVABLE (ctx_t)
 
 #ifdef HAVE_FORK

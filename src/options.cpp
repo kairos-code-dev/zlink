@@ -183,6 +183,7 @@ zmq::options_t::options_t () :
     use_fd (-1),
     in_batch_size (8192),
     out_batch_size (8192),
+    zero_copy (true),
     monitor_event_version (1),
     busy_poll (0)
 #ifdef ZMQ_HAVE_TLS

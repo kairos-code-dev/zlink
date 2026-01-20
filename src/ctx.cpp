@@ -2,6 +2,7 @@
 
 #include "precompiled.hpp"
 #include "macros.hpp"
+#include "zmq_draft.h"
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
 #endif
@@ -51,7 +52,8 @@ zmq::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZMQ_IO_THREADS_DFLT),
     _blocky (true),
-    _ipv6 (false)
+    _ipv6 (false),
+    _zero_copy (true)
 {
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -257,6 +259,14 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
+        case ZMQ_ZERO_COPY_RECV:
+            if (is_int && value >= 0) {
+                scoped_lock_t locker (_opt_sync);
+                _zero_copy = (value != 0);
+                return 0;
+            }
+            break;
+
         default: {
             return thread_ctx_t::set (option_, optval_, optvallen_);
         }
@@ -323,6 +333,14 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = sizeof (zmq_msg_t);
+                return 0;
+            }
+            break;
+
+        case ZMQ_ZERO_COPY_RECV:
+            if (is_int) {
+                scoped_lock_t locker (_opt_sync);
+                *value = _zero_copy;
                 return 0;
             }
             break;

@@ -99,6 +99,13 @@ class asio_engine_t : public i_engine
         return -1;
     }
 
+    //  Build protocol-specific header for gather write.
+    //  Returns true on success and sets header_size_.
+    virtual bool build_gather_header (const msg_t &msg_,
+                                      unsigned char *buffer_,
+                                      size_t buffer_size_,
+                                      size_t &header_size_);
+
     //  Start asynchronous read operation
     void start_async_read ();
 
@@ -216,6 +223,13 @@ class asio_engine_t : public i_engine
     //  Returns true if data is available in _outpos/_outsize.
     bool prepare_output_buffer ();
 
+    //  Prepare gather write (header + body) for large messages.
+    //  Returns true if gather write was scheduled or output was stopped.
+    bool prepare_gather_output ();
+
+    //  Finalize message state after gather write completion.
+    void finish_gather_output ();
+
     //  Unplug the engine from the session.
     void unplug ();
 
@@ -279,6 +293,12 @@ class asio_engine_t : public i_engine
     //  True if async write is in progress
     bool _write_pending;
     bool _async_zero_copy;
+    bool _async_gather;
+
+    unsigned char _gather_header[64];
+    size_t _gather_header_size;
+    const unsigned char *_gather_body;
+    size_t _gather_body_size;
 
     //  True if engine is being terminated (prevents callback processing)
     bool _terminating;

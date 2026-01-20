@@ -23,6 +23,9 @@ def resolve_linux_paths():
     libzmq_lib_dir = os.path.abspath(
         os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist", "lib")
     )
+    env_libzmq_dir = os.environ.get("BENCH_LIBZMQ_LIB_DIR")
+    if env_libzmq_dir:
+        libzmq_lib_dir = os.path.abspath(env_libzmq_dir)
     zlink_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build", "bench", "lib"))
     return build_dir, libzmq_lib_dir, zlink_lib_dir
 
@@ -58,6 +61,9 @@ def derive_zlink_lib_dir(build_dir):
 if IS_WINDOWS:
     BUILD_DIR = os.path.join("build", "windows-x64", "bin", "Release")
     LIBZMQ_LIB_DIR = os.path.abspath(os.path.join("benchwithzmq", "libzmq", "libzmq_dist", "bin"))
+    env_libzmq_dir = os.environ.get("BENCH_LIBZMQ_BIN_DIR")
+    if env_libzmq_dir:
+        LIBZMQ_LIB_DIR = os.path.abspath(env_libzmq_dir)
     ZLINK_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "bin", "Release"))
 else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()

@@ -9,6 +9,7 @@
 #endif
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
+#include "../v2_protocol.hpp"
 #include "../v2_decoder.hpp"
 #include "../v3_1_encoder.hpp"
 #include "../null_mechanism.hpp"
@@ -21,6 +22,7 @@
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
 #endif
+#include <limits.h>
 
 // Debug logging for ASIO ZMTP engine - set to 1 to enable
 #define ASIO_ZMTP_ENGINE_DEBUG 0
@@ -264,7 +266,8 @@ bool zmq::asio_zmtp_engine_t::handshake_v3_1 ()
     alloc_assert (_encoder);
 
     _decoder = new (std::nothrow)
-      v2_decoder_t (_options.in_batch_size, _options.maxmsgsize, true);
+      v2_decoder_t (_options.in_batch_size, _options.maxmsgsize,
+                    _options.zero_copy);
     alloc_assert (_decoder);
 
     return zmq::asio_zmtp_engine_t::handshake_v3_x ();
@@ -381,6 +384,64 @@ int zmq::asio_zmtp_engine_t::process_heartbeat_message (msg_t *msg_)
     }
 
     return 0;
+}
+
+bool zmq::asio_zmtp_engine_t::build_gather_header (const msg_t &msg_,
+                                                   unsigned char *buffer_,
+                                                   size_t buffer_size_,
+                                                   size_t &header_size_)
+{
+    size_t payload_size = msg_.size ();
+    size_t size = payload_size;
+    size_t header_size = 2; // flags byte + size byte
+
+    if (buffer_size_ < header_size)
+        return false;
+
+    unsigned char protocol_flags = 0;
+    if (msg_.flags () & msg_t::more)
+        protocol_flags |= v2_protocol_t::more_flag;
+
+    const bool is_command =
+      (msg_.flags () & msg_t::command) != 0 || msg_.is_subscribe ()
+      || msg_.is_cancel ();
+    if (is_command) {
+        protocol_flags |= v2_protocol_t::command_flag;
+        if (msg_.is_subscribe ())
+            size += msg_t::sub_cmd_name_size;
+        else if (msg_.is_cancel ())
+            size += msg_t::cancel_cmd_name_size;
+    }
+
+    if (size > UCHAR_MAX)
+        protocol_flags |= v2_protocol_t::large_flag;
+
+    buffer_[0] = protocol_flags;
+    if (size > UCHAR_MAX) {
+        if (buffer_size_ < 9)
+            return false;
+        put_uint64 (buffer_ + 1, size);
+        header_size = 9;
+    } else {
+        buffer_[1] = static_cast<uint8_t> (size);
+    }
+
+    if (msg_.is_subscribe ()) {
+        if (buffer_size_ < header_size + msg_t::sub_cmd_name_size)
+            return false;
+        memcpy (buffer_ + header_size, zmq::sub_cmd_name,
+                zmq::msg_t::sub_cmd_name_size);
+        header_size += msg_t::sub_cmd_name_size;
+    } else if (msg_.is_cancel ()) {
+        if (buffer_size_ < header_size + msg_t::cancel_cmd_name_size)
+            return false;
+        memcpy (buffer_ + header_size, zmq::cancel_cmd_name,
+                zmq::msg_t::cancel_cmd_name_size);
+        header_size += msg_t::cancel_cmd_name_size;
+    }
+
+    header_size_ = header_size;
+    return true;
 }
 
 int zmq::asio_zmtp_engine_t::process_command_message (msg_t *msg_)

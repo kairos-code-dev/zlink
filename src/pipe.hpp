@@ -77,7 +77,6 @@ class pipe_t ZMQ_FINAL : public object_t,
     //  closed or if writing the message would cause high watermark the
     //  function returns false.
     bool check_write ();
-    bool check_write (bool *pipe_full_);
 
     //  Writes a message to the underlying pipe. Returns false if the
     //  message does not pass check_write. If false, the message object

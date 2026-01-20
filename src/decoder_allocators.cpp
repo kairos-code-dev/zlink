@@ -54,7 +54,7 @@ unsigned char *zmq::shared_message_memory_allocator::allocate ()
           _max_size + sizeof (zmq::atomic_counter_t)
           + _max_counters * sizeof (zmq::msg_t::content_t);
 
-        _buf = static_cast<unsigned char *> (alloc (allocationsize));
+        _buf = static_cast<unsigned char *> (std::malloc (allocationsize));
         alloc_assert (_buf);
 
         new (_buf) atomic_counter_t (1);
@@ -76,7 +76,7 @@ void zmq::shared_message_memory_allocator::deallocate ()
     zmq::atomic_counter_t *c = reinterpret_cast<zmq::atomic_counter_t *> (_buf);
     if (_buf && !c->sub (1)) {
         c->~atomic_counter_t ();
-        dealloc (_buf);
+        std::free (_buf);
     }
     clear ();
 }
@@ -108,7 +108,7 @@ void zmq::shared_message_memory_allocator::call_dec_ref (void *, void *hint_)
 
     if (!c->sub (1)) {
         c->~atomic_counter_t ();
-        dealloc (buf);
+        std::free (buf);
         buf = NULL;
     }
 }

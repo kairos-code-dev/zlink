@@ -37,3 +37,6 @@
 
 ## Communication
 - Address the user as "팀장님".
+
+## External References
+- libzmq reference source: `/home/ulalax/project/ulalax/libzmq-ref`

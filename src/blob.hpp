@@ -14,7 +14,7 @@
 #if __cplusplus >= 201103L || defined(_MSC_VER) && _MSC_VER > 1700
 #define ZMQ_HAS_MOVE_SEMANTICS
 #define ZMQ_MAP_INSERT_OR_EMPLACE(k, v) emplace (k, v)
-#define ZMQ_LIST_APPEND emplace_back
+#define ZMQ_PUSH_OR_EMPLACE_BACK emplace_back
 #define ZMQ_MOVE(x) std::move (x)
 #else
 #if defined __SUNPRO_CC
@@ -29,7 +29,7 @@ std::pair<const K, V> make_pair_fix_const (const K &k, const V &v)
 #define ZMQ_MAP_INSERT_OR_EMPLACE(k, v) insert (std::make_pair (k, v))
 #endif
 
-#define ZMQ_LIST_APPEND push_back
+#define ZMQ_PUSH_OR_EMPLACE_BACK push_back
 #define ZMQ_MOVE(x) (x)
 #endif
 

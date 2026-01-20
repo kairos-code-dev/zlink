@@ -81,10 +81,6 @@ class router_t : public routing_socket_base_t
     //  If true, more outgoing message parts are expected.
     bool _more_out;
 
-    //  Cache the last routing ID to avoid repeated map lookups.
-    zmq::pipe_t *_last_out_pipe;
-    blob_t _last_routing_id;
-
     //  Routing IDs are generated. It's a simple increment and wrap-over
     //  algorithm. This value is the next ID to use (if not used already).
     uint32_t _next_integral_routing_id;

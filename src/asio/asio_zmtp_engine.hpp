@@ -70,6 +70,10 @@ class asio_zmtp_engine_t ZMQ_FINAL : public asio_engine_t
     int produce_ping_message (msg_t *msg_) ZMQ_OVERRIDE;
     int process_heartbeat_message (msg_t *msg_) ZMQ_OVERRIDE;
     int produce_pong_message (msg_t *msg_) ZMQ_OVERRIDE;
+    bool build_gather_header (const msg_t &msg_,
+                              unsigned char *buffer_,
+                              size_t buffer_size_,
+                              size_t &header_size_) ZMQ_OVERRIDE;
 
   private:
     //  Receive the greeting from the peer.

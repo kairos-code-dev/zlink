@@ -7,7 +7,13 @@
 
 #include "../err.hpp"
 #include <atomic>
+#include <algorithm>
+#include <boost/array.hpp>
 #include <cstdlib>
+#ifndef ZMQ_HAVE_WINDOWS
+#include <sys/uio.h>
+#include <unistd.h>
+#endif
 
 namespace zmq
 {
@@ -54,6 +60,36 @@ bool ipc_allow_sync_write ()
     static int enabled = -1;
     if (enabled == -1) {
         const char *env = std::getenv ("ZMQ_ASIO_IPC_SYNC_WRITE");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
+}
+
+bool ipc_use_async_write_some ()
+{
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char *env = std::getenv ("ZMQ_ASIO_IPC_ASYNC_WRITE_SOME");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
+}
+
+bool ipc_writev_single_shot ()
+{
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_SINGLE_SHOT");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
+}
+
+bool ipc_use_asio_writev ()
+{
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_USE_ASIO");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -115,6 +151,16 @@ bool ipc_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     boost::asio::local::stream_protocol protocol;
     boost::system::error_code ec;
     _socket->assign (protocol, fd, ec);
+    if (ec) {
+        const int tmp_errno = ec.value ();
+        errno = tmp_errno;
+        _socket.reset ();
+        return false;
+    }
+
+    //  The fd is already set to non-blocking; inform Asio to avoid blocking
+    //  synchronous write_some/read_some paths.
+    _socket->native_non_blocking (true, ec);
     if (ec) {
         const int tmp_errno = ec.value ();
         errno = tmp_errno;
@@ -234,8 +280,7 @@ void ipc_transport_t::async_write_some (
 
     if (_socket) {
         if (ipc_stats_enabled ()) {
-            boost::asio::async_write (
-              *_socket, boost::asio::buffer (buffer, buffer_size),
+            const auto stats_handler =
               [handler](const boost::system::error_code &ec,
                         std::size_t bytes) {
                   if (ec)
@@ -244,14 +289,222 @@ void ipc_transport_t::async_write_some (
                       ipc_async_write_bytes += bytes;
                   if (handler)
                       handler (ec, bytes);
-              });
+              };
+            if (ipc_use_async_write_some ()) {
+                _socket->async_write_some (
+                  boost::asio::buffer (buffer, buffer_size), stats_handler);
+            } else {
+                boost::asio::async_write (
+                  *_socket, boost::asio::buffer (buffer, buffer_size),
+                  stats_handler);
+            }
         } else {
-            boost::asio::async_write (
-              *_socket, boost::asio::buffer (buffer, buffer_size), handler);
+            if (ipc_use_async_write_some ()) {
+                _socket->async_write_some (
+                  boost::asio::buffer (buffer, buffer_size), handler);
+            } else {
+                boost::asio::async_write (
+                  *_socket, boost::asio::buffer (buffer, buffer_size), handler);
+            }
         }
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
     }
+}
+
+void ipc_transport_t::async_writev (const unsigned char *header,
+                                    std::size_t header_size,
+                                    const unsigned char *body,
+                                    std::size_t body_size,
+                                    completion_handler_t handler)
+{
+    if (ipc_stats_enabled ()) {
+        ipc_stats_maybe_register ();
+        ++ipc_async_write_calls;
+    }
+
+    if (!_socket) {
+        if (handler)
+            handler (boost::asio::error::bad_descriptor, 0);
+        return;
+    }
+
+    if (body_size == 0) {
+        async_write_some (header, header_size, handler);
+        return;
+    }
+
+    if (header_size == 0) {
+        async_write_some (body, body_size, handler);
+        return;
+    }
+
+#if defined(ZMQ_HAVE_WINDOWS)
+    if (ipc_stats_enabled ()) {
+        const auto stats_handler =
+          [handler](const boost::system::error_code &ec, std::size_t bytes) {
+              if (ec)
+                  ++ipc_async_write_errors;
+              else
+                  ipc_async_write_bytes += bytes;
+              if (handler)
+                  handler (ec, bytes);
+          };
+        boost::array<boost::asio::const_buffer, 2> buffers = {
+          boost::asio::buffer (header, header_size),
+          boost::asio::buffer (body, body_size)};
+        boost::asio::async_write (*_socket, buffers, stats_handler);
+    } else {
+        boost::array<boost::asio::const_buffer, 2> buffers = {
+          boost::asio::buffer (header, header_size),
+          boost::asio::buffer (body, body_size)};
+        boost::asio::async_write (*_socket, buffers, handler);
+    }
+#else
+    if (ipc_use_asio_writev ()) {
+        if (ipc_stats_enabled ()) {
+            const auto stats_handler =
+              [handler](const boost::system::error_code &ec, std::size_t bytes) {
+                  if (ec)
+                      ++ipc_async_write_errors;
+                  else
+                      ipc_async_write_bytes += bytes;
+                  if (handler)
+                      handler (ec, bytes);
+              };
+            boost::array<boost::asio::const_buffer, 2> buffers = {
+              boost::asio::buffer (header, header_size),
+              boost::asio::buffer (body, body_size)};
+            boost::asio::async_write (*_socket, buffers, stats_handler);
+        } else {
+            boost::array<boost::asio::const_buffer, 2> buffers = {
+              boost::asio::buffer (header, header_size),
+              boost::asio::buffer (body, body_size)};
+            boost::asio::async_write (*_socket, buffers, handler);
+        }
+        return;
+    }
+
+    struct writev_state_t
+    {
+        const unsigned char *header;
+        size_t header_size;
+        size_t header_sent;
+        const unsigned char *body;
+        size_t body_size;
+        size_t body_sent;
+        completion_handler_t handler;
+    };
+
+    const std::shared_ptr<writev_state_t> state (
+      new writev_state_t{header, header_size, 0, body, body_size, 0, handler});
+
+    const std::shared_ptr<std::function<void (const boost::system::error_code &)> >
+      do_write (new std::function<void (const boost::system::error_code &)>);
+
+    *do_write = [this, state, do_write](const boost::system::error_code &ec) {
+        if (ec) {
+            if (ipc_stats_enabled ())
+                ++ipc_async_write_errors;
+            if (state->handler)
+                state->handler (ec, state->header_sent + state->body_sent);
+            return;
+        }
+
+        if (!_socket || !_socket->is_open ()) {
+            if (state->handler)
+                state->handler (boost::asio::error::bad_descriptor,
+                                state->header_sent + state->body_sent);
+            return;
+        }
+
+        for (;;) {
+            const size_t header_left = state->header_size - state->header_sent;
+            const size_t body_left = state->body_size - state->body_sent;
+            if (header_left == 0 && body_left == 0) {
+                if (ipc_stats_enabled ())
+                    ipc_async_write_bytes +=
+                      (state->header_size + state->body_size);
+                if (state->handler)
+                    state->handler (boost::system::error_code (),
+                                    state->header_size + state->body_size);
+                return;
+            }
+
+            struct iovec iov[2];
+            int iovcnt = 0;
+            if (header_left > 0) {
+                iov[iovcnt].iov_base =
+                  const_cast<unsigned char *> (state->header + state->header_sent);
+                iov[iovcnt].iov_len = header_left;
+                ++iovcnt;
+            }
+            if (body_left > 0) {
+                iov[iovcnt].iov_base =
+                  const_cast<unsigned char *> (state->body + state->body_sent);
+                iov[iovcnt].iov_len = body_left;
+                ++iovcnt;
+            }
+
+            const ssize_t rc =
+              ::writev (_socket->native_handle (), iov, iovcnt);
+            if (rc > 0) {
+                size_t remaining = static_cast<size_t> (rc);
+                if (header_left > 0) {
+                    const size_t adv = std::min (header_left, remaining);
+                    state->header_sent += adv;
+                    remaining -= adv;
+                }
+                if (remaining > 0 && body_left > 0) {
+                    state->body_sent += remaining;
+                }
+                if (ipc_writev_single_shot ()) {
+                    const size_t left =
+                      (state->header_size - state->header_sent)
+                      + (state->body_size - state->body_sent);
+                    if (left == 0) {
+                        if (ipc_stats_enabled ())
+                            ipc_async_write_bytes +=
+                              (state->header_size + state->body_size);
+                        if (state->handler)
+                            state->handler (boost::system::error_code (),
+                                            state->header_size
+                                              + state->body_size);
+                        return;
+                    }
+                    _socket->async_wait (
+                      boost::asio::socket_base::wait_write,
+                      [do_write](const boost::system::error_code &wec) {
+                          (*do_write)(wec);
+                      });
+                    return;
+                }
+                continue;
+            }
+            if (rc == -1 && errno == EINTR)
+                continue;
+            if (rc == -1
+                && (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)) {
+                _socket->async_wait (
+                  boost::asio::socket_base::wait_write,
+                  [do_write](const boost::system::error_code &wec) {
+                      (*do_write)(wec);
+                  });
+                return;
+            }
+
+            boost::system::error_code werr (errno,
+                                            boost::system::system_category ());
+            if (ipc_stats_enabled ())
+                ++ipc_async_write_errors;
+            if (state->handler)
+                state->handler (werr, state->header_sent + state->body_sent);
+            return;
+        }
+    };
+
+    (*do_write)(boost::system::error_code ());
+#endif
 }
 
 std::size_t ipc_transport_t::write_some (const std::uint8_t *data,

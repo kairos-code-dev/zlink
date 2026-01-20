@@ -208,6 +208,9 @@ struct options_t
     //  unnecessary network stack traversals.
     int out_batch_size;
 
+    // Use zero copy strategy for storing message content when decoding.
+    bool zero_copy;
+
     // Version of monitor events to emit
     int monitor_event_version;
 

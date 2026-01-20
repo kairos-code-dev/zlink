@@ -20,7 +20,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     zmq_setsockopt(router1, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
     zmq_setsockopt(router2, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
-    // Match zlink bench: avoid deadlock on some transports by raising HWM.
+    // Set very high HWM for benchmarking (default 1000 causes deadlock with IPC)
     int hwm = 1000000;
     zmq_setsockopt(router1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(router1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
@@ -40,6 +40,8 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
         zmq_ctx_term(ctx);
         return;
     }
+    apply_debug_timeouts(router1, transport);
+    apply_debug_timeouts(router2, transport);
     settle();
 
     // --- HANDSHAKE PHASE (Crucial for Router-Router) ---
@@ -51,25 +53,30 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     // R2 tries to ping R1 until success
     while (!connected) {
         // Try sending PING from R2 to R1
-        zmq_send(router2, "ROUTER1", 7, ZMQ_SNDMORE | ZMQ_DONTWAIT);
-        int rc = zmq_send(router2, "PING", 4, ZMQ_DONTWAIT);
-        
+        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE | ZMQ_DONTWAIT,
+                        "handshake send id");
+        int rc = bench_send_fast(router2, "PING", 4, ZMQ_DONTWAIT,
+                                 "handshake send ping");
+
         if (rc == 4) {
             // Check if R1 received it
-            int len = zmq_recv(router1, buf, 16, ZMQ_DONTWAIT);
+            int len = bench_recv_fast(router1, buf, 16, ZMQ_DONTWAIT,
+                                      "handshake recv id");
             if (len > 0) { // Received ID
-                zmq_recv(router1, buf, 16, 0); // Receive "PING"
+                bench_recv_fast(router1, buf, 16, 0,
+                                "handshake recv ping"); // Receive "PING"
                 connected = true;
             }
         }
         if (!connected) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     // Reply PONG to complete handshake
-    zmq_send(router1, "ROUTER2", 7, ZMQ_SNDMORE);
-    zmq_send(router1, "PONG", 4, 0);
-    
-    zmq_recv(router2, buf, 16, 0); // ID
-    zmq_recv(router2, buf, 16, 0); // PONG
+    bench_send_fast(router1, "ROUTER2", 7, ZMQ_SNDMORE,
+                    "handshake send id back");
+    bench_send_fast(router1, "PONG", 4, 0, "handshake send pong");
+
+    bench_recv_fast(router2, buf, 16, 0, "handshake recv id"); // ID
+    bench_recv_fast(router2, buf, 16, 0, "handshake recv pong"); // PONG
 
     // --- BENCHMARK PHASE ---
     std::vector<char> buffer(msg_size, 'a');
@@ -78,24 +85,28 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     stopwatch_t sw;
 
     // Latency Test (1,000 roundtrips)
-    int lat_count = 1000;
+    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
         // R2 -> R1
-        zmq_send(router2, "ROUTER1", 7, ZMQ_SNDMORE);
-        zmq_send(router2, buffer.data(), msg_size, 0);
-        
+        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE, "lat send id");
+        bench_send_fast(router2, buffer.data(), msg_size, 0, "lat send data");
+
         // R1 Recv
-        int id_len = zmq_recv(router1, id, 256, 0); 
-        zmq_recv(router1, recv_buf.data(), msg_size, 0);
-        
+        int id_len =
+          bench_recv_fast(router1, id, 256, 0, "lat recv id");
+        bench_recv_fast(router1, recv_buf.data(), msg_size, 0, "lat recv data");
+
         // R1 -> R2 (Reply)
-        zmq_send(router1, id, id_len, ZMQ_SNDMORE);
-        zmq_send(router1, buffer.data(), msg_size, 0);
-        
+        bench_send_fast(router1, id, id_len, ZMQ_SNDMORE,
+                        "lat send id back");
+        bench_send_fast(router1, buffer.data(), msg_size, 0,
+                        "lat send data back");
+
         // R2 Recv
-        zmq_recv(router2, id, 256, 0);
-        zmq_recv(router2, recv_buf.data(), msg_size, 0);
+        bench_recv_fast(router2, id, 256, 0, "lat recv id back");
+        bench_recv_fast(router2, recv_buf.data(), msg_size, 0,
+                        "lat recv data back");
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
@@ -103,8 +114,9 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     std::thread receiver([&]() {
         char id_inner[256];
         for (int i = 0; i < msg_count; ++i) {
-            zmq_recv(router1, id_inner, 256, 0);
-            zmq_recv(router1, recv_buf.data(), msg_size, 0);
+            bench_recv_fast(router1, id_inner, 256, 0, "thr recv id");
+            bench_recv_fast(router1, recv_buf.data(), msg_size, 0,
+                            "thr recv data");
         }
     });
 
@@ -112,8 +124,8 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     for (int i = 0; i < msg_count; ++i) {
         // We use zmq_send_const if available for zero-copy like behavior on send,
         // but here standard send is fine.
-        zmq_send(router2, "ROUTER1", 7, ZMQ_SNDMORE);
-        zmq_send(router2, buffer.data(), msg_size, 0);
+        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE, "thr send id");
+        bench_send_fast(router2, buffer.data(), msg_size, 0, "thr send data");
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);

@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "macros.hpp"
+#include "zmq_draft.h"
 
 #if defined ZMQ_HAVE_WINDOWS
 #if defined _MSC_VER
@@ -176,6 +177,7 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZMQ_IPV6) != 0);
     options.linger.store (parent_->get (ZMQ_BLOCKY) ? -1 : 0);
+    options.zero_copy = parent_->get (ZMQ_ZERO_COPY_RECV) != 0;
 
     if (_thread_safe) {
         _mailbox = new (std::nothrow) mailbox_safe_t (&_sync);

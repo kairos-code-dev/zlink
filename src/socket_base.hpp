@@ -5,13 +5,11 @@
 
 #include <string>
 #include <map>
-#include <unordered_map>
 #include <stdarg.h>
 
 #include "own.hpp"
 #include "array.hpp"
 #include "blob.hpp"
-#include "blob_hash.hpp"
 #include "stdint.hpp"
 #include "poller.hpp"
 #include "i_poll_events.hpp"
@@ -375,10 +373,7 @@ class routing_socket_base_t : public socket_base_t
 
   private:
     //  Outbound pipes indexed by the peer IDs.
-    //  Using unordered_map with FNV-1a hash for O(1) average lookup
-    //  instead of std::map's O(log n). This significantly improves
-    //  ROUTER pattern performance with many connected peers.
-    typedef std::unordered_map<blob_t, out_pipe_t, blob_hash, blob_equal> out_pipes_t;
+    typedef std::map<blob_t, out_pipe_t> out_pipes_t;
     out_pipes_t _out_pipes;
 
     // Next assigned name on a zmq_connect() call used by ROUTER and STREAM socket types

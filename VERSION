@@ -1,10 +1,10 @@
 # zlink - libzmq 4.3.5 Simplified Build
 
 LIBZMQ_VERSION=4.3.5
-ZLINK_VERSION=0.2.0
+ZLINK_VERSION=0.4.0
 
 # Release Date
-RELEASE_DATE=2026-01-13
+RELEASE_DATE=2026-01-22
 
 # Build Information
 # - ASIO backend with Boost.Asio (bundled)

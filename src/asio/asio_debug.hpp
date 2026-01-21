@@ -35,7 +35,7 @@
 
 //  Component-specific macros
 #define ASIO_DBG_ENGINE(fmt, ...) ASIO_DBG_THIS ("ENGINE", fmt, ##__VA_ARGS__)
-#define ASIO_DBG_ZMTP(fmt, ...) ASIO_DBG_THIS ("ZMTP", fmt, ##__VA_ARGS__)
+#define ASIO_DBG_ZMP(fmt, ...) ASIO_DBG_THIS ("ZMP", fmt, ##__VA_ARGS__)
 #define ASIO_DBG_POLLER(fmt, ...) ASIO_DBG_THIS ("POLLER", fmt, ##__VA_ARGS__)
 #define ASIO_DBG_CONN(fmt, ...) ASIO_DBG_THIS ("CONN", fmt, ##__VA_ARGS__)
 #define ASIO_DBG_LISTENER(fmt, ...) ASIO_DBG_THIS ("LISTENER", fmt, ##__VA_ARGS__)

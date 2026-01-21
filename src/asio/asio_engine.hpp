@@ -26,7 +26,6 @@ namespace zmq
 {
 class io_thread_t;
 class session_base_t;
-class mechanism_t;
 class i_asio_transport;
 
 //  True Proactor Mode ASIO Engine
@@ -36,7 +35,7 @@ class i_asio_transport;
 //  (async_wait for readiness) used by asio_poller.
 //
 //  The engine manages read/write buffers internally and handles
-//  completion callbacks to drive the ZMTP protocol.
+//  completion callbacks to drive the ZMP protocol.
 
 class asio_engine_t : public i_engine
 {
@@ -55,7 +54,6 @@ class asio_engine_t : public i_engine
     void terminate () ZMQ_OVERRIDE;
     bool restart_input () ZMQ_OVERRIDE;
     void restart_output () ZMQ_OVERRIDE;
-    void zap_msg_available () ZMQ_OVERRIDE;
     const endpoint_uri_pair_t &get_endpoint () const ZMQ_OVERRIDE;
 
   protected:
@@ -65,13 +63,9 @@ class asio_engine_t : public i_engine
     //  Function to handle network disconnections.
     virtual void error (error_reason_t reason_);
 
-    int next_handshake_command (msg_t *msg_);
-    int process_handshake_command (msg_t *msg_);
-
     int pull_msg_from_session (msg_t *msg_);
     int push_msg_to_session (msg_t *msg_);
 
-    int pull_and_encode (msg_t *msg_);
     virtual int decode_and_push (msg_t *msg_);
     int push_one_then_decode_and_push (msg_t *msg_);
 
@@ -153,8 +147,6 @@ class asio_engine_t : public i_engine
     size_t _outsize;
     i_encoder *_encoder;
 
-    mechanism_t *_mechanism;
-
     int (asio_engine_t::*_next_msg) (msg_t *msg_);
     int (asio_engine_t::*_process_msg) (msg_t *msg_);
 
@@ -234,10 +226,6 @@ class asio_engine_t : public i_engine
 
     //  Unplug the engine from the session.
     void unplug ();
-
-    int write_credential (msg_t *msg_);
-
-    void mechanism_ready ();
 
     //  Pointer to io_context (set during plug())
     boost::asio::io_context *_io_context;

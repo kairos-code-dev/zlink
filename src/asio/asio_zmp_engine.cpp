@@ -394,7 +394,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_HELLO);
+          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -404,7 +404,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_HELLO);
+          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -415,7 +415,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_HELLO);
+          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }

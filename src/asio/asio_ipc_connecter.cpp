@@ -5,7 +5,6 @@
 
 #include "asio_ipc_connecter.hpp"
 #include "asio_poller.hpp"
-#include "asio_zmtp_engine.hpp"
 #include "asio_zmp_engine.hpp"
 #include "ipc_transport.hpp"
 #include "../address.hpp"
@@ -15,7 +14,6 @@
 #include "../ip.hpp"
 #include "../random.hpp"
 #include "../session_base.hpp"
-#include "../zmp_protocol.hpp"
 
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -291,14 +289,9 @@ void zmq::asio_ipc_connecter_t::create_engine (fd_t fd_,
       new (std::nothrow) ipc_transport_t ());
     alloc_assert (transport.get ());
 
-    i_engine *engine = NULL;
-    if (zmp_protocol_enabled ()) {
-        engine = new (std::nothrow) asio_zmp_engine_t (
-          fd_, options, endpoint_pair, std::move (transport));
-    } else {
-        engine = new (std::nothrow) asio_zmtp_engine_t (
-          fd_, options, endpoint_pair, std::move (transport));
-    }
+    i_engine *engine =
+      new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair,
+                                            std::move (transport));
     alloc_assert (engine);
 
     send_attach (_session, engine);

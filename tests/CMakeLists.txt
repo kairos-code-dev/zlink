@@ -44,7 +44,6 @@ set(tests
   test_socket_null
   test_reconnect_ivl
   test_reconnect_options
-  test_mock_pub_sub
   test_pubsub_filter_xpub
   test_router_multiple_dealers
   test_transport_matrix)

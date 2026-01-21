@@ -566,9 +566,6 @@
     <ClInclude Include="..\..\..\..\src\timers.hpp">
       <Filter>src\include</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\src\zmq_draft.h">
-      <Filter>src\include</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="include">

@@ -14,6 +14,7 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 def resolve_linux_paths():
     """Return build/library paths for Linux/WSL environments."""
     possible_paths = [
+        os.path.join(ROOT_DIR, "build", "bin"),
         os.path.join(ROOT_DIR, "build", "bench", "bin"),
         os.path.join(ROOT_DIR, "build", "linux-x64", "bin"),
         os.path.join(ROOT_DIR, "build", "benchwithzmq"),
@@ -37,10 +38,11 @@ def normalize_build_dir(path):
         bin_dir = os.path.join(abs_path, "bin")
         release_dir = os.path.join(bin_dir, "Release")
         debug_dir = os.path.join(bin_dir, "Debug")
-        if os.path.exists(os.path.join(abs_path, "comp_zlink_pair" + EXE_SUFFIX)):
-            return abs_path
+        # Check bin dir first on Linux
         if os.path.exists(os.path.join(bin_dir, "comp_zlink_pair" + EXE_SUFFIX)):
             return bin_dir
+        if os.path.exists(os.path.join(abs_path, "comp_zlink_pair" + EXE_SUFFIX)):
+            return abs_path
         if os.path.exists(os.path.join(release_dir, "comp_zlink_pair" + EXE_SUFFIX)):
             return release_dir
         if os.path.exists(os.path.join(debug_dir, "comp_zlink_pair" + EXE_SUFFIX)):
@@ -250,11 +252,13 @@ def parse_args():
 
 def main():
     p_req, refresh, num_runs, build_dir, zlink_only = parse_args()
+    global BUILD_DIR, ZLINK_LIB_DIR
     if build_dir:
-        build_dir = normalize_build_dir(build_dir)
-        global BUILD_DIR, ZLINK_LIB_DIR
-        BUILD_DIR = build_dir
-        ZLINK_LIB_DIR = derive_zlink_lib_dir(build_dir)
+        BUILD_DIR = normalize_build_dir(build_dir)
+    else:
+        BUILD_DIR = normalize_build_dir(BUILD_DIR)
+    
+    ZLINK_LIB_DIR = derive_zlink_lib_dir(BUILD_DIR)
     
     # Check if any target binary exists
     check_bin = os.path.join(BUILD_DIR, "comp_zlink_pair" + EXE_SUFFIX)

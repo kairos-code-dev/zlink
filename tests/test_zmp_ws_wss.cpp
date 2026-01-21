@@ -9,23 +9,9 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-namespace
-{
-void set_zlink_protocol_zmp ()
-{
-#if defined ZMQ_HAVE_WINDOWS
-    TEST_ASSERT_EQUAL_INT (0, _putenv_s ("ZLINK_PROTOCOL", "zmp"));
-#else
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (setenv ("ZLINK_PROTOCOL", "zmp", 1));
-#endif
-}
-}
-
 #if defined ZMQ_HAVE_WS
 void test_zmp_ws_pair_message ()
 {
-    set_zlink_protocol_zmp ();
-
     void *server = test_context_socket (ZMQ_PAIR);
     void *client = test_context_socket (ZMQ_PAIR);
     TEST_ASSERT_NOT_NULL (server);
@@ -56,8 +42,6 @@ void test_zmp_ws_pair_message ()
 #if defined ZMQ_HAVE_WSS
 void test_zmp_wss_pair_message ()
 {
-    set_zlink_protocol_zmp ();
-
     const tls_test_files_t files = make_tls_test_files ();
 
     void *server = test_context_socket (ZMQ_PAIR);

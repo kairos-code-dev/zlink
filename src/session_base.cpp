@@ -59,7 +59,6 @@ zmq::session_base_t::session_base_t (class io_thread_t *io_thread_,
     io_object_t (io_thread_),
     _active (active_),
     _pipe (NULL),
-    _zap_pipe (NULL),
     _incomplete_in (false),
     _pending (false),
     _engine (NULL),
@@ -78,7 +77,6 @@ const zmq::endpoint_uri_pair_t &zmq::session_base_t::get_endpoint () const
 zmq::session_base_t::~session_base_t ()
 {
     zmq_assert (!_pipe);
-    zmq_assert (!_zap_pipe);
 
     //  If there's still a pending linger timer, remove it.
     if (_has_linger_timer) {
@@ -130,36 +128,6 @@ int zmq::session_base_t::push_msg (msg_t *msg_)
     return -1;
 }
 
-int zmq::session_base_t::read_zap_msg (msg_t *msg_)
-{
-    if (_zap_pipe == NULL) {
-        errno = ENOTCONN;
-        return -1;
-    }
-
-    if (!_zap_pipe->read (msg_)) {
-        errno = EAGAIN;
-        return -1;
-    }
-
-    return 0;
-}
-
-int zmq::session_base_t::write_zap_msg (msg_t *msg_)
-{
-    if (_zap_pipe == NULL || !_zap_pipe->write (msg_)) {
-        errno = ENOTCONN;
-        return -1;
-    }
-
-    if ((msg_->flags () & msg_t::more) == 0)
-        _zap_pipe->flush ();
-
-    const int rc = msg_->init ();
-    errno_assert (rc == 0);
-    return 0;
-}
-
 void zmq::session_base_t::reset ()
 {
 }
@@ -200,8 +168,7 @@ void zmq::session_base_t::clean_pipes ()
 void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
 {
     // Drop the reference to the deallocated pipe if required.
-    zmq_assert (pipe_ == _pipe || pipe_ == _zap_pipe
-                || _terminating_pipes.count (pipe_) == 1);
+    zmq_assert (pipe_ == _pipe || _terminating_pipes.count (pipe_) == 1);
 
     if (pipe_ == _pipe) {
         // If this is our current pipe, remove it
@@ -210,9 +177,7 @@ void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
             cancel_timer (linger_timer_id);
             _has_linger_timer = false;
         }
-    } else if (pipe_ == _zap_pipe)
-        _zap_pipe = NULL;
-    else
+    } else
         // Remove the pipe from the detached pipes set
         _terminating_pipes.erase (pipe_);
 
@@ -221,7 +186,7 @@ void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
     //  If we are waiting for pending messages to be sent, at this point
     //  we are sure that there will be no more messages and we can proceed
     //  with termination safely.
-    if (_pending && !_pipe && !_zap_pipe && _terminating_pipes.empty ()) {
+    if (_pending && !_pipe && _terminating_pipes.empty ()) {
         _pending = false;
         own_t::process_term (0);
     }
@@ -230,7 +195,7 @@ void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
 void zmq::session_base_t::read_activated (pipe_t *pipe_)
 {
     // Skip activating if we're detaching this pipe
-    if (unlikely (pipe_ != _pipe && pipe_ != _zap_pipe)) {
+    if (unlikely (pipe_ != _pipe)) {
         zmq_assert (_terminating_pipes.count (pipe_) == 1);
         return;
     }
@@ -241,12 +206,7 @@ void zmq::session_base_t::read_activated (pipe_t *pipe_)
         return;
     }
 
-    if (likely (pipe_ == _pipe))
-        _engine->restart_output ();
-    else {
-        // i.e. pipe_ == zap_pipe
-        _engine->zap_msg_available ();
-    }
+    _engine->restart_output ();
 }
 
 void zmq::session_base_t::write_activated (pipe_t *pipe_)
@@ -277,59 +237,6 @@ void zmq::session_base_t::process_plug ()
 {
     if (_active)
         start_connecting (false);
-}
-
-//  This functions can return 0 on success or -1 and errno=ECONNREFUSED if ZAP
-//  is not setup (IE: inproc://zeromq.zap.01 does not exist in the same context)
-//  or it aborts on any other error. In other words, either ZAP is not
-//  configured or if it is configured it MUST be configured correctly and it
-//  MUST work, otherwise authentication cannot be guaranteed and it would be a
-//  security flaw.
-int zmq::session_base_t::zap_connect ()
-{
-    if (_zap_pipe != NULL)
-        return 0;
-
-    endpoint_t peer = find_endpoint ("inproc://zeromq.zap.01");
-    if (peer.socket == NULL) {
-        errno = ECONNREFUSED;
-        return -1;
-    }
-    zmq_assert (peer.options.type == ZMQ_ROUTER);
-
-    //  Create a bi-directional pipe that will connect
-    //  session with zap socket.
-    object_t *parents[2] = {this, peer.socket};
-    pipe_t *new_pipes[2] = {NULL, NULL};
-    int hwms[2] = {0, 0};
-    bool conflates[2] = {false, false};
-    int rc = pipepair (parents, new_pipes, hwms, conflates);
-    errno_assert (rc == 0);
-
-    //  Attach local end of the pipe to this socket object.
-    _zap_pipe = new_pipes[0];
-    _zap_pipe->set_nodelay ();
-    _zap_pipe->set_event_sink (this);
-
-    send_bind (peer.socket, new_pipes[1], false);
-
-    //  Send empty routing id if required by the peer.
-    if (peer.options.recv_routing_id) {
-        msg_t id;
-        rc = id.init ();
-        errno_assert (rc == 0);
-        id.set_flags (msg_t::routing_id);
-        bool ok = _zap_pipe->write (&id);
-        zmq_assert (ok);
-        _zap_pipe->flush ();
-    }
-
-    return 0;
-}
-
-bool zmq::session_base_t::zap_enabled () const
-{
-    return (options.mechanism != ZMQ_NULL || !options.zap_domain.empty ());
 }
 
 void zmq::session_base_t::process_attach (i_engine *engine_)
@@ -418,8 +325,6 @@ void zmq::session_base_t::engine_error (bool handshaked_,
             if (_pending) {
                 if (_pipe)
                     _pipe->terminate (false);
-                if (_zap_pipe)
-                    _zap_pipe->terminate (false);
             } else {
                 terminate ();
             }
@@ -429,9 +334,6 @@ void zmq::session_base_t::engine_error (bool handshaked_,
     //  Just in case there's only a delimiter in the pipe.
     if (_pipe)
         _pipe->check_read ();
-
-    if (_zap_pipe)
-        _zap_pipe->check_read ();
 }
 
 void zmq::session_base_t::process_term (int linger_)
@@ -441,7 +343,7 @@ void zmq::session_base_t::process_term (int linger_)
     //  If the termination of the pipe happens before the term command is
     //  delivered there's nothing much to do. We can proceed with the
     //  standard termination immediately.
-    if (!_pipe && !_zap_pipe && _terminating_pipes.empty ()) {
+    if (!_pipe && _terminating_pipes.empty ()) {
         own_t::process_term (0);
         return;
     }
@@ -468,9 +370,6 @@ void zmq::session_base_t::process_term (int linger_)
         if (!_engine)
             _pipe->check_read ();
     }
-
-    if (_zap_pipe != NULL)
-        _zap_pipe->terminate (false);
 }
 
 void zmq::session_base_t::timer_event (int id_)
@@ -573,40 +472,4 @@ void zmq::session_base_t::start_connecting (bool wait_)
     }
 
     zmq_assert (false);
-}
-
-zmq::hello_msg_session_t::hello_msg_session_t (io_thread_t *io_thread_,
-                                               bool connect_,
-                                               socket_base_t *socket_,
-                                               const options_t &options_,
-                                               address_t *addr_) :
-    session_base_t (io_thread_, connect_, socket_, options_, addr_),
-    _new_pipe (true)
-{
-}
-
-zmq::hello_msg_session_t::~hello_msg_session_t ()
-{
-}
-
-
-int zmq::hello_msg_session_t::pull_msg (msg_t *msg_)
-{
-    if (_new_pipe) {
-        _new_pipe = false;
-
-        const int rc =
-          msg_->init_buffer (&options.hello_msg[0], options.hello_msg.size ());
-        errno_assert (rc == 0);
-
-        return 0;
-    }
-
-    return session_base_t::pull_msg (msg_);
-}
-
-void zmq::hello_msg_session_t::reset ()
-{
-    session_base_t::reset ();
-    _new_pipe = true;
 }

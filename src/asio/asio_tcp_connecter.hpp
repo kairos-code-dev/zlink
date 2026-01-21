@@ -21,7 +21,7 @@ class session_base_t;
 struct address_t;
 
 //  ASIO-based TCP connecter using async_connect for connection handling.
-//  Connections are handled using true proactor mode with asio_zmtp_engine.
+//  Connections are handled using true proactor mode with asio_zmp_engine.
 
 class asio_tcp_connecter_t ZMQ_FINAL : public own_t, public io_object_t
 {

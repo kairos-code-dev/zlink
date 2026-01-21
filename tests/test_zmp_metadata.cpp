@@ -18,15 +18,6 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
 {
-void set_zlink_protocol_zmp ()
-{
-#if defined ZMQ_HAVE_WINDOWS
-    TEST_ASSERT_EQUAL_INT (0, _putenv_s ("ZLINK_PROTOCOL", "zmp"));
-#else
-    TEST_ASSERT_SUCCESS_RAW_ERRNO (setenv ("ZLINK_PROTOCOL", "zmp", 1));
-#endif
-}
-
 void set_recv_timeout (fd_t fd_, int timeout_ms_)
 {
 #if defined ZMQ_HAVE_WINDOWS
@@ -166,8 +157,6 @@ bool read_zmp_frame (fd_t fd_,
 
 void test_zmp_metadata_enabled ()
 {
-    set_zlink_protocol_zmp ();
-
     void *server = test_context_socket (ZMQ_PAIR);
     void *client = test_context_socket (ZMQ_PAIR);
 
@@ -195,8 +184,6 @@ void test_zmp_metadata_enabled ()
 
 void test_zmp_metadata_disabled ()
 {
-    set_zlink_protocol_zmp ();
-
     void *server = test_context_socket (ZMQ_PAIR);
     void *client = test_context_socket (ZMQ_PAIR);
 
@@ -225,8 +212,6 @@ void test_zmp_metadata_disabled ()
 
 void test_zmp_error_invalid_hello ()
 {
-    set_zlink_protocol_zmp ();
-
     void *server = test_context_socket (ZMQ_PAIR);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -272,8 +257,6 @@ void test_zmp_error_invalid_hello ()
 
 void test_zmp_heartbeat_ttl_min ()
 {
-    set_zlink_protocol_zmp ();
-
     void *server = test_context_socket (ZMQ_PAIR);
     const int ttl_local_ms = 300;
     TEST_ASSERT_SUCCESS_ERRNO (

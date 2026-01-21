@@ -2,7 +2,6 @@
 
 #include "precompiled.hpp"
 #include "macros.hpp"
-#include "zmq_draft.h"
 #ifndef ZMQ_HAVE_WINDOWS
 #include <unistd.h>
 #endif
@@ -52,8 +51,7 @@ zmq::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZMQ_IO_THREADS_DFLT),
     _blocky (true),
-    _ipv6 (false),
-    _zero_copy (true)
+    _ipv6 (false)
 {
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -61,14 +59,6 @@ zmq::ctx_t::ctx_t () :
 
     //  Initialise crypto library, if needed.
     zmq::random_open ();
-
-#ifdef ZMQ_USE_NSS
-    NSS_NoDB_Init (NULL);
-#endif
-
-#ifdef ZMQ_USE_GNUTLS
-    gnutls_global_init ();
-#endif
 }
 
 bool zmq::ctx_t::check_tag () const
@@ -101,14 +91,6 @@ zmq::ctx_t::~ctx_t ()
 
     //  De-initialise crypto library, if needed.
     zmq::random_close ();
-
-#ifdef ZMQ_USE_NSS
-    NSS_Shutdown ();
-#endif
-
-#ifdef ZMQ_USE_GNUTLS
-    gnutls_global_deinit ();
-#endif
 
     //  Remove the tag, so that the object is considered dead.
     _tag = ZMQ_CTX_TAG_VALUE_BAD;
@@ -259,14 +241,6 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_ZERO_COPY_RECV:
-            if (is_int && value >= 0) {
-                scoped_lock_t locker (_opt_sync);
-                _zero_copy = (value != 0);
-                return 0;
-            }
-            break;
-
         default: {
             return thread_ctx_t::set (option_, optval_, optvallen_);
         }
@@ -333,14 +307,6 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = sizeof (zmq_msg_t);
-                return 0;
-            }
-            break;
-
-        case ZMQ_ZERO_COPY_RECV:
-            if (is_int) {
-                scoped_lock_t locker (_opt_sync);
-                *value = _zero_copy;
                 return 0;
             }
             break;

@@ -21,7 +21,7 @@ class io_thread_t;
 class socket_base_t;
 
 //  ASIO-based TCP listener using async_accept for connection handling.
-//  Connections are handled using true proactor mode with asio_zmtp_engine.
+//  Connections are handled using true proactor mode with asio_zmp_engine.
 
 class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
 {

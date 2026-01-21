@@ -8,7 +8,7 @@
 #include "../err.hpp"
 #include <atomic>
 #include <algorithm>
-#include <boost/array.hpp>
+#include <array>
 #include <cstdlib>
 #ifndef ZMQ_HAVE_WINDOWS
 #include <sys/uio.h>
@@ -350,12 +350,12 @@ void ipc_transport_t::async_writev (const unsigned char *header,
               if (handler)
                   handler (ec, bytes);
           };
-        boost::array<boost::asio::const_buffer, 2> buffers = {
+        std::array<boost::asio::const_buffer, 2> buffers = {
           boost::asio::buffer (header, header_size),
           boost::asio::buffer (body, body_size)};
         boost::asio::async_write (*_socket, buffers, stats_handler);
     } else {
-        boost::array<boost::asio::const_buffer, 2> buffers = {
+        std::array<boost::asio::const_buffer, 2> buffers = {
           boost::asio::buffer (header, header_size),
           boost::asio::buffer (body, body_size)};
         boost::asio::async_write (*_socket, buffers, handler);
@@ -372,12 +372,12 @@ void ipc_transport_t::async_writev (const unsigned char *header,
                   if (handler)
                       handler (ec, bytes);
               };
-            boost::array<boost::asio::const_buffer, 2> buffers = {
+            std::array<boost::asio::const_buffer, 2> buffers = {
               boost::asio::buffer (header, header_size),
               boost::asio::buffer (body, body_size)};
             boost::asio::async_write (*_socket, buffers, stats_handler);
         } else {
-            boost::array<boost::asio::const_buffer, 2> buffers = {
+            std::array<boost::asio::const_buffer, 2> buffers = {
               boost::asio::buffer (header, header_size),
               boost::asio::buffer (body, body_size)};
             boost::asio::async_write (*_socket, buffers, handler);

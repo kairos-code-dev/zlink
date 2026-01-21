@@ -119,8 +119,6 @@ set(TESTUTIL_SOURCES
   testutil.hpp
   testutil_monitoring.cpp
   testutil_monitoring.hpp
-  testutil_security.cpp
-  testutil_security.hpp
   testutil_unity.cpp
   testutil_unity.hpp)
 

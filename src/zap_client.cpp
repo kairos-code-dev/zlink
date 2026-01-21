@@ -269,7 +269,7 @@ void zap_client_common_handshake_t::handle_zap_status_code ()
         case '3':
             //  a 300 error code (temporary failure)
             //  should NOT result in an ERROR message, but instead the
-            //  client should be silently disconnected (see CURVEZMQ RFC)
+            //  client should be silently disconnected on temporary failure
             //  therefore, go immediately to state error_sent
             state = error_sent;
             break;

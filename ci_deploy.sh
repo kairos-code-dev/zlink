@@ -3,7 +3,7 @@
 # do NOT set -x or it will log the secret tokens!
 set -e
 
-if [[ $BUILD_TYPE == "default" && $CURVE == "libsodium" && -z $DRAFT ]]; then
+if [[ $BUILD_TYPE == "default" && -z $DRAFT ]]; then
     # Tell travis to deploy all files in dist
     mkdir dist
     export LIBZMQ_DEPLOYMENT=dist/*

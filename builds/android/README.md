@@ -91,28 +91,10 @@ You can specify another folder with the help of ANDROID_DEPENDENCIES_DIR:
 If you place your own dependency source trees there, 
 do not forget to disable [Android cleanup](#android-build-cleanup).
 
-### Cryptographic configuration
-
-The variable CURVE accepts 2 different values:
-
-    ""          : LIBZMQ is built without any encryption support.
-    "libsodium" : LIBZMQ is built with LIBSODIUM encryption support (see below).
-
 ### Other configuration variables
 
 You can also check configuration variables in `build.sh` itself, in its
 "Configuration & tuning options" comment block.
-
-## LIBSODIUM
-
-LIBSODIUM is built along with LIBZMQ, when CURVE="libsodium".
-
-- If you have your own clone of LIBSODIUM, set LIBSODIUM_ROOT to point to
-its folder.
-- If the variable LIBSODIUM_ROOT is not set, LIBZMQ will look for a folder
-'libsodium' close to his own one.
-- If no folder 'libsodium' exists, then LIBZMQ will clone LIBSODIUM from its
-official STABLE branch.
 
 ## Build
 
@@ -157,4 +139,3 @@ Minimal changes are required to support Debian 9 to 11.
 
 Minimal changes are required to support CentOS (7 only), Rocky Linux (8 & 9),
 and many Fedora (22 to 37).
-

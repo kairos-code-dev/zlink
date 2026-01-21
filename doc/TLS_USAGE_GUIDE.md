@@ -375,11 +375,12 @@ zmq_connect(sub, "tls://publisher:5556");
    - Always provide CA certificate on clients
    - Never disable certificate validation in production
 
-## Migration from CURVE
+## Migration from CURVE (libzmq)
 
-If you're migrating from CURVE encryption:
+zlink does not support CURVE. If you're migrating from libzmq CURVE, replace
+the legacy options with TLS.
 
-**Old CURVE code:**
+**Legacy libzmq CURVE code:**
 ```c
 // Server
 zmq_setsockopt(socket, ZMQ_CURVE_SERVER, &curve_server, sizeof(int));

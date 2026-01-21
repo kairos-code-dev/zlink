@@ -49,11 +49,8 @@ void test_capabilities ()
     // CURVE is removed
     TEST_ASSERT_TRUE (!zmq_has ("curve"));
 
-#if defined(HAVE_LIBGSSAPI_KRB5)
-    TEST_ASSERT_TRUE (zmq_has ("gssapi"));
-#else
+    // GSSAPI is removed
     TEST_ASSERT_TRUE (!zmq_has ("gssapi"));
-#endif
 
     // VMCI is removed
     TEST_ASSERT_TRUE (!zmq_has ("vmci"));

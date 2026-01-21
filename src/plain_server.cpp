@@ -60,7 +60,7 @@ int zmq::plain_server_t::process_handshake_command (msg_t *msg_)
             rc = process_initiate (msg_);
             break;
         default:
-            //  TODO see comment in curve_server_t::process_handshake_command
+            //  TODO clarify unexpected command handling for PLAIN handshake
             session->get_socket ()->event_handshake_failed_protocol (
               session->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_UNSPECIFIED);
             errno = EPROTO;

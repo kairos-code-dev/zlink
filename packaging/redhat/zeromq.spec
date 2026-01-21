@@ -31,20 +31,6 @@ BuildRequires:  openpgm-devel
 %else
 %define PGM no
 %endif
-%bcond_with libgssapi_krb5
-%if %{with libgssapi_krb5}
-BuildRequires:  krb5-devel
-%define GSSAPI yes
-%else
-%define GSSAPI no
-%endif
-%bcond_with libsodium
-%if %{with libsodium}
-BuildRequires:  libsodium-devel
-%define SODIUM yes
-%else
-%define SODIUM no
-%endif
 %bcond_with nss
 %if %{with nss}
 %if 0%{?suse_version}
@@ -109,14 +95,6 @@ Requires: %{lib_name} = %{version}-%{release}, pkgconfig
 %if %{with pgm}
 Requires:  openpgm-devel
 %endif
-%bcond_with libgssapi_krb5
-%if %{with libgssapi_krb5}
-Requires:  krb5-devel
-%endif
-%bcond_with libsodium
-%if %{with libsodium}
-Requires:  libsodium-devel
-%endif
 %bcond_with nss
 %if %{with nss}
 %if 0%{?suse_version}
@@ -144,20 +122,6 @@ multiple transport protocols and more.
 
 This package contains ZeroMQ related development libraries and header files.
 
-%package -n libzmq-tools
-Summary:   ZeroMQ tools
-Group:     Productivity/Networking/Web/Servers
-
-%description -n libzmq-tools
-The 0MQ lightweight messaging kernel is a library which extends the
-standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. 0MQ sockets provide an
-abstraction of asynchronous message queues, multiple messaging
-patterns, message filtering (subscriptions), seamless access to
-multiple transport protocols and more.
-
-This package contains tools such as curve_keygen to use with libzmq.
-
 %prep
 %setup -q
 
@@ -172,8 +136,6 @@ mkdir -p config
 autoreconf -fi
 %configure --enable-drafts=%{DRAFTS} \
     --with-pgm=%{PGM} \
-    --with-libsodium=%{SODIUM} \
-    --with-libgssapi_krb5=%{GSSAPI} \
     --with-nss=%{NSS} \
     --with-tls=%{TLS} \
     %{?_with_pic} \
@@ -223,12 +185,6 @@ autoreconf -fi
 %{_mandir}/man3/zmq*
 # skip man7/zmq.7.gz
 %{_mandir}/man7/zmq_*
-
-%files -n libzmq-tools
-%defattr(-,root,root,-)
-%if %{with libsodium}
-%{_bindir}/curve_keygen
-%endif
 
 %changelog
 * Fri Oct 4 2019 Luca Boccassi <luca.boccassi@gmail.com>

@@ -86,17 +86,6 @@
 #include <intrin.h>
 #endif
 
-#if defined HAVE_LIBGSSAPI_KRB5
-#include "err.hpp"
-#include "msg.hpp"
-#include "mechanism.hpp"
-#include "session_base.hpp"
-#include "gssapi_server.hpp"
-#include "wire.hpp"
-#include <gssapi/gssapi.h>
-#include <gssapi/gssapi_krb5.h>
-#endif
-
 #include "options.hpp"
 
 #endif // _MSC_VER

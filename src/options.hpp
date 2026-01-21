@@ -145,7 +145,7 @@ struct options_t
     //  Security mechanism for all connections on this socket
     int mechanism;
 
-    //  If peer is acting as server for PLAIN or CURVE mechanisms
+    //  If peer is acting as server for PLAIN mechanism
     int as_server;
 
     //  ZAP authentication domain
@@ -154,17 +154,6 @@ struct options_t
     //  Security credentials for PLAIN mechanism
     std::string plain_username;
     std::string plain_password;
-
-    //  Principals for GSSAPI mechanism
-    std::string gss_principal;
-    std::string gss_service_principal;
-
-    //  Name types GSSAPI principals
-    int gss_principal_nt;
-    int gss_service_principal_nt;
-
-    //  If true, gss encryption will be disabled
-    bool gss_plaintext;
 
     //  ID of the socket.
     int socket_id;

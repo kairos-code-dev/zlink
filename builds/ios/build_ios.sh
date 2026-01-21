@@ -85,8 +85,7 @@ do
 	--disable-shared \
 	--enable-static \
 	--host=${HOST} \
-	--disable-perf \
-	--disable-curve-keygen
+	--disable-perf
 
     echo "Building ${LIBNAME} for ${ARCH}..."
     cd ${LIBDIR}
@@ -109,4 +108,3 @@ set +e
 ${LIPO} -create ${LIBLIST} -output ${DISTLIBDIR}/${LIBNAME}
 
 echo "Done !"
-

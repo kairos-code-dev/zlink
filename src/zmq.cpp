@@ -631,9 +631,5 @@ int zmq_has (const char *capability_)
     if (strcmp (capability_, "wss") == 0)
         return true;
 #endif
-#if defined(HAVE_LIBGSSAPI_KRB5)
-    if (strcmp (capability_, "gssapi") == 0)
-        return true;
-#endif
     return false;
 }

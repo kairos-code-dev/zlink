@@ -45,7 +45,7 @@
 # the intention is to make the bare library available to other "native" code.
 #
 # For zlink: This script is used to build autotools-based DEPENDENCIES
-# (e.g., libsodium) for Android. zlink itself uses CMake, but many of its
+# for Android. zlink itself uses CMake, but many of its
 # potential dependencies use autotools, so this helper provides that support.
 #
 # To get the latest version of this script, please download from:
@@ -553,7 +553,7 @@ function android_clone_library {
 # Caller must set CONFIG_OPTS[], before call.
 #
 # NOTE: This function supports building autotools-based libraries.
-# For zlink dependencies (like libsodium), this autotools support is intentional.
+# For zlink dependencies, this autotools support is intentional.
 # If the library has a CMakeLists.txt and no configure script, you should
 # modify this function to use cmake instead of autotools.
 function android_build_library {
@@ -579,7 +579,7 @@ function android_build_library {
         android_show_configure_opts "${tag}" "${CONFIG_OPTS[@]}"
 
         cd "${root}"
-        # Autotools build path for dependencies like libsodium
+        # Autotools build path for dependencies
         if [ -e autogen.sh ]; then
             ./autogen.sh 2> /dev/null
         fi
@@ -643,4 +643,3 @@ if [ -n "${NDK_VERSION_LETTER}" ] ; then
     NDK_NUMBER=$(( $(( NDK_NUMBER + $(printf '%d' \'"${NDK_VERSION_LETTER}") )) - 64 ))
 fi
 android_build_trace "Configured NDK_VERSION: ${NDK_VERSION} ($NDK_NUMBER)."
-

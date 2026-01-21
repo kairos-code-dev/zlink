@@ -36,8 +36,7 @@ results might vary.
 | MODERATE | endpoints NOT using STRONG authentication are SILENTLY affected |
 | LOW | endpoints NOT using STRONG authentication are VISIBLY affected |
 
-STRONG authentication means transports that use cryptography, for example CURVE
-and TLS.
+STRONG authentication means transports that use cryptography, for example TLS.
 
 VISIBLY affected means that platform owners are likely to immediately notice
 misbehaviours, like crashes or loss of connectivity for legitimate peers.

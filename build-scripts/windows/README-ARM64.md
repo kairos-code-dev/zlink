@@ -46,7 +46,6 @@ Or explicitly:
 .\build-scripts\windows\build.ps1 `
     -Architecture arm64 `
     -LibzmqVersion "4.3.5" `
-    -LibsodiumVersion "1.0.19" `
     -BuildType Release `
     -OutputDir "dist\windows-arm64"
 ```

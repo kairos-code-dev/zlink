@@ -2,12 +2,11 @@
 #
 # Android NDK build script for zlink and dependencies
 #
-# This script uses autotools for building dependencies (e.g., libsodium)
+# This script uses autotools for building dependencies
 # through the android_build_helper.sh utility functions.
 #
 # The android_build_helper.sh provides generic autotools support for
-# cross-compiling dependencies to Android targets. This is intentional
-# as many dependencies (like libsodium) use autotools build systems.
+# cross-compiling dependencies to Android targets.
 #
 # zlink itself is built via CMake in the android_build_library() function,
 # but the helper script checks for autotools first for dependency compatibility.
@@ -47,15 +46,7 @@ export ANDROID_BUILD_CLEAN="${ANDROID_BUILD_CLEAN:-no}"
 # Set this to 'no', to enable verbose ./configure
 export CI_CONFIG_QUIET="${CI_CONFIG_QUIET:-no}"
 
-# Select CURVE implementation:
-# - ""               # Do not use any CURVE implementation.
-# - "libsodium"      # Use LIBSODIUM implementation.
-export CURVE="${CURVE:-}"
-
 # By default, dependencies will be cloned to /tmp/tmp-deps.
-# If you have your own source tree for LIBSODIUM, uncomment
-# the line below, and provide its absolute path:
-#    export LIBSODIUM_ROOT="<absolute_path_to_LIBSODIUM_source_tree>"
 
 ########################################################################
 # Utilities
@@ -79,12 +70,6 @@ function usage {
 ########################################################################
 BUILD_ARCH="$1"
 [ -z "${BUILD_ARCH}" ] && usage
-
-# Set ROOT path for LIBSODIUM source tree, if CURVE is "libsodium"
-if [ "${CURVE}x" = "libsodiumx" ] ; then
-    # Check or initialize LIBSODIUM_ROOT
-    android_init_dependency_root "libsodium"
-fi
 
 ########################################################################
 # Compilation
@@ -111,30 +96,6 @@ if [ "${ANDROID_BUILD_CLEAN}" = "yes" ]; then
 fi
 
 DEPENDENCIES=()
-if [ -z "${CURVE}" ]; then
-    CURVE="--disable-curve"
-elif [ "${CURVE}" == "libsodium" ]; then
-    CURVE="--with-libsodium=yes"
-    DEPENDENCIES+=("libsodium.so")
-    ##
-    # Build LIBSODIUM from latest STABLE branch
-
-    (android_build_verify_so "libsodium.so" &> /dev/null) || {
-        if [ ! -d "${LIBSODIUM_ROOT}" ] ; then
-            android_clone_library "LIBSODIUM" "${LIBSODIUM_ROOT}" "https://github.com/jedisct1/libsodium.git" "stable"
-        fi
-
-        (
-            CONFIG_OPTS=()
-            [ "${CI_CONFIG_QUIET}" = "yes" ] && CONFIG_OPTS+=("--quiet")
-            CONFIG_OPTS+=("${ANDROID_BUILD_OPTS[@]}")
-            CONFIG_OPTS+=("--without-docs")
-            CONFIG_OPTS+=("--disable-soname-versions")
-
-            android_build_library "LIBSODIUM" "${LIBSODIUM_ROOT}"
-        ) || exit 1
-    }
-fi
 
 ##
 # Build libzmq from local source
@@ -144,7 +105,6 @@ fi
         CONFIG_OPTS=()
         [ "${CI_CONFIG_QUIET}" = "yes" ] && CONFIG_OPTS+=("--quiet")
         CONFIG_OPTS+=("${ANDROID_BUILD_OPTS[@]}")
-        CONFIG_OPTS+=("${CURVE}")
         CONFIG_OPTS+=("--without-docs")
 
         android_build_library "LIBZMQ" "${PROJECT_ROOT}"

@@ -216,11 +216,6 @@ These three "expected to fail" tests are listed as XFAIL_TESTS, and
 as expected.  (`builds/zos/runtests` will automatically skip these
 "expected to fail" tests if running "all" tests.)
 
-In addition `test_security_curve` does not do any meaningful testing,
-as a result of the CURVE support not being compiled in; it requires
-[`libsodium`](http://doc.libsodium.org/), which has not been
-ported to z/OS UNIX System Services yet.
-
 Multicast (via `libpgm`) is also not ported or compiled in.
 
 [TIPC](http://hintjens.com/blog:70), a cluster IPC protocol,

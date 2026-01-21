@@ -27,7 +27,7 @@ define Package/zeromq
     MAINTAINER:=victor@iso3103.net
     TITLE:=zeromq
     SECTION:=libs
-    DEPENDS:=+libstdcpp +libpthread +librt +libsodium
+    DEPENDS:=+libstdcpp +libpthread +librt
     CATEGORY:=Libraries
     URL:=http://www.zeromq.org/
 endef

@@ -262,10 +262,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_ROUTER_HANDOVER 56
 #define ZMQ_TOS 57
 #define ZMQ_CONNECT_ROUTING_ID 61
-#define ZMQ_GSSAPI_SERVER 62
-#define ZMQ_GSSAPI_PRINCIPAL 63
-#define ZMQ_GSSAPI_SERVICE_PRINCIPAL 64
-#define ZMQ_GSSAPI_PLAINTEXT 65
 #define ZMQ_HANDSHAKE_IVL 66
 #define ZMQ_XPUB_NODROP 69
 #define ZMQ_BLOCKY 70
@@ -281,8 +277,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_THREAD_SAFE 81
 #define ZMQ_MULTICAST_MAXTPDU 84
 #define ZMQ_USE_FD 89
-#define ZMQ_GSSAPI_PRINCIPAL_NAMETYPE 90
-#define ZMQ_GSSAPI_SERVICE_PRINCIPAL_NAMETYPE 91
 #define ZMQ_BINDTODEVICE 92
 #define ZMQ_XPUB_MANUAL_LAST_VALUE 98
 #define ZMQ_ONLY_FIRST_SUBSCRIBE 108
@@ -306,14 +300,6 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 
 #define ZMQ_NULL 0
 #define ZMQ_PLAIN 1
-#define ZMQ_GSSAPI 3
-
-/******************************************************************************/
-/*  GSSAPI definitions                                                        */
-/******************************************************************************/
-#define ZMQ_GSSAPI_NT_HOSTBASED 0
-#define ZMQ_GSSAPI_NT_USER_NAME 1
-#define ZMQ_GSSAPI_NT_KRB5_PRINCIPAL 2
 
 /******************************************************************************/
 /*  0MQ socket events and monitoring                                          */

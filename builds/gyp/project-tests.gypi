@@ -375,17 +375,6 @@
       ],
     },
     {
-      'target_name': 'test_security_curve',
-      'type': 'executable',
-      'sources': [
-        '../../tests/test_security_curve.cpp',
-        '../../tests/testutil.hpp'
-      ],
-      'dependencies': [
-        'libzmq'
-      ],
-    },
-    {
       'target_name': 'test_security_zap',
       'type': 'executable',
       'sources': [

@@ -45,8 +45,6 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
 
-/* Define to 1 if you have the `gssapi_krb5' library (-lgssapi_krb5). */
-/* #undef HAVE_LIBGSSAPI_KRB5 */
 
 /* Define to 1 if you have the `iphlpapi' library (-liphlpapi). */
 /* #undef HAVE_LIBIPHLPAPI */
@@ -66,8 +64,6 @@
 /* Define to 1 if you have the `socket' library (-lsocket). */
 /* #undef HAVE_LIBSOCKET */
 
-/* Define to 1 if you have the `sodium' library (-lsodium). */
-/* #undef HAVE_LIBSODIUM */
 
 /* Define to 1 if you have the `ws2_32' library (-lws2_32). */
 /* #undef HAVE_LIBWS2_32 */

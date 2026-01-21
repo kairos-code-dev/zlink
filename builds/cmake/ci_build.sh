@@ -29,19 +29,6 @@ if [ "$CLANG_FORMAT" != "" ] ; then
     CMAKE_OPTS+=("-DCLANG_FORMAT=${CLANG_FORMAT}")
 fi
 
-if [ -z $CURVE ]; then
-    CMAKE_OPTS+=("-DENABLE_CURVE=OFF")
-elif [ $CURVE == "libsodium" ]; then
-    CMAKE_OPTS+=("-DWITH_LIBSODIUM=ON")
-
-    if ! ((command -v dpkg-query >/dev/null 2>&1 && dpkg-query --list libsodium-dev >/dev/null 2>&1) || \
-            (command -v brew >/dev/null 2>&1 && brew ls --versions libsodium >/dev/null 2>&1)); then
-        # NOTE: libsodium (external dependency) uses autotools - this is intentional
-        git clone --depth 1 -b stable https://github.com/jedisct1/libsodium.git
-        ( cd libsodium; ./autogen.sh; ./configure --prefix=$BUILD_PREFIX; make install)
-    fi
-fi
-
 CMAKE_PREFIXES=()
 MAKE_PREFIXES=()
 PARALLEL_MAKE_OPT="-j5"

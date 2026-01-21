@@ -19,10 +19,10 @@ CMake installation
 
 The following options are available for cmake invocation:
 
-- `WITH_PERF_TOOL'
-    Enables the build of performance tools. Default value is ON.
 - `ZMQ_BUILD_TESTS'
     Builds ZeroMQ tests. Default value is ON.
+- `BUILD_BENCHMARKS'
+    Builds benchmark tools. Default value is OFF.
 - `ENABLE_CPACK'
     Enables CPack build rules. This option has effect on Windows
     platform only. Default value is ON. Turn it to OFF if you
@@ -30,11 +30,11 @@ The following options are available for cmake invocation:
     if your installation destination already contains them).
     
 
-Example: installing ZeroMQ on Windows with no tests, no performance
-tools, and no runtime library copy:
+Example: installing ZeroMQ on Windows with no tests and no runtime
+library copy:
 
-cmake -G "NMake Makefiles" -D WITH_PERF_TOOL=OFF -D ZMQ_BUILD_TESTS=OFF
--D ENABLE_CPACK=OFF -D CMAKE_BUILD_TYPE=Release
+cmake -G "NMake Makefiles" -D ZMQ_BUILD_TESTS=OFF -D ENABLE_CPACK=OFF
+-D CMAKE_BUILD_TYPE=Release
 
 Windows Builds
 ==============
@@ -44,7 +44,7 @@ On Windows, use CMake for building, or for generating a Visual Studio solution f
 The library can also be built for the Windows 10 UWP platform through CMake :
 cmake -H. -B<build dir> -G"Visual Studio 14 2015 Win64" \
    -DCMAKE_SYSTEM_NAME=WindowsStore -DCMAKE_SYSTEM_VERSION=10.0 \
-   -DENABLE_CURVE=OFF -DZMQ_BUILD_TESTS=OFF
+   -DZMQ_BUILD_TESTS=OFF
 
 In VS 2012 it is mandatory to increase the default stack size of 1 MB to
 at least 2 MB due to implementation of std::map intermittently requiring
@@ -312,4 +312,3 @@ an Autoconf bug.  Until the bug is fixed you can use this workaround:
 
 `configure' also accepts some other, not widely useful, options.  Run
 `configure --help' for more details.
-

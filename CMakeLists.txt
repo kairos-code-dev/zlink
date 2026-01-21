@@ -219,11 +219,6 @@ if(APPLE)
   option(ZMQ_BUILD_FRAMEWORK "Build as OS X framework" OFF)
 endif()
 
-
-# zlink: Force DRAFTS OFF (draft APIs and sockets have been removed)
-set(ENABLE_DRAFTS OFF CACHE BOOL "Build and install draft classes and methods" FORCE)
-message(STATUS "Not building draft classes and methods (zlink: forced OFF)")
-
 # Set feature flags for transport layer
 if(ZMQ_HAVE_ASIO_SSL)
   set(ZMQ_HAVE_TLS 1)
@@ -238,12 +233,6 @@ if(ZMQ_HAVE_ASIO_WS)
     set(ZMQ_HAVE_WSS 1)
     message(STATUS "Secure WebSocket transport enabled")
   endif()
-endif()
-set(ENABLE_RADIX_TREE OFF CACHE BOOL "Use radix tree implementation to manage subscriptions" FORCE)
-
-if(ENABLE_RADIX_TREE)
-  message(STATUS "Using radix tree implementation to manage subscriptions")
-  set(ZMQ_USE_RADIX_TREE 1)
 endif()
 
 
@@ -1335,10 +1324,6 @@ foreach(target ${build_targets})
                      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}> $<INSTALL_INTERFACE:include>)
   target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-  if(ENABLE_DRAFTS)
-    target_compile_definitions(${target} PUBLIC ZMQ_BUILD_DRAFT_API)
-  endif()
-
   # ASIO is mandatory - always include headers and definitions
   if(ZMQ_HAVE_ASIO)
     target_include_directories(${target} PRIVATE ${BUNDLED_BOOST_INCLUDE_DIR})
@@ -1419,76 +1404,6 @@ if(BUILD_STATIC)
   if(CMAKE_SYSTEM_NAME MATCHES "QNX")
     add_definitions(-DUNITY_EXCLUDE_MATH_H)
   endif()
-endif()
-
-if(BUILD_SHARED)
-  set(perf-tools
-      local_lat
-      remote_lat
-      local_thr
-      remote_thr
-      inproc_lat
-      inproc_thr
-      proxy_thr)
-
-  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug") # Why?
-    option(WITH_PERF_TOOL "Build with perf-tools" OFF) # zlink: perf tools disabled
-  else()
-    option(WITH_PERF_TOOL "Build with perf-tools" OFF)
-  endif()
-
-
-# zlink: Perf tools build disabled (source files removed)
-#   if(WITH_PERF_TOOL)
-#     foreach(perf-tool ${perf-tools})
-#       add_executable(${perf-tool} perf/${perf-tool}.cpp)
-#       target_link_libraries(${perf-tool} libzmq)
-# 
-#       if(GNUTLS_FOUND)
-#         target_link_libraries(${perf-tool} ${GNUTLS_LIBRARIES})
-#         target_include_directories(${perf-tool} PRIVATE "${GNUTLS_INCLUDE_DIR}")
-#       endif()
-# 
-#       if(LIBBSD_FOUND)
-#         target_link_libraries(${perf-tool} ${LIBBSD_LIBRARIES})
-#       endif()
-# 
-#       if(NSS3_FOUND)
-#         target_link_libraries(${perf-tool} ${NSS3_LIBRARIES})
-#       endif()
-# 
-#       if(SODIUM_FOUND)
-#         target_link_libraries(${perf-tool} ${SODIUM_LIBRARIES})
-#       endif()
-# 
-#       if(ZMQ_BUILD_FRAMEWORK)
-        # Copy perf-tools binaries into Framework
-#         add_custom_command(
-#           TARGET libzmq
-#           ${perf-tool} POST_BUILD
-#           COMMAND ${CMAKE_COMMAND} ARGS -E copy "$<TARGET_FILE:${perf-tool}>"
-#                   "${LIBRARY_OUTPUT_PATH}/ZeroMQ.framework/Versions/${ZMQ_VERSION_STRING}/MacOS/${perf-tool}"
-#           VERBATIM
-#           COMMENT "Perf tools")
-#       else()
-#         install(TARGETS ${perf-tool} RUNTIME DESTINATION bin COMPONENT PerfTools)
-#       endif()
-#       if(ZMQ_HAVE_WINDOWS_UWP)
-#         set_target_properties(${perf-tool} PROPERTIES LINK_FLAGS_DEBUG "/OPT:NOICF /OPT:NOREF")
-#       endif()
-#     endforeach()
-# 
-#     if(BUILD_STATIC)
-#       add_executable(benchmark_radix_tree perf/benchmark_radix_tree.cpp)
-#       target_link_libraries(benchmark_radix_tree libzmq-static)
-#       target_include_directories(benchmark_radix_tree PUBLIC "${CMAKE_CURRENT_LIST_DIR}/src")
-#       if(ZMQ_HAVE_WINDOWS_UWP)
-#         set_target_properties(benchmark_radix_tree PROPERTIES LINK_FLAGS_DEBUG "/OPT:NOICF /OPT:NOREF")
-#       endif()
-#     endif()
-#   elseif(WITH_PERF_TOOL)
-#     message(FATAL_ERROR "Shared library disabled - perf-tools unavailable.")
-#   endif()
 endif()
 
 # -----------------------------------------------------------------------------

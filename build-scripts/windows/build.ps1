@@ -1,4 +1,4 @@
-# Windows build script for libzmq (minimal build without CURVE/libsodium)
+# Windows build script for libzmq
 # Requires: Visual Studio 2022, CMake
 # Supports: x64 and ARM64 architectures (ARM64 is cross-compiled on x64 host)
 
@@ -108,7 +108,6 @@ Write-Host "Windows Build Configuration"
 Write-Host "==================================="
 Write-Host "Architecture:      $Architecture"
 Write-Host "libzmq version:    $LIBZMQ_VERSION"
-Write-Host "CURVE support:     Disabled"
 Write-Host "Build type:        $BuildType"
 Write-Host "RUN_TESTS:         $RunTests"
 Write-Host "Output directory:  $OutputDir"
@@ -144,7 +143,7 @@ try {
         $BUILD_TESTS_FLAG = "ON"
     }
 
-    # Build without CURVE/libsodium
+    # Configure build
     $BoostIncludeArgs = @()
     $BoostIncludeDir = Join-Path $ROOT_DIR_ABS "deps\\vcpkg\\installed\\$VCPKG_TRIPLET\\include"
     if ((Test-Path "$BoostIncludeDir\\boost\\asio.hpp") -and (Test-Path "$BoostIncludeDir\\boost\\beast.hpp")) {
@@ -159,8 +158,6 @@ try {
         -DBUILD_SHARED=ON `
         -DBUILD_STATIC=OFF `
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
-        -DENABLE_CURVE=OFF `
-        -DWITH_LIBSODIUM=OFF `
         -DZMQ_CXX_STANDARD=20 `
         -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install" `

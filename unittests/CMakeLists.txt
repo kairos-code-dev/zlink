@@ -8,8 +8,6 @@ set(unittests
     unittest_ip_resolver
     unittest_radix_tree)
 
-# if(ENABLE_DRAFTS) list(APPEND tests ) endif(ENABLE_DRAFTS)
-
 # add location of platform.hpp for Windows builds
 if(WIN32)
   add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)

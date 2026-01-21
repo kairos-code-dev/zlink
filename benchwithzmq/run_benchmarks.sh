@@ -14,7 +14,7 @@ esac
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   BUILD_DIR="${ROOT_DIR}/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/build/bench"
+  BUILD_DIR="${ROOT_DIR}/build"
 fi
 PATTERN="ALL"
 WITH_LIBZMQ=1
@@ -35,7 +35,7 @@ Options:
   --skip-libzmq        Skip libzmq baseline run (uses existing cache).
   --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: build/bench).
+  --build-dir PATH     Build directory (default: build/).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
   --zlink-only         Run only zlink benchmarks (no libzmq baseline).

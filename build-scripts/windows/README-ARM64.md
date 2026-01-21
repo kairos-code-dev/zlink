@@ -127,17 +127,9 @@ libzmq-native/
 
 **Solution:** Install ARM64 build tools in Visual Studio Installer (see Prerequisites section)
 
-### Error: "libsodium:arm64-windows-static not found"
-
-**Solution:** vcpkg will automatically download and build libsodium for ARM64. Ensure you have a stable internet connection.
-
 ### Warning: "Cannot execute ARM64 binary"
 
 **Expected behavior:** This is normal when building ARM64 on x64. The binaries must be deployed to an ARM64 device for testing.
-
-### vcpkg takes long time on first ARM64 build
-
-**Expected behavior:** vcpkg must compile libsodium from source for ARM64, which takes several minutes on the first build. Subsequent builds will use the cached package.
 
 ## CI/CD Integration
 
@@ -159,8 +151,7 @@ Get-Job | Wait-Job | Receive-Job
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `-Architecture` | String (x64/arm64) | `x64` | Target architecture for compilation |
-| `-LibzmqVersion` | String | `4.3.5` | libzmq version to download and build |
-| `-LibsodiumVersion` | String | `1.0.19` | libsodium version (installed via vcpkg) |
+| `-LibzmqVersion` | String | `4.3.5` | Version label (defaults to VERSION file) |
 | `-BuildType` | String | `Release` | CMake build type (Release/Debug) |
 | `-OutputDir` | String | `dist\windows-{arch}` | Custom output directory for binaries |
 
@@ -177,8 +168,7 @@ Get-Job | Wait-Job | Receive-Job
 ```powershell
 .\build-scripts\windows\build.ps1 `
     -Architecture arm64 `
-    -LibzmqVersion "4.3.6" `
-    -LibsodiumVersion "1.0.20"
+    -LibzmqVersion "4.3.6"
 ```
 
 ### Custom Output Location

@@ -4,8 +4,6 @@
 # Supports both x86_64 and arm64 architectures
 # Requires: Xcode Command Line Tools, cmake
 #
-# Minimal build without CURVE/libsodium support
-
 set -e
 
 # Get script directory and repo root early (before any cd commands)
@@ -42,7 +40,6 @@ echo "macOS Build Configuration"
 echo "==================================="
 echo "Architecture:      ${ARCH}"
 echo "libzmq version:    ${LIBZMQ_VERSION}"
-echo "CURVE support:     Disabled"
 echo "RUN_TESTS:         ${RUN_TESTS}"
 echo "Build type:        ${BUILD_TYPE}"
 echo "Output directory:  ${OUTPUT_DIR}"
@@ -75,7 +72,7 @@ if [ "$RUN_TESTS" = "ON" ]; then
     BUILD_TESTS_FLAG="ON"
 fi
 
-# Build without CURVE/libsodium
+# Configure build
 cmake "$LIBZMQ_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -83,8 +80,6 @@ cmake "$LIBZMQ_SRC_ABS" \
     -DBUILD_SHARED=ON \
     -DBUILD_STATIC=OFF \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
-    -DENABLE_CURVE=OFF \
-    -DWITH_LIBSODIUM=OFF \
     -DZMQ_CXX_STANDARD=20 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX="$(pwd)/install" \

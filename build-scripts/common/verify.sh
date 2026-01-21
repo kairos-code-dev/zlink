@@ -27,41 +27,17 @@ case "$PLATFORM" in
     linux)
         echo ""
         echo "Checking dynamic dependencies..."
-        ldd "$LIBRARY_PATH" | grep -i sodium && {
-            echo "Error: libsodium is dynamically linked!"
-            exit 1
-        }
-        echo "✓ libsodium is statically linked"
-
-        echo ""
-        echo "Checking symbols..."
-        if nm "$LIBRARY_PATH" | grep -q sodium_init; then
-            echo "✓ libsodium symbols found (statically linked)"
-        else
-            echo "Warning: libsodium symbols not found"
-        fi
-
-        echo ""
-        echo "External dependencies:"
         ldd "$LIBRARY_PATH"
         ;;
 
     macos)
         echo ""
         echo "Checking dynamic dependencies..."
-        otool -L "$LIBRARY_PATH" | grep -i sodium && {
-            echo "Error: libsodium is dynamically linked!"
-            exit 1
-        }
-        echo "✓ libsodium is statically linked"
+        otool -L "$LIBRARY_PATH"
 
         echo ""
         echo "Checking architecture..."
         lipo -info "$LIBRARY_PATH"
-
-        echo ""
-        echo "External dependencies:"
-        otool -L "$LIBRARY_PATH"
         ;;
 
     windows)

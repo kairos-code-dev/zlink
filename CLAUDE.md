@@ -179,7 +179,6 @@ All build scripts in `build-scripts/` directory use CMake. The project requires 
 - `WITH_TLS=ON`: Enable TLS and WSS transport support via OpenSSL (default: ON, can be disabled)
 - `BUILD_STATIC=OFF`: Build shared libraries (default: OFF)
 - `BUILD_TESTS=ON`: Build test suite (default: ON)
-- `ENABLE_CURVE=OFF`: CURVE encryption disabled (forced OFF)
 
 ## Build Commands
 

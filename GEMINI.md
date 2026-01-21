@@ -10,12 +10,12 @@
 *   **Language:** C++ (primarily C++98 with optional C++11 fragments).
 
 ## Architecture & Directory Structure
-*   **`build-scripts/`**: Platform-specific scripts to download, configure, and compile libzmq + libsodium.
+*   **`build-scripts/`**: Platform-specific scripts to configure and compile libzmq.
     *   `linux/build.sh`, `macos/build.sh`, `windows/build.ps1`
 *   **`src/`**: Core libzmq source code.
 *   **`include/`**: Public headers (`zmq.h`).
 *   **`tests/`**: Test suite using the Unity framework.
-*   **`VERSION`**: Configuration file defining versions for libzmq, libsodium, and features.
+*   **`VERSION`**: Configuration file defining versions and features.
 *   **`CMakeLists.txt`**: Main build configuration.
 
 ## Building and Running
@@ -31,13 +31,13 @@ Scripts in `build-scripts/` allow for more granular control (arch, versions).
 
 **Linux:**
 ```bash
-./build-scripts/linux/build.sh [ARCH] [LIBZMQ_VERSION] [LIBSODIUM_VERSION] [ENABLE_CURVE] [RUN_TESTS]
-# Example: ./build-scripts/linux/build.sh x64 4.3.5 1.0.20 ON ON
+./build-scripts/linux/build.sh [ARCH] [RUN_TESTS]
+# Example: ./build-scripts/linux/build.sh x64 ON
 ```
 
 **macOS:**
 ```bash
-./build-scripts/macos/build.sh [ARCH] [LIBZMQ_VERSION] [LIBSODIUM_VERSION] [ENABLE_CURVE] [RUN_TESTS]
+./build-scripts/macos/build.sh [ARCH] [RUN_TESTS]
 ```
 
 **Windows (PowerShell):**

@@ -155,6 +155,9 @@ struct options_t
     std::string plain_username;
     std::string plain_password;
 
+    //  Enable READY metadata for ZMP (default: false)
+    bool zmp_metadata;
+
     //  ID of the socket.
     int socket_id;
 

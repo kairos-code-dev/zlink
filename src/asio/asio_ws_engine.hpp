@@ -19,6 +19,7 @@
 #include "../i_decoder.hpp"
 #include "../msg.hpp"
 #include "../metadata.hpp"
+#include "../zmp_metadata.hpp"
 #include "i_asio_transport.hpp"
 
 #if defined ZMQ_HAVE_ASIO_SSL
@@ -116,6 +117,8 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     int produce_ping_message (msg_t *msg_);
     int process_heartbeat_message (msg_t *msg_);
     int produce_pong_message (msg_t *msg_);
+    void set_last_error (uint8_t code_, const char *reason_);
+    void send_error_frame (uint8_t code_, const char *reason_);
 
   private:
     //  Start WebSocket handshake
@@ -149,6 +152,9 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool receive_hello ();
     bool parse_hello (const unsigned char *data_, size_t size_);
     bool is_socket_type_compatible (int peer_type_) const;
+    bool process_zmp_handshake_input ();
+    int process_ready_message (msg_t *msg_);
+    int process_error_message (msg_t *msg_);
 
     int routing_id_msg (msg_t *msg_);
     int process_routing_id_msg (msg_t *msg_);
@@ -242,6 +248,8 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool _read_pending;
     bool _write_pending;
     bool _terminating;
+    uint8_t _last_error_code;
+    std::string _last_error_reason;
 
     //  Internal read buffer
     static const size_t read_buffer_size = 8192;
@@ -268,17 +276,21 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool _zmp_mode;
     bool _hello_sent;
     bool _hello_received;
+    bool _ready_sent;
+    bool _ready_received;
     size_t _hello_header_bytes;
     size_t _hello_body_bytes;
     uint32_t _hello_body_len;
     unsigned char _hello_recv[zmp_hello_buf_size];
     unsigned char _hello_send[zmp_hello_buf_size];
     size_t _hello_send_size;
+    std::vector<unsigned char> _ready_send;
     unsigned char _peer_routing_id[256];
     size_t _peer_routing_id_size;
 
     bool _subscription_required;
     int _heartbeat_timeout;
+    std::vector<unsigned char> _heartbeat_ctx;
 
     //  Routing ID message
     msg_t _routing_id_msg;

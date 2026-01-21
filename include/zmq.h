@@ -252,13 +252,8 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_IMMEDIATE 39
 #define ZMQ_XPUB_VERBOSE 40
 #define ZMQ_IPV6 42
-#define ZMQ_MECHANISM 43
-#define ZMQ_PLAIN_SERVER 44
-#define ZMQ_PLAIN_USERNAME 45
-#define ZMQ_PLAIN_PASSWORD 46
 #define ZMQ_PROBE_ROUTER 51
 #define ZMQ_CONFLATE 54
-#define ZMQ_ZAP_DOMAIN 55
 #define ZMQ_ROUTER_HANDOVER 56
 #define ZMQ_TOS 57
 #define ZMQ_CONNECT_ROUTING_ID 61
@@ -281,6 +276,7 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_XPUB_MANUAL_LAST_VALUE 98
 #define ZMQ_ONLY_FIRST_SUBSCRIBE 108
 #define ZMQ_TOPICS_COUNT 116
+#define ZMQ_ZMP_METADATA 117
 
 //  TLS protocol options
 #define ZMQ_TLS_CERT 95

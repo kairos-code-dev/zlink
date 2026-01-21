@@ -31,6 +31,7 @@ set(tests
   test_xpub_nodrop
   test_pub_invert_matching
   test_heartbeats
+  test_zmp_metadata
   test_bind_src_address
   test_capabilities
   test_router_handover

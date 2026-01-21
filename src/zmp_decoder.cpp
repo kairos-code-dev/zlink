@@ -17,21 +17,14 @@ static uint32_t compute_effective_max (int64_t maxmsgsize_)
     return static_cast<uint32_t> (limit);
 }
 
-static const unsigned char zmp_flag_to_msg_flags[32] = {
-  0,                 zmq::msg_t::more,       zmq::msg_t::command,    0,
-  zmq::msg_t::routing_id, 0,                 0,                     0,
-  zmq::msg_t::subscribe,  0,                 0,                     0,
-  0,                0,               0,               0,
-  zmq::msg_t::cancel,     0,               0,               0,
-  0,                0,               0,               0,
-  0,                0,               0,               0,
-  0,                0,               0,               0
-};
+static const unsigned char zmp_flag_sub_or_cancel =
+  zmq::zmp_flag_subscribe | zmq::zmp_flag_cancel;
 }
 
 zmq::zmp_decoder_t::zmp_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     decoder_base_t<zmp_decoder_t, shared_message_memory_allocator> (bufsize_),
     _msg_flags (0),
+    _error_code (0),
     _max_msg_size_effective (compute_effective_max (maxmsgsize_))
 {
     int rc = _in_progress.init ();
@@ -48,32 +41,69 @@ zmq::zmp_decoder_t::~zmp_decoder_t ()
 
 int zmq::zmp_decoder_t::header_ready (unsigned char const *read_from_)
 {
-    if (_tmpbuf[0] != zmp_magic || _tmpbuf[1] != zmp_version) {
+    _error_code = 0;
+
+    if (_tmpbuf[0] != zmp_magic) {
+        _error_code = zmp_error_invalid_magic;
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (_tmpbuf[1] != zmp_version) {
+        _error_code = zmp_error_version_mismatch;
         errno = EPROTO;
         return -1;
     }
 
     if (_tmpbuf[3] != 0) {
+        _error_code = zmp_error_flags_invalid;
         errno = EPROTO;
         return -1;
     }
 
     const unsigned char flags = _tmpbuf[2];
-    if (flags == 0) {
-        _msg_flags = 0;
-    } else if (flags == zmp_flag_more) {
-        _msg_flags = msg_t::more;
-    } else {
-        if (flags & ~zmp_flag_mask) {
-            errno = EPROTO;
-            return -1;
-        }
-        if (flags & (flags - 1)) {
-            errno = EPROTO;
-            return -1;
-        }
-        _msg_flags = zmp_flag_to_msg_flags[flags];
+    if (flags & ~zmp_flag_mask) {
+        _error_code = zmp_error_flags_invalid;
+        errno = EPROTO;
+        return -1;
     }
+
+    if ((flags & zmp_flag_control) && (flags & zmp_flag_identity)) {
+        _error_code = zmp_error_flags_invalid;
+        errno = EPROTO;
+        return -1;
+    }
+
+    if ((flags & zmp_flag_control) && (flags & zmp_flag_more)) {
+        _error_code = zmp_error_flags_invalid;
+        errno = EPROTO;
+        return -1;
+    }
+
+    if (flags & zmp_flag_sub_or_cancel) {
+        if ((flags & zmp_flag_sub_or_cancel) == zmp_flag_sub_or_cancel) {
+            _error_code = zmp_error_flags_invalid;
+            errno = EPROTO;
+            return -1;
+        }
+        if (flags & ~(zmp_flag_sub_or_cancel)) {
+            _error_code = zmp_error_flags_invalid;
+            errno = EPROTO;
+            return -1;
+        }
+    }
+
+    _msg_flags = 0;
+    if (flags & zmp_flag_more)
+        _msg_flags |= msg_t::more;
+    if (flags & zmp_flag_control)
+        _msg_flags |= msg_t::command;
+    if (flags & zmp_flag_identity)
+        _msg_flags |= msg_t::routing_id;
+    if (flags & zmp_flag_subscribe)
+        _msg_flags |= msg_t::subscribe;
+    else if (flags & zmp_flag_cancel)
+        _msg_flags |= msg_t::cancel;
 
     const uint32_t msg_size = get_uint32 (_tmpbuf + 4);
 
@@ -84,11 +114,13 @@ int zmq::zmp_decoder_t::size_ready (uint32_t msg_size_,
                                     unsigned char const *read_from_)
 {
     if (unlikely (msg_size_ > _max_msg_size_effective)) {
+        _error_code = zmp_error_body_too_large;
         errno = EMSGSIZE;
         return -1;
     }
 
     if (unlikely (msg_size_ != static_cast<size_t> (msg_size_))) {
+        _error_code = zmp_error_body_too_large;
         errno = EMSGSIZE;
         return -1;
     }

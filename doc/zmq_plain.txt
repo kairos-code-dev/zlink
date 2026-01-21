@@ -6,6 +6,11 @@ NAME
 ----
 zmq_plain - clear-text authentication
 
+NOTE
+----
+The PLAIN mechanism is not supported in zlink. The related socket options
+are removed and this page is retained only as a historical reference.
+
 
 SYNOPSIS
 --------

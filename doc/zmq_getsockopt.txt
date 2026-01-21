@@ -152,9 +152,10 @@ ZMQ_HANDSHAKE_IVL: Retrieve maximum handshake interval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The 'ZMQ_HANDSHAKE_IVL' option shall retrieve the maximum handshake interval
 for the specified 'socket'. Handshaking is the exchange of socket configuration
-information (socket type, routing id, security) that occurs when a connection
-is first opened, only for connection-oriented transports. If handshaking does
-not complete within the configured time, the connection shall be closed.
+information (socket type, routing id, protocol options) that occurs when a
+connection is first opened, only for connection-oriented transports. If
+handshaking does not complete within the configured time, the connection shall
+be closed.
 The value 0 means no handshake time limit.
 
 [horizontal]
@@ -162,6 +163,19 @@ Option value type:: int
 Option value unit:: milliseconds
 Default value:: 30000
 Applicable socket types:: all, only for connection-oriented transports
+
+ZMQ_ZMP_METADATA: Retrieve ZMP READY metadata flag
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The 'ZMQ_ZMP_METADATA' option shall retrieve whether ZMP READY metadata
+is enabled for the socket. When set to 1, the socket includes basic
+properties (Socket-Type, Identity) in the READY control frame during the
+ZMP handshake.
+
+[horizontal]
+Option value type:: int
+Option value unit:: 0,1
+Default value:: 0
+Applicable socket types:: all, only when using the ZMP protocol
 
 
 ZMQ_IDENTITY: Retrieve socket identity
@@ -291,18 +305,6 @@ Default value:: -1
 Applicable socket types:: all
 
 
-ZMQ_MECHANISM: Retrieve current security mechanism
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The 'ZMQ_MECHANISM' option shall retrieve the current security mechanism
-for the socket.
-
-[horizontal]
-Option value type:: int
-Option value unit:: ZMQ_NULL or ZMQ_PLAIN
-Default value:: ZMQ_NULL
-Applicable socket types:: all, when using TCP or IPC transports
-
-
 ZMQ_MULTICAST_HOPS: Maximum network hops for multicast packets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The option shall retrieve time-to-live used for outbound multicast packets.
@@ -328,45 +330,6 @@ Option value type:: int
 Option value unit:: bytes
 Default value:: 1500
 Applicable socket types:: all, when using multicast transports
-
-
-ZMQ_PLAIN_PASSWORD: Retrieve current password
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The 'ZMQ_PLAIN_PASSWORD' option shall retrieve the last password set for
-the PLAIN security mechanism. The returned value shall be a NULL-terminated
-string and MAY be empty. The returned size SHALL include the terminating
-null byte.
-
-[horizontal]
-Option value type:: NULL-terminated character string
-Option value unit:: N/A
-Default value:: null string
-Applicable socket types:: all, when using TCP or IPC transports
-
-
-ZMQ_PLAIN_SERVER: Retrieve current PLAIN server role
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Returns the 'ZMQ_PLAIN_SERVER' option, if any, previously set on the socket.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: int
-Applicable socket types:: all, when using TCP or IPC transports
-
-
-ZMQ_PLAIN_USERNAME: Retrieve current PLAIN username
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The 'ZMQ_PLAIN_USERNAME' option shall retrieve the last username set for
-the PLAIN security mechanism. The returned value shall be a NULL-terminated
-string and MAY be empty. The returned size SHALL include the terminating
-null byte.
-
-[horizontal]
-Option value type:: NULL-terminated character string
-Option value unit:: N/A
-Default value:: null string
-Applicable socket types:: all, when using TCP or IPC transports
 
 
 ZMQ_USE_FD: Retrieve the pre-allocated socket file descriptor
@@ -701,33 +664,6 @@ Option value type:: int
 Option value unit:: N/A
 Default value:: N/A
 Applicable socket types:: all
-
-
-ZMQ_ZAP_DOMAIN: Retrieve RFC 27 authentication domain
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The 'ZMQ_ZAP_DOMAIN' option shall retrieve the last ZAP domain set for
-the socket. The returned value shall be a NULL-terminated string and MAY
-be empty. An empty string means that ZAP authentication is disabled.
-The returned size SHALL include the terminating null byte.
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_ZAP_ENFORCE_DOMAIN: Retrieve ZAP domain handling mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The 'ZMQ_ZAP_ENFORCE_DOMAIN' option shall retrieve the flag that determines
-whether a ZAP domain is strictly required or not.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: 0
-Applicable socket types:: all, when using ZAP
 
 
 ZMQ_VMCI_BUFFER_SIZE: Retrieve buffer size of the VMCI socket

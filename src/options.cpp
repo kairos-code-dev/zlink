@@ -182,7 +182,8 @@ zmq::options_t::options_t () :
     out_batch_size (8192),
     zero_copy (true),
     monitor_event_version (1),
-    busy_poll (0)
+    busy_poll (0),
+    zmp_metadata (false)
 #ifdef ZMQ_HAVE_TLS
     ,
     tls_verify (1),
@@ -376,46 +377,6 @@ int zmq::options_t::setsockopt (int option_,
             }
             break;
 
-        case ZMQ_PLAIN_SERVER:
-            if (is_int && (value == 0 || value == 1)) {
-                as_server = value;
-                mechanism = value ? ZMQ_PLAIN : ZMQ_NULL;
-                return 0;
-            }
-            break;
-
-        case ZMQ_PLAIN_USERNAME:
-            if (optvallen_ == 0 && optval_ == NULL) {
-                mechanism = ZMQ_NULL;
-                return 0;
-            } else if (optvallen_ > 0 && optvallen_ <= UCHAR_MAX
-                       && optval_ != NULL) {
-                plain_username.assign (static_cast<const char *> (optval_),
-                                       optvallen_);
-                as_server = 0;
-                mechanism = ZMQ_PLAIN;
-                return 0;
-            }
-            break;
-
-        case ZMQ_PLAIN_PASSWORD:
-            if (optvallen_ == 0 && optval_ == NULL) {
-                mechanism = ZMQ_NULL;
-                return 0;
-            } else if (optvallen_ > 0 && optvallen_ <= UCHAR_MAX
-                       && optval_ != NULL) {
-                plain_password.assign (static_cast<const char *> (optval_),
-                                       optvallen_);
-                as_server = 0;
-                mechanism = ZMQ_PLAIN;
-                return 0;
-            }
-            break;
-
-        case ZMQ_ZAP_DOMAIN:
-            return do_setsockopt_string_allow_empty_relaxed (
-              optval_, optvallen_, &zap_domain, UCHAR_MAX);
-
         case ZMQ_CONFLATE:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &conflate);
@@ -430,6 +391,10 @@ int zmq::options_t::setsockopt (int option_,
         case ZMQ_INVERT_MATCHING:
             return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
                                                       &invert_matching);
+
+        case ZMQ_ZMP_METADATA:
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
+                                                     &zmp_metadata);
 
         case ZMQ_HEARTBEAT_IVL:
             if (is_int && value >= 0) {
@@ -710,29 +675,6 @@ int zmq::options_t::getsockopt (int option_,
             }
             break;
 
-        case ZMQ_MECHANISM:
-            if (is_int) {
-                *value = mechanism;
-                return 0;
-            }
-            break;
-
-        case ZMQ_PLAIN_SERVER:
-            if (is_int) {
-                *value = as_server && mechanism == ZMQ_PLAIN;
-                return 0;
-            }
-            break;
-
-        case ZMQ_PLAIN_USERNAME:
-            return do_getsockopt (optval_, optvallen_, plain_username);
-
-        case ZMQ_PLAIN_PASSWORD:
-            return do_getsockopt (optval_, optvallen_, plain_password);
-
-        case ZMQ_ZAP_DOMAIN:
-            return do_getsockopt (optval_, optvallen_, zap_domain);
-
         case ZMQ_CONFLATE:
             if (is_int) {
                 *value = conflate;
@@ -750,6 +692,13 @@ int zmq::options_t::getsockopt (int option_,
         case ZMQ_INVERT_MATCHING:
             if (is_int) {
                 *value = invert_matching;
+                return 0;
+            }
+            break;
+
+        case ZMQ_ZMP_METADATA:
+            if (is_int) {
+                *value = zmp_metadata ? 1 : 0;
                 return 0;
             }
             break;

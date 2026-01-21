@@ -505,7 +505,7 @@ bool zmq::asio_engine_t::speculative_read ()
 
 void zmq::asio_engine_t::start_async_write ()
 {
-    if (_write_pending || _io_error)
+    if (_terminating || _write_pending || _io_error)
         return;
 
     ENGINE_DBG ("start_async_write: outsize=%zu", _outsize);
@@ -1514,6 +1514,8 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
     ENGINE_DBG ("error: reason=%d", static_cast<int> (reason_));
 
     //  Mark as terminating to prevent callbacks from processing
+    if (_terminating)
+        return;
     _terminating = true;
 
     zmq_assert (_session);
@@ -1539,6 +1541,11 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
     //  The _terminating flag ensures callbacks are no-ops.
     if (_io_context && (_read_pending || _write_pending)) {
         _io_context->poll ();
+    }
+
+    if (_io_context) {
+        boost::asio::post (*_io_context, [this] () { delete this; });
+        return;
     }
 
     delete this;

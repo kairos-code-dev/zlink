@@ -6,7 +6,8 @@ set(unittests
     unittest_poller
     unittest_mtrie
     unittest_ip_resolver
-    unittest_radix_tree)
+    unittest_radix_tree
+    unittest_zmp_decoder)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)

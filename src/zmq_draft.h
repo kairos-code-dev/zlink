@@ -22,7 +22,6 @@
 #define ZMQ_CHANNEL 20
 
 /*  DRAFT Socket options.                                                     */
-#define ZMQ_ZAP_ENFORCE_DOMAIN 93
 #define ZMQ_LOOPBACK_FASTPATH 94
 #define ZMQ_METADATA 95
 #define ZMQ_MULTICAST_LOOP 96

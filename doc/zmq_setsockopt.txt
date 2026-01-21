@@ -197,9 +197,10 @@ ZMQ_HANDSHAKE_IVL: Set maximum handshake interval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 The 'ZMQ_HANDSHAKE_IVL' option shall set the maximum handshake interval for
 the specified 'socket'. Handshaking is the exchange of socket configuration
-information (socket type, routing id, security) that occurs when a connection
-is first opened, only for connection-oriented transports. If handshaking does
-not complete within the configured time, the connection shall be closed.
+information (socket type, routing id, protocol options) that occurs when a
+connection is first opened, only for connection-oriented transports. If
+handshaking does not complete within the configured time, the connection shall
+be closed.
 The value 0 means no handshake time limit.
 
 [horizontal]
@@ -207,6 +208,19 @@ Option value type:: int
 Option value unit:: milliseconds
 Default value:: 30000
 Applicable socket types:: all, only for connection-oriented transports
+
+ZMQ_ZMP_METADATA: Enable ZMP READY metadata
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The 'ZMQ_ZMP_METADATA' option shall enable metadata in the ZMP READY control
+frame. When set to 1, the socket includes basic properties (Socket-Type,
+Identity) during the ZMP handshake. This option has no effect when using
+ZMTP.
+
+[horizontal]
+Option value type:: int
+Option value unit:: 0,1
+Default value:: 0
+Applicable socket types:: all, only when using the ZMP protocol
 
 ZMQ_HELLO_MSG: set an hello message that will be sent when a new peer connect
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -413,49 +427,6 @@ Option value type:: int
 Option value unit:: bytes
 Default value:: 1500
 Applicable socket types:: all, when using multicast transports
-
-
-ZMQ_PLAIN_PASSWORD: Set PLAIN security password
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the password for outgoing connections over TCP or IPC. If you set this
-to a non-null value, the security mechanism used for connections shall be
-PLAIN, see linkzmq:zmq_plain[7]. If you set this to a null value, the security
-mechanism used for connections shall be NULL, see linkzmq:zmq_null[3].
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_PLAIN_SERVER: Set PLAIN server role
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Defines whether the socket will act as server for PLAIN security, see
-linkzmq:zmq_plain[7]. A value of '1' means the socket will act as
-PLAIN server. A value of '0' means the socket will not act as PLAIN
-server, and its security role then depends on other option settings.
-Setting this to '0' shall reset the socket security to NULL.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: 0
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_PLAIN_USERNAME: Set PLAIN security username
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the username for outgoing connections over TCP or IPC. If you set this
-to a non-null value, the security mechanism used for connections shall be
-PLAIN, see linkzmq:zmq_plain[7]. If you set this to a null value, the security
-mechanism used for connections shall be NULL, see linkzmq:zmq_null[3].
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: not set
-Applicable socket types:: all, when using TCP transport
 
 
 ZMQ_USE_FD: Set the pre-allocated socket file descriptor
@@ -1049,38 +1020,6 @@ Default value:: 0 (false)
 Applicable socket types:: ZMQ_XSUB, ZMQ_XPUB
 
 
-ZMQ_ZAP_DOMAIN: Set RFC 27 authentication domain
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Sets the domain for ZAP (ZMQ RFC 27) authentication. A ZAP domain must be
-specified to enable authentication. When the ZAP domain is empty, which is
-the default, ZAP authentication is disabled. This is not compatible with
-previous versions of libzmq, so it can be controlled by ZMQ_ZAP_ENFORCE_DOMAIN
-which for now is disabled by default.
-See http://rfc.zeromq.org/spec:27 for more details.
-
-[horizontal]
-Option value type:: character string
-Option value unit:: N/A
-Default value:: empty
-Applicable socket types:: all, when using TCP transport
-
-
-ZMQ_ZAP_ENFORCE_DOMAIN: Set ZAP domain handling to strictly adhere the RFC
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The ZAP (ZMQ RFC 27) authentication protocol specifies that a domain must
-always be set. Older versions of libzmq did not follow the spec and allowed
-an empty domain to be set.
-This option can be used to enabled or disable the stricter, backward
-incompatible behaviour. For now it is disabled by default, but in a future
-version it will be enabled by default.
-
-[horizontal]
-Option value type:: int
-Option value unit:: 0, 1
-Default value:: 0
-Applicable socket types:: all, when using ZAP
-
-
 ZMQ_TCP_ACCEPT_FILTER: Assign filters to allow new TCP connections
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Assign an arbitrary number of filters that will be applied for each new TCP
@@ -1090,8 +1029,8 @@ filter is applied then new connection source ip should be matched. To clear
 all filters call zmq_setsockopt(socket, ZMQ_TCP_ACCEPT_FILTER, NULL, 0).
 Filter is a null-terminated string with ipv6 or ipv4 CIDR.
 
-NOTE: This option is deprecated, please use authentication via the ZAP API
-and IP address allowing / blocking.
+NOTE: This option is deprecated. Prefer OS-level access control or TLS client
+authentication.
 
 [horizontal]
 Option value type:: binary data
@@ -1113,8 +1052,8 @@ NOTE: GID filters are only available on platforms supporting SO_PEERCRED or
 LOCAL_PEERCRED socket options (currently only Linux and later versions of
 OS X).
 
-NOTE: This option is deprecated, please use authentication via the ZAP API
-and IPC allowing / blocking.
+NOTE: This option is deprecated. Prefer IPC filesystem permissions or other
+OS-level access control.
 
 [horizontal]
 Option value type:: gid_t
@@ -1135,8 +1074,8 @@ ZMQ_IPC_FILTER_PID, NULL, 0).
 NOTE: PID filters are only available on platforms supporting the SO_PEERCRED
 socket option (currently only Linux).
 
-NOTE: This option is deprecated, please use authentication via the ZAP API
-and IPC allowing / blocking.
+NOTE: This option is deprecated. Prefer IPC filesystem permissions or other
+OS-level access control.
 
 [horizontal]
 Option value type:: pid_t
@@ -1158,8 +1097,8 @@ NOTE: UID filters are only available on platforms supporting SO_PEERCRED or
 LOCAL_PEERCRED socket options (currently only Linux and later versions of
 OS X).
 
-NOTE: This option is deprecated, please use authentication via the ZAP API
-and IPC allowing / blocking.
+NOTE: This option is deprecated. Prefer IPC filesystem permissions or other
+OS-level access control.
 
 [horizontal]
 Option value type:: uid_t
@@ -1485,7 +1424,6 @@ SEE ALSO
 --------
 linkzmq:zmq_getsockopt[3]
 linkzmq:zmq_socket[3]
-linkzmq:zmq_plain[7]
 linkzmq:zmq[7]
 
 

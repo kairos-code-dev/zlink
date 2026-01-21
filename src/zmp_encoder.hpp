@@ -8,7 +8,7 @@
 
 namespace zmq
 {
-//  Encoder for ZMP framing protocol (v0).
+//  Encoder for ZMP framing protocol (v1).
 class zmp_encoder_t ZMQ_FINAL : public encoder_base_t<zmp_encoder_t>
 {
   public:

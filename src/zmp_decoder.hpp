@@ -9,7 +9,7 @@
 
 namespace zmq
 {
-//  Decoder for ZMP framing protocol (v0).
+//  Decoder for ZMP framing protocol (v1).
 class zmp_decoder_t ZMQ_FINAL
     : public decoder_base_t<zmp_decoder_t, shared_message_memory_allocator>
 {
@@ -18,6 +18,7 @@ class zmp_decoder_t ZMQ_FINAL
     ~zmp_decoder_t ();
 
     msg_t *msg () { return &_in_progress; }
+    uint8_t error_code () const { return _error_code; }
 
   private:
     int header_ready (unsigned char const *read_from_);
@@ -27,6 +28,7 @@ class zmp_decoder_t ZMQ_FINAL
 
     unsigned char _tmpbuf[zmp_header_size];
     unsigned char _msg_flags;
+    uint8_t _error_code;
     msg_t _in_progress;
     const uint32_t _max_msg_size_effective;
 

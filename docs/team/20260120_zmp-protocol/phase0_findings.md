@@ -1,6 +1,6 @@
-# Phase 0 Findings (ZMP v0)
+# Phase 0 Findings (ZMP v1)
 
-**Date:** 2026-01-20  
+**Date:** 2026-01-22  
 **Owner:** 팀장님  
 **Status:** Draft
 
@@ -8,9 +8,13 @@
 
 ## Summary
 
-- ZMP는 고정 8바이트 헤더와 최소 플래그로 메시지 프레이밍을 단순화한다.
-- 핸드셰이크는 HELLO 1회 교환으로 제한한다.
-- routing-id는 ROUTER 수신 경로에서만 허용하며 메시지 첫 프레임으로 고정한다.
+- ZMP v1은 고정 8바이트 헤더를 유지하고, READY/ERROR로
+  핸드셰이크 가시성을 높인다.
+- READY 메타데이터는 옵션으로 제공해 운영 정보를 전달한다.
+- Heartbeat는 TTL/Context 확장을 허용하되 레거시 1바이트 형식을
+  유지한다.
+- 보안/인증 옵션(PLAIN/ZAP/MECHANISM)은 제거 대상이다.
+- body_len 상한은 4GB-1(uint32 최대값)으로 확대한다.
 
 ---
 
@@ -18,19 +22,13 @@
 
 수집 계획
 - 벤치 도구: `benchwithzmq/run_benchmarks.sh`
-- 환경변수: `ZLINK_PROTOCOL=zmtp` (기준선), `ZLINK_PROTOCOL=zmp` (비교)
+- 환경변수: `ZLINK_PROTOCOL=zmp`
 - 기준 출력: throughput, latency
+- 비교는 동일 조건의 ZMTP 기준선과 병행
 
 실행 예시
+- `ZLINK_PROTOCOL=zmp benchwithzmq/run_benchmarks.sh --runs 3 --reuse-build`
 - `ZLINK_PROTOCOL=zmtp benchwithzmq/run_benchmarks.sh --runs 3 --reuse-build`
-- `ZLINK_PROTOCOL=zmp benchwithzmq/run_benchmarks.sh --runs 3 --reuse-build --zlink-only`
-
-측정 결과
-- 기준선 로그: `/tmp/bench_baseline_zmtp.txt`
-- 실행은 ROUTER_ROUTER_POLL 구간에서 타임아웃으로 중단됨
-- 재실행 시 패턴 분할 또는 `--runs 1` 권장
-- ROUTER_ROUTER_POLL 단독 실행: `/tmp/bench_baseline_zmtp_rrpoll.txt`
-- ROUTER_ROUTER_POLL tcp/65536B 표준 libzmq throughput 값이 음수로 기록됨 (재측정 필요)
 
 ---
 
@@ -44,26 +42,19 @@
 
 ---
 
-## HELLO/IDENTITY/ROUTER Mapping
+## Handshake/Metadata Notes
 
-- HELLO는 연결 직후 1회 교환
-- HELLO 바디에 소켓 타입/identity 포함
-- routing-id는 ROUTER 수신 경로에서만 허용
-- routing-id는 메시지 첫 프레임으로 고정
-
----
-
-## TLS Enforcement Behavior
-
-- ZMP 자체는 보안 정책을 정의하지 않음
-- 보안은 전송 계층 정책에 따름 (네트워크 환경에서는 TLS 권장)
+- HELLO 교환 후 READY 교환이 완료 조건
+- READY는 메타데이터 유무와 관계없이 1회 교환
+- ERROR 발생 시 즉시 종료
 
 ---
 
 ## Risks
 
-- routing-id 처리 규칙 위반 시 즉시 연결 종료
-- 버전 협상 부재로 버전 업그레이드 시 단절 위험
+- v1 적용 시 구버전과 공존 불가
+- 핸드셰이크 규칙 위반 시 초기 연결 실패 위험
+- 옵션 제거로 API 변경 발생
 
 ---
 
@@ -71,7 +62,5 @@
 
 - `src/asio/asio_zmp_engine.cpp`
 - `src/asio/asio_engine.cpp`
-- `src/session_base.cpp`
-- `src/pipe.cpp`
 - `src/zmp_protocol.hpp`
 - `benchwithzmq/run_benchmarks.sh`

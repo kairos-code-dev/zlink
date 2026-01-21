@@ -106,6 +106,23 @@ if(ENABLE_NATIVE_TUNE AND NOT MSVC)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mtune=native")
 endif()
 
+# Release build optimizations for production deployment
+option(ENABLE_LTO "Enable Link-Time Optimization (LTO/IPO)" ON)
+
+if(ENABLE_LTO AND NOT CMAKE_BUILD_TYPE MATCHES "Debug")
+    message(STATUS "Enabling Link-Time Optimization (LTO/IPO)")
+
+    # Use CMake's native LTO support (CMake 3.9+)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_output)
+
+    if(ipo_supported)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    else()
+        message(WARNING "LTO not supported by this compiler: ${ipo_output}")
+    endif()
+endif()
+
 set(ZMQ_OUTPUT_BASENAME
     "zmq"
     CACHE STRING "Output zmq library base name")
@@ -1160,20 +1177,11 @@ if(MSVC)
     # files with code in its IL form. The linker will happily work with these 
     # .LIB files. Be aware that these libraries will be tied to a specific 
     # version of the compiler and linker. If you distribute these libraries, 
-    # you'll need to update them if Microsoft changes the format of IL in a 
+    # you'll need to update them if Microsoft changes the format of IL in a
     # future release."
-    # 
-    # /GL and /LTCG can cause problems when libraries built with different 
-    # versions of compiler are later linked into an executable while /LTCG is active. 
-    # https://social.msdn.microsoft.com/Forums/vstudio/en-US/5c102025-c254-4f02-9a51-c775c6cc9f4b/problem-with-ltcg-when-building-a-static-library-in-vs2005?forum=vcgeneral
     #
-    # For this reason, enable only when building a "Release" (e.g. non-DEBUG) DLL.
-    if(NOT ${CMAKE_BUILD_TYPE} MATCHES "Debug")
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GL")
-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /LTCG")
-      set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /LTCG")
-      set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /LTCG")
-    endif()
+    # Note: Manual /GL and /LTCG flags replaced with CMake's native
+    # INTERPROCEDURAL_OPTIMIZATION (see line ~100 for ENABLE_LTO option).
 
     add_library(libzmq SHARED ${sources} ${public_headers} ${html-docs} ${readme-docs}
                               ${CMAKE_CURRENT_BINARY_DIR}/NSIS.template.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
@@ -1347,6 +1355,9 @@ if(BUILD_STATIC)
   target_link_libraries(libzmq-static ${CMAKE_THREAD_LIBS_INIT})
   if(ZMQ_HAVE_ASIO_SSL)
     target_link_libraries(libzmq-static OpenSSL::SSL OpenSSL::Crypto)
+    if(WIN32)
+      target_link_libraries(libzmq-static crypt32)
+    endif()
   endif()
 
   if(LIBBSD_FOUND)

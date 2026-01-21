@@ -5,9 +5,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 IS_WINDOWS=0
+PLATFORM="linux"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     IS_WINDOWS=1
+    PLATFORM="windows"
+    ;;
+  Darwin*)
+    PLATFORM="macos"
+    ;;
+  Linux*)
+    PLATFORM="linux"
     ;;
 esac
 
@@ -156,7 +164,7 @@ if [[ "${BASELINE}" -eq 1 ]]; then
   fi
   DATE_DIR="$(date +%Y%m%d)"
   TS="$(date +%Y%m%d_%H%M%S)"
-  NAME="bench_${PATTERN}_${TS}"
+  NAME="bench_${PLATFORM}_${PATTERN}_${TS}"
   if [[ -n "${BASELINE_TAG}" ]]; then
     NAME="${NAME}_${BASELINE_TAG}"
   fi

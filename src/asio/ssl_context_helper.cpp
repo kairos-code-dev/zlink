@@ -57,6 +57,7 @@ ssl_context_helper_t::create_server_context (const std::string &cert_chain_file,
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL server context creation failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -105,6 +106,7 @@ ssl_context_helper_t::create_server_context_from_pem (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL server context creation from PEM failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -149,6 +151,7 @@ ssl_context_helper_t::create_client_context (const std::string &ca_cert_file,
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL client context creation failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -191,6 +194,7 @@ ssl_context_helper_t::create_client_context_from_pem (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL client context creation from PEM failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -254,6 +258,7 @@ ssl_context_helper_t::create_client_context_with_cert (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL client context with cert creation failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -321,6 +326,7 @@ ssl_context_helper_t::create_client_context_with_cert_from_pem (
         ASIO_GLOBAL_ERROR (
           "SSL client context with cert from PEM creation failed: %s",
           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return nullptr;
     }
 }
@@ -357,6 +363,7 @@ bool ssl_context_helper_t::configure_verification (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("SSL verification configuration failed: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
@@ -371,6 +378,7 @@ bool ssl_context_helper_t::load_ca_certificate (boost::asio::ssl::context &ctx,
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("Failed to load CA certificate from file: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
@@ -386,6 +394,7 @@ bool ssl_context_helper_t::load_ca_certificate_from_pem (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("Failed to load CA certificate from PEM: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return false;
     }
 }
@@ -444,6 +453,7 @@ bool ssl_context_helper_t::configure_server_verification (
     catch (const boost::system::system_error &e) {
         ASIO_GLOBAL_ERROR ("Failed to configure server verification: %s",
                           e.what ());
+        (void) e;  // Suppress unused variable warning when debug is disabled
         return false;
     }
 }

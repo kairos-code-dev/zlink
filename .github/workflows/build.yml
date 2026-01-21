@@ -142,7 +142,8 @@ jobs:
             build-essential \
             cmake \
             git \
-            pkg-config
+            pkg-config \
+            libssl-dev
 
       - name: Build libzmq
         run: |
@@ -173,7 +174,8 @@ jobs:
             build-essential \
             cmake \
             git \
-            pkg-config
+            pkg-config \
+            libssl-dev
 
       - name: Build libzmq
         run: |
@@ -201,7 +203,8 @@ jobs:
         run: |
           brew install \
             cmake \
-            pkg-config
+            pkg-config \
+            openssl@3
 
       - name: Build libzmq
         run: |
@@ -235,7 +238,8 @@ jobs:
         run: |
           brew install \
             cmake \
-            pkg-config
+            pkg-config \
+            openssl@3
 
       - name: Build libzmq
         run: |
@@ -343,11 +347,23 @@ jobs:
         with:
           name: libzmq ${{ needs.read-versions.outputs.libzmq_version }}
           body: |
-            ## libzmq Native Libraries
+            ## libzmq Native Libraries (zlink)
 
-            - **libzmq**: ${{ needs.read-versions.outputs.libzmq_version }}
-            - **CURVE encryption**: Disabled (minimal build)
-            - **Headers included**: `zmq.h`, `zmq_utils.h`
+            **Version**: ${{ needs.read-versions.outputs.libzmq_version }}
+
+            ### Features
+            - **I/O Backend**: ASIO (Boost.Asio) for high-performance async I/O
+            - **TLS Support**: Native TLS transport (`tls://`) and WebSocket TLS (`wss://`)
+            - **WebSocket**: Full WebSocket support (`ws://`, `wss://`)
+            - **Optimizations**: Link-Time Optimization (LTO) enabled for production builds
+            - **Protocols**: tcp, ipc, inproc, ws, wss, tls
+            - **Socket Types**: PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
+
+            ### Removed Features
+            - CURVE encryption (use TLS instead)
+            - REQ/REP, PUSH/PULL, STREAM socket types
+            - TIPC, VMCI, PGM, NORM, UDP protocols
+            - Draft API socket types
 
             ### Downloads
             | Platform | File |
@@ -363,11 +379,13 @@ jobs:
             Each archive contains:
             - Native library (`.dll`/`.so`/`.dylib`)
             - Public headers (`include/zmq.h`, `include/zmq_utils.h`)
+            - OpenSSL dependency required for TLS features
 
             ### Verification
             All builds have been tested with:
-            - Basic socket operations
-            - Core ZeroMQ functionality
+            - 64 unit tests (Unity framework)
+            - Transport matrix tests (all socket patterns × all transports)
+            - TLS/WebSocket functionality
           files: |
             artifacts/libzmq-windows-x64.zip
             artifacts/libzmq-windows-arm64.zip

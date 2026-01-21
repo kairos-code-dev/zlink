@@ -48,23 +48,10 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  The function takes ownership of the message.
     virtual int push_msg (msg_t *msg_);
 
-    int zap_connect ();
-    bool zap_enabled () const;
-
     //  Fetches a message. Returns 0 if successful; -1 otherwise.
     //  The caller is responsible for freeing the message when no
     //  longer used.
     virtual int pull_msg (msg_t *msg_);
-
-    //  Receives message from ZAP socket.
-    //  Returns 0 on success; -1 otherwise.
-    //  The caller is responsible for freeing the message.
-    int read_zap_msg (msg_t *msg_);
-
-    //  Sends message to ZAP socket.
-    //  Returns 0 on success; -1 otherwise.
-    //  The function takes ownership of the message.
-    int write_zap_msg (msg_t *msg_);
 
     socket_base_t *get_socket () const;
     const endpoint_uri_pair_t &get_endpoint () const;
@@ -102,9 +89,6 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  Pipe connecting the session to its socket.
     zmq::pipe_t *_pipe;
 
-    //  Pipe used to exchange messages with ZAP socket.
-    zmq::pipe_t *_zap_pipe;
-
     //  This set is added to with pipes we are disconnecting, but haven't yet completed
     std::set<pipe_t *> _terminating_pipes;
 
@@ -139,26 +123,6 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     address_t *_addr;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (session_base_t)
-};
-
-class hello_msg_session_t ZMQ_FINAL : public session_base_t
-{
-  public:
-    hello_msg_session_t (zmq::io_thread_t *io_thread_,
-                         bool connect_,
-                         zmq::socket_base_t *socket_,
-                         const options_t &options_,
-                         address_t *addr_);
-    ~hello_msg_session_t ();
-
-    //  Overrides of the functions from session_base_t.
-    int pull_msg (msg_t *msg_);
-    void reset ();
-
-  private:
-    bool _new_pipe;
-
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (hello_msg_session_t)
 };
 }
 

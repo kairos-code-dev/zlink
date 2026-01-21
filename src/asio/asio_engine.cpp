@@ -10,12 +10,8 @@
 #include "../io_thread.hpp"
 #include "../session_base.hpp"
 #include "../socket_base.hpp"
-#include "../null_mechanism.hpp"
-#include "../plain_client.hpp"
-#include "../plain_server.hpp"
 #include "../config.hpp"
 #include "../err.hpp"
-#include "../zmp_protocol.hpp"
 #include "../ip.hpp"
 #include "../tcp.hpp"
 #include "../likely.hpp"
@@ -143,7 +139,6 @@ zmq::asio_engine_t::asio_engine_t (
     _outpos (NULL),
     _outsize (0),
     _encoder (NULL),
-    _mechanism (NULL),
     _next_msg (NULL),
     _process_msg (NULL),
     _metadata (NULL),
@@ -231,7 +226,6 @@ zmq::asio_engine_t::~asio_engine_t ()
 
     LIBZMQ_DELETE (_encoder);
     LIBZMQ_DELETE (_decoder);
-    LIBZMQ_DELETE (_mechanism);
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
@@ -820,20 +814,13 @@ bool zmq::asio_engine_t::process_input ()
             //  Switch into the normal message flow.
             _handshaking = false;
 
-            if (_mechanism == NULL && _has_handshake_stage) {
+            if (_has_handshake_stage) {
                 _session->engine_ready ();
 
                 if (_has_handshake_timer) {
                     cancel_timer (handshake_timer_id);
                     _has_handshake_timer = false;
                 }
-            }
-
-            //  After greeting exchange completes, trigger output to send
-            //  mechanism handshake (e.g., READY command)
-            if (_mechanism != NULL) {
-                ENGINE_DBG ("process_input: greeting done, triggering write");
-                start_async_write ();
             }
         } else
             return false;
@@ -1312,161 +1299,13 @@ bool zmq::asio_engine_t::restart_input_internal ()
     return true;
 }
 
-int zmq::asio_engine_t::next_handshake_command (msg_t *msg_)
-{
-    zmq_assert (_mechanism != NULL);
-
-    if (_mechanism->status () == mechanism_t::ready) {
-        mechanism_ready ();
-        return pull_and_encode (msg_);
-    }
-    if (_mechanism->status () == mechanism_t::error) {
-        errno = EPROTO;
-        return -1;
-    }
-    const int rc = _mechanism->next_handshake_command (msg_);
-
-    if (rc == 0)
-        msg_->set_flags (msg_t::command);
-
-    return rc;
-}
-
-int zmq::asio_engine_t::process_handshake_command (msg_t *msg_)
-{
-    zmq_assert (_mechanism != NULL);
-    const int rc = _mechanism->process_handshake_command (msg_);
-    if (rc == 0) {
-        if (_mechanism->status () == mechanism_t::ready)
-            mechanism_ready ();
-        else if (_mechanism->status () == mechanism_t::error) {
-            errno = EPROTO;
-            return -1;
-        }
-        if (_output_stopped)
-            restart_output ();
-    }
-
-    return rc;
-}
-
-void zmq::asio_engine_t::zap_msg_available ()
-{
-    zmq_assert (_mechanism != NULL);
-
-    const int rc = _mechanism->zap_msg_available ();
-    if (rc == -1) {
-        error (protocol_error);
-        return;
-    }
-    if (_input_stopped)
-        if (!restart_input ())
-            return;
-    if (_output_stopped)
-        restart_output ();
-}
-
 const zmq::endpoint_uri_pair_t &zmq::asio_engine_t::get_endpoint () const
 {
     return _endpoint_uri_pair;
 }
 
-void zmq::asio_engine_t::mechanism_ready ()
-{
-    if (_options.heartbeat_interval > 0 && !_has_heartbeat_timer) {
-        add_timer (_options.heartbeat_interval, heartbeat_ivl_timer_id);
-        _has_heartbeat_timer = true;
-    }
-
-    if (_has_handshake_stage)
-        _session->engine_ready ();
-
-    bool flush_session = false;
-
-    if (_options.recv_routing_id) {
-        msg_t routing_id;
-        _mechanism->peer_routing_id (&routing_id);
-        const int rc = _session->push_msg (&routing_id);
-        if (rc == -1 && errno == EAGAIN) {
-            return;
-        }
-        errno_assert (rc == 0);
-        flush_session = true;
-    }
-
-    if (flush_session)
-        _session->flush ();
-
-    _next_msg = &asio_engine_t::pull_and_encode;
-    _process_msg = &asio_engine_t::write_credential;
-
-    //  Compile metadata.
-    properties_t properties;
-    init_properties (properties);
-
-    //  Add ZAP properties.
-    const properties_t &zap_properties = _mechanism->get_zap_properties ();
-    properties.insert (zap_properties.begin (), zap_properties.end ());
-
-    //  Add ZMTP properties.
-    const properties_t &zmtp_properties = _mechanism->get_zmtp_properties ();
-    properties.insert (zmtp_properties.begin (), zmtp_properties.end ());
-
-    zmq_assert (_metadata == NULL);
-    if (!properties.empty ()) {
-        _metadata = new (std::nothrow) metadata_t (properties);
-        alloc_assert (_metadata);
-    }
-
-    if (_has_handshake_timer) {
-        cancel_timer (handshake_timer_id);
-        _has_handshake_timer = false;
-    }
-
-    _socket->event_handshake_succeeded (_endpoint_uri_pair, 0);
-}
-
-int zmq::asio_engine_t::write_credential (msg_t *msg_)
-{
-    zmq_assert (_mechanism != NULL);
-    zmq_assert (_session != NULL);
-
-    const blob_t &credential = _mechanism->get_user_id ();
-    if (credential.size () > 0) {
-        msg_t msg;
-        int rc = msg.init_size (credential.size ());
-        zmq_assert (rc == 0);
-        memcpy (msg.data (), credential.data (), credential.size ());
-        msg.set_flags (msg_t::credential);
-        rc = _session->push_msg (&msg);
-        if (rc == -1) {
-            rc = msg.close ();
-            errno_assert (rc == 0);
-            return -1;
-        }
-    }
-    _process_msg = &asio_engine_t::decode_and_push;
-    return decode_and_push (msg_);
-}
-
-int zmq::asio_engine_t::pull_and_encode (msg_t *msg_)
-{
-    zmq_assert (_mechanism != NULL);
-
-    if (_session->pull_msg (msg_) == -1)
-        return -1;
-    if (_mechanism->encode (msg_) == -1)
-        return -1;
-    return 0;
-}
-
 int zmq::asio_engine_t::decode_and_push (msg_t *msg_)
 {
-    zmq_assert (_mechanism != NULL);
-
-    if (_mechanism->decode (msg_) == -1)
-        return -1;
-
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
         cancel_timer (heartbeat_timeout_timer_id);
@@ -1521,20 +1360,14 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
     zmq_assert (_session);
 
     // protocol errors have been signaled already at the point where they occurred
-    if (reason_ != protocol_error && !zmp_protocol_enabled ()
-        && (_mechanism == NULL
-            || _mechanism->status () == mechanism_t::handshaking)) {
+    if (reason_ != protocol_error && _handshaking) {
         const int err = errno;
         _socket->event_handshake_failed_no_detail (_endpoint_uri_pair, err);
     }
 
     _socket->event_disconnected (_endpoint_uri_pair, _fd);
     _session->flush ();
-    _session->engine_error (
-      !_handshaking
-        && (_mechanism == NULL
-            || _mechanism->status () != mechanism_t::handshaking),
-      reason_);
+    _session->engine_error (!_handshaking, reason_);
     unplug ();
 
     //  Drain any pending async handlers while the object is still alive.

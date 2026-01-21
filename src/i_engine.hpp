@@ -46,8 +46,6 @@ struct i_engine
     //  are messages to send available.
     virtual void restart_output () = 0;
 
-    virtual void zap_msg_available () = 0;
-
     virtual const endpoint_uri_pair_t &get_endpoint () const = 0;
 };
 }

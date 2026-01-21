@@ -401,8 +401,6 @@ if(POLLER STREQUAL "asio")
     # Phase 1-C: ASIO engine (True Proactor Mode)
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_engine.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmtp_engine.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/asio/asio_zmp_engine.hpp
     # Transport abstraction layer (R3 refactoring)
@@ -894,19 +892,14 @@ set(cxx-sources
     lb.cpp
     mailbox.cpp
     mailbox_safe.cpp
-    mechanism.cpp
-    mechanism_base.cpp
     metadata.cpp
     msg.cpp
     mtrie.cpp
     object.cpp
     options.cpp
     own.cpp
-    null_mechanism.cpp
     pair.cpp
     pipe.cpp
-    plain_client.cpp
-    plain_server.cpp
     poller_base.cpp
     polling_util.cpp
     proxy.cpp
@@ -923,11 +916,6 @@ set(cxx-sources
     thread.cpp
     trie.cpp
     radix_tree.cpp
-    v1_decoder.cpp
-    v1_encoder.cpp
-    v2_decoder.cpp
-    v2_encoder.cpp
-    v3_1_encoder.cpp
     zmp_decoder.cpp
     zmp_encoder.cpp
     xpub.cpp
@@ -939,7 +927,6 @@ set(cxx-sources
     timers.cpp
     config.hpp
     ip_resolver.cpp
-    zap_client.cpp
     # at least for VS, the header files must also be listed
     address.hpp
     array.hpp
@@ -980,21 +967,15 @@ set(cxx-sources
     macros.hpp
     mailbox.hpp
     mailbox_safe.hpp
-    mechanism.hpp
-    mechanism_base.hpp
     metadata.hpp
     msg.hpp
     mtrie.hpp
     mutex.hpp
-    null_mechanism.hpp
     object.hpp
     options.hpp
     own.hpp
     pair.hpp
     pipe.hpp
-    plain_client.hpp
-    plain_common.hpp
-    plain_server.hpp
     poller.hpp
     poller_base.hpp
     polling_util.hpp
@@ -1016,15 +997,9 @@ set(cxx-sources
     thread.hpp
     timers.hpp
     trie.hpp
-    v1_decoder.hpp
-    v1_encoder.hpp
-    v2_decoder.hpp
-    v2_encoder.hpp
-    v3_1_encoder.hpp
     zmp_decoder.hpp
     zmp_encoder.hpp
     zmp_protocol.hpp
-    v2_protocol.hpp
     windows.hpp
     wire.hpp
     xpub.hpp
@@ -1032,8 +1007,7 @@ set(cxx-sources
     ypipe.hpp
     ypipe_base.hpp
     ypipe_conflate.hpp
-    yqueue.hpp
-    zap_client.hpp)
+    yqueue.hpp)
 
 if(MINGW)
   # Generate the right type when using -m32 or -m64

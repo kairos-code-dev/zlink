@@ -40,26 +40,12 @@ namespace zmq
 
 class io_thread_t;
 class session_base_t;
-class mechanism_t;
 
-//  Protocol revisions for ZMTP over WebSocket
-enum
-{
-    WS_ZMTP_1_0 = 0,
-    WS_ZMTP_2_0 = 1,
-    WS_ZMTP_3_x = 3
-};
-
-//  WebSocket ZMTP Engine
+//  WebSocket ZMP Engine
 //
-//  This engine implements ZMTP protocol over WebSocket transport.
+//  This engine implements ZMP protocol over WebSocket transport.
 //  It uses ws_transport_t for WebSocket framing and Beast I/O,
-//  while implementing the ZMTP handshake and message protocol.
-//
-//  The engine handles:
-//  1. WebSocket handshake (client or server via ws_transport)
-//  2. ZMTP greeting and handshake over WebSocket frames
-//  3. ZMTP message encoding/decoding with WebSocket transport
+//  while implementing the ZMP handshake and message protocol.
 
 class asio_ws_engine_t ZMQ_FINAL : public i_engine
 {
@@ -94,7 +80,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     void terminate () ZMQ_OVERRIDE;
     bool restart_input () ZMQ_OVERRIDE;
     void restart_output () ZMQ_OVERRIDE;
-    void zap_msg_available () ZMQ_OVERRIDE;
     const endpoint_uri_pair_t &get_endpoint () const ZMQ_OVERRIDE;
 
   protected:
@@ -102,9 +87,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool init_properties (properties_t &properties_);
 
     void error (error_reason_t reason_);
-
-    int next_handshake_command (msg_t *msg_);
-    int process_handshake_command (msg_t *msg_);
 
     int pull_msg_from_session (msg_t *msg_);
     int push_msg_to_session (msg_t *msg_);
@@ -127,27 +109,12 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  WebSocket handshake completion callback
     void on_ws_handshake_complete (const boost::system::error_code &ec);
 
-    //  Start ZMTP handshake after WebSocket handshake completes
-    void start_zmtp_handshake ();
+    //  Start ZMP handshake after WebSocket handshake completes
     void start_zmp_handshake ();
 
-    //  ZMTP handshake methods
+    //  Handshake methods
     bool handshake ();
     bool handshake_zmp ();
-    int receive_greeting ();
-    void receive_greeting_versioned ();
-
-    typedef bool (asio_ws_engine_t::*handshake_fun_t) ();
-    static handshake_fun_t select_handshake_fun (bool unversioned,
-                                                 unsigned char revision,
-                                                 unsigned char minor);
-
-    bool handshake_v1_0_unversioned ();
-    bool handshake_v1_0 ();
-    bool handshake_v2_0 ();
-    bool handshake_v3_x (bool downgrade_sub);
-    bool handshake_v3_0 ();
-    bool handshake_v3_1 ();
 
     bool receive_hello ();
     bool parse_hello (const unsigned char *data_, size_t size_);
@@ -155,9 +122,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool process_zmp_handshake_input ();
     int process_ready_message (msg_t *msg_);
     int process_error_message (msg_t *msg_);
-
-    int routing_id_msg (msg_t *msg_);
-    int process_routing_id_msg (msg_t *msg_);
 
     //  Async I/O methods
     void start_async_read ();
@@ -180,11 +144,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  Internal data processing
     bool process_input ();
     void process_output ();
-
-    void unplug ();
-    void mechanism_ready ();
-
-    int write_credential (msg_t *msg_);
 
     //  Timer management
     void add_timer (int timeout_, int id_);
@@ -219,7 +178,7 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  Peer address string
     const std::string _peer_address;
 
-    //  Buffers for ZMTP I/O
+    //  Buffers for ZMP I/O
     unsigned char *_inpos;
     size_t _insize;
     i_decoder *_decoder;
@@ -228,9 +187,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     unsigned char *_outpos;
     size_t _outsize;
     i_encoder *_encoder;
-
-    //  ZMTP mechanism
-    mechanism_t *_mechanism;
 
     //  Message function pointers
     int (asio_ws_engine_t::*_next_msg) (msg_t *msg_);
@@ -262,18 +218,9 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  Outgoing message
     msg_t _tx_msg;
 
-    //  ZMTP greeting
-    static const size_t signature_size = 10;
-    static const size_t v2_greeting_size = 12;
-    static const size_t v3_greeting_size = 64;
+    //  ZMP handshake
     static const size_t zmp_hello_buf_size = 272;
 
-    size_t _greeting_size;
-    unsigned char _greeting_recv[v3_greeting_size];
-    unsigned char _greeting_send[v3_greeting_size];
-    unsigned int _greeting_bytes_read;
-
-    bool _zmp_mode;
     bool _hello_sent;
     bool _hello_received;
     bool _ready_sent;

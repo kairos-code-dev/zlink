@@ -168,8 +168,6 @@ zmq::options_t::options_t () :
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
     tcp_keepalive_intvl (-1),
-    mechanism (ZMQ_NULL),
-    as_server (0),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),

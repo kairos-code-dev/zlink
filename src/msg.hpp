@@ -56,7 +56,7 @@ class msg_t
     enum
     {
         more = 1,    //  Followed by more parts
-        command = 2, //  Command frame (see ZMTP spec)
+        command = 2, //  Command frame (see ZMP spec)
         //  Command types, use only bits 2-5 and compare with ==, not bitwise,
         //  a command can never be of more that one type at the same time
         ping = 4,

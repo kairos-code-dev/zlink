@@ -1866,7 +1866,9 @@ zmq::routing_socket_base_t::lookup_out_pipe (const blob_t &routing_id_)
     if (it != _out_pipes.end ()) {
         //  Prefetch the out_pipe structure into L1 cache for next access
         //  This improves cache efficiency as the caller will immediately use the result
+#if !defined _MSC_VER
         __builtin_prefetch (&it->second, 0, 3);
+#endif
         return &it->second;
     }
     return NULL;
@@ -1879,7 +1881,9 @@ zmq::routing_socket_base_t::lookup_out_pipe (const blob_t &routing_id_) const
     const out_pipes_t::const_iterator it = _out_pipes.find (routing_id_);
     if (it != _out_pipes.end ()) {
         //  Prefetch the out_pipe structure into L1 cache for next access
+#if !defined _MSC_VER
         __builtin_prefetch (&it->second, 0, 3);
+#endif
         return &it->second;
     }
     return NULL;

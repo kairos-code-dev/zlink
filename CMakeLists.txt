@@ -1223,6 +1223,9 @@ else()
   # static builds
   if(NOT MINGW)
     add_library(objects OBJECT ${sources})
+    if(ZMQ_HAVE_ASIO_SSL)
+      target_link_libraries(objects PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
     set_property(TARGET objects PROPERTY POSITION_INDEPENDENT_CODE ON)
   endif()
 

@@ -883,6 +883,26 @@ int zmq::create_ipc_wildcard_address (std::string &path_, std::string &file_)
         ++tmp_env;
     }
 
+    // If no env var is set, use a local ./tmp directory in the current
+    // working directory. Create it if it doesn't exist.
+    if (tmp_path.empty ()) {
+        const char *local_tmp = "./tmp";
+        struct stat statbuf;
+        if (::stat (local_tmp, &statbuf) == 0) {
+            if (!S_ISDIR (statbuf.st_mode)) {
+                errno = ENOTDIR;
+                return -1;
+            }
+        } else if (errno == ENOENT) {
+            if (::mkdir (local_tmp, S_IRWXU) != 0)
+                return -1;
+        } else {
+            return -1;
+        }
+        tmp_path.assign (local_tmp);
+        tmp_path.push_back ('/');
+    }
+
     // Append a directory name
     tmp_path.append ("tmpXXXXXX");
 

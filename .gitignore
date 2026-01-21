@@ -138,3 +138,4 @@ benchmark_result.txt
 /test_*
 !/test_*.cpp
 !benchwithzmq/libzmq/libzmq_dist/lib/libzmq.so
+tmp/

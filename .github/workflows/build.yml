@@ -143,20 +143,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install OpenSSL
+      - name: Install OpenSSL (ARM64) via vcpkg
         shell: pwsh
         run: |
-          choco install openssl --no-progress
-          $opensslRoot = "C:\Program Files\OpenSSL-Win64"
-          if (Test-Path $opensslRoot) {
-            echo "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
-            Write-Host "OpenSSL installed at $opensslRoot"
-          }
+          vcpkg install openssl:arm64-windows-static
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          $opensslDir = "$vcpkgRoot\installed\arm64-windows-static"
+          echo "OPENSSL_ROOT_DIR=$opensslDir" >> $env:GITHUB_ENV
+          Write-Host "OpenSSL (ARM64) installed via vcpkg at $opensslDir"
 
       - name: Build libzmq
         shell: pwsh
         run: |
-          # Use inline CMake for ARM64 cross-compilation and disable TLS
           $buildDir = "build-win-arm64"
           New-Item -ItemType Directory -Force -Path $buildDir
           cd $buildDir
@@ -168,7 +166,9 @@ jobs:
             -DBUILD_STATIC=OFF `
             -DBUILD_TESTS=OFF `
             -DZMQ_CXX_STANDARD=20 `
-            -DWITH_TLS=OFF
+            -DWITH_TLS=ON `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           cmake --build . --config Release --parallel
           cmake --install . --config Release --prefix ../dist/windows-arm64
 

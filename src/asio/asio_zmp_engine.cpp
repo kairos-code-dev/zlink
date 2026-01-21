@@ -163,7 +163,18 @@ void zmq::asio_zmp_engine_t::send_error_frame (uint8_t code_,
     if (reason_len > 0)
         memcpy (buffer + zmp_header_size + 3, reason, reason_len);
 
-    tr->write_some (buffer, zmp_header_size + body_len);
+    const size_t total = zmp_header_size + body_len;
+    size_t offset = 0;
+    while (offset < total) {
+        const std::size_t written =
+          tr->write_some (buffer + offset, total - offset);
+        if (written == 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                break;
+            break;
+        }
+        offset += written;
+    }
 }
 
 void zmq::asio_zmp_engine_t::error (error_reason_t reason_)

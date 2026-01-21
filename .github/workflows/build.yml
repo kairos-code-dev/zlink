@@ -396,12 +396,14 @@ jobs:
       - name: Prepare release assets
         run: |
           cd artifacts
-          zip -j libzmq-windows-x64.zip libzmq-windows-x64/*
-          zip -j libzmq-windows-arm64.zip libzmq-windows-arm64/*
-          zip -j libzmq-linux-x64.zip libzmq-linux-x64/*
-          zip -j libzmq-linux-arm64.zip libzmq-linux-arm64/*
-          zip -j libzmq-macos-x64.zip libzmq-macos-x64/*
-          zip -j libzmq-macos-arm64.zip libzmq-macos-arm64/*
+          # Use recursive zip to handle subdirectories and avoid 'Nothing to do' error
+          zip -r libzmq-windows-x64.zip libzmq-windows-x64/
+          zip -r libzmq-windows-arm64.zip libzmq-windows-arm64/
+          zip -r libzmq-linux-x64.zip libzmq-linux-x64/
+          zip -r libzmq-linux-arm64.zip libzmq-linux-arm64/
+          zip -r libzmq-macos-x64.zip libzmq-macos-x64/
+          zip -r libzmq-macos-arm64.zip libzmq-macos-arm64/
+          ls -lh *.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

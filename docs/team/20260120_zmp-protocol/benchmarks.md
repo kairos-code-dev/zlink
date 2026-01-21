@@ -27,3 +27,7 @@ Improvements:
 - ROUTER_ROUTER_POLL inproc 131072B throughput: +13.7%
 - ROUTER_ROUTER inproc 64B throughput: +11.8%
 
+## Artifacts
+- `benchwithzmq/baseline/20260121/bench_ALL_20260121_141453_zmp_v1.txt`
+- `benchwithzmq/baseline/20260121/bench_ALL_20260121_141758.txt`
+- `benchwithzmq/baseline/20260121/bench_ALL_20260121_152423.txt`

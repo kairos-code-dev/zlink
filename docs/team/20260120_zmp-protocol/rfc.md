@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-22  
 **Owner:** 팀장님  
-**Status:** Draft
+**Status:** Implemented (current behavior)
 
 ---
 

@@ -64,11 +64,12 @@
 - metadata 인코딩/파싱 단위 테스트
 - TTL 합의(helper) 단위 테스트
 - ZMP metadata on/off + ERROR(잘못된 HELLO) 통합 테스트
-- TODO: heartbeat TTL/ctx 통합 테스트
+- heartbeat TTL/ctx 통합 테스트
+- ZMP WS/WSS PAIR 통합 테스트
 
 ## Test Results
 
-- `ctest --output-on-failure` (63 tests passed, fuzzers skipped)
+- `ctest --output-on-failure` (64 tests passed, fuzzers skipped)
 
 ---
 

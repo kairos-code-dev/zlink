@@ -51,6 +51,27 @@ enum recv_status_t
     recv_error
 };
 
+bool send_all (fd_t fd_, const unsigned char *buf_, size_t size_)
+{
+    size_t offset = 0;
+    while (offset < size_) {
+#if defined ZMQ_HAVE_WINDOWS
+        const int rc = send (
+          fd_, reinterpret_cast<const char *> (buf_ + offset),
+          static_cast<int> (size_ - offset), 0);
+        if (rc <= 0)
+            return false;
+#else
+        const ssize_t rc =
+          send (fd_, buf_ + offset, size_ - offset, MSG_NOSIGNAL);
+        if (rc <= 0)
+            return false;
+#endif
+        offset += static_cast<size_t> (rc);
+    }
+    return true;
+}
+
 recv_status_t recv_all (fd_t fd_, unsigned char *buf_, size_t size_)
 {
     size_t offset = 0;
@@ -81,6 +102,32 @@ recv_status_t recv_all (fd_t fd_, unsigned char *buf_, size_t size_)
         offset += static_cast<size_t> (rc);
     }
     return recv_ok;
+}
+
+bool send_zmp_frame (fd_t fd_,
+                     unsigned char flags_,
+                     const unsigned char *body_,
+                     size_t body_len_)
+{
+    unsigned char header[zmq::zmp_header_size];
+    header[0] = zmq::zmp_magic;
+    header[1] = zmq::zmp_version;
+    header[2] = flags_;
+    header[3] = 0;
+    zmq::put_uint32 (header + 4, static_cast<uint32_t> (body_len_));
+
+    if (!send_all (fd_, header, sizeof (header)))
+        return false;
+    if (body_len_ > 0)
+        return send_all (fd_, body_, body_len_);
+    return true;
+}
+
+bool send_zmp_control (fd_t fd_,
+                       const unsigned char *body_,
+                       size_t body_len_)
+{
+    return send_zmp_frame (fd_, zmq::zmp_flag_control, body_, body_len_);
 }
 
 bool read_zmp_frame (fd_t fd_,
@@ -188,20 +235,19 @@ void test_zmp_error_invalid_hello ()
     TEST_ASSERT_NOT_EQUAL (retired_fd, raw);
     set_recv_timeout (raw, 2000);
 
-    unsigned char buf[zmq::zmp_header_size + 3];
-    memset (buf, 0, sizeof (buf));
-    buf[0] = 0x00; // invalid magic
-    buf[1] = zmq::zmp_version;
-    buf[2] = zmq::zmp_flag_control;
-    buf[3] = 0;
-    zmq::put_uint32 (buf + 4, 3);
-    buf[zmq::zmp_header_size + 0] = zmq::zmp_control_hello;
-    buf[zmq::zmp_header_size + 1] = ZMQ_PAIR;
-    buf[zmq::zmp_header_size + 2] = 0;
+    unsigned char body[3];
+    body[0] = zmq::zmp_control_hello;
+    body[1] = ZMQ_PAIR;
+    body[2] = 0;
 
-    const int send_rc = send (raw, reinterpret_cast<const char *> (buf),
-                              sizeof (buf), MSG_NOSIGNAL);
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (sizeof (buf)), send_rc);
+    unsigned char header[zmq::zmp_header_size];
+    header[0] = 0x00;
+    header[1] = zmq::zmp_version;
+    header[2] = zmq::zmp_flag_control;
+    header[3] = 0;
+    zmq::put_uint32 (header + 4, sizeof (body));
+    TEST_ASSERT_TRUE (send_all (raw, header, sizeof (header)));
+    TEST_ASSERT_TRUE (send_all (raw, body, sizeof (body)));
 
     bool closed = false;
     bool saw_error = false;
@@ -224,6 +270,77 @@ void test_zmp_error_invalid_hello ()
     test_context_socket_close (server);
 }
 
+void test_zmp_heartbeat_ttl_min ()
+{
+    set_zlink_protocol_zmp ();
+
+    void *server = test_context_socket (ZMQ_PAIR);
+    const int ttl_local_ms = 300;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_setsockopt (server, ZMQ_HEARTBEAT_TTL, &ttl_local_ms,
+                      sizeof (ttl_local_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    fd_t raw = connect_socket (endpoint, AF_INET, IPPROTO_TCP);
+    TEST_ASSERT_NOT_EQUAL (retired_fd, raw);
+    set_recv_timeout (raw, 200);
+
+    unsigned char hello_body[3];
+    hello_body[0] = zmq::zmp_control_hello;
+    hello_body[1] = ZMQ_PAIR;
+    hello_body[2] = 0;
+    TEST_ASSERT_TRUE (send_zmp_control (raw, hello_body, sizeof (hello_body)));
+
+    unsigned char ready_body[1];
+    ready_body[0] = zmq::zmp_control_ready;
+    TEST_ASSERT_TRUE (send_zmp_control (raw, ready_body, sizeof (ready_body)));
+
+    bool closed = false;
+    bool saw_hello = false;
+    bool saw_ready = false;
+    for (int i = 0; i < 4 && !(saw_hello && saw_ready) && !closed; ++i) {
+        unsigned char flags = 0;
+        std::vector<unsigned char> body;
+        if (!read_zmp_frame (raw, flags, body, closed))
+            continue;
+        if ((flags & zmq::zmp_flag_control) && !body.empty ()) {
+            if (body[0] == zmq::zmp_control_hello)
+                saw_hello = true;
+            if (body[0] == zmq::zmp_control_ready)
+                saw_ready = true;
+        }
+    }
+
+    unsigned char heartbeat[5];
+    heartbeat[0] = zmq::zmp_control_heartbeat;
+    zmq::put_uint16 (heartbeat + 1, 20); // remote TTL 2s (deciseconds)
+    heartbeat[3] = 1;
+    heartbeat[4] = 'A';
+    TEST_ASSERT_TRUE (send_zmp_control (raw, heartbeat, sizeof (heartbeat)));
+
+    set_recv_timeout (raw, 1200);
+    bool saw_error = false;
+    for (int i = 0; i < 6 && !saw_error && !closed; ++i) {
+        unsigned char flags = 0;
+        std::vector<unsigned char> body;
+        if (!read_zmp_frame (raw, flags, body, closed))
+            continue;
+        if ((flags & zmq::zmp_flag_control) && !body.empty ()) {
+            if (body[0] == zmq::zmp_control_error)
+                saw_error = true;
+        }
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE (
+      saw_error || closed,
+      "expected timeout disconnect within local TTL window");
+
+    close (raw);
+    test_context_socket_close (server);
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -233,6 +350,7 @@ int main (void)
     RUN_TEST (test_zmp_metadata_enabled);
     RUN_TEST (test_zmp_metadata_disabled);
     RUN_TEST (test_zmp_error_invalid_hello);
+    RUN_TEST (test_zmp_heartbeat_ttl_min);
 
     return UNITY_END ();
 }

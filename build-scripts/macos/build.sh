@@ -73,9 +73,10 @@ if [ "$RUN_TESTS" = "ON" ]; then
 fi
 
 # Configure build
-OPENSSL_ROOT_DIR=""
-if command -v brew >/dev/null 2>&1; then
-    OPENSSL_ROOT_DIR=$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null)
+if [ -z "$OPENSSL_ROOT_DIR" ]; then
+    if command -v brew >/dev/null 2>&1; then
+        OPENSSL_ROOT_DIR=$(brew --prefix openssl@3 2>/dev/null || brew --prefix openssl 2>/dev/null)
+    fi
 fi
 
 CMAKE_OPENSSL_ARGS=""

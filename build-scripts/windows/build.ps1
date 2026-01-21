@@ -150,6 +150,13 @@ try {
         $BoostIncludeArgs += "-DZMQ_BOOST_INCLUDE_DIR=$BoostIncludeDir"
     }
 
+    # Add OpenSSL config
+    $OpenSSLArgs = @()
+    if ($env:OPENSSL_ROOT_DIR) {
+        Write-Host "Using OpenSSL from environment: $env:OPENSSL_ROOT_DIR"
+        $OpenSSLArgs += "-DOPENSSL_ROOT_DIR=$env:OPENSSL_ROOT_DIR"
+    }
+
     cmake "$ROOT_DIR_ABS" `
         -G "Visual Studio 17 2022" `
         -A "$CMAKE_ARCH" `
@@ -161,7 +168,8 @@ try {
         -DZMQ_CXX_STANDARD=20 `
         -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install" `
-        $BoostIncludeArgs
+        $BoostIncludeArgs `
+        $OpenSSLArgs
 
     # Step 3: Build libzmq
     Write-Host ""

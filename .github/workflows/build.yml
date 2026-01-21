@@ -64,6 +64,18 @@ jobs:
         with:
           arch: x64
 
+      - name: Install OpenSSL
+        shell: pwsh
+        run: |
+          choco install openssl --no-progress
+          $opensslRoot = "C:\Program Files\OpenSSL-Win64"
+          if (Test-Path $opensslRoot) {
+            echo "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
+            Write-Host "OpenSSL installed at $opensslRoot"
+          } else {
+            Write-Error "OpenSSL installation failed or path incorrect"
+          }
+
       - name: Install Visual C++ Redistributable
         shell: pwsh
         run: |
@@ -113,6 +125,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install OpenSSL
+        shell: pwsh
+        run: |
+          choco install openssl --no-progress
+          $opensslRoot = "C:\Program Files\OpenSSL-Win64"
+          if (Test-Path $opensslRoot) {
+            echo "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
+            Write-Host "OpenSSL installed at $opensslRoot"
+          }
 
       - name: Build libzmq
         shell: pwsh

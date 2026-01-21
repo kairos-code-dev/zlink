@@ -52,52 +52,29 @@ if (-not $OutputDir) {
 }
 
 # Check for Visual Studio 2022
-Write-Host "==================================="
-Write-Host "Checking Visual Studio 2022..."
-Write-Host "==================================="
+if ($env:VCINSTALLDIR) {
+    Write-Host "Visual Studio environment already set (VCINSTALLDIR: $env:VCINSTALLDIR)"
+    $VS2022_PATH = $env:VCINSTALLDIR
+} else {
+    Write-Host "==================================="
+    Write-Host "Checking Visual Studio 2022..."
+    Write-Host "==================================="
 
-# Use vswhere.exe to detect VS 2022
-$CommonVSWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    # Use vswhere.exe to detect VS 2022
+    $CommonVSWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-if (-not (Test-Path $CommonVSWhere)) {
-    Write-Error ""
-    Write-Error "=========================================="
-    Write-Error "Visual Studio 2022 not found"
-    Write-Error "=========================================="
-    Write-Error "vswhere.exe not found at: $CommonVSWhere"
-    Write-Error ""
-    Write-Error "Please install Visual Studio 2022 first:"
-    Write-Error "  .\build-scripts\windows\setup-vs2022.ps1"
-    Write-Error ""
-    Write-Error "Or manually install Visual Studio 2022 Build Tools"
-    Write-Error "from: https://aka.ms/vs/17/release/vs_BuildTools.exe"
-    Write-Error "=========================================="
-    exit 1
-}
+    if (-not (Test-Path $CommonVSWhere)) {
+        Write-Error "vswhere.exe not found at: $CommonVSWhere"
+        exit 1
+    }
 
-# Check for VS 2022 installation (version range: 17.0 ~ 17.999)
-$VS2022_PATH = & "$CommonVSWhere" -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath
+    # Check for VS 2022 installation (version range: 17.0 ~ 17.999)
+    $VS2022_PATH = & "$CommonVSWhere" -version "[17.0,18.0)" -products * -requires Microsoft.VisualStudio.Workload.VCTools -property installationPath
 
-if (-not $VS2022_PATH) {
-    Write-Error ""
-    Write-Error "=========================================="
-    Write-Error "Visual Studio 2022 not found"
-    Write-Error "=========================================="
-    Write-Error "Visual Studio 2022 with C++ Build Tools is required."
-    Write-Error ""
-    Write-Error "To install automatically, run:"
-    Write-Error "  .\build-scripts\windows\setup-vs2022.ps1"
-    Write-Error ""
-    Write-Error "Or manually install Visual Studio 2022 Build Tools"
-    Write-Error "from: https://aka.ms/vs/17/release/vs_BuildTools.exe"
-    Write-Error ""
-    Write-Error "Required workloads:"
-    Write-Error "  - Desktop development with C++"
-    Write-Error "  - C++ x64/x86 build tools"
-    Write-Error "  - C++ ARM64 build tools"
-    Write-Error "  - Windows 11 SDK (22621)"
-    Write-Error "=========================================="
-    exit 1
+    if (-not $VS2022_PATH) {
+        Write-Error "Visual Studio 2022 with C++ Build Tools is required."
+        exit 1
+    }
 }
 
 Write-Host "Visual Studio 2022 found at: $VS2022_PATH"

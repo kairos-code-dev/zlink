@@ -20,8 +20,9 @@ config.log
 configure
 stamp-h1
 ## CMake
-cmake-build-debug/
+cmake-build-*/
 build/
+build_*/
 ## Android
 builds/android/prefix
 ## IntelliJ

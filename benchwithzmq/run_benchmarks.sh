@@ -25,6 +25,9 @@ ZLINK_ONLY=0
 NO_TASKSET=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
+BASELINE=0
+BASELINE_DIR=""
+BASELINE_TAG=""
 
 usage() {
   cat <<'USAGE'
@@ -37,6 +40,9 @@ Options:
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
   --build-dir PATH     Build directory (default: build/).
   --output PATH        Tee results to a file.
+  --baseline           Write results under benchwithzmq/baseline/YYYYMMDD/.
+  --baseline-dir PATH  Override baseline root directory.
+  --baseline-tag NAME  Optional tag appended to the baseline filename.
   --runs N             Iterations per configuration (default: 3).
   --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
@@ -68,6 +74,17 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output)
       OUTPUT_FILE="${2:-}"
+      shift
+      ;;
+    --baseline)
+      BASELINE=1
+      ;;
+    --baseline-dir)
+      BASELINE_DIR="${2:-}"
+      shift
+      ;;
+    --baseline-tag)
+      BASELINE_TAG="${2:-}"
       shift
       ;;
     --runs)
@@ -127,6 +144,23 @@ if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]
   echo "BENCH_MSG_SIZES must be a comma-separated list of integers." >&2
   usage >&2
   exit 1
+fi
+
+if [[ "${BASELINE}" -eq 1 ]]; then
+  if [[ -n "${OUTPUT_FILE}" ]]; then
+    echo "Error: --baseline cannot be used with --output." >&2
+    exit 1
+  fi
+  if [[ -z "${BASELINE_DIR}" ]]; then
+    BASELINE_DIR="${SCRIPT_DIR}/baseline"
+  fi
+  DATE_DIR="$(date +%Y%m%d)"
+  TS="$(date +%Y%m%d_%H%M%S)"
+  NAME="bench_${PATTERN}_${TS}"
+  if [[ -n "${BASELINE_TAG}" ]]; then
+    NAME="${NAME}_${BASELINE_TAG}"
+  fi
+  OUTPUT_FILE="${BASELINE_DIR}/${DATE_DIR}/${NAME}.txt"
 fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"

@@ -4,7 +4,7 @@
 #define __TESTUTIL_MONITORING_HPP_INCLUDED__
 
 #include "../include/zmq.h"
-#include "../src/stdint.hpp"
+#include "utils/stdint.hpp"
 
 #include <stddef.h>
 

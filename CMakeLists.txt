@@ -891,140 +891,116 @@ endif()
 # -----------------------------------------------------------------------------
 # source files
 
-set(cxx-sources
-    precompiled.cpp
-    allocator.cpp
-    address.cpp
-    clock.cpp
-    ctx.cpp
-    dealer.cpp
-    dist.cpp
-    endpoint.cpp
-    err.cpp
-    fq.cpp
-    io_object.cpp
-    io_thread.cpp
-    ip.cpp
-    ipc_address.cpp
-    lb.cpp
-    mailbox.cpp
-    mailbox_safe.cpp
-    metadata.cpp
-    msg.cpp
-    mtrie.cpp
-    object.cpp
-    options.cpp
-    own.cpp
-    pair.cpp
-    pipe.cpp
-    poller_base.cpp
-    polling_util.cpp
-    proxy.cpp
-    pub.cpp
-    random.cpp
-    reaper.cpp
-    router.cpp
-    session_base.cpp
-    signaler.cpp
-    socket_base.cpp
-    sub.cpp
-    tcp.cpp
-    tcp_address.cpp
-    thread.cpp
-    trie.cpp
-    radix_tree.cpp
-    zmp_decoder.cpp
-    zmp_encoder.cpp
-    xpub.cpp
-    xsub.cpp
-    zmq.cpp
-    zmq_utils.cpp
-    decoder_allocators.cpp
-    socket_poller.cpp
-    timers.cpp
-    config.hpp
-    ip_resolver.cpp
-    # at least for VS, the header files must also be listed
-    address.hpp
-    array.hpp
-    atomic_counter.hpp
-    atomic_ptr.hpp
-    allocator.hpp
-    blob.hpp
-    blob_hash.hpp
-    clock.hpp
-    command.hpp
-    compat.hpp
-    condition_variable.hpp
-    config.hpp
-    ctx.hpp
-    dbuffer.hpp
-    dealer.hpp
-    decoder.hpp
-    decoder_allocators.hpp
-    dist.hpp
-    encoder.hpp
-    endpoint.hpp
-    err.hpp
-    fd.hpp
-    fq.hpp
-    generic_mtrie.hpp
-    generic_mtrie_impl.hpp
-    i_decoder.hpp
-    i_encoder.hpp
-    i_engine.hpp
-    i_mailbox.hpp
-    i_poll_events.hpp
-    io_object.hpp
-    io_thread.hpp
-    ip.hpp
-    ipc_address.hpp
-    lb.hpp
-    likely.hpp
-    macros.hpp
-    mailbox.hpp
-    mailbox_safe.hpp
-    metadata.hpp
-    msg.hpp
-    mtrie.hpp
-    mutex.hpp
-    object.hpp
-    options.hpp
-    own.hpp
-    pair.hpp
-    pipe.hpp
-    poller.hpp
-    poller_base.hpp
-    polling_util.hpp
-    precompiled.hpp
-    proxy.hpp
-    pub.hpp
-    random.hpp
-    reaper.hpp
-    router.hpp
-    secure_allocator.hpp
-    session_base.hpp
-    signaler.hpp
-    socket_base.hpp
-    socket_poller.hpp
-    stdint.hpp
-    sub.hpp
-    tcp.hpp
-    tcp_address.hpp
-    thread.hpp
-    timers.hpp
-    trie.hpp
-    zmp_decoder.hpp
-    zmp_encoder.hpp
-    zmp_protocol.hpp
-    windows.hpp
-    wire.hpp
-    xpub.hpp
-    xsub.hpp
-    ypipe.hpp
-    ypipe_base.hpp
-    ypipe_conflate.hpp
-    yqueue.hpp)
+set(api-sources
+    src/api/zmq.cpp
+    src/api/zmq_utils.cpp)
+
+set(core-sources
+    src/core/msg.cpp
+    src/core/ctx.cpp
+    src/core/pipe.cpp
+    src/core/mailbox.cpp
+    src/core/mailbox_safe.cpp
+    src/core/object.cpp
+    src/core/own.cpp
+    src/core/io_object.cpp
+    src/core/io_thread.cpp
+    src/core/reaper.cpp
+    src/core/signaler.cpp
+    src/core/thread.cpp
+    src/core/timers.cpp
+    src/core/options.cpp
+    src/core/poller_base.cpp
+    src/core/socket_poller.cpp
+    src/core/session_base.cpp
+    src/core/address.cpp
+    src/core/endpoint.cpp
+    src/core/platform_thread.cpp)
+
+set(protocol-sources
+    src/protocol/zmp_decoder.cpp
+    src/protocol/zmp_encoder.cpp
+    src/protocol/metadata.cpp
+    src/protocol/decoder_allocators.cpp)
+
+set(socket-sources
+    src/sockets/socket_base.cpp
+    src/sockets/dealer.cpp
+    src/sockets/router.cpp
+    src/sockets/pub.cpp
+    src/sockets/sub.cpp
+    src/sockets/xpub.cpp
+    src/sockets/xsub.cpp
+    src/sockets/pair.cpp
+    src/sockets/lb.cpp
+    src/sockets/fq.cpp
+    src/sockets/dist.cpp
+    src/sockets/proxy.cpp)
+
+set(engine-sources
+    src/engine/asio/asio_engine.cpp
+    src/engine/asio/asio_poller.cpp
+    src/engine/asio/asio_zmp_engine.cpp)
+
+set(transport-sources
+    src/transports/tcp/tcp.cpp
+    src/transports/tcp/tcp_address.cpp
+    src/transports/tcp/asio_tcp_listener.cpp
+    src/transports/tcp/asio_tcp_connecter.cpp
+    src/transports/tcp/tcp_transport.cpp
+    src/transports/ipc/ipc_address.cpp
+    src/transports/ipc/ipc_transport.cpp
+    src/transports/ipc/asio_ipc_listener.cpp
+    src/transports/ipc/asio_ipc_connecter.cpp
+    src/transports/ws/ws_address.cpp
+    src/transports/ws/ws_transport.cpp
+    src/transports/ws/asio_ws_listener.cpp
+    src/transports/ws/asio_ws_connecter.cpp
+    src/transports/ws/asio_ws_engine.cpp
+    src/transports/tls/wss_address.cpp
+    src/transports/tls/wss_transport.cpp
+    src/transports/tls/ssl_context_helper.cpp
+    src/transports/tls/ssl_transport.cpp
+    src/transports/tls/asio_tls_listener.cpp
+    src/transports/tls/asio_tls_connecter.cpp)
+
+set(utils-sources
+    src/utils/allocator.cpp
+    src/utils/clock.cpp
+    src/utils/err.cpp
+    src/utils/ip.cpp
+    src/utils/ip_resolver.cpp
+    src/utils/mtrie.cpp
+    src/utils/polling_util.cpp
+    src/utils/precompiled.cpp
+    src/utils/random.cpp
+    src/utils/trie.cpp
+    src/utils/radix_tree.cpp)
+
+set(sources
+    ${api-sources}
+    ${core-sources}
+    ${protocol-sources}
+    ${socket-sources}
+    ${engine-sources}
+    ${transport-sources}
+    ${utils-sources})
+
+# Add all subdirectories to include path to maintain compatibility with existing flat includes
+include_directories(
+    src
+    src/api
+    src/core
+    src/protocol
+    src/engine
+    src/engine/asio
+    src/transports/tcp
+    src/transports/ipc
+    src/transports/ws
+    src/transports/tls
+    src/sockets
+    src/utils
+)
 
 if(MINGW)
   # Generate the right type when using -m32 or -m64
@@ -1067,10 +1043,6 @@ set(readme-docs AUTHORS LICENSE NEWS)
 
 # -----------------------------------------------------------------------------
 # source generators
-
-foreach(source ${cxx-sources})
-  list(APPEND sources ${CMAKE_CURRENT_SOURCE_DIR}/src/${source})
-endforeach()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
 

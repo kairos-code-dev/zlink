@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include <unity.h>
-#include "../src/macros.hpp"
+#include "utils/macros.hpp"
 #include "../tests/testutil.hpp"
 #include "../tests/testutil_unity.hpp"
 #include "../unittests/unittest_resolver_common.hpp"

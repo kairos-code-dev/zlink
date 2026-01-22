@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 #if defined _WIN32
-#include "../src/windows.hpp"
+#include "utils/windows.hpp"
 #include <direct.h>
 #if defined _MSC_VER
 #if defined ZMQ_HAVE_IPC

@@ -6,7 +6,7 @@
 #include <string.h>
 
 #if defined _WIN32
-#include "../src/windows.hpp"
+#include "utils/windows.hpp"
 #endif
 
 SETUP_TEARDOWN_TESTCONTEXT

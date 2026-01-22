@@ -2,12 +2,12 @@
 
 #include "../tests/testutil.hpp"
 
-#include "ip.hpp"
-#include "msg.hpp"
-#include "wire.hpp"
-#include "zmp_decoder.hpp"
-#include "zmp_metadata.hpp"
-#include "zmp_protocol.hpp"
+#include "utils/ip.hpp"
+#include "core/msg.hpp"
+#include "protocol/wire.hpp"
+#include "protocol/zmp_decoder.hpp"
+#include "protocol/zmp_metadata.hpp"
+#include "protocol/zmp_protocol.hpp"
 
 #include <unity.h>
 #include <vector>

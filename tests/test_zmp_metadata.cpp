@@ -3,8 +3,8 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#include "../src/wire.hpp"
-#include "../src/zmp_protocol.hpp"
+#include "protocol/wire.hpp"
+#include "protocol/zmp_protocol.hpp"
 
 #include <errno.h>
 #include <string.h>

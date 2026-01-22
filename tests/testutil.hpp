@@ -9,12 +9,12 @@
 #include "../src/platform.hpp"
 #endif
 #include "../include/zmq.h"
-#include "../src/stdint.hpp"
+#include "utils/stdint.hpp"
 #include <string>
 
 //  For AF_INET and IPPROTO_TCP
 #if defined _WIN32
-#include "../src/windows.hpp"
+#include "utils/windows.hpp"
 #if defined(__MINGW32__)
 #include <unistd.h>
 #endif

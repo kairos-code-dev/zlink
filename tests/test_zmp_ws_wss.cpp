@@ -3,7 +3,7 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#include "../src/config.hpp"
+#include "utils/config.hpp"
 
 #include <string.h>
 

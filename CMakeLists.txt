@@ -1111,19 +1111,34 @@ if(ZMQ_BUILD_FRAMEWORK)
     COMMENT "Perf tools")
 endif()
 
-option(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" ON)
+option(ENABLE_PRECOMPILED "Enable precompiled headers, if possible" OFF)
+
+
+
 if(MSVC AND ENABLE_PRECOMPILED)
+
   # default for all sources is to use precompiled headers
+
   foreach(source ${sources})
+
     # C and C++ can not use the same precompiled header
-    if(${source} MATCHES ".cpp$" AND NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/precompiled.cpp")
+
+    if(${source} MATCHES ".cpp$" AND NOT ${source} STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/precompiled.cpp")
+
       set_source_files_properties(${source} PROPERTIES COMPILE_FLAGS "/Yuprecompiled.hpp" OBJECT_DEPENDS
+
                                                                                           precompiled.hpp)
+
     endif()
+
   endforeach()
+
   # create precompiled header
-  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/precompiled.cpp
+
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/utils/precompiled.cpp
+
                               PROPERTIES COMPILE_FLAGS "/Ycprecompiled.hpp" OBJECT_OUTPUTS precompiled.hpp)
+
 endif()
 
 # -----------------------------------------------------------------------------

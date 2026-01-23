@@ -1413,6 +1413,9 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
     add_subdirectory(benchwithzlink)
   endif()
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithbeast/CMakeLists.txt")
+    add_subdirectory(benchwithbeast)
+  endif()
 endif()
 
 # -----------------------------------------------------------------------------

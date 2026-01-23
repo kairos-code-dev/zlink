@@ -210,6 +210,13 @@ Command: build/bin/bench_beast_stream <transport> 1024 --runs 10
    - 원인: per-call framing/compose 비용 증가
    - 해결: `async_read`로 프레임 단위 수신 후 offset/consume 처리로 복귀
 
+4) **WS(ZMP) 비동기 write 중 크래시 (Bad address)**
+   - 원인: `asio_ws_engine_t::prepare_output_buffer()`에서 스택 `msg_t`를
+     사용해 encoder가 `_in_progress`를 보관한 상태로 async_write가 진행됨.
+     스택 객체 소멸 후 `msg_t::close()`가 호출되어 invalid address 발생.
+   - 해결: `asio_engine_t`와 동일하게 멤버 `_tx_msg`를 재사용하도록 변경해
+     async_write 동안 메시지 lifetime을 보장.
+
 ---
 
 ## 8. 설계 상의 트레이드오프

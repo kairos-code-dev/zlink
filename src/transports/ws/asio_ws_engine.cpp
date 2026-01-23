@@ -1027,19 +1027,14 @@ bool zmq::asio_ws_engine_t::prepare_output_buffer ()
 
     //  Fill the output buffer up to batch size
     while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
-        msg_t msg;
-        int rc = msg.init ();
-        errno_assert (rc == 0);
-
-        rc = (this->*_next_msg) (&msg);
-        if (rc == -1) {
-            rc = msg.close ();
-            errno_assert (rc == 0);
+        if ((this->*_next_msg) (&_tx_msg) == -1) {
+            if (errno == ECONNRESET)
+                return false;
             //  Note: we don't set _output_stopped here, let caller decide
             break;
         }
 
-        _encoder->load_msg (&msg);
+        _encoder->load_msg (&_tx_msg);
         unsigned char *bufptr = _outpos + _outsize;
         const size_t n =
           _encoder->encode (&bufptr, _options.out_batch_size - _outsize);

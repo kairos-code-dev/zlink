@@ -150,7 +150,49 @@ transport (tcp/tls/ws/wss)
 
 ---
 
-## 6. 발생 이슈 및 해결 방식
+## 6. 벤치마크 결과 (2026-01-23)
+
+### 6.1 STREAM 1KB (baseline vs current, Kmsg/s)
+
+```
+Command: ./run_benchmarks.sh --runs 10 --pattern STREAM --reuse-build
+Note: baseline cached
+```
+
+| Transport | Baseline | Current | Diff (%) |
+|-----------|----------|---------|----------|
+| tcp       | 1403.47  | 1493.08 | +6.38%   |
+| tls       | 574.41   | 536.40  | -6.62%   |
+| ws        | 464.07   | 696.65  | +50.12%  |
+| wss       | 387.52   | 530.86  | +36.99%  |
+
+### 6.2 STREAM WS/WSS 전체 사이즈 (baseline vs current, Kmsg/s)
+
+| Size   | WS Baseline | WS Current | WS Diff (%) | WSS Baseline | WSS Current | WSS Diff (%) |
+|--------|-------------|------------|-------------|--------------|-------------|--------------|
+| 64B    | 2522.25     | 2805.98    | +11.25%     | 2230.71      | 2525.68     | +13.22%      |
+| 256B   | 1223.16     | 1717.97    | +40.45%     | 1044.84      | 1351.93     | +29.39%      |
+| 1024B  | 464.07      | 696.65     | +50.12%     | 387.52       | 530.86      | +36.99%      |
+| 65536B | 11.89       | 23.44      | +97.19%     | 8.38         | 12.90       | +53.91%      |
+| 131072B| 6.07        | 12.36      | +103.69%    | 4.22         | 6.69        | +58.43%      |
+| 262144B| 3.06        | 7.32       | +139.46%    | 2.15         | 3.48        | +61.71%      |
+
+### 6.3 Beast 단독 비교 (STREAM 1KB, Kmsg/s)
+
+```
+Command: build/bin/bench_beast_stream <transport> 1024 --runs 10
+```
+
+| Transport | Beast | zlink current | zlink/beast |
+|-----------|-------|---------------|-------------|
+| tcp       | 1416.74 | 1493.08     | 105.39%     |
+| tls       | 566.87  | 536.40      | 94.62%      |
+| ws        | 540.51  | 696.65      | 128.89%     |
+| wss       | 532.81  | 530.86      | 99.63%      |
+
+---
+
+## 7. 발생 이슈 및 해결 방식
 
 1) **WS/WSS 성능 급격 저하**
    - 원인: 프레임 기반 read/write, 추가 복사, 작은 Beast write buffer
@@ -170,7 +212,7 @@ transport (tcp/tls/ws/wss)
 
 ---
 
-## 7. 설계 상의 트레이드오프
+## 8. 설계 상의 트레이드오프
 
 - WS/WSS는 프레임 기반이라 TCP만큼의 배칭 효과가 어렵다
 - speculative_write는 I/O 스레드 블로킹 위험으로 미사용 유지
@@ -178,7 +220,7 @@ transport (tcp/tls/ws/wss)
 
 ---
 
-## 8. 향후 개선 후보
+## 9. 향후 개선 후보
 
 1) WS/WSS read 경로에서 decoder와 buffer 직접 연결 (interface 확장 필요)
 2) TLS/WSS SSL 설정 튜닝 (세션 재사용, cipher 선택 등)
@@ -186,7 +228,7 @@ transport (tcp/tls/ws/wss)
 
 ---
 
-## 9. 변경된 주요 파일
+## 10. 변경된 주요 파일
 
 - `src/sockets/stream.*`
 - `src/engine/asio/asio_raw_engine.*`

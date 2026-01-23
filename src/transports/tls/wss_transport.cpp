@@ -79,6 +79,7 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     //  Use binary mode for ZMQ messages
     _wss_stream->binary (true);
     _wss_stream->auto_fragment (false);
+    _wss_stream->write_buffer_bytes (64 * 1024);
 
     _read_buffer.consume (_read_buffer.size ());
     _read_offset = 0;

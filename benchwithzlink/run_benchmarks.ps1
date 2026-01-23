@@ -17,6 +17,8 @@ param(
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Size = "",
+    [Alias("Transport")]
+    [string]$Transports = "",
     [switch]$Help
 )
 
@@ -48,6 +50,7 @@ Options:
   -IoThreads N         Set BENCH_IO_THREADS for the benchmark run.
   -MsgSizes LIST       Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   -Size N              Convenience alias for -MsgSizes N.
+  -Transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
 
 Examples:
   .\benchwithzlink\run_benchmarks.ps1
@@ -94,6 +97,12 @@ if ($Size) {
 
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     Write-Error "MsgSizes must be a comma-separated list of integers."
+    Show-Usage
+    exit 1
+}
+
+if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') {
+    Write-Error "Transports must be a comma-separated list of names."
     Show-Usage
     exit 1
 }
@@ -242,6 +251,9 @@ if ($IoThreads) {
 }
 if ($MsgSizes) {
     $RunEnv["BENCH_MSG_SIZES"] = $MsgSizes
+}
+if ($Transports) {
+    $RunEnv["BENCH_TRANSPORTS"] = $Transports
 }
 
 # Add flags

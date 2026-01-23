@@ -91,15 +91,20 @@ def parse_env_list(name, cast_fn):
 
 # Settings for loop
 _env_transports = parse_env_list("BENCH_TRANSPORTS", str)
-if _env_transports:
-    TRANSPORTS = _env_transports
-else:
-    TRANSPORTS = ["tcp", "inproc"]
-    if not IS_WINDOWS:
-        TRANSPORTS.append("ipc")
+
+# Default transports for ZMP sockets (non-STREAM)
+TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
+if not IS_WINDOWS:
+    TRANSPORTS.append("ipc")
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+
+def select_transports(pattern_name):
+    base = STREAM_TRANSPORTS if pattern_name == "STREAM" else TRANSPORTS
+    if not _env_transports:
+        return list(base)
+    return [t for t in base if t in _env_transports]
 
 _env_sizes = parse_env_list("BENCH_MSG_SIZES", int)
 if _env_sizes:
@@ -223,6 +228,7 @@ def parse_args():
         "\n"
         "Env:\n"
         "  BENCH_NO_TASKSET=1      Disable taskset CPU pinning on Linux\n"
+        "  BENCH_TRANSPORTS=list  Comma-separated transports (e.g., tcp,ws,wss)\n"
     )
     refresh = False
     p_req = "ALL"
@@ -318,8 +324,10 @@ def main():
 
         print(f"\n## PATTERN: {p_name}")
 
-        # Use STREAM_TRANSPORTS for STREAM pattern
-        pattern_transports = STREAM_TRANSPORTS if p_name == "STREAM" else TRANSPORTS
+        pattern_transports = select_transports(p_name)
+        if not pattern_transports:
+            print(f"  Skipping {p_name}: no matching transports.")
+            continue
 
         b_stats = {}  # Initialize for type checker
         if current_only:

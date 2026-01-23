@@ -1,0 +1,528 @@
+
+## PATTERN: PAIR
+  > Benchmarking baseline for PAIR...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for PAIR...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.84 Mmsg/s |      4.78 Mmsg/s |   -1.27% |
+| 64B    | Latency    |          5.19 us |          5.00 us |   +3.66% |
+| 256B   | Throughput |      2.83 Mmsg/s |      2.81 Mmsg/s |   -0.48% |
+| 256B   | Latency    |          5.15 us |          5.09 us |   +1.17% |
+| 1024B  | Throughput |      0.99 Mmsg/s |      1.00 Mmsg/s |   +1.00% |
+| 1024B  | Latency    |          5.35 us |          5.33 us |   +0.37% |
+| 65536B | Throughput |     2361.15 MB/s |     2400.62 MB/s |   +1.67% |
+| 65536B | Latency    |         12.51 us |         12.62 us |   -0.88% |
+| 131072B | Throughput |     2341.70 MB/s |     2231.40 MB/s |   -4.71% |
+| 131072B | Latency    |         19.78 us |         20.14 us |   -1.82% |
+| 262144B | Throughput |     2716.02 MB/s |     2650.28 MB/s |   -2.42% |
+| 262144B | Latency    |         33.92 us |         32.69 us |   +3.63% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      7.40 Mmsg/s |      5.95 Mmsg/s |  -19.65% |
+| 64B    | Latency    |          0.07 us |          0.07 us |   +0.00% |
+| 256B   | Throughput |      5.75 Mmsg/s |      5.13 Mmsg/s |  -10.82% |
+| 256B   | Latency    |          0.08 us |          0.10 us |  -25.00% |
+| 1024B  | Throughput |      3.15 Mmsg/s |      3.01 Mmsg/s |   -4.64% |
+| 1024B  | Latency    |          0.10 us |          0.10 us |   +0.00% |
+| 65536B | Throughput |    11294.98 MB/s |    10876.52 MB/s |   -3.70% |
+| 65536B | Latency    |          2.10 us |          1.96 us |   +6.67% |
+| 131072B | Throughput |    15039.91 MB/s |    14629.99 MB/s |   -2.73% |
+| 131072B | Latency    |          3.48 us |          3.57 us |   -2.59% |
+| 262144B | Throughput |    18599.91 MB/s |    18198.42 MB/s |   -2.16% |
+| 262144B | Latency    |          6.86 us |          6.85 us |   +0.15% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.96 Mmsg/s |      4.99 Mmsg/s |   +0.64% |
+| 64B    | Latency    |          4.58 us |          4.52 us |   +1.31% |
+| 256B   | Throughput |      2.89 Mmsg/s |      2.98 Mmsg/s |   +2.99% |
+| 256B   | Latency    |          4.57 us |          4.74 us |   -3.72% |
+| 1024B  | Throughput |      1.08 Mmsg/s |      1.08 Mmsg/s |   +0.10% |
+| 1024B  | Latency    |          4.80 us |          4.81 us |   -0.21% |
+| 65536B | Throughput |     2163.76 MB/s |     1980.84 MB/s |   -8.45% |
+| 65536B | Latency    |         12.46 us |         12.21 us |   +2.01% |
+| 131072B | Throughput |     2332.23 MB/s |     2560.50 MB/s |   +9.79% |
+| 131072B | Latency    |         18.78 us |         18.94 us |   -0.85% |
+| 262144B | Throughput |     2652.75 MB/s |     2755.50 MB/s |   +3.87% |
+| 262144B | Latency    |         33.00 us |         33.31 us |   -0.94% |
+
+## PATTERN: PUBSUB
+  > Benchmarking baseline for PUBSUB...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for PUBSUB...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.26 Mmsg/s |      4.40 Mmsg/s |   +3.36% |
+| 64B    | Latency    |          0.23 us |          0.23 us |   +0.00% |
+| 256B   | Throughput |      2.58 Mmsg/s |      2.56 Mmsg/s |   -0.97% |
+| 256B   | Latency    |          0.39 us |          0.39 us |   +0.00% |
+| 1024B  | Throughput |      0.97 Mmsg/s |      0.99 Mmsg/s |   +1.97% |
+| 1024B  | Latency    |          1.03 us |          1.01 us |   +1.94% |
+| 65536B | Throughput |     1811.95 MB/s |     2117.50 MB/s |  +16.86% |
+| 65536B | Latency    |         36.17 us |         30.95 us |  +14.43% |
+| 131072B | Throughput |     2271.18 MB/s |     2247.70 MB/s |   -1.03% |
+| 131072B | Latency    |         57.71 us |         58.31 us |   -1.04% |
+| 262144B | Throughput |     2912.63 MB/s |     2635.84 MB/s |   -9.50% |
+| 262144B | Latency    |         90.00 us |         99.45 us |  -10.50% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      5.84 Mmsg/s |      6.25 Mmsg/s |   +6.95% |
+| 64B    | Latency    |          0.17 us |          0.16 us |   +5.88% |
+| 256B   | Throughput |      5.15 Mmsg/s |      5.64 Mmsg/s |   +9.60% |
+| 256B   | Latency    |          0.19 us |          0.18 us |   +5.26% |
+| 1024B  | Throughput |      2.65 Mmsg/s |      3.28 Mmsg/s |  +24.09% |
+| 1024B  | Latency    |          0.38 us |          0.30 us |  +21.05% |
+| 65536B | Throughput |    11053.86 MB/s |    11075.19 MB/s |   +0.19% |
+| 65536B | Latency    |          5.93 us |          5.92 us |   +0.17% |
+| 131072B | Throughput |    14968.84 MB/s |    14563.74 MB/s |   -2.71% |
+| 131072B | Latency    |          8.76 us |          9.00 us |   -2.74% |
+| 262144B | Throughput |    17224.04 MB/s |   -14905.34 MB/s | -186.54% |
+| 262144B | Latency    |         15.22 us |        -17.59 us | +215.57% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.47 Mmsg/s |      4.51 Mmsg/s |   +1.05% |
+| 64B    | Latency    |          0.22 us |          0.22 us |   +0.00% |
+| 256B   | Throughput |      2.79 Mmsg/s |      2.46 Mmsg/s |  -11.75% |
+| 256B   | Latency    |          0.36 us |          0.41 us |  -13.89% |
+| 1024B  | Throughput |      1.03 Mmsg/s |      1.09 Mmsg/s |   +5.83% |
+| 1024B  | Latency    |          0.98 us |          0.92 us |   +6.12% |
+| 65536B | Throughput |     2117.84 MB/s |     2322.36 MB/s |   +9.66% |
+| 65536B | Latency    |         30.94 us |         28.22 us |   +8.79% |
+| 131072B | Throughput |     2690.87 MB/s |     2305.25 MB/s |  -14.33% |
+| 131072B | Latency    |         48.71 us |         56.86 us |  -16.73% |
+| 262144B | Throughput |     2652.49 MB/s |     2646.74 MB/s |   -0.22% |
+| 262144B | Latency    |         98.83 us |         99.04 us |   -0.21% |
+
+## PATTERN: DEALER_DEALER
+  > Benchmarking baseline for DEALER_DEALER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for DEALER_DEALER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.82 Mmsg/s |      4.62 Mmsg/s |   -4.07% |
+| 64B    | Latency    |          5.05 us |          5.17 us |   -2.38% |
+| 256B   | Throughput |      2.85 Mmsg/s |      2.77 Mmsg/s |   -2.74% |
+| 256B   | Latency    |          4.94 us |          5.15 us |   -4.25% |
+| 1024B  | Throughput |      0.98 Mmsg/s |      0.99 Mmsg/s |   +0.59% |
+| 1024B  | Latency    |          5.36 us |          5.31 us |   +0.93% |
+| 65536B | Throughput |     2421.71 MB/s |     2397.11 MB/s |   -1.02% |
+| 65536B | Latency    |         12.73 us |         12.72 us |   +0.08% |
+| 131072B | Throughput |     2192.44 MB/s |     2290.63 MB/s |   +4.48% |
+| 131072B | Latency    |         21.73 us |         20.22 us |   +6.95% |
+| 262144B | Throughput |     2641.60 MB/s |     3049.63 MB/s |  +15.45% |
+| 262144B | Latency    |         34.91 us |         34.25 us |   +1.89% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      7.09 Mmsg/s |      7.35 Mmsg/s |   +3.67% |
+| 64B    | Latency    |          0.07 us |          0.08 us |  -14.29% |
+| 256B   | Throughput |      5.18 Mmsg/s |      6.04 Mmsg/s |  +16.47% |
+| 256B   | Latency    |          0.08 us |          0.08 us |   +0.00% |
+| 1024B  | Throughput |      3.30 Mmsg/s |      3.37 Mmsg/s |   +2.26% |
+| 1024B  | Latency    |          0.10 us |          0.09 us |  +10.00% |
+| 65536B | Throughput |    10902.18 MB/s |    10863.67 MB/s |   -0.35% |
+| 65536B | Latency    |          1.98 us |          2.01 us |   -1.52% |
+| 131072B | Throughput |    15025.75 MB/s |    14897.65 MB/s |   -0.85% |
+| 131072B | Latency    |          3.55 us |          3.53 us |   +0.56% |
+| 262144B | Throughput |    17989.04 MB/s |    17990.92 MB/s |   +0.01% |
+| 262144B | Latency    |          6.93 us |          6.97 us |   -0.58% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      4.84 Mmsg/s |      4.58 Mmsg/s |   -5.50% |
+| 64B    | Latency    |          4.36 us |          4.69 us |   -7.57% |
+| 256B   | Throughput |      2.96 Mmsg/s |      3.10 Mmsg/s |   +4.87% |
+| 256B   | Latency    |          4.67 us |          4.60 us |   +1.50% |
+| 1024B  | Throughput |      1.07 Mmsg/s |      1.10 Mmsg/s |   +2.43% |
+| 1024B  | Latency    |          4.69 us |          4.75 us |   -1.28% |
+| 65536B | Throughput |     2371.87 MB/s |     2341.95 MB/s |   -1.26% |
+| 65536B | Latency    |         12.38 us |         12.13 us |   +2.02% |
+| 131072B | Throughput |     2607.47 MB/s |     2606.19 MB/s |   -0.05% |
+| 131072B | Latency    |         20.27 us |         20.12 us |   +0.74% |
+| 262144B | Throughput |     2646.83 MB/s |     2866.33 MB/s |   +8.29% |
+| 262144B | Latency    |         32.90 us |         33.17 us |   -0.82% |
+
+## PATTERN: DEALER_ROUTER
+  > Benchmarking baseline for DEALER_ROUTER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for DEALER_ROUTER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.80 Mmsg/s |      3.80 Mmsg/s |   -0.01% |
+| 64B    | Latency    |          5.03 us |          5.12 us |   -1.79% |
+| 256B   | Throughput |      2.53 Mmsg/s |      2.45 Mmsg/s |   -3.39% |
+| 256B   | Latency    |          5.22 us |          5.14 us |   +1.53% |
+| 1024B  | Throughput |      0.97 Mmsg/s |      0.94 Mmsg/s |   -2.69% |
+| 1024B  | Latency    |          5.34 us |          5.35 us |   -0.19% |
+| 65536B | Throughput |     2413.66 MB/s |     2401.56 MB/s |   -0.50% |
+| 65536B | Latency    |         12.40 us |         12.77 us |   -2.98% |
+| 131072B | Throughput |     2282.93 MB/s |     2279.37 MB/s |   -0.16% |
+| 131072B | Latency    |         20.68 us |         19.93 us |   +3.63% |
+| 262144B | Throughput |     3065.46 MB/s |     9740.57 MB/s | +217.75% |
+| 262144B | Latency    |         34.39 us |         34.10 us |   +0.84% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      6.71 Mmsg/s |      6.96 Mmsg/s |   +3.82% |
+| 64B    | Latency    |          0.12 us |          0.10 us |  +16.67% |
+| 256B   | Throughput |      5.39 Mmsg/s |      5.88 Mmsg/s |   +9.23% |
+| 256B   | Latency    |          0.11 us |          0.10 us |   +9.09% |
+| 1024B  | Throughput |      3.01 Mmsg/s |      3.15 Mmsg/s |   +4.72% |
+| 1024B  | Latency    |          0.12 us |          0.13 us |   -8.33% |
+| 65536B | Throughput |    10489.02 MB/s |    10816.50 MB/s |   +3.12% |
+| 65536B | Latency    |          1.95 us |          1.97 us |   -1.03% |
+| 131072B | Throughput |    14031.16 MB/s |    14069.27 MB/s |   +0.27% |
+| 131072B | Latency    |          3.69 us |          3.69 us |   +0.00% |
+| 262144B | Throughput |    17987.05 MB/s |    17403.30 MB/s |   -3.25% |
+| 262144B | Latency    |          7.51 us |          7.09 us |   +5.59% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.84 Mmsg/s |      3.94 Mmsg/s |   +2.45% |
+| 64B    | Latency    |          4.26 us |          4.60 us |   -7.98% |
+| 256B   | Throughput |      2.57 Mmsg/s |      2.48 Mmsg/s |   -3.39% |
+| 256B   | Latency    |          4.49 us |          4.56 us |   -1.56% |
+| 1024B  | Throughput |      1.02 Mmsg/s |      1.03 Mmsg/s |   +1.00% |
+| 1024B  | Latency    |          4.81 us |          4.80 us |   +0.21% |
+| 65536B | Throughput |     2294.04 MB/s |     2148.00 MB/s |   -6.37% |
+| 65536B | Latency    |         12.12 us |         12.39 us |   -2.23% |
+| 131072B | Throughput |     2247.15 MB/s |     2637.10 MB/s |  +17.35% |
+| 131072B | Latency    |         19.48 us |         19.09 us |   +2.00% |
+| 262144B | Throughput |     2608.67 MB/s |     2772.81 MB/s |   +6.29% |
+| 262144B | Latency    |         33.83 us |         33.83 us |   +0.00% |
+
+## PATTERN: ROUTER_ROUTER
+  > Benchmarking baseline for ROUTER_ROUTER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for ROUTER_ROUTER...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.36 Mmsg/s |      3.58 Mmsg/s |   +6.71% |
+| 64B    | Latency    |          3.96 us |          3.88 us |   +2.02% |
+| 256B   | Throughput |      2.27 Mmsg/s |      2.36 Mmsg/s |   +3.89% |
+| 256B   | Latency    |          3.90 us |          4.05 us |   -3.85% |
+| 1024B  | Throughput |      0.93 Mmsg/s |      0.93 Mmsg/s |   +0.41% |
+| 1024B  | Latency    |          4.07 us |          4.15 us |   -1.97% |
+| 65536B | Throughput |     1871.61 MB/s |     2177.77 MB/s |  +16.36% |
+| 65536B | Latency    |         11.80 us |         11.62 us |   +1.53% |
+| 131072B | Throughput |     2826.71 MB/s |     2803.15 MB/s |   -0.83% |
+| 131072B | Latency    |         18.95 us |         19.08 us |   -0.69% |
+| 262144B | Throughput |     3119.01 MB/s |    17211.24 MB/s | +451.82% |
+| 262144B | Latency    |         40.96 us |         40.98 us |   -0.05% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      5.76 Mmsg/s |      5.30 Mmsg/s |   -7.93% |
+| 64B    | Latency    |          0.16 us |          0.18 us |  -12.50% |
+| 256B   | Throughput |      4.33 Mmsg/s |      4.89 Mmsg/s |  +13.11% |
+| 256B   | Latency    |          0.17 us |          0.16 us |   +5.88% |
+| 1024B  | Throughput |      3.02 Mmsg/s |      3.13 Mmsg/s |   +3.60% |
+| 1024B  | Latency    |          0.18 us |          0.19 us |   -5.56% |
+| 65536B | Throughput |    10616.73 MB/s |    10462.62 MB/s |   -1.45% |
+| 65536B | Latency    |          2.13 us |          1.97 us |   +7.51% |
+| 131072B | Throughput |    14924.92 MB/s |    14741.10 MB/s |   -1.23% |
+| 131072B | Latency    |          3.74 us |          3.80 us |   -1.60% |
+| 262144B | Throughput |    17678.21 MB/s |    17722.69 MB/s |   +0.25% |
+| 262144B | Latency    |          7.07 us |          7.16 us |   -1.27% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.63 Mmsg/s |      3.62 Mmsg/s |   -0.27% |
+| 64B    | Latency    |          3.36 us |          3.29 us |   +2.08% |
+| 256B   | Throughput |      2.52 Mmsg/s |      2.64 Mmsg/s |   +4.99% |
+| 256B   | Latency    |          3.53 us |          3.17 us |  +10.20% |
+| 1024B  | Throughput |      1.08 Mmsg/s |      1.01 Mmsg/s |   -5.89% |
+| 1024B  | Latency    |          3.53 us |          3.60 us |   -1.98% |
+| 65536B | Throughput |     2195.59 MB/s |     2338.90 MB/s |   +6.53% |
+| 65536B | Latency    |         11.27 us |         11.64 us |   -3.28% |
+| 131072B | Throughput |     2703.68 MB/s |     2264.96 MB/s |  -16.23% |
+| 131072B | Latency    |         18.53 us |         18.24 us |   +1.57% |
+| 262144B | Throughput |     2884.65 MB/s |     2911.47 MB/s |   +0.93% |
+| 262144B | Latency    |         32.50 us |         32.79 us |   -0.89% |
+
+## PATTERN: ROUTER_ROUTER_POLL
+  > Benchmarking baseline for ROUTER_ROUTER_POLL...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+  > Benchmarking current for ROUTER_ROUTER_POLL...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 Done
+    Testing ipc | 256B: 1 Done
+    Testing ipc | 1024B: 1 Done
+    Testing ipc | 65536B: 1 Done
+    Testing ipc | 131072B: 1 Done
+    Testing ipc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.56 Mmsg/s |      3.58 Mmsg/s |   +0.38% |
+| 64B    | Latency    |          4.17 us |          4.36 us |   -4.56% |
+| 256B   | Throughput |      2.36 Mmsg/s |      2.23 Mmsg/s |   -5.39% |
+| 256B   | Latency    |          4.53 us |          4.39 us |   +3.09% |
+| 1024B  | Throughput |      0.95 Mmsg/s |      0.92 Mmsg/s |   -2.58% |
+| 1024B  | Latency    |          4.52 us |          4.55 us |   -0.66% |
+| 65536B | Throughput |     2296.57 MB/s |     2279.71 MB/s |   -0.73% |
+| 65536B | Latency    |         11.91 us |         12.02 us |   -0.92% |
+| 131072B | Throughput |     2696.08 MB/s |   -10191.24 MB/s | -478.00% |
+| 131072B | Latency    |         20.42 us |         19.38 us |   +5.09% |
+| 262144B | Throughput |     2645.27 MB/s |     2971.94 MB/s |  +12.35% |
+| 262144B | Latency    |         41.49 us |         41.31 us |   +0.43% |
+
+### Transport: inproc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      5.51 Mmsg/s |      5.53 Mmsg/s |   +0.35% |
+| 64B    | Latency    |          0.49 us |          0.50 us |   -2.04% |
+| 256B   | Throughput |      4.47 Mmsg/s |      4.41 Mmsg/s |   -1.41% |
+| 256B   | Latency    |          0.46 us |          0.47 us |   -2.17% |
+| 1024B  | Throughput |      2.98 Mmsg/s |      2.92 Mmsg/s |   -1.89% |
+| 1024B  | Latency    |          0.50 us |          0.51 us |   -2.00% |
+| 65536B | Throughput |     9196.56 MB/s |     9553.81 MB/s |   +3.88% |
+| 65536B | Latency    |          2.48 us |          2.34 us |   +5.65% |
+| 131072B | Throughput |    13186.30 MB/s |    13553.82 MB/s |   +2.79% |
+| 131072B | Latency    |          4.25 us |          4.15 us |   +2.35% |
+| 262144B | Throughput |    15560.18 MB/s |    16800.73 MB/s |   +7.97% |
+| 262144B | Latency    |          7.76 us |          7.12 us |   +8.25% |
+
+### Transport: ipc
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      3.46 Mmsg/s |      3.67 Mmsg/s |   +6.11% |
+| 64B    | Latency    |          4.12 us |          3.90 us |   +5.34% |
+| 256B   | Throughput |      2.47 Mmsg/s |      2.52 Mmsg/s |   +1.87% |
+| 256B   | Latency    |          4.02 us |          4.00 us |   +0.50% |
+| 1024B  | Throughput |      1.00 Mmsg/s |      1.00 Mmsg/s |   +0.42% |
+| 1024B  | Latency    |          4.12 us |          4.02 us |   +2.43% |
+| 65536B | Throughput |     2228.94 MB/s |     2266.96 MB/s |   +1.71% |
+| 65536B | Latency    |         11.64 us |         11.72 us |   -0.69% |
+| 131072B | Throughput |     2587.45 MB/s |     2604.37 MB/s |   +0.65% |
+| 131072B | Latency    |         18.60 us |         18.45 us |   +0.81% |
+| 262144B | Throughput |     2857.36 MB/s |     2841.65 MB/s |   -0.55% |
+| 262144B | Latency    |         32.12 us |         33.49 us |   -4.27% |

@@ -1,0 +1,43 @@
+
+## PATTERN: STREAM
+  > Benchmarking current for STREAM...
+    Testing tcp | 512B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 2048B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 512B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 2048B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 512B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 2048B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 512B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 2048B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 512B   | Throughput |   2271.64 Kmsg/s |
+| 512B   | Latency    |         31.54 us |
+| 2048B  | Throughput |    814.03 Kmsg/s |
+| 2048B  | Latency    |         32.75 us |
+
+### Transport: tls
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 512B   | Throughput |   1353.41 Kmsg/s |
+| 512B   | Latency    |         34.48 us |
+| 2048B  | Throughput |    396.10 Kmsg/s |
+| 2048B  | Latency    |         36.05 us |
+
+### Transport: ws
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 512B   | Throughput |   1962.94 Kmsg/s |
+| 512B   | Latency    |         33.12 us |
+| 2048B  | Throughput |    643.31 Kmsg/s |
+| 2048B  | Latency    |         34.50 us |
+
+### Transport: wss
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 512B   | Throughput |   1385.68 Kmsg/s |
+| 512B   | Latency    |         36.06 us |
+| 2048B  | Throughput |    405.00 Kmsg/s |
+| 2048B  | Latency    |         40.34 us |

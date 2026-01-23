@@ -61,6 +61,7 @@
 #include "sockets/sub.hpp"
 #include "sockets/dealer.hpp"
 #include "sockets/router.hpp"
+#include "sockets/stream.hpp"
 #include "sockets/xpub.hpp"
 #include "sockets/xsub.hpp"
 
@@ -129,6 +130,9 @@ zmq::socket_base_t *zmq::socket_base_t::create (int type_,
             break;
         case ZMQ_ROUTER:
             s = new (std::nothrow) router_t (parent_, tid_, sid_);
+            break;
+        case ZMQ_STREAM:
+            s = new (std::nothrow) stream_t (parent_, tid_, sid_);
             break;
         case ZMQ_XPUB:
             s = new (std::nothrow) xpub_t (parent_, tid_, sid_);

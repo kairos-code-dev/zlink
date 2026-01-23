@@ -315,6 +315,24 @@ void zmq::asio_engine_t::on_transport_handshake (
     plug_internal ();
 }
 
+void zmq::asio_engine_t::complete_handshake ()
+{
+    if (!_handshaking)
+        return;
+
+    _handshaking = false;
+
+    if (_has_handshake_stage) {
+        _session->engine_ready ();
+        _has_handshake_stage = false;
+    }
+
+    if (_has_handshake_timer) {
+        cancel_timer (handshake_timer_id);
+        _has_handshake_timer = false;
+    }
+}
+
 void zmq::asio_engine_t::unplug ()
 {
     ENGINE_DBG ("unplug called");

@@ -199,6 +199,9 @@ class asio_engine_t : public i_engine
     //  Transport handshake completion handler
     void on_transport_handshake (const boost::system::error_code &ec);
 
+    //  Complete protocol handshake immediately for raw/handshake-less engines.
+    void complete_handshake ();
+
   private:
     //  Process incoming data after async read completes
     bool process_input ();

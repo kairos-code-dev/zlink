@@ -46,6 +46,7 @@ set(tests
   test_reconnect_options
   test_pubsub_filter_xpub
   test_router_multiple_dealers
+  test_stream_socket
   test_transport_matrix)
 
 if(NOT WIN32)

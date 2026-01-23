@@ -5,14 +5,10 @@ import sys
 import run_comparison as rc
 
 def format_throughput(size, msgs_per_sec):
-    if size <= 1024:
-        return f"{msgs_per_sec/1e6:6.2f} Mmsg/s"
-    return f"{(msgs_per_sec * size)/1e6:6.2f} MB/s"
+    return f"{msgs_per_sec/1e3:6.2f} Kmsg/s"
 
 def format_throughput_delta(size, delta_msgs_per_sec):
-    if size <= 1024:
-        return f"{delta_msgs_per_sec/1e6:7.2f} Mmsg/s"
-    return f"{(delta_msgs_per_sec * size)/1e6:7.2f} MB/s"
+    return f"{delta_msgs_per_sec/1e3:7.2f} Kmsg/s"
 
 def parse_args():
     usage = (

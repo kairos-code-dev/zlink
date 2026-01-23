@@ -6,6 +6,7 @@
 #include "transports/tls/asio_tls_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
+#include "engine/asio/asio_raw_engine.hpp"
 #include "transports/tls/ssl_transport.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "core/io_thread.hpp"
@@ -442,10 +443,18 @@ void zmq::asio_tls_listener_t::create_engine (
       new (std::nothrow) ssl_transport_t (*ssl_context_));
     alloc_assert (transport);
 
-    i_engine *engine = new (std::nothrow) asio_zmp_engine_t (
-      fd_, options, endpoint_pair,
-      std::unique_ptr<i_asio_transport> (transport.release ()),
-      std::move (ssl_context_));
+    i_engine *engine = NULL;
+    if (options.type == ZMQ_STREAM) {
+        engine = new (std::nothrow) asio_raw_engine_t (
+          fd_, options, endpoint_pair,
+          std::unique_ptr<i_asio_transport> (transport.release ()),
+          std::move (ssl_context_));
+    } else {
+        engine = new (std::nothrow) asio_zmp_engine_t (
+          fd_, options, endpoint_pair,
+          std::unique_ptr<i_asio_transport> (transport.release ()),
+          std::move (ssl_context_));
+    }
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in

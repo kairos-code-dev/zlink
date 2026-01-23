@@ -34,6 +34,8 @@ static inline const char *socket_type_string (int socket_type_)
             return "XPUB";
         case ZMQ_XSUB:
             return "XSUB";
+        case ZMQ_STREAM:
+            return "STREAM";
         default:
             zmq_assert (false);
             return NULL;

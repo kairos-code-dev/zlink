@@ -5,6 +5,7 @@
 
 #include "transports/ws/asio_ws_connecter.hpp"
 #include "transports/ws/asio_ws_engine.hpp"
+#include "engine/asio/asio_raw_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "transports/ws/ws_transport.hpp"
@@ -481,14 +482,23 @@ void zmq::asio_ws_connecter_t::create_engine (
     i_engine *engine = NULL;
 #if defined ZMQ_HAVE_WSS
     if (_secure) {
-        engine = new (std::nothrow) asio_ws_engine_t (
-          fd_, options, endpoint_pair, true, std::move (transport),
-          std::move (ssl_context));
+        if (options.type == ZMQ_STREAM)
+            engine = new (std::nothrow) asio_raw_engine_t (
+              fd_, options, endpoint_pair, std::move (transport),
+              std::move (ssl_context));
+        else
+            engine = new (std::nothrow) asio_ws_engine_t (
+              fd_, options, endpoint_pair, true, std::move (transport),
+              std::move (ssl_context));
     } else
 #endif
     {
-        engine = new (std::nothrow) asio_ws_engine_t (
-          fd_, options, endpoint_pair, true, std::move (transport));
+        if (options.type == ZMQ_STREAM)
+            engine = new (std::nothrow) asio_raw_engine_t (
+              fd_, options, endpoint_pair, std::move (transport));
+        else
+            engine = new (std::nothrow) asio_ws_engine_t (
+              fd_, options, endpoint_pair, true, std::move (transport));
     }
     alloc_assert (engine);
 

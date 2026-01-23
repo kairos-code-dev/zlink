@@ -920,6 +920,8 @@ set(core-sources
 set(protocol-sources
     src/protocol/zmp_decoder.cpp
     src/protocol/zmp_encoder.cpp
+    src/protocol/raw_decoder.cpp
+    src/protocol/raw_encoder.cpp
     src/protocol/metadata.cpp
     src/protocol/decoder_allocators.cpp)
 
@@ -927,6 +929,7 @@ set(socket-sources
     src/sockets/socket_base.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp
+    src/sockets/stream.cpp
     src/sockets/pub.cpp
     src/sockets/sub.cpp
     src/sockets/xpub.cpp
@@ -940,7 +943,8 @@ set(socket-sources
 set(engine-sources
     src/engine/asio/asio_engine.cpp
     src/engine/asio/asio_poller.cpp
-    src/engine/asio/asio_zmp_engine.cpp)
+    src/engine/asio/asio_zmp_engine.cpp
+    src/engine/asio/asio_raw_engine.cpp)
 
 set(transport-sources
     src/transports/tcp/tcp.cpp
@@ -1406,6 +1410,9 @@ endif()
 option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
 if(BUILD_BENCHMARKS AND BUILD_SHARED)
   add_subdirectory(benchwithzmq)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
+    add_subdirectory(benchwithzlink)
+  endif()
 endif()
 
 # -----------------------------------------------------------------------------

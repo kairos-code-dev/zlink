@@ -27,6 +27,14 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
+    if (!setup_tls_server(router1, transport) ||
+        !setup_tls_client(router2, transport)) {
+        zmq_close(router1);
+        zmq_close(router2);
+        zmq_ctx_term(ctx);
+        return;
+    }
+
     std::string endpoint = bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router");
     if (endpoint.empty()) {
         zmq_close(router1);

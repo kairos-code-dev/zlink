@@ -19,6 +19,14 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     set_sockopt_int(dealer, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
     set_sockopt_int(dealer, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
 
+    if (!setup_tls_server(router, transport) ||
+        !setup_tls_client(dealer, transport)) {
+        zmq_close(router);
+        zmq_close(dealer);
+        zmq_ctx_term(ctx);
+        return;
+    }
+
     std::string endpoint = bind_and_resolve_endpoint(router, transport, lib_name + "_dealer_router");
     if (endpoint.empty()) {
         zmq_close(router);

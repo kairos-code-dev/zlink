@@ -308,6 +308,12 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
             std::cerr << "Failed to set ZMQ_TLS_HOSTNAME: " << zmq_strerror(zmq_errno()) << std::endl;
         return false;
     }
+    int trust_system = 0;
+    if (zmq_setsockopt(socket, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZMQ_TLS_TRUST_SYSTEM: " << zmq_strerror(zmq_errno()) << std::endl;
+        return false;
+    }
     return true;
 }
 

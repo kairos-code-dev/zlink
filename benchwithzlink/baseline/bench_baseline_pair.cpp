@@ -25,6 +25,14 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
     set_sockopt_int(s_conn, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
     set_sockopt_int(s_conn, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
 
+    if (!setup_tls_server(s_bind, transport) ||
+        !setup_tls_client(s_conn, transport)) {
+        zmq_close(s_bind);
+        zmq_close(s_conn);
+        zmq_ctx_term(ctx);
+        return;
+    }
+
     std::string endpoint = bind_and_resolve_endpoint(s_bind, transport, lib_name + "_pair");
     if (endpoint.empty()) {
         zmq_close(s_bind);

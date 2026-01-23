@@ -15,6 +15,14 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     set_sockopt_int(sub, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
     zmq_setsockopt(sub, ZMQ_SUBSCRIBE, "", 0);
 
+    if (!setup_tls_server(pub, transport) ||
+        !setup_tls_client(sub, transport)) {
+        zmq_close(pub);
+        zmq_close(sub);
+        zmq_ctx_term(ctx);
+        return;
+    }
+
     std::string endpoint = bind_and_resolve_endpoint(pub, transport, lib_name + "_pubsub");
     if (endpoint.empty()) {
         zmq_close(pub);

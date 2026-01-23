@@ -130,12 +130,6 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
         return;
     }
 
-    // Disable system trust store for client (use our CA only)
-    if (transport == "tls" || transport == "wss") {
-        int trust_system = 0;
-        zmq_setsockopt(client, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system));
-    }
-
     std::string endpoint = bind_and_resolve_endpoint(server, transport, lib_name + "_stream");
     if (endpoint.empty()) {
         zmq_close(server);

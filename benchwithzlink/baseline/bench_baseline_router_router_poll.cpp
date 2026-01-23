@@ -38,6 +38,14 @@ void run_router_router_poll(const std::string &transport,
     zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
     zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
 
+    if (!setup_tls_server(router1, transport) ||
+        !setup_tls_client(router2, transport)) {
+        zmq_close(router1);
+        zmq_close(router2);
+        zmq_ctx_term(ctx);
+        return;
+    }
+
     std::string endpoint =
       bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router_poll");
     if (endpoint.empty()) {

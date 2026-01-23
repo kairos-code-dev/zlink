@@ -17,28 +17,28 @@
                                      |
        +----------------------------------------------------------------+
        |                    Public API Layer (zmq.h)                    |
-       |      [src/api] : PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER       |
+       |  [src/api] : PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM   |
        +----------------------------------------------------------------+
                                      | (Socket Logic)
        +-----------------------------V----------------------------------+
        |                      Socket Base Layer                         |
-       |      [src/sockets] : Routing, Load Balancing, Policies         |
+       |      [src/sockets] : Routing, Load Balancing, STREAM           |
        +----------------------------------------------------------------+
                                      | (Internal msg_t)
        +-----------------------------V----------------------------------+
        |  [ EVENT ORCHESTRATOR ]     ASIO ENGINE                        |
        |  (The "WHEN")          +------------------------------------+  |
        |  [src/engine]          |  - io_context (Reactor/Proactor)   |  |
-       |                        |  - Async Task Scheduling           |  |
+       |                        |  - asio_engine / asio_raw_engine  |  |
        |                        +-----------------+------------------+  |
        +------------------------------------------|---------------------+
              ^ (Event Signals: "Ready!")          | (Trigger I/O Actions)
              |                                    |
        +-----|------------------------------------V---------------------+
-       |  [ PROTOCOL LOGIC ]         ZMP LAYER                          |
+       |  [ PROTOCOL LOGIC ]       ZMP / RAW LAYER                     |
        |  (The "WHAT")          +------------------------------------+  |
-       |  [src/protocol]        |  zmp_encoder <---> zmp_decoder     |  |
-       |                        |  (msg_t 64B <---> ZMP Byte Frames) |  |
+       |  [src/protocol]        |  zmp_*  |  raw_*                    |  |
+       |                        |  (msg_t <-> ZMP/RAW Byte Frames)   |  |
        |                        +------------------------------------+  |
        +------------------------------------------|---------------------+
                                                   | (Serialized Data)
@@ -69,19 +69,19 @@
 - **설명**: 사용자의 요청을 받아 하위 소켓 레이어로 전달하는 얇은 래퍼(Wrapper) 계층입니다.
 
 ### 2.2 `src/sockets/` (Socket Business Logic)
-- **역할**: 각 소켓 타입별 고유 로직(라우팅, 필터링 등) 및 공통 소켓 로직 처리.
-- **주요 파일**: `socket_base.cpp`, `dealer.cpp`, `router.cpp`, `pub.cpp`, `sub.cpp`.
-- **설명**: ZeroMQ 특유의 메시징 패턴이 구현되는 곳입니다.
+- **역할**: 각 소켓 타입별 고유 로직(라우팅, 필터링, 스트림 처리) 및 공통 소켓 로직 처리.
+- **주요 파일**: `socket_base.cpp`, `dealer.cpp`, `router.cpp`, `pub.cpp`, `sub.cpp`, `stream.cpp`.
+- **설명**: ZeroMQ 특유의 메시징 패턴과 STREAM 소켓 처리 로직이 구현되는 곳입니다.
 
 ### 2.3 `src/engine/` (Event Orchestration)
 - **역할**: I/O 이벤트 루프 관리 및 비동기 핸들러 스케줄링.
-- **주요 파일**: `asio_engine.cpp`, `asio_poller.cpp`.
-- **설명**: Boost.Asio를 사용하여 시스템의 "언제(When)" 작업을 수행할지 결정하는 중앙 통제실입니다.
+- **주요 파일**: `asio_engine.cpp`, `asio_raw_engine.cpp`, `asio_poller.cpp`.
+- **설명**: Boost.Asio를 사용하여 시스템의 "언제(When)" 작업을 수행할지 결정하는 중앙 통제실이며, ZMP와 RAW 경로 모두를 지원합니다.
 
 ### 2.4 `src/protocol/` (Data Logic & Format)
-- **역할**: ZMP(ZeroMQ Message Protocol) 인코딩/디코딩 및 프레이밍.
-- **주요 파일**: `zmp_encoder.cpp`, `zmp_decoder.cpp`, `metadata.cpp`.
-- **설명**: 데이터를 네트워크에 실어 보내기 위한 "무엇(What)"을 정의합니다.
+- **역할**: ZMP/RAW 인코딩/디코딩 및 프레이밍.
+- **주요 파일**: `zmp_encoder.cpp`, `zmp_decoder.cpp`, `raw_encoder.cpp`, `raw_decoder.cpp`, `metadata.cpp`.
+- **설명**: 데이터를 네트워크에 실어 보내기 위한 "무엇(What)"을 정의하며 STREAM은 RAW 프레이밍을 사용합니다.
 
 ### 2.5 `src/core/` (System Foundation)
 - **역할**: 메시지 컨테이너, 동기화 큐, 컨텍스트 등 시스템의 기초 인프라.

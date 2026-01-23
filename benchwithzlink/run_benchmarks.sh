@@ -36,6 +36,7 @@ ZLINK_ONLY=0
 NO_TASKSET=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
+BENCH_TRANSPORTS=""
 RESULTS=0
 RESULTS_DIR=""
 RESULTS_TAG=""
@@ -69,6 +70,8 @@ Options:
   --io-threads N        Set BENCH_IO_THREADS for the benchmark run.
   --msg-sizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N              Convenience alias for --msg-sizes N.
+  --transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
+  --transport NAME      Convenience alias for --transports NAME.
 USAGE
 }
 
@@ -131,6 +134,10 @@ while [[ $# -gt 0 ]]; do
       BENCH_MSG_SIZES="${2:-}"
       shift
       ;;
+    --transports|--transport)
+      BENCH_TRANSPORTS="${2:-}"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -164,6 +171,12 @@ fi
 
 if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
   echo "BENCH_MSG_SIZES must be a comma-separated list of integers." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+  echo "BENCH_TRANSPORTS must be a comma-separated list of names." >&2
   usage >&2
   exit 1
 fi
@@ -275,6 +288,9 @@ if [[ -n "${BENCH_IO_THREADS}" ]]; then
 fi
 if [[ -n "${BENCH_MSG_SIZES}" ]]; then
   RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")
+fi
+if [[ -n "${BENCH_TRANSPORTS}" ]]; then
+  RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
 fi
 
 if [[ "${ZLINK_ONLY}" -eq 1 ]]; then

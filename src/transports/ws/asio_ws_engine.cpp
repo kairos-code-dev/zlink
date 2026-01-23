@@ -586,42 +586,20 @@ void zmq::asio_ws_engine_t::start_async_write ()
 
     WS_ENGINE_DBG ("start_async_write: outsize=%zu", _outsize);
 
-    //  If there is already data prepared in _outpos/_outsize (from speculative_write
-    //  fallback or partial write), copy it to _write_buffer for async operation.
-    //  This is necessary because encoder buffer may be invalidated before async
-    //  write completion.
-    if (_outsize > 0 && _outpos != NULL) {
-        //  Copy encoder buffer to write buffer for async lifetime safety
-        const size_t out_batch_size =
-          static_cast<size_t> (_options.out_batch_size);
-        const size_t target =
-          _outsize > out_batch_size ? _outsize : out_batch_size;
-        if (_write_buffer.capacity () < target)
-            _write_buffer.reserve (target);
-        _write_buffer.assign (_outpos, _outpos + _outsize);
-
-        WS_ENGINE_DBG ("start_async_write: copied %zu bytes for async", _outsize);
-
-        //  Clear _outpos/_outsize as data is now in _write_buffer
-        _outpos = NULL;
-        _outsize = 0;
-    } else {
-        //  No data prepared, try to get from encoder via process_output
-        process_output ();
-
-        if (_write_buffer.empty ()) {
+    if (_outsize == 0 || _outpos == NULL) {
+        if (!prepare_output_buffer ()) {
             WS_ENGINE_DBG ("No data to write");
             _output_stopped = true;
             return;
         }
     }
 
-    WS_ENGINE_DBG ("start_async_write: sending %zu bytes", _write_buffer.size ());
+    WS_ENGINE_DBG ("start_async_write: sending %zu bytes", _outsize);
 
     _write_pending = true;
 
     _transport->async_write_some (
-      _write_buffer.data (), _write_buffer.size (),
+      _outpos, _outsize,
       [this] (const boost::system::error_code &ec,
               std::size_t bytes_transferred) {
           on_write_complete (ec, bytes_transferred);
@@ -647,8 +625,9 @@ void zmq::asio_ws_engine_t::on_write_complete (
         return;
     }
 
-    //  Clear write buffer - async write is complete
-    _write_buffer.clear ();
+    //  Clear output buffer - async write is complete
+    _outpos = NULL;
+    _outsize = 0;
 
     //  If still handshaking and there's nothing more to write, just return
     if (_handshaking && _outsize == 0)
@@ -1191,74 +1170,11 @@ void zmq::asio_ws_engine_t::process_output ()
 {
     WS_ENGINE_DBG ("process_output: outsize=%zu", _outsize);
 
-    //  This function is called from start_async_write() when there's no data
-    //  in _outpos/_outsize. It fills the encoder buffer and copies to _write_buffer
-    //  for async write operation.
-    //
-    //  NOTE: For zero-copy, speculative_write() uses prepare_output_buffer() which
-    //  sets _outpos/_outsize to point directly to encoder buffer. The copy here
-    //  is only for the async-only path (not via speculative_write).
-
-    if (!_encoder)
+    //  Preserve encoder buffer and avoid extra copy for async write.
+    if (!_encoder || _outsize > 0)
         return;
 
-    //  If there's still data from previous encode, don't get more
-    if (_outsize > 0)
-        return;
-
-    //  Get initial data from encoder
-    _outpos = NULL;
-    _outsize = _encoder->encode (&_outpos, 0);
-
-    //  Fill the output buffer up to batch size
-    while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
-        msg_t msg;
-        int rc = msg.init ();
-        errno_assert (rc == 0);
-
-        rc = (this->*_next_msg) (&msg);
-        if (rc == -1) {
-            rc = msg.close ();
-            errno_assert (rc == 0);
-            if (errno == EAGAIN) {
-                _output_stopped = true;
-            } else {
-                error (protocol_error);
-            }
-            break;
-        }
-
-        _encoder->load_msg (&msg);
-        unsigned char *bufptr = _outpos + _outsize;
-        const size_t n =
-          _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
-        zmq_assert (n > 0);
-        if (_outpos == NULL)
-            _outpos = bufptr;
-        _outsize += n;
-    }
-
-    //  If there is no data to send, return
-    if (_outsize == 0)
-        return;
-
-    //  Copy data to write buffer for async write operation.
-    //  This copy is necessary because encoder buffer may be invalidated before
-    //  async write completes. The copy is performed here (for async-only path)
-    //  or in start_async_write() (for speculative_write fallback path).
-    const size_t out_batch_size =
-      static_cast<size_t> (_options.out_batch_size);
-    const size_t target =
-      _outsize > out_batch_size ? _outsize : out_batch_size;
-    if (_write_buffer.capacity () < target)
-        _write_buffer.reserve (target);
-    _write_buffer.assign (_outpos, _outpos + _outsize);
-
-    WS_ENGINE_DBG ("process_output: copied %zu bytes to write buffer", _outsize);
-
-    //  Clear _outpos/_outsize as data is now in _write_buffer
-    _outpos = NULL;
-    _outsize = 0;
+    prepare_output_buffer ();
 }
 
 int zmq::asio_ws_engine_t::pull_msg_from_session (msg_t *msg_)

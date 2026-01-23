@@ -212,9 +212,6 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     std::vector<unsigned char> _read_buffer;
     unsigned char *_read_buffer_ptr;
 
-    //  Internal write buffer
-    std::vector<unsigned char> _write_buffer;
-
     //  Outgoing message
     msg_t _tx_msg;
 

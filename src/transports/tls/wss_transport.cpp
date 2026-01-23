@@ -34,10 +34,10 @@ wss_transport_t::wss_transport_t (boost::asio::ssl::context &ssl_ctx,
     _ssl_ctx (ssl_ctx),
     _path (path),
     _host (host),
+    _read_offset (0),
     _ssl_handshake_complete (false),
     _ws_handshake_complete (false),
-    _handshake_type (client),
-    _frame_offset (0)
+    _handshake_type (client)
 {
 }
 
@@ -78,20 +78,12 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     //  Configure WebSocket options
     //  Use binary mode for ZMQ messages
     _wss_stream->binary (true);
+    _wss_stream->auto_fragment (false);
 
-    //  Create read buffer for frame assembly
-    try {
-        _read_buffer = std::unique_ptr<buffer_t> (new buffer_t ());
-    } catch (const std::bad_alloc &) {
-        ASIO_GLOBAL_ERROR ("wss_transport buffer allocation failed");
-        _wss_stream.reset ();
-        return false;
-    }
-
+    _read_buffer.consume (_read_buffer.size ());
+    _read_offset = 0;
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
-    _frame_buffer.clear ();
-    _frame_offset = 0;
 
     ASIO_DBG_WSS ("opened with path=%s, host=%s", _path.c_str (), _host.c_str ());
     return true;
@@ -115,12 +107,10 @@ void wss_transport_t::close ()
         _wss_stream.reset ();
     }
 
-    _read_buffer.reset ();
-
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
-    _frame_buffer.clear ();
-    _frame_offset = 0;
+    _read_buffer.consume (_read_buffer.size ());
+    _read_offset = 0;
 }
 
 void wss_transport_t::async_read_some (unsigned char *buffer,
@@ -134,34 +124,44 @@ void wss_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    //  If we have leftover data from a previous frame, return it first
-    if (_frame_offset < _frame_buffer.size ()) {
-        std::size_t available = _frame_buffer.size () - _frame_offset;
-        std::size_t to_copy = std::min (available, buffer_size);
-        std::memcpy (buffer, _frame_buffer.data () + _frame_offset, to_copy);
-        _frame_offset += to_copy;
-
-        //  If we consumed all frame data, clear the buffer
-        if (_frame_offset >= _frame_buffer.size ()) {
-            _frame_buffer.clear ();
-            _frame_offset = 0;
+    if (buffer_size == 0) {
+        if (handler) {
+            boost::asio::post (
+              _wss_stream->get_executor (), [handler] () {
+                  handler (boost::system::error_code (), 0);
+              });
         }
+        return;
+    }
 
-        ASIO_DBG_WSS ("read_some: returned %zu bytes from frame buffer", to_copy);
+    const auto data = _read_buffer.data ();
+    const std::size_t available = data.size ();
+
+    if (_read_offset < available) {
+        const unsigned char *frame_data =
+          static_cast<const unsigned char *> (data.data ());
+        const std::size_t to_copy =
+          std::min (available - _read_offset, buffer_size);
+
+        std::memcpy (buffer, frame_data + _read_offset, to_copy);
+        _read_offset += to_copy;
+
+        if (_read_offset >= available) {
+            _read_buffer.consume (available);
+            _read_offset = 0;
+        }
 
         if (handler) {
             boost::asio::post (
-              _wss_stream->get_executor (),
-              [handler, to_copy] () {
+              _wss_stream->get_executor (), [handler, to_copy] () {
                   handler (boost::system::error_code (), to_copy);
               });
         }
         return;
     }
 
-    //  Need to read a new frame from WebSocket
     _wss_stream->async_read (
-      *_read_buffer,
+      _read_buffer,
       [this, buffer, buffer_size, handler] (
         const boost::system::error_code &ec, std::size_t bytes_transferred) {
           if (ec) {
@@ -172,27 +172,22 @@ void wss_transport_t::async_read_some (unsigned char *buffer,
               return;
           }
 
-          //  Copy frame data to our internal buffer
-          const auto &data = _read_buffer->data ();
+          const auto data = _read_buffer.data ();
           const unsigned char *frame_data =
             static_cast<const unsigned char *> (data.data ());
-          std::size_t frame_size = data.size ();
+          const std::size_t frame_size = data.size ();
 
           ASIO_DBG_WSS ("read frame: %zu bytes", frame_size);
 
-          //  Copy as much as possible to the caller's buffer
-          std::size_t to_copy = std::min (frame_size, buffer_size);
+          const std::size_t to_copy = std::min (frame_size, buffer_size);
           std::memcpy (buffer, frame_data, to_copy);
 
-          //  If there's leftover data, store it for subsequent reads
           if (to_copy < frame_size) {
-              _frame_buffer.assign (frame_data + to_copy,
-                                    frame_data + frame_size);
-              _frame_offset = 0;
+              _read_offset = to_copy;
+          } else {
+              _read_buffer.consume (frame_size);
+              _read_offset = 0;
           }
-
-          //  Consume the data from the beast buffer
-          _read_buffer->consume (_read_buffer->size ());
 
           if (handler) {
               handler (boost::system::error_code (), to_copy);
@@ -212,17 +207,18 @@ std::size_t wss_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         return 0;
     }
 
-    if (_frame_offset < _frame_buffer.size ()) {
-        const std::size_t available = _frame_buffer.size () - _frame_offset;
-        const std::size_t to_copy = std::min (available, len);
-        std::memcpy (buffer, _frame_buffer.data () + _frame_offset, to_copy);
-        _frame_offset += to_copy;
-
-        if (_frame_offset >= _frame_buffer.size ()) {
-            _frame_buffer.clear ();
-            _frame_offset = 0;
+    const auto data = _read_buffer.data ();
+    const std::size_t available = data.size ();
+    if (_read_offset < available) {
+        const unsigned char *frame_data =
+          static_cast<const unsigned char *> (data.data ());
+        const std::size_t to_copy = std::min (available - _read_offset, len);
+        std::memcpy (buffer, frame_data + _read_offset, to_copy);
+        _read_offset += to_copy;
+        if (_read_offset >= available) {
+            _read_buffer.consume (available);
+            _read_offset = 0;
         }
-
         errno = 0;
         return to_copy;
     }

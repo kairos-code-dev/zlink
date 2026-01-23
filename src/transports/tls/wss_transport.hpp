@@ -15,7 +15,6 @@
 #include <boost/beast/websocket/ssl.hpp>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "engine/asio/i_asio_transport.hpp"
 
@@ -110,15 +109,12 @@ class wss_transport_t : public i_asio_transport
     std::string _path;
     std::string _host;
     std::unique_ptr<wss_stream_t> _wss_stream;
-    std::unique_ptr<buffer_t> _read_buffer;
+    buffer_t _read_buffer;
+    std::size_t _read_offset;
     bool _ssl_handshake_complete;
     bool _ws_handshake_complete;
     int _handshake_type;
     std::string _tls_hostname;
-
-    //  Temporary storage for async read results
-    std::vector<unsigned char> _frame_buffer;
-    std::size_t _frame_offset;
 
     //  Internal handshake continuation
     void continue_ws_handshake (completion_handler_t handler);

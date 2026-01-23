@@ -1,0 +1,82 @@
+
+## PATTERN: STREAM
+  > Benchmarking baseline for STREAM...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing tls | 64B: 1 (failures=1) Done
+    Testing tls | 256B: 1 (failures=1) Done
+    Testing ws | 64B: 1 (failures=1) Done
+    Testing ws | 256B: 1 (failures=1) Done
+    Testing wss | 64B: 1 (failures=1) Done
+    Testing wss | 256B: 1 (failures=1) Done
+  > Benchmarking current for STREAM...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing tls | 64B: 1 Done
+    Testing tls | 256B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing wss | 64B: 1 Done
+    Testing wss | 256B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      3.70 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          5.28 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      2.29 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          5.36 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.93 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          5.44 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |     2070.46 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         12.97 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |     2680.91 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         20.35 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |     2582.09 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |         34.15 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      2.56 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          6.80 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      1.35 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          6.82 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      2.59 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          6.24 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      1.33 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          6.27 us |   +0.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      2.33 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          7.49 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      1.16 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          7.60 us |   +0.00% |
+
+## Failures
+- STREAM baseline tcp 64B: no_data
+- STREAM baseline tcp 256B: no_data
+- STREAM baseline tcp 1024B: no_data
+- STREAM baseline tcp 65536B: no_data
+- STREAM baseline tcp 131072B: no_data
+- STREAM baseline tcp 262144B: no_data
+- STREAM baseline tls 64B: no_data
+- STREAM baseline tls 256B: no_data
+- STREAM baseline ws 64B: no_data
+- STREAM baseline ws 256B: no_data
+- STREAM baseline wss 64B: no_data
+- STREAM baseline wss 256B: no_data

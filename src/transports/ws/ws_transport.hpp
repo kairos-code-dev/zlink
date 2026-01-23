@@ -11,7 +11,6 @@
 #include <boost/beast/websocket.hpp>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "engine/asio/i_asio_transport.hpp"
 
@@ -95,13 +94,9 @@ class ws_transport_t : public i_asio_transport
     std::string _path;
     std::string _host;
     std::unique_ptr<ws_stream_t> _ws_stream;
-    std::unique_ptr<buffer_t> _read_buffer;
+    buffer_t _read_buffer;
+    std::size_t _read_offset;
     bool _handshake_complete;
-
-    //  Temporary storage for async read results
-    //  WebSocket reads complete frames, but we expose a stream interface
-    std::vector<unsigned char> _frame_buffer;
-    std::size_t _frame_offset;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (ws_transport_t)
 };

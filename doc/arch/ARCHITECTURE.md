@@ -89,7 +89,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 │  │  - socket_base_t: 모든 소켓의 기반 클래스                    │   │
 │  │  - pair_t, dealer_t, router_t, pub_t, sub_t, etc.           │   │
 │  │  - 메시지 라우팅 전략 (lb_t, fq_t, dist_t)                   │   │
-│  │  - 구독 관리 (radix_tree_t, trie_t)                         │   │
+│  │  - 구독 관리 (XPUB: mtrie_t, XSUB: radix_tree_t/trie_with_size_t) │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ (msg_t via pipe_t)
@@ -100,7 +100,6 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 │  │  - asio_engine_t: Proactor 패턴 기반 비동기 I/O 엔진         │   │
 │  │  - asio_zmp_engine_t: ZMP 프로토콜 핸드셰이크 및 프레이밍    │   │
 │  │  - asio_raw_engine_t: RAW 프로토콜 (Length-Prefix)          │   │
-│  │  - asio_ws_engine_t: WebSocket 전용 엔진                    │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
@@ -232,11 +231,12 @@ Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 
 **엔진 타입**:
 
-| 엔진 | 프로토콜 | 특징 |
-|------|----------|------|
-| `asio_zmp_engine_t` | ZMP v2.0 | 핸드셰이크, 8바이트 고정 헤더 |
-| `asio_raw_engine_t` | RAW | 4바이트 길이 접두사, 핸드셰이크 없음 |
-| `asio_ws_engine_t` | WebSocket | Beast 기반, 프레임 단위 처리 |
+| 엔진 | 프로토콜 | 트랜스포트 | 특징 |
+|------|----------|-----------|------|
+| `asio_zmp_engine_t` | ZMP v2.0 | TCP, TLS, IPC, WS, WSS | 핸드셰이크, 8바이트 고정 헤더 |
+| `asio_raw_engine_t` | RAW | TCP, TLS, IPC, WS, WSS | 4바이트 길이 접두사, STREAM 소켓용 |
+
+> **Note**: WS/WSS 프로토콜도 `asio_zmp_engine_t` 또는 `asio_raw_engine_t`를 사용하며, WebSocket 프레이밍은 `ws_transport_t`/`wss_transport_t`가 처리합니다.
 
 ### 3.5 Transport Layer
 
@@ -292,13 +292,15 @@ public:
 │  └─────────────────────────────────────────────────────────┘   │
 │                              OR                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  vsm_t (Very Small Message, ≤29 bytes)                   │   │
-│  │  - uint8_t data[29] : 메시지 데이터 직접 저장             │   │
+│  │  vsm_t (Very Small Message, ≤max_vsm_size)               │   │
+│  │  - max_vsm_size = 64 - (sizeof(ptr) + 3 + 16 + 4)        │   │
+│  │  - 64-bit: 33 bytes, 32-bit: 37 bytes                    │   │
+│  │  - uint8_t data[max_vsm_size] : 메시지 데이터 직접 저장   │   │
 │  │  - uint8_t size : 실제 크기                              │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              OR                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  lmsg_t (Large Message, >29 bytes)                       │   │
+│  │  lmsg_t (Large Message, >max_vsm_size)                   │   │
 │  │  - content_t* content : 별도 할당된 버퍼 포인터          │   │
 │  │    ├── void* data                                        │   │
 │  │    ├── size_t size                                       │   │
@@ -321,7 +323,7 @@ public:
 
 | 유형 | 값 | 설명 |
 |------|-----|------|
-| `type_vsm` | 101 | Very Small Message (≤29 bytes, 복사 없음) |
+| `type_vsm` | 101 | Very Small Message (≤33 bytes on 64-bit, 복사 없음) |
 | `type_lmsg` | 102 | Large Message (malloc'd 버퍼) |
 | `type_cmsg` | 104 | Constant Message (상수 데이터 참조) |
 | `type_zclmsg` | 105 | Zero-copy Large Message |
@@ -586,13 +588,13 @@ zlink 노드 간 통신에 사용되는 자체 프로토콜입니다.
 ```
 
 **HELLO 프레임 내용**:
-- 소켓 타입
-- 지원 기능
-- Identity (선택)
+- 소켓 타입 (1 byte)
+- Identity 길이 (1 byte)
+- Identity 값 (0-255 bytes, DEALER/ROUTER만 사용)
 
-**READY 프레임 내용**:
-- 메타데이터 (key-value 쌍)
-- 소켓 옵션
+**READY 프레임 내용** (`zmp_metadata::add_basic_properties`):
+- Socket-Type 속성 (항상 포함)
+- Identity 속성 (DEALER/ROUTER만 포함)
 
 ### 5.2 RAW Protocol (Length-Prefixed)
 
@@ -612,17 +614,24 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 - 간단한 구현 (`read(4) → read(length)`)
 - 외부 클라이언트 연동 용이
 
-**STREAM 소켓 내부 API**:
+**STREAM 소켓 내부 API** (zmq_send/zmq_recv 멀티파트):
 
 ```
-┌──────────────────────┬─────────────────────────────┐
-│  Routing ID (4B)     │     Payload (N Bytes)       │
-└──────────────────────┴─────────────────────────────┘
+송신 (zmq_send):
+  Frame 1: [Routing ID (4 bytes)]  + MORE flag
+  Frame 2: [Payload (N bytes)]
 
-이벤트 메시지:
-- Connect:    [Routing ID] + [0x01]
-- Disconnect: [Routing ID] + [0x00]
+수신 (zmq_recv):
+  Frame 1: [Routing ID (4 bytes)]  + MORE flag
+  Frame 2: [Payload (N bytes)]
+
+이벤트 메시지 (Payload가 1 byte인 경우):
+- Connect:    [Routing ID] + MORE, [0x01]
+- Disconnect: [Routing ID] + MORE, [0x00]
 ```
+
+> **Note**: 단일 프레임이 아닌 멀티파트 메시지입니다.
+> 애플리케이션은 `zmq_recv`를 두 번 호출하여 routing_id와 payload를 각각 수신합니다.
 
 ### 5.3 WebSocket 프레이밍
 
@@ -907,7 +916,7 @@ io_thread_t* ctx_t::choose_io_thread(uint64_t affinity) {
 |-----------|:----------:|:------:|:-----------------:|:------------:|------|
 | TCP | ✗ | ✗ | ✓ | ✓ | 표준 네트워크 통신 |
 | IPC | ✗ | ✗ | △ (옵션) | ✓ | 로컬 프로세스 간 통신 |
-| TLS | ✓ | ✓ | ✓ | ✓ | 암호화된 네트워크 통신 |
+| TLS | ✓ | ✓ | ✗ | ✗ | 암호화된 네트워크 통신 |
 | WS | ✓ | ✗ | ✗ | ✓ | 웹 클라이언트 연동 |
 | WSS | ✓ | ✓ | ✗ | ✓ | 암호화된 웹 클라이언트 연동 |
 
@@ -1394,33 +1403,25 @@ void on_accept(fd_t fd_) {
 │                  └─────────┬─────────┘                                       │
 │                            │ used by                                          │
 │                            ▼                                                  │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                           i_engine (interface)                          │ │
-│  └─────────────────────────────────┬──────────────────────────────────────┘ │
-│                                    │                                         │
-│              ┌─────────────────────┴─────────────────────┐                  │
-│              │                                           │                  │
-│              ▼                                           ▼                  │
-│  ┌─────────────────────────────────────┐    ┌─────────────────────────────┐│
-│  │           asio_engine_t              │    │      asio_ws_engine_t       ││
-│  │           (base class)               │    │     (WebSocket 전용)        ││
-│  │     TCP / TLS / IPC 트랜스포트용     │    │  i_engine 직접 구현         ││
-│  └─────────────────┬───────────────────┘    │  (asio_engine_t 미상속)      ││
-│                    │                         └─────────────────────────────┘│
-│        ┌───────────┴───────────┐                                            │
-│        │                       │                                            │
-│        ▼                       ▼                                            │
-│  ┌─────────────────┐    ┌─────────────────┐                                 │
-│  │asio_zmp_engine_t│    │asio_raw_engine_t│                                 │
-│  │                 │    │                 │                                 │
-│  │ - ZMP 프로토콜   │    │ - RAW 프로토콜   │                                 │
-│  │ - HELLO/READY   │    │ - Length-Prefix │                                 │
-│  │ - TCP/TLS/IPC용 │    │ - STREAM 소켓용 │                                 │
-│  └─────────────────┘    └─────────────────┘                                 │
+│           ┌────────────────────────────────────┐                             │
+│           │           asio_engine_t             │                             │
+│           │            (base class)             │                             │
+│           │   모든 트랜스포트(TCP/TLS/IPC/WS/WSS)에서 사용                    │
+│           └────────────────┬───────────────────┘                             │
+│                            │                                                  │
+│                ┌───────────┴───────────┐                                     │
+│                │                       │                                     │
+│                ▼                       ▼                                     │
+│       ┌─────────────────┐    ┌─────────────────┐                             │
+│       │asio_zmp_engine_t│    │asio_raw_engine_t│                             │
+│       │                 │    │                 │                             │
+│       │ - ZMP 프로토콜   │    │ - RAW 프로토콜   │                             │
+│       │ - HELLO/READY   │    │ - Length-Prefix │                             │
+│       │ - 모든 트랜스포트│    │ - STREAM 소켓용 │                             │
+│       └─────────────────┘    └─────────────────┘                             │
 │                                                                              │
-│  ※ asio_ws_engine_t는 WebSocket의 독자적인 프레이밍 처리로 인해             │
-│    asio_engine_t를 상속하지 않고 i_engine 인터페이스를 직접 구현합니다.       │
-│    내부적으로 ZMP 또는 RAW 프로토콜을 처리합니다.                            │
+│  ※ WS/WSS도 asio_zmp_engine_t 또는 asio_raw_engine_t를 사용합니다.          │
+│    WebSocket 프레이밍은 ws_transport_t/wss_transport_t가 처리합니다.          │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1558,6 +1559,12 @@ void on_accept(fd_t fd_) {
 - SUB와 동일한 필터링 기능
 - 구독 요청을 메시지로 직접 전송 가능
 - XPUB ↔ XSUB 프록시 체인 구성 가능
+
+구독 자료구조:
+- XPUB: mtrie_t (멀티 트라이)
+- XSUB: ZMQ_USE_RADIX_TREE 매크로에 따라
+  - radix_tree_t (활성화 시)
+  - trie_with_size_t (기본)
 ```
 
 ### 9.5 STREAM 소켓
@@ -1655,8 +1662,8 @@ zmq_msg_send(&msg, socket, 0);  // 복사 없이 전송
 
 **4. VSM (Very Small Message)**
 ```
-≤29 bytes: msg_t 내부 버퍼 사용 (malloc 없음)
->29 bytes: 별도 버퍼 할당
+≤max_vsm_size (64-bit: 33 bytes): msg_t 내부 버퍼 사용 (malloc 없음)
+>max_vsm_size: 별도 버퍼 할당
 ```
 
 ### 10.4 트랜스포트 선택 가이드
@@ -1695,7 +1702,6 @@ src/
 │       ├── asio_engine.cpp/hpp   # 기반 Proactor 엔진
 │       ├── asio_zmp_engine.cpp/hpp  # ZMP 프로토콜 엔진
 │       ├── asio_raw_engine.cpp/hpp  # RAW 프로토콜 엔진
-│       ├── asio_ws_engine.cpp/hpp   # WebSocket 엔진
 │       ├── asio_poller.cpp/hpp   # io_context 래퍼
 │       ├── i_asio_transport.hpp  # 트랜스포트 인터페이스
 │       └── handler_allocator.hpp # 핸들러 메모리 관리
@@ -1740,7 +1746,7 @@ src/
 │   │   ├── ws_transport.cpp/hpp
 │   │   ├── asio_ws_connecter.cpp/hpp
 │   │   ├── asio_ws_listener.cpp/hpp
-│   │   ├── asio_ws_engine.cpp/hpp
+│   │   ├── asio_ws_engine.cpp/hpp  # (미사용, asio_zmp/raw_engine 사용)
 │   │   └── ws_address.cpp/hpp
 │   └── tls/                      # TLS/SSL (OpenSSL)
 │       ├── ssl_transport.cpp/hpp
@@ -1780,7 +1786,7 @@ src/
 | **Proactor** | 비동기 I/O 완료 시 콜백을 호출하는 패턴 |
 | **YPipe** | Lock-free FIFO 큐 구현 |
 | **HWM** | High Water Mark, 큐 크기 제한 |
-| **VSM** | Very Small Message, 29바이트 이하 메시지 최적화 |
+| **VSM** | Very Small Message, max_vsm_size 이하 메시지 최적화 (64-bit: 33 bytes) |
 | **Speculative I/O** | 비동기 호출 전 동기 시도로 오버헤드 감소 |
 | **Gather Write** | 여러 버퍼를 한 번의 시스템 콜로 전송 |
 

@@ -65,7 +65,6 @@ wss_transport_t::wss_transport_t (boost::asio::ssl::context &ssl_ctx,
     _ssl_ctx (ssl_ctx),
     _path (path),
     _host (host),
-    _read_offset (0),
     _ssl_handshake_complete (false),
     _ws_handshake_complete (false),
     _handshake_type (client)
@@ -113,8 +112,6 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     _wss_stream->write_buffer_bytes (wss_write_buffer_bytes ());
     _wss_stream->read_message_max (wss_read_message_max ());
 
-    _read_buffer.consume (_read_buffer.size ());
-    _read_offset = 0;
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
 
@@ -142,8 +139,6 @@ void wss_transport_t::close ()
 
     _ssl_handshake_complete = false;
     _ws_handshake_complete = false;
-    _read_buffer.consume (_read_buffer.size ());
-    _read_offset = 0;
 }
 
 void wss_transport_t::async_read_some (unsigned char *buffer,
@@ -167,63 +162,15 @@ void wss_transport_t::async_read_some (unsigned char *buffer,
         return;
     }
 
-    const auto data = _read_buffer.data ();
-    const std::size_t available = data.size ();
-
-    if (_read_offset < available) {
-        const unsigned char *frame_data =
-          static_cast<const unsigned char *> (data.data ());
-        const std::size_t to_copy =
-          std::min (available - _read_offset, buffer_size);
-
-        std::memcpy (buffer, frame_data + _read_offset, to_copy);
-        _read_offset += to_copy;
-
-        if (_read_offset >= available) {
-            _read_buffer.consume (available);
-            _read_offset = 0;
-        }
-
-        if (handler) {
-            boost::asio::post (
-              _wss_stream->get_executor (), [handler, to_copy] () {
-                  handler (boost::system::error_code (), to_copy);
-              });
-        }
-        return;
-    }
-
-    _wss_stream->async_read (
-      _read_buffer,
-      [this, buffer, buffer_size, handler] (
-        const boost::system::error_code &ec, std::size_t bytes_transferred) {
+    _wss_stream->async_read_some (
+      boost::asio::buffer (buffer, buffer_size),
+      [handler] (const boost::system::error_code &ec,
+                 std::size_t bytes_transferred) {
           if (ec) {
-              ASIO_DBG_WSS ("read frame failed: %s", ec.message ().c_str ());
-              if (handler) {
-                  handler (ec, 0);
-              }
-              return;
+              ASIO_DBG_WSS ("read failed: %s", ec.message ().c_str ());
           }
-
-          const auto data = _read_buffer.data ();
-          const unsigned char *frame_data =
-            static_cast<const unsigned char *> (data.data ());
-          const std::size_t frame_size = data.size ();
-
-          ASIO_DBG_WSS ("read frame: %zu bytes", frame_size);
-
-          const std::size_t to_copy = std::min (frame_size, buffer_size);
-          std::memcpy (buffer, frame_data, to_copy);
-
-          if (to_copy < frame_size) {
-              _read_offset = to_copy;
-          } else {
-              _read_buffer.consume (frame_size);
-              _read_offset = 0;
-          }
-
           if (handler) {
-              handler (boost::system::error_code (), to_copy);
+              handler (ec, bytes_transferred);
           }
       });
 }
@@ -240,24 +187,39 @@ std::size_t wss_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         return 0;
     }
 
-    const auto data = _read_buffer.data ();
-    const std::size_t available = data.size ();
-    if (_read_offset < available) {
-        const unsigned char *frame_data =
-          static_cast<const unsigned char *> (data.data ());
-        const std::size_t to_copy = std::min (available - _read_offset, len);
-        std::memcpy (buffer, frame_data + _read_offset, to_copy);
-        _read_offset += to_copy;
-        if (_read_offset >= available) {
-            _read_buffer.consume (available);
-            _read_offset = 0;
+    boost::system::error_code ec;
+    const std::size_t bytes_read =
+      _wss_stream->read_some (boost::asio::buffer (buffer, len), ec);
+
+    if (ec) {
+        if (ec == boost::asio::error::would_block
+            || ec == boost::asio::error::try_again) {
+            errno = EAGAIN;
+            return 0;
         }
-        errno = 0;
-        return to_copy;
+        if (ec == boost::asio::error::eof
+            || ec == boost::asio::error::connection_reset
+            || ec == boost::asio::error::broken_pipe
+            || ec == boost::beast::websocket::error::closed) {
+            errno = EPIPE;
+            return 0;
+        }
+        if (ec.category () == boost::asio::error::get_ssl_category ()) {
+            errno = EIO;
+            return 0;
+        }
+        if (ec == boost::asio::error::not_connected) {
+            errno = ENOTCONN;
+        } else if (ec == boost::asio::error::bad_descriptor) {
+            errno = EBADF;
+        } else {
+            errno = EIO;
+        }
+        return 0;
     }
 
-    errno = EAGAIN;
-    return 0;
+    errno = 0;
+    return bytes_read;
 }
 
 void wss_transport_t::async_write_some (const unsigned char *buffer,

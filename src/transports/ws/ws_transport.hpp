@@ -26,7 +26,7 @@ namespace zmq
 //  WebSocket specifics:
 //  - Requires HTTP upgrade handshake before data transfer
 //  - Uses binary frames for ZMQ messages (not text frames)
-//  - Frame-based protocol (read returns complete frames, not streams)
+//  - Frame-based protocol (read_some returns message data chunks)
 //
 //  Usage:
 //    1. Create ws_transport_t with optional path/protocol
@@ -95,14 +95,9 @@ class ws_transport_t : public i_asio_transport
     typedef boost::beast::websocket::stream<boost::asio::ip::tcp::socket>
       ws_stream_t;
 
-    //  Dynamic buffer for reading WebSocket frames
-    typedef boost::beast::flat_buffer buffer_t;
-
     std::string _path;
     std::string _host;
     std::unique_ptr<ws_stream_t> _ws_stream;
-    buffer_t _read_buffer;
-    std::size_t _read_offset;
     bool _handshake_complete;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (ws_transport_t)

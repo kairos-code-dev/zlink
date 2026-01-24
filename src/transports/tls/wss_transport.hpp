@@ -109,15 +109,10 @@ class wss_transport_t : public i_asio_transport
     //  WebSocket stream over SSL
     typedef boost::beast::websocket::stream<ssl_stream_t> wss_stream_t;
 
-    //  Dynamic buffer for reading WebSocket frames
-    typedef boost::beast::flat_buffer buffer_t;
-
     boost::asio::ssl::context &_ssl_ctx;
     std::string _path;
     std::string _host;
     std::unique_ptr<wss_stream_t> _wss_stream;
-    buffer_t _read_buffer;
-    std::size_t _read_offset;
     bool _ssl_handshake_complete;
     bool _ws_handshake_complete;
     int _handshake_type;

@@ -1291,6 +1291,11 @@ if(TARGET objects)
   list(APPEND build_targets "objects")
 endif()
 
+# Ensure ASIO configuration macros are consistent across all targets.
+if(ZMQ_HAVE_ASIO)
+  add_compile_definitions(BOOST_ASIO_STANDALONE=1 BOOST_ASIO_NO_DEPRECATED=1)
+endif()
+
 foreach(target ${build_targets})
   target_include_directories(
     ${target} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

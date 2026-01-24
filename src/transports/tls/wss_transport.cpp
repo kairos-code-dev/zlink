@@ -46,7 +46,7 @@ size_t wss_write_buffer_bytes ()
 {
     static size_t value = 0;
     if (value == 0)
-        value = parse_size_env ("ZMQ_WS_WRITE_BUFFER_BYTES", 1024 * 1024);
+        value = parse_size_env ("ZMQ_WS_WRITE_BUFFER_BYTES", 64 * 1024);
     return value;
 }
 

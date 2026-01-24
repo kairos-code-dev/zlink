@@ -126,29 +126,6 @@ size_t gather_threshold ()
     return threshold;
 }
 
-size_t ws_out_batch_threshold ()
-{
-    static size_t threshold = 0;
-    if (threshold == 0)
-        threshold = parse_size_env ("ZMQ_WS_OUT_BATCH_THRESHOLD", 131072);
-    return threshold;
-}
-
-size_t ws_out_batch_large ()
-{
-    static size_t size = 0;
-    if (size == 0)
-        size = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE_LARGE", 262144);
-    return size;
-}
-
-bool is_ws_transport (const zmq::i_asio_transport *transport_)
-{
-    if (!transport_)
-        return false;
-    const char *name = transport_->name ();
-    return name && (strcmp (name, "ws") == 0 || strcmp (name, "wss") == 0);
-}
 }
 
 zmq::asio_engine_t::asio_engine_t (
@@ -955,18 +932,6 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
 
     const size_t max_out_batch = static_cast<size_t> (_options.out_batch_size);
     size_t target_out_batch = max_out_batch;
-    const bool ws_transport = is_ws_transport (_transport.get ());
-    size_t ws_large_batch = 0;
-    size_t ws_threshold = 0;
-    if (ws_transport) {
-        const size_t ws_soft_batch = 64 * 1024;
-        if (max_out_batch > ws_soft_batch)
-            target_out_batch = ws_soft_batch;
-        ws_large_batch = ws_out_batch_large ();
-        if (ws_large_batch > max_out_batch)
-            ws_large_batch = max_out_batch;
-        ws_threshold = ws_out_batch_threshold ();
-    }
 
     while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -974,11 +939,6 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
                 return false;
             else
                 break;
-        }
-
-        if (ws_transport && ws_threshold > 0 && _tx_msg.size () >= ws_threshold
-            && ws_large_batch > target_out_batch) {
-            target_out_batch = ws_large_batch;
         }
 
         _encoder->load_msg (&_tx_msg);

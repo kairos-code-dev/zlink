@@ -4,7 +4,7 @@
 #if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
 
 #include "transports/ws/asio_ws_connecter.hpp"
-#include "transports/ws/asio_ws_engine.hpp"
+#include "engine/asio/asio_zmp_engine.hpp"
 #include "engine/asio/asio_raw_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
@@ -33,6 +33,8 @@
 #endif
 
 #include <limits>
+#include <cerrno>
+#include <cstdlib>
 
 //  Debug logging for ASIO WS connecter - set to 1 to enable
 #define ASIO_WS_CONNECTER_DEBUG 0
@@ -90,6 +92,42 @@ create_wss_client_context (const zmq::options_t &options_,
 }
 }
 #endif
+
+namespace
+{
+size_t parse_size_env (const char *name_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return 0;
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return 0;
+    return static_cast<size_t> (value);
+}
+
+zmq::options_t adjust_ws_options (const zmq::options_t &options_)
+{
+    zmq::options_t adjusted = options_;
+    const size_t ws_out = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE");
+    const size_t ws_in = parse_size_env ("ZMQ_WS_IN_BATCH_SIZE");
+    const int default_ws_batch = 65536;
+
+    if (ws_out > 0)
+        adjusted.out_batch_size = static_cast<int> (ws_out);
+    else if (adjusted.out_batch_size < default_ws_batch)
+        adjusted.out_batch_size = default_ws_batch;
+
+    if (ws_in > 0)
+        adjusted.in_batch_size = static_cast<int> (ws_in);
+    else if (adjusted.in_batch_size < default_ws_batch)
+        adjusted.in_batch_size = default_ws_batch;
+
+    return adjusted;
+}
+}
 
 zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
                                                 session_base_t *session_,
@@ -479,26 +517,28 @@ void zmq::asio_ws_connecter_t::create_engine (
         transport.reset (ws_transport.release ());
     }
 
+    const bool is_stream = options.type == ZMQ_STREAM;
+    const options_t engine_options = is_stream ? options : adjust_ws_options (options);
     i_engine *engine = NULL;
 #if defined ZMQ_HAVE_WSS
     if (_secure) {
-        if (options.type == ZMQ_STREAM)
+        if (is_stream)
             engine = new (std::nothrow) asio_raw_engine_t (
-              fd_, options, endpoint_pair, std::move (transport),
+              fd_, engine_options, endpoint_pair, std::move (transport),
               std::move (ssl_context));
         else
-            engine = new (std::nothrow) asio_ws_engine_t (
-              fd_, options, endpoint_pair, true, std::move (transport),
+            engine = new (std::nothrow) asio_zmp_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport),
               std::move (ssl_context));
     } else
 #endif
     {
-        if (options.type == ZMQ_STREAM)
+        if (is_stream)
             engine = new (std::nothrow) asio_raw_engine_t (
-              fd_, options, endpoint_pair, std::move (transport));
+              fd_, engine_options, endpoint_pair, std::move (transport));
         else
-            engine = new (std::nothrow) asio_ws_engine_t (
-              fd_, options, endpoint_pair, true, std::move (transport));
+            engine = new (std::nothrow) asio_zmp_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport));
     }
     alloc_assert (engine);
 

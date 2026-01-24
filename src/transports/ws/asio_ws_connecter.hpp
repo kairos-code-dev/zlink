@@ -25,7 +25,7 @@ struct address_t;
 //  1. TCP async_connect using Boost.Asio
 //  2. Engine creation with WebSocket transport for the connected socket
 //
-//  Note: The WebSocket handshake is handled by the engine (asio_ws_engine_t),
+//  Note: The WebSocket handshake is handled by the engine via the transport,
 //  not by the connecter. This follows the pattern used in asio_tcp_connecter.
 
 class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t

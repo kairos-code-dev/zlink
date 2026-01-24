@@ -26,6 +26,8 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdlib>
 #include <sstream>
 #include <cstring>
 #include <limits.h>
@@ -34,6 +36,38 @@ namespace
 {
 const size_t zmp_hello_min_body = 3;
 const size_t zmp_hello_max_body = 3 + 255;
+
+bool gather_write_enabled ()
+{
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char *env = std::getenv ("ZMQ_ASIO_GATHER_WRITE");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
+}
+
+size_t parse_size_env (const char *name_, size_t fallback_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return fallback_;
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return fallback_;
+    return static_cast<size_t> (value);
+}
+
+size_t gather_threshold ()
+{
+    static size_t threshold = 0;
+    if (threshold == 0) {
+        threshold = parse_size_env ("ZMQ_ASIO_GATHER_THRESHOLD", 65536);
+    }
+    return threshold;
+}
 }
 
 //  Debug logging for ASIO WS engine - set to 1 to enable
@@ -99,6 +133,10 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     _last_error_code (0),
     _read_buffer (read_buffer_size),
     _read_buffer_ptr (NULL),
+    _async_gather (false),
+    _gather_header_size (0),
+    _gather_body (NULL),
+    _gather_body_size (0),
     _hello_sent (false),
     _hello_received (false),
     _ready_sent (false),
@@ -183,6 +221,10 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     _last_error_code (0),
     _read_buffer (read_buffer_size),
     _read_buffer_ptr (NULL),
+    _async_gather (false),
+    _gather_header_size (0),
+    _gather_body (NULL),
+    _gather_body_size (0),
     _hello_sent (false),
     _hello_received (false),
     _ready_sent (false),
@@ -587,6 +629,9 @@ void zmq::asio_ws_engine_t::start_async_write ()
     WS_ENGINE_DBG ("start_async_write: outsize=%zu", _outsize);
 
     if (_outsize == 0 || _outpos == NULL) {
+        //  No data prepared, try gather path first, then fallback to encoder.
+        if (prepare_gather_output ())
+            return;
         if (!prepare_output_buffer ()) {
             WS_ENGINE_DBG ("No data to write");
             _output_stopped = true;
@@ -621,9 +666,13 @@ void zmq::asio_ws_engine_t::on_write_complete (
         if (ec == boost::asio::error::operation_aborted)
             return;
         WS_ENGINE_DBG ("Write error");
+        finish_gather_output ();
         error (connection_error);
         return;
     }
+
+    if (_async_gather)
+        finish_gather_output ();
 
     //  Clear output buffer - async write is complete
     _outpos = NULL;
@@ -1008,6 +1057,113 @@ bool zmq::asio_ws_engine_t::process_input ()
     }
 
     return true;
+}
+
+bool zmq::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
+                                                 unsigned char *buffer_,
+                                                 size_t buffer_size_,
+                                                 size_t &header_size_)
+{
+    if (buffer_size_ < zmp_header_size)
+        return false;
+
+    const size_t size = msg_.size ();
+    const unsigned char msg_flags = msg_.flags ();
+
+    unsigned char flags = 0;
+    if (msg_flags != 0) {
+        if (msg_flags & msg_t::more)
+            flags |= zmp_flag_more;
+        if (msg_flags & msg_t::command)
+            flags |= zmp_flag_control;
+        if (msg_flags & msg_t::routing_id)
+            flags |= zmp_flag_identity;
+
+        const unsigned char cmd_type = msg_flags & CMD_TYPE_MASK;
+        if (cmd_type == msg_t::subscribe)
+            flags |= zmp_flag_subscribe;
+        else if (cmd_type == msg_t::cancel)
+            flags |= zmp_flag_cancel;
+    }
+
+    buffer_[0] = zmp_magic;
+    buffer_[1] = zmp_version;
+    buffer_[2] = flags;
+    buffer_[3] = 0;
+    put_uint32 (buffer_ + 4, static_cast<uint32_t> (size));
+
+    header_size_ = zmp_header_size;
+    return true;
+}
+
+bool zmq::asio_ws_engine_t::prepare_gather_output ()
+{
+    if (!gather_write_enabled ())
+        return false;
+    if (!_transport || !_transport->supports_gather_write ())
+        return false;
+    if (_encoder == NULL || _handshaking)
+        return false;
+
+    //  Ensure encoder has no in-progress message before loading a new one.
+    unsigned char *pending_buf = NULL;
+    const size_t pending = _encoder->encode (&pending_buf, 0);
+    if (pending > 0) {
+        _outpos = pending_buf;
+        _outsize = pending;
+        return false;
+    }
+
+    if ((this->*_next_msg) (&_tx_msg) == -1) {
+        if (errno == EAGAIN) {
+            _output_stopped = true;
+            return true;
+        }
+        return false;
+    }
+
+    const size_t body_size = _tx_msg.size ();
+    if (body_size < gather_threshold ()) {
+        _encoder->load_msg (&_tx_msg);
+        return false;
+    }
+
+    size_t header_size = 0;
+    if (!build_gather_header (_tx_msg, _gather_header,
+                              sizeof (_gather_header), header_size)) {
+        _encoder->load_msg (&_tx_msg);
+        return false;
+    }
+
+    _gather_header_size = header_size;
+    _gather_body = static_cast<const unsigned char *> (_tx_msg.data ());
+    _gather_body_size = body_size;
+    _async_gather = true;
+    _write_pending = true;
+    _output_stopped = false;
+
+    _transport->async_writev (
+      _gather_header, _gather_header_size, _gather_body, _gather_body_size,
+      [this] (const boost::system::error_code &ec, std::size_t bytes) {
+          on_write_complete (ec, bytes);
+      });
+    return true;
+}
+
+void zmq::asio_ws_engine_t::finish_gather_output ()
+{
+    if (!_async_gather)
+        return;
+
+    _async_gather = false;
+    _gather_header_size = 0;
+    _gather_body = NULL;
+    _gather_body_size = 0;
+
+    const int rc = _tx_msg.close ();
+    errno_assert (rc == 0);
+    const int rc_init = _tx_msg.init ();
+    errno_assert (rc_init == 0);
 }
 
 bool zmq::asio_ws_engine_t::prepare_output_buffer ()

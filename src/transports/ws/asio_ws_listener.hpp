@@ -26,7 +26,7 @@ class socket_base_t;
 //  1. TCP accept using Boost.Asio async_accept
 //  2. Engine creation with WebSocket transport for accepted connections
 //
-//  Note: The WebSocket handshake is handled by the engine (asio_ws_engine_t),
+//  Note: The WebSocket handshake is handled by the engine via the transport,
 //  not by the listener. This allows for proper async handshake processing
 //  within the engine's lifecycle.
 

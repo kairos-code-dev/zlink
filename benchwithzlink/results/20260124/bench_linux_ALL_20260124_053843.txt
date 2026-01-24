@@ -1,0 +1,1583 @@
+
+## PATTERN: PAIR
+  [baseline] Using cached baseline.
+  > Benchmarking current for PAIR...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   4378.83 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          5.43 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   2565.91 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          5.49 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    882.12 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          5.71 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     30.96 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         13.59 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |     15.14 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         21.24 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      9.02 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |         35.88 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   3739.24 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          7.34 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   1919.58 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          7.46 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    630.66 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          7.47 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     14.39 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         44.37 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      7.53 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         84.48 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      3.86 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |        160.96 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   4243.60 Kmsg/s |   4406.76 Kmsg/s |   +3.84% |
+| 64B    | Latency    |         49.59 us |          7.13 us |  +85.62% |
+| 256B   | Throughput |   1923.46 Kmsg/s |   2814.99 Kmsg/s |  +46.35% |
+| 256B   | Latency    |         42.19 us |          7.18 us |  +82.99% |
+| 1024B  | Throughput |    688.82 Kmsg/s |   1139.54 Kmsg/s |  +65.43% |
+| 1024B  | Latency    |         47.78 us |          7.30 us |  +84.72% |
+| 65536B | Throughput |     33.67 Kmsg/s |     22.04 Kmsg/s |  -34.54% |
+| 65536B | Latency    |        129.33 us |         24.43 us |  +81.11% |
+| 131072B | Throughput |     21.71 Kmsg/s |     11.88 Kmsg/s |  -45.28% |
+| 131072B | Latency    |        145.87 us |         37.09 us |  +74.57% |
+| 262144B | Throughput |     12.38 Kmsg/s |      7.04 Kmsg/s |  -43.12% |
+| 262144B | Latency    |        155.93 us |         60.61 us |  +61.13% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3586.05 Kmsg/s |   3964.98 Kmsg/s |  +10.57% |
+| 64B    | Latency    |         47.12 us |          8.39 us |  +82.19% |
+| 256B   | Throughput |   1451.03 Kmsg/s |   2056.30 Kmsg/s |  +41.71% |
+| 256B   | Latency    |         40.70 us |          8.60 us |  +78.87% |
+| 1024B  | Throughput |    469.05 Kmsg/s |    693.79 Kmsg/s |  +47.91% |
+| 1024B  | Latency    |         37.33 us |          8.87 us |  +76.25% |
+| 65536B | Throughput |     15.68 Kmsg/s |     12.11 Kmsg/s |  -22.74% |
+| 65536B | Latency    |        142.69 us |         62.75 us |  +56.03% |
+| 131072B | Throughput |      8.92 Kmsg/s |      6.11 Kmsg/s |  -31.50% |
+| 131072B | Latency    |        194.16 us |        109.06 us |  +43.83% |
+| 262144B | Throughput |      4.72 Kmsg/s |      3.32 Kmsg/s |  -29.76% |
+| 262144B | Latency    |        310.88 us |        205.38 us |  +33.93% |
+
+## PATTERN: PUBSUB
+  [baseline] Using cached baseline.
+  > Benchmarking current for PUBSUB...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   4120.06 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.24 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   2431.95 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.41 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    914.57 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          1.09 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     29.98 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         33.37 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |     17.31 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         56.74 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      9.78 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |        102.23 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   3443.73 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.29 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   1854.20 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.54 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    605.87 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          1.65 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     15.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         66.44 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      7.92 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |        126.21 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      4.10 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |        244.12 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3941.78 Kmsg/s |   4497.32 Kmsg/s |  +14.09% |
+| 64B    | Latency    |          0.25 us |          0.22 us |  +12.00% |
+| 256B   | Throughput |   1918.72 Kmsg/s |   3155.59 Kmsg/s |  +64.46% |
+| 256B   | Latency    |          0.52 us |          0.32 us |  +38.46% |
+| 1024B  | Throughput |    691.04 Kmsg/s |   1318.32 Kmsg/s |  +90.77% |
+| 1024B  | Latency    |          1.44 us |          0.76 us |  +47.40% |
+| 65536B | Throughput |     38.40 Kmsg/s |     25.99 Kmsg/s |  -32.30% |
+| 65536B | Latency    |         26.04 us |         38.47 us |  -47.73% |
+| 131072B | Throughput |     23.10 Kmsg/s |     14.56 Kmsg/s |  -36.97% |
+| 131072B | Latency    |         42.75 us |         68.18 us |  -59.47% |
+| 262144B | Throughput |     15.97 Kmsg/s |      8.53 Kmsg/s |  -46.61% |
+| 262144B | Latency    |         62.61 us |        117.09 us |  -87.03% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3555.58 Kmsg/s |   3825.29 Kmsg/s |   +7.59% |
+| 64B    | Latency    |          0.28 us |          0.26 us |   +7.14% |
+| 256B   | Throughput |   1405.82 Kmsg/s |   2081.58 Kmsg/s |  +48.07% |
+| 256B   | Latency    |          0.70 us |          0.48 us |  +31.21% |
+| 1024B  | Throughput |    457.17 Kmsg/s |    752.00 Kmsg/s |  +64.49% |
+| 1024B  | Latency    |          2.19 us |          1.33 us |  +39.13% |
+| 65536B | Throughput |     16.39 Kmsg/s |     13.25 Kmsg/s |  -19.20% |
+| 65536B | Latency    |         61.00 us |         74.87 us |  -22.75% |
+| 131072B | Throughput |      8.27 Kmsg/s |      6.96 Kmsg/s |  -15.85% |
+| 131072B | Latency    |        120.91 us |        143.69 us |  -18.84% |
+| 262144B | Throughput |      4.28 Kmsg/s |      3.63 Kmsg/s |  -15.36% |
+| 262144B | Latency    |        233.40 us |        275.75 us |  -18.15% |
+
+## PATTERN: DEALER_DEALER
+  [baseline] Using cached baseline.
+  > Benchmarking current for DEALER_DEALER...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   4373.25 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          5.47 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   2518.80 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          5.45 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    925.82 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          5.58 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     31.86 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         13.17 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |     16.69 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         21.08 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      9.34 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |         35.86 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   3756.21 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          7.21 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   1943.28 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          7.28 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    610.32 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          7.56 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |     14.92 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         44.01 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      7.82 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         80.83 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      4.07 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |        152.31 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   4327.23 Kmsg/s |   4656.46 Kmsg/s |   +7.61% |
+| 64B    | Latency    |         38.56 us |          6.92 us |  +82.04% |
+| 256B   | Throughput |   1966.53 Kmsg/s |   3107.48 Kmsg/s |  +58.02% |
+| 256B   | Latency    |         40.61 us |          6.96 us |  +82.85% |
+| 1024B  | Throughput |    721.33 Kmsg/s |   1219.71 Kmsg/s |  +69.09% |
+| 1024B  | Latency    |         34.05 us |          7.13 us |  +79.06% |
+| 65536B | Throughput |     36.90 Kmsg/s |     23.05 Kmsg/s |  -37.52% |
+| 65536B | Latency    |         98.85 us |         23.38 us |  +76.35% |
+| 131072B | Throughput |     22.70 Kmsg/s |     12.38 Kmsg/s |  -45.45% |
+| 131072B | Latency    |        148.79 us |         35.86 us |  +75.90% |
+| 262144B | Throughput |     12.94 Kmsg/s |      7.06 Kmsg/s |  -45.42% |
+| 262144B | Latency    |        216.90 us |         60.59 us |  +72.07% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3744.13 Kmsg/s |   3987.05 Kmsg/s |   +6.49% |
+| 64B    | Latency    |         41.67 us |          8.36 us |  +79.94% |
+| 256B   | Throughput |   1391.35 Kmsg/s |   2125.68 Kmsg/s |  +52.78% |
+| 256B   | Latency    |         41.37 us |          8.42 us |  +79.65% |
+| 1024B  | Throughput |    458.91 Kmsg/s |    720.05 Kmsg/s |  +56.91% |
+| 1024B  | Latency    |         46.31 us |          8.86 us |  +80.86% |
+| 65536B | Throughput |     15.44 Kmsg/s |     12.30 Kmsg/s |  -20.35% |
+| 65536B | Latency    |        133.70 us |         60.73 us |  +54.58% |
+| 131072B | Throughput |      8.72 Kmsg/s |      6.41 Kmsg/s |  -26.49% |
+| 131072B | Latency    |        180.62 us |        106.44 us |  +41.07% |
+| 262144B | Throughput |      4.72 Kmsg/s |      3.31 Kmsg/s |  -29.91% |
+| 262144B | Latency    |        298.02 us |        198.85 us |  +33.28% |
+
+## PATTERN: DEALER_ROUTER
+  [baseline] Using cached baseline.
+  > Benchmarking current for DEALER_ROUTER...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=7) Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   3642.47 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          5.51 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |   2297.84 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          5.58 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |    868.90 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          5.56 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   4045.24 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         44.45 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1942.86 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         41.37 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    710.74 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         52.84 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     37.71 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |         96.78 us |          0.00 us | +100.00% |
+| 131072B | Throughput |     23.97 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        131.47 us |          0.00 us | +100.00% |
+| 262144B | Throughput |     13.53 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        146.25 us |          0.00 us | +100.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3621.27 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         52.63 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1437.68 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         54.91 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    462.73 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         53.81 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     15.94 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |        135.93 us |          0.00 us | +100.00% |
+| 131072B | Throughput |      8.87 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        168.05 us |          0.00 us | +100.00% |
+| 262144B | Throughput |      4.78 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        298.67 us |          0.00 us | +100.00% |
+
+## PATTERN: ROUTER_ROUTER
+  [baseline] Using cached baseline.
+  > Benchmarking current for ROUTER_ROUTER...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3294.24 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         19.55 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1814.84 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         19.90 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    711.33 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         19.74 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     38.70 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |         40.51 us |          0.00 us | +100.00% |
+| 131072B | Throughput |     24.59 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |         73.17 us |          0.00 us | +100.00% |
+| 262144B | Throughput |     13.61 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        131.40 us |          0.00 us | +100.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3533.74 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         22.64 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1392.62 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         23.55 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    463.24 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         23.80 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     15.98 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |         97.67 us |          0.00 us | +100.00% |
+| 131072B | Throughput |      8.91 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        210.17 us |          0.00 us | +100.00% |
+| 262144B | Throughput |      4.64 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        417.82 us |          0.00 us | +100.00% |
+
+## PATTERN: ROUTER_ROUTER_POLL
+  [baseline] Using cached baseline.
+  > Benchmarking current for ROUTER_ROUTER_POLL...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3296.25 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         22.87 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1672.94 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         23.61 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    643.17 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         22.80 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     33.94 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |         57.31 us |          0.00 us | +100.00% |
+| 131072B | Throughput |     22.85 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |         92.16 us |          0.00 us | +100.00% |
+| 262144B | Throughput |     13.07 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        132.88 us |          0.00 us | +100.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3444.18 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         24.99 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1359.37 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         27.07 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    457.16 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         23.95 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     14.84 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |        107.12 us |          0.00 us | +100.00% |
+| 131072B | Throughput |      8.41 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        225.95 us |          0.00 us | +100.00% |
+| 262144B | Throughput |      4.05 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        438.68 us |          0.00 us | +100.00% |
+
+## PATTERN: STREAM
+  [baseline] Using cached baseline.
+  > Benchmarking current for STREAM...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 (failures=10) Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3427.43 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         36.59 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   2599.51 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         36.00 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |   1016.50 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         39.85 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     36.44 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |         83.83 us |          0.00 us | +100.00% |
+| 131072B | Throughput |     19.31 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        117.12 us |          0.00 us | +100.00% |
+| 262144B | Throughput |     11.46 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        192.03 us |          0.00 us | +100.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3381.03 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 64B    | Latency    |         41.36 us |          0.00 us | +100.00% |
+| 256B   | Throughput |   1974.94 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 256B   | Latency    |         40.60 us |          0.00 us | +100.00% |
+| 1024B  | Throughput |    659.32 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 1024B  | Latency    |         42.36 us |          0.00 us | +100.00% |
+| 65536B | Throughput |     15.42 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |        149.17 us |          0.00 us | +100.00% |
+| 131072B | Throughput |      8.36 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |        216.38 us |          0.00 us | +100.00% |
+| 262144B | Throughput |      4.46 Kmsg/s |      0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |        338.11 us |          0.00 us | +100.00% |
+
+## Failures
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 1024B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 65536B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 131072B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tcp 262144B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 64B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 256B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 1024B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 65536B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 131072B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current tls 262144B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 64B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 256B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 1024B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 65536B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 131072B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current ws 262144B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 64B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 256B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 1024B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 65536B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 131072B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- DEALER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 64B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 256B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 1024B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 65536B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 131072B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tcp 262144B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 64B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 256B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 1024B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 65536B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 131072B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current tls 262144B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 64B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 256B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 1024B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 65536B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 131072B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current ws 262144B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 64B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 256B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 1024B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 65536B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 131072B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 64B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 256B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 1024B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 65536B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 131072B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tcp 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 64B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 256B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 1024B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 65536B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 131072B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current tls 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 64B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 256B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 1024B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 65536B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 131072B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current ws 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 64B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 256B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 1024B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 65536B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 131072B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- ROUTER_ROUTER_POLL current wss 262144B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 64B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 256B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 1024B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 65536B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 131072B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tcp 262144B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 64B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 256B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 1024B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 65536B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 131072B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current tls 262144B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 64B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 256B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 1024B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 65536B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 131072B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current ws 262144B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 64B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 256B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 1024B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 65536B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 131072B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data
+- STREAM current wss 262144B: no_data

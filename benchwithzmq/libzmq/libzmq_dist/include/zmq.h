@@ -326,6 +326,7 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_GSSAPI_SERVICE_PRINCIPAL 64
 #define ZMQ_GSSAPI_PLAINTEXT 65
 #define ZMQ_HANDSHAKE_IVL 66
+#define ZMQ_SOCKS_PROXY 68
 #define ZMQ_XPUB_NODROP 69
 #define ZMQ_BLOCKY 70
 #define ZMQ_XPUB_MANUAL 71
@@ -635,6 +636,8 @@ ZMQ_EXPORT void zmq_threadclose (void *thread_);
 #define ZMQ_MULTICAST_LOOP 96
 #define ZMQ_ROUTER_NOTIFY 97
 #define ZMQ_XPUB_MANUAL_LAST_VALUE 98
+#define ZMQ_SOCKS_USERNAME 99
+#define ZMQ_SOCKS_PASSWORD 100
 #define ZMQ_IN_BATCH_SIZE 101
 #define ZMQ_OUT_BATCH_SIZE 102
 #define ZMQ_WSS_KEY_PEM 103

@@ -112,6 +112,14 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  Start ZMP handshake after WebSocket handshake completes
     void start_zmp_handshake ();
 
+    //  Gather write helpers (ZMP header + body)
+    bool build_gather_header (const msg_t &msg_,
+                              unsigned char *buffer_,
+                              size_t buffer_size_,
+                              size_t &header_size_);
+    bool prepare_gather_output ();
+    void finish_gather_output ();
+
     //  Handshake methods
     bool handshake ();
     bool handshake_zmp ();
@@ -214,6 +222,13 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
 
     //  Outgoing message
     msg_t _tx_msg;
+
+    //  Gather write state (header + body)
+    bool _async_gather;
+    unsigned char _gather_header[64];
+    size_t _gather_header_size;
+    const unsigned char *_gather_body;
+    size_t _gather_body_size;
 
     //  ZMP handshake
     static const size_t zmp_hello_buf_size = 272;

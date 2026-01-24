@@ -8,6 +8,9 @@
 #include "engine/asio/asio_debug.hpp"
 #include "core/address.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+
 //  Debug logging for WebSocket transport
 #define ASIO_DBG_WS(fmt, ...) ASIO_DBG_THIS ("WS", fmt, ##__VA_ARGS__)
 
@@ -22,6 +25,35 @@ boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
     if (sl != 0 && ss.ss_family == AF_INET6)
         return boost::asio::ip::tcp::v6 ();
     return boost::asio::ip::tcp::v4 ();
+}
+
+size_t parse_size_env (const char *name_, size_t fallback_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return fallback_;
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return fallback_;
+    return static_cast<size_t> (value);
+}
+
+size_t ws_write_buffer_bytes ()
+{
+    static size_t value = 0;
+    if (value == 0)
+        value = parse_size_env ("ZMQ_WS_WRITE_BUFFER_BYTES", 1024 * 1024);
+    return value;
+}
+
+size_t ws_read_message_max ()
+{
+    static size_t value = 0;
+    if (value == 0)
+        value = parse_size_env ("ZMQ_WS_READ_MESSAGE_MAX", 64 * 1024 * 1024);
+    return value;
 }
 }
 
@@ -69,7 +101,8 @@ bool ws_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     //  Use binary mode for ZMQ messages
     _ws_stream->binary (true);
     _ws_stream->auto_fragment (false);
-    _ws_stream->write_buffer_bytes (64 * 1024);
+    _ws_stream->write_buffer_bytes (ws_write_buffer_bytes ());
+    _ws_stream->read_message_max (ws_read_message_max ());
 
     _read_buffer.consume (_read_buffer.size ());
     _read_offset = 0;
@@ -239,6 +272,35 @@ void ws_transport_t::async_write_some (const unsigned char *buffer,
       [handler] (const boost::system::error_code &ec,
                  std::size_t bytes_transferred) {
           ASIO_DBG ("WS", "write complete: ec=%s, bytes=%zu",
+                    ec.message ().c_str (), bytes_transferred);
+          if (handler) {
+              handler (ec, bytes_transferred);
+          }
+      });
+}
+
+void ws_transport_t::async_writev (const unsigned char *header,
+                                   std::size_t header_size,
+                                   const unsigned char *body,
+                                   std::size_t body_size,
+                                   completion_handler_t handler)
+{
+    if (!_ws_stream || !_handshake_complete) {
+        if (handler) {
+            handler (boost::asio::error::not_connected, 0);
+        }
+        return;
+    }
+
+    std::array<boost::asio::const_buffer, 2> buffers = {
+      boost::asio::buffer (header, header_size),
+      boost::asio::buffer (body, body_size)};
+
+    _ws_stream->async_write (
+      buffers,
+      [handler] (const boost::system::error_code &ec,
+                 std::size_t bytes_transferred) {
+          ASIO_DBG ("WS", "writev complete: ec=%s, bytes=%zu",
                     ec.message ().c_str (), bytes_transferred);
           if (handler) {
               handler (ec, bytes_transferred);

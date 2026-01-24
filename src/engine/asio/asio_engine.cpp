@@ -22,6 +22,7 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 
 // Debug logging for ASIO engine - enable with -DZMQ_ASIO_DEBUG=1
@@ -123,6 +124,30 @@ size_t gather_threshold ()
         threshold = parse_size_env ("ZMQ_ASIO_GATHER_THRESHOLD", 65536);
     }
     return threshold;
+}
+
+size_t ws_out_batch_threshold ()
+{
+    static size_t threshold = 0;
+    if (threshold == 0)
+        threshold = parse_size_env ("ZMQ_WS_OUT_BATCH_THRESHOLD", 131072);
+    return threshold;
+}
+
+size_t ws_out_batch_large ()
+{
+    static size_t size = 0;
+    if (size == 0)
+        size = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE_LARGE", 262144);
+    return size;
+}
+
+bool is_ws_transport (const zmq::i_asio_transport *transport_)
+{
+    if (!transport_)
+        return false;
+    const char *name = transport_->name ();
+    return name && (strcmp (name, "ws") == 0 || strcmp (name, "wss") == 0);
 }
 }
 
@@ -928,17 +953,38 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
     _outpos = NULL;
     _outsize = _encoder->encode (&_outpos, 0);
 
-    while (_outsize < static_cast<size_t> (_options.out_batch_size)) {
+    const size_t max_out_batch = static_cast<size_t> (_options.out_batch_size);
+    size_t target_out_batch = max_out_batch;
+    const bool ws_transport = is_ws_transport (_transport.get ());
+    size_t ws_large_batch = 0;
+    size_t ws_threshold = 0;
+    if (ws_transport) {
+        const size_t ws_soft_batch = 64 * 1024;
+        if (max_out_batch > ws_soft_batch)
+            target_out_batch = ws_soft_batch;
+        ws_large_batch = ws_out_batch_large ();
+        if (ws_large_batch > max_out_batch)
+            ws_large_batch = max_out_batch;
+        ws_threshold = ws_out_batch_threshold ();
+    }
+
+    while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
             if (errno == ECONNRESET)
                 return false;
             else
                 break;
         }
+
+        if (ws_transport && ws_threshold > 0 && _tx_msg.size () >= ws_threshold
+            && ws_large_batch > target_out_batch) {
+            target_out_batch = ws_large_batch;
+        }
+
         _encoder->load_msg (&_tx_msg);
         unsigned char *bufptr = _outpos + _outsize;
         const size_t n =
-          _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
+          _encoder->encode (&bufptr, target_out_batch - _outsize);
         zmq_assert (n > 0);
         if (_outpos == NULL)
             _outpos = bufptr;

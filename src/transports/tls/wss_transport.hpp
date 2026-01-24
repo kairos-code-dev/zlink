@@ -13,6 +13,7 @@
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
+#include <array>
 #include <memory>
 #include <string>
 
@@ -81,6 +82,12 @@ class wss_transport_t : public i_asio_transport
     void async_handshake (int handshake_type,
                           completion_handler_t handler) ZMQ_OVERRIDE;
     bool supports_speculative_write () const ZMQ_OVERRIDE { return false; }
+    bool supports_gather_write () const ZMQ_OVERRIDE { return true; }
+    void async_writev (const unsigned char *header,
+                       std::size_t header_size,
+                       const unsigned char *body,
+                       std::size_t body_size,
+                       completion_handler_t handler) ZMQ_OVERRIDE;
     bool is_encrypted () const ZMQ_OVERRIDE { return true; }
     const char *name () const ZMQ_OVERRIDE { return "wss"; }
 

@@ -184,13 +184,13 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                 print(f"{i+1} ", end="", flush=True)
                 results = run_single_test(binary_name, lib_name, tr, sz, pattern_name)
                 if results is None:
-                    failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "timeout"))
-                    continue
+                    print("FAILED (timeout)")
+                    sys.exit(1)
                 if not results:
-                    failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "no_data"))
-                    continue
+                    print("FAILED (no_data)")
+                    sys.exit(1)
                 for r in results:
                     m = r['metric']
                     if m not in metrics_raw:

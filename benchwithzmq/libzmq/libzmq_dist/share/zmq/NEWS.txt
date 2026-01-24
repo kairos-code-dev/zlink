@@ -274,6 +274,8 @@
 * New DRAFT (see NEWS for 4.2.0) socket options:
   - ZMQ_XPUB_MANUAL_LAST_VALUE is similar to ZMQ_XPUB_MANUAL but allows to avoid
     duplicates when using last value caching.
+  - ZMQ_SOCKS_USERNAME and ZMQ_SOCKS_PASSWORD that implement SOCKS5 proxy
+    authentication.
   See doc/zmq_setsockopt.txt and doc/zmq_getsockopt.txt for details.
 
 * Implemented background thread names for Windows, when the Visual Studio
@@ -968,6 +970,8 @@
 
 * Fixed #2208 - added support for ZMQ_TOS on IPv6
 
+* Fixed #2200 - no documentation for ZMQ_SOCKS_PROXY
+
 * Fixed #2199 - no documentation for zmq_curve_public
 
 * Fixed #2196 - fixed build and runtime errors on kFreeBSD
@@ -1009,6 +1013,7 @@
 
 * New Socket options:
   - ZMQ_HANDSHAKE_IVL
+  - ZMQ_SOCKS_PROXY
   - ZMQ_XPUB_NODROP
   - ZMQ_XPUB_MANUAL
   - ZMQ_XPUB_WELCOME_MSG
@@ -1204,6 +1209,8 @@
 * Improved client reconnection strategy on errors
 
 * GSSAPI security mechanism
+
+* SOCKS5 support (ZMQ_SOCKS_PROXY)
 
 * ZMQ_ROUTER_HANDOVER
 

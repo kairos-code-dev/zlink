@@ -63,40 +63,35 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 
 ### Transport Performance Characteristics (Phase 5 - Stable)
 
-**Comprehensive Benchmark Results (10K messages, Linux x64):**
+**Comprehensive Benchmark Results (10 runs, Linux x64):**
 
-| Pattern | TCP 64B | IPC 64B | inproc 64B | IPC Speedup |
-|---------|---------|---------|------------|-------------|
-| DEALER_DEALER | 2.90 M/s | **4.91 M/s** ⭐ | 4.34 M/s | **+69%** |
-| PAIR | 2.95 M/s | **4.78 M/s** | 4.60 M/s | **+62%** |
-| DEALER_ROUTER | 2.51 M/s | **4.56 M/s** | 4.08 M/s | **+81%** |
-| PUBSUB | 2.91 M/s | **4.55 M/s** | 4.01 M/s | **+56%** |
-| ROUTER_ROUTER | 2.25 M/s | **3.65 M/s** | 3.54 M/s | **+62%** |
-| ROUTER_ROUTER_POLL | 2.21 M/s | **3.35 M/s** | 3.37 M/s | **+52%** |
+| Pattern | TCP 64B | IPC 64B | inproc 64B |
+|---------|---------|---------|------------|
+| DEALER_DEALER | 6.03 M/s | 5.96 M/s | 5.96 M/s |
+| PAIR | 5.78 M/s | 5.65 M/s | **6.09 M/s** |
+| DEALER_ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
+| PUBSUB | 5.76 M/s | 5.70 M/s | 5.71 M/s |
+| ROUTER_ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
+| ROUTER_ROUTER_POLL | 4.83 M/s | 5.04 M/s | 3.99 M/s |
 
 **Key Findings:**
-- **IPC is fastest** for small messages (64B): 3.35 ~ 4.91 M/s
-- **inproc best for large messages** (1KB): 1.38 ~ 2.05 M/s
-- **Average IPC speedup**: +64% over TCP
+- **All transports achieve 4-6 M/s** for small messages (64B)
+- **TCP/IPC/inproc perform similarly** for 64B messages (within ±5%)
+- **inproc best for large messages** (1KB): zero-copy advantage
 - **100% stability**: Zero deadlocks across all patterns and transports
-- **libzmq-ref parity**: 81-106% performance (PAIR/ipc/64B @ 200K messages: 4.77 M/s)
+- **libzmq parity**: ~99% performance vs standard libzmq (±1-3%)
 
 **Latency Characteristics:**
-- inproc: 0.13 ~ 0.54 μs (ultra-low)
-- IPC: 13.33 ~ 52.55 μs (low)
-- TCP: 13.89 ~ 61.62 μs (low)
-
-**Environment Variables:**
-- `ZMQ_ASIO_IPC_SYNC_WRITE`: Enable speculative sync writes for IPC (default: OFF for stability)
-- `ZMQ_ASIO_IPC_FORCE_ASYNC`: Force async writes, same as sync_write=OFF (default: OFF)
-- `ZMQ_ASIO_IPC_STATS`: Enable IPC statistics logging (default: OFF)
+- inproc: 0.07 ~ 0.5 μs (ultra-low)
+- IPC: 15.6 ~ 37 μs (low)
+- TCP: 16.7 ~ 42 μs (low)
 
 **Recommendations:**
-1. **Use IPC for local communication** - 1.5-2× faster than TCP, stable
-2. **Use inproc for large messages** - Zero-copy advantage for 1KB+ payloads
-3. **Use TCP for network** - Solid 2.2-2.9 M/s performance
+1. **Use inproc for same-process** - Ultra-low latency, zero-copy for large messages
+2. **Use IPC for local inter-process** - Similar throughput to TCP, lower latency
+3. **Use TCP for network** - Solid 5-6 M/s performance
 
-**Reference:** See `docs/team/20260116_ipc-deadlock-debug/final_benchmark_results.md` for complete analysis.
+**Reference:** See `doc/report/performance/tag_0.5_performance_report.md` for complete analysis.
 
 ## TLS Configuration
 

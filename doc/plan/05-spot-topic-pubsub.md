@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 2.3
+> **버전**: 2.4
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -130,6 +130,17 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 | 로컬 IPC | inproc 채널 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
 
 > 로컬 IPC는 구현 세부이며, inproc 소켓 또는 내부 큐로 대체 가능하다.
+
+### 2.7 내부 처리 모델 (구현 수준)
+
+- SPOT Node는 **단일 직렬 처리 루프**를 통해
+  네트워크 수신/송신, 토픽/구독 업데이트를 처리한다.
+- thread-safe API 호출은 **Node 내부 큐**에 적재되어
+  루프에서 순차적으로 처리된다.
+- 목적:
+  - 토픽/구독 맵의 일관성 유지
+  - publish/subscribe 순서 보장
+  - 멀티스레드 호출 시 데이터 레이스 방지
 
 ---
 
@@ -262,7 +273,35 @@ Discovery 연동 순서:
 - refcount가 1→0이 되면 UNSUBSCRIBE 전송한다.
 - 패턴 구독이 존재하면, TOPIC_ANNOUNCE 수신 시 패턴 매칭 후 자동 SUBSCRIBE를 수행한다.
 
-### 4.4 Registry HA / Failover
+### 4.4 연결 관리 상세 (구현 수준)
+
+Node는 Discovery의 **peer 목록**을 기준으로 연결을 관리한다.
+
+**Peer 테이블**
+```
+peer_entry:
+  - endpoint
+  - routing_id (수신 시 확정)
+  - state: DISCONNECTED | CONNECTING | CONNECTED
+```
+
+**Discovery에 peer 추가됨**
+1) endpoint == self 이면 무시
+2) peer 테이블에 없으면 CONNECTING으로 등록
+3) ROUTER connect 수행
+4) 연결 수립 후 첫 메시지 수신 시 CONNECTED로 전환
+5) QUERY 전송 → 토픽 목록 동기화
+
+**Discovery에서 peer 제거됨 / 연결 끊김**
+1) peer 상태 DISCONNECTED
+2) 해당 peer가 owner인 토픽은 **owner unknown**으로 전환
+   - 구독은 Pending 상태 유지
+3) 해당 peer가 구독자로 등록된 토픽은 **remote_sub_map에서 제거**
+4) 필요 시 재연결 시도는 Discovery 갱신에 따름
+
+> 연결 상태는 ZMQ monitor 이벤트(`CONNECTION_READY`, `DISCONNECTED`)로 보정 가능하다.
+
+### 4.5 Registry HA / Failover
 
 - Node는 Registry endpoint 목록을 보유하고 **단일 Registry에만 active 등록**한다.
 - 장애 감지 시 다른 Registry로 **failover 재등록**한다.
@@ -333,6 +372,54 @@ Frame 2: topic_id (string)
 Frame 1: 0x08
 Frame 2: topic_id (string)
 Frame 3: payload (bytes)
+```
+
+### 5.4 메시지 흐름 (구현 수준)
+
+**A) 토픽 생성 (OWNED)**
+```
+SPOT#A -> NodeA: CREATE(topic)
+NodeA: OWNED 등록
+NodeA -> 모든 Peer: TOPIC_ANNOUNCE(topic)
+PeerB: owner=NodeA 등록, pending 구독 매칭 시 SUBSCRIBE 전송
+```
+
+**B) 구독 (owner 존재)**
+```
+SPOT#B -> NodeB: SUBSCRIBE(topic)
+NodeB: local_sub_map++ (refcount)
+NodeB -> NodeA(owner): SUBSCRIBE(topic)
+NodeA: remote_sub_map에 NodeB 추가
+```
+
+**C) 구독 (owner 미존재)**
+```
+SPOT#B -> NodeB: SUBSCRIBE(topic)
+NodeB: local_sub_map++ (Pending)
+... 이후 owner 등장 ...
+NodeB -> NodeA(owner): SUBSCRIBE(topic)
+```
+
+**D) publish (OWNED)**
+```
+SPOT#A -> NodeA: PUBLISH(topic, msg)
+NodeA -> 로컬 구독 SPOT들: MESSAGE
+NodeA -> remote_sub_map의 Node들: MESSAGE
+```
+
+**E) publish (ROUTED)**
+```
+SPOT#B -> NodeB: PUBLISH(topic, msg)
+NodeB -> NodeA(owner): PUBLISH
+NodeA -> 로컬/원격 구독자: MESSAGE fan-out
+```
+
+**F) owner down**
+```
+NodeB: peer disconnect 감지
+NodeB: owner unknown 전환, 구독은 Pending 유지
+... owner 재등장 ...
+NodeB: SUBSCRIBE 재전송
 ```
 
 ---
@@ -458,6 +545,23 @@ ZMQ_EXPORT int zmq_spot_recv(
 - `zmq_spot_subscribe`: owner 없어도 **성공(대기)**
 - `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
 
+### 6.3 내부 제어 채널 (개념)
+
+SPOT Instance와 Node 간에는 내부 제어 채널이 존재한다.
+외부 API는 아래 메시지로 변환되어 Node로 전달된다.
+
+| API | 내부 명령 | 설명 |
+|-----|----------|------|
+| `zmq_spot_topic_create` | CREATE | OWNED 토픽 생성 요청 |
+| `zmq_spot_topic_destroy` | DESTROY | OWNED 토픽 제거 요청 |
+| `zmq_spot_subscribe` | SUBSCRIBE | 구독 등록 |
+| `zmq_spot_subscribe_pattern` | SUBSCRIBE_PATTERN | 패턴 구독 등록 |
+| `zmq_spot_unsubscribe` | UNSUBSCRIBE | 구독 해제 |
+| `zmq_spot_publish` | PUBLISH | 메시지 발행 요청 |
+| `zmq_spot_recv` | RECV | 수신 대기/가져오기 |
+
+> 내부 명령은 구현 상세이며 ABI에 노출하지 않는다.
+
 ---
 
 ## 7. 사용 예시
@@ -540,9 +644,11 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 ## 8. 구현 계획
 
 1) SPOT Node 내부 자료구조
-   - topic_owner_map (topic_id -> local spot or remote node)
-   - local_sub_map (topic_id -> spot list + refcount)
+   - topic_owner_map (topic_id -> owner node + owner spot)
+   - local_topic_map (topic_id -> owning spot)
+   - local_sub_map (topic_id -> spot list + refcount + pending flag)
    - remote_sub_map (topic_id -> subscriber node list)
+   - peer_table (endpoint -> routing_id + state)
 
 2) Node 간 ROUTER/ROUTER 메시지 처리
    - QUERY/QUERY_RESP
@@ -557,6 +663,11 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 4) Discovery/Registry 연동
    - 노드 목록 갱신
    - 자동 connect/disconnect
+   - failover 재등록
+
+5) 로컬 multiplex 처리
+   - 다수 SPOT의 구독 refcount 관리
+   - publish/recv 경로에서 spot 라우팅
 
 ---
 
@@ -573,6 +684,8 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 - `test_spot_pattern_subscribe`: 패턴 구독 매칭 시 자동 SUBSCRIBE
 - `test_spot_owner_conflict`: 동일 토픽 동시 생성 시 우선순위 규칙 적용
 - `test_spot_pending_reactivate`: owner down 후 재등장 시 pending → active 복구
+- `test_spot_peer_connect_flow`: Discovery 추가 → connect → QUERY 동기화
+- `test_spot_peer_remove_cleanup`: peer 제거 시 owner unknown/pending 처리
 
 ### 9.2 통합 테스트
 
@@ -602,6 +715,7 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 2.4 | 2026-01-27 | 메시지 흐름/연결 관리/내부 채널/구현 수준 상세 추가 |
 | 2.3 | 2026-01-27 | SPOT Node 소켓 구성 명시 |
 | 2.2 | 2026-01-27 | Discovery 기반 peer 연결/해제 명시 및 예시 반영 |
 | 2.1 | 2026-01-27 | 구독 상태 전이/패턴 규칙/충돌 처리/수명 규칙/테스트 보강 |

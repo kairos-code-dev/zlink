@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 2.1
+> **버전**: 2.3
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -92,6 +92,7 @@ Node A (ROUTER)  <──►  Node B (ROUTER)  <──►  Node C (ROUTER)
 
 - 모든 노드는 **ROUTER 소켓 하나로 bind+connect**를 수행한다.
 - **단일 허브 의존 구조는 금지**한다.
+- **노드 간 연결은 Discovery 기반 자동 연결/해제**만 지원한다.
 
 ### 2.3 데이터 흐름 (SPOT Instance 관점)
 
@@ -118,6 +119,17 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
   - 필요 시 `zmq_spot_new_threadsafe()` 사용
 - **SPOT Node는 내부 동기화를 포함하며 thread-safe**하게 제공한다.
   - 다수의 SPOT Instance가 동시에 접근 가능
+
+### 2.6 SPOT Node 소켓 구성
+
+| 구성 | 소켓 | 역할 | 비고 |
+|------|------|------|------|
+| 클러스터 메시 | ROUTER | Node 간 제어/데이터 라우팅 | bind+connect |
+| Registry 제어 | DEALER | register/heartbeat 전송 | Registry ROUTER에 connect |
+| Discovery 수신 | SUB | Registry PUB에서 peer 목록 수신 | Discovery 컴포넌트 내부 |
+| 로컬 IPC | inproc 채널 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
+
+> 로컬 IPC는 구현 세부이며, inproc 소켓 또는 내부 큐로 대체 가능하다.
 
 ---
 
@@ -228,8 +240,15 @@ owner down/제거:
 
 ### 4.1 Peer 연결/초기 동기화
 
-- Discovery로 받은 peer 목록에 대해 ROUTER connect 수행
-- 연결 직후 **QUERY → QUERY_RESP**로 **OWNED 토픽 목록**을 동기화
+- Node는 Discovery가 제공하는 **peer 목록**을 기준으로
+  ROUTER connect/disconnect를 자동 수행한다.
+- 연결 직후 **QUERY → QUERY_RESP**로 **OWNED 토픽 목록**을 동기화한다.
+- 수동 peer connect API는 제공하지 않는다.
+
+Discovery 연동 순서:
+1) `zmq_discovery_connect_registry()`로 Registry PUB 구독
+2) `zmq_discovery_subscribe(service_name)`
+3) `zmq_spot_node_set_discovery(node, discovery, service_name)`
 
 ### 4.2 토픽 변경 전파
 
@@ -376,6 +395,10 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
 - `spot-node`는 SPOT 전용 **예약 이름**으로 간주한다.
 - 규칙 위반 시 `EINVAL` 반환
 
+**연결 정책**:
+- peer 연결은 **Discovery 기반 자동 연결/해제**만 지원한다.
+- 별도의 수동 peer connect API는 제공하지 않는다.
+
 ### 6.2 SPOT Instance
 
 ```c
@@ -463,9 +486,14 @@ zmq_spot_publish(spot1, "chat:room1", &msg, 0);
 // Server A
 void *ctxA = zmq_ctx_new();
 void *nodeA = zmq_spot_node_new(ctxA);
+void *discoveryA = zmq_discovery_new(ctxA);
+zmq_discovery_connect_registry(discoveryA, "tcp://registry1:5550");
+zmq_discovery_subscribe(discoveryA, "spot-node");
+
 zmq_spot_node_bind(nodeA, "tcp://*:9000");
 zmq_spot_node_connect_registry(nodeA, "tcp://registry1:5551");
 zmq_spot_node_register(nodeA, "spot-node", NULL);
+zmq_spot_node_set_discovery(nodeA, discoveryA, "spot-node");
 
 void *spotA1 = zmq_spot_new(nodeA);
 zmq_spot_topic_create(spotA1, "zone:12:state");
@@ -473,9 +501,14 @@ zmq_spot_topic_create(spotA1, "zone:12:state");
 // Server B
 void *ctxB = zmq_ctx_new();
 void *nodeB = zmq_spot_node_new(ctxB);
+void *discoveryB = zmq_discovery_new(ctxB);
+zmq_discovery_connect_registry(discoveryB, "tcp://registry1:5550");
+zmq_discovery_subscribe(discoveryB, "spot-node");
+
 zmq_spot_node_bind(nodeB, "tcp://*:9001");
 zmq_spot_node_connect_registry(nodeB, "tcp://registry1:5551");
 zmq_spot_node_register(nodeB, "spot-node", NULL);
+zmq_spot_node_set_discovery(nodeB, discoveryB, "spot-node");
 
 void *spotB1 = zmq_spot_new(nodeB);
 zmq_spot_subscribe(spotB1, "zone:12:state");
@@ -569,5 +602,7 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 2.3 | 2026-01-27 | SPOT Node 소켓 구성 명시 |
+| 2.2 | 2026-01-27 | Discovery 기반 peer 연결/해제 명시 및 예시 반영 |
 | 2.1 | 2026-01-27 | 구독 상태 전이/패턴 규칙/충돌 처리/수명 규칙/테스트 보강 |
 | 2.0 | 2026-01-27 | SPOT Instance/Node 분리 모델로 전면 재작성, OWNED/ROUTED 정의, Pending 구독 정책 명시 |

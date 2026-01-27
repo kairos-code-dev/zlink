@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 2.0
+> **버전**: 2.1
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -165,6 +165,20 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 - `subscribe`는 **owner 없더라도 성공**한다.
 - `publish`는 **owner 없으면 ENOENT**.
 
+상태 전이:
+```
+PENDING --(owner 발견)--> ACTIVE
+ACTIVE  --(owner down/제거)--> PENDING
+PENDING --(unsubscribe)--> NONE
+ACTIVE  --(unsubscribe)--> NONE
+```
+
+owner 발견:
+- `QUERY_RESP` 수신 또는 `TOPIC_ANNOUNCE` 수신
+
+owner down/제거:
+- peer disconnect 또는 `TOPIC_REMOVE` 수신
+
 ### 3.4 토픽 명명 규칙
 
 계층적 네임스페이스를 권장한다:
@@ -180,7 +194,8 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 ### 3.5 패턴 구독 규칙
 
 - 와일드카드 `*`를 지원한다.
-- `:` 기준 접두어 매칭을 권장한다.
+- **단일 `*`만 허용**하며 **문자열 끝에만 위치**할 수 있다. (접두어 매칭)
+- 대소문자 구분, 정규식/중간 와일드카드는 지원하지 않는다.
 
 예시:
 ```
@@ -188,6 +203,24 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
   ├─► 매칭: "zone:12:state", "zone:12:events"
   └─► 불매칭: "zone:13:state", "zone:12"
 ```
+
+### 3.6 토픽 충돌 처리 (동시 생성)
+
+동일 토픽의 동시 생성은 **지원하지 않으며**, 애플리케이션이 예방해야 한다.
+다만 분산 환경에서 경합이 발생할 수 있으므로 **결정 규칙**을 명시한다.
+
+- 충돌 감지:
+  - 이미 OWNED/ROUTED로 등록된 토픽에 대해
+    다른 노드로부터 `TOPIC_ANNOUNCE`/`QUERY_RESP`가 도착하면 충돌로 간주한다.
+- 소유자 결정 규칙:
+  - **낮은 routing_id가 우선** (uint32 오름차순)
+  - 동일 routing_id는 불가능하다고 가정한다.
+- 충돌 해결:
+  - 우선순위에서 **지는 노드는 OWNED → ROUTED로 강등**
+  - 강등된 토픽은 publish 시 owner 노드로 라우팅된다
+  - 별도의 `TOPIC_REMOVE`는 전송하지 않는다
+
+> 토픽 유일성 보장은 여전히 애플리케이션 책임이다.
 
 ---
 
@@ -331,6 +364,10 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
   Registry endpoint 목록을 구성한다.
 - Node는 목록 중 **하나에만 active 등록/Heartbeat**를 전송한다.
 - Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작한다.
+
+**수명 규칙**:
+- Node는 **SPOT Instance보다 먼저 생성**되어야 한다.
+- Node는 **연결된 모든 SPOT Instance보다 늦게 종료**되어야 한다.
 
 **서비스명 규칙** (노드 단위):
 - 기본값 `spot-node`
@@ -501,6 +538,8 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 - `test_spot_remote_fanout`: 원격 노드 구독자에게 전달
 - `test_spot_refcount_subscribe`: refcount 0→1, 1→0에만 SUB/UNSUB 전송
 - `test_spot_pattern_subscribe`: 패턴 구독 매칭 시 자동 SUBSCRIBE
+- `test_spot_owner_conflict`: 동일 토픽 동시 생성 시 우선순위 규칙 적용
+- `test_spot_pending_reactivate`: owner down 후 재등장 시 pending → active 복구
 
 ### 9.2 통합 테스트
 
@@ -530,4 +569,5 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 2.1 | 2026-01-27 | 구독 상태 전이/패턴 규칙/충돌 처리/수명 규칙/테스트 보강 |
 | 2.0 | 2026-01-27 | SPOT Instance/Node 분리 모델로 전면 재작성, OWNED/ROUTED 정의, Pending 구독 정책 명시 |

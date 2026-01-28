@@ -931,6 +931,10 @@ set(discovery-sources
     src/discovery/gateway.cpp
     src/discovery/provider.cpp)
 
+set(spot-sources
+    src/spot/spot_node.cpp
+    src/spot/spot.cpp)
+
 set(socket-sources
     src/sockets/socket_base.cpp
     src/sockets/thread_safe_socket.cpp
@@ -993,6 +997,7 @@ set(sources
     ${core-sources}
     ${protocol-sources}
     ${discovery-sources}
+    ${spot-sources}
     ${socket-sources}
     ${engine-sources}
     ${transport-sources}
@@ -1005,6 +1010,7 @@ include_directories(
     src/core
     src/protocol
     src/discovery
+    src/spot
     src/engine
     src/engine/asio
     src/transports/tcp

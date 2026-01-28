@@ -597,6 +597,56 @@ ZMQ_EXPORT int zmq_provider_register_result (void *provider,
 ZMQ_EXPORT void *zmq_provider_threadsafe_router (void *provider);
 ZMQ_EXPORT int zmq_provider_destroy (void **provider_p);
 
+/******************************************************************************/
+/*  SPOT Topic PUB/SUB API                                                    */
+/******************************************************************************/
+
+#define ZMQ_SPOT_TOPIC_QUEUE 0
+#define ZMQ_SPOT_TOPIC_RINGBUFFER 1
+
+/* SPOT Node */
+ZMQ_EXPORT void *zmq_spot_node_new (void *ctx);
+ZMQ_EXPORT int zmq_spot_node_destroy (void **node_p);
+ZMQ_EXPORT int zmq_spot_node_bind (void *node, const char *endpoint);
+ZMQ_EXPORT int zmq_spot_node_connect_registry (void *node,
+                                               const char *registry_endpoint);
+ZMQ_EXPORT int zmq_spot_node_connect_peer_pub (void *node,
+                                               const char *peer_pub_endpoint);
+ZMQ_EXPORT int zmq_spot_node_disconnect_peer_pub (
+  void *node, const char *peer_pub_endpoint);
+ZMQ_EXPORT int zmq_spot_node_register (void *node,
+                                       const char *service_name,
+                                       const char *advertise_endpoint);
+ZMQ_EXPORT int zmq_spot_node_unregister (void *node,
+                                         const char *service_name);
+ZMQ_EXPORT int zmq_spot_node_set_discovery (void *node,
+                                            void *discovery,
+                                            const char *service_name);
+
+/* SPOT Instance */
+ZMQ_EXPORT void *zmq_spot_new (void *node);
+ZMQ_EXPORT void *zmq_spot_new_threadsafe (void *node);
+ZMQ_EXPORT int zmq_spot_destroy (void **spot_p);
+ZMQ_EXPORT int zmq_spot_topic_create (void *spot,
+                                      const char *topic_id,
+                                      int mode);
+ZMQ_EXPORT int zmq_spot_topic_destroy (void *spot, const char *topic_id);
+ZMQ_EXPORT int zmq_spot_publish (void *spot,
+                                 const char *topic_id,
+                                 zmq_msg_t *parts,
+                                 size_t part_count,
+                                 int flags);
+ZMQ_EXPORT int zmq_spot_subscribe (void *spot, const char *topic_id);
+ZMQ_EXPORT int zmq_spot_subscribe_pattern (void *spot, const char *pattern);
+ZMQ_EXPORT int zmq_spot_unsubscribe (void *spot,
+                                     const char *topic_id_or_pattern);
+ZMQ_EXPORT int zmq_spot_recv (void *spot,
+                              zmq_msg_t **parts,
+                              size_t *part_count,
+                              int flags,
+                              char *topic_id_out,
+                              size_t *topic_id_len);
+
 #if defined _WIN32
 #if defined _WIN64
 typedef unsigned __int64 zmq_fd_t;

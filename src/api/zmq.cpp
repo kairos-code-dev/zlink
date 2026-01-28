@@ -46,6 +46,8 @@ struct iovec
 #include "discovery/discovery.hpp"
 #include "discovery/gateway.hpp"
 #include "discovery/provider.hpp"
+#include "spot/spot_node.hpp"
+#include "spot/spot.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
 #include "utils/likely.hpp"
@@ -1142,6 +1144,274 @@ int zmq_provider_destroy (void **provider_p_)
     return 0;
 }
 
+void *zmq_spot_node_new (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::spot_node_t *node =
+      new (std::nothrow) zmq::spot_node_t (static_cast<zmq::ctx_t *> (ctx_));
+    if (!node) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (node);
+}
+
+int zmq_spot_node_destroy (void **node_p_)
+{
+    if (!node_p_ || !*node_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (*node_p_);
+    *node_p_ = NULL;
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    node->destroy ();
+    delete node;
+    return 0;
+}
+
+int zmq_spot_node_bind (void *node_, const char *endpoint_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->bind (endpoint_);
+}
+
+int zmq_spot_node_connect_registry (void *node_,
+                                    const char *registry_endpoint_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->connect_registry (registry_endpoint_);
+}
+
+int zmq_spot_node_connect_peer_pub (void *node_,
+                                    const char *peer_pub_endpoint_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->connect_peer_pub (peer_pub_endpoint_);
+}
+
+int zmq_spot_node_disconnect_peer_pub (void *node_,
+                                       const char *peer_pub_endpoint_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->disconnect_peer_pub (peer_pub_endpoint_);
+}
+
+int zmq_spot_node_register (void *node_,
+                            const char *service_name_,
+                            const char *advertise_endpoint_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->register_node (service_name_, advertise_endpoint_);
+}
+
+int zmq_spot_node_unregister (void *node_, const char *service_name_)
+{
+    if (!node_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->unregister_node (service_name_);
+}
+
+int zmq_spot_node_set_discovery (void *node_,
+                                 void *discovery_,
+                                 const char *service_name_)
+{
+    if (!node_ || !discovery_)
+        return -1;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::discovery_t *disc = static_cast<zmq::discovery_t *> (discovery_);
+    if (!disc->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_discovery (disc, service_name_);
+}
+
+void *zmq_spot_new (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::spot_t *spot = node->create_spot (false);
+    if (!spot)
+        return NULL;
+    return static_cast<void *> (spot);
+}
+
+void *zmq_spot_new_threadsafe (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zmq::spot_node_t *node = static_cast<zmq::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::spot_t *spot = node->create_spot (true);
+    if (!spot)
+        return NULL;
+    return static_cast<void *> (spot);
+}
+
+int zmq_spot_destroy (void **spot_p_)
+{
+    if (!spot_p_ || !*spot_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (*spot_p_);
+    *spot_p_ = NULL;
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    spot->destroy ();
+    delete spot;
+    return 0;
+}
+
+int zmq_spot_topic_create (void *spot_, const char *topic_id_, int mode_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->topic_create (topic_id_, mode_);
+}
+
+int zmq_spot_topic_destroy (void *spot_, const char *topic_id_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->topic_destroy (topic_id_);
+}
+
+int zmq_spot_publish (void *spot_,
+                      const char *topic_id_,
+                      zmq_msg_t *parts_,
+                      size_t part_count_,
+                      int flags_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->publish (topic_id_, parts_, part_count_, flags_);
+}
+
+int zmq_spot_subscribe (void *spot_, const char *topic_id_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->subscribe (topic_id_);
+}
+
+int zmq_spot_subscribe_pattern (void *spot_, const char *pattern_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->subscribe_pattern (pattern_);
+}
+
+int zmq_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->unsubscribe (topic_id_or_pattern_);
+}
+
+int zmq_spot_recv (void *spot_,
+                   zmq_msg_t **parts_,
+                   size_t *part_count_,
+                   int flags_,
+                   char *topic_id_out_,
+                   size_t *topic_id_len_)
+{
+    if (!spot_)
+        return -1;
+    zmq::spot_t *spot = static_cast<zmq::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->recv (parts_, part_count_, flags_, topic_id_out_,
+                       topic_id_len_);
+}
 int zmq_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);

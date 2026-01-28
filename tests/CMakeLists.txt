@@ -54,6 +54,7 @@ set(tests
   monitoring/test_monitor_enhanced
   request/test_request_reply_api
   discovery/test_service_discovery_basic
+  spot/test_spot_pubsub_basic
   threadsafe/test_thread_safe_socket)
 
 if(NOT WIN32)

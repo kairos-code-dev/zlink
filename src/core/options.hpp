@@ -101,6 +101,12 @@ struct options_t
     int rcvtimeo;
     int sndtimeo;
 
+    //  Default timeout for Request/Reply API (ms).
+    int request_timeout;
+
+    //  If true, Request/Reply API correlates replies with request_id.
+    bool request_correlate;
+
     //  If true, IPv6 is enabled (as well as IPv4)
     bool ipv6;
 

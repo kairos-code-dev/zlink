@@ -52,6 +52,7 @@ set(tests
   routing-id/test_stream_routing_id_size
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
+  request/test_request_reply_api
   threadsafe/test_thread_safe_socket)
 
 if(NOT WIN32)

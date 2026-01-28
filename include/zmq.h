@@ -279,6 +279,8 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_THREAD_SAFE 81
 #define ZMQ_MULTICAST_MAXTPDU 84
 #define ZMQ_USE_FD 89
+#define ZMQ_REQUEST_TIMEOUT 90
+#define ZMQ_REQUEST_CORRELATE 91
 #define ZMQ_BINDTODEVICE 92
 #define ZMQ_XPUB_MANUAL_LAST_VALUE 98
 #define ZMQ_ONLY_FIRST_SUBSCRIBE 108
@@ -410,6 +412,66 @@ ZMQ_EXPORT int zmq_socket_peer_count (void *socket_);
 ZMQ_EXPORT int zmq_socket_peers (void *socket_,
                                  zmq_peer_info_t *peers_,
                                  size_t *count_);
+
+/******************************************************************************/
+/*  Request/Reply API (thread-safe sockets only)                              */
+/******************************************************************************/
+
+#define ZMQ_REQUEST_TIMEOUT_DEFAULT -2
+
+#define ETIMEDOUT_ZMQ 110
+#define ECANCELED_ZMQ 125
+
+typedef void (*zmq_request_cb_fn) (uint64_t request_id,
+                                   zmq_msg_t *reply_parts,
+                                   size_t reply_count,
+                                   int error);
+
+typedef void (*zmq_server_cb_fn) (zmq_msg_t *request_parts,
+                                  size_t part_count,
+                                  const zmq_routing_id_t *routing_id,
+                                  uint64_t request_id);
+
+typedef struct zmq_completion_t
+{
+    uint64_t request_id;
+    zmq_msg_t *parts;
+    size_t part_count;
+    int error;
+} zmq_completion_t;
+
+ZMQ_EXPORT uint64_t zmq_request (void *socket,
+                                 const zmq_routing_id_t *routing_id,
+                                 zmq_msg_t *parts,
+                                 size_t part_count,
+                                 zmq_request_cb_fn callback,
+                                 int timeout_ms);
+ZMQ_EXPORT uint64_t zmq_group_request (void *socket,
+                                       const zmq_routing_id_t *routing_id,
+                                       uint64_t group_id,
+                                       zmq_msg_t *parts,
+                                       size_t part_count,
+                                       zmq_request_cb_fn callback,
+                                       int timeout_ms);
+ZMQ_EXPORT int zmq_on_request (void *socket, zmq_server_cb_fn handler);
+ZMQ_EXPORT int zmq_reply (void *socket,
+                          const zmq_routing_id_t *routing_id,
+                          uint64_t request_id,
+                          zmq_msg_t *parts,
+                          size_t part_count);
+ZMQ_EXPORT int zmq_reply_simple (void *socket,
+                                 zmq_msg_t *parts,
+                                 size_t part_count);
+ZMQ_EXPORT void zmq_msgv_close (zmq_msg_t *parts, size_t part_count);
+ZMQ_EXPORT uint64_t zmq_request_send (void *socket,
+                                      const zmq_routing_id_t *routing_id,
+                                      zmq_msg_t *parts,
+                                      size_t part_count);
+ZMQ_EXPORT int zmq_request_recv (void *socket,
+                                 zmq_completion_t *completion,
+                                 int timeout_ms);
+ZMQ_EXPORT int zmq_pending_requests (void *socket);
+ZMQ_EXPORT int zmq_cancel_all_requests (void *socket);
 
 #if defined _WIN32
 #if defined _WIN64

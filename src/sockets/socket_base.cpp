@@ -408,6 +408,7 @@ zmq::socket_base_t::~socket_base_t ()
 {
     if (_threadsafe_proxy) {
         zmq_assert (_threadsafe_proxy->get_socket () == NULL);
+        _threadsafe_proxy->wait_for_idle ();
         delete _threadsafe_proxy;
         _threadsafe_proxy = NULL;
     }

@@ -485,6 +485,147 @@ int zmq_socket_peers (void *socket_, zmq_peer_info_t *peers_, size_t *count_)
     return handle.socket->socket_peers (peers_, count_);
 }
 
+uint64_t zmq_request (void *socket_,
+                      const zmq_routing_id_t *routing_id_,
+                      zmq_msg_t *parts_,
+                      size_t part_count_,
+                      zmq_request_cb_fn callback_,
+                      int timeout_ms_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return 0;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return 0;
+    }
+    return handle.threadsafe->request (routing_id_, parts_, part_count_,
+                                       callback_, timeout_ms_);
+}
+
+uint64_t zmq_group_request (void *socket_,
+                            const zmq_routing_id_t *routing_id_,
+                            uint64_t group_id_,
+                            zmq_msg_t *parts_,
+                            size_t part_count_,
+                            zmq_request_cb_fn callback_,
+                            int timeout_ms_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return 0;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return 0;
+    }
+    return handle.threadsafe->group_request (routing_id_, group_id_, parts_,
+                                             part_count_, callback_,
+                                             timeout_ms_);
+}
+
+int zmq_on_request (void *socket_, zmq_server_cb_fn handler_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->on_request (handler_);
+}
+
+int zmq_reply (void *socket_,
+               const zmq_routing_id_t *routing_id_,
+               uint64_t request_id_,
+               zmq_msg_t *parts_,
+               size_t part_count_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->reply (routing_id_, request_id_, parts_,
+                                     part_count_);
+}
+
+int zmq_reply_simple (void *socket_, zmq_msg_t *parts_, size_t part_count_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->reply_simple (parts_, part_count_);
+}
+
+void zmq_msgv_close (zmq_msg_t *parts_, size_t part_count_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < part_count_; ++i)
+        zmq_msg_close (&parts_[i]);
+    free (parts_);
+}
+
+uint64_t zmq_request_send (void *socket_,
+                           const zmq_routing_id_t *routing_id_,
+                           zmq_msg_t *parts_,
+                           size_t part_count_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return 0;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return 0;
+    }
+    return handle.threadsafe->request_send (routing_id_, parts_, part_count_);
+}
+
+int zmq_request_recv (void *socket_,
+                      zmq_completion_t *completion_,
+                      int timeout_ms_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->request_recv (completion_, timeout_ms_);
+}
+
+int zmq_pending_requests (void *socket_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->pending_requests ();
+}
+
+int zmq_cancel_all_requests (void *socket_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (!handle.threadsafe) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return handle.threadsafe->cancel_all_requests ();
+}
+
 int zmq_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);

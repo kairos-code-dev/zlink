@@ -47,7 +47,10 @@ set(tests
   test_pubsub_filter_xpub
   test_router_multiple_dealers
   test_stream_socket
-  test_transport_matrix)
+  test_transport_matrix
+  routing-id/test_router_auto_id_format
+  routing-id/test_stream_routing_id_size
+  routing-id/test_connect_rid_string_alias)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -153,6 +156,7 @@ endif()
 # add include dirs for all targets
 # Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
+include_directories("${CMAKE_CURRENT_LIST_DIR}")
 
 # Add Boost include directory for ASIO tests (ASIO is mandatory)
 include_directories("${BUNDLED_BOOST_INCLUDE_DIR}")
@@ -166,9 +170,10 @@ if(WIN32)
   list(REMOVE_ITEM tests test_many_sockets)
 endif()
 
-foreach(test ${tests})
+foreach(test_source ${tests})
+  get_filename_component(test ${test_source} NAME)
   # target_sources not supported before CMake 3.1
-  add_executable(${test} ${test}.cpp)
+  add_executable(${test} ${test_source}.cpp)
 
   target_link_libraries(${test} ${TESTUTIL_LIB})
 
@@ -234,7 +239,7 @@ set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
-file(GLOB ALL_TEST_SOURCES "test_*.cpp")
+file(GLOB ALL_TEST_SOURCES "test_*.cpp" "*/test_*.cpp")
 
 set(UNREGISTERED_TEST_ALLOWLIST
     test_bind_ws_fuzzer

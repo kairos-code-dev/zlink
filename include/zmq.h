@@ -191,6 +191,12 @@ typedef struct zmq_msg_t
 #endif
 } zmq_msg_t;
 
+typedef struct zmq_routing_id_t
+{
+    uint8_t size;
+    uint8_t data[255];
+} zmq_routing_id_t;
+
 typedef void (zmq_free_fn) (void *data_, void *hint_);
 
 ZMQ_EXPORT int zmq_msg_init (zmq_msg_t *msg_);

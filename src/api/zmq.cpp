@@ -42,6 +42,10 @@ struct iovec
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
 #include "sockets/thread_safe_socket.hpp"
+#include "discovery/registry.hpp"
+#include "discovery/discovery.hpp"
+#include "discovery/gateway.hpp"
+#include "discovery/provider.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
 #include "utils/likely.hpp"
@@ -624,6 +628,518 @@ int zmq_cancel_all_requests (void *socket_)
         return -1;
     }
     return handle.threadsafe->cancel_all_requests ();
+}
+
+// Service Discovery API
+
+void *zmq_registry_new (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::registry_t *registry =
+      new (std::nothrow) zmq::registry_t (static_cast<zmq::ctx_t *> (ctx_));
+    if (!registry) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (registry);
+}
+
+int zmq_registry_set_endpoints (void *registry_,
+                                const char *pub_endpoint_,
+                                const char *router_endpoint_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->set_endpoints (pub_endpoint_, router_endpoint_);
+}
+
+int zmq_registry_set_id (void *registry_, uint32_t registry_id_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->set_id (registry_id_);
+}
+
+int zmq_registry_add_peer (void *registry_, const char *peer_pub_endpoint_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->add_peer (peer_pub_endpoint_);
+}
+
+int zmq_registry_set_heartbeat (void *registry_,
+                                uint32_t interval_ms_,
+                                uint32_t timeout_ms_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->set_heartbeat (interval_ms_, timeout_ms_);
+}
+
+int zmq_registry_set_broadcast_interval (void *registry_,
+                                         uint32_t interval_ms_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->set_broadcast_interval (interval_ms_);
+}
+
+int zmq_registry_start (void *registry_)
+{
+    if (!registry_)
+        return -1;
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->start ();
+}
+
+int zmq_registry_destroy (void **registry_p_)
+{
+    if (!registry_p_ || !*registry_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::registry_t *registry = static_cast<zmq::registry_t *> (*registry_p_);
+    *registry_p_ = NULL;
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    registry->destroy ();
+    delete registry;
+    return 0;
+}
+
+void *zmq_discovery_new (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::discovery_t *discovery =
+      new (std::nothrow) zmq::discovery_t (static_cast<zmq::ctx_t *> (ctx_));
+    if (!discovery) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (discovery);
+}
+
+int zmq_discovery_connect_registry (void *discovery_,
+                                    const char *registry_pub_endpoint_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->connect_registry (registry_pub_endpoint_);
+}
+
+int zmq_discovery_subscribe (void *discovery_, const char *service_name_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->subscribe (service_name_);
+}
+
+int zmq_discovery_unsubscribe (void *discovery_, const char *service_name_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->unsubscribe (service_name_);
+}
+
+int zmq_discovery_get_providers (void *discovery_,
+                                 const char *service_name_,
+                                 zmq_provider_info_t *providers_,
+                                 size_t *count_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->get_providers (service_name_, providers_, count_);
+}
+
+int zmq_discovery_provider_count (void *discovery_,
+                                  const char *service_name_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->provider_count (service_name_);
+}
+
+int zmq_discovery_service_available (void *discovery_,
+                                     const char *service_name_)
+{
+    if (!discovery_)
+        return -1;
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->service_available (service_name_);
+}
+
+int zmq_discovery_destroy (void **discovery_p_)
+{
+    if (!discovery_p_ || !*discovery_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::discovery_t *discovery = static_cast<zmq::discovery_t *> (*discovery_p_);
+    *discovery_p_ = NULL;
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    discovery->destroy ();
+    delete discovery;
+    return 0;
+}
+
+void *zmq_gateway_new (void *ctx_, void *discovery_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (!discovery_) {
+        errno = EINVAL;
+        return NULL;
+    }
+    zmq::discovery_t *disc = static_cast<zmq::discovery_t *> (discovery_);
+    if (!disc->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::gateway_t *gateway =
+      new (std::nothrow) zmq::gateway_t (static_cast<zmq::ctx_t *> (ctx_), disc);
+    if (!gateway) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (gateway);
+}
+
+int zmq_gateway_send (void *gateway_,
+                      const char *service_name_,
+                      zmq_msg_t *parts_,
+                      size_t part_count_,
+                      int flags_,
+                      uint64_t *request_id_out_)
+{
+    if (!gateway_)
+        return -1;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->send (service_name_, parts_, part_count_, flags_,
+                          request_id_out_);
+}
+
+int zmq_gateway_recv (void *gateway_,
+                      zmq_msg_t **parts_,
+                      size_t *part_count_,
+                      int flags_,
+                      char *service_name_out_,
+                      uint64_t *request_id_out_)
+{
+    if (!gateway_)
+        return -1;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->recv (parts_, part_count_, flags_, service_name_out_,
+                          request_id_out_);
+}
+
+void *zmq_gateway_threadsafe_router (void *gateway_, const char *service_name_)
+{
+    if (!gateway_)
+        return NULL;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return gateway->threadsafe_router (service_name_);
+}
+
+uint64_t zmq_gateway_request (void *gateway_,
+                              const char *service_name_,
+                              zmq_msg_t *parts_,
+                              size_t part_count_,
+                              zmq_gateway_request_cb_fn callback_,
+                              int timeout_ms_)
+{
+    if (!gateway_)
+        return 0;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return 0;
+    }
+    return gateway->request (service_name_, parts_, part_count_, callback_,
+                             timeout_ms_);
+}
+
+uint64_t zmq_gateway_request_send (void *gateway_,
+                                   const char *service_name_,
+                                   zmq_msg_t *parts_,
+                                   size_t part_count_,
+                                   int flags_)
+{
+    if (!gateway_)
+        return 0;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return 0;
+    }
+    return gateway->request_send (service_name_, parts_, part_count_, flags_);
+}
+
+int zmq_gateway_request_recv (void *gateway_,
+                              zmq_gateway_completion_t *completion_,
+                              int timeout_ms_)
+{
+    if (!gateway_)
+        return -1;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->request_recv (completion_, timeout_ms_);
+}
+
+int zmq_gateway_set_lb_strategy (void *gateway_,
+                                 const char *service_name_,
+                                 int strategy_)
+{
+    if (!gateway_)
+        return -1;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->set_lb_strategy (service_name_, strategy_);
+}
+
+int zmq_gateway_connection_count (void *gateway_, const char *service_name_)
+{
+    if (!gateway_)
+        return -1;
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->connection_count (service_name_);
+}
+
+int zmq_gateway_destroy (void **gateway_p_)
+{
+    if (!gateway_p_ || !*gateway_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::gateway_t *gateway = static_cast<zmq::gateway_t *> (*gateway_p_);
+    *gateway_p_ = NULL;
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    gateway->destroy ();
+    delete gateway;
+    return 0;
+}
+
+void *zmq_provider_new (void *ctx_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    zmq::provider_t *provider =
+      new (std::nothrow) zmq::provider_t (static_cast<zmq::ctx_t *> (ctx_));
+    if (!provider) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    return static_cast<void *> (provider);
+}
+
+int zmq_provider_bind (void *provider_, const char *bind_endpoint_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->bind (bind_endpoint_);
+}
+
+int zmq_provider_connect_registry (void *provider_,
+                                   const char *registry_endpoint_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->connect_registry (registry_endpoint_);
+}
+
+int zmq_provider_register (void *provider_,
+                           const char *service_name_,
+                           const char *advertise_endpoint_,
+                           uint32_t weight_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->register_service (service_name_, advertise_endpoint_,
+                                       weight_);
+}
+
+int zmq_provider_update_weight (void *provider_,
+                                const char *service_name_,
+                                uint32_t weight_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->update_weight (service_name_, weight_);
+}
+
+int zmq_provider_unregister (void *provider_, const char *service_name_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->unregister_service (service_name_);
+}
+
+int zmq_provider_register_result (void *provider_,
+                                  const char *service_name_,
+                                  int *status_,
+                                  char *resolved_endpoint_,
+                                  char *error_message_)
+{
+    if (!provider_)
+        return -1;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->register_result (service_name_, status_, resolved_endpoint_,
+                                      error_message_);
+}
+
+void *zmq_provider_threadsafe_router (void *provider_)
+{
+    if (!provider_)
+        return NULL;
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return provider->threadsafe_router ();
+}
+
+int zmq_provider_destroy (void **provider_p_)
+{
+    if (!provider_p_ || !*provider_p_) {
+        errno = EFAULT;
+        return -1;
+    }
+    zmq::provider_t *provider = static_cast<zmq::provider_t *> (*provider_p_);
+    *provider_p_ = NULL;
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    provider->destroy ();
+    delete provider;
+    return 0;
 }
 
 int zmq_bind (void *s_, const char *addr_)

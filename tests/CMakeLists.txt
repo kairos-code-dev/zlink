@@ -53,6 +53,7 @@ set(tests
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
   request/test_request_reply_api
+  discovery/test_service_discovery_basic
   threadsafe/test_thread_safe_socket)
 
 if(NOT WIN32)

@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.4
+> **버전**: 4.5
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -339,20 +339,18 @@ PUB/SUB는 **topic prefix**로 필터링한다. 네트워크 메시지 구조는
 
 ```
 Frame 0: topic (string)
-Frame 1: payload (단일 프레임)
+Frame 1..N: payload parts (multipart 가능)
 ```
 
-- `zmq_spot_publish()`는 **topic + msg** 2프레임으로 전송한다.
-- `zmq_spot_recv()`는 **payload 프레임만 반환**하고, topic은 별도로 반환한다.
+- `zmq_spot_publish()`는 **topic + payload parts**로 전송한다.
+- `zmq_spot_recv()`는 **payload parts**를 반환하고, topic은 별도로 반환한다.
 - Node는 프레임을 추가/수정하지 않는다.
-
-> **multipart는 지원하지 않는다.**  
-> 여러 프레임이 필요하면 애플리케이션 레벨에서 프레이밍/직렬화한다.
+> multipart는 **msgv 전송/수신**으로 지원한다.
 
 ### 5.2 로컬 전달 포맷
 
-- 로컬 큐에는 **topic + payload**를 함께 저장한다.
-- `zmq_spot_recv()`는 topic과 payload를 함께 반환한다.
+- 로컬 큐에는 **topic + payload(parts)**를 함께 저장한다.
+- `zmq_spot_recv()`는 topic과 payload(parts)를 함께 반환한다.
 
 ---
 
@@ -453,11 +451,12 @@ ZMQ_EXPORT int zmq_spot_topic_destroy(
     const char *topic_id
 );
 
-/* 메시지 발행 (단일 프레임) */
+/* 메시지 발행 (multipart 가능) */
 ZMQ_EXPORT int zmq_spot_publish(
     void *spot,
     const char *topic_id,
-    zmq_msg_t *msg,
+    zmq_msg_t *parts,
+    size_t part_count,
     int flags
 );
 
@@ -477,10 +476,11 @@ ZMQ_EXPORT int zmq_spot_unsubscribe(
     const char *topic_id_or_pattern
 );
 
-/* 메시지 수신 (단일 프레임) */
+/* 메시지 수신 (multipart 가능) */
 ZMQ_EXPORT int zmq_spot_recv(
     void *spot,
-    zmq_msg_t *msg,
+    zmq_msg_t **parts,
+    size_t *part_count,
     int flags,
     char *topic_id_out,            // 토픽명 반환 (256B 버퍼, NULL 가능)
     size_t *topic_id_len           // 토픽명 길이 반환 (NULL 가능)
@@ -492,7 +492,8 @@ ZMQ_EXPORT int zmq_spot_recv(
 - `zmq_spot_publish`: 구독자 유무와 무관하게 성공 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_subscribe`: 즉시 활성화 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
-- multipart는 **지원하지 않으며**, payload는 단일 프레임으로 제한된다.
+- `zmq_spot_publish`: `parts == NULL` 또는 `part_count == 0`이면 `EINVAL`
+- `zmq_spot_recv`: 성공 시 `parts`는 호출자가 `zmq_msgv_close()`로 해제
 
 **정리 규칙**
 - `zmq_spot_destroy()`는 해당 SPOT이 보유한
@@ -546,7 +547,7 @@ zmq_spot_subscribe(spot2, "chat:room1");
 zmq_msg_t msg;
 zmq_msg_init_size(&msg, 5);
 memcpy(zmq_msg_data(&msg), "hello", 5);
-zmq_spot_publish(spot1, "chat:room1", &msg, 0);
+zmq_spot_publish(spot1, "chat:room1", &msg, 1, 0);
 ```
 
 ### 7.2 두 서버, Discovery 기반 연결
@@ -584,7 +585,7 @@ zmq_spot_subscribe(spotB, "zone:12:state");
 zmq_msg_t msg;
 zmq_msg_init_size(&msg, 4);
 memcpy(zmq_msg_data(&msg), "pong", 4);
-zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
+zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
 ```
 
 ### 7.3 RingBuffer 토픽 (옵션)
@@ -616,7 +617,7 @@ zmq_spot_subscribe(spotB, "zone:12:state");
 zmq_msg_t msg;
 zmq_msg_init_size(&msg, 4);
 memcpy(zmq_msg_data(&msg), "ping", 4);
-zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
+zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
 ```
 
 ---
@@ -659,6 +660,7 @@ zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
 - `test_spot_discovery_pub_endpoint`: Registry에 등록된 PUB endpoint로 SUB 연결됨
 - `test_spot_reconnect_resubscribe`: 재연결 시 기존 SUB 필터가 자동 전파됨
 - `test_spot_multi_publisher_same_topic`: 동일 토픽 다중 발행 수신 확인
+- `test_spot_multipart_publish`: multipart publish/recv 동작 확인
 - `test_spot_ringbuffer_basic`: ringbuffer 모드 fan-out 동작
 - `test_spot_manual_peer_connect`: Discovery 없이 peer 수동 연결/해제
 - `test_spot_scale_instances`: 10k SPOT 생성/구독/발행 성능
@@ -684,12 +686,16 @@ zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
 - **시나리오 6: 수동 Mesh**
   - Discovery 없이 peer 직접 연결로 publish/subscribe 동작 확인
 
+- **시나리오 7: multipart publish**
+  - 2프레임 payload 전송 시 수신 측 part_count/순서 확인
+
 ---
 
 ## 10. 변경 이력
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 4.5 | 2026-01-28 | SPOT multipart 지원으로 publish/recv msgv 정리 |
 | 4.4 | 2026-01-28 | SPOT payload 단일 프레임 규칙 명시 (multipart 미지원) |
 | 4.3 | 2026-01-28 | 수동 Mesh(Discovery 없이 peer 직접 연결) 옵션 추가 |
 | 4.2 | 2026-01-28 | topic_create에 mode 파라미터 통합 |

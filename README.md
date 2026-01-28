@@ -1,85 +1,129 @@
-# zlink: Simplified ZeroMQ Build
+# zlink
 
-[![Build Status](https://github.com/zeromq/libzmq/actions/workflows/CI.yaml/badge.svg)](https://github.com/zeromq/libzmq/actions/workflows/CI.yaml)
+> [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
 
-**zlink** is a cross-platform, streamlined native build of **libzmq (ZeroMQ) v4.3.5**. It is designed for modern transport protocols with minimal dependencies and a lightweight footprint.
+[![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
-## Key Features
+---
 
-- **ASIO-based I/O**: Boost.Asio backend (bundled, no external dependency) for high-performance async I/O.
-- **TLS Support**: Native TLS transport (`tls://`) and WebSocket TLS (`wss://`) via OpenSSL.
-- **WebSocket**: Standard WebSocket transport (`ws://`, `wss://`) for web compatibility.
-- **Simplified Protocols**: Focused set of transports: `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls`.
-- **Minimal Dependencies**:
-    - No `libsodium` (CURVE removed).
-    - No `libbsd` or other platform-specific extras.
-    - No multicast protocols (PGM, EPGM, NORM).
-    - No legacy transports (TIPC, VMCI, UDP).
+## 왜 zlink인가?
 
-## Supported Platforms
+libzmq는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
 
-zlink is actively tested and supported on the following platforms:
+**zlink는 libzmq의 핵심만 남기고 현대적으로 재구축합니다:**
 
-| Platform | Architectures | Compiler | Build System | Status |
-|----------|---------------|----------|--------------|--------|
-| **Linux** | x64, ARM64 | GCC / Clang | CMake | ✅ Stable |
-| **macOS** | x64, ARM64 | Apple Clang | CMake | ✅ Stable |
-| **Windows**| x64, ARM64 | MSVC | CMake | ✅ Stable |
+| | libzmq | zlink |
+|---|--------|-------|
+| **Socket Types** | 17종 (draft 포함) | **7종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
+| **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
+| **암호화** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
+| **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
+| **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
 
-## Supported Socket Types
+---
 
-zlink supports a core set of socket patterns required for modern distributed systems:
+## 주요 특징
 
-| Type | Description |
-|------|-------------|
-| **PAIR** | Exclusive pair pattern for 1-to-1 communication. |
-| **PUB / SUB** | Publish-subscribe pattern for data distribution. |
-| **XPUB / XSUB** | Extended pub-sub with subscription forwarding. |
-| **DEALER / ROUTER** | Asynchronous request-reply, load balancing, and explicit routing. |
+### 간소화된 Core
 
-## Removed Features
+REQ/REP, PUSH/PULL, 모든 draft socket을 제거했습니다. 남은 7종의 socket type — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM — 으로 실전 메시징 패턴의 대부분을 커버하면서, 복잡성에 의한 실수를 줄입니다. STREAM 소켓은 외부 클라이언트와의 RAW 통신을 위해 tcp, tls, ws, wss transport를 지원합니다.
 
-To maintain simplicity and size, the following features from standard libzmq are **removed**:
+### Boost.Asio 기반 I/O Engine
 
-*   **Socket Types:** `REQ`, `REP`, `PUSH`, `PULL`, `STREAM`, and all DRAFT sockets (Server, Client, Radio, Dish, etc.).
-*   **Protocols:** `udp`, `tipc`, `vmci`, `pgm`, `epgm`, `norm`.
-*   **Encryption:** CURVE (libsodium) is removed. Use standard TLS (`tls://` or `wss://`) instead.
+전체 I/O 계층을 **Boost.Asio**로 재작성했습니다 (header만 번들 — 외부 Boost 의존성 없음). 검증된 비동기 기반 위에 TLS와 WebSocket transport를 네이티브로 통합할 수 있습니다.
 
-## Build Instructions
+### 네이티브 TLS & WebSocket
 
-### Prerequisites
+외부 프록시 없이 암호화된 transport를 직접 지원합니다:
 
-*   **CMake** 3.10+
-*   **C++20 Compiler** (GCC 10+, Clang 11+, MSVC 2019+)
-*   **OpenSSL** (Required for TLS support)
+```c
+// TLS 서버
+zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
+zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
+zmq_bind(socket, "tls://*:5555");
 
-### OpenSSL Setup (Recommended)
-
-Keep OpenSSL external (OS package manager or vcpkg). Vendoring is not
-recommended due to security updates and platform-specific builds.
-
-**Windows (vcpkg):**
-```powershell
-.\vcpkg install openssl:x64-windows
-# Configure CMake with:
-# -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+// TLS 클라이언트
+zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
+zmq_connect(socket, "tls://server.example.com:5555");
 ```
 
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install libssl-dev
+---
+
+## 아키텍처
+
+zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Application Layer                                    │
+│  zmq_ctx_new() · zmq_socket() · zmq_send/recv()      │
+├──────────────────────────────────────────────────────┤
+│  Socket Logic Layer                                   │
+│  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM  │
+│  라우팅 전략: lb_t(Round-robin) · fq_t · dist_t       │
+├──────────────────────────────────────────────────────┤
+│  Engine Layer (Boost.Asio)                            │
+│  asio_zmp_engine — ZMP v2.0 Protocol (8B 고정 헤더)   │
+│  Proactor 패턴 · Speculative I/O · Backpressure       │
+├──────────────────────────────────────────────────────┤
+│  Transport Layer                                      │
+│  tcp · ipc · ws — 평문                                │
+│  tls · wss      — OpenSSL 암호화                      │
+├──────────────────────────────────────────────────────┤
+│  Core Infrastructure                                  │
+│  msg_t(64B 고정) · pipe_t(Lock-free YPipe)            │
+│  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
+└──────────────────────────────────────────────────────┘
 ```
 
-**macOS (Homebrew):**
-```bash
-brew install openssl@3
-# Configure CMake with:
-# -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
-```
+### 핵심 설계
 
-### Quick Build Scripts
+| 설계 원칙 | 설명 |
+|-----------|------|
+| **Zero-Copy** | 메시지 복사 최소화 — VSM(33B 이하)은 inline 저장, 대용량은 참조 카운팅 |
+| **Lock-Free** | Thread 간 통신에 YPipe(CAS 기반 FIFO) 사용, mutex 없음 |
+| **True Async** | Proactor 패턴 기반 비동기 I/O + Speculative I/O 최적화 |
+| **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 — 자체 ZMP v2.0 프로토콜 사용 |
 
-We provide platform-specific scripts that handle configuration and testing:
+### Thread 모델
+
+- **Application Thread**: `zmq_send()`/`zmq_recv()` 호출
+- **I/O Thread**: Boost.Asio `io_context` 기반 비동기 네트워크 처리
+- **Reaper Thread**: 종료된 소켓/세션의 자원 정리
+- Thread 간 통신은 Lock-free YPipe + Mailbox 시스템으로 처리
+
+> 상세한 내부 아키텍처는 [Architecture Document](doc/arch/ARCHITECTURE.md)를 참고하세요.
+
+---
+
+## 개발 편의 기능 (계획)
+
+간소화된 core를 넘어, 실전 분산 시스템을 위한 **고수준 메시징 스택**을 구축합니다:
+
+| 기능 | 설명 | 스펙 |
+|------|------|:----:|
+| **Routing ID 통합** | `zmq_routing_id_t` 표준 타입, 자동 생성 포맷 통일 | [00](doc/plan/00-routing-id-unification.md) |
+| **모니터링 강화** | Routing-ID 기반 이벤트 식별, Callback API, Socket별 메트릭스 | [01](doc/plan/01-enhanced-monitoring.md) |
+| **Thread-safe Socket** | Asio Strand 직렬화로 여러 thread에서 단일 socket 공유 | [02](doc/plan/02-thread-safe-socket.md) |
+| **Request/Reply API** | DEALER/ROUTER 기반 비동기 요청-응답 (REQ/REP 대체) | [03](doc/plan/03-request-reply-api.md) |
+| **Service Discovery** | Registry 클러스터, Client-side Load Balancing, Health Monitoring | [04](doc/plan/04-service-discovery.md) |
+| **SPOT Topic PUB/SUB** | 위치 투명한 토픽 메시징, 클러스터 전체 PUB/SUB | [05](doc/plan/05-spot-topic-pubsub.md) |
+| **PGM/EPGM Transport** | PUB/SUB 소켓용 멀티캐스트 프로토콜 지원 (계획) | - |
+
+> 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.md)을 참고하세요.
+
+---
+
+## 시작하기
+
+### 요구 사항
+
+- **CMake** 3.10+
+- **C++17** 컴파일러 (GCC 7+, Clang 5+, MSVC 2017+)
+- **OpenSSL** (TLS/WSS 지원)
+
+### 빌드
 
 ```bash
 # Linux
@@ -92,107 +136,78 @@ We provide platform-specific scripts that handle configuration and testing:
 .\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
-### Manual CMake Build
+### CMake 직접 빌드
 
 ```bash
-cmake -B build \
-    -DWITH_TLS=ON \
-    -DBUILD_TESTS=ON \
-    -DBUILD_BENCHMARKS=OFF \
-    -DBUILD_SHARED=ON
+cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
 cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
-### Windows (VS 2022 / CLion)
+### CMake 옵션
 
-Prereqs: Visual Studio 2022 (Desktop C++), CMake, OpenSSL.
-If OpenSSL is installed via vcpkg, set `CMAKE_TOOLCHAIN_FILE` to the vcpkg toolchain.
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `WITH_TLS` | `ON` | OpenSSL을 통한 TLS/WSS 활성화 |
+| `BUILD_TESTS` | `ON` | 테스트 빌드 |
+| `BUILD_BENCHMARKS` | `OFF` | 벤치마크 빌드 |
+| `BUILD_SHARED` | `ON` | Shared Library 빌드 |
+| `ZMQ_CXX_STANDARD` | `17` | C++ 표준 (11, 14, 17, 20, 23) |
 
-```powershell
-cmake -S . -B build\win ^
-  -G "Visual Studio 17 2022" -A x64 ^
-  -DWITH_TLS=ON -DBUILD_TESTS=ON -DBUILD_SHARED=ON ^
-  -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
-cmake --build build\win --config Release
-ctest --test-dir build\win --output-on-failure -C Release
-```
-
-### Linux
-
-Prereqs (Ubuntu/Debian): `sudo apt-get install build-essential cmake pkg-config libssl-dev`
+### OpenSSL 설치
 
 ```bash
-cmake -S . -B build/linux \
-  -DWITH_TLS=ON -DBUILD_TESTS=ON -DBUILD_SHARED=ON
-cmake --build build/linux
-ctest --test-dir build/linux --output-on-failure
+# Ubuntu/Debian
+sudo apt-get install libssl-dev
+
+# macOS
+brew install openssl@3
+
+# Windows (vcpkg)
+vcpkg install openssl:x64-windows
 ```
 
-### Configuration Options
+---
 
-*   `WITH_TLS` (Default: `ON`): Enable OpenSSL-based TLS.
-*   `BUILD_TESTS` (Default: `ON`): Build the Unity-based test suite.
-*   `BUILD_BENCHMARKS` (Default: `OFF`): Build performance comparison tools.
+## 지원 플랫폼
 
-## Distribution and Consumption
+| 플랫폼 | Architecture | 상태 |
+|--------|:------------:|:----:|
+| Linux | x64, ARM64 | Stable |
+| macOS | x64, ARM64 | Stable |
+| Windows | x64, ARM64 | Stable |
 
-To support multiple environments, provide more than one consumption path.
-There is no single universal mechanism for C/C++.
+---
 
-**Recommended options:**
-*   **Source build (CMake):** Works everywhere; use `find_package` for deps.
-*   **vcpkg / conan:** Easiest for developers on Windows and cross-platform.
-*   **OS packages:** deb/rpm for Linux distributions.
-*   **Prebuilt SDK:** zip/tar with `include/`, `lib/`, and required DLL/so.
+## 성능
 
-**Typical dependency flows:**
-*   OpenSSL via system package manager or vcpkg.
-*   Bundled Boost headers already live in `external/boost`.
+모든 transport에서 소형 메시지(64B) 기준 **4~6 M msg/s** 처리량을 달성하며, 전 패턴에서 **deadlock 없음**이 확인되었습니다.
 
-## TLS Usage
+| 패턴 | TCP | IPC | inproc |
+|------|-----|-----|--------|
+| DEALER↔DEALER | 6.03 M/s | 5.96 M/s | 5.96 M/s |
+| PAIR | 5.78 M/s | 5.65 M/s | 6.09 M/s |
+| PUB/SUB | 5.76 M/s | 5.70 M/s | 5.71 M/s |
+| DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
+| ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
 
-**zlink** uses standard OpenSSL for encryption.
+> 표준 libzmq 대비 ~99% 처리량 동등성. 상세 분석은 [성능 리포트](doc/report/performance/tag_0.5_performance_report.md)를 참고하세요.
 
-**Server Example:**
-```c
-zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
-zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
-zmq_bind(socket, "tls://*:5555");
-```
+---
 
-**Client Example:**
-```c
-zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
-zmq_setsockopt(socket, ZMQ_TLS_HOSTNAME, "server.example.com", ...);
-zmq_connect(socket, "tls://server.example.com:5555");
-```
+## 문서
 
-See [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md) for detailed configuration.
+| 문서 | 설명 |
+|------|------|
+| [Feature Roadmap](doc/plan/feature-roadmap.md) | 계획 중인 기능과 의존성 그래프 |
+| [Architecture](doc/arch/ARCHITECTURE.md) | 내부 아키텍처 상세 문서 |
+| [TLS Usage Guide](doc/TLS_USAGE_GUIDE.md) | TLS/WSS 설정 가이드 |
+| [C++20 Build Guide](CXX20_BUILD_EXAMPLES.md) | C++ 표준별 빌드 방법 |
 
-## Benchmarks
+---
 
-This repository includes a `benchwithzmq/` directory to compare zlink performance against standard libzmq.
+## 라이선스
 
-```bash
-# Run comparison benchmarks (Linux/macOS)
-python3 benchwithzmq/run_comparison.py ALL --runs 3
-```
+[Mozilla Public License 2.0](LICENSE)
 
-Results are output to `benchwithzmq/`.
-
-## Documentation Resources
-
-*   [CLAUDE.md](CLAUDE.md): Detailed project overview and agent context.
-*   [GEMINI.md](GEMINI.md): Context for Gemini agent.
-*   [doc/TLS_USAGE_GUIDE.md](doc/TLS_USAGE_GUIDE.md): TLS instructions.
-*   [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md): C++ standard selection guide.
-
-## License & Attribution
-
-**zlink** is based on [ZeroMQ (libzmq)](https://github.com/zeromq/libzmq).
-
-The project license is specified in [LICENSE](LICENSE) (Mozilla Public License Version 2.0).
-
-Original Libzmq Resources:
-*   Website: http://www.zeromq.org/
-*   Git repository: http://github.com/zeromq/libzmq
+[ZeroMQ (libzmq)](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

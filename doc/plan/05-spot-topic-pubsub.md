@@ -76,7 +76,8 @@ SPOT은 **토픽 이름만으로 발행/구독**할 수 있는 추상화 계층�
 ```
 
 - SPOT Instance는 네트워크 소켓을 직접 갖지 않는다.
-- SPOT Instance ↔ Node 통신은 **내부 큐/IPC 채널**로 처리한다.
+- SPOT Instance ↔ Node 전달은 **내부 큐(기본)**로 처리하며,
+  토픽별로 **RINGBUFFER 모드**를 선택할 수 있다.
 
 ### 2.2 클러스터 구조 (PUB/SUB Mesh)
 

@@ -2,7 +2,7 @@
 
 > **우선순위**: 4 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.3
+> **버전**: 3.4
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md)
 > - [03-request-reply-api.md](03-request-reply-api.md) (msgv helper)
@@ -684,6 +684,16 @@ Provider는 두 가지 주소를 다룬다:
 - bind_endpoint에서 포트 추출
 - 로컬 IP 주소 자동 감지
 - 여러 NIC가 있는 경우 기본 라우팅 인터페이스 사용
+
+#### 6.3.1 NAT/Advertise 운영 가이드
+
+외부에서 접근 가능한 주소로 **advertise_endpoint를 명시**해야 한다.
+
+- **NAT/컨테이너 환경**: `tcp://*:PORT`를 advertise로 등록하면 **외부에서 접근 불가**하다.
+  - 예: `bind=tcp://0.0.0.0:5555`, `advertise=tcp://203.0.113.10:5555`
+- **로드밸런서/프록시 사용**: LB가 제공하는 **공인 endpoint**를 advertise로 등록한다.
+- **멀티 NIC**: 자동 감지는 잘못된 NIC를 고를 수 있으므로 advertise를 명시한다.
+- **주소 변경(재배포/재시작)**: Provider/Node는 **재등록**해야 한다.
 
 ### 6.4 Provider 식별 규칙
 
@@ -1478,6 +1488,29 @@ void on_reply_cb(uint64_t request_id,
 }
 ```
 
+### 9.8 SPOT Node (PUB/SUB Mesh) 예시
+
+```c
+void *ctx = zmq_ctx_new();
+
+// SPOT Node 생성
+void *node = zmq_spot_node_new(ctx);
+void *discovery = zmq_discovery_new(ctx);
+
+// Registry 연결 (Discovery + 등록)
+zmq_discovery_connect_registry(discovery, "tcp://registry1:5550");
+zmq_discovery_subscribe(discovery, "spot-node");
+
+zmq_spot_node_bind(node, "tcp://*:9000");
+zmq_spot_node_connect_registry(node, "tcp://registry1:5551");
+zmq_spot_node_register(node, "spot-node", NULL);   // advertise는 PUB endpoint
+zmq_spot_node_set_discovery(node, discovery, "spot-node");
+
+// SPOT 인스턴스 사용
+void *spot = zmq_spot_new(node);
+zmq_spot_subscribe(spot, "metrics:zone1:*");
+```
+
 ---
 
 ## 10. 구현 계획
@@ -1676,3 +1709,4 @@ Phase 3: 고급 기능
 | 3.1 | 2026-01-26 | UPDATE_WEIGHT 실패/라우터 혼용 테스트 추가 |
 | 3.2 | 2026-01-26 | 테스트 성공 기준 명시 |
 | 3.3 | 2026-01-28 | SPOT Node 등록 규칙(PUB endpoint) 및 호출 순서 추가 |
+| 3.4 | 2026-01-28 | SPOT Node 예시 + NAT/advertise 운영 가이드 추가 |

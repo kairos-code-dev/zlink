@@ -2,7 +2,7 @@
 
 > **우선순위**: 2 (Core Feature)
 > **상태**: Draft
-> **버전**: 0.6
+> **버전**: 0.7
 
 ## 목차
 1. [개요](#1-개요)
@@ -151,8 +151,9 @@
 
 - thread-safe 소켓 사용 시 **백그라운드 워커 스레드가 생성**된다.
   - 임베디드 환경에서는 사용 여부를 명확히 안내.
-- C API는 **비동기 콜백 API를 제공하지 않는다**.
+- **일반 send/recv에 대한 비동기 C API는 제공하지 않는다.**
   - 필요 시 `ZMQ_DONTWAIT` + `zmq_poll` 또는 바인딩 레이어에서 비동기 래핑을 제공한다.
+  - 단, **Request/Reply API는 03번 문서의 콜백/폴링 인터페이스를 사용**한다.
 
 ---
 
@@ -183,7 +184,7 @@ int zmq_msg_recv(zmq_msg_t *msg, void *socket, int flags);
 - 호출 스레드에서 strand(직렬 executor)에 작업 post
 - 완료까지 블로킹 대기 (condition_variable 사용)
 - strand(직렬 executor) 실행 중(워커 스레드) 호출이면 **inline dispatch**로 즉시 실행
-- **추가 비동기 C API는 제공하지 않는다.**
+- **일반 send/recv에 대한 추가 비동기 C API는 제공하지 않는다.**
 
 ### 4.3 모니터링 연계 API (참고)
 
@@ -439,6 +440,7 @@ for (auto& w : workers) w.join();
 | `test_mixed_operations` | send/recv 혼합 동시 호출 |
 | `test_reentrant_sync_call` | strand(직렬 executor) 내부 호출 시 데드락 없음 |
 | `test_high_contention` | 높은 경합 상황에서 정확성 |
+| `test_is_threadsafe_flag` | zmq_is_threadsafe() 결과 확인 |
 
 ### 8.2 스트레스 테스트
 
@@ -487,3 +489,4 @@ cmake --build build
 | 0.4 | 2026-01-26 | ctx io_context 모델 확정, 재진입 규칙 추가 |
 | 0.5 | 2026-01-26 | C API 비동기 콜백 제거, 기존 동기 API 재사용으로 정리 |
 | 0.6 | 2026-01-26 | 재진입 데드락 설명 보강, 동기 대기 의미 명시 |
+| 0.7 | 2026-01-28 | Request/Reply 콜백 예외 명시 + is_threadsafe 테스트 추가 |

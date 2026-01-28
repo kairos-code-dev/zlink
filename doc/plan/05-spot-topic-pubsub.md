@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.3
+> **버전**: 4.4
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -339,12 +339,15 @@ PUB/SUB는 **topic prefix**로 필터링한다. 네트워크 메시지 구조는
 
 ```
 Frame 0: topic (string)
-Frame 1..N: payload (multipart 가능)
+Frame 1: payload (단일 프레임)
 ```
 
 - `zmq_spot_publish()`는 **topic + msg** 2프레임으로 전송한다.
 - `zmq_spot_recv()`는 **payload 프레임만 반환**하고, topic은 별도로 반환한다.
 - Node는 프레임을 추가/수정하지 않는다.
+
+> **multipart는 지원하지 않는다.**  
+> 여러 프레임이 필요하면 애플리케이션 레벨에서 프레이밍/직렬화한다.
 
 ### 5.2 로컬 전달 포맷
 
@@ -450,7 +453,7 @@ ZMQ_EXPORT int zmq_spot_topic_destroy(
     const char *topic_id
 );
 
-/* 메시지 발행 */
+/* 메시지 발행 (단일 프레임) */
 ZMQ_EXPORT int zmq_spot_publish(
     void *spot,
     const char *topic_id,
@@ -474,7 +477,7 @@ ZMQ_EXPORT int zmq_spot_unsubscribe(
     const char *topic_id_or_pattern
 );
 
-/* 메시지 수신 */
+/* 메시지 수신 (단일 프레임) */
 ZMQ_EXPORT int zmq_spot_recv(
     void *spot,
     zmq_msg_t *msg,
@@ -489,6 +492,7 @@ ZMQ_EXPORT int zmq_spot_recv(
 - `zmq_spot_publish`: 구독자 유무와 무관하게 성공 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_subscribe`: 즉시 활성화 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
+- multipart는 **지원하지 않으며**, payload는 단일 프레임으로 제한된다.
 
 **정리 규칙**
 - `zmq_spot_destroy()`는 해당 SPOT이 보유한
@@ -686,6 +690,7 @@ zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 4.4 | 2026-01-28 | SPOT payload 단일 프레임 규칙 명시 (multipart 미지원) |
 | 4.3 | 2026-01-28 | 수동 Mesh(Discovery 없이 peer 직접 연결) 옵션 추가 |
 | 4.2 | 2026-01-28 | topic_create에 mode 파라미터 통합 |
 | 4.1 | 2026-01-28 | PUB/SUB mesh 테스트 항목 보강 |

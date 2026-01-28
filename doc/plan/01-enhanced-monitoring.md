@@ -2,7 +2,7 @@
 
 > **우선순위**: 1 (Core Feature)
 > **상태**: Draft
-> **버전**: 1.6
+> **버전**: 1.7
 > **의존성**: [00-routing-id-unification.md](00-routing-id-unification.md)
 
 ## 목차
@@ -330,6 +330,36 @@ Frame N+3: remote_addr (string)
   - `CONNECTION_READY`: 0 (예약)
 - `local_addr` / `remote_addr`: 가능한 경우에만 채움
 
+### 3.6.2 DISCONNECTED reason 코드 (의도/비의도 구분)
+
+`ZMQ_EVENT_DISCONNECTED`는 **의도/비의도와 무관하게 항상 발생**한다.  
+의도 여부는 `value` 필드를 **reason 코드**로 사용하여 구분한다.
+
+#### reason 코드 정의
+
+| 코드 | 이름 | 의미 |
+|------|------|------|
+| 0 | UNKNOWN | 원인 불명 |
+| 1 | LOCAL_DISCONNECT | 로컬에서 `zmq_disconnect()` 또는 `zmq_close()` 호출로 의도적 종료 |
+| 2 | REMOTE_DISCONNECT | 원격 피어가 정상적으로 종료 |
+| 3 | HANDSHAKE_FAILED | 핸드셰이크 실패로 종료 (`HANDSHAKE_FAILED_*` 이후) |
+| 4 | TRANSPORT_ERROR | 전송계층 오류 (ECONNRESET/EHOSTUNREACH 등) |
+| 5 | CTX_TERM | 컨텍스트 종료로 강제 종료 |
+
+#### 동작 규칙
+
+- 위 reason 코드는 **DISCONNECTED에만 적용**한다.
+- `value`에 fd를 넣던 기존 관례는 **DISCONNECTED 이벤트에서는 사용하지 않는다.**
+- 다른 이벤트(`CONNECTED/ACCEPTED`)는 기존대로 fd 또는 0을 사용한다.
+
+#### 예시
+
+```
+CONNECTED (value=fd)
+CONNECTION_READY (value=0)
+DISCONNECTED (value=1)  // LOCAL_DISCONNECT
+```
+
 ### 3.7 메트릭스 API
 
 ```c
@@ -505,3 +535,4 @@ zmq_close(mon_b);
 | 1.4 | 2026-01-26 | 모니터 포맷 버전 API 제거, 단일 포맷으로 고정 |
 | 1.5 | 2026-01-26 | monitor_open_ex 제거, 단일 모니터 소켓 사용으로 정리 |
 | 1.6 | 2026-01-26 | routing_id 변환 함수 의존 제거 (예시 정리) |
+| 1.7 | 2026-01-28 | DISCONNECTED reason 코드 정의(의도/비의도 구분) |

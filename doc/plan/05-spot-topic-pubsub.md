@@ -548,6 +548,16 @@ zmq_msg_t msg;
 zmq_msg_init_size(&msg, 5);
 memcpy(zmq_msg_data(&msg), "hello", 5);
 zmq_spot_publish(spot1, "chat:room1", &msg, 1, 0);
+
+// 수신 (msgv)
+zmq_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic[256];
+size_t topic_len = sizeof(topic);
+if (zmq_spot_recv(spot2, &parts, &part_count, 0, topic, &topic_len) == 0) {
+    // parts[0..part_count-1] 처리
+    zmq_msgv_close(parts, part_count);
+}
 ```
 
 ### 7.2 두 서버, Discovery 기반 연결
@@ -586,6 +596,15 @@ zmq_msg_t msg;
 zmq_msg_init_size(&msg, 4);
 memcpy(zmq_msg_data(&msg), "pong", 4);
 zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
+
+// 수신 (msgv)
+zmq_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic[256];
+size_t topic_len = sizeof(topic);
+if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
+    zmq_msgv_close(parts, part_count);
+}
 ```
 
 ### 7.3 RingBuffer 토픽 (옵션)
@@ -618,6 +637,15 @@ zmq_msg_t msg;
 zmq_msg_init_size(&msg, 4);
 memcpy(zmq_msg_data(&msg), "ping", 4);
 zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
+
+// 수신 (msgv)
+zmq_msg_t *parts = NULL;
+size_t part_count = 0;
+char topic[256];
+size_t topic_len = sizeof(topic);
+if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
+    zmq_msgv_close(parts, part_count);
+}
 ```
 
 ---

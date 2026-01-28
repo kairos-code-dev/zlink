@@ -299,6 +299,8 @@ bool zmq::asio_zmp_engine_t::handshake ()
         _has_handshake_stage = false;
     }
 
+    session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
+
     if (_options.recv_routing_id) {
         msg_t routing_id;
         const int rc = routing_id.init_size (_peer_routing_id_size);
@@ -316,7 +318,8 @@ bool zmq::asio_zmp_engine_t::handshake ()
         _has_handshake_timer = false;
     }
 
-    socket ()->event_handshake_succeeded (_endpoint_uri_pair, 0);
+    socket ()->event_connection_ready (_endpoint_uri_pair, _peer_routing_id,
+                                       _peer_routing_id_size);
 
     if (_output_stopped)
         restart_output ();

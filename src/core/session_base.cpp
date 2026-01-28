@@ -75,6 +75,21 @@ const zmq::endpoint_uri_pair_t &zmq::session_base_t::get_endpoint () const
     return _engine->get_endpoint ();
 }
 
+void zmq::session_base_t::set_peer_routing_id (const unsigned char *data_,
+                                               size_t size_)
+{
+    if (_pipe)
+        _pipe->set_peer_routing_id (data_, size_);
+}
+
+const zmq::blob_t &zmq::session_base_t::peer_routing_id () const
+{
+    if (_pipe)
+        return _pipe->get_routing_id ();
+    static const blob_t empty_routing_id;
+    return empty_routing_id;
+}
+
 zmq::session_base_t::~session_base_t ()
 {
     zmq_assert (!_pipe);

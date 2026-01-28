@@ -66,6 +66,14 @@ class pipe_t ZMQ_FINAL : public object_t,
     //  Pipe endpoint can store an opaque ID to be used by its clients.
     void set_router_socket_routing_id (const blob_t &router_socket_routing_id_);
     const blob_t &get_routing_id () const;
+    void set_peer_routing_id (const unsigned char *data_, size_t size_);
+    uint64_t get_msgs_written () const;
+    uint64_t get_msgs_read () const;
+    uint64_t get_bytes_written () const;
+    uint64_t get_bytes_read () const;
+    uint64_t get_outbound_queue_count () const;
+    uint32_t get_hwm_reached () const;
+    uint64_t get_connected_time () const;
 
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
@@ -181,6 +189,10 @@ class pipe_t ZMQ_FINAL : public object_t,
     //  Number of messages read and written so far.
     uint64_t _msgs_read;
     uint64_t _msgs_written;
+    uint64_t _bytes_read;
+    uint64_t _bytes_written;
+    uint32_t _hwm_reached;
+    uint64_t _connected_time;
 
     //  Last received peer's msgs_read. The actual number in the peer
     //  can be higher at the moment.

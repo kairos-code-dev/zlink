@@ -578,11 +578,15 @@ void zmq::asio_ws_engine_t::on_read_complete (
         //  Notify session that engine is ready
         if (_session) {
             _session->engine_ready ();
+            _session->set_peer_routing_id (_peer_routing_id,
+                                           _peer_routing_id_size);
         }
 
         //  Notify socket about successful handshake
         if (_socket) {
-            _socket->event_handshake_succeeded (_endpoint_uri_pair, 0);
+            _socket->event_connection_ready (_endpoint_uri_pair,
+                                             _peer_routing_id,
+                                             _peer_routing_id_size);
         }
 
         //  Trigger output to start sending any pending messages

@@ -5,6 +5,7 @@
 
 #include "utils/macros.hpp"
 #include "core/poller.hpp"
+#include "utils/random.hpp"
 
 #if !defined ZMQ_HAVE_POLLER
 #if defined ZMQ_POLL_BASED_ON_POLL && !defined ZMQ_HAVE_WINDOWS
@@ -12,6 +13,8 @@
 #endif
 #include "utils/polling_util.hpp"
 #endif
+
+#include <cstdio>
 
 #if !defined ZMQ_HAVE_WINDOWS
 #include <unistd.h>
@@ -211,7 +214,191 @@ int zmq_socket_monitor (void *s_, const char *addr_, int events_)
     zmq::socket_base_t *s = as_socket_base_t (s_);
     if (!s)
         return -1;
-    return s->monitor (addr_, events_, 1, ZMQ_PAIR);
+    return s->monitor (addr_, events_, 3, ZMQ_PAIR);
+}
+
+void *zmq_socket_monitor_open (void *s_, int events_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (s_);
+    if (!s)
+        return NULL;
+
+    char endpoint[128];
+    const uint32_t rand_id = zmq::generate_random ();
+    snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
+              static_cast<void *> (s_), rand_id);
+
+    if (s->monitor (endpoint, events_, 3, ZMQ_PAIR) != 0)
+        return NULL;
+
+    void *monitor_socket = zmq_socket (s->get_ctx (), ZMQ_PAIR);
+    if (!monitor_socket) {
+        s->monitor (NULL, 0, 3, ZMQ_PAIR);
+        return NULL;
+    }
+
+    if (zmq_connect (monitor_socket, endpoint) != 0) {
+        zmq_close (monitor_socket);
+        s->monitor (NULL, 0, 3, ZMQ_PAIR);
+        return NULL;
+    }
+
+    return monitor_socket;
+}
+
+int zmq_monitor_recv (void *monitor_socket_,
+                      zmq_monitor_event_t *event_,
+                      int flags_)
+{
+    if (!monitor_socket_ || !event_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zmq_msg_t msg;
+    zmq_msg_init (&msg);
+    int rc = zmq_msg_recv (&msg, monitor_socket_, flags_);
+    if (rc == -1) {
+        zmq_msg_close (&msg);
+        return -1;
+    }
+
+    memset (event_, 0, sizeof (*event_));
+
+    if (zmq_msg_size (&msg) < sizeof (uint64_t)) {
+        zmq_msg_close (&msg);
+        errno = EPROTO;
+        return -1;
+    }
+
+    memcpy (&event_->event, zmq_msg_data (&msg), sizeof (uint64_t));
+    zmq_msg_close (&msg);
+
+    const int follow_flags = flags_ & ~ZMQ_DONTWAIT;
+
+    zmq_msg_init (&msg);
+    rc = zmq_msg_recv (&msg, monitor_socket_, follow_flags);
+    if (rc == -1) {
+        zmq_msg_close (&msg);
+        return -1;
+    }
+    if (zmq_msg_size (&msg) < sizeof (uint64_t)) {
+        zmq_msg_close (&msg);
+        errno = EPROTO;
+        return -1;
+    }
+
+    uint64_t value_count = 0;
+    memcpy (&value_count, zmq_msg_data (&msg), sizeof (uint64_t));
+    zmq_msg_close (&msg);
+
+    for (uint64_t i = 0; i < value_count; ++i) {
+        zmq_msg_init (&msg);
+        rc = zmq_msg_recv (&msg, monitor_socket_, follow_flags);
+        if (rc == -1) {
+            zmq_msg_close (&msg);
+            return -1;
+        }
+        if (i == 0 && zmq_msg_size (&msg) >= sizeof (uint64_t)) {
+            memcpy (&event_->value, zmq_msg_data (&msg), sizeof (uint64_t));
+        }
+        zmq_msg_close (&msg);
+    }
+
+    zmq_msg_init (&msg);
+    rc = zmq_msg_recv (&msg, monitor_socket_, follow_flags);
+    if (rc == -1) {
+        zmq_msg_close (&msg);
+        return -1;
+    }
+    const size_t routing_id_size = zmq_msg_size (&msg);
+    const size_t copy_size =
+      routing_id_size > sizeof (event_->routing_id.data)
+        ? sizeof (event_->routing_id.data)
+        : routing_id_size;
+    event_->routing_id.size = static_cast<uint8_t> (copy_size);
+    if (copy_size > 0) {
+        memcpy (event_->routing_id.data, zmq_msg_data (&msg), copy_size);
+    }
+    zmq_msg_close (&msg);
+
+    zmq_msg_init (&msg);
+    rc = zmq_msg_recv (&msg, monitor_socket_, follow_flags);
+    if (rc == -1) {
+        zmq_msg_close (&msg);
+        return -1;
+    }
+    const size_t local_size = zmq_msg_size (&msg);
+    const size_t local_copy =
+      local_size >= sizeof (event_->local_addr)
+        ? sizeof (event_->local_addr) - 1
+        : local_size;
+    if (local_copy > 0)
+        memcpy (event_->local_addr, zmq_msg_data (&msg), local_copy);
+    event_->local_addr[local_copy] = '\0';
+    zmq_msg_close (&msg);
+
+    zmq_msg_init (&msg);
+    rc = zmq_msg_recv (&msg, monitor_socket_, follow_flags);
+    if (rc == -1) {
+        zmq_msg_close (&msg);
+        return -1;
+    }
+    const size_t remote_size = zmq_msg_size (&msg);
+    const size_t remote_copy =
+      remote_size >= sizeof (event_->remote_addr)
+        ? sizeof (event_->remote_addr) - 1
+        : remote_size;
+    if (remote_copy > 0)
+        memcpy (event_->remote_addr, zmq_msg_data (&msg), remote_copy);
+    event_->remote_addr[remote_copy] = '\0';
+    zmq_msg_close (&msg);
+
+    return 0;
+}
+
+int zmq_socket_stats (void *socket_, zmq_socket_stats_t *stats_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (socket_);
+    if (!s)
+        return -1;
+    return s->socket_stats (stats_);
+}
+
+int zmq_socket_peer_info (void *socket_,
+                          const zmq_routing_id_t *routing_id_,
+                          zmq_peer_info_t *info_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (socket_);
+    if (!s)
+        return -1;
+    return s->socket_peer_info (routing_id_, info_);
+}
+
+int zmq_socket_peer_routing_id (void *socket_,
+                                int index_,
+                                zmq_routing_id_t *out_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (socket_);
+    if (!s)
+        return -1;
+    return s->socket_peer_routing_id (index_, out_);
+}
+
+int zmq_socket_peer_count (void *socket_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (socket_);
+    if (!s)
+        return -1;
+    return s->socket_peer_count ();
+}
+
+int zmq_socket_peers (void *socket_, zmq_peer_info_t *peers_, size_t *count_)
+{
+    zmq::socket_base_t *s = as_socket_base_t (socket_);
+    if (!s)
+        return -1;
+    return s->socket_peers (peers_, count_);
 }
 
 int zmq_bind (void *s_, const char *addr_)

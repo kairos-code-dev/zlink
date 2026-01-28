@@ -5,29 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int
-receive_monitor_address (void *monitor_, char **address_, bool expect_more_)
-{
-    zmq_msg_t msg;
-
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, monitor_, 0) == -1)
-        return -1; //  Interrupted, presumably
-    TEST_ASSERT_EQUAL (expect_more_, zmq_msg_more (&msg));
-
-    if (address_) {
-        const uint8_t *const data =
-          static_cast<const uint8_t *> (zmq_msg_data (&msg));
-        const size_t size = zmq_msg_size (&msg);
-        *address_ = static_cast<char *> (malloc (size + 1));
-        memcpy (*address_, data, size);
-        (*address_)[size] = 0;
-    }
-    zmq_msg_close (&msg);
-
-    return 0;
-}
-
 //  Read one event off the monitor socket; return value and address
 //  by reference, if not null, and event number by value. Returns -1
 //  in case of error.
@@ -36,25 +13,25 @@ static int get_monitor_event_internal (void *monitor_,
                                        char **address_,
                                        int recv_flag_)
 {
-    //  First frame in message contains event number and value
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, monitor_, recv_flag_) == -1) {
+    zmq_monitor_event_t event;
+    if (zmq_monitor_recv (monitor_, &event, recv_flag_) == -1) {
         TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
-        return -1; //  timed out or no message available
+        return -1;
     }
-    TEST_ASSERT_TRUE (zmq_msg_more (&msg));
 
-    uint8_t *data = static_cast<uint8_t *> (zmq_msg_data (&msg));
-    uint16_t event = *reinterpret_cast<uint16_t *> (data);
     if (value_)
-        memcpy (value_, data + 2, sizeof (uint32_t));
+        *value_ = static_cast<int> (event.value);
 
-    //  Second frame in message contains event address
-    TEST_ASSERT_SUCCESS_ERRNO (
-      receive_monitor_address (monitor_, address_, false));
+    if (address_) {
+        const char *addr = event.remote_addr[0] ? event.remote_addr
+                                                : event.local_addr;
+        const size_t len = strlen (addr);
+        *address_ = static_cast<char *> (malloc (len + 1));
+        memcpy (*address_, addr, len);
+        (*address_)[len] = '\0';
+    }
 
-    return event;
+    return static_cast<int> (event.event);
 }
 
 int get_monitor_event_with_timeout (void *monitor_,
@@ -185,63 +162,33 @@ static int64_t get_monitor_event_internal_v2 (void *monitor_,
                                               char **remote_address_,
                                               int recv_flag_)
 {
-    //  First frame in message contains event number
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, monitor_, recv_flag_) == -1) {
+    zmq_monitor_event_t event;
+    if (zmq_monitor_recv (monitor_, &event, recv_flag_) == -1) {
         TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
-        return -1; //  timed out or no message available
+        return -1;
     }
-    TEST_ASSERT_TRUE (zmq_msg_more (&msg));
-    TEST_ASSERT_EQUAL_UINT (sizeof (uint64_t), zmq_msg_size (&msg));
-
-    uint64_t event;
-    memcpy (&event, zmq_msg_data (&msg), sizeof (event));
-    zmq_msg_close (&msg);
-
-    //  Second frame in message contains the number of values
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, monitor_, recv_flag_) == -1) {
-        TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
-        return -1; //  timed out or no message available
-    }
-    TEST_ASSERT_TRUE (zmq_msg_more (&msg));
-    TEST_ASSERT_EQUAL_UINT (sizeof (uint64_t), zmq_msg_size (&msg));
-
-    uint64_t value_count;
-    memcpy (&value_count, zmq_msg_data (&msg), sizeof (value_count));
-    zmq_msg_close (&msg);
 
     if (value_) {
-        *value_ =
-          (uint64_t *) malloc ((size_t) value_count * sizeof (uint64_t));
+        *value_ = static_cast<uint64_t *> (malloc (sizeof (uint64_t)));
         TEST_ASSERT_NOT_NULL (*value_);
+        (*value_)[0] = event.value;
     }
 
-    for (uint64_t i = 0; i < value_count; ++i) {
-        //  Subsequent frames in message contain event values
-        zmq_msg_init (&msg);
-        if (zmq_msg_recv (&msg, monitor_, recv_flag_) == -1) {
-            TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
-            return -1; //  timed out or no message available
-        }
-        TEST_ASSERT_TRUE (zmq_msg_more (&msg));
-        TEST_ASSERT_EQUAL_UINT (sizeof (uint64_t), zmq_msg_size (&msg));
-
-        if (value_ && *value_)
-            memcpy (&(*value_)[i], zmq_msg_data (&msg), sizeof (uint64_t));
-        zmq_msg_close (&msg);
+    if (local_address_) {
+        const size_t len = strlen (event.local_addr);
+        *local_address_ = static_cast<char *> (malloc (len + 1));
+        memcpy (*local_address_, event.local_addr, len);
+        (*local_address_)[len] = '\0';
     }
 
-    //  Second-to-last frame in message contains local address
-    TEST_ASSERT_SUCCESS_ERRNO (
-      receive_monitor_address (monitor_, local_address_, true));
+    if (remote_address_) {
+        const size_t len = strlen (event.remote_addr);
+        *remote_address_ = static_cast<char *> (malloc (len + 1));
+        memcpy (*remote_address_, event.remote_addr, len);
+        (*remote_address_)[len] = '\0';
+    }
 
-    //  Last frame in message contains remote address
-    TEST_ASSERT_SUCCESS_ERRNO (
-      receive_monitor_address (monitor_, remote_address_, false));
-
-    return event;
+    return static_cast<int64_t> (event.event);
 }
 
 static int64_t get_monitor_event_with_timeout_v2 (void *monitor_,
@@ -351,8 +298,8 @@ const char *get_zmqEventName (uint64_t event)
             return "MONITOR_STOPPED";
         case ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
             return "HANDSHAKE_FAILED_NO_DETAIL";
-        case ZMQ_EVENT_HANDSHAKE_SUCCEEDED:
-            return "HANDSHAKE_SUCCEEDED";
+        case ZMQ_EVENT_CONNECTION_READY:
+            return "CONNECTION_READY";
         case ZMQ_EVENT_HANDSHAKE_FAILED_PROTOCOL:
             return "HANDSHAKE_FAILED_PROTOCOL";
         case ZMQ_EVENT_HANDSHAKE_FAILED_AUTH:

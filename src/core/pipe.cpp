@@ -7,6 +7,7 @@
 #include "utils/macros.hpp"
 #include "core/pipe.hpp"
 #include "utils/err.hpp"
+#include <ctime>
 
 #include "core/ypipe.hpp"
 #include "core/ypipe_conflate.hpp"
@@ -89,6 +90,10 @@ zmq::pipe_t::pipe_t (object_t *parent_,
     _out_hwm_boost (-1),
     _msgs_read (0),
     _msgs_written (0),
+    _bytes_read (0),
+    _bytes_written (0),
+    _hwm_reached (0),
+    _connected_time (0),
     _peers_msgs_read (0),
     _peer (NULL),
     _sink (NULL),
@@ -139,6 +144,51 @@ void zmq::pipe_t::set_router_socket_routing_id (
 const zmq::blob_t &zmq::pipe_t::get_routing_id () const
 {
     return _router_socket_routing_id;
+}
+
+void zmq::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
+{
+    blob_t routing_id;
+    if (data_ && size_ > 0)
+        routing_id.set (data_, size_);
+    set_router_socket_routing_id (routing_id);
+    if (_connected_time == 0)
+        _connected_time = static_cast<uint64_t> (time (NULL));
+}
+
+uint64_t zmq::pipe_t::get_msgs_written () const
+{
+    return _msgs_written;
+}
+
+uint64_t zmq::pipe_t::get_msgs_read () const
+{
+    return _msgs_read;
+}
+
+uint64_t zmq::pipe_t::get_bytes_written () const
+{
+    return _bytes_written;
+}
+
+uint64_t zmq::pipe_t::get_bytes_read () const
+{
+    return _bytes_read;
+}
+
+uint64_t zmq::pipe_t::get_outbound_queue_count () const
+{
+    return _msgs_written - _peers_msgs_read;
+}
+
+uint32_t zmq::pipe_t::get_hwm_reached () const
+{
+    return _hwm_reached;
+}
+
+uint64_t zmq::pipe_t::get_connected_time () const
+{
+    return _connected_time;
 }
 
 bool zmq::pipe_t::check_read ()
@@ -195,6 +245,9 @@ bool zmq::pipe_t::read (msg_t *msg_)
         return false;
     }
 
+    if (!msg_->is_routing_id ())
+        _bytes_read += msg_->size ();
+
     if (!(msg_->flags () & msg_t::more) && !msg_->is_routing_id ())
         _msgs_read++;
 
@@ -212,6 +265,7 @@ bool zmq::pipe_t::check_write ()
     const bool full = !check_hwm ();
 
     if (unlikely (full)) {
+        _hwm_reached++;
         _out_active = false;
         return false;
     }
@@ -227,6 +281,8 @@ bool zmq::pipe_t::write (const msg_t *msg_)
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool is_routing_id = msg_->is_routing_id ();
     _out_pipe->write (*msg_, more);
+    if (!is_routing_id)
+        _bytes_written += msg_->size ();
     if (!more && !is_routing_id)
         _msgs_written++;
 

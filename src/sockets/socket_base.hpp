@@ -18,6 +18,7 @@
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
+#include "zmq.h"
 
 extern "C" {
 void zmq_free_event (void *data_, void *hint_);
@@ -118,7 +119,9 @@ class socket_base_t : public own_t,
     void event_close_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                              int err_);
     void event_disconnected (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                             zmq::fd_t fd_);
+                             uint64_t reason_,
+                             const unsigned char *routing_id_,
+                             size_t routing_id_size_);
     void event_handshake_failed_no_detail (
       const endpoint_uri_pair_t &endpoint_uri_pair_, int err_);
     void event_handshake_failed_protocol (
@@ -127,16 +130,24 @@ class socket_base_t : public own_t,
     event_handshake_failed_auth (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                  int err_);
     void
-    event_handshake_succeeded (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                               int err_);
+    event_connection_ready (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                            const unsigned char *routing_id_,
+                            size_t routing_id_size_);
 
     //  Query the state of a specific peer. The default implementation
     //  always returns an ENOTSUP error.
     virtual int get_peer_state (const void *routing_id_,
                                 size_t routing_id_size_) const;
 
+    int socket_stats (zmq_socket_stats_t *stats_);
+    int socket_peer_info (const zmq_routing_id_t *routing_id_,
+                          zmq_peer_info_t *info_);
+    int socket_peer_routing_id (int index_, zmq_routing_id_t *out_);
+    int socket_peer_count ();
+    int socket_peers (zmq_peer_info_t *peers_, size_t *count_);
 
     bool is_disconnected () const;
+    bool is_ctx_terminated () const;
 
   protected:
     socket_base_t (zmq::ctx_t *parent_,
@@ -191,6 +202,8 @@ class socket_base_t : public own_t,
   private:
     // test if event should be sent and then dispatch it
     void event (const endpoint_uri_pair_t &endpoint_uri_pair_,
+                const unsigned char *routing_id_,
+                size_t routing_id_size_,
                 uint64_t values_[],
                 uint64_t values_count_,
                 uint64_t type_);
@@ -199,6 +212,8 @@ class socket_base_t : public own_t,
     void monitor_event (uint64_t event_,
                         const uint64_t values_[],
                         uint64_t values_count_,
+                        const unsigned char *routing_id_,
+                        size_t routing_id_size_,
                         const endpoint_uri_pair_t &endpoint_uri_pair_) const;
 
     // Monitor socket cleanup
@@ -329,6 +344,13 @@ class socket_base_t : public own_t,
 
     // Add a flag for mark disconnect action
     bool _disconnected;
+
+    uint64_t _msgs_sent;
+    uint64_t _msgs_received;
+    uint64_t _bytes_sent;
+    uint64_t _bytes_received;
+    uint64_t _msgs_dropped;
+    uint64_t _monitor_events_dropped;
 };
 
 class routing_socket_base_t : public socket_base_t

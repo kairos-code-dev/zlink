@@ -320,9 +320,16 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_EVENT_MONITOR_STOPPED 0x0400
 #define ZMQ_EVENT_ALL 0xFFFF
 #define ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL 0x0800
-#define ZMQ_EVENT_HANDSHAKE_SUCCEEDED 0x1000
+#define ZMQ_EVENT_CONNECTION_READY 0x1000
 #define ZMQ_EVENT_HANDSHAKE_FAILED_PROTOCOL 0x2000
 #define ZMQ_EVENT_HANDSHAKE_FAILED_AUTH 0x4000
+
+#define ZMQ_DISCONNECT_UNKNOWN 0
+#define ZMQ_DISCONNECT_LOCAL 1
+#define ZMQ_DISCONNECT_REMOTE 2
+#define ZMQ_DISCONNECT_HANDSHAKE_FAILED 3
+#define ZMQ_DISCONNECT_TRANSPORT_ERROR 4
+#define ZMQ_DISCONNECT_CTX_TERM 5
 
 #define ZMQ_PROTOCOL_ERROR_ZMP_UNSPECIFIED 0x10000000
 #define ZMQ_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND 0x10000001
@@ -355,6 +362,52 @@ ZMQ_EXPORT int
 zmq_send_const (void *s_, const void *buf_, size_t len_, int flags_);
 ZMQ_EXPORT int zmq_recv (void *s_, void *buf_, size_t len_, int flags_);
 ZMQ_EXPORT int zmq_socket_monitor (void *s_, const char *addr_, int events_);
+ZMQ_EXPORT void *zmq_socket_monitor_open (void *s_, int events_);
+
+typedef struct {
+    uint64_t event;
+    uint64_t value;
+    zmq_routing_id_t routing_id;
+    char local_addr[256];
+    char remote_addr[256];
+} zmq_monitor_event_t;
+
+ZMQ_EXPORT int zmq_monitor_recv (void *monitor_socket_,
+                                 zmq_monitor_event_t *event_,
+                                 int flags_);
+
+typedef struct {
+    uint64_t msgs_sent;
+    uint64_t msgs_received;
+    uint64_t bytes_sent;
+    uint64_t bytes_received;
+    uint64_t msgs_dropped;
+    uint64_t monitor_events_dropped;
+    uint32_t queue_size;
+    uint32_t hwm_reached;
+    uint32_t peer_count;
+} zmq_socket_stats_t;
+
+ZMQ_EXPORT int zmq_socket_stats (void *socket_, zmq_socket_stats_t *stats_);
+
+typedef struct {
+    zmq_routing_id_t routing_id;
+    char remote_addr[256];
+    uint64_t connected_time;
+    uint64_t msgs_sent;
+    uint64_t msgs_received;
+} zmq_peer_info_t;
+
+ZMQ_EXPORT int zmq_socket_peer_info (void *socket_,
+                                     const zmq_routing_id_t *routing_id_,
+                                     zmq_peer_info_t *info_);
+ZMQ_EXPORT int zmq_socket_peer_routing_id (void *socket_,
+                                           int index_,
+                                           zmq_routing_id_t *out_);
+ZMQ_EXPORT int zmq_socket_peer_count (void *socket_);
+ZMQ_EXPORT int zmq_socket_peers (void *socket_,
+                                 zmq_peer_info_t *peers_,
+                                 size_t *count_);
 
 #if defined _WIN32
 #if defined _WIN64

@@ -9,6 +9,7 @@
 #include "utils/err.hpp"
 #include "protocol/wire.hpp"
 #include "sockets/socket_base.hpp"
+#include "core/session_base.hpp"
 
 zmq::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
@@ -77,7 +78,9 @@ void zmq::asio_raw_engine_t::plug_internal ()
     }
 
     complete_handshake ();
-    socket ()->event_handshake_succeeded (_endpoint_uri_pair, 0);
+    if (session ())
+        session ()->set_peer_routing_id (NULL, 0);
+    socket ()->event_connection_ready (_endpoint_uri_pair, NULL, 0);
 
     start_async_read ();
     start_async_write ();

@@ -34,7 +34,7 @@ void reconnect_default ()
     //  confirm that we get following events
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECT_DELAYED);
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZMQ_EVENT_HANDSHAKE_SUCCEEDED);
+    expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTION_READY);
 
     // close the pub socket
     test_context_socket_close_zero_linger (pub);
@@ -88,7 +88,7 @@ void reconnect_success ()
     //  confirm that we get following events
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECT_DELAYED);
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZMQ_EVENT_HANDSHAKE_SUCCEEDED);
+    expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTION_READY);
 
     // close the pub socket
     test_context_socket_close_zero_linger (pub);
@@ -113,9 +113,9 @@ void reconnect_success ()
     //  confirm that we get following events
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECT_DELAYED);
     expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTED);
-    expect_monitor_event (sub_mon, ZMQ_EVENT_HANDSHAKE_SUCCEEDED);
+    expect_monitor_event (sub_mon, ZMQ_EVENT_CONNECTION_READY);
 
-    // ZMQ_EVENT_HANDSHAKE_SUCCEEDED should be last event
+    // ZMQ_EVENT_CONNECTION_READY should be last event
     rc = get_monitor_event_with_timeout (sub_mon, &event, &event_address,
                                          SETTLE_TIME);
     assert (rc == -1);

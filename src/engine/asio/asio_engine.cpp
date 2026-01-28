@@ -10,6 +10,7 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
+#include "zmq.h"
 #include "utils/config.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
@@ -1389,7 +1390,22 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
         _socket->event_handshake_failed_no_detail (_endpoint_uri_pair, err);
     }
 
-    _socket->event_disconnected (_endpoint_uri_pair, _fd);
+    uint64_t disconnect_reason = ZMQ_DISCONNECT_UNKNOWN;
+    if (_socket && _socket->is_ctx_terminated ()) {
+        disconnect_reason = ZMQ_DISCONNECT_CTX_TERM;
+    } else if (_handshaking || reason_ == protocol_error) {
+        disconnect_reason = ZMQ_DISCONNECT_HANDSHAKE_FAILED;
+    } else if (reason_ == timeout_error || reason_ == connection_error) {
+        disconnect_reason = ZMQ_DISCONNECT_TRANSPORT_ERROR;
+    }
+
+    const zmq::blob_t *routing_id = _session ? &_session->peer_routing_id ()
+                                             : NULL;
+    const unsigned char *routing_id_data =
+      routing_id ? routing_id->data () : NULL;
+    const size_t routing_id_size = routing_id ? routing_id->size () : 0;
+    _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
+                                 routing_id_data, routing_id_size);
     _session->flush ();
     _session->engine_error (!_handshaking, reason_);
     unplug ();

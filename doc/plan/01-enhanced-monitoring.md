@@ -335,13 +335,22 @@ Frame N+3: remote_addr (string)
 `ZMQ_EVENT_DISCONNECTED`는 **의도/비의도와 무관하게 항상 발생**한다.  
 의도 여부는 `value` 필드를 **reason 코드**로 사용하여 구분한다.
 
+```c
+#define ZMQ_DISCONNECT_UNKNOWN          0
+#define ZMQ_DISCONNECT_LOCAL            1
+#define ZMQ_DISCONNECT_REMOTE           2
+#define ZMQ_DISCONNECT_HANDSHAKE_FAILED 3
+#define ZMQ_DISCONNECT_TRANSPORT_ERROR  4
+#define ZMQ_DISCONNECT_CTX_TERM         5
+```
+
 #### reason 코드 정의
 
 | 코드 | 이름 | 의미 |
 |------|------|------|
 | 0 | UNKNOWN | 원인 불명 |
-| 1 | LOCAL_DISCONNECT | 로컬에서 `zmq_disconnect()` 또는 `zmq_close()` 호출로 의도적 종료 |
-| 2 | REMOTE_DISCONNECT | 원격 피어가 정상적으로 종료 |
+| 1 | LOCAL | 로컬에서 `zmq_disconnect()` 또는 `zmq_close()` 호출로 의도적 종료 |
+| 2 | REMOTE | 원격 피어가 정상적으로 종료 |
 | 3 | HANDSHAKE_FAILED | 핸드셰이크 실패로 종료 (`HANDSHAKE_FAILED_*` 이후) |
 | 4 | TRANSPORT_ERROR | 전송계층 오류 (ECONNRESET/EHOSTUNREACH 등) |
 | 5 | CTX_TERM | 컨텍스트 종료로 강제 종료 |

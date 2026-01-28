@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.0
+> **버전**: 3.1
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -67,8 +67,8 @@
 │                                            │
 │  SPOT#1   SPOT#2   ...   SPOT#N             │
 │    │        │              │               │
-│    └────────┴───── inproc ─┴───────┐       │
-│                                   ▼       │
+│    └─────── local IPC/queue ┴───────┐      │
+│                                     ▼      │
 │                        ┌────────────────┐  │
 │                        │  SPOT Node     │  │
 │                        │  (Agent)       │  │
@@ -80,6 +80,7 @@
 ```
 
 - **SPOT Instance는 경량**이며, 네트워크 소켓을 직접 갖지 않는다.
+- SPOT Instance ↔ Node 통신은 **내부 큐/IPC 채널**로 처리한다.
 - 네트워크 통신/Discovery/라우팅은 **SPOT Node**가 담당한다.
 
 ### 2.2 클러스터 구조 (No SPoF, Router-only Mesh)
@@ -87,7 +88,7 @@
 ```
 Node A (ROUTER)  <──►  Node B (ROUTER)  <──►  Node C (ROUTER)
    ▲  ▲                          ▲                    ▲
-   │  └── inproc ── SPOTs         └── inproc ── SPOTs   └── inproc ── SPOTs
+   │  └── local IPC/queue ─ SPOTs └── local IPC/queue ─ SPOTs
 ```
 
 - 모든 노드는 **ROUTER 소켓 하나로 bind+connect**를 수행한다.
@@ -135,9 +136,11 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 | 클러스터 메시 | ROUTER | Node 간 제어/데이터 라우팅 | bind+connect |
 | Registry 제어 | DEALER | register/heartbeat 전송 | Registry ROUTER에 connect |
 | Discovery 수신 | SUB | Registry PUB에서 peer 목록 수신 | Discovery 컴포넌트 내부 |
-| 로컬 IPC | inproc 채널 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
+| 로컬 IPC | 내부 큐/채널 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
 
-> 로컬 IPC는 구현 세부이며, inproc 소켓 또는 내부 큐로 대체 가능하다.
+> 로컬 IPC는 **ZeroMQ inproc 전송이 아니라 내부 큐 기반**을 기본으로 한다.
+> 필요 시 inproc 소켓으로 대체할 수 있으나, 대규모 인스턴스(10k) 기준으로는
+> 내부 큐 방식이 더 효율적이다.
 
 ### 2.8 내부 처리 모델 (구현 수준)
 
@@ -223,7 +226,34 @@ ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준�
    - Node -> 모든 peer: TOPIC_REMOVE
 ```
 
-### 3.3 구독 상태 (Pending/Active)
+### 3.3 토픽 전달 모드 (Delivery Mode)
+
+기본 동작은 **SPOT별 큐 방식**이며, 필요 시 토픽 단위로 **RingBuffer 모드**를
+명시적으로 선택할 수 있다.
+
+| 모드 | 설명 | 적합한 경우 |
+|------|------|------------|
+| **QUEUE (기본)** | 구독 SPOT별 큐에 enqueue | 구독자 수가 적거나 토픽 수가 많은 경우 |
+| **RINGBUFFER (옵션)** | 토픽 로그에 1회 append + 구독자는 커서로 pull | 팬아웃이 큰 토픽 |
+
+**RINGBUFFER 모드 특징**
+- publish 시 1회 append (O(1))
+- 구독자 수에 비례한 enqueue 비용이 없음
+- 느린 구독자는 HWM 정책에 따라 drop/skip
+
+**모드 설정 API**
+```c
+/* 토픽 생성 시 모드 지정 */
+ZMQ_EXPORT int zmq_spot_topic_create_ex(
+    void *spot,
+    const char *topic_id,
+    int mode              /* ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER */
+);
+```
+
+> 기본 `zmq_spot_topic_create()`는 `QUEUE` 모드로 동작한다.
+
+### 3.4 구독 상태 (Pending/Active)
 
 - **Pending**: owner 미존재. 구독은 성공 처리되며, owner 발견 시 자동 활성화.
 - **Active**: owner가 존재하며 SUBSCRIBE 전송 완료.
@@ -246,7 +276,7 @@ owner 발견:
 owner down/제거:
 - peer disconnect 또는 `TOPIC_REMOVE` 수신
 
-### 3.4 토픽 명명 규칙
+### 3.5 토픽 명명 규칙
 
 계층적 네임스페이스를 권장한다:
 ```
@@ -258,7 +288,7 @@ owner down/제거:
 - `zone:12:state`
 - `metrics:server01:cpu`
 
-### 3.5 패턴 구독 규칙
+### 3.6 패턴 구독 규칙
 
 - 와일드카드 `*`를 지원한다.
 - **단일 `*`만 허용**하며 **문자열 끝에만 위치**할 수 있다. (접두어 매칭)
@@ -271,14 +301,14 @@ owner down/제거:
   └─► 불매칭: "zone:13:state", "zone:12"
 ```
 
-### 3.6 토픽/패턴 검증 규칙
+### 3.7 토픽/패턴 검증 규칙
 
 - `topic_id`/`pattern`은 **빈 문자열을 허용하지 않는다**.
 - `topic_id`는 **최대 255 바이트**로 제한한다.
 - `pattern`은 `*` 한 개만 허용하며 **문자열 끝에만 위치**해야 한다.
 - 위 규칙 위반 시 `EINVAL`을 반환한다.
 
-### 3.7 토픽 충돌 처리 (동시 생성)
+### 3.8 토픽 충돌 처리 (동시 생성)
 
 동일 토픽의 동시 생성은 **지원하지 않으며**, 애플리케이션이 예방해야 한다.
 다만 분산 환경에서 경합이 발생할 수 있으므로 **결정 규칙**을 명시한다.
@@ -573,6 +603,13 @@ ZMQ_EXPORT int zmq_spot_topic_destroy(
     const char *topic_id
 );
 
+/* 토픽 생성 (모드 지정) */
+ZMQ_EXPORT int zmq_spot_topic_create_ex(
+    void *spot,
+    const char *topic_id,
+    int mode              // ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER
+);
+
 /* 메시지 발행 */
 ZMQ_EXPORT int zmq_spot_publish(
     void *spot,
@@ -621,10 +658,15 @@ ZMQ_EXPORT int zmq_spot_recv(
 - 이후 refcount가 0이 되는 토픽은 UNSUBSCRIBE 전송 대상이 된다.
 
 **수신 큐 (구현 수준)**
-- 각 SPOT은 **개별 수신 큐(FIFO)**를 가진다.
-- Node는 MESSAGE를 수신하면 **해당 토픽을 구독 중인 SPOT 큐에 enqueue**한다.
-- 큐는 **HWM을 가진 고정 크기**로 두며, 초과 시 **해당 SPOT에만 드롭**한다.
-- publish는 큐 드롭과 무관하게 성공/실패를 결정한다.
+- `QUEUE` 모드:
+  - 각 SPOT은 **개별 수신 큐(FIFO)**를 가진다.
+  - Node는 MESSAGE를 수신하면 **해당 토픽을 구독 중인 SPOT 큐에 enqueue**한다.
+  - 큐는 **HWM을 가진 고정 크기**로 두며, 초과 시 **해당 SPOT에만 드롭**한다.
+  - publish는 큐 드롭과 무관하게 성공/실패를 결정한다.
+- `RINGBUFFER` 모드:
+  - 토픽 로그에 1회 append
+  - SPOT은 **커서 기반 pull**로 메시지를 읽는다
+  - 느린 구독자는 HWM 초과 시 drop/skip 처리
 
 ### 6.3 내부 제어 채널 (개념)
 
@@ -807,6 +849,7 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 3.1 | 2026-01-27 | 토픽 전달 모드(QUEUE/RINGBUFFER) 및 API 추가 |
 | 3.0 | 2026-01-27 | 다중 인스턴스 목표(10k) 명확화 |
 | 2.9 | 2026-01-27 | 노드 ID/라우팅, API 순서, QUERY 포맷, 큐/정리 규칙 등 상세 보강 |
 | 2.8 | 2026-01-27 | SPOT Node 생존 판단(Provider/Heartbeat) 명시 |

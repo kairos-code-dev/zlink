@@ -42,3 +42,8 @@
 ```
 
 **[0] Routing ID 통합**은 다른 기능의 선행 작업이며, routing_id를 사용하는 [1]/[3]/[4]/[5]에 직접적인 영향을 미침.
+
+## 테스트 작성 규칙
+
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/spot/test_spot_pubsub_basic.cpp`

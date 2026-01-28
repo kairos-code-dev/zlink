@@ -380,7 +380,9 @@ Registry HA는 **“Provider 단일 활성 Registry + 장애 시 재등록”** 
 #### 3.5.2 장애 감지와 전환
 
 - Provider는 Registry 연결 상태를 모니터링한다.
-  - 예: monitor 이벤트(DISCONNECTED/CONNECT_FAILED), send 실패, heartbeat timeout
+  - **권장**: monitor 이벤트(DISCONNECTED/CONNECT_FAILED)
+  - **보조**: send 실패(EHOSTUNREACH/ECONNRESET 등)
+  - Heartbeat는 **단방향**이므로 ACK 기반 타임아웃은 없음
 - 장애 감지 시 **다음 Registry로 전환**한다.
   1) 기존 Registry 연결 해제
   2) 다음 후보 Registry로 connect
@@ -716,6 +718,8 @@ SPOT Node는 Provider와 동일한 Registry 등록 절차를 사용하지만,
 - weight는 사용하지 않으며 기본값(1)을 유지한다.
 - SPOT Node는 Gateway를 사용하지 않는다.
   - Discovery 목록만 이용해 PUB/SUB mesh를 구성한다.
+- Registry 장애 시 전환 정책은 **Provider와 동일**하게 적용한다.
+  - 단일 활성 Registry + 장애 시 재등록 (3.5절 참고)
 
 ---
 

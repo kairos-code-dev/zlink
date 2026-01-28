@@ -412,6 +412,8 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
 - Node는 목록 중 **하나에만 active 등록/Heartbeat**를 전송한다.
 - Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작하거나
   수동 peer 연결로 mesh를 구성할 수 있다.
+- Registry 장애 시 전환 정책은 **Provider와 동일**하게 적용한다.
+  - 단일 활성 Registry + 장애 시 재등록 (04 문서 3.5절 참고)
 - `advertise_endpoint == NULL`인 경우:
   - bind가 1개면 해당 endpoint를 사용한다.
   - bind가 2개 이상이면 **EINVAL**을 반환한다.

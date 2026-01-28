@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.4
+> **버전**: 3.5
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -102,6 +102,8 @@ Node A (ROUTER)  <──►  Node B (ROUTER)  <──►  Node C (ROUTER)
 - Registry에는 **endpoint + node_id**가 함께 등록된다.
   - Discovery가 제공하는 peer 목록에는 node_id가 포함된다.
 - Node 간 라우팅은 **node_id를 routing_id로 사용**한다.
+- Node 간 재접속/엔드포인트 변경을 위해 **ROUTER_HANDOVER=1**을 설정한다.
+  - 동일 routing_id가 다시 접속하면 **새 연결이 기존 연결을 takeover**한다.
 
 ### 2.4 데이터 흐름 (SPOT Instance 관점)
 
@@ -885,6 +887,7 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 3.5 | 2026-01-27 | ROUTER_HANDOVER 설정 명시 |
 | 3.4 | 2026-01-27 | 토픽 충돌 정책을 LWW(owner_epoch) 기준으로 변경 |
 | 3.3 | 2026-01-27 | 토픽 owner 매핑 공유 방식(QUERY/ANNOUNCE) 명시 |
 | 3.2 | 2026-01-27 | 구독 정보 책임 분리(Owner/Node 역할) 명시 |

@@ -2,7 +2,7 @@
 
 > **우선순위**: 4 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.4
+> **버전**: 3.5
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md)
 > - [03-request-reply-api.md](03-request-reply-api.md) (msgv helper)
@@ -1559,6 +1559,10 @@ Phase 3: 고급 기능
 
 ## 11. 검증 방법
 
+**테스트 작성 규칙**
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/discovery/test_registry_basic.cpp`
+
 ### 11.1 단위 테스트
 
 | 테스트 | 설명 |
@@ -1714,3 +1718,4 @@ Phase 3: 고급 기능
 | 3.2 | 2026-01-26 | 테스트 성공 기준 명시 |
 | 3.3 | 2026-01-28 | SPOT Node 등록 규칙(PUB endpoint) 및 호출 순서 추가 |
 | 3.4 | 2026-01-28 | SPOT Node 예시 + NAT/advertise 운영 가이드 추가 |
+| 3.5 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |

@@ -2,7 +2,7 @@
 
 > **우선순위**: 3 (Core Feature)
 > **상태**: Draft
-> **버전**: 0.9
+> **버전**: 1.0
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id_t)
 > - [02-thread-safe-socket.md](02-thread-safe-socket.md) (thread-safe 소켓)
@@ -1362,6 +1362,10 @@ val reply = socket.request(ZmqMessage("Hello"))
 
 ## 8. 검증 방법
 
+**테스트 작성 규칙**
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/request-reply/test_request_reply.cpp`
+
 ### 8.1 단위 테스트
 
 **테스트 파일:** `test_request_reply.cpp`
@@ -1440,3 +1444,4 @@ val reply = socket.request(ZmqMessage("Hello"))
 | 0.7 | 2026-01-26 | C API 단일 함수로 통합, timeout 파라미터 일원화 |
 | 0.8 | 2026-01-26 | routing_id 변환 함수 제거, 문자열 routing_id 예시 추가 |
 | 0.9 | 2026-01-26 | multipart 지원 추가, C API 시그니처 통합 |
+| 1.0 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |

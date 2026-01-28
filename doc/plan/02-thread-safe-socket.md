@@ -2,7 +2,7 @@
 
 > **우선순위**: 2 (Core Feature)
 > **상태**: Draft
-> **버전**: 0.7
+> **버전**: 0.8
 
 ## 목차
 1. [개요](#1-개요)
@@ -429,6 +429,10 @@ for (auto& w : workers) w.join();
 
 ## 8. 검증 방법
 
+**테스트 작성 규칙**
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/threadsafe/test_thread_safe_socket.cpp`
+
 ### 8.1 단위 테스트
 
 **테스트 파일:** `test_thread_safe_socket.cpp`
@@ -490,3 +494,4 @@ cmake --build build
 | 0.5 | 2026-01-26 | C API 비동기 콜백 제거, 기존 동기 API 재사용으로 정리 |
 | 0.6 | 2026-01-26 | 재진입 데드락 설명 보강, 동기 대기 의미 명시 |
 | 0.7 | 2026-01-28 | Request/Reply 콜백 예외 명시 + is_threadsafe 테스트 추가 |
+| 0.8 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |

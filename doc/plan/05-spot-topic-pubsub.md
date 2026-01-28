@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.5
+> **버전**: 4.6
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -677,6 +677,10 @@ if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
 
 ## 9. 검증 방법
 
+**테스트 작성 규칙**
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/spot/test_spot_pubsub_basic.cpp`
+
 ### 9.1 단위/기능 테스트
 
 - `test_spot_pubsub_basic`: 두 노드 publish/subscribe 기본 동작
@@ -726,6 +730,7 @@ if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
 | 4.5 | 2026-01-28 | SPOT multipart 지원으로 publish/recv msgv 정리 |
+| 4.6 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |
 | 4.4 | 2026-01-28 | SPOT payload 단일 프레임 규칙 명시 (multipart 미지원) |
 | 4.3 | 2026-01-28 | 수동 Mesh(Discovery 없이 peer 직접 연결) 옵션 추가 |
 | 4.2 | 2026-01-28 | topic_create에 mode 파라미터 통합 |

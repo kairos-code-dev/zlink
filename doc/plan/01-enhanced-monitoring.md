@@ -2,7 +2,7 @@
 
 > **우선순위**: 1 (Core Feature)
 > **상태**: Draft
-> **버전**: 1.7
+> **버전**: 1.8
 > **의존성**: [00-routing-id-unification.md](00-routing-id-unification.md)
 
 ## 목차
@@ -507,6 +507,10 @@ zmq_close(mon_b);
 
 ## 6. 검증 방법
 
+**테스트 작성 규칙**
+- 기능별로 `tests/<feature>/` 폴더를 만들고 그 아래에 `test_*.cpp`를 둔다.
+  - 예: `tests/monitoring/test_monitor_enhanced.cpp`
+
 ### 6.1 단위 테스트
 
 **테스트 파일:** `test_monitor_enhanced.cpp`
@@ -545,3 +549,4 @@ zmq_close(mon_b);
 | 1.5 | 2026-01-26 | monitor_open_ex 제거, 단일 모니터 소켓 사용으로 정리 |
 | 1.6 | 2026-01-26 | routing_id 변환 함수 의존 제거 (예시 정리) |
 | 1.7 | 2026-01-28 | DISCONNECTED reason 코드 정의(의도/비의도 구분) |
+| 1.8 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |

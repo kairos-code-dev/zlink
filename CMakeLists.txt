@@ -146,7 +146,7 @@ endif()
 if (NOT MSVC)
   if(NOT CMAKE_CXX_FLAGS MATCHES "-std=" AND NOT CXX_STANDARD AND NOT CMAKE_CXX_STANDARD)
     # Allow C++ standard override via ZMQ_CXX_STANDARD option
-    set(ZMQ_CXX_STANDARD "20" CACHE STRING "C++ standard to use (11, 14, 17, 20, etc.).")
+    set(ZMQ_CXX_STANDARD "17" CACHE STRING "C++ standard to use (11, 14, 17, 20, etc.).")
 
     if(ZMQ_CXX_STANDARD)
       check_cxx_compiler_flag("-std=c++${ZMQ_CXX_STANDARD}" COMPILER_SUPPORTS_CXX${ZMQ_CXX_STANDARD})
@@ -854,7 +854,7 @@ endif()
 
 if(MSVC)
   # Allow C++ standard override via ZMQ_CXX_STANDARD option
-  set(ZMQ_CXX_STANDARD "20" CACHE STRING "C++ standard to use (11, 14, 17, 20, etc.).")
+  set(ZMQ_CXX_STANDARD "17" CACHE STRING "C++ standard to use (11, 14, 17, 20, etc.).")
 
   if(ZMQ_CXX_STANDARD)
     if(ZMQ_CXX_STANDARD STREQUAL "11")

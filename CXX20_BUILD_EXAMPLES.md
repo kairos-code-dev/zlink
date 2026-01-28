@@ -28,9 +28,9 @@ cmake --build build --config Release
 
 ### Supported C++ Standards
 
-- **11** - C++11 (default if no option specified)
+- **11** - C++11 (옵션으로 선택 가능)
 - **14** - C++14
-- **17** - C++17
+- **17** - C++17 (default if no option specified)
 - **20** - C++20
 - **23** - C++23 (if supported by compiler)
 - **latest** - Latest supported by compiler (MSVC only)
@@ -132,14 +132,14 @@ cl.exe /?
   - **MSVC**: Display a warning and use compiler default
 
 - If `ZMQ_CXX_STANDARD` is not specified, the build uses:
-  - **Linux/macOS**: C++11
-  - **MSVC**: Compiler default (typically C++14)
+  - **Linux/macOS**: C++17
+  - **MSVC**: C++17 (`/std:c++17`)
 
 ## Notes
 
 1. **Binary Compatibility**: Changing the C++ standard may affect ABI compatibility. Ensure all dependent libraries use compatible standards.
 
-2. **Feature Usage**: zlink's core code uses C++11 features. Higher standards allow users to link zlink with their C++17/20 projects without ABI issues.
+2. **Feature Usage**: zlink's core code targets C++17. Higher standards allow users to link zlink with their C++20/23 projects without ABI issues.
 
 3. **CMake Cache**: If changing standards, clean the build directory or use `-U ZMQ_CXX_STANDARD` to force reconfiguration:
    ```bash

@@ -202,7 +202,7 @@ vcpkg install openssl:x64-windows
 | [Feature Roadmap](doc/plan/feature-roadmap.md) | 계획 중인 기능과 의존성 그래프 |
 | [Architecture](doc/arch/ARCHITECTURE.md) | 내부 아키텍처 상세 문서 |
 | [TLS Usage Guide](doc/TLS_USAGE_GUIDE.md) | TLS/WSS 설정 가이드 |
-| [C++20 Build Guide](CXX20_BUILD_EXAMPLES.md) | C++ 표준별 빌드 방법 |
+| [C++ Standard Build Guide](CXX_BUILD_EXAMPLES.md) | C++ 표준별 빌드 방법 |
 
 ---
 

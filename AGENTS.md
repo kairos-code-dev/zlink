@@ -15,7 +15,7 @@
 - `cmake -B build -DZMQ_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
 - `ctest --output-on-failure`: run tests from a build dir (e.g., `build/linux-x64`).
 - Autotools fallback: `./autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
-- Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZMQ_CXX_STANDARD=20` (see `CXX20_BUILD_EXAMPLES.md`).
+- Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZMQ_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 
 ## Coding Style and Naming Conventions
 - Follow `.clang-format`: 4-space indent, no tabs, 80-column limit, C++03 mode.

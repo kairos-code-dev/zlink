@@ -2,7 +2,7 @@
 
 > **우선순위**: 4 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.2
+> **버전**: 3.3
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md)
 > - [03-request-reply-api.md](03-request-reply-api.md) (msgv helper)
@@ -272,6 +272,19 @@ Registry1 ◄──────────► Registry2
 | 7 | `zmq_gateway_recv()` | 응답 수신 |
 | 8 | `zmq_gateway_destroy()` | Gateway 정리 |
 | 9 | `zmq_discovery_destroy()` | Discovery 정리 |
+
+#### SPOT Node (PUB/SUB Mesh)
+
+| 단계 | 호출 | 설명 |
+|------|------|------|
+| 1 | `zmq_spot_node_new()` | Node 생성 (node_id 생성) |
+| 2 | `zmq_spot_node_bind()` | PUB bind (클러스터 송신 endpoint) |
+| 3 | `zmq_spot_node_connect_registry()` | Registry ROUTER 연결 |
+| 4 | `zmq_spot_node_register()` | **service_name=spot-node** 등록 |
+| 5 | `zmq_discovery_new()` | Discovery 생성 |
+| 6 | `zmq_discovery_connect_registry()` | Registry PUB 구독 |
+| 7 | `zmq_discovery_subscribe()` | `spot-node` 구독 |
+| 8 | `zmq_spot_node_set_discovery()` | peer 자동 연결 시작 |
 
 #### Registry
 
@@ -680,6 +693,19 @@ Provider는 두 가지 주소를 다룬다:
   `ZMQ_ROUTING_ID`를 명시적으로 설정해야 한다.
 - weight 변경은 `zmq_provider_update_weight()` 또는 동일 키 재등록으로 갱신한다.
   (갱신 시 SERVICE_LIST가 브로드캐스트됨)
+
+### 6.5 SPOT Node 등록 규칙 (PUB endpoint)
+
+SPOT Node는 Provider와 동일한 Registry 등록 절차를 사용하지만,
+**등록되는 endpoint의 의미가 다르다**.
+
+- `service_name` 기본값은 **`spot-node`**이며, 클러스터 분리를 위해
+  `spot-node.<cluster-id>` 형식을 허용한다.
+- `advertise_endpoint`는 **Node의 PUB bind endpoint**여야 한다.
+  - Discovery를 통해 다른 Node가 이 endpoint에 **SUB connect**한다.
+- weight는 사용하지 않으며 기본값(1)을 유지한다.
+- SPOT Node는 Gateway를 사용하지 않는다.
+  - Discovery 목록만 이용해 PUB/SUB mesh를 구성한다.
 
 ---
 
@@ -1649,3 +1675,4 @@ Phase 3: 고급 기능
 | 3.0 | 2026-01-26 | Provider failover 백오프/지터 정책 추가 |
 | 3.1 | 2026-01-26 | UPDATE_WEIGHT 실패/라우터 혼용 테스트 추가 |
 | 3.2 | 2026-01-26 | 테스트 성공 기준 명시 |
+| 3.3 | 2026-01-28 | SPOT Node 등록 규칙(PUB endpoint) 및 호출 순서 추가 |

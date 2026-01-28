@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.0
+> **버전**: 4.1
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -613,6 +613,10 @@ zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 - `test_spot_publish_no_subscribers`: 구독자 없어도 publish 성공
 - `test_spot_no_republish_loop`: 원격 수신 메시지가 재발행되지 않음
 - `test_spot_discovery_connect`: Discovery 추가/제거에 따른 connect/disconnect
+- `test_spot_discovery_self_ignore`: Discovery 목록에 자신이 포함돼도 connect 하지 않음
+- `test_spot_discovery_pub_endpoint`: Registry에 등록된 PUB endpoint로 SUB 연결됨
+- `test_spot_reconnect_resubscribe`: 재연결 시 기존 SUB 필터가 자동 전파됨
+- `test_spot_multi_publisher_same_topic`: 동일 토픽 다중 발행 수신 확인
 - `test_spot_ringbuffer_basic`: ringbuffer 모드 fan-out 동작
 - `test_spot_scale_instances`: 10k SPOT 생성/구독/발행 성능
 
@@ -628,12 +632,19 @@ zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 - **시나리오 3: 대규모 fan-out**
   - QUEUE vs RINGBUFFER 비교
 
+- **시나리오 4: 재연결 구독 유지**
+  - Node B 재시작 후 SUB 필터 자동 전파 확인
+
+- **시나리오 5: 다중 발행 충돌**
+  - 동일 토픽을 여러 Node가 발행할 때 구독자가 모두 수신하는지 확인
+
 ---
 
 ## 10. 변경 이력
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 4.1 | 2026-01-28 | PUB/SUB mesh 테스트 항목 보강 |
 | 4.0 | 2026-01-28 | SPOT을 PUB/SUB 기반 설계로 전면 변경 (owner/QUERY/ROUTER 제거) |
 | 3.5 | 2026-01-27 | ROUTER_HANDOVER 설정 명시 |
 | 3.4 | 2026-01-27 | 토픽 충돌 정책을 LWW(owner_epoch) 기준으로 변경 |

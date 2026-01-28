@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.1
+> **버전**: 4.2
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -238,15 +238,15 @@ ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준�
 
 **모드 설정 API**
 ```c
-/* 토픽 생성 시 모드 지정 */
-ZMQ_EXPORT int zmq_spot_topic_create_ex(
+/* 토픽 생성 시 모드 지정 (mode 필수) */
+ZMQ_EXPORT int zmq_spot_topic_create(
     void *spot,
     const char *topic_id,
     int mode              /* ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER */
 );
 ```
 
-> 기본 `zmq_spot_topic_create()`는 `QUEUE` 모드로 동작한다.
+> 기본 동작은 `ZMQ_SPOT_TOPIC_QUEUE`를 전달하는 것이다.
 
 ### 3.4 구독 모델
 
@@ -422,19 +422,13 @@ ZMQ_EXPORT int zmq_spot_destroy(void **spot_p);
 /* 토픽 생성/삭제 (로컬 설정) */
 ZMQ_EXPORT int zmq_spot_topic_create(
     void *spot,
-    const char *topic_id
+    const char *topic_id,
+    int mode              // ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER
 );
 
 ZMQ_EXPORT int zmq_spot_topic_destroy(
     void *spot,
     const char *topic_id
-);
-
-/* 토픽 생성 (모드 지정) */
-ZMQ_EXPORT int zmq_spot_topic_create_ex(
-    void *spot,
-    const char *topic_id,
-    int mode              // ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER
 );
 
 /* 메시지 발행 */
@@ -472,7 +466,7 @@ ZMQ_EXPORT int zmq_spot_recv(
 ```
 
 **에러 정책**
-- `zmq_spot_topic_create`: 로컬 설정이 이미 존재하면 `EEXIST`
+- `zmq_spot_topic_create`: 로컬 설정이 이미 존재하면 `EEXIST` (mode가 유효하지 않으면 `EINVAL`)
 - `zmq_spot_publish`: 구독자 유무와 무관하게 성공 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_subscribe`: 즉시 활성화 (topic 규칙 위반 시 `EINVAL`)
 - `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
@@ -574,7 +568,7 @@ zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
 
 ```c
 void *spot = zmq_spot_new(node);
-zmq_spot_topic_create_ex(spot, "metrics:cluster:cpu", ZMQ_SPOT_TOPIC_RINGBUFFER);
+zmq_spot_topic_create(spot, "metrics:cluster:cpu", ZMQ_SPOT_TOPIC_RINGBUFFER);
 zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 ```
 
@@ -645,6 +639,7 @@ zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 4.2 | 2026-01-28 | topic_create에 mode 파라미터 통합 |
 | 4.1 | 2026-01-28 | PUB/SUB mesh 테스트 항목 보강 |
 | 4.0 | 2026-01-28 | SPOT을 PUB/SUB 기반 설계로 전면 변경 (owner/QUERY/ROUTER 제거) |
 | 3.5 | 2026-01-27 | ROUTER_HANDOVER 설정 명시 |

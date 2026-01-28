@@ -52,6 +52,7 @@
 #include "core/mailbox.hpp"
 #include "core/mailbox_safe.hpp"
 #include "core/signaler.hpp"
+#include "sockets/thread_safe_socket.hpp"
 
 #include <boost/asio.hpp>
 
@@ -110,6 +111,16 @@ bool zmq::socket_base_t::check_tag () const
 bool zmq::socket_base_t::is_thread_safe () const
 {
     return _thread_safe;
+}
+
+zmq::thread_safe_socket_t *zmq::socket_base_t::get_threadsafe_proxy () const
+{
+    return _threadsafe_proxy;
+}
+
+void zmq::socket_base_t::set_threadsafe_proxy (thread_safe_socket_t *proxy_)
+{
+    _threadsafe_proxy = proxy_;
 }
 
 zmq::socket_base_t *zmq::socket_base_t::create (int type_,
@@ -185,7 +196,8 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     _bytes_sent (0),
     _bytes_received (0),
     _msgs_dropped (0),
-    _monitor_events_dropped (0)
+    _monitor_events_dropped (0),
+    _threadsafe_proxy (NULL)
 {
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZMQ_IPV6) != 0);
@@ -394,6 +406,12 @@ int zmq::socket_base_t::socket_peers (zmq_peer_info_t *peers_,
 
 zmq::socket_base_t::~socket_base_t ()
 {
+    if (_threadsafe_proxy) {
+        zmq_assert (_threadsafe_proxy->get_socket () == NULL);
+        delete _threadsafe_proxy;
+        _threadsafe_proxy = NULL;
+    }
+
     //  Cleanup ZMQ_FD signaler if it was created
     if (_zmq_fd_signaler) {
         if (_mailbox) {

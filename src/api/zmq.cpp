@@ -41,6 +41,7 @@ struct iovec
 
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
+#include "sockets/thread_safe_socket.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
 #include "utils/likely.hpp"
@@ -160,14 +161,32 @@ int zmq_ctx_get (void *ctx_, int option_)
 
 // Sockets
 
-static zmq::socket_base_t *as_socket_base_t (void *s_)
+struct socket_handle_t
 {
-    zmq::socket_base_t *s = static_cast<zmq::socket_base_t *> (s_);
-    if (!s_ || !s->check_tag ()) {
+    zmq::socket_base_t *socket;
+    zmq::thread_safe_socket_t *threadsafe;
+};
+
+static inline socket_handle_t as_socket_handle (void *s_)
+{
+    socket_handle_t handle;
+    handle.socket = NULL;
+    handle.threadsafe = NULL;
+
+    if (!s_) {
         errno = ENOTSOCK;
-        return NULL;
+        return handle;
     }
-    return s;
+
+    zmq::socket_base_t *s = static_cast<zmq::socket_base_t *> (s_);
+    if (!s->check_tag ()) {
+        errno = ENOTSOCK;
+        return handle;
+    }
+
+    handle.socket = s;
+    handle.threadsafe = s->get_threadsafe_proxy ();
+    return handle;
 }
 
 void *zmq_socket (void *ctx_, int type_)
@@ -181,12 +200,41 @@ void *zmq_socket (void *ctx_, int type_)
     return static_cast<void *> (s);
 }
 
+void *zmq_socket_threadsafe (void *ctx_, int type_)
+{
+    if (!ctx_ || !(static_cast<zmq::ctx_t *> (ctx_))->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+
+    zmq::ctx_t *ctx = static_cast<zmq::ctx_t *> (ctx_);
+    zmq::socket_base_t *s = ctx->create_socket (type_);
+    if (!s)
+        return NULL;
+
+    zmq::thread_safe_socket_t *ts =
+      new (std::nothrow) zmq::thread_safe_socket_t (ctx, s);
+    if (!ts) {
+        s->close ();
+        errno = ENOMEM;
+        return NULL;
+    }
+    s->set_threadsafe_proxy (ts);
+    return static_cast<void *> (s);
+}
+
 int zmq_close (void *s_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    s->close ();
+    if (handle.threadsafe) {
+        const int rc = handle.threadsafe->close ();
+        if (rc == -1)
+            return -1;
+        return 0;
+    }
+    handle.socket->close ();
     return 0;
 }
 
@@ -195,32 +243,48 @@ int zmq_setsockopt (void *s_,
                     const void *optval_,
                     size_t optvallen_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->setsockopt (option_, optval_, optvallen_);
+    if (handle.threadsafe)
+        return handle.threadsafe->setsockopt (option_, optval_, optvallen_);
+    return handle.socket->setsockopt (option_, optval_, optvallen_);
 }
 
 int zmq_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->getsockopt (option_, optval_, optvallen_);
+    if (handle.threadsafe)
+        return handle.threadsafe->getsockopt (option_, optval_, optvallen_);
+    return handle.socket->getsockopt (option_, optval_, optvallen_);
+}
+
+int zmq_is_threadsafe (void *s_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return -1;
+    if (handle.threadsafe)
+        return 1;
+    return handle.socket->is_thread_safe () ? 1 : 0;
 }
 
 int zmq_socket_monitor (void *s_, const char *addr_, int events_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->monitor (addr_, events_, 3, ZMQ_PAIR);
+    if (handle.threadsafe)
+        return handle.threadsafe->monitor (addr_, events_, 3, ZMQ_PAIR);
+    return handle.socket->monitor (addr_, events_, 3, ZMQ_PAIR);
 }
 
 void *zmq_socket_monitor_open (void *s_, int events_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return NULL;
 
     char endpoint[128];
@@ -228,18 +292,28 @@ void *zmq_socket_monitor_open (void *s_, int events_)
     snprintf (endpoint, sizeof endpoint, "inproc://monitor-%p-%u",
               static_cast<void *> (s_), rand_id);
 
-    if (s->monitor (endpoint, events_, 3, ZMQ_PAIR) != 0)
+    const int monitor_rc =
+      handle.threadsafe
+        ? handle.threadsafe->monitor (endpoint, events_, 3, ZMQ_PAIR)
+        : handle.socket->monitor (endpoint, events_, 3, ZMQ_PAIR);
+    if (monitor_rc != 0)
         return NULL;
 
-    void *monitor_socket = zmq_socket (s->get_ctx (), ZMQ_PAIR);
+    void *monitor_socket = zmq_socket (handle.socket->get_ctx (), ZMQ_PAIR);
     if (!monitor_socket) {
-        s->monitor (NULL, 0, 3, ZMQ_PAIR);
+        if (handle.threadsafe)
+            handle.threadsafe->monitor (NULL, 0, 3, ZMQ_PAIR);
+        else
+            handle.socket->monitor (NULL, 0, 3, ZMQ_PAIR);
         return NULL;
     }
 
     if (zmq_connect (monitor_socket, endpoint) != 0) {
         zmq_close (monitor_socket);
-        s->monitor (NULL, 0, 3, ZMQ_PAIR);
+        if (handle.threadsafe)
+            handle.threadsafe->monitor (NULL, 0, 3, ZMQ_PAIR);
+        else
+            handle.socket->monitor (NULL, 0, 3, ZMQ_PAIR);
         return NULL;
     }
 
@@ -359,87 +433,111 @@ int zmq_monitor_recv (void *monitor_socket_,
 
 int zmq_socket_stats (void *socket_, zmq_socket_stats_t *stats_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (socket_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
         return -1;
-    return s->socket_stats (stats_);
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_stats (stats_);
+    return handle.socket->socket_stats (stats_);
 }
 
 int zmq_socket_peer_info (void *socket_,
                           const zmq_routing_id_t *routing_id_,
                           zmq_peer_info_t *info_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (socket_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
         return -1;
-    return s->socket_peer_info (routing_id_, info_);
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_peer_info (routing_id_, info_);
+    return handle.socket->socket_peer_info (routing_id_, info_);
 }
 
 int zmq_socket_peer_routing_id (void *socket_,
                                 int index_,
                                 zmq_routing_id_t *out_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (socket_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
         return -1;
-    return s->socket_peer_routing_id (index_, out_);
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_peer_routing_id (index_, out_);
+    return handle.socket->socket_peer_routing_id (index_, out_);
 }
 
 int zmq_socket_peer_count (void *socket_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (socket_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
         return -1;
-    return s->socket_peer_count ();
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_peer_count ();
+    return handle.socket->socket_peer_count ();
 }
 
 int zmq_socket_peers (void *socket_, zmq_peer_info_t *peers_, size_t *count_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (socket_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
         return -1;
-    return s->socket_peers (peers_, count_);
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_peers (peers_, count_);
+    return handle.socket->socket_peers (peers_, count_);
 }
 
 int zmq_bind (void *s_, const char *addr_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->bind (addr_);
+    if (handle.threadsafe)
+        return handle.threadsafe->bind (addr_);
+    return handle.socket->bind (addr_);
 }
 
 int zmq_connect (void *s_, const char *addr_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->connect (addr_);
+    if (handle.threadsafe)
+        return handle.threadsafe->connect (addr_);
+    return handle.socket->connect (addr_);
 }
 
 int zmq_unbind (void *s_, const char *addr_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->term_endpoint (addr_);
+    if (handle.threadsafe)
+        return handle.threadsafe->term_endpoint (addr_);
+    return handle.socket->term_endpoint (addr_);
 }
 
 int zmq_disconnect (void *s_, const char *addr_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s->term_endpoint (addr_);
+    if (handle.threadsafe)
+        return handle.threadsafe->term_endpoint (addr_);
+    return handle.socket->term_endpoint (addr_);
 }
 
 // Sending functions.
 
 static inline int
-s_sendmsg (zmq::socket_base_t *s_, zmq_msg_t *msg_, int flags_)
+s_sendmsg (socket_handle_t handle_, zmq_msg_t *msg_, int flags_)
 {
     size_t sz = zmq_msg_size (msg_);
-    const int rc = s_->send (reinterpret_cast<zmq::msg_t *> (msg_), flags_);
+    int rc = 0;
+    if (unlikely (handle_.threadsafe != NULL))
+        rc = handle_.threadsafe->send (reinterpret_cast<zmq::msg_t *> (msg_),
+                                       flags_);
+    else
+        rc = handle_.socket->send (reinterpret_cast<zmq::msg_t *> (msg_),
+                                   flags_);
     if (unlikely (rc < 0))
         return -1;
 
@@ -449,15 +547,15 @@ s_sendmsg (zmq::socket_base_t *s_, zmq_msg_t *msg_, int flags_)
 
 int zmq_send (void *s_, const void *buf_, size_t len_, int flags_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
     zmq_msg_t msg;
     int rc = zmq_msg_init_buffer (&msg, buf_, len_);
     if (unlikely (rc < 0))
         return -1;
 
-    rc = s_sendmsg (s, &msg, flags_);
+    rc = s_sendmsg (handle, &msg, flags_);
     if (unlikely (rc < 0)) {
         const int err = errno;
         zmq_msg_close (&msg);
@@ -469,8 +567,8 @@ int zmq_send (void *s_, const void *buf_, size_t len_, int flags_)
 
 int zmq_send_const (void *s_, const void *buf_, size_t len_, int flags_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
     zmq_msg_t msg;
     int rc =
@@ -478,7 +576,7 @@ int zmq_send_const (void *s_, const void *buf_, size_t len_, int flags_)
     if (rc != 0)
         return -1;
 
-    rc = s_sendmsg (s, &msg, flags_);
+    rc = s_sendmsg (handle, &msg, flags_);
     if (unlikely (rc < 0)) {
         const int err = errno;
         zmq_msg_close (&msg);
@@ -490,9 +588,15 @@ int zmq_send_const (void *s_, const void *buf_, size_t len_, int flags_)
 
 // Receiving functions.
 
-static int s_recvmsg (zmq::socket_base_t *s_, zmq_msg_t *msg_, int flags_)
+static int s_recvmsg (socket_handle_t handle_, zmq_msg_t *msg_, int flags_)
 {
-    const int rc = s_->recv (reinterpret_cast<zmq::msg_t *> (msg_), flags_);
+    int rc = 0;
+    if (unlikely (handle_.threadsafe != NULL))
+        rc = handle_.threadsafe->recv (reinterpret_cast<zmq::msg_t *> (msg_),
+                                       flags_);
+    else
+        rc = handle_.socket->recv (reinterpret_cast<zmq::msg_t *> (msg_),
+                                   flags_);
     if (unlikely (rc < 0))
         return -1;
 
@@ -502,14 +606,14 @@ static int s_recvmsg (zmq::socket_base_t *s_, zmq_msg_t *msg_, int flags_)
 
 int zmq_recv (void *s_, void *buf_, size_t len_, int flags_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
     zmq_msg_t msg;
     int rc = zmq_msg_init (&msg);
     errno_assert (rc == 0);
 
-    const int nbytes = s_recvmsg (s, &msg, flags_);
+    const int nbytes = s_recvmsg (handle, &msg, flags_);
     if (unlikely (nbytes < 0)) {
         const int err = errno;
         zmq_msg_close (&msg);
@@ -552,18 +656,18 @@ int zmq_msg_init_data (
 
 int zmq_msg_send (zmq_msg_t *msg_, void *s_, int flags_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s_sendmsg (s, msg_, flags_);
+    return s_sendmsg (handle, msg_, flags_);
 }
 
 int zmq_msg_recv (zmq_msg_t *msg_, void *s_, int flags_)
 {
-    zmq::socket_base_t *s = as_socket_base_t (s_);
-    if (!s)
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
         return -1;
-    return s_recvmsg (s, msg_, flags_);
+    return s_recvmsg (handle, msg_, flags_);
 }
 
 int zmq_msg_close (zmq_msg_t *msg_)
@@ -780,9 +884,23 @@ int zmq_proxy (void *frontend_, void *backend_, void *capture_)
         errno = EFAULT;
         return -1;
     }
-    return zmq::proxy (static_cast<zmq::socket_base_t *> (frontend_),
-                       static_cast<zmq::socket_base_t *> (backend_),
-                       static_cast<zmq::socket_base_t *> (capture_));
+
+    socket_handle_t frontend = as_socket_handle (frontend_);
+    if (!frontend.socket)
+        return -1;
+    socket_handle_t backend = as_socket_handle (backend_);
+    if (!backend.socket)
+        return -1;
+
+    zmq::socket_base_t *capture_socket = NULL;
+    if (capture_) {
+        socket_handle_t capture = as_socket_handle (capture_);
+        if (!capture.socket)
+            return -1;
+        capture_socket = capture.socket;
+    }
+
+    return zmq::proxy (frontend.socket, backend.socket, capture_socket);
 }
 
 int zmq_proxy_steerable (void *frontend_,
@@ -794,10 +912,32 @@ int zmq_proxy_steerable (void *frontend_,
         errno = EFAULT;
         return -1;
     }
-    return zmq::proxy_steerable (static_cast<zmq::socket_base_t *> (frontend_),
-                                 static_cast<zmq::socket_base_t *> (backend_),
-                                 static_cast<zmq::socket_base_t *> (capture_),
-                                 static_cast<zmq::socket_base_t *> (control_));
+
+    socket_handle_t frontend = as_socket_handle (frontend_);
+    if (!frontend.socket)
+        return -1;
+    socket_handle_t backend = as_socket_handle (backend_);
+    if (!backend.socket)
+        return -1;
+
+    zmq::socket_base_t *capture_socket = NULL;
+    if (capture_) {
+        socket_handle_t capture = as_socket_handle (capture_);
+        if (!capture.socket)
+            return -1;
+        capture_socket = capture.socket;
+    }
+
+    zmq::socket_base_t *control_socket = NULL;
+    if (control_) {
+        socket_handle_t control = as_socket_handle (control_);
+        if (!control.socket)
+            return -1;
+        control_socket = control.socket;
+    }
+
+    return zmq::proxy_steerable (frontend.socket, backend.socket,
+                                 capture_socket, control_socket);
 }
 
 int zmq_has (const char *capability_)

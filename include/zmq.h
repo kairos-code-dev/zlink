@@ -348,11 +348,13 @@ ZMQ_EXPORT const char *zmq_msg_gets (const zmq_msg_t *msg_,
 #define ZMQ_PROTOCOL_ERROR_WS_UNSPECIFIED 0x30000000
 
 ZMQ_EXPORT void *zmq_socket (void *, int type_);
+ZMQ_EXPORT void *zmq_socket_threadsafe (void *, int type_);
 ZMQ_EXPORT int zmq_close (void *s_);
 ZMQ_EXPORT int
 zmq_setsockopt (void *s_, int option_, const void *optval_, size_t optvallen_);
 ZMQ_EXPORT int
 zmq_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_);
+ZMQ_EXPORT int zmq_is_threadsafe (void *s_);
 ZMQ_EXPORT int zmq_bind (void *s_, const char *addr_);
 ZMQ_EXPORT int zmq_connect (void *s_, const char *addr_);
 ZMQ_EXPORT int zmq_unbind (void *s_, const char *addr_);

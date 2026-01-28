@@ -51,7 +51,12 @@ zmq::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZMQ_IO_THREADS_DFLT),
     _blocky (true),
-    _ipv6 (false)
+    _ipv6 (false),
+    _threadsafe_io_context (),
+    _threadsafe_work_guard (
+      boost::asio::make_work_guard (_threadsafe_io_context)),
+    _threadsafe_thread (),
+    _threadsafe_started (false)
 {
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -70,6 +75,12 @@ zmq::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
     zmq_assert (_sockets.empty ());
+
+    if (_threadsafe_started) {
+        _threadsafe_work_guard.reset ();
+        _threadsafe_io_context.stop ();
+        _threadsafe_thread.stop ();
+    }
 
     //  Ask I/O threads to terminate. If stop signal wasn't sent to I/O
     //  thread subsequent invocation of destructor would hang-up.
@@ -391,6 +402,12 @@ bool zmq::ctx_t::start ()
         _empty_slots.push_back (i);
     }
 
+    if (!_threadsafe_started) {
+        start_thread (_threadsafe_thread, threadsafe_worker, this,
+                      "threadsafe");
+        _threadsafe_started = true;
+    }
+
     _starting = false;
     return true;
 
@@ -402,6 +419,12 @@ fail_cleanup_reaper:
 fail_cleanup_slots:
     _slots.clear ();
     return false;
+}
+
+void zmq::ctx_t::threadsafe_worker (void *arg_)
+{
+    ctx_t *self = static_cast<ctx_t *> (arg_);
+    self->_threadsafe_io_context.run ();
 }
 
 zmq::socket_base_t *zmq::ctx_t::create_socket (int type_)
@@ -466,6 +489,11 @@ void zmq::ctx_t::destroy_socket (class socket_base_t *socket_)
 zmq::object_t *zmq::ctx_t::get_reaper () const
 {
     return _reaper;
+}
+
+boost::asio::io_context &zmq::ctx_t::get_threadsafe_io_context ()
+{
+    return _threadsafe_io_context;
 }
 
 zmq::thread_ctx_t::thread_ctx_t () :

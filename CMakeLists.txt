@@ -927,6 +927,7 @@ set(protocol-sources
 
 set(socket-sources
     src/sockets/socket_base.cpp
+    src/sockets/thread_safe_socket.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp
@@ -1036,7 +1037,7 @@ if(MINGW)
   endif()
 endif()
 
-set(public_headers include/zmq.h include/zmq_utils.h)
+set(public_headers include/zmq.h include/zmq_utils.h include/zmq_threadsafe.h)
 
 set(readme-docs AUTHORS LICENSE NEWS)
 

@@ -51,7 +51,8 @@ set(tests
   routing-id/test_router_auto_id_format
   routing-id/test_stream_routing_id_size
   routing-id/test_connect_rid_string_alias
-  monitoring/test_monitor_enhanced)
+  monitoring/test_monitor_enhanced
+  threadsafe/test_thread_safe_socket)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)

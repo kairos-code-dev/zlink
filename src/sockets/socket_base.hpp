@@ -30,6 +30,7 @@ class ctx_t;
 class msg_t;
 class pipe_t;
 class signaler_t;
+class thread_safe_socket_t;
 
 class socket_base_t : public own_t,
                       public array_item_t<>,
@@ -44,6 +45,10 @@ class socket_base_t : public own_t,
 
     //  Returns whether the socket is thread-safe.
     bool is_thread_safe () const;
+
+    //  Thread-safe proxy created via zmq_socket_threadsafe (if any).
+    thread_safe_socket_t *get_threadsafe_proxy () const;
+    void set_threadsafe_proxy (thread_safe_socket_t *proxy_);
 
     //  Create a socket of a specified type.
     static socket_base_t *
@@ -351,6 +356,8 @@ class socket_base_t : public own_t,
     uint64_t _bytes_received;
     uint64_t _msgs_dropped;
     uint64_t _monitor_events_dropped;
+
+    thread_safe_socket_t *_threadsafe_proxy;
 };
 
 class routing_socket_base_t : public socket_base_t

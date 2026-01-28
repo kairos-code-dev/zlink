@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 4.2
+> **버전**: 4.3
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (node_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -50,7 +50,8 @@ SPOT은 **토픽 이름만으로 발행/구독**할 수 있는 추상화 계층�
 
 - 데이터 플레인은 **PUB/SUB만 사용**한다.
 - 노드 간 제어-plane 메시지(QUERY/ANNOUNCE 등)는 없다.
-- Discovery는 **노드 연결 관리**에만 사용한다.
+- Discovery는 **노드 연결 관리**에 사용하며,
+  필요 시 **수동 Mesh 연결**도 허용한다.
 
 ---
 
@@ -89,7 +90,8 @@ Node A (PUB+SUB)  <── connect ──  Node B (PUB+SUB)  <── connect ─�
 
 - 각 Node는 **PUB를 bind**하고, **SUB를 peer PUB에 connect**한다.
 - 허브/중계 노드는 **필수가 아니며**, 기본은 mesh 구성이다.
-- **노드 간 연결은 Discovery 기반 자동 연결/해제**만 지원한다.
+- **노드 간 연결은 Discovery 기반 자동 연결/해제**를 기본으로 하며,
+  수동 Mesh 구성도 허용한다.
 
 ### 2.3 Node ID와 Discovery 연동
 
@@ -124,6 +126,8 @@ Peer PUB -> Node SUB -> [로컬 구독자]
 - 이미 설정된 SUB 필터는 연결 직후 자동 전파된다.
 - peer 제거 시 **disconnect**를 수행한다.
 - 재연결은 Discovery 재등장 이벤트로 처리한다.
+- Discovery 없이 사용할 경우, 수동 peer 연결/해제 API로
+  PUB endpoint를 직접 구성한다.
 
 ### 2.6 Thread-safety
 
@@ -179,6 +183,9 @@ ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준�
 | 6 | `zmq_discovery_connect_registry()` | Registry PUB 구독 |
 | 7 | `zmq_discovery_subscribe()` | service_name 구독 |
 | 8 | `zmq_spot_node_set_discovery()` | peer 자동 연결 시작 |
+
+> 수동 Mesh를 사용하는 경우 5~8단계를 생략하고
+> `zmq_spot_node_connect_peer_pub()`을 사용한다.
 
 #### SPOT Instance
 
@@ -367,6 +374,17 @@ ZMQ_EXPORT int zmq_spot_node_connect_registry(
     const char *registry_router_endpoint
 );
 
+/* 수동 Mesh: peer PUB endpoint 직접 연결/해제 */
+ZMQ_EXPORT int zmq_spot_node_connect_peer_pub(
+    void *node,
+    const char *peer_pub_endpoint
+);
+
+ZMQ_EXPORT int zmq_spot_node_disconnect_peer_pub(
+    void *node,
+    const char *peer_pub_endpoint
+);
+
 /* SPOT 노드 등록 */
 ZMQ_EXPORT int zmq_spot_node_register(
     void *node,
@@ -391,7 +409,8 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
 - `zmq_spot_node_connect_registry()`는 **여러 번 호출 가능**하며,
   Registry endpoint 목록을 구성한다.
 - Node는 목록 중 **하나에만 active 등록/Heartbeat**를 전송한다.
-- Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작한다.
+- Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작하거나
+  수동 peer 연결로 mesh를 구성할 수 있다.
 - `advertise_endpoint == NULL`인 경우:
   - bind가 1개면 해당 endpoint를 사용한다.
   - bind가 2개 이상이면 **EINVAL**을 반환한다.
@@ -408,8 +427,8 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
 - 규칙 위반 시 `EINVAL` 반환
 
 **연결 정책**:
-- peer 연결은 **Discovery 기반 자동 연결/해제**만 지원한다.
-- 별도의 수동 peer connect API는 제공하지 않는다.
+- 기본은 **Discovery 기반 자동 연결/해제**이며,
+  필요 시 **수동 peer 연결/해제 API**로 구성할 수 있다.
 
 ### 6.2 SPOT Instance
 
@@ -572,6 +591,30 @@ zmq_spot_topic_create(spot, "metrics:cluster:cpu", ZMQ_SPOT_TOPIC_RINGBUFFER);
 zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 ```
 
+### 7.4 수동 Mesh (Discovery 미사용)
+
+```c
+void *ctx = zmq_ctx_new();
+void *nodeA = zmq_spot_node_new(ctx);
+void *nodeB = zmq_spot_node_new(ctx);
+
+zmq_spot_node_bind(nodeA, "tcp://*:9000");
+zmq_spot_node_bind(nodeB, "tcp://*:9001");
+
+// 서로의 PUB endpoint를 직접 연결
+zmq_spot_node_connect_peer_pub(nodeA, "tcp://host-b:9001");
+zmq_spot_node_connect_peer_pub(nodeB, "tcp://host-a:9000");
+
+void *spotA = zmq_spot_new(nodeA);
+void *spotB = zmq_spot_new(nodeB);
+zmq_spot_subscribe(spotB, "zone:12:state");
+
+zmq_msg_t msg;
+zmq_msg_init_size(&msg, 4);
+memcpy(zmq_msg_data(&msg), "ping", 4);
+zmq_spot_publish(spotA, "zone:12:state", &msg, 0);
+```
+
 ---
 
 ## 8. 구현 계획
@@ -613,6 +656,7 @@ zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 - `test_spot_reconnect_resubscribe`: 재연결 시 기존 SUB 필터가 자동 전파됨
 - `test_spot_multi_publisher_same_topic`: 동일 토픽 다중 발행 수신 확인
 - `test_spot_ringbuffer_basic`: ringbuffer 모드 fan-out 동작
+- `test_spot_manual_peer_connect`: Discovery 없이 peer 수동 연결/해제
 - `test_spot_scale_instances`: 10k SPOT 생성/구독/발행 성능
 
 ### 9.2 시나리오 테스트
@@ -633,12 +677,16 @@ zmq_spot_subscribe(spot, "metrics:cluster:cpu");
 - **시나리오 5: 다중 발행 충돌**
   - 동일 토픽을 여러 Node가 발행할 때 구독자가 모두 수신하는지 확인
 
+- **시나리오 6: 수동 Mesh**
+  - Discovery 없이 peer 직접 연결로 publish/subscribe 동작 확인
+
 ---
 
 ## 10. 변경 이력
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
+| 4.3 | 2026-01-28 | 수동 Mesh(Discovery 없이 peer 직접 연결) 옵션 추가 |
 | 4.2 | 2026-01-28 | topic_create에 mode 파라미터 통합 |
 | 4.1 | 2026-01-28 | PUB/SUB mesh 테스트 항목 보강 |
 | 4.0 | 2026-01-28 | SPOT을 PUB/SUB 기반 설계로 전면 변경 (owner/QUERY/ROUTER 제거) |

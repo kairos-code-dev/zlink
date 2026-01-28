@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 2.4
+> **버전**: 3.0
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -32,7 +32,7 @@
 ### 1.2 목표
 
 - **위치 투명성**: 토픽 이름만으로 발행/구독
-- **다중 인스턴스**: 서버/프로세스당 SPOT 인스턴스를 수백 개 생성 가능
+- **다중 인스턴스**: 서버/프로세스당 SPOT 인스턴스 **수천~만(10k) 단위** 생성 가능
 - **No SPoF**: 단일 허브 의존 구조 금지
 - **안정적 토픽 모델**: 토픽 소유권(Owner) 기반 라우팅
 - **확장성**: 노드 수 증가에도 제어-plane 비용이 예측 가능
@@ -94,7 +94,15 @@ Node A (ROUTER)  <──►  Node B (ROUTER)  <──►  Node C (ROUTER)
 - **단일 허브 의존 구조는 금지**한다.
 - **노드 간 연결은 Discovery 기반 자동 연결/해제**만 지원한다.
 
-### 2.3 데이터 흐름 (SPOT Instance 관점)
+### 2.3 노드 ID와 routing_id
+
+- 각 Node는 생성 시 **고유 node_id(uint32)**를 가진다.
+- Node는 ROUTER 소켓의 **identity(routing_id)를 node_id로 설정**한다.
+- Registry에는 **endpoint + node_id**가 함께 등록된다.
+  - Discovery가 제공하는 peer 목록에는 node_id가 포함된다.
+- Node 간 라우팅은 **node_id를 routing_id로 사용**한다.
+
+### 2.4 데이터 흐름 (SPOT Instance 관점)
 
 **OWNED 토픽 publish**
 ```
@@ -106,13 +114,13 @@ SPOT#1 (owner) -> Node -> [로컬 구독자] + [원격 구독 노드들]
 SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fan-out
 ```
 
-### 2.4 전파 방식 명시
+### 2.5 전파 방식 명시
 
 - 토픽 생성/삭제 알림은 **모든 peer 노드에 fan-out**된다.
 - 브로드캐스트/멀티캐스트 기능은 제공하지 않는다.
 - 구현은 **peer 목록을 순회하며 routing_id를 바꿔 N회 전송**하는 방식이다.
 
-### 2.5 Thread-safety
+### 2.6 Thread-safety
 
 - **SPOT Instance는 기본적으로 thread-safe 하지 않다.**
   - 단일 스레드에서 사용 권장
@@ -120,7 +128,7 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 - **SPOT Node는 내부 동기화를 포함하며 thread-safe**하게 제공한다.
   - 다수의 SPOT Instance가 동시에 접근 가능
 
-### 2.6 SPOT Node 소켓 구성
+### 2.7 SPOT Node 소켓 구성
 
 | 구성 | 소켓 | 역할 | 비고 |
 |------|------|------|------|
@@ -131,7 +139,7 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 
 > 로컬 IPC는 구현 세부이며, inproc 소켓 또는 내부 큐로 대체 가능하다.
 
-### 2.7 내부 처리 모델 (구현 수준)
+### 2.8 내부 처리 모델 (구현 수준)
 
 - SPOT Node는 **단일 직렬 처리 루프**를 통해
   네트워크 수신/송신, 토픽/구독 업데이트를 처리한다.
@@ -141,6 +149,42 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
   - 토픽/구독 맵의 일관성 유지
   - publish/subscribe 순서 보장
   - 멀티스레드 호출 시 데이터 레이스 방지
+
+### 2.9 참고: ZLink PUB/SUB 필터링 동작
+
+ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준은 아래와 같다.
+
+- **TCP/IPC (connected transport)**: 필터링은 **PUB(또는 XPUB) 측**에서 수행된다.
+- **PGM/EPGM 멀티캐스트**: 필터링은 **SUB 측**에서 수행된다.
+  - 현재 ZLink에는 미지원이며, **추후 추가 예정**이다.
+- **XPUB/XSUB**: 구독/해제 메시지를 애플리케이션이 직접 수신/발행 가능하다.
+
+이 차이는 네트워크 효율성과 설계 선택(팬아웃 비용, 구독 가시성)에 영향을 준다.
+
+### 2.10 API 호출 순서 (권장 흐름)
+
+#### Node
+
+| 단계 | 호출 | 설명 |
+|------|------|------|
+| 1 | `zmq_spot_node_new()` | Node 생성 (node_id 생성) |
+| 2 | `zmq_spot_node_bind()` | 클러스터 ROUTER bind |
+| 3 | `zmq_spot_node_connect_registry()` | Registry ROUTER 연결 |
+| 4 | `zmq_spot_node_register()` | 서비스 등록 + Heartbeat 시작 |
+| 5 | `zmq_discovery_new()` | Discovery 생성 |
+| 6 | `zmq_discovery_connect_registry()` | Registry PUB 구독 |
+| 7 | `zmq_discovery_subscribe()` | service_name 구독 |
+| 8 | `zmq_spot_node_set_discovery()` | peer 자동 연결 시작 |
+
+#### SPOT Instance
+
+| 단계 | 호출 | 설명 |
+|------|------|------|
+| 1 | `zmq_spot_new()` | SPOT 생성 |
+| 2 | `zmq_spot_topic_create()` | OWNED 토픽 생성 |
+| 3 | `zmq_spot_subscribe()` | 토픽 구독 |
+| 4 | `zmq_spot_publish()` | 메시지 발행 |
+| 5 | `zmq_spot_recv()` | 메시지 수신 |
 
 ---
 
@@ -227,7 +271,14 @@ owner down/제거:
   └─► 불매칭: "zone:13:state", "zone:12"
 ```
 
-### 3.6 토픽 충돌 처리 (동시 생성)
+### 3.6 토픽/패턴 검증 규칙
+
+- `topic_id`/`pattern`은 **빈 문자열을 허용하지 않는다**.
+- `topic_id`는 **최대 255 바이트**로 제한한다.
+- `pattern`은 `*` 한 개만 허용하며 **문자열 끝에만 위치**해야 한다.
+- 위 규칙 위반 시 `EINVAL`을 반환한다.
+
+### 3.7 토픽 충돌 처리 (동시 생성)
 
 동일 토픽의 동시 생성은 **지원하지 않으며**, 애플리케이션이 예방해야 한다.
 다만 분산 환경에서 경합이 발생할 수 있으므로 **결정 규칙**을 명시한다.
@@ -236,12 +287,13 @@ owner down/제거:
   - 이미 OWNED/ROUTED로 등록된 토픽에 대해
     다른 노드로부터 `TOPIC_ANNOUNCE`/`QUERY_RESP`가 도착하면 충돌로 간주한다.
 - 소유자 결정 규칙:
-  - **낮은 routing_id가 우선** (uint32 오름차순)
-  - 동일 routing_id는 불가능하다고 가정한다.
+  - **낮은 node_id가 우선** (uint32 오름차순)
+  - 동일 node_id는 불가능하다고 가정한다.
 - 충돌 해결:
   - 우선순위에서 **지는 노드는 OWNED → ROUTED로 강등**
-  - 강등된 토픽은 publish 시 owner 노드로 라우팅된다
-  - 별도의 `TOPIC_REMOVE`는 전송하지 않는다
+  - 이후 publish는 **owner 노드로 라우팅**된다
+  - `zmq_spot_topic_create()`는 **이미 owner를 알고 있으면 EEXIST**를 반환한다
+  - 동시 생성 이후 충돌이 뒤늦게 발견되는 경우에도 **강등은 발생**한다
 
 > 토픽 유일성 보장은 여전히 애플리케이션 책임이다.
 
@@ -255,6 +307,8 @@ owner down/제거:
   ROUTER connect/disconnect를 자동 수행한다.
 - 연결 직후 **QUERY → QUERY_RESP**로 **OWNED 토픽 목록**을 동기화한다.
 - 수동 peer connect API는 제공하지 않는다.
+  - Discovery 목록에는 **endpoint + node_id(routing_id)**가 포함된다.
+  - Node는 node_id를 알고 있으므로 **즉시 QUERY 전송이 가능**하다.
 
 Discovery 연동 순서:
 1) `zmq_discovery_connect_registry()`로 Registry PUB 구독
@@ -272,6 +326,7 @@ Discovery 연동 순서:
 - Node는 **refcount**를 유지하고, refcount가 0→1일 때만 SUBSCRIBE 전송한다.
 - refcount가 1→0이 되면 UNSUBSCRIBE 전송한다.
 - 패턴 구독이 존재하면, TOPIC_ANNOUNCE 수신 시 패턴 매칭 후 자동 SUBSCRIBE를 수행한다.
+- 패턴 구독 등록 시 **이미 알고 있는 토픽 목록에도 즉시 매칭**을 수행한다.
 
 ### 4.4 연결 관리 상세 (구현 수준)
 
@@ -306,6 +361,10 @@ peer_entry:
 - Node는 Registry endpoint 목록을 보유하고 **단일 Registry에만 active 등록**한다.
 - 장애 감지 시 다른 Registry로 **failover 재등록**한다.
 - 상세 정책은 [04-service-discovery.md](04-service-discovery.md)의 Provider failover 규칙을 따른다.
+- **SPOT Node는 Provider 역할로 등록/Heartbeat**를 전송한다.
+  - Registry는 Heartbeat TTL로 **노드 생존 여부를 판단**한다.
+  - Discovery는 Registry PUB 목록을 그대로 사용하므로,
+    목록에서 제거되면 해당 노드는 **down**으로 처리된다.
 
 ---
 
@@ -352,6 +411,12 @@ Frame 3: payload (bytes)
 ```
 Frame 1: 0x02 or 0x03
 Frame 2: topic_id (string)
+```
+
+**QUERY**
+```
+Frame 1: 0x04
+// 추가 payload 없음 (전체 목록 요청)
 ```
 
 **QUERY_RESP**
@@ -470,6 +535,9 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
   Registry endpoint 목록을 구성한다.
 - Node는 목록 중 **하나에만 active 등록/Heartbeat**를 전송한다.
 - Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작한다.
+- `advertise_endpoint == NULL`인 경우:
+  - bind가 1개면 해당 endpoint를 사용한다.
+  - bind가 2개 이상이면 **EINVAL**을 반환한다.
 
 **수명 규칙**:
 - Node는 **SPOT Instance보다 먼저 생성**되어야 한다.
@@ -544,6 +612,19 @@ ZMQ_EXPORT int zmq_spot_recv(
 - `zmq_spot_publish`: owner 없으면 `ENOENT`
 - `zmq_spot_subscribe`: owner 없어도 **성공(대기)**
 - `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
+- `topic_id`/`pattern` 규칙 위반 시 `EINVAL`
+
+**정리 규칙**
+- `zmq_spot_destroy()`는 해당 SPOT이 보유한
+  - OWNED 토픽을 **자동 destroy** 하고
+  - 구독/패턴 구독을 **자동 해제**한다.
+- 이후 refcount가 0이 되는 토픽은 UNSUBSCRIBE 전송 대상이 된다.
+
+**수신 큐 (구현 수준)**
+- 각 SPOT은 **개별 수신 큐(FIFO)**를 가진다.
+- Node는 MESSAGE를 수신하면 **해당 토픽을 구독 중인 SPOT 큐에 enqueue**한다.
+- 큐는 **HWM을 가진 고정 크기**로 두며, 초과 시 **해당 SPOT에만 드롭**한다.
+- publish는 큐 드롭과 무관하게 성공/실패를 결정한다.
 
 ### 6.3 내부 제어 채널 (개념)
 
@@ -669,6 +750,16 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
    - 다수 SPOT의 구독 refcount 관리
    - publish/recv 경로에서 spot 라우팅
 
+6) 대규모 SPOT 인스턴스 지원 (기본 구현 요구사항)
+   - SPOT Instance는 **소켓/스레드/타이머를 직접 소유하지 않는다**
+   - 인스턴스는 **경량 핸들(spot_id + node 포인터)**로 유지한다
+   - 구독/토픽/peer 맵은 **Node 단위로만 보유**한다
+   - local_sub_map은 **spot_id 목록(압축/벡터)**으로 관리하고,
+     fan-out 시 **복사 최소화**한다
+   - 패턴 구독은 **접두어 인덱스**로 후보를 줄인다
+   - 수신 큐는 **lazy 생성 + HWM 적용** (수신 폭주 방지)
+   - per-spot 메모리 사용량은 **고정/소량**을 목표로 한다
+
 ---
 
 ## 9. 검증 방법
@@ -686,6 +777,7 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 - `test_spot_pending_reactivate`: owner down 후 재등장 시 pending → active 복구
 - `test_spot_peer_connect_flow`: Discovery 추가 → connect → QUERY 동기화
 - `test_spot_peer_remove_cleanup`: peer 제거 시 owner unknown/pending 처리
+- `test_spot_scale_instances`: 단일 Node에서 SPOT 10k 생성/구독/해제 기본 동작
 
 ### 9.2 통합 테스트
 
@@ -715,6 +807,12 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 3.0 | 2026-01-27 | 다중 인스턴스 목표(10k) 명확화 |
+| 2.9 | 2026-01-27 | 노드 ID/라우팅, API 순서, QUERY 포맷, 큐/정리 규칙 등 상세 보강 |
+| 2.8 | 2026-01-27 | SPOT Node 생존 판단(Provider/Heartbeat) 명시 |
+| 2.7 | 2026-01-27 | 대규모 SPOT 인스턴스 지원 요구사항/테스트 추가 |
+| 2.6 | 2026-01-27 | ZLink 기준 PUB/SUB 필터링 동작으로 정리 |
+| 2.5 | 2026-01-27 | ZeroMQ PUB/SUB 필터링 동작 참고 섹션 추가 |
 | 2.4 | 2026-01-27 | 메시지 흐름/연결 관리/내부 채널/구현 수준 상세 추가 |
 | 2.3 | 2026-01-27 | SPOT Node 소켓 구성 명시 |
 | 2.2 | 2026-01-27 | Discovery 기반 peer 연결/해제 명시 및 예시 반영 |

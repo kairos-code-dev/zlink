@@ -67,7 +67,7 @@
 │                                            │
 │  SPOT#1   SPOT#2   ...   SPOT#N             │
 │    │        │              │               │
-│    └─────── local IPC/queue ┴───────┐      │
+│    └─────── local queue (default) ──┴──┐   │
 │                                     ▼      │
 │                        ┌────────────────┐  │
 │                        │  SPOT Node     │  │
@@ -88,7 +88,7 @@
 ```
 Node A (ROUTER)  <──►  Node B (ROUTER)  <──►  Node C (ROUTER)
    ▲  ▲                          ▲                    ▲
-   │  └── local IPC/queue ─ SPOTs └── local IPC/queue ─ SPOTs
+   │  └── local queue (default) ─ SPOTs └── local queue (default) ─ SPOTs
 ```
 
 - 모든 노드는 **ROUTER 소켓 하나로 bind+connect**를 수행한다.
@@ -136,11 +136,10 @@ SPOT#2 -> Node -> (owner Node로 PUBLISH) -> owner Node -> 구독자들에게 fa
 | 클러스터 메시 | ROUTER | Node 간 제어/데이터 라우팅 | bind+connect |
 | Registry 제어 | DEALER | register/heartbeat 전송 | Registry ROUTER에 connect |
 | Discovery 수신 | SUB | Registry PUB에서 peer 목록 수신 | Discovery 컴포넌트 내부 |
-| 로컬 IPC | 내부 큐/채널 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
+| 로컬 큐 | 내부 큐 | SPOT Instance ↔ Node 전달 | 네트워크 소켓 없음 |
 
-> 로컬 IPC는 **ZeroMQ inproc 전송이 아니라 내부 큐 기반**을 기본으로 한다.
-> 필요 시 inproc 소켓으로 대체할 수 있으나, 대규모 인스턴스(10k) 기준으로는
-> 내부 큐 방식이 더 효율적이다.
+> 로컬 전달은 **기본적으로 per-spot 큐(QUEUE)** 방식이다.
+> 특정 토픽에 한해 **RINGBUFFER 모드**를 선택할 수 있다.
 
 ### 2.8 내부 처리 모델 (구현 수준)
 

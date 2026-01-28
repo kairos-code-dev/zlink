@@ -142,7 +142,7 @@ try {
         -DBUILD_SHARED=ON `
         -DBUILD_STATIC=OFF `
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
-        -DZMQ_CXX_STANDARD=20 `
+        -DZMQ_CXX_STANDARD=17 `
         -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install" `
         $BoostIncludeArgs `

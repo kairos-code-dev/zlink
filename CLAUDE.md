@@ -214,7 +214,7 @@ cmake --build build
 cmake -B build -DZMQ_CXX_STANDARD=20 -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
 ```
 
-See [CXX20_BUILD_EXAMPLES.md](CXX20_BUILD_EXAMPLES.md) for detailed C++ standard build instructions.
+See [CXX_BUILD_EXAMPLES.md](CXX_BUILD_EXAMPLES.md) for detailed C++ standard build instructions.
 
 ### Build Output
 - Linux: `dist/linux-{arch}/libzmq.so`

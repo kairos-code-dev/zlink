@@ -1,26 +1,26 @@
-# C++20 Build Examples for zlink
+# C++ Standard Build Examples for zlink
 
 ## Overview
 
-zlink now supports building with C++20 (or any other C++ standard) via the `ZMQ_CXX_STANDARD` CMake option.
+zlink supports building with multiple C++ standards via the `ZMQ_CXX_STANDARD` CMake option.
 
 ## Build Options
 
-### Linux/macOS with C++20
+### Linux/macOS with C++17 (default)
 
 ```bash
-# Configure with C++20
-cmake -B build -DZMQ_CXX_STANDARD=20
+# Configure with C++17
+cmake -B build -DZMQ_CXX_STANDARD=17
 
 # Build
 cmake --build build
 ```
 
-### Windows with C++20 (Visual Studio)
+### Windows with C++17 (Visual Studio)
 
 ```powershell
-# Configure with C++20
-cmake -B build -DZMQ_CXX_STANDARD=20
+# Configure with C++17
+cmake -B build -DZMQ_CXX_STANDARD=17
 
 # Build
 cmake --build build --config Release
@@ -54,14 +54,14 @@ cmake -B build -DZMQ_CXX_STANDARD=23
 ### Combined with Other Options
 
 ```bash
-# C++20 with tests enabled
-cmake -B build -DZMQ_CXX_STANDARD=20 -DBUILD_TESTS=ON
+# C++17 with tests enabled
+cmake -B build -DZMQ_CXX_STANDARD=17 -DBUILD_TESTS=ON
 
-# C++20 with benchmarks enabled
-cmake -B build -DZMQ_CXX_STANDARD=20 -DBUILD_BENCHMARKS=ON
+# C++17 with benchmarks enabled
+cmake -B build -DZMQ_CXX_STANDARD=17 -DBUILD_BENCHMARKS=ON
 
-# C++20 with Release build type
-cmake -B build -DZMQ_CXX_STANDARD=20 -DCMAKE_BUILD_TYPE=Release
+# C++17 with Release build type
+cmake -B build -DZMQ_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 ```
 
 ### Using Build Scripts
@@ -71,7 +71,7 @@ cmake -B build -DZMQ_CXX_STANDARD=20 -DCMAKE_BUILD_TYPE=Release
 ```bash
 # Modify build-scripts/linux/build.sh to add:
 # cmake -B "$BUILD_DIR" \
-#   -DZMQ_CXX_STANDARD=20 \
+#   -DZMQ_CXX_STANDARD=17 \
 #   -DCMAKE_BUILD_TYPE=Release \
 #   ...
 
@@ -90,7 +90,7 @@ cmake -B build -DZMQ_CXX_STANDARD=20 -DCMAKE_BUILD_TYPE=Release
 ```powershell
 # Modify build-scripts/windows/build.ps1 to add:
 # cmake -B "$buildDir" `
-#   -DZMQ_CXX_STANDARD=20 `
+#   -DZMQ_CXX_STANDARD=17 `
 #   -G "Visual Studio 17 2022" `
 #   ...
 
@@ -99,27 +99,27 @@ cmake -B build -DZMQ_CXX_STANDARD=20 -DCMAKE_BUILD_TYPE=Release
 
 ## Compiler Requirements
 
-### Minimum Compiler Versions for C++20
+### Minimum Compiler Versions for C++17
 
 | Compiler | Minimum Version |
 |----------|----------------|
-| GCC      | 10.0           |
-| Clang    | 10.0           |
-| MSVC     | 19.29 (VS 2019 16.11) |
-| Apple Clang | 13.0        |
+| GCC      | 7.0            |
+| Clang    | 5.0            |
+| MSVC     | 19.14 (VS 2017 15.7) |
+| Apple Clang | 10.0       |
 
 ### Verification
 
-Check if your compiler supports C++20:
+Check if your compiler supports C++17:
 
 ```bash
 # GCC
 g++ --version
-g++ -std=c++20 -E -x c++ - < /dev/null > /dev/null 2>&1 && echo "C++20 supported" || echo "C++20 not supported"
+g++ -std=c++17 -E -x c++ - < /dev/null > /dev/null 2>&1 && echo "C++17 supported" || echo "C++17 not supported"
 
 # Clang
 clang++ --version
-clang++ -std=c++20 -E -x c++ - < /dev/null > /dev/null 2>&1 && echo "C++20 supported" || echo "C++20 not supported"
+clang++ -std=c++17 -E -x c++ - < /dev/null > /dev/null 2>&1 && echo "C++17 supported" || echo "C++17 not supported"
 
 # MSVC (Windows)
 cl.exe /?
@@ -143,31 +143,31 @@ cl.exe /?
 
 3. **CMake Cache**: If changing standards, clean the build directory or use `-U ZMQ_CXX_STANDARD` to force reconfiguration:
    ```bash
-   cmake -B build -U ZMQ_CXX_STANDARD -DZMQ_CXX_STANDARD=20
+   cmake -B build -U ZMQ_CXX_STANDARD -DZMQ_CXX_STANDARD=17
    ```
 
 4. **Per-Platform Differences**:
-   - GCC/Clang use `-std=c++20`
-   - MSVC uses `/std:c++20`
+- GCC/Clang use `-std=c++17`
+- MSVC uses `/std:c++17`
    - The CMake configuration handles these differences automatically
 
 ## Troubleshooting
 
-### Error: Compiler doesn't support C++20
+### Error: Compiler doesn't support C++17
 
 ```
 CMake Warning:
-  Compiler does not support C++20, falling back to C++11
+  Compiler does not support C++17, falling back to C++11
 ```
 
-**Solution**: Update your compiler to a version that supports C++20 (see table above).
+**Solution**: Update your compiler to a version that supports C++17 (see table above).
 
-### Error: Unknown flag `-std=c++20`
+### Error: Unknown flag `-std=c++17`
 
 **Solution**: Your compiler is too old. Update to a newer version or use a lower C++ standard:
 
 ```bash
-cmake -B build -DZMQ_CXX_STANDARD=17
+cmake -B build -DZMQ_CXX_STANDARD=14
 ```
 
 ### Cache issues when switching standards
@@ -176,5 +176,5 @@ cmake -B build -DZMQ_CXX_STANDARD=17
 
 ```bash
 rm -rf build
-cmake -B build -DZMQ_CXX_STANDARD=20
+cmake -B build -DZMQ_CXX_STANDARD=17
 ```

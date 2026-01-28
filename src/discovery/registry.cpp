@@ -1,0 +1,553 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "discovery/registry.hpp"
+#include "discovery/protocol.hpp"
+
+#include "utils/err.hpp"
+#include "utils/random.hpp"
+
+#include <algorithm>
+#include <vector>
+
+namespace zmq
+{
+static const uint32_t registry_tag_value = 0x1e6700d5;
+
+registry_t::registry_t (ctx_t *ctx_) :
+    _ctx (ctx_),
+    _tag (registry_tag_value),
+    _registry_id (0),
+    _registry_id_set (false),
+    _list_seq (0),
+    _heartbeat_interval_ms (5000),
+    _heartbeat_timeout_ms (15000),
+    _broadcast_interval_ms (30000),
+    _stop (0)
+{
+    zmq_assert (_ctx);
+}
+
+registry_t::~registry_t ()
+{
+    _tag = 0xdeadbeef;
+}
+
+bool registry_t::check_tag () const
+{
+    return _tag == registry_tag_value;
+}
+
+int registry_t::set_endpoints (const char *pub_endpoint_,
+                               const char *router_endpoint_)
+{
+    if (!pub_endpoint_ || !router_endpoint_) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    _pub_endpoint = pub_endpoint_;
+    _router_endpoint = router_endpoint_;
+    return 0;
+}
+
+int registry_t::set_id (uint32_t registry_id_)
+{
+    scoped_lock_t lock (_sync);
+    _registry_id = registry_id_;
+    _registry_id_set = true;
+    return 0;
+}
+
+int registry_t::add_peer (const char *peer_pub_endpoint_)
+{
+    if (!peer_pub_endpoint_) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    _peer_pubs.push_back (peer_pub_endpoint_);
+    return 0;
+}
+
+int registry_t::set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_)
+{
+    if (interval_ms_ == 0 || timeout_ms_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    _heartbeat_interval_ms = interval_ms_;
+    _heartbeat_timeout_ms = timeout_ms_;
+    return 0;
+}
+
+int registry_t::set_broadcast_interval (uint32_t interval_ms_)
+{
+    if (interval_ms_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    scoped_lock_t lock (_sync);
+    _broadcast_interval_ms = interval_ms_;
+    return 0;
+}
+
+int registry_t::start ()
+{
+    scoped_lock_t lock (_sync);
+    if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (_stop.get () == 0 && _worker.get_started ())
+        return 0;
+
+    _stop.set (0);
+    _worker.start (run, this, "registry");
+    return 0;
+}
+
+int registry_t::destroy ()
+{
+    stop_worker ();
+    return 0;
+}
+
+void registry_t::stop_worker ()
+{
+    _stop.set (1);
+    if (_worker.get_started ())
+        _worker.stop ();
+}
+
+void registry_t::run (void *arg_)
+{
+    registry_t *self = static_cast<registry_t *> (arg_);
+    self->loop ();
+}
+
+void registry_t::loop ()
+{
+    std::string pub_endpoint;
+    std::string router_endpoint;
+    std::vector<std::string> peer_pubs;
+    uint32_t registry_id = 0;
+    bool registry_id_set = false;
+
+    {
+        scoped_lock_t lock (_sync);
+        pub_endpoint = _pub_endpoint;
+        router_endpoint = _router_endpoint;
+        peer_pubs = _peer_pubs;
+        registry_id = _registry_id;
+        registry_id_set = _registry_id_set;
+    }
+
+    void *pub = zmq_socket (static_cast<void *> (_ctx), ZMQ_PUB);
+    void *router = zmq_socket (static_cast<void *> (_ctx), ZMQ_ROUTER);
+    void *peer_sub = NULL;
+
+    if (!pub || !router) {
+        if (pub)
+            zmq_close (pub);
+        if (router)
+            zmq_close (router);
+        return;
+    }
+
+    if (zmq_bind (pub, pub_endpoint.c_str ()) != 0
+        || zmq_bind (router, router_endpoint.c_str ()) != 0) {
+        zmq_close (pub);
+        zmq_close (router);
+        return;
+    }
+
+    if (!peer_pubs.empty ()) {
+        peer_sub = zmq_socket (static_cast<void *> (_ctx), ZMQ_SUB);
+        if (peer_sub) {
+            zmq_setsockopt (peer_sub, ZMQ_SUBSCRIBE, "", 0);
+            for (size_t i = 0; i < peer_pubs.size (); ++i)
+                zmq_connect (peer_sub, peer_pubs[i].c_str ());
+        }
+    }
+
+    if (!registry_id_set) {
+        registry_id = zmq::generate_random ();
+        if (registry_id == 0)
+            registry_id = 1;
+        scoped_lock_t lock (_sync);
+        _registry_id = registry_id;
+        _registry_id_set = true;
+    }
+
+    zmq::clock_t clock;
+    uint64_t next_broadcast = clock.now_ms () + _broadcast_interval_ms;
+    uint64_t last_sent_seq = _list_seq;
+
+    while (_stop.get () == 0) {
+        zmq_pollitem_t items[2];
+        int item_count = 0;
+        items[item_count].socket = router;
+        items[item_count].fd = 0;
+        items[item_count].events = ZMQ_POLLIN;
+        items[item_count].revents = 0;
+        item_count++;
+        if (peer_sub) {
+            items[item_count].socket = peer_sub;
+            items[item_count].fd = 0;
+            items[item_count].events = ZMQ_POLLIN;
+            items[item_count].revents = 0;
+            item_count++;
+        }
+
+        const int rc = zmq_poll (items, item_count, 100);
+        if (rc > 0) {
+            if (items[0].revents & ZMQ_POLLIN)
+                handle_router (router);
+            if (peer_sub && (items[1].revents & ZMQ_POLLIN))
+                handle_peer (peer_sub);
+        }
+
+        const uint64_t now = clock.now_ms ();
+        remove_expired (now);
+        if (_list_seq != last_sent_seq) {
+            send_service_list (pub);
+            last_sent_seq = _list_seq;
+            next_broadcast = now + _broadcast_interval_ms;
+        } else if (now >= next_broadcast) {
+            send_service_list (pub);
+            next_broadcast = now + _broadcast_interval_ms;
+        }
+    }
+
+    if (peer_sub)
+        zmq_close (peer_sub);
+    zmq_close (router);
+    zmq_close (pub);
+}
+
+void registry_t::handle_router (void *router_)
+{
+    zmq_msg_t msg;
+    zmq_msg_init (&msg);
+    if (zmq_msg_recv (&msg, router_, 0) == -1) {
+        zmq_msg_close (&msg);
+        return;
+    }
+
+    zmq_routing_id_t sender;
+    sender.size = 0;
+    discovery_protocol::read_routing_id (msg, &sender);
+    zmq_msg_close (&msg);
+
+    std::vector<zmq_msg_t> frames;
+    while (true) {
+        zmq_msg_t frame;
+        zmq_msg_init (&frame);
+        if (zmq_msg_recv (&frame, router_, 0) == -1) {
+            zmq_msg_close (&frame);
+            break;
+        }
+        frames.push_back (frame);
+        if (!zmq_msg_more (&frame))
+            break;
+    }
+
+    if (frames.empty ()) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    uint16_t msg_id = 0;
+    if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    switch (msg_id) {
+        case discovery_protocol::msg_register:
+            handle_register (router_, &frames[0], frames.size (), sender);
+            break;
+        case discovery_protocol::msg_unregister:
+            handle_unregister (&frames[0], frames.size ());
+            break;
+        case discovery_protocol::msg_heartbeat:
+            handle_heartbeat (&frames[0], frames.size ());
+            break;
+        case discovery_protocol::msg_update_weight:
+            handle_update_weight (router_, &frames[0], frames.size (), sender);
+            break;
+        default:
+            break;
+    }
+
+    for (size_t i = 0; i < frames.size (); ++i)
+        zmq_msg_close (&frames[i]);
+}
+
+void registry_t::handle_peer (void *sub_)
+{
+    zmq_msg_t msg;
+    zmq_msg_init (&msg);
+    if (zmq_msg_recv (&msg, sub_, 0) == -1) {
+        zmq_msg_close (&msg);
+        return;
+    }
+    // Drain remaining frames (ignore for now).
+    while (zmq_msg_more (&msg)) {
+        zmq_msg_close (&msg);
+        zmq_msg_init (&msg);
+        if (zmq_msg_recv (&msg, sub_, 0) == -1)
+            break;
+    }
+    zmq_msg_close (&msg);
+}
+
+void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
+                                  size_t frame_count_,
+                                  const zmq_routing_id_t &sender_id_)
+{
+    if (frame_count_ < 3) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid register");
+        return;
+    }
+
+    const std::string service_name =
+      discovery_protocol::read_string (frames_[1]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[2]);
+
+    if (service_name.empty () || endpoint.empty ()) {
+        send_register_ack (router_, sender_id_, 0x02, endpoint,
+                           "invalid endpoint");
+        return;
+    }
+
+    uint32_t weight = 1;
+    if (frame_count_ >= 4)
+        discovery_protocol::read_u32 (frames_[3], &weight);
+    if (weight == 0)
+        weight = 1;
+
+    zmq::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+
+    service_entry_t &service = _services[service_name];
+    provider_entry_t &entry = service.providers[endpoint];
+    entry.endpoint = endpoint;
+    entry.routing_id = sender_id_;
+    entry.weight = weight;
+    entry.registered_at = now;
+    entry.last_heartbeat = now;
+
+    _list_seq++;
+    send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
+}
+
+void registry_t::handle_unregister (const zmq_msg_t *frames_,
+                                    size_t frame_count_)
+{
+    if (frame_count_ < 3)
+        return;
+
+    const std::string service_name =
+      discovery_protocol::read_string (frames_[1]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[2]);
+
+    service_map_t::iterator sit = _services.find (service_name);
+    if (sit == _services.end ())
+        return;
+
+    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    if (pit == sit->second.providers.end ())
+        return;
+
+    sit->second.providers.erase (pit);
+    if (sit->second.providers.empty ())
+        _services.erase (sit);
+
+    _list_seq++;
+}
+
+void registry_t::handle_heartbeat (const zmq_msg_t *frames_,
+                                   size_t frame_count_)
+{
+    if (frame_count_ < 3)
+        return;
+
+    const std::string service_name =
+      discovery_protocol::read_string (frames_[1]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[2]);
+
+    service_map_t::iterator sit = _services.find (service_name);
+    if (sit == _services.end ())
+        return;
+
+    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    if (pit == sit->second.providers.end ())
+        return;
+
+    zmq::clock_t clock;
+    pit->second.last_heartbeat = clock.now_ms ();
+}
+
+void registry_t::handle_update_weight (void *router_, const zmq_msg_t *frames_,
+                                       size_t frame_count_,
+                                       const zmq_routing_id_t &sender_id_)
+{
+    if (frame_count_ < 4) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid update");
+        return;
+    }
+
+    const std::string service_name =
+      discovery_protocol::read_string (frames_[1]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[2]);
+    uint32_t weight = 1;
+    discovery_protocol::read_u32 (frames_[3], &weight);
+    if (weight == 0)
+        weight = 1;
+
+    service_map_t::iterator sit = _services.find (service_name);
+    if (sit == _services.end ()) {
+        send_register_ack (router_, sender_id_, 0x01, endpoint,
+                           "service not found");
+        return;
+    }
+
+    provider_map_t::iterator pit = sit->second.providers.find (endpoint);
+    if (pit == sit->second.providers.end ()) {
+        send_register_ack (router_, sender_id_, 0x01, endpoint,
+                           "provider not found");
+        return;
+    }
+
+    pit->second.weight = weight;
+    _list_seq++;
+    send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
+}
+
+void registry_t::send_register_ack (void *router_,
+                                    const zmq_routing_id_t &sender_id_,
+                                    uint8_t status_,
+                                    const std::string &endpoint_,
+                                    const std::string &error_)
+{
+    zmq_msg_t id_frame;
+    zmq_msg_init_size (&id_frame, sender_id_.size);
+    if (sender_id_.size > 0)
+        memcpy (zmq_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+
+    if (zmq_msg_send (&id_frame, router_, ZMQ_SNDMORE) == -1) {
+        zmq_msg_close (&id_frame);
+        return;
+    }
+
+    discovery_protocol::send_u16 (router_,
+                                  discovery_protocol::msg_register_ack,
+                                  ZMQ_SNDMORE);
+    discovery_protocol::send_frame (router_, &status_, sizeof (status_),
+                                    ZMQ_SNDMORE);
+    discovery_protocol::send_string (router_, endpoint_, ZMQ_SNDMORE);
+    discovery_protocol::send_string (router_, error_, 0);
+}
+
+void registry_t::send_service_list (void *pub_)
+{
+    uint32_t registry_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        registry_id = _registry_id_set ? _registry_id : _registry_id;
+        if (registry_id == 0)
+            registry_id = 1;
+    }
+
+    discovery_protocol::send_u16 (pub_, discovery_protocol::msg_service_list,
+                                  ZMQ_SNDMORE);
+    discovery_protocol::send_u32 (pub_, registry_id, ZMQ_SNDMORE);
+    discovery_protocol::send_u64 (pub_, _list_seq, ZMQ_SNDMORE);
+
+    uint32_t service_count = 0;
+    for (service_map_t::const_iterator it = _services.begin ();
+         it != _services.end (); ++it) {
+        if (!it->second.providers.empty ())
+            service_count++;
+    }
+
+    discovery_protocol::send_u32 (pub_, service_count,
+                                  service_count == 0 ? 0 : ZMQ_SNDMORE);
+
+    if (service_count == 0)
+        return;
+
+    uint32_t emitted = 0;
+    for (service_map_t::const_iterator it = _services.begin ();
+         it != _services.end (); ++it) {
+        if (it->second.providers.empty ())
+            continue;
+
+        const std::string &service_name = it->first;
+        const provider_map_t &providers = it->second.providers;
+        const uint32_t provider_count =
+          static_cast<uint32_t> (providers.size ());
+
+        discovery_protocol::send_string (pub_, service_name, ZMQ_SNDMORE);
+        discovery_protocol::send_u32 (pub_, provider_count,
+                                      ZMQ_SNDMORE);
+
+        uint32_t provider_index = 0;
+        for (provider_map_t::const_iterator pit = providers.begin ();
+             pit != providers.end (); ++pit, ++provider_index) {
+            const provider_entry_t &entry = pit->second;
+            const bool last_provider =
+              (provider_index + 1) == provider_count
+              && (emitted + 1) == service_count;
+
+            discovery_protocol::send_string (pub_, entry.endpoint,
+                                             ZMQ_SNDMORE);
+            discovery_protocol::send_routing_id (pub_, entry.routing_id,
+                                                 ZMQ_SNDMORE);
+            discovery_protocol::send_u32 (pub_, entry.weight,
+                                          last_provider ? 0 : ZMQ_SNDMORE);
+        }
+
+        emitted++;
+    }
+}
+
+void registry_t::remove_expired (uint64_t now_ms_)
+{
+    bool changed = false;
+    for (service_map_t::iterator sit = _services.begin ();
+         sit != _services.end ();) {
+        provider_map_t &providers = sit->second.providers;
+        for (provider_map_t::iterator pit = providers.begin ();
+             pit != providers.end ();) {
+            if (now_ms_ > pit->second.last_heartbeat
+                && now_ms_ - pit->second.last_heartbeat
+                     > _heartbeat_timeout_ms) {
+                pit = providers.erase (pit);
+                changed = true;
+                continue;
+            }
+            ++pit;
+        }
+        if (providers.empty ())
+            sit = _services.erase (sit);
+        else
+            ++sit;
+    }
+
+    if (changed)
+        _list_seq++;
+}
+}

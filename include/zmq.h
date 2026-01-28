@@ -473,6 +473,130 @@ ZMQ_EXPORT int zmq_request_recv (void *socket,
 ZMQ_EXPORT int zmq_pending_requests (void *socket);
 ZMQ_EXPORT int zmq_cancel_all_requests (void *socket);
 
+/******************************************************************************/
+/*  Service Discovery API                                                     */
+/******************************************************************************/
+
+typedef struct {
+    char service_name[256];
+    char endpoint[256];
+    zmq_routing_id_t routing_id;
+    uint32_t weight;
+    uint64_t registered_at;
+} zmq_provider_info_t;
+
+typedef struct {
+    char service_name[256];
+    uint64_t request_id;
+    int error;
+    zmq_msg_t *parts;
+    size_t part_count;
+} zmq_gateway_completion_t;
+
+typedef void (*zmq_gateway_request_cb_fn) (uint64_t request_id,
+                                           zmq_msg_t *reply_parts,
+                                           size_t reply_count,
+                                           int error);
+
+/* Registry */
+ZMQ_EXPORT void *zmq_registry_new (void *ctx);
+ZMQ_EXPORT int zmq_registry_set_endpoints (void *registry,
+                                           const char *pub_endpoint,
+                                           const char *router_endpoint);
+ZMQ_EXPORT int zmq_registry_set_id (void *registry, uint32_t registry_id);
+ZMQ_EXPORT int zmq_registry_add_peer (void *registry,
+                                      const char *peer_pub_endpoint);
+ZMQ_EXPORT int zmq_registry_set_heartbeat (void *registry,
+                                           uint32_t interval_ms,
+                                           uint32_t timeout_ms);
+ZMQ_EXPORT int zmq_registry_set_broadcast_interval (void *registry,
+                                                    uint32_t interval_ms);
+ZMQ_EXPORT int zmq_registry_start (void *registry);
+ZMQ_EXPORT int zmq_registry_destroy (void **registry_p);
+
+/* Discovery */
+ZMQ_EXPORT void *zmq_discovery_new (void *ctx);
+ZMQ_EXPORT int zmq_discovery_connect_registry (
+  void *discovery, const char *registry_pub_endpoint);
+ZMQ_EXPORT int zmq_discovery_subscribe (void *discovery,
+                                        const char *service_name);
+ZMQ_EXPORT int zmq_discovery_unsubscribe (void *discovery,
+                                          const char *service_name);
+ZMQ_EXPORT int zmq_discovery_get_providers (void *discovery,
+                                            const char *service_name,
+                                            zmq_provider_info_t *providers,
+                                            size_t *count);
+ZMQ_EXPORT int zmq_discovery_provider_count (void *discovery,
+                                             const char *service_name);
+ZMQ_EXPORT int zmq_discovery_service_available (void *discovery,
+                                                const char *service_name);
+ZMQ_EXPORT int zmq_discovery_destroy (void **discovery_p);
+
+/* Gateway */
+ZMQ_EXPORT void *zmq_gateway_new (void *ctx, void *discovery);
+ZMQ_EXPORT int zmq_gateway_send (void *gateway,
+                                 const char *service_name,
+                                 zmq_msg_t *parts,
+                                 size_t part_count,
+                                 int flags,
+                                 uint64_t *request_id_out);
+ZMQ_EXPORT int zmq_gateway_recv (void *gateway,
+                                 zmq_msg_t **parts,
+                                 size_t *part_count,
+                                 int flags,
+                                 char *service_name_out,
+                                 uint64_t *request_id_out);
+ZMQ_EXPORT void *zmq_gateway_threadsafe_router (void *gateway,
+                                                const char *service_name);
+
+ZMQ_EXPORT uint64_t zmq_gateway_request (void *gateway,
+                                         const char *service_name,
+                                         zmq_msg_t *parts,
+                                         size_t part_count,
+                                         zmq_gateway_request_cb_fn callback,
+                                         int timeout_ms);
+ZMQ_EXPORT uint64_t zmq_gateway_request_send (void *gateway,
+                                              const char *service_name,
+                                              zmq_msg_t *parts,
+                                              size_t part_count,
+                                              int flags);
+ZMQ_EXPORT int zmq_gateway_request_recv (void *gateway,
+                                         zmq_gateway_completion_t *completion,
+                                         int timeout_ms);
+
+#define ZMQ_GATEWAY_LB_ROUND_ROBIN 0
+#define ZMQ_GATEWAY_LB_WEIGHTED 1
+
+ZMQ_EXPORT int zmq_gateway_set_lb_strategy (void *gateway,
+                                            const char *service_name,
+                                            int strategy);
+ZMQ_EXPORT int zmq_gateway_connection_count (void *gateway,
+                                             const char *service_name);
+ZMQ_EXPORT int zmq_gateway_destroy (void **gateway_p);
+
+/* Provider */
+ZMQ_EXPORT void *zmq_provider_new (void *ctx);
+ZMQ_EXPORT int zmq_provider_bind (void *provider,
+                                  const char *bind_endpoint);
+ZMQ_EXPORT int zmq_provider_connect_registry (void *provider,
+                                              const char *registry_endpoint);
+ZMQ_EXPORT int zmq_provider_register (void *provider,
+                                      const char *service_name,
+                                      const char *advertise_endpoint,
+                                      uint32_t weight);
+ZMQ_EXPORT int zmq_provider_update_weight (void *provider,
+                                           const char *service_name,
+                                           uint32_t weight);
+ZMQ_EXPORT int zmq_provider_unregister (void *provider,
+                                        const char *service_name);
+ZMQ_EXPORT int zmq_provider_register_result (void *provider,
+                                             const char *service_name,
+                                             int *status,
+                                             char *resolved_endpoint,
+                                             char *error_message);
+ZMQ_EXPORT void *zmq_provider_threadsafe_router (void *provider);
+ZMQ_EXPORT int zmq_provider_destroy (void **provider_p);
+
 #if defined _WIN32
 #if defined _WIN64
 typedef unsigned __int64 zmq_fd_t;

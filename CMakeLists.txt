@@ -925,6 +925,12 @@ set(protocol-sources
     src/protocol/metadata.cpp
     src/protocol/decoder_allocators.cpp)
 
+set(discovery-sources
+    src/discovery/registry.cpp
+    src/discovery/discovery.cpp
+    src/discovery/gateway.cpp
+    src/discovery/provider.cpp)
+
 set(socket-sources
     src/sockets/socket_base.cpp
     src/sockets/thread_safe_socket.cpp
@@ -986,6 +992,7 @@ set(sources
     ${api-sources}
     ${core-sources}
     ${protocol-sources}
+    ${discovery-sources}
     ${socket-sources}
     ${engine-sources}
     ${transport-sources}
@@ -997,6 +1004,7 @@ include_directories(
     src/api
     src/core
     src/protocol
+    src/discovery
     src/engine
     src/engine/asio
     src/transports/tcp

@@ -9,12 +9,14 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+static const size_t stream_routing_id_size = 5;
+
 static void recv_stream_event (void *socket_,
                                unsigned char expected_code_,
-                               unsigned char routing_id_[4])
+                               unsigned char routing_id_[stream_routing_id_size])
 {
-    int rc = zmq_recv (socket_, routing_id_, 4, 0);
-    TEST_ASSERT_EQUAL_INT (4, rc);
+    int rc = zmq_recv (socket_, routing_id_, stream_routing_id_size, 0);
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (stream_routing_id_size), rc);
 
     int more = 0;
     size_t more_size = sizeof (more);
@@ -29,24 +31,27 @@ static void recv_stream_event (void *socket_,
 }
 
 static void send_stream_msg (void *socket_,
-                             const unsigned char routing_id_[4],
+                             const unsigned char routing_id_[stream_routing_id_size],
                              const void *data_,
                              size_t size_)
 {
-    TEST_ASSERT_EQUAL_INT (4, TEST_ASSERT_SUCCESS_ERRNO (
-                                zmq_send (socket_, routing_id_, 4, ZMQ_SNDMORE)));
+    TEST_ASSERT_EQUAL_INT (
+      static_cast<int> (stream_routing_id_size),
+      TEST_ASSERT_SUCCESS_ERRNO (zmq_send (socket_, routing_id_,
+                                           stream_routing_id_size,
+                                           ZMQ_SNDMORE)));
     TEST_ASSERT_EQUAL_INT ((int) size_,
                            TEST_ASSERT_SUCCESS_ERRNO (
                              zmq_send (socket_, data_, size_, 0)));
 }
 
 static int recv_stream_msg (void *socket_,
-                            unsigned char routing_id_[4],
+                            unsigned char routing_id_[stream_routing_id_size],
                             void *buf_,
                             size_t buf_size_)
 {
-    int rc = zmq_recv (socket_, routing_id_, 4, 0);
-    if (rc != 4)
+    int rc = zmq_recv (socket_, routing_id_, stream_routing_id_size, 0);
+    if (rc != static_cast<int> (stream_routing_id_size))
         return -1;
 
     int more = 0;
@@ -75,8 +80,8 @@ void test_stream_tcp_basic ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
 
-    unsigned char server_id[4];
-    unsigned char client_id[4];
+    unsigned char server_id[stream_routing_id_size];
+    unsigned char client_id[stream_routing_id_size];
 
     recv_stream_event (server, 0x01, server_id);
     recv_stream_event (client, 0x01, client_id);
@@ -84,11 +89,12 @@ void test_stream_tcp_basic ()
     const char payload[] = "hello";
     send_stream_msg (client, client_id, payload, sizeof (payload) - 1);
 
-    unsigned char recv_id[4];
+    unsigned char recv_id[stream_routing_id_size];
     char recv_buf[64];
     int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, 4);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id,
+                                   stream_routing_id_size);
     TEST_ASSERT_EQUAL_STRING_LEN (payload, recv_buf, sizeof (payload) - 1);
 
     const char reply[] = "world";
@@ -96,7 +102,8 @@ void test_stream_tcp_basic ()
 
     rc = recv_stream_msg (client, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (reply) - 1, rc);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (client_id, recv_id, 4);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (client_id, recv_id,
+                                   stream_routing_id_size);
     TEST_ASSERT_EQUAL_STRING_LEN (reply, recv_buf, sizeof (reply) - 1);
 
     test_context_socket_close_zero_linger (client);
@@ -105,7 +112,8 @@ void test_stream_tcp_basic ()
     TEST_ASSERT_EQUAL_INT (1, zmq_poll (items, 1, 2000));
 
     recv_stream_event (server, 0x00, recv_id);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, 4);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id,
+                                   stream_routing_id_size);
 
     test_context_socket_close_zero_linger (server);
 }
@@ -131,8 +139,8 @@ void test_stream_maxmsgsize ()
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
 
-    unsigned char server_id[4];
-    unsigned char client_id[4];
+    unsigned char server_id[stream_routing_id_size];
+    unsigned char client_id[stream_routing_id_size];
 
     recv_stream_event (server, 0x01, server_id);
     recv_stream_event (client, 0x01, client_id);
@@ -143,7 +151,7 @@ void test_stream_maxmsgsize ()
     zmq_pollitem_t items[] = {{server, 0, ZMQ_POLLIN, 0}};
     TEST_ASSERT_EQUAL_INT (1, zmq_poll (items, 1, 2000));
 
-    unsigned char recv_id[4];
+    unsigned char recv_id[stream_routing_id_size];
     recv_stream_event (server, 0x00, recv_id);
     TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, 4);
 
@@ -174,8 +182,8 @@ void test_stream_ws_basic ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
 
-    unsigned char server_id[4];
-    unsigned char client_id[4];
+    unsigned char server_id[stream_routing_id_size];
+    unsigned char client_id[stream_routing_id_size];
 
     recv_stream_event (server, 0x01, server_id);
     recv_stream_event (client, 0x01, client_id);
@@ -183,7 +191,7 @@ void test_stream_ws_basic ()
     const char payload[] = "ws";
     send_stream_msg (client, client_id, payload, sizeof (payload) - 1);
 
-    unsigned char recv_id[4];
+    unsigned char recv_id[stream_routing_id_size];
     char recv_buf[64];
     int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
@@ -236,8 +244,8 @@ void test_stream_wss_basic ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
 
-    unsigned char server_id[4];
-    unsigned char client_id[4];
+    unsigned char server_id[stream_routing_id_size];
+    unsigned char client_id[stream_routing_id_size];
 
     recv_stream_event (server, 0x01, server_id);
     recv_stream_event (client, 0x01, client_id);
@@ -245,7 +253,7 @@ void test_stream_wss_basic ()
     const char payload[] = "wss";
     send_stream_msg (client, client_id, payload, sizeof (payload) - 1);
 
-    unsigned char recv_id[4];
+    unsigned char recv_id[stream_routing_id_size];
     char recv_buf[64];
     int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);

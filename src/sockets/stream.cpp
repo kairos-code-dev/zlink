@@ -75,7 +75,7 @@ int zmq::stream_t::xsend (msg_t *msg_)
         zmq_assert (!_current_out);
 
         if (msg_->flags () & msg_t::more) {
-            if (msg_->size () != 4) {
+            if (msg_->size () == 0) {
                 errno = EINVAL;
                 return -1;
             }
@@ -228,7 +228,7 @@ int zmq::stream_t::xsetsockopt (int option_,
                                 size_t optvallen_)
 {
     if (option_ == ZMQ_CONNECT_ROUTING_ID) {
-        if (optval_ && optvallen_ == 4) {
+        if (optval_ && optvallen_ > 0) {
             return routing_socket_base_t::xsetsockopt (option_, optval_,
                                                        optvallen_);
         }
@@ -245,18 +245,17 @@ void zmq::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     if (locally_initiated_ && connect_routing_id_is_set ()) {
         const std::string connect_routing_id = extract_connect_routing_id ();
-        if (connect_routing_id.size () == 4) {
-            routing_id.set (
-              reinterpret_cast<const unsigned char *> (
-                connect_routing_id.c_str ()),
-              connect_routing_id.size ());
-            zmq_assert (!has_out_pipe (routing_id));
-        }
+        routing_id.set (
+          reinterpret_cast<const unsigned char *> (
+            connect_routing_id.c_str ()),
+          connect_routing_id.size ());
+        zmq_assert (!has_out_pipe (routing_id));
     }
 
     if (routing_id.size () == 0) {
-        unsigned char buf[4];
-        put_uint32 (buf, _next_integral_routing_id++);
+        unsigned char buf[5];
+        buf[0] = 0;
+        put_uint32 (buf + 1, _next_integral_routing_id++);
         if (_next_integral_routing_id == 0)
             _next_integral_routing_id = 1;
         routing_id.set (buf, sizeof buf);

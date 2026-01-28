@@ -2,7 +2,7 @@
 
 > **우선순위**: 5 (Core Feature)
 > **상태**: Draft
-> **버전**: 3.1
+> **버전**: 3.4
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id 포맷)
 > - [04-service-discovery.md](04-service-discovery.md) (Registry/Discovery 연동)
@@ -316,13 +316,19 @@ owner down/제거:
   - 이미 OWNED/ROUTED로 등록된 토픽에 대해
     다른 노드로부터 `TOPIC_ANNOUNCE`/`QUERY_RESP`가 도착하면 충돌로 간주한다.
 - 소유자 결정 규칙:
-  - **낮은 node_id가 우선** (uint32 오름차순)
-  - 동일 node_id는 불가능하다고 가정한다.
+  - **나중에 생성된 토픽이 우선** (last-writer-wins)
+  - 비교 기준: `owner_epoch` (uint64, 생성 시각)
+  - `owner_epoch`가 같으면 **node_id가 낮은 쪽**이 우선
 - 충돌 해결:
   - 우선순위에서 **지는 노드는 OWNED → ROUTED로 강등**
   - 이후 publish는 **owner 노드로 라우팅**된다
   - `zmq_spot_topic_create()`는 **이미 owner를 알고 있으면 EEXIST**를 반환한다
   - 동시 생성 이후 충돌이 뒤늦게 발견되는 경우에도 **강등은 발생**한다
+
+**owner_epoch 전달 방식**
+- `TOPIC_ANNOUNCE` / `QUERY_RESP`에 `owner_epoch`를 포함한다.
+- `owner_epoch`는 토픽 생성 시 Node가 설정한다.
+  - 권장: `now_ms()` (벽시계 ms) 또는 단조 증가 시계
 
 > 토픽 유일성 보장은 여전히 애플리케이션 책임이다.
 
@@ -357,7 +363,37 @@ Discovery 연동 순서:
 - 패턴 구독이 존재하면, TOPIC_ANNOUNCE 수신 시 패턴 매칭 후 자동 SUBSCRIBE를 수행한다.
 - 패턴 구독 등록 시 **이미 알고 있는 토픽 목록에도 즉시 매칭**을 수행한다.
 
-### 4.4 연결 관리 상세 (구현 수준)
+### 4.4 구독 정보 책임 분리 (명시)
+
+- **Owner Node가 아는 정보**
+  - `topic_id -> 구독 중인 Node 목록` (remote_sub_map)
+  - 개별 SPOT 구독자까지는 알지 않는다.
+- **각 Node가 아는 정보**
+  - `topic_id -> 로컬 SPOT 목록 + refcount` (local_sub_map)
+- **전체 Node가 공유하는 정보**
+  - `topic_id -> owner node_id + owner_epoch` (TOPIC_ANNOUNCE / QUERY_RESP로 동기화)
+
+즉, **owner는 “구독 Node 목록”만 관리**하고,
+**각 Node가 “로컬 SPOT 구독자”를 관리**하는 구조다.
+
+### 4.5 토픽 소유자 매핑 공유 방식
+
+- **초기 동기화**: peer 연결 직후 `QUERY → QUERY_RESP`
+  - `QUERY_RESP`에 포함된 OWNED 토픽 목록을 기준으로
+    `topic_id -> owner node_id`를 갱신한다.
+- **실시간 전파**: 토픽 생성/삭제 시
+  - `TOPIC_ANNOUNCE` / `TOPIC_REMOVE`를 모든 peer에 fan-out한다.
+- **충돌 해소**:
+  - 동시에 생성된 토픽은 **owner_epoch 우선 규칙**으로 owner를 결정하고,
+    loser는 OWNED → ROUTED로 강등한다.
+- **owner down 시**:
+  - 해당 노드는 owner unknown 상태로 전환
+  - 이후 재연결 시 `QUERY`로 다시 동기화한다.
+
+즉, **매핑은 Node↔Node 메시지(QUERY/ANNOUNCE/REMOVE)로만 공유**되며,
+Registry/Discovery는 **노드 목록만** 제공한다.
+
+### 4.6 연결 관리 상세 (구현 수준)
 
 Node는 Discovery의 **peer 목록**을 기준으로 연결을 관리한다.
 
@@ -385,7 +421,7 @@ peer_entry:
 
 > 연결 상태는 ZMQ monitor 이벤트(`CONNECTION_READY`, `DISCONNECTED`)로 보정 가능하다.
 
-### 4.5 Registry HA / Failover
+### 4.7 Registry HA / Failover
 
 - Node는 Registry endpoint 목록을 보유하고 **단일 Registry에만 active 등록**한다.
 - 장애 감지 시 다른 Registry로 **failover 재등록**한다.
@@ -452,13 +488,14 @@ Frame 1: 0x04
 ```
 Frame 1: 0x05
 Frame 2: topic_count (uint32_t)
-Frame 3~N: topic_id (string, 반복)
+Frame 3~N: topic_id (string) + owner_epoch (uint64, 반복)
 ```
 
 **TOPIC_ANNOUNCE / TOPIC_REMOVE**
 ```
 Frame 1: 0x06 or 0x07
 Frame 2: topic_id (string)
+Frame 3: owner_epoch (uint64)   // TOPIC_REMOVE에는 생략 가능
 ```
 
 **MESSAGE**
@@ -848,6 +885,9 @@ zmq_spot_subscribe_pattern(spot, "zone:13:*");
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 3.4 | 2026-01-27 | 토픽 충돌 정책을 LWW(owner_epoch) 기준으로 변경 |
+| 3.3 | 2026-01-27 | 토픽 owner 매핑 공유 방식(QUERY/ANNOUNCE) 명시 |
+| 3.2 | 2026-01-27 | 구독 정보 책임 분리(Owner/Node 역할) 명시 |
 | 3.1 | 2026-01-27 | 토픽 전달 모드(QUEUE/RINGBUFFER) 및 API 추가 |
 | 3.0 | 2026-01-27 | 다중 인스턴스 목표(10k) 명확화 |
 | 2.9 | 2026-01-27 | 노드 ID/라우팅, API 순서, QUERY 포맷, 큐/정리 규칙 등 상세 보강 |

@@ -37,8 +37,13 @@ void test_capabilities ()
     TEST_ASSERT_TRUE (!zmq_has ("wss"));
 #endif
 
-    // PGM is removed
+#if defined(ZMQ_HAVE_OPENPGM)
+    TEST_ASSERT_TRUE (zmq_has ("pgm"));
+    TEST_ASSERT_TRUE (zmq_has ("epgm"));
+#else
     TEST_ASSERT_TRUE (!zmq_has ("pgm"));
+    TEST_ASSERT_TRUE (!zmq_has ("epgm"));
+#endif
 
     // TIPC is removed
     TEST_ASSERT_TRUE (!zmq_has ("tipc"));

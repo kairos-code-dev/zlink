@@ -55,11 +55,11 @@ ctest --output-on-failure
 Current status: **61 tests passed** (100% success rate for functional tests).
 
 ### Performance Comparison
-A comprehensive benchmark suite is available in `benchwithzlink-baseline/`.
+A comprehensive benchmark suite is available in `benchwithzlink/`.
 ```bash
-python3 benchwithzlink-baseline/run_comparison.py ALL
+benchwithzlink/run_benchmarks.sh --with-baseline --result
 ```
-Results are saved in `benchwithzlink-baseline/wsl_COMPARISON_RESULTS.md` (conducted in WSL environment).
+Results are saved under `benchwithzlink/results/YYYYMMDD/`.
 
 ## Development Conventions
 *   **Optimization**: C++11 + LTO (Link Time Optimization) is used to achieve maximum performance.

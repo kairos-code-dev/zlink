@@ -1489,7 +1489,6 @@ endif()
 # benchmarks
 option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
 if(BUILD_BENCHMARKS AND BUILD_SHARED)
-  add_subdirectory(benchwithzlink-baseline)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzmq/CMakeLists.txt")
     add_subdirectory(benchwithzmq)
   endif()

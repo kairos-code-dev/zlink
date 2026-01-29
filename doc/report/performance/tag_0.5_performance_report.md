@@ -33,34 +33,9 @@
 - Date: 2026-01-24
 - Runs: 10
 - CPU pinning: disabled (`--no-taskset`)
-- benchwithzlink-baseline baseline file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink-baseline/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
 - benchwithzlink result file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`
 
-## 3. zlink vs standard libzlink (benchwithzlink-baseline)
-Median throughput diff across sizes per pattern/transport (positive = zlink faster).
-
-| Pattern | Transport | Median Diff (%) | Min Diff (%) | Max Diff (%) |
-|---------|-----------|-----------------|--------------|--------------|
-| DEALER_DEALER | inproc | -1.39 | -34.19 | +3.67 |
-| DEALER_DEALER | ipc | -2.59 | -8.92 | +1.40 |
-| DEALER_DEALER | tcp | -0.97 | -7.81 | +0.97 |
-| DEALER_ROUTER | inproc | +0.17 | -12.71 | +14.04 |
-| DEALER_ROUTER | ipc | -4.28 | -7.41 | +0.33 |
-| DEALER_ROUTER | tcp | -2.25 | -9.25 | +2.38 |
-| PAIR | inproc | +0.36 | -2.72 | +4.77 |
-| PAIR | ipc | -4.81 | -9.00 | -0.37 |
-| PAIR | tcp | +0.05 | -7.68 | +2.49 |
-| PUBSUB | inproc | +2.46 | -1.42 | +24.97 |
-| PUBSUB | ipc | -1.82 | -6.16 | +16.30 |
-| PUBSUB | tcp | +0.86 | -6.15 | +5.76 |
-| ROUTER_ROUTER | inproc | -1.34 | -15.13 | +3.50 |
-| ROUTER_ROUTER | ipc | -2.77 | -7.33 | +1.36 |
-| ROUTER_ROUTER | tcp | -4.52 | -8.93 | +4.76 |
-| ROUTER_ROUTER_POLL | inproc | +3.42 | -11.57 | +8.19 |
-| ROUTER_ROUTER_POLL | ipc | -2.50 | -5.13 | +3.59 |
-| ROUTER_ROUTER_POLL | tcp | +0.99 | -6.22 | +4.23 |
-
-## 4. current vs baseline (benchwithzlink)
+## 3. current vs baseline (benchwithzlink)
 Median throughput diff across sizes per pattern/transport (positive = current faster).
 
 | Pattern | Transport | Median Diff (%) | Min Diff (%) | Max Diff (%) |
@@ -106,7 +81,7 @@ Median throughput diff across sizes per pattern/transport (positive = current fa
 | STREAM | ws | -3.00 | -8.98 | +0.39 |
 | STREAM | wss | -11.54 | -31.23 | -3.60 |
 
-## 5. Notable Throughput Changes (current vs baseline)
+## 4. Notable Throughput Changes (current vs baseline)
 Changes >= ±10% (throughput only).
 
 | Diff (%) | Pattern | Transport | Size |
@@ -175,6 +150,5 @@ Changes >= ±10% (throughput only).
 | +71.60 | DEALER_DEALER | ws | 1024B |
 | +75.17 | ROUTER_ROUTER | ws | 1024B |
 
-## 6. Raw Result Files
-- `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink-baseline/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
+## 5. Raw Result Files
 - `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`

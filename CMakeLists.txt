@@ -259,13 +259,27 @@ if(WITH_OPENPGM)
     message(FATAL_ERROR "PkgConfig is required to locate OpenPGM")
   endif()
   if(NOT OPENPGM_PKGCONFIG_NAME)
-    set(OPENPGM_PKGCONFIG_NAME "openpgm-5.2")
+    set(_openpgm_candidates "openpgm-5.3" "openpgm-5.2")
+    foreach(_openpgm_name IN LISTS _openpgm_candidates)
+      pkg_check_modules(OPENPGM QUIET ${_openpgm_name})
+      if(OPENPGM_FOUND)
+        set(OPENPGM_PKGCONFIG_NAME ${_openpgm_name})
+        break()
+      endif()
+    endforeach()
   endif()
-  set(OPENPGM_PKGCONFIG_NAME
-      ${OPENPGM_PKGCONFIG_NAME}
-      CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
-      FORCE)
-  pkg_check_modules(OPENPGM ${OPENPGM_PKGCONFIG_NAME})
+  if(NOT OPENPGM_FOUND)
+    if(NOT OPENPGM_PKGCONFIG_NAME)
+      set(OPENPGM_PKGCONFIG_NAME "openpgm-5.3")
+    endif()
+    pkg_check_modules(OPENPGM ${OPENPGM_PKGCONFIG_NAME})
+  endif()
+  if(OPENPGM_PKGCONFIG_NAME)
+    set(OPENPGM_PKGCONFIG_NAME
+        ${OPENPGM_PKGCONFIG_NAME}
+        CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
+        FORCE)
+  endif()
   if(OPENPGM_FOUND)
     message(STATUS "${OPENPGM_PKGCONFIG_NAME} found")
     set(ZMQ_HAVE_OPENPGM 1)

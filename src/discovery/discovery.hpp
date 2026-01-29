@@ -24,6 +24,22 @@ struct provider_info_t
     uint64_t registered_at;
 };
 
+enum discovery_event_t
+{
+    DISCOVERY_EVENT_PROVIDER_ADDED = 1,
+    DISCOVERY_EVENT_PROVIDER_REMOVED = 2,
+    DISCOVERY_EVENT_SERVICE_AVAILABLE = 3,
+    DISCOVERY_EVENT_SERVICE_UNAVAILABLE = 4
+};
+
+class discovery_listener_t
+{
+  public:
+    virtual ~discovery_listener_t () {}
+    virtual void on_discovery_event (int event_,
+                                     const std::string &service_name_) = 0;
+};
+
 class discovery_t
 {
   public:
@@ -45,6 +61,8 @@ class discovery_t
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
+    void add_listener (discovery_listener_t *listener_);
+    void remove_listener (discovery_listener_t *listener_);
 
   private:
     struct service_state_t
@@ -67,6 +85,7 @@ class discovery_t
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
+    std::set<discovery_listener_t *> _listeners;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };

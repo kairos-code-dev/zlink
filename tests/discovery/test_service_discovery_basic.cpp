@@ -143,6 +143,138 @@ static void test_gateway_send_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
 }
 
+static void test_registry_peer_sync ()
+{
+    void *ctx = zmq_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry_a = NULL;
+    void *registry_b = NULL;
+    setup_registry (ctx, &registry_a, "inproc://regA-pub",
+                    "inproc://regA-router");
+    setup_registry (ctx, &registry_b, "inproc://regB-pub",
+                    "inproc://regB-router");
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_registry_add_peer (registry_b, "inproc://regA-pub"));
+
+    void *discovery = zmq_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_connect_registry (discovery, "inproc://regB-pub"));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+
+    void *provider = NULL;
+    setup_provider (ctx, &provider, "inproc://svc-peer",
+                    "inproc://regA-router", "svc");
+
+    msleep (300);
+
+    zmq_provider_info_t providers[4];
+    size_t count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_get_providers (discovery, "svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (1, (int) count);
+    TEST_ASSERT_EQUAL_STRING ("inproc://svc-peer", providers[0].endpoint);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+}
+
+static void test_gateway_refresh_on_unregister ()
+{
+    void *ctx = zmq_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = NULL;
+    setup_registry (ctx, &registry, "inproc://reg-pub3", "inproc://reg-router3");
+    void *discovery = zmq_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_connect_registry (discovery, "inproc://reg-pub3"));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+    void *provider = NULL;
+    setup_provider (ctx, &provider, "inproc://svc3", "inproc://reg-router3",
+                    "svc");
+
+    msleep (200);
+
+    void *gateway = zmq_gateway_new (ctx, discovery);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    zmq_msg_t req;
+    zmq_msg_init_size (&req, 1);
+    memcpy (zmq_msg_data (&req), "x", 1);
+    uint64_t request_id = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
+
+    msleep (100);
+    TEST_ASSERT_EQUAL_INT (1, zmq_gateway_connection_count (gateway, "svc"));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_unregister (provider, "svc"));
+    msleep (300);
+    TEST_ASSERT_EQUAL_INT (0, zmq_gateway_connection_count (gateway, "svc"));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+}
+
+static void test_registry_peer_timeout ()
+{
+    void *ctx = zmq_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry_a = NULL;
+    void *registry_b = NULL;
+    setup_registry (ctx, &registry_a, "inproc://regA2-pub",
+                    "inproc://regA2-router");
+    setup_registry (ctx, &registry_b, "inproc://regB2-pub",
+                    "inproc://regB2-router");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_registry_set_broadcast_interval (registry_b, 50));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_registry_add_peer (registry_b, "inproc://regA2-pub"));
+
+    void *discovery = zmq_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_connect_registry (discovery, "inproc://regB2-pub"));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+
+    void *provider = NULL;
+    setup_provider (ctx, &provider, "inproc://svc-peer2",
+                    "inproc://regA2-router", "svc");
+
+    msleep (200);
+
+    zmq_provider_info_t providers[4];
+    size_t count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_get_providers (discovery, "svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (1, (int) count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_a));
+
+    msleep (400);
+    count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zmq_discovery_get_providers (discovery, "svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (0, (int) count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -150,5 +282,8 @@ int main (int, char **)
     UNITY_BEGIN ();
     RUN_TEST (test_discovery_get_providers);
     RUN_TEST (test_gateway_send_recv);
+    RUN_TEST (test_registry_peer_sync);
+    RUN_TEST (test_gateway_refresh_on_unregister);
+    RUN_TEST (test_registry_peer_timeout);
     return UNITY_END ();
 }

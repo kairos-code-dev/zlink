@@ -88,11 +88,30 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
         return;
     out_->clear ();
     scoped_lock_t lock (_sync);
+    if (!_subscriptions.empty ()
+        && _subscriptions.find (service_name_) == _subscriptions.end ())
+        return;
     std::map<std::string, service_state_t>::iterator it =
       _services.find (service_name_);
     if (it == _services.end ())
         return;
     *out_ = it->second.providers;
+}
+
+void discovery_t::add_listener (discovery_listener_t *listener_)
+{
+    if (!listener_)
+        return;
+    scoped_lock_t lock (_sync);
+    _listeners.insert (listener_);
+}
+
+void discovery_t::remove_listener (discovery_listener_t *listener_)
+{
+    if (!listener_)
+        return;
+    scoped_lock_t lock (_sync);
+    _listeners.erase (listener_);
 }
 
 int discovery_t::get_providers (const char *service_name_,
@@ -136,6 +155,9 @@ int discovery_t::provider_count (const char *service_name_)
     }
 
     scoped_lock_t lock (_sync);
+    if (!_subscriptions.empty ()
+        && _subscriptions.find (service_name_) == _subscriptions.end ())
+        return 0;
     std::map<std::string, service_state_t>::iterator it =
       _services.find (service_name_);
     if (it == _services.end ())
@@ -151,6 +173,9 @@ int discovery_t::service_available (const char *service_name_)
     }
 
     scoped_lock_t lock (_sync);
+    if (!_subscriptions.empty ()
+        && _subscriptions.find (service_name_) == _subscriptions.end ())
+        return 0;
     std::map<std::string, service_state_t>::iterator it =
       _services.find (service_name_);
     if (it == _services.end ())
@@ -247,12 +272,6 @@ void discovery_t::handle_service_list (const std::vector<zmq_msg_t> &frames_)
         return;
     }
 
-    scoped_lock_t lock (_sync);
-    std::map<uint32_t, uint64_t>::iterator sit = _registry_seq.find (registry_id);
-    if (sit != _registry_seq.end () && list_seq <= sit->second)
-        return;
-    _registry_seq[registry_id] = list_seq;
-
     std::map<std::string, service_state_t> updated;
 
     size_t index = 4;
@@ -281,6 +300,98 @@ void discovery_t::handle_service_list (const std::vector<zmq_msg_t> &frames_)
         updated[service_name] = state;
     }
 
-    _services.swap (updated);
+    std::vector<std::pair<int, std::string> > events;
+    std::vector<discovery_listener_t *> listeners;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<uint32_t, uint64_t>::iterator sit =
+          _registry_seq.find (registry_id);
+        if (sit != _registry_seq.end () && list_seq <= sit->second)
+            return;
+        _registry_seq[registry_id] = list_seq;
+
+        std::set<std::string> services;
+        for (std::map<std::string, service_state_t>::const_iterator it =
+               _services.begin ();
+             it != _services.end (); ++it)
+            services.insert (it->first);
+        for (std::map<std::string, service_state_t>::const_iterator it =
+               updated.begin ();
+             it != updated.end (); ++it)
+            services.insert (it->first);
+
+        for (std::set<std::string>::const_iterator it = services.begin ();
+             it != services.end (); ++it) {
+            const std::string &service = *it;
+            if (!_subscriptions.empty ()
+                && _subscriptions.find (service) == _subscriptions.end ())
+                continue;
+
+            size_t old_count = 0;
+            size_t new_count = 0;
+            std::set<std::string> old_eps;
+            std::set<std::string> new_eps;
+
+            std::map<std::string, service_state_t>::const_iterator old_it =
+              _services.find (service);
+            if (old_it != _services.end ()) {
+                old_count = old_it->second.providers.size ();
+                for (size_t i = 0; i < old_it->second.providers.size (); ++i)
+                    old_eps.insert (old_it->second.providers[i].endpoint);
+            }
+
+            std::map<std::string, service_state_t>::const_iterator new_it =
+              updated.find (service);
+            if (new_it != updated.end ()) {
+                new_count = new_it->second.providers.size ();
+                for (size_t i = 0; i < new_it->second.providers.size (); ++i)
+                    new_eps.insert (new_it->second.providers[i].endpoint);
+            }
+
+            if (old_count == 0 && new_count > 0)
+                events.push_back (
+                  std::make_pair (DISCOVERY_EVENT_SERVICE_AVAILABLE, service));
+            if (old_count > 0 && new_count == 0)
+                events.push_back (std::make_pair (
+                  DISCOVERY_EVENT_SERVICE_UNAVAILABLE, service));
+
+            bool provider_added = false;
+            bool provider_removed = false;
+            for (std::set<std::string>::const_iterator ep =
+                   new_eps.begin ();
+                 ep != new_eps.end (); ++ep) {
+                if (old_eps.find (*ep) == old_eps.end ()) {
+                    provider_added = true;
+                    break;
+                }
+            }
+            for (std::set<std::string>::const_iterator ep =
+                   old_eps.begin ();
+                 ep != old_eps.end (); ++ep) {
+                if (new_eps.find (*ep) == new_eps.end ()) {
+                    provider_removed = true;
+                    break;
+                }
+            }
+            if (provider_added)
+                events.push_back (
+                  std::make_pair (DISCOVERY_EVENT_PROVIDER_ADDED, service));
+            if (provider_removed)
+                events.push_back (
+                  std::make_pair (DISCOVERY_EVENT_PROVIDER_REMOVED, service));
+        }
+
+        _services.swap (updated);
+        listeners.assign (_listeners.begin (), _listeners.end ());
+    }
+
+    for (size_t i = 0; i < events.size (); ++i) {
+        for (size_t l = 0; l < listeners.size (); ++l) {
+            discovery_listener_t *listener = listeners[l];
+            if (!listener)
+                continue;
+            listener->on_discovery_event (events[i].first, events[i].second);
+        }
+    }
 }
 }

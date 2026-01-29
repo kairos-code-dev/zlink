@@ -41,16 +41,35 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
 {
     zmq_assert (_ctx);
     _worker.start (run, this, "gateway");
+    if (_discovery)
+        _discovery->add_listener (this);
 }
 
 gateway_t::~gateway_t ()
 {
+    if (_discovery)
+        _discovery->remove_listener (this);
     _tag = 0xdeadbeef;
 }
 
 bool gateway_t::check_tag () const
 {
     return _tag == gateway_tag_value;
+}
+
+void gateway_t::on_discovery_event (int event_,
+                                    const std::string &service_name_)
+{
+    if (service_name_.empty ())
+        return;
+    if (event_ != DISCOVERY_EVENT_PROVIDER_ADDED
+        && event_ != DISCOVERY_EVENT_PROVIDER_REMOVED
+        && event_ != DISCOVERY_EVENT_SERVICE_AVAILABLE
+        && event_ != DISCOVERY_EVENT_SERVICE_UNAVAILABLE)
+        return;
+
+    scoped_lock_t lock (_sync);
+    _refresh_queue.insert (service_name_);
 }
 
 static int allocate_threadsafe_router (ctx_t *ctx_, socket_base_t **socket_,
@@ -455,6 +474,19 @@ void gateway_t::loop ()
 
         {
             scoped_lock_t lock (_sync);
+            if (!_refresh_queue.empty ()) {
+                for (std::set<std::string>::const_iterator it =
+                       _refresh_queue.begin ();
+                     it != _refresh_queue.end (); ++it) {
+                    std::map<std::string, service_pool_t>::iterator pit =
+                      _pools.find (*it);
+                    if (pit != _pools.end ())
+                        refresh_pool (&pit->second);
+                }
+                _refresh_queue.clear ();
+                handled = true;
+            }
+
             for (std::map<std::string, service_pool_t>::iterator it =
                    _pools.begin ();
                  it != _pools.end (); ++it) {
@@ -834,6 +866,8 @@ void *gateway_t::threadsafe_router (const char *service_name_)
 
 int gateway_t::destroy ()
 {
+    if (_discovery)
+        _discovery->remove_listener (this);
     _stop.set (1);
     if (_worker.get_started ())
         _worker.stop ();

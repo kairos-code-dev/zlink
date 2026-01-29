@@ -69,6 +69,7 @@ int spot_t::publish (const char *topic_,
                      size_t part_count_,
                      int flags_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -78,6 +79,7 @@ int spot_t::publish (const char *topic_,
 
 int spot_t::subscribe (const char *topic_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -87,6 +89,7 @@ int spot_t::subscribe (const char *topic_)
 
 int spot_t::subscribe_pattern (const char *pattern_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -96,6 +99,7 @@ int spot_t::subscribe_pattern (const char *pattern_)
 
 int spot_t::unsubscribe (const char *topic_or_pattern_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -105,6 +109,7 @@ int spot_t::unsubscribe (const char *topic_or_pattern_)
 
 int spot_t::topic_create (const char *topic_, int mode_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -114,6 +119,7 @@ int spot_t::topic_create (const char *topic_, int mode_)
 
 int spot_t::topic_destroy (const char *topic_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -250,6 +256,7 @@ int spot_t::recv (zmq_msg_t **parts_,
                   char *topic_out_,
                   size_t *topic_len_)
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (!_node) {
         errno = EFAULT;
         return -1;
@@ -305,6 +312,7 @@ int spot_t::recv (zmq_msg_t **parts_,
 
 int spot_t::destroy ()
 {
+    scoped_optional_lock_t lock (_threadsafe ? &_sync : NULL);
     if (_node)
         _node->remove_spot (this);
     _node = NULL;

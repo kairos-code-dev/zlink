@@ -291,20 +291,230 @@ void registry_t::handle_router (void *router_)
 
 void registry_t::handle_peer (void *sub_)
 {
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, sub_, 0) == -1) {
-        zmq_msg_close (&msg);
-        return;
-    }
-    // Drain remaining frames (ignore for now).
-    while (zmq_msg_more (&msg)) {
-        zmq_msg_close (&msg);
-        zmq_msg_init (&msg);
-        if (zmq_msg_recv (&msg, sub_, 0) == -1)
+    std::vector<zmq_msg_t> frames;
+    while (true) {
+        zmq_msg_t frame;
+        zmq_msg_init (&frame);
+        if (zmq_msg_recv (&frame, sub_, 0) == -1) {
+            zmq_msg_close (&frame);
+            break;
+        }
+        frames.push_back (frame);
+        if (!zmq_msg_more (&frame))
             break;
     }
-    zmq_msg_close (&msg);
+
+    if (frames.empty ())
+        return;
+
+    uint16_t msg_id = 0;
+    if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    if (msg_id != discovery_protocol::msg_service_list
+        && msg_id != discovery_protocol::msg_registry_sync) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    if (frames.size () < 4) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    uint32_t peer_registry_id = 0;
+    uint64_t list_seq = 0;
+    uint32_t service_count = 0;
+    if (!discovery_protocol::read_u32 (frames[1], &peer_registry_id)
+        || !discovery_protocol::read_u64 (frames[2], &list_seq)
+        || !discovery_protocol::read_u32 (frames[3], &service_count)) {
+        for (size_t i = 0; i < frames.size (); ++i)
+            zmq_msg_close (&frames[i]);
+        return;
+    }
+
+    service_map_t incoming;
+    zmq::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+
+    uint32_t local_registry_id = 0;
+    {
+        scoped_lock_t lock (_sync);
+        local_registry_id = _registry_id_set ? _registry_id : _registry_id;
+        if (local_registry_id == 0)
+            local_registry_id = 1;
+
+        if (peer_registry_id == local_registry_id) {
+            for (size_t i = 0; i < frames.size (); ++i)
+                zmq_msg_close (&frames[i]);
+            return;
+        }
+
+        _peer_last_seen[peer_registry_id] = now;
+        std::map<uint32_t, uint64_t>::iterator it =
+          _peer_seq.find (peer_registry_id);
+        if (it != _peer_seq.end () && list_seq <= it->second) {
+            for (size_t i = 0; i < frames.size (); ++i)
+                zmq_msg_close (&frames[i]);
+            return;
+        }
+    }
+
+    size_t index = 4;
+    for (uint32_t i = 0; i < service_count && index < frames.size (); ++i) {
+        if (index + 1 >= frames.size ())
+            break;
+        const std::string service_name =
+          discovery_protocol::read_string (frames[index++]);
+        uint32_t provider_count = 0;
+        if (!discovery_protocol::read_u32 (frames[index++], &provider_count))
+            break;
+
+        service_entry_t &service = incoming[service_name];
+        for (uint32_t p = 0; p < provider_count && index + 2 < frames.size ();
+             ++p) {
+            provider_entry_t entry;
+            entry.endpoint = discovery_protocol::read_string (frames[index++]);
+            discovery_protocol::read_routing_id (frames[index++],
+                                                 &entry.routing_id);
+            uint32_t weight = 1;
+            discovery_protocol::read_u32 (frames[index++], &weight);
+            entry.weight = weight == 0 ? 1 : weight;
+            entry.registered_at = now;
+            entry.last_heartbeat = now;
+            entry.source_registry = peer_registry_id;
+            if (!entry.endpoint.empty ())
+                service.providers[entry.endpoint] = entry;
+        }
+    }
+
+    bool changed = false;
+    {
+        scoped_lock_t lock (_sync);
+        std::map<uint32_t, uint64_t>::iterator it =
+          _peer_seq.find (peer_registry_id);
+        if (peer_registry_id == local_registry_id
+            || (it != _peer_seq.end () && list_seq <= it->second)) {
+            for (size_t i = 0; i < frames.size (); ++i)
+                zmq_msg_close (&frames[i]);
+            return;
+        }
+
+        for (service_map_t::const_iterator sit = incoming.begin ();
+             sit != incoming.end (); ++sit) {
+            const std::string &service_name = sit->first;
+            const provider_map_t &providers = sit->second.providers;
+            service_map_t::const_iterator existing_service =
+              _services.find (service_name);
+            for (provider_map_t::const_iterator pit = providers.begin ();
+                 pit != providers.end (); ++pit) {
+                bool match = false;
+                if (existing_service != _services.end ()) {
+                    provider_map_t::const_iterator ep =
+                      existing_service->second.providers.find (pit->first);
+                    if (ep != existing_service->second.providers.end ()
+                        && ep->second.source_registry == peer_registry_id) {
+                        const provider_entry_t &cur = ep->second;
+                        const provider_entry_t &incoming_entry = pit->second;
+                        match =
+                          cur.weight == incoming_entry.weight
+                          && cur.routing_id.size
+                               == incoming_entry.routing_id.size
+                          && (cur.routing_id.size == 0
+                              || memcmp (cur.routing_id.data,
+                                         incoming_entry.routing_id.data,
+                                         cur.routing_id.size)
+                                   == 0);
+                    } else if (ep != existing_service->second.providers.end ()
+                               && ep->second.source_registry
+                                    != peer_registry_id) {
+                        match = true;
+                    }
+                }
+                if (!match) {
+                    changed = true;
+                    break;
+                }
+            }
+            if (changed)
+                break;
+        }
+
+        if (!changed) {
+            for (service_map_t::const_iterator sit = _services.begin ();
+                 sit != _services.end (); ++sit) {
+                const provider_map_t &providers = sit->second.providers;
+                for (provider_map_t::const_iterator pit = providers.begin ();
+                     pit != providers.end (); ++pit) {
+                    if (pit->second.source_registry != peer_registry_id)
+                        continue;
+                    service_map_t::const_iterator incoming_service =
+                      incoming.find (sit->first);
+                    if (incoming_service == incoming.end ()
+                        || incoming_service->second.providers.find (pit->first)
+                             == incoming_service->second.providers.end ()) {
+                        changed = true;
+                        break;
+                    }
+                }
+                if (changed)
+                    break;
+            }
+        }
+
+        if (!changed) {
+            _peer_seq[peer_registry_id] = list_seq;
+            for (size_t i = 0; i < frames.size (); ++i)
+                zmq_msg_close (&frames[i]);
+            return;
+        }
+
+        for (service_map_t::iterator sit = _services.begin ();
+             sit != _services.end ();) {
+            provider_map_t &providers = sit->second.providers;
+            for (provider_map_t::iterator pit = providers.begin ();
+                 pit != providers.end ();) {
+                if (pit->second.source_registry == peer_registry_id) {
+                    pit = providers.erase (pit);
+                    continue;
+                }
+                ++pit;
+            }
+            if (providers.empty ()) {
+                sit = _services.erase (sit);
+                continue;
+            }
+            ++sit;
+        }
+
+        for (service_map_t::const_iterator sit = incoming.begin ();
+             sit != incoming.end (); ++sit) {
+            const std::string &service_name = sit->first;
+            const provider_map_t &providers = sit->second.providers;
+            service_entry_t &service = _services[service_name];
+            for (provider_map_t::const_iterator pit = providers.begin ();
+                 pit != providers.end (); ++pit) {
+                provider_map_t::iterator existing =
+                  service.providers.find (pit->first);
+                if (existing != service.providers.end ()
+                    && existing->second.source_registry != peer_registry_id) {
+                    continue;
+                }
+                service.providers[pit->first] = pit->second;
+            }
+        }
+
+        _peer_seq[peer_registry_id] = list_seq;
+        _list_seq++;
+    }
+
+    for (size_t i = 0; i < frames.size (); ++i)
+        zmq_msg_close (&frames[i]);
 }
 
 void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
@@ -344,6 +554,7 @@ void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
     entry.weight = weight;
     entry.registered_at = now;
     entry.last_heartbeat = now;
+    entry.source_registry = _registry_id;
 
     _list_seq++;
     send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
@@ -366,6 +577,10 @@ void registry_t::handle_unregister (const zmq_msg_t *frames_,
 
     provider_map_t::iterator pit = sit->second.providers.find (endpoint);
     if (pit == sit->second.providers.end ())
+        return;
+    if (pit->second.source_registry != _registry_id)
+        return;
+    if (pit->second.source_registry != _registry_id)
         return;
 
     sit->second.providers.erase (pit);
@@ -428,6 +643,11 @@ void registry_t::handle_update_weight (void *router_, const zmq_msg_t *frames_,
     if (pit == sit->second.providers.end ()) {
         send_register_ack (router_, sender_id_, 0x01, endpoint,
                            "provider not found");
+        return;
+    }
+    if (pit->second.source_registry != _registry_id) {
+        send_register_ack (router_, sender_id_, 0x01, endpoint,
+                           "provider not local");
         return;
     }
 
@@ -526,12 +746,17 @@ void registry_t::send_service_list (void *pub_)
 
 void registry_t::remove_expired (uint64_t now_ms_)
 {
+    const uint32_t local_registry_id = _registry_id;
     bool changed = false;
     for (service_map_t::iterator sit = _services.begin ();
          sit != _services.end ();) {
         provider_map_t &providers = sit->second.providers;
         for (provider_map_t::iterator pit = providers.begin ();
              pit != providers.end ();) {
+            if (pit->second.source_registry != local_registry_id) {
+                ++pit;
+                continue;
+            }
             if (now_ms_ > pit->second.last_heartbeat
                 && now_ms_ - pit->second.last_heartbeat
                      > _heartbeat_timeout_ms) {
@@ -545,6 +770,40 @@ void registry_t::remove_expired (uint64_t now_ms_)
             sit = _services.erase (sit);
         else
             ++sit;
+    }
+
+    uint64_t peer_timeout_ms = _broadcast_interval_ms;
+    if (peer_timeout_ms == 0)
+        peer_timeout_ms = 30000;
+    peer_timeout_ms *= 3;
+
+    for (std::map<uint32_t, uint64_t>::iterator pit = _peer_last_seen.begin ();
+         pit != _peer_last_seen.end ();) {
+        const uint32_t peer_id = pit->first;
+        if (now_ms_ > pit->second && now_ms_ - pit->second > peer_timeout_ms) {
+            for (service_map_t::iterator sit = _services.begin ();
+                 sit != _services.end ();) {
+                provider_map_t &providers = sit->second.providers;
+                for (provider_map_t::iterator eit = providers.begin ();
+                     eit != providers.end ();) {
+                    if (eit->second.source_registry == peer_id) {
+                        eit = providers.erase (eit);
+                        changed = true;
+                        continue;
+                    }
+                    ++eit;
+                }
+                if (providers.empty ()) {
+                    sit = _services.erase (sit);
+                    continue;
+                }
+                ++sit;
+            }
+            _peer_seq.erase (peer_id);
+            pit = _peer_last_seen.erase (pit);
+            continue;
+        }
+        ++pit;
     }
 
     if (changed)

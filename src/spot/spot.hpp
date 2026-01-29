@@ -6,6 +6,7 @@
 #include "core/msg.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
+#include "utils/mutex.hpp"
 
 #include <deque>
 #include <map>
@@ -64,6 +65,7 @@ class spot_t
     spot_node_t *_node;
     uint32_t _tag;
     bool _threadsafe;
+    mutex_t _sync;
 
     std::set<std::string> _topics;
     std::set<std::string> _patterns;

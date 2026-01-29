@@ -16,18 +16,21 @@
 #include <chrono>
 #include <deque>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
 namespace zmq
 {
-class gateway_t
+class gateway_t : public discovery_listener_t
 {
   public:
     gateway_t (ctx_t *ctx_, discovery_t *discovery_);
     ~gateway_t ();
 
     bool check_tag () const;
+    void on_discovery_event (int event_,
+                             const std::string &service_name_);
 
     int send (const char *service_name_,
               zmq_msg_t *parts_,
@@ -133,6 +136,7 @@ class gateway_t
     std::map<std::string, service_pool_t> _pools;
     std::map<uint64_t, pending_request_t> _pending;
     uint64_t _next_request_id;
+    std::set<std::string> _refresh_queue;
 
     atomic_counter_t _stop;
     thread_t _worker;

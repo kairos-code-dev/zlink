@@ -39,6 +39,7 @@ class registry_t
         uint32_t weight;
         uint64_t registered_at;
         uint64_t last_heartbeat;
+        uint32_t source_registry;
     };
 
     typedef std::map<std::string, provider_entry_t> provider_map_t;
@@ -93,6 +94,8 @@ class registry_t
     mutex_t _sync;
 
     service_map_t _services;
+    std::map<uint32_t, uint64_t> _peer_seq;
+    std::map<uint32_t, uint64_t> _peer_last_seen;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (registry_t)
 };

@@ -7,6 +7,7 @@
 void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
+    apply_io_threads(ctx);
     void *s1 = zmq_socket(ctx, ZMQ_DEALER);
     void *s2 = zmq_socket(ctx, ZMQ_DEALER);
 

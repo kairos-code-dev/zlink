@@ -12,6 +12,7 @@
 void run_pair(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
     void *ctx = zmq_ctx_new();
+    apply_io_threads(ctx);
     void *s_bind = zmq_socket(ctx, ZMQ_PAIR);
     void *s_conn = zmq_socket(ctx, ZMQ_PAIR);
 

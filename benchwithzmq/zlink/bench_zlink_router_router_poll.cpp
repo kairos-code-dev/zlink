@@ -21,6 +21,7 @@ void run_router_router_poll(const std::string &transport,
     if (!transport_available(transport))
         return;
     void *ctx = zlink_ctx_new();
+    apply_io_threads(ctx);
     void *router1 = zlink_socket(ctx, ZLINK_ROUTER);
     void *router2 = zlink_socket(ctx, ZLINK_ROUTER);
 

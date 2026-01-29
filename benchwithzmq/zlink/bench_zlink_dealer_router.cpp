@@ -7,6 +7,7 @@
 void run_dealer_router(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
     void *ctx = zlink_ctx_new();
+    apply_io_threads(ctx);
     void *router = zlink_socket(ctx, ZLINK_ROUTER);
     void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 

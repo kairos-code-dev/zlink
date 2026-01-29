@@ -47,6 +47,31 @@ inline bool bench_debug_enabled() {
     return enabled;
 }
 
+inline int bench_io_threads() {
+    static int threads = -1;
+    if (threads >= 0)
+        return threads;
+    const char *env = std::getenv("BENCH_IO_THREADS");
+    if (!env || !*env) {
+        threads = 0;
+        return threads;
+    }
+    const int val = std::atoi(env);
+    threads = val > 0 ? val : 0;
+    return threads;
+}
+
+inline void apply_io_threads(void *ctx_) {
+    const int threads = bench_io_threads();
+    if (threads <= 0)
+        return;
+    const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, threads);
+    if (rc != 0 && bench_debug_enabled()) {
+        std::cerr << "zlink_ctx_set(ZLINK_IO_THREADS) failed: "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
+}
+
 inline int bench_trace_limit() {
     static const int limit = []() {
         if (!bench_debug_enabled())

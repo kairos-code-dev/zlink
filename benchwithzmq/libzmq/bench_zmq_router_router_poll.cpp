@@ -21,6 +21,7 @@ void run_router_router_poll(const std::string &transport,
     if (!transport_available(transport))
         return;
     void *ctx = zmq_ctx_new();
+    apply_io_threads(ctx);
     void *router1 = zmq_socket(ctx, ZMQ_ROUTER);
     void *router2 = zmq_socket(ctx, ZMQ_ROUTER);
 

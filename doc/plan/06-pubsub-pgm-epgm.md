@@ -107,11 +107,12 @@ zmq_bind(pub, "epgm://eth0;239.192.1.1:5555");
 ### 5.1 빌드/의존성
 
 1) OpenPGM 탐지/연결
-- **OpenPGM 사용을 전제로** CMake에서 탐지 (`find_package` 또는 pkg-config)
+- **OpenPGM 사용을 전제로** CMake에서 탐지 (pkg-config 사용)
 - 실패 시 PGM/EPGM 비활성 (컴파일 제외)
+- 필요 시 `OPENPGM_PKGCONFIG_NAME`로 패키지 이름 지정
 
 2) 옵션 토글
-- `-DZMQ_WITH_PGM=ON/OFF` (기본 OFF)
+- `-DWITH_OPENPGM=ON/OFF` (기본 OFF)
 - OFF일 때 `pgm://` URI는 `EPROTONOSUPPORT` 반환
 
 ### 5.2 전송 계층 통합

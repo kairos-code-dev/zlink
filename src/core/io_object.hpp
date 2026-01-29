@@ -6,6 +6,7 @@
 #include <stddef.h>
 
 #include "utils/stdint.hpp"
+#include "utils/fd.hpp"
 #include "core/poller.hpp"
 #include "core/i_poll_events.hpp"
 
@@ -29,6 +30,15 @@ class io_object_t : public i_poll_events
     void unplug ();
 
   protected:
+    typedef poller_t::handle_t handle_t;
+
+    //  Methods to access underlying poller object.
+    handle_t add_fd (fd_t fd_);
+    void rm_fd (handle_t handle_);
+    void set_pollin (handle_t handle_);
+    void reset_pollin (handle_t handle_);
+    void set_pollout (handle_t handle_);
+    void reset_pollout (handle_t handle_);
     void add_timer (int timeout_, int id_);
     void cancel_timer (int id_);
 

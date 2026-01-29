@@ -10,6 +10,10 @@
 #include <new>
 #include <thread>
 #include <chrono>
+#ifndef ZMQ_HAVE_WINDOWS
+#include <unistd.h>
+#include <boost/asio/posix/stream_descriptor.hpp>
+#endif
 
 // Debug logging for ASIO poller - set to 1 to enable
 #define ASIO_POLLER_DEBUG 0
@@ -60,6 +64,48 @@ zmq::asio_poller_t::~asio_poller_t ()
 }
 
 zmq::asio_poller_t::handle_t
+zmq::asio_poller_t::add_fd (fd_t fd_, i_poll_events *events_)
+{
+    check_thread ();
+#ifdef ZMQ_HAVE_WINDOWS
+    LIBZMQ_UNUSED (fd_);
+    LIBZMQ_UNUSED (events_);
+    errno = ENOTSUP;
+    return static_cast<handle_t> (NULL);
+#else
+    ASIO_DBG ("add_fd: fd=%d", static_cast<int> (fd_));
+
+    const fd_t dup_fd = dup (fd_);
+    errno_assert (dup_fd != -1);
+
+    boost::asio::posix::stream_descriptor *descriptor =
+      new (std::nothrow) boost::asio::posix::stream_descriptor (_io_context);
+    alloc_assert (descriptor);
+
+    boost::system::error_code ec;
+    descriptor->assign (dup_fd, ec);
+    if (ec) {
+        ::close (dup_fd);
+        descriptor->close ();
+        LIBZMQ_DELETE (descriptor);
+        errno = ec.value ();
+        return static_cast<handle_t> (NULL);
+    }
+
+    poll_entry_t *pe = new (std::nothrow)
+      poll_entry_t (poll_entry_t::socket_type_fd, descriptor);
+    alloc_assert (pe);
+
+    pe->events = events_;
+    _entries.push_back (pe);
+
+    adjust_load (1);
+
+    return pe;
+#endif
+}
+
+zmq::asio_poller_t::handle_t
 zmq::asio_poller_t::add_tcp_socket (boost::asio::ip::tcp::socket *socket_,
                                     i_poll_events *events_)
 {
@@ -104,6 +150,11 @@ zmq::asio_poller_t::add_ipc_socket (
 }
 #endif
 
+void zmq::asio_poller_t::rm_fd (handle_t handle_)
+{
+    rm_socket (handle_);
+}
+
 void zmq::asio_poller_t::rm_socket (handle_t handle_)
 {
     check_thread ();
@@ -111,6 +162,16 @@ void zmq::asio_poller_t::rm_socket (handle_t handle_)
 
     //  Cancel any pending async operations
     cancel_ops (pe);
+
+#ifndef ZMQ_HAVE_WINDOWS
+    if (pe->type == poll_entry_t::socket_type_fd && pe->socket) {
+        boost::asio::posix::stream_descriptor *descriptor =
+          static_cast<boost::asio::posix::stream_descriptor *> (pe->socket);
+        boost::system::error_code ec;
+        descriptor->close (ec);
+        LIBZMQ_DELETE (descriptor);
+    }
+#endif
 
     std::vector<poll_entry_t *>::iterator it =
       std::find (_entries.begin (), _entries.end (), pe);
@@ -244,6 +305,32 @@ void zmq::asio_poller_t::start_wait_read (poll_entry_t *entry_)
                   start_wait_read (entry_);
               }
           });
+#ifndef ZMQ_HAVE_WINDOWS
+    } else if (entry_->type == poll_entry_t::socket_type_fd) {
+        boost::asio::posix::stream_descriptor *descriptor =
+          static_cast<boost::asio::posix::stream_descriptor *> (entry_->socket);
+        descriptor->async_wait (
+          boost::asio::posix::descriptor_base::wait_read,
+          [this, entry_] (const boost::system::error_code &ec) {
+              entry_->in_event_pending = false;
+              ASIO_DBG ("read callback: socket=%p, ec=%s, pollin_enabled=%d, stopping=%d",
+                        entry_->socket, ec.message ().c_str (),
+                        entry_->pollin_enabled, _stopping);
+
+              if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
+                  || !entry_->pollin_enabled || _stopping)) {
+                  return;
+              }
+
+              entry_->events->in_event ();
+
+              if (entry_->pollin_enabled
+                  && entry_->type != poll_entry_t::socket_type_none
+                  && !_stopping) {
+                  start_wait_read (entry_);
+              }
+          });
+#endif
     } else {
         entry_->in_event_pending = false;
     }
@@ -302,6 +389,32 @@ void zmq::asio_poller_t::start_wait_write (poll_entry_t *entry_)
                   start_wait_write (entry_);
               }
           });
+#ifndef ZMQ_HAVE_WINDOWS
+    } else if (entry_->type == poll_entry_t::socket_type_fd) {
+        boost::asio::posix::stream_descriptor *descriptor =
+          static_cast<boost::asio::posix::stream_descriptor *> (entry_->socket);
+        descriptor->async_wait (
+          boost::asio::posix::descriptor_base::wait_write,
+          [this, entry_] (const boost::system::error_code &ec) {
+              entry_->out_event_pending = false;
+              ASIO_DBG ("write callback: socket=%p, ec=%s, pollout_enabled=%d, stopping=%d",
+                        entry_->socket, ec.message ().c_str (),
+                        entry_->pollout_enabled, _stopping);
+
+              if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
+                  || !entry_->pollout_enabled || _stopping)) {
+                  return;
+              }
+
+              entry_->events->out_event ();
+
+              if (entry_->pollout_enabled
+                  && entry_->type != poll_entry_t::socket_type_none
+                  && !_stopping) {
+                  start_wait_write (entry_);
+              }
+          });
+#endif
     } else {
         entry_->out_event_pending = false;
     }
@@ -319,6 +432,12 @@ void zmq::asio_poller_t::cancel_ops (poll_entry_t *entry_)
           static_cast<boost::asio::local::stream_protocol::socket *> (
             entry_->socket);
         socket->cancel (ec);
+#ifndef ZMQ_HAVE_WINDOWS
+    } else if (entry_->type == poll_entry_t::socket_type_fd) {
+        boost::asio::posix::stream_descriptor *descriptor =
+          static_cast<boost::asio::posix::stream_descriptor *> (entry_->socket);
+        descriptor->cancel (ec);
+#endif
     }
     //  Ignore errors from cancel - the socket might already be closed
 }

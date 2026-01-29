@@ -332,6 +332,23 @@ int zmq::thread_safe_socket_t::socket_stats (zmq_socket_stats_t *stats_)
     return rc;
 }
 
+int zmq::thread_safe_socket_t::socket_stats_ex (zmq_socket_stats_ex_t *stats_)
+{
+    int err = 0;
+    const int rc = dispatch<int> (
+      [this, stats_] () {
+          if (!_socket) {
+              errno = ENOTSOCK;
+              return -1;
+          }
+          return _socket->socket_stats_ex (stats_);
+      },
+      &err);
+    if (rc == -1)
+        errno = err;
+    return rc;
+}
+
 int zmq::thread_safe_socket_t::socket_peer_info (
   const zmq_routing_id_t *routing_id_, zmq_peer_info_t *info_)
 {

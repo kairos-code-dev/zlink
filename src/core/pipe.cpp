@@ -181,6 +181,13 @@ uint64_t zmq::pipe_t::get_outbound_queue_count () const
     return _msgs_written - _peers_msgs_read;
 }
 
+uint64_t zmq::pipe_t::get_inbound_queue_count () const
+{
+    if (!_in_pipe)
+        return 0;
+    return static_cast<uint64_t> (_in_pipe->count ());
+}
+
 uint32_t zmq::pipe_t::get_hwm_reached () const
 {
     return _hwm_reached;

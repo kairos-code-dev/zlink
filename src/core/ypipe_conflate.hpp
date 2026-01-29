@@ -84,6 +84,8 @@ template <typename T> class ypipe_conflate_t ZMQ_FINAL : public ypipe_base_t<T>
         return dbuffer.probe (fn_);
     }
 
+    size_t count () const { return dbuffer.count (); }
+
   protected:
     dbuffer_t<T> dbuffer;
     bool reader_awake;

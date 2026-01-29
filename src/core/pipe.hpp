@@ -72,6 +72,7 @@ class pipe_t ZMQ_FINAL : public object_t,
     uint64_t get_bytes_written () const;
     uint64_t get_bytes_read () const;
     uint64_t get_outbound_queue_count () const;
+    uint64_t get_inbound_queue_count () const;
     uint32_t get_hwm_reached () const;
     uint64_t get_connected_time () const;
 

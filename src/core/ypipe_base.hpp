@@ -4,6 +4,8 @@
 #ifndef __ZMQ_YPIPE_BASE_HPP_INCLUDED__
 #define __ZMQ_YPIPE_BASE_HPP_INCLUDED__
 
+#include <stddef.h>
+
 #include "utils/macros.hpp"
 
 namespace zmq
@@ -22,6 +24,7 @@ template <typename T> class ypipe_base_t
     virtual bool check_read () = 0;
     virtual bool read (T *value_) = 0;
     virtual bool probe (bool (*fn_) (const T &)) = 0;
+    virtual size_t count () const = 0;
 };
 }
 

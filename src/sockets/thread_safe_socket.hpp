@@ -62,6 +62,7 @@ class thread_safe_socket_t
                  int type_);
 
     int socket_stats (zmq_socket_stats_t *stats_);
+    int socket_stats_ex (zmq_socket_stats_ex_t *stats_);
     int socket_peer_info (const zmq_routing_id_t *routing_id_,
                           zmq_peer_info_t *info_);
     int socket_peer_routing_id (int index_, zmq_routing_id_t *out_);

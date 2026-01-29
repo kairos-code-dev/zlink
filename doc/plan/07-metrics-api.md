@@ -54,6 +54,9 @@
 - `drops_hwm`, `drops_no_peers`, `drops_filter` (드롭 원인별 카운터)
 - `last_send_ms`, `last_recv_ms` (최근 송수신 시간, monotonic 기준)
 
+> 참고: `queue_inbound`는 큐에 적재된 **프레임 단위** 카운트를 반환한다.
+> multipart 메시지는 프레임 수만큼 증가할 수 있다.
+
 ### 2.2 피어 단위 (선택)
 
 `zmq_socket_peer_info` 기반:
@@ -76,30 +79,35 @@
 - `int zmq_socket_peer_info(void *socket, const zmq_routing_id_t *rid, zmq_peer_info_t *info)`
 - `int zmq_socket_peers(void *socket, zmq_peer_info_t *peers, size_t *count)`
 
-### 3.2 신규 API 제안 (선택)
+### 3.2 신규 API (1차)
+
+- `int zmq_socket_stats_ex(void *socket, zmq_socket_stats_ex_t *stats)`
+  - `queue_outbound`, `queue_inbound` 분리 제공
+  - `drops_hwm`, `drops_no_peers`, `drops_filter`
+  - `last_send_ms`, `last_recv_ms` (monotonic 기준)
+
+### 3.3 확장 API (옵션)
 
 - `int zmq_socket_stats_reset(void *socket)`
   - 누적 카운터를 0으로 초기화
 - `int zmq_context_stats(void *ctx, zmq_context_stats_t *stats)`
   - 컨텍스트 전체 집계 (옵션)
 
-> 3.2는 추후 확장으로 계획하며, 1차 목표는 3.1의 안정화/테스트이다.
-
 ---
 
 ## 4. 구현 계획
 
-### 4.1 1차: 소켓 메트릭 안정화
+### 4.1 1차: 소켓 메트릭 확장/안정화
 
-1) API 문서화
-- `zmq_socket_stats_t` 필드 의미/단위 명확화
+1) `zmq_socket_stats_ex` 추가
+- `queue_outbound/inbound`, 드롭 원인, 마지막 송수신 시각 제공
 
 2) 스냅샷 일관성
 - 수집 시점의 내부 카운터와 큐 상태를 안정적으로 스냅샷
 
 3) 테스트 추가
 - 송수신/드롭 카운터 증가 검증
-- 큐 적체 시 `queue_size`, `hwm_reached` 증가 확인
+- 큐 적체 시 `queue_outbound`, `hwm_reached` 증가 확인
 
 ### 4.2 2차: 피어 메트릭 정합성 강화
 

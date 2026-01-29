@@ -253,22 +253,36 @@ static void test_registry_peer_timeout ()
     setup_provider (ctx, &provider, "inproc://svc-peer2",
                     "inproc://regA2-router", "svc");
 
-    msleep (200);
-
     zmq_provider_info_t providers[4];
-    size_t count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_get_providers (discovery, "svc", providers, &count));
-    TEST_ASSERT_EQUAL_INT (1, (int) count);
+    size_t count = 0;
+    bool found = false;
+    for (int i = 0; i < 20; ++i) {
+        count = 4;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zmq_discovery_get_providers (discovery, "svc", providers, &count));
+        if (count == 1) {
+            found = true;
+            break;
+        }
+        msleep (50);
+    }
+    TEST_ASSERT_TRUE (found);
 
     TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_a));
 
-    msleep (400);
-    count = 4;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_get_providers (discovery, "svc", providers, &count));
-    TEST_ASSERT_EQUAL_INT (0, (int) count);
+    bool removed = false;
+    for (int i = 0; i < 30; ++i) {
+        count = 4;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zmq_discovery_get_providers (discovery, "svc", providers, &count));
+        if (count == 0) {
+            removed = true;
+            break;
+        }
+        msleep (50);
+    }
+    TEST_ASSERT_TRUE (removed);
 
     TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
     TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_b));

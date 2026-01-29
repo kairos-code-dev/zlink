@@ -197,6 +197,8 @@ int zmq::xsub_t::xrecv (msg_t *msg_)
             return 0;
         }
 
+        inc_drop_filter ();
+
         //  Message doesn't match. Pop any remaining parts of the message
         //  from the pipe.
         while (msg_->flags () & msg_t::more) {
@@ -235,6 +237,8 @@ bool zmq::xsub_t::xhas_in ()
             _has_message = true;
             return true;
         }
+
+        inc_drop_filter ();
 
         //  Message doesn't match. Pop any remaining parts of the message
         //  from the pipe.

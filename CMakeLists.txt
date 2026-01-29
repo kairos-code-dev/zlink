@@ -187,6 +187,7 @@ set(pkg_config_defines "")
 # ASIO backend is mandatory in zlink - no option needed
 # WebSocket is always enabled - no option needed
 option(WITH_TLS "Build with TLS support (requires OpenSSL)" ON)
+option(WITH_OPENPGM "Build with OpenPGM support (PGM/EPGM transports)" OFF)
 
 # ASIO backend is mandatory in zlink
 set(ZMQ_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bundled Boost)")
@@ -249,6 +250,33 @@ if(ZMQ_HAVE_ASIO_WS)
   if(ZMQ_HAVE_ASIO_WSS)
     set(ZMQ_HAVE_WSS 1)
     message(STATUS "Secure WebSocket transport enabled")
+  endif()
+endif()
+
+# OpenPGM (optional, required for pgm/epgm transports)
+if(WITH_OPENPGM)
+  if(NOT PKG_CONFIG_FOUND)
+    message(FATAL_ERROR "PkgConfig is required to locate OpenPGM")
+  endif()
+  if(NOT OPENPGM_PKGCONFIG_NAME)
+    set(OPENPGM_PKGCONFIG_NAME "openpgm-5.2")
+  endif()
+  set(OPENPGM_PKGCONFIG_NAME
+      ${OPENPGM_PKGCONFIG_NAME}
+      CACHE STRING "Name pkg-config shall use to find openpgm libraries and include paths"
+      FORCE)
+  pkg_check_modules(OPENPGM ${OPENPGM_PKGCONFIG_NAME})
+  if(OPENPGM_FOUND)
+    message(STATUS "${OPENPGM_PKGCONFIG_NAME} found")
+    set(ZMQ_HAVE_OPENPGM 1)
+    include_directories(${OPENPGM_INCLUDE_DIRS})
+    link_directories(${OPENPGM_LIBRARY_DIRS})
+    set(pkg_config_names_private "${pkg_config_names_private} ${OPENPGM_PKGCONFIG_NAME}")
+  else()
+    message(FATAL_ERROR
+      "${OPENPGM_PKGCONFIG_NAME} not found. openpgm is searched via "
+      "`pkg-config ${OPENPGM_PKGCONFIG_NAME}`. Set OPENPGM_PKGCONFIG_NAME "
+      "or disable WITH_OPENPGM.")
   endif()
 endif()
 
@@ -979,6 +1007,11 @@ set(transport-sources
     src/transports/tls/asio_tls_listener.cpp
     src/transports/tls/asio_tls_connecter.cpp)
 
+set(pgm-sources
+    src/transports/pgm/pgm_socket.cpp
+    src/transports/pgm/pgm_sender.cpp
+    src/transports/pgm/pgm_receiver.cpp)
+
 set(utils-sources
     src/utils/allocator.cpp
     src/utils/clock.cpp
@@ -1003,6 +1036,10 @@ set(sources
     ${transport-sources}
     ${utils-sources})
 
+if(ZMQ_HAVE_OPENPGM)
+  list(APPEND sources ${pgm-sources})
+endif()
+
 # Add all subdirectories to include path to maintain compatibility with existing flat includes
 include_directories(
     src
@@ -1017,6 +1054,7 @@ include_directories(
     src/transports/ipc
     src/transports/ws
     src/transports/tls
+    src/transports/pgm
     src/sockets
     src/utils
 )
@@ -1345,6 +1383,10 @@ if(BUILD_SHARED)
     target_link_libraries(libzmq ${LIBBSD_LIBRARIES})
   endif()
 
+  if(ZMQ_HAVE_OPENPGM)
+    target_link_libraries(libzmq ${OPENPGM_LIBRARIES})
+  endif()
+
 
   if(HAVE_WS2_32)
     target_link_libraries(libzmq ws2_32)
@@ -1376,6 +1418,10 @@ if(BUILD_STATIC)
 
   if(LIBBSD_FOUND)
     target_link_libraries(libzmq-static ${LIBBSD_LIBRARIES})
+  endif()
+
+  if(ZMQ_HAVE_OPENPGM)
+    target_link_libraries(libzmq-static ${OPENPGM_LIBRARIES})
   endif()
 
 

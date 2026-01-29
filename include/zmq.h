@@ -395,6 +395,27 @@ typedef struct {
 ZMQ_EXPORT int zmq_socket_stats (void *socket_, zmq_socket_stats_t *stats_);
 
 typedef struct {
+    uint64_t msgs_sent;
+    uint64_t msgs_received;
+    uint64_t bytes_sent;
+    uint64_t bytes_received;
+    uint64_t msgs_dropped;
+    uint64_t monitor_events_dropped;
+    uint32_t queue_outbound;
+    uint32_t queue_inbound;
+    uint32_t hwm_reached;
+    uint32_t peer_count;
+    uint64_t drops_hwm;
+    uint64_t drops_no_peers;
+    uint64_t drops_filter;
+    uint64_t last_send_ms;
+    uint64_t last_recv_ms;
+} zmq_socket_stats_ex_t;
+
+ZMQ_EXPORT int zmq_socket_stats_ex (void *socket_,
+                                   zmq_socket_stats_ex_t *stats_);
+
+typedef struct {
     zmq_routing_id_t routing_id;
     char remote_addr[256];
     uint64_t connected_time;

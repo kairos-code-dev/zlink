@@ -447,6 +447,16 @@ int zmq_socket_stats (void *socket_, zmq_socket_stats_t *stats_)
     return handle.socket->socket_stats (stats_);
 }
 
+int zmq_socket_stats_ex (void *socket_, zmq_socket_stats_ex_t *stats_)
+{
+    socket_handle_t handle = as_socket_handle (socket_);
+    if (!handle.socket)
+        return -1;
+    if (handle.threadsafe)
+        return handle.threadsafe->socket_stats_ex (stats_);
+    return handle.socket->socket_stats_ex (stats_);
+}
+
 int zmq_socket_peer_info (void *socket_,
                           const zmq_routing_id_t *routing_id_,
                           zmq_peer_info_t *info_)
@@ -1883,6 +1893,10 @@ int zmq_has (const char *capability_)
 #endif
 #if defined(ZMQ_HAVE_WSS)
     if (strcmp (capability_, "wss") == 0)
+        return true;
+#endif
+#if defined(ZMQ_HAVE_OPENPGM)
+    if (strcmp (capability_, "pgm") == 0 || strcmp (capability_, "epgm") == 0)
         return true;
 #endif
     return false;

@@ -92,12 +92,18 @@ template <> class dbuffer_t<msg_t>
         return (*fn_) (*_front);
     }
 
+    size_t count () const
+    {
+        scoped_lock_t lock (_sync);
+        return _has_msg ? 1 : 0;
+    }
+
 
   private:
     msg_t _storage[2];
     msg_t *_back, *_front;
 
-    mutex_t _sync;
+    mutable mutex_t _sync;
     bool _has_msg;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (dbuffer_t)

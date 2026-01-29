@@ -37,12 +37,14 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     ~asio_poller_t () ZMQ_OVERRIDE;
 
     //  "poller" concept.
+    handle_t add_fd (fd_t fd_, zmq::i_poll_events *events_);
     handle_t add_tcp_socket (boost::asio::ip::tcp::socket *socket_,
                              zmq::i_poll_events *events_);
 #if defined ZMQ_HAVE_IPC
     handle_t add_ipc_socket (boost::asio::local::stream_protocol::socket *socket_,
                              zmq::i_poll_events *events_);
 #endif
+    void rm_fd (handle_t handle_);
     void rm_socket (handle_t handle_);
     void set_pollin (handle_t handle_);
     void reset_pollin (handle_t handle_);
@@ -67,7 +69,8 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
         {
             socket_type_none,
             socket_type_tcp,
-            socket_type_ipc
+            socket_type_ipc,
+            socket_type_fd
         };
 
         socket_type_t type;

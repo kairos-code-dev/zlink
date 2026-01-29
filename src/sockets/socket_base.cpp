@@ -49,6 +49,9 @@
 #include "core/address.hpp"
 #include "transports/ipc/ipc_address.hpp"
 #include "transports/tcp/tcp_address.hpp"
+#ifdef ZMQ_HAVE_OPENPGM
+#include "transports/pgm/pgm_socket.hpp"
+#endif
 #include "core/mailbox.hpp"
 #include "core/mailbox_safe.hpp"
 #include "core/signaler.hpp"
@@ -196,6 +199,11 @@ zmq::socket_base_t::socket_base_t (ctx_t *parent_,
     _bytes_sent (0),
     _bytes_received (0),
     _msgs_dropped (0),
+    _drops_hwm (0),
+    _drops_no_peers (0),
+    _drops_filter (0),
+    _last_send_ms (0),
+    _last_recv_ms (0),
     _monitor_events_dropped (0),
     _threadsafe_proxy (NULL)
 {
@@ -295,6 +303,60 @@ int zmq::socket_base_t::socket_stats (zmq_socket_stats_t *stats_)
     stats_->peer_count = static_cast<uint32_t> (_pipes.size ());
 
     return 0;
+}
+
+int zmq::socket_base_t::socket_stats_ex (zmq_socket_stats_ex_t *stats_)
+{
+    if (!stats_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    process_commands (0, false);
+
+    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+
+    memset (stats_, 0, sizeof (*stats_));
+    stats_->msgs_sent = _msgs_sent;
+    stats_->msgs_received = _msgs_received;
+    stats_->bytes_sent = _bytes_sent;
+    stats_->bytes_received = _bytes_received;
+    stats_->msgs_dropped = _msgs_dropped;
+    stats_->monitor_events_dropped = _monitor_events_dropped;
+
+    uint64_t outbound_total = 0;
+    uint64_t inbound_total = 0;
+    uint64_t hwm_total = 0;
+    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
+        outbound_total += _pipes[i]->get_outbound_queue_count ();
+        inbound_total += _pipes[i]->get_inbound_queue_count ();
+        hwm_total += _pipes[i]->get_hwm_reached ();
+    }
+
+    if (outbound_total > std::numeric_limits<uint32_t>::max ())
+        outbound_total = std::numeric_limits<uint32_t>::max ();
+    if (inbound_total > std::numeric_limits<uint32_t>::max ())
+        inbound_total = std::numeric_limits<uint32_t>::max ();
+    if (hwm_total > std::numeric_limits<uint32_t>::max ())
+        hwm_total = std::numeric_limits<uint32_t>::max ();
+
+    stats_->queue_outbound = static_cast<uint32_t> (outbound_total);
+    stats_->queue_inbound = static_cast<uint32_t> (inbound_total);
+    stats_->hwm_reached = static_cast<uint32_t> (hwm_total);
+    stats_->peer_count = static_cast<uint32_t> (_pipes.size ());
+
+    stats_->drops_hwm = _drops_hwm;
+    stats_->drops_no_peers = _drops_no_peers;
+    stats_->drops_filter = _drops_filter;
+    stats_->last_send_ms = _last_send_ms;
+    stats_->last_recv_ms = _last_recv_ms;
+
+    return 0;
+}
+
+void zmq::socket_base_t::inc_drop_filter ()
+{
+    ++_drops_filter;
 }
 
 int zmq::socket_base_t::socket_peer_info (const zmq_routing_id_t *routing_id_,
@@ -489,10 +551,23 @@ int zmq::socket_base_t::check_protocol (const std::string &protocol_) const
 #ifdef ZMQ_HAVE_TLS
         && protocol_ != protocol_name::tls
 #endif
+#ifdef ZMQ_HAVE_OPENPGM
+        && protocol_ != protocol_name::pgm
+        && protocol_ != protocol_name::epgm
+#endif
     ) {
         errno = EPROTONOSUPPORT;
         return -1;
     }
+
+#ifdef ZMQ_HAVE_OPENPGM
+    if ((protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm)
+        && options.type != ZMQ_PUB && options.type != ZMQ_SUB
+        && options.type != ZMQ_XPUB && options.type != ZMQ_XSUB) {
+        errno = ENOCOMPATPROTO;
+        return -1;
+    }
+#endif
 
     //  Protocol is available.
     return 0;
@@ -668,6 +743,17 @@ int zmq::socket_base_t::bind (const char *endpoint_uri_)
         }
         return rc;
     }
+
+#ifdef ZMQ_HAVE_OPENPGM
+    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
+        //  For convenience's sake, bind can be used interchangeable with
+        //  connect for PGM/EPGM transports.
+        rc = connect (endpoint_uri_);
+        if (rc != -1)
+            options.connected = true;
+        return rc;
+    }
+#endif
 
     //  Remaining transports require to be run in an I/O thread, so at this
     //  point we'll choose one.
@@ -1016,13 +1102,33 @@ int zmq::socket_base_t::connect_internal (const char *endpoint_uri_)
     }
 #endif
 
+#ifdef ZMQ_HAVE_OPENPGM
+    if (protocol == protocol_name::pgm || protocol == protocol_name::epgm) {
+        struct pgm_addrinfo_t *res = NULL;
+        uint16_t port_number = 0;
+        int rc =
+          pgm_socket_t::init_address (address.c_str (), &res, &port_number);
+        if (res != NULL)
+            pgm_freeaddrinfo (res);
+        if (rc != 0 || port_number == 0) {
+            LIBZMQ_DELETE (paddr);
+            return -1;
+        }
+    }
+#endif
+
     //  Create session.
     session_base_t *session =
       session_base_t::create (io_thread, true, this, options, paddr);
     errno_assert (session);
 
-    //  No transports require subscription forwarding special-casing.
+    //  PGM does not support subscription forwarding; ask for all data.
+#ifdef ZMQ_HAVE_OPENPGM
+    const bool subscribe_to_all = protocol == protocol_name::pgm
+                                  || protocol == protocol_name::epgm;
+#else
     const bool subscribe_to_all = false;
+#endif
     pipe_t *newpipe = NULL;
 
     if (options.immediate != 1 || subscribe_to_all) {
@@ -1200,6 +1306,7 @@ int zmq::socket_base_t::send (msg_t *msg_, int flags_)
     if (rc == 0) {
         _msgs_sent++;
         _bytes_sent += msg_size;
+        _last_send_ms = _clock.now_ms ();
         return 0;
     }
     //  Special case: -2 means pipe is dead while a
@@ -1222,6 +1329,10 @@ int zmq::socket_base_t::send (msg_t *msg_, int flags_)
     //  the error - including EAGAIN - up the stack.
     if ((flags_ & ZMQ_DONTWAIT) || options.sndtimeo == 0) {
         _msgs_dropped++;
+        if (_pipes.empty ())
+            _drops_no_peers++;
+        else
+            _drops_hwm++;
         return -1;
     }
 
@@ -1241,6 +1352,7 @@ int zmq::socket_base_t::send (msg_t *msg_, int flags_)
         if (rc == 0) {
             _msgs_sent++;
             _bytes_sent += msg_size;
+            _last_send_ms = _clock.now_ms ();
             break;
         }
         if (unlikely (errno != EAGAIN)) {
@@ -1300,6 +1412,7 @@ int zmq::socket_base_t::recv (msg_t *msg_, int flags_)
         extract_flags (msg_);
         _msgs_received++;
         _bytes_received += msg_->size ();
+        _last_recv_ms = _clock.now_ms ();
         return 0;
     }
 
@@ -1320,6 +1433,7 @@ int zmq::socket_base_t::recv (msg_t *msg_, int flags_)
         extract_flags (msg_);
         _msgs_received++;
         _bytes_received += msg_->size ();
+        _last_recv_ms = _clock.now_ms ();
 
         return 0;
     }
@@ -1355,6 +1469,9 @@ int zmq::socket_base_t::recv (msg_t *msg_, int flags_)
     }
 
     extract_flags (msg_);
+    _msgs_received++;
+    _bytes_received += msg_->size ();
+    _last_recv_ms = _clock.now_ms ();
     return 0;
 }
 

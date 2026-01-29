@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_XPUB_HPP_INCLUDED__
-#define __ZMQ_XPUB_HPP_INCLUDED__
+#ifndef __ZLINK_XPUB_HPP_INCLUDED__
+#define __ZLINK_XPUB_HPP_INCLUDED__
 
 #include <deque>
 
@@ -10,7 +10,7 @@
 #include "utils/mtrie.hpp"
 #include "sockets/dist.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class msg_t;
@@ -20,33 +20,33 @@ class io_thread_t;
 class xpub_t : public socket_base_t
 {
   public:
-    xpub_t (zmq::ctx_t *parent_, uint32_t tid_, int sid_);
-    ~xpub_t () ZMQ_OVERRIDE;
+    xpub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    ~xpub_t () ZLINK_OVERRIDE;
 
     //  Implementations of virtual functions from socket_base_t.
-    void xattach_pipe (zmq::pipe_t *pipe_,
+    void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_ = false,
-                       bool locally_initiated_ = false) ZMQ_OVERRIDE;
-    int xsend (zmq::msg_t *msg_) ZMQ_FINAL;
-    bool xhas_out () ZMQ_FINAL;
-    int xrecv (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    bool xhas_in () ZMQ_OVERRIDE;
-    void xread_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void xwrite_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+                       bool locally_initiated_ = false) ZLINK_OVERRIDE;
+    int xsend (zlink::msg_t *msg_) ZLINK_FINAL;
+    bool xhas_out () ZLINK_FINAL;
+    int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    bool xhas_in () ZLINK_OVERRIDE;
+    void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZMQ_FINAL;
-    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZMQ_FINAL;
-    void xpipe_terminated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
+    void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
 
   private:
     //  Function to be applied to the trie to send all the subscriptions
     //  upstream.
-    static void send_unsubscription (zmq::mtrie_t::prefix_t data_,
+    static void send_unsubscription (zlink::mtrie_t::prefix_t data_,
                                      size_t size_,
                                      xpub_t *self_);
 
     //  Function to be applied to each matching pipes.
-    static void mark_as_matching (zmq::pipe_t *pipe_, xpub_t *self_);
+    static void mark_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
 
     //  List of all subscriptions mapped to corresponding pipes.
     mtrie_t _subscriptions;
@@ -75,7 +75,7 @@ class xpub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZMQ_ONLY_FIRST_SUBSCRIBE.
+    //  This option is enabled with ZLINK_ONLY_FIRST_SUBSCRIBE.
     //  If true, messages following subscribe/unsubscribe in a multipart
     //  message are treated as user data regardless of the first byte.
     bool _only_first_subscribe;
@@ -83,14 +83,14 @@ class xpub_t : public socket_base_t
     //  Drop messages if HWM reached, otherwise return with EAGAIN
     bool _lossy;
 
-    //  Subscriptions will not bed added automatically, only after calling set option with ZMQ_SUBSCRIBE or ZMQ_UNSUBSCRIBE
+    //  Subscriptions will not bed added automatically, only after calling set option with ZLINK_SUBSCRIBE or ZLINK_UNSUBSCRIBE
     bool _manual;
 
-    //  Send message to the last pipe, only used if xpub is on manual and after calling set option with ZMQ_SUBSCRIBE
+    //  Send message to the last pipe, only used if xpub is on manual and after calling set option with ZLINK_SUBSCRIBE
     bool _send_last_pipe;
 
     //  Function to be applied to match the last pipe.
-    static void mark_last_pipe_as_matching (zmq::pipe_t *pipe_, xpub_t *self_);
+    static void mark_last_pipe_as_matching (zlink::pipe_t *pipe_, xpub_t *self_);
 
     //  Last pipe that sent subscription message, only used if xpub is on manual
     pipe_t *_last_pipe;
@@ -107,7 +107,7 @@ class xpub_t : public socket_base_t
     std::deque<metadata_t *> _pending_metadata;
     std::deque<unsigned char> _pending_flags;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (xpub_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (xpub_t)
 };
 }
 

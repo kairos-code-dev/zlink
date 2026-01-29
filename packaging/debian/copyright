@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: ZeroMQ
-Source: http://zeromq.org
+Upstream-Name: Zlink
+Source: http://zlink.org
 
 Files: *
 Copyright: 2009-2011, 250bpm s.r.o

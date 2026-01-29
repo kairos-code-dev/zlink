@@ -12,7 +12,7 @@
 #include "utils/windows.hpp"
 #include <direct.h>
 #if defined _MSC_VER
-#if defined ZMQ_HAVE_IPC
+#if defined ZLINK_HAVE_IPC
 #include <afunix.h>
 #endif
 #include <crtdbg.h>
@@ -37,7 +37,7 @@
 #include <netdb.h>
 #include <sys/un.h>
 #include <dirent.h>
-#if defined(ZMQ_HAVE_AIX)
+#if defined(ZLINK_HAVE_AIX)
 #include <sys/types.h>
 #include <sys/socketvar.h>
 #endif
@@ -53,7 +53,7 @@ const char bounce_content[] = "12345678ABCDEFGH12345678abcdefgh";
 
 static void send_bounce_msg (void *socket_)
 {
-    send_string_expect_success (socket_, bounce_content, ZMQ_SNDMORE);
+    send_string_expect_success (socket_, bounce_content, ZLINK_SNDMORE);
     send_string_expect_success (socket_, bounce_content, 0);
 }
 
@@ -63,11 +63,11 @@ static void recv_bounce_msg (void *socket_)
     int rcvmore;
     size_t sz = sizeof (rcvmore);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (socket_, ZMQ_RCVMORE, &rcvmore, &sz));
+      zlink_getsockopt (socket_, ZLINK_RCVMORE, &rcvmore, &sz));
     TEST_ASSERT_TRUE (rcvmore);
     recv_string_expect_success (socket_, bounce_content, 0);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (socket_, ZMQ_RCVMORE, &rcvmore, &sz));
+      zlink_getsockopt (socket_, ZLINK_RCVMORE, &rcvmore, &sz));
     TEST_ASSERT_FALSE (rcvmore);
 }
 
@@ -91,10 +91,10 @@ static void send_bounce_msg_may_fail (void *socket_)
 {
     int timeout = 250;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (socket_, ZMQ_SNDTIMEO, &timeout, sizeof (int)));
-    int rc = zmq_send (socket_, bounce_content, 32, ZMQ_SNDMORE);
+      zlink_setsockopt (socket_, ZLINK_SNDTIMEO, &timeout, sizeof (int)));
+    int rc = zlink_send (socket_, bounce_content, 32, ZLINK_SNDMORE);
     TEST_ASSERT_TRUE ((rc == 32) || ((rc == -1) && (errno == EAGAIN)));
-    rc = zmq_send (socket_, bounce_content, 32, 0);
+    rc = zlink_send (socket_, bounce_content, 32, 0);
     TEST_ASSERT_TRUE ((rc == 32) || ((rc == -1) && (errno == EAGAIN)));
 }
 
@@ -103,8 +103,8 @@ static void recv_bounce_msg_fail (void *socket_)
     int timeout = 250;
     char buffer[32];
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (socket_, ZMQ_RCVTIMEO, &timeout, sizeof (int)));
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zmq_recv (socket_, buffer, 32, 0));
+      zlink_setsockopt (socket_, ZLINK_RCVTIMEO, &timeout, sizeof (int)));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_recv (socket_, buffer, 32, 0));
 }
 
 void expect_bounce_fail (void *server_, void *client_)
@@ -126,7 +126,7 @@ void expect_bounce_fail (void *server_, void *client_)
 char *s_recv (void *socket_)
 {
     char buffer[256];
-    int size = zmq_recv (socket_, buffer, 255, 0);
+    int size = zlink_recv (socket_, buffer, 255, 0);
     if (size == -1)
         return NULL;
     if (size > 255)
@@ -147,10 +147,10 @@ void s_send_seq (void *socket_, ...)
 
         if (!prev) {
             TEST_ASSERT_SUCCESS_ERRNO (
-              zmq_send (socket_, 0, 0, end ? 0 : ZMQ_SNDMORE));
+              zlink_send (socket_, 0, 0, end ? 0 : ZLINK_SNDMORE));
         } else {
-            TEST_ASSERT_SUCCESS_ERRNO (zmq_send (
-              socket_, prev, strlen (prev) + 1, end ? 0 : ZMQ_SNDMORE));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_send (
+              socket_, prev, strlen (prev) + 1, end ? 0 : ZLINK_SNDMORE));
         }
         if (end)
             break;
@@ -160,8 +160,8 @@ void s_send_seq (void *socket_, ...)
 
 void s_recv_seq (void *socket_, ...)
 {
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
 
     int more;
     size_t more_size = sizeof (more);
@@ -171,18 +171,18 @@ void s_recv_seq (void *socket_, ...)
     const char *data = va_arg (ap, const char *);
 
     while (true) {
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&msg, socket_, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, socket_, 0));
 
         if (!data)
-            TEST_ASSERT_EQUAL_INT (0, zmq_msg_size (&msg));
+            TEST_ASSERT_EQUAL_INT (0, zlink_msg_size (&msg));
         else
-            TEST_ASSERT_EQUAL_STRING (data, (const char *) zmq_msg_data (&msg));
+            TEST_ASSERT_EQUAL_STRING (data, (const char *) zlink_msg_data (&msg));
 
         data = va_arg (ap, const char *);
         bool end = data == SEQ_END;
 
         TEST_ASSERT_SUCCESS_ERRNO (
-          zmq_getsockopt (socket_, ZMQ_RCVMORE, &more, &more_size));
+          zlink_getsockopt (socket_, ZLINK_RCVMORE, &more, &more_size));
 
         TEST_ASSERT_TRUE (!more == end);
         if (end)
@@ -190,15 +190,15 @@ void s_recv_seq (void *socket_, ...)
     }
     va_end (ap);
 
-    zmq_msg_close (&msg);
+    zlink_msg_close (&msg);
 }
 
 void close_zero_linger (void *socket_)
 {
     int linger = 0;
-    int rc = zmq_setsockopt (socket_, ZMQ_LINGER, &linger, sizeof (linger));
+    int rc = zlink_setsockopt (socket_, ZLINK_LINGER, &linger, sizeof (linger));
     TEST_ASSERT_TRUE (rc == 0 || errno == ETERM);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (socket_));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
 }
 
 void setup_test_environment (int timeout_seconds_)
@@ -210,11 +210,11 @@ void setup_test_environment (int timeout_seconds_)
     _CrtSetReportFile (_CRT_ASSERT, _CRTDBG_FILE_STDERR);
 #endif
 #else
-#if defined ZMQ_HAVE_CYGWIN
+#if defined ZLINK_HAVE_CYGWIN
     // abort test after 121 seconds
     alarm (121);
 #else
-#if !defined ZMQ_DISABLE_TEST_TIMEOUT
+#if !defined ZLINK_DISABLE_TEST_TIMEOUT
     // abort test after timeout_seconds_ seconds
     alarm (timeout_seconds_);
 #endif
@@ -229,7 +229,7 @@ void setup_test_environment (int timeout_seconds_)
 
 void msleep (int milliseconds_)
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     Sleep (milliseconds_);
 #else
     usleep (static_cast<useconds_t> (milliseconds_) * 1000);
@@ -238,7 +238,7 @@ void msleep (int milliseconds_)
 
 int is_ipv6_available ()
 {
-#if defined(ZMQ_HAVE_WINDOWS) && (_WIN32_WINNT < 0x0600)
+#if defined(ZLINK_HAVE_WINDOWS) && (_WIN32_WINNT < 0x0600)
     return 0;
 #else
     int rc, ipv6 = 1;
@@ -252,7 +252,7 @@ int is_ipv6_available ()
     if (fd == retired_fd)
         ipv6 = 0;
     else {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, (const char *) &ipv6,
                     sizeof (int));
         rc = setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, (const char *) &ipv6,
@@ -285,7 +285,7 @@ int is_ipv6_available ()
 
 int test_inet_pton (int af_, const char *src_, void *dst_)
 {
-#if defined(ZMQ_HAVE_WINDOWS) && (_WIN32_WINNT < 0x0600)
+#if defined(ZLINK_HAVE_WINDOWS) && (_WIN32_WINNT < 0x0600)
     if (af_ == AF_INET) {
         struct in_addr *ip4addr = (struct in_addr *) dst_;
 
@@ -340,7 +340,7 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
     socklen_t addr_len;
     const fd_t s_pre = socket (af_, SOCK_STREAM,
                                protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
     TEST_ASSERT_NOT_EQUAL (-1, s_pre);
@@ -372,7 +372,7 @@ fd_t connect_socket (const char *endpoint_, const int af_, const int protocol_)
         addr_len = (socklen_t) in->ai_addrlen;
         freeaddrinfo (in);
     } else {
-#if defined(ZMQ_HAVE_IPC)
+#if defined(ZLINK_HAVE_IPC)
         //  Cannot cast addr as gcc 4.4 will fail with strict aliasing errors
         (*(struct sockaddr_un *) &addr).sun_family = AF_UNIX;
         strcpy ((*(struct sockaddr_un *) &addr).sun_path, endpoint_);
@@ -399,16 +399,16 @@ fd_t bind_socket_resolve_port (const char *address_,
     socklen_t addr_len;
     const fd_t s_pre = socket (af_, SOCK_STREAM,
                                protocol_ == IPPROTO_TCP ? IPPROTO_TCP : 0);
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     TEST_ASSERT_NOT_EQUAL (INVALID_SOCKET, s_pre);
 #else
     TEST_ASSERT_NOT_EQUAL (-1, s_pre);
 #endif
 
     if (af_ == AF_INET || af_ == AF_INET6) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         const char flag = '\1';
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
         char flag = '\1';
 #else
         int flag = 1;
@@ -429,11 +429,11 @@ fd_t bind_socket_resolve_port (const char *address_,
         addr_len = (socklen_t) in->ai_addrlen;
         freeaddrinfo (in);
     } else {
-#if defined(ZMQ_HAVE_IPC)
+#if defined(ZLINK_HAVE_IPC)
         //  Cannot cast addr as gcc 4.4 will fail with strict aliasing errors
         (*(struct sockaddr_un *) &addr).sun_family = AF_UNIX;
         addr_len = sizeof (struct sockaddr_un);
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         char buffer[MAX_PATH] = "";
 
         TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (buffer));
@@ -445,9 +445,9 @@ fd_t bind_socket_resolve_port (const char *address_,
         if (!tmpdir || !*tmpdir)
             tmpdir = "/tmp";
         const int n =
-          snprintf (buffer, sizeof (buffer), "%s/zmqXXXXXX", tmpdir);
+          snprintf (buffer, sizeof (buffer), "%s/zlinkXXXXXX", tmpdir);
         if (n <= 0 || static_cast<size_t> (n) >= sizeof (buffer))
-            strcpy (buffer, "/tmp/zmqXXXXXX");
+            strcpy (buffer, "/tmp/zlinkXXXXXX");
         int fd = mkstemp (buffer);
         TEST_ASSERT_TRUE (fd != -1);
         close (fd);
@@ -507,7 +507,7 @@ static bool write_pem_file (const std::string &path_, const char *pem_)
 tls_test_files_t make_tls_test_files ()
 {
     tls_test_files_t files;
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     char tmp_dir[MAX_PATH] = "";
     TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
     TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
@@ -518,9 +518,9 @@ tls_test_files_t make_tls_test_files ()
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
     const int n =
-      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zmq_tls_XXXXXX", tmpdir);
+      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zlink_tls_XXXXXX", tmpdir);
     if (n <= 0 || static_cast<size_t> (n) >= sizeof (tmp_dir))
-        strcpy (tmp_dir, "/tmp/zmq_tls_XXXXXX");
+        strcpy (tmp_dir, "/tmp/zlink_tls_XXXXXX");
     char *dir = mkdtemp (tmp_dir);
     TEST_ASSERT_NOT_NULL (dir);
     files.dir.assign (dir);
@@ -531,11 +531,11 @@ tls_test_files_t make_tls_test_files ()
     files.server_key = files.dir + "/server.key";
 
     TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
-                                      zmq::test_certs::ca_cert_pem));
+                                      zlink::test_certs::ca_cert_pem));
     TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
-                                      zmq::test_certs::server_cert_pem));
+                                      zlink::test_certs::server_cert_pem));
     TEST_ASSERT_TRUE (write_pem_file (files.server_key,
-                                      zmq::test_certs::server_key_pem));
+                                      zlink::test_certs::server_key_pem));
 
     return files;
 }
@@ -545,7 +545,7 @@ void cleanup_tls_test_files (const tls_test_files_t &files_)
     remove (files_.ca_cert.c_str ());
     remove (files_.server_cert.c_str ());
     remove (files_.server_key.c_str ());
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     _rmdir (files_.dir.c_str ());
 #else
     rmdir (files_.dir.c_str ());

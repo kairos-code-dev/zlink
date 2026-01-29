@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DIST_HPP_INCLUDED__
-#define __ZMQ_DIST_HPP_INCLUDED__
+#ifndef __ZLINK_DIST_HPP_INCLUDED__
+#define __ZLINK_DIST_HPP_INCLUDED__
 
 #include <vector>
 
 #include "utils/array.hpp"
 #include "utils/macros.hpp"
 
-namespace zmq
+namespace zlink
 {
 class pipe_t;
 class msg_t;
@@ -22,17 +22,17 @@ class dist_t
     ~dist_t ();
 
     //  Adds the pipe to the distributor object.
-    void attach (zmq::pipe_t *pipe_);
+    void attach (zlink::pipe_t *pipe_);
 
     //  Checks if this pipe is present in the distributor.
-    bool has_pipe (zmq::pipe_t *pipe_);
+    bool has_pipe (zlink::pipe_t *pipe_);
 
     //  Activates pipe that have previously reached high watermark.
-    void activated (zmq::pipe_t *pipe_);
+    void activated (zlink::pipe_t *pipe_);
 
     //  Mark the pipe as matching. Subsequent call to send_to_matching
     //  will send message also to this pipe.
-    void match (zmq::pipe_t *pipe_);
+    void match (zlink::pipe_t *pipe_);
 
     //  Marks all pipes that are not matched as matched and vice-versa.
     void reverse_match ();
@@ -41,13 +41,13 @@ class dist_t
     void unmatch ();
 
     //  Removes the pipe from the distributor object.
-    void pipe_terminated (zmq::pipe_t *pipe_);
+    void pipe_terminated (zlink::pipe_t *pipe_);
 
     //  Send the message to the matching outbound pipes.
-    int send_to_matching (zmq::msg_t *msg_);
+    int send_to_matching (zlink::msg_t *msg_);
 
     //  Send the message to all the outbound pipes.
-    int send_to_all (zmq::msg_t *msg_);
+    int send_to_all (zlink::msg_t *msg_);
 
     static bool has_out ();
 
@@ -57,13 +57,13 @@ class dist_t
   private:
     //  Write the message to the pipe. Make the pipe inactive if writing
     //  fails. In such a case false is returned.
-    bool write (zmq::pipe_t *pipe_, zmq::msg_t *msg_);
+    bool write (zlink::pipe_t *pipe_, zlink::msg_t *msg_);
 
     //  Put the message to all active pipes.
-    void distribute (zmq::msg_t *msg_);
+    void distribute (zlink::msg_t *msg_);
 
     //  List of outbound pipes.
-    typedef array_t<zmq::pipe_t, 2> pipes_t;
+    typedef array_t<zlink::pipe_t, 2> pipes_t;
     pipes_t _pipes;
 
     //  Number of all the pipes to send the next message to.
@@ -84,7 +84,7 @@ class dist_t
     //  True if last we are in the middle of a multipart message.
     bool _more;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (dist_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (dist_t)
 };
 }
 

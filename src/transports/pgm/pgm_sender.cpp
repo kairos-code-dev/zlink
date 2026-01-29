@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 
 #include <stdlib.h>
 
@@ -14,7 +14,7 @@
 #include "utils/stdint.hpp"
 #include "utils/macros.hpp"
 
-zmq::pgm_sender_t::pgm_sender_t (io_thread_t *parent_,
+zlink::pgm_sender_t::pgm_sender_t (io_thread_t *parent_,
                                  const options_t &options_) :
     io_object_t (parent_),
     has_tx_timer (false),
@@ -36,7 +36,7 @@ zmq::pgm_sender_t::pgm_sender_t (io_thread_t *parent_,
     errno_assert (rc == 0);
 }
 
-int zmq::pgm_sender_t::init (bool udp_encapsulation_, const char *network_)
+int zlink::pgm_sender_t::init (bool udp_encapsulation_, const char *network_)
 {
     int rc = pgm_socket.init (udp_encapsulation_, network_);
     if (rc != 0)
@@ -49,9 +49,9 @@ int zmq::pgm_sender_t::init (bool udp_encapsulation_, const char *network_)
     return rc;
 }
 
-void zmq::pgm_sender_t::plug (io_thread_t *io_thread_, session_base_t *session_)
+void zlink::pgm_sender_t::plug (io_thread_t *io_thread_, session_base_t *session_)
 {
-    LIBZMQ_UNUSED (io_thread_);
+    LIBZLINK_UNUSED (io_thread_);
     //  Allocate 2 fds for PGM socket.
     fd_t downlink_socket_fd = retired_fd;
     fd_t uplink_socket_fd = retired_fd;
@@ -79,7 +79,7 @@ void zmq::pgm_sender_t::plug (io_thread_t *io_thread_, session_base_t *session_)
     set_pollout (handle);
 }
 
-void zmq::pgm_sender_t::unplug ()
+void zlink::pgm_sender_t::unplug ()
 {
     if (has_rx_timer) {
         cancel_timer (rx_timer_id);
@@ -98,30 +98,30 @@ void zmq::pgm_sender_t::unplug ()
     session = NULL;
 }
 
-void zmq::pgm_sender_t::terminate ()
+void zlink::pgm_sender_t::terminate ()
 {
     unplug ();
     delete this;
 }
 
-void zmq::pgm_sender_t::restart_output ()
+void zlink::pgm_sender_t::restart_output ()
 {
     set_pollout (handle);
     out_event ();
 }
 
-bool zmq::pgm_sender_t::restart_input ()
+bool zlink::pgm_sender_t::restart_input ()
 {
-    zmq_assert (false);
+    zlink_assert (false);
     return true;
 }
 
-const zmq::endpoint_uri_pair_t &zmq::pgm_sender_t::get_endpoint () const
+const zlink::endpoint_uri_pair_t &zlink::pgm_sender_t::get_endpoint () const
 {
     return _empty_endpoint;
 }
 
-zmq::pgm_sender_t::~pgm_sender_t ()
+zlink::pgm_sender_t::~pgm_sender_t ()
 {
     int rc = msg.close ();
     errno_assert (rc == 0);
@@ -132,7 +132,7 @@ zmq::pgm_sender_t::~pgm_sender_t ()
     }
 }
 
-void zmq::pgm_sender_t::in_event ()
+void zlink::pgm_sender_t::in_event ()
 {
     if (has_rx_timer) {
         cancel_timer (rx_timer_id);
@@ -148,7 +148,7 @@ void zmq::pgm_sender_t::in_event ()
     }
 }
 
-void zmq::pgm_sender_t::out_event ()
+void zlink::pgm_sender_t::out_event ()
 {
     //  POLLOUT event from send socket. If write buffer is empty,
     //  try to read new data from the encoder.
@@ -198,7 +198,7 @@ void zmq::pgm_sender_t::out_event ()
     if (nbytes == write_size)
         write_size = 0;
     else {
-        zmq_assert (nbytes == 0);
+        zlink_assert (nbytes == 0);
 
         if (errno == ENOMEM) {
             // Stop polling handle and wait for tx timeout
@@ -211,7 +211,7 @@ void zmq::pgm_sender_t::out_event ()
     }
 }
 
-void zmq::pgm_sender_t::timer_event (int token)
+void zlink::pgm_sender_t::timer_event (int token)
 {
     //  Timer cancels on return by poller_base.
     if (token == rx_timer_id) {
@@ -223,7 +223,7 @@ void zmq::pgm_sender_t::timer_event (int token)
         set_pollout (handle);
         out_event ();
     } else
-        zmq_assert (false);
+        zlink_assert (false);
 }
 
 #endif

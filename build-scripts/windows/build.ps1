@@ -1,9 +1,9 @@
-# Windows build script for libzmq
+# Windows build script for libzlink
 # Requires: Visual Studio 2022, CMake
 # Supports: x64 and ARM64 architectures (ARM64 is cross-compiled on x64 host)
 
 param(
-    [string]$LibzmqVersion,
+    [string]$LibzlinkVersion,
     [string]$BuildType = "Release",
     [ValidateSet("x64", "arm64")]
     [string]$Architecture = "x64",
@@ -20,19 +20,19 @@ if (Test-Path $VERSION_FILE) {
     Write-Host "Reading VERSION file..."
     $VersionContent = Get-Content $VERSION_FILE
     foreach ($line in $VersionContent) {
-        if ($line -match '^LIBZMQ_VERSION=(.+)$') {
-            $FILE_LIBZMQ_VERSION = $matches[1]
+        if ($line -match '^LIBZLINK_VERSION=(.+)$') {
+            $FILE_LIBZLINK_VERSION = $matches[1]
         }
     }
 }
 
 # Parameters override VERSION file
-if ($LibzmqVersion) {
-    $LIBZMQ_VERSION = $LibzmqVersion
-} elseif ($FILE_LIBZMQ_VERSION) {
-    $LIBZMQ_VERSION = $FILE_LIBZMQ_VERSION
+if ($LibzlinkVersion) {
+    $LIBZLINK_VERSION = $LibzlinkVersion
+} elseif ($FILE_LIBZLINK_VERSION) {
+    $LIBZLINK_VERSION = $FILE_LIBZLINK_VERSION
 } else {
-    $LIBZMQ_VERSION = "4.3.5"
+    $LIBZLINK_VERSION = "4.3.5"
 }
 
 # Set architecture-specific configurations
@@ -84,7 +84,7 @@ Write-Host "==================================="
 Write-Host "Windows Build Configuration"
 Write-Host "==================================="
 Write-Host "Architecture:      $Architecture"
-Write-Host "libzmq version:    $LIBZMQ_VERSION"
+Write-Host "libzlink version:    $LIBZLINK_VERSION"
 Write-Host "Build type:        $BuildType"
 Write-Host "RUN_TESTS:         $RunTests"
 Write-Host "Output directory:  $OutputDir"
@@ -102,12 +102,12 @@ $BUILD_DIR = "build\windows-$Architecture"
 New-Item -ItemType Directory -Force -Path $BUILD_DIR | Out-Null
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-Write-Host "Step 1: Using repository source for libzmq..."
-# libzmq source is already in the project root
+Write-Host "Step 1: Using repository source for libzlink..."
+# libzlink source is already in the project root
 
-# Step 2: Configure libzmq with CMake
+# Step 2: Configure libzlink with CMake
 Write-Host ""
-Write-Host "Step 2: Configuring libzmq with CMake..."
+Write-Host "Step 2: Configuring libzlink with CMake..."
 
 # Convert to absolute paths before changing directory
 $ROOT_DIR_ABS = (Resolve-Path ".").Path
@@ -124,7 +124,7 @@ try {
     $BoostIncludeArgs = @()
     $BoostIncludeDir = Join-Path $ROOT_DIR_ABS "deps\\vcpkg\\installed\\$VCPKG_TRIPLET\\include"
     if ((Test-Path "$BoostIncludeDir\\boost\\asio.hpp") -and (Test-Path "$BoostIncludeDir\\boost\\beast.hpp")) {
-        $BoostIncludeArgs += "-DZMQ_BOOST_INCLUDE_DIR=$BoostIncludeDir"
+        $BoostIncludeArgs += "-DZLINK_BOOST_INCLUDE_DIR=$BoostIncludeDir"
     }
 
     # Add OpenSSL config
@@ -142,15 +142,15 @@ try {
         -DBUILD_SHARED=ON `
         -DBUILD_STATIC=OFF `
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
-        -DZMQ_CXX_STANDARD=17 `
+        -DZLINK_CXX_STANDARD=17 `
         -DBUILD_BENCHMARKS=ON `
         -DCMAKE_INSTALL_PREFIX="$PWD\install" `
         $BoostIncludeArgs `
         $OpenSSLArgs
 
-    # Step 3: Build libzmq
+    # Step 3: Build libzlink
     Write-Host ""
-    Write-Host "Step 3: Building libzmq..."
+    Write-Host "Step 3: Building libzlink..."
     cmake --build . --config $BuildType --parallel
 
     # Step 4: Install
@@ -159,14 +159,14 @@ try {
     cmake --install . --config $BuildType
 
     # Copy DLL to output
-    $DLL_PATH = "Release\*zmq*.dll"
+    $DLL_PATH = "Release\*zlink*.dll"
     $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
     if ($DLL_FILES.Count -eq 0) {
-        $DLL_PATH = "install\bin\*zmq*.dll"
+        $DLL_PATH = "install\bin\*zlink*.dll"
         $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
     }
     if ($DLL_FILES.Count -eq 0) {
-        $DLL_PATH = "bin\$BuildType\*zmq*.dll"
+        $DLL_PATH = "bin\$BuildType\*zlink*.dll"
         $DLL_FILES = Get-ChildItem $DLL_PATH -ErrorAction SilentlyContinue
     }
 
@@ -179,20 +179,20 @@ try {
         Copy-Item $SOURCE_DLL $TARGET_DLL_VERSIONED
         Write-Host "Copied: $SOURCE_DLL -> $TARGET_DLL_VERSIONED"
 
-        # Also copy as libzmq.dll for convenience
-        $TARGET_DLL = "..\..\$OutputDir\libzmq.dll"
+        # Also copy as libzlink.dll for convenience
+        $TARGET_DLL = "..\..\$OutputDir\libzlink.dll"
         Copy-Item $SOURCE_DLL $TARGET_DLL
         Write-Host "Copied: $SOURCE_DLL -> $TARGET_DLL"
 
         # Also copy the import library (.lib) for linking
-        $LIB_PATH = "Release\*zmq*.lib"
+        $LIB_PATH = "Release\*zlink*.lib"
         $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
         if ($LIB_FILES.Count -eq 0) {
-            $LIB_PATH = "install\lib\*zmq*.lib"
+            $LIB_PATH = "install\lib\*zlink*.lib"
             $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
         }
         if ($LIB_FILES.Count -eq 0) {
-            $LIB_PATH = "lib\$BuildType\*zmq*.lib"
+            $LIB_PATH = "lib\$BuildType\*zlink*.lib"
             $LIB_FILES = Get-ChildItem $LIB_PATH -ErrorAction SilentlyContinue
         }
         if ($LIB_FILES.Count -gt 0) {
@@ -204,8 +204,8 @@ try {
             Copy-Item $SOURCE_LIB $TARGET_LIB_VERSIONED
             Write-Host "Copied: $SOURCE_LIB -> $TARGET_LIB_VERSIONED"
 
-            # Also copy as libzmq.lib for convenience
-            $TARGET_LIB = "..\..\$OutputDir\libzmq.lib"
+            # Also copy as libzlink.lib for convenience
+            $TARGET_LIB = "..\..\$OutputDir\libzlink.lib"
             Copy-Item $SOURCE_LIB $TARGET_LIB
             Write-Host "Copied: $SOURCE_LIB -> $TARGET_LIB"
         }
@@ -263,11 +263,11 @@ try {
         Write-Host "Copying public headers..."
         $IncludeDir = "..\..\$OutputDir\include"
         New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
-        Copy-Item "..\..\include\zmq.h" $IncludeDir
-        Copy-Item "..\..\include\zmq_utils.h" $IncludeDir
-        Write-Host "Copied: zmq.h, zmq_utils.h -> $IncludeDir"
+        Copy-Item "..\..\include\zlink.h" $IncludeDir
+        Copy-Item "..\..\include\zlink_utils.h" $IncludeDir
+        Write-Host "Copied: zlink.h, zlink_utils.h -> $IncludeDir"
     } else {
-        throw "libzmq.dll not found!"
+        throw "libzlink.dll not found!"
     }
 
     # Step 5: Run tests (if enabled)
@@ -282,7 +282,7 @@ try {
             # Run tests with ctest
             Write-Host "Running ctest..."
 
-            # Ensure the DLL directory is in the PATH so tests can find zmq.dll
+            # Ensure the DLL directory is in the PATH so tests can find zlink.dll
             $OLD_PATH = $env:PATH
             $DLL_DIR = (Resolve-Path ("bin\\$BuildType")).Path
             $env:PATH = "$DLL_DIR;$env:PATH"
@@ -333,7 +333,7 @@ try {
 # Step 6: Verify build
 Write-Host ""
 Write-Host "Step 6: Verifying build..."
-$FINAL_DLL = "$OutputDir\libzmq.dll"
+$FINAL_DLL = "$OutputDir\libzlink.dll"
 
 if (Test-Path $FINAL_DLL) {
     $FileSize = (Get-Item $FINAL_DLL).Length

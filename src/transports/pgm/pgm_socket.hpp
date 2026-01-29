@@ -3,22 +3,22 @@
 #ifndef __PGM_SOCKET_HPP_INCLUDED__
 #define __PGM_SOCKET_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 #define __PGM_WININT_H__
 #endif
 
 #include <pgm/pgm.h>
 
-#if defined(ZMQ_HAVE_OSX) || defined(ZMQ_HAVE_NETBSD)
+#if defined(ZLINK_HAVE_OSX) || defined(ZLINK_HAVE_NETBSD)
 #include <pgm/in.h>
 #endif
 
 #include "utils/fd.hpp"
 #include "core/options.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Encapsulates PGM socket.
 class pgm_socket_t

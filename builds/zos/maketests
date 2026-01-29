@@ -1,8 +1,8 @@
 #! /bin/sh
-# Build tests/* executables; assumes that libzmq.a or libzmq.so/libzmq.x
+# Build tests/* executables; assumes that libzlink.a or libzlink.so/libzlink.x
 # is already built
 #
-# If libzmq.so and libzmq.x exist, then dynamic linking is used, otherwise
+# If libzlink.so and libzlink.x exist, then dynamic linking is used, otherwise
 # static linking is used.
 #
 # Written by Ewen McNeill <ewen@imatix.com>, 2014-07-21
@@ -31,15 +31,15 @@ TOP="${BIN_DIR}/../.."
 SRC="${TOP}/src"
 TESTS="${TOP}/tests"
 
-# Figure out how we are going to link to ZMQ
+# Figure out how we are going to link to ZLINK
 LINK_TYPE=unknown
 
-if [ -f "${SRC}/platform.hpp" -a -f "${SRC}/libzmq.so" -a -f "${SRC}/libzmq.x" ]; then
+if [ -f "${SRC}/platform.hpp" -a -f "${SRC}/libzlink.so" -a -f "${SRC}/libzlink.x" ]; then
   LINK_TYPE=dynamic
-elif [ -f "${SRC}/platform.hpp" -a -f "${SRC}/libzmq.a" ]; then
+elif [ -f "${SRC}/platform.hpp" -a -f "${SRC}/libzlink.a" ]; then
   LINK_TYPE=static
 else
-  echo "Error: run makezmqlib to build libzmq.a and/or libzmq.so/libzmq.x first" >&2
+  echo "Error: run makezlinklib to build libzlink.a and/or libzlink.so/libzlink.x first" >&2
   exit 1
 fi
 
@@ -78,9 +78,9 @@ link() {
   EXE="$2"
   echo " LD ${EXE}"
   case "${LINK_TYPE}" in
-    static)  "${ZCXX}" -L ../src -o "${EXE}" "${OBJ}" -lzmq
+    static)  "${ZCXX}" -L ../src -o "${EXE}" "${OBJ}" -lzlink
              ;;
-    dynamic) "${ZCXX}" -o "${EXE}" "${OBJ}" ../src/libzmq.x
+    dynamic) "${ZCXX}" -o "${EXE}" "${OBJ}" ../src/libzlink.x
              ;;
     *)       echo "Do not know how to do ${LINK_TYPE} linking!" 2>&1
              exit 1

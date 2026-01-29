@@ -2,7 +2,7 @@
 
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #endif
 
@@ -21,35 +21,35 @@
 #include "core/msg.hpp"
 #include "utils/random.hpp"
 
-#ifdef ZMQ_USE_NSS
+#ifdef ZLINK_USE_NSS
 #include <nss.h>
 #endif
 
-#ifdef ZMQ_USE_GNUTLS
+#ifdef ZLINK_USE_GNUTLS
 #include <gnutls/gnutls.h>
 #endif
 
-#define ZMQ_CTX_TAG_VALUE_GOOD 0xabadcafe
-#define ZMQ_CTX_TAG_VALUE_BAD 0xdeadbeef
+#define ZLINK_CTX_TAG_VALUE_GOOD 0xabadcafe
+#define ZLINK_CTX_TAG_VALUE_BAD 0xdeadbeef
 
 static int clipped_maxsocket (int max_requested_)
 {
-    if (max_requested_ >= zmq::poller_t::max_fds ()
-        && zmq::poller_t::max_fds () != -1)
+    if (max_requested_ >= zlink::poller_t::max_fds ()
+        && zlink::poller_t::max_fds () != -1)
         // -1 because we need room for the reaper mailbox.
-        max_requested_ = zmq::poller_t::max_fds () - 1;
+        max_requested_ = zlink::poller_t::max_fds () - 1;
 
     return max_requested_;
 }
 
-zmq::ctx_t::ctx_t () :
-    _tag (ZMQ_CTX_TAG_VALUE_GOOD),
+zlink::ctx_t::ctx_t () :
+    _tag (ZLINK_CTX_TAG_VALUE_GOOD),
     _starting (true),
     _terminating (false),
     _reaper (NULL),
-    _max_sockets (clipped_maxsocket (ZMQ_MAX_SOCKETS_DFLT)),
+    _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
-    _io_thread_count (ZMQ_IO_THREADS_DFLT),
+    _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _blocky (true),
     _ipv6 (false),
     _threadsafe_io_context (),
@@ -63,18 +63,18 @@ zmq::ctx_t::ctx_t () :
 #endif
 
     //  Initialise crypto library, if needed.
-    zmq::random_open ();
+    zlink::random_open ();
 }
 
-bool zmq::ctx_t::check_tag () const
+bool zlink::ctx_t::check_tag () const
 {
-    return _tag == ZMQ_CTX_TAG_VALUE_GOOD;
+    return _tag == ZLINK_CTX_TAG_VALUE_GOOD;
 }
 
-zmq::ctx_t::~ctx_t ()
+zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
-    zmq_assert (_sockets.empty ());
+    zlink_assert (_sockets.empty ());
 
     if (_threadsafe_started) {
         _threadsafe_work_guard.reset ();
@@ -91,28 +91,28 @@ zmq::ctx_t::~ctx_t ()
 
     //  Wait till I/O threads actually terminate.
     for (io_threads_t::size_type i = 0; i != io_threads_size; i++) {
-        LIBZMQ_DELETE (_io_threads[i]);
+        LIBZLINK_DELETE (_io_threads[i]);
     }
 
     //  Deallocate the reaper thread object.
-    LIBZMQ_DELETE (_reaper);
+    LIBZLINK_DELETE (_reaper);
 
     //  The mailboxes in _slots themselves were deallocated with their
     //  corresponding io_thread/socket objects.
 
     //  De-initialise crypto library, if needed.
-    zmq::random_close ();
+    zlink::random_close ();
 
     //  Remove the tag, so that the object is considered dead.
-    _tag = ZMQ_CTX_TAG_VALUE_BAD;
+    _tag = ZLINK_CTX_TAG_VALUE_BAD;
 }
 
-bool zmq::ctx_t::valid () const
+bool zlink::ctx_t::valid () const
 {
     return _term_mailbox.valid ();
 }
 
-int zmq::ctx_t::terminate ()
+int zlink::ctx_t::terminate ()
 {
     _slot_sync.lock ();
 
@@ -123,9 +123,9 @@ int zmq::ctx_t::terminate ()
     pending_connections_t copy = _pending_connections;
     for (pending_connections_t::iterator p = copy.begin (), end = copy.end ();
          p != end; ++p) {
-        zmq::socket_base_t *s = create_socket (ZMQ_PAIR);
+        zlink::socket_base_t *s = create_socket (ZLINK_PAIR);
         // create_socket might fail eg: out of memory/sockets limit reached
-        zmq_assert (s);
+        zlink_assert (s);
         s->bind (p->first.c_str ());
         s->close ();
     }
@@ -169,9 +169,9 @@ int zmq::ctx_t::terminate ()
         if (rc == -1 && errno == EINTR)
             return -1;
         errno_assert (rc == 0);
-        zmq_assert (cmd.type == command_t::done);
+        zlink_assert (cmd.type == command_t::done);
         _slot_sync.lock ();
-        zmq_assert (_sockets.empty ());
+        zlink_assert (_sockets.empty ());
     }
     _slot_sync.unlock ();
 
@@ -181,7 +181,7 @@ int zmq::ctx_t::terminate ()
     return 0;
 }
 
-int zmq::ctx_t::shutdown ()
+int zlink::ctx_t::shutdown ()
 {
     scoped_lock_t locker (_slot_sync);
 
@@ -204,7 +204,7 @@ int zmq::ctx_t::shutdown ()
     return 0;
 }
 
-int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
+int zlink::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
 {
     const bool is_int = (optvallen_ == sizeof (int));
     int value = 0;
@@ -212,7 +212,7 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZMQ_MAX_SOCKETS:
+        case ZLINK_MAX_SOCKETS:
             if (is_int && value >= 1 && value == clipped_maxsocket (value)) {
                 scoped_lock_t locker (_opt_sync);
                 _max_sockets = value;
@@ -220,7 +220,7 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_IO_THREADS:
+        case ZLINK_IO_THREADS:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _io_thread_count = value;
@@ -228,7 +228,7 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_IPV6:
+        case ZLINK_IPV6:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _ipv6 = (value != 0);
@@ -236,7 +236,7 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_BLOCKY:
+        case ZLINK_BLOCKY:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _blocky = (value != 0);
@@ -244,7 +244,7 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_MAX_MSGSZ:
+        case ZLINK_MAX_MSGSZ:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _max_msgsz = value < INT_MAX ? value : INT_MAX;
@@ -261,13 +261,13 @@ int zmq::ctx_t::set (int option_, const void *optval_, size_t optvallen_)
     return -1;
 }
 
-int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
+int zlink::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
 {
     const bool is_int = (*optvallen_ == sizeof (int));
     int *value = static_cast<int *> (optval_);
 
     switch (option_) {
-        case ZMQ_MAX_SOCKETS:
+        case ZLINK_MAX_SOCKETS:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _max_sockets;
@@ -275,14 +275,14 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZMQ_SOCKET_LIMIT:
+        case ZLINK_SOCKET_LIMIT:
             if (is_int) {
                 *value = clipped_maxsocket (65535);
                 return 0;
             }
             break;
 
-        case ZMQ_IO_THREADS:
+        case ZLINK_IO_THREADS:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _io_thread_count;
@@ -290,7 +290,7 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZMQ_IPV6:
+        case ZLINK_IPV6:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _ipv6;
@@ -298,7 +298,7 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZMQ_BLOCKY:
+        case ZLINK_BLOCKY:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _blocky;
@@ -306,7 +306,7 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZMQ_MAX_MSGSZ:
+        case ZLINK_MAX_MSGSZ:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _max_msgsz;
@@ -314,10 +314,10 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
             }
             break;
 
-        case ZMQ_MSG_T_SIZE:
+        case ZLINK_MSG_T_SIZE:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
-                *value = sizeof (zmq_msg_t);
+                *value = sizeof (zlink_msg_t);
                 return 0;
             }
             break;
@@ -331,7 +331,7 @@ int zmq::ctx_t::get (int option_, void *optval_, const size_t *optvallen_)
     return -1;
 }
 
-int zmq::ctx_t::get (int option_)
+int zlink::ctx_t::get (int option_)
 {
     int optval = 0;
     size_t optvallen = sizeof (int);
@@ -343,16 +343,16 @@ int zmq::ctx_t::get (int option_)
     return -1;
 }
 
-bool zmq::ctx_t::start ()
+bool zlink::ctx_t::start ()
 {
     //  Initialise the array of mailboxes. Additional two slots are for
-    //  zmq_ctx_term thread and reaper thread.
+    //  zlink_ctx_term thread and reaper thread.
     _opt_sync.lock ();
     const int term_and_reaper_threads_count = 2;
-    const int mazmq = _max_sockets;
+    const int mazlink = _max_sockets;
     const int ios = _io_thread_count;
     _opt_sync.unlock ();
-    const int slot_count = mazmq + ios + term_and_reaper_threads_count;
+    const int slot_count = mazlink + ios + term_and_reaper_threads_count;
     try {
         _slots.reserve (slot_count);
         _empty_slots.reserve (slot_count - term_and_reaper_threads_count);
@@ -363,7 +363,7 @@ bool zmq::ctx_t::start ()
     }
     _slots.resize (term_and_reaper_threads_count);
 
-    //  Initialise the infrastructure for zmq_ctx_term thread.
+    //  Initialise the infrastructure for zlink_ctx_term thread.
     _slots[term_tid] = &_term_mailbox;
 
     //  Create the reaper thread.
@@ -421,17 +421,17 @@ fail_cleanup_slots:
     return false;
 }
 
-void zmq::ctx_t::threadsafe_worker (void *arg_)
+void zlink::ctx_t::threadsafe_worker (void *arg_)
 {
     ctx_t *self = static_cast<ctx_t *> (arg_);
     self->_threadsafe_io_context.run ();
 }
 
-zmq::socket_base_t *zmq::ctx_t::create_socket (int type_)
+zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
 {
     scoped_lock_t locker (_slot_sync);
 
-    //  Once zmq_ctx_term() or zmq_ctx_shutdown() was called, we can't create
+    //  Once zlink_ctx_term() or zlink_ctx_shutdown() was called, we can't create
     //  new sockets.
     if (_terminating) {
         errno = ETERM;
@@ -468,7 +468,7 @@ zmq::socket_base_t *zmq::ctx_t::create_socket (int type_)
     return s;
 }
 
-void zmq::ctx_t::destroy_socket (class socket_base_t *socket_)
+void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
 {
     scoped_lock_t locker (_slot_sync);
 
@@ -480,29 +480,29 @@ void zmq::ctx_t::destroy_socket (class socket_base_t *socket_)
     //  Remove the socket from the list of sockets.
     _sockets.erase (socket_);
 
-    //  If zmq_ctx_term() was already called and there are no more socket
+    //  If zlink_ctx_term() was already called and there are no more socket
     //  we can ask reaper thread to terminate.
     if (_terminating && _sockets.empty ())
         _reaper->stop ();
 }
 
-zmq::object_t *zmq::ctx_t::get_reaper () const
+zlink::object_t *zlink::ctx_t::get_reaper () const
 {
     return _reaper;
 }
 
-boost::asio::io_context &zmq::ctx_t::get_threadsafe_io_context ()
+boost::asio::io_context &zlink::ctx_t::get_threadsafe_io_context ()
 {
     return _threadsafe_io_context;
 }
 
-zmq::thread_ctx_t::thread_ctx_t () :
-    _thread_priority (ZMQ_THREAD_PRIORITY_DFLT),
-    _thread_sched_policy (ZMQ_THREAD_SCHED_POLICY_DFLT)
+zlink::thread_ctx_t::thread_ctx_t () :
+    _thread_priority (ZLINK_THREAD_PRIORITY_DFLT),
+    _thread_sched_policy (ZLINK_THREAD_SCHED_POLICY_DFLT)
 {
 }
 
-void zmq::thread_ctx_t::start_thread (thread_t &thread_,
+void zlink::thread_ctx_t::start_thread (thread_t &thread_,
                                       thread_fn *tfn_,
                                       void *arg_,
                                       const char *name_) const
@@ -511,14 +511,14 @@ void zmq::thread_ctx_t::start_thread (thread_t &thread_,
                                      _thread_affinity_cpus);
 
     char namebuf[16] = "";
-    snprintf (namebuf, sizeof (namebuf), "%s%sZMQbg%s%s",
+    snprintf (namebuf, sizeof (namebuf), "%s%sZLINKbg%s%s",
               _thread_name_prefix.empty () ? "" : _thread_name_prefix.c_str (),
               _thread_name_prefix.empty () ? "" : "/", name_ ? "/" : "",
               name_ ? name_ : "");
     thread_.start (tfn_, arg_, namebuf);
 }
 
-int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
+int zlink::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
 {
     const bool is_int = (optvallen_ == sizeof (int));
     int value = 0;
@@ -526,7 +526,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZMQ_THREAD_SCHED_POLICY:
+        case ZLINK_THREAD_SCHED_POLICY:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _thread_sched_policy = value;
@@ -534,7 +534,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_THREAD_AFFINITY_CPU_ADD:
+        case ZLINK_THREAD_AFFINITY_CPU_ADD:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _thread_affinity_cpus.insert (value);
@@ -542,7 +542,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_THREAD_AFFINITY_CPU_REMOVE:
+        case ZLINK_THREAD_AFFINITY_CPU_REMOVE:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 if (0 == _thread_affinity_cpus.erase (value)) {
@@ -553,7 +553,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_THREAD_PRIORITY:
+        case ZLINK_THREAD_PRIORITY:
             if (is_int && value >= 0) {
                 scoped_lock_t locker (_opt_sync);
                 _thread_priority = value;
@@ -561,7 +561,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
             }
             break;
 
-        case ZMQ_THREAD_NAME_PREFIX:
+        case ZLINK_THREAD_NAME_PREFIX:
             // start_thread() allows max 16 chars for thread name
             if (is_int) {
                 std::ostringstream s;
@@ -582,7 +582,7 @@ int zmq::thread_ctx_t::set (int option_, const void *optval_, size_t optvallen_)
     return -1;
 }
 
-int zmq::thread_ctx_t::get (int option_,
+int zlink::thread_ctx_t::get (int option_,
                             void *optval_,
                             const size_t *optvallen_)
 {
@@ -590,7 +590,7 @@ int zmq::thread_ctx_t::get (int option_,
     int *value = static_cast<int *> (optval_);
 
     switch (option_) {
-        case ZMQ_THREAD_SCHED_POLICY:
+        case ZLINK_THREAD_SCHED_POLICY:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = _thread_sched_policy;
@@ -598,7 +598,7 @@ int zmq::thread_ctx_t::get (int option_,
             }
             break;
 
-        case ZMQ_THREAD_NAME_PREFIX:
+        case ZLINK_THREAD_NAME_PREFIX:
             if (is_int) {
                 scoped_lock_t locker (_opt_sync);
                 *value = atoi (_thread_name_prefix.c_str ());
@@ -616,12 +616,12 @@ int zmq::thread_ctx_t::get (int option_,
     return -1;
 }
 
-void zmq::ctx_t::send_command (uint32_t tid_, const command_t &command_)
+void zlink::ctx_t::send_command (uint32_t tid_, const command_t &command_)
 {
     _slots[tid_]->send (command_);
 }
 
-zmq::io_thread_t *zmq::ctx_t::choose_io_thread (uint64_t affinity_)
+zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
 {
     if (_io_threads.empty ())
         return NULL;
@@ -642,13 +642,13 @@ zmq::io_thread_t *zmq::ctx_t::choose_io_thread (uint64_t affinity_)
     return selected_io_thread;
 }
 
-int zmq::ctx_t::register_endpoint (const char *addr_,
+int zlink::ctx_t::register_endpoint (const char *addr_,
                                    const endpoint_t &endpoint_)
 {
     scoped_lock_t locker (_endpoints_sync);
 
     const bool inserted =
-      _endpoints.ZMQ_MAP_INSERT_OR_EMPLACE (std::string (addr_), endpoint_)
+      _endpoints.ZLINK_MAP_INSERT_OR_EMPLACE (std::string (addr_), endpoint_)
         .second;
     if (!inserted) {
         errno = EADDRINUSE;
@@ -657,7 +657,7 @@ int zmq::ctx_t::register_endpoint (const char *addr_,
     return 0;
 }
 
-int zmq::ctx_t::unregister_endpoint (const std::string &addr_,
+int zlink::ctx_t::unregister_endpoint (const std::string &addr_,
                                      const socket_base_t *const socket_)
 {
     scoped_lock_t locker (_endpoints_sync);
@@ -674,7 +674,7 @@ int zmq::ctx_t::unregister_endpoint (const std::string &addr_,
     return 0;
 }
 
-void zmq::ctx_t::unregister_endpoints (const socket_base_t *const socket_)
+void zlink::ctx_t::unregister_endpoints (const socket_base_t *const socket_)
 {
     scoped_lock_t locker (_endpoints_sync);
 
@@ -692,7 +692,7 @@ void zmq::ctx_t::unregister_endpoints (const socket_base_t *const socket_)
     }
 }
 
-zmq::endpoint_t zmq::ctx_t::find_endpoint (const char *addr_)
+zlink::endpoint_t zlink::ctx_t::find_endpoint (const char *addr_)
 {
     scoped_lock_t locker (_endpoints_sync);
 
@@ -713,7 +713,7 @@ zmq::endpoint_t zmq::ctx_t::find_endpoint (const char *addr_)
     return endpoint;
 }
 
-void zmq::ctx_t::pend_connection (const std::string &addr_,
+void zlink::ctx_t::pend_connection (const std::string &addr_,
                                   const endpoint_t &endpoint_,
                                   pipe_t **pipes_)
 {
@@ -726,7 +726,7 @@ void zmq::ctx_t::pend_connection (const std::string &addr_,
     if (it == _endpoints.end ()) {
         //  Still no bind.
         endpoint_.socket->inc_seqnum ();
-        _pending_connections.ZMQ_MAP_INSERT_OR_EMPLACE (addr_,
+        _pending_connections.ZLINK_MAP_INSERT_OR_EMPLACE (addr_,
                                                         pending_connection);
     } else {
         //  Bind has happened in the mean time, connect directly
@@ -735,8 +735,8 @@ void zmq::ctx_t::pend_connection (const std::string &addr_,
     }
 }
 
-void zmq::ctx_t::connect_pending (const char *addr_,
-                                  zmq::socket_base_t *bind_socket_)
+void zlink::ctx_t::connect_pending (const char *addr_,
+                                  zlink::socket_base_t *bind_socket_)
 {
     scoped_lock_t locker (_endpoints_sync);
 
@@ -751,8 +751,8 @@ void zmq::ctx_t::connect_pending (const char *addr_,
     _pending_connections.erase (pending.first, pending.second);
 }
 
-void zmq::ctx_t::connect_inproc_sockets (
-  zmq::socket_base_t *bind_socket_,
+void zlink::ctx_t::connect_inproc_sockets (
+  zlink::socket_base_t *bind_socket_,
   const options_t &bind_options_,
   const pending_connection_t &pending_connection_,
   side side_)
@@ -763,7 +763,7 @@ void zmq::ctx_t::connect_inproc_sockets (
     if (!bind_options_.recv_routing_id) {
         msg_t msg;
         const bool ok = pending_connection_.bind_pipe->read (&msg);
-        zmq_assert (ok);
+        zlink_assert (ok);
         const int rc = msg.close ();
         errno_assert (rc == 0);
     }
@@ -810,4 +810,4 @@ void zmq::ctx_t::connect_inproc_sockets (
 //  The last used socket ID, or 0 if no socket was used so far. Note that this
 //  is a global variable. Thus, even sockets created in different contexts have
 //  unique IDs.
-zmq::atomic_counter_t zmq::ctx_t::max_socket_id;
+zlink::atomic_counter_t zlink::ctx_t::max_socket_id;

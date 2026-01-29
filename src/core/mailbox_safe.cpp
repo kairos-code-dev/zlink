@@ -8,13 +8,13 @@
 #include <algorithm>
 #include <boost/asio.hpp>
 
-zmq::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
+zlink::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
 {
     //  Get the pipe into passive state. That way, if the users starts by
     //  polling on the associated file descriptor it will get woken up when
     //  new command is posted.
     const bool ok = _cpipe.check_read ();
-    zmq_assert (!ok);
+    zlink_assert (!ok);
     _io_context = NULL;
     _handler = NULL;
     _handler_arg = NULL;
@@ -22,7 +22,7 @@ zmq::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
     _scheduled.store (false, std::memory_order_release);
 }
 
-zmq::mailbox_safe_t::~mailbox_safe_t ()
+zlink::mailbox_safe_t::~mailbox_safe_t ()
 {
     //  TODO: Retrieve and deallocate commands inside the cpipe.
 
@@ -32,15 +32,15 @@ zmq::mailbox_safe_t::~mailbox_safe_t ()
     _sync->unlock ();
 }
 
-void zmq::mailbox_safe_t::add_signaler (signaler_t *signaler_)
+void zlink::mailbox_safe_t::add_signaler (signaler_t *signaler_)
 {
     _signalers.push_back (signaler_);
 }
 
-void zmq::mailbox_safe_t::remove_signaler (signaler_t *signaler_)
+void zlink::mailbox_safe_t::remove_signaler (signaler_t *signaler_)
 {
     // TODO: make a copy of array and signal outside the lock
-    const std::vector<zmq::signaler_t *>::iterator end = _signalers.end ();
+    const std::vector<zlink::signaler_t *>::iterator end = _signalers.end ();
     const std::vector<signaler_t *>::iterator it =
       std::find (_signalers.begin (), end, signaler_);
 
@@ -48,12 +48,12 @@ void zmq::mailbox_safe_t::remove_signaler (signaler_t *signaler_)
         _signalers.erase (it);
 }
 
-void zmq::mailbox_safe_t::clear_signalers ()
+void zlink::mailbox_safe_t::clear_signalers ()
 {
     _signalers.clear ();
 }
 
-void zmq::mailbox_safe_t::send (const command_t &cmd_)
+void zlink::mailbox_safe_t::send (const command_t &cmd_)
 {
     _sync->lock ();
     _cpipe.write (cmd_, false);
@@ -73,7 +73,7 @@ void zmq::mailbox_safe_t::send (const command_t &cmd_)
         schedule_if_needed ();
 }
 
-int zmq::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
+int zlink::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
 {
     //  Try to get the command straight away.
     if (_cpipe.read (cmd_))
@@ -104,7 +104,7 @@ int zmq::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
     return 0;
 }
 
-void zmq::mailbox_safe_t::set_io_context (
+void zlink::mailbox_safe_t::set_io_context (
   boost::asio::io_context *io_context_,
   mailbox_handler_t handler_,
   void *handler_arg_,
@@ -116,7 +116,7 @@ void zmq::mailbox_safe_t::set_io_context (
     _pre_post = pre_post_;
 }
 
-void zmq::mailbox_safe_t::schedule_if_needed ()
+void zlink::mailbox_safe_t::schedule_if_needed ()
 {
     if (!_io_context || !_handler)
         return;
@@ -138,7 +138,7 @@ void zmq::mailbox_safe_t::schedule_if_needed ()
     }
 }
 
-bool zmq::mailbox_safe_t::reschedule_if_needed ()
+bool zlink::mailbox_safe_t::reschedule_if_needed ()
 {
     _scheduled.store (false, std::memory_order_release);
 

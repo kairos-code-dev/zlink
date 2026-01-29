@@ -10,7 +10,7 @@
 
 // --- Configuration ---
 const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
-#if defined(ZMQ_HAVE_ASIO_WS)
+#if defined(ZLINK_HAVE_ASIO_WS)
 const std::vector<std::string> TRANSPORTS = {"tcp", "ws", "inproc", "ipc"};
 #else
 const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "transports/tcp/asio_tcp_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -15,7 +15,7 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -36,7 +36,7 @@
 #define LISTENER_DBG(fmt, ...)
 #endif
 
-zmq::asio_tcp_listener_t::asio_tcp_listener_t (io_thread_t *io_thread_,
+zlink::asio_tcp_listener_t::asio_tcp_listener_t (io_thread_t *io_thread_,
                                                socket_base_t *socket_,
                                                const options_t &options_) :
     own_t (io_thread_, options_),
@@ -52,12 +52,12 @@ zmq::asio_tcp_listener_t::asio_tcp_listener_t (io_thread_t *io_thread_,
     LISTENER_DBG ("Constructor called, this=%p", static_cast<void *> (this));
 }
 
-zmq::asio_tcp_listener_t::~asio_tcp_listener_t ()
+zlink::asio_tcp_listener_t::~asio_tcp_listener_t ()
 {
     LISTENER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
 }
 
-int zmq::asio_tcp_listener_t::set_local_address (const char *addr_)
+int zlink::asio_tcp_listener_t::set_local_address (const char *addr_)
 {
     LISTENER_DBG ("set_local_address: addr=%s", addr_);
 
@@ -84,7 +84,7 @@ int zmq::asio_tcp_listener_t::set_local_address (const char *addr_)
     //  Set socket options
 
     //  Allow reusing of the address (SO_REUSEADDR)
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     //  On Windows, use SO_EXCLUSIVEADDRUSE instead
     _acceptor.set_option (
       boost::asio::detail::socket_option::boolean<SOL_SOCKET,
@@ -109,7 +109,7 @@ int zmq::asio_tcp_listener_t::set_local_address (const char *addr_)
         }
     }
 
-    //  Construct boost endpoint from zmq address
+    //  Construct boost endpoint from zlink address
     boost::asio::ip::tcp::endpoint bind_endpoint;
     const struct sockaddr *sa = _address.addr ();
     if (sa->sa_family == AF_INET) {
@@ -158,20 +158,20 @@ int zmq::asio_tcp_listener_t::set_local_address (const char *addr_)
     return 0;
 }
 
-int zmq::asio_tcp_listener_t::get_local_address (std::string &addr_) const
+int zlink::asio_tcp_listener_t::get_local_address (std::string &addr_) const
 {
     addr_ = _endpoint;
     return addr_.empty () ? -1 : 0;
 }
 
 std::string
-zmq::asio_tcp_listener_t::get_socket_name (fd_t fd_,
+zlink::asio_tcp_listener_t::get_socket_name (fd_t fd_,
                                            socket_end_t socket_end_) const
 {
-    return zmq::get_socket_name<tcp_address_t> (fd_, socket_end_);
+    return zlink::get_socket_name<tcp_address_t> (fd_, socket_end_);
 }
 
-void zmq::asio_tcp_listener_t::process_plug ()
+void zlink::asio_tcp_listener_t::process_plug ()
 {
     LISTENER_DBG ("process_plug called");
 
@@ -179,7 +179,7 @@ void zmq::asio_tcp_listener_t::process_plug ()
     start_accept ();
 }
 
-void zmq::asio_tcp_listener_t::process_term (int linger_)
+void zlink::asio_tcp_listener_t::process_term (int linger_)
 {
     LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
                   _accepting);
@@ -207,7 +207,7 @@ void zmq::asio_tcp_listener_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_tcp_listener_t::start_accept ()
+void zlink::asio_tcp_listener_t::start_accept ()
 {
     if (_accepting || !_acceptor.is_open ())
         return;
@@ -220,7 +220,7 @@ void zmq::asio_tcp_listener_t::start_accept ()
       [this] (const boost::system::error_code &ec) { on_accept (ec); });
 }
 
-void zmq::asio_tcp_listener_t::on_accept (const boost::system::error_code &ec)
+void zlink::asio_tcp_listener_t::on_accept (const boost::system::error_code &ec)
 {
     _accepting = false;
     LISTENER_DBG ("on_accept: ec=%s, terminating=%d", ec.message ().c_str (),
@@ -305,8 +305,8 @@ void zmq::asio_tcp_listener_t::on_accept (const boost::system::error_code &ec)
     if (tune_socket (fd) != 0) {
         LISTENER_DBG ("on_accept: tune_socket failed");
         _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), zmq_errno ());
-#ifdef ZMQ_HAVE_WINDOWS
+          make_unconnected_bind_endpoint_pair (_endpoint), zlink_errno ());
+#ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
@@ -324,7 +324,7 @@ void zmq::asio_tcp_listener_t::on_accept (const boost::system::error_code &ec)
     start_accept ();
 }
 
-void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
+void zlink::asio_tcp_listener_t::create_engine (fd_t fd_)
 {
     LISTENER_DBG ("create_engine: fd=%d", fd_);
 
@@ -334,7 +334,7 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
 
     //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = NULL;
-    if (options.type == ZMQ_STREAM)
+    if (options.type == ZLINK_STREAM)
         engine = new (std::nothrow) asio_raw_engine_t (fd_, options, endpoint_pair);
     else
         engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
@@ -343,7 +343,7 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
     //  Choose I/O thread to run engine in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
     io_thread_t *io_thread = choose_io_thread (options.affinity);
-    zmq_assert (io_thread);
+    zlink_assert (io_thread);
 
     //  Create and launch a session object.
     session_base_t *session =
@@ -356,7 +356,7 @@ void zmq::asio_tcp_listener_t::create_engine (fd_t fd_)
     _socket->event_accepted (endpoint_pair, fd_);
 }
 
-void zmq::asio_tcp_listener_t::close ()
+void zlink::asio_tcp_listener_t::close ()
 {
     LISTENER_DBG ("close called");
 
@@ -370,7 +370,7 @@ void zmq::asio_tcp_listener_t::close ()
     }
 }
 
-int zmq::asio_tcp_listener_t::tune_socket (fd_t fd_) const
+int zlink::asio_tcp_listener_t::tune_socket (fd_t fd_) const
 {
     int rc = tune_tcp_socket (fd_);
     rc = rc
@@ -382,7 +382,7 @@ int zmq::asio_tcp_listener_t::tune_socket (fd_t fd_) const
     return rc;
 }
 
-bool zmq::asio_tcp_listener_t::apply_accept_filters (
+bool zlink::asio_tcp_listener_t::apply_accept_filters (
   fd_t fd_, const struct sockaddr_storage &ss, socklen_t ss_len) const
 {
     //  Make socket non-inheritable
@@ -409,7 +409,7 @@ bool zmq::asio_tcp_listener_t::apply_accept_filters (
     }
 
     //  Set NOSIGPIPE on the accepted socket
-    if (zmq::set_nosigpipe (fd_)) {
+    if (zlink::set_nosigpipe (fd_)) {
         return false;
     }
 
@@ -424,4 +424,4 @@ bool zmq::asio_tcp_listener_t::apply_accept_filters (
     return true;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_YPIPE_HPP_INCLUDED__
-#define __ZMQ_YPIPE_HPP_INCLUDED__
+#ifndef __ZLINK_YPIPE_HPP_INCLUDED__
+#define __ZLINK_YPIPE_HPP_INCLUDED__
 
 #include "utils/atomic_ptr.hpp"
 #include "utils/atomic_counter.hpp"
 #include "core/yqueue.hpp"
 #include "core/ypipe_base.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Lock-free queue implementation.
 //  Only a single thread can read from the pipe at any specific moment.
@@ -17,7 +17,7 @@ namespace zmq
 //  N is granularity of the pipe, i.e. how many items are needed to
 //  perform next memory allocation.
 
-template <typename T, int N> class ypipe_t ZMQ_FINAL : public ypipe_base_t<T>
+template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
 {
   public:
     //  Initialises the pipe.
@@ -34,10 +34,10 @@ template <typename T, int N> class ypipe_t ZMQ_FINAL : public ypipe_base_t<T>
     }
 
     //  Following function (write) deliberately copies uninitialised data
-    //  when used with zmq_msg. Initialising the VSM body for
+    //  when used with zlink_msg. Initialising the VSM body for
     //  non-VSM messages won't be good for performance.
 
-#ifdef ZMQ_HAVE_OPENVMS
+#ifdef ZLINK_HAVE_OPENVMS
 #pragma message save
 #pragma message disable(UNINIT)
 #endif
@@ -58,7 +58,7 @@ template <typename T, int N> class ypipe_t ZMQ_FINAL : public ypipe_base_t<T>
             _f = &_queue.back ();
     }
 
-#ifdef ZMQ_HAVE_OPENVMS
+#ifdef ZLINK_HAVE_OPENVMS
 #pragma message restore
 #endif
 
@@ -147,7 +147,7 @@ template <typename T, int N> class ypipe_t ZMQ_FINAL : public ypipe_base_t<T>
     bool probe (bool (*fn_) (const T &))
     {
         const bool rc = check_read ();
-        zmq_assert (rc);
+        zlink_assert (rc);
 
         return (*fn_) (_queue.front ());
     }
@@ -181,7 +181,7 @@ template <typename T, int N> class ypipe_t ZMQ_FINAL : public ypipe_base_t<T>
     //  Number of items currently queued.
     atomic_counter_t _count;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (ypipe_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (ypipe_t)
 };
 }
 

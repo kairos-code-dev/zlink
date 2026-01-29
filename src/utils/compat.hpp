@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_COMPAT_HPP_INCLUDED__
-#define __ZMQ_COMPAT_HPP_INCLUDED__
+#ifndef __ZLINK_COMPAT_HPP_INCLUDED__
+#define __ZLINK_COMPAT_HPP_INCLUDED__
 
 #include "utils/precompiled.hpp"
 #include <string.h>
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 #define strcasecmp _stricmp
 #define strtok_r strtok_s
 #else
-#ifndef ZMQ_HAVE_STRLCPY
-#ifdef ZMQ_HAVE_LIBBSD
+#ifndef ZLINK_HAVE_STRLCPY
+#ifdef ZLINK_HAVE_LIBBSD
 #include <bsd/string.h>
 #else
 static inline size_t

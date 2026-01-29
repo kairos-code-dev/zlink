@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t registry_tag_value = 0x1e6700d5;
 
@@ -26,7 +26,7 @@ registry_t::registry_t (ctx_t *ctx_) :
     _broadcast_interval_ms (30000),
     _stop (0)
 {
-    zmq_assert (_ctx);
+    zlink_assert (_ctx);
 }
 
 registry_t::~registry_t ()
@@ -145,36 +145,36 @@ void registry_t::loop ()
         registry_id_set = _registry_id_set;
     }
 
-    void *pub = zmq_socket (static_cast<void *> (_ctx), ZMQ_PUB);
-    void *router = zmq_socket (static_cast<void *> (_ctx), ZMQ_ROUTER);
+    void *pub = zlink_socket (static_cast<void *> (_ctx), ZLINK_PUB);
+    void *router = zlink_socket (static_cast<void *> (_ctx), ZLINK_ROUTER);
     void *peer_sub = NULL;
 
     if (!pub || !router) {
         if (pub)
-            zmq_close (pub);
+            zlink_close (pub);
         if (router)
-            zmq_close (router);
+            zlink_close (router);
         return;
     }
 
-    if (zmq_bind (pub, pub_endpoint.c_str ()) != 0
-        || zmq_bind (router, router_endpoint.c_str ()) != 0) {
-        zmq_close (pub);
-        zmq_close (router);
+    if (zlink_bind (pub, pub_endpoint.c_str ()) != 0
+        || zlink_bind (router, router_endpoint.c_str ()) != 0) {
+        zlink_close (pub);
+        zlink_close (router);
         return;
     }
 
     if (!peer_pubs.empty ()) {
-        peer_sub = zmq_socket (static_cast<void *> (_ctx), ZMQ_SUB);
+        peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
         if (peer_sub) {
-            zmq_setsockopt (peer_sub, ZMQ_SUBSCRIBE, "", 0);
+            zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
             for (size_t i = 0; i < peer_pubs.size (); ++i)
-                zmq_connect (peer_sub, peer_pubs[i].c_str ());
+                zlink_connect (peer_sub, peer_pubs[i].c_str ());
         }
     }
 
     if (!registry_id_set) {
-        registry_id = zmq::generate_random ();
+        registry_id = zlink::generate_random ();
         if (registry_id == 0)
             registry_id = 1;
         scoped_lock_t lock (_sync);
@@ -182,31 +182,31 @@ void registry_t::loop ()
         _registry_id_set = true;
     }
 
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     uint64_t next_broadcast = clock.now_ms () + _broadcast_interval_ms;
     uint64_t last_sent_seq = _list_seq;
 
     while (_stop.get () == 0) {
-        zmq_pollitem_t items[2];
+        zlink_pollitem_t items[2];
         int item_count = 0;
         items[item_count].socket = router;
         items[item_count].fd = 0;
-        items[item_count].events = ZMQ_POLLIN;
+        items[item_count].events = ZLINK_POLLIN;
         items[item_count].revents = 0;
         item_count++;
         if (peer_sub) {
             items[item_count].socket = peer_sub;
             items[item_count].fd = 0;
-            items[item_count].events = ZMQ_POLLIN;
+            items[item_count].events = ZLINK_POLLIN;
             items[item_count].revents = 0;
             item_count++;
         }
 
-        const int rc = zmq_poll (items, item_count, 100);
+        const int rc = zlink_poll (items, item_count, 100);
         if (rc > 0) {
-            if (items[0].revents & ZMQ_POLLIN)
+            if (items[0].revents & ZLINK_POLLIN)
                 handle_router (router);
-            if (peer_sub && (items[1].revents & ZMQ_POLLIN))
+            if (peer_sub && (items[1].revents & ZLINK_POLLIN))
                 handle_peer (peer_sub);
         }
 
@@ -223,48 +223,48 @@ void registry_t::loop ()
     }
 
     if (peer_sub)
-        zmq_close (peer_sub);
-    zmq_close (router);
-    zmq_close (pub);
+        zlink_close (peer_sub);
+    zlink_close (router);
+    zlink_close (pub);
 }
 
 void registry_t::handle_router (void *router_)
 {
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
-    if (zmq_msg_recv (&msg, router_, 0) == -1) {
-        zmq_msg_close (&msg);
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    if (zlink_msg_recv (&msg, router_, 0) == -1) {
+        zlink_msg_close (&msg);
         return;
     }
 
-    zmq_routing_id_t sender;
+    zlink_routing_id_t sender;
     sender.size = 0;
     discovery_protocol::read_routing_id (msg, &sender);
-    zmq_msg_close (&msg);
+    zlink_msg_close (&msg);
 
-    std::vector<zmq_msg_t> frames;
+    std::vector<zlink_msg_t> frames;
     while (true) {
-        zmq_msg_t frame;
-        zmq_msg_init (&frame);
-        if (zmq_msg_recv (&frame, router_, 0) == -1) {
-            zmq_msg_close (&frame);
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (zlink_msg_recv (&frame, router_, 0) == -1) {
+            zlink_msg_close (&frame);
             break;
         }
         frames.push_back (frame);
-        if (!zmq_msg_more (&frame))
+        if (!zlink_msg_more (&frame))
             break;
     }
 
     if (frames.empty ()) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
     uint16_t msg_id = 0;
     if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
@@ -286,21 +286,21 @@ void registry_t::handle_router (void *router_)
     }
 
     for (size_t i = 0; i < frames.size (); ++i)
-        zmq_msg_close (&frames[i]);
+        zlink_msg_close (&frames[i]);
 }
 
 void registry_t::handle_peer (void *sub_)
 {
-    std::vector<zmq_msg_t> frames;
+    std::vector<zlink_msg_t> frames;
     while (true) {
-        zmq_msg_t frame;
-        zmq_msg_init (&frame);
-        if (zmq_msg_recv (&frame, sub_, 0) == -1) {
-            zmq_msg_close (&frame);
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
+        if (zlink_msg_recv (&frame, sub_, 0) == -1) {
+            zlink_msg_close (&frame);
             break;
         }
         frames.push_back (frame);
-        if (!zmq_msg_more (&frame))
+        if (!zlink_msg_more (&frame))
             break;
     }
 
@@ -310,20 +310,20 @@ void registry_t::handle_peer (void *sub_)
     uint16_t msg_id = 0;
     if (!discovery_protocol::read_u16 (frames[0], &msg_id)) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
     if (msg_id != discovery_protocol::msg_service_list
         && msg_id != discovery_protocol::msg_registry_sync) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
     if (frames.size () < 4) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
@@ -334,12 +334,12 @@ void registry_t::handle_peer (void *sub_)
         || !discovery_protocol::read_u64 (frames[2], &list_seq)
         || !discovery_protocol::read_u32 (frames[3], &service_count)) {
         for (size_t i = 0; i < frames.size (); ++i)
-            zmq_msg_close (&frames[i]);
+            zlink_msg_close (&frames[i]);
         return;
     }
 
     service_map_t incoming;
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     const uint64_t now = clock.now_ms ();
 
     uint32_t local_registry_id = 0;
@@ -351,7 +351,7 @@ void registry_t::handle_peer (void *sub_)
 
         if (peer_registry_id == local_registry_id) {
             for (size_t i = 0; i < frames.size (); ++i)
-                zmq_msg_close (&frames[i]);
+                zlink_msg_close (&frames[i]);
             return;
         }
 
@@ -360,7 +360,7 @@ void registry_t::handle_peer (void *sub_)
           _peer_seq.find (peer_registry_id);
         if (it != _peer_seq.end () && list_seq <= it->second) {
             for (size_t i = 0; i < frames.size (); ++i)
-                zmq_msg_close (&frames[i]);
+                zlink_msg_close (&frames[i]);
             return;
         }
     }
@@ -401,7 +401,7 @@ void registry_t::handle_peer (void *sub_)
         if (peer_registry_id == local_registry_id
             || (it != _peer_seq.end () && list_seq <= it->second)) {
             for (size_t i = 0; i < frames.size (); ++i)
-                zmq_msg_close (&frames[i]);
+                zlink_msg_close (&frames[i]);
             return;
         }
 
@@ -470,7 +470,7 @@ void registry_t::handle_peer (void *sub_)
         if (!changed) {
             _peer_seq[peer_registry_id] = list_seq;
             for (size_t i = 0; i < frames.size (); ++i)
-                zmq_msg_close (&frames[i]);
+                zlink_msg_close (&frames[i]);
             return;
         }
 
@@ -514,12 +514,12 @@ void registry_t::handle_peer (void *sub_)
     }
 
     for (size_t i = 0; i < frames.size (); ++i)
-        zmq_msg_close (&frames[i]);
+        zlink_msg_close (&frames[i]);
 }
 
-void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
+void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
                                   size_t frame_count_,
-                                  const zmq_routing_id_t &sender_id_)
+                                  const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 3) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
@@ -544,7 +544,7 @@ void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
     if (weight == 0)
         weight = 1;
 
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     const uint64_t now = clock.now_ms ();
 
     service_entry_t &service = _services[service_name];
@@ -560,7 +560,7 @@ void registry_t::handle_register (void *router_, const zmq_msg_t *frames_,
     send_register_ack (router_, sender_id_, 0x00, endpoint, std::string ());
 }
 
-void registry_t::handle_unregister (const zmq_msg_t *frames_,
+void registry_t::handle_unregister (const zlink_msg_t *frames_,
                                     size_t frame_count_)
 {
     if (frame_count_ < 3)
@@ -590,7 +590,7 @@ void registry_t::handle_unregister (const zmq_msg_t *frames_,
     _list_seq++;
 }
 
-void registry_t::handle_heartbeat (const zmq_msg_t *frames_,
+void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
                                    size_t frame_count_)
 {
     if (frame_count_ < 3)
@@ -609,13 +609,13 @@ void registry_t::handle_heartbeat (const zmq_msg_t *frames_,
     if (pit == sit->second.providers.end ())
         return;
 
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     pit->second.last_heartbeat = clock.now_ms ();
 }
 
-void registry_t::handle_update_weight (void *router_, const zmq_msg_t *frames_,
+void registry_t::handle_update_weight (void *router_, const zlink_msg_t *frames_,
                                        size_t frame_count_,
-                                       const zmq_routing_id_t &sender_id_)
+                                       const zlink_routing_id_t &sender_id_)
 {
     if (frame_count_ < 4) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
@@ -657,27 +657,27 @@ void registry_t::handle_update_weight (void *router_, const zmq_msg_t *frames_,
 }
 
 void registry_t::send_register_ack (void *router_,
-                                    const zmq_routing_id_t &sender_id_,
+                                    const zlink_routing_id_t &sender_id_,
                                     uint8_t status_,
                                     const std::string &endpoint_,
                                     const std::string &error_)
 {
-    zmq_msg_t id_frame;
-    zmq_msg_init_size (&id_frame, sender_id_.size);
+    zlink_msg_t id_frame;
+    zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
-        memcpy (zmq_msg_data (&id_frame), sender_id_.data, sender_id_.size);
+        memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    if (zmq_msg_send (&id_frame, router_, ZMQ_SNDMORE) == -1) {
-        zmq_msg_close (&id_frame);
+    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+        zlink_msg_close (&id_frame);
         return;
     }
 
     discovery_protocol::send_u16 (router_,
                                   discovery_protocol::msg_register_ack,
-                                  ZMQ_SNDMORE);
+                                  ZLINK_SNDMORE);
     discovery_protocol::send_frame (router_, &status_, sizeof (status_),
-                                    ZMQ_SNDMORE);
-    discovery_protocol::send_string (router_, endpoint_, ZMQ_SNDMORE);
+                                    ZLINK_SNDMORE);
+    discovery_protocol::send_string (router_, endpoint_, ZLINK_SNDMORE);
     discovery_protocol::send_string (router_, error_, 0);
 }
 
@@ -692,9 +692,9 @@ void registry_t::send_service_list (void *pub_)
     }
 
     discovery_protocol::send_u16 (pub_, discovery_protocol::msg_service_list,
-                                  ZMQ_SNDMORE);
-    discovery_protocol::send_u32 (pub_, registry_id, ZMQ_SNDMORE);
-    discovery_protocol::send_u64 (pub_, _list_seq, ZMQ_SNDMORE);
+                                  ZLINK_SNDMORE);
+    discovery_protocol::send_u32 (pub_, registry_id, ZLINK_SNDMORE);
+    discovery_protocol::send_u64 (pub_, _list_seq, ZLINK_SNDMORE);
 
     uint32_t service_count = 0;
     for (service_map_t::const_iterator it = _services.begin ();
@@ -704,7 +704,7 @@ void registry_t::send_service_list (void *pub_)
     }
 
     discovery_protocol::send_u32 (pub_, service_count,
-                                  service_count == 0 ? 0 : ZMQ_SNDMORE);
+                                  service_count == 0 ? 0 : ZLINK_SNDMORE);
 
     if (service_count == 0)
         return;
@@ -720,9 +720,9 @@ void registry_t::send_service_list (void *pub_)
         const uint32_t provider_count =
           static_cast<uint32_t> (providers.size ());
 
-        discovery_protocol::send_string (pub_, service_name, ZMQ_SNDMORE);
+        discovery_protocol::send_string (pub_, service_name, ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, provider_count,
-                                      ZMQ_SNDMORE);
+                                      ZLINK_SNDMORE);
 
         uint32_t provider_index = 0;
         for (provider_map_t::const_iterator pit = providers.begin ();
@@ -733,11 +733,11 @@ void registry_t::send_service_list (void *pub_)
               && (emitted + 1) == service_count;
 
             discovery_protocol::send_string (pub_, entry.endpoint,
-                                             ZMQ_SNDMORE);
+                                             ZLINK_SNDMORE);
             discovery_protocol::send_routing_id (pub_, entry.routing_id,
-                                                 ZMQ_SNDMORE);
+                                                 ZLINK_SNDMORE);
             discovery_protocol::send_u32 (pub_, entry.weight,
-                                          last_provider ? 0 : ZMQ_SNDMORE);
+                                          last_provider ? 0 : ZLINK_SNDMORE);
         }
 
         emitted++;

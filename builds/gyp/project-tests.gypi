@@ -8,7 +8,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -19,7 +19,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -30,7 +30,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -41,7 +41,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -52,7 +52,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -63,7 +63,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -74,7 +74,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -85,7 +85,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -96,7 +96,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -107,7 +107,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -118,7 +118,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -129,7 +129,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -140,7 +140,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -151,7 +151,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -162,7 +162,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -173,7 +173,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -184,7 +184,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -195,7 +195,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -206,7 +206,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -217,7 +217,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -228,7 +228,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -239,7 +239,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -250,7 +250,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -261,7 +261,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -272,7 +272,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -283,7 +283,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -294,7 +294,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -305,7 +305,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -316,7 +316,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -327,7 +327,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -338,7 +338,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -349,7 +349,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -360,7 +360,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -371,7 +371,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -382,7 +382,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -393,7 +393,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -404,7 +404,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -415,7 +415,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -426,7 +426,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -437,7 +437,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -448,7 +448,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -459,7 +459,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -470,7 +470,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -481,7 +481,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -492,7 +492,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -503,7 +503,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -514,7 +514,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -525,7 +525,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -536,7 +536,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -547,7 +547,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -558,7 +558,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -569,7 +569,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -580,7 +580,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -591,7 +591,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -602,7 +602,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -613,7 +613,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -624,7 +624,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -635,7 +635,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -646,7 +646,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -657,7 +657,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -668,7 +668,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -679,7 +679,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -690,7 +690,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -701,7 +701,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -712,7 +712,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -723,7 +723,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -734,7 +734,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -745,7 +745,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -756,7 +756,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -767,7 +767,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -778,7 +778,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -789,7 +789,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -800,7 +800,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -811,7 +811,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -822,7 +822,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -833,7 +833,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -844,7 +844,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -855,7 +855,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -866,7 +866,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -877,7 +877,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -888,7 +888,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     },
     {
@@ -899,7 +899,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     }
   ]

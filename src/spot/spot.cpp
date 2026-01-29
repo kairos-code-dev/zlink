@@ -10,7 +10,7 @@
 
 #include <string.h>
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t spot_tag_value = 0x1e6700da;
 static const size_t spot_queue_hwm_default = 1024;
@@ -65,7 +65,7 @@ bool spot_t::check_tag () const
 }
 
 int spot_t::publish (const char *topic_,
-                     zmq_msg_t *parts_,
+                     zlink_msg_t *parts_,
                      size_t part_count_,
                      int flags_)
 {
@@ -184,7 +184,7 @@ bool spot_t::fetch_ring_message (spot_message_t *out_)
           _node->_topics.find (topic);
         if (tit == _node->_topics.end ())
             continue;
-        if (tit->second.mode != ZMQ_SPOT_TOPIC_RINGBUFFER)
+        if (tit->second.mode != ZLINK_SPOT_TOPIC_RINGBUFFER)
             continue;
 
         spot_node_t::ringbuffer_t &ring = tit->second.ring;
@@ -208,7 +208,7 @@ bool spot_t::fetch_ring_message (spot_message_t *out_)
     return false;
 }
 
-zmq_msg_t *spot_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
+zlink_msg_t *spot_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                           size_t *count_)
 {
     if (count_)
@@ -217,8 +217,8 @@ zmq_msg_t *spot_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         return NULL;
 
     const size_t count = parts_->size ();
-    zmq_msg_t *out =
-      static_cast<zmq_msg_t *> (malloc (count * sizeof (zmq_msg_t)));
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (count * sizeof (zlink_msg_t)));
     if (!out) {
         errno = ENOMEM;
         close_parts (parts_);
@@ -228,7 +228,7 @@ zmq_msg_t *spot_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         msg_t *dst = reinterpret_cast<msg_t *> (&out[i]);
         if (dst->init () != 0 || dst->move ((*parts_)[i]) != 0) {
             for (size_t j = 0; j <= i; ++j)
-                zmq_msg_close (&out[j]);
+                zlink_msg_close (&out[j]);
             free (out);
             close_parts (parts_);
             errno = EFAULT;
@@ -250,7 +250,7 @@ void spot_t::close_parts (std::vector<msg_t> *parts_)
     parts_->clear ();
 }
 
-int spot_t::recv (zmq_msg_t **parts_,
+int spot_t::recv (zlink_msg_t **parts_,
                   size_t *part_count_,
                   int flags_,
                   char *topic_out_,
@@ -261,7 +261,7 @@ int spot_t::recv (zmq_msg_t **parts_,
         errno = EFAULT;
         return -1;
     }
-    if (flags_ != 0 && flags_ != ZMQ_DONTWAIT) {
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
         return -1;
     }
@@ -274,7 +274,7 @@ int spot_t::recv (zmq_msg_t **parts_,
                 break;
             if (fetch_ring_message (&msg))
                 break;
-            if (flags_ == ZMQ_DONTWAIT) {
+            if (flags_ == ZLINK_DONTWAIT) {
                 errno = EAGAIN;
                 return -1;
             }
@@ -289,7 +289,7 @@ int spot_t::recv (zmq_msg_t **parts_,
     if (topic_len_)
         *topic_len_ = msg.topic.size ();
 
-    zmq_msg_t *out_parts = NULL;
+    zlink_msg_t *out_parts = NULL;
     size_t out_count = 0;
     if (!msg.parts.empty ()) {
         out_parts = alloc_msgv_from_parts (&msg.parts, &out_count);

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SIGNALER_HPP_INCLUDED__
-#define __ZMQ_SIGNALER_HPP_INCLUDED__
+#ifndef __ZLINK_SIGNALER_HPP_INCLUDED__
+#define __ZLINK_SIGNALER_HPP_INCLUDED__
 
 #ifdef HAVE_FORK
 #include <unistd.h>
@@ -10,7 +10,7 @@
 #include "utils/fd.hpp"
 #include "utils/macros.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  This is a cross-platform equivalent to signal_fd. However, as opposed
 //  to signal_fd there can be at most one signal in the signaler at any
@@ -54,7 +54,7 @@ class signaler_t
     void close_internal ();
 #endif
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (signaler_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (signaler_t)
 };
 }
 

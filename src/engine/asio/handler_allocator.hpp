@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
-#define __ZMQ_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
+#define __ZLINK_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
 
 //  Phase 2 Optimization: Zero-allocation Handlers
 //
@@ -20,7 +20,7 @@
 #include <memory>
 #include <type_traits>
 
-namespace zmq
+namespace zlink
 {
 
 //  Recycling allocator for async handlers.
@@ -139,6 +139,6 @@ make_custom_alloc_handler (handler_allocator &alloc, Handler h)
     return custom_alloc_handler<Handler> (alloc, std::move (h));
 }
 
-} // namespace zmq
+} // namespace zlink
 
-#endif // __ZMQ_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__
+#endif // __ZLINK_ASIO_HANDLER_ALLOCATOR_HPP_INCLUDED__

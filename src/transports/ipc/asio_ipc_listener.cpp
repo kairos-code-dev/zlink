@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_IPC
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_IPC
 
 #include "transports/ipc/asio_ipc_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -19,22 +19,22 @@
 #include <string.h>
 #include <memory>
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stddef.h>
 #endif
 
-#ifdef ZMQ_HAVE_LOCAL_PEERCRED
+#ifdef ZLINK_HAVE_LOCAL_PEERCRED
 #include <sys/types.h>
 #include <sys/ucred.h>
 #endif
-#ifdef ZMQ_HAVE_SO_PEERCRED
+#ifdef ZLINK_HAVE_SO_PEERCRED
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
-#if defined ZMQ_HAVE_OPENBSD
+#if defined ZLINK_HAVE_OPENBSD
 #define ucred sockpeercred
 #endif
 #endif
@@ -62,7 +62,7 @@ void cleanup_tmp_dir (std::string &tmp_dir_)
 }
 
 boost::asio::local::stream_protocol::endpoint
-make_ipc_endpoint (const zmq::ipc_address_t &addr_)
+make_ipc_endpoint (const zlink::ipc_address_t &addr_)
 {
     boost::asio::local::stream_protocol::endpoint endpoint;
     memcpy (endpoint.data (), addr_.addr (), addr_.addrlen ());
@@ -71,7 +71,7 @@ make_ipc_endpoint (const zmq::ipc_address_t &addr_)
 }
 }
 
-zmq::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
+zlink::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
                                                socket_base_t *socket_,
                                                const options_t &options_) :
     own_t (io_thread_, options_),
@@ -89,13 +89,13 @@ zmq::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
                       static_cast<void *> (this));
 }
 
-zmq::asio_ipc_listener_t::~asio_ipc_listener_t ()
+zlink::asio_ipc_listener_t::~asio_ipc_listener_t ()
 {
     IPC_LISTENER_DBG ("Destructor called, this=%p",
                       static_cast<void *> (this));
 }
 
-int zmq::asio_ipc_listener_t::set_local_address (const char *addr_)
+int zlink::asio_ipc_listener_t::set_local_address (const char *addr_)
 {
     IPC_LISTENER_DBG ("set_local_address: addr=%s", addr_);
 
@@ -183,19 +183,19 @@ int zmq::asio_ipc_listener_t::set_local_address (const char *addr_)
     return 0;
 }
 
-int zmq::asio_ipc_listener_t::get_local_address (std::string &addr_) const
+int zlink::asio_ipc_listener_t::get_local_address (std::string &addr_) const
 {
     addr_ = _endpoint;
     return addr_.empty () ? -1 : 0;
 }
 
-void zmq::asio_ipc_listener_t::process_plug ()
+void zlink::asio_ipc_listener_t::process_plug ()
 {
     IPC_LISTENER_DBG ("process_plug called");
     start_accept ();
 }
 
-void zmq::asio_ipc_listener_t::process_term (int linger_)
+void zlink::asio_ipc_listener_t::process_term (int linger_)
 {
     IPC_LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
                       _accepting);
@@ -212,7 +212,7 @@ void zmq::asio_ipc_listener_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_ipc_listener_t::start_accept ()
+void zlink::asio_ipc_listener_t::start_accept ()
 {
     if (_accepting || !_acceptor.is_open ())
         return;
@@ -225,7 +225,7 @@ void zmq::asio_ipc_listener_t::start_accept ()
       [this] (const boost::system::error_code &ec) { on_accept (ec); });
 }
 
-void zmq::asio_ipc_listener_t::on_accept (const boost::system::error_code &ec)
+void zlink::asio_ipc_listener_t::on_accept (const boost::system::error_code &ec)
 {
     _accepting = false;
     IPC_LISTENER_DBG ("on_accept: ec=%s, terminating=%d", ec.message ().c_str (),
@@ -271,7 +271,7 @@ void zmq::asio_ipc_listener_t::on_accept (const boost::system::error_code &ec)
     start_accept ();
 }
 
-void zmq::asio_ipc_listener_t::create_engine (fd_t fd_)
+void zlink::asio_ipc_listener_t::create_engine (fd_t fd_)
 {
     IPC_LISTENER_DBG ("create_engine: fd=%d", fd_);
 
@@ -285,7 +285,7 @@ void zmq::asio_ipc_listener_t::create_engine (fd_t fd_)
     alloc_assert (transport.get ());
 
     i_engine *engine = NULL;
-    if (options.type == ZMQ_STREAM) {
+    if (options.type == ZLINK_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {
@@ -295,7 +295,7 @@ void zmq::asio_ipc_listener_t::create_engine (fd_t fd_)
     alloc_assert (engine);
 
     io_thread_t *io_thread = choose_io_thread (options.affinity);
-    zmq_assert (io_thread);
+    zlink_assert (io_thread);
 
     session_base_t *session =
       session_base_t::create (io_thread, false, _socket, options, NULL);
@@ -307,7 +307,7 @@ void zmq::asio_ipc_listener_t::create_engine (fd_t fd_)
     _socket->event_accepted (endpoint_pair, fd_);
 }
 
-void zmq::asio_ipc_listener_t::close ()
+void zlink::asio_ipc_listener_t::close ()
 {
     if (!_acceptor.is_open ())
         return;
@@ -328,7 +328,7 @@ void zmq::asio_ipc_listener_t::close ()
 
         if (rc != 0) {
             _socket->event_close_failed (
-              make_unconnected_bind_endpoint_pair (_endpoint), zmq_errno ());
+              make_unconnected_bind_endpoint_pair (_endpoint), zlink_errno ());
             return;
         }
     }
@@ -337,24 +337,24 @@ void zmq::asio_ipc_listener_t::close ()
                            fd_for_event);
 }
 
-bool zmq::asio_ipc_listener_t::apply_accept_filters (fd_t fd_)
+bool zlink::asio_ipc_listener_t::apply_accept_filters (fd_t fd_)
 {
     make_socket_noninheritable (fd_);
 
-#if defined ZMQ_HAVE_SO_PEERCRED || defined ZMQ_HAVE_LOCAL_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED || defined ZLINK_HAVE_LOCAL_PEERCRED
     if (!filter (fd_))
         return false;
 #endif
 
-    if (zmq::set_nosigpipe (fd_))
+    if (zlink::set_nosigpipe (fd_))
         return false;
 
     return true;
 }
 
-#if defined ZMQ_HAVE_SO_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED
 
-bool zmq::asio_ipc_listener_t::filter (fd_t sock_)
+bool zlink::asio_ipc_listener_t::filter (fd_t sock_)
 {
     if (options.ipc_uid_accept_filters.empty ()
         && options.ipc_pid_accept_filters.empty ()
@@ -393,9 +393,9 @@ bool zmq::asio_ipc_listener_t::filter (fd_t sock_)
     return false;
 }
 
-#elif defined ZMQ_HAVE_LOCAL_PEERCRED
+#elif defined ZLINK_HAVE_LOCAL_PEERCRED
 
-bool zmq::asio_ipc_listener_t::filter (fd_t sock_)
+bool zlink::asio_ipc_listener_t::filter (fd_t sock_)
 {
     if (options.ipc_uid_accept_filters.empty ()
         && options.ipc_gid_accept_filters.empty ())
@@ -422,4 +422,4 @@ bool zmq::asio_ipc_listener_t::filter (fd_t sock_)
 
 #endif
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_IPC
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC

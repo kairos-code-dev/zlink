@@ -1,21 +1,21 @@
 # Repository Guidelines
 
 ## Project Structure and Module Organization
-- `src/`: core libzmq implementation (C++98/11 style).
-- `include/`: public headers like `include/zmq.h`.
+- `src/`: core libzlink implementation (C++98/11 style).
+- `include/`: public headers like `include/zlink.h`.
 - `tests/`: functional test suite (Unity), files named `tests/test_*.cpp`.
 - `unittests/`: internal tests named `unittests/unittest_*.cpp`.
 - `build-scripts/`: platform build scripts (e.g., `build-scripts/linux/build.sh`).
-- `benchwithzmq/` and `perf/`: benchmarks and comparison tooling.
+- `benchwithzlink-baseline/` and `perf/`: benchmarks and comparison tooling.
 - `dist/`: packaged build outputs by platform.
 
 ## Build, Test, and Development Commands
 - `./build.sh`: clean CMake build in `build/` and runs tests (Linux-style `nproc`).
 - `./build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
-- `cmake -B build -DZMQ_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
+- `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
 - `ctest --output-on-failure`: run tests from a build dir (e.g., `build/linux-x64`).
 - Autotools fallback: `./autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
-- Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZMQ_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
+- Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 
 ## Coding Style and Naming Conventions
 - Follow `.clang-format`: 4-space indent, no tabs, 80-column limit, C++03 mode.
@@ -33,10 +33,10 @@
 
 ## Security and Configuration
 - Report vulnerabilities via `SECURITY.md`.
-- `VERSION` controls libzmq feature/version knobs; keep changes deliberate and documented.
+- `VERSION` controls libzlink feature/version knobs; keep changes deliberate and documented.
 
 ## Communication
 - Address the user as "팀장님".
 
 ## External References
-- libzmq reference source: `/home/ulalax/project/ulalax/libzmq-ref`
+- libzlink reference source: `/home/ulalax/project/ulalax/libzlink-ref`

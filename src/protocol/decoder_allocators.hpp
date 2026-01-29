@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DECODER_ALLOCATORS_HPP_INCLUDED__
-#define __ZMQ_DECODER_ALLOCATORS_HPP_INCLUDED__
+#ifndef __ZLINK_DECODER_ALLOCATORS_HPP_INCLUDED__
+#define __ZLINK_DECODER_ALLOCATORS_HPP_INCLUDED__
 
 #include <cstddef>
 #include <cstdlib>
@@ -10,7 +10,7 @@
 #include "core/msg.hpp"
 #include "utils/err.hpp"
 
-namespace zmq
+namespace zlink
 {
 // Static buffer policy.
 class c_single_allocator
@@ -32,13 +32,13 @@ class c_single_allocator
     std::size_t size () const { return _buf_size; }
 
     //  This buffer is fixed, size must not be changed
-    void resize (std::size_t new_size_) { LIBZMQ_UNUSED (new_size_); }
+    void resize (std::size_t new_size_) { LIBZLINK_UNUSED (new_size_); }
 
   private:
     std::size_t _buf_size;
     unsigned char *_buf;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (c_single_allocator)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (c_single_allocator)
 };
 
 // This allocator allocates a reference counted buffer which is used by v2_decoder_t
@@ -88,7 +88,7 @@ class shared_message_memory_allocator
 
     void resize (std::size_t new_size_) { _buf_size = new_size_; }
 
-    zmq::msg_t::content_t *provide_content () { return _msg_content; }
+    zlink::msg_t::content_t *provide_content () { return _msg_content; }
 
     void advance_content () { _msg_content++; }
 
@@ -98,7 +98,7 @@ class shared_message_memory_allocator
     unsigned char *_buf;
     std::size_t _buf_size;
     const std::size_t _max_size;
-    zmq::msg_t::content_t *_msg_content;
+    zlink::msg_t::content_t *_msg_content;
     std::size_t _max_counters;
 };
 }

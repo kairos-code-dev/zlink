@@ -19,10 +19,10 @@ run: ```./configure CLANG_FORMAT=clang-format-5.0```
 
 Please avoid sending a pull request with recursive merge nodes, as they
 are impossible to fix once merged. Please rebase your branch on
-zeromq/libzmq master instead of merging it.
+zlink/libzlink master instead of merging it.
 
 ```
-git remote add upstream git@github.com:zeromq/libzmq.git
+git remote add upstream git@github.com:zlink/libzlink.git
 git fetch upstream
 git rebase upstream/master
 git push -f
@@ -37,12 +37,12 @@ git rebase -i HEAD~10
 Now, find your merge commit and mark it as drop and save. Finally rebase!
 
 If you are a new contributor please have a look at our contributing guidelines:
-[CONTRIBUTING](http://zeromq.org/docs:contributing)
+[CONTRIBUTING](http://zlink.org/docs:contributing)
 
 # FIRST TIME CONTRIBUTORS PLEASE NOTE
 
 Please add an additional commit with a relicensing grant.
 
-[Example](https://github.com/zeromq/libzmq/commit/fecbd42dbe45455fff3b6456350ceca047b82050)
+[Example](https://github.com/zlink/libzlink/commit/fecbd42dbe45455fff3b6456350ceca047b82050)
 
-[More information on RELICENSING effort](https://github.com/zeromq/libzmq/tree/master/RELICENSE/README.md)
+[More information on RELICENSING effort](https://github.com/zlink/libzlink/tree/master/RELICENSE/README.md)

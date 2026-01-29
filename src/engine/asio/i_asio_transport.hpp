@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__
-#define __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__
+#ifndef __ZLINK_I_ASIO_TRANSPORT_HPP_INCLUDED__
+#define __ZLINK_I_ASIO_TRANSPORT_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <boost/asio.hpp>
 #include <boost/system/error_code.hpp>
@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <functional>
 
-namespace zmq
+namespace zlink
 {
 
 //  Transport abstraction interface for ASIO-based engines.
@@ -152,8 +152,8 @@ class i_asio_transport
     virtual const char *name () const = 0;
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZMQ_I_ASIO_TRANSPORT_HPP_INCLUDED__
+#endif  // __ZLINK_I_ASIO_TRANSPORT_HPP_INCLUDED__

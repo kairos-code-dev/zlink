@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_PIPE_HPP_INCLUDED__
-#define __ZMQ_PIPE_HPP_INCLUDED__
+#ifndef __ZLINK_PIPE_HPP_INCLUDED__
+#define __ZLINK_PIPE_HPP_INCLUDED__
 
 #include "core/ypipe_base.hpp"
 #include "utils/config.hpp"
@@ -13,7 +13,7 @@
 #include "core/endpoint.hpp"
 #include "core/msg.hpp"
 
-namespace zmq
+namespace zlink
 {
 class pipe_t;
 
@@ -25,33 +25,33 @@ class pipe_t;
 //  terminates straight away.
 //  If conflate is true, only the most recently arrived message could be
 //  read (older messages are discarded)
-int pipepair (zmq::object_t *parents_[2],
-              zmq::pipe_t *pipes_[2],
+int pipepair (zlink::object_t *parents_[2],
+              zlink::pipe_t *pipes_[2],
               const int hwms_[2],
               const bool conflate_[2]);
 
 struct i_pipe_events
 {
-    virtual ~i_pipe_events () ZMQ_DEFAULT;
+    virtual ~i_pipe_events () ZLINK_DEFAULT;
 
-    virtual void read_activated (zmq::pipe_t *pipe_) = 0;
-    virtual void write_activated (zmq::pipe_t *pipe_) = 0;
-    virtual void hiccuped (zmq::pipe_t *pipe_) = 0;
-    virtual void pipe_terminated (zmq::pipe_t *pipe_) = 0;
+    virtual void read_activated (zlink::pipe_t *pipe_) = 0;
+    virtual void write_activated (zlink::pipe_t *pipe_) = 0;
+    virtual void hiccuped (zlink::pipe_t *pipe_) = 0;
+    virtual void pipe_terminated (zlink::pipe_t *pipe_) = 0;
 };
 
 //  Note that pipe can be stored in three different arrays.
 //  The array of inbound pipes (1), the array of outbound pipes (2) and
 //  the generic array of pipes to be deallocated (3).
 
-class pipe_t ZMQ_FINAL : public object_t,
+class pipe_t ZLINK_FINAL : public object_t,
                          public array_item_t<1>,
                          public array_item_t<2>,
                          public array_item_t<3>
 {
     //  This allows pipepair to create pipe objects.
-    friend int pipepair (zmq::object_t *parents_[2],
-                         zmq::pipe_t *pipes_[2],
+    friend int pipepair (zlink::object_t *parents_[2],
+                         zlink::pipe_t *pipes_[2],
                          const int hwms_[2],
                          const bool conflate_[2]);
 
@@ -139,16 +139,16 @@ class pipe_t ZMQ_FINAL : public object_t,
     typedef ypipe_base_t<msg_t> upipe_t;
 
     //  Command handlers.
-    void process_activate_read () ZMQ_OVERRIDE;
-    void process_activate_write (uint64_t msgs_read_) ZMQ_OVERRIDE;
-    void process_hiccup (void *pipe_) ZMQ_OVERRIDE;
+    void process_activate_read () ZLINK_OVERRIDE;
+    void process_activate_write (uint64_t msgs_read_) ZLINK_OVERRIDE;
+    void process_hiccup (void *pipe_) ZLINK_OVERRIDE;
     void
     process_pipe_peer_stats (uint64_t queue_count_,
                              own_t *socket_base_,
-                             endpoint_uri_pair_t *endpoint_pair_) ZMQ_OVERRIDE;
-    void process_pipe_term () ZMQ_OVERRIDE;
-    void process_pipe_term_ack () ZMQ_OVERRIDE;
-    void process_pipe_hwm (int inhwm_, int outhwm_) ZMQ_OVERRIDE;
+                             endpoint_uri_pair_t *endpoint_pair_) ZLINK_OVERRIDE;
+    void process_pipe_term () ZLINK_OVERRIDE;
+    void process_pipe_term_ack () ZLINK_OVERRIDE;
+    void process_pipe_hwm (int inhwm_, int outhwm_) ZLINK_OVERRIDE;
 
     //  Handler for delimiter read from the pipe.
     void process_delimiter ();
@@ -167,7 +167,7 @@ class pipe_t ZMQ_FINAL : public object_t,
     void set_peer (pipe_t *peer_);
 
     //  Destructor is private. Pipe objects destroy themselves.
-    ~pipe_t () ZMQ_OVERRIDE;
+    ~pipe_t () ZLINK_OVERRIDE;
 
     //  Underlying pipes for both directions.
     upipe_t *_in_pipe;
@@ -251,7 +251,7 @@ class pipe_t ZMQ_FINAL : public object_t,
     // Disconnect msg
     msg_t _disconnect_msg;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (pipe_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (pipe_t)
 };
 
 void send_routing_id (pipe_t *pipe_, const options_t &options_);

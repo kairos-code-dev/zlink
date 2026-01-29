@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_OBJECT_HPP_INCLUDED__
-#define __ZMQ_OBJECT_HPP_INCLUDED__
+#ifndef __ZLINK_OBJECT_HPP_INCLUDED__
+#define __ZLINK_OBJECT_HPP_INCLUDED__
 
 #include <string>
 
@@ -9,7 +9,7 @@
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 struct i_engine;
 struct endpoint_t;
@@ -28,83 +28,83 @@ class own_t;
 class object_t
 {
   public:
-    object_t (zmq::ctx_t *ctx_, uint32_t tid_);
+    object_t (zlink::ctx_t *ctx_, uint32_t tid_);
     object_t (object_t *parent_);
     virtual ~object_t ();
 
     uint32_t get_tid () const;
     void set_tid (uint32_t id_);
     ctx_t *get_ctx () const;
-    void process_command (const zmq::command_t &cmd_);
-    void send_inproc_connected (zmq::socket_base_t *socket_);
-    void send_bind (zmq::own_t *destination_,
-                    zmq::pipe_t *pipe_,
+    void process_command (const zlink::command_t &cmd_);
+    void send_inproc_connected (zlink::socket_base_t *socket_);
+    void send_bind (zlink::own_t *destination_,
+                    zlink::pipe_t *pipe_,
                     bool inc_seqnum_ = true);
 
   protected:
     //  Using following function, socket is able to access global
     //  repository of inproc endpoints.
-    int register_endpoint (const char *addr_, const zmq::endpoint_t &endpoint_);
+    int register_endpoint (const char *addr_, const zlink::endpoint_t &endpoint_);
     int unregister_endpoint (const std::string &addr_, socket_base_t *socket_);
-    void unregister_endpoints (zmq::socket_base_t *socket_);
-    zmq::endpoint_t find_endpoint (const char *addr_) const;
+    void unregister_endpoints (zlink::socket_base_t *socket_);
+    zlink::endpoint_t find_endpoint (const char *addr_) const;
     void pend_connection (const std::string &addr_,
                           const endpoint_t &endpoint_,
                           pipe_t **pipes_);
-    void connect_pending (const char *addr_, zmq::socket_base_t *bind_socket_);
+    void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);
 
-    void destroy_socket (zmq::socket_base_t *socket_);
+    void destroy_socket (zlink::socket_base_t *socket_);
 
     //  Logs an message.
     void log (const char *format_, ...);
 
     //  Chooses least loaded I/O thread.
-    zmq::io_thread_t *choose_io_thread (uint64_t affinity_) const;
+    zlink::io_thread_t *choose_io_thread (uint64_t affinity_) const;
 
     //  Derived object can use these functions to send commands
     //  to other objects.
     void send_stop ();
-    void send_plug (zmq::own_t *destination_, bool inc_seqnum_ = true);
-    void send_own (zmq::own_t *destination_, zmq::own_t *object_);
-    void send_attach (zmq::session_base_t *destination_,
-                      zmq::i_engine *engine_,
+    void send_plug (zlink::own_t *destination_, bool inc_seqnum_ = true);
+    void send_own (zlink::own_t *destination_, zlink::own_t *object_);
+    void send_attach (zlink::session_base_t *destination_,
+                      zlink::i_engine *engine_,
                       bool inc_seqnum_ = true);
-    void send_activate_read (zmq::pipe_t *destination_);
-    void send_activate_write (zmq::pipe_t *destination_, uint64_t msgs_read_);
-    void send_hiccup (zmq::pipe_t *destination_, void *pipe_);
-    void send_pipe_peer_stats (zmq::pipe_t *destination_,
+    void send_activate_read (zlink::pipe_t *destination_);
+    void send_activate_write (zlink::pipe_t *destination_, uint64_t msgs_read_);
+    void send_hiccup (zlink::pipe_t *destination_, void *pipe_);
+    void send_pipe_peer_stats (zlink::pipe_t *destination_,
                                uint64_t queue_count_,
-                               zmq::own_t *socket_base,
+                               zlink::own_t *socket_base,
                                endpoint_uri_pair_t *endpoint_pair_);
-    void send_pipe_stats_publish (zmq::own_t *destination_,
+    void send_pipe_stats_publish (zlink::own_t *destination_,
                                   uint64_t outbound_queue_count_,
                                   uint64_t inbound_queue_count_,
                                   endpoint_uri_pair_t *endpoint_pair_);
-    void send_pipe_term (zmq::pipe_t *destination_);
-    void send_pipe_term_ack (zmq::pipe_t *destination_);
-    void send_pipe_hwm (zmq::pipe_t *destination_, int inhwm_, int outhwm_);
-    void send_term_req (zmq::own_t *destination_, zmq::own_t *object_);
-    void send_term (zmq::own_t *destination_, int linger_);
-    void send_term_ack (zmq::own_t *destination_);
+    void send_pipe_term (zlink::pipe_t *destination_);
+    void send_pipe_term_ack (zlink::pipe_t *destination_);
+    void send_pipe_hwm (zlink::pipe_t *destination_, int inhwm_, int outhwm_);
+    void send_term_req (zlink::own_t *destination_, zlink::own_t *object_);
+    void send_term (zlink::own_t *destination_, int linger_);
+    void send_term_ack (zlink::own_t *destination_);
     void send_term_endpoint (own_t *destination_, std::string *endpoint_);
-    void send_reap (zmq::socket_base_t *socket_);
+    void send_reap (zlink::socket_base_t *socket_);
     void send_reaped ();
     void send_done ();
-    void send_conn_failed (zmq::session_base_t *destination_);
+    void send_conn_failed (zlink::session_base_t *destination_);
 
 
     //  These handlers can be overridden by the derived objects. They are
     //  called when command arrives from another thread.
     virtual void process_stop ();
     virtual void process_plug ();
-    virtual void process_own (zmq::own_t *object_);
-    virtual void process_attach (zmq::i_engine *engine_);
-    virtual void process_bind (zmq::pipe_t *pipe_);
+    virtual void process_own (zlink::own_t *object_);
+    virtual void process_attach (zlink::i_engine *engine_);
+    virtual void process_bind (zlink::pipe_t *pipe_);
     virtual void process_activate_read ();
     virtual void process_activate_write (uint64_t msgs_read_);
     virtual void process_hiccup (void *pipe_);
     virtual void process_pipe_peer_stats (uint64_t queue_count_,
-                                          zmq::own_t *socket_base_,
+                                          zlink::own_t *socket_base_,
                                           endpoint_uri_pair_t *endpoint_pair_);
     virtual void
     process_pipe_stats_publish (uint64_t outbound_queue_count_,
@@ -113,11 +113,11 @@ class object_t
     virtual void process_pipe_term ();
     virtual void process_pipe_term_ack ();
     virtual void process_pipe_hwm (int inhwm_, int outhwm_);
-    virtual void process_term_req (zmq::own_t *object_);
+    virtual void process_term_req (zlink::own_t *object_);
     virtual void process_term (int linger_);
     virtual void process_term_ack ();
     virtual void process_term_endpoint (std::string *endpoint_);
-    virtual void process_reap (zmq::socket_base_t *socket_);
+    virtual void process_reap (zlink::socket_base_t *socket_);
     virtual void process_reaped ();
     virtual void process_conn_failed ();
 
@@ -129,14 +129,14 @@ class object_t
 
   private:
     //  Context provides access to the global state.
-    zmq::ctx_t *const _ctx;
+    zlink::ctx_t *const _ctx;
 
     //  Thread ID of the thread the object belongs to.
     uint32_t _tid;
 
     void send_command (const command_t &cmd_);
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (object_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (object_t)
 };
 }
 

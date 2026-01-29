@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ENDPOINT_HPP_INCLUDED__
-#define __ZMQ_ENDPOINT_HPP_INCLUDED__
+#ifndef __ZLINK_ENDPOINT_HPP_INCLUDED__
+#define __ZLINK_ENDPOINT_HPP_INCLUDED__
 
 #include <string>
 
-namespace zmq
+namespace zlink
 {
 enum endpoint_type_t
 {

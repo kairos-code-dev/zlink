@@ -25,7 +25,7 @@
 
 ### 1.1 zlink란?
 
-zlink는 ZeroMQ 스타일의 고성능 메시징 라이브러리입니다. 기존 libzmq를 기반으로 하되, 다음과 같은 현대적 설계를 적용했습니다:
+zlink는 Zlink 스타일의 고성능 메시징 라이브러리입니다. 기존 libzlink를 기반으로 하되, 다음과 같은 현대적 설계를 적용했습니다:
 
 - **Boost.Asio 기반 I/O**: 플랫폼별 폴러(epoll/kqueue/IOCP) 대신 Asio의 통합 비동기 I/O 사용
 - **WebSocket/TLS 네이티브 지원**: `ws://`, `wss://`, `tls://` 프로토콜 내장
@@ -68,16 +68,16 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 │                         APPLICATION LAYER                           │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │  User Code                                                   │   │
-│  │  zmq_ctx_new() → zmq_socket() → zmq_bind/connect()          │   │
-│  │  → zmq_send() / zmq_recv() → zmq_close()                    │   │
+│  │  zlink_ctx_new() → zlink_socket() → zlink_bind/connect()          │   │
+│  │  → zlink_send() / zlink_recv() → zlink_close()                    │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼─────────────────────────────────────┐
 │                          PUBLIC API LAYER                           │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │  src/api/zmq.cpp                                            │   │
-│  │  - C API 진입점 (zmq_socket, zmq_send, zmq_recv, etc.)      │   │
+│  │  src/api/zlink.cpp                                            │   │
+│  │  - C API 진입점 (zlink_socket, zlink_send, zlink_recv, etc.)      │   │
 │  │  - 에러 핸들링 및 파라미터 검증                              │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └───────────────────────────────┬─────────────────────────────────────┘
@@ -176,28 +176,28 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 ```c
 // 기본 사용 패턴
-void *ctx = zmq_ctx_new();                    // 컨텍스트 생성
-void *socket = zmq_socket(ctx, ZMQ_DEALER);   // 소켓 생성
-zmq_connect(socket, "tcp://127.0.0.1:5555");  // 연결
-zmq_send(socket, "Hello", 5, 0);              // 메시지 송신
-zmq_recv(socket, buffer, sizeof(buffer), 0); // 메시지 수신
-zmq_close(socket);                            // 소켓 닫기
-zmq_ctx_term(ctx);                            // 컨텍스트 종료
+void *ctx = zlink_ctx_new();                    // 컨텍스트 생성
+void *socket = zlink_socket(ctx, ZLINK_DEALER);   // 소켓 생성
+zlink_connect(socket, "tcp://127.0.0.1:5555");  // 연결
+zlink_send(socket, "Hello", 5, 0);              // 메시지 송신
+zlink_recv(socket, buffer, sizeof(buffer), 0); // 메시지 수신
+zlink_close(socket);                            // 소켓 닫기
+zlink_ctx_term(ctx);                            // 컨텍스트 종료
 ```
 
 ### 3.2 Public API Layer
 
-`src/api/zmq.cpp`에서 모든 공용 C API를 제공합니다.
+`src/api/zlink.cpp`에서 모든 공용 C API를 제공합니다.
 
 **주요 함수 그룹**:
 
 | 그룹 | 함수 | 설명 |
 |------|------|------|
-| Context | `zmq_ctx_new`, `zmq_ctx_term`, `zmq_ctx_set/get` | 컨텍스트 생명주기 |
-| Socket | `zmq_socket`, `zmq_close`, `zmq_setsockopt/getsockopt` | 소켓 관리 |
-| Connection | `zmq_bind`, `zmq_connect`, `zmq_disconnect`, `zmq_unbind` | 연결 관리 |
-| Message | `zmq_send`, `zmq_recv`, `zmq_msg_*` | 메시지 송수신 |
-| Polling | `zmq_poll`, `zmq_poller_*` | 이벤트 폴링 |
+| Context | `zlink_ctx_new`, `zlink_ctx_term`, `zlink_ctx_set/get` | 컨텍스트 생명주기 |
+| Socket | `zlink_socket`, `zlink_close`, `zlink_setsockopt/getsockopt` | 소켓 관리 |
+| Connection | `zlink_bind`, `zlink_connect`, `zlink_disconnect`, `zlink_unbind` | 연결 관리 |
+| Message | `zlink_send`, `zlink_recv`, `zlink_msg_*` | 메시지 송수신 |
+| Polling | `zlink_poll`, `zlink_poller_*` | 이벤트 폴링 |
 
 ### 3.3 Socket Logic Layer
 
@@ -393,7 +393,7 @@ public:
 **주요 역할**:
 
 1. **I/O 스레드 풀 관리**
-   - `zmq_ctx_set(ctx, ZMQ_IO_THREADS, n)`으로 스레드 수 설정
+   - `zlink_ctx_set(ctx, ZLINK_IO_THREADS, n)`으로 스레드 수 설정
    - 각 I/O 스레드는 독립적인 `io_context` 보유
 
 2. **소켓 관리**
@@ -443,8 +443,8 @@ private:
 │  ┌──────────────┐    ┌─────────┐    ┌─────────────────┐   │
 │  │ socket_base_t│◄──►│ pipe_t  │◄──►│ asio_engine_t   │   │
 │  │              │    │         │    │                 │   │
-│  │  zmq_send()  │    │ YPipe   │    │ async_read/     │   │
-│  │  zmq_recv()  │    │         │    │ async_write     │   │
+│  │  zlink_send()  │    │ YPipe   │    │ async_read/     │   │
+│  │  zlink_recv()  │    │         │    │ async_write     │   │
 │  └──────────────┘    └─────────┘    └─────────────────┘   │
 │                                                             │
 │  push_msg(): 엔진 → 세션 → 파이프 → 소켓                   │
@@ -614,14 +614,14 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 - 간단한 구현 (`read(4) → read(length)`)
 - 외부 클라이언트 연동 용이
 
-**STREAM 소켓 내부 API** (zmq_send/zmq_recv 멀티파트):
+**STREAM 소켓 내부 API** (zlink_send/zlink_recv 멀티파트):
 
 ```
-송신 (zmq_send):
+송신 (zlink_send):
   Frame 1: [Routing ID (4 bytes)]  + MORE flag
   Frame 2: [Payload (N bytes)]
 
-수신 (zmq_recv):
+수신 (zlink_recv):
   Frame 1: [Routing ID (4 bytes)]  + MORE flag
   Frame 2: [Payload (N bytes)]
 
@@ -631,7 +631,7 @@ STREAM 소켓 및 외부 클라이언트 연동용 단순 프로토콜입니다.
 ```
 
 > **Note**: 단일 프레임이 아닌 멀티파트 메시지입니다.
-> 애플리케이션은 `zmq_recv`를 두 번 호출하여 routing_id와 payload를 각각 수신합니다.
+> 애플리케이션은 `zlink_recv`를 두 번 호출하여 routing_id와 payload를 각각 수신합니다.
 
 ### 5.3 WebSocket 프레이밍
 
@@ -657,7 +657,7 @@ WebSocket 트랜스포트는 Beast 라이브러리를 사용하며, 바이너리
 │                    APPLICATION THREAD                             │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  (1) zmq_send(socket, data, size, flags)                         │
+│  (1) zlink_send(socket, data, size, flags)                         │
 │       │                                                           │
 │       ▼                                                           │
 │  (2) socket_base_t::send()                                       │
@@ -739,7 +739,7 @@ WebSocket 트랜스포트는 Beast 라이브러리를 사용하며, 바이너리
 │                    APPLICATION THREAD                             │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  (8) zmq_recv(socket, buffer, size, flags)                       │
+│  (8) zlink_recv(socket, buffer, size, flags)                       │
 │       │                                                           │
 │       ▼                                                           │
 │  (9) socket_base_t::recv()                                       │
@@ -763,7 +763,7 @@ WebSocket 트랜스포트는 Beast 라이브러리를 사용하며, 바이너리
 │                     CONNECTION ESTABLISHMENT                      │
 ├───────────────────────────────────────────────────────────────────┤
 │                                                                   │
-│  zmq_connect("tcp://host:port")                                  │
+│  zlink_connect("tcp://host:port")                                  │
 │       │                                                           │
 │       ▼                                                           │
 │  (1) address_t 파싱                                               │
@@ -810,7 +810,7 @@ WebSocket 트랜스포트는 Beast 라이브러리를 사용하며, 바이너리
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                 Application Threads                      │   │
-│  │  - zmq_send() / zmq_recv() 호출                          │   │
+│  │  - zlink_send() / zlink_recv() 호출                          │   │
 │  │  - 소켓별로 하나의 스레드에서만 접근 권장                  │   │
 │  │  - 여러 소켓은 여러 스레드에서 사용 가능                   │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -869,7 +869,7 @@ enum command_type {
 ```
 Application Thread              I/O Thread
       │                              │
-      │  zmq_send()                  │
+      │  zlink_send()                  │
       │      │                       │
       │      ▼                       │
       │  [msg_t를 YPipe에 push]      │
@@ -972,10 +972,10 @@ public:
 
 | 옵션 | 설명 |
 |------|------|
-| `ZMQ_TLS_CERT` | 인증서 파일 경로 (PEM) |
-| `ZMQ_TLS_KEY` | 개인키 파일 경로 (PEM) |
-| `ZMQ_TLS_CA` | CA 인증서 경로 |
-| `ZMQ_TLS_HOSTNAME` | 서버 호스트명 (인증서 검증용) |
+| `ZLINK_TLS_CERT` | 인증서 파일 경로 (PEM) |
+| `ZLINK_TLS_KEY` | 개인키 파일 경로 (PEM) |
+| `ZLINK_TLS_CA` | CA 인증서 경로 |
+| `ZLINK_TLS_HOSTNAME` | 서버 호스트명 (인증서 검증용) |
 
 ### 8.4 WebSocket 트랜스포트
 
@@ -1012,11 +1012,11 @@ private:
 
 public:
     // Unix/Linux/macOS에서만 사용 가능
-    #if defined ZMQ_HAVE_IPC
+    #if defined ZLINK_HAVE_IPC
 
     bool supports_speculative_write() const {
         // 환경 변수로 제어 (안정성 vs 성능)
-        // ZMQ_ASIO_IPC_SYNC_WRITE=1: speculative write 활성화
+        // ZLINK_ASIO_IPC_SYNC_WRITE=1: speculative write 활성화
         return _enable_speculative;
     }
 
@@ -1108,7 +1108,7 @@ void session_base_t::start_connecting(bool wait_) {
 ```cpp
 // 모든 Connecter에서 동일한 패턴 적용
 void create_engine(fd_t fd_, ...) {
-    if (options.type == ZMQ_STREAM) {
+    if (options.type == ZLINK_STREAM) {
         // STREAM 소켓: RAW 프로토콜 (핸드셰이크 없음)
         engine = new asio_raw_engine_t(fd_, options, endpoint_pair, transport);
     } else {
@@ -1167,7 +1167,7 @@ void create_engine(fd_t fd_, ...) {
 #### 8.7.1 TCP + DEALER 소켓 연결
 
 ```
-zmq_connect(socket, "tcp://127.0.0.1:5555")
+zlink_connect(socket, "tcp://127.0.0.1:5555")
     │
     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1225,7 +1225,7 @@ zmq_connect(socket, "tcp://127.0.0.1:5555")
 #### 8.7.2 WSS + STREAM 소켓 연결
 
 ```
-zmq_connect(socket, "wss://server.example.com:443/path")
+zlink_connect(socket, "wss://server.example.com:443/path")
     │
     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -1361,7 +1361,7 @@ else if (_addr->protocol == protocol_name::ws
 ```cpp
 // 예: asio_tcp_listener_t::on_accept()
 void on_accept(fd_t fd_) {
-    if (options.type == ZMQ_STREAM)
+    if (options.type == ZLINK_STREAM)
         engine = new asio_raw_engine_t(fd_, options, transport);
     else
         engine = new asio_zmp_engine_t(fd_, options, transport);
@@ -1478,7 +1478,7 @@ void on_accept(fd_t fd_) {
 │                                                             │
 │  ID 관리:                                                   │
 │  - 자동 생성: uint32_t 증가값                               │
-│  - 수동 설정: ZMQ_ROUTING_ID 옵션                           │
+│  - 수동 설정: ZLINK_ROUTING_ID 옵션                           │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -1504,7 +1504,7 @@ void on_accept(fd_t fd_) {
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  구독 관리:                                                 │
-│  zmq_setsockopt(socket, ZMQ_SUBSCRIBE, "topic", 5);        │
+│  zlink_setsockopt(socket, ZLINK_SUBSCRIBE, "topic", 5);        │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                 radix_tree_t                         │   │
@@ -1562,7 +1562,7 @@ void on_accept(fd_t fd_) {
 
 구독 자료구조:
 - XPUB: mtrie_t (멀티 트라이)
-- XSUB: ZMQ_USE_RADIX_TREE 매크로에 따라
+- XSUB: ZLINK_USE_RADIX_TREE 매크로에 따라
   - radix_tree_t (활성화 시)
   - trie_with_size_t (기본)
 ```
@@ -1620,7 +1620,7 @@ void on_accept(fd_t fd_) {
 
 - **모든 트랜스포트에서 4-6 M/s** 처리량 달성 (64B 메시지)
 - TCP/IPC/inproc 성능 차이 ±5% 이내 (64B 기준)
-- 표준 libzmq 대비 ~99% 성능 동등성 달성
+- 표준 libzlink 대비 ~99% 성능 동등성 달성
 
 **지연 시간 (Latency)**:
 
@@ -1646,10 +1646,10 @@ void on_accept(fd_t fd_) {
 **1. Speculative I/O**
 ```
 일반적인 비동기:
-  zmq_send() → async_write() → 완료 대기 → 콜백
+  zlink_send() → async_write() → 완료 대기 → 콜백
 
 Speculative 최적화:
-  zmq_send() → write_some() 시도
+  zlink_send() → write_some() 시도
     ├─ 성공: 즉시 완료 (콜백 오버헤드 없음)
     └─ EAGAIN: async_write() 폴백
 ```
@@ -1669,7 +1669,7 @@ Gather:
 // 대용량 데이터 전송 시 복사 방지
 msg_t msg;
 msg.init_data(buffer, size, my_free_fn, hint);  // 참조만 저장
-zmq_msg_send(&msg, socket, 0);  // 복사 없이 전송
+zlink_msg_send(&msg, socket, 0);  // 복사 없이 전송
 ```
 
 **4. VSM (Very Small Message)**
@@ -1695,8 +1695,8 @@ zmq_msg_send(&msg, socket, 0);  // 복사 없이 전송
 ```
 src/
 ├── api/                          # Public C API
-│   ├── zmq.cpp                   # 모든 zmq_* 함수 진입점
-│   └── zmq_utils.cpp             # 유틸리티 함수
+│   ├── zlink.cpp                   # 모든 zlink_* 함수 진입점
+│   └── zlink_utils.cpp             # 유틸리티 함수
 │
 ├── core/                         # 시스템 기반 (71개 파일)
 │   ├── ctx.cpp/hpp               # 컨텍스트 (스레드풀, 소켓 관리)
@@ -1806,9 +1806,9 @@ src/
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `ZMQ_ASIO_IPC_SYNC_WRITE` | IPC speculative write 활성화 | OFF |
-| `ZMQ_ASIO_IPC_FORCE_ASYNC` | IPC 강제 비동기 모드 | OFF |
-| `ZMQ_ASIO_IPC_STATS` | IPC 통계 로깅 | OFF |
+| `ZLINK_ASIO_IPC_SYNC_WRITE` | IPC speculative write 활성화 | OFF |
+| `ZLINK_ASIO_IPC_FORCE_ASYNC` | IPC 강제 비동기 모드 | OFF |
+| `ZLINK_ASIO_IPC_STATS` | IPC 통계 로깅 | OFF |
 
 ---
 

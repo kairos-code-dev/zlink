@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_CLOCK_HPP_INCLUDED__
-#define __ZMQ_CLOCK_HPP_INCLUDED__
+#ifndef __ZLINK_CLOCK_HPP_INCLUDED__
+#define __ZLINK_CLOCK_HPP_INCLUDED__
 
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
 
-#if defined ZMQ_HAVE_OSX
+#if defined ZLINK_HAVE_OSX
 // TODO this is not required in this file, but condition_variable.hpp includes
 // clock.hpp to get these definitions
 #ifndef CLOCK_REALTIME
@@ -22,7 +22,7 @@
 #include <sys/time.h>
 #endif
 
-namespace zmq
+namespace zlink
 {
 class clock_t
 {
@@ -46,7 +46,7 @@ class clock_t
     //  Physical time corresponding to the TSC above (in milliseconds).
     uint64_t _last_time;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (clock_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (clock_t)
 };
 }
 

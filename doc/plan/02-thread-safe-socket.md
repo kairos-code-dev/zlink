@@ -20,7 +20,7 @@
 
 ### 1.1 배경
 
-기존 libzmq의 소켓은 **스레드에 안전하지 않다**. 하나의 소켓을 여러 스레드에서 동시에 사용하면 정의되지 않은 동작(Undefined Behavior)이 발생한다. 사용자는 외부에서 뮤텍스 등으로 동기화를 처리해야 하며, 이는 복잡성과 잠재적 버그를 초래한다.
+기존 libzlink의 소켓은 **스레드에 안전하지 않다**. 하나의 소켓을 여러 스레드에서 동시에 사용하면 정의되지 않은 동작(Undefined Behavior)이 발생한다. 사용자는 외부에서 뮤텍스 등으로 동기화를 처리해야 하며, 이는 복잡성과 잠재적 버그를 초래한다.
 
 ### 1.2 목표
 
@@ -40,12 +40,12 @@
 
 ## 2. 현재 상태 분석
 
-### 2.1 현재 libzmq 스레드 모델
+### 2.1 현재 libzlink 스레드 모델
 
 ```
-[Thread 1] ─────> zmq_send() ─────┐
+[Thread 1] ─────> zlink_send() ─────┐
                                   │  ❌ Race Condition!
-[Thread 2] ─────> zmq_recv() ─────┘
+[Thread 2] ─────> zlink_recv() ─────┘
                                   ↓
                           [Raw Socket]
 ```
@@ -102,16 +102,16 @@
 
 ### 3.2.1 I/O Thread vs Proxy Worker Thread
 
-- **I/O thread (libzmq 기존)**:
+- **I/O thread (libzlink 기존)**:
   - 네트워크 I/O, 폴링, reconnect, handshake 등 **전송 엔진** 담당
   - 애플리케이션 호출과 무관하게 내부에서 동작
 - **proxy worker thread (본 스펙)**:
   - thread-safe 소켓의 **API 호출 직렬화** 담당
-  - `zmq_send/recv` 같은 호출을 strand 큐에서 순차 실행
+  - `zlink_send/recv` 같은 호출을 strand 큐에서 순차 실행
   - Request/Reply 콜백도 이 스레드에서 실행됨
 
 > 두 스레드는 **역할과 생명주기가 다르다**.
-> I/O thread는 기존 libzmq 전송 엔진을 담당하며,
+> I/O thread는 기존 libzlink 전송 엔진을 담당하며,
 > proxy worker thread는 thread-safe 소켓의 **API 직렬화 전용**이다.
 > 따라서 proxy worker thread는 I/O thread를 대체하지 않는다.
 
@@ -137,7 +137,7 @@
 - **Proxy 소켓을 대상으로 모니터링해도 무방하다.**
   - 이벤트는 내부 Raw Socket 상태를 반영한다.
   - `CONNECTION_READY` 기준은 핸드셰이크 완료 시점으로 동일하다.
-- Thread-safe 소켓이라면 `zmq_socket_monitor*` 호출도 strand(직렬 executor)를 통해 **직렬화**된다.
+- Thread-safe 소켓이라면 `zlink_socket_monitor*` 호출도 strand(직렬 executor)를 통해 **직렬화**된다.
 - Thread-safe가 아닌 소켓은 **소켓 소유 스레드에서만** 모니터 설정/해제를 수행한다.
 - 모니터 소켓은 별도 소켓이므로 기본적으로 **thread-safe하지 않다**.
 
@@ -147,12 +147,12 @@
 - thread-safe 소켓은 **ctx의 io_context를 공유**하고, 소켓별로 **전용 strand(직렬 executor)**를 사용한다.
 - ctx 종료 시 워커 스레드를 정리(join)한다.
 
-### 3.6 바인딩 주의사항 (기존 libzmq 특성과 동일)
+### 3.6 바인딩 주의사항 (기존 libzlink 특성과 동일)
 
 - thread-safe 소켓 사용 시 **백그라운드 워커 스레드가 생성**된다.
   - 임베디드 환경에서는 사용 여부를 명확히 안내.
 - **일반 send/recv에 대한 비동기 C API는 제공하지 않는다.**
-  - 필요 시 `ZMQ_DONTWAIT` + `zmq_poll` 또는 바인딩 레이어에서 비동기 래핑을 제공한다.
+  - 필요 시 `ZLINK_DONTWAIT` + `zlink_poll` 또는 바인딩 레이어에서 비동기 래핑을 제공한다.
   - 단, **Request/Reply API는 03번 문서의 콜백/폴링 인터페이스를 사용**한다.
 
 ---
@@ -163,10 +163,10 @@
 
 ```c
 // 표준 생성 함수 (thread-safe 소켓은 _threadsafe 접미사로 통일)
-void *socket = zmq_socket_threadsafe(ctx, ZMQ_DEALER);
+void *socket = zlink_socket_threadsafe(ctx, ZLINK_DEALER);
 ```
 
-- `zmq_socket_threadsafe()`를 **단일 표준**으로 사용한다.
+- `zlink_socket_threadsafe()`를 **단일 표준**으로 사용한다.
 - **별도의 소켓 타입 플래그는 제공하지 않는다.**
 - 동일 소켓에 대해 **raw 소켓과 thread-safe 소켓을 동시에 사용하지 않는다** (택1).
 
@@ -174,10 +174,10 @@ void *socket = zmq_socket_threadsafe(ctx, ZMQ_DEALER);
 
 ```c
 // 기존 API와 동일하게 사용 가능
-int zmq_send(void *socket, const void *buf, size_t len, int flags);
-int zmq_recv(void *socket, void *buf, size_t len, int flags);
-int zmq_msg_send(zmq_msg_t *msg, void *socket, int flags);
-int zmq_msg_recv(zmq_msg_t *msg, void *socket, int flags);
+int zlink_send(void *socket, const void *buf, size_t len, int flags);
+int zlink_recv(void *socket, void *buf, size_t len, int flags);
+int zlink_msg_send(zlink_msg_t *msg, void *socket, int flags);
+int zlink_msg_recv(zlink_msg_t *msg, void *socket, int flags);
 ```
 
 **내부 동작:**
@@ -190,12 +190,12 @@ int zmq_msg_recv(zmq_msg_t *msg, void *socket, int flags);
 
 ```c
 /* thread-safe 소켓에서도 사용 가능 */
-void *zmq_socket_monitor_open(void *socket, int events);
+void *zlink_socket_monitor_open(void *socket, int events);
 
 /* 모니터 소켓은 일반 소켓으로 수신 */
 ```
 
-### 4.4 C API 상세 명세 (zmq.h 추가 내용)
+### 4.4 C API 상세 명세 (zlink.h 추가 내용)
 
 ```c
 /* ============================================================
@@ -203,10 +203,10 @@ void *zmq_socket_monitor_open(void *socket, int events);
  * ============================================================ */
 
 /*
- * zmq_socket_threadsafe - Thread-safe 소켓 생성
+ * zlink_socket_threadsafe - Thread-safe 소켓 생성
  *
  * @param ctx   유효한 context
- * @param type  소켓 타입 (ZMQ_DEALER, ZMQ_ROUTER, ZMQ_PUB, ZMQ_SUB, etc.)
+ * @param type  소켓 타입 (ZLINK_DEALER, ZLINK_ROUTER, ZLINK_PUB, ZLINK_SUB, etc.)
  * @return      성공 시 소켓 핸들, 실패 시 NULL (errno 설정)
  *
  * 에러:
@@ -217,15 +217,15 @@ void *zmq_socket_monitor_open(void *socket, int events);
  * 참고:
  *   - 기존 소켓을 감싼 proxy 객체를 반환한다
  */
-ZMQ_EXPORT void *zmq_socket_threadsafe(void *ctx, int type);
+ZLINK_EXPORT void *zlink_socket_threadsafe(void *ctx, int type);
 
 /*
- * zmq_is_threadsafe - 소켓이 thread-safe인지 확인
+ * zlink_is_threadsafe - 소켓이 thread-safe인지 확인
  *
  * @param socket  소켓 핸들
  * @return        1: thread-safe, 0: 일반 소켓, -1: 에러
  */
-ZMQ_EXPORT int zmq_is_threadsafe(void *socket);
+ZLINK_EXPORT int zlink_is_threadsafe(void *socket);
 ```
 
 ---
@@ -235,7 +235,7 @@ ZMQ_EXPORT int zmq_is_threadsafe(void *socket);
 ### 5.1 핵심 클래스 구조
 
 ```cpp
-namespace zmq {
+namespace zlink {
 
 class thread_safe_socket_t {
 public:
@@ -255,7 +255,7 @@ private:
     std::condition_variable _sync_cv;
 };
 
-} // namespace zmq
+} // namespace zlink
 ```
 
 ### 5.2 동기 send 구현 (Completion 대기)
@@ -288,7 +288,7 @@ int thread_safe_socket_t::send(msg_t *msg, int flags) {
 
 **동기 대기의 의미:**
 - 여기서 “동기”는 **strand 작업 완료까지 호출 스레드가 대기**한다는 뜻이다.
-- 실제 I/O의 blocking/non-blocking 여부는 `flags` (`ZMQ_DONTWAIT`)에 의해 결정된다.
+- 실제 I/O의 blocking/non-blocking 여부는 `flags` (`ZLINK_DONTWAIT`)에 의해 결정된다.
 
 ### 5.3 재진입(inline dispatch)과 데드락 방지
 
@@ -332,17 +332,17 @@ void on_request(/* ... */) {
 
 ```c
 // Thread-safe 소켓 생성
-void *ctx = zmq_ctx_new();
-void *socket = zmq_socket_threadsafe(ctx, ZMQ_DEALER);
-zmq_connect(socket, "tcp://localhost:5555");
+void *ctx = zlink_ctx_new();
+void *socket = zlink_socket_threadsafe(ctx, ZLINK_DEALER);
+zlink_connect(socket, "tcp://localhost:5555");
 
 // 여러 스레드에서 안전하게 사용
 std::thread t1([socket]() {
-    zmq_send(socket, "Hello from T1", 13, 0);
+    zlink_send(socket, "Hello from T1", 13, 0);
 });
 
 std::thread t2([socket]() {
-    zmq_send(socket, "Hello from T2", 13, 0);
+    zlink_send(socket, "Hello from T2", 13, 0);
 });
 
 t1.join();
@@ -353,18 +353,18 @@ t2.join();
 
 ```cpp
 // 워커 풀에서 공유 소켓 사용
-zmq::thread_safe_socket<zmq::dealer_t> shared_socket(ctx);
+zlink::thread_safe_socket<zlink::dealer_t> shared_socket(ctx);
 shared_socket.connect("tcp://localhost:5555");
 
 std::vector<std::thread> workers;
 for (int i = 0; i < 4; ++i) {
     workers.emplace_back([&shared_socket, i]() {
         for (int j = 0; j < 100; ++j) {
-            zmq::msg_t request;
+            zlink::msg_t request;
             request.init_data(fmt::format("Worker {} Request {}", i, j));
             shared_socket.send(request, 0);
 
-            zmq::msg_t reply;
+            zlink::msg_t reply;
             shared_socket.recv(reply, 0);
         }
     });
@@ -381,7 +381,7 @@ for (auto& w : workers) w.join();
 
 | 파일 | 내용 |
 |------|------|
-| `include/zmq_threadsafe.h` | Thread-safe API 선언 |
+| `include/zlink_threadsafe.h` | Thread-safe API 선언 |
 | `src/sockets/thread_safe_socket.hpp` | thread_safe_socket_t 클래스 선언 |
 | `src/sockets/thread_safe_socket.cpp` | thread_safe_socket_t 구현 |
 
@@ -389,8 +389,8 @@ for (auto& w : workers) w.join();
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `include/zmq.h` | thread-safe API 선언 (`zmq_socket_threadsafe`, `zmq_is_threadsafe`) |
-| `src/api/zmq.cpp` | Thread-safe 소켓 생성/API 라우팅 |
+| `include/zlink.h` | thread-safe API 선언 (`zlink_socket_threadsafe`, `zlink_is_threadsafe`) |
+| `src/api/zlink.cpp` | Thread-safe 소켓 생성/API 라우팅 |
 | `src/ctx.cpp` | Thread-safe 소켓 관리 |
 
 ### 7.3 아키텍처 다이어그램
@@ -399,9 +399,9 @@ for (auto& w : workers) w.join();
 ┌─────────────────────────────────────────────────────────────┐
 │                       Public API Layer                       │
 ├─────────────────────────────────────────────────────────────┤
-│  zmq.h / zmq_threadsafe.h                                   │
-│  ├─ zmq_socket_threadsafe(...)                             │
-│  └─ 기존 zmq_send/recv/zmq_msg_send/recv                   │
+│  zlink.h / zlink_threadsafe.h                                   │
+│  ├─ zlink_socket_threadsafe(...)                             │
+│  └─ 기존 zlink_send/recv/zlink_msg_send/recv                   │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -444,7 +444,7 @@ for (auto& w : workers) w.join();
 | `test_mixed_operations` | send/recv 혼합 동시 호출 |
 | `test_reentrant_sync_call` | strand(직렬 executor) 내부 호출 시 데드락 없음 |
 | `test_high_contention` | 높은 경합 상황에서 정확성 |
-| `test_is_threadsafe_flag` | zmq_is_threadsafe() 결과 확인 |
+| `test_is_threadsafe_flag` | zlink_is_threadsafe() 결과 확인 |
 
 ### 8.2 스트레스 테스트
 

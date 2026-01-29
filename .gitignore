@@ -63,7 +63,7 @@ __pycache__/
 # /src
 ## Ignore generated files in configuration process
 src/platform.hpp*
-src/libzmq.pc
+src/libzlink.pc
 
 # /tools
 ## Executable binaries are ignored
@@ -123,8 +123,8 @@ foreign/openpgm/*
 !foreign/openpgm/*.tar.bz2
 !foreign/openpgm/*.tar.gz
 !foreign/openpgm/Makefile.am
-zeromq-*.tar.gz
-zeromq-*.zip
+zlink-*.tar.gz
+zlink-*.zip
 
 mybuild
 

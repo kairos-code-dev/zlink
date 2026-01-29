@@ -1,4 +1,4 @@
-# CMake build script for ZeroMQ unit tests
+# CMake build script for Zlink unit tests
 cmake_minimum_required(VERSION 3.10)
 
 set(unittests
@@ -12,13 +12,13 @@ set(unittests
 
 # add location of platform.hpp for Windows builds
 if(WIN32)
-  add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
+  add_definitions(-DZLINK_CUSTOM_PLATFORM_HPP)
   add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS)
   # Same name on 64bit systems
   link_libraries(ws2_32.lib)
 endif()
 
-# Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
+# Note: Using CMAKE_SOURCE_DIR instead of Zlink_SOURCE_DIR since project name is now zlink
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_SOURCE_DIR}/src" "${CMAKE_BINARY_DIR}")
 include_directories("${CMAKE_SOURCE_DIR}/external/unity")
 # Add Boost headers for ASIO poller
@@ -30,7 +30,7 @@ foreach(test ${unittests})
 
   # per-test directories not generated on OS X / Darwin
   if(NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang.*")
-    link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")
+    link_directories(${test} PRIVATE "${Zlink_SOURCE_DIR}/../lib")
   endif()
 
   target_link_libraries(${test} testutil-static)
@@ -55,9 +55,9 @@ foreach(test ${unittests})
 
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
 
-  # TODO prevent libzmq (non-static) being in the list of link libraries at all
+  # TODO prevent libzlink (non-static) being in the list of link libraries at all
   get_target_property(LIBS ${test} LINK_LIBRARIES)
-  list(REMOVE_ITEM LIBS libzmq)
+  list(REMOVE_ITEM LIBS libzlink)
   set_target_properties(${test} PROPERTIES LINK_LIBRARIES "${LIBS}")
 endforeach()
 

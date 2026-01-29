@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DISCOVERY_PROVIDER_HPP_INCLUDED__
-#define __ZMQ_DISCOVERY_PROVIDER_HPP_INCLUDED__
+#ifndef __ZLINK_DISCOVERY_PROVIDER_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_PROVIDER_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 class provider_t
 {
@@ -67,7 +67,7 @@ class provider_t
 
     mutex_t _sync;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (provider_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (provider_t)
 };
 }
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SPOT_NODE_HPP_INCLUDED__
-#define __ZMQ_SPOT_NODE_HPP_INCLUDED__
+#ifndef __ZLINK_SPOT_NODE_HPP_INCLUDED__
+#define __ZLINK_SPOT_NODE_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 class spot_t;
 
@@ -45,7 +45,7 @@ class spot_node_t
 
     int publish (spot_t *spot_,
                  const char *topic_,
-                 zmq_msg_t *parts_,
+                 zlink_msg_t *parts_,
                  size_t part_count_,
                  int flags_);
     int subscribe (spot_t *spot_, const char *topic_);
@@ -106,7 +106,7 @@ class spot_node_t
     std::set<std::string> _registry_endpoints;
 
     uint32_t _node_id;
-    zmq_routing_id_t _routing_id;
+    zlink_routing_id_t _routing_id;
 
     bool _registered;
     std::string _service_name;
@@ -126,7 +126,7 @@ class spot_node_t
     atomic_counter_t _stop;
     thread_t _worker;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };
 }
 

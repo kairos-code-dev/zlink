@@ -13,8 +13,8 @@ static int get_monitor_event_internal (void *monitor_,
                                        char **address_,
                                        int recv_flag_)
 {
-    zmq_monitor_event_t event;
-    if (zmq_monitor_recv (monitor_, &event, recv_flag_) == -1) {
+    zlink_monitor_event_t event;
+    if (zlink_monitor_recv (monitor_, &event, recv_flag_) == -1) {
         TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
         return -1;
     }
@@ -46,7 +46,7 @@ int get_monitor_event_with_timeout (void *monitor_,
 
         int timeout_step = 250;
         int wait_time = 0;
-        zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_step,
+        zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_step,
                         sizeof (timeout_step));
         while (
           (res = get_monitor_event_internal (monitor_, value_, address_, 0))
@@ -56,11 +56,11 @@ int get_monitor_event_with_timeout (void *monitor_,
                      wait_time);
         }
     } else {
-        zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_, sizeof (timeout_));
+        zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_, sizeof (timeout_));
         res = get_monitor_event_internal (monitor_, value_, address_, 0);
     }
     int timeout_infinite = -1;
-    zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_infinite,
+    zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_infinite,
                     sizeof (timeout_infinite));
     return res;
 }
@@ -131,13 +131,13 @@ int expect_monitor_event_multiple (void *server_mon_,
         // ECONNRESET can happen on very slow machines, when the engine writes
         // to the peer and then tries to read the socket before the peer reads
         // ECONNABORTED happens when a client aborts a connection via RST/timeout
-        if (event == ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+        if (event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
             && ((err == EPIPE && expected_err_ != EPIPE) || err == ECONNRESET
                 || err == ECONNABORTED)) {
             fprintf (stderr,
                      "Ignored event (skipping any further events): %x (err = "
                      "%i == %s)\n",
-                     event, err, zmq_strerror (err));
+                     event, err, zlink_strerror (err));
             client_closed_connection = 1;
             break;
         }
@@ -162,8 +162,8 @@ static int64_t get_monitor_event_internal_v2 (void *monitor_,
                                               char **remote_address_,
                                               int recv_flag_)
 {
-    zmq_monitor_event_t event;
-    if (zmq_monitor_recv (monitor_, &event, recv_flag_) == -1) {
+    zlink_monitor_event_t event;
+    if (zlink_monitor_recv (monitor_, &event, recv_flag_) == -1) {
         TEST_ASSERT_FAILURE_ERRNO (EAGAIN, -1);
         return -1;
     }
@@ -204,7 +204,7 @@ static int64_t get_monitor_event_with_timeout_v2 (void *monitor_,
 
         int timeout_step = 250;
         int wait_time = 0;
-        zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_step,
+        zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_step,
                         sizeof (timeout_step));
         while ((res = get_monitor_event_internal_v2 (
                   monitor_, value_, local_address_, remote_address_, 0))
@@ -214,12 +214,12 @@ static int64_t get_monitor_event_with_timeout_v2 (void *monitor_,
                      wait_time);
         }
     } else {
-        zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_, sizeof (timeout_));
+        zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_, sizeof (timeout_));
         res = get_monitor_event_internal_v2 (monitor_, value_, local_address_,
                                              remote_address_, 0);
     }
     int timeout_infinite = -1;
-    zmq_setsockopt (monitor_, ZMQ_RCVTIMEO, &timeout_infinite,
+    zlink_setsockopt (monitor_, ZLINK_RCVTIMEO, &timeout_infinite,
                     sizeof (timeout_infinite));
     return res;
 }
@@ -271,38 +271,38 @@ void expect_monitor_event_v2 (void *monitor_,
 }
 
 
-const char *get_zmqEventName (uint64_t event)
+const char *get_zlinkEventName (uint64_t event)
 {
     switch (event) {
-        case ZMQ_EVENT_CONNECTED:
+        case ZLINK_EVENT_CONNECTED:
             return "CONNECTED";
-        case ZMQ_EVENT_CONNECT_DELAYED:
+        case ZLINK_EVENT_CONNECT_DELAYED:
             return "CONNECT_DELAYED";
-        case ZMQ_EVENT_CONNECT_RETRIED:
+        case ZLINK_EVENT_CONNECT_RETRIED:
             return "CONNECT_RETRIED";
-        case ZMQ_EVENT_LISTENING:
+        case ZLINK_EVENT_LISTENING:
             return "LISTENING";
-        case ZMQ_EVENT_BIND_FAILED:
+        case ZLINK_EVENT_BIND_FAILED:
             return "BIND_FAILED";
-        case ZMQ_EVENT_ACCEPTED:
+        case ZLINK_EVENT_ACCEPTED:
             return "ACCEPTED";
-        case ZMQ_EVENT_ACCEPT_FAILED:
+        case ZLINK_EVENT_ACCEPT_FAILED:
             return "ACCEPT_FAILED";
-        case ZMQ_EVENT_CLOSED:
+        case ZLINK_EVENT_CLOSED:
             return "CLOSED";
-        case ZMQ_EVENT_CLOSE_FAILED:
+        case ZLINK_EVENT_CLOSE_FAILED:
             return "CLOSE_FAILED";
-        case ZMQ_EVENT_DISCONNECTED:
+        case ZLINK_EVENT_DISCONNECTED:
             return "DISCONNECTED";
-        case ZMQ_EVENT_MONITOR_STOPPED:
+        case ZLINK_EVENT_MONITOR_STOPPED:
             return "MONITOR_STOPPED";
-        case ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL:
             return "HANDSHAKE_FAILED_NO_DETAIL";
-        case ZMQ_EVENT_CONNECTION_READY:
+        case ZLINK_EVENT_CONNECTION_READY:
             return "CONNECTION_READY";
-        case ZMQ_EVENT_HANDSHAKE_FAILED_PROTOCOL:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL:
             return "HANDSHAKE_FAILED_PROTOCOL";
-        case ZMQ_EVENT_HANDSHAKE_FAILED_AUTH:
+        case ZLINK_EVENT_HANDSHAKE_FAILED_AUTH:
             return "HANDSHAKE_FAILED_AUTH";
         default:
             return "UNKNOWN";
@@ -319,7 +319,7 @@ void print_events (void *socket, int timeout, int limit)
     int i = 0;
     ;
     while ((event != -1) && (++i < limit)) {
-        const char *eventName = get_zmqEventName (event);
+        const char *eventName = get_zlinkEventName (event);
         printf ("Got event: %s\n", eventName);
         event = get_monitor_event_with_timeout (socket, &value, &event_address,
                                                 timeout);

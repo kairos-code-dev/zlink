@@ -12,11 +12,11 @@ void setUp ()
 {
     setup_test_context ();
 
-    sb = test_context_socket (ZMQ_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (sb, "inproc://a"));
+    sb = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, "inproc://a"));
 
-    sc = test_context_socket (ZMQ_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, "inproc://a"));
+    sc = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://a"));
 }
 
 void tearDown ()
@@ -33,12 +33,12 @@ void test_roundtrip ()
 }
 
 // TODO it appears that this has nothing to do with pair or inproc, and belongs somewhere else
-void test_zmq_send_const ()
+void test_zlink_send_const ()
 {
     TEST_ASSERT_EQUAL_INT (3, TEST_ASSERT_SUCCESS_ERRNO (
-                                zmq_send_const (sb, "foo", 3, ZMQ_SNDMORE)));
+                                zlink_send_const (sb, "foo", 3, ZLINK_SNDMORE)));
     TEST_ASSERT_EQUAL_INT (
-      6, TEST_ASSERT_SUCCESS_ERRNO (zmq_send_const (sb, "foobar", 6, 0)));
+      6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send_const (sb, "foobar", 6, 0)));
 
     recv_string_expect_success (sc, "foo", 0);
     recv_string_expect_success (sc, "foobar", 0);
@@ -50,6 +50,6 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_roundtrip);
-    RUN_TEST (test_zmq_send_const);
+    RUN_TEST (test_zlink_send_const);
     return UNITY_END ();
 }

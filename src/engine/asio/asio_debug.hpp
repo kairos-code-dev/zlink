@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_DEBUG_HPP_INCLUDED__
-#define __ZMQ_ASIO_DEBUG_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_DEBUG_HPP_INCLUDED__
+#define __ZLINK_ASIO_DEBUG_HPP_INCLUDED__
 
 #include <cstdio>
 
 //  Unified debug macros for ASIO components
-//  Enable with -DZMQ_ASIO_DEBUG=1 during compilation
+//  Enable with -DZLINK_ASIO_DEBUG=1 during compilation
 //
 //  Usage:
 //    ASIO_DBG_ENGINE("read completed: %zu bytes", bytes);
 //    ASIO_DBG_POLLER("timer fired");
 //    ASIO_DBG_CONN("connecting to %s", endpoint);
 
-#ifdef ZMQ_ASIO_DEBUG
+#ifdef ZLINK_ASIO_DEBUG
 
 #define ASIO_DBG(category, fmt, ...)                                           \
     do {                                                                       \

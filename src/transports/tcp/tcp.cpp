@@ -7,19 +7,19 @@
 #include "utils/err.hpp"
 #include "core/options.hpp"
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <unistd.h>
-#ifdef ZMQ_HAVE_VXWORKS
+#ifdef ZLINK_HAVE_VXWORKS
 #include <sockLib.h>
 #endif
 #endif
 
-#if defined ZMQ_HAVE_OPENVMS
+#if defined ZLINK_HAVE_OPENVMS
 #include <ioctl.h>
 #endif
 
@@ -27,7 +27,7 @@
 #include <TargetConditionals.h>
 #endif
 
-int zmq::tune_tcp_socket (fd_t s_)
+int zlink::tune_tcp_socket (fd_t s_)
 {
     //  Disable Nagle's algorithm. We are doing data batching on 0MQ level,
     //  so using Nagle wouldn't improve throughput in anyway, but it would
@@ -40,7 +40,7 @@ int zmq::tune_tcp_socket (fd_t s_)
     if (rc != 0)
         return rc;
 
-#ifdef ZMQ_HAVE_OPENVMS
+#ifdef ZLINK_HAVE_OPENVMS
     //  Disable delayed acknowledgements as they hurt latency significantly.
     int nodelack = 1;
     rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELACK, (char *) &nodelack,
@@ -50,7 +50,7 @@ int zmq::tune_tcp_socket (fd_t s_)
     return rc;
 }
 
-int zmq::set_tcp_send_buffer (fd_t sockfd_, int bufsize_)
+int zlink::set_tcp_send_buffer (fd_t sockfd_, int bufsize_)
 {
     const int rc =
       setsockopt (sockfd_, SOL_SOCKET, SO_SNDBUF,
@@ -59,7 +59,7 @@ int zmq::set_tcp_send_buffer (fd_t sockfd_, int bufsize_)
     return rc;
 }
 
-int zmq::set_tcp_receive_buffer (fd_t sockfd_, int bufsize_)
+int zlink::set_tcp_receive_buffer (fd_t sockfd_, int bufsize_)
 {
     const int rc =
       setsockopt (sockfd_, SOL_SOCKET, SO_RCVBUF,
@@ -68,24 +68,24 @@ int zmq::set_tcp_receive_buffer (fd_t sockfd_, int bufsize_)
     return rc;
 }
 
-int zmq::tune_tcp_keepalives (fd_t s_,
+int zlink::tune_tcp_keepalives (fd_t s_,
                               int keepalive_,
                               int keepalive_cnt_,
                               int keepalive_idle_,
                               int keepalive_intvl_)
 {
     // These options are used only under certain #ifdefs below.
-    LIBZMQ_UNUSED (keepalive_);
-    LIBZMQ_UNUSED (keepalive_cnt_);
-    LIBZMQ_UNUSED (keepalive_idle_);
-    LIBZMQ_UNUSED (keepalive_intvl_);
+    LIBZLINK_UNUSED (keepalive_);
+    LIBZLINK_UNUSED (keepalive_cnt_);
+    LIBZLINK_UNUSED (keepalive_idle_);
+    LIBZLINK_UNUSED (keepalive_intvl_);
 
     // If none of the #ifdefs apply, then s_ is unused.
-    LIBZMQ_UNUSED (s_);
+    LIBZLINK_UNUSED (s_);
 
     //  Tuning TCP keep-alives if platform allows it
     //  All values = -1 means skip and leave it for OS
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     if (keepalive_ != -1) {
         tcp_keepalive keepalive_opts;
         keepalive_opts.onoff = keepalive_;
@@ -102,7 +102,7 @@ int zmq::tune_tcp_keepalives (fd_t s_,
             return rc;
     }
 #else
-#ifdef ZMQ_HAVE_SO_KEEPALIVE
+#ifdef ZLINK_HAVE_SO_KEEPALIVE
     if (keepalive_ != -1) {
         int rc =
           setsockopt (s_, SOL_SOCKET, SO_KEEPALIVE,
@@ -111,7 +111,7 @@ int zmq::tune_tcp_keepalives (fd_t s_,
         if (rc != 0)
             return rc;
 
-#ifdef ZMQ_HAVE_TCP_KEEPCNT
+#ifdef ZLINK_HAVE_TCP_KEEPCNT
         if (keepalive_cnt_ != -1) {
             int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPCNT, &keepalive_cnt_,
                                  sizeof (int));
@@ -119,9 +119,9 @@ int zmq::tune_tcp_keepalives (fd_t s_,
             if (rc != 0)
                 return rc;
         }
-#endif // ZMQ_HAVE_TCP_KEEPCNT
+#endif // ZLINK_HAVE_TCP_KEEPCNT
 
-#ifdef ZMQ_HAVE_TCP_KEEPIDLE
+#ifdef ZLINK_HAVE_TCP_KEEPIDLE
         if (keepalive_idle_ != -1) {
             int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPIDLE,
                                  &keepalive_idle_, sizeof (int));
@@ -129,8 +129,8 @@ int zmq::tune_tcp_keepalives (fd_t s_,
             if (rc != 0)
                 return rc;
         }
-#else // ZMQ_HAVE_TCP_KEEPIDLE
-#ifdef ZMQ_HAVE_TCP_KEEPALIVE
+#else // ZLINK_HAVE_TCP_KEEPIDLE
+#ifdef ZLINK_HAVE_TCP_KEEPALIVE
         if (keepalive_idle_ != -1) {
             int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPALIVE,
                                  &keepalive_idle_, sizeof (int));
@@ -138,10 +138,10 @@ int zmq::tune_tcp_keepalives (fd_t s_,
             if (rc != 0)
                 return rc;
         }
-#endif // ZMQ_HAVE_TCP_KEEPALIVE
-#endif // ZMQ_HAVE_TCP_KEEPIDLE
+#endif // ZLINK_HAVE_TCP_KEEPALIVE
+#endif // ZLINK_HAVE_TCP_KEEPIDLE
 
-#ifdef ZMQ_HAVE_TCP_KEEPINTVL
+#ifdef ZLINK_HAVE_TCP_KEEPINTVL
         if (keepalive_intvl_ != -1) {
             int rc = setsockopt (s_, IPPROTO_TCP, TCP_KEEPINTVL,
                                  &keepalive_intvl_, sizeof (int));
@@ -149,22 +149,22 @@ int zmq::tune_tcp_keepalives (fd_t s_,
             if (rc != 0)
                 return rc;
         }
-#endif // ZMQ_HAVE_TCP_KEEPINTVL
+#endif // ZLINK_HAVE_TCP_KEEPINTVL
     }
-#endif // ZMQ_HAVE_SO_KEEPALIVE
-#endif // ZMQ_HAVE_WINDOWS
+#endif // ZLINK_HAVE_SO_KEEPALIVE
+#endif // ZLINK_HAVE_WINDOWS
 
     return 0;
 }
 
-int zmq::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
+int zlink::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
 {
     if (timeout_ <= 0)
         return 0;
 
-    LIBZMQ_UNUSED (sockfd_);
+    LIBZLINK_UNUSED (sockfd_);
 
-#if defined(ZMQ_HAVE_WINDOWS) && defined(TCP_MAXRT)
+#if defined(ZLINK_HAVE_WINDOWS) && defined(TCP_MAXRT)
     // msdn says it's supported in >= Vista, >= Windows Server 2003
     timeout_ /= 1000; // in seconds
     const int rc =
@@ -172,7 +172,7 @@ int zmq::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
                   reinterpret_cast<char *> (&timeout_), sizeof (timeout_));
     assert_success_or_recoverable (sockfd_, rc);
     return rc;
-// FIXME: should be ZMQ_HAVE_TCP_USER_TIMEOUT
+// FIXME: should be ZLINK_HAVE_TCP_USER_TIMEOUT
 #elif defined(TCP_USER_TIMEOUT)
     int rc = setsockopt (sockfd_, IPPROTO_TCP, TCP_USER_TIMEOUT, &timeout_,
                          sizeof (timeout_));
@@ -183,9 +183,9 @@ int zmq::tune_tcp_maxrt (fd_t sockfd_, int timeout_)
 #endif
 }
 
-int zmq::tcp_write (fd_t s_, const void *data_, size_t size_)
+int zlink::tcp_write (fd_t s_, const void *data_, size_t size_)
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 
     const int nbytes = send (s_, (char *) data_, static_cast<int> (size_), 0);
 
@@ -204,7 +204,7 @@ int zmq::tcp_write (fd_t s_, const void *data_, size_t size_)
 
     //  Circumvent a Windows bug:
     //  See https://support.microsoft.com/en-us/kb/201213
-    //  See https://zeromq.jira.com/browse/LIBZMQ-195
+    //  See https://zlink.jira.com/browse/LIBZLINK-195
     if (nbytes == SOCKET_ERROR && last_error == WSAENOBUFS)
         return 0;
 
@@ -242,9 +242,9 @@ int zmq::tcp_write (fd_t s_, const void *data_, size_t size_)
 #endif
 }
 
-int zmq::tcp_read (fd_t s_, void *data_, size_t size_)
+int zlink::tcp_read (fd_t s_, void *data_, size_t size_)
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 
     const int rc =
       recv (s_, static_cast<char *> (data_), static_cast<int> (size_), 0);
@@ -290,9 +290,9 @@ int zmq::tcp_read (fd_t s_, void *data_, size_t size_)
 #endif
 }
 
-void zmq::tcp_tune_loopback_fast_path (const fd_t socket_)
+void zlink::tcp_tune_loopback_fast_path (const fd_t socket_)
 {
-#if defined ZMQ_HAVE_WINDOWS && defined SIO_LOOPBACK_FAST_PATH
+#if defined ZLINK_HAVE_WINDOWS && defined SIO_LOOPBACK_FAST_PATH
     int sio_loopback_fastpath = 1;
     DWORD number_of_bytes_returned = 0;
 
@@ -310,13 +310,13 @@ void zmq::tcp_tune_loopback_fast_path (const fd_t socket_)
         }
     }
 #else
-    LIBZMQ_UNUSED (socket_);
+    LIBZLINK_UNUSED (socket_);
 #endif
 }
 
-void zmq::tune_tcp_busy_poll (fd_t socket_, int busy_poll_)
+void zlink::tune_tcp_busy_poll (fd_t socket_, int busy_poll_)
 {
-#if defined(ZMQ_HAVE_BUSY_POLL)
+#if defined(ZLINK_HAVE_BUSY_POLL)
     if (busy_poll_ > 0) {
         const int rc =
           setsockopt (socket_, SOL_SOCKET, SO_BUSY_POLL,
@@ -324,16 +324,16 @@ void zmq::tune_tcp_busy_poll (fd_t socket_, int busy_poll_)
         assert_success_or_recoverable (socket_, rc);
     }
 #else
-    LIBZMQ_UNUSED (socket_);
-    LIBZMQ_UNUSED (busy_poll_);
+    LIBZLINK_UNUSED (socket_);
+    LIBZLINK_UNUSED (busy_poll_);
 #endif
 }
 
-zmq::fd_t zmq::tcp_open_socket (const char *address_,
-                                const zmq::options_t &options_,
+zlink::fd_t zlink::tcp_open_socket (const char *address_,
+                                const zlink::options_t &options_,
                                 bool local_,
                                 bool fallback_to_ipv4_,
-                                zmq::tcp_address_t *out_tcp_addr_)
+                                zlink::tcp_address_t *out_tcp_addr_)
 {
     //  Convert the textual address into address structure.
     int rc = out_tcp_addr_->resolve (address_, local_, options_.ipv6);
@@ -388,7 +388,7 @@ zmq::fd_t zmq::tcp_open_socket (const char *address_,
     return s;
 
 setsockopt_error:
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     rc = closesocket (s);
     wsa_assert (rc != SOCKET_ERROR);
 #else

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "engine/asio/asio_zmp_engine.hpp"
 #include "protocol/zmp_protocol.hpp"
@@ -14,7 +14,7 @@
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
 
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
 #include <boost/asio/ssl.hpp>
 #endif
 
@@ -28,7 +28,7 @@ const size_t zmp_hello_min_body = 3;
 const size_t zmp_hello_max_body = 3 + 255;
 }
 
-zmq::asio_zmp_engine_t::asio_zmp_engine_t (
+zlink::asio_zmp_engine_t::asio_zmp_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_) :
@@ -49,7 +49,7 @@ zmq::asio_zmp_engine_t::asio_zmp_engine_t (
     init_zmp_engine ();
 }
 
-zmq::asio_zmp_engine_t::asio_zmp_engine_t (
+zlink::asio_zmp_engine_t::asio_zmp_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -71,8 +71,8 @@ zmq::asio_zmp_engine_t::asio_zmp_engine_t (
     init_zmp_engine ();
 }
 
-#if defined ZMQ_HAVE_ASIO_SSL
-zmq::asio_zmp_engine_t::asio_zmp_engine_t (
+#if defined ZLINK_HAVE_ASIO_SSL
+zlink::asio_zmp_engine_t::asio_zmp_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -97,11 +97,11 @@ zmq::asio_zmp_engine_t::asio_zmp_engine_t (
 }
 #endif
 
-zmq::asio_zmp_engine_t::~asio_zmp_engine_t ()
+zlink::asio_zmp_engine_t::~asio_zmp_engine_t ()
 {
 }
 
-void zmq::asio_zmp_engine_t::init_zmp_engine ()
+void zlink::asio_zmp_engine_t::init_zmp_engine ()
 {
     _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
       &asio_zmp_engine_t::pull_msg_from_session);
@@ -126,7 +126,7 @@ void zmq::asio_zmp_engine_t::init_zmp_engine ()
     _last_error_reason.clear ();
 }
 
-void zmq::asio_zmp_engine_t::set_last_error (uint8_t code_,
+void zlink::asio_zmp_engine_t::set_last_error (uint8_t code_,
                                              const char *reason_)
 {
     _last_error_code = code_;
@@ -136,7 +136,7 @@ void zmq::asio_zmp_engine_t::set_last_error (uint8_t code_,
         _last_error_reason.assign (zmp_error_reason (code_));
 }
 
-void zmq::asio_zmp_engine_t::send_error_frame (uint8_t code_,
+void zlink::asio_zmp_engine_t::send_error_frame (uint8_t code_,
                                                const char *reason_)
 {
     i_asio_transport *tr = transport ();
@@ -177,7 +177,7 @@ void zmq::asio_zmp_engine_t::send_error_frame (uint8_t code_,
     }
 }
 
-void zmq::asio_zmp_engine_t::error (error_reason_t reason_)
+void zlink::asio_zmp_engine_t::error (error_reason_t reason_)
 {
     if (reason_ == timeout_error) {
         if (is_handshaking ())
@@ -201,7 +201,7 @@ void zmq::asio_zmp_engine_t::error (error_reason_t reason_)
     asio_engine_t::error (reason_);
 }
 
-void zmq::asio_zmp_engine_t::plug_internal ()
+void zlink::asio_zmp_engine_t::plug_internal ()
 {
     set_handshake_timer ();
 
@@ -252,14 +252,14 @@ void zmq::asio_zmp_engine_t::plug_internal ()
     _hello_sent = true;
     _ready_sent = true;
 
-    if (_options.type == ZMQ_PUB || _options.type == ZMQ_XPUB)
+    if (_options.type == ZLINK_PUB || _options.type == ZLINK_XPUB)
         _subscription_required = true;
 
     start_async_read ();
     start_async_write ();
 }
 
-bool zmq::asio_zmp_engine_t::handshake ()
+bool zlink::asio_zmp_engine_t::handshake ()
 {
     if (!_hello_received) {
         if (!receive_hello ()) {
@@ -331,7 +331,7 @@ bool zmq::asio_zmp_engine_t::handshake ()
     return true;
 }
 
-bool zmq::asio_zmp_engine_t::receive_hello ()
+bool zlink::asio_zmp_engine_t::receive_hello ()
 {
     while (_insize > 0) {
         if (_hello_header_bytes < zmp_header_size) {
@@ -382,7 +382,7 @@ bool zmq::asio_zmp_engine_t::receive_hello ()
     return false;
 }
 
-bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
+bool zlink::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
                                           size_t size_)
 {
     if (size_ < zmp_header_size + zmp_hello_min_body) {
@@ -397,7 +397,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -407,7 +407,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -418,7 +418,7 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         socket ()->event_handshake_failed_protocol (
           session ()->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -462,30 +462,30 @@ bool zmq::asio_zmp_engine_t::parse_hello (const unsigned char *data_,
     return true;
 }
 
-bool zmq::asio_zmp_engine_t::is_socket_type_compatible (int peer_type_) const
+bool zlink::asio_zmp_engine_t::is_socket_type_compatible (int peer_type_) const
 {
     switch (_options.type) {
-        case ZMQ_DEALER:
-            return peer_type_ == ZMQ_DEALER || peer_type_ == ZMQ_ROUTER;
-        case ZMQ_ROUTER:
-            return peer_type_ == ZMQ_DEALER || peer_type_ == ZMQ_ROUTER;
-        case ZMQ_PUB:
-            return peer_type_ == ZMQ_SUB || peer_type_ == ZMQ_XSUB;
-        case ZMQ_SUB:
-            return peer_type_ == ZMQ_PUB || peer_type_ == ZMQ_XPUB;
-        case ZMQ_XPUB:
-            return peer_type_ == ZMQ_SUB || peer_type_ == ZMQ_XSUB;
-        case ZMQ_XSUB:
-            return peer_type_ == ZMQ_PUB || peer_type_ == ZMQ_XPUB;
-        case ZMQ_PAIR:
-            return peer_type_ == ZMQ_PAIR;
+        case ZLINK_DEALER:
+            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
+        case ZLINK_ROUTER:
+            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
+        case ZLINK_PUB:
+            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
+        case ZLINK_SUB:
+            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
+        case ZLINK_XPUB:
+            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
+        case ZLINK_XSUB:
+            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
+        case ZLINK_PAIR:
+            return peer_type_ == ZLINK_PAIR;
         default:
             break;
     }
     return false;
 }
 
-bool zmq::asio_zmp_engine_t::process_handshake_input ()
+bool zlink::asio_zmp_engine_t::process_handshake_input ()
 {
     if (_decoder == NULL)
         return true;
@@ -538,7 +538,7 @@ bool zmq::asio_zmp_engine_t::process_handshake_input ()
     return true;
 }
 
-int zmq::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
 {
     if (_ready_received) {
         set_last_error (zmp_error_internal, "duplicate ready");
@@ -576,7 +576,7 @@ int zmq::asio_zmp_engine_t::process_ready_message (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_zmp_engine_t::process_error_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::process_error_message (msg_t *msg_)
 {
     const size_t size = msg_->size ();
     if (size < 3) {
@@ -600,7 +600,7 @@ int zmq::asio_zmp_engine_t::process_error_message (msg_t *msg_)
     return -1;
 }
 
-int zmq::asio_zmp_engine_t::produce_pong_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::produce_pong_message (msg_t *msg_)
 {
     const size_t ctx_len = _heartbeat_ctx.size ();
     const size_t size = 2 + ctx_len;
@@ -620,7 +620,7 @@ int zmq::asio_zmp_engine_t::produce_pong_message (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
+int zlink::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
 {
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
@@ -666,7 +666,7 @@ int zmq::asio_zmp_engine_t::decode_and_push (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_zmp_engine_t::process_command_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::process_command_message (msg_t *msg_)
 {
     if (msg_->size () < 1)
         return -1;
@@ -684,7 +684,7 @@ int zmq::asio_zmp_engine_t::process_command_message (msg_t *msg_)
     return -1;
 }
 
-int zmq::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
 {
     const size_t ctx_len = 0;
     const size_t size = 4 + ctx_len;
@@ -706,7 +706,7 @@ int zmq::asio_zmp_engine_t::produce_ping_message (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
+int zlink::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
 {
     if (msg_->size () < 1) {
         set_last_error (zmp_error_internal, "heartbeat too short");
@@ -775,7 +775,7 @@ int zmq::asio_zmp_engine_t::process_heartbeat_message (msg_t *msg_)
     return -1;
 }
 
-bool zmq::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,
+bool zlink::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,
                                                   unsigned char *buffer_,
                                                   size_t buffer_size_,
                                                   size_t &header_size_)
@@ -812,7 +812,7 @@ bool zmq::asio_zmp_engine_t::build_gather_header (const msg_t &msg_,
     return true;
 }
 
-int zmq::asio_zmp_engine_t::push_one_then_decode (msg_t *msg_)
+int zlink::asio_zmp_engine_t::push_one_then_decode (msg_t *msg_)
 {
     const int rc = session ()->push_msg (msg_);
     if (rc == 0)
@@ -821,4 +821,4 @@ int zmq::asio_zmp_engine_t::push_one_then_decode (msg_t *msg_)
     return rc;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

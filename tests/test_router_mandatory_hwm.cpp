@@ -17,29 +17,29 @@ void test_router_mandatory_hwm ()
     if (TRACE_ENABLED)
         fprintf (stderr, "Staring router mandatory HWM test ...\n");
     char my_endpoint[MAX_SOCKET_STRING];
-    void *router = test_context_socket (ZMQ_ROUTER);
+    void *router = test_context_socket (ZLINK_ROUTER);
 
     // Configure router socket to mandatory routing and set HWM and linger
     int mandatory = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (router, ZMQ_ROUTER_MANDATORY,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY,
                                                &mandatory, sizeof (mandatory)));
     int sndhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (router, ZMQ_SNDHWM, &sndhwm, sizeof (sndhwm)));
+      zlink_setsockopt (router, ZLINK_SNDHWM, &sndhwm, sizeof (sndhwm)));
     int linger = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (router, ZMQ_LINGER, &linger, sizeof (linger)));
+      zlink_setsockopt (router, ZLINK_LINGER, &linger, sizeof (linger)));
 
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
     //  Create dealer called "X" and connect it to our router, configure HWM
-    void *dealer = test_context_socket (ZMQ_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (dealer, ZMQ_ROUTING_ID, "X", 1));
+    void *dealer = test_context_socket (ZLINK_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "X", 1));
     int rcvhwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer, ZMQ_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+      zlink_setsockopt (dealer, ZLINK_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer, my_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 
     //  Get message from dealer to know when connection is ready
     send_string_expect_success (dealer, "Hello", 0);
@@ -52,11 +52,11 @@ void test_router_mandatory_hwm ()
     for (i = 0; i < 100000; ++i) {
         if (TRACE_ENABLED)
             fprintf (stderr, "Sending message %d ...\n", i);
-        const int rc = zmq_send (router, "X", 1, ZMQ_DONTWAIT | ZMQ_SNDMORE);
-        if (rc == -1 && zmq_errno () == EAGAIN)
+        const int rc = zlink_send (router, "X", 1, ZLINK_DONTWAIT | ZLINK_SNDMORE);
+        if (rc == -1 && zlink_errno () == EAGAIN)
             break;
         TEST_ASSERT_EQUAL_INT (1, rc);
-        send_array_expect_success (router, buf, ZMQ_DONTWAIT);
+        send_array_expect_success (router, buf, ZLINK_DONTWAIT);
     }
     // This should fail after one message but kernel buffering could
     // skew results
@@ -66,11 +66,11 @@ void test_router_mandatory_hwm ()
     for (; i < 100000; ++i) {
         if (TRACE_ENABLED)
             fprintf (stderr, "Sending message %d (part 2) ...\n", i);
-        const int rc = zmq_send (router, "X", 1, ZMQ_DONTWAIT | ZMQ_SNDMORE);
-        if (rc == -1 && zmq_errno () == EAGAIN)
+        const int rc = zlink_send (router, "X", 1, ZLINK_DONTWAIT | ZLINK_SNDMORE);
+        if (rc == -1 && zlink_errno () == EAGAIN)
             break;
         TEST_ASSERT_EQUAL_INT (1, rc);
-        send_array_expect_success (router, buf, ZMQ_DONTWAIT);
+        send_array_expect_success (router, buf, ZLINK_DONTWAIT);
     }
     // This should fail after two messages but kernel buffering could
     // skew results

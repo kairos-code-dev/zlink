@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_ZMP_ENGINE_HPP_INCLUDED__
-#define __ZMQ_ASIO_ZMP_ENGINE_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_ZMP_ENGINE_HPP_INCLUDED__
+#define __ZLINK_ASIO_ZMP_ENGINE_HPP_INCLUDED__
 
 #include "engine/asio/asio_engine.hpp"
 #include <string>
 #include <vector>
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
 #include <boost/asio/ssl.hpp>
 #endif
 
-namespace zmq
+namespace zlink
 {
-class asio_zmp_engine_t ZMQ_FINAL : public asio_engine_t
+class asio_zmp_engine_t ZLINK_FINAL : public asio_engine_t
 {
   public:
     asio_zmp_engine_t (fd_t fd_,
@@ -22,27 +22,27 @@ class asio_zmp_engine_t ZMQ_FINAL : public asio_engine_t
                        const options_t &options_,
                        const endpoint_uri_pair_t &endpoint_uri_pair_,
                        std::unique_ptr<i_asio_transport> transport_);
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
     asio_zmp_engine_t (fd_t fd_,
                        const options_t &options_,
                        const endpoint_uri_pair_t &endpoint_uri_pair_,
                        std::unique_ptr<i_asio_transport> transport_,
                        std::unique_ptr<boost::asio::ssl::context> ssl_context_);
 #endif
-    ~asio_zmp_engine_t () ZMQ_OVERRIDE;
+    ~asio_zmp_engine_t () ZLINK_OVERRIDE;
 
   protected:
-    bool handshake () ZMQ_OVERRIDE;
-    void plug_internal () ZMQ_OVERRIDE;
-    void error (error_reason_t reason_) ZMQ_OVERRIDE;
-    int decode_and_push (msg_t *msg_) ZMQ_OVERRIDE;
-    int process_command_message (msg_t *msg_) ZMQ_OVERRIDE;
-    int produce_ping_message (msg_t *msg_) ZMQ_OVERRIDE;
-    int process_heartbeat_message (msg_t *msg_) ZMQ_OVERRIDE;
+    bool handshake () ZLINK_OVERRIDE;
+    void plug_internal () ZLINK_OVERRIDE;
+    void error (error_reason_t reason_) ZLINK_OVERRIDE;
+    int decode_and_push (msg_t *msg_) ZLINK_OVERRIDE;
+    int process_command_message (msg_t *msg_) ZLINK_OVERRIDE;
+    int produce_ping_message (msg_t *msg_) ZLINK_OVERRIDE;
+    int process_heartbeat_message (msg_t *msg_) ZLINK_OVERRIDE;
     bool build_gather_header (const msg_t &msg_,
                               unsigned char *buffer_,
                               size_t buffer_size_,
-                              size_t &header_size_) ZMQ_OVERRIDE;
+                              size_t &header_size_) ZLINK_OVERRIDE;
 
   private:
     void init_zmp_engine ();
@@ -77,11 +77,11 @@ class asio_zmp_engine_t ZMQ_FINAL : public asio_engine_t
     uint8_t _last_error_code;
     std::string _last_error_reason;
 
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;
 #endif
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_zmp_engine_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_zmp_engine_t)
 };
 }
 

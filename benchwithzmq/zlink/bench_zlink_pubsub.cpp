@@ -1,31 +1,31 @@
-#include "../common/bench_common.hpp"
-#include <zmq.h>
+#include "../common/bench_common_zlink.hpp"
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 
 void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *pub = zmq_socket(ctx, ZMQ_PUB);
-    void *sub = zmq_socket(ctx, ZMQ_SUB);
+    void *ctx = zlink_ctx_new();
+    void *pub = zlink_socket(ctx, ZLINK_PUB);
+    void *sub = zlink_socket(ctx, ZLINK_SUB);
 
     int hwm = 0;
-    set_sockopt_int(pub, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(sub, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    zmq_setsockopt(sub, ZMQ_SUBSCRIBE, "", 0);
+    set_sockopt_int(pub, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(sub, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
 
     std::string endpoint = bind_and_resolve_endpoint(pub, transport, lib_name + "_pubsub");
     if (endpoint.empty()) {
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(sub, endpoint)) {
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     }
 
@@ -61,9 +61,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
 
     print_result(lib_name, "PUBSUB", transport, msg_size, throughput, latency);
 
-    zmq_close(pub);
-    zmq_close(sub);
-    zmq_ctx_term(ctx);
+    zlink_close(pub);
+    zlink_close(sub);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

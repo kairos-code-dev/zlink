@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "transports/tcp/tcp_transport.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "engine/asio/asio_debug.hpp"
 #include "core/address.hpp"
@@ -11,12 +11,12 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <sys/uio.h>
 #include <unistd.h>
 #endif
 
-namespace zmq
+namespace zlink
 {
 namespace
 {
@@ -40,7 +40,7 @@ bool tcp_stats_enabled ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_TCP_STATS");
+        const char *env = std::getenv ("ZLINK_ASIO_TCP_STATS");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -83,7 +83,7 @@ void tcp_stats_maybe_register ()
 boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
 {
     sockaddr_storage ss;
-    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    const zlink_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
     if (sl != 0 && ss.ss_family == AF_INET6)
         return boost::asio::ip::tcp::v6 ();
     return boost::asio::ip::tcp::v4 ();
@@ -93,7 +93,7 @@ bool tcp_allow_sync_write ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_TCP_SYNC_WRITE");
+        const char *env = std::getenv ("ZLINK_ASIO_TCP_SYNC_WRITE");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -103,7 +103,7 @@ bool tcp_use_async_write_some ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_TCP_ASYNC_WRITE_SOME");
+        const char *env = std::getenv ("ZLINK_ASIO_TCP_ASYNC_WRITE_SOME");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -113,7 +113,7 @@ bool tcp_use_asio_writev ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_USE_ASIO");
+        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_USE_ASIO");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -123,7 +123,7 @@ bool tcp_writev_single_shot ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_SINGLE_SHOT");
+        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -336,7 +336,7 @@ void tcp_transport_t::async_writev (const unsigned char *header,
         return;
     }
 
-#if defined(ZMQ_HAVE_WINDOWS)
+#if defined(ZLINK_HAVE_WINDOWS)
     if (tcp_stats_enabled ()) {
         const auto stats_handler =
           [handler](const boost::system::error_code &ec, std::size_t bytes) {
@@ -565,6 +565,6 @@ bool tcp_transport_t::supports_speculative_write () const
     return tcp_allow_sync_write ();
 }
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

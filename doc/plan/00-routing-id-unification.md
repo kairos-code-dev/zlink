@@ -23,8 +23,8 @@
 - 자동 생성:
   - ROUTER: 5바이트 `[0x00][uint32_t]` 형식
   - STREAM: 4바이트 `uint32_t`
-- 사용자 설정: 가변 길이 문자열 (최대 255바이트, `ZMQ_ROUTING_ID`)
-- 연결 alias: 가변 길이 문자열 (`ZMQ_CONNECT_ROUTING_ID`)
+- 사용자 설정: 가변 길이 문자열 (최대 255바이트, `ZLINK_ROUTING_ID`)
+- 연결 alias: 가변 길이 문자열 (`ZLINK_CONNECT_ROUTING_ID`)
 - 메시지 내부: 4바이트 (`uint32_t`, msg_t 내부 필드)
 
 ### 1.2 목표
@@ -33,7 +33,7 @@
 - 자동 생성 값은 `uint32_t` 시퀀스 (0 제외)
 - 저장 포맷은 **모든 소켓에서 5B `[0x00][uint32]`**
   - STREAM의 자동 생성 포맷도 4B -> 5B로 변경
-- `ZMQ_ROUTING_ID`, `ZMQ_CONNECT_ROUTING_ID`는 가변 길이 문자열 유지
+- `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`는 가변 길이 문자열 유지
 - 핸드셰이크 포맷(길이+가변) 유지
 
 즉, **자동 생성 포맷만 5B로 통일**하고 문자열 alias는 그대로 둔다.
@@ -75,11 +75,11 @@ uint32_t routing_id;                // 4B (이미 uint32)
 
 ```cpp
 // 소켓 identity 설정 (가변 길이)
-zmq_setsockopt(socket, ZMQ_ROUTING_ID, "player-42", 9);
-zmq_getsockopt(socket, ZMQ_ROUTING_ID, buf, &size);
+zlink_setsockopt(socket, ZLINK_ROUTING_ID, "player-42", 9);
+zlink_getsockopt(socket, ZLINK_ROUTING_ID, buf, &size);
 
 // 연결 alias 설정 (가변 길이)
-zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, "alias", 5);
+zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, "alias", 5);
 ```
 
 ---
@@ -91,14 +91,14 @@ zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, "alias", 5);
 | 항목 | 변경 후 |
 |------|---------|
 | 자동 생성 routing_id 포맷 | **모든 소켓에서 5B `[0x00][uint32]`** |
-| 사용자 설정 (`ZMQ_ROUTING_ID`) | 가변 길이 문자열 유지 |
-| 연결 alias (`ZMQ_CONNECT_ROUTING_ID`) | 가변 길이 문자열 유지 |
+| 사용자 설정 (`ZLINK_ROUTING_ID`) | 가변 길이 문자열 유지 |
+| 연결 alias (`ZLINK_CONNECT_ROUTING_ID`) | 가변 길이 문자열 유지 |
 | 핸드셰이크 포맷 | 길이+가변 유지 |
 
 ### 3.2 routing_id 사용 규칙
 
-- `ZMQ_ROUTING_ID`는 **소켓 identity**로 사용한다.
-- `ZMQ_CONNECT_ROUTING_ID`는 **다음 connect에 적용되는 연결 alias**다.
+- `ZLINK_ROUTING_ID`는 **소켓 identity**로 사용한다.
+- `ZLINK_CONNECT_ROUTING_ID`는 **다음 connect에 적용되는 연결 alias**다.
 - 미설정 시 자동 생성:
   - 모든 소켓에서 uint32 값을 생성
   - 저장 포맷은 `[0x00][uint32]` 5바이트
@@ -107,7 +107,7 @@ zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, "alias", 5);
 ### 3.3 문자열 alias 유지 이유
 
 - ROUTER는 문자열 alias를 사용한 디버깅/로깅 패턴이 많다.
-- `ZMQ_CONNECT_ROUTING_ID`는 연결별 alias 지정에 필요하다.
+- `ZLINK_CONNECT_ROUTING_ID`는 연결별 alias 지정에 필요하다.
 - 따라서 **routing_id 길이 고정은 하지 않는다.**
 
 ### 3.4 문자열/바이너리 처리 원칙
@@ -127,18 +127,18 @@ zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, "alias", 5);
 typedef struct {
     uint8_t size;             /* 0~255 */
     uint8_t data[255];
-} zmq_routing_id_t;
+} zlink_routing_id_t;
 ```
 
 ### 4.2 사용 예시 (자동 + 문자열 routing_id)
 
 ```c
-void *sock = zmq_socket(ctx, ZMQ_ROUTER);
+void *sock = zlink_socket(ctx, ZLINK_ROUTER);
 
 /* 자동 생성 routing_id 조회 */
 uint8_t auto_buf[255];
 size_t auto_size = sizeof(auto_buf);
-zmq_getsockopt(sock, ZMQ_ROUTING_ID, auto_buf, &auto_size);
+zlink_getsockopt(sock, ZLINK_ROUTING_ID, auto_buf, &auto_size);
 printf("auto routing_id(size=%zu) = ", auto_size);
 for (size_t i = 0; i < auto_size; ++i)
     printf("%02x", auto_buf[i]);
@@ -146,28 +146,28 @@ printf("\n");
 
 /* 문자열 routing_id 지정 */
 const char *rid = "router-A";
-zmq_setsockopt(sock, ZMQ_ROUTING_ID, rid, strlen(rid));
+zlink_setsockopt(sock, ZLINK_ROUTING_ID, rid, strlen(rid));
 
 /* connect alias 지정 */
 const char *alias = "edge-1";
-zmq_setsockopt(sock, ZMQ_CONNECT_ROUTING_ID, alias, strlen(alias));
+zlink_setsockopt(sock, ZLINK_CONNECT_ROUTING_ID, alias, strlen(alias));
 
 /* 읽어서 출력 (문자열일 때만 안전) */
 uint8_t buf[255];
 size_t size = sizeof(buf);
-zmq_getsockopt(sock, ZMQ_ROUTING_ID, buf, &size);
+zlink_getsockopt(sock, ZLINK_ROUTING_ID, buf, &size);
 printf("routing_id(size=%zu) = %.*s\n", size, (int)size, buf);
 ```
 
 ### 4.3 소켓 옵션 (현행 유지)
 
 ```c
-/* ZMQ_ROUTING_ID: 소켓 identity (가변 길이) */
-zmq_setsockopt(socket, ZMQ_ROUTING_ID, buf, size);
-zmq_getsockopt(socket, ZMQ_ROUTING_ID, buf, &size);
+/* ZLINK_ROUTING_ID: 소켓 identity (가변 길이) */
+zlink_setsockopt(socket, ZLINK_ROUTING_ID, buf, size);
+zlink_getsockopt(socket, ZLINK_ROUTING_ID, buf, &size);
 
-/* ZMQ_CONNECT_ROUTING_ID: 다음 connect에 사용할 alias */
-zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, buf, size);
+/* ZLINK_CONNECT_ROUTING_ID: 다음 connect에 사용할 alias */
+zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, buf, size);
 ```
 
 ---
@@ -178,7 +178,7 @@ zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, buf, size);
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `include/zmq.h` | `zmq_routing_id_t` 선언 |
+| `include/zlink.h` | `zlink_routing_id_t` 선언 |
 | `src/core/options.hpp/cpp` | 모든 소켓 routing_id 자동 생성 로직 추가 |
 | `src/sockets/router.cpp` | 자동 생성 포맷 5B 유지 |
 | `src/sockets/stream.cpp` | 자동 생성 포맷 4B -> 5B 변경 |
@@ -189,7 +189,7 @@ zmq_setsockopt(socket, ZMQ_CONNECT_ROUTING_ID, buf, size);
 
 ```
 Phase 1: type 추가
-└─ zmq_routing_id_t 정의
+└─ zlink_routing_id_t 정의
 
 Phase 2: 자동 생성 통일
 ├─ 모든 소켓에서 uint32 시퀀스 생성
@@ -207,7 +207,7 @@ Phase 3: 테스트/문서 갱신
 ### 6.1 호환성 정책
 
 - **기존 버전과의 호환성은 고려하지 않는다.**
-- `ZMQ_ROUTING_ID`, `ZMQ_CONNECT_ROUTING_ID` 문자열 사용은 **설계 상 필요하여 유지**한다.
+- `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID` 문자열 사용은 **설계 상 필요하여 유지**한다.
 - **STREAM 자동 생성 routing_id 길이 변경(4B -> 5B)**
   - 길이/내용을 직접 기대하는 코드나 테스트는 업데이트 필요
 

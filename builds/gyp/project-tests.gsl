@@ -11,7 +11,7 @@
         '../../tests/testutil.hpp'
       ],
       'dependencies': [
-        'libzmq'
+        'libzlink'
       ],
     }$(last ()?? ""? ",")
 .endfor

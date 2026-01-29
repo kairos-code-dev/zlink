@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_MSG_HPP_INCLUDE__
-#define __ZMQ_MSG_HPP_INCLUDE__
+#ifndef __ZLINK_MSG_HPP_INCLUDE__
+#define __ZLINK_MSG_HPP_INCLUDE__
 
 #include <stddef.h>
 #include <stdio.h>
@@ -13,19 +13,19 @@
 #include "protocol/metadata.hpp"
 
 //  Group functionality (originally from draft API)
-#define ZMQ_GROUP_MAX_LENGTH 255
+#define ZLINK_GROUP_MAX_LENGTH 255
 
 //  bits 2-5
 #define CMD_TYPE_MASK 0x1c
 
 //  Signature for free function to deallocate the message content.
 //  Note that it has to be declared as "C" so that it is the same as
-//  zmq_free_fn defined in zmq.h.
+//  zlink_free_fn defined in zlink.h.
 extern "C" {
 typedef void (msg_free_fn) (void *data_, void *hint_);
 }
 
-namespace zmq
+namespace zlink
 {
 //  Note that this structure needs to be explicitly constructed
 //  (init functions) and destructed (close function).
@@ -49,7 +49,7 @@ class msg_t
         size_t size;
         msg_free_fn *ffn;
         void *hint;
-        zmq::atomic_counter_t refcnt;
+        zlink::atomic_counter_t refcnt;
     };
 
     //  Message flags.
@@ -165,7 +165,7 @@ class msg_t
     };
 
   private:
-    zmq::atomic_counter_t *refcnt ();
+    zlink::atomic_counter_t *refcnt ();
 
     //  Different message types.
     enum type_t
@@ -200,7 +200,7 @@ class msg_t
 
     struct long_group_t
     {
-        char group[ZMQ_GROUP_MAX_LENGTH + 1];
+        char group[ZLINK_GROUP_MAX_LENGTH + 1];
         atomic_counter_t refcnt;
     };
 
@@ -300,7 +300,7 @@ class msg_t
     } _u;
 };
 
-inline int close_and_return (zmq::msg_t *msg_, int echo_)
+inline int close_and_return (zlink::msg_t *msg_, int echo_)
 {
     // Since we abort on close failure we preserve errno for success case.
     const int err = errno;
@@ -310,7 +310,7 @@ inline int close_and_return (zmq::msg_t *msg_, int echo_)
     return echo_;
 }
 
-inline int close_and_return (zmq::msg_t msg_[], int count_, int echo_)
+inline int close_and_return (zlink::msg_t msg_[], int count_, int echo_)
 {
     for (int i = 0; i < count_; i++)
         close_and_return (&msg_[i], 0);

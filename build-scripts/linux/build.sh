@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Linux build script for libzmq
+# Linux build script for libzlink
 # Supports both x64 and arm64 architectures
 # Requires: gcc, g++, make, cmake, pkg-config
 #
@@ -13,9 +13,9 @@ export TMPDIR=/tmp
 
 # Read VERSION file
 if [ -f "$REPO_ROOT/VERSION" ]; then
-    LIBZMQ_VERSION=$(grep '^LIBZMQ_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
+    LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
 else
-    LIBZMQ_VERSION="4.3.5"
+    LIBZLINK_VERSION="4.3.5"
 fi
 
 # Parse arguments: ARCH RUN_TESTS
@@ -44,7 +44,7 @@ echo "==================================="
 echo "Linux Build Configuration"
 echo "==================================="
 echo "Architecture:      ${ARCH}"
-echo "libzmq version:    ${LIBZMQ_VERSION}"
+echo "libzlink version:    ${LIBZLINK_VERSION}"
 echo "RUN_TESTS:         ${RUN_TESTS}"
 echo "Build type:        ${BUILD_TYPE}"
 echo "Output directory:  ${OUTPUT_DIR}"
@@ -59,14 +59,14 @@ BUILD_DIR="build/linux-${ARCH}"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-echo "Step 1: Using repository source for libzmq..."
+echo "Step 1: Using repository source for libzlink..."
 
-# Step 2: Configure libzmq with CMake
+# Step 2: Configure libzlink with CMake
 echo ""
-echo "Step 2: Configuring libzmq with CMake for ${ARCH}..."
+echo "Step 2: Configuring libzlink with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
-LIBZMQ_SRC_ABS="$REPO_ROOT"
+LIBZLINK_SRC_ABS="$REPO_ROOT"
 
 # Set architecture-specific CMake flags for cross-compilation if needed
 CMAKE_ARCH_FLAGS=""
@@ -83,7 +83,7 @@ if [ "$RUN_TESTS" = "ON" ]; then
 fi
 
 # Configure build
-cmake "$LIBZMQ_SRC_ABS" \
+cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -91,13 +91,13 @@ cmake "$LIBZMQ_SRC_ABS" \
     -DBUILD_STATIC=OFF \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
     -DBUILD_BENCHMARKS=ON \
-    -DZMQ_CXX_STANDARD=17 \
+    -DZLINK_CXX_STANDARD=17 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
 
-# Step 3: Build libzmq
+# Step 3: Build libzlink
 echo ""
-echo "Step 3: Building libzmq for ${ARCH}..."
+echo "Step 3: Building libzlink for ${ARCH}..."
 make -j$(nproc)
 
 # Step 4: Install
@@ -106,17 +106,17 @@ echo "Step 4: Installing to output directory..."
 make install
 
 # Copy .so to output
-SO_FILE=$(find install/lib* -name "libzmq.so.5*" 2>/dev/null | head -n 1)
+SO_FILE=$(find install/lib* -name "libzlink.so.5*" 2>/dev/null | head -n 1)
 if [ -z "$SO_FILE" ]; then
-    SO_FILE=$(find lib -name "libzmq.so.5*" 2>/dev/null | head -n 1)
+    SO_FILE=$(find lib -name "libzlink.so.5*" 2>/dev/null | head -n 1)
 fi
 
 if [ -n "$SO_FILE" ]; then
-    TARGET_SO="$REPO_ROOT/$OUTPUT_DIR/libzmq.so"
+    TARGET_SO="$REPO_ROOT/$OUTPUT_DIR/libzlink.so"
     cp "$SO_FILE" "$TARGET_SO"
     echo "Copied: $SO_FILE -> $TARGET_SO"
 else
-    echo "Error: libzmq.so not found!"
+    echo "Error: libzlink.so not found!"
     exit 1
 fi
 
@@ -125,9 +125,9 @@ echo ""
 echo "Copying public headers..."
 INCLUDE_DIR="$REPO_ROOT/$OUTPUT_DIR/include"
 mkdir -p "$INCLUDE_DIR"
-cp install/include/zmq.h "$INCLUDE_DIR/"
-cp install/include/zmq_utils.h "$INCLUDE_DIR/"
-echo "Copied: zmq.h, zmq_utils.h -> $INCLUDE_DIR/"
+cp install/include/zlink.h "$INCLUDE_DIR/"
+cp install/include/zlink_utils.h "$INCLUDE_DIR/"
+echo "Copied: zlink.h, zlink_utils.h -> $INCLUDE_DIR/"
 
 cd "$REPO_ROOT"
 
@@ -160,7 +160,7 @@ fi
 # Step 6: Verify build
 echo ""
 echo "Step 6: Verifying build for ${ARCH}..."
-FINAL_SO="$OUTPUT_DIR/libzmq.so"
+FINAL_SO="$OUTPUT_DIR/libzlink.so"
 
 if [ -f "$FINAL_SO" ]; then
     echo "File size: $(stat -c%s "$FINAL_SO") bytes"

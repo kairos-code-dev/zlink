@@ -1,0 +1,4 @@
+{
+  global: zlink_*;
+  local: *;
+};

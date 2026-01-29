@@ -13,19 +13,19 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 typedef void (*extra_func_t) (void *socket_);
 
-#ifdef ZMQ_BUILD_DRAFT
+#ifdef ZLINK_BUILD_DRAFT
 void set_sockopt_fastpath (void *socket)
 {
     int value = 1;
     int rc =
-      zmq_setsockopt (socket, ZMQ_LOOPBACK_FASTPATH, &value, sizeof value);
+      zlink_setsockopt (socket, ZLINK_LOOPBACK_FASTPATH, &value, sizeof value);
     assert (rc == 0);
 }
 #endif
 
 void test_pair_tcp (extra_func_t extra_func_ = NULL)
 {
-    void *sb = test_context_socket (ZMQ_PAIR);
+    void *sb = test_context_socket (ZLINK_PAIR);
 
     if (extra_func_)
         extra_func_ (sb);
@@ -33,11 +33,11 @@ void test_pair_tcp (extra_func_t extra_func_ = NULL)
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (sb, my_endpoint, sizeof my_endpoint);
 
-    void *sc = test_context_socket (ZMQ_PAIR);
+    void *sc = test_context_socket (ZLINK_PAIR);
     if (extra_func_)
         extra_func_ (sc);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, my_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));
 
     bounce (sb, sc);
 
@@ -56,7 +56,7 @@ void test_pair_tcp_connect_by_name ()
     // retrieve the bound endpoint, which is numerical, and use that to
     // connect. this test cases specifically uses "localhost" to connect
     // to ensure that names are correctly resolved
-    void *sb = test_context_socket (ZMQ_PAIR);
+    void *sb = test_context_socket (ZLINK_PAIR);
 
     char bound_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (sb, bound_endpoint, sizeof bound_endpoint);
@@ -69,9 +69,9 @@ void test_pair_tcp_connect_by_name ()
     strcpy (connect_endpoint, connect_endpoint_prefix);
     strcat (connect_endpoint, pos);
 
-    void *sc = test_context_socket (ZMQ_PAIR);
+    void *sc = test_context_socket (ZLINK_PAIR);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, connect_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, connect_endpoint));
 
     bounce (sb, sc);
 
@@ -80,7 +80,7 @@ void test_pair_tcp_connect_by_name ()
 }
 
 
-#ifdef ZMQ_BUILD_DRAFT
+#ifdef ZLINK_BUILD_DRAFT
 void test_pair_tcp_fastpath ()
 {
     test_pair_tcp (set_sockopt_fastpath);
@@ -90,10 +90,10 @@ void test_pair_tcp_fastpath ()
 #ifdef _WIN32
 void test_io_completion_port ()
 {
-    void *const s = test_context_socket (ZMQ_PAIR);
+    void *const s = test_context_socket (ZLINK_PAIR);
     SOCKET fd;
     size_t fd_size = sizeof fd;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_getsockopt (s, ZMQ_FD, &fd, &fd_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (s, ZLINK_FD, &fd, &fd_size));
 
     ::WSAPROTOCOL_INFO pi;
     TEST_ASSERT_SUCCESS_RAW_ERRNO (
@@ -123,7 +123,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_pair_tcp_regular);
     RUN_TEST (test_pair_tcp_connect_by_name);
-#ifdef ZMQ_BUILD_DRAFT
+#ifdef ZLINK_BUILD_DRAFT
     RUN_TEST (test_pair_tcp_fastpath);
 #endif
 #ifdef _WIN32

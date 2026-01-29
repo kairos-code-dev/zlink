@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_YQUEUE_HPP_INCLUDED__
-#define __ZMQ_YQUEUE_HPP_INCLUDED__
+#ifndef __ZLINK_YQUEUE_HPP_INCLUDED__
+#define __ZLINK_YQUEUE_HPP_INCLUDED__
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -10,7 +10,7 @@
 #include "utils/atomic_ptr.hpp"
 #include "platform.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  yqueue is an efficient queue implementation. The main goal is
 //  to minimise number of allocations/deallocations needed. Thus yqueue
@@ -31,7 +31,7 @@ namespace zmq
 // architectures where cache lines are <= 64 bytes (e.g. most things
 // except POWER). It is detected at build time to try to account for other
 // platforms like POWER and s390x.
-template <typename T, int N, size_t ALIGN = ZMQ_CACHELINE_SIZE> class yqueue_t
+template <typename T, int N, size_t ALIGN = ZLINK_CACHELINE_SIZE> class yqueue_t
 #else
 template <typename T, int N> class yqueue_t
 #endif
@@ -181,7 +181,7 @@ template <typename T, int N> class yqueue_t
     //  us from having to call malloc/free.
     atomic_ptr_t<chunk_t> _spare_chunk;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (yqueue_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (yqueue_t)
 };
 }
 

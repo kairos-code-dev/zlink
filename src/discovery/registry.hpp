@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DISCOVERY_REGISTRY_HPP_INCLUDED__
-#define __ZMQ_DISCOVERY_REGISTRY_HPP_INCLUDED__
+#ifndef __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 class registry_t
 {
@@ -35,7 +35,7 @@ class registry_t
     struct provider_entry_t
     {
         std::string endpoint;
-        zmq_routing_id_t routing_id;
+        zlink_routing_id_t routing_id;
         uint32_t weight;
         uint64_t registered_at;
         uint64_t last_heartbeat;
@@ -55,16 +55,16 @@ class registry_t
     void loop ();
     void handle_router (void *router_);
     void handle_peer (void *sub_);
-    void handle_register (void *router_, const zmq_msg_t *frames_,
+    void handle_register (void *router_, const zlink_msg_t *frames_,
                           size_t frame_count_,
-                          const zmq_routing_id_t &sender_id_);
-    void handle_unregister (const zmq_msg_t *frames_, size_t frame_count_);
-    void handle_heartbeat (const zmq_msg_t *frames_, size_t frame_count_);
-    void handle_update_weight (void *router_, const zmq_msg_t *frames_,
+                          const zlink_routing_id_t &sender_id_);
+    void handle_unregister (const zlink_msg_t *frames_, size_t frame_count_);
+    void handle_heartbeat (const zlink_msg_t *frames_, size_t frame_count_);
+    void handle_update_weight (void *router_, const zlink_msg_t *frames_,
                                size_t frame_count_,
-                               const zmq_routing_id_t &sender_id_);
+                               const zlink_routing_id_t &sender_id_);
     void send_register_ack (void *router_,
-                            const zmq_routing_id_t &sender_id_,
+                            const zlink_routing_id_t &sender_id_,
                             uint8_t status_,
                             const std::string &endpoint_,
                             const std::string &error_);
@@ -97,7 +97,7 @@ class registry_t
     std::map<uint32_t, uint64_t> _peer_seq;
     std::map<uint32_t, uint64_t> _peer_last_seen;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (registry_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (registry_t)
 };
 }
 

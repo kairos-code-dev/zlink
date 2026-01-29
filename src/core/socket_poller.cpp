@@ -8,7 +8,7 @@
 
 #include <limits.h>
 
-static bool is_thread_safe (const zmq::socket_base_t &socket_)
+static bool is_thread_safe (const zlink::socket_base_t &socket_)
 {
     // do not use getsockopt here, since that would fail during context termination
     return socket_.is_thread_safe ();
@@ -26,13 +26,13 @@ static It find_if2 (It b_, It e_, const T &value, Pred pred)
     return b_;
 }
 
-zmq::socket_poller_t::socket_poller_t () :
+zlink::socket_poller_t::socket_poller_t () :
     _tag (0xCAFEBABE),
     _signaler (NULL)
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
     ,
     _pollfds (NULL)
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
     ,
     _max_fd (0)
 #endif
@@ -40,14 +40,14 @@ zmq::socket_poller_t::socket_poller_t () :
     rebuild ();
 }
 
-zmq::socket_poller_t::~socket_poller_t ()
+zlink::socket_poller_t::~socket_poller_t ()
 {
     //  Mark the socket_poller as dead
     _tag = 0xdeadbeef;
 
     for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
          ++it) {
-        // TODO shouldn't this zmq_assert (it->socket->check_tag ()) instead?
+        // TODO shouldn't this zlink_assert (it->socket->check_tag ()) instead?
         if (it->socket && it->socket->check_tag ()
             && is_thread_safe (*it->socket)) {
             it->socket->remove_signaler (_signaler);
@@ -55,10 +55,10 @@ zmq::socket_poller_t::~socket_poller_t ()
     }
 
     if (_signaler != NULL) {
-        LIBZMQ_DELETE (_signaler);
+        LIBZLINK_DELETE (_signaler);
     }
 
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
     if (_pollfds) {
         free (_pollfds);
         _pollfds = NULL;
@@ -66,12 +66,12 @@ zmq::socket_poller_t::~socket_poller_t ()
 #endif
 }
 
-bool zmq::socket_poller_t::check_tag () const
+bool zlink::socket_poller_t::check_tag () const
 {
     return _tag == 0xCAFEBABE;
 }
 
-int zmq::socket_poller_t::signaler_fd (fd_t *fd_) const
+int zlink::socket_poller_t::signaler_fd (fd_t *fd_) const
 {
     if (_signaler) {
         *fd_ = _signaler->get_fd ();
@@ -82,7 +82,7 @@ int zmq::socket_poller_t::signaler_fd (fd_t *fd_) const
     return -1;
 }
 
-int zmq::socket_poller_t::add (socket_base_t *socket_,
+int zlink::socket_poller_t::add (socket_base_t *socket_,
                                void *user_data_,
                                short events_)
 {
@@ -115,7 +115,7 @@ int zmq::socket_poller_t::add (socket_base_t *socket_,
         0,
         user_data_,
         events_
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
         ,
         -1
 #endif
@@ -132,7 +132,7 @@ int zmq::socket_poller_t::add (socket_base_t *socket_,
     return 0;
 }
 
-int zmq::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
+int zlink::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
 {
     if (find_if2 (_items.begin (), _items.end (), fd_, &is_fd)
         != _items.end ()) {
@@ -145,7 +145,7 @@ int zmq::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
         fd_,
         user_data_,
         events_
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
         ,
         -1
 #endif
@@ -162,7 +162,7 @@ int zmq::socket_poller_t::add_fd (fd_t fd_, void *user_data_, short events_)
     return 0;
 }
 
-int zmq::socket_poller_t::modify (const socket_base_t *socket_, short events_)
+int zlink::socket_poller_t::modify (const socket_base_t *socket_, short events_)
 {
     const items_t::iterator it =
       find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
@@ -179,7 +179,7 @@ int zmq::socket_poller_t::modify (const socket_base_t *socket_, short events_)
 }
 
 
-int zmq::socket_poller_t::modify_fd (fd_t fd_, short events_)
+int zlink::socket_poller_t::modify_fd (fd_t fd_, short events_)
 {
     const items_t::iterator it =
       find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
@@ -196,7 +196,7 @@ int zmq::socket_poller_t::modify_fd (fd_t fd_, short events_)
 }
 
 
-int zmq::socket_poller_t::remove (socket_base_t *socket_)
+int zlink::socket_poller_t::remove (socket_base_t *socket_)
 {
     const items_t::iterator it =
       find_if2 (_items.begin (), _items.end (), socket_, &is_socket);
@@ -216,7 +216,7 @@ int zmq::socket_poller_t::remove (socket_base_t *socket_)
     return 0;
 }
 
-int zmq::socket_poller_t::remove_fd (fd_t fd_)
+int zlink::socket_poller_t::remove_fd (fd_t fd_)
 {
     const items_t::iterator it =
       find_if2 (_items.begin (), _items.end (), fd_, &is_fd);
@@ -232,13 +232,13 @@ int zmq::socket_poller_t::remove_fd (fd_t fd_)
     return 0;
 }
 
-int zmq::socket_poller_t::rebuild ()
+int zlink::socket_poller_t::rebuild ()
 {
     _use_signaler = false;
     _pollset_size = 0;
     _need_rebuild = false;
 
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
 
     if (_pollfds) {
         free (_pollfds);
@@ -282,10 +282,10 @@ int zmq::socket_poller_t::rebuild ()
         if (it->events) {
             if (it->socket) {
                 if (!is_thread_safe (*it->socket)) {
-                    size_t fd_size = sizeof (zmq::fd_t);
+                    size_t fd_size = sizeof (zlink::fd_t);
                     const int rc = it->socket->getsockopt (
-                      ZMQ_FD, &_pollfds[item_nbr].fd, &fd_size);
-                    zmq_assert (rc == 0);
+                      ZLINK_FD, &_pollfds[item_nbr].fd, &fd_size);
+                    zlink_assert (rc == 0);
 
                     _pollfds[item_nbr].events = POLLIN;
                     item_nbr++;
@@ -293,20 +293,20 @@ int zmq::socket_poller_t::rebuild ()
             } else {
                 _pollfds[item_nbr].fd = it->fd;
                 _pollfds[item_nbr].events =
-                  (it->events & ZMQ_POLLIN ? POLLIN : 0)
-                  | (it->events & ZMQ_POLLOUT ? POLLOUT : 0)
-                  | (it->events & ZMQ_POLLPRI ? POLLPRI : 0);
+                  (it->events & ZLINK_POLLIN ? POLLIN : 0)
+                  | (it->events & ZLINK_POLLOUT ? POLLOUT : 0)
+                  | (it->events & ZLINK_POLLPRI ? POLLPRI : 0);
                 it->pollfd_index = item_nbr;
                 item_nbr++;
             }
         }
     }
 
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
 
     //  Ensure we do not attempt to select () on more than FD_SETSIZE
     //  file descriptors.
-    zmq_assert (_items.size () <= FD_SETSIZE);
+    zlink_assert (_items.size () <= FD_SETSIZE);
 
     _pollset_in.resize (_items.size ());
     _pollset_out.resize (_items.size ());
@@ -333,14 +333,14 @@ int zmq::socket_poller_t::rebuild ()
          ++it) {
         if (it->events) {
             //  If the poll item is a 0MQ socket we are interested in input on the
-            //  notification file descriptor retrieved by the ZMQ_FD socket option.
+            //  notification file descriptor retrieved by the ZLINK_FD socket option.
             if (it->socket) {
                 if (!is_thread_safe (*it->socket)) {
-                    zmq::fd_t notify_fd;
-                    size_t fd_size = sizeof (zmq::fd_t);
+                    zlink::fd_t notify_fd;
+                    size_t fd_size = sizeof (zlink::fd_t);
                     int rc =
-                      it->socket->getsockopt (ZMQ_FD, &notify_fd, &fd_size);
-                    zmq_assert (rc == 0);
+                      it->socket->getsockopt (ZLINK_FD, &notify_fd, &fd_size);
+                    zlink_assert (rc == 0);
 
                     FD_SET (notify_fd, _pollset_in.get ());
                     if (_max_fd < notify_fd)
@@ -352,11 +352,11 @@ int zmq::socket_poller_t::rebuild ()
             //  Else, the poll item is a raw file descriptor. Convert the poll item
             //  events to the appropriate fd_sets.
             else {
-                if (it->events & ZMQ_POLLIN)
+                if (it->events & ZLINK_POLLIN)
                     FD_SET (it->fd, _pollset_in.get ());
-                if (it->events & ZMQ_POLLOUT)
+                if (it->events & ZLINK_POLLOUT)
                     FD_SET (it->fd, _pollset_out.get ());
-                if (it->events & ZMQ_POLLERR)
+                if (it->events & ZLINK_POLLERR)
                     FD_SET (it->fd, _pollset_err.get ());
                 if (_max_fd < it->fd)
                     _max_fd = it->fd;
@@ -371,22 +371,22 @@ int zmq::socket_poller_t::rebuild ()
     return 0;
 }
 
-void zmq::socket_poller_t::zero_trail_events (
-  zmq::socket_poller_t::event_t *events_, int n_events_, int found_)
+void zlink::socket_poller_t::zero_trail_events (
+  zlink::socket_poller_t::event_t *events_, int n_events_, int found_)
 {
     for (int i = found_; i < n_events_; ++i) {
         events_[i].socket = NULL;
-        events_[i].fd = zmq::retired_fd;
+        events_[i].fd = zlink::retired_fd;
         events_[i].user_data = NULL;
         events_[i].events = 0;
     }
 }
 
-#if defined ZMQ_POLL_BASED_ON_POLL
-int zmq::socket_poller_t::check_events (zmq::socket_poller_t::event_t *events_,
+#if defined ZLINK_POLL_BASED_ON_POLL
+int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_,
                                         int n_events_)
-#elif defined ZMQ_POLL_BASED_ON_SELECT
-int zmq::socket_poller_t::check_events (zmq::socket_poller_t::event_t *events_,
+#elif defined ZLINK_POLL_BASED_ON_SELECT
+int zlink::socket_poller_t::check_events (zlink::socket_poller_t::event_t *events_,
                                         int n_events_,
                                         fd_set &inset_,
                                         fd_set &outset_,
@@ -397,50 +397,50 @@ int zmq::socket_poller_t::check_events (zmq::socket_poller_t::event_t *events_,
     for (items_t::iterator it = _items.begin (), end = _items.end ();
          it != end && found < n_events_; ++it) {
         //  The poll item is a 0MQ socket. Retrieve pending events
-        //  using the ZMQ_EVENTS socket option.
+        //  using the ZLINK_EVENTS socket option.
         if (it->socket) {
             size_t events_size = sizeof (uint32_t);
             uint32_t events;
-            if (it->socket->getsockopt (ZMQ_EVENTS, &events, &events_size)
+            if (it->socket->getsockopt (ZLINK_EVENTS, &events, &events_size)
                 == -1) {
                 return -1;
             }
 
             if (it->events & events) {
                 events_[found].socket = it->socket;
-                events_[found].fd = zmq::retired_fd;
+                events_[found].fd = zlink::retired_fd;
                 events_[found].user_data = it->user_data;
                 events_[found].events = it->events & events;
                 ++found;
             }
         }
         //  Else, the poll item is a raw file descriptor, simply convert
-        //  the events to zmq_pollitem_t-style format.
+        //  the events to zlink_pollitem_t-style format.
         else if (it->events) {
-#if defined ZMQ_POLL_BASED_ON_POLL
-            zmq_assert (it->pollfd_index >= 0);
+#if defined ZLINK_POLL_BASED_ON_POLL
+            zlink_assert (it->pollfd_index >= 0);
             const short revents = _pollfds[it->pollfd_index].revents;
             short events = 0;
 
             if (revents & POLLIN)
-                events |= ZMQ_POLLIN;
+                events |= ZLINK_POLLIN;
             if (revents & POLLOUT)
-                events |= ZMQ_POLLOUT;
+                events |= ZLINK_POLLOUT;
             if (revents & POLLPRI)
-                events |= ZMQ_POLLPRI;
+                events |= ZLINK_POLLPRI;
             if (revents & ~(POLLIN | POLLOUT | POLLPRI))
-                events |= ZMQ_POLLERR;
+                events |= ZLINK_POLLERR;
 
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
 
             short events = 0;
 
             if (FD_ISSET (it->fd, &inset_))
-                events |= ZMQ_POLLIN;
+                events |= ZLINK_POLLIN;
             if (FD_ISSET (it->fd, &outset_))
-                events |= ZMQ_POLLOUT;
+                events |= ZLINK_POLLOUT;
             if (FD_ISSET (it->fd, &errset_))
-                events |= ZMQ_POLLERR;
+                events |= ZLINK_POLLERR;
 #endif //POLL_SELECT
 
             if (events) {
@@ -457,7 +457,7 @@ int zmq::socket_poller_t::check_events (zmq::socket_poller_t::event_t *events_,
 }
 
 //Return 0 if timeout is expired otherwise 1
-int zmq::socket_poller_t::adjust_timeout (zmq::clock_t &clock_,
+int zlink::socket_poller_t::adjust_timeout (zlink::clock_t &clock_,
                                           long timeout_,
                                           uint64_t &now_,
                                           uint64_t &end_,
@@ -494,7 +494,7 @@ int zmq::socket_poller_t::adjust_timeout (zmq::clock_t &clock_,
     return 1;
 }
 
-int zmq::socket_poller_t::wait (zmq::socket_poller_t::event_t *events_,
+int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
                                 int n_events_,
                                 long timeout_)
 {
@@ -522,17 +522,17 @@ int zmq::socket_poller_t::wait (zmq::socket_poller_t::event_t *events_,
         errno = EAGAIN;
         if (timeout_ == 0)
             return -1;
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         Sleep (timeout_ > 0 ? timeout_ : INFINITE);
         return -1;
-#elif defined ZMQ_HAVE_ANDROID
+#elif defined ZLINK_HAVE_ANDROID
         usleep (timeout_ * 1000);
         return -1;
-#elif defined ZMQ_HAVE_OSX
+#elif defined ZLINK_HAVE_OSX
         usleep (timeout_ * 1000);
         errno = EAGAIN;
         return -1;
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
         struct timespec ns_;
         ns_.tv_sec = timeout_ / 1000;
         ns_.tv_nsec = timeout_ % 1000 * 1000000;
@@ -544,8 +544,8 @@ int zmq::socket_poller_t::wait (zmq::socket_poller_t::event_t *events_,
 #endif
     }
 
-#if defined ZMQ_POLL_BASED_ON_POLL
-    zmq::clock_t clock;
+#if defined ZLINK_POLL_BASED_ON_POLL
+    zlink::clock_t clock;
     uint64_t now = 0;
     uint64_t end = 0;
 
@@ -588,9 +588,9 @@ int zmq::socket_poller_t::wait (zmq::socket_poller_t::event_t *events_,
     errno = EAGAIN;
     return -1;
 
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
 
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     uint64_t now = 0;
     uint64_t end = 0;
 
@@ -625,7 +625,7 @@ int zmq::socket_poller_t::wait (zmq::socket_poller_t::event_t *events_,
                 valid_pollset_bytes (*_pollset_err.get ()));
         const int rc = select (static_cast<int> (_max_fd + 1), inset.get (),
                                outset.get (), errset.get (), ptimeout);
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         if (unlikely (rc == SOCKET_ERROR)) {
             errno = wsa_error_to_errno (WSAGetLastError ());
             wsa_assert (errno == ENOTSOCK);

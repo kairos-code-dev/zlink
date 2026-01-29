@@ -25,7 +25,7 @@
 
 ### 1.1 배경
 
-기존 ZMQ PUB/SUB는 엔드포인트를 직접 지정해야 하므로 위치 투명성이 없다.
+기존 ZLINK PUB/SUB는 엔드포인트를 직접 지정해야 하므로 위치 투명성이 없다.
 SPOT은 **토픽 이름만으로 발행/구독**할 수 있는 추상화 계층을 제공한다.
 
 ### 1.2 목표
@@ -133,7 +133,7 @@ Peer PUB -> Node SUB -> [로컬 구독자]
 
 - **SPOT Instance는 기본적으로 thread-safe 하지 않다.**
   - 단일 스레드에서 사용 권장
-  - 필요 시 `zmq_spot_new_threadsafe()` 사용
+  - 필요 시 `zlink_spot_new_threadsafe()` 사용
 - **SPOT Node는 내부 동기화를 포함하며 thread-safe**하게 제공한다.
 
 ### 2.7 SPOT Node 소켓 구성
@@ -162,7 +162,7 @@ Peer PUB -> Node SUB -> [로컬 구독자]
 
 ### 2.9 참고: ZLink PUB/SUB 필터링 동작
 
-ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준은 아래와 같다.
+ZLink는 **Zlink v3.x 기반** 동작을 따른다. 따라서 필터링 기준은 아래와 같다.
 
 - **TCP/IPC (connected transport)**: 필터링은 **PUB(또는 XPUB) 측**에서 수행된다.
 - **PGM/EPGM 멀티캐스트**: 필터링은 **SUB 측**에서 수행된다.
@@ -175,27 +175,27 @@ ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준�
 
 | 단계 | 호출 | 설명 |
 |------|------|------|
-| 1 | `zmq_spot_node_new()` | Node 생성 (node_id 생성) |
-| 2 | `zmq_spot_node_bind()` | PUB bind (클러스터 송신 endpoint) |
-| 3 | `zmq_spot_node_connect_registry()` | Registry ROUTER 연결 |
-| 4 | `zmq_spot_node_register()` | 서비스 등록 + Heartbeat 시작 |
-| 5 | `zmq_discovery_new()` | Discovery 생성 |
-| 6 | `zmq_discovery_connect_registry()` | Registry PUB 구독 |
-| 7 | `zmq_discovery_subscribe()` | service_name 구독 |
-| 8 | `zmq_spot_node_set_discovery()` | peer 자동 연결 시작 |
+| 1 | `zlink_spot_node_new()` | Node 생성 (node_id 생성) |
+| 2 | `zlink_spot_node_bind()` | PUB bind (클러스터 송신 endpoint) |
+| 3 | `zlink_spot_node_connect_registry()` | Registry ROUTER 연결 |
+| 4 | `zlink_spot_node_register()` | 서비스 등록 + Heartbeat 시작 |
+| 5 | `zlink_discovery_new()` | Discovery 생성 |
+| 6 | `zlink_discovery_connect_registry()` | Registry PUB 구독 |
+| 7 | `zlink_discovery_subscribe()` | service_name 구독 |
+| 8 | `zlink_spot_node_set_discovery()` | peer 자동 연결 시작 |
 
 > 수동 Mesh를 사용하는 경우 5~8단계를 생략하고
-> `zmq_spot_node_connect_peer_pub()`을 사용한다.
+> `zlink_spot_node_connect_peer_pub()`을 사용한다.
 
 #### SPOT Instance
 
 | 단계 | 호출 | 설명 |
 |------|------|------|
-| 1 | `zmq_spot_new()` | SPOT 생성 |
-| 2 | `zmq_spot_topic_create()` | (선택) 토픽 설정/모드 지정 |
-| 3 | `zmq_spot_subscribe()` | 토픽 구독 |
-| 4 | `zmq_spot_publish()` | 메시지 발행 |
-| 5 | `zmq_spot_recv()` | 메시지 수신 |
+| 1 | `zlink_spot_new()` | SPOT 생성 |
+| 2 | `zlink_spot_topic_create()` | (선택) 토픽 설정/모드 지정 |
+| 3 | `zlink_spot_subscribe()` | 토픽 구독 |
+| 4 | `zlink_spot_publish()` | 메시지 발행 |
+| 5 | `zlink_spot_recv()` | 메시지 수신 |
 
 ---
 
@@ -246,14 +246,14 @@ ZLink는 **ZeroMQ v3.x 기반** 동작을 따른다. 따라서 필터링 기준�
 **모드 설정 API**
 ```c
 /* 토픽 생성 시 모드 지정 (mode 필수) */
-ZMQ_EXPORT int zmq_spot_topic_create(
+ZLINK_EXPORT int zlink_spot_topic_create(
     void *spot,
     const char *topic_id,
-    int mode              /* ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER */
+    int mode              /* ZLINK_SPOT_TOPIC_QUEUE | ZLINK_SPOT_TOPIC_RINGBUFFER */
 );
 ```
 
-> 기본 동작은 `ZMQ_SPOT_TOPIC_QUEUE`를 전달하는 것이다.
+> 기본 동작은 `ZLINK_SPOT_TOPIC_QUEUE`를 전달하는 것이다.
 
 ### 3.4 구독 모델
 
@@ -342,15 +342,15 @@ Frame 0: topic (string)
 Frame 1..N: payload parts (multipart 가능)
 ```
 
-- `zmq_spot_publish()`는 **topic + payload parts**로 전송한다.
-- `zmq_spot_recv()`는 **payload parts**를 반환하고, topic은 별도로 반환한다.
+- `zlink_spot_publish()`는 **topic + payload parts**로 전송한다.
+- `zlink_spot_recv()`는 **payload parts**를 반환하고, topic은 별도로 반환한다.
 - Node는 프레임을 추가/수정하지 않는다.
 > multipart는 **msgv 전송/수신**으로 지원한다.
 
 ### 5.2 로컬 전달 포맷
 
 - 로컬 큐에는 **topic + payload(parts)**를 함께 저장한다.
-- `zmq_spot_recv()`는 topic과 payload(parts)를 함께 반환한다.
+- `zlink_spot_recv()`는 topic과 payload(parts)를 함께 반환한다.
 
 ---
 
@@ -360,54 +360,54 @@ Frame 1..N: payload parts (multipart 가능)
 
 ```c
 /* SPOT Node 생성/종료 */
-ZMQ_EXPORT void *zmq_spot_node_new(void *ctx);
-ZMQ_EXPORT int zmq_spot_node_destroy(void **node_p);
+ZLINK_EXPORT void *zlink_spot_node_new(void *ctx);
+ZLINK_EXPORT int zlink_spot_node_destroy(void **node_p);
 
 /* 클러스터 PUB 바인드 */
-ZMQ_EXPORT int zmq_spot_node_bind(
+ZLINK_EXPORT int zlink_spot_node_bind(
     void *node,
     const char *endpoint           // "tcp://*:9000"
 );
 
 /* Registry ROUTER 연결 (노드 등록/Heartbeat용) */
-ZMQ_EXPORT int zmq_spot_node_connect_registry(
+ZLINK_EXPORT int zlink_spot_node_connect_registry(
     void *node,
     const char *registry_router_endpoint
 );
 
 /* 수동 Mesh: peer PUB endpoint 직접 연결/해제 */
-ZMQ_EXPORT int zmq_spot_node_connect_peer_pub(
+ZLINK_EXPORT int zlink_spot_node_connect_peer_pub(
     void *node,
     const char *peer_pub_endpoint
 );
 
-ZMQ_EXPORT int zmq_spot_node_disconnect_peer_pub(
+ZLINK_EXPORT int zlink_spot_node_disconnect_peer_pub(
     void *node,
     const char *peer_pub_endpoint
 );
 
 /* SPOT 노드 등록 */
-ZMQ_EXPORT int zmq_spot_node_register(
+ZLINK_EXPORT int zlink_spot_node_register(
     void *node,
     const char *service_name,      // NULL이면 "spot-node"
     const char *advertise_endpoint // NULL이면 bind 주소에서 자동 감지
 );
 
 /* SPOT 노드 등록 해제 */
-ZMQ_EXPORT int zmq_spot_node_unregister(
+ZLINK_EXPORT int zlink_spot_node_unregister(
     void *node,
     const char *service_name       // NULL이면 "spot-node"
 );
 
 /* Discovery 연동 (peer 자동 연결/해제) */
-ZMQ_EXPORT int zmq_spot_node_set_discovery(
+ZLINK_EXPORT int zlink_spot_node_set_discovery(
     void *node,
     void *discovery,
     const char *service_name       // NULL이면 "spot-node"
 );
 ```
 
-- `zmq_spot_node_connect_registry()`는 **여러 번 호출 가능**하며,
+- `zlink_spot_node_connect_registry()`는 **여러 번 호출 가능**하며,
   Registry endpoint 목록을 구성한다.
 - Node는 목록 중 **하나에만 active 등록/Heartbeat**를 전송한다.
 - Discovery 미설정 시 Node는 **단일 노드(LOCAL) 모드**로 동작하거나
@@ -437,51 +437,51 @@ ZMQ_EXPORT int zmq_spot_node_set_discovery(
 
 ```c
 /* SPOT 인스턴스 생성/종료 */
-ZMQ_EXPORT void *zmq_spot_new(void *node);
-ZMQ_EXPORT void *zmq_spot_new_threadsafe(void *node);
-ZMQ_EXPORT int zmq_spot_destroy(void **spot_p);
+ZLINK_EXPORT void *zlink_spot_new(void *node);
+ZLINK_EXPORT void *zlink_spot_new_threadsafe(void *node);
+ZLINK_EXPORT int zlink_spot_destroy(void **spot_p);
 
 /* 토픽 생성/삭제 (로컬 설정) */
-ZMQ_EXPORT int zmq_spot_topic_create(
+ZLINK_EXPORT int zlink_spot_topic_create(
     void *spot,
     const char *topic_id,
-    int mode              // ZMQ_SPOT_TOPIC_QUEUE | ZMQ_SPOT_TOPIC_RINGBUFFER
+    int mode              // ZLINK_SPOT_TOPIC_QUEUE | ZLINK_SPOT_TOPIC_RINGBUFFER
 );
 
-ZMQ_EXPORT int zmq_spot_topic_destroy(
+ZLINK_EXPORT int zlink_spot_topic_destroy(
     void *spot,
     const char *topic_id
 );
 
 /* 메시지 발행 (multipart 가능) */
-ZMQ_EXPORT int zmq_spot_publish(
+ZLINK_EXPORT int zlink_spot_publish(
     void *spot,
     const char *topic_id,
-    zmq_msg_t *parts,
+    zlink_msg_t *parts,
     size_t part_count,
     int flags
 );
 
 /* 구독/해제 */
-ZMQ_EXPORT int zmq_spot_subscribe(
+ZLINK_EXPORT int zlink_spot_subscribe(
     void *spot,
     const char *topic_id
 );
 
-ZMQ_EXPORT int zmq_spot_subscribe_pattern(
+ZLINK_EXPORT int zlink_spot_subscribe_pattern(
     void *spot,
     const char *pattern
 );
 
-ZMQ_EXPORT int zmq_spot_unsubscribe(
+ZLINK_EXPORT int zlink_spot_unsubscribe(
     void *spot,
     const char *topic_id_or_pattern
 );
 
 /* 메시지 수신 (multipart 가능) */
-ZMQ_EXPORT int zmq_spot_recv(
+ZLINK_EXPORT int zlink_spot_recv(
     void *spot,
-    zmq_msg_t **parts,
+    zlink_msg_t **parts,
     size_t *part_count,
     int flags,
     char *topic_id_out,            // 토픽명 반환 (256B 버퍼, NULL 가능)
@@ -490,15 +490,15 @@ ZMQ_EXPORT int zmq_spot_recv(
 ```
 
 **에러 정책**
-- `zmq_spot_topic_create`: 로컬 설정이 이미 존재하면 `EEXIST` (mode가 유효하지 않으면 `EINVAL`)
-- `zmq_spot_publish`: 구독자 유무와 무관하게 성공 (topic 규칙 위반 시 `EINVAL`)
-- `zmq_spot_subscribe`: 즉시 활성화 (topic 규칙 위반 시 `EINVAL`)
-- `zmq_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
-- `zmq_spot_publish`: `parts == NULL` 또는 `part_count == 0`이면 `EINVAL`
-- `zmq_spot_recv`: 성공 시 `parts`는 호출자가 `zmq_msgv_close()`로 해제
+- `zlink_spot_topic_create`: 로컬 설정이 이미 존재하면 `EEXIST` (mode가 유효하지 않으면 `EINVAL`)
+- `zlink_spot_publish`: 구독자 유무와 무관하게 성공 (topic 규칙 위반 시 `EINVAL`)
+- `zlink_spot_subscribe`: 즉시 활성화 (topic 규칙 위반 시 `EINVAL`)
+- `zlink_spot_unsubscribe`: exact 또는 pattern 문자열 모두 허용
+- `zlink_spot_publish`: `parts == NULL` 또는 `part_count == 0`이면 `EINVAL`
+- `zlink_spot_recv`: 성공 시 `parts`는 호출자가 `zlink_msgv_close()`로 해제
 
 **정리 규칙**
-- `zmq_spot_destroy()`는 해당 SPOT이 보유한
+- `zlink_spot_destroy()`는 해당 SPOT이 보유한
   - 로컬 토픽 설정을 **자동 destroy** 하고
   - 구독/패턴 구독을 **자동 해제**한다.
 - 이후 refcount가 0이 되는 토픽은 UNSUBSCRIBE 대상이 된다.
@@ -521,13 +521,13 @@ SPOT Instance와 Node 간에는 내부 제어 채널이 존재한다.
 
 | API | 내부 명령 | 설명 |
 |-----|----------|------|
-| `zmq_spot_topic_create` | CREATE | 로컬 토픽 설정 요청 |
-| `zmq_spot_topic_destroy` | DESTROY | 로컬 토픽 설정 제거 |
-| `zmq_spot_subscribe` | SUBSCRIBE | 구독 등록 |
-| `zmq_spot_subscribe_pattern` | SUBSCRIBE_PATTERN | 패턴 구독 등록 |
-| `zmq_spot_unsubscribe` | UNSUBSCRIBE | 구독 해제 |
-| `zmq_spot_publish` | PUBLISH | 메시지 발행 요청 |
-| `zmq_spot_recv` | RECV | 수신 대기/가져오기 |
+| `zlink_spot_topic_create` | CREATE | 로컬 토픽 설정 요청 |
+| `zlink_spot_topic_destroy` | DESTROY | 로컬 토픽 설정 제거 |
+| `zlink_spot_subscribe` | SUBSCRIBE | 구독 등록 |
+| `zlink_spot_subscribe_pattern` | SUBSCRIBE_PATTERN | 패턴 구독 등록 |
+| `zlink_spot_unsubscribe` | UNSUBSCRIBE | 구독 해제 |
+| `zlink_spot_publish` | PUBLISH | 메시지 발행 요청 |
+| `zlink_spot_recv` | RECV | 수신 대기/가져오기 |
 
 > 내부 명령은 구현 상세이며 ABI에 노출하지 않는다.
 
@@ -538,27 +538,27 @@ SPOT Instance와 Node 간에는 내부 제어 채널이 존재한다.
 ### 7.1 단일 서버, 다중 SPOT
 
 ```c
-void *ctx = zmq_ctx_new();
-void *node = zmq_spot_node_new(ctx);
+void *ctx = zlink_ctx_new();
+void *node = zlink_spot_node_new(ctx);
 
-void *spot1 = zmq_spot_new(node);
-void *spot2 = zmq_spot_new(node);
+void *spot1 = zlink_spot_new(node);
+void *spot2 = zlink_spot_new(node);
 
-zmq_spot_subscribe(spot2, "chat:room1");
+zlink_spot_subscribe(spot2, "chat:room1");
 
-zmq_msg_t msg;
-zmq_msg_init_size(&msg, 5);
-memcpy(zmq_msg_data(&msg), "hello", 5);
-zmq_spot_publish(spot1, "chat:room1", &msg, 1, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 5);
+memcpy(zlink_msg_data(&msg), "hello", 5);
+zlink_spot_publish(spot1, "chat:room1", &msg, 1, 0);
 
 // 수신 (msgv)
-zmq_msg_t *parts = NULL;
+zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic[256];
 size_t topic_len = sizeof(topic);
-if (zmq_spot_recv(spot2, &parts, &part_count, 0, topic, &topic_len) == 0) {
+if (zlink_spot_recv(spot2, &parts, &part_count, 0, topic, &topic_len) == 0) {
     // parts[0..part_count-1] 처리
-    zmq_msgv_close(parts, part_count);
+    zlink_msgv_close(parts, part_count);
 }
 ```
 
@@ -566,87 +566,87 @@ if (zmq_spot_recv(spot2, &parts, &part_count, 0, topic, &topic_len) == 0) {
 
 ```c
 // Server A
-void *ctxA = zmq_ctx_new();
-void *nodeA = zmq_spot_node_new(ctxA);
-void *discoveryA = zmq_discovery_new(ctxA);
-zmq_discovery_connect_registry(discoveryA, "tcp://registry1:5550");
-zmq_discovery_subscribe(discoveryA, "spot-node");
+void *ctxA = zlink_ctx_new();
+void *nodeA = zlink_spot_node_new(ctxA);
+void *discoveryA = zlink_discovery_new(ctxA);
+zlink_discovery_connect_registry(discoveryA, "tcp://registry1:5550");
+zlink_discovery_subscribe(discoveryA, "spot-node");
 
-zmq_spot_node_bind(nodeA, "tcp://*:9000");
-zmq_spot_node_connect_registry(nodeA, "tcp://registry1:5551");
-zmq_spot_node_register(nodeA, "spot-node", NULL);
-zmq_spot_node_set_discovery(nodeA, discoveryA, "spot-node");
+zlink_spot_node_bind(nodeA, "tcp://*:9000");
+zlink_spot_node_connect_registry(nodeA, "tcp://registry1:5551");
+zlink_spot_node_register(nodeA, "spot-node", NULL);
+zlink_spot_node_set_discovery(nodeA, discoveryA, "spot-node");
 
 // Server B
-void *ctxB = zmq_ctx_new();
-void *nodeB = zmq_spot_node_new(ctxB);
-void *discoveryB = zmq_discovery_new(ctxB);
-zmq_discovery_connect_registry(discoveryB, "tcp://registry1:5550");
-zmq_discovery_subscribe(discoveryB, "spot-node");
+void *ctxB = zlink_ctx_new();
+void *nodeB = zlink_spot_node_new(ctxB);
+void *discoveryB = zlink_discovery_new(ctxB);
+zlink_discovery_connect_registry(discoveryB, "tcp://registry1:5550");
+zlink_discovery_subscribe(discoveryB, "spot-node");
 
-zmq_spot_node_bind(nodeB, "tcp://*:9001");
-zmq_spot_node_connect_registry(nodeB, "tcp://registry1:5551");
-zmq_spot_node_register(nodeB, "spot-node", NULL);
-zmq_spot_node_set_discovery(nodeB, discoveryB, "spot-node");
+zlink_spot_node_bind(nodeB, "tcp://*:9001");
+zlink_spot_node_connect_registry(nodeB, "tcp://registry1:5551");
+zlink_spot_node_register(nodeB, "spot-node", NULL);
+zlink_spot_node_set_discovery(nodeB, discoveryB, "spot-node");
 
 // SPOT 사용
-void *spotA = zmq_spot_new(nodeA);
-void *spotB = zmq_spot_new(nodeB);
+void *spotA = zlink_spot_new(nodeA);
+void *spotB = zlink_spot_new(nodeB);
 
-zmq_spot_subscribe(spotB, "zone:12:state");
-zmq_msg_t msg;
-zmq_msg_init_size(&msg, 4);
-memcpy(zmq_msg_data(&msg), "pong", 4);
-zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
+zlink_spot_subscribe(spotB, "zone:12:state");
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "pong", 4);
+zlink_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
 
 // 수신 (msgv)
-zmq_msg_t *parts = NULL;
+zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic[256];
 size_t topic_len = sizeof(topic);
-if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
-    zmq_msgv_close(parts, part_count);
+if (zlink_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
+    zlink_msgv_close(parts, part_count);
 }
 ```
 
 ### 7.3 RingBuffer 토픽 (옵션)
 
 ```c
-void *spot = zmq_spot_new(node);
-zmq_spot_topic_create(spot, "metrics:cluster:cpu", ZMQ_SPOT_TOPIC_RINGBUFFER);
-zmq_spot_subscribe(spot, "metrics:cluster:cpu");
+void *spot = zlink_spot_new(node);
+zlink_spot_topic_create(spot, "metrics:cluster:cpu", ZLINK_SPOT_TOPIC_RINGBUFFER);
+zlink_spot_subscribe(spot, "metrics:cluster:cpu");
 ```
 
 ### 7.4 수동 Mesh (Discovery 미사용)
 
 ```c
-void *ctx = zmq_ctx_new();
-void *nodeA = zmq_spot_node_new(ctx);
-void *nodeB = zmq_spot_node_new(ctx);
+void *ctx = zlink_ctx_new();
+void *nodeA = zlink_spot_node_new(ctx);
+void *nodeB = zlink_spot_node_new(ctx);
 
-zmq_spot_node_bind(nodeA, "tcp://*:9000");
-zmq_spot_node_bind(nodeB, "tcp://*:9001");
+zlink_spot_node_bind(nodeA, "tcp://*:9000");
+zlink_spot_node_bind(nodeB, "tcp://*:9001");
 
 // 서로의 PUB endpoint를 직접 연결
-zmq_spot_node_connect_peer_pub(nodeA, "tcp://host-b:9001");
-zmq_spot_node_connect_peer_pub(nodeB, "tcp://host-a:9000");
+zlink_spot_node_connect_peer_pub(nodeA, "tcp://host-b:9001");
+zlink_spot_node_connect_peer_pub(nodeB, "tcp://host-a:9000");
 
-void *spotA = zmq_spot_new(nodeA);
-void *spotB = zmq_spot_new(nodeB);
-zmq_spot_subscribe(spotB, "zone:12:state");
+void *spotA = zlink_spot_new(nodeA);
+void *spotB = zlink_spot_new(nodeB);
+zlink_spot_subscribe(spotB, "zone:12:state");
 
-zmq_msg_t msg;
-zmq_msg_init_size(&msg, 4);
-memcpy(zmq_msg_data(&msg), "ping", 4);
-zmq_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
+zlink_msg_t msg;
+zlink_msg_init_size(&msg, 4);
+memcpy(zlink_msg_data(&msg), "ping", 4);
+zlink_spot_publish(spotA, "zone:12:state", &msg, 1, 0);
 
 // 수신 (msgv)
-zmq_msg_t *parts = NULL;
+zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic[256];
 size_t topic_len = sizeof(topic);
-if (zmq_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
-    zmq_msgv_close(parts, part_count);
+if (zlink_spot_recv(spotB, &parts, &part_count, 0, topic, &topic_len) == 0) {
+    zlink_msgv_close(parts, part_count);
 }
 ```
 

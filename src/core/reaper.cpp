@@ -6,7 +6,7 @@
 #include "sockets/socket_base.hpp"
 #include "utils/err.hpp"
 
-zmq::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
+zlink::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
     object_t (ctx_, tid_),
     _poller (NULL),
     _sockets (0),
@@ -26,47 +26,47 @@ zmq::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
 #endif
 }
 
-zmq::reaper_t::~reaper_t ()
+zlink::reaper_t::~reaper_t ()
 {
-    LIBZMQ_DELETE (_poller);
+    LIBZLINK_DELETE (_poller);
 }
 
-zmq::mailbox_t *zmq::reaper_t::get_mailbox ()
+zlink::mailbox_t *zlink::reaper_t::get_mailbox ()
 {
     return &_mailbox;
 }
 
-void zmq::reaper_t::start ()
+void zlink::reaper_t::start ()
 {
-    zmq_assert (_mailbox.valid ());
+    zlink_assert (_mailbox.valid ());
 
     //  Start the thread.
     _poller->start ("Reaper");
 }
 
-void zmq::reaper_t::stop ()
+void zlink::reaper_t::stop ()
 {
     if (get_mailbox ()->valid ()) {
         send_stop ();
     }
 }
 
-void zmq::reaper_t::in_event ()
+void zlink::reaper_t::in_event ()
 {
     process_mailbox ();
 }
 
-void zmq::reaper_t::out_event ()
+void zlink::reaper_t::out_event ()
 {
-    zmq_assert (false);
+    zlink_assert (false);
 }
 
-void zmq::reaper_t::timer_event (int)
+void zlink::reaper_t::timer_event (int)
 {
-    zmq_assert (false);
+    zlink_assert (false);
 }
 
-void zmq::reaper_t::process_stop ()
+void zlink::reaper_t::process_stop ()
 {
     _terminating = true;
 
@@ -77,7 +77,7 @@ void zmq::reaper_t::process_stop ()
     }
 }
 
-void zmq::reaper_t::process_reap (socket_base_t *socket_)
+void zlink::reaper_t::process_reap (socket_base_t *socket_)
 {
     //  Add the socket to the poller.
     socket_->start_reaping (_poller);
@@ -85,7 +85,7 @@ void zmq::reaper_t::process_reap (socket_base_t *socket_)
     ++_sockets;
 }
 
-void zmq::reaper_t::process_reaped ()
+void zlink::reaper_t::process_reaped ()
 {
     --_sockets;
 
@@ -97,12 +97,12 @@ void zmq::reaper_t::process_reaped ()
     }
 }
 
-void zmq::reaper_t::process_mailbox ()
+void zlink::reaper_t::process_mailbox ()
 {
     do {
 #ifdef HAVE_FORK
         if (unlikely (_pid != getpid ())) {
-            //printf("zmq::reaper_t::process_mailbox return in child process %d\n", (int)getpid());
+            //printf("zlink::reaper_t::process_mailbox return in child process %d\n", (int)getpid());
             return;
         }
 #endif
@@ -123,7 +123,7 @@ void zmq::reaper_t::process_mailbox ()
     } while (_mailbox.reschedule_if_needed ());
 }
 
-void zmq::reaper_t::mailbox_handler (void *arg_)
+void zlink::reaper_t::mailbox_handler (void *arg_)
 {
     reaper_t *self = static_cast<reaper_t *> (arg_);
     self->process_mailbox ();

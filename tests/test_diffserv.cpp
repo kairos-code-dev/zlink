@@ -12,18 +12,18 @@ void test_diffserv ()
     size_t tos_size = sizeof (tos);
     char my_endpoint[MAX_SOCKET_STRING];
 
-    void *sb = test_context_socket (ZMQ_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sb, ZMQ_TOS, &tos, tos_size));
+    void *sb = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sb, ZLINK_TOS, &tos, tos_size));
     bind_loopback_ipv4 (sb, my_endpoint, sizeof (my_endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_getsockopt (sb, ZMQ_TOS, &o_tos, &tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (sb, ZLINK_TOS, &o_tos, &tos_size));
     TEST_ASSERT_EQUAL (tos, o_tos);
 
-    void *sc = test_context_socket (ZMQ_PAIR);
+    void *sc = test_context_socket (ZLINK_PAIR);
     tos = 0x58;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sc, ZMQ_TOS, &tos, tos_size));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, my_endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_getsockopt (sc, ZMQ_TOS, &o_tos, &tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sc, ZLINK_TOS, &tos, tos_size));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, my_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (sc, ZLINK_TOS, &o_tos, &tos_size));
     TEST_ASSERT_EQUAL (tos, o_tos);
 
     // Wireshark can be used to verify that the server socket is

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
-#define __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_WS_ENGINE_HPP_INCLUDED__
+#define __ZLINK_ASIO_WS_ENGINE_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include <boost/asio.hpp>
 #include <memory>
@@ -22,7 +22,7 @@
 #include "protocol/zmp_metadata.hpp"
 #include "engine/asio/i_asio_transport.hpp"
 
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
 namespace boost
 {
 namespace asio
@@ -35,7 +35,7 @@ class context;
 }
 #endif
 
-namespace zmq
+namespace zlink
 {
 
 class io_thread_t;
@@ -47,22 +47,22 @@ class session_base_t;
 //  It uses ws_transport_t for WebSocket framing and Beast I/O,
 //  while implementing the ZMP handshake and message protocol.
 
-class asio_ws_engine_t ZMQ_FINAL : public i_engine
+class asio_ws_engine_t ZLINK_FINAL : public i_engine
 {
   public:
     //  Create WebSocket engine for an already-connected socket
     //  fd_: The socket file descriptor (TCP connection already established)
-    //  options_: ZMQ socket options
+    //  options_: ZLINK socket options
     //  endpoint_uri_pair_: Local and remote endpoint URIs
     //  host_: WebSocket host for client handshake
-    //  path_: WebSocket path (e.g., "/zmq")
-    //  is_client_: true for client-side (zmq_connect), false for server-side (zmq_bind)
+    //  path_: WebSocket path (e.g., "/zlink")
+    //  is_client_: true for client-side (zlink_connect), false for server-side (zlink_bind)
     asio_ws_engine_t (fd_t fd_,
                       const options_t &options_,
                       const endpoint_uri_pair_t &endpoint_uri_pair_,
                       bool is_client_,
                       std::unique_ptr<i_asio_transport> transport_);
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
     asio_ws_engine_t (fd_t fd_,
                       const options_t &options_,
                       const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -71,16 +71,16 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
                       std::unique_ptr<boost::asio::ssl::context> ssl_context_);
 #endif
 
-    ~asio_ws_engine_t () ZMQ_OVERRIDE;
+    ~asio_ws_engine_t () ZLINK_OVERRIDE;
 
     //  i_engine interface implementation
-    bool has_handshake_stage () ZMQ_OVERRIDE { return true; }
-    void plug (zmq::io_thread_t *io_thread_,
-               zmq::session_base_t *session_) ZMQ_OVERRIDE;
-    void terminate () ZMQ_OVERRIDE;
-    bool restart_input () ZMQ_OVERRIDE;
-    void restart_output () ZMQ_OVERRIDE;
-    const endpoint_uri_pair_t &get_endpoint () const ZMQ_OVERRIDE;
+    bool has_handshake_stage () ZLINK_OVERRIDE { return true; }
+    void plug (zlink::io_thread_t *io_thread_,
+               zlink::session_base_t *session_) ZLINK_OVERRIDE;
+    void terminate () ZLINK_OVERRIDE;
+    bool restart_input () ZLINK_OVERRIDE;
+    void restart_output () ZLINK_OVERRIDE;
+    const endpoint_uri_pair_t &get_endpoint () const ZLINK_OVERRIDE;
 
   protected:
     typedef metadata_t::dict_t properties_t;
@@ -257,7 +257,7 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     //  PONG message (for heartbeat)
     msg_t _pong_msg;
 
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;
 #endif
 
@@ -279,11 +279,11 @@ class asio_ws_engine_t ZMQ_FINAL : public i_engine
     bool _has_timeout_timer;
     bool _has_heartbeat_timer;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_engine_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_engine_t)
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZMQ_ASIO_WS_ENGINE_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_WS_ENGINE_HPP_INCLUDED__

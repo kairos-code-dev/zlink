@@ -12,15 +12,15 @@ void test_getsockopt_memset ()
     int64_t more;
     size_t more_size = sizeof (more);
 
-    void *sb = test_context_socket (ZMQ_PUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (sb, "inproc://a"));
+    void *sb = test_context_socket (ZLINK_PUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, "inproc://a"));
 
-    void *sc = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, "inproc://a"));
+    void *sc = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, "inproc://a"));
 
     memset (&more, 0xFF, sizeof (int64_t));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (sc, ZMQ_RCVMORE, &more, &more_size));
+      zlink_getsockopt (sc, ZLINK_RCVMORE, &more, &more_size));
     TEST_ASSERT_EQUAL_INT (sizeof (int), more_size);
     TEST_ASSERT_EQUAL_INT (0, more);
 

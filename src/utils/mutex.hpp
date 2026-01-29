@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_MUTEX_HPP_INCLUDED__
-#define __ZMQ_MUTEX_HPP_INCLUDED__
+#ifndef __ZLINK_MUTEX_HPP_INCLUDED__
+#define __ZLINK_MUTEX_HPP_INCLUDED__
 
 #include "utils/err.hpp"
 #include "utils/macros.hpp"
 
 //  Mutex class encapsulates OS mutex in a platform-independent way.
 
-#if defined(ZMQ_HAVE_WINDOWS) && !defined(ZMQ_USE_CV_IMPL_PTHREADS)
+#if defined(ZLINK_HAVE_WINDOWS) && !defined(ZLINK_USE_CV_IMPL_PTHREADS)
 
 #include "utils/windows.hpp"
 
-namespace zmq
+namespace zlink
 {
 class mutex_t
 {
@@ -32,16 +32,16 @@ class mutex_t
   private:
     CRITICAL_SECTION _cs;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (mutex_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (mutex_t)
 };
 }
 
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 
 #include <vxWorks.h>
 #include <semLib.h>
 
-namespace zmq
+namespace zlink
 {
 class mutex_t
 {
@@ -69,7 +69,7 @@ class mutex_t
   private:
     SEM_ID _semId;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (mutex_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (mutex_t)
 };
 }
 
@@ -77,7 +77,7 @@ class mutex_t
 
 #include <pthread.h>
 
-namespace zmq
+namespace zlink
 {
 class mutex_t
 {
@@ -131,14 +131,14 @@ class mutex_t
     pthread_mutex_t _mutex;
     pthread_mutexattr_t _attr;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (mutex_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (mutex_t)
 };
 }
 
 #endif
 
 
-namespace zmq
+namespace zlink
 {
 struct scoped_lock_t
 {
@@ -149,7 +149,7 @@ struct scoped_lock_t
   private:
     mutex_t &_mutex;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (scoped_lock_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (scoped_lock_t)
 };
 
 
@@ -170,7 +170,7 @@ struct scoped_optional_lock_t
   private:
     mutex_t *_mutex;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (scoped_optional_lock_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (scoped_optional_lock_t)
 };
 }
 

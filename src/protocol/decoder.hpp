@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DECODER_HPP_INCLUDED__
-#define __ZMQ_DECODER_HPP_INCLUDED__
+#ifndef __ZLINK_DECODER_HPP_INCLUDED__
+#define __ZLINK_DECODER_HPP_INCLUDED__
 
 #include <algorithm>
 #include <cstddef>
@@ -12,7 +12,7 @@
 #include "protocol/i_decoder.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Helper base class for decoders that know the amount of data to read
 //  in advance at any moment. Knowing the amount in advance is a property
@@ -36,10 +36,10 @@ class decoder_base_t : public i_decoder
         _buf = _allocator.allocate ();
     }
 
-    ~decoder_base_t () ZMQ_OVERRIDE { _allocator.deallocate (); }
+    ~decoder_base_t () ZLINK_OVERRIDE { _allocator.deallocate (); }
 
     //  Returns a buffer to be filled with binary data.
-    void get_buffer (unsigned char **data_, std::size_t *size_) ZMQ_FINAL
+    void get_buffer (unsigned char **data_, std::size_t *size_) ZLINK_FINAL
     {
         _buf = _allocator.allocate ();
 
@@ -69,7 +69,7 @@ class decoder_base_t : public i_decoder
     //  Number of bytes processed is returned in bytes_used_.
     int decode (const unsigned char *data_,
                 std::size_t size_,
-                std::size_t &bytes_used_) ZMQ_FINAL
+                std::size_t &bytes_used_) ZLINK_FINAL
     {
         bytes_used_ = 0;
 
@@ -77,7 +77,7 @@ class decoder_base_t : public i_decoder
         //  is required. Also, run the state machine in case all the data
         //  were processed.
         if (data_ == _read_pos) {
-            zmq_assert (size_ <= _to_read);
+            zlink_assert (size_ <= _to_read);
             _read_pos += size_;
             _to_read -= size_;
             bytes_used_ = size_;
@@ -117,7 +117,7 @@ class decoder_base_t : public i_decoder
         return 0;
     }
 
-    void resize_buffer (std::size_t new_size_) ZMQ_FINAL
+    void resize_buffer (std::size_t new_size_) ZLINK_FINAL
     {
         _allocator.resize (new_size_);
     }
@@ -154,7 +154,7 @@ class decoder_base_t : public i_decoder
     A _allocator;
     unsigned char *_buf;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (decoder_base_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (decoder_base_t)
 };
 }
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DBUFFER_HPP_INCLUDED__
-#define __ZMQ_DBUFFER_HPP_INCLUDED__
+#ifndef __ZLINK_DBUFFER_HPP_INCLUDED__
+#define __ZLINK_DBUFFER_HPP_INCLUDED__
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -10,7 +10,7 @@
 #include "utils/mutex.hpp"
 #include "core/msg.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  dbuffer is a single-producer single-consumer double-buffer
 //  implementation.
@@ -45,10 +45,10 @@ template <> class dbuffer_t<msg_t>
 
     void write (const msg_t &value_)
     {
-        zmq_assert (value_.check ());
+        zlink_assert (value_.check ());
         *_back = value_;
 
-        zmq_assert (_back->check ());
+        zlink_assert (_back->check ());
 
         if (_sync.try_lock ()) {
             _front->move (*_back);
@@ -68,7 +68,7 @@ template <> class dbuffer_t<msg_t>
             if (!_has_msg)
                 return false;
 
-            zmq_assert (_front->check ());
+            zlink_assert (_front->check ());
 
             *value_ = *_front;
             _front->init (); // avoid double free
@@ -106,7 +106,7 @@ template <> class dbuffer_t<msg_t>
     mutable mutex_t _sync;
     bool _has_msg;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (dbuffer_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (dbuffer_t)
 };
 }
 

@@ -4,10 +4,10 @@
 #include "utils/err.hpp"
 #include "utils/macros.hpp"
 
-const char *zmq::errno_to_string (int errno_)
+const char *zlink::errno_to_string (int errno_)
 {
     switch (errno_) {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         case ENOTSUP:
             return "Not supported";
         case EPROTONOSUPPORT:
@@ -47,29 +47,29 @@ const char *zmq::errno_to_string (int errno_)
     }
 }
 
-void zmq::zmq_abort (const char *errmsg_)
+void zlink::zlink_abort (const char *errmsg_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 
     //  Raise STATUS_FATAL_APP_EXIT.
     ULONG_PTR extra_info[1];
     extra_info[0] = (ULONG_PTR) errmsg_;
     RaiseException (0x40000015, EXCEPTION_NONCONTINUABLE, 1, extra_info);
 #else
-    LIBZMQ_UNUSED (errmsg_);
+    LIBZLINK_UNUSED (errmsg_);
     print_backtrace ();
     abort ();
 #endif
 }
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 
-const char *zmq::wsa_error ()
+const char *zlink::wsa_error ()
 {
     return wsa_error_no (WSAGetLastError (), NULL);
 }
 
-const char *zmq::wsa_error_no (int no_, const char *wsae_wouldblock_string_)
+const char *zlink::wsa_error_no (int no_, const char *wsae_wouldblock_string_)
 {
     //  TODO:  It seems that list of Windows socket errors is longer than this.
     //         Investigate whether there's a way to convert it into the string
@@ -182,7 +182,7 @@ const char *zmq::wsa_error_no (int no_, const char *wsae_wouldblock_string_)
     }
 }
 
-void zmq::win_error (char *buffer_, size_t buffer_size_)
+void zlink::win_error (char *buffer_, size_t buffer_size_)
 {
     const DWORD errcode = GetLastError ();
 #if defined _WIN32_WCE
@@ -196,10 +196,10 @@ void zmq::win_error (char *buffer_, size_t buffer_size_)
       MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), buffer_,
       static_cast<DWORD> (buffer_size_), NULL);
 #endif
-    zmq_assert (rc);
+    zlink_assert (rc);
 }
 
-int zmq::wsa_error_to_errno (int errcode_)
+int zlink::wsa_error_to_errno (int errcode_)
 {
     switch (errcode_) {
             //  10004 - Interrupted system call.
@@ -369,9 +369,9 @@ int zmq::wsa_error_to_errno (int errcode_)
 #include <cxxabi.h>
 #include "utils/mutex.hpp"
 
-void zmq::print_backtrace (void)
+void zlink::print_backtrace (void)
 {
-    static zmq::mutex_t mtx;
+    static zlink::mutex_t mtx;
     mtx.lock ();
     Dl_info dl_info;
     unw_cursor_t cursor;
@@ -419,7 +419,7 @@ void zmq::print_backtrace (void)
 
 #else
 
-void zmq::print_backtrace ()
+void zlink::print_backtrace ()
 {
 }
 

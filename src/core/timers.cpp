@@ -6,22 +6,22 @@
 
 #include <algorithm>
 
-zmq::timers_t::timers_t () : _tag (0xCAFEDADA), _next_timer_id (0)
+zlink::timers_t::timers_t () : _tag (0xCAFEDADA), _next_timer_id (0)
 {
 }
 
-zmq::timers_t::~timers_t ()
+zlink::timers_t::~timers_t ()
 {
     //  Mark the timers as dead
     _tag = 0xdeadbeef;
 }
 
-bool zmq::timers_t::check_tag () const
+bool zlink::timers_t::check_tag () const
 {
     return _tag == 0xCAFEDADA;
 }
 
-int zmq::timers_t::add (size_t interval_, timers_timer_fn handler_, void *arg_)
+int zlink::timers_t::add (size_t interval_, timers_timer_fn handler_, void *arg_)
 {
     if (handler_ == NULL) {
         errno = EFAULT;
@@ -35,7 +35,7 @@ int zmq::timers_t::add (size_t interval_, timers_timer_fn handler_, void *arg_)
     return timer.timer_id;
 }
 
-struct zmq::timers_t::match_by_id
+struct zlink::timers_t::match_by_id
 {
     match_by_id (int timer_id_) : _timer_id (timer_id_) {}
 
@@ -48,7 +48,7 @@ struct zmq::timers_t::match_by_id
     int _timer_id;
 };
 
-int zmq::timers_t::cancel (int timer_id_)
+int zlink::timers_t::cancel (int timer_id_)
 {
     // check first if timer exists at all
     if (_timers.end ()
@@ -69,7 +69,7 @@ int zmq::timers_t::cancel (int timer_id_)
     return 0;
 }
 
-int zmq::timers_t::set_interval (int timer_id_, size_t interval_)
+int zlink::timers_t::set_interval (int timer_id_, size_t interval_)
 {
     const timersmap_t::iterator end = _timers.end ();
     const timersmap_t::iterator it =
@@ -88,7 +88,7 @@ int zmq::timers_t::set_interval (int timer_id_, size_t interval_)
     return -1;
 }
 
-int zmq::timers_t::reset (int timer_id_)
+int zlink::timers_t::reset (int timer_id_)
 {
     const timersmap_t::iterator end = _timers.end ();
     const timersmap_t::iterator it =
@@ -106,7 +106,7 @@ int zmq::timers_t::reset (int timer_id_)
     return -1;
 }
 
-long zmq::timers_t::timeout ()
+long zlink::timers_t::timeout ()
 {
     const uint64_t now = _clock.now_ms ();
     long res = -1;
@@ -128,7 +128,7 @@ long zmq::timers_t::timeout ()
     return res;
 }
 
-int zmq::timers_t::execute ()
+int zlink::timers_t::execute ()
 {
     const uint64_t now = _clock.now_ms ();
 

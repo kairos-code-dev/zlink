@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_I_DECODER_HPP_INCLUDED__
-#define __ZMQ_I_DECODER_HPP_INCLUDED__
+#ifndef __ZLINK_I_DECODER_HPP_INCLUDED__
+#define __ZLINK_I_DECODER_HPP_INCLUDED__
 
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 class msg_t;
 
@@ -15,7 +15,7 @@ class msg_t;
 class i_decoder
 {
   public:
-    virtual ~i_decoder () ZMQ_DEFAULT;
+    virtual ~i_decoder () ZLINK_DEFAULT;
 
     virtual void get_buffer (unsigned char **data_, size_t *size_) = 0;
 

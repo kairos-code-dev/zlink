@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SOCKET_BASE_HPP_INCLUDED__
-#define __ZMQ_SOCKET_BASE_HPP_INCLUDED__
+#ifndef __ZLINK_SOCKET_BASE_HPP_INCLUDED__
+#define __ZLINK_SOCKET_BASE_HPP_INCLUDED__
 
 #include <string>
 #include <map>
@@ -18,13 +18,13 @@
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
-#include "zmq.h"
+#include "zlink.h"
 
 extern "C" {
-void zmq_free_event (void *data_, void *hint_);
+void zlink_free_event (void *data_, void *hint_);
 }
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class msg_t;
@@ -46,13 +46,13 @@ class socket_base_t : public own_t,
     //  Returns whether the socket is thread-safe.
     bool is_thread_safe () const;
 
-    //  Thread-safe proxy created via zmq_socket_threadsafe (if any).
+    //  Thread-safe proxy created via zlink_socket_threadsafe (if any).
     thread_safe_socket_t *get_threadsafe_proxy () const;
     void set_threadsafe_proxy (thread_safe_socket_t *proxy_);
 
     //  Create a socket of a specified type.
     static socket_base_t *
-    create (int type_, zmq::ctx_t *parent_, uint32_t tid_, int sid_);
+    create (int type_, zlink::ctx_t *parent_, uint32_t tid_, int sid_);
 
     //  Returns the mailbox associated with this socket.
     i_mailbox *get_mailbox () const;
@@ -67,8 +67,8 @@ class socket_base_t : public own_t,
     int bind (const char *endpoint_uri_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
-    int send (zmq::msg_t *msg_, int flags_);
-    int recv (zmq::msg_t *msg_, int flags_);
+    int send (zlink::msg_t *msg_, int flags_);
+    int recv (zlink::msg_t *msg_, int flags_);
     void add_signaler (signaler_t *s_);
     void remove_signaler (signaler_t *s_);
     int close ();
@@ -88,15 +88,15 @@ class socket_base_t : public own_t,
 
     //  i_poll_events implementation. This interface is used when socket
     //  is handled by the poller in the reaper thread.
-    void in_event () ZMQ_FINAL;
-    void out_event () ZMQ_FINAL;
-    void timer_event (int id_) ZMQ_FINAL;
+    void in_event () ZLINK_FINAL;
+    void out_event () ZLINK_FINAL;
+    void timer_event (int id_) ZLINK_FINAL;
 
     //  i_pipe_events interface implementation.
-    void read_activated (pipe_t *pipe_) ZMQ_FINAL;
-    void write_activated (pipe_t *pipe_) ZMQ_FINAL;
-    void hiccuped (pipe_t *pipe_) ZMQ_FINAL;
-    void pipe_terminated (pipe_t *pipe_) ZMQ_FINAL;
+    void read_activated (pipe_t *pipe_) ZLINK_FINAL;
+    void write_activated (pipe_t *pipe_) ZLINK_FINAL;
+    void hiccuped (pipe_t *pipe_) ZLINK_FINAL;
+    void pipe_terminated (pipe_t *pipe_) ZLINK_FINAL;
     void lock ();
     void unlock ();
 
@@ -106,21 +106,21 @@ class socket_base_t : public own_t,
                  int type_);
 
     void event_connected (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                          zmq::fd_t fd_);
+                          zlink::fd_t fd_);
     void event_connect_delayed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                 int err_);
     void event_connect_retried (const endpoint_uri_pair_t &endpoint_uri_pair_,
                                 int interval_);
     void event_listening (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                          zmq::fd_t fd_);
+                          zlink::fd_t fd_);
     void event_bind_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                             int err_);
     void event_accepted (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                         zmq::fd_t fd_);
+                         zlink::fd_t fd_);
     void event_accept_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                               int err_);
     void event_closed (const endpoint_uri_pair_t &endpoint_uri_pair_,
-                       zmq::fd_t fd_);
+                       zlink::fd_t fd_);
     void event_close_failed (const endpoint_uri_pair_t &endpoint_uri_pair_,
                              int err_);
     void event_disconnected (const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -144,48 +144,48 @@ class socket_base_t : public own_t,
     virtual int get_peer_state (const void *routing_id_,
                                 size_t routing_id_size_) const;
 
-    int socket_stats (zmq_socket_stats_t *stats_);
-    int socket_stats_ex (zmq_socket_stats_ex_t *stats_);
-    int socket_peer_info (const zmq_routing_id_t *routing_id_,
-                          zmq_peer_info_t *info_);
-    int socket_peer_routing_id (int index_, zmq_routing_id_t *out_);
+    int socket_stats (zlink_socket_stats_t *stats_);
+    int socket_stats_ex (zlink_socket_stats_ex_t *stats_);
+    int socket_peer_info (const zlink_routing_id_t *routing_id_,
+                          zlink_peer_info_t *info_);
+    int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
     int socket_peer_count ();
-    int socket_peers (zmq_peer_info_t *peers_, size_t *count_);
+    int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
 
     bool is_disconnected () const;
     bool is_ctx_terminated () const;
 
   protected:
-    socket_base_t (zmq::ctx_t *parent_,
+    socket_base_t (zlink::ctx_t *parent_,
                    uint32_t tid_,
                    int sid_,
                    bool thread_safe_ = false);
-    ~socket_base_t () ZMQ_OVERRIDE;
+    ~socket_base_t () ZLINK_OVERRIDE;
 
     //  Concrete algorithms for the x- methods are to be defined by
     //  individual socket types.
-    virtual void xattach_pipe (zmq::pipe_t *pipe_,
+    virtual void xattach_pipe (zlink::pipe_t *pipe_,
                                bool subscribe_to_all_ = false,
                                bool locally_initiated_ = false) = 0;
 
     //  The default implementation assumes there are no specific socket
-    //  options for the particular socket type. If not so, ZMQ_FINAL this
+    //  options for the particular socket type. If not so, ZLINK_FINAL this
     //  method.
     virtual int
     xsetsockopt (int option_, const void *optval_, size_t optvallen_);
 
     //  The default implementation assumes there are no specific socket
-    //  options for the particular socket type. If not so, ZMQ_FINAL this
+    //  options for the particular socket type. If not so, ZLINK_FINAL this
     //  method.
     virtual int xgetsockopt (int option_, void *optval_, size_t *optvallen_);
 
     //  The default implementation assumes that send is not supported.
     virtual bool xhas_out ();
-    virtual int xsend (zmq::msg_t *msg_);
+    virtual int xsend (zlink::msg_t *msg_);
 
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();
-    virtual int xrecv (zmq::msg_t *msg_);
+    virtual int xrecv (zlink::msg_t *msg_);
 
     //  i_pipe_events will be forwarded to these functions.
     virtual void xread_activated (pipe_t *pipe_);
@@ -198,7 +198,7 @@ class socket_base_t : public own_t,
     virtual int xleave (const char *group_);
 
     //  Delay actual destruction of the socket.
-    void process_destroy () ZMQ_FINAL;
+    void process_destroy () ZLINK_FINAL;
 
     int connect_internal (const char *endpoint_uri_);
 
@@ -279,7 +279,7 @@ class socket_base_t : public own_t,
     int check_protocol (const std::string &protocol_) const;
 
     //  Register the pipe with this socket.
-    void attach_pipe (zmq::pipe_t *pipe_,
+    void attach_pipe (zlink::pipe_t *pipe_,
                       bool subscribe_to_all_ = false,
                       bool locally_initiated_ = false);
 
@@ -295,10 +295,10 @@ class socket_base_t : public own_t,
     static void reaper_mailbox_pre_post (void *arg_);
 
     //  Handlers for incoming commands.
-    void process_stop () ZMQ_FINAL;
-    void process_bind (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_FINAL;
-    void process_term_endpoint (std::string *endpoint_) ZMQ_FINAL;
+    void process_stop () ZLINK_FINAL;
+    void process_bind (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_FINAL;
+    void process_term_endpoint (std::string *endpoint_) ZLINK_FINAL;
 
     void update_pipe_options (int option_);
 
@@ -345,10 +345,10 @@ class socket_base_t : public own_t,
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;
 
-    //  Signaler for ZMQ_FD exposure (created on-demand)
-    signaler_t *_zmq_fd_signaler;
+    //  Signaler for ZLINK_FD exposure (created on-demand)
+    signaler_t *_zlink_fd_signaler;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 
     // Add a flag for mark disconnect action
     bool _disconnected;
@@ -372,13 +372,13 @@ class routing_socket_base_t : public socket_base_t
 {
   protected:
     routing_socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_);
-    ~routing_socket_base_t () ZMQ_OVERRIDE;
+    ~routing_socket_base_t () ZLINK_OVERRIDE;
 
     // methods from socket_base_t
     int xsetsockopt (int option_,
                      const void *optval_,
-                     size_t optvallen_) ZMQ_OVERRIDE;
-    void xwrite_activated (pipe_t *pipe_) ZMQ_FINAL;
+                     size_t optvallen_) ZLINK_OVERRIDE;
+    void xwrite_activated (pipe_t *pipe_) ZLINK_FINAL;
 
     // own methods
     std::string extract_connect_routing_id ();
@@ -413,7 +413,7 @@ class routing_socket_base_t : public socket_base_t
     typedef std::map<blob_t, out_pipe_t> out_pipes_t;
     out_pipes_t _out_pipes;
 
-    // Next assigned name on a zmq_connect() call used by ROUTER and STREAM socket types
+    // Next assigned name on a zlink_connect() call used by ROUTER and STREAM socket types
     std::string _connect_routing_id;
 };
 }

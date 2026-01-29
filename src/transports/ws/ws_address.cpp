@@ -3,13 +3,13 @@
 #include "utils/precompiled.hpp"
 #include "transports/ws/ws_address.hpp"
 
-#ifdef ZMQ_HAVE_WS
+#ifdef ZLINK_HAVE_WS
 
 #include "utils/macros.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -20,11 +20,11 @@
 #include <cstdlib>
 #include <string>
 
-zmq::ws_address_t::ws_address_t () : _path ("/"), _port (0)
+zlink::ws_address_t::ws_address_t () : _path ("/"), _port (0)
 {
 }
 
-zmq::ws_address_t::ws_address_t (const sockaddr *sa_, socklen_t sa_len_) :
+zlink::ws_address_t::ws_address_t (const sockaddr *sa_, socklen_t sa_len_) :
     _tcp_address (sa_, sa_len_),
     _path ("/"),
     _port (0)
@@ -41,17 +41,17 @@ zmq::ws_address_t::ws_address_t (const sockaddr *sa_, socklen_t sa_len_) :
     }
 }
 
-zmq::ws_address_t::~ws_address_t ()
+zlink::ws_address_t::~ws_address_t ()
 {
 }
 
-int zmq::ws_address_t::parse_url (const char *name_)
+int zlink::ws_address_t::parse_url (const char *name_)
 {
     //  Expected format: host:port/path or host:port (path defaults to "/")
     //  Examples:
-    //    127.0.0.1:8080/zmq
+    //    127.0.0.1:8080/zlink
     //    localhost:9000
-    //    [::1]:8080/zmq (IPv6)
+    //    [::1]:8080/zlink (IPv6)
     //    *:8080 (wildcard bind)
 
     const char *pos = name_;
@@ -109,7 +109,7 @@ int zmq::ws_address_t::parse_url (const char *name_)
     return 0;
 }
 
-int zmq::ws_address_t::resolve (const char *name_, bool local_, bool ipv6_)
+int zlink::ws_address_t::resolve (const char *name_, bool local_, bool ipv6_)
 {
     //  Parse the WebSocket URL to extract host, port, and path
     if (parse_url (name_) != 0)
@@ -128,26 +128,26 @@ int zmq::ws_address_t::resolve (const char *name_, bool local_, bool ipv6_)
     return _tcp_address.resolve (tcp_addr.c_str (), local_, ipv6_);
 }
 
-const sockaddr *zmq::ws_address_t::addr () const
+const sockaddr *zlink::ws_address_t::addr () const
 {
     return _tcp_address.addr ();
 }
 
-socklen_t zmq::ws_address_t::addrlen () const
+socklen_t zlink::ws_address_t::addrlen () const
 {
     return _tcp_address.addrlen ();
 }
 
-#if defined ZMQ_HAVE_WINDOWS
-unsigned short zmq::ws_address_t::family () const
+#if defined ZLINK_HAVE_WINDOWS
+unsigned short zlink::ws_address_t::family () const
 #else
-sa_family_t zmq::ws_address_t::family () const
+sa_family_t zlink::ws_address_t::family () const
 #endif
 {
     return _tcp_address.family ();
 }
 
-int zmq::ws_address_t::to_string (std::string &addr_) const
+int zlink::ws_address_t::to_string (std::string &addr_) const
 {
     if (_tcp_address.family () != AF_INET
         && _tcp_address.family () != AF_INET6) {
@@ -165,4 +165,4 @@ int zmq::ws_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-#endif  // ZMQ_HAVE_WS
+#endif  // ZLINK_HAVE_WS

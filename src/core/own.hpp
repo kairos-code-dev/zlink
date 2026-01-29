@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_OWN_HPP_INCLUDED__
-#define __ZMQ_OWN_HPP_INCLUDED__
+#ifndef __ZLINK_OWN_HPP_INCLUDED__
+#define __ZLINK_OWN_HPP_INCLUDED__
 
 #include <set>
 
@@ -10,7 +10,7 @@
 #include "utils/atomic_counter.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class io_thread_t;
@@ -26,10 +26,10 @@ class own_t : public object_t
 
     //  The object is not living within an I/O thread. It has it's own
     //  thread outside of 0MQ infrastructure.
-    own_t (zmq::ctx_t *parent_, uint32_t tid_);
+    own_t (zlink::ctx_t *parent_, uint32_t tid_);
 
     //  The object is living within I/O thread.
-    own_t (zmq::io_thread_t *io_thread_, const options_t &options_);
+    own_t (zlink::io_thread_t *io_thread_, const options_t &options_);
 
     //  When another owned object wants to send command to this object
     //  it calls this function to let it know it should not shut down
@@ -63,12 +63,12 @@ class own_t : public object_t
     //  others to invoke the destructor. At the same time, it has to be
     //  virtual so that generic own_t deallocation mechanism destroys
     //  specific type of the owned object correctly.
-    ~own_t () ZMQ_OVERRIDE;
+    ~own_t () ZLINK_OVERRIDE;
 
     //  Term handler is protected rather than private so that it can
     //  be intercepted by the derived class. This is useful to add custom
     //  steps to the beginning of the termination process.
-    void process_term (int linger_) ZMQ_OVERRIDE;
+    void process_term (int linger_) ZLINK_OVERRIDE;
 
     //  A place to hook in when physical destruction of the object
     //  is to be delayed.
@@ -82,10 +82,10 @@ class own_t : public object_t
     void set_owner (own_t *owner_);
 
     //  Handlers for incoming commands.
-    void process_own (own_t *object_) ZMQ_OVERRIDE;
-    void process_term_req (own_t *object_) ZMQ_OVERRIDE;
-    void process_term_ack () ZMQ_OVERRIDE;
-    void process_seqnum () ZMQ_OVERRIDE;
+    void process_own (own_t *object_) ZLINK_OVERRIDE;
+    void process_term_req (own_t *object_) ZLINK_OVERRIDE;
+    void process_term_ack () ZLINK_OVERRIDE;
+    void process_seqnum () ZLINK_OVERRIDE;
 
     //  Check whether all the pending term acks were delivered.
     //  If so, deallocate this object.
@@ -113,7 +113,7 @@ class own_t : public object_t
     //  Number of events we have to get before we can destroy the object.
     int _term_acks;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (own_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (own_t)
 };
 }
 

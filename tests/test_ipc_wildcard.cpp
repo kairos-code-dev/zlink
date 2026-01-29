@@ -7,12 +7,12 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_ipc_wildcard ()
 {
-    void *sb = test_context_socket (ZMQ_PAIR);
+    void *sb = test_context_socket (ZLINK_PAIR);
     char endpoint[200];
     bind_loopback_ipc (sb, endpoint, sizeof endpoint);
 
-    void *sc = test_context_socket (ZMQ_PAIR);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, endpoint));
+    void *sc = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, endpoint));
 
     bounce (sb, sc);
 

@@ -7,14 +7,14 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_x ()
 {
-    void *sock = test_context_socket (ZMQ_PUB);
+    void *sock = test_context_socket (ZLINK_PUB);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (sock, "tcp://127.0.0.1:0;localhost:1234"));
+      zlink_connect (sock, "tcp://127.0.0.1:0;localhost:1234"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (sock, "tcp://localhost:5555;localhost:1235"));
+      zlink_connect (sock, "tcp://localhost:5555;localhost:1235"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (sock, "tcp://lo:5555;localhost:1235"));
+      zlink_connect (sock, "tcp://lo:5555;localhost:1235"));
 
     test_context_socket_close (sock);
 }

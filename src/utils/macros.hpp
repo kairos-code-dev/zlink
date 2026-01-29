@@ -3,8 +3,8 @@
 /*  0MQ Internal Use                                                          */
 /******************************************************************************/
 
-#define LIBZMQ_UNUSED(object) (void) object
-#define LIBZMQ_DELETE(p_object)                                                \
+#define LIBZLINK_UNUSED(object) (void) object
+#define LIBZLINK_DELETE(p_object)                                                \
     {                                                                          \
         delete p_object;                                                       \
         p_object = 0;                                                          \
@@ -12,50 +12,50 @@
 
 /******************************************************************************/
 
-#if !defined ZMQ_NOEXCEPT
-#if defined ZMQ_HAVE_NOEXCEPT
-#define ZMQ_NOEXCEPT noexcept
+#if !defined ZLINK_NOEXCEPT
+#if defined ZLINK_HAVE_NOEXCEPT
+#define ZLINK_NOEXCEPT noexcept
 #else
-#define ZMQ_NOEXCEPT
+#define ZLINK_NOEXCEPT
 #endif
 #endif
 
-#if !defined ZMQ_OVERRIDE
-#if defined ZMQ_HAVE_NOEXCEPT
-#define ZMQ_OVERRIDE override
+#if !defined ZLINK_OVERRIDE
+#if defined ZLINK_HAVE_NOEXCEPT
+#define ZLINK_OVERRIDE override
 #else
-#define ZMQ_OVERRIDE
+#define ZLINK_OVERRIDE
 #endif
 #endif
 
-#if !defined ZMQ_FINAL
-#if defined ZMQ_HAVE_NOEXCEPT
-#define ZMQ_FINAL final
+#if !defined ZLINK_FINAL
+#if defined ZLINK_HAVE_NOEXCEPT
+#define ZLINK_FINAL final
 #else
-#define ZMQ_FINAL
+#define ZLINK_FINAL
 #endif
 #endif
 
-#if !defined ZMQ_DEFAULT
-#if defined ZMQ_HAVE_NOEXCEPT
-#define ZMQ_DEFAULT = default;
+#if !defined ZLINK_DEFAULT
+#if defined ZLINK_HAVE_NOEXCEPT
+#define ZLINK_DEFAULT = default;
 #else
-#define ZMQ_DEFAULT                                                            \
+#define ZLINK_DEFAULT                                                            \
     {                                                                          \
     }
 #endif
 #endif
 
-#if !defined ZMQ_NON_COPYABLE_NOR_MOVABLE
-#if defined ZMQ_HAVE_NOEXCEPT
-#define ZMQ_NON_COPYABLE_NOR_MOVABLE(classname)                                \
+#if !defined ZLINK_NON_COPYABLE_NOR_MOVABLE
+#if defined ZLINK_HAVE_NOEXCEPT
+#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                \
   public:                                                                      \
     classname (const classname &) = delete;                                    \
     classname &operator= (const classname &) = delete;                         \
     classname (classname &&) = delete;                                         \
     classname &operator= (classname &&) = delete;
 #else
-#define ZMQ_NON_COPYABLE_NOR_MOVABLE(classname)                                \
+#define ZLINK_NON_COPYABLE_NOR_MOVABLE(classname)                                \
   private:                                                                     \
     classname (const classname &);                                             \
     classname &operator= (const classname &);

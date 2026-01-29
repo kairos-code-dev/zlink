@@ -24,7 +24,7 @@ int test_assert_success_message_errno_helper (int rc_,
         snprintf (buffer, sizeof (buffer) - 1,
                   "%s failed%s%s%s, errno = %i (%s)", expr_,
                   msg_ ? " (additional info: " : "", msg_ ? msg_ : "",
-                  msg_ ? ")" : "", zmq_errno (), zmq_strerror (zmq_errno ()));
+                  msg_ ? ")" : "", zlink_errno (), zlink_strerror (zlink_errno ()));
         UNITY_TEST_FAIL (line_, buffer);
     }
     return rc_;
@@ -34,7 +34,7 @@ int test_assert_success_message_raw_errno_helper (
   int rc_, const char *msg_, const char *expr_, int line_, bool zero)
 {
     if (rc_ == -1 || (zero && rc_ != 0)) {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         int current_errno = WSAGetLastError ();
 #else
         int current_errno = errno;
@@ -75,7 +75,7 @@ int test_assert_failure_message_raw_errno_helper (
                   msg_ ? ")" : "", expected_errno_, rc_);
         UNITY_TEST_FAIL (line_, buffer);
     } else {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
         int current_errno = WSAGetLastError ();
 #else
         int current_errno = errno;
@@ -96,7 +96,7 @@ int test_assert_failure_message_raw_errno_helper (
 void send_string_expect_success (void *socket_, const char *str_, int flags_)
 {
     const size_t len = str_ ? strlen (str_) : 0;
-    const int rc = zmq_send (socket_, str_, len, flags_);
+    const int rc = zlink_send (socket_, str_, len, flags_);
     TEST_ASSERT_EQUAL_INT ((int) len, rc);
 }
 
@@ -110,7 +110,7 @@ void recv_string_expect_success (void *socket_, const char *str_, int flags_)
                                        "characters");
 
     const int rc = TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_recv (socket_, buffer, sizeof (buffer), flags_));
+      zlink_recv (socket_, buffer, sizeof (buffer), flags_));
     TEST_ASSERT_EQUAL_INT ((int) len, rc);
     if (str_)
         TEST_ASSERT_EQUAL_STRING_LEN (str_, buffer, len);
@@ -121,12 +121,12 @@ static void *internal_manage_test_context (bool init_, bool clear_)
     static void *test_context = NULL;
     if (clear_) {
         TEST_ASSERT_NOT_NULL (test_context);
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (test_context));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (test_context));
         test_context = NULL;
     } else {
         if (init_) {
             TEST_ASSERT_NULL (test_context);
-            test_context = zmq_ctx_new ();
+            test_context = zlink_ctx_new ();
             TEST_ASSERT_NOT_NULL (test_context);
         }
     }
@@ -201,7 +201,7 @@ void teardown_test_context ()
 
 void *test_context_socket (int type_)
 {
-    void *const socket = zmq_socket (get_test_context (), type_);
+    void *const socket = zlink_socket (get_test_context (), type_);
     TEST_ASSERT_NOT_NULL (socket);
     internal_manage_test_sockets (socket, true);
     return socket;
@@ -209,7 +209,7 @@ void *test_context_socket (int type_)
 
 void *test_context_socket_close (void *socket_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (socket_));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket_));
     internal_manage_test_sockets (socket_, false);
     return socket_;
 }
@@ -217,8 +217,8 @@ void *test_context_socket_close (void *socket_)
 void *test_context_socket_close_zero_linger (void *socket_)
 {
     const int linger = 0;
-    int rc = zmq_setsockopt (socket_, ZMQ_LINGER, &linger, sizeof (linger));
-    TEST_ASSERT_TRUE (rc == 0 || zmq_errno () == ETERM);
+    int rc = zlink_setsockopt (socket_, ZLINK_LINGER, &linger, sizeof (linger));
+    TEST_ASSERT_TRUE (rc == 0 || zlink_errno () == ETERM);
     return test_context_socket_close (socket_);
 }
 
@@ -227,9 +227,9 @@ void test_bind (void *socket_,
                 char *my_endpoint_,
                 size_t len_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (socket_, bind_address_));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, bind_address_));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (socket_, ZMQ_LAST_ENDPOINT, my_endpoint_, &len_));
+      zlink_getsockopt (socket_, ZLINK_LAST_ENDPOINT, my_endpoint_, &len_));
 }
 
 void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)
@@ -239,7 +239,7 @@ void bind_loopback (void *socket_, int ipv6_, char *my_endpoint_, size_t len_)
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (socket_, ZMQ_IPV6, &ipv6_, sizeof (int)));
+      zlink_setsockopt (socket_, ZLINK_IPV6, &ipv6_, sizeof (int)));
 
     test_bind (socket_, ipv6_ ? "tcp://[::1]:*" : "tcp://127.0.0.1:*",
                my_endpoint_, len_);
@@ -257,17 +257,17 @@ void bind_loopback_ipv6 (void *socket_, char *my_endpoint_, size_t len_)
 
 void bind_loopback_ipc (void *socket_, char *my_endpoint_, size_t len_)
 {
-    if (!zmq_has ("ipc")) {
+    if (!zlink_has ("ipc")) {
         TEST_IGNORE_MESSAGE ("ipc is not available");
     }
 
     test_bind (socket_, "ipc://*", my_endpoint_, len_);
 }
 
-#if defined(ZMQ_HAVE_IPC)
+#if defined(ZLINK_HAVE_IPC)
 void make_random_ipc_endpoint (char *out_endpoint_)
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     char random_file[MAX_PATH];
 
     {
@@ -287,9 +287,9 @@ void make_random_ipc_endpoint (char *out_endpoint_)
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
     const int n =
-      snprintf (random_file, sizeof (random_file), "%s/zmqXXXXXX", tmpdir);
+      snprintf (random_file, sizeof (random_file), "%s/zlinkXXXXXX", tmpdir);
     if (n <= 0 || static_cast<size_t> (n) >= sizeof (random_file))
-        strcpy (random_file, "/tmp/zmqXXXXXX");
+        strcpy (random_file, "/tmp/zlinkXXXXXX");
 
     int fd = mkstemp (random_file);
     TEST_ASSERT_TRUE (fd != -1);

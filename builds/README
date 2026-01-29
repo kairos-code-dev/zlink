@@ -8,7 +8,7 @@ and may or may not work. Please use cmake instead to build with Visual
 Studio. Rationale: The solution and project files are hard to maintain,
 since there are different variants for each Visual Studio version.
 The tests have never been included there for this reason, so they were
-never usable for actual development of libzmq. If you encounter that 
+never usable for actual development of libzlink. If you encounter that 
 something that worked before does not work with CMake, please open as 
-issue at https://github.com/zeromq/libzmq/issues.
+issue at https://github.com/zlink/libzlink/issues.
 

@@ -5,7 +5,7 @@
 #include "utils/err.hpp"
 #include "core/io_thread.hpp"
 
-zmq::own_t::own_t (class ctx_t *parent_, uint32_t tid_) :
+zlink::own_t::own_t (class ctx_t *parent_, uint32_t tid_) :
     object_t (parent_, tid_),
     _terminating (false),
     _sent_seqnum (0),
@@ -15,7 +15,7 @@ zmq::own_t::own_t (class ctx_t *parent_, uint32_t tid_) :
 {
 }
 
-zmq::own_t::own_t (io_thread_t *io_thread_, const options_t &options_) :
+zlink::own_t::own_t (io_thread_t *io_thread_, const options_t &options_) :
     object_t (io_thread_),
     options (options_),
     _terminating (false),
@@ -26,23 +26,23 @@ zmq::own_t::own_t (io_thread_t *io_thread_, const options_t &options_) :
 {
 }
 
-zmq::own_t::~own_t ()
+zlink::own_t::~own_t ()
 {
 }
 
-void zmq::own_t::set_owner (own_t *owner_)
+void zlink::own_t::set_owner (own_t *owner_)
 {
-    zmq_assert (!_owner);
+    zlink_assert (!_owner);
     _owner = owner_;
 }
 
-void zmq::own_t::inc_seqnum ()
+void zlink::own_t::inc_seqnum ()
 {
     //  This function may be called from a different thread!
     _sent_seqnum.add (1);
 }
 
-void zmq::own_t::process_seqnum ()
+void zlink::own_t::process_seqnum ()
 {
     //  Catch up with counter of processed commands.
     _processed_seqnum++;
@@ -51,7 +51,7 @@ void zmq::own_t::process_seqnum ()
     check_term_acks ();
 }
 
-void zmq::own_t::launch_child (own_t *object_)
+void zlink::own_t::launch_child (own_t *object_)
 {
     //  Specify the owner of the object.
     object_->set_owner (this);
@@ -63,12 +63,12 @@ void zmq::own_t::launch_child (own_t *object_)
     send_own (this, object_);
 }
 
-void zmq::own_t::term_child (own_t *object_)
+void zlink::own_t::term_child (own_t *object_)
 {
     process_term_req (object_);
 }
 
-void zmq::own_t::process_term_req (own_t *object_)
+void zlink::own_t::process_term_req (own_t *object_)
 {
     //  When shutting down we can ignore termination requests from owned
     //  objects. The termination request was already sent to the object.
@@ -88,7 +88,7 @@ void zmq::own_t::process_term_req (own_t *object_)
     send_term (object_, options.linger.load ());
 }
 
-void zmq::own_t::process_own (own_t *object_)
+void zlink::own_t::process_own (own_t *object_)
 {
     //  If the object is already being shut down, new owned objects are
     //  immediately asked to terminate. Note that linger is set to zero.
@@ -102,7 +102,7 @@ void zmq::own_t::process_own (own_t *object_)
     _owned.insert (object_);
 }
 
-void zmq::own_t::terminate ()
+void zlink::own_t::terminate ()
 {
     //  If termination is already underway, there's no point
     //  in starting it anew.
@@ -120,15 +120,15 @@ void zmq::own_t::terminate ()
     send_term_req (_owner, this);
 }
 
-bool zmq::own_t::is_terminating () const
+bool zlink::own_t::is_terminating () const
 {
     return _terminating;
 }
 
-void zmq::own_t::process_term (int linger_)
+void zlink::own_t::process_term (int linger_)
 {
     //  Double termination should never happen.
-    zmq_assert (!_terminating);
+    zlink_assert (!_terminating);
 
     //  Send termination request to all owned objects.
     for (owned_t::iterator it = _owned.begin (), end = _owned.end (); it != end;
@@ -143,31 +143,31 @@ void zmq::own_t::process_term (int linger_)
     check_term_acks ();
 }
 
-void zmq::own_t::register_term_acks (int count_)
+void zlink::own_t::register_term_acks (int count_)
 {
     _term_acks += count_;
 }
 
-void zmq::own_t::unregister_term_ack ()
+void zlink::own_t::unregister_term_ack ()
 {
-    zmq_assert (_term_acks > 0);
+    zlink_assert (_term_acks > 0);
     _term_acks--;
 
     //  This may be a last ack we are waiting for before termination...
     check_term_acks ();
 }
 
-void zmq::own_t::process_term_ack ()
+void zlink::own_t::process_term_ack ()
 {
     unregister_term_ack ();
 }
 
-void zmq::own_t::check_term_acks ()
+void zlink::own_t::check_term_acks ()
 {
     if (_terminating && _processed_seqnum == _sent_seqnum.get ()
         && _term_acks == 0) {
         //  Sanity check. There should be no active children at this point.
-        zmq_assert (_owned.empty ());
+        zlink_assert (_owned.empty ());
 
         //  The root object has nobody to confirm the termination to.
         //  Other nodes will confirm the termination to the owner.
@@ -179,7 +179,7 @@ void zmq::own_t::check_term_acks ()
     }
 }
 
-void zmq::own_t::process_destroy ()
+void zlink::own_t::process_destroy ()
 {
     delete this;
 }

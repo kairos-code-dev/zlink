@@ -7,11 +7,11 @@
 #include "utils/config.hpp"
 #include "core/address.hpp"
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 #include <pgm/pgm.h>
 #endif
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -25,7 +25,7 @@
 #include <vector>
 #else
 #include "transports/tcp/tcp.hpp"
-#ifdef ZMQ_HAVE_IPC
+#ifdef ZLINK_HAVE_IPC
 #include "transports/ipc/ipc_address.hpp"
 #endif
 
@@ -35,17 +35,17 @@
 #define unlink _unlink
 #endif
 
-#if defined ZMQ_HAVE_OPENVMS || defined ZMQ_HAVE_VXWORKS
+#if defined ZLINK_HAVE_OPENVMS || defined ZLINK_HAVE_VXWORKS
 #include <ioctl.h>
 #endif
 
-#if defined ZMQ_HAVE_VXWORKS
+#if defined ZLINK_HAVE_VXWORKS
 #include <unistd.h>
 #include <sockLib.h>
 #include <ioLib.h>
 #endif
 
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
 #include <sys/eventfd.h>
 #endif
 
@@ -53,7 +53,7 @@
 #include <TargetConditionals.h>
 #endif
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 // Acceptable temporary directory environment variables
 static const char *tmp_env_vars[] = {
   "TMPDIR", "TEMPDIR", "TMP",
@@ -61,17 +61,17 @@ static const char *tmp_env_vars[] = {
 };
 #endif
 
-zmq::fd_t zmq::open_socket (int domain_, int type_, int protocol_)
+zlink::fd_t zlink::open_socket (int domain_, int type_, int protocol_)
 {
     int rc;
 
     //  Setting this option result in sane behaviour when exec() functions
     //  are used. Old sockets are closed and don't block TCP ports etc.
-#if defined ZMQ_HAVE_SOCK_CLOEXEC
+#if defined ZLINK_HAVE_SOCK_CLOEXEC
     type_ |= SOCK_CLOEXEC;
 #endif
 
-#if defined ZMQ_HAVE_WINDOWS && defined WSA_FLAG_NO_HANDLE_INHERIT
+#if defined ZLINK_HAVE_WINDOWS && defined WSA_FLAG_NO_HANDLE_INHERIT
     // if supported, create socket with WSA_FLAG_NO_HANDLE_INHERIT, such that
     // the race condition in making it non-inheritable later is avoided
     const fd_t s = WSASocket (domain_, type_, protocol_, NULL, 0,
@@ -80,7 +80,7 @@ zmq::fd_t zmq::open_socket (int domain_, int type_, int protocol_)
     const fd_t s = socket (domain_, type_, protocol_);
 #endif
     if (s == retired_fd) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         errno = wsa_error_to_errno (WSAGetLastError ());
 #endif
         return retired_fd;
@@ -89,19 +89,19 @@ zmq::fd_t zmq::open_socket (int domain_, int type_, int protocol_)
     make_socket_noninheritable (s);
 
     //  Socket is not yet connected so EINVAL is not a valid networking error
-    rc = zmq::set_nosigpipe (s);
+    rc = zlink::set_nosigpipe (s);
     errno_assert (rc == 0);
 
     return s;
 }
 
-void zmq::unblock_socket (fd_t s_)
+void zlink::unblock_socket (fd_t s_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     u_long nonblock = 1;
     const int rc = ioctlsocket (s_, FIONBIO, &nonblock);
     wsa_assert (rc != SOCKET_ERROR);
-#elif defined ZMQ_HAVE_OPENVMS || defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_OPENVMS || defined ZLINK_HAVE_VXWORKS
     int nonblock = 1;
     int rc = ioctl (s_, FIONBIO, &nonblock);
     errno_assert (rc != -1);
@@ -114,20 +114,20 @@ void zmq::unblock_socket (fd_t s_)
 #endif
 }
 
-void zmq::enable_ipv4_mapping (fd_t s_)
+void zlink::enable_ipv4_mapping (fd_t s_)
 {
-    LIBZMQ_UNUSED (s_);
+    LIBZLINK_UNUSED (s_);
 
-#if defined IPV6_V6ONLY && !defined ZMQ_HAVE_OPENBSD                           \
-  && !defined ZMQ_HAVE_DRAGONFLY
-#ifdef ZMQ_HAVE_WINDOWS
+#if defined IPV6_V6ONLY && !defined ZLINK_HAVE_OPENBSD                           \
+  && !defined ZLINK_HAVE_DRAGONFLY
+#ifdef ZLINK_HAVE_WINDOWS
     DWORD flag = 0;
 #else
     int flag = 0;
 #endif
     const int rc = setsockopt (s_, IPPROTO_IPV6, IPV6_V6ONLY,
                                reinterpret_cast<char *> (&flag), sizeof (flag));
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     wsa_assert (rc != SOCKET_ERROR);
 #else
     errno_assert (rc == 0);
@@ -135,15 +135,15 @@ void zmq::enable_ipv4_mapping (fd_t s_)
 #endif
 }
 
-int zmq::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
+int zlink::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
 {
     struct sockaddr_storage ss;
 
-    const zmq_socklen_t addrlen =
+    const zlink_socklen_t addrlen =
       get_socket_address (sockfd_, socket_end_remote, &ss);
 
     if (addrlen == 0) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         const int last_error = WSAGetLastError ();
         wsa_assert (last_error != WSANOTINITIALISED && last_error != WSAEFAULT
                     && last_error != WSAEINPROGRESS
@@ -175,19 +175,19 @@ int zmq::get_peer_ip_address (fd_t sockfd_, std::string &ip_addr_)
     return static_cast<int> (u.sa.sa_family);
 }
 
-void zmq::set_ip_type_of_service (fd_t s_, int iptos_)
+void zlink::set_ip_type_of_service (fd_t s_, int iptos_)
 {
     int rc = setsockopt (s_, IPPROTO_IP, IP_TOS,
                          reinterpret_cast<char *> (&iptos_), sizeof (iptos_));
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     wsa_assert (rc != SOCKET_ERROR);
 #else
     errno_assert (rc == 0);
 #endif
 
     //  Windows and Hurd do not support IPV6_TCLASS
-#if !defined(ZMQ_HAVE_WINDOWS) && defined(IPV6_TCLASS)
+#if !defined(ZLINK_HAVE_WINDOWS) && defined(IPV6_TCLASS)
     rc = setsockopt (s_, IPPROTO_IPV6, IPV6_TCLASS,
                      reinterpret_cast<char *> (&iptos_), sizeof (iptos_));
 
@@ -199,20 +199,20 @@ void zmq::set_ip_type_of_service (fd_t s_, int iptos_)
 #endif
 }
 
-void zmq::set_socket_priority (fd_t s_, int priority_)
+void zlink::set_socket_priority (fd_t s_, int priority_)
 {
-#ifdef ZMQ_HAVE_SO_PRIORITY
+#ifdef ZLINK_HAVE_SO_PRIORITY
     int rc =
       setsockopt (s_, SOL_SOCKET, SO_PRIORITY,
                   reinterpret_cast<char *> (&priority_), sizeof (priority_));
     errno_assert (rc == 0);
 #else
-    LIBZMQ_UNUSED (s_);
-    LIBZMQ_UNUSED (priority_);
+    LIBZLINK_UNUSED (s_);
+    LIBZLINK_UNUSED (priority_);
 #endif
 }
 
-int zmq::set_nosigpipe (fd_t s_)
+int zlink::set_nosigpipe (fd_t s_)
 {
 #ifdef SO_NOSIGPIPE
     //  Make sure that SIGPIPE signal is not generated when writing to a
@@ -226,15 +226,15 @@ int zmq::set_nosigpipe (fd_t s_)
         return -1;
     errno_assert (rc == 0);
 #else
-    LIBZMQ_UNUSED (s_);
+    LIBZLINK_UNUSED (s_);
 #endif
 
     return 0;
 }
 
-int zmq::bind_to_device (fd_t s_, const std::string &bound_device_)
+int zlink::bind_to_device (fd_t s_, const std::string &bound_device_)
 {
-#ifdef ZMQ_HAVE_SO_BINDTODEVICE
+#ifdef ZLINK_HAVE_SO_BINDTODEVICE
     int rc = setsockopt (s_, SOL_SOCKET, SO_BINDTODEVICE,
                          bound_device_.c_str (), bound_device_.length ());
     if (rc != 0) {
@@ -244,23 +244,23 @@ int zmq::bind_to_device (fd_t s_, const std::string &bound_device_)
     return 0;
 
 #else
-    LIBZMQ_UNUSED (s_);
-    LIBZMQ_UNUSED (bound_device_);
+    LIBZLINK_UNUSED (s_);
+    LIBZLINK_UNUSED (bound_device_);
 
     errno = ENOTSUP;
     return -1;
 #endif
 }
 
-bool zmq::initialize_network ()
+bool zlink::initialize_network ()
 {
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
     //  Init PGM transport. Ensure threading and timer are enabled.
     pgm_error_t *pgm_error = NULL;
     const bool ok = pgm_init (&pgm_error);
     if (ok != TRUE) {
         //  Invalid parameters don't set pgm_error_t.
-        zmq_assert (pgm_error != NULL);
+        zlink_assert (pgm_error != NULL);
         if (pgm_error->domain == PGM_ERROR_DOMAIN_TIME
             && pgm_error->code == PGM_ERROR_FAILED) {
             pgm_error_free (pgm_error);
@@ -269,41 +269,41 @@ bool zmq::initialize_network ()
         }
 
         //  Fatal OpenPGM internal error.
-        zmq_assert (false);
+        zlink_assert (false);
     }
 #endif
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     //  Initialise Windows sockets. Note that WSAStartup can be called multiple
     //  times given that WSACleanup will be called for each WSAStartup.
 
     const WORD version_requested = MAKEWORD (2, 2);
     WSADATA wsa_data;
     const int rc = WSAStartup (version_requested, &wsa_data);
-    zmq_assert (rc == 0);
-    zmq_assert (LOBYTE (wsa_data.wVersion) == 2
+    zlink_assert (rc == 0);
+    zlink_assert (LOBYTE (wsa_data.wVersion) == 2
                 && HIBYTE (wsa_data.wVersion) == 2);
 #endif
 
     return true;
 }
 
-void zmq::shutdown_network ()
+void zlink::shutdown_network ()
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     //  On Windows, uninitialise socket layer.
     const int rc = WSACleanup ();
     wsa_assert (rc != SOCKET_ERROR);
 #endif
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
     //  Shut down the OpenPGM library.
     if (pgm_shutdown () != TRUE)
-        zmq_assert (false);
+        zlink_assert (false);
 #endif
 }
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 static void tune_socket (const SOCKET socket_)
 {
     BOOL tcp_nodelay = 1;
@@ -312,12 +312,12 @@ static void tune_socket (const SOCKET socket_)
                   reinterpret_cast<char *> (&tcp_nodelay), sizeof tcp_nodelay);
     wsa_assert (rc != SOCKET_ERROR);
 
-    zmq::tcp_tune_loopback_fast_path (socket_);
+    zlink::tcp_tune_loopback_fast_path (socket_);
 }
 
-static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
+static int make_fdpair_tcpip (zlink::fd_t *r_, zlink::fd_t *w_)
 {
-#if !defined _WIN32_WCE && !defined ZMQ_HAVE_WINDOWS_UWP
+#if !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
     //  Windows CE does not manage security attributes
     SECURITY_DESCRIPTOR sd;
     SECURITY_ATTRIBUTES sa;
@@ -345,30 +345,30 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
     //  Otherwise use Mutex implementation.
     const int event_signaler_port = 5905;
 
-    if (zmq::signaler_port == event_signaler_port) {
-#if !defined _WIN32_WCE && !defined ZMQ_HAVE_WINDOWS_UWP
+    if (zlink::signaler_port == event_signaler_port) {
+#if !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
         sync =
-          CreateEventW (&sa, FALSE, TRUE, L"Global\\zmq-signaler-port-sync");
+          CreateEventW (&sa, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
 #else
         sync =
-          CreateEventW (NULL, FALSE, TRUE, L"Global\\zmq-signaler-port-sync");
+          CreateEventW (NULL, FALSE, TRUE, L"Global\\zlink-signaler-port-sync");
 #endif
         if (sync == NULL && GetLastError () == ERROR_ACCESS_DENIED)
             sync = OpenEventW (SYNCHRONIZE | EVENT_MODIFY_STATE, FALSE,
-                               L"Global\\zmq-signaler-port-sync");
+                               L"Global\\zlink-signaler-port-sync");
 
         win_assert (sync != NULL);
-    } else if (zmq::signaler_port != 0) {
+    } else if (zlink::signaler_port != 0) {
         wchar_t mutex_name[MAX_PATH];
 #ifdef __MINGW32__
-        _snwprintf (mutex_name, MAX_PATH, L"Global\\zmq-signaler-port-%d",
-                    zmq::signaler_port);
+        _snwprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d",
+                    zlink::signaler_port);
 #else
-        swprintf (mutex_name, MAX_PATH, L"Global\\zmq-signaler-port-%d",
-                  zmq::signaler_port);
+        swprintf (mutex_name, MAX_PATH, L"Global\\zlink-signaler-port-%d",
+                  zlink::signaler_port);
 #endif
 
-#if !defined _WIN32_WCE && !defined ZMQ_HAVE_WINDOWS_UWP
+#if !defined _WIN32_WCE && !defined ZLINK_HAVE_WINDOWS_UWP
         sync = CreateMutexW (&sa, FALSE, mutex_name);
 #else
         sync = CreateMutexW (NULL, FALSE, mutex_name);
@@ -386,7 +386,7 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
 
     //  Create listening socket.
     SOCKET listener;
-    listener = zmq::open_socket (AF_INET, SOCK_STREAM, 0);
+    listener = zlink::open_socket (AF_INET, SOCK_STREAM, 0);
     wsa_assert (listener != INVALID_SOCKET);
 
     //  Set SO_REUSEADDR and TCP_NODELAY on listening socket.
@@ -403,23 +403,23 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
     memset (&addr, 0, sizeof addr);
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
-    addr.sin_port = htons (zmq::signaler_port);
+    addr.sin_port = htons (zlink::signaler_port);
 
     //  Create the writer socket.
-    *w_ = zmq::open_socket (AF_INET, SOCK_STREAM, 0);
+    *w_ = zlink::open_socket (AF_INET, SOCK_STREAM, 0);
     wsa_assert (*w_ != INVALID_SOCKET);
 
     if (sync != NULL) {
         //  Enter the critical section.
         const DWORD dwrc = WaitForSingleObject (sync, INFINITE);
-        zmq_assert (dwrc == WAIT_OBJECT_0 || dwrc == WAIT_ABANDONED);
+        zlink_assert (dwrc == WAIT_OBJECT_0 || dwrc == WAIT_ABANDONED);
     }
 
     //  Bind listening socket to signaler port.
     rc = bind (listener, reinterpret_cast<const struct sockaddr *> (&addr),
                sizeof addr);
 
-    if (rc != SOCKET_ERROR && zmq::signaler_port == 0) {
+    if (rc != SOCKET_ERROR && zlink::signaler_port == 0) {
         //  Retrieve ephemeral port number
         int addrlen = sizeof addr;
         rc = getsockname (listener, reinterpret_cast<struct sockaddr *> (&addr),
@@ -488,7 +488,7 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
     if (sync != NULL) {
         //  Exit the critical section.
         BOOL brc;
-        if (zmq::signaler_port == event_signaler_port)
+        if (zlink::signaler_port == event_signaler_port)
             brc = SetEvent (sync);
         else
             brc = ReleaseMutex (sync);
@@ -500,7 +500,7 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
     }
 
     if (*r_ != INVALID_SOCKET) {
-        zmq::make_socket_noninheritable (*r_);
+        zlink::make_socket_noninheritable (*r_);
         return 0;
     }
     //  Cleanup writer if connection failed
@@ -510,16 +510,16 @@ static int make_fdpair_tcpip (zmq::fd_t *r_, zmq::fd_t *w_)
         *w_ = INVALID_SOCKET;
     }
     //  Set errno from saved value
-    errno = zmq::wsa_error_to_errno (saved_errno);
+    errno = zlink::wsa_error_to_errno (saved_errno);
     return -1;
 }
 #endif
 
-int zmq::make_fdpair (fd_t *r_, fd_t *w_)
+int zlink::make_fdpair (fd_t *r_, fd_t *w_)
 {
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
     int flags = 0;
-#if defined ZMQ_HAVE_EVENTFD_CLOEXEC
+#if defined ZLINK_HAVE_EVENTFD_CLOEXEC
     //  Setting this option result in sane behaviour when exec() functions
     //  are used. Old sockets are closed and don't block TCP ports, avoid
     //  leaks, etc.
@@ -535,8 +535,8 @@ int zmq::make_fdpair (fd_t *r_, fd_t *w_)
     return 0;
 
 
-#elif defined ZMQ_HAVE_WINDOWS
-#ifdef ZMQ_HAVE_IPC
+#elif defined ZLINK_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_IPC
     ipc_address_t address;
     std::string dirname, filename;
     sockaddr_un lcladdr;
@@ -654,7 +654,7 @@ try_tcpip:
 #endif
 
     return make_fdpair_tcpip (r_, w_);
-#elif defined ZMQ_HAVE_OPENVMS
+#elif defined ZLINK_HAVE_OPENVMS
 
     //  Whilst OpenVMS supports socketpair - it maps to AF_INET only.  Further,
     //  it does not set the socket options TCP_NODELAY and TCP_NODELACK which
@@ -707,7 +707,7 @@ try_tcpip:
     close (listener);
 
     return 0;
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
     struct sockaddr_in lcladdr;
     memset (&lcladdr, 0, sizeof lcladdr);
     lcladdr.sin_family = AF_INET;
@@ -756,7 +756,7 @@ try_tcpip:
     //  Setting this option result in sane behaviour when exec() functions
     //  are used. Old sockets are closed and don't block TCP ports, avoid
     //  leaks, etc.
-#if defined ZMQ_HAVE_SOCK_CLOEXEC
+#if defined ZLINK_HAVE_SOCK_CLOEXEC
     type |= SOCK_CLOEXEC;
 #endif
     int rc = socketpair (AF_UNIX, type, 0, sv);
@@ -775,15 +775,15 @@ try_tcpip:
 #endif
 }
 
-void zmq::make_socket_noninheritable (fd_t sock_)
+void zlink::make_socket_noninheritable (fd_t sock_)
 {
-#if defined ZMQ_HAVE_WINDOWS && !defined _WIN32_WCE                            \
-  && !defined ZMQ_HAVE_WINDOWS_UWP
+#if defined ZLINK_HAVE_WINDOWS && !defined _WIN32_WCE                            \
+  && !defined ZLINK_HAVE_WINDOWS_UWP
     //  On Windows, preventing sockets to be inherited by child processes.
     const BOOL brc = SetHandleInformation (reinterpret_cast<HANDLE> (sock_),
                                            HANDLE_FLAG_INHERIT, 0);
     win_assert (brc);
-#elif (!defined ZMQ_HAVE_SOCK_CLOEXEC || !defined HAVE_ACCEPT4)                \
+#elif (!defined ZLINK_HAVE_SOCK_CLOEXEC || !defined HAVE_ACCEPT4)                \
   && defined FD_CLOEXEC
     //  If there 's no SOCK_CLOEXEC, let's try the second best option.
     //  Race condition can cause socket not to be closed (if fork happens
@@ -791,13 +791,13 @@ void zmq::make_socket_noninheritable (fd_t sock_)
     const int rc = fcntl (sock_, F_SETFD, FD_CLOEXEC);
     errno_assert (rc != -1);
 #else
-    LIBZMQ_UNUSED (sock_);
+    LIBZLINK_UNUSED (sock_);
 #endif
 }
 
-void zmq::assert_success_or_recoverable (zmq::fd_t s_, int rc_)
+void zlink::assert_success_or_recoverable (zlink::fd_t s_, int rc_)
 {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     if (rc_ != SOCKET_ERROR) {
         return;
     }
@@ -809,7 +809,7 @@ void zmq::assert_success_or_recoverable (zmq::fd_t s_, int rc_)
 
     //  Check whether an error occurred
     int err = 0;
-#if defined ZMQ_HAVE_HPUX || defined ZMQ_HAVE_VXWORKS
+#if defined ZLINK_HAVE_HPUX || defined ZLINK_HAVE_VXWORKS
     int len = sizeof err;
 #else
     socklen_t len = sizeof err;
@@ -820,8 +820,8 @@ void zmq::assert_success_or_recoverable (zmq::fd_t s_, int rc_)
 
     //  Assert if the error was caused by 0MQ bug.
     //  Networking problems are OK. No need to assert.
-#ifdef ZMQ_HAVE_WINDOWS
-    zmq_assert (rc == 0);
+#ifdef ZLINK_HAVE_WINDOWS
+    zlink_assert (rc == 0);
     if (err != 0) {
         wsa_assert (err == WSAECONNREFUSED || err == WSAECONNRESET
                     || err == WSAECONNABORTED || err == WSAEINTR
@@ -846,9 +846,9 @@ void zmq::assert_success_or_recoverable (zmq::fd_t s_, int rc_)
 #endif
 }
 
-#ifdef ZMQ_HAVE_IPC
+#ifdef ZLINK_HAVE_IPC
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 char *widechar_to_utf8 (const wchar_t *widestring)
 {
     int nch, n;
@@ -864,9 +864,9 @@ char *widechar_to_utf8 (const wchar_t *widestring)
 }
 #endif
 
-int zmq::create_ipc_wildcard_address (std::string &path_, std::string &file_)
+int zlink::create_ipc_wildcard_address (std::string &path_, std::string &file_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     wchar_t buffer[MAX_PATH];
 
     {
@@ -953,7 +953,7 @@ int zmq::create_ipc_wildcard_address (std::string &path_, std::string &file_)
     path_.assign (&buffer[0]);
     file_ = path_ + "/socket";
 #else
-    LIBZMQ_UNUSED (path_);
+    LIBZLINK_UNUSED (path_);
     int fd = mkstemp (&buffer[0]);
     if (fd == -1)
         return -1;

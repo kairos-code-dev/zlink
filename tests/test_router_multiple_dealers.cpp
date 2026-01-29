@@ -18,24 +18,24 @@ void tearDown ()
 
 void test_router_multiple_dealers_tcp ()
 {
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer1 = test_context_socket (ZMQ_DEALER);
-    void *dealer2 = test_context_socket (ZMQ_DEALER);
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer1 = test_context_socket (ZLINK_DEALER);
+    void *dealer2 = test_context_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer1, ZMQ_ROUTING_ID, "D1", 2));
+      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer2, ZMQ_ROUTING_ID, "D2", 2));
+      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (router, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "tcp://127.0.0.1:*"));
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (router, ZMQ_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, endpoint, &len));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer1, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer2, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -49,23 +49,23 @@ void test_router_multiple_dealers_tcp ()
 
     // First message
     int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     int msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
     msg[msg_size] = 0;
 
     // Second message
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
     msg[msg_size] = 0;
 
     // Router can reply to specific dealer
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D1", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d1", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D2", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D2", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d2", 0);
 
     // Dealers receive their specific replies
@@ -79,25 +79,25 @@ void test_router_multiple_dealers_tcp ()
 
 void test_router_multiple_dealers_ipc ()
 {
-#if defined(ZMQ_HAVE_IPC)
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer1 = test_context_socket (ZMQ_DEALER);
-    void *dealer2 = test_context_socket (ZMQ_DEALER);
+#if defined(ZLINK_HAVE_IPC)
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer1 = test_context_socket (ZLINK_DEALER);
+    void *dealer2 = test_context_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer1, ZMQ_ROUTING_ID, "D1", 2));
+      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer2, ZMQ_ROUTING_ID, "D2", 2));
+      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (router, "ipc://*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (router, "ipc://*"));
 
     char endpoint[MAX_SOCKET_STRING];
     size_t len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (router, ZMQ_LAST_ENDPOINT, endpoint, &len));
+      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, endpoint, &len));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer1, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer2, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer1, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer2, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -111,22 +111,22 @@ void test_router_multiple_dealers_ipc ()
     int id_size, msg_size;
 
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
 
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
     (void) id_size;
     (void) msg_size;
 
     // Router replies to specific dealers
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D1", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d1", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D2", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D2", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d2", 0);
 
     recv_string_expect_success (dealer1, "reply_to_d1", 0);
@@ -142,21 +142,21 @@ void test_router_multiple_dealers_ipc ()
 
 void test_router_multiple_dealers_inproc ()
 {
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer1 = test_context_socket (ZMQ_DEALER);
-    void *dealer2 = test_context_socket (ZMQ_DEALER);
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer1 = test_context_socket (ZLINK_DEALER);
+    void *dealer2 = test_context_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer1, ZMQ_ROUTING_ID, "D1", 2));
+      zlink_setsockopt (dealer1, ZLINK_ROUTING_ID, "D1", 2));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer2, ZMQ_ROUTING_ID, "D2", 2));
+      zlink_setsockopt (dealer2, ZLINK_ROUTING_ID, "D2", 2));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_bind (router, "inproc://test_router_multi_dealers"));
+      zlink_bind (router, "inproc://test_router_multi_dealers"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (dealer1, "inproc://test_router_multi_dealers"));
+      zlink_connect (dealer1, "inproc://test_router_multi_dealers"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (dealer2, "inproc://test_router_multi_dealers"));
+      zlink_connect (dealer2, "inproc://test_router_multi_dealers"));
 
     // Both dealers send messages
     send_string_expect_success (dealer1, "from_dealer1", 0);
@@ -168,22 +168,22 @@ void test_router_multiple_dealers_inproc ()
     int id_size, msg_size;
 
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
 
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     msg_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, msg, sizeof (msg), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, msg, sizeof (msg), 0));
     (void) id_size;
     (void) msg_size;
 
     // Router replies to specific dealers
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D1", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D1", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d1", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "D2", 2, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "D2", 2, ZLINK_SNDMORE));
     send_string_expect_success (router, "reply_to_d2", 0);
 
     recv_string_expect_success (dealer1, "reply_to_d1", 0);

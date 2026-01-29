@@ -50,9 +50,9 @@ Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
   1. Copy previous zlink library to benchwithzlink/baseline/lib/
-     - Linux: libzmq.so
-     - macOS: libzmq.dylib
-     - Windows: libzmq.dll + libzmq.lib
+     - Linux: libzlink.so
+     - macOS: libzlink.dylib
+     - Windows: libzlink.dll + libzlink.lib
 
 Options:
   -h, --help            Show this help.
@@ -80,10 +80,10 @@ while [[ $# -gt 0 ]]; do
     --with-baseline)
       WITH_BASELINE=1
       ;;
-    --skip-libzmq)
+    --skip-libzlink)
       WITH_BASELINE=0
       ;;
-    --with-libzmq)
+    --with-libzlink)
       WITH_BASELINE=1
       ;;
     --pattern)
@@ -214,10 +214,10 @@ if [[ "${ZLINK_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 1 ]]; then
     echo "Please create benchwithzlink/baseline/lib and copy previous zlink library there." >&2
     exit 1
   fi
-  BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzmq.*)
+  BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzlink.*)
   if [[ ! -e "${BASELINE_LIB_FILES[0]}" ]]; then
-    echo "Error: No libzmq library found in ${BASELINE_LIB_DIR}" >&2
-    echo "Please copy previous zlink library (libzmq.so/dylib/dll) there." >&2
+    echo "Error: No libzlink library found in ${BASELINE_LIB_DIR}" >&2
+    echo "Please copy previous zlink library (libzlink.so/dylib/dll) there." >&2
     exit 1
   fi
 fi
@@ -240,12 +240,12 @@ else
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20
+      -DZLINK_CXX_STANDARD=20
   else
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20
+      -DZLINK_CXX_STANDARD=20
   fi
 
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
@@ -297,7 +297,7 @@ if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
   RUN_CMD+=(--zlink-only)
 else
   if [[ "${WITH_BASELINE}" -eq 1 ]]; then
-    RUN_CMD+=(--refresh-libzmq)
+    RUN_CMD+=(--refresh-libzlink)
   else
     CACHE_FILE="${ROOT_DIR}/benchwithzlink/baseline_cache.json"
     if [[ ! -f "${CACHE_FILE}" ]]; then

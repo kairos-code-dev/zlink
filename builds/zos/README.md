@@ -1,6 +1,6 @@
-# ZeroMQ on z/OS UNIX System Services
+# Zlink on z/OS UNIX System Services
 
-ZeroMQ has been successfully built on z/OS, using [z/OS UNIX System
+Zlink has been successfully built on z/OS, using [z/OS UNIX System
 Services](http://www-03.ibm.com/systems/z/os/zos/features/unix/),
 a certified UNIX environment for the [IBM
 z-series](http://www-03.ibm.com/systems/z/).  The build is possible
@@ -8,11 +8,11 @@ with the shell scripts in this directory, as described below.
 
 Tested build combinations:
 
-* ZeroMQ 4.0.4, using IBM XL C/C++ compiler, as XPLINK in ILP32 mode
+* Zlink 4.0.4, using IBM XL C/C++ compiler, as XPLINK in ILP32 mode
 
-* ZeroMQ 4.0.4, using IBM XL C/C++ compiler, as XPLINK in LP64 mode
+* Zlink 4.0.4, using IBM XL C/C++ compiler, as XPLINK in LP64 mode
 
-* ZeroMQ 4.1-git, using IBM XL C/C++ compiler, as XPLINK in ILP32 mode
+* Zlink 4.1-git, using IBM XL C/C++ compiler, as XPLINK in ILP32 mode
 
 Other combinations are likely to work, possibly with minor changes,
 but have not been tested.  Both static library and DLL modes have been
@@ -22,62 +22,62 @@ There are some minor limitations (detailed below), but all core
 functionality tests run successfully.
 
 
-## Quickstart: building ZeroMQ on z/OS UNIX System Services
+## Quickstart: building Zlink on z/OS UNIX System Services
 
 Assuming [z/OS UNIX System
 Services](http://www-03.ibm.com/systems/z/os/zos/features/unix/) is
 installed, and the [z/OS XL C/C++
 compiler suite](http://www-03.ibm.com/software/products/en/czos) is 
-installed, ZeroMQ can be built as follows:
+installed, Zlink can be built as follows:
 
-*   Download and extract ZeroMQ tar file
+*   Download and extract Zlink tar file
 
 *   Ensure contents of this directory are present at `builds/zos`
-    within that extracted directory (eg, `zeromq-VERSION/builds/zos/`; 
+    within that extracted directory (eg, `zlink-VERSION/builds/zos/`; 
     copy these files in, if not already present, and make sure the
     shell scripts are executable)
 
 *   (Optional) set ZCXXFLAGS for additional compile flags (see below)
 
-*   Build `libzmq.a` static library and `libzmq.so` dynamic
+*   Build `libzlink.a` static library and `libzlink.so` dynamic
     library, with:
 
-        cd zeromq-VERSION
-        builds/zos/makelibzmq
+        cd zlink-VERSION
+        builds/zos/makelibzlink
 
-    or to skip the `libzmq.so` dynamic library (only building `libzmq.a`):
+    or to skip the `libzlink.so` dynamic library (only building `libzlink.a`):
 
-        cd zeromq-VERSION
+        cd zlink-VERSION
         BUILD_DLL=false
         export BUILD_DLL
-        builds/zos/makelibzmq
+        builds/zos/makelibzlink
 
 *   (Optional, but recommended) build and run the core tests with:
 
-        cd zeromq-VERSION
+        cd zlink-VERSION
         builds/zos/maketests
         builds/zos/runtests
 
 *   To remove built files, to start again (eg, rebuild with different
     compile/link flags):
 
-        cd zeromq-VERSION
+        cd zlink-VERSION
         builds/zos/makeclean
 
 There are details on specifying alternative compilation flags below.
 
 
-## Quickstart: using ZeroMQ on z/OS UNIX System Services
+## Quickstart: using Zlink on z/OS UNIX System Services
 
 ### Static linking
 
 Install `include/*.h` somewhere on your compiler include path.
 
-Install `src/libzmq.a` somewhere on your library search path.
+Install `src/libzlink.a` somewhere on your library search path.
 
 Compile and link application with:
 
-    c++ -Wc,xplink -Wl,xplink ... -+ -o myprog myprog.cpp -lzmq
+    c++ -Wc,xplink -Wl,xplink ... -+ -o myprog myprog.cpp -lzlink
 
 Run with:
 
@@ -88,23 +88,23 @@ Run with:
 
 Install `include/*.h` somewhere on your compiler include path.
 
-Install `src/libzmq.so` somewhere on your LIBPATH.
+Install `src/libzlink.so` somewhere on your LIBPATH.
 
-Install `src/libzmq.x` somewhere you can reference for import linking.
+Install `src/libzlink.x` somewhere you can reference for import linking.
 
 Compile and link application:
 
     c++ -Wc,xplink -Wc,dll ... -+ -c -o myprog.o myprog.cpp
-    c++ -Wl,xplink -o myprog myprog.o /PATH/TO/libzmq.x
+    c++ -Wl,xplink -o myprog myprog.o /PATH/TO/libzlink.x
 
 Run with:
 
-    LIBPATH=/DIR/OF/LIBZMQ.SO:/lib:/usr/lib:...    # if not in default path
+    LIBPATH=/DIR/OF/LIBZLINK.SO:/lib:/usr/lib:...    # if not in default path
     export LIBPATH
     ./myprog
 
 
-## ZeroMQ on z/OS UNIX System Services: Application considerations
+## Zlink on z/OS UNIX System Services: Application considerations
 
 z/0S UNIX System Services does not provide a way to block the
 [`SIGPIPE` signal being generated when a thread writes to a closed socket](http://pic.dhe.ibm.com/infocenter/zvm/v6r2/index.jsp?topic=%2Fcom.ibm.zos.r12.cbcpx01%2Fcbcpg1b0287.htm)
@@ -112,7 +112,7 @@ z/0S UNIX System Services does not provide a way to block the
 option, and/or the `MSG_NOSIGNAL` flag on `send()`; z/OS UNIX System
 Services supports neither).
 
-As a result, applications using ZeroMQ on z/OS UNIX System Services
+As a result, applications using Zlink on z/OS UNIX System Services
 have to expect to encounter `SIGPIPE` at various times during the use
 of the library, if sockets are unexpectedly disconnected.  Normally
 `SIGPIPE` will terminate the application.
@@ -126,7 +126,7 @@ with code like:
     ...
     signal(SIGPIPE, SIG_IGN);
 
-near the start of the application (eg, before initialising the ZeroMQ
+near the start of the application (eg, before initialising the Zlink
 library).
 
 If `SIGPIPE` is required for normal operation it is recommended that
@@ -135,12 +135,12 @@ received, and allows the application main loop to determine if it
 was received for one of its own file descriptors -- and ignores it if it
 none of the applications own file descriptors seems to have changed.
 
-Linking to the `libzmq.a` static library will pull in substantially
+Linking to the `libzlink.a` static library will pull in substantially
 all of the library code, which will add about 4MB to the application
-size (per executable statically linked with ZeroMQ).  If this is a
+size (per executable statically linked with Zlink).  If this is a
 significant consideration, use of the DLL version is recommended.
 
-See also ZeroMQ test status on z/OS UNIX System Services below
+See also Zlink test status on z/OS UNIX System Services below
 for other caveats.
 
 
@@ -181,21 +181,21 @@ may be required (and arguments requiring parenthesis are particularly
 complicated).
 
 
-## ZeroMQ test status on z/OS UNIX System Services
+## Zlink test status on z/OS UNIX System Services
 
-As of 2014-07-22, 41 of the 43 tests in the core ZeroMQ test suite
+As of 2014-07-22, 41 of the 43 tests in the core Zlink test suite
 pass. There are two tests that are expected to fail:
 
 0.  `test_abstract_ipc`: tests Linux-specific IPC functions, and is
     expected to fail on non-Linux platforms.
 
-0.  `test_fork`: tests ability to use ZeroMQ both before *and* after
+0.  `test_fork`: tests ability to use Zlink both before *and* after
     fork (and before exec()); this relies on the ability to use 
     pthreads both before *and* after fork.  On z/OS (and some other
     UNIX compliant platforms) functions like `pthreads_create` (used
-    by ZeroMQ) cannot be used after fork and before exec; on z/OS the
+    by Zlink) cannot be used after fork and before exec; on z/OS the
     call after fork fails with `ELEMULTITHREADFORK` (errno=257) if
-    ZeroMQ was also used before fork.  (On z/OS it appears possible
+    Zlink was also used before fork.  (On z/OS it appears possible
     to use z/OS *after* fork, *providing* it has not been used before
     fork -- the problem is the two separate initialisations of the
     threading library, before and after fork, attempting to mix
@@ -226,11 +226,11 @@ because without the TIPC support there is no point in even running
 them, and it would be non-trivial to track them by hand.)
 
 
-## ZeroMQ on z/OS UNIX System Services: Library portability notes
+## Zlink on z/OS UNIX System Services: Library portability notes
 
 ### *.cpp
 
-The source code in ZeroMQ is a combination of a C++ core library
+The source code in Zlink is a combination of a C++ core library
 (in `*.cpp` and `*.hpp` files), and a C wrapper (also in `*.cpp`
 files).  It is all compiled with the C++ compiler.  The IBM XL C/C++
 compiler (at least the version used for initial porting) insists
@@ -251,7 +251,7 @@ enables function calls with some arguments passed in registers.)
 
 ### long long
 
-ZeroMQ makes use of `uint64_t` (which is `unsigned long long` in ILP32
+Zlink makes use of `uint64_t` (which is `unsigned long long` in ILP32
 mode).  To enable this the compile flag `-Wc,lang(longlong)` is passed
 to enable `long long`.  This is passed from the `zc++` compiler wrapper
 in order to be able to specifically quote the argument to protect the 
@@ -259,7 +259,7 @@ parentheses from shell expansion.
 
 ### BSD-style sockets, with IPv6 support
 
-ZeroMQ uses BSD-style socket handling, with extensions to support IPv6.
+Zlink uses BSD-style socket handling, with extensions to support IPv6.
 BSD-style sockets were merged into SysV-derived UNIX at least a decade
 ago, and are required as part of the X/Open Portability Guide at least
 as of XPG 4.2.  To access this functionality two feature macros are 
@@ -281,14 +281,14 @@ in LP64 mode due to assumptions about long being 32 bits.  Using
 
 ### pthreads
 
-ZeroMQ uses the pthreads library to create additional threads to handle
+Zlink uses the pthreads library to create additional threads to handle
 background communication without blocking the main application.  This
 functionaity is enabled on z/OS UNIX System Services by defining:
 
     _OPEN_THREADS=3
 
 which is done in the `cxxall` script.  (The "3" value exposes later
-pthreads functionality like `pthread_atfork`, although ZeroMQ does not
+pthreads functionality like `pthread_atfork`, although Zlink does not
 currently use all these features.)
 
 If compiling on a *recent* version of z/OS UNIX System Services it
@@ -311,9 +311,9 @@ pre-built `platform.hpp` file.  (By default `src/platform.hpp` is
 dynamically generated as a result of running the `./configure` script.)
 The master version of this is in `builds/zos/platform.hpp`.
 
-Beware that this file contains the version number for libzmq (usually
+Beware that this file contains the version number for libzlink (usually
 included during the configure phase).  If taking the `platform.hpp` from
-an older version to use on a newer libzmq be sure to update the version
+an older version to use on a newer libzlink be sure to update the version
 information near the top of the file.
 
 The pre-built file is used because z/OS does not have the GNU auto tools
@@ -343,11 +343,11 @@ syntax):
 
 *   set `CXX` to point that the full  path to the `builds/zos/zc++` wrapper, eg
 
-        setenv CXX "/u/0mq/zeromq-4.0.4/builds/zos/zc++"
+        setenv CXX "/u/0mq/zlink-4.0.4/builds/zos/zc++"
 
 *   set `CPPFLAGS` to for the feature macros required, eg:
 
-        setenv CPPFLAGS "-D_XOPEN_SOURCE_EXTENDED=1 -D_OPEN_THREADS=3 -D_OPEN_SYS_SOCK_IPV6 -DZMQ_HAVE_ZOS"
+        setenv CPPFLAGS "-D_XOPEN_SOURCE_EXTENDED=1 -D_OPEN_THREADS=3 -D_OPEN_SYS_SOCK_IPV6 -DZLINK_HAVE_ZOS"
 
 *   set `CXXFLAGS` to enable XPLINK:
 
@@ -381,14 +381,14 @@ Having done this the Makefiles can be used to compile individual files
 if desired, eg:
 
     cd src
-    make zmq.o
+    make zlink.o
 
 but note:
 
 *   IBM Make will warn of duplicate prerequisites on *every* run of
     `make`, and both the generated `src/Makefile` and `tests/Makefile`
     have several duplicates.  (For `src/Makefile` edit
-    `libzmq_la_SOURCES` to remove the duplicates.)
+    `libzlink_la_SOURCES` to remove the duplicates.)
 
 *   IBM Make does not understand the `@` prefix (eg, `@echo`) as a way
     to avoid echoing the command, resulting in an error and the command
@@ -400,7 +400,7 @@ but note:
     compile failures (due to differences in expected arguments).
 
 However running `./configure` to regenerate `src/platform.hpp` may 
-be useful for later versions of ZeroMQ which add more feature tests.
+be useful for later versions of Zlink which add more feature tests.
 
 
 ## Transferring from GitHub to z/OS UNIX System Services
@@ -411,42 +411,42 @@ Services is somewhat convoluted because:
 *   There is not a port of git for z/OS UNIX System Services; and
 
 *   z/OS uses the EBCDIC (IBM-1047) character set rather than the
-    ASCII/ISO-8859-1 character set used by the ZeroMQ source code
+    ASCII/ISO-8859-1 character set used by the Zlink source code
     on GitHub
 
 A workable transfer process is:
 
 *   On an ASCII/ISO-8859-1/UTF-8 system with `git` (eg, a Linux system):
 
-        git clone https://github.com/zeromq/libzmq.git
-        git archive --prefix=libzmq-git/ -o /var/tmp/libzmq-git.tar master
+        git clone https://github.com/zlink/libzlink.git
+        git archive --prefix=libzlink-git/ -o /var/tmp/libzlink-git.tar master
 
 *   On a ASCII/ISO-8859-1/UTF-8 system with `tar`, and `pax`, and
     optionally the GNU auto tools (eg, the same Linux system):
 
         mkdir /var/tmp/zos
         cd /var/tmp/zos
-        tar -xpf /var/tmp/libzmq-git.tar
-        cd libzmq-git
+        tar -xpf /var/tmp/libzlink-git.tar
+        cd libzlink-git
         ./autogen.sh             # Optional: to be able to run ./configure
         cd ..
-        pax -wf /var/tmp/libzmq-git.pax libzmq-git
-        compress libzmq-git.pax  # If available, reduce transfer size
+        pax -wf /var/tmp/libzlink-git.pax libzlink-git
+        compress libzlink-git.pax  # If available, reduce transfer size
 
-*   Transfer the resulting file (`libzmq-git.pax` or `libzmq-git.pax.Z`)
+*   Transfer the resulting file (`libzlink-git.pax` or `libzlink-git.pax.Z`)
     to the z/OS UNIX System Services system.  If using FTP be sure to
     transfer the file in `bin` (binary/Image) mode to avoid corruption.
 
 *   On the z/OS UNIX System Services system, unpack the `pax` file and
     convert all the files to EBCDIC with:
 
-        pax -o from=iso8859-1 -pp -rvf  libzmq-git-2014-07-23.pax
+        pax -o from=iso8859-1 -pp -rvf  libzlink-git-2014-07-23.pax
 
     or if the file was compressed:
 
-        pax -o from=iso8859-1 -pp -rvzf libzmq-git-2014-07-23.pax.Z
+        pax -o from=iso8859-1 -pp -rvzf libzlink-git-2014-07-23.pax.Z
 
-The result should be a `libzmq-git` directory with the source in
+The result should be a `libzlink-git` directory with the source in
 EBCDIC format, on the z/OS UNIX System Services system ready to start
 building.
 

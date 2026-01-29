@@ -1,7 +1,7 @@
-# Gemini Context: zlink (libzmq custom build)
+# Gemini Context: zlink (libzlink custom build)
 
 ## Project Overview
-**zlink** is a cross-platform native build system for **libzmq (ZeroMQ) v4.3.5**. It produces pre-built minimal native libraries.
+**zlink** is a cross-platform native build system for **libzlink (Zlink) v4.3.5**. It produces pre-built minimal native libraries.
 
 **Key Characteristics:**
 *   **Minimal API:** Draft APIs AND standard REQ/REP, PUSH/PULL socket types have been completely removed.
@@ -10,10 +10,10 @@
 *   **Language:** C++ (primarily C++98 with optional C++11 fragments).
 
 ## Architecture & Directory Structure
-*   **`build-scripts/`**: Platform-specific scripts to configure and compile libzmq.
+*   **`build-scripts/`**: Platform-specific scripts to configure and compile libzlink.
     *   `linux/build.sh`, `macos/build.sh`, `windows/build.ps1`
-*   **`src/`**: Core libzmq source code.
-*   **`include/`**: Public headers (`zmq.h`).
+*   **`src/`**: Core libzlink source code.
+*   **`include/`**: Public headers (`zlink.h`).
 *   **`tests/`**: Test suite using the Unity framework.
 *   **`VERSION`**: Configuration file defining versions and features.
 *   **`CMakeLists.txt`**: Main build configuration.
@@ -55,16 +55,16 @@ ctest --output-on-failure
 Current status: **61 tests passed** (100% success rate for functional tests).
 
 ### Performance Comparison
-A comprehensive benchmark suite is available in `benchwithzmq/`.
+A comprehensive benchmark suite is available in `benchwithzlink-baseline/`.
 ```bash
-python3 benchwithzmq/run_comparison.py ALL
+python3 benchwithzlink-baseline/run_comparison.py ALL
 ```
-Results are saved in `benchwithzmq/wsl_COMPARISON_RESULTS.md` (conducted in WSL environment).
+Results are saved in `benchwithzlink-baseline/wsl_COMPARISON_RESULTS.md` (conducted in WSL environment).
 
 ## Development Conventions
 *   **Optimization**: C++11 + LTO (Link Time Optimization) is used to achieve maximum performance.
 *   **Migration**: C++20 migration roadmap is defined in `doc/CPP20_MIGRATION_RESEARCH.md`.
-*   **Contribution Process**: Follows the [C4 (Collective Code Construction Contract)](https://rfc.zeromq.org/spec:42/C4/).
+*   **Contribution Process**: Follows the [C4 (Collective Code Construction Contract)](https://rfc.zlink.org/spec:42/C4/).
 *   **Code Style**: Adhere to existing C++98/C++11 patterns found in `src/`.
 *   **Testing**: All new features or fixes must include relevant tests in `tests/`.
 *   **Agent Persona**: Addressed as "팀장님" (Team Leader) by the user.

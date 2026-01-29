@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ARRAY_INCLUDED__
-#define __ZMQ_ARRAY_INCLUDED__
+#ifndef __ZLINK_ARRAY_INCLUDED__
+#define __ZLINK_ARRAY_INCLUDED__
 
 #include <vector>
 #include <algorithm>
 
 #include "utils/macros.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Implementation of fast arrays with O(1) access, insertion and
 //  removal. The array stores pointers rather than objects.
@@ -30,7 +30,7 @@ template <int ID = 0> class array_item_t
 
     //  The destructor doesn't have to be virtual. It is made virtual
     //  just to keep ICC and code checking tools from complaining.
-    virtual ~array_item_t () ZMQ_DEFAULT;
+    virtual ~array_item_t () ZLINK_DEFAULT;
 
     void set_array_index (int index_) { _array_index = index_; }
 
@@ -39,7 +39,7 @@ template <int ID = 0> class array_item_t
   private:
     int _array_index;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (array_item_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (array_item_t)
 };
 
 
@@ -51,7 +51,7 @@ template <typename T, int ID = 0> class array_t
   public:
     typedef typename std::vector<T *>::size_type size_type;
 
-    array_t () ZMQ_DEFAULT;
+    array_t () ZLINK_DEFAULT;
 
     size_type size () { return _items.size (); }
 
@@ -106,7 +106,7 @@ template <typename T, int ID = 0> class array_t
     typedef std::vector<T *> items_t;
     items_t _items;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (array_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (array_t)
 };
 }
 

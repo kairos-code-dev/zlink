@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SOCKET_POLLER_HPP_INCLUDED__
-#define __ZMQ_SOCKET_POLLER_HPP_INCLUDED__
+#ifndef __ZLINK_SOCKET_POLLER_HPP_INCLUDED__
+#define __ZLINK_SOCKET_POLLER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
 
-#if defined ZMQ_POLL_BASED_ON_POLL && !defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_POLL_BASED_ON_POLL && !defined ZLINK_HAVE_WINDOWS
 #include <poll.h>
 #endif
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 #include <unistd.h>
 #include <sys/time.h>
 #include <strings.h>
@@ -26,15 +26,15 @@
 #include "utils/polling_util.hpp"
 
 //  Draft API types (kept for internal use)
-typedef struct zmq_poller_event_t
+typedef struct zlink_poller_event_t
 {
     void *socket;
-    zmq_fd_t fd;
+    zlink_fd_t fd;
     void *user_data;
     short events;
-} zmq_poller_event_t;
+} zlink_poller_event_t;
 
-namespace zmq
+namespace zlink
 {
 class socket_poller_t
 {
@@ -42,7 +42,7 @@ class socket_poller_t
     socket_poller_t ();
     ~socket_poller_t ();
 
-    typedef zmq_poller_event_t event_t;
+    typedef zlink_poller_event_t event_t;
 
     int add (socket_base_t *socket_, void *user_data_, short events_);
     int modify (const socket_base_t *socket_, short events_);
@@ -68,24 +68,24 @@ class socket_poller_t
         fd_t fd;
         void *user_data;
         short events;
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
         int pollfd_index;
 #endif
     } item_t;
 
-    static void zero_trail_events (zmq::socket_poller_t::event_t *events_,
+    static void zero_trail_events (zlink::socket_poller_t::event_t *events_,
                                    int n_events_,
                                    int found_);
-#if defined ZMQ_POLL_BASED_ON_POLL
-    int check_events (zmq::socket_poller_t::event_t *events_, int n_events_);
-#elif defined ZMQ_POLL_BASED_ON_SELECT
-    int check_events (zmq::socket_poller_t::event_t *events_,
+#if defined ZLINK_POLL_BASED_ON_POLL
+    int check_events (zlink::socket_poller_t::event_t *events_, int n_events_);
+#elif defined ZLINK_POLL_BASED_ON_SELECT
+    int check_events (zlink::socket_poller_t::event_t *events_,
                       int n_events_,
                       fd_set &inset_,
                       fd_set &outset_,
                       fd_set &errset_);
 #endif
-    static int adjust_timeout (zmq::clock_t &clock_,
+    static int adjust_timeout (zlink::clock_t &clock_,
                                long timeout_,
                                uint64_t &now_,
                                uint64_t &end_,
@@ -120,16 +120,16 @@ class socket_poller_t
     //  Size of the pollset
     int _pollset_size;
 
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
     pollfd *_pollfds;
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
     resizable_optimized_fd_set_t _pollset_in;
     resizable_optimized_fd_set_t _pollset_out;
     resizable_optimized_fd_set_t _pollset_err;
-    zmq::fd_t _max_fd;
+    zlink::fd_t _max_fd;
 #endif
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (socket_poller_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_poller_t)
 };
 }
 

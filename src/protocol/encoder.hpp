@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ENCODER_HPP_INCLUDED__
-#define __ZMQ_ENCODER_HPP_INCLUDED__
+#ifndef __ZLINK_ENCODER_HPP_INCLUDED__
+#define __ZLINK_ENCODER_HPP_INCLUDED__
 
 #if defined(_MSC_VER)
 #ifndef NOMINMAX
@@ -18,7 +18,7 @@
 #include "protocol/i_encoder.hpp"
 #include "core/msg.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Helper base class for encoders. It implements the state machine that
 //  fills the outgoing buffer. Derived classes should implement individual
@@ -39,12 +39,12 @@ template <typename T> class encoder_base_t : public i_encoder
         alloc_assert (_buf);
     }
 
-    ~encoder_base_t () ZMQ_OVERRIDE { free (_buf); }
+    ~encoder_base_t () ZLINK_OVERRIDE { free (_buf); }
 
     //  The function returns a batch of binary data. The data
     //  are filled to a supplied buffer. If no buffer is supplied (data_
     //  points to NULL) decoder object will provide buffer of its own.
-    size_t encode (unsigned char **data_, size_t size_) ZMQ_FINAL
+    size_t encode (unsigned char **data_, size_t size_) ZLINK_FINAL
     {
         unsigned char *buffer = !*data_ ? _buf : *data_;
         const size_t buffersize = !*data_ ? _buf_size : size_;
@@ -99,9 +99,9 @@ template <typename T> class encoder_base_t : public i_encoder
         return pos;
     }
 
-    void load_msg (msg_t *msg_) ZMQ_FINAL
+    void load_msg (msg_t *msg_) ZLINK_FINAL
     {
-        zmq_assert (in_progress () == NULL);
+        zlink_assert (in_progress () == NULL);
         _in_progress = msg_;
         (static_cast<T *> (this)->*_next) ();
     }
@@ -144,7 +144,7 @@ template <typename T> class encoder_base_t : public i_encoder
 
     msg_t *_in_progress;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (encoder_base_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (encoder_base_t)
 };
 }
 

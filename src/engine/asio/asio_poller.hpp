@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_POLLER_HPP_INCLUDED__
-#define __ZMQ_ASIO_POLLER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_POLLER_HPP_INCLUDED__
+#define __ZLINK_ASIO_POLLER_HPP_INCLUDED__
 
 //  poller.hpp decides which polling mechanism to use.
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <vector>
 #include <map>
@@ -20,29 +20,29 @@
 #include "core/thread.hpp"
 #include "core/poller_base.hpp"
 
-namespace zmq
+namespace zlink
 {
 struct i_poll_events;
 
 //  This class implements socket polling mechanism using Boost.Asio.
 //  It uses the reactor pattern via async_wait to maintain compatibility
-//  with existing zmq engine code.
+//  with existing zlink engine code.
 
-class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
+class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
 {
   public:
     typedef void *handle_t;
 
     asio_poller_t (const thread_ctx_t &ctx_);
-    ~asio_poller_t () ZMQ_OVERRIDE;
+    ~asio_poller_t () ZLINK_OVERRIDE;
 
     //  "poller" concept.
-    handle_t add_fd (fd_t fd_, zmq::i_poll_events *events_);
+    handle_t add_fd (fd_t fd_, zlink::i_poll_events *events_);
     handle_t add_tcp_socket (boost::asio::ip::tcp::socket *socket_,
-                             zmq::i_poll_events *events_);
-#if defined ZMQ_HAVE_IPC
+                             zlink::i_poll_events *events_);
+#if defined ZLINK_HAVE_IPC
     handle_t add_ipc_socket (boost::asio::local::stream_protocol::socket *socket_,
-                             zmq::i_poll_events *events_);
+                             zlink::i_poll_events *events_);
 #endif
     void rm_fd (handle_t handle_);
     void rm_socket (handle_t handle_);
@@ -60,7 +60,7 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
 
   private:
     //  Main event loop.
-    void loop () ZMQ_OVERRIDE;
+    void loop () ZLINK_OVERRIDE;
 
     //  Poll entry structure for tracking FD state
     struct poll_entry_t
@@ -75,7 +75,7 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
 
         socket_type_t type;
         void *socket;
-        zmq::i_poll_events *events;
+        zlink::i_poll_events *events;
         bool pollin_enabled;
         bool pollout_enabled;
         bool in_event_pending;
@@ -110,12 +110,12 @@ class asio_poller_t ZMQ_FINAL : public worker_poller_base_t
     //  Flag to track stopping state
     bool _stopping;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_poller_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_poller_t)
 };
 
 typedef asio_poller_t poller_t;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZMQ_ASIO_POLLER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_POLLER_HPP_INCLUDED__

@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - builds/coverage/ci_build.sh - Code coverage testing
   - builds/valgrind/ci_build.sh - Memory testing
 - Documented 4 scripts that retain autotools for dependency builds:
-  - builds/abi-compliance-checker/ci_build.sh - Upstream libzmq ABI checks
+  - builds/abi-compliance-checker/ci_build.sh - Upstream libzlink ABI checks
   - builds/fuzz/ci_build.sh - OSS-Fuzz integration
   - builds/android/build.sh - Android NDK dependency builder
   - builds/android/android_build_helper.sh - Generic autotools helper
@@ -82,7 +82,7 @@ The project has migrated to use ASIO as the only I/O backend. This is a **breaki
 
 - **Build system simplification**:
   - Removed I/O poller selection logic
-  - Removed `ZMQ_IOTHREAD_POLLER_USE_ASIO` conditional compilation guards
+  - Removed `ZLINK_IOTHREAD_POLLER_USE_ASIO` conditional compilation guards
   - Cleaned up 10 conditional compilation blocks across source files
 
 ### Performance
@@ -111,7 +111,7 @@ cmake -B build -DWITH_TLS=ON
 - WebSocket (ws://): Mandatory (not optional)
 - TLS (tls://) and WSS (wss://): Optional via WITH_TLS (default ON)
 
-Internal C++ defines (`ZMQ_HAVE_ASIO_SSL`, `ZMQ_HAVE_ASIO_WS`) remain unchanged for compatibility.
+Internal C++ defines (`ZLINK_HAVE_ASIO_SSL`, `ZLINK_HAVE_ASIO_WS`) remain unchanged for compatibility.
 
 ### Migration Details
 
@@ -139,7 +139,7 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
   - True proactor pattern with `async_accept`, `async_connect`, `async_read`, `async_write`
   - Platform-specific optimizations: epoll (Linux), kqueue (macOS), IOCP (Windows)
 - **TLS Transport**: Native TLS protocol (`tls://`) using OpenSSL
-  - Socket options: `ZMQ_TLS_CERT`, `ZMQ_TLS_KEY`, `ZMQ_TLS_CA`, `ZMQ_TLS_HOSTNAME`
+  - Socket options: `ZLINK_TLS_CERT`, `ZLINK_TLS_KEY`, `ZLINK_TLS_CA`, `ZLINK_TLS_HOSTNAME`
   - Server and client authentication
   - Mutual TLS support
 - **WebSocket Support**: Standard WebSocket transport
@@ -159,9 +159,9 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
 
 ### Removed
 - **Socket Types**:
-  - `ZMQ_STREAM`: Raw TCP stream socket (use WebSocket instead)
-  - `ZMQ_REQ/REP`: Request-reply pattern (removed in v0.1.3)
-  - `ZMQ_PUSH/PULL`: Pipeline pattern (removed in v0.1.3)
+  - `ZLINK_STREAM`: Raw TCP stream socket (use WebSocket instead)
+  - `ZLINK_REQ/REP`: Request-reply pattern (removed in v0.1.3)
+  - `ZLINK_PUSH/PULL`: Pipeline pattern (removed in v0.1.3)
 
 - **Protocols**:
   - `tipc://`: Transparent Inter-Process Communication
@@ -185,7 +185,7 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
 
 ### Migration Notes
 - **From CURVE to TLS**: Applications using CURVE must migrate to TLS transport
-  - Replace `ZMQ_CURVE_*` options with `ZMQ_TLS_*` options
+  - Replace `ZLINK_CURVE_*` options with `ZLINK_TLS_*` options
   - Update connection strings from `tcp://` to `tls://`
   - Use PEM-formatted certificates instead of binary keys
 - **From STREAM sockets**: Migrate to WebSocket (`ws://`, `wss://`)
@@ -195,11 +195,11 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
 
 ### Removed
 - **Socket Types**:
-  - `ZMQ_REQ/REP`: Request-reply pattern
-  - `ZMQ_PUSH/PULL`: Pipeline pattern
+  - `ZLINK_REQ/REP`: Request-reply pattern
+  - `ZLINK_PUSH/PULL`: Pipeline pattern
 - **Monitoring**:
-  - `ZMQ_EVENT_PIPES_STATS` event
-  - `zmq_socket_monitor_pipes_stats()` function
+  - `ZLINK_EVENT_PIPES_STATS` event
+  - `zlink_socket_monitor_pipes_stats()` function
 
 ## [0.1.2] - 2024-XX-XX
 
@@ -207,18 +207,18 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
 - **Draft API**: Completely removed all draft socket types and options
   - Socket types: SERVER, CLIENT, RADIO, DISH, GATHER, SCATTER, DGRAM, PEER, CHANNEL
   - WebSocket transport (was draft feature, re-added in v0.2.0 as stable)
-  - Draft socket options: `ZMQ_RECONNECT_STOP`, `ZMQ_ZAP_ENFORCE_DOMAIN`, etc.
+  - Draft socket options: `ZLINK_RECONNECT_STOP`, `ZLINK_ZAP_ENFORCE_DOMAIN`, etc.
 
 ## [0.1.1] - 2024-XX-XX
 
 ### Added
-- Initial release based on libzmq 4.3.5
+- Initial release based on libzlink 4.3.5
 - Cross-platform build scripts for Linux, macOS, Windows
 - Support for x64 and ARM64 architectures
-- 67 tests from upstream libzmq test suite
+- 67 tests from upstream libzlink test suite
 
 ### Features
-- Full libzmq 4.3.5 API (except CURVE encryption)
+- Full libzlink 4.3.5 API (except CURVE encryption)
 - All standard socket types
 - All standard protocols (tcp, ipc, inproc, tipc, vmci, pgm, norm, udp)
 - CMake-based build system

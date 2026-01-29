@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SPOT_HPP_INCLUDED__
-#define __ZMQ_SPOT_HPP_INCLUDED__
+#ifndef __ZLINK_SPOT_HPP_INCLUDED__
+#define __ZLINK_SPOT_HPP_INCLUDED__
 
 #include "core/msg.hpp"
 #include "utils/condition_variable.hpp"
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 class spot_node_t;
 
@@ -27,7 +27,7 @@ class spot_t
     bool check_tag () const;
 
     int publish (const char *topic_,
-                 zmq_msg_t *parts_,
+                 zlink_msg_t *parts_,
                  size_t part_count_,
                  int flags_);
     int subscribe (const char *topic_);
@@ -36,7 +36,7 @@ class spot_t
     int topic_create (const char *topic_, int mode_);
     int topic_destroy (const char *topic_);
 
-    int recv (zmq_msg_t **parts_,
+    int recv (zlink_msg_t **parts_,
               size_t *part_count_,
               int flags_,
               char *topic_out_,
@@ -58,7 +58,7 @@ class spot_t
     bool dequeue_message (spot_message_t *out_);
     bool fetch_ring_message (spot_message_t *out_);
 
-    zmq_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
+    zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                       size_t *count_);
     void close_parts (std::vector<msg_t> *parts_);
 
@@ -75,7 +75,7 @@ class spot_t
     size_t _queue_hwm;
     condition_variable_t _cv;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (spot_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_t)
 };
 }
 

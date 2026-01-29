@@ -1,22 +1,22 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_REAPER_HPP_INCLUDED__
-#define __ZMQ_REAPER_HPP_INCLUDED__
+#ifndef __ZLINK_REAPER_HPP_INCLUDED__
+#define __ZLINK_REAPER_HPP_INCLUDED__
 
 #include "core/object.hpp"
 #include "core/mailbox.hpp"
 #include "core/poller.hpp"
 #include "core/i_poll_events.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class socket_base_t;
 
-class reaper_t ZMQ_FINAL : public object_t, public i_poll_events
+class reaper_t ZLINK_FINAL : public object_t, public i_poll_events
 {
   public:
-    reaper_t (zmq::ctx_t *ctx_, uint32_t tid_);
+    reaper_t (zlink::ctx_t *ctx_, uint32_t tid_);
     ~reaper_t ();
 
     mailbox_t *get_mailbox ();
@@ -32,7 +32,7 @@ class reaper_t ZMQ_FINAL : public object_t, public i_poll_events
   private:
     //  Command handlers.
     void process_stop ();
-    void process_reap (zmq::socket_base_t *socket_);
+    void process_reap (zlink::socket_base_t *socket_);
     void process_reaped ();
     void process_mailbox ();
     static void mailbox_handler (void *arg_);
@@ -54,7 +54,7 @@ class reaper_t ZMQ_FINAL : public object_t, public i_poll_events
     pid_t _pid;
 #endif
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (reaper_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (reaper_t)
 };
 }
 

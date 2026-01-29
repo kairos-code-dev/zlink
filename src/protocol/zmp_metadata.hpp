@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ZMP_METADATA_HPP_INCLUDED__
-#define __ZMQ_ZMP_METADATA_HPP_INCLUDED__
+#ifndef __ZLINK_ZMP_METADATA_HPP_INCLUDED__
+#define __ZLINK_ZMP_METADATA_HPP_INCLUDED__
 
 #include <limits.h>
 #include <string.h>
@@ -13,31 +13,31 @@
 #include "core/options.hpp"
 #include "protocol/wire.hpp"
 
-namespace zmq
+namespace zlink
 {
 namespace zmp_metadata
 {
 static inline const char *socket_type_string (int socket_type_)
 {
     switch (socket_type_) {
-        case ZMQ_PAIR:
+        case ZLINK_PAIR:
             return "PAIR";
-        case ZMQ_PUB:
+        case ZLINK_PUB:
             return "PUB";
-        case ZMQ_SUB:
+        case ZLINK_SUB:
             return "SUB";
-        case ZMQ_DEALER:
+        case ZLINK_DEALER:
             return "DEALER";
-        case ZMQ_ROUTER:
+        case ZLINK_ROUTER:
             return "ROUTER";
-        case ZMQ_XPUB:
+        case ZLINK_XPUB:
             return "XPUB";
-        case ZMQ_XSUB:
+        case ZLINK_XSUB:
             return "XSUB";
-        case ZMQ_STREAM:
+        case ZLINK_STREAM:
             return "STREAM";
         default:
-            zmq_assert (false);
+            zlink_assert (false);
             return NULL;
     }
 }
@@ -56,10 +56,10 @@ static inline void append_property (std::vector<unsigned char> &buf_,
                                     size_t value_len_)
 {
     const size_t name_len = strlen (name_);
-    zmq_assert (name_len <= UCHAR_MAX);
+    zlink_assert (name_len <= UCHAR_MAX);
     buf_.push_back (static_cast<unsigned char> (name_len));
     buf_.insert (buf_.end (), name_, name_ + name_len);
-    zmq_assert (value_len_ <= 0x7FFFFFFF);
+    zlink_assert (value_len_ <= 0x7FFFFFFF);
     append_u32 (buf_, static_cast<uint32_t> (value_len_));
     if (value_len_ > 0) {
         const unsigned char *src =
@@ -74,7 +74,7 @@ static inline void add_basic_properties (const options_t &options_,
     const char *socket_type = socket_type_string (options_.type);
     append_property (buf_, "Socket-Type", socket_type, strlen (socket_type));
 
-    if (options_.type == ZMQ_DEALER || options_.type == ZMQ_ROUTER) {
+    if (options_.type == ZLINK_DEALER || options_.type == ZLINK_ROUTER) {
         append_property (buf_, "Identity", options_.routing_id,
                          options_.routing_id_size);
     }

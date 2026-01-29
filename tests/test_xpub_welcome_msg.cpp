@@ -8,20 +8,20 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (pub, "inproc://soname"));
+    void *pub = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub, ZMQ_XPUB_WELCOME_MSG, "W", 1));
+      zlink_setsockopt (pub, ZLINK_XPUB_WELCOME_MSG, "W", 1));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_SUB);
+    void *sub = test_context_socket (ZLINK_SUB);
 
     // Subscribe to the welcome message
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "W", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "W", 1));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, "inproc://soname"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     const uint8_t buffer[2] = {1, 'W'};
 

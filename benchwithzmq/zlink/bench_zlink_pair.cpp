@@ -1,41 +1,41 @@
-#include "../common/bench_common.hpp"
-#include <zmq.h>
+#include "../common/bench_common_zlink.hpp"
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
 
-#ifndef ZMQ_TCP_NODELAY
-#define ZMQ_TCP_NODELAY 26
+#ifndef ZLINK_TCP_NODELAY
+#define ZLINK_TCP_NODELAY 26
 #endif
 
 void run_pair(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *s_bind = zmq_socket(ctx, ZMQ_PAIR);
-    void *s_conn = zmq_socket(ctx, ZMQ_PAIR);
+    void *ctx = zlink_ctx_new();
+    void *s_bind = zlink_socket(ctx, ZLINK_PAIR);
+    void *s_conn = zlink_socket(ctx, ZLINK_PAIR);
 
     int nodelay = 1;
-    set_sockopt_int(s_bind, ZMQ_TCP_NODELAY, nodelay, "ZMQ_TCP_NODELAY");
-    set_sockopt_int(s_conn, ZMQ_TCP_NODELAY, nodelay, "ZMQ_TCP_NODELAY");
+    set_sockopt_int(s_bind, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
+    set_sockopt_int(s_conn, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
 
     int hwm = 0; 
-    set_sockopt_int(s_bind, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(s_bind, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(s_conn, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(s_conn, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    set_sockopt_int(s_bind, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(s_bind, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(s_conn, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(s_conn, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
 
     std::string endpoint = bind_and_resolve_endpoint(s_bind, transport, lib_name + "_pair");
     if (endpoint.empty()) {
-        zmq_close(s_bind);
-        zmq_close(s_conn);
-        zmq_ctx_term(ctx);
+        zlink_close(s_bind);
+        zlink_close(s_conn);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(s_conn, endpoint)) {
-        zmq_close(s_bind);
-        zmq_close(s_conn);
-        zmq_ctx_term(ctx);
+        zlink_close(s_bind);
+        zlink_close(s_conn);
+        zlink_ctx_term(ctx);
         return;
     }
     apply_debug_timeouts(s_bind, transport);
@@ -79,9 +79,9 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
 
     print_result(lib_name, "PAIR", transport, msg_size, throughput, latency);
 
-    zmq_close(s_bind);
-    zmq_close(s_conn);
-    zmq_ctx_term(ctx);
+    zlink_close(s_bind);
+    zlink_close(s_conn);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

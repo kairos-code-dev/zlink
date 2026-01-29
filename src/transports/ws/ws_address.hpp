@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_WS_ADDRESS_HPP_INCLUDED__
-#define __ZMQ_WS_ADDRESS_HPP_INCLUDED__
+#ifndef __ZLINK_WS_ADDRESS_HPP_INCLUDED__
+#define __ZLINK_WS_ADDRESS_HPP_INCLUDED__
 
 #include "platform.hpp"
 
-#ifdef ZMQ_HAVE_WS
+#ifdef ZLINK_HAVE_WS
 
 #include "transports/tcp/tcp_address.hpp"
 #include <string>
 
-namespace zmq
+namespace zlink
 {
 
 //  WebSocket address class for ws:// protocol
@@ -37,7 +37,7 @@ class ws_address_t
     const sockaddr *addr () const;
     socklen_t addrlen () const;
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     unsigned short family () const;
 #else
     sa_family_t family () const;
@@ -65,8 +65,8 @@ class ws_address_t
     uint16_t _port;
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_HAVE_WS
+#endif  // ZLINK_HAVE_WS
 
-#endif  // __ZMQ_WS_ADDRESS_HPP_INCLUDED__
+#endif  // __ZLINK_WS_ADDRESS_HPP_INCLUDED__

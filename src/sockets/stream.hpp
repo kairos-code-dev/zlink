@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_STREAM_HPP_INCLUDED__
-#define __ZMQ_STREAM_HPP_INCLUDED__
+#ifndef __ZLINK_STREAM_HPP_INCLUDED__
+#define __ZLINK_STREAM_HPP_INCLUDED__
 
 #include <deque>
 
@@ -10,28 +10,28 @@
 #include "utils/blob.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class pipe_t;
 
-class stream_t ZMQ_FINAL : public routing_socket_base_t
+class stream_t ZLINK_FINAL : public routing_socket_base_t
 {
   public:
-    stream_t (zmq::ctx_t *parent_, uint32_t tid_, int sid_);
-    ~stream_t () ZMQ_OVERRIDE;
+    stream_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    ~stream_t () ZLINK_OVERRIDE;
 
-    void xattach_pipe (zmq::pipe_t *pipe_,
+    void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
-                       bool locally_initiated_) ZMQ_FINAL;
-    int xsend (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    int xrecv (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    bool xhas_in () ZMQ_OVERRIDE;
-    bool xhas_out () ZMQ_OVERRIDE;
-    void xread_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void xpipe_terminated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+                       bool locally_initiated_) ZLINK_FINAL;
+    int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    bool xhas_in () ZLINK_OVERRIDE;
+    bool xhas_out () ZLINK_OVERRIDE;
+    void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
-      ZMQ_FINAL;
+      ZLINK_FINAL;
 
   private:
     struct stream_event_t
@@ -51,14 +51,14 @@ class stream_t ZMQ_FINAL : public routing_socket_base_t
     msg_t _prefetched_routing_id;
     msg_t _prefetched_msg;
 
-    zmq::pipe_t *_current_out;
+    zlink::pipe_t *_current_out;
     bool _more_out;
 
     uint32_t _next_integral_routing_id;
 
     std::deque<stream_event_t> _pending_events;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (stream_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };
 }
 

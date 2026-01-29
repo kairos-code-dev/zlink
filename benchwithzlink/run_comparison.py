@@ -223,7 +223,7 @@ def parse_args():
         "Note: PATTERN=ALL includes STREAM by default.\n\n"
         "Options:\n"
         "  --refresh-baseline      Refresh baseline cache\n"
-        "  --refresh-libzmq        Alias for --refresh-baseline\n"
+        "  --refresh-libzlink        Alias for --refresh-baseline\n"
         "  --current-only          Run only current benchmarks\n"
         "  --zlink-only            Alias for --current-only\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
@@ -246,7 +246,7 @@ def parse_args():
         if arg in ("-h", "--help"):
             print(usage)
             sys.exit(0)
-        if arg == "--refresh-baseline" or arg == "--refresh-libzmq":
+        if arg == "--refresh-baseline" or arg == "--refresh-libzlink":
             refresh = True
         elif arg == "--current-only" or arg == "--zlink-only":
             current_only = True

@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 #include <stdlib.h>
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #endif
 
@@ -13,9 +13,9 @@
 #include "utils/mutex.hpp"
 #include "utils/macros.hpp"
 
-void zmq::seed_random ()
+void zlink::seed_random ()
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     const int pid = static_cast<int> (GetCurrentProcessId ());
 #else
     int pid = static_cast<int> (getpid ());
@@ -23,7 +23,7 @@ void zmq::seed_random ()
     srand (static_cast<unsigned int> (clock_t::now_us () + pid));
 }
 
-uint32_t zmq::generate_random ()
+uint32_t zlink::generate_random ()
 {
     const uint32_t low = static_cast<uint32_t> (rand ());
     uint32_t high = static_cast<uint32_t> (rand ());
@@ -31,10 +31,10 @@ uint32_t zmq::generate_random ()
     return high | low;
 }
 
-void zmq::random_open ()
+void zlink::random_open ()
 {
 }
 
-void zmq::random_close ()
+void zlink::random_close ()
 {
 }

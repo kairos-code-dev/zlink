@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_WIRE_HPP_INCLUDED__
-#define __ZMQ_WIRE_HPP_INCLUDED__
+#ifndef __ZLINK_WIRE_HPP_INCLUDED__
+#define __ZLINK_WIRE_HPP_INCLUDED__
 
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Helper functions to convert different integer types to/from network
 //  byte order.

@@ -14,13 +14,13 @@
 #include <algorithm>
 #include <string.h>
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
 #else
 #include <unistd.h>
 #endif
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const uint32_t default_heartbeat_ms = 5000;
@@ -28,7 +28,7 @@ static const uint64_t discovery_refresh_ms = 500;
 
 static void sleep_ms (int ms_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     Sleep (ms_);
 #else
     usleep (static_cast<useconds_t> (ms_) * 1000);
@@ -64,7 +64,7 @@ static void close_parts (std::vector<msg_t> *parts_)
     parts_->clear ();
 }
 
-static bool copy_parts_from_msgv (zmq_msg_t *parts_,
+static bool copy_parts_from_msgv (zlink_msg_t *parts_,
                                   size_t part_count_,
                                   std::vector<msg_t> *out_)
 {
@@ -171,16 +171,16 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _next_discovery_refresh_ms (0),
     _stop (0)
 {
-    zmq_assert (_ctx);
+    zlink_assert (_ctx);
 
     _routing_id.size = 0;
-    _node_id = zmq::generate_random ();
+    _node_id = zlink::generate_random ();
     if (_node_id == 0)
         _node_id = 1;
     _routing_id.size = sizeof (_node_id);
     memcpy (_routing_id.data, &_node_id, sizeof (_node_id));
 
-    if (create_threadsafe_socket (_ctx, ZMQ_SUB, &_sub, &_sub_threadsafe)
+    if (create_threadsafe_socket (_ctx, ZLINK_SUB, &_sub, &_sub_threadsafe)
         != 0) {
         _sub = NULL;
         _sub_threadsafe = NULL;
@@ -269,7 +269,7 @@ bool spot_node_t::topic_is_ringbuffer (const std::string &topic_) const
       _topics.find (topic_);
     if (it == _topics.end ())
         return false;
-    return it->second.mode == ZMQ_SPOT_TOPIC_RINGBUFFER;
+    return it->second.mode == ZLINK_SPOT_TOPIC_RINGBUFFER;
 }
 
 void spot_node_t::ensure_ringbuffer_topic (const std::string &topic_)
@@ -278,7 +278,7 @@ void spot_node_t::ensure_ringbuffer_topic (const std::string &topic_)
     if (it != _topics.end ())
         return;
     topic_state_t state;
-    state.mode = ZMQ_SPOT_TOPIC_RINGBUFFER;
+    state.mode = ZLINK_SPOT_TOPIC_RINGBUFFER;
     _topics.insert (std::make_pair (topic_, state));
 }
 
@@ -288,7 +288,7 @@ void spot_node_t::add_filter (const std::string &filter_)
         return;
     size_t &count = _filter_refcount[filter_];
     if (count == 0 && _sub_threadsafe) {
-        _sub_threadsafe->setsockopt (ZMQ_SUBSCRIBE, filter_.data (),
+        _sub_threadsafe->setsockopt (ZLINK_SUBSCRIBE, filter_.data (),
                                      filter_.size ());
     }
     ++count;
@@ -302,7 +302,7 @@ void spot_node_t::remove_filter (const std::string &filter_)
         return;
     if (it->second <= 1) {
         if (_sub_threadsafe) {
-            _sub_threadsafe->setsockopt (ZMQ_UNSUBSCRIBE, filter_.data (),
+            _sub_threadsafe->setsockopt (ZLINK_UNSUBSCRIBE, filter_.data (),
                                          filter_.size ());
         }
         _filter_refcount.erase (it);
@@ -319,7 +319,7 @@ int spot_node_t::bind (const char *endpoint_)
     }
 
     if (!_pub_threadsafe) {
-        if (create_threadsafe_socket (_ctx, ZMQ_PUB, &_pub, &_pub_threadsafe)
+        if (create_threadsafe_socket (_ctx, ZLINK_PUB, &_pub, &_pub_threadsafe)
             != 0)
             return -1;
     }
@@ -340,11 +340,11 @@ int spot_node_t::connect_registry (const char *registry_router_endpoint_)
     }
 
     if (!_dealer_threadsafe) {
-        if (create_threadsafe_socket (_ctx, ZMQ_DEALER, &_dealer,
+        if (create_threadsafe_socket (_ctx, ZLINK_DEALER, &_dealer,
                                       &_dealer_threadsafe)
             != 0)
             return -1;
-        _dealer_threadsafe->setsockopt (ZMQ_ROUTING_ID, _routing_id.data,
+        _dealer_threadsafe->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
                                         _routing_id.size);
     }
 
@@ -423,31 +423,31 @@ int spot_node_t::register_node (const char *service_name_,
     }
 
     if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_register, ZMQ_SNDMORE)
+                             discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
-        || send_string_threadsafe (_dealer_threadsafe, service, ZMQ_SNDMORE)
+        || send_string_threadsafe (_dealer_threadsafe, service, ZLINK_SNDMORE)
              != 0
         || send_string_threadsafe (_dealer_threadsafe, advertise,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_u32_threadsafe (_dealer_threadsafe, 1, 0) != 0)
         return -1;
 
-    zmq_msg_t reply;
-    zmq_msg_init (&reply);
+    zlink_msg_t reply;
+    zlink_msg_init (&reply);
     if (_dealer_threadsafe->recv (reinterpret_cast<msg_t *> (&reply), 0) != 0) {
-        zmq_msg_close (&reply);
+        zlink_msg_close (&reply);
         return -1;
     }
 
-    std::vector<zmq_msg_t> frames;
+    std::vector<zlink_msg_t> frames;
     frames.push_back (reply);
-    while (zmq_msg_more (&frames.back ())) {
-        zmq_msg_t frame;
-        zmq_msg_init (&frame);
+    while (zlink_msg_more (&frames.back ())) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
         if (_dealer_threadsafe->recv (reinterpret_cast<msg_t *> (&frame), 0)
             != 0) {
-            zmq_msg_close (&frame);
+            zlink_msg_close (&frame);
             break;
         }
         frames.push_back (frame);
@@ -458,13 +458,13 @@ int spot_node_t::register_node (const char *service_name_,
     if (frames.size () >= 2
         && discovery_protocol::read_u16 (frames[0], &msg_id)
         && msg_id == discovery_protocol::msg_register_ack) {
-        if (zmq_msg_size (&frames[1]) == sizeof (uint8_t)) {
-            memcpy (&status, zmq_msg_data (&frames[1]), sizeof (uint8_t));
+        if (zlink_msg_size (&frames[1]) == sizeof (uint8_t)) {
+            memcpy (&status, zlink_msg_data (&frames[1]), sizeof (uint8_t));
         }
     }
 
     for (size_t i = 0; i < frames.size (); ++i)
-        zmq_msg_close (&frames[i]);
+        zlink_msg_close (&frames[i]);
 
     if (status != 0) {
         errno = EINVAL;
@@ -502,9 +502,9 @@ int spot_node_t::unregister_node (const char *service_name_)
     }
 
     if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_unregister, ZMQ_SNDMORE)
+                             discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
-        || send_string_threadsafe (_dealer_threadsafe, service, ZMQ_SNDMORE)
+        || send_string_threadsafe (_dealer_threadsafe, service, ZLINK_SNDMORE)
              != 0
         || send_string_threadsafe (_dealer_threadsafe, advertise, 0) != 0)
         return -1;
@@ -584,8 +584,8 @@ int spot_node_t::topic_create (const char *topic_, int mode_)
         errno = EINVAL;
         return -1;
     }
-    if (mode_ != ZMQ_SPOT_TOPIC_QUEUE
-        && mode_ != ZMQ_SPOT_TOPIC_RINGBUFFER) {
+    if (mode_ != ZLINK_SPOT_TOPIC_QUEUE
+        && mode_ != ZLINK_SPOT_TOPIC_RINGBUFFER) {
         errno = EINVAL;
         return -1;
     }
@@ -713,7 +713,7 @@ int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
 
 int spot_node_t::publish (spot_t *spot_,
                           const char *topic_,
-                          zmq_msg_t *parts_,
+                          zlink_msg_t *parts_,
                           size_t part_count_,
                           int flags_)
 {
@@ -753,7 +753,7 @@ int spot_node_t::publish (spot_t *spot_,
         if (!topic.empty ())
             memcpy (topic_frame.data (), topic.data (), topic.size ());
 
-        int flags = part_count_ > 0 ? ZMQ_SNDMORE : 0;
+        int flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
         if (_pub_threadsafe->send (&topic_frame, flags) != 0) {
             topic_frame.close ();
             close_parts (&payload);
@@ -763,7 +763,7 @@ int spot_node_t::publish (spot_t *spot_,
 
         for (size_t i = 0; i < part_count_; ++i) {
             msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
-            flags = (i + 1 < part_count_) ? ZMQ_SNDMORE : 0;
+            flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
             if (_pub_threadsafe->send (&part, flags) != 0) {
                 close_parts (&payload);
                 return -1;
@@ -773,7 +773,7 @@ int spot_node_t::publish (spot_t *spot_,
 
     close_parts (&payload);
     for (size_t i = 0; i < part_count_; ++i)
-        zmq_msg_close (&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 
     return 0;
 }
@@ -829,7 +829,7 @@ void spot_node_t::process_sub ()
         msg_t topic_frame;
         if (topic_frame.init () != 0)
             return;
-        if (_sub_threadsafe->recv (&topic_frame, ZMQ_DONTWAIT) != 0) {
+        if (_sub_threadsafe->recv (&topic_frame, ZLINK_DONTWAIT) != 0) {
             topic_frame.close ();
             return;
         }
@@ -939,8 +939,8 @@ void spot_node_t::send_heartbeat (uint64_t now_ms_)
     }
 
     send_u16_threadsafe (dealer, discovery_protocol::msg_heartbeat,
-                         ZMQ_SNDMORE);
-    send_string_threadsafe (dealer, service, ZMQ_SNDMORE);
+                         ZLINK_SNDMORE);
+    send_string_threadsafe (dealer, service, ZLINK_SNDMORE);
     send_string_threadsafe (dealer, endpoint, 0);
 }
 
@@ -952,7 +952,7 @@ void spot_node_t::run (void *arg_)
 
 void spot_node_t::loop ()
 {
-    zmq::clock_t clock;
+    zlink::clock_t clock;
     while (_stop.get () == 0) {
         bool handled = false;
 

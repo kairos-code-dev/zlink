@@ -1,16 +1,16 @@
 ## Overview
 
-The ZeroMQ lightweight messaging kernel is a library which extends the
+The Zlink lightweight messaging kernel is a library which extends the
 standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. ZeroMQ sockets provide an
+specialised messaging middleware products. Zlink sockets provide an
 abstraction of asynchronous message queues, multiple messaging patterns,
 message filtering (subscriptions), seamless access to multiple transport
 protocols and more.
 
 This documentation describes the internal software that makes up the
-ZeroMQ C++ core engine, and not how to use its API, however it may help
+Zlink C++ core engine, and not how to use its API, however it may help
 you understand certain aspects better, such as the callgraph of an API method.
-There are no instructions on using ZeroMQ within this documentation, only
+There are no instructions on using Zlink within this documentation, only
 the API internals that make up the software.
 
 **Note:** this documentation is generated directly from the source code with
@@ -22,27 +22,27 @@ Please refer to the README file for anything else.
 ## Resources
 
 Extensive documentation is provided with the distribution. Refer to
-doc/zmq.html, or "man zmq" after you have installed libzmq on your system.
+doc/zlink.html, or "man zlink" after you have installed libzlink on your system.
 
-* Website: http://www.zeromq.org/
-* Official API documentation: http://api.zeromq.org/
+* Website: http://www.zlink.org/
+* Official API documentation: http://api.zlink.org/
 
-Development mailing list: zeromq-dev@lists.zeromq.org
+Development mailing list: zlink-dev@lists.zlink.org
 
-Announcements mailing list: zeromq-announce@lists.zeromq.org
+Announcements mailing list: zlink-announce@lists.zlink.org
 
-Git repository: http://github.com/zeromq/libzmq
+Git repository: http://github.com/zlink/libzlink
 
-ZeroMQ developers can also be found on the IRC channel \#zeromq, on the
+Zlink developers can also be found on the IRC channel \#zlink, on the
 Freenode network (irc.freenode.net).
 
 ## Copyright
 Copyright (c) 2007-2016 Contributors as noted in the AUTHORS file.  
 The project license is specified in LICENSE.
 
-The names "ØMQ", "ZeroMQ", "0MQ", and the ØMQ logo are registered trademarks
-of iMatix Corporation ("iMatix") and refers to either (a) the original libzmq
+The names "ØMQ", "Zlink", "0MQ", and the ØMQ logo are registered trademarks
+of iMatix Corporation ("iMatix") and refers to either (a) the original libzlink
 C++ library, or (b) the community of projects hosted in the
-https://github.com/zeromq organization.
+https://github.com/zlink organization.
 
-This Doxygen configuration is adapted by Hiten Pandya, for the ZeroMQ project.
+This Doxygen configuration is adapted by Hiten Pandya, for the Zlink project.

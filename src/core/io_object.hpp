@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_IO_OBJECT_HPP_INCLUDED__
-#define __ZMQ_IO_OBJECT_HPP_INCLUDED__
+#ifndef __ZLINK_IO_OBJECT_HPP_INCLUDED__
+#define __ZLINK_IO_OBJECT_HPP_INCLUDED__
 
 #include <stddef.h>
 
@@ -10,7 +10,7 @@
 #include "core/poller.hpp"
 #include "core/i_poll_events.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 
@@ -21,12 +21,12 @@ class io_thread_t;
 class io_object_t : public i_poll_events
 {
   public:
-    io_object_t (zmq::io_thread_t *io_thread_ = NULL);
-    ~io_object_t () ZMQ_OVERRIDE;
+    io_object_t (zlink::io_thread_t *io_thread_ = NULL);
+    ~io_object_t () ZLINK_OVERRIDE;
 
     //  When migrating an object from one I/O thread to another, first
     //  unplug it, then migrate it, then plug it to the new thread.
-    void plug (zmq::io_thread_t *io_thread_);
+    void plug (zlink::io_thread_t *io_thread_);
     void unplug ();
 
   protected:
@@ -43,14 +43,14 @@ class io_object_t : public i_poll_events
     void cancel_timer (int id_);
 
     //  i_poll_events interface implementation.
-    void in_event () ZMQ_OVERRIDE;
-    void out_event () ZMQ_OVERRIDE;
-    void timer_event (int id_) ZMQ_OVERRIDE;
+    void in_event () ZLINK_OVERRIDE;
+    void out_event () ZLINK_OVERRIDE;
+    void timer_event (int id_) ZLINK_OVERRIDE;
 
   private:
     poller_t *_poller;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (io_object_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (io_object_t)
 };
 }
 

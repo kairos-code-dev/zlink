@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_TCP_HPP_INCLUDED__
-#define __ZMQ_TCP_HPP_INCLUDED__
+#ifndef __ZLINK_TCP_HPP_INCLUDED__
+#define __ZLINK_TCP_HPP_INCLUDED__
 
 #include "utils/fd.hpp"
 
-namespace zmq
+namespace zlink
 {
 class tcp_address_t;
 struct options_t;

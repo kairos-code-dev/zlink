@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "utils/macros.hpp"
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 
 #include <new>
 
@@ -14,7 +14,7 @@
 #include "protocol/wire.hpp"
 #include "utils/err.hpp"
 
-zmq::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
+zlink::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
                                      const options_t &options_) :
     io_object_t (parent_),
     has_rx_timer (false),
@@ -26,21 +26,21 @@ zmq::pgm_receiver_t::pgm_receiver_t (class io_thread_t *parent_,
 {
 }
 
-zmq::pgm_receiver_t::~pgm_receiver_t ()
+zlink::pgm_receiver_t::~pgm_receiver_t ()
 {
     //  Destructor should not be called before unplug.
-    zmq_assert (peers.empty ());
+    zlink_assert (peers.empty ());
 }
 
-int zmq::pgm_receiver_t::init (bool udp_encapsulation_, const char *network_)
+int zlink::pgm_receiver_t::init (bool udp_encapsulation_, const char *network_)
 {
     return pgm_socket.init (udp_encapsulation_, network_);
 }
 
-void zmq::pgm_receiver_t::plug (io_thread_t *io_thread_,
+void zlink::pgm_receiver_t::plug (io_thread_t *io_thread_,
                                 session_base_t *session_)
 {
-    LIBZMQ_UNUSED (io_thread_);
+    LIBZLINK_UNUSED (io_thread_);
     //  Retrieve PGM fds and start polling.
     fd_t socket_fd = retired_fd;
     fd_t waiting_pipe_fd = retired_fd;
@@ -56,13 +56,13 @@ void zmq::pgm_receiver_t::plug (io_thread_t *io_thread_,
     drop_subscriptions ();
 }
 
-void zmq::pgm_receiver_t::unplug ()
+void zlink::pgm_receiver_t::unplug ()
 {
     //  Delete decoders.
     for (peers_t::iterator it = peers.begin (), end = peers.end (); it != end;
          ++it) {
         if (it->second.decoder != NULL) {
-            LIBZMQ_DELETE (it->second.decoder);
+            LIBZLINK_DELETE (it->second.decoder);
         }
     }
     peers.clear ();
@@ -79,25 +79,25 @@ void zmq::pgm_receiver_t::unplug ()
     session = NULL;
 }
 
-void zmq::pgm_receiver_t::terminate ()
+void zlink::pgm_receiver_t::terminate ()
 {
     unplug ();
     delete this;
 }
 
-void zmq::pgm_receiver_t::restart_output ()
+void zlink::pgm_receiver_t::restart_output ()
 {
     drop_subscriptions ();
 }
 
-bool zmq::pgm_receiver_t::restart_input ()
+bool zlink::pgm_receiver_t::restart_input ()
 {
-    zmq_assert (session != NULL);
-    zmq_assert (active_tsi != NULL);
+    zlink_assert (session != NULL);
+    zlink_assert (active_tsi != NULL);
 
     const peers_t::iterator it = peers.find (*active_tsi);
-    zmq_assert (it != peers.end ());
-    zmq_assert (it->second.joined);
+    zlink_assert (it != peers.end ());
+    zlink_assert (it->second.joined);
 
     //  Push the pending message into the session.
     int rc = session->push_msg (it->second.decoder->msg ());
@@ -114,7 +114,7 @@ bool zmq::pgm_receiver_t::restart_input ()
             //  Data error. Delete message decoder, mark the
             //  peer as not joined and drop remaining data.
             it->second.joined = false;
-            LIBZMQ_DELETE (it->second.decoder);
+            LIBZLINK_DELETE (it->second.decoder);
             insize = 0;
         }
     }
@@ -129,12 +129,12 @@ bool zmq::pgm_receiver_t::restart_input ()
     return true;
 }
 
-const zmq::endpoint_uri_pair_t &zmq::pgm_receiver_t::get_endpoint () const
+const zlink::endpoint_uri_pair_t &zlink::pgm_receiver_t::get_endpoint () const
 {
     return _empty_endpoint;
 }
 
-void zmq::pgm_receiver_t::in_event ()
+void zlink::pgm_receiver_t::in_event ()
 {
     // If active_tsi is not null, there is a pending restart_input.
     // Keep the internal state as is so that restart_input would process the right data
@@ -178,7 +178,7 @@ void zmq::pgm_receiver_t::in_event ()
             if (it != peers.end ()) {
                 it->second.joined = false;
                 if (it->second.decoder != NULL) {
-                    LIBZMQ_DELETE (it->second.decoder);
+                    LIBZLINK_DELETE (it->second.decoder);
                 }
             }
             break;
@@ -187,14 +187,14 @@ void zmq::pgm_receiver_t::in_event ()
         //  New peer. Add it to the list of know but unjoint peers.
         if (it == peers.end ()) {
             peer_info_t peer_info = {false, NULL};
-            it = peers.ZMQ_MAP_INSERT_OR_EMPLACE (*tsi, peer_info).first;
+            it = peers.ZLINK_MAP_INSERT_OR_EMPLACE (*tsi, peer_info).first;
         }
 
         insize = static_cast<size_t> (received);
         inpos = (unsigned char *) tmp;
 
         //  Read the offset of the fist message in the current packet.
-        zmq_assert (insize >= sizeof (uint16_t));
+        zlink_assert (insize >= sizeof (uint16_t));
         uint16_t offset = get_uint16 (inpos);
         inpos += sizeof (uint16_t);
         insize -= sizeof (uint16_t);
@@ -206,8 +206,8 @@ void zmq::pgm_receiver_t::in_event ()
             if (offset == 0xffff)
                 continue;
 
-            zmq_assert (offset <= insize);
-            zmq_assert (it->second.decoder == NULL);
+            zlink_assert (offset <= insize);
+            zlink_assert (it->second.decoder == NULL);
 
             //  We have to move data to the beginning of the first message.
             inpos += offset;
@@ -235,7 +235,7 @@ void zmq::pgm_receiver_t::in_event ()
             }
 
             it->second.joined = false;
-            LIBZMQ_DELETE (it->second.decoder);
+            LIBZLINK_DELETE (it->second.decoder);
             insize = 0;
         }
     }
@@ -244,9 +244,9 @@ void zmq::pgm_receiver_t::in_event ()
     session->flush ();
 }
 
-int zmq::pgm_receiver_t::process_input (zmp_decoder_t *decoder)
+int zlink::pgm_receiver_t::process_input (zmp_decoder_t *decoder)
 {
-    zmq_assert (session != NULL);
+    zlink_assert (session != NULL);
 
     while (insize > 0) {
         size_t n = 0;
@@ -267,16 +267,16 @@ int zmq::pgm_receiver_t::process_input (zmp_decoder_t *decoder)
 }
 
 
-void zmq::pgm_receiver_t::timer_event (int token)
+void zlink::pgm_receiver_t::timer_event (int token)
 {
-    zmq_assert (token == rx_timer_id);
+    zlink_assert (token == rx_timer_id);
 
     //  Timer cancels on return by poller_base.
     has_rx_timer = false;
     in_event ();
 }
 
-void zmq::pgm_receiver_t::drop_subscriptions ()
+void zlink::pgm_receiver_t::drop_subscriptions ()
 {
     msg_t msg;
     msg.init ();

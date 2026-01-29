@@ -5,7 +5,7 @@
 
 #include <string.h>
 
-// NOTE: on OSX the endpoint returned by ZMQ_LAST_ENDPOINT may be quite long,
+// NOTE: on OSX the endpoint returned by ZLINK_LAST_ENDPOINT may be quite long,
 //       ensure we have extra space for that:
 #define SOCKET_STRING_LEN (MAX_SOCKET_STRING * 4)
 
@@ -16,18 +16,18 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     char pub_endpoint[SOCKET_STRING_LEN];
 
     // Set up and bind XPUB socket
-    void *pub_socket = test_context_socket (ZMQ_XPUB);
+    void *pub_socket = test_context_socket (ZLINK_XPUB);
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up and connect SUB socket
-    void *sub_socket = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub_socket, pub_endpoint));
+    void *sub_socket = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     //set a hwm on publisher
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub_socket, ZMQ_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub_socket, ZMQ_SUBSCRIBE, 0, 0));
+      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
     // (in this test there's 1 subscriber only)
@@ -37,7 +37,7 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     // Send until we reach "mute" state
     int send_count = 0;
     while (send_count < msg_cnt_
-           && zmq_send (pub_socket, "test message", 13, ZMQ_DONTWAIT) == 13)
+           && zlink_send (pub_socket, "test message", 13, ZLINK_DONTWAIT) == 13)
         ++send_count;
 
     TEST_ASSERT_EQUAL_INT (send_hwm_, send_count);
@@ -46,7 +46,7 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
     // Now receive all sent messages
     int recv_count = 0;
     char dummybuff[64];
-    while (13 == zmq_recv (sub_socket, &dummybuff, 64, ZMQ_DONTWAIT)) {
+    while (13 == zlink_recv (sub_socket, &dummybuff, 64, ZLINK_DONTWAIT)) {
         ++recv_count;
     }
 
@@ -67,7 +67,7 @@ int receive (void *socket_, int *is_termination_)
     // Now receive all sent messages
     char buffer[255];
     int len;
-    while ((len = zmq_recv (socket_, buffer, sizeof (buffer), 0)) >= 0) {
+    while ((len = zlink_recv (socket_, buffer, sizeof (buffer), 0)) >= 0) {
         ++recv_count;
 
         if (len == 3 && strncmp (buffer, "end", len) == 0) {
@@ -84,24 +84,24 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     char pub_endpoint[SOCKET_STRING_LEN];
 
     // Set up bind socket
-    void *pub_socket = test_context_socket (ZMQ_XPUB);
+    void *pub_socket = test_context_socket (ZLINK_XPUB);
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up connect socket
-    void *sub_socket = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub_socket, pub_endpoint));
+    void *sub_socket = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     //set a hwm on publisher
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub_socket, ZMQ_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     int wait = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub_socket, ZMQ_XPUB_NODROP, &wait, sizeof (wait)));
+      zlink_setsockopt (pub_socket, ZLINK_XPUB_NODROP, &wait, sizeof (wait)));
     int timeout_ms = 10;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      sub_socket, ZMQ_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      sub_socket, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub_socket, ZMQ_SUBSCRIBE, 0, 0));
+      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
     // (in this test there's 1 subscriber only)
@@ -114,7 +114,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
     int blocked_count = 0;
     int is_termination = 0;
     while (send_count < msg_cnt_) {
-        const int rc = zmq_send (pub_socket, NULL, 0, ZMQ_DONTWAIT);
+        const int rc = zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT);
         if (rc == 0) {
             ++send_count;
         } else if (-1 == rc) {
@@ -163,25 +163,25 @@ void test_reset_hwm ()
     char my_endpoint[SOCKET_STRING_LEN];
 
     // Set up bind socket
-    void *pub_socket = test_context_socket (ZMQ_PUB);
+    void *pub_socket = test_context_socket (ZLINK_PUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub_socket, ZMQ_SNDHWM, &hwm, sizeof (hwm)));
+      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
     bind_loopback_ipv4 (pub_socket, my_endpoint, MAX_SOCKET_STRING);
 
     // Set up connect socket
-    void *sub_socket = test_context_socket (ZMQ_SUB);
+    void *sub_socket = test_context_socket (ZLINK_SUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub_socket, ZMQ_RCVHWM, &hwm, sizeof (hwm)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub_socket, my_endpoint));
+      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, my_endpoint));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub_socket, ZMQ_SUBSCRIBE, 0, 0));
+      zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
 
     msleep (SETTLE_TIME);
 
     // Send messages
     int send_count = 0;
     while (send_count < first_count
-           && zmq_send (pub_socket, NULL, 0, ZMQ_DONTWAIT) == 0)
+           && zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (first_count, send_count);
 
@@ -189,7 +189,7 @@ void test_reset_hwm ()
 
     // Now receive all sent messages
     int recv_count = 0;
-    while (0 == zmq_recv (sub_socket, NULL, 0, ZMQ_DONTWAIT)) {
+    while (0 == zlink_recv (sub_socket, NULL, 0, ZLINK_DONTWAIT)) {
         ++recv_count;
     }
     TEST_ASSERT_EQUAL_INT (first_count, recv_count);
@@ -199,7 +199,7 @@ void test_reset_hwm ()
     // Send messages
     send_count = 0;
     while (send_count < second_count
-           && zmq_send (pub_socket, NULL, 0, ZMQ_DONTWAIT) == 0)
+           && zlink_send (pub_socket, NULL, 0, ZLINK_DONTWAIT) == 0)
         ++send_count;
     TEST_ASSERT_EQUAL_INT (second_count, send_count);
 
@@ -207,7 +207,7 @@ void test_reset_hwm ()
 
     // Now receive all sent messages
     recv_count = 0;
-    while (0 == zmq_recv (sub_socket, NULL, 0, ZMQ_DONTWAIT)) {
+    while (0 == zlink_recv (sub_socket, NULL, 0, ZLINK_DONTWAIT)) {
         ++recv_count;
     }
     TEST_ASSERT_EQUAL_INT (second_count, recv_count);
@@ -259,7 +259,7 @@ void test_blocking (const char *bind_endpoint_)
 DEFINE_REGULAR_TEST_CASES (tcp, "tcp://127.0.0.1:*")
 DEFINE_REGULAR_TEST_CASES (inproc, "inproc://a")
 
-#if !defined(ZMQ_HAVE_WINDOWS) && !defined(ZMQ_HAVE_GNU)
+#if !defined(ZLINK_HAVE_WINDOWS) && !defined(ZLINK_HAVE_GNU)
 DEFINE_REGULAR_TEST_CASES (ipc, "ipc://*")
 #endif
 
@@ -272,7 +272,7 @@ int main ()
     RUN_REGULAR_TEST_CASES (tcp);
     RUN_REGULAR_TEST_CASES (inproc);
 
-#if !defined(ZMQ_HAVE_WINDOWS) && !defined(ZMQ_HAVE_GNU)
+#if !defined(ZLINK_HAVE_WINDOWS) && !defined(ZLINK_HAVE_GNU)
     RUN_REGULAR_TEST_CASES (ipc);
 #endif
     RUN_TEST (test_reset_hwm);

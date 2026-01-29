@@ -6,7 +6,7 @@
 
 #include <cstdlib>
 
-namespace zmq
+namespace zlink
 {
 void *alloc (std::size_t size_)
 {

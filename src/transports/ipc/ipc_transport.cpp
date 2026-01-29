@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_IPC
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_IPC
 
 #include "transports/ipc/ipc_transport.hpp"
 
@@ -10,12 +10,12 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <sys/uio.h>
 #include <unistd.h>
 #endif
 
-namespace zmq
+namespace zlink
 {
 namespace
 {
@@ -39,7 +39,7 @@ bool ipc_stats_enabled ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_IPC_STATS");
+        const char *env = std::getenv ("ZLINK_ASIO_IPC_STATS");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -49,7 +49,7 @@ bool ipc_force_async ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_IPC_FORCE_ASYNC");
+        const char *env = std::getenv ("ZLINK_ASIO_IPC_FORCE_ASYNC");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -59,7 +59,7 @@ bool ipc_allow_sync_write ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_IPC_SYNC_WRITE");
+        const char *env = std::getenv ("ZLINK_ASIO_IPC_SYNC_WRITE");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -69,7 +69,7 @@ bool ipc_use_async_write_some ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_IPC_ASYNC_WRITE_SOME");
+        const char *env = std::getenv ("ZLINK_ASIO_IPC_ASYNC_WRITE_SOME");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -79,7 +79,7 @@ bool ipc_writev_single_shot ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_SINGLE_SHOT");
+        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -89,7 +89,7 @@ bool ipc_use_asio_writev ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_WRITEV_USE_ASIO");
+        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_USE_ASIO");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -339,7 +339,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
         return;
     }
 
-#if defined(ZMQ_HAVE_WINDOWS)
+#if defined(ZLINK_HAVE_WINDOWS)
     if (ipc_stats_enabled ()) {
         const auto stats_handler =
           [handler](const boost::system::error_code &ec, std::size_t bytes) {
@@ -519,7 +519,7 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         return 0;
     }
 
-    //  Only force EAGAIN if explicitly requested via ZMQ_ASIO_IPC_FORCE_ASYNC.
+    //  Only force EAGAIN if explicitly requested via ZLINK_ASIO_IPC_FORCE_ASYNC.
     //  Otherwise, attempt actual socket write like TCP transport does.
     //  Since write_some() is non-blocking, there's no deadlock risk.
     if (ipc_force_async ()) {
@@ -575,6 +575,6 @@ bool ipc_transport_t::supports_speculative_write () const
     return ipc_allow_sync_write () && !ipc_force_async ();
 }
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_IPC
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC

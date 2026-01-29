@@ -3,8 +3,8 @@
 #include "utils/precompiled.hpp"
 #include "transports/tls/wss_transport.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS \
-  && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS \
+  && defined ZLINK_HAVE_ASIO_SSL
 
 #include "engine/asio/asio_debug.hpp"
 #include "core/address.hpp"
@@ -16,14 +16,14 @@
 //  Debug logging for WSS transport
 #define ASIO_DBG_WSS(fmt, ...) ASIO_DBG_THIS ("WSS", fmt, ##__VA_ARGS__)
 
-namespace zmq
+namespace zlink
 {
 namespace
 {
 boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
 {
     sockaddr_storage ss;
-    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    const zlink_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
     if (sl != 0 && ss.ss_family == AF_INET6)
         return boost::asio::ip::tcp::v6 ();
     return boost::asio::ip::tcp::v4 ();
@@ -46,7 +46,7 @@ size_t wss_write_buffer_bytes ()
 {
     static size_t value = 0;
     if (value == 0)
-        value = parse_size_env ("ZMQ_WS_WRITE_BUFFER_BYTES", 64 * 1024);
+        value = parse_size_env ("ZLINK_WS_WRITE_BUFFER_BYTES", 64 * 1024);
     return value;
 }
 
@@ -54,7 +54,7 @@ size_t wss_read_message_max ()
 {
     static size_t value = 0;
     if (value == 0)
-        value = parse_size_env ("ZMQ_WS_READ_MESSAGE_MAX", 64 * 1024 * 1024);
+        value = parse_size_env ("ZLINK_WS_READ_MESSAGE_MAX", 64 * 1024 * 1024);
     return value;
 }
 }
@@ -106,7 +106,7 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     }
 
     //  Configure WebSocket options
-    //  Use binary mode for ZMQ messages
+    //  Use binary mode for ZLINK messages
     _wss_stream->binary (true);
     _wss_stream->auto_fragment (false);
     _wss_stream->write_buffer_bytes (wss_write_buffer_bytes ());
@@ -303,7 +303,7 @@ std::size_t wss_transport_t::write_some (const std::uint8_t *data,
     //
     //  Important: This blocks until the entire frame is sent or an error occurs.
     //  For speculative write optimization, this is acceptable because:
-    //  1. Small messages (typical ZMQ use case) fit in socket buffer
+    //  1. Small messages (typical ZLINK use case) fit in socket buffer
     //  2. If buffer is full, we get would_block immediately
     //  3. Large messages should use async path anyway
 
@@ -438,6 +438,6 @@ void wss_transport_t::continue_ws_handshake (completion_handler_t handler)
     }
 }
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_WS && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS && ZLINK_HAVE_ASIO_SSL

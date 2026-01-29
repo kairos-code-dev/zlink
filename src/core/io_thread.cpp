@@ -9,7 +9,7 @@
 #include "utils/err.hpp"
 #include "core/ctx.hpp"
 
-zmq::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
+zlink::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
     object_t (ctx_, tid_)
 {
     _poller = new (std::nothrow) poller_t (*ctx_);
@@ -19,41 +19,41 @@ zmq::io_thread_t::io_thread_t (ctx_t *ctx_, uint32_t tid_) :
     _mailbox.schedule_if_needed ();
 }
 
-zmq::io_thread_t::~io_thread_t ()
+zlink::io_thread_t::~io_thread_t ()
 {
-    LIBZMQ_DELETE (_poller);
+    LIBZLINK_DELETE (_poller);
 }
 
-void zmq::io_thread_t::start ()
+void zlink::io_thread_t::start ()
 {
     char name[16] = "";
     snprintf (name, sizeof (name), "IO/%u",
-              get_tid () - zmq::ctx_t::reaper_tid - 1);
+              get_tid () - zlink::ctx_t::reaper_tid - 1);
     //  Start the underlying I/O thread.
     _poller->start (name);
 }
 
-void zmq::io_thread_t::stop ()
+void zlink::io_thread_t::stop ()
 {
     send_stop ();
 }
 
-zmq::mailbox_t *zmq::io_thread_t::get_mailbox ()
+zlink::mailbox_t *zlink::io_thread_t::get_mailbox ()
 {
     return &_mailbox;
 }
 
-int zmq::io_thread_t::get_load () const
+int zlink::io_thread_t::get_load () const
 {
     return _poller->get_load ();
 }
 
-void zmq::io_thread_t::in_event ()
+void zlink::io_thread_t::in_event ()
 {
     process_mailbox ();
 }
 
-void zmq::io_thread_t::process_mailbox ()
+void zlink::io_thread_t::process_mailbox ()
 {
     //  TODO: Do we want to limit number of commands I/O thread can
     //  process in a single go?
@@ -72,36 +72,36 @@ void zmq::io_thread_t::process_mailbox ()
     } while (_mailbox.reschedule_if_needed ());
 }
 
-void zmq::io_thread_t::out_event ()
+void zlink::io_thread_t::out_event ()
 {
     //  We are never polling for POLLOUT here. This function is never called.
-    zmq_assert (false);
+    zlink_assert (false);
 }
 
-void zmq::io_thread_t::timer_event (int)
+void zlink::io_thread_t::timer_event (int)
 {
     //  No timers here. This function is never called.
-    zmq_assert (false);
+    zlink_assert (false);
 }
 
-zmq::poller_t *zmq::io_thread_t::get_poller () const
+zlink::poller_t *zlink::io_thread_t::get_poller () const
 {
-    zmq_assert (_poller);
+    zlink_assert (_poller);
     return _poller;
 }
 
-boost::asio::io_context &zmq::io_thread_t::get_io_context () const
+boost::asio::io_context &zlink::io_thread_t::get_io_context () const
 {
-    zmq_assert (_poller);
+    zlink_assert (_poller);
     return _poller->get_io_context ();
 }
 
-void zmq::io_thread_t::process_stop ()
+void zlink::io_thread_t::process_stop ()
 {
     _poller->stop ();
 }
 
-void zmq::io_thread_t::mailbox_handler (void *arg_)
+void zlink::io_thread_t::mailbox_handler (void *arg_)
 {
     io_thread_t *self = static_cast<io_thread_t *> (arg_);
     self->process_mailbox ();

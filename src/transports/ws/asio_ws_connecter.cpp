@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include "transports/ws/asio_ws_connecter.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
@@ -9,7 +9,7 @@
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "transports/ws/ws_transport.hpp"
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
 #include "transports/tls/wss_transport.hpp"
 #include "transports/tls/wss_address.hpp"
 #endif
@@ -22,7 +22,7 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -47,11 +47,11 @@
 #define WS_CONNECTER_DBG(fmt, ...)
 #endif
 
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
 namespace
 {
 std::unique_ptr<boost::asio::ssl::context>
-create_wss_client_context (const zmq::options_t &options_,
+create_wss_client_context (const zlink::options_t &options_,
                            const std::string &hostname_)
 {
     const bool verify_peer = options_.tls_verify != 0;
@@ -64,17 +64,17 @@ create_wss_client_context (const zmq::options_t &options_,
     const bool has_client_cert =
       !options_.tls_cert.empty () && !options_.tls_key.empty ();
 
-    const zmq::ssl_context_helper_t::verification_mode verify_mode =
-      verify_peer ? zmq::ssl_context_helper_t::verify_peer
-                  : zmq::ssl_context_helper_t::verify_none;
+    const zlink::ssl_context_helper_t::verification_mode verify_mode =
+      verify_peer ? zlink::ssl_context_helper_t::verify_peer
+                  : zlink::ssl_context_helper_t::verify_none;
 
     std::unique_ptr<boost::asio::ssl::context> ssl_context;
     if (has_client_cert) {
-        ssl_context = zmq::ssl_context_helper_t::create_client_context_with_cert (
+        ssl_context = zlink::ssl_context_helper_t::create_client_context_with_cert (
           options_.tls_ca, options_.tls_cert, options_.tls_key,
           options_.tls_password, trust_system, verify_mode);
     } else {
-        ssl_context = zmq::ssl_context_helper_t::create_client_context (
+        ssl_context = zlink::ssl_context_helper_t::create_client_context (
           options_.tls_ca, trust_system, verify_mode);
     }
 
@@ -82,7 +82,7 @@ create_wss_client_context (const zmq::options_t &options_,
         return std::unique_ptr<boost::asio::ssl::context> ();
 
     if (verify_peer && !hostname_.empty ()) {
-        if (!zmq::ssl_context_helper_t::set_hostname_verification (
+        if (!zlink::ssl_context_helper_t::set_hostname_verification (
               *ssl_context, hostname_)) {
             return std::unique_ptr<boost::asio::ssl::context> ();
         }
@@ -108,11 +108,11 @@ size_t parse_size_env (const char *name_)
     return static_cast<size_t> (value);
 }
 
-zmq::options_t adjust_ws_options (const zmq::options_t &options_)
+zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 {
-    zmq::options_t adjusted = options_;
-    const size_t ws_out = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE");
-    const size_t ws_in = parse_size_env ("ZMQ_WS_IN_BATCH_SIZE");
+    zlink::options_t adjusted = options_;
+    const size_t ws_out = parse_size_env ("ZLINK_WS_OUT_BATCH_SIZE");
+    const size_t ws_in = parse_size_env ("ZLINK_WS_IN_BATCH_SIZE");
     const int default_ws_batch = 65536;
 
     if (ws_out > 0)
@@ -129,7 +129,7 @@ zmq::options_t adjust_ws_options (const zmq::options_t &options_)
 }
 }
 
-zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
+zlink::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
                                                 session_base_t *session_,
                                                 const options_t &options_,
                                                 address_t *addr_,
@@ -142,7 +142,7 @@ zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
     _session (session_),
     _socket_ptr (session_->get_socket ()),
     _path ("/"),
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     _secure (addr_ && addr_->protocol == protocol_name::wss),
 #else
     _secure (false),
@@ -155,26 +155,26 @@ zmq::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
     _linger (0),
     _current_reconnect_ivl (-1)
 {
-    zmq_assert (_addr);
+    zlink_assert (_addr);
     bool is_ws_protocol = _addr->protocol == protocol_name::ws;
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     is_ws_protocol = is_ws_protocol || _addr->protocol == protocol_name::wss;
 #endif
-    zmq_assert (is_ws_protocol);
+    zlink_assert (is_ws_protocol);
     _addr->to_string (_endpoint_str);
 
     WS_CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",
                       _endpoint_str.c_str (), static_cast<void *> (this));
 }
 
-zmq::asio_ws_connecter_t::~asio_ws_connecter_t ()
+zlink::asio_ws_connecter_t::~asio_ws_connecter_t ()
 {
     WS_CONNECTER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
-    zmq_assert (!_reconnect_timer_started);
-    zmq_assert (!_connect_timer_started);
+    zlink_assert (!_reconnect_timer_started);
+    zlink_assert (!_connect_timer_started);
 }
 
-void zmq::asio_ws_connecter_t::process_plug ()
+void zlink::asio_ws_connecter_t::process_plug ()
 {
     WS_CONNECTER_DBG ("process_plug called, delayed_start=%d", _delayed_start);
 
@@ -184,7 +184,7 @@ void zmq::asio_ws_connecter_t::process_plug ()
         start_connecting ();
 }
 
-void zmq::asio_ws_connecter_t::process_term (int linger_)
+void zlink::asio_ws_connecter_t::process_term (int linger_)
 {
     WS_CONNECTER_DBG ("process_term called, linger=%d, connecting=%d", linger_,
                       _connecting);
@@ -213,7 +213,7 @@ void zmq::asio_ws_connecter_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_ws_connecter_t::timer_event (int id_)
+void zlink::asio_ws_connecter_t::timer_event (int id_)
 {
     WS_CONNECTER_DBG ("timer_event: id=%d", id_);
 
@@ -231,25 +231,25 @@ void zmq::asio_ws_connecter_t::timer_event (int id_)
         close ();
         add_reconnect_timer ();
     } else {
-        zmq_assert (false);
+        zlink_assert (false);
     }
 }
 
-void zmq::asio_ws_connecter_t::start_connecting ()
+void zlink::asio_ws_connecter_t::start_connecting ()
 {
     WS_CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
     //  Resolve the WebSocket address if not already done
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     if (_secure) {
         if (_addr->resolved.wss_addr != NULL) {
-            LIBZMQ_DELETE (_addr->resolved.wss_addr);
+            LIBZLINK_DELETE (_addr->resolved.wss_addr);
         }
         _addr->resolved.wss_addr = new (std::nothrow) wss_address_t ();
         alloc_assert (_addr->resolved.wss_addr);
     } else {
         if (_addr->resolved.ws_addr != NULL) {
-            LIBZMQ_DELETE (_addr->resolved.ws_addr);
+            LIBZLINK_DELETE (_addr->resolved.ws_addr);
         }
         _addr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
         alloc_assert (_addr->resolved.ws_addr);
@@ -266,9 +266,9 @@ void zmq::asio_ws_connecter_t::start_connecting ()
     if (rc != 0) {
         WS_CONNECTER_DBG ("start_connecting: resolve failed");
         if (_secure) {
-            LIBZMQ_DELETE (_addr->resolved.wss_addr);
+            LIBZLINK_DELETE (_addr->resolved.wss_addr);
         } else {
-            LIBZMQ_DELETE (_addr->resolved.ws_addr);
+            LIBZLINK_DELETE (_addr->resolved.ws_addr);
         }
         add_reconnect_timer ();
         return;
@@ -280,7 +280,7 @@ void zmq::asio_ws_connecter_t::start_connecting ()
 #else
     (void) _secure;
     if (_addr->resolved.ws_addr != NULL) {
-        LIBZMQ_DELETE (_addr->resolved.ws_addr);
+        LIBZLINK_DELETE (_addr->resolved.ws_addr);
     }
     _addr->resolved.ws_addr = new (std::nothrow) ws_address_t ();
     alloc_assert (_addr->resolved.ws_addr);
@@ -289,7 +289,7 @@ void zmq::asio_ws_connecter_t::start_connecting ()
                                                options.ipv6);
     if (rc != 0) {
         WS_CONNECTER_DBG ("start_connecting: resolve failed");
-        LIBZMQ_DELETE (_addr->resolved.ws_addr);
+        LIBZLINK_DELETE (_addr->resolved.ws_addr);
         add_reconnect_timer ();
         return;
     }
@@ -356,7 +356,7 @@ void zmq::asio_ws_connecter_t::start_connecting ()
       make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
 }
 
-void zmq::asio_ws_connecter_t::on_connect (const boost::system::error_code &ec)
+void zlink::asio_ws_connecter_t::on_connect (const boost::system::error_code &ec)
 {
     _connecting = false;
     WS_CONNECTER_DBG ("on_connect: ec=%s, terminating=%d", ec.message ().c_str (),
@@ -396,7 +396,7 @@ void zmq::asio_ws_connecter_t::on_connect (const boost::system::error_code &ec)
     //  Tune the socket
     if (!tune_socket (fd)) {
         WS_CONNECTER_DBG ("on_connect: tune_socket failed");
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
@@ -413,7 +413,7 @@ void zmq::asio_ws_connecter_t::on_connect (const boost::system::error_code &ec)
     create_engine (fd, local_address);
 }
 
-void zmq::asio_ws_connecter_t::add_connect_timer ()
+void zlink::asio_ws_connecter_t::add_connect_timer ()
 {
     if (options.connect_timeout > 0) {
         WS_CONNECTER_DBG ("add_connect_timer: timeout=%d",
@@ -423,7 +423,7 @@ void zmq::asio_ws_connecter_t::add_connect_timer ()
     }
 }
 
-void zmq::asio_ws_connecter_t::add_reconnect_timer ()
+void zlink::asio_ws_connecter_t::add_reconnect_timer ()
 {
     if (options.reconnect_ivl > 0) {
         const int interval = get_new_reconnect_ivl ();
@@ -435,7 +435,7 @@ void zmq::asio_ws_connecter_t::add_reconnect_timer ()
     }
 }
 
-int zmq::asio_ws_connecter_t::get_new_reconnect_ivl ()
+int zlink::asio_ws_connecter_t::get_new_reconnect_ivl ()
 {
     if (options.reconnect_ivl_max > 0) {
         int candidate_interval = 0;
@@ -464,7 +464,7 @@ int zmq::asio_ws_connecter_t::get_new_reconnect_ivl ()
     }
 }
 
-void zmq::asio_ws_connecter_t::create_engine (
+void zlink::asio_ws_connecter_t::create_engine (
   fd_t fd_, const std::string &local_address_)
 {
     WS_CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
@@ -487,13 +487,13 @@ void zmq::asio_ws_connecter_t::create_engine (
       local_endpoint, remote_endpoint, endpoint_type_connect);
 
     std::unique_ptr<i_asio_transport> transport;
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     std::unique_ptr<boost::asio::ssl::context> ssl_context;
     if (_secure) {
         ssl_context = create_wss_client_context (options, _tls_hostname);
         if (!ssl_context) {
             WS_CONNECTER_DBG ("create_engine: failed to create SSL context");
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
             closesocket (fd_);
 #else
             ::close (fd_);
@@ -517,10 +517,10 @@ void zmq::asio_ws_connecter_t::create_engine (
         transport.reset (ws_transport.release ());
     }
 
-    const bool is_stream = options.type == ZMQ_STREAM;
+    const bool is_stream = options.type == ZLINK_STREAM;
     const options_t engine_options = is_stream ? options : adjust_ws_options (options);
     i_engine *engine = NULL;
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     if (_secure) {
         if (is_stream)
             engine = new (std::nothrow) asio_raw_engine_t (
@@ -551,7 +551,7 @@ void zmq::asio_ws_connecter_t::create_engine (
     _socket_ptr->event_connected (endpoint_pair, fd_);
 }
 
-bool zmq::asio_ws_connecter_t::tune_socket (fd_t fd_)
+bool zlink::asio_ws_connecter_t::tune_socket (fd_t fd_)
 {
     const int rc = tune_tcp_socket (fd_)
                    | tune_tcp_keepalives (fd_, options.tcp_keepalive,
@@ -562,7 +562,7 @@ bool zmq::asio_ws_connecter_t::tune_socket (fd_t fd_)
     return rc == 0;
 }
 
-void zmq::asio_ws_connecter_t::close ()
+void zlink::asio_ws_connecter_t::close ()
 {
     WS_CONNECTER_DBG ("close called");
 
@@ -576,4 +576,4 @@ void zmq::asio_ws_connecter_t::close ()
     }
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

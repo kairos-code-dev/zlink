@@ -10,7 +10,7 @@ namespace
 {
 static uint32_t compute_effective_max (int64_t maxmsgsize_)
 {
-    uint64_t limit = zmq::zmp_max_body_size;
+    uint64_t limit = zlink::zmp_max_body_size;
     if (maxmsgsize_ >= 0
         && static_cast<uint64_t> (maxmsgsize_) < limit)
         limit = static_cast<uint64_t> (maxmsgsize_);
@@ -18,10 +18,10 @@ static uint32_t compute_effective_max (int64_t maxmsgsize_)
 }
 
 static const unsigned char zmp_flag_sub_or_cancel =
-  zmq::zmp_flag_subscribe | zmq::zmp_flag_cancel;
+  zlink::zmp_flag_subscribe | zlink::zmp_flag_cancel;
 }
 
-zmq::zmp_decoder_t::zmp_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
+zlink::zmp_decoder_t::zmp_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     decoder_base_t<zmp_decoder_t, shared_message_memory_allocator> (bufsize_),
     _msg_flags (0),
     _error_code (0),
@@ -33,13 +33,13 @@ zmq::zmp_decoder_t::zmp_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     next_step (_tmpbuf, zmp_header_size, &zmp_decoder_t::header_ready);
 }
 
-zmq::zmp_decoder_t::~zmp_decoder_t ()
+zlink::zmp_decoder_t::~zmp_decoder_t ()
 {
     const int rc = _in_progress.close ();
     errno_assert (rc == 0);
 }
 
-int zmq::zmp_decoder_t::header_ready (unsigned char const *read_from_)
+int zlink::zmp_decoder_t::header_ready (unsigned char const *read_from_)
 {
     _error_code = 0;
 
@@ -110,7 +110,7 @@ int zmq::zmp_decoder_t::header_ready (unsigned char const *read_from_)
     return size_ready (msg_size, read_from_);
 }
 
-int zmq::zmp_decoder_t::size_ready (uint32_t msg_size_,
+int zlink::zmp_decoder_t::size_ready (uint32_t msg_size_,
                                     unsigned char const *read_from_)
 {
     if (unlikely (msg_size_ > _max_msg_size_effective)) {
@@ -170,7 +170,7 @@ int zmq::zmp_decoder_t::size_ready (uint32_t msg_size_,
     return 0;
 }
 
-int zmq::zmp_decoder_t::body_ready (unsigned char const *)
+int zlink::zmp_decoder_t::body_ready (unsigned char const *)
 {
     next_step (_tmpbuf, zmp_header_size, &zmp_decoder_t::header_ready);
     return 1;

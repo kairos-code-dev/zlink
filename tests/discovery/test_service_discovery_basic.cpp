@@ -10,11 +10,11 @@ static void setup_registry (void *ctx,
                             const char *pub_ep,
                             const char *router_ep)
 {
-    void *registry = zmq_registry_new (ctx);
+    void *registry = zlink_registry_new (ctx);
     TEST_ASSERT_NOT_NULL (registry);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_registry_set_endpoints (registry, pub_ep, router_ep));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_start (registry));
+      zlink_registry_set_endpoints (registry, pub_ep, router_ep));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
     *registry_out = registry;
 }
 
@@ -24,128 +24,128 @@ static void setup_provider (void *ctx,
                             const char *registry_router,
                             const char *service_name)
 {
-    void *provider = zmq_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx);
     TEST_ASSERT_NOT_NULL (provider);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_bind (provider, bind_ep));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, bind_ep));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_provider_connect_registry (provider, registry_router));
+      zlink_provider_connect_registry (provider, registry_router));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_provider_register (provider, service_name, bind_ep, 1));
+      zlink_provider_register (provider, service_name, bind_ep, 1));
     *provider_out = provider;
 }
 
 static void test_discovery_get_providers ()
 {
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub", "inproc://reg-router");
-    void *discovery = zmq_discovery_new (ctx);
+    void *discovery = zlink_discovery_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_connect_registry (discovery, "inproc://reg-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
     void *provider = NULL;
     setup_provider (ctx, &provider, "inproc://svc1", "inproc://reg-router",
                     "svc");
     msleep (200);
-    zmq_provider_info_t providers[4];
+    zlink_provider_info_t providers[4];
     size_t count = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_get_providers (discovery, "svc", providers, &count));
+      zlink_discovery_get_providers (discovery, "svc", providers, &count));
     TEST_ASSERT_EQUAL_INT (1, (int) count);
     TEST_ASSERT_EQUAL_STRING ("svc", providers[0].service_name);
     TEST_ASSERT_EQUAL_STRING ("inproc://svc1", providers[0].endpoint);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 static void test_gateway_send_recv ()
 {
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub2", "inproc://reg-router2");
-    void *discovery = zmq_discovery_new (ctx);
+    void *discovery = zlink_discovery_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_connect_registry (discovery, "inproc://reg-pub2"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub2"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
     void *provider = NULL;
     setup_provider (ctx, &provider, "inproc://svc2", "inproc://reg-router2",
                     "svc");
     msleep (200);
-    void *gateway = zmq_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery);
     TEST_ASSERT_NOT_NULL (gateway);
 
-    zmq_msg_t req;
-    zmq_msg_init_size (&req, 5);
-    memcpy (zmq_msg_data (&req), "hello", 5);
+    zlink_msg_t req;
+    zlink_msg_init_size (&req, 5);
+    memcpy (zlink_msg_data (&req), "hello", 5);
 
     uint64_t request_id = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
+      zlink_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
     TEST_ASSERT_TRUE (request_id != 0);
 
-    void *router = zmq_provider_threadsafe_router (provider);
+    void *router = zlink_provider_threadsafe_router (provider);
     TEST_ASSERT_NOT_NULL (router);
 
-    zmq_msg_t rid;
-    zmq_msg_t reqid;
-    zmq_msg_t payload;
-    zmq_msg_init (&rid);
-    zmq_msg_init (&reqid);
-    zmq_msg_init (&payload);
+    zlink_msg_t rid;
+    zlink_msg_t reqid;
+    zlink_msg_t payload;
+    zlink_msg_init (&rid);
+    zlink_msg_init (&reqid);
+    zlink_msg_init (&payload);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&rid, router, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&reqid, router, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&payload, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&rid, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&reqid, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&payload, router, 0));
 
-    TEST_ASSERT_EQUAL_INT (5, (int) zmq_msg_size (&payload));
-    TEST_ASSERT_EQUAL_MEMORY ("hello", zmq_msg_data (&payload), 5);
+    TEST_ASSERT_EQUAL_INT (5, (int) zlink_msg_size (&payload));
+    TEST_ASSERT_EQUAL_MEMORY ("hello", zlink_msg_data (&payload), 5);
 
-    zmq_msg_t reply;
-    zmq_msg_init_size (&reply, 5);
-    memcpy (zmq_msg_data (&reply), "world", 5);
+    zlink_msg_t reply;
+    zlink_msg_init_size (&reply, 5);
+    memcpy (zlink_msg_data (&reply), "world", 5);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_send (&rid, router, ZMQ_SNDMORE));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_send (&reqid, router, ZMQ_SNDMORE));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_send (&reply, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_send (&rid, router, ZLINK_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_send (&reqid, router, ZLINK_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_send (&reply, router, 0));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&rid));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&reqid));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&payload));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&reply));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&reqid));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&reply));
 
-    zmq_msg_t *reply_parts = NULL;
+    zlink_msg_t *reply_parts = NULL;
     size_t reply_count = 0;
     char service_name[256];
     uint64_t recv_id = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_gateway_recv (gateway, &reply_parts, &reply_count, 0, service_name,
+      zlink_gateway_recv (gateway, &reply_parts, &reply_count, 0, service_name,
                         &recv_id));
     TEST_ASSERT_EQUAL_UINT64 (request_id, recv_id);
     TEST_ASSERT_EQUAL_STRING ("svc", service_name);
     TEST_ASSERT_EQUAL_INT (1, (int) reply_count);
-    TEST_ASSERT_EQUAL_INT (5, (int) zmq_msg_size (&reply_parts[0]));
-    TEST_ASSERT_EQUAL_MEMORY ("world", zmq_msg_data (&reply_parts[0]), 5);
-    zmq_msgv_close (reply_parts, reply_count);
+    TEST_ASSERT_EQUAL_INT (5, (int) zlink_msg_size (&reply_parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("world", zlink_msg_data (&reply_parts[0]), 5);
+    zlink_msgv_close (reply_parts, reply_count);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_gateway_destroy (&gateway));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 static void test_registry_peer_sync ()
 {
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry_a = NULL;
@@ -156,13 +156,13 @@ static void test_registry_peer_sync ()
                     "inproc://regB-router");
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_registry_add_peer (registry_b, "inproc://regA-pub"));
+      zlink_registry_add_peer (registry_b, "inproc://regA-pub"));
 
-    void *discovery = zmq_discovery_new (ctx);
+    void *discovery = zlink_discovery_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_connect_registry (discovery, "inproc://regB-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+      zlink_discovery_connect_registry (discovery, "inproc://regB-pub"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
 
     void *provider = NULL;
     setup_provider (ctx, &provider, "inproc://svc-peer",
@@ -170,65 +170,65 @@ static void test_registry_peer_sync ()
 
     msleep (300);
 
-    zmq_provider_info_t providers[4];
+    zlink_provider_info_t providers[4];
     size_t count = 4;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_get_providers (discovery, "svc", providers, &count));
+      zlink_discovery_get_providers (discovery, "svc", providers, &count));
     TEST_ASSERT_EQUAL_INT (1, (int) count);
     TEST_ASSERT_EQUAL_STRING ("inproc://svc-peer", providers[0].endpoint);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 static void test_gateway_refresh_on_unregister ()
 {
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry = NULL;
     setup_registry (ctx, &registry, "inproc://reg-pub3", "inproc://reg-router3");
-    void *discovery = zmq_discovery_new (ctx);
+    void *discovery = zlink_discovery_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_connect_registry (discovery, "inproc://reg-pub3"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub3"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
     void *provider = NULL;
     setup_provider (ctx, &provider, "inproc://svc3", "inproc://reg-router3",
                     "svc");
 
     msleep (200);
 
-    void *gateway = zmq_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery);
     TEST_ASSERT_NOT_NULL (gateway);
 
-    zmq_msg_t req;
-    zmq_msg_init_size (&req, 1);
-    memcpy (zmq_msg_data (&req), "x", 1);
+    zlink_msg_t req;
+    zlink_msg_init_size (&req, 1);
+    memcpy (zlink_msg_data (&req), "x", 1);
     uint64_t request_id = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
+      zlink_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
 
     msleep (100);
-    TEST_ASSERT_EQUAL_INT (1, zmq_gateway_connection_count (gateway, "svc"));
+    TEST_ASSERT_EQUAL_INT (1, zlink_gateway_connection_count (gateway, "svc"));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_unregister (provider, "svc"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_unregister (provider, "svc"));
     msleep (300);
-    TEST_ASSERT_EQUAL_INT (0, zmq_gateway_connection_count (gateway, "svc"));
+    TEST_ASSERT_EQUAL_INT (0, zlink_gateway_connection_count (gateway, "svc"));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_gateway_destroy (&gateway));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 static void test_registry_peer_timeout ()
 {
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     void *registry_a = NULL;
@@ -238,28 +238,28 @@ static void test_registry_peer_timeout ()
     setup_registry (ctx, &registry_b, "inproc://regB2-pub",
                     "inproc://regB2-router");
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_registry_set_broadcast_interval (registry_b, 50));
+      zlink_registry_set_broadcast_interval (registry_b, 50));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_registry_add_peer (registry_b, "inproc://regA2-pub"));
+      zlink_registry_add_peer (registry_b, "inproc://regA2-pub"));
 
-    void *discovery = zmq_discovery_new (ctx);
+    void *discovery = zlink_discovery_new (ctx);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_discovery_connect_registry (discovery, "inproc://regB2-pub"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_subscribe (discovery, "svc"));
+      zlink_discovery_connect_registry (discovery, "inproc://regB2-pub"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "svc"));
 
     void *provider = NULL;
     setup_provider (ctx, &provider, "inproc://svc-peer2",
                     "inproc://regA2-router", "svc");
 
-    zmq_provider_info_t providers[4];
+    zlink_provider_info_t providers[4];
     size_t count = 0;
     bool found = false;
     for (int i = 0; i < 20; ++i) {
         count = 4;
         TEST_ASSERT_SUCCESS_ERRNO (
-          zmq_discovery_get_providers (discovery, "svc", providers, &count));
+          zlink_discovery_get_providers (discovery, "svc", providers, &count));
         if (count == 1) {
             found = true;
             break;
@@ -268,14 +268,14 @@ static void test_registry_peer_timeout ()
     }
     TEST_ASSERT_TRUE (found);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_provider_destroy (&provider));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_a));
 
     bool removed = false;
     for (int i = 0; i < 30; ++i) {
         count = 4;
         TEST_ASSERT_SUCCESS_ERRNO (
-          zmq_discovery_get_providers (discovery, "svc", providers, &count));
+          zlink_discovery_get_providers (discovery, "svc", providers, &count));
         if (count == 0) {
             removed = true;
             break;
@@ -284,9 +284,9 @@ static void test_registry_peer_timeout ()
     }
     TEST_ASSERT_TRUE (removed);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_discovery_destroy (&discovery));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_registry_destroy (&registry_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 int main (int, char **)

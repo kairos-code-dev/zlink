@@ -1,6 +1,6 @@
 # benchwithbeast - pure Asio/Beast stream benchmarks
 
-if(NOT ZMQ_HAVE_ASIO)
+if(NOT ZLINK_HAVE_ASIO)
   message(WARNING "ASIO headers not available, skipping benchwithbeast")
   return()
 endif()
@@ -17,7 +17,7 @@ target_compile_features(bench_beast_stream PRIVATE cxx_std_11)
 target_compile_options(bench_beast_stream PRIVATE ${BENCH_BEAST_CXX_FLAGS})
 target_link_libraries(bench_beast_stream PRIVATE Threads::Threads)
 
-if(ZMQ_HAVE_ASIO_SSL)
+if(ZLINK_HAVE_ASIO_SSL)
   target_compile_definitions(bench_beast_stream PRIVATE BEAST_HAVE_TLS=1)
   target_link_libraries(bench_beast_stream PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 endif()

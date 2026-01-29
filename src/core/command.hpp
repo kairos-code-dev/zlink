@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_COMMAND_HPP_INCLUDED__
-#define __ZMQ_COMMAND_HPP_INCLUDED__
+#ifndef __ZLINK_COMMAND_HPP_INCLUDED__
+#define __ZLINK_COMMAND_HPP_INCLUDED__
 
 #include <string>
 #include "utils/stdint.hpp"
 #include "core/endpoint.hpp"
 #include "platform.hpp"
 
-namespace zmq
+namespace zlink
 {
 class object_t;
 class own_t;
@@ -21,7 +21,7 @@ class socket_base_t;
 struct command_t
 {
     //  Object to process the command.
-    zmq::object_t *destination;
+    zlink::object_t *destination;
 
     enum type_t
     {
@@ -65,7 +65,7 @@ struct command_t
         //  Sent to socket to let it know about the newly created object.
         struct
         {
-            zmq::own_t *object;
+            zlink::own_t *object;
         } own;
 
         //  Attach the engine to the session. If engine is NULL, it informs
@@ -79,7 +79,7 @@ struct command_t
         //  Caller have used inc_seqnum beforehand sending the command.
         struct
         {
-            zmq::pipe_t *pipe;
+            zlink::pipe_t *pipe;
         } bind;
 
         //  Sent by pipe writer to inform dormant pipe reader that there
@@ -125,7 +125,7 @@ struct command_t
         //  the I/O object.
         struct
         {
-            zmq::own_t *object;
+            zlink::own_t *object;
         } term_req;
 
         //  Sent by socket to I/O object to start its shutdown.
@@ -151,7 +151,7 @@ struct command_t
         //  to the reaper thread.
         struct
         {
-            zmq::socket_base_t *socket;
+            zlink::socket_base_t *socket;
         } reap;
 
         //  Closed socket notifies the reaper that it's already deallocated.
@@ -163,7 +163,7 @@ struct command_t
         struct
         {
             uint64_t queue_count;
-            zmq::own_t *socket_base;
+            zlink::own_t *socket_base;
             endpoint_uri_pair_t *endpoint_pair;
         } pipe_peer_stats;
 
@@ -188,7 +188,7 @@ struct command_t
 #else
 }
 #ifdef HAVE_POSIX_MEMALIGN
-__attribute__ ((aligned (ZMQ_CACHELINE_SIZE)))
+__attribute__ ((aligned (ZLINK_CACHELINE_SIZE)))
 #endif
 ;
 #endif

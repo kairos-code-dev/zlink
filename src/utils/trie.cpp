@@ -10,24 +10,24 @@
 #include <new>
 #include <algorithm>
 
-zmq::trie_t::trie_t () : _refcnt (0), _min (0), _count (0), _live_nodes (0)
+zlink::trie_t::trie_t () : _refcnt (0), _min (0), _count (0), _live_nodes (0)
 {
 }
 
-zmq::trie_t::~trie_t ()
+zlink::trie_t::~trie_t ()
 {
     if (_count == 1) {
-        zmq_assert (_next.node);
-        LIBZMQ_DELETE (_next.node);
+        zlink_assert (_next.node);
+        LIBZLINK_DELETE (_next.node);
     } else if (_count > 1) {
         for (unsigned short i = 0; i != _count; ++i) {
-            LIBZMQ_DELETE (_next.table[i]);
+            LIBZLINK_DELETE (_next.table[i]);
         }
         free (_next.table);
     }
 }
 
-bool zmq::trie_t::add (unsigned char *prefix_, size_t size_)
+bool zlink::trie_t::add (unsigned char *prefix_, size_t size_)
 {
     //  We are at the node corresponding to the prefix. We are done.
     if (!size_) {
@@ -60,7 +60,7 @@ bool zmq::trie_t::add (unsigned char *prefix_, size_t size_)
             _count = c - _min + 1;
             _next.table = static_cast<trie_t **> (
               realloc (_next.table, sizeof (trie_t *) * _count));
-            zmq_assert (_next.table);
+            zlink_assert (_next.table);
             for (unsigned short i = old_count; i != _count; i++)
                 _next.table[i] = NULL;
         } else {
@@ -69,7 +69,7 @@ bool zmq::trie_t::add (unsigned char *prefix_, size_t size_)
             _count = (_min + old_count) - c;
             _next.table = static_cast<trie_t **> (
               realloc (_next.table, sizeof (trie_t *) * _count));
-            zmq_assert (_next.table);
+            zlink_assert (_next.table);
             memmove (_next.table + _min - c, _next.table,
                      old_count * sizeof (trie_t *));
             for (unsigned short i = 0; i != _min - c; i++)
@@ -84,7 +84,7 @@ bool zmq::trie_t::add (unsigned char *prefix_, size_t size_)
             _next.node = new (std::nothrow) trie_t;
             alloc_assert (_next.node);
             ++_live_nodes;
-            zmq_assert (_live_nodes == 1);
+            zlink_assert (_live_nodes == 1);
         }
         return _next.node->add (prefix_ + 1, size_ - 1);
     }
@@ -92,12 +92,12 @@ bool zmq::trie_t::add (unsigned char *prefix_, size_t size_)
         _next.table[c - _min] = new (std::nothrow) trie_t;
         alloc_assert (_next.table[c - _min]);
         ++_live_nodes;
-        zmq_assert (_live_nodes > 1);
+        zlink_assert (_live_nodes > 1);
     }
     return _next.table[c - _min]->add (prefix_ + 1, size_ - 1);
 }
 
-bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
+bool zlink::trie_t::rm (unsigned char *prefix_, size_t size_)
 {
     //  TODO: Shouldn't an error be reported if the key does not exist?
     if (!size_) {
@@ -119,18 +119,18 @@ bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
 
     //  Prune redundant nodes
     if (next_node->is_redundant ()) {
-        LIBZMQ_DELETE (next_node);
-        zmq_assert (_count > 0);
+        LIBZLINK_DELETE (next_node);
+        zlink_assert (_count > 0);
 
         if (_count == 1) {
             //  The just pruned node is was the only live node
             _next.node = 0;
             _count = 0;
             --_live_nodes;
-            zmq_assert (_live_nodes == 0);
+            zlink_assert (_live_nodes == 0);
         } else {
             _next.table[c - _min] = 0;
-            zmq_assert (_live_nodes > 1);
+            zlink_assert (_live_nodes > 1);
             --_live_nodes;
 
             //  Compact the table if possible
@@ -151,7 +151,7 @@ bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
                     //  node table => keep the left-most node
                     node = _next.table[0];
                 }
-                zmq_assert (node);
+                zlink_assert (node);
                 free (_next.table);
                 _next.node = node;
                 _count = 1;
@@ -166,11 +166,11 @@ bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
                         break;
                     }
                 }
-                zmq_assert (new_min != _min);
+                zlink_assert (new_min != _min);
 
                 trie_t **old_table = _next.table;
-                zmq_assert (new_min > _min);
-                zmq_assert (_count > new_min - _min);
+                zlink_assert (new_min > _min);
+                zlink_assert (_count > new_min - _min);
 
                 _count = _count - (new_min - _min);
                 _next.table =
@@ -193,7 +193,7 @@ bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
                         break;
                     }
                 }
-                zmq_assert (new_count != _count);
+                zlink_assert (new_count != _count);
                 _count = new_count;
 
                 trie_t **old_table = _next.table;
@@ -209,7 +209,7 @@ bool zmq::trie_t::rm (unsigned char *prefix_, size_t size_)
     return ret;
 }
 
-bool zmq::trie_t::check (const unsigned char *data_, size_t size_) const
+bool zlink::trie_t::check (const unsigned char *data_, size_t size_) const
 {
     //  This function is on critical path. It deliberately doesn't use
     //  recursion to get a bit better performance.
@@ -242,7 +242,7 @@ bool zmq::trie_t::check (const unsigned char *data_, size_t size_) const
     }
 }
 
-void zmq::trie_t::apply (
+void zlink::trie_t::apply (
   void (*func_) (unsigned char *data_, size_t size_, void *arg_), void *arg_)
 {
     unsigned char *buff = NULL;
@@ -250,7 +250,7 @@ void zmq::trie_t::apply (
     free (buff);
 }
 
-void zmq::trie_t::apply_helper (unsigned char **buff_,
+void zlink::trie_t::apply_helper (unsigned char **buff_,
                                 size_t buffsize_,
                                 size_t maxbuffsize_,
                                 void (*func_) (unsigned char *data_,
@@ -266,7 +266,7 @@ void zmq::trie_t::apply_helper (unsigned char **buff_,
     if (buffsize_ >= maxbuffsize_) {
         maxbuffsize_ = buffsize_ + 256;
         *buff_ = static_cast<unsigned char *> (realloc (*buff_, maxbuffsize_));
-        zmq_assert (*buff_);
+        zlink_assert (*buff_);
     }
 
     //  If there are no subnodes in the trie, return.
@@ -290,7 +290,7 @@ void zmq::trie_t::apply_helper (unsigned char **buff_,
     }
 }
 
-bool zmq::trie_t::is_redundant () const
+bool zlink::trie_t::is_redundant () const
 {
     return _refcnt == 0 && _live_nodes == 0;
 }

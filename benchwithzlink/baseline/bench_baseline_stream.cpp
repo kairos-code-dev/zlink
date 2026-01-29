@@ -1,21 +1,21 @@
 #include "../common/bench_common.hpp"
-#include <zmq.h>
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
 #include <atomic>
 
-#ifndef ZMQ_STREAM
-#define ZMQ_STREAM 11
+#ifndef ZLINK_STREAM
+#define ZLINK_STREAM 11
 #endif
 
-#ifndef ZMQ_TCP_NODELAY
-#define ZMQ_TCP_NODELAY 26
+#ifndef ZLINK_TCP_NODELAY
+#define ZLINK_TCP_NODELAY 26
 #endif
 
-#ifndef ZMQ_TLS_TRUST_SYSTEM
-#define ZMQ_TLS_TRUST_SYSTEM 101
+#ifndef ZLINK_TLS_TRUST_SYSTEM
+#define ZLINK_TLS_TRUST_SYSTEM 101
 #endif
 
 // STREAM socket benchmark for zlink
@@ -48,11 +48,11 @@ inline uint32_t be_to_uint32(const unsigned char* buf) {
 // Returns 0 on failure
 uint32_t expect_connect_event(void* socket) {
     unsigned char id_buf[4];
-    int id_len = zmq_recv(socket, id_buf, 4, 0);
+    int id_len = zlink_recv(socket, id_buf, 4, 0);
     if (id_len != 4) {
         if (bench_debug_enabled())
             std::cerr << "Failed to receive routing_id (expected 4, got " << id_len << "): "
-                      << zmq_strerror(zmq_errno()) << std::endl;
+                      << zlink_strerror(zlink_errno()) << std::endl;
         return 0;
     }
 
@@ -61,7 +61,7 @@ uint32_t expect_connect_event(void* socket) {
     // Check for MORE flag
     int more = 0;
     size_t more_size = sizeof(more);
-    zmq_getsockopt(socket, ZMQ_RCVMORE, &more, &more_size);
+    zlink_getsockopt(socket, ZLINK_RCVMORE, &more, &more_size);
     if (!more) {
         if (bench_debug_enabled())
             std::cerr << "Expected MORE flag for connect event" << std::endl;
@@ -70,7 +70,7 @@ uint32_t expect_connect_event(void* socket) {
 
     // Receive payload (should be 0x01 for connect)
     unsigned char payload[16];
-    int payload_len = zmq_recv(socket, payload, sizeof(payload), 0);
+    int payload_len = zlink_recv(socket, payload, sizeof(payload), 0);
     if (payload_len != 1 || payload[0] != STREAM_EVENT_CONNECT) {
         if (bench_debug_enabled())
             std::cerr << "Expected connect event (0x01), got len=" << payload_len
@@ -88,60 +88,60 @@ uint32_t expect_connect_event(void* socket) {
 inline void send_stream_msg(void* socket, uint32_t routing_id, const void* data, size_t len) {
     unsigned char id_buf[4];
     uint32_to_be(routing_id, id_buf);
-    zmq_send(socket, id_buf, 4, ZMQ_SNDMORE);
-    zmq_send(socket, data, len, 0);
+    zlink_send(socket, id_buf, 4, ZLINK_SNDMORE);
+    zlink_send(socket, data, len, 0);
 }
 
 // Helper: Receive STREAM message
 // Returns payload length, stores routing_id in routing_id_out
 inline int recv_stream_msg(void* socket, uint32_t* routing_id_out, void* buf, size_t buf_size) {
     unsigned char id_buf[4];
-    int id_len = zmq_recv(socket, id_buf, 4, 0);
+    int id_len = zlink_recv(socket, id_buf, 4, 0);
     if (id_len != 4) return -1;
 
     *routing_id_out = be_to_uint32(id_buf);
-    return zmq_recv(socket, buf, buf_size, 0);
+    return zlink_recv(socket, buf, buf_size, 0);
 }
 
 void run_stream(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
-    void *ctx = zmq_ctx_new();
-    void *server = zmq_socket(ctx, ZMQ_STREAM);
-    void *client = zmq_socket(ctx, ZMQ_STREAM);
+    void *ctx = zlink_ctx_new();
+    void *server = zlink_socket(ctx, ZLINK_STREAM);
+    void *client = zlink_socket(ctx, ZLINK_STREAM);
 
     int hwm = 0;
-    set_sockopt_int(server, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(server, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(client, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(client, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
+    set_sockopt_int(server, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(server, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(client, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(client, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
 
     // Setup TLS for server (sets cert/key for tls/wss)
     if (!setup_tls_server(server, transport)) {
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
     // Setup TLS for client (sets CA and hostname for tls/wss)
     if (!setup_tls_client(client, transport)) {
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
     std::string endpoint = bind_and_resolve_endpoint(server, transport, lib_name + "_stream");
     if (endpoint.empty()) {
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
     if (!connect_checked(client, endpoint)) {
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
@@ -154,9 +154,9 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     if (server_client_id == 0) {
         if (bench_debug_enabled())
             std::cerr << "Failed to get server_client_id" << std::endl;
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
@@ -164,9 +164,9 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     if (client_server_id == 0) {
         if (bench_debug_enabled())
             std::cerr << "Failed to get client_server_id" << std::endl;
-        zmq_close(server);
-        zmq_close(client);
-        zmq_ctx_term(ctx);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
         return;
     }
 
@@ -224,9 +224,9 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
 
     print_result(lib_name, "STREAM", transport, msg_size, throughput, latency);
 
-    zmq_close(server);
-    zmq_close(client);
-    zmq_ctx_term(ctx);
+    zlink_close(server);
+    zlink_close(client);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

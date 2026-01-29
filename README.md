@@ -1,6 +1,6 @@
 # zlink
 
-> [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
+> [libzlink](https://github.com/zlink/libzlink) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
@@ -9,11 +9,11 @@
 
 ## 왜 zlink인가?
 
-libzmq는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
+libzlink는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
 
-**zlink는 libzmq의 핵심만 남기고 현대적으로 재구축합니다:**
+**zlink는 libzlink의 핵심만 남기고 현대적으로 재구축합니다:**
 
-| | libzmq | zlink |
+| | libzlink | zlink |
 |---|--------|-------|
 | **Socket Types** | 17종 (draft 포함) | **7종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
@@ -39,13 +39,13 @@ REQ/REP, PUSH/PULL, 모든 draft socket을 제거했습니다. 남은 7종의 so
 
 ```c
 // TLS 서버
-zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
-zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
-zmq_bind(socket, "tls://*:5555");
+zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", ...);
+zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", ...);
+zlink_bind(socket, "tls://*:5555");
 
 // TLS 클라이언트
-zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
-zmq_connect(socket, "tls://server.example.com:5555");
+zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", ...);
+zlink_connect(socket, "tls://server.example.com:5555");
 ```
 
 ---
@@ -57,7 +57,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 ```
 ┌──────────────────────────────────────────────────────┐
 │  Application Layer                                    │
-│  zmq_ctx_new() · zmq_socket() · zmq_send/recv()      │
+│  zlink_ctx_new() · zlink_socket() · zlink_send/recv()      │
 ├──────────────────────────────────────────────────────┤
 │  Socket Logic Layer                                   │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM  │
@@ -88,7 +88,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 ### Thread 모델
 
-- **Application Thread**: `zmq_send()`/`zmq_recv()` 호출
+- **Application Thread**: `zlink_send()`/`zlink_recv()` 호출
 - **I/O Thread**: Boost.Asio `io_context` 기반 비동기 네트워크 처리
 - **Reaper Thread**: 종료된 소켓/세션의 자원 정리
 - Thread 간 통신은 Lock-free YPipe + Mailbox 시스템으로 처리
@@ -103,7 +103,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 | 기능 | 설명 | 스펙 |
 |------|------|:----:|
-| **Routing ID 통합** | `zmq_routing_id_t` 표준 타입, 자동 생성 포맷 통일 | [00](doc/plan/00-routing-id-unification.md) |
+| **Routing ID 통합** | `zlink_routing_id_t` 표준 타입, 자동 생성 포맷 통일 | [00](doc/plan/00-routing-id-unification.md) |
 | **모니터링 강화** | Routing-ID 기반 이벤트 식별, Callback API, Socket별 메트릭스 | [01](doc/plan/01-enhanced-monitoring.md) |
 | **Thread-safe Socket** | Asio Strand 직렬화로 여러 thread에서 단일 socket 공유 | [02](doc/plan/02-thread-safe-socket.md) |
 | **Request/Reply API** | DEALER/ROUTER 기반 비동기 요청-응답 (REQ/REP 대체) | [03](doc/plan/03-request-reply-api.md) |
@@ -152,7 +152,7 @@ ctest --test-dir build --output-on-failure
 | `BUILD_TESTS` | `ON` | 테스트 빌드 |
 | `BUILD_BENCHMARKS` | `OFF` | 벤치마크 빌드 |
 | `BUILD_SHARED` | `ON` | Shared Library 빌드 |
-| `ZMQ_CXX_STANDARD` | `17` | C++ 표준 (11, 14, 17, 20, 23) |
+| `ZLINK_CXX_STANDARD` | `17` | C++ 표준 (11, 14, 17, 20, 23) |
 
 ### OpenSSL 설치
 
@@ -191,7 +191,7 @@ vcpkg install openssl:x64-windows
 | DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
 | ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
 
-> 표준 libzmq 대비 ~99% 처리량 동등성. 상세 분석은 [성능 리포트](doc/report/performance/tag_0.5_performance_report.md)를 참고하세요.
+> 표준 libzlink 대비 ~99% 처리량 동등성. 상세 분석은 [성능 리포트](doc/report/performance/tag_0.5_performance_report.md)를 참고하세요.
 
 ---
 
@@ -210,4 +210,4 @@ vcpkg install openssl:x64-windows
 
 [Mozilla Public License 2.0](LICENSE)
 
-[ZeroMQ (libzmq)](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.
+[Zlink (libzlink)](https://github.com/zlink/libzlink) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

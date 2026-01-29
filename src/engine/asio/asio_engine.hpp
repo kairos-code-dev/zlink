@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_ENGINE_HPP_INCLUDED__
-#define __ZMQ_ASIO_ENGINE_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_ENGINE_HPP_INCLUDED__
+#define __ZLINK_ASIO_ENGINE_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <boost/asio.hpp>
 
@@ -22,7 +22,7 @@
 #include "protocol/metadata.hpp"
 #include "engine/asio/i_asio_transport.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class session_base_t;
@@ -45,16 +45,16 @@ class asio_engine_t : public i_engine
                    const endpoint_uri_pair_t &endpoint_uri_pair_,
                    std::unique_ptr<i_asio_transport> transport_ =
                      std::unique_ptr<i_asio_transport> ());
-    ~asio_engine_t () ZMQ_OVERRIDE;
+    ~asio_engine_t () ZLINK_OVERRIDE;
 
     //  i_engine interface implementation.
-    bool has_handshake_stage () ZMQ_OVERRIDE { return _has_handshake_stage; }
-    void plug (zmq::io_thread_t *io_thread_,
-               zmq::session_base_t *session_) ZMQ_OVERRIDE;
-    void terminate () ZMQ_OVERRIDE;
-    bool restart_input () ZMQ_OVERRIDE;
-    void restart_output () ZMQ_OVERRIDE;
-    const endpoint_uri_pair_t &get_endpoint () const ZMQ_OVERRIDE;
+    bool has_handshake_stage () ZLINK_OVERRIDE { return _has_handshake_stage; }
+    void plug (zlink::io_thread_t *io_thread_,
+               zlink::session_base_t *session_) ZLINK_OVERRIDE;
+    void terminate () ZLINK_OVERRIDE;
+    bool restart_input () ZLINK_OVERRIDE;
+    void restart_output () ZLINK_OVERRIDE;
+    const endpoint_uri_pair_t &get_endpoint () const ZLINK_OVERRIDE;
 
   protected:
     typedef metadata_t::dict_t properties_t;
@@ -74,22 +74,22 @@ class asio_engine_t : public i_engine
 
     virtual int process_command_message (msg_t *msg_)
     {
-        LIBZMQ_UNUSED (msg_);
+        LIBZLINK_UNUSED (msg_);
         return -1;
     }
     virtual int produce_ping_message (msg_t *msg_)
     {
-        LIBZMQ_UNUSED (msg_);
+        LIBZLINK_UNUSED (msg_);
         return -1;
     }
     virtual int process_heartbeat_message (msg_t *msg_)
     {
-        LIBZMQ_UNUSED (msg_);
+        LIBZLINK_UNUSED (msg_);
         return -1;
     }
     virtual int produce_pong_message (msg_t *msg_)
     {
-        LIBZMQ_UNUSED (msg_);
+        LIBZLINK_UNUSED (msg_);
         return -1;
     }
 
@@ -300,15 +300,15 @@ class asio_engine_t : public i_engine
     unsigned char *_read_buffer_ptr;
 
     //  The session this engine is attached to.
-    zmq::session_base_t *_session;
+    zlink::session_base_t *_session;
 
     //  Socket
-    zmq::socket_base_t *_socket;
+    zlink::socket_base_t *_socket;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_engine_t)
 };
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZMQ_ASIO_ENGINE_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_ENGINE_HPP_INCLUDED__

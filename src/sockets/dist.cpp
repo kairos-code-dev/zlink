@@ -7,17 +7,17 @@
 #include "core/msg.hpp"
 #include "utils/likely.hpp"
 
-zmq::dist_t::dist_t () :
+zlink::dist_t::dist_t () :
     _matching (0), _active (0), _eligible (0), _more (false)
 {
 }
 
-zmq::dist_t::~dist_t ()
+zlink::dist_t::~dist_t ()
 {
-    zmq_assert (_pipes.empty ());
+    zlink_assert (_pipes.empty ());
 }
 
-void zmq::dist_t::attach (pipe_t *pipe_)
+void zlink::dist_t::attach (pipe_t *pipe_)
 {
     //  If we are in the middle of sending a message, we'll add new pipe
     //  into the list of eligible pipes. Otherwise we add it to the list
@@ -34,7 +34,7 @@ void zmq::dist_t::attach (pipe_t *pipe_)
     }
 }
 
-bool zmq::dist_t::has_pipe (pipe_t *pipe_)
+bool zlink::dist_t::has_pipe (pipe_t *pipe_)
 {
     std::size_t claimed_index = _pipes.index (pipe_);
 
@@ -46,7 +46,7 @@ bool zmq::dist_t::has_pipe (pipe_t *pipe_)
     return _pipes[claimed_index] == pipe_;
 }
 
-void zmq::dist_t::match (pipe_t *pipe_)
+void zlink::dist_t::match (pipe_t *pipe_)
 {
     //  If pipe is already matching do nothing.
     if (_pipes.index (pipe_) < _matching)
@@ -61,7 +61,7 @@ void zmq::dist_t::match (pipe_t *pipe_)
     _matching++;
 }
 
-void zmq::dist_t::reverse_match ()
+void zlink::dist_t::reverse_match ()
 {
     const pipes_t::size_type prev_matching = _matching;
 
@@ -77,12 +77,12 @@ void zmq::dist_t::reverse_match ()
     }
 }
 
-void zmq::dist_t::unmatch ()
+void zlink::dist_t::unmatch ()
 {
     _matching = 0;
 }
 
-void zmq::dist_t::pipe_terminated (pipe_t *pipe_)
+void zlink::dist_t::pipe_terminated (pipe_t *pipe_)
 {
     //  Remove the pipe from the list; adjust number of matching, active and/or
     //  eligible pipes accordingly.
@@ -102,7 +102,7 @@ void zmq::dist_t::pipe_terminated (pipe_t *pipe_)
     _pipes.erase (pipe_);
 }
 
-void zmq::dist_t::activated (pipe_t *pipe_)
+void zlink::dist_t::activated (pipe_t *pipe_)
 {
     //  Move the pipe from passive to eligible state.
     if (_eligible < _pipes.size ()) {
@@ -118,13 +118,13 @@ void zmq::dist_t::activated (pipe_t *pipe_)
     }
 }
 
-int zmq::dist_t::send_to_all (msg_t *msg_)
+int zlink::dist_t::send_to_all (msg_t *msg_)
 {
     _matching = _active;
     return send_to_matching (msg_);
 }
 
-int zmq::dist_t::send_to_matching (msg_t *msg_)
+int zlink::dist_t::send_to_matching (msg_t *msg_)
 {
     //  Is this end of a multipart message?
     const bool msg_more = (msg_->flags () & msg_t::more) != 0;
@@ -141,7 +141,7 @@ int zmq::dist_t::send_to_matching (msg_t *msg_)
     return 0;
 }
 
-void zmq::dist_t::distribute (msg_t *msg_)
+void zlink::dist_t::distribute (msg_t *msg_)
 {
     //  If there are no matching pipes available, simply drop the message.
     if (_matching == 0) {
@@ -188,12 +188,12 @@ void zmq::dist_t::distribute (msg_t *msg_)
     errno_assert (rc == 0);
 }
 
-bool zmq::dist_t::has_out ()
+bool zlink::dist_t::has_out ()
 {
     return true;
 }
 
-bool zmq::dist_t::write (pipe_t *pipe_, msg_t *msg_)
+bool zlink::dist_t::write (pipe_t *pipe_, msg_t *msg_)
 {
     if (!pipe_->write (msg_)) {
         _pipes.swap (_pipes.index (pipe_), _matching - 1);
@@ -209,7 +209,7 @@ bool zmq::dist_t::write (pipe_t *pipe_, msg_t *msg_)
     return true;
 }
 
-bool zmq::dist_t::check_hwm ()
+bool zlink::dist_t::check_hwm ()
 {
     for (pipes_t::size_type i = 0; i < _matching; ++i)
         if (!_pipes[i]->check_hwm ())

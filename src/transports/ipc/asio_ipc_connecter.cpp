@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_IPC
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_IPC
 
 #include "transports/ipc/asio_ipc_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -16,7 +16,7 @@
 #include "utils/random.hpp"
 #include "core/session_base.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/un.h>
 #include <stddef.h>
@@ -41,7 +41,7 @@
 namespace
 {
 boost::asio::local::stream_protocol::endpoint
-make_ipc_endpoint (const zmq::ipc_address_t &addr_)
+make_ipc_endpoint (const zlink::ipc_address_t &addr_)
 {
     boost::asio::local::stream_protocol::endpoint endpoint;
     memcpy (endpoint.data (), addr_.addr (), addr_.addrlen ());
@@ -50,7 +50,7 @@ make_ipc_endpoint (const zmq::ipc_address_t &addr_)
 }
 }
 
-zmq::asio_ipc_connecter_t::asio_ipc_connecter_t (
+zlink::asio_ipc_connecter_t::asio_ipc_connecter_t (
   io_thread_t *io_thread_,
   session_base_t *session_,
   const options_t &options_,
@@ -71,22 +71,22 @@ zmq::asio_ipc_connecter_t::asio_ipc_connecter_t (
     _linger (0),
     _current_reconnect_ivl (-1)
 {
-    zmq_assert (_addr);
-    zmq_assert (_addr->protocol == protocol_name::ipc);
+    zlink_assert (_addr);
+    zlink_assert (_addr->protocol == protocol_name::ipc);
     _addr->to_string (_endpoint_str);
 
     IPC_CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",
                        _endpoint_str.c_str (), static_cast<void *> (this));
 }
 
-zmq::asio_ipc_connecter_t::~asio_ipc_connecter_t ()
+zlink::asio_ipc_connecter_t::~asio_ipc_connecter_t ()
 {
     IPC_CONNECTER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
-    zmq_assert (!_reconnect_timer_started);
-    zmq_assert (!_connect_timer_started);
+    zlink_assert (!_reconnect_timer_started);
+    zlink_assert (!_connect_timer_started);
 }
 
-void zmq::asio_ipc_connecter_t::process_plug ()
+void zlink::asio_ipc_connecter_t::process_plug ()
 {
     IPC_CONNECTER_DBG ("process_plug called, delayed_start=%d", _delayed_start);
 
@@ -96,7 +96,7 @@ void zmq::asio_ipc_connecter_t::process_plug ()
         start_connecting ();
 }
 
-void zmq::asio_ipc_connecter_t::process_term (int linger_)
+void zlink::asio_ipc_connecter_t::process_term (int linger_)
 {
     IPC_CONNECTER_DBG ("process_term called, linger=%d, connecting=%d", linger_,
                        _connecting);
@@ -123,7 +123,7 @@ void zmq::asio_ipc_connecter_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_ipc_connecter_t::timer_event (int id_)
+void zlink::asio_ipc_connecter_t::timer_event (int id_)
 {
     IPC_CONNECTER_DBG ("timer_event: id=%d", id_);
 
@@ -140,16 +140,16 @@ void zmq::asio_ipc_connecter_t::timer_event (int id_)
         close ();
         add_reconnect_timer ();
     } else {
-        zmq_assert (false);
+        zlink_assert (false);
     }
 }
 
-void zmq::asio_ipc_connecter_t::start_connecting ()
+void zlink::asio_ipc_connecter_t::start_connecting ()
 {
     IPC_CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
     if (_addr->resolved.ipc_addr != NULL) {
-        LIBZMQ_DELETE (_addr->resolved.ipc_addr);
+        LIBZLINK_DELETE (_addr->resolved.ipc_addr);
     }
 
     _addr->resolved.ipc_addr = new (std::nothrow) ipc_address_t ();
@@ -159,7 +159,7 @@ void zmq::asio_ipc_connecter_t::start_connecting ()
       _addr->resolved.ipc_addr->resolve (_addr->address.c_str ());
     if (rc != 0) {
         IPC_CONNECTER_DBG ("start_connecting: resolve failed");
-        LIBZMQ_DELETE (_addr->resolved.ipc_addr);
+        LIBZLINK_DELETE (_addr->resolved.ipc_addr);
         add_reconnect_timer ();
         return;
     }
@@ -187,7 +187,7 @@ void zmq::asio_ipc_connecter_t::start_connecting ()
       make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
 }
 
-void zmq::asio_ipc_connecter_t::on_connect (
+void zlink::asio_ipc_connecter_t::on_connect (
   const boost::system::error_code &ec)
 {
     _connecting = false;
@@ -226,7 +226,7 @@ void zmq::asio_ipc_connecter_t::on_connect (
     create_engine (fd, local_address);
 }
 
-void zmq::asio_ipc_connecter_t::add_connect_timer ()
+void zlink::asio_ipc_connecter_t::add_connect_timer ()
 {
     if (options.connect_timeout > 0) {
         IPC_CONNECTER_DBG ("add_connect_timer: timeout=%d",
@@ -236,7 +236,7 @@ void zmq::asio_ipc_connecter_t::add_connect_timer ()
     }
 }
 
-void zmq::asio_ipc_connecter_t::add_reconnect_timer ()
+void zlink::asio_ipc_connecter_t::add_reconnect_timer ()
 {
     if (options.reconnect_ivl > 0) {
         const int interval = get_new_reconnect_ivl ();
@@ -248,7 +248,7 @@ void zmq::asio_ipc_connecter_t::add_reconnect_timer ()
     }
 }
 
-int zmq::asio_ipc_connecter_t::get_new_reconnect_ivl ()
+int zlink::asio_ipc_connecter_t::get_new_reconnect_ivl ()
 {
     if (options.reconnect_ivl_max > 0) {
         int candidate_interval = 0;
@@ -277,7 +277,7 @@ int zmq::asio_ipc_connecter_t::get_new_reconnect_ivl ()
     }
 }
 
-void zmq::asio_ipc_connecter_t::create_engine (fd_t fd_,
+void zlink::asio_ipc_connecter_t::create_engine (fd_t fd_,
                                                const std::string &local_address_)
 {
     IPC_CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
@@ -291,7 +291,7 @@ void zmq::asio_ipc_connecter_t::create_engine (fd_t fd_,
     alloc_assert (transport.get ());
 
     i_engine *engine = NULL;
-    if (options.type == ZMQ_STREAM) {
+    if (options.type == ZLINK_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {
@@ -307,7 +307,7 @@ void zmq::asio_ipc_connecter_t::create_engine (fd_t fd_,
     _socket_ptr->event_connected (endpoint_pair, fd_);
 }
 
-void zmq::asio_ipc_connecter_t::close ()
+void zlink::asio_ipc_connecter_t::close ()
 {
     IPC_CONNECTER_DBG ("close called");
 
@@ -321,4 +321,4 @@ void zmq::asio_ipc_connecter_t::close ()
     }
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_IPC
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_IPC

@@ -13,55 +13,55 @@ void tearDown ()
 
 void test_capabilities ()
 {
-#if defined(ZMQ_HAVE_IPC)
-    TEST_ASSERT_TRUE (zmq_has ("ipc"));
+#if defined(ZLINK_HAVE_IPC)
+    TEST_ASSERT_TRUE (zlink_has ("ipc"));
 #else
-    TEST_ASSERT_TRUE (!zmq_has ("ipc"));
+    TEST_ASSERT_TRUE (!zlink_has ("ipc"));
 #endif
 
-#if defined(ZMQ_HAVE_TLS)
-    TEST_ASSERT_TRUE (zmq_has ("tls"));
+#if defined(ZLINK_HAVE_TLS)
+    TEST_ASSERT_TRUE (zlink_has ("tls"));
 #else
-    TEST_ASSERT_TRUE (!zmq_has ("tls"));
+    TEST_ASSERT_TRUE (!zlink_has ("tls"));
 #endif
 
-#if defined(ZMQ_HAVE_WS)
-    TEST_ASSERT_TRUE (zmq_has ("ws"));
+#if defined(ZLINK_HAVE_WS)
+    TEST_ASSERT_TRUE (zlink_has ("ws"));
 #else
-    TEST_ASSERT_TRUE (!zmq_has ("ws"));
+    TEST_ASSERT_TRUE (!zlink_has ("ws"));
 #endif
 
-#if defined(ZMQ_HAVE_WSS)
-    TEST_ASSERT_TRUE (zmq_has ("wss"));
+#if defined(ZLINK_HAVE_WSS)
+    TEST_ASSERT_TRUE (zlink_has ("wss"));
 #else
-    TEST_ASSERT_TRUE (!zmq_has ("wss"));
+    TEST_ASSERT_TRUE (!zlink_has ("wss"));
 #endif
 
-#if defined(ZMQ_HAVE_OPENPGM)
-    TEST_ASSERT_TRUE (zmq_has ("pgm"));
-    TEST_ASSERT_TRUE (zmq_has ("epgm"));
+#if defined(ZLINK_HAVE_OPENPGM)
+    TEST_ASSERT_TRUE (zlink_has ("pgm"));
+    TEST_ASSERT_TRUE (zlink_has ("epgm"));
 #else
-    TEST_ASSERT_TRUE (!zmq_has ("pgm"));
-    TEST_ASSERT_TRUE (!zmq_has ("epgm"));
+    TEST_ASSERT_TRUE (!zlink_has ("pgm"));
+    TEST_ASSERT_TRUE (!zlink_has ("epgm"));
 #endif
 
     // TIPC is removed
-    TEST_ASSERT_TRUE (!zmq_has ("tipc"));
+    TEST_ASSERT_TRUE (!zlink_has ("tipc"));
 
     // NORM is removed
-    TEST_ASSERT_TRUE (!zmq_has ("norm"));
+    TEST_ASSERT_TRUE (!zlink_has ("norm"));
 
     // CURVE is removed
-    TEST_ASSERT_TRUE (!zmq_has ("curve"));
+    TEST_ASSERT_TRUE (!zlink_has ("curve"));
 
     // GSSAPI is removed
-    TEST_ASSERT_TRUE (!zmq_has ("gssapi"));
+    TEST_ASSERT_TRUE (!zlink_has ("gssapi"));
 
     // VMCI is removed
-    TEST_ASSERT_TRUE (!zmq_has ("vmci"));
+    TEST_ASSERT_TRUE (!zlink_has ("vmci"));
 
     // Draft API is removed
-    TEST_ASSERT_TRUE (!zmq_has ("draft"));
+    TEST_ASSERT_TRUE (!zlink_has ("draft"));
 }
 
 int main ()

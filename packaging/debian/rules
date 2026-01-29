@@ -56,12 +56,12 @@ endif
 
 override_dh_auto_install:
 	dh_auto_install
-ifneq ("$(wildcard debian/zmq.hpp)","")
-	cp $(CURDIR)/debian/zmq.hpp $(CURDIR)/debian/tmp/usr/include/
+ifneq ("$(wildcard debian/zlink.hpp)","")
+	cp $(CURDIR)/debian/zlink.hpp $(CURDIR)/debian/tmp/usr/include/
 endif
 
 override_dh_strip:
-	dh_strip --dbg-package=libzmq5-dbg
+	dh_strip --dbg-package=libzlink5-dbg
 
 %:
 	dh $@ --with=autoreconf --parallel

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_TLS_CONNECTER_HPP_INCLUDED__
-#define __ZMQ_ASIO_TLS_CONNECTER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_TLS_CONNECTER_HPP_INCLUDED__
+#define __ZLINK_ASIO_TLS_CONNECTER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -16,7 +16,7 @@
 #include "utils/stdint.hpp"
 #include "core/io_object.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class session_base_t;
@@ -35,13 +35,13 @@ struct address_t;
 //    - tls_key: Client private key file (for mutual TLS)
 //    - tls_hostname: Server hostname for SNI and verification
 
-class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
+class asio_tls_connecter_t ZLINK_FINAL : public own_t, public io_object_t
 {
   public:
     //  If 'delayed_start' is true connecter first waits for a while,
     //  then starts connection process.
-    asio_tls_connecter_t (zmq::io_thread_t *io_thread_,
-                          zmq::session_base_t *session_,
+    asio_tls_connecter_t (zlink::io_thread_t *io_thread_,
+                          zlink::session_base_t *session_,
                           const options_t &options_,
                           address_t *addr_,
                           bool delayed_start_);
@@ -56,11 +56,11 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     };
 
     //  Handlers for incoming commands.
-    void process_plug () ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_OVERRIDE;
+    void process_plug () ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_OVERRIDE;
 
     //  Handlers for I/O events (from io_object_t).
-    void timer_event (int id_) ZMQ_OVERRIDE;
+    void timer_event (int id_) ZLINK_OVERRIDE;
 
     //  Internal function to start the actual connection establishment.
     void start_connecting ();
@@ -109,10 +109,10 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     std::string _endpoint_str;
 
     //  Reference to the session we belong to.
-    zmq::session_base_t *const _session;
+    zlink::session_base_t *const _session;
 
     //  Socket
-    zmq::socket_base_t *const _socket_ptr;
+    zlink::socket_base_t *const _socket_ptr;
 
     //  If true, connecter is waiting a while before trying to connect.
     const bool _delayed_start;
@@ -131,10 +131,10 @@ class asio_tls_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     //  Current reconnect ivl, updated for backoff strategy
     int _current_reconnect_ivl;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_tls_connecter_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_tls_connecter_t)
 };
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZMQ_ASIO_TLS_CONNECTER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_TLS_CONNECTER_HPP_INCLUDED__

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "engine/asio/asio_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -10,14 +10,14 @@
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
-#include "zmq.h"
+#include "zlink.h"
 #include "utils/config.hpp"
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 #include "utils/likely.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #endif
 
@@ -26,8 +26,8 @@
 #include <cstring>
 #include <sstream>
 
-// Debug logging for ASIO engine - enable with -DZMQ_ASIO_DEBUG=1
-#if defined(ZMQ_ASIO_DEBUG)
+// Debug logging for ASIO engine - enable with -DZLINK_ASIO_DEBUG=1
+#if defined(ZLINK_ASIO_DEBUG)
 #define ASIO_ENGINE_DEBUG 1
 #else
 #define ASIO_ENGINE_DEBUG 0
@@ -42,19 +42,19 @@
 #endif
 
 //  Draft API message property names (kept for internal use)
-#define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
-#define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
-#define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
-#define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
+#define ZLINK_MSG_PROPERTY_ROUTING_ID "Routing-Id"
+#define ZLINK_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
+#define ZLINK_MSG_PROPERTY_USER_ID "User-Id"
+#define ZLINK_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
 
-static std::string get_peer_address (zmq::fd_t s_)
+static std::string get_peer_address (zlink::fd_t s_)
 {
     std::string peer_address;
 
-    const int family = zmq::get_peer_ip_address (s_, peer_address);
+    const int family = zlink::get_peer_ip_address (s_, peer_address);
     if (family == 0)
         peer_address.clear ();
-#if defined ZMQ_HAVE_SO_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED
     else if (family == PF_UNIX) {
         struct ucred cred;
         socklen_t size = sizeof (cred);
@@ -64,7 +64,7 @@ static std::string get_peer_address (zmq::fd_t s_)
             peer_address += buf.str ();
         }
     }
-#elif defined ZMQ_HAVE_LOCAL_PEERCRED
+#elif defined ZLINK_HAVE_LOCAL_PEERCRED
     else if (family == PF_UNIX) {
         struct xucred cred;
         socklen_t size = sizeof (cred);
@@ -89,7 +89,7 @@ bool gather_write_enabled ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_GATHER_WRITE");
+        const char *env = std::getenv ("ZLINK_ASIO_GATHER_WRITE");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -112,7 +112,7 @@ bool asio_single_write ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_SINGLE_WRITE");
+        const char *env = std::getenv ("ZLINK_ASIO_SINGLE_WRITE");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -122,14 +122,14 @@ size_t gather_threshold ()
 {
     static size_t threshold = 0;
     if (threshold == 0) {
-        threshold = parse_size_env ("ZMQ_ASIO_GATHER_THRESHOLD", 65536);
+        threshold = parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
     }
     return threshold;
 }
 
 }
 
-zmq::asio_engine_t::asio_engine_t (
+zlink::asio_engine_t::asio_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -191,16 +191,16 @@ zmq::asio_engine_t::asio_engine_t (
     unblock_socket (_fd);
 }
 
-zmq::asio_engine_t::~asio_engine_t ()
+zlink::asio_engine_t::~asio_engine_t ()
 {
     ENGINE_DBG ("Destructor called");
 
-    zmq_assert (!_plugged);
+    zlink_assert (!_plugged);
 
     if (_transport) {
         _transport->close ();
     } else if (_fd != retired_fd) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         const int rc = closesocket (_fd);
         wsa_assert (rc != SOCKET_ERROR);
 #else
@@ -223,12 +223,12 @@ zmq::asio_engine_t::~asio_engine_t ()
     //  the only user.
     if (_metadata != NULL) {
         if (_metadata->drop_ref ()) {
-            LIBZMQ_DELETE (_metadata);
+            LIBZLINK_DELETE (_metadata);
         }
     }
 
-    LIBZMQ_DELETE (_encoder);
-    LIBZMQ_DELETE (_decoder);
+    LIBZLINK_DELETE (_encoder);
+    LIBZLINK_DELETE (_decoder);
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
@@ -238,17 +238,17 @@ zmq::asio_engine_t::~asio_engine_t ()
     //  (_timer, _socket_handle/_stream_descriptor)
 }
 
-void zmq::asio_engine_t::plug (io_thread_t *io_thread_,
+void zlink::asio_engine_t::plug (io_thread_t *io_thread_,
                                session_base_t *session_)
 {
     ENGINE_DBG ("plug called");
 
-    zmq_assert (!_plugged);
+    zlink_assert (!_plugged);
     _plugged = true;
 
     //  Connect to session object.
-    zmq_assert (!_session);
-    zmq_assert (session_);
+    zlink_assert (!_session);
+    zlink_assert (session_);
     _session = session_;
     _socket = _session->get_socket ();
 
@@ -276,7 +276,7 @@ void zmq::asio_engine_t::plug (io_thread_t *io_thread_,
     plug_internal ();
 }
 
-void zmq::asio_engine_t::start_transport_handshake ()
+void zlink::asio_engine_t::start_transport_handshake ()
 {
     ENGINE_DBG ("start_transport_handshake");
 
@@ -293,7 +293,7 @@ void zmq::asio_engine_t::start_transport_handshake ()
       });
 }
 
-void zmq::asio_engine_t::on_transport_handshake (
+void zlink::asio_engine_t::on_transport_handshake (
   const boost::system::error_code &ec)
 {
     ENGINE_DBG ("on_transport_handshake: ec=%s, terminating=%d",
@@ -318,7 +318,7 @@ void zmq::asio_engine_t::on_transport_handshake (
     plug_internal ();
 }
 
-void zmq::asio_engine_t::complete_handshake ()
+void zlink::asio_engine_t::complete_handshake ()
 {
     if (!_handshaking)
         return;
@@ -336,11 +336,11 @@ void zmq::asio_engine_t::complete_handshake ()
     }
 }
 
-void zmq::asio_engine_t::unplug ()
+void zlink::asio_engine_t::unplug ()
 {
     ENGINE_DBG ("unplug called");
 
-    zmq_assert (_plugged);
+    zlink_assert (_plugged);
     _plugged = false;
 
     //  Cancel all timers.
@@ -377,7 +377,7 @@ void zmq::asio_engine_t::unplug ()
     _session = NULL;
 }
 
-void zmq::asio_engine_t::terminate ()
+void zlink::asio_engine_t::terminate ()
 {
     ENGINE_DBG ("terminate called");
 
@@ -395,19 +395,19 @@ void zmq::asio_engine_t::terminate ()
     delete this;
 }
 
-bool zmq::asio_engine_t::build_gather_header (const msg_t &msg_,
+bool zlink::asio_engine_t::build_gather_header (const msg_t &msg_,
                                               unsigned char *buffer_,
                                               size_t buffer_size_,
                                               size_t &header_size_)
 {
-    LIBZMQ_UNUSED (msg_);
-    LIBZMQ_UNUSED (buffer_);
-    LIBZMQ_UNUSED (buffer_size_);
+    LIBZLINK_UNUSED (msg_);
+    LIBZLINK_UNUSED (buffer_);
+    LIBZLINK_UNUSED (buffer_size_);
     header_size_ = 0;
     return false;
 }
 
-void zmq::asio_engine_t::start_async_read ()
+void zlink::asio_engine_t::start_async_read ()
 {
     //  True Proactor Pattern: We no longer check _input_stopped here.
     //  Async reads continue even during backpressure, with data being buffered
@@ -469,7 +469,7 @@ void zmq::asio_engine_t::start_async_read ()
     }
 }
 
-bool zmq::asio_engine_t::speculative_read ()
+bool zlink::asio_engine_t::speculative_read ()
 {
     if (_read_pending || _io_error || !_transport)
         return false;
@@ -518,7 +518,7 @@ bool zmq::asio_engine_t::speculative_read ()
     return true;
 }
 
-void zmq::asio_engine_t::start_async_write ()
+void zlink::asio_engine_t::start_async_write ()
 {
     if (_terminating || _write_pending || _io_error)
         return;
@@ -537,7 +537,7 @@ void zmq::asio_engine_t::start_async_write ()
         return;
     }
 
-    //  Try a synchronous write first when supported (libzmq-like path).
+    //  Try a synchronous write first when supported (libzlink-like path).
     if (_transport->supports_speculative_write ()) {
         const std::size_t bytes =
           _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
@@ -568,7 +568,7 @@ void zmq::asio_engine_t::start_async_write ()
     }
 }
 
-bool zmq::asio_engine_t::prepare_gather_output ()
+bool zlink::asio_engine_t::prepare_gather_output ()
 {
     if (!gather_write_enabled ())
         return false;
@@ -624,7 +624,7 @@ bool zmq::asio_engine_t::prepare_gather_output ()
     return true;
 }
 
-void zmq::asio_engine_t::finish_gather_output ()
+void zlink::asio_engine_t::finish_gather_output ()
 {
     if (!_async_gather)
         return;
@@ -640,7 +640,7 @@ void zmq::asio_engine_t::finish_gather_output ()
     errno_assert (rc_init == 0);
 }
 
-void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
+void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
                                            std::size_t bytes_transferred)
 {
     _read_pending = false;
@@ -763,7 +763,7 @@ void zmq::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
     start_async_read ();
 }
 
-void zmq::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
+void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
                                             std::size_t bytes_transferred)
 {
     _write_pending = false;
@@ -823,7 +823,7 @@ void zmq::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
         start_async_write ();
 }
 
-bool zmq::asio_engine_t::process_input ()
+bool zlink::asio_engine_t::process_input ()
 {
     ENGINE_DBG ("process_input: handshaking=%d, insize=%zu", _handshaking,
                 _insize);
@@ -847,7 +847,7 @@ bool zmq::asio_engine_t::process_input ()
             return false;
     }
 
-    zmq_assert (_decoder);
+    zlink_assert (_decoder);
 
     //  If there has been an I/O error, stop.
     if (_input_stopped) {
@@ -887,7 +887,7 @@ bool zmq::asio_engine_t::process_input ()
         rc = _decoder->decode (decode_buf, decode_size, processed);
         ENGINE_DBG ("process_input: decode returned rc=%d, processed=%zu", rc,
                     processed);
-        zmq_assert (processed <= decode_size);
+        zlink_assert (processed <= decode_size);
         _inpos += processed;
         _insize -= processed;
 
@@ -913,7 +913,7 @@ bool zmq::asio_engine_t::process_input ()
     return true;
 }
 
-bool zmq::asio_engine_t::prepare_output_buffer ()
+bool zlink::asio_engine_t::prepare_output_buffer ()
 {
     ENGINE_DBG ("prepare_output_buffer: outsize=%zu", _outsize);
 
@@ -924,7 +924,7 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
     //  Even when we stop as soon as there is no data to send,
     //  there may be a pending async_write.
     if (unlikely (_encoder == NULL)) {
-        zmq_assert (_handshaking);
+        zlink_assert (_handshaking);
         return false;
     }
 
@@ -946,7 +946,7 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
         unsigned char *bufptr = _outpos + _outsize;
         const size_t n =
           _encoder->encode (&bufptr, target_out_batch - _outsize);
-        zmq_assert (n > 0);
+        zlink_assert (n > 0);
         if (_outpos == NULL)
             _outpos = bufptr;
         _outsize += n;
@@ -956,7 +956,7 @@ bool zmq::asio_engine_t::prepare_output_buffer ()
     return _outsize > 0;
 }
 
-void zmq::asio_engine_t::speculative_write ()
+void zlink::asio_engine_t::speculative_write ()
 {
     ENGINE_DBG ("speculative_write: write_pending=%d, output_stopped=%d",
                 _write_pending, _output_stopped);
@@ -988,7 +988,7 @@ void zmq::asio_engine_t::speculative_write ()
     }
 
     //  Attempt synchronous write using transport's write_some()
-    zmq_assert (_transport);
+    zlink_assert (_transport);
     const std::size_t bytes =
       _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
                               _outsize);
@@ -1074,7 +1074,7 @@ void zmq::asio_engine_t::speculative_write ()
     }
 }
 
-void zmq::asio_engine_t::process_output ()
+void zlink::asio_engine_t::process_output ()
 {
     ENGINE_DBG ("process_output: outsize=%zu", _outsize);
 
@@ -1083,7 +1083,7 @@ void zmq::asio_engine_t::process_output ()
         //  Even when we stop as soon as there is no data to send,
         //  there may be a pending async_write.
         if (unlikely (_encoder == NULL)) {
-            zmq_assert (_handshaking);
+            zlink_assert (_handshaking);
             return;
         }
 
@@ -1101,7 +1101,7 @@ void zmq::asio_engine_t::process_output ()
             unsigned char *bufptr = _outpos + _outsize;
             const size_t n =
               _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
-            zmq_assert (n > 0);
+            zlink_assert (n > 0);
             if (_outpos == NULL)
                 _outpos = bufptr;
             _outsize += n;
@@ -1115,7 +1115,7 @@ void zmq::asio_engine_t::process_output ()
     }
 }
 
-void zmq::asio_engine_t::restart_output ()
+void zlink::asio_engine_t::restart_output ()
 {
     ENGINE_DBG ("restart_output: io_error=%d, output_stopped=%d, write_pending=%d",
                 _io_error, _output_stopped, _write_pending);
@@ -1132,16 +1132,16 @@ void zmq::asio_engine_t::restart_output ()
     speculative_write ();
 }
 
-bool zmq::asio_engine_t::restart_input ()
+bool zlink::asio_engine_t::restart_input ()
 {
     return restart_input_internal ();
 }
 
-bool zmq::asio_engine_t::restart_input_internal ()
+bool zlink::asio_engine_t::restart_input_internal ()
 {
-    zmq_assert (_input_stopped);
-    zmq_assert (_session != NULL);
-    zmq_assert (_decoder != NULL);
+    zlink_assert (_input_stopped);
+    zlink_assert (_session != NULL);
+    zlink_assert (_decoder != NULL);
 
     ENGINE_DBG ("restart_input: pending_buffers=%zu, insize=%zu",
                 _pending_buffers.size (), _insize);
@@ -1174,7 +1174,7 @@ bool zmq::asio_engine_t::restart_input_internal ()
         }
 
         rc = _decoder->decode (decode_buf, decode_size, processed);
-        zmq_assert (processed <= _insize);
+        zlink_assert (processed <= _insize);
         _inpos += processed;
         _insize -= processed;
         if (rc == 0 || rc == -1)
@@ -1315,7 +1315,7 @@ bool zmq::asio_engine_t::restart_input_internal ()
         return restart_input_internal();
     }
 
-    //  Speculative read (libzmq pattern): drain immediately available data
+    //  Speculative read (libzlink pattern): drain immediately available data
     //  before re-arming async read. This avoids missed wakeups on IPC.
     if (speculative_read ())
         return true;
@@ -1324,12 +1324,12 @@ bool zmq::asio_engine_t::restart_input_internal ()
     return true;
 }
 
-const zmq::endpoint_uri_pair_t &zmq::asio_engine_t::get_endpoint () const
+const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 {
     return _endpoint_uri_pair;
 }
 
-int zmq::asio_engine_t::decode_and_push (msg_t *msg_)
+int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
@@ -1355,7 +1355,7 @@ int zmq::asio_engine_t::decode_and_push (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_engine_t::push_one_then_decode_and_push (msg_t *msg_)
+int zlink::asio_engine_t::push_one_then_decode_and_push (msg_t *msg_)
 {
     const int rc = _session->push_msg (msg_);
     if (rc == 0)
@@ -1363,17 +1363,17 @@ int zmq::asio_engine_t::push_one_then_decode_and_push (msg_t *msg_)
     return rc;
 }
 
-int zmq::asio_engine_t::pull_msg_from_session (msg_t *msg_)
+int zlink::asio_engine_t::pull_msg_from_session (msg_t *msg_)
 {
     return _session->pull_msg (msg_);
 }
 
-int zmq::asio_engine_t::push_msg_to_session (msg_t *msg_)
+int zlink::asio_engine_t::push_msg_to_session (msg_t *msg_)
 {
     return _session->push_msg (msg_);
 }
 
-void zmq::asio_engine_t::error (error_reason_t reason_)
+void zlink::asio_engine_t::error (error_reason_t reason_)
 {
     ENGINE_DBG ("error: reason=%d", static_cast<int> (reason_));
 
@@ -1382,7 +1382,7 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
         return;
     _terminating = true;
 
-    zmq_assert (_session);
+    zlink_assert (_session);
 
     // protocol errors have been signaled already at the point where they occurred
     if (reason_ != protocol_error && _handshaking) {
@@ -1390,16 +1390,16 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
         _socket->event_handshake_failed_no_detail (_endpoint_uri_pair, err);
     }
 
-    uint64_t disconnect_reason = ZMQ_DISCONNECT_UNKNOWN;
+    uint64_t disconnect_reason = ZLINK_DISCONNECT_UNKNOWN;
     if (_socket && _socket->is_ctx_terminated ()) {
-        disconnect_reason = ZMQ_DISCONNECT_CTX_TERM;
+        disconnect_reason = ZLINK_DISCONNECT_CTX_TERM;
     } else if (_handshaking || reason_ == protocol_error) {
-        disconnect_reason = ZMQ_DISCONNECT_HANDSHAKE_FAILED;
+        disconnect_reason = ZLINK_DISCONNECT_HANDSHAKE_FAILED;
     } else if (reason_ == timeout_error || reason_ == connection_error) {
-        disconnect_reason = ZMQ_DISCONNECT_TRANSPORT_ERROR;
+        disconnect_reason = ZLINK_DISCONNECT_TRANSPORT_ERROR;
     }
 
-    const zmq::blob_t *routing_id = _session ? &_session->peer_routing_id ()
+    const zlink::blob_t *routing_id = _session ? &_session->peer_routing_id ()
                                              : NULL;
     const unsigned char *routing_id_data =
       routing_id ? routing_id->data () : NULL;
@@ -1424,9 +1424,9 @@ void zmq::asio_engine_t::error (error_reason_t reason_)
     delete this;
 }
 
-void zmq::asio_engine_t::set_handshake_timer ()
+void zlink::asio_engine_t::set_handshake_timer ()
 {
-    zmq_assert (!_has_handshake_timer);
+    zlink_assert (!_has_handshake_timer);
 
     if (_options.handshake_ivl > 0) {
         add_timer (_options.handshake_ivl, handshake_timer_id);
@@ -1434,7 +1434,7 @@ void zmq::asio_engine_t::set_handshake_timer ()
     }
 }
 
-void zmq::asio_engine_t::cancel_handshake_timer ()
+void zlink::asio_engine_t::cancel_handshake_timer ()
 {
     if (_has_handshake_timer) {
         cancel_timer (handshake_timer_id);
@@ -1442,11 +1442,11 @@ void zmq::asio_engine_t::cancel_handshake_timer ()
     }
 }
 
-void zmq::asio_engine_t::add_timer (int timeout_, int id_)
+void zlink::asio_engine_t::add_timer (int timeout_, int id_)
 {
     ENGINE_DBG ("add_timer: timeout=%d, id=%d", timeout_, id_);
 
-    zmq_assert (_timer);
+    zlink_assert (_timer);
     _current_timer_id = id_;
     _timer->expires_after (std::chrono::milliseconds (timeout_));
     _timer->async_wait (
@@ -1455,7 +1455,7 @@ void zmq::asio_engine_t::add_timer (int timeout_, int id_)
       });
 }
 
-void zmq::asio_engine_t::cancel_timer (int id_)
+void zlink::asio_engine_t::cancel_timer (int id_)
 {
     ENGINE_DBG ("cancel_timer: id=%d", id_);
 
@@ -1465,7 +1465,7 @@ void zmq::asio_engine_t::cancel_timer (int id_)
     }
 }
 
-void zmq::asio_engine_t::on_timer (int id_, const boost::system::error_code &ec)
+void zlink::asio_engine_t::on_timer (int id_, const boost::system::error_code &ec)
 {
     ENGINE_DBG ("on_timer: id=%d, ec=%s, terminating=%d", id_,
                 ec.message ().c_str (), _terminating);
@@ -1497,20 +1497,20 @@ void zmq::asio_engine_t::on_timer (int id_, const boost::system::error_code &ec)
     }
 }
 
-bool zmq::asio_engine_t::init_properties (properties_t &properties_)
+bool zlink::asio_engine_t::init_properties (properties_t &properties_)
 {
     if (_peer_address.empty ())
         return false;
-    properties_.ZMQ_MAP_INSERT_OR_EMPLACE (
-      std::string (ZMQ_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
+    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (
+      std::string (ZLINK_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
 
     //  Private property to support deprecated SRCFD
     std::ostringstream stream;
     stream << static_cast<int> (_fd);
     std::string fd_string = stream.str ();
-    properties_.ZMQ_MAP_INSERT_OR_EMPLACE (std::string ("__fd"),
-                                           ZMQ_MOVE (fd_string));
+    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (std::string ("__fd"),
+                                           ZLINK_MOVE (fd_string));
     return true;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

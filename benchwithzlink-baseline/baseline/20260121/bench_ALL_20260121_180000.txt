@@ -1,0 +1,2 @@
+Error: Binaries not found at /home/ulalax/project/ulalax/zlink/build.
+Please build the project first or pass --build-dir.

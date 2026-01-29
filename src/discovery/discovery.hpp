@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DISCOVERY_DISCOVERY_HPP_INCLUDED__
-#define __ZMQ_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+#ifndef __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
@@ -14,13 +14,13 @@
 #include <string>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 struct provider_info_t
 {
     std::string service_name;
     std::string endpoint;
-    zmq_routing_id_t routing_id;
+    zlink_routing_id_t routing_id;
     uint32_t weight;
     uint64_t registered_at;
 };
@@ -54,7 +54,7 @@ class discovery_t
     int unsubscribe (const char *service_name_);
 
     int get_providers (const char *service_name_,
-                       zmq_provider_info_t *providers_,
+                       zlink_provider_info_t *providers_,
                        size_t *count_);
     int provider_count (const char *service_name_);
     int service_available (const char *service_name_);
@@ -73,7 +73,7 @@ class discovery_t
 
     static void run (void *arg_);
     void loop ();
-    void handle_service_list (const std::vector<zmq_msg_t> &frames_);
+    void handle_service_list (const std::vector<zlink_msg_t> &frames_);
 
     ctx_t *_ctx;
     uint32_t _tag;
@@ -90,7 +90,7 @@ class discovery_t
     condition_variable_t _listeners_cv;
     size_t _listeners_in_dispatch;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (discovery_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }
 

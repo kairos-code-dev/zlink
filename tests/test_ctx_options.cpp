@@ -8,7 +8,7 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 #define WAIT_FOR_BACKGROUND_THREAD_INSPECTION (0)
 
-#ifdef ZMQ_HAVE_LINUX
+#ifdef ZLINK_HAVE_LINUX
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h> // for sleep()
@@ -28,13 +28,13 @@ bool is_allowed_to_raise_priority ()
     if (setrlimit (RLIMIT_NICE, &rlim) == 0) {
         // rlim_cur == 40 means that this process is allowed to set a nice value of -20
         if (WAIT_FOR_BACKGROUND_THREAD_INSPECTION)
-            printf ("This process has enough permissions to raise ZMQ "
+            printf ("This process has enough permissions to raise ZLINK "
                     "background thread priority!\n");
         return true;
     }
 
     if (WAIT_FOR_BACKGROUND_THREAD_INSPECTION)
-        printf ("This process has NOT enough permissions to raise ZMQ "
+        printf ("This process has NOT enough permissions to raise ZLINK "
                 "background thread priority.\n");
     return false;
 }
@@ -55,21 +55,21 @@ void test_ctx_thread_opts ()
 {
     // verify that setting negative values (e.g., default values) fail:
     TEST_ASSERT_FAILURE_ERRNO (
-      EINVAL, zmq_ctx_set (get_test_context (), ZMQ_THREAD_SCHED_POLICY,
-                           ZMQ_THREAD_SCHED_POLICY_DFLT));
-    TEST_ASSERT_FAILURE_ERRNO (EINVAL, zmq_ctx_set (get_test_context (),
-                                                    ZMQ_THREAD_PRIORITY,
-                                                    ZMQ_THREAD_PRIORITY_DFLT));
+      EINVAL, zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY,
+                           ZLINK_THREAD_SCHED_POLICY_DFLT));
+    TEST_ASSERT_FAILURE_ERRNO (EINVAL, zlink_ctx_set (get_test_context (),
+                                                    ZLINK_THREAD_PRIORITY,
+                                                    ZLINK_THREAD_PRIORITY_DFLT));
 
 
     // test scheduling policy:
 
     // set context options that alter the background thread CPU scheduling/affinity settings;
-    // as of ZMQ 4.2.3 this has an effect only on POSIX systems (nothing happens on Windows, but still it should return success):
+    // as of ZLINK 4.2.3 this has an effect only on POSIX systems (nothing happens on Windows, but still it should return success):
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_THREAD_SCHED_POLICY, TEST_POLICY));
+      zlink_ctx_set (get_test_context (), ZLINK_THREAD_SCHED_POLICY, TEST_POLICY));
     TEST_ASSERT_EQUAL_INT (
-      TEST_POLICY, zmq_ctx_get (get_test_context (), ZMQ_THREAD_SCHED_POLICY));
+      TEST_POLICY, zlink_ctx_get (get_test_context (), ZLINK_THREAD_SCHED_POLICY));
 
     // test priority:
 
@@ -79,12 +79,12 @@ void test_ctx_thread_opts ()
     // a dynamic priority that is determined only inside this list.  The
     // dynamic priority is based on the nice value [...]
     // The nice value can be modified using nice(2), setpriority(2), or sched_setattr(2)."
-    // ZMQ will internally use nice(2) to set the nice value when using SCHED_OTHER.
+    // ZLINK will internally use nice(2) to set the nice value when using SCHED_OTHER.
     // However changing the nice value of a process requires appropriate permissions...
     // check that the current effective user is able to do that:
     if (is_allowed_to_raise_priority ()) {
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_set (
-          get_test_context (), ZMQ_THREAD_PRIORITY,
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
+          get_test_context (), ZLINK_THREAD_PRIORITY,
           1 /* any positive value different than the default will be ok */));
     }
 
@@ -98,16 +98,16 @@ void test_ctx_thread_opts ()
     int cpus_add[] = {0, 1};
     for (unsigned int idx = 0; idx < sizeof (cpus_add) / sizeof (cpus_add[0]);
          idx++) {
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_set (
-          get_test_context (), ZMQ_THREAD_AFFINITY_CPU_ADD, cpus_add[idx]));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (
+          get_test_context (), ZLINK_THREAD_AFFINITY_CPU_ADD, cpus_add[idx]));
     }
 
     // you can also remove CPUs from list of affinities:
     int cpus_remove[] = {1};
     for (unsigned int idx = 0;
          idx < sizeof (cpus_remove) / sizeof (cpus_remove[0]); idx++) {
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_set (get_test_context (),
-                                                ZMQ_THREAD_AFFINITY_CPU_REMOVE,
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (),
+                                                ZLINK_THREAD_AFFINITY_CPU_REMOVE,
                                                 cpus_remove[idx]));
     }
 
@@ -115,33 +115,33 @@ void test_ctx_thread_opts ()
     // test INTEGER thread name prefix:
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_THREAD_NAME_PREFIX, 1234));
+      zlink_ctx_set (get_test_context (), ZLINK_THREAD_NAME_PREFIX, 1234));
     TEST_ASSERT_EQUAL_INT (
-      1234, zmq_ctx_get (get_test_context (), ZMQ_THREAD_NAME_PREFIX));
+      1234, zlink_ctx_get (get_test_context (), ZLINK_THREAD_NAME_PREFIX));
 }
 
 void test_ctx_zero_copy ()
 {
-#ifdef ZMQ_ZERO_COPY_RECV
+#ifdef ZLINK_ZERO_COPY_RECV
     int zero_copy;
     // Default value is 1.
-    zero_copy = zmq_ctx_get (get_test_context (), ZMQ_ZERO_COPY_RECV);
+    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV);
     TEST_ASSERT_EQUAL_INT (1, zero_copy);
 
     // Test we can set it to 0.
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_ZERO_COPY_RECV, 0));
-    zero_copy = zmq_ctx_get (get_test_context (), ZMQ_ZERO_COPY_RECV);
+      zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 0));
+    zero_copy = zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV);
     TEST_ASSERT_EQUAL_INT (0, zero_copy);
 
     // Create a TCP socket pair using the context and test that messages can be
     // received. Note that inproc sockets cannot be used for this test.
-    void *pull = zmq_socket (get_test_context (), ZMQ_DEALER);
+    void *pull = zlink_socket (get_test_context (), ZLINK_DEALER);
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pull, endpoint, sizeof endpoint);
 
-    void *push = zmq_socket (get_test_context (), ZMQ_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (push, endpoint));
+    void *push = zlink_socket (get_test_context (), ZLINK_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (push, endpoint));
 
     const char *small_str = "abcd";
     const char *large_str =
@@ -154,70 +154,70 @@ void test_ctx_zero_copy ()
     recv_string_expect_success (pull, large_str, 0);
 
     // Clean up.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (push));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (pull));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (push));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pull));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_ZERO_COPY_RECV, 1));
+      zlink_ctx_set (get_test_context (), ZLINK_ZERO_COPY_RECV, 1));
     TEST_ASSERT_EQUAL_INT (
-      1, zmq_ctx_get (get_test_context (), ZMQ_ZERO_COPY_RECV));
+      1, zlink_ctx_get (get_test_context (), ZLINK_ZERO_COPY_RECV));
 #endif
 }
 
 void test_ctx_option_max_sockets ()
 {
-    TEST_ASSERT_EQUAL_INT (ZMQ_MAX_SOCKETS_DFLT,
-                           zmq_ctx_get (get_test_context (), ZMQ_MAX_SOCKETS));
+    TEST_ASSERT_EQUAL_INT (ZLINK_MAX_SOCKETS_DFLT,
+                           zlink_ctx_get (get_test_context (), ZLINK_MAX_SOCKETS));
 }
 
 void test_ctx_option_socket_limit ()
 {
-#if defined(ZMQ_USE_SELECT)
-    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zmq_ctx_get (get_test_context (), ZMQ_SOCKET_LIMIT));
-#elif defined(ZMQ_USE_POLL) || defined(ZMQ_USE_EPOLL)                          \
-  || defined(ZMQ_USE_DEVPOLL) || defined(ZMQ_USE_KQUEUE)
-    TEST_ASSERT_EQUAL_INT (65535, zmq_ctx_get (get_test_context (), ZMQ_SOCKET_LIMIT));
+#if defined(ZLINK_USE_SELECT)
+    TEST_ASSERT_EQUAL_INT (FD_SETSIZE - 1, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT));
+#elif defined(ZLINK_USE_POLL) || defined(ZLINK_USE_EPOLL)                          \
+  || defined(ZLINK_USE_DEVPOLL) || defined(ZLINK_USE_KQUEUE)
+    TEST_ASSERT_EQUAL_INT (65535, zlink_ctx_get (get_test_context (), ZLINK_SOCKET_LIMIT));
 #endif
 }
 
 void test_ctx_option_io_threads ()
 {
-    TEST_ASSERT_EQUAL_INT (ZMQ_IO_THREADS_DFLT,
-                           zmq_ctx_get (get_test_context (), ZMQ_IO_THREADS));
+    TEST_ASSERT_EQUAL_INT (ZLINK_IO_THREADS_DFLT,
+                           zlink_ctx_get (get_test_context (), ZLINK_IO_THREADS));
 }
 
 void test_ctx_option_ipv6 ()
 {
-    TEST_ASSERT_EQUAL_INT (0, zmq_ctx_get (get_test_context (), ZMQ_IPV6));
+    TEST_ASSERT_EQUAL_INT (0, zlink_ctx_get (get_test_context (), ZLINK_IPV6));
 }
 
 void test_ctx_option_msg_t_size ()
 {
-#if defined(ZMQ_MSG_T_SIZE)
-    TEST_ASSERT_EQUAL_INT (sizeof (zmq_msg_t),
-                           zmq_ctx_get (get_test_context (), ZMQ_MSG_T_SIZE));
+#if defined(ZLINK_MSG_T_SIZE)
+    TEST_ASSERT_EQUAL_INT (sizeof (zlink_msg_t),
+                           zlink_ctx_get (get_test_context (), ZLINK_MSG_T_SIZE));
 #endif
 }
 
 void test_ctx_option_ipv6_set ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_IPV6, true));
-    TEST_ASSERT_EQUAL_INT (1, zmq_ctx_get (get_test_context (), ZMQ_IPV6));
+      zlink_ctx_set (get_test_context (), ZLINK_IPV6, true));
+    TEST_ASSERT_EQUAL_INT (1, zlink_ctx_get (get_test_context (), ZLINK_IPV6));
 }
 
 void test_ctx_option_blocky ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_IPV6, true));
+      zlink_ctx_set (get_test_context (), ZLINK_IPV6, true));
 
-    void *router = test_context_socket (ZMQ_ROUTER);
+    void *router = test_context_socket (ZLINK_ROUTER);
     int value;
     size_t optsize = sizeof (int);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (router, ZMQ_IPV6, &value, &optsize));
+      zlink_getsockopt (router, ZLINK_IPV6, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (1, value);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (router, ZMQ_LINGER, &value, &optsize));
+      zlink_getsockopt (router, ZLINK_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (-1, value);
     test_context_socket_close (router);
 
@@ -225,27 +225,27 @@ void test_ctx_option_blocky ()
     // this is useful when you want to use an external tool (like top or taskset) to view
     // properties of the background threads
     printf ("Sleeping for 100sec. You can now use 'top -H -p $(pgrep -f "
-            "test_ctx_options)' and 'taskset -pc <ZMQ background thread PID>' "
-            "to view ZMQ background thread properties.\n");
+            "test_ctx_options)' and 'taskset -pc <ZLINK background thread PID>' "
+            "to view ZLINK background thread properties.\n");
     sleep (100);
 #endif
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_ctx_set (get_test_context (), ZMQ_BLOCKY, false));
-    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zmq_ctx_get (
-                                get_test_context (), ZMQ_BLOCKY))));
-    router = test_context_socket (ZMQ_ROUTER);
+      zlink_ctx_set (get_test_context (), ZLINK_BLOCKY, false));
+    TEST_ASSERT_EQUAL_INT (0, TEST_ASSERT_SUCCESS_ERRNO ((zlink_ctx_get (
+                                get_test_context (), ZLINK_BLOCKY))));
+    router = test_context_socket (ZLINK_ROUTER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (router, ZMQ_LINGER, &value, &optsize));
+      zlink_getsockopt (router, ZLINK_LINGER, &value, &optsize));
     TEST_ASSERT_EQUAL_INT (0, value);
     test_context_socket_close (router);
 }
 
 void test_ctx_option_invalid ()
 {
-    TEST_ASSERT_EQUAL_INT (-1, zmq_ctx_set (get_test_context (), -1, 0));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_set (get_test_context (), -1, 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_EQUAL_INT (-1, zmq_ctx_get (get_test_context (), -1));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_ctx_get (get_test_context (), -1));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 }
 

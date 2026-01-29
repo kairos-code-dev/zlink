@@ -1,7 +1,7 @@
-Source: zeromq
+Source: zlink
 Section: libs
 Priority: optional
-Maintainer: libzmq Developers <zeromq-dev@lists.zeromq.org>
+Maintainer: libzlink Developers <zlink-dev@lists.zlink.org>
 Build-Depends: debhelper (>= 9),
  dh-autoreconf,
  libnorm-dev,
@@ -13,9 +13,9 @@ Build-Depends: debhelper (>= 9),
  pkg-config,
  asciidoc-base | asciidoc, xmlto,
 Standards-Version: 3.9.8
-Homepage: http://www.zeromq.org/
+Homepage: http://www.zlink.org/
 
-Package: libzmq5
+Package: libzlink5
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Pre-Depends: ${misc:Pre-Depends}
@@ -28,21 +28,21 @@ Description: lightweight messaging kernel (shared library)
  messaging patterns, message filtering (subscriptions), seamless access to
  multiple transport protocols and more.
  .
- This package contains the libzmq shared library.
+ This package contains the libzlink shared library.
 
-Package: libzmq3-dev
+Package: libzlink3-dev
 Architecture: any
 Section: libdevel
-Depends: libzmq5 (= ${binary:Version}), ${misc:Depends},
+Depends: libzlink5 (= ${binary:Version}), ${misc:Depends},
  libnorm-dev,
  libpgm-dev,
  libunwind-dev | libunwind8-dev | libunwind7-dev,
  libnss3-dev,
  libgnutls28-dev | libgnutls-dev,
  libbsd-dev,
-Conflicts: libzmq-dev, libzmq5-dev
-Replaces: libzmq5-dev
-Provides: libzmq5-dev
+Conflicts: libzlink-dev, libzlink5-dev
+Replaces: libzlink5-dev
+Provides: libzlink5-dev
 Multi-Arch: same
 Description: lightweight messaging kernel (development files)
  ØMQ is a library which extends the standard socket interfaces with features
@@ -52,13 +52,13 @@ Description: lightweight messaging kernel (development files)
  messaging patterns, message filtering (subscriptions), seamless access to
  multiple transport protocols and more.
  .
- This package contains the ZeroMQ development libraries and header files.
+ This package contains the Zlink development libraries and header files.
 
-Package: libzmq5-dbg
+Package: libzlink5-dbg
 Architecture: any
 Priority: extra
 Section: debug
-Depends: libzmq5 (= ${binary:Version}), ${misc:Depends}
+Depends: libzlink5 (= ${binary:Version}), ${misc:Depends}
 Multi-Arch: same
 Description: lightweight messaging kernel (debugging symbols)
  ØMQ is a library which extends the standard socket interfaces with features
@@ -68,4 +68,4 @@ Description: lightweight messaging kernel (debugging symbols)
  messaging patterns, message filtering (subscriptions), seamless access to
  multiple transport protocols and more.
  .
- This package contains the debugging symbols for the ZeroMQ library.
+ This package contains the debugging symbols for the Zlink library.

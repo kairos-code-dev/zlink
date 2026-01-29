@@ -11,23 +11,23 @@
 
 // ASIO-only build: Transport connecters are always included
 #include "transports/tcp/asio_tcp_connecter.hpp"
-#if defined ZMQ_HAVE_IPC
+#if defined ZLINK_HAVE_IPC
 #include "transports/ipc/asio_ipc_connecter.hpp"
 #endif
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
 #include "transports/tls/asio_tls_connecter.hpp"
 #endif
-#if defined ZMQ_HAVE_WS
+#if defined ZLINK_HAVE_WS
 #include "transports/ws/asio_ws_connecter.hpp"
 #endif
-#ifdef ZMQ_HAVE_OPENPGM
+#ifdef ZLINK_HAVE_OPENPGM
 #include "transports/pgm/pgm_sender.hpp"
 #include "transports/pgm/pgm_receiver.hpp"
 #endif
 
 #include "core/ctx.hpp"
 
-zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
+zlink::session_base_t *zlink::session_base_t::create (class io_thread_t *io_thread_,
                                                   bool active_,
                                                   class socket_base_t *socket_,
                                                   const options_t &options_,
@@ -35,14 +35,14 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
 {
     session_base_t *s = NULL;
     switch (options_.type) {
-        case ZMQ_DEALER:
-        case ZMQ_ROUTER:
-        case ZMQ_PUB:
-        case ZMQ_XPUB:
-        case ZMQ_SUB:
-        case ZMQ_XSUB:
-        case ZMQ_PAIR:
-        case ZMQ_STREAM:
+        case ZLINK_DEALER:
+        case ZLINK_ROUTER:
+        case ZLINK_PUB:
+        case ZLINK_XPUB:
+        case ZLINK_SUB:
+        case ZLINK_XSUB:
+        case ZLINK_PAIR:
+        case ZLINK_STREAM:
             s = new (std::nothrow)
               session_base_t (io_thread_, active_, socket_, options_, addr_);
             break;
@@ -55,7 +55,7 @@ zmq::session_base_t *zmq::session_base_t::create (class io_thread_t *io_thread_,
     return s;
 }
 
-zmq::session_base_t::session_base_t (class io_thread_t *io_thread_,
+zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
                                      bool active_,
                                      class socket_base_t *socket_,
                                      const options_t &options_,
@@ -74,19 +74,19 @@ zmq::session_base_t::session_base_t (class io_thread_t *io_thread_,
 {
 }
 
-const zmq::endpoint_uri_pair_t &zmq::session_base_t::get_endpoint () const
+const zlink::endpoint_uri_pair_t &zlink::session_base_t::get_endpoint () const
 {
     return _engine->get_endpoint ();
 }
 
-void zmq::session_base_t::set_peer_routing_id (const unsigned char *data_,
+void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_,
                                                size_t size_)
 {
     if (_pipe)
         _pipe->set_peer_routing_id (data_, size_);
 }
 
-const zmq::blob_t &zmq::session_base_t::peer_routing_id () const
+const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
 {
     if (_pipe)
         return _pipe->get_routing_id ();
@@ -94,9 +94,9 @@ const zmq::blob_t &zmq::session_base_t::peer_routing_id () const
     return empty_routing_id;
 }
 
-zmq::session_base_t::~session_base_t ()
+zlink::session_base_t::~session_base_t ()
 {
-    zmq_assert (!_pipe);
+    zlink_assert (!_pipe);
 
     //  If there's still a pending linger timer, remove it.
     if (_has_linger_timer) {
@@ -108,19 +108,19 @@ zmq::session_base_t::~session_base_t ()
     if (_engine)
         _engine->terminate ();
 
-    LIBZMQ_DELETE (_addr);
+    LIBZLINK_DELETE (_addr);
 }
 
-void zmq::session_base_t::attach_pipe (pipe_t *pipe_)
+void zlink::session_base_t::attach_pipe (pipe_t *pipe_)
 {
-    zmq_assert (!is_terminating ());
-    zmq_assert (!_pipe);
-    zmq_assert (pipe_);
+    zlink_assert (!is_terminating ());
+    zlink_assert (!_pipe);
+    zlink_assert (pipe_);
     _pipe = pipe_;
     _pipe->set_event_sink (this);
 }
 
-int zmq::session_base_t::pull_msg (msg_t *msg_)
+int zlink::session_base_t::pull_msg (msg_t *msg_)
 {
     if (!_pipe || !_pipe->read (msg_)) {
         errno = EAGAIN;
@@ -132,7 +132,7 @@ int zmq::session_base_t::pull_msg (msg_t *msg_)
     return 0;
 }
 
-int zmq::session_base_t::push_msg (msg_t *msg_)
+int zlink::session_base_t::push_msg (msg_t *msg_)
 {
     //  pass subscribe/cancel to the sockets
     if ((msg_->flags () & msg_t::command) && !msg_->is_subscribe ()
@@ -148,25 +148,25 @@ int zmq::session_base_t::push_msg (msg_t *msg_)
     return -1;
 }
 
-void zmq::session_base_t::reset ()
+void zlink::session_base_t::reset ()
 {
 }
 
-void zmq::session_base_t::flush ()
+void zlink::session_base_t::flush ()
 {
     if (_pipe)
         _pipe->flush ();
 }
 
-void zmq::session_base_t::rollback ()
+void zlink::session_base_t::rollback ()
 {
     if (_pipe)
         _pipe->rollback ();
 }
 
-void zmq::session_base_t::clean_pipes ()
+void zlink::session_base_t::clean_pipes ()
 {
-    zmq_assert (_pipe != NULL);
+    zlink_assert (_pipe != NULL);
 
     //  Get rid of half-processed messages in the out pipe. Flush any
     //  unflushed messages upstream.
@@ -185,10 +185,10 @@ void zmq::session_base_t::clean_pipes ()
     }
 }
 
-void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
+void zlink::session_base_t::pipe_terminated (pipe_t *pipe_)
 {
     // Drop the reference to the deallocated pipe if required.
-    zmq_assert (pipe_ == _pipe || _terminating_pipes.count (pipe_) == 1);
+    zlink_assert (pipe_ == _pipe || _terminating_pipes.count (pipe_) == 1);
 
     if (pipe_ == _pipe) {
         // If this is our current pipe, remove it
@@ -212,11 +212,11 @@ void zmq::session_base_t::pipe_terminated (pipe_t *pipe_)
     }
 }
 
-void zmq::session_base_t::read_activated (pipe_t *pipe_)
+void zlink::session_base_t::read_activated (pipe_t *pipe_)
 {
     // Skip activating if we're detaching this pipe
     if (unlikely (pipe_ != _pipe)) {
-        zmq_assert (_terminating_pipes.count (pipe_) == 1);
+        zlink_assert (_terminating_pipes.count (pipe_) == 1);
         return;
     }
 
@@ -229,11 +229,11 @@ void zmq::session_base_t::read_activated (pipe_t *pipe_)
     _engine->restart_output ();
 }
 
-void zmq::session_base_t::write_activated (pipe_t *pipe_)
+void zlink::session_base_t::write_activated (pipe_t *pipe_)
 {
     // Skip activating if we're detaching this pipe
     if (_pipe != pipe_) {
-        zmq_assert (_terminating_pipes.count (pipe_) == 1);
+        zlink_assert (_terminating_pipes.count (pipe_) == 1);
         return;
     }
 
@@ -241,28 +241,28 @@ void zmq::session_base_t::write_activated (pipe_t *pipe_)
         _engine->restart_input ();
 }
 
-void zmq::session_base_t::hiccuped (pipe_t *)
+void zlink::session_base_t::hiccuped (pipe_t *)
 {
     //  Hiccups are always sent from session to socket, not the other
     //  way round.
-    zmq_assert (false);
+    zlink_assert (false);
 }
 
-zmq::socket_base_t *zmq::session_base_t::get_socket () const
+zlink::socket_base_t *zlink::session_base_t::get_socket () const
 {
     return _socket;
 }
 
-void zmq::session_base_t::process_plug ()
+void zlink::session_base_t::process_plug ()
 {
     if (_active)
         start_connecting (false);
 }
 
-void zmq::session_base_t::process_attach (i_engine *engine_)
+void zlink::session_base_t::process_attach (i_engine *engine_)
 {
-    zmq_assert (engine_ != NULL);
-    zmq_assert (!_engine);
+    zlink_assert (engine_ != NULL);
+    zlink_assert (!_engine);
     _engine = engine_;
 
     if (!engine_->has_handshake_stage ())
@@ -272,7 +272,7 @@ void zmq::session_base_t::process_attach (i_engine *engine_)
     _engine->plug (_io_thread, this);
 }
 
-void zmq::session_base_t::engine_ready ()
+void zlink::session_base_t::engine_ready ()
 {
     //  Create the pipe if it does not exist yet.
     if (!_pipe && !is_terminating ()) {
@@ -291,7 +291,7 @@ void zmq::session_base_t::engine_ready ()
         pipes[0]->set_event_sink (this);
 
         //  Remember the local end of the pipe.
-        zmq_assert (!_pipe);
+        zlink_assert (!_pipe);
         _pipe = pipes[0];
 
         //  The endpoints strings are not set on bind, set them here so that
@@ -304,8 +304,8 @@ void zmq::session_base_t::engine_ready ()
     }
 }
 
-void zmq::session_base_t::engine_error (bool handshaked_,
-                                        zmq::i_engine::error_reason_t reason_)
+void zlink::session_base_t::engine_error (bool handshaked_,
+                                        zlink::i_engine::error_reason_t reason_)
 {
     //  Engine is dead. Let's forget about it.
     _engine = NULL;
@@ -328,7 +328,7 @@ void zmq::session_base_t::engine_error (bool handshaked_,
         }
     }
 
-    zmq_assert (reason_ == i_engine::connection_error
+    zlink_assert (reason_ == i_engine::connection_error
                 || reason_ == i_engine::timeout_error
                 || reason_ == i_engine::protocol_error);
 
@@ -356,9 +356,9 @@ void zmq::session_base_t::engine_error (bool handshaked_,
         _pipe->check_read ();
 }
 
-void zmq::session_base_t::process_term (int linger_)
+void zlink::session_base_t::process_term (int linger_)
 {
-    zmq_assert (!_pending);
+    zlink_assert (!_pending);
 
     //  If the termination of the pipe happens before the term command is
     //  delivered there's nothing much to do. We can proceed with the
@@ -375,7 +375,7 @@ void zmq::session_base_t::process_term (int linger_)
         //  If linger is infinite (negative) we don't even have to set
         //  the timer.
         if (linger_ > 0) {
-            zmq_assert (!_has_linger_timer);
+            zlink_assert (!_has_linger_timer);
             add_timer (linger_, linger_timer_id);
             _has_linger_timer = true;
         }
@@ -392,26 +392,26 @@ void zmq::session_base_t::process_term (int linger_)
     }
 }
 
-void zmq::session_base_t::timer_event (int id_)
+void zlink::session_base_t::timer_event (int id_)
 {
     //  Linger period expired. We can proceed with termination even though
     //  there are still pending messages to be sent.
-    zmq_assert (id_ == linger_timer_id);
+    zlink_assert (id_ == linger_timer_id);
     _has_linger_timer = false;
 
     //  Ask pipe to terminate even though there may be pending messages in it.
-    zmq_assert (_pipe);
+    zlink_assert (_pipe);
     _pipe->terminate (false);
 }
 
-void zmq::session_base_t::process_conn_failed ()
+void zlink::session_base_t::process_conn_failed ()
 {
     std::string *ep = new (std::string);
     _addr->to_string (*ep);
     send_term_endpoint (_socket, ep);
 }
 
-void zmq::session_base_t::reconnect ()
+void zlink::session_base_t::reconnect ()
 {
     //  For delayed connect situations, terminate the pipe
     //  and reestablish later on
@@ -441,18 +441,18 @@ void zmq::session_base_t::reconnect ()
     //  For subscriber sockets we hiccup the inbound pipe, which will cause
     //  the socket object to resend all the subscriptions.
     if (_pipe
-        && (options.type == ZMQ_SUB || options.type == ZMQ_XSUB))
+        && (options.type == ZLINK_SUB || options.type == ZLINK_XSUB))
         _pipe->hiccup ();
 }
 
-void zmq::session_base_t::start_connecting (bool wait_)
+void zlink::session_base_t::start_connecting (bool wait_)
 {
-    zmq_assert (_active);
+    zlink_assert (_active);
 
     //  Choose I/O thread to run connecter in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
     io_thread_t *io_thread = choose_io_thread (options.affinity);
-    zmq_assert (io_thread);
+    zlink_assert (io_thread);
 
     //  Create the connecter object.
     own_t *connecter = NULL;
@@ -461,23 +461,23 @@ void zmq::session_base_t::start_connecting (bool wait_)
         connecter = new (std::nothrow)
           asio_tcp_connecter_t (io_thread, this, options, _addr, wait_);
     }
-#if defined ZMQ_HAVE_TLS && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_TLS && defined ZLINK_HAVE_ASIO_SSL
     else if (_addr->protocol == protocol_name::tls) {
         //  ASIO-only: Use ASIO-based TLS connecter with SSL/TLS encryption
         connecter = new (std::nothrow)
           asio_tls_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
-#if defined ZMQ_HAVE_IPC
+#if defined ZLINK_HAVE_IPC
     else if (_addr->protocol == protocol_name::ipc) {
         connecter = new (std::nothrow)
           asio_ipc_connecter_t (io_thread, this, options, _addr, wait_);
     }
 #endif
-#if defined ZMQ_HAVE_WS
+#if defined ZLINK_HAVE_WS
     //  WebSocket transport (ws://, wss://)
     else if (_addr->protocol == protocol_name::ws
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
              || _addr->protocol == protocol_name::wss
 #endif
     ) {
@@ -491,16 +491,16 @@ void zmq::session_base_t::start_connecting (bool wait_)
         return;
     }
 
-#ifdef ZMQ_HAVE_OPENPGM
+#ifdef ZLINK_HAVE_OPENPGM
     if (_addr->protocol == protocol_name::pgm
         || _addr->protocol == protocol_name::epgm) {
-        zmq_assert (options.type == ZMQ_PUB || options.type == ZMQ_XPUB
-                    || options.type == ZMQ_SUB || options.type == ZMQ_XSUB);
+        zlink_assert (options.type == ZLINK_PUB || options.type == ZLINK_XPUB
+                    || options.type == ZLINK_SUB || options.type == ZLINK_XSUB);
 
         const bool udp_encapsulation =
           _addr->protocol == protocol_name::epgm;
 
-        if (options.type == ZMQ_PUB || options.type == ZMQ_XPUB) {
+        if (options.type == ZLINK_PUB || options.type == ZLINK_XPUB) {
             pgm_sender_t *pgm_sender =
               new (std::nothrow) pgm_sender_t (io_thread, options);
             alloc_assert (pgm_sender);
@@ -526,5 +526,5 @@ void zmq::session_base_t::start_connecting (bool wait_)
     }
 #endif
 
-    zmq_assert (false);
+    zlink_assert (false);
 }

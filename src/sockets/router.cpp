@@ -9,7 +9,7 @@
 #include "utils/likely.hpp"
 #include "utils/err.hpp"
 
-zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
@@ -23,7 +23,7 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _probe_router (false),
     _handover (false)
 {
-    options.type = ZMQ_ROUTER;
+    options.type = ZLINK_ROUTER;
     options.recv_routing_id = true;
     options.can_send_hello_msg = true;
     options.can_recv_disconnect_msg = true;
@@ -32,20 +32,20 @@ zmq::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _prefetched_msg.init ();
 }
 
-zmq::router_t::~router_t ()
+zlink::router_t::~router_t ()
 {
-    zmq_assert (_anonymous_pipes.empty ());
+    zlink_assert (_anonymous_pipes.empty ());
     _prefetched_id.close ();
     _prefetched_msg.close ();
 }
 
-void zmq::router_t::xattach_pipe (pipe_t *pipe_,
+void zlink::router_t::xattach_pipe (pipe_t *pipe_,
                                   bool subscribe_to_all_,
                                   bool locally_initiated_)
 {
-    LIBZMQ_UNUSED (subscribe_to_all_);
+    LIBZLINK_UNUSED (subscribe_to_all_);
 
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
 
     if (_probe_router) {
         msg_t probe_msg;
@@ -53,8 +53,8 @@ void zmq::router_t::xattach_pipe (pipe_t *pipe_,
         errno_assert (rc == 0);
 
         rc = pipe_->write (&probe_msg);
-        // zmq_assert (rc) is not applicable here, since it is not a bug.
-        LIBZMQ_UNUSED (rc);
+        // zlink_assert (rc) is not applicable here, since it is not a bug.
+        LIBZLINK_UNUSED (rc);
 
         pipe_->flush ();
 
@@ -69,7 +69,7 @@ void zmq::router_t::xattach_pipe (pipe_t *pipe_,
         _anonymous_pipes.insert (pipe_);
 }
 
-int zmq::router_t::xsetsockopt (int option_,
+int zlink::router_t::xsetsockopt (int option_,
                                 const void *optval_,
                                 size_t optvallen_)
 {
@@ -79,21 +79,21 @@ int zmq::router_t::xsetsockopt (int option_,
         memcpy (&value, optval_, sizeof (int));
 
     switch (option_) {
-        case ZMQ_ROUTER_MANDATORY:
+        case ZLINK_ROUTER_MANDATORY:
             if (is_int && value >= 0) {
                 _mandatory = (value != 0);
                 return 0;
             }
             break;
 
-        case ZMQ_PROBE_ROUTER:
+        case ZLINK_PROBE_ROUTER:
             if (is_int && value >= 0) {
                 _probe_router = (value != 0);
                 return 0;
             }
             break;
 
-        case ZMQ_ROUTER_HANDOVER:
+        case ZLINK_ROUTER_HANDOVER:
             if (is_int && value >= 0) {
                 _handover = (value != 0);
                 return 0;
@@ -109,7 +109,7 @@ int zmq::router_t::xsetsockopt (int option_,
 }
 
 
-void zmq::router_t::xpipe_terminated (pipe_t *pipe_)
+void zlink::router_t::xpipe_terminated (pipe_t *pipe_)
 {
     if (0 == _anonymous_pipes.erase (pipe_)) {
         erase_out_pipe (pipe_);
@@ -120,7 +120,7 @@ void zmq::router_t::xpipe_terminated (pipe_t *pipe_)
     }
 }
 
-void zmq::router_t::xread_activated (pipe_t *pipe_)
+void zlink::router_t::xread_activated (pipe_t *pipe_)
 {
     const std::set<pipe_t *>::iterator it = _anonymous_pipes.find (pipe_);
     if (it == _anonymous_pipes.end ())
@@ -134,12 +134,12 @@ void zmq::router_t::xread_activated (pipe_t *pipe_)
     }
 }
 
-int zmq::router_t::xsend (msg_t *msg_)
+int zlink::router_t::xsend (msg_t *msg_)
 {
     //  If this is the first part of the message it's the ID of the
     //  peer to send the message to.
     if (!_more_out) {
-        zmq_assert (!_current_out);
+        zlink_assert (!_current_out);
 
         //  If we have malformed message (prefix with no subsequent message)
         //  then just silently ignore it.
@@ -152,7 +152,7 @@ int zmq::router_t::xsend (msg_t *msg_)
             //  router_mandatory is set.
             out_pipe_t *out_pipe = lookup_out_pipe (
               blob_t (static_cast<unsigned char *> (msg_->data ()),
-                      msg_->size (), zmq::reference_tag_t ()));
+                      msg_->size (), zlink::reference_tag_t ()));
 
             if (out_pipe) {
                 _current_out = out_pipe->pipe;
@@ -219,7 +219,7 @@ int zmq::router_t::xsend (msg_t *msg_)
     return 0;
 }
 
-int zmq::router_t::xrecv (msg_t *msg_)
+int zlink::router_t::xrecv (msg_t *msg_)
 {
     if (_prefetched) {
         if (!_routing_id_sent) {
@@ -255,7 +255,7 @@ int zmq::router_t::xrecv (msg_t *msg_)
     if (rc != 0)
         return -1;
 
-    zmq_assert (pipe != NULL);
+    zlink_assert (pipe != NULL);
 
     //  If we are in the middle of reading a message, just return the next part.
     if (_more_in) {
@@ -290,7 +290,7 @@ int zmq::router_t::xrecv (msg_t *msg_)
     return 0;
 }
 
-int zmq::router_t::rollback ()
+int zlink::router_t::rollback ()
 {
     if (_current_out) {
         _current_out->rollback ();
@@ -300,7 +300,7 @@ int zmq::router_t::rollback ()
     return 0;
 }
 
-bool zmq::router_t::xhas_in ()
+bool zlink::router_t::xhas_in ()
 {
     //  If we are in the middle of reading the messages, there are
     //  definitely more parts available.
@@ -326,7 +326,7 @@ bool zmq::router_t::xhas_in ()
     if (rc != 0)
         return false;
 
-    zmq_assert (pipe != NULL);
+    zlink_assert (pipe != NULL);
 
     const blob_t &routing_id = pipe->get_routing_id ();
     rc = _prefetched_id.init_size (routing_id.size ());
@@ -343,12 +343,12 @@ bool zmq::router_t::xhas_in ()
     return true;
 }
 
-static bool check_pipe_hwm (const zmq::pipe_t &pipe_)
+static bool check_pipe_hwm (const zlink::pipe_t &pipe_)
 {
     return pipe_.check_hwm ();
 }
 
-bool zmq::router_t::xhas_out ()
+bool zlink::router_t::xhas_out ()
 {
     //  In theory, ROUTER socket is always ready for writing (except when
     //  MANDATORY is set). Whether actual attempt to write succeeds depends
@@ -360,7 +360,7 @@ bool zmq::router_t::xhas_out ()
     return any_of_out_pipes (check_pipe_hwm);
 }
 
-int zmq::router_t::get_peer_state (const void *routing_id_,
+int zlink::router_t::get_peer_state (const void *routing_id_,
                                    size_t routing_id_size_) const
 {
     int res = 0;
@@ -376,14 +376,14 @@ int zmq::router_t::get_peer_state (const void *routing_id_,
     }
 
     if (out_pipe->pipe->check_hwm ())
-        res |= ZMQ_POLLOUT;
+        res |= ZLINK_POLLOUT;
 
     /** \todo does it make any sense to check the inpipe as well? */
 
     return res;
 }
 
-bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
+bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 {
     msg_t msg;
     blob_t routing_id;
@@ -394,7 +394,7 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
           reinterpret_cast<const unsigned char *> (connect_routing_id.c_str ()),
           connect_routing_id.length ());
         //  Not allowed to duplicate an existing rid
-        zmq_assert (!has_out_pipe (routing_id));
+        zlink_assert (!has_out_pipe (routing_id));
     } else {
         //  Pick up handshake cases and also case where next integral routing id is set
         msg.init ();
@@ -436,7 +436,7 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
                 erase_out_pipe (old_pipe);
                 old_pipe->set_router_socket_routing_id (new_routing_id);
-                add_out_pipe (ZMQ_MOVE (new_routing_id), old_pipe);
+                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
 
                 if (old_pipe == _current_in)
                     _terminate_current_in = true;
@@ -447,7 +447,7 @@ bool zmq::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     }
 
     pipe_->set_router_socket_routing_id (routing_id);
-    add_out_pipe (ZMQ_MOVE (routing_id), pipe_);
+    add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
 
     return true;
 }

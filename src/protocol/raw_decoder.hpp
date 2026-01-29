@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_RAW_DECODER_HPP_INCLUDED__
-#define __ZMQ_RAW_DECODER_HPP_INCLUDED__
+#ifndef __ZLINK_RAW_DECODER_HPP_INCLUDED__
+#define __ZLINK_RAW_DECODER_HPP_INCLUDED__
 
 #include "protocol/decoder.hpp"
 #include "protocol/decoder_allocators.hpp"
 #include "core/msg.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Decoder for raw STREAM framing (4-byte length prefix).
-class raw_decoder_t ZMQ_FINAL
+class raw_decoder_t ZLINK_FINAL
     : public decoder_base_t<raw_decoder_t, shared_message_memory_allocator>
 {
   public:
@@ -29,7 +29,7 @@ class raw_decoder_t ZMQ_FINAL
     msg_t _in_progress;
     const uint32_t _max_msg_size_effective;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (raw_decoder_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (raw_decoder_t)
 };
 }
 

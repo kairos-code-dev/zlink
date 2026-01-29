@@ -9,7 +9,7 @@
 #    export REMOTE_IP_SSH=10.0.0.1
 #    export LOCAL_TEST_ENDPOINT="tcp://192.168.1.1:1234"
 #    export REMOTE_TEST_ENDPOINT="tcp://192.168.1.2:1234"
-#    export REMOTE_LIBZMQ_PATH="/home/fmontorsi/libzmq/perf"
+#    export REMOTE_LIBZLINK_PATH="/home/fmontorsi/libzlink/perf"
 #    ./generate_csv.sh
 #
 
@@ -17,7 +17,7 @@ set -u
 
 # configurable values (via environment variables):
 REMOTE_IP_SSH=${REMOTE_IP_SSH:-127.0.0.1}
-REMOTE_LIBZMQ_PATH=${REMOTE_LIBZMQ_PATH:-/root/libzmq/perf}
+REMOTE_LIBZLINK_PATH=${REMOTE_LIBZLINK_PATH:-/root/libzlink/perf}
 LOCAL_TEST_ENDPOINT=${LOCAL_TEST_ENDPOINT:-tcp://192.168.1.1:1234}
 REMOTE_TEST_ENDPOINT=${REMOTE_TEST_ENDPOINT:-tcp://192.168.1.2:1234}
 
@@ -38,9 +38,9 @@ function verify_ssh()
         exit 2
     fi
 
-    ssh $REMOTE_IP_SSH "ls $REMOTE_LIBZMQ_PATH" >/dev/null
+    ssh $REMOTE_IP_SSH "ls $REMOTE_LIBZLINK_PATH" >/dev/null
     if [ $? -ne 0 ]; then
-        echo "The folder $REMOTE_LIBZMQ_PATH is not valid. Please fix the problem and retry."
+        echo "The folder $REMOTE_LIBZLINK_PATH is not valid. Please fix the problem and retry."
         exit 2
     fi
 
@@ -54,7 +54,7 @@ function run_remote_perf_util()
     local NUM_MESSAGES="$3"
 
     echo "Launching on $REMOTE_IP_SSH the utility [$REMOTE_PERF_UTIL] for messages ${MESSAGE_SIZE_BYTES}B long"
-    ssh $REMOTE_IP_SSH "$REMOTE_LIBZMQ_PATH/$REMOTE_PERF_UTIL $TEST_ENDPOINT $MESSAGE_SIZE_BYTES $NUM_MESSAGES" &
+    ssh $REMOTE_IP_SSH "$REMOTE_LIBZLINK_PATH/$REMOTE_PERF_UTIL $TEST_ENDPOINT $MESSAGE_SIZE_BYTES $NUM_MESSAGES" &
     if [ $? -ne 0 ]; then
         echo "Failed to launch remote perf util."
         exit 2
@@ -74,7 +74,7 @@ function generate_output_file()
     local OUTPUT_FILE_CSV="${OUTPUT_DIR}/${OUTPUT_FILE_PREFIX}.csv"     # actually used to later produce graphs
     local MESSAGE_SIZE_ARRAY=($MESSAGE_SIZE_LIST)
 
-    echo "Killing still-running ZMQ performance utils, if any"
+    echo "Killing still-running ZLINK performance utils, if any"
     pkill $LOCAL_PERF_UTIL                       # in case it's running from a previous test
     if [ ! -z "$REMOTE_PERF_UTIL" ]; then
         ssh $REMOTE_IP_SSH "pkill $REMOTE_PERF_UTIL"     # in case it's running from a previous test

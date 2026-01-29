@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_CONFIG_HPP_INCLUDED__
-#define __ZMQ_CONFIG_HPP_INCLUDED__
+#ifndef __ZLINK_CONFIG_HPP_INCLUDED__
+#define __ZLINK_CONFIG_HPP_INCLUDED__
 
-namespace zmq
+namespace zlink
 {
 //  Compile-time settings.
 
@@ -31,7 +31,7 @@ enum
     //  Maximum number of events the I/O thread can process in one go.
     max_io_events = 256,
 
-    //  Maximal batch size of packets forwarded by a ZMQ proxy.
+    //  Maximal batch size of packets forwarded by a ZLINK proxy.
     //  Increasing this value improves throughput at the expense of
     //  latency and fairness.
     proxy_burst_size = 1000,
@@ -54,7 +54,7 @@ enum
     //  If 0, it lets the OS choose a free port without requiring use of a
     //  global mutex. The original implementation of a Windows signaler
     //  socket used port 5905 instead of letting the OS choose a free port.
-    //  https://github.com/zeromq/libzmq/issues/1542
+    //  https://github.com/zlink/libzlink/issues/1542
     signaler_port = 0
 };
 }

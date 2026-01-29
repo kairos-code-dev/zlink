@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_PGM_RECEIVER_HPP_INCLUDED__
-#define __ZMQ_PGM_RECEIVER_HPP_INCLUDED__
+#ifndef __ZLINK_PGM_RECEIVER_HPP_INCLUDED__
+#define __ZLINK_PGM_RECEIVER_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 
 #include <map>
 #include <algorithm>
@@ -14,22 +14,22 @@
 #include "protocol/zmp_decoder.hpp"
 #include "transports/pgm/pgm_socket.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class session_base_t;
 
-class pgm_receiver_t ZMQ_FINAL : public io_object_t, public i_engine
+class pgm_receiver_t ZLINK_FINAL : public io_object_t, public i_engine
 {
   public:
-    pgm_receiver_t (zmq::io_thread_t *parent_, const options_t &options_);
+    pgm_receiver_t (zlink::io_thread_t *parent_, const options_t &options_);
     ~pgm_receiver_t ();
 
     int init (bool udp_encapsulation_, const char *network_);
 
     //  i_engine interface implementation.
     bool has_handshake_stage () { return false; };
-    void plug (zmq::io_thread_t *io_thread_, zmq::session_base_t *session_);
+    void plug (zlink::io_thread_t *io_thread_, zlink::session_base_t *session_);
     void terminate ();
     bool restart_input ();
     void restart_output ();
@@ -93,7 +93,7 @@ class pgm_receiver_t ZMQ_FINAL : public io_object_t, public i_engine
     options_t options;
 
     //  Associated session.
-    zmq::session_base_t *session;
+    zlink::session_base_t *session;
 
     const pgm_tsi_t *active_tsi;
 
@@ -109,7 +109,7 @@ class pgm_receiver_t ZMQ_FINAL : public io_object_t, public i_engine
     //  Poll handle associated with engine PGM waiting pipe.
     handle_t pipe_handle;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (pgm_receiver_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (pgm_receiver_t)
 };
 }
 

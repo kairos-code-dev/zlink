@@ -8,10 +8,10 @@
 #include <boost/asio.hpp>
 #include <algorithm>
 
-zmq::mailbox_t::mailbox_t ()
+zlink::mailbox_t::mailbox_t ()
 {
     const bool ok = _cpipe.check_read ();
-    zmq_assert (!ok);
+    zlink_assert (!ok);
     _active = false;
     _io_context = NULL;
     _handler = NULL;
@@ -20,7 +20,7 @@ zmq::mailbox_t::mailbox_t ()
     _scheduled.store (false, std::memory_order_release);
 }
 
-zmq::mailbox_t::~mailbox_t ()
+zlink::mailbox_t::~mailbox_t ()
 {
     //  TODO: Retrieve and deallocate commands inside the _cpipe.
 
@@ -30,18 +30,18 @@ zmq::mailbox_t::~mailbox_t ()
     _sync.unlock ();
 }
 
-zmq::fd_t zmq::mailbox_t::get_fd () const
+zlink::fd_t zlink::mailbox_t::get_fd () const
 {
     return _signaler.get_fd ();
 }
 
-void zmq::mailbox_t::send (const command_t &cmd_)
+void zlink::mailbox_t::send (const command_t &cmd_)
 {
     _sync.lock ();
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
     if (!ok) {
-        // Signal all registered signalers for ZMQ_FD support
+        // Signal all registered signalers for ZLINK_FD support
         for (std::vector<signaler_t *>::iterator it = _signalers.begin (),
                                                  end = _signalers.end ();
              it != end; ++it) {
@@ -56,7 +56,7 @@ void zmq::mailbox_t::send (const command_t &cmd_)
     }
 }
 
-int zmq::mailbox_t::recv (command_t *cmd_, int timeout_)
+int zlink::mailbox_t::recv (command_t *cmd_, int timeout_)
 {
     if (!_active) {
         if (timeout_ == 0) {
@@ -85,12 +85,12 @@ int zmq::mailbox_t::recv (command_t *cmd_, int timeout_)
     return -1;
 }
 
-bool zmq::mailbox_t::valid () const
+bool zlink::mailbox_t::valid () const
 {
     return _signaler.valid ();
 }
 
-void zmq::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
+void zlink::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
                                      mailbox_handler_t handler_,
                                      void *handler_arg_,
                                      mailbox_pre_post_t pre_post_)
@@ -101,7 +101,7 @@ void zmq::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
     _pre_post = pre_post_;
 }
 
-void zmq::mailbox_t::schedule_if_needed ()
+void zlink::mailbox_t::schedule_if_needed ()
 {
     if (!_io_context || !_handler)
         return;
@@ -116,7 +116,7 @@ void zmq::mailbox_t::schedule_if_needed ()
     }
 }
 
-bool zmq::mailbox_t::reschedule_if_needed ()
+bool zlink::mailbox_t::reschedule_if_needed ()
 {
     _scheduled.store (false, std::memory_order_release);
     const bool has_data = _cpipe.check_read ();
@@ -128,12 +128,12 @@ bool zmq::mailbox_t::reschedule_if_needed ()
     return true;
 }
 
-void zmq::mailbox_t::add_signaler (signaler_t *signaler_)
+void zlink::mailbox_t::add_signaler (signaler_t *signaler_)
 {
     _signalers.push_back (signaler_);
 }
 
-void zmq::mailbox_t::remove_signaler (signaler_t *signaler_)
+void zlink::mailbox_t::remove_signaler (signaler_t *signaler_)
 {
     const std::vector<signaler_t *>::iterator end = _signalers.end ();
     const std::vector<signaler_t *>::iterator it =
@@ -142,7 +142,7 @@ void zmq::mailbox_t::remove_signaler (signaler_t *signaler_)
         _signalers.erase (it);
 }
 
-void zmq::mailbox_t::clear_signalers ()
+void zlink::mailbox_t::clear_signalers ()
 {
     _signalers.clear ();
 }

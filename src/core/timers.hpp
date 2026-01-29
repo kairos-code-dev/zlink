@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_TIMERS_HPP_INCLUDED__
-#define __ZMQ_TIMERS_HPP_INCLUDED__
+#ifndef __ZLINK_TIMERS_HPP_INCLUDED__
+#define __ZLINK_TIMERS_HPP_INCLUDED__
 
 #include <stddef.h>
 #include <map>
@@ -9,7 +9,7 @@
 
 #include "utils/clock.hpp"
 
-namespace zmq
+namespace zlink
 {
 typedef void (timers_timer_fn) (int timer_id_, void *arg_);
 
@@ -74,7 +74,7 @@ class timers_t
 
     struct match_by_id;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (timers_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (timers_t)
 };
 }
 

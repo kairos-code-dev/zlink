@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SSL_CONTEXT_HELPER_HPP_INCLUDED__
-#define __ZMQ_SSL_CONTEXT_HELPER_HPP_INCLUDED__
+#ifndef __ZLINK_SSL_CONTEXT_HELPER_HPP_INCLUDED__
+#define __ZLINK_SSL_CONTEXT_HELPER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 
-namespace zmq
+namespace zlink
 {
 
 //  SSL context helper for creating and configuring SSL contexts.
@@ -114,8 +114,8 @@ class ssl_context_helper_t
     static std::string get_ssl_error_string ();
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZMQ_SSL_CONTEXT_HELPER_HPP_INCLUDED__
+#endif  // __ZLINK_SSL_CONTEXT_HELPER_HPP_INCLUDED__

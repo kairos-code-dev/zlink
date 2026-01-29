@@ -1,35 +1,35 @@
-#include "../common/bench_common.hpp"
-#include <zmq.h>
+#include "../common/bench_common_zlink.hpp"
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 
 void run_dealer_router(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *router = zmq_socket(ctx, ZMQ_ROUTER);
-    void *dealer = zmq_socket(ctx, ZMQ_DEALER);
+    void *ctx = zlink_ctx_new();
+    void *router = zlink_socket(ctx, ZLINK_ROUTER);
+    void *dealer = zlink_socket(ctx, ZLINK_DEALER);
 
     // Set Routing ID for Dealer
-    zmq_setsockopt(dealer, ZMQ_ROUTING_ID, "CLIENT", 6);
+    zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "CLIENT", 6);
 
     int hwm = 0;
-    set_sockopt_int(router, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(router, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(dealer, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(dealer, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    set_sockopt_int(router, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(router, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(dealer, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(dealer, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
 
     std::string endpoint = bind_and_resolve_endpoint(router, transport, lib_name + "_dealer_router");
     if (endpoint.empty()) {
-        zmq_close(router);
-        zmq_close(dealer);
-        zmq_ctx_term(ctx);
+        zlink_close(router);
+        zlink_close(dealer);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(dealer, endpoint)) {
-        zmq_close(router);
-        zmq_close(dealer);
-        zmq_ctx_term(ctx);
+        zlink_close(router);
+        zlink_close(dealer);
+        zlink_ctx_term(ctx);
         return;
     }
     apply_debug_timeouts(router, transport);
@@ -55,7 +55,7 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
                         "warmup recv data");
         
         // Router replies: [Identity] [Data]
-        bench_send_fast(router, id, id_len, ZMQ_SNDMORE, "warmup send id");
+        bench_send_fast(router, id, id_len, ZLINK_SNDMORE, "warmup send id");
         bench_send_fast(router, buffer.data(), msg_size, 0,
                         "warmup send data");
         
@@ -72,7 +72,7 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
         int id_len = bench_recv_fast(router, id, 256, 0, "lat recv id");
         bench_recv_fast(router, recv_buf.data(), msg_size, 0, "lat recv data");
         
-        bench_send_fast(router, id, id_len, ZMQ_SNDMORE, "lat send id");
+        bench_send_fast(router, id, id_len, ZLINK_SNDMORE, "lat send id");
         bench_send_fast(router, buffer.data(), msg_size, 0, "lat send data");
         
         bench_recv_fast(dealer, recv_buf.data(), msg_size, 0, "lat recv");
@@ -98,9 +98,9 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
 
     print_result(lib_name, "DEALER_ROUTER", transport, msg_size, throughput, latency);
 
-    zmq_close(router);
-    zmq_close(dealer);
-    zmq_ctx_term(ctx);
+    zlink_close(router);
+    zlink_close(dealer);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

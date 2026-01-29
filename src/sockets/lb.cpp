@@ -6,22 +6,22 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zmq::lb_t::lb_t () : _active (0), _current (0), _more (false), _dropping (false)
+zlink::lb_t::lb_t () : _active (0), _current (0), _more (false), _dropping (false)
 {
 }
 
-zmq::lb_t::~lb_t ()
+zlink::lb_t::~lb_t ()
 {
-    zmq_assert (_pipes.empty ());
+    zlink_assert (_pipes.empty ());
 }
 
-void zmq::lb_t::attach (pipe_t *pipe_)
+void zlink::lb_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
     activated (pipe_);
 }
 
-void zmq::lb_t::pipe_terminated (pipe_t *pipe_)
+void zlink::lb_t::pipe_terminated (pipe_t *pipe_)
 {
     const pipes_t::size_type index = _pipes.index (pipe_);
 
@@ -41,19 +41,19 @@ void zmq::lb_t::pipe_terminated (pipe_t *pipe_)
     _pipes.erase (pipe_);
 }
 
-void zmq::lb_t::activated (pipe_t *pipe_)
+void zlink::lb_t::activated (pipe_t *pipe_)
 {
     //  Move the pipe to the list of active pipes.
     _pipes.swap (_pipes.index (pipe_), _active);
     _active++;
 }
 
-int zmq::lb_t::send (msg_t *msg_)
+int zlink::lb_t::send (msg_t *msg_)
 {
     return sendpipe (msg_, NULL);
 }
 
-int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
+int zlink::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
 {
     //  Drop the message if required. If we are at the end of the message
     //  switch back to non-dropping mode.
@@ -130,7 +130,7 @@ int zmq::lb_t::sendpipe (msg_t *msg_, pipe_t **pipe_)
     return 0;
 }
 
-bool zmq::lb_t::has_out ()
+bool zlink::lb_t::has_out ()
 {
     //  If one part of the message was already written we can definitely
     //  write the rest of the message.

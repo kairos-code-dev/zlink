@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_I_MAILBOX_HPP_INCLUDED__
-#define __ZMQ_I_MAILBOX_HPP_INCLUDED__
+#ifndef __ZLINK_I_MAILBOX_HPP_INCLUDED__
+#define __ZLINK_I_MAILBOX_HPP_INCLUDED__
 
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Interface to be implemented by mailbox.
 
 class i_mailbox
 {
   public:
-    virtual ~i_mailbox () ZMQ_DEFAULT;
+    virtual ~i_mailbox () ZLINK_DEFAULT;
 
     virtual void send (const command_t &cmd_) = 0;
     virtual int recv (command_t *cmd_, int timeout_) = 0;

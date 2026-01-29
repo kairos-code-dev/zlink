@@ -6,7 +6,7 @@
 
 #include <string.h>
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -24,36 +24,36 @@ void tearDown ()
 
 void test_handshake_timeout ()
 {
-    void *server = test_context_socket (ZMQ_ROUTER);
-    void *mon = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_ROUTER);
+    void *mon = test_context_socket (ZLINK_PAIR);
     char endpoint[MAX_SOCKET_STRING];
 
     // Set a very short handshake timeout (100ms)
     int timeout = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_HANDSHAKE_IVL, &timeout, sizeof (timeout)));
+      zlink_setsockopt (server, ZLINK_HANDSHAKE_IVL, &timeout, sizeof (timeout)));
 
     int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_LINGER, &linger, sizeof (linger)));
+      zlink_setsockopt (server, ZLINK_LINGER, &linger, sizeof (linger)));
 
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_socket_monitor (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_monitor (
       server, "inproc://monitor-handshake",
-      ZMQ_EVENT_ACCEPTED | ZMQ_EVENT_DISCONNECTED));
+      ZLINK_EVENT_ACCEPTED | ZLINK_EVENT_DISCONNECTED));
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (mon, "inproc://monitor-handshake"));
+      zlink_connect (mon, "inproc://monitor-handshake"));
 
     // Connect a raw socket but don't send ZMTP greeting
     fd_t fd = connect_socket (endpoint);
 
     // Expect accepted event
-    expect_monitor_event (mon, ZMQ_EVENT_ACCEPTED);
+    expect_monitor_event (mon, ZLINK_EVENT_ACCEPTED);
 
     // Expect disconnected event due to handshake timeout
-    expect_monitor_event (mon, ZMQ_EVENT_DISCONNECTED);
+    expect_monitor_event (mon, ZLINK_EVENT_DISCONNECTED);
 
     close (fd);
     test_context_socket_close (server);

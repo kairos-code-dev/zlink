@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "engine/asio/asio_raw_engine.hpp"
 #include "protocol/raw_encoder.hpp"
@@ -11,7 +11,7 @@
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
 
-zmq::asio_raw_engine_t::asio_raw_engine_t (
+zlink::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_) :
@@ -20,7 +20,7 @@ zmq::asio_raw_engine_t::asio_raw_engine_t (
     init_raw_engine ();
 }
 
-zmq::asio_raw_engine_t::asio_raw_engine_t (
+zlink::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -30,8 +30,8 @@ zmq::asio_raw_engine_t::asio_raw_engine_t (
     init_raw_engine ();
 }
 
-#if defined ZMQ_HAVE_ASIO_SSL
-zmq::asio_raw_engine_t::asio_raw_engine_t (
+#if defined ZLINK_HAVE_ASIO_SSL
+zlink::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -44,11 +44,11 @@ zmq::asio_raw_engine_t::asio_raw_engine_t (
 }
 #endif
 
-zmq::asio_raw_engine_t::~asio_raw_engine_t ()
+zlink::asio_raw_engine_t::~asio_raw_engine_t ()
 {
 }
 
-void zmq::asio_raw_engine_t::init_raw_engine ()
+void zlink::asio_raw_engine_t::init_raw_engine ()
 {
     _next_msg = static_cast<int (asio_engine_t::*) (msg_t *)> (
       &asio_raw_engine_t::pull_msg_from_session);
@@ -56,7 +56,7 @@ void zmq::asio_raw_engine_t::init_raw_engine ()
       &asio_raw_engine_t::decode_and_push);
 }
 
-void zmq::asio_raw_engine_t::plug_internal ()
+void zlink::asio_raw_engine_t::plug_internal ()
 {
     if (_encoder == NULL) {
         _encoder = new (std::nothrow) raw_encoder_t (_options.out_batch_size);
@@ -72,7 +72,7 @@ void zmq::asio_raw_engine_t::plug_internal ()
 
     properties_t properties;
     if (init_properties (properties)) {
-        zmq_assert (_metadata == NULL);
+        zlink_assert (_metadata == NULL);
         _metadata = new (std::nothrow) metadata_t (properties);
         alloc_assert (_metadata);
     }
@@ -86,7 +86,7 @@ void zmq::asio_raw_engine_t::plug_internal ()
     start_async_write ();
 }
 
-bool zmq::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
+bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
                                                   unsigned char *buffer_,
                                                   size_t buffer_size_,
                                                   size_t &header_size_)
@@ -99,4 +99,4 @@ bool zmq::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
     return true;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

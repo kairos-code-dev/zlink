@@ -1,39 +1,39 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_CONDITON_VARIABLE_HPP_INCLUDED__
-#define __ZMQ_CONDITON_VARIABLE_HPP_INCLUDED__
+#ifndef __ZLINK_CONDITON_VARIABLE_HPP_INCLUDED__
+#define __ZLINK_CONDITON_VARIABLE_HPP_INCLUDED__
 
 #include "utils/err.hpp"
 #include "utils/mutex.hpp"
 
 //  Condition variable class encapsulates OS mutex in a platform-independent way.
 
-#if defined(ZMQ_USE_CV_IMPL_NONE)
+#if defined(ZLINK_USE_CV_IMPL_NONE)
 
-namespace zmq
+namespace zlink
 {
 class condition_variable_t
 {
   public:
-    inline condition_variable_t () { zmq_assert (false); }
+    inline condition_variable_t () { zlink_assert (false); }
 
     inline int wait (mutex_t *mutex_, int timeout_)
     {
-        zmq_assert (false);
+        zlink_assert (false);
         return -1;
     }
 
-    inline void broadcast () { zmq_assert (false); }
+    inline void broadcast () { zlink_assert (false); }
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
 };
 }
 
-#elif defined(ZMQ_USE_CV_IMPL_WIN32API)
+#elif defined(ZLINK_USE_CV_IMPL_WIN32API)
 
 #include "utils/windows.hpp"
 
-namespace zmq
+namespace zlink
 {
 class condition_variable_t
 {
@@ -61,20 +61,20 @@ class condition_variable_t
   private:
     CONDITION_VARIABLE _cv;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
 };
 }
 
-#elif defined(ZMQ_USE_CV_IMPL_STL11)
+#elif defined(ZLINK_USE_CV_IMPL_STL11)
 
 #include <condition_variable>
 
-namespace zmq
+namespace zlink
 {
 class condition_variable_t
 {
   public:
-    condition_variable_t () ZMQ_DEFAULT;
+    condition_variable_t () ZLINK_DEFAULT;
 
     int wait (mutex_t *mutex_, int timeout_)
     {
@@ -101,20 +101,20 @@ class condition_variable_t
   private:
     std::condition_variable_any _cv;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
 };
 }
 
-#elif defined(ZMQ_USE_CV_IMPL_VXWORKS)
+#elif defined(ZLINK_USE_CV_IMPL_VXWORKS)
 
 #include <sysLib.h>
 
-namespace zmq
+namespace zlink
 {
 class condition_variable_t
 {
   public:
-    inline condition_variable_t () ZMQ_DEFAULT;
+    inline condition_variable_t () ZLINK_DEFAULT;
 
     inline ~condition_variable_t ()
     {
@@ -184,11 +184,11 @@ class condition_variable_t
     mutex_t _listenersMutex;
     std::vector<SEM_ID> _listeners;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
 };
 }
 
-#elif defined(ZMQ_USE_CV_IMPL_PTHREADS)
+#elif defined(ZLINK_USE_CV_IMPL_PTHREADS)
 
 #include <pthread.h>
 
@@ -199,7 +199,7 @@ extern "C" int pthread_cond_timedwait_monotonic_np (pthread_cond_t *,
                                                     const struct timespec *);
 #endif
 
-namespace zmq
+namespace zlink
 {
 class condition_variable_t
 {
@@ -208,7 +208,7 @@ class condition_variable_t
     {
         pthread_condattr_t attr;
         pthread_condattr_init (&attr);
-#if !defined(ZMQ_HAVE_OSX) && !defined(ANDROID_LEGACY)
+#if !defined(ZLINK_HAVE_OSX) && !defined(ANDROID_LEGACY)
         pthread_condattr_setclock (&attr, CLOCK_MONOTONIC);
 #endif
         int rc = pthread_cond_init (&_cond, &attr);
@@ -228,7 +228,7 @@ class condition_variable_t
         if (timeout_ != -1) {
             struct timespec timeout;
 
-#ifdef ZMQ_HAVE_OSX
+#ifdef ZLINK_HAVE_OSX
             timeout.tv_sec = 0;
             timeout.tv_nsec = 0;
 #else
@@ -243,7 +243,7 @@ class condition_variable_t
                 timeout.tv_sec++;
                 timeout.tv_nsec -= 1000000000;
             }
-#ifdef ZMQ_HAVE_OSX
+#ifdef ZLINK_HAVE_OSX
             rc = pthread_cond_timedwait_relative_np (
               &_cond, mutex_->get_mutex (), &timeout);
 #elif defined(ANDROID_LEGACY)
@@ -277,7 +277,7 @@ class condition_variable_t
   private:
     pthread_cond_t _cond;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (condition_variable_t)
 };
 }
 

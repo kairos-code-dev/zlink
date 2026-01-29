@@ -4,32 +4,32 @@
 #include "utils/compat.hpp"
 #include "transports/ipc/ipc_address.hpp"
 
-#if defined ZMQ_HAVE_IPC
+#if defined ZLINK_HAVE_IPC
 
 #include "utils/err.hpp"
 
 #include <string>
 
-zmq::ipc_address_t::ipc_address_t ()
+zlink::ipc_address_t::ipc_address_t ()
 {
     memset (&_address, 0, sizeof _address);
 }
 
-zmq::ipc_address_t::ipc_address_t (const sockaddr *sa_, socklen_t sa_len_) :
+zlink::ipc_address_t::ipc_address_t (const sockaddr *sa_, socklen_t sa_len_) :
     _addrlen (sa_len_)
 {
-    zmq_assert (sa_ && sa_len_ > 0);
+    zlink_assert (sa_ && sa_len_ > 0);
 
     memset (&_address, 0, sizeof _address);
     if (sa_->sa_family == AF_UNIX)
         memcpy (&_address, sa_, sa_len_);
 }
 
-zmq::ipc_address_t::~ipc_address_t ()
+zlink::ipc_address_t::~ipc_address_t ()
 {
 }
 
-int zmq::ipc_address_t::resolve (const char *path_)
+int zlink::ipc_address_t::resolve (const char *path_)
 {
     const size_t path_len = strlen (path_);
     if (path_len >= sizeof _address.sun_path) {
@@ -52,7 +52,7 @@ int zmq::ipc_address_t::resolve (const char *path_)
     return 0;
 }
 
-int zmq::ipc_address_t::to_string (std::string &addr_) const
+int zlink::ipc_address_t::to_string (std::string &addr_) const
 {
     if (_address.sun_family != AF_UNIX) {
         addr_.clear ();
@@ -80,12 +80,12 @@ int zmq::ipc_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-const sockaddr *zmq::ipc_address_t::addr () const
+const sockaddr *zlink::ipc_address_t::addr () const
 {
     return reinterpret_cast<const sockaddr *> (&_address);
 }
 
-socklen_t zmq::ipc_address_t::addrlen () const
+socklen_t zlink::ipc_address_t::addrlen () const
 {
     return _addrlen;
 }

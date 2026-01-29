@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_CTX_HPP_INCLUDED__
-#define __ZMQ_CTX_HPP_INCLUDED__
+#ifndef __ZLINK_CTX_HPP_INCLUDED__
+#define __ZLINK_CTX_HPP_INCLUDED__
 
 #include <map>
 #include <vector>
@@ -18,7 +18,7 @@
 #include "utils/atomic_counter.hpp"
 #include "core/thread.hpp"
 
-namespace zmq
+namespace zlink
 {
 class object_t;
 class io_thread_t;
@@ -64,7 +64,7 @@ class thread_ctx_t
 //  Context object encapsulates all the global state associated with
 //  the library.
 
-class ctx_t ZMQ_FINAL : public thread_ctx_t
+class ctx_t ZLINK_FINAL : public thread_ctx_t
 {
   public:
     //  Create the context object.
@@ -73,7 +73,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     //  Returns false if object is not a context.
     bool check_tag () const;
 
-    //  This function is called when user invokes zmq_ctx_term. If there are
+    //  This function is called when user invokes zlink_ctx_term. If there are
     //  no more sockets open it'll cause all the infrastructure to be shut
     //  down. If there are open sockets still, the deallocation happens
     //  after the last one is closed.
@@ -81,7 +81,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
 
     // This function starts the terminate process by unblocking any blocking
     // operations currently in progress and stopping any more socket activity
-    // (except zmq_close).
+    // (except zlink_close).
     // This function is non-blocking.
     // terminate must still be called afterwards.
     // This function is optional, terminate will unblock any current
@@ -94,8 +94,8 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     int get (int option_);
 
     //  Create and destroy a socket.
-    zmq::socket_base_t *create_socket (int type_);
-    void destroy_socket (zmq::socket_base_t *socket_);
+    zlink::socket_base_t *create_socket (int type_);
+    void destroy_socket (zlink::socket_base_t *socket_);
 
     //  Send command to the destination thread.
     void send_command (uint32_t tid_, const command_t &command_);
@@ -103,10 +103,10 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     //  Returns the I/O thread that is the least busy at the moment.
     //  Affinity specifies which I/O threads are eligible (0 = all).
     //  Returns NULL if no I/O thread is available.
-    zmq::io_thread_t *choose_io_thread (uint64_t affinity_);
+    zlink::io_thread_t *choose_io_thread (uint64_t affinity_);
 
     //  Returns reaper thread object.
-    zmq::object_t *get_reaper () const;
+    zlink::object_t *get_reaper () const;
 
     //  Thread-safe API worker io_context.
     boost::asio::io_context &get_threadsafe_io_context ();
@@ -115,12 +115,12 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     int register_endpoint (const char *addr_, const endpoint_t &endpoint_);
     int unregister_endpoint (const std::string &addr_,
                              const socket_base_t *socket_);
-    void unregister_endpoints (const zmq::socket_base_t *socket_);
+    void unregister_endpoints (const zlink::socket_base_t *socket_);
     endpoint_t find_endpoint (const char *addr_);
     void pend_connection (const std::string &addr_,
                           const endpoint_t &endpoint_,
                           pipe_t **pipes_);
-    void connect_pending (const char *addr_, zmq::socket_base_t *bind_socket_);
+    void connect_pending (const char *addr_, zlink::socket_base_t *bind_socket_);
 
 
     enum
@@ -148,7 +148,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     uint32_t _tag;
 
     //  Sockets belonging to this context. We need the list so that
-    //  we can notify the sockets when zmq_ctx_term() is called.
+    //  we can notify the sockets when zlink_ctx_term() is called.
     //  The sockets will return ETERM then.
     typedef array_t<socket_base_t> sockets_t;
     sockets_t _sockets;
@@ -157,11 +157,11 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     typedef std::vector<uint32_t> empty_slots_t;
     empty_slots_t _empty_slots;
 
-    //  If true, zmq_ctx_new has been called but no socket has been created
+    //  If true, zlink_ctx_new has been called but no socket has been created
     //  yet. Launching of I/O threads is delayed.
     bool _starting;
 
-    //  If true, zmq_ctx_term was already called.
+    //  If true, zlink_ctx_term was already called.
     bool _terminating;
 
     //  Synchronisation of accesses to global slot-related data:
@@ -171,16 +171,16 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     mutex_t _slot_sync;
 
     //  The reaper thread.
-    zmq::reaper_t *_reaper;
+    zlink::reaper_t *_reaper;
 
     //  I/O threads.
-    typedef std::vector<zmq::io_thread_t *> io_threads_t;
+    typedef std::vector<zlink::io_thread_t *> io_threads_t;
     io_threads_t _io_threads;
 
     //  Array of pointers to mailboxes for both application and I/O threads.
     std::vector<i_mailbox *> _slots;
 
-    //  Mailbox for zmq_ctx_term thread.
+    //  Mailbox for zlink_ctx_term thread.
     mailbox_t _term_mailbox;
 
     //  List of inproc endpoints within this context.
@@ -220,7 +220,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     thread_t _threadsafe_thread;
     bool _threadsafe_started;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (ctx_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (ctx_t)
 
 #ifdef HAVE_FORK
     // the process that created this context. Used to detect forking.
@@ -233,7 +233,7 @@ class ctx_t ZMQ_FINAL : public thread_ctx_t
     };
 
     static void
-    connect_inproc_sockets (zmq::socket_base_t *bind_socket_,
+    connect_inproc_sockets (zlink::socket_base_t *bind_socket_,
                             const options_t &bind_options_,
                             const pending_connection_t &pending_connection_,
                             side side_);

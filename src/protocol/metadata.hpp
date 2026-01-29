@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_METADATA_HPP_INCLUDED__
-#define __ZMQ_METADATA_HPP_INCLUDED__
+#ifndef __ZLINK_METADATA_HPP_INCLUDED__
+#define __ZLINK_METADATA_HPP_INCLUDED__
 
 #include <map>
 #include <string>
 
 #include "utils/atomic_counter.hpp"
 
-namespace zmq
+namespace zlink
 {
 class metadata_t
 {
@@ -34,7 +34,7 @@ class metadata_t
     //  Dictionary holding metadata.
     const dict_t _dict;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (metadata_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (metadata_t)
 };
 }
 

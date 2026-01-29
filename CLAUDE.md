@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.3.5. It produces minimal pre-built native libraries with focused protocol support and modern TLS capabilities.
+This is **zlink** - a cross-platform native build system for libzlink (Zlink) v4.3.5. It produces minimal pre-built native libraries with focused protocol support and modern TLS capabilities.
 
 **Key Features:**
 - ASIO-based I/O backend (using bundled Boost.Asio)
@@ -51,8 +51,8 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 
 **Other:**
 - CURVE encryption (use TLS instead)
-- Draft socket options: ZMQ_RECONNECT_STOP, ZMQ_ZAP_ENFORCE_DOMAIN, etc.
-- ZMQ_EVENT_PIPES_STATS and zmq_socket_monitor_pipes_stats()
+- Draft socket options: ZLINK_RECONNECT_STOP, ZLINK_ZAP_ENFORCE_DOMAIN, etc.
+- ZLINK_EVENT_PIPES_STATS and zlink_socket_monitor_pipes_stats()
 
 ### Target Platforms
 - Windows: x64, ARM64
@@ -79,7 +79,7 @@ This is **zlink** - a cross-platform native build system for libzmq (ZeroMQ) v4.
 - **TCP/IPC/inproc perform similarly** for 64B messages (within ±5%)
 - **inproc best for large messages** (1KB): zero-copy advantage
 - **100% stability**: Zero deadlocks across all patterns and transports
-- **libzmq parity**: ~99% performance vs standard libzmq (±1-3%)
+- **libzlink parity**: ~99% performance vs standard libzlink (±1-3%)
 
 **Latency Characteristics:**
 - inproc: 0.07 ~ 0.5 μs (ultra-low)
@@ -101,30 +101,30 @@ zlink includes native TLS support using OpenSSL. Both native TLS transport (`tls
 
 **Server Setup:**
 ```c
-void *ctx = zmq_ctx_new();
-void *socket = zmq_socket(ctx, ZMQ_DEALER);
+void *ctx = zlink_ctx_new();
+void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
 // Set server certificate and private key
-zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/server-cert.pem", strlen("/path/to/server-cert.pem"));
-zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/server-key.pem", strlen("/path/to/server-key.pem"));
+zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/server-cert.pem", strlen("/path/to/server-cert.pem"));
+zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/server-key.pem", strlen("/path/to/server-key.pem"));
 
 // Bind to TLS endpoint
-zmq_bind(socket, "tls://*:5555");
+zlink_bind(socket, "tls://*:5555");
 ```
 
 **Client Setup:**
 ```c
-void *ctx = zmq_ctx_new();
-void *socket = zmq_socket(ctx, ZMQ_DEALER);
+void *ctx = zlink_ctx_new();
+void *socket = zlink_socket(ctx, ZLINK_DEALER);
 
 // Set CA certificate for server verification
-zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca-cert.pem", strlen("/path/to/ca-cert.pem"));
+zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca-cert.pem", strlen("/path/to/ca-cert.pem"));
 
 // Set expected server hostname (for certificate validation)
-zmq_setsockopt(socket, ZMQ_TLS_HOSTNAME, "server.example.com", strlen("server.example.com"));
+zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "server.example.com", strlen("server.example.com"));
 
 // Connect to TLS endpoint
-zmq_connect(socket, "tls://server.example.com:5555");
+zlink_connect(socket, "tls://server.example.com:5555");
 ```
 
 ### WebSocket TLS (wss://)
@@ -133,23 +133,23 @@ WebSocket TLS uses the same certificate options as native TLS:
 
 ```c
 // Server
-zmq_setsockopt(socket, ZMQ_TLS_CERT, "/path/to/cert.pem", ...);
-zmq_setsockopt(socket, ZMQ_TLS_KEY, "/path/to/key.pem", ...);
-zmq_bind(socket, "wss://*:8080");
+zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", ...);
+zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", ...);
+zlink_bind(socket, "wss://*:8080");
 
 // Client
-zmq_setsockopt(socket, ZMQ_TLS_CA, "/path/to/ca.pem", ...);
-zmq_connect(socket, "wss://server.example.com:8080");
+zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", ...);
+zlink_connect(socket, "wss://server.example.com:8080");
 ```
 
 ### TLS Socket Options
 
 | Option | Type | Description |
 |--------|------|-------------|
-| ZMQ_TLS_CERT | string | Path to certificate file (PEM format) |
-| ZMQ_TLS_KEY | string | Path to private key file (PEM format) |
-| ZMQ_TLS_CA | string | Path to CA certificate for verification |
-| ZMQ_TLS_HOSTNAME | string | Expected server hostname for validation |
+| ZLINK_TLS_CERT | string | Path to certificate file (PEM format) |
+| ZLINK_TLS_KEY | string | Path to private key file (PEM format) |
+| ZLINK_TLS_CA | string | Path to CA certificate for verification |
+| ZLINK_TLS_HOSTNAME | string | Expected server hostname for validation |
 
 ## Build Requirements
 
@@ -204,26 +204,26 @@ cmake --build build
 ### Build with C++20 (or other standards)
 ```bash
 # Build with C++20 standard
-cmake -B build -DZMQ_CXX_STANDARD=20
+cmake -B build -DZLINK_CXX_STANDARD=20
 cmake --build build
 
 # Supported values: 11, 14, 17, 20, 23, latest (MSVC)
 # Default is C++11 if not specified
 
 # Combined with other options
-cmake -B build -DZMQ_CXX_STANDARD=20 -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
+cmake -B build -DZLINK_CXX_STANDARD=20 -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
 ```
 
 See [CXX_BUILD_EXAMPLES.md](CXX_BUILD_EXAMPLES.md) for detailed C++ standard build instructions.
 
 ### Build Output
-- Linux: `dist/linux-{arch}/libzmq.so`
-- macOS: `dist/macos-{arch}/libzmq.dylib`
-- Windows: `dist/windows-{arch}/libzmq.dll`
+- Linux: `dist/linux-{arch}/libzlink.so`
+- macOS: `dist/macos-{arch}/libzlink.dylib`
+- Windows: `dist/windows-{arch}/libzlink.dll`
 
 ## Running Tests
 
-Tests are integrated into build scripts via `RUN_TESTS=ON` parameter. Tests use libzmq's Unity test framework and run via ctest.
+Tests are integrated into build scripts via `RUN_TESTS=ON` parameter. Tests use libzlink's Unity test framework and run via ctest.
 
 ```bash
 # Linux/macOS - run tests during build
@@ -252,10 +252,10 @@ The test suite includes a comprehensive transport matrix test (`test_transport_m
   - IPC automatically skipped on Windows (not supported)
 - **ws, wss, tls**: Only PAIR and PUB/SUB patterns tested
   - WebSocket and TLS transports are skipped if not available at runtime
-  - Uses `zmq_has()` for runtime capability detection
+  - Uses `zlink_has()` for runtime capability detection
 
 **Specialized Tests (Not in Matrix):**
-- **Topic Filtering**: `test_pubsub_filter_xpub` includes tests for `ZMQ_SUBSCRIBE` topic filtering
+- **Topic Filtering**: `test_pubsub_filter_xpub` includes tests for `ZLINK_SUBSCRIBE` topic filtering
 - **XPUB/XSUB**: `test_pubsub_filter_xpub` includes tests for extended pub/sub with subscription forwarding messages
 - **Multiple Dealers**: `test_router_multiple_dealers` tests router handling multiple concurrent dealer connections
 
@@ -269,9 +269,9 @@ The matrix test automatically adapts to platform capabilities, skipping unsuppor
 ## Architecture
 
 ### Build System
-- **VERSION file**: Defines LIBZMQ_VERSION
-- **build-scripts/**: Platform-specific build scripts that configure and compile minimal libzmq
-- **tests/**: libzmq test suite using Unity framework
+- **VERSION file**: Defines LIBZLINK_VERSION
+- **build-scripts/**: Platform-specific build scripts that configure and compile minimal libzlink
+- **tests/**: libzlink test suite using Unity framework
 
 ### CI/CD
 - **`.github/workflows/build.yml`**: GitHub Actions workflow building all 6 platforms
@@ -281,7 +281,7 @@ The matrix test automatically adapts to platform capabilities, skipping unsuppor
 | File | Purpose |
 |------|---------|
 | `VERSION` | Build version configuration |
-| `CMakeLists.txt` | libzmq CMake configuration |
+| `CMakeLists.txt` | libzlink CMake configuration |
 | `tests/CMakeLists.txt` | Test suite configuration |
 
 ## LSP (Language Server Protocol) 사용
@@ -353,8 +353,8 @@ If you were using any of these protocols, you must migrate:
 - `udp://` → Use `tcp://` or WebSocket for datagram-like behavior
 
 **Removed Socket Types:**
-- `ZMQ_STREAM` → Use WebSocket (`ws://`, `wss://`) for stream-like communication
-- `ZMQ_REQ/REP`, `ZMQ_PUSH/PULL` → Already removed in v0.1.3
+- `ZLINK_STREAM` → Use WebSocket (`ws://`, `wss://`) for stream-like communication
+- `ZLINK_REQ/REP`, `ZLINK_PUSH/PULL` → Already removed in v0.1.3
 
 **CURVE Encryption:**
 - CURVE is no longer available
@@ -365,13 +365,13 @@ If you were using any of these protocols, you must migrate:
 - Native TLS transport: `tls://`
 - WebSocket support: `ws://`, `wss://`
 - ASIO backend for improved I/O performance
-- TLS socket options: `ZMQ_TLS_CERT`, `ZMQ_TLS_KEY`, `ZMQ_TLS_CA`, `ZMQ_TLS_HOSTNAME`
+- TLS socket options: `ZLINK_TLS_CERT`, `ZLINK_TLS_KEY`, `ZLINK_TLS_CA`, `ZLINK_TLS_HOSTNAME`
 
 ## Version History
 
 | Version | Changes |
 |---------|---------|
 | v0.2.0 | Add ASIO backend, TLS/WebSocket support; remove STREAM, TIPC, VMCI, PGM, NORM, UDP protocols; remove CURVE |
-| v0.1.3 | Remove REQ/REP, PUSH/PULL socket types and ZMQ_EVENT_PIPES_STATS |
+| v0.1.3 | Remove REQ/REP, PUSH/PULL socket types and ZLINK_EVENT_PIPES_STATS |
 | v0.1.2 | Remove all Draft API (9 socket types, WebSocket, draft options) |
-| v0.1.1 | Initial release with full libzmq 4.3.5 |
+| v0.1.1 | Initial release with full libzlink 4.3.5 |

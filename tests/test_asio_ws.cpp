@@ -4,11 +4,11 @@
  * Test suite for the ASIO WebSocket infrastructure
  *
  * These tests verify that the Boost.Beast WebSocket layer works correctly
- * for WebSocket connections. The actual ZMQ WebSocket integration will
+ * for WebSocket connections. The actual ZLINK WebSocket integration will
  * use ws_transport_t which wraps these primitives.
  *
  * NOTE: These tests require Boost.Beast and are only compiled when
- * ZMQ_HAVE_ASIO_WS is defined.
+ * ZLINK_HAVE_ASIO_WS is defined.
  */
 
 #include "testutil.hpp"
@@ -16,7 +16,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -31,7 +31,7 @@
 #include <thread>
 #include <limits.h>
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #else
 #include <direct.h>
@@ -67,7 +67,7 @@ static bool write_pem_file (const std::string &path_, const char *pem_)
 static tls_files_t create_tls_files ()
 {
     tls_files_t files;
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     char tmp_dir[MAX_PATH] = "";
     TEST_ASSERT_SUCCESS_RAW_ERRNO (tmpnam_s (tmp_dir));
     TEST_ASSERT_SUCCESS_RAW_ERRNO (_mkdir (tmp_dir));
@@ -78,9 +78,9 @@ static tls_files_t create_tls_files ()
     if (!tmpdir || !*tmpdir)
         tmpdir = "/tmp";
     const int n =
-      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zmq_tls_XXXXXX", tmpdir);
+      snprintf (tmp_dir, sizeof (tmp_dir), "%s/zlink_tls_XXXXXX", tmpdir);
     if (n <= 0 || static_cast<size_t> (n) >= sizeof (tmp_dir))
-        strcpy (tmp_dir, "/tmp/zmq_tls_XXXXXX");
+        strcpy (tmp_dir, "/tmp/zlink_tls_XXXXXX");
     char *dir = mkdtemp (tmp_dir);
     TEST_ASSERT_NOT_NULL (dir);
     files.dir.assign (dir);
@@ -91,11 +91,11 @@ static tls_files_t create_tls_files ()
     files.server_key = files.dir + "/server.key";
 
     TEST_ASSERT_TRUE (write_pem_file (files.ca_cert,
-                                      zmq::test_certs::ca_cert_pem));
+                                      zlink::test_certs::ca_cert_pem));
     TEST_ASSERT_TRUE (write_pem_file (files.server_cert,
-                                      zmq::test_certs::server_cert_pem));
+                                      zlink::test_certs::server_cert_pem));
     TEST_ASSERT_TRUE (write_pem_file (files.server_key,
-                                      zmq::test_certs::server_key_pem));
+                                      zlink::test_certs::server_key_pem));
 
     return files;
 }
@@ -105,7 +105,7 @@ static void cleanup_tls_files (const tls_files_t &files_)
     remove (files_.ca_cert.c_str ());
     remove (files_.server_cert.c_str ());
     remove (files_.server_key.c_str ());
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     _rmdir (files_.dir.c_str ());
 #else
     rmdir (files_.dir.c_str ());
@@ -266,7 +266,7 @@ void test_ws_handshake ()
           }
 
           //  Client: perform WebSocket handshake
-          client_ws.async_handshake (host, "/zmq",
+          client_ws.async_handshake (host, "/zlink",
                                      [&] (const boost::system::error_code &ec) {
                                          client_hs_ec = ec;
                                          if (++stage >= 2) {
@@ -376,7 +376,7 @@ void test_ws_binary_message ()
           }
 
           //  Client: perform WebSocket handshake, then write
-          client_ws.async_handshake (host, "/zmq",
+          client_ws.async_handshake (host, "/zlink",
                                      [&] (const boost::system::error_code &ec) {
                                          if (ec) {
                                              all_done = true;
@@ -428,49 +428,49 @@ void test_ws_binary_message ()
 }
 
 //  ============================================================================
-//  ZMQ WebSocket Integration Tests
+//  ZLINK WebSocket Integration Tests
 //  ============================================================================
 //
-//  The following tests verify that ZMQ API works with WebSocket transport:
-//  - zmq_bind("ws://...") should work without errno 93 (Protocol not supported)
-//  - zmq_connect("ws://...") should work and establish connection
+//  The following tests verify that ZLINK API works with WebSocket transport:
+//  - zlink_bind("ws://...") should work without errno 93 (Protocol not supported)
+//  - zlink_connect("ws://...") should work and establish connection
 //  - Message exchange should work over WebSocket transport
 
-#if defined ZMQ_HAVE_WS
+#if defined ZLINK_HAVE_WS
 
-//  Global ZMQ context for WebSocket integration tests
+//  Global ZLINK context for WebSocket integration tests
 static void *g_ctx = NULL;
 
-static void setup_zmq_ctx ()
+static void setup_zlink_ctx ()
 {
-    g_ctx = zmq_ctx_new ();
+    g_ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (g_ctx);
 }
 
-static void teardown_zmq_ctx ()
+static void teardown_zlink_ctx ()
 {
     if (g_ctx) {
-        int rc = zmq_ctx_term (g_ctx);
+        int rc = zlink_ctx_term (g_ctx);
         TEST_ASSERT_EQUAL_INT (0, rc);
         g_ctx = NULL;
     }
 }
 
-//  Test 6: ZMQ WebSocket bind should not return EPROTONOSUPPORT
-void test_zmq_ws_bind ()
+//  Test 6: ZLINK WebSocket bind should not return EPROTONOSUPPORT
+void test_zlink_ws_bind ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
-    void *socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
     //  Bind to WebSocket endpoint - this should NOT return -1 with errno 93
-    int rc = zmq_bind (socket, "ws://127.0.0.1:*");
+    int rc = zlink_bind (socket, "ws://127.0.0.1:*");
     if (rc == -1) {
-        int err = zmq_errno ();
+        int err = zlink_errno ();
         char msg[256];
-        snprintf (msg, sizeof (msg), "zmq_bind(ws://) failed with errno %d: %s",
-                  err, zmq_strerror (err));
+        snprintf (msg, sizeof (msg), "zlink_bind(ws://) failed with errno %d: %s",
+                  err, zlink_strerror (err));
         TEST_FAIL_MESSAGE (msg);
     }
     TEST_ASSERT_EQUAL_INT (0, rc);
@@ -478,78 +478,78 @@ void test_zmq_ws_bind ()
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify it's a ws:// endpoint
     TEST_ASSERT_TRUE (strncmp (endpoint, "ws://", 5) == 0);
 
-    zmq_close (socket);
-    teardown_zmq_ctx ();
+    zlink_close (socket);
+    teardown_zlink_ctx ();
 }
 
-//  Test 7: ZMQ WebSocket connect should not return EPROTONOSUPPORT
-void test_zmq_ws_connect ()
+//  Test 7: ZLINK WebSocket connect should not return EPROTONOSUPPORT
+void test_zlink_ws_connect ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
     //  First create a bind socket
-    void *bind_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *bind_socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (bind_socket);
 
-    int rc = zmq_bind (bind_socket, "ws://127.0.0.1:*");
+    int rc = zlink_bind (bind_socket, "ws://127.0.0.1:*");
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (bind_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (bind_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
-    void *connect_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *connect_socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (connect_socket);
 
     //  Connect to the WebSocket endpoint
-    rc = zmq_connect (connect_socket, endpoint);
+    rc = zlink_connect (connect_socket, endpoint);
     if (rc == -1) {
-        int err = zmq_errno ();
+        int err = zlink_errno ();
         char msg[256];
         snprintf (msg, sizeof (msg),
-                  "zmq_connect(ws://) failed with errno %d: %s", err,
-                  zmq_strerror (err));
+                  "zlink_connect(ws://) failed with errno %d: %s", err,
+                  zlink_strerror (err));
         TEST_FAIL_MESSAGE (msg);
     }
     TEST_ASSERT_EQUAL_INT (0, rc);
 
-    zmq_close (connect_socket);
-    zmq_close (bind_socket);
-    teardown_zmq_ctx ();
+    zlink_close (connect_socket);
+    zlink_close (bind_socket);
+    teardown_zlink_ctx ();
 }
 
-//  Test 8: ZMQ WebSocket PAIR message exchange
-void test_zmq_ws_pair_message ()
+//  Test 8: ZLINK WebSocket PAIR message exchange
+void test_zlink_ws_pair_message ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
     //  Create bind socket
-    void *bind_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *bind_socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (bind_socket);
 
-    int rc = zmq_bind (bind_socket, "ws://127.0.0.1:*");
+    int rc = zlink_bind (bind_socket, "ws://127.0.0.1:*");
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (bind_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (bind_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create connect socket
-    void *connect_socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *connect_socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (connect_socket);
 
-    rc = zmq_connect (connect_socket, endpoint);
+    rc = zlink_connect (connect_socket, endpoint);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Give time for connection to establish (including WS handshake)
@@ -557,59 +557,59 @@ void test_zmq_ws_pair_message ()
 
     //  Send a message from connect to bind
     const char *test_msg = "Hello WebSocket";
-    rc = zmq_send (connect_socket, test_msg, strlen (test_msg), 0);
+    rc = zlink_send (connect_socket, test_msg, strlen (test_msg), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
 
     //  Receive the message
     char recv_buf[256];
-    rc = zmq_recv (bind_socket, recv_buf, sizeof (recv_buf), 0);
+    rc = zlink_recv (bind_socket, recv_buf, sizeof (recv_buf), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
     recv_buf[rc] = '\0';
     TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
 
     //  Send a message back from bind to connect
     const char *reply_msg = "Hello from bind";
-    rc = zmq_send (bind_socket, reply_msg, strlen (reply_msg), 0);
+    rc = zlink_send (bind_socket, reply_msg, strlen (reply_msg), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (reply_msg)), rc);
 
     //  Receive the reply
-    rc = zmq_recv (connect_socket, recv_buf, sizeof (recv_buf), 0);
+    rc = zlink_recv (connect_socket, recv_buf, sizeof (recv_buf), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (reply_msg)), rc);
     recv_buf[rc] = '\0';
     TEST_ASSERT_EQUAL_STRING (reply_msg, recv_buf);
 
-    zmq_close (connect_socket);
-    zmq_close (bind_socket);
-    teardown_zmq_ctx ();
+    zlink_close (connect_socket);
+    zlink_close (bind_socket);
+    teardown_zlink_ctx ();
 }
 
-//  Test 9: ZMQ WebSocket PUB/SUB pattern
-void test_zmq_ws_pubsub ()
+//  Test 9: ZLINK WebSocket PUB/SUB pattern
+void test_zlink_ws_pubsub ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
     //  Create PUB socket
-    void *pub_socket = zmq_socket (g_ctx, ZMQ_PUB);
+    void *pub_socket = zlink_socket (g_ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub_socket);
 
-    int rc = zmq_bind (pub_socket, "ws://127.0.0.1:*");
+    int rc = zlink_bind (pub_socket, "ws://127.0.0.1:*");
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (pub_socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (pub_socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Create SUB socket
-    void *sub_socket = zmq_socket (g_ctx, ZMQ_SUB);
+    void *sub_socket = zlink_socket (g_ctx, ZLINK_SUB);
     TEST_ASSERT_NOT_NULL (sub_socket);
 
     //  Subscribe to all messages
-    rc = zmq_setsockopt (sub_socket, ZMQ_SUBSCRIBE, "", 0);
+    rc = zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, "", 0);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
-    rc = zmq_connect (sub_socket, endpoint);
+    rc = zlink_connect (sub_socket, endpoint);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Give time for connection and subscription to propagate
@@ -617,106 +617,106 @@ void test_zmq_ws_pubsub ()
 
     //  Send a message from PUB
     const char *test_msg = "WebSocket PubSub Test";
-    rc = zmq_send (pub_socket, test_msg, strlen (test_msg), 0);
+    rc = zlink_send (pub_socket, test_msg, strlen (test_msg), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
 
     //  Receive the message on SUB
     char recv_buf[256];
-    rc = zmq_recv (sub_socket, recv_buf, sizeof (recv_buf), 0);
+    rc = zlink_recv (sub_socket, recv_buf, sizeof (recv_buf), 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (test_msg)), rc);
     recv_buf[rc] = '\0';
     TEST_ASSERT_EQUAL_STRING (test_msg, recv_buf);
 
-    zmq_close (sub_socket);
-    zmq_close (pub_socket);
-    teardown_zmq_ctx ();
+    zlink_close (sub_socket);
+    zlink_close (pub_socket);
+    teardown_zlink_ctx ();
 }
 
-//  Test 10: ZMQ WebSocket with path
-void test_zmq_ws_with_path ()
+//  Test 10: ZLINK WebSocket with path
+void test_zlink_ws_with_path ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
-    void *socket = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *socket = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (socket);
 
     //  Bind to WebSocket endpoint with custom path
-    int rc = zmq_bind (socket, "ws://127.0.0.1:*/my/custom/path");
+    int rc = zlink_bind (socket, "ws://127.0.0.1:*/my/custom/path");
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Get the actual bound endpoint
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (socket, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (socket, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_EQUAL_INT (0, rc);
 
     //  Verify the path is included in the endpoint
     TEST_ASSERT_NOT_NULL (strstr (endpoint, "/my/custom/path"));
 
-    zmq_close (socket);
-    teardown_zmq_ctx ();
+    zlink_close (socket);
+    teardown_zlink_ctx ();
 }
 
-#if defined ZMQ_HAVE_WSS
-void test_zmq_wss_pair_message ()
+#if defined ZLINK_HAVE_WSS
+void test_zlink_wss_pair_message ()
 {
-    setup_zmq_ctx ();
+    setup_zlink_ctx ();
 
     const tls_files_t files = create_tls_files ();
 
-    void *server = zmq_socket (g_ctx, ZMQ_PAIR);
-    void *client = zmq_socket (g_ctx, ZMQ_PAIR);
+    void *server = zlink_socket (g_ctx, ZLINK_PAIR);
+    void *client = zlink_socket (g_ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (server);
     TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      server, ZMQ_TLS_CERT, files.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_TLS_CERT, files.server_cert.c_str (),
       files.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_TLS_KEY, files.server_key.c_str (),
+      zlink_setsockopt (server, ZLINK_TLS_KEY, files.server_key.c_str (),
                       files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_TLS_HOSTNAME, hostname, strlen (hostname)));
+      zlink_setsockopt (client, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     //  Bind server to WSS endpoint
-    int rc = zmq_bind (server, "wss://127.0.0.1:*");
+    int rc = zlink_bind (server, "wss://127.0.0.1:*");
     TEST_ASSERT_SUCCESS_ERRNO (rc);
 
     char endpoint[256];
     size_t endpoint_len = sizeof (endpoint);
-    rc = zmq_getsockopt (server, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    rc = zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len);
     TEST_ASSERT_SUCCESS_ERRNO (rc);
 
     //  Connect client
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     send_string_expect_success (client, "wss-hello", 0);
     recv_string_expect_success (server, "wss-hello", 0);
 
-    zmq_close (client);
-    zmq_close (server);
+    zlink_close (client);
+    zlink_close (server);
     cleanup_tls_files (files);
-    teardown_zmq_ctx ();
+    teardown_zlink_ctx ();
 }
-#endif  // ZMQ_HAVE_WSS
+#endif  // ZLINK_HAVE_WSS
 
-#endif  // ZMQ_HAVE_WS
+#endif  // ZLINK_HAVE_WS
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_ASIO_WS
+#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_WS
 
 void setUp ()
 {
@@ -732,7 +732,7 @@ void test_asio_ws_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio WebSocket not enabled, skipping tests");
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS
 
 int main ()
 {
@@ -740,7 +740,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS
     //  Beast WebSocket infrastructure tests
     RUN_TEST (test_ws_stream_creation);
     RUN_TEST (test_ws_stream_options);
@@ -749,17 +749,17 @@ int main ()
     RUN_TEST (test_ws_handshake);
     RUN_TEST (test_ws_binary_message);
 
-#if defined ZMQ_HAVE_WS
-    //  ZMQ WebSocket API integration tests
-    RUN_TEST (test_zmq_ws_bind);
-    RUN_TEST (test_zmq_ws_connect);
-    RUN_TEST (test_zmq_ws_pair_message);
-    RUN_TEST (test_zmq_ws_pubsub);
-    RUN_TEST (test_zmq_ws_with_path);
-#if defined ZMQ_HAVE_WSS
-    RUN_TEST (test_zmq_wss_pair_message);
+#if defined ZLINK_HAVE_WS
+    //  ZLINK WebSocket API integration tests
+    RUN_TEST (test_zlink_ws_bind);
+    RUN_TEST (test_zlink_ws_connect);
+    RUN_TEST (test_zlink_ws_pair_message);
+    RUN_TEST (test_zlink_ws_pubsub);
+    RUN_TEST (test_zlink_ws_with_path);
+#if defined ZLINK_HAVE_WSS
+    RUN_TEST (test_zlink_wss_pair_message);
 #endif
-#endif  // ZMQ_HAVE_WS
+#endif  // ZLINK_HAVE_WS
 
 #else
     RUN_TEST (test_asio_ws_not_enabled);

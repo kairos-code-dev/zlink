@@ -5,7 +5,7 @@
 #include "core/thread.hpp"
 #include "utils/err.hpp"
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 #include <winnt.h>
 #endif
 
@@ -13,12 +13,12 @@
 #include "pthread.h"
 #endif
 
-bool zmq::thread_t::get_started () const
+bool zlink::thread_t::get_started () const
 {
     return _started;
 }
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 
 extern "C" {
 #if defined _WIN32_WCE
@@ -27,14 +27,14 @@ static DWORD thread_routine (LPVOID arg_)
 static unsigned int __stdcall thread_routine (void *arg_)
 #endif
 {
-    zmq::thread_t *self = static_cast<zmq::thread_t *> (arg_);
+    zlink::thread_t *self = static_cast<zlink::thread_t *> (arg_);
     self->applyThreadName ();
     self->_tfn (self->_arg);
     return 0;
 }
 }
 
-void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
+void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 {
     _tfn = tfn_;
     _arg = arg_;
@@ -58,12 +58,12 @@ void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
     _started = true;
 }
 
-bool zmq::thread_t::is_current_thread () const
+bool zlink::thread_t::is_current_thread () const
 {
     return GetCurrentThreadId () == _thread_id;
 }
 
-void zmq::thread_t::stop ()
+void zlink::thread_t::stop ()
 {
     if (_started) {
         const DWORD rc = WaitForSingleObject (_descriptor, INFINITE);
@@ -73,16 +73,16 @@ void zmq::thread_t::stop ()
     }
 }
 
-void zmq::thread_t::setSchedulingParameters (
+void zlink::thread_t::setSchedulingParameters (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
     // not implemented
-    LIBZMQ_UNUSED (priority_);
-    LIBZMQ_UNUSED (scheduling_policy_);
-    LIBZMQ_UNUSED (affinity_cpus_);
+    LIBZLINK_UNUSED (priority_);
+    LIBZLINK_UNUSED (scheduling_policy_);
+    LIBZLINK_UNUSED (affinity_cpus_);
 }
 
-void zmq::thread_t::
+void zlink::thread_t::
   applySchedulingParameters () // to be called in secondary thread context
 {
     // not implemented
@@ -105,7 +105,7 @@ struct thread_info_t
 
 #endif
 
-void zmq::thread_t::
+void zlink::thread_t::
   applyThreadName () // to be called in secondary thread context
 {
     if (!_name[0] || !IsDebuggerPresent ())
@@ -142,21 +142,21 @@ void zmq::thread_t::
 }
 
 
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 
 extern "C" {
 static void *thread_routine (void *arg_)
 {
-    zmq::thread_t *self = (zmq::thread_t *) arg_;
+    zlink::thread_t *self = (zlink::thread_t *) arg_;
     self->applySchedulingParameters ();
     self->_tfn (self->_arg);
     return NULL;
 }
 }
 
-void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
+void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 {
-    LIBZMQ_UNUSED (name_);
+    LIBZLINK_UNUSED (name_);
     _tfn = tfn_;
     _arg = arg_;
     _descriptor = taskSpawn (NULL, DEFAULT_PRIORITY, DEFAULT_OPTIONS,
@@ -166,7 +166,7 @@ void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
         _started = true;
 }
 
-void zmq::thread_t::stop ()
+void zlink::thread_t::stop ()
 {
     if (_started)
         while ((_descriptor != NULL || _descriptor > 0)
@@ -174,12 +174,12 @@ void zmq::thread_t::stop ()
         }
 }
 
-bool zmq::thread_t::is_current_thread () const
+bool zlink::thread_t::is_current_thread () const
 {
     return taskIdSelf () == _descriptor;
 }
 
-void zmq::thread_t::setSchedulingParameters (
+void zlink::thread_t::setSchedulingParameters (
   int priority_, int schedulingPolicy_, const std::set<int> &affinity_cpus_)
 {
     _thread_priority = priority_;
@@ -187,7 +187,7 @@ void zmq::thread_t::setSchedulingParameters (
     _thread_affinity_cpus = affinity_cpus_;
 }
 
-void zmq::thread_t::
+void zlink::thread_t::
   applySchedulingParameters () // to be called in secondary thread context
 {
     int priority =
@@ -198,7 +198,7 @@ void zmq::thread_t::
     }
 }
 
-void zmq::thread_t::
+void zlink::thread_t::
   applyThreadName () // to be called in secondary thread context
 {
     // not implemented
@@ -214,7 +214,7 @@ void zmq::thread_t::
 extern "C" {
 static void *thread_routine (void *arg_)
 {
-#if !defined ZMQ_HAVE_OPENVMS && !defined ZMQ_HAVE_ANDROID
+#if !defined ZLINK_HAVE_OPENVMS && !defined ZLINK_HAVE_ANDROID
     //  Following code will guarantee more predictable latencies as it'll
     //  disallow any signal handling in the I/O thread.
     sigset_t signal_set;
@@ -223,7 +223,7 @@ static void *thread_routine (void *arg_)
     rc = pthread_sigmask (SIG_BLOCK, &signal_set, NULL);
     posix_assert (rc);
 #endif
-    zmq::thread_t *self = (zmq::thread_t *) arg_;
+    zlink::thread_t *self = (zlink::thread_t *) arg_;
     self->applySchedulingParameters ();
     self->applyThreadName ();
     self->_tfn (self->_arg);
@@ -231,7 +231,7 @@ static void *thread_routine (void *arg_)
 }
 }
 
-void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
+void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 {
     _tfn = tfn_;
     _arg = arg_;
@@ -242,7 +242,7 @@ void zmq::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
     _started = true;
 }
 
-void zmq::thread_t::stop ()
+void zlink::thread_t::stop ()
 {
     if (_started) {
         int rc = pthread_join (_descriptor, NULL);
@@ -250,12 +250,12 @@ void zmq::thread_t::stop ()
     }
 }
 
-bool zmq::thread_t::is_current_thread () const
+bool zlink::thread_t::is_current_thread () const
 {
     return bool (pthread_equal (pthread_self (), _descriptor));
 }
 
-void zmq::thread_t::setSchedulingParameters (
+void zlink::thread_t::setSchedulingParameters (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
     _thread_priority = priority_;
@@ -263,7 +263,7 @@ void zmq::thread_t::setSchedulingParameters (
     _thread_affinity_cpus = affinity_cpus_;
 }
 
-void zmq::thread_t::
+void zlink::thread_t::
   applySchedulingParameters () // to be called in secondary thread context
 {
 #if defined _POSIX_THREAD_PRIORITY_SCHEDULING                                  \
@@ -280,7 +280,7 @@ void zmq::thread_t::
     int rc = pthread_getschedparam (pthread_self (), &policy, &param);
     posix_assert (rc);
 
-    if (_thread_sched_policy != ZMQ_THREAD_SCHED_POLICY_DFLT) {
+    if (_thread_sched_policy != ZLINK_THREAD_SCHED_POLICY_DFLT) {
         policy = _thread_sched_policy;
     }
 
@@ -295,7 +295,7 @@ void zmq::thread_t::
     if (use_nice_instead_priority)
         param.sched_priority =
           0; // this is the only supported priority for most scheduling policies
-    else if (_thread_priority != ZMQ_THREAD_PRIORITY_DFLT)
+    else if (_thread_priority != ZLINK_THREAD_PRIORITY_DFLT)
         param.sched_priority =
           _thread_priority; // user should provide a value between 1 and 99
 
@@ -314,9 +314,9 @@ void zmq::thread_t::
 
     posix_assert (rc);
 
-#if !defined ZMQ_HAVE_VXWORKS
+#if !defined ZLINK_HAVE_VXWORKS
     if (use_nice_instead_priority
-        && _thread_priority != ZMQ_THREAD_PRIORITY_DFLT
+        && _thread_priority != ZLINK_THREAD_PRIORITY_DFLT
         && _thread_priority > 0) {
         // assume the user wants to decrease the thread's nice value
         // i.e., increase the chance of this thread being scheduled: try setting that to
@@ -329,7 +329,7 @@ void zmq::thread_t::
     }
 #endif
 
-#ifdef ZMQ_HAVE_PTHREAD_SET_AFFINITY
+#ifdef ZLINK_HAVE_PTHREAD_SET_AFFINITY
     if (!_thread_affinity_cpus.empty ()) {
         cpu_set_t cpuset;
         CPU_ZERO (&cpuset);
@@ -346,7 +346,7 @@ void zmq::thread_t::
 #endif
 }
 
-void zmq::thread_t::
+void zlink::thread_t::
   applyThreadName () // to be called in secondary thread context
 {
     /* The thread name is a cosmetic string, added to ease debugging of
@@ -360,23 +360,23 @@ void zmq::thread_t::
         return;
 
         /* Fails with permission denied on Android 5/6 */
-#if defined(ZMQ_HAVE_ANDROID)
+#if defined(ZLINK_HAVE_ANDROID)
     return;
 #endif
 
-#if defined(ZMQ_HAVE_PTHREAD_SETNAME_1)
+#if defined(ZLINK_HAVE_PTHREAD_SETNAME_1)
     int rc = pthread_setname_np (_name);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_2)
+#elif defined(ZLINK_HAVE_PTHREAD_SETNAME_2)
     int rc = pthread_setname_np (pthread_self (), _name);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_3)
+#elif defined(ZLINK_HAVE_PTHREAD_SETNAME_3)
     int rc = pthread_setname_np (pthread_self (), _name, NULL);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SET_NAME)
+#elif defined(ZLINK_HAVE_PTHREAD_SET_NAME)
     pthread_set_name_np (pthread_self (), _name);
 #endif
 }

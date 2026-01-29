@@ -23,12 +23,12 @@ static void worker (void *data_)
 {
     const thread_data *const tdata = static_cast<const thread_data *> (data_);
 
-    void *socket = zmq_socket (get_test_context (), ZMQ_SUB);
+    void *socket = zlink_socket (get_test_context (), ZLINK_SUB);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (socket, tdata->endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (socket, tdata->endpoint));
 
     //  Start closing the socket while the connecting process is underway.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (socket));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket));
 }
 }
 
@@ -40,18 +40,18 @@ void test_shutdown_stress ()
         //  Check the shutdown with many parallel I/O threads.
         struct thread_data tdata;
         setup_test_context ();
-        zmq_ctx_set (get_test_context (), ZMQ_IO_THREADS, 7);
+        zlink_ctx_set (get_test_context (), ZLINK_IO_THREADS, 7);
 
-        void *socket = test_context_socket (ZMQ_PUB);
+        void *socket = test_context_socket (ZLINK_PUB);
 
         bind_loopback_ipv4 (socket, tdata.endpoint, sizeof (tdata.endpoint));
 
         for (int i = 0; i != THREAD_COUNT; i++) {
-            threads[i] = zmq_threadstart (&worker, &tdata);
+            threads[i] = zlink_threadstart (&worker, &tdata);
         }
 
         for (int i = 0; i != THREAD_COUNT; i++) {
-            zmq_threadclose (threads[i]);
+            zlink_threadclose (threads[i]);
         }
 
         test_context_socket_close (socket);

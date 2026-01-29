@@ -4,8 +4,8 @@
 > **상태**: Implemented (2026-01-29)
 > **버전**: 1.0
 > **의존성**:
-> - `zmq_socket_stats_t` (기존 소켓 통계)
-> - `zmq_socket_peer_info`/`zmq_socket_peers` (피어 통계)
+> - `zlink_socket_stats_t` (기존 소켓 통계)
+> - `zlink_socket_peer_info`/`zlink_socket_peers` (피어 통계)
 
 ## 목차
 1. [개요](#1-개요)
@@ -38,7 +38,7 @@
 
 ### 2.1 소켓 단위 (기본)
 
-`zmq_socket_stats_t` 기반:
+`zlink_socket_stats_t` 기반:
 
 - `msgs_sent`, `msgs_received`
 - `bytes_sent`, `bytes_received`
@@ -59,7 +59,7 @@
 
 ### 2.2 피어 단위 (선택)
 
-`zmq_socket_peer_info` 기반:
+`zlink_socket_peer_info` 기반:
 
 - `routing_id`, `remote_addr`, `connected_time`
 - `msgs_sent`, `msgs_received`
@@ -75,22 +75,22 @@
 
 ### 3.1 현행 API (안정화/문서화)
 
-- `int zmq_socket_stats(void *socket, zmq_socket_stats_t *stats)`
-- `int zmq_socket_peer_info(void *socket, const zmq_routing_id_t *rid, zmq_peer_info_t *info)`
-- `int zmq_socket_peers(void *socket, zmq_peer_info_t *peers, size_t *count)`
+- `int zlink_socket_stats(void *socket, zlink_socket_stats_t *stats)`
+- `int zlink_socket_peer_info(void *socket, const zlink_routing_id_t *rid, zlink_peer_info_t *info)`
+- `int zlink_socket_peers(void *socket, zlink_peer_info_t *peers, size_t *count)`
 
 ### 3.2 신규 API (1차)
 
-- `int zmq_socket_stats_ex(void *socket, zmq_socket_stats_ex_t *stats)`
+- `int zlink_socket_stats_ex(void *socket, zlink_socket_stats_ex_t *stats)`
   - `queue_outbound`, `queue_inbound` 분리 제공
   - `drops_hwm`, `drops_no_peers`, `drops_filter`
   - `last_send_ms`, `last_recv_ms` (monotonic 기준)
 
 ### 3.3 확장 API (옵션)
 
-- `int zmq_socket_stats_reset(void *socket)`
+- `int zlink_socket_stats_reset(void *socket)`
   - 누적 카운터를 0으로 초기화
-- `int zmq_context_stats(void *ctx, zmq_context_stats_t *stats)`
+- `int zlink_context_stats(void *ctx, zlink_context_stats_t *stats)`
   - 컨텍스트 전체 집계 (옵션)
 
 ---
@@ -99,7 +99,7 @@
 
 ### 4.1 완료 항목
 
-- `zmq_socket_stats_ex` 추가 및 구현
+- `zlink_socket_stats_ex` 추가 및 구현
   - `queue_outbound/inbound`, 드롭 원인, 마지막 송수신 시각 제공
 - 스냅샷 일관성 확보
   - 내부 카운터/큐 스냅샷을 단일 호출로 반환
@@ -108,8 +108,8 @@
 
 ### 4.2 미구현(옵션)
 
-- `zmq_socket_stats_reset`
-- `zmq_context_stats`
+- `zlink_socket_stats_reset`
+- `zlink_context_stats`
   - 컨텍스트/프로세스 레벨 집계는 추후 확장
 
 ---

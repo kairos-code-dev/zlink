@@ -1,15 +1,15 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_WSS_ADDRESS_HPP_INCLUDED__
-#define __ZMQ_WSS_ADDRESS_HPP_INCLUDED__
+#ifndef __ZLINK_WSS_ADDRESS_HPP_INCLUDED__
+#define __ZLINK_WSS_ADDRESS_HPP_INCLUDED__
 
 #include "platform.hpp"
 
-#ifdef ZMQ_HAVE_WSS
+#ifdef ZLINK_HAVE_WSS
 
 #include "transports/ws/ws_address.hpp"
 
-namespace zmq
+namespace zlink
 {
 
 //  Secure WebSocket address class for wss:// protocol
@@ -25,8 +25,8 @@ class wss_address_t : public ws_address_t
     int to_string (std::string &addr_) const;
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_HAVE_WSS
+#endif  // ZLINK_HAVE_WSS
 
-#endif  // __ZMQ_WSS_ADDRESS_HPP_INCLUDED__
+#endif  // __ZLINK_WSS_ADDRESS_HPP_INCLUDED__

@@ -63,9 +63,9 @@
 ########################################################################
 function android_build_trace {
     if [ -n "${BUILD_ARCH}" ] ; then
-        echo "LIBZMQ (${BUILD_ARCH}) - $*"
+        echo "LIBZLINK (${BUILD_ARCH}) - $*"
     else
-        echo "LIBZMQ - $*"
+        echo "LIBZLINK - $*"
     fi
 }
 

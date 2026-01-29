@@ -13,31 +13,31 @@ void tearDown ()
 
 static void test_pgm_requires_pubsub ()
 {
-#if defined(ZMQ_HAVE_OPENPGM)
-    void *ctx = zmq_ctx_new ();
+#if defined(ZLINK_HAVE_OPENPGM)
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *router = zmq_socket (ctx, ZMQ_ROUTER);
+    void *router = zlink_socket (ctx, ZLINK_ROUTER);
     TEST_ASSERT_NOT_NULL (router);
 
-    int rc = zmq_connect (router, "pgm://invalid");
+    int rc = zlink_connect (router, "pgm://invalid");
     TEST_ASSERT_EQUAL_INT (-1, rc);
 #ifdef ENOCOMPATPROTO
-    TEST_ASSERT_EQUAL_INT (ENOCOMPATPROTO, zmq_errno ());
+    TEST_ASSERT_EQUAL_INT (ENOCOMPATPROTO, zlink_errno ());
 #else
-    TEST_ASSERT_TRUE (zmq_errno () != 0);
+    TEST_ASSERT_TRUE (zlink_errno () != 0);
 #endif
 
-    rc = zmq_connect (router, "epgm://invalid");
+    rc = zlink_connect (router, "epgm://invalid");
     TEST_ASSERT_EQUAL_INT (-1, rc);
 #ifdef ENOCOMPATPROTO
-    TEST_ASSERT_EQUAL_INT (ENOCOMPATPROTO, zmq_errno ());
+    TEST_ASSERT_EQUAL_INT (ENOCOMPATPROTO, zlink_errno ());
 #else
-    TEST_ASSERT_TRUE (zmq_errno () != 0);
+    TEST_ASSERT_TRUE (zlink_errno () != 0);
 #endif
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (router));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (router));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 #else
     TEST_IGNORE_MESSAGE ("OpenPGM not enabled");
 #endif
@@ -45,23 +45,23 @@ static void test_pgm_requires_pubsub ()
 
 static void test_pgm_invalid_address ()
 {
-#if defined(ZMQ_HAVE_OPENPGM)
-    void *ctx = zmq_ctx_new ();
+#if defined(ZLINK_HAVE_OPENPGM)
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *pub = zmq_socket (ctx, ZMQ_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
     TEST_ASSERT_NOT_NULL (pub);
 
-    int rc = zmq_connect (pub, "pgm://invalid");
+    int rc = zlink_connect (pub, "pgm://invalid");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (EINVAL, zmq_errno ());
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
-    rc = zmq_connect (pub, "epgm://invalid");
+    rc = zlink_connect (pub, "epgm://invalid");
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (EINVAL, zmq_errno ());
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (pub));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (pub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 #else
     TEST_IGNORE_MESSAGE ("OpenPGM not enabled");
 #endif

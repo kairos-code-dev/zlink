@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include "transports/ws/asio_ws_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -17,11 +17,11 @@
 #include "protocol/zmp_encoder.hpp"
 #include "protocol/wire.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #endif
 
-#if defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_HAVE_ASIO_SSL
 #include <boost/asio/ssl.hpp>
 #endif
 
@@ -41,7 +41,7 @@ bool gather_write_enabled ()
 {
     static int enabled = -1;
     if (enabled == -1) {
-        const char *env = std::getenv ("ZMQ_ASIO_GATHER_WRITE");
+        const char *env = std::getenv ("ZLINK_ASIO_GATHER_WRITE");
         enabled = (env && *env && *env != '0') ? 1 : 0;
     }
     return enabled == 1;
@@ -64,7 +64,7 @@ size_t gather_threshold ()
 {
     static size_t threshold = 0;
     if (threshold == 0) {
-        threshold = parse_size_env ("ZMQ_ASIO_GATHER_THRESHOLD", 65536);
+        threshold = parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
     }
     return threshold;
 }
@@ -82,21 +82,21 @@ size_t gather_threshold ()
 #endif
 
 //  Message property names
-#define ZMQ_MSG_PROPERTY_ROUTING_ID "Routing-Id"
-#define ZMQ_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
-#define ZMQ_MSG_PROPERTY_USER_ID "User-Id"
-#define ZMQ_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
+#define ZLINK_MSG_PROPERTY_ROUTING_ID "Routing-Id"
+#define ZLINK_MSG_PROPERTY_SOCKET_TYPE "Socket-Type"
+#define ZLINK_MSG_PROPERTY_USER_ID "User-Id"
+#define ZLINK_MSG_PROPERTY_PEER_ADDRESS "Peer-Address"
 
-static std::string get_peer_address (zmq::fd_t s_)
+static std::string get_peer_address (zlink::fd_t s_)
 {
     std::string peer_address;
-    const int family = zmq::get_peer_ip_address (s_, peer_address);
+    const int family = zlink::get_peer_ip_address (s_, peer_address);
     if (family == 0)
         peer_address.clear ();
     return peer_address;
 }
 
-zmq::asio_ws_engine_t::asio_ws_engine_t (
+zlink::asio_ws_engine_t::asio_ws_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -176,14 +176,14 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     memset (_hello_send, 0, sizeof (_hello_send));
     memset (_peer_routing_id, 0, sizeof (_peer_routing_id));
 
-    zmq_assert (_transport);
+    zlink_assert (_transport);
 
     //  Put socket into non-blocking mode
     unblock_socket (_fd);
 }
 
-#if defined ZMQ_HAVE_ASIO_SSL
-zmq::asio_ws_engine_t::asio_ws_engine_t (
+#if defined ZLINK_HAVE_ASIO_SSL
+zlink::asio_ws_engine_t::asio_ws_engine_t (
   fd_t fd_,
   const options_t &options_,
   const endpoint_uri_pair_t &endpoint_uri_pair_,
@@ -266,18 +266,18 @@ zmq::asio_ws_engine_t::asio_ws_engine_t (
     memset (_hello_send, 0, sizeof (_hello_send));
     memset (_peer_routing_id, 0, sizeof (_peer_routing_id));
 
-    zmq_assert (_transport);
+    zlink_assert (_transport);
 
     //  Put socket into non-blocking mode
     unblock_socket (_fd);
 }
 #endif
 
-zmq::asio_ws_engine_t::~asio_ws_engine_t ()
+zlink::asio_ws_engine_t::~asio_ws_engine_t ()
 {
     WS_ENGINE_DBG ("Destructor called");
 
-    zmq_assert (!_plugged);
+    zlink_assert (!_plugged);
 
     //  Close transport (handles graceful close)
     if (_transport) {
@@ -287,7 +287,7 @@ zmq::asio_ws_engine_t::~asio_ws_engine_t ()
 
     //  Close the underlying socket if still open
     if (_fd != retired_fd) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         int rc = closesocket (_fd);
         wsa_assert (rc != SOCKET_ERROR);
 #else
@@ -312,20 +312,20 @@ zmq::asio_ws_engine_t::~asio_ws_engine_t ()
 
     if (_metadata != NULL) {
         if (_metadata->drop_ref ()) {
-            LIBZMQ_DELETE (_metadata);
+            LIBZLINK_DELETE (_metadata);
         }
     }
 
-    LIBZMQ_DELETE (_encoder);
-    LIBZMQ_DELETE (_decoder);
+    LIBZLINK_DELETE (_encoder);
+    LIBZLINK_DELETE (_decoder);
 }
 
-void zmq::asio_ws_engine_t::plug (io_thread_t *io_thread_,
+void zlink::asio_ws_engine_t::plug (io_thread_t *io_thread_,
                                    session_base_t *session_)
 {
     WS_ENGINE_DBG ("plug called");
 
-    zmq_assert (!_plugged);
+    zlink_assert (!_plugged);
     _plugged = true;
 
     _session = session_;
@@ -355,7 +355,7 @@ void zmq::asio_ws_engine_t::plug (io_thread_t *io_thread_,
     start_ws_handshake ();
 }
 
-void zmq::asio_ws_engine_t::start_ws_handshake ()
+void zlink::asio_ws_engine_t::start_ws_handshake ()
 {
     WS_ENGINE_DBG ("Starting WebSocket handshake, is_client=%d", _is_client);
 
@@ -374,7 +374,7 @@ void zmq::asio_ws_engine_t::start_ws_handshake ()
       });
 }
 
-void zmq::asio_ws_engine_t::on_ws_handshake_complete (
+void zlink::asio_ws_engine_t::on_ws_handshake_complete (
   const boost::system::error_code &ec)
 {
     WS_ENGINE_DBG ("WebSocket handshake complete, ec=%s", ec.message ().c_str ());
@@ -399,7 +399,7 @@ void zmq::asio_ws_engine_t::on_ws_handshake_complete (
     start_zmp_handshake ();
 }
 
-void zmq::asio_ws_engine_t::start_zmp_handshake ()
+void zlink::asio_ws_engine_t::start_zmp_handshake ()
 {
     WS_ENGINE_DBG ("Starting ZMP handshake over WebSocket");
 
@@ -468,7 +468,7 @@ void zmq::asio_ws_engine_t::start_zmp_handshake ()
     start_async_read ();
 }
 
-void zmq::asio_ws_engine_t::start_async_read ()
+void zlink::asio_ws_engine_t::start_async_read ()
 {
     if (_read_pending || _input_stopped || _io_error || !_ws_handshake_complete)
         return;
@@ -511,7 +511,7 @@ void zmq::asio_ws_engine_t::start_async_read ()
       });
 }
 
-void zmq::asio_ws_engine_t::on_read_complete (
+void zlink::asio_ws_engine_t::on_read_complete (
   const boost::system::error_code &ec, std::size_t bytes_transferred)
 {
     _read_pending = false;
@@ -625,7 +625,7 @@ void zmq::asio_ws_engine_t::on_read_complete (
     start_async_read ();
 }
 
-void zmq::asio_ws_engine_t::start_async_write ()
+void zlink::asio_ws_engine_t::start_async_write ()
 {
     if (_write_pending || _output_stopped || _io_error || !_ws_handshake_complete)
         return;
@@ -655,7 +655,7 @@ void zmq::asio_ws_engine_t::start_async_write ()
       });
 }
 
-void zmq::asio_ws_engine_t::on_write_complete (
+void zlink::asio_ws_engine_t::on_write_complete (
   const boost::system::error_code &ec, std::size_t bytes_transferred)
 {
     _write_pending = false;
@@ -691,12 +691,12 @@ void zmq::asio_ws_engine_t::on_write_complete (
         start_async_write ();
 }
 
-bool zmq::asio_ws_engine_t::handshake ()
+bool zlink::asio_ws_engine_t::handshake ()
 {
     return handshake_zmp ();
 }
 
-bool zmq::asio_ws_engine_t::handshake_zmp ()
+bool zlink::asio_ws_engine_t::handshake_zmp ()
 {
     if (!_hello_received) {
         if (!receive_hello ()) {
@@ -721,7 +721,7 @@ bool zmq::asio_ws_engine_t::handshake_zmp ()
     return _ready_received;
 }
 
-bool zmq::asio_ws_engine_t::receive_hello ()
+bool zlink::asio_ws_engine_t::receive_hello ()
 {
     while (_insize > 0) {
         if (_hello_header_bytes < zmp_header_size) {
@@ -772,7 +772,7 @@ bool zmq::asio_ws_engine_t::receive_hello ()
     return false;
 }
 
-bool zmq::asio_ws_engine_t::parse_hello (const unsigned char *data_,
+bool zlink::asio_ws_engine_t::parse_hello (const unsigned char *data_,
                                          size_t size_)
 {
     if (size_ < zmp_header_size + zmp_hello_min_body) {
@@ -787,7 +787,7 @@ bool zmq::asio_ws_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         _socket->event_handshake_failed_protocol (
           _session->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -797,7 +797,7 @@ bool zmq::asio_ws_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         _socket->event_handshake_failed_protocol (
           _session->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -808,7 +808,7 @@ bool zmq::asio_ws_engine_t::parse_hello (const unsigned char *data_,
         errno = EPROTO;
         _socket->event_handshake_failed_protocol (
           _session->get_endpoint (),
-          ZMQ_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
+          ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO);
         error (protocol_error);
         return false;
     }
@@ -852,30 +852,30 @@ bool zmq::asio_ws_engine_t::parse_hello (const unsigned char *data_,
     return true;
 }
 
-bool zmq::asio_ws_engine_t::is_socket_type_compatible (int peer_type_) const
+bool zlink::asio_ws_engine_t::is_socket_type_compatible (int peer_type_) const
 {
     switch (_options.type) {
-        case ZMQ_DEALER:
-            return peer_type_ == ZMQ_DEALER || peer_type_ == ZMQ_ROUTER;
-        case ZMQ_ROUTER:
-            return peer_type_ == ZMQ_DEALER || peer_type_ == ZMQ_ROUTER;
-        case ZMQ_PUB:
-            return peer_type_ == ZMQ_SUB || peer_type_ == ZMQ_XSUB;
-        case ZMQ_SUB:
-            return peer_type_ == ZMQ_PUB || peer_type_ == ZMQ_XPUB;
-        case ZMQ_XPUB:
-            return peer_type_ == ZMQ_SUB || peer_type_ == ZMQ_XSUB;
-        case ZMQ_XSUB:
-            return peer_type_ == ZMQ_PUB || peer_type_ == ZMQ_XPUB;
-        case ZMQ_PAIR:
-            return peer_type_ == ZMQ_PAIR;
+        case ZLINK_DEALER:
+            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
+        case ZLINK_ROUTER:
+            return peer_type_ == ZLINK_DEALER || peer_type_ == ZLINK_ROUTER;
+        case ZLINK_PUB:
+            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
+        case ZLINK_SUB:
+            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
+        case ZLINK_XPUB:
+            return peer_type_ == ZLINK_SUB || peer_type_ == ZLINK_XSUB;
+        case ZLINK_XSUB:
+            return peer_type_ == ZLINK_PUB || peer_type_ == ZLINK_XPUB;
+        case ZLINK_PAIR:
+            return peer_type_ == ZLINK_PAIR;
         default:
             break;
     }
     return false;
 }
 
-bool zmq::asio_ws_engine_t::process_zmp_handshake_input ()
+bool zlink::asio_ws_engine_t::process_zmp_handshake_input ()
 {
     if (_decoder == NULL)
         return true;
@@ -928,7 +928,7 @@ bool zmq::asio_ws_engine_t::process_zmp_handshake_input ()
     return true;
 }
 
-int zmq::asio_ws_engine_t::process_ready_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::process_ready_message (msg_t *msg_)
 {
     if (_ready_received) {
         set_last_error (zmp_error_internal, "duplicate ready");
@@ -966,7 +966,7 @@ int zmq::asio_ws_engine_t::process_ready_message (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_ws_engine_t::process_error_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::process_error_message (msg_t *msg_)
 {
     const size_t size = msg_->size ();
     if (size < 3) {
@@ -990,7 +990,7 @@ int zmq::asio_ws_engine_t::process_error_message (msg_t *msg_)
     return -1;
 }
 
-bool zmq::asio_ws_engine_t::process_input ()
+bool zlink::asio_ws_engine_t::process_input ()
 {
     WS_ENGINE_DBG ("process_input: insize=%zu, inpos=%p, in_decoder_buffer=%d",
                    _insize, static_cast<void *> (_inpos), _input_in_decoder_buffer);
@@ -1024,7 +1024,7 @@ bool zmq::asio_ws_engine_t::process_input ()
         rc = _decoder->decode (decode_buf, decode_size, processed);
         WS_ENGINE_DBG ("process_input: decode rc=%d, processed=%zu", rc, processed);
 
-        zmq_assert (processed <= decode_size);
+        zlink_assert (processed <= decode_size);
         _inpos += processed;
         _insize -= processed;
 
@@ -1063,7 +1063,7 @@ bool zmq::asio_ws_engine_t::process_input ()
     return true;
 }
 
-bool zmq::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
+bool zlink::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
                                                  unsigned char *buffer_,
                                                  size_t buffer_size_,
                                                  size_t &header_size_)
@@ -1100,7 +1100,7 @@ bool zmq::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
     return true;
 }
 
-bool zmq::asio_ws_engine_t::prepare_gather_output ()
+bool zlink::asio_ws_engine_t::prepare_gather_output ()
 {
     if (!gather_write_enabled ())
         return false;
@@ -1154,7 +1154,7 @@ bool zmq::asio_ws_engine_t::prepare_gather_output ()
     return true;
 }
 
-void zmq::asio_ws_engine_t::finish_gather_output ()
+void zlink::asio_ws_engine_t::finish_gather_output ()
 {
     if (!_async_gather)
         return;
@@ -1170,7 +1170,7 @@ void zmq::asio_ws_engine_t::finish_gather_output ()
     errno_assert (rc_init == 0);
 }
 
-bool zmq::asio_ws_engine_t::prepare_output_buffer ()
+bool zlink::asio_ws_engine_t::prepare_output_buffer ()
 {
     WS_ENGINE_DBG ("prepare_output_buffer: outsize=%zu", _outsize);
 
@@ -1198,7 +1198,7 @@ bool zmq::asio_ws_engine_t::prepare_output_buffer ()
         unsigned char *bufptr = _outpos + _outsize;
         const size_t n =
           _encoder->encode (&bufptr, _options.out_batch_size - _outsize);
-        zmq_assert (n > 0);
+        zlink_assert (n > 0);
         if (_outpos == NULL)
             _outpos = bufptr;
         _outsize += n;
@@ -1208,7 +1208,7 @@ bool zmq::asio_ws_engine_t::prepare_output_buffer ()
     return _outsize > 0;
 }
 
-void zmq::asio_ws_engine_t::speculative_write ()
+void zlink::asio_ws_engine_t::speculative_write ()
 {
     WS_ENGINE_DBG ("speculative_write: write_pending=%d, output_stopped=%d",
                    _write_pending, _output_stopped);
@@ -1241,7 +1241,7 @@ void zmq::asio_ws_engine_t::speculative_write ()
 
     //  Attempt synchronous write using transport's write_some()
     //  Note: For WebSocket, this writes a complete frame or returns 0 with EAGAIN
-    zmq_assert (_transport);
+    zlink_assert (_transport);
     const std::size_t bytes =
       _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
                               _outsize);
@@ -1321,7 +1321,7 @@ void zmq::asio_ws_engine_t::speculative_write ()
     }
 }
 
-void zmq::asio_ws_engine_t::process_output ()
+void zlink::asio_ws_engine_t::process_output ()
 {
     WS_ENGINE_DBG ("process_output: outsize=%zu", _outsize);
 
@@ -1332,17 +1332,17 @@ void zmq::asio_ws_engine_t::process_output ()
     prepare_output_buffer ();
 }
 
-int zmq::asio_ws_engine_t::pull_msg_from_session (msg_t *msg_)
+int zlink::asio_ws_engine_t::pull_msg_from_session (msg_t *msg_)
 {
     return _session->pull_msg (msg_);
 }
 
-int zmq::asio_ws_engine_t::push_msg_to_session (msg_t *msg_)
+int zlink::asio_ws_engine_t::push_msg_to_session (msg_t *msg_)
 {
     return _session->push_msg (msg_);
 }
 
-void zmq::asio_ws_engine_t::set_last_error (uint8_t code_,
+void zlink::asio_ws_engine_t::set_last_error (uint8_t code_,
                                             const char *reason_)
 {
     _last_error_code = code_;
@@ -1352,7 +1352,7 @@ void zmq::asio_ws_engine_t::set_last_error (uint8_t code_,
         _last_error_reason.assign (zmp_error_reason (code_));
 }
 
-void zmq::asio_ws_engine_t::send_error_frame (uint8_t code_,
+void zlink::asio_ws_engine_t::send_error_frame (uint8_t code_,
                                               const char *reason_)
 {
     if (!_transport || !_transport->is_open ())
@@ -1392,7 +1392,7 @@ void zmq::asio_ws_engine_t::send_error_frame (uint8_t code_,
     }
 }
 
-void zmq::asio_ws_engine_t::error (error_reason_t reason_)
+void zlink::asio_ws_engine_t::error (error_reason_t reason_)
 {
     WS_ENGINE_DBG ("error: reason=%d", reason_);
 
@@ -1422,7 +1422,7 @@ void zmq::asio_ws_engine_t::error (error_reason_t reason_)
     }
 }
 
-void zmq::asio_ws_engine_t::terminate ()
+void zlink::asio_ws_engine_t::terminate ()
 {
     WS_ENGINE_DBG ("terminate: read_pending=%d, write_pending=%d",
                    _read_pending, _write_pending);
@@ -1479,7 +1479,7 @@ void zmq::asio_ws_engine_t::terminate ()
     delete this;
 }
 
-bool zmq::asio_ws_engine_t::restart_input ()
+bool zlink::asio_ws_engine_t::restart_input ()
 {
     WS_ENGINE_DBG ("restart_input");
 
@@ -1492,7 +1492,7 @@ bool zmq::asio_ws_engine_t::restart_input ()
     return true;
 }
 
-void zmq::asio_ws_engine_t::restart_output ()
+void zlink::asio_ws_engine_t::restart_output ()
 {
     WS_ENGINE_DBG ("restart_output: io_error=%d, output_stopped=%d, write_pending=%d",
                    _io_error, _output_stopped, _write_pending);
@@ -1507,24 +1507,24 @@ void zmq::asio_ws_engine_t::restart_output ()
     speculative_write ();
 }
 
-const zmq::endpoint_uri_pair_t &zmq::asio_ws_engine_t::get_endpoint () const
+const zlink::endpoint_uri_pair_t &zlink::asio_ws_engine_t::get_endpoint () const
 {
     return _endpoint_uri_pair;
 }
 
-void zmq::asio_ws_engine_t::set_handshake_timer ()
+void zlink::asio_ws_engine_t::set_handshake_timer ()
 {
     add_timer (_options.handshake_ivl, handshake_timer_id);
     _has_handshake_timer = true;
 }
 
-void zmq::asio_ws_engine_t::cancel_handshake_timer ()
+void zlink::asio_ws_engine_t::cancel_handshake_timer ()
 {
     cancel_timer (handshake_timer_id);
     _has_handshake_timer = false;
 }
 
-void zmq::asio_ws_engine_t::add_timer (int timeout_, int id_)
+void zlink::asio_ws_engine_t::add_timer (int timeout_, int id_)
 {
     if (!_timer)
         return;
@@ -1537,7 +1537,7 @@ void zmq::asio_ws_engine_t::add_timer (int timeout_, int id_)
     });
 }
 
-void zmq::asio_ws_engine_t::cancel_timer (int id_)
+void zlink::asio_ws_engine_t::cancel_timer (int id_)
 {
     if (!_timer)
         return;
@@ -1548,7 +1548,7 @@ void zmq::asio_ws_engine_t::cancel_timer (int id_)
     }
 }
 
-void zmq::asio_ws_engine_t::on_timer (int id_,
+void zlink::asio_ws_engine_t::on_timer (int id_,
                                        const boost::system::error_code &ec)
 {
     if (_terminating || ec == boost::asio::error::operation_aborted)
@@ -1572,23 +1572,23 @@ void zmq::asio_ws_engine_t::on_timer (int id_,
     }
 }
 
-bool zmq::asio_ws_engine_t::init_properties (properties_t &properties_)
+bool zlink::asio_ws_engine_t::init_properties (properties_t &properties_)
 {
     if (_peer_address.empty ())
         return false;
 
-    properties_.ZMQ_MAP_INSERT_OR_EMPLACE (
-      std::string (ZMQ_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
+    properties_.ZLINK_MAP_INSERT_OR_EMPLACE (
+      std::string (ZLINK_MSG_PROPERTY_PEER_ADDRESS), _peer_address);
 
     return true;
 }
 
-int zmq::asio_ws_engine_t::pull_and_encode (msg_t *msg_)
+int zlink::asio_ws_engine_t::pull_and_encode (msg_t *msg_)
 {
     return pull_msg_from_session (msg_);
 }
 
-int zmq::asio_ws_engine_t::decode_and_push (msg_t *msg_)
+int zlink::asio_ws_engine_t::decode_and_push (msg_t *msg_)
 {
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
@@ -1632,12 +1632,12 @@ int zmq::asio_ws_engine_t::decode_and_push (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_ws_engine_t::push_one_then_decode_and_push (msg_t *msg_)
+int zlink::asio_ws_engine_t::push_one_then_decode_and_push (msg_t *msg_)
 {
     return push_msg_to_session (msg_);
 }
 
-int zmq::asio_ws_engine_t::process_command_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::process_command_message (msg_t *msg_)
 {
     if (msg_->size () < 1)
         return -1;
@@ -1655,7 +1655,7 @@ int zmq::asio_ws_engine_t::process_command_message (msg_t *msg_)
     return -1;
 }
 
-int zmq::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
 {
     const size_t ctx_len = 0;
     const size_t size = 4 + ctx_len;
@@ -1676,7 +1676,7 @@ int zmq::asio_ws_engine_t::produce_ping_message (msg_t *msg_)
     return 0;
 }
 
-int zmq::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
 {
     if (msg_->size () < 1) {
         set_last_error (zmp_error_internal, "heartbeat too short");
@@ -1744,7 +1744,7 @@ int zmq::asio_ws_engine_t::process_heartbeat_message (msg_t *msg_)
     return -1;
 }
 
-int zmq::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
+int zlink::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
 {
     const size_t ctx_len = _heartbeat_ctx.size ();
     const size_t size = 2 + ctx_len;
@@ -1763,4 +1763,4 @@ int zmq::asio_ws_engine_t::produce_pong_message (msg_t *msg_)
     return 0;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

@@ -3,24 +3,24 @@
 #include "utils/precompiled.hpp"
 #include "transports/tls/wss_address.hpp"
 
-#ifdef ZMQ_HAVE_WSS
+#ifdef ZLINK_HAVE_WSS
 
 #include <string>
 
-zmq::wss_address_t::wss_address_t ()
+zlink::wss_address_t::wss_address_t ()
 {
 }
 
-zmq::wss_address_t::wss_address_t (const sockaddr *sa_, socklen_t sa_len_) :
+zlink::wss_address_t::wss_address_t (const sockaddr *sa_, socklen_t sa_len_) :
     ws_address_t (sa_, sa_len_)
 {
 }
 
-zmq::wss_address_t::~wss_address_t ()
+zlink::wss_address_t::~wss_address_t ()
 {
 }
 
-int zmq::wss_address_t::to_string (std::string &addr_) const
+int zlink::wss_address_t::to_string (std::string &addr_) const
 {
     if (family () != AF_INET && family () != AF_INET6) {
         addr_.clear ();
@@ -37,4 +37,4 @@ int zmq::wss_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-#endif  // ZMQ_HAVE_WSS
+#endif  // ZLINK_HAVE_WSS

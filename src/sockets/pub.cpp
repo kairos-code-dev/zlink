@@ -6,21 +6,21 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zmq::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+zlink::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     xpub_t (parent_, tid_, sid_)
 {
-    options.type = ZMQ_PUB;
+    options.type = ZLINK_PUB;
 }
 
-zmq::pub_t::~pub_t ()
+zlink::pub_t::~pub_t ()
 {
 }
 
-void zmq::pub_t::xattach_pipe (pipe_t *pipe_,
+void zlink::pub_t::xattach_pipe (pipe_t *pipe_,
                                bool subscribe_to_all_,
                                bool locally_initiated_)
 {
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
 
     //  Don't delay pipe termination as there is no one
     //  to receive the delimiter.
@@ -29,14 +29,14 @@ void zmq::pub_t::xattach_pipe (pipe_t *pipe_,
     xpub_t::xattach_pipe (pipe_, subscribe_to_all_, locally_initiated_);
 }
 
-int zmq::pub_t::xrecv (class msg_t *)
+int zlink::pub_t::xrecv (class msg_t *)
 {
     //  Messages cannot be received from PUB socket.
     errno = ENOTSUP;
     return -1;
 }
 
-bool zmq::pub_t::xhas_in ()
+bool zlink::pub_t::xhas_in ()
 {
     return false;
 }

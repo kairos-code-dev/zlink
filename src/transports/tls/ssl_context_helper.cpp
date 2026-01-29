@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include "engine/asio/asio_debug.hpp"
 #include "engine/asio/asio_error_handler.hpp"
@@ -13,7 +13,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
-namespace zmq
+namespace zlink
 {
 
 std::unique_ptr<boost::asio::ssl::context>
@@ -469,6 +469,6 @@ std::string ssl_context_helper_t::get_ssl_error_string ()
     return std::string (buf);
 }
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

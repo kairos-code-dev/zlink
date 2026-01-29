@@ -10,7 +10,7 @@
 #include "utils/macros.hpp"
 #include "utils/generic_mtrie_impl.hpp"
 
-zmq::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_),
     _verbose_subs (false),
     _verbose_unsubs (false),
@@ -25,27 +25,27 @@ zmq::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _welcome_msg ()
 {
     _last_pipe = NULL;
-    options.type = ZMQ_XPUB;
+    options.type = ZLINK_XPUB;
     _welcome_msg.init ();
 }
 
-zmq::xpub_t::~xpub_t ()
+zlink::xpub_t::~xpub_t ()
 {
     _welcome_msg.close ();
     for (std::deque<metadata_t *>::iterator it = _pending_metadata.begin (),
                                             end = _pending_metadata.end ();
          it != end; ++it)
         if (*it && (*it)->drop_ref ())
-            LIBZMQ_DELETE (*it);
+            LIBZLINK_DELETE (*it);
 }
 
-void zmq::xpub_t::xattach_pipe (pipe_t *pipe_,
+void zlink::xpub_t::xattach_pipe (pipe_t *pipe_,
                                 bool subscribe_to_all_,
                                 bool locally_initiated_)
 {
-    LIBZMQ_UNUSED (locally_initiated_);
+    LIBZLINK_UNUSED (locally_initiated_);
 
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
     _dist.attach (pipe_);
 
     //  If subscribe_to_all_ is specified, the caller would like to subscribe
@@ -60,7 +60,7 @@ void zmq::xpub_t::xattach_pipe (pipe_t *pipe_,
         const int rc = copy.copy (_welcome_msg);
         errno_assert (rc == 0);
         const bool ok = pipe_->write (&copy);
-        zmq_assert (ok);
+        zlink_assert (ok);
         pipe_->flush ();
     }
 
@@ -69,7 +69,7 @@ void zmq::xpub_t::xattach_pipe (pipe_t *pipe_,
     xread_activated (pipe_);
 }
 
-void zmq::xpub_t::xread_activated (pipe_t *pipe_)
+void zlink::xpub_t::xread_activated (pipe_t *pipe_)
 {
     //  There are some subscriptions waiting. Let's process them.
     msg_t msg;
@@ -130,7 +130,7 @@ void zmq::xpub_t::xread_activated (pipe_t *pipe_)
             //  If the request was a new subscription, or the subscription
             //  was removed, or verbose mode or manual mode are enabled, store it
             //  so that it can be passed to the user on next recv call.
-            if (_manual || (options.type == ZMQ_XPUB && notify)) {
+            if (_manual || (options.type == ZLINK_XPUB && notify)) {
                 //  ZMTP 3.1 hack: we need to support sub/cancel commands, but
                 //  we can't give them back to userspace as it would be an API
                 //  breakage since the payload of the message is completely
@@ -148,13 +148,13 @@ void zmq::xpub_t::xread_activated (pipe_t *pipe_)
                     *notification.data () = 0;
                 memcpy (notification.data () + 1, data, size);
 
-                _pending_data.push_back (ZMQ_MOVE (notification));
+                _pending_data.push_back (ZLINK_MOVE (notification));
                 if (metadata)
                     metadata->add_ref ();
                 _pending_metadata.push_back (metadata);
                 _pending_flags.push_back (0);
             }
-        } else if (options.type != ZMQ_PUB) {
+        } else if (options.type != ZLINK_PUB) {
             //  Process user message coming upstream from xsub socket,
             //  but not if the type is PUB, which never processes user
             //  messages
@@ -169,47 +169,47 @@ void zmq::xpub_t::xread_activated (pipe_t *pipe_)
     }
 }
 
-void zmq::xpub_t::xwrite_activated (pipe_t *pipe_)
+void zlink::xpub_t::xwrite_activated (pipe_t *pipe_)
 {
     _dist.activated (pipe_);
 }
 
-int zmq::xpub_t::xsetsockopt (int option_,
+int zlink::xpub_t::xsetsockopt (int option_,
                               const void *optval_,
                               size_t optvallen_)
 {
-    if (option_ == ZMQ_XPUB_VERBOSE || option_ == ZMQ_XPUB_VERBOSER
-        || option_ == ZMQ_XPUB_MANUAL_LAST_VALUE || option_ == ZMQ_XPUB_NODROP
-        || option_ == ZMQ_XPUB_MANUAL || option_ == ZMQ_ONLY_FIRST_SUBSCRIBE) {
+    if (option_ == ZLINK_XPUB_VERBOSE || option_ == ZLINK_XPUB_VERBOSER
+        || option_ == ZLINK_XPUB_MANUAL_LAST_VALUE || option_ == ZLINK_XPUB_NODROP
+        || option_ == ZLINK_XPUB_MANUAL || option_ == ZLINK_ONLY_FIRST_SUBSCRIBE) {
         if (optvallen_ != sizeof (int)
             || *static_cast<const int *> (optval_) < 0) {
             errno = EINVAL;
             return -1;
         }
-        if (option_ == ZMQ_XPUB_VERBOSE) {
+        if (option_ == ZLINK_XPUB_VERBOSE) {
             _verbose_subs = (*static_cast<const int *> (optval_) != 0);
             _verbose_unsubs = false;
-        } else if (option_ == ZMQ_XPUB_VERBOSER) {
+        } else if (option_ == ZLINK_XPUB_VERBOSER) {
             _verbose_subs = (*static_cast<const int *> (optval_) != 0);
             _verbose_unsubs = _verbose_subs;
-        } else if (option_ == ZMQ_XPUB_MANUAL_LAST_VALUE) {
+        } else if (option_ == ZLINK_XPUB_MANUAL_LAST_VALUE) {
             _manual = (*static_cast<const int *> (optval_) != 0);
             _send_last_pipe = _manual;
-        } else if (option_ == ZMQ_XPUB_NODROP)
+        } else if (option_ == ZLINK_XPUB_NODROP)
             _lossy = (*static_cast<const int *> (optval_) == 0);
-        else if (option_ == ZMQ_XPUB_MANUAL)
+        else if (option_ == ZLINK_XPUB_MANUAL)
             _manual = (*static_cast<const int *> (optval_) != 0);
-        else if (option_ == ZMQ_ONLY_FIRST_SUBSCRIBE)
+        else if (option_ == ZLINK_ONLY_FIRST_SUBSCRIBE)
             _only_first_subscribe = (*static_cast<const int *> (optval_) != 0);
-    } else if (option_ == ZMQ_SUBSCRIBE && _manual) {
+    } else if (option_ == ZLINK_SUBSCRIBE && _manual) {
         if (_last_pipe != NULL)
             _subscriptions.add ((unsigned char *) optval_, optvallen_,
                                 _last_pipe);
-    } else if (option_ == ZMQ_UNSUBSCRIBE && _manual) {
+    } else if (option_ == ZLINK_UNSUBSCRIBE && _manual) {
         if (_last_pipe != NULL)
             _subscriptions.rm ((unsigned char *) optval_, optvallen_,
                                _last_pipe);
-    } else if (option_ == ZMQ_XPUB_WELCOME_MSG) {
+    } else if (option_ == ZLINK_XPUB_WELCOME_MSG) {
         _welcome_msg.close ();
 
         if (optvallen_ > 0) {
@@ -228,9 +228,9 @@ int zmq::xpub_t::xsetsockopt (int option_,
     return 0;
 }
 
-int zmq::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
+int zlink::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
 {
-    if (option_ == ZMQ_TOPICS_COUNT) {
+    if (option_ == ZLINK_TOPICS_COUNT) {
         // make sure to use a multi-thread safe function to avoid race conditions with I/O threads
         // where subscriptions are processed:
         return do_getsockopt<int> (optval_, optvallen_,
@@ -243,14 +243,14 @@ int zmq::xpub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
     return -1;
 }
 
-static void stub (zmq::mtrie_t::prefix_t data_, size_t size_, void *arg_)
+static void stub (zlink::mtrie_t::prefix_t data_, size_t size_, void *arg_)
 {
-    LIBZMQ_UNUSED (data_);
-    LIBZMQ_UNUSED (size_);
-    LIBZMQ_UNUSED (arg_);
+    LIBZLINK_UNUSED (data_);
+    LIBZLINK_UNUSED (size_);
+    LIBZLINK_UNUSED (arg_);
 }
 
-void zmq::xpub_t::xpipe_terminated (pipe_t *pipe_)
+void zlink::xpub_t::xpipe_terminated (pipe_t *pipe_)
 {
     if (_manual) {
         //  Remove the pipe from the trie and send corresponding manual
@@ -276,18 +276,18 @@ void zmq::xpub_t::xpipe_terminated (pipe_t *pipe_)
     _dist.pipe_terminated (pipe_);
 }
 
-void zmq::xpub_t::mark_as_matching (pipe_t *pipe_, xpub_t *self_)
+void zlink::xpub_t::mark_as_matching (pipe_t *pipe_, xpub_t *self_)
 {
     self_->_dist.match (pipe_);
 }
 
-void zmq::xpub_t::mark_last_pipe_as_matching (pipe_t *pipe_, xpub_t *self_)
+void zlink::xpub_t::mark_last_pipe_as_matching (pipe_t *pipe_, xpub_t *self_)
 {
     if (self_->_last_pipe == pipe_)
         self_->_dist.match (pipe_);
 }
 
-int zmq::xpub_t::xsend (msg_t *msg_)
+int zlink::xpub_t::xsend (msg_t *msg_)
 {
     const bool msg_more = (msg_->flags () & msg_t::more) != 0;
 
@@ -325,12 +325,12 @@ int zmq::xpub_t::xsend (msg_t *msg_)
     return rc;
 }
 
-bool zmq::xpub_t::xhas_out ()
+bool zlink::xpub_t::xhas_out ()
 {
     return _dist.has_out ();
 }
 
-int zmq::xpub_t::xrecv (msg_t *msg_)
+int zlink::xpub_t::xrecv (msg_t *msg_)
 {
     //  If there is at least one
     if (_pending_data.empty ()) {
@@ -371,23 +371,23 @@ int zmq::xpub_t::xrecv (msg_t *msg_)
     return 0;
 }
 
-bool zmq::xpub_t::xhas_in ()
+bool zlink::xpub_t::xhas_in ()
 {
     return !_pending_data.empty ();
 }
 
-void zmq::xpub_t::send_unsubscription (zmq::mtrie_t::prefix_t data_,
+void zlink::xpub_t::send_unsubscription (zlink::mtrie_t::prefix_t data_,
                                        size_t size_,
                                        xpub_t *self_)
 {
-    if (self_->options.type != ZMQ_PUB) {
+    if (self_->options.type != ZLINK_PUB) {
         //  Place the unsubscription to the queue of pending (un)subscriptions
         //  to be retrieved by the user later on.
         blob_t unsub (size_ + 1);
         *unsub.data () = 0;
         if (size_ > 0)
             memcpy (unsub.data () + 1, data_, size_);
-        self_->_pending_data.ZMQ_PUSH_OR_EMPLACE_BACK (ZMQ_MOVE (unsub));
+        self_->_pending_data.ZLINK_PUSH_OR_EMPLACE_BACK (ZLINK_MOVE (unsub));
         self_->_pending_metadata.push_back (NULL);
         self_->_pending_flags.push_back (0);
 

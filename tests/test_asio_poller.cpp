@@ -12,7 +12,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && !defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && !defined ZLINK_HAVE_WINDOWS
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -45,13 +45,13 @@ void test_ctx_create_destroy ()
 // Test 2: Basic socket pair communication (verifies event loop works)
 void test_pair_tcp_basic ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     // Give time for connection to establish
     msleep (SETTLE_TIME);
@@ -80,11 +80,11 @@ void test_multiple_sockets ()
 
     // Create and connect socket pairs
     for (int i = 0; i < num_pairs; i++) {
-        servers[i] = test_context_socket (ZMQ_PAIR);
-        clients[i] = test_context_socket (ZMQ_PAIR);
+        servers[i] = test_context_socket (ZLINK_PAIR);
+        clients[i] = test_context_socket (ZLINK_PAIR);
 
         bind_loopback_ipv4 (servers[i], endpoints[i], sizeof (endpoints[i]));
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (clients[i], endpoints[i]));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoints[i]));
     }
 
     msleep (SETTLE_TIME);
@@ -107,16 +107,16 @@ void test_multiple_sockets ()
 // Test 4: Pub/Sub pattern (tests subscription forwarding through poller)
 void test_pubsub_basic ()
 {
-    void *pub = test_context_socket (ZMQ_PUB);
-    void *sub = test_context_socket (ZMQ_SUB);
+    void *pub = test_context_socket (ZLINK_PUB);
+    void *sub = test_context_socket (ZLINK_SUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
 
     // Subscribe to all messages
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
 
     // Give time for subscription to propagate
     msleep (SETTLE_TIME);
@@ -129,9 +129,9 @@ void test_pubsub_basic ()
 
     // Receive at least one message
     char buffer[64];
-    int rc = zmq_recv (sub, buffer, sizeof (buffer), ZMQ_DONTWAIT);
+    int rc = zlink_recv (sub, buffer, sizeof (buffer), ZLINK_DONTWAIT);
     // Pub/sub can drop initial messages, so we just check it doesn't error fatally
-    LIBZMQ_UNUSED (rc);
+    LIBZLINK_UNUSED (rc);
 
     test_context_socket_close (sub);
     test_context_socket_close (pub);
@@ -140,13 +140,13 @@ void test_pubsub_basic ()
 // Test 5: DEALER/ROUTER pattern
 void test_dealer_router ()
 {
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer = test_context_socket (ZMQ_DEALER);
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer = test_context_socket (ZLINK_DEALER);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -154,20 +154,20 @@ void test_dealer_router ()
     send_string_expect_success (dealer, "Hello Router", 0);
 
     // Receive on router (includes identity frame)
-    zmq_msg_t identity, msg;
-    zmq_msg_init (&identity);
-    zmq_msg_init (&msg);
+    zlink_msg_t identity, msg;
+    zlink_msg_init (&identity);
+    zlink_msg_init (&msg);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&identity, router, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&msg, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&identity, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, router, 0));
 
-    //  Compare message data with known length (zmq_msg_data is not null-terminated)
-    TEST_ASSERT_EQUAL_INT (strlen ("Hello Router"), zmq_msg_size (&msg));
-    TEST_ASSERT_EQUAL_MEMORY ("Hello Router", zmq_msg_data (&msg),
-                               zmq_msg_size (&msg));
+    //  Compare message data with known length (zlink_msg_data is not null-terminated)
+    TEST_ASSERT_EQUAL_INT (strlen ("Hello Router"), zlink_msg_size (&msg));
+    TEST_ASSERT_EQUAL_MEMORY ("Hello Router", zlink_msg_data (&msg),
+                               zlink_msg_size (&msg));
 
-    zmq_msg_close (&identity);
-    zmq_msg_close (&msg);
+    zlink_msg_close (&identity);
+    zlink_msg_close (&msg);
 
     test_context_socket_close (dealer);
     test_context_socket_close (router);
@@ -176,12 +176,12 @@ void test_dealer_router ()
 // Test 6: Socket close during active communication
 void test_socket_close_active ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -198,26 +198,26 @@ void test_socket_close_active ()
 void test_multiple_io_threads ()
 {
     // Create a new context with multiple IO threads
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
 
     // Set 4 IO threads
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_set (ctx, ZMQ_IO_THREADS, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_IO_THREADS, 4));
 
-    void *server = zmq_socket (ctx, ZMQ_PAIR);
+    void *server = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (server);
 
-    void *client = zmq_socket (ctx, ZMQ_PAIR);
+    void *client = zlink_socket (ctx, ZLINK_PAIR);
     TEST_ASSERT_NOT_NULL (client);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:*"));
 
     char endpoint[MAX_SOCKET_STRING];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (server, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -225,28 +225,28 @@ void test_multiple_io_threads ()
     const char *msg = "Multi-IO test";
     TEST_ASSERT_EQUAL_INT (
       static_cast<int> (strlen (msg)),
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_send (server, msg, strlen (msg), 0)));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, msg, strlen (msg), 0)));
 
     char buffer[64];
     int rc = TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_recv (client, buffer, sizeof (buffer), 0));
+      zlink_recv (client, buffer, sizeof (buffer), 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)), rc);
 
     // Clean up
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (client));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_close (server));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_ctx_term (ctx));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
 // Test 8: Verify inproc transport works with Asio poller
 void test_inproc_transport ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "inproc://test_asio_inproc"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "inproc://test_asio_inproc"));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_connect (client, "inproc://test_asio_inproc"));
+      zlink_connect (client, "inproc://test_asio_inproc"));
 
     // Inproc should work immediately
     send_string_expect_success (server, "inproc test", 0);
@@ -256,7 +256,7 @@ void test_inproc_transport ()
     test_context_socket_close (server);
 }
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || ZMQ_HAVE_WINDOWS
+#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || ZLINK_HAVE_WINDOWS
 
 void setUp ()
 {
@@ -272,7 +272,7 @@ void test_asio_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {
@@ -280,7 +280,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && !defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && !defined ZLINK_HAVE_WINDOWS
     RUN_TEST (test_ctx_create_destroy);
     RUN_TEST (test_pair_tcp_basic);
     RUN_TEST (test_multiple_sockets);

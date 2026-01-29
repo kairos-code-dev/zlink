@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_ERROR_HANDLER_HPP_INCLUDED__
-#define __ZMQ_ASIO_ERROR_HANDLER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_ERROR_HANDLER_HPP_INCLUDED__
+#define __ZLINK_ASIO_ERROR_HANDLER_HPP_INCLUDED__
 
 #include <boost/asio/error.hpp>
 #include <boost/system/error_code.hpp>
 #include "engine/i_engine.hpp"
 
-namespace zmq
+namespace zlink
 {
 namespace asio_error
 {
@@ -37,7 +37,7 @@ struct error_info_t
 {
     severity sev;
     category cat;
-    i_engine::error_reason_t zmq_reason;
+    i_engine::error_reason_t zlink_reason;
 };
 
 //  Classify Boost.Asio error codes into severity and category
@@ -109,11 +109,11 @@ inline bool should_ignore (const error_info_t &err)
 //  Extension point for SSL errors
 //  Implemented in asio_ssl_error_handler.hpp when SSL is enabled
 //
-//  #ifdef ZMQ_HAVE_ASIO_SSL
+//  #ifdef ZLINK_HAVE_ASIO_SSL
 //  error_info_t classify_ssl (const boost::system::error_code &ec);
 //  #endif
 
 } // namespace asio_error
-} // namespace zmq
+} // namespace zlink
 
 #endif

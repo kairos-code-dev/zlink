@@ -56,7 +56,7 @@ export CI_CONFIG_QUIET="${CI_CONFIG_QUIET:-no}"
 source "${PROJECT_ROOT}/builds/android/android_build_helper.sh"
 
 function usage {
-    echo "LIBZMQ - Usage:"
+    echo "LIBZLINK - Usage:"
     echo "  export XXX=xxx"
     echo "  ./build.sh [ arm | arm64 | x86 | x86_64 ]"
     echo ""
@@ -77,7 +77,7 @@ BUILD_ARCH="$1"
 # Choose a C++ standard library implementation from the ndk
 export ANDROID_BUILD_CXXSTL="gnustl_shared_49"
 
-# Additional flags for LIBTOOL, for LIBZMQ and other dependencies.
+# Additional flags for LIBTOOL, for LIBZLINK and other dependencies.
 export LIBTOOL_EXTRA_LDFLAGS='-avoid-version'
 
 # Set up android build environment and set ANDROID_BUILD_OPTS array
@@ -98,16 +98,16 @@ fi
 DEPENDENCIES=()
 
 ##
-# Build libzmq from local source
+# Build libzlink from local source
 
-(android_build_verify_so "libzmq.so" "${DEPENDENCIES[@]}" &> /dev/null) || {
+(android_build_verify_so "libzlink.so" "${DEPENDENCIES[@]}" &> /dev/null) || {
     (
         CONFIG_OPTS=()
         [ "${CI_CONFIG_QUIET}" = "yes" ] && CONFIG_OPTS+=("--quiet")
         CONFIG_OPTS+=("${ANDROID_BUILD_OPTS[@]}")
         CONFIG_OPTS+=("--without-docs")
 
-        android_build_library "LIBZMQ" "${PROJECT_ROOT}"
+        android_build_library "LIBZLINK" "${PROJECT_ROOT}"
     ) || exit 1
 }
 
@@ -118,9 +118,9 @@ cp "${ANDROID_STL_ROOT}/${ANDROID_STL}" "${ANDROID_BUILD_PREFIX}/lib/."
 
 ##
 # Verify shared libraries in prefix
-for library in "libzmq.so" "${DEPENDENCIES[@]}" ; do
+for library in "libzlink.so" "${DEPENDENCIES[@]}" ; do
     android_build_verify_so "${library}"
 done
 
-android_build_verify_so "libzmq.so" "${DEPENDENCIES[@]}" "${ANDROID_STL}"
+android_build_verify_so "libzlink.so" "${DEPENDENCIES[@]}" "${ANDROID_STL}"
 android_build_trace "Android build successful"

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifdef ZMQ_USE_FUZZING_ENGINE
+#ifdef ZLINK_USE_FUZZING_ENGINE
 #include <fuzzer/FuzzedDataProvider.h>
 #endif
 
@@ -13,7 +13,7 @@
 #define PATH_MAX 1024
 #endif
 
-// Test that zmq_bind can handle malformed strings
+// Test that zlink_bind can handle malformed strings
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 {
     //  This test might create socket files, so move to /tmp to avoid clobbering
@@ -25,8 +25,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 
     setup_test_context ();
     std::string my_endpoint (reinterpret_cast<const char *> (data), size);
-    void *socket = test_context_socket (ZMQ_PUB);
-    zmq_bind (socket, my_endpoint.c_str ());
+    void *socket = test_context_socket (ZLINK_PUB);
+    zlink_bind (socket, my_endpoint.c_str ());
 
     test_context_socket_close_zero_linger (socket);
     teardown_test_context ();
@@ -36,13 +36,13 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     return 0;
 }
 
-#ifndef ZMQ_USE_FUZZING_ENGINE
+#ifndef ZLINK_USE_FUZZING_ENGINE
 void test_bind_fuzzer ()
 {
     uint8_t **data;
     size_t *len, num_cases = 0;
     if (fuzzer_corpus_encode (
-          "tests/libzmq-fuzz-corpora/test_bind_fuzzer_seed_corpus", &data, &len,
+          "tests/libzlink-fuzz-corpora/test_bind_fuzzer_seed_corpus", &data, &len,
           &num_cases)
         != 0)
         exit (77);
@@ -59,8 +59,8 @@ void test_bind_fuzzer ()
 
 int main (int argc, char **argv)
 {
-    LIBZMQ_UNUSED (argc);
-    LIBZMQ_UNUSED (argv);
+    LIBZLINK_UNUSED (argc);
+    LIBZLINK_UNUSED (argv);
 
     setup_test_environment ();
 

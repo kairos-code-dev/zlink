@@ -1,5 +1,5 @@
 #include "../common/bench_common.hpp"
-#include <zmq.h>
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
@@ -7,45 +7,45 @@
 
 void run_router_router(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *router1 = zmq_socket(ctx, ZMQ_ROUTER);
-    void *router2 = zmq_socket(ctx, ZMQ_ROUTER);
+    void *ctx = zlink_ctx_new();
+    void *router1 = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router2 = zlink_socket(ctx, ZLINK_ROUTER);
 
     // Set Routing IDs
-    zmq_setsockopt(router1, ZMQ_ROUTING_ID, "ROUTER1", 7);
-    zmq_setsockopt(router2, ZMQ_ROUTING_ID, "ROUTER2", 7);
+    zlink_setsockopt(router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
+    zlink_setsockopt(router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
 
     // Make unroutable messages fail instead of silent drop (for debugging safety)
     int mandatory = 1;
-    zmq_setsockopt(router1, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
-    zmq_setsockopt(router2, ZMQ_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+    zlink_setsockopt(router1, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
+    zlink_setsockopt(router2, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
     // Set very high HWM for benchmarking (default 1000 causes deadlock with IPC)
     int hwm = 1000000;
-    zmq_setsockopt(router1, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(router1, ZMQ_RCVHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(router2, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(router2, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router1, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router1, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router2, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router2, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
     if (!setup_tls_server(router1, transport) ||
         !setup_tls_client(router2, transport)) {
-        zmq_close(router1);
-        zmq_close(router2);
-        zmq_ctx_term(ctx);
+        zlink_close(router1);
+        zlink_close(router2);
+        zlink_ctx_term(ctx);
         return;
     }
 
     std::string endpoint = bind_and_resolve_endpoint(router1, transport, lib_name + "_router_router");
     if (endpoint.empty()) {
-        zmq_close(router1);
-        zmq_close(router2);
-        zmq_ctx_term(ctx);
+        zlink_close(router1);
+        zlink_close(router2);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(router2, endpoint)) {
-        zmq_close(router1);
-        zmq_close(router2);
-        zmq_ctx_term(ctx);
+        zlink_close(router1);
+        zlink_close(router2);
+        zlink_ctx_term(ctx);
         return;
     }
     apply_debug_timeouts(router1, transport);
@@ -61,14 +61,14 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     // R2 tries to ping R1 until success
     while (!connected) {
         // Try sending PING from R2 to R1
-        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE | ZMQ_DONTWAIT,
+        bench_send_fast(router2, "ROUTER1", 7, ZLINK_SNDMORE | ZLINK_DONTWAIT,
                         "handshake send id");
-        int rc = bench_send_fast(router2, "PING", 4, ZMQ_DONTWAIT,
+        int rc = bench_send_fast(router2, "PING", 4, ZLINK_DONTWAIT,
                                  "handshake send ping");
 
         if (rc == 4) {
             // Check if R1 received it
-            int len = bench_recv_fast(router1, buf, 16, ZMQ_DONTWAIT,
+            int len = bench_recv_fast(router1, buf, 16, ZLINK_DONTWAIT,
                                       "handshake recv id");
             if (len > 0) { // Received ID
                 bench_recv_fast(router1, buf, 16, 0,
@@ -79,7 +79,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
         if (!connected) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     // Reply PONG to complete handshake
-    bench_send_fast(router1, "ROUTER2", 7, ZMQ_SNDMORE,
+    bench_send_fast(router1, "ROUTER2", 7, ZLINK_SNDMORE,
                     "handshake send id back");
     bench_send_fast(router1, "PONG", 4, 0, "handshake send pong");
 
@@ -97,7 +97,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
         // R2 -> R1
-        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE, "lat send id");
+        bench_send_fast(router2, "ROUTER1", 7, ZLINK_SNDMORE, "lat send id");
         bench_send_fast(router2, buffer.data(), msg_size, 0, "lat send data");
 
         // R1 Recv
@@ -106,7 +106,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
         bench_recv_fast(router1, recv_buf.data(), msg_size, 0, "lat recv data");
 
         // R1 -> R2 (Reply)
-        bench_send_fast(router1, id, id_len, ZMQ_SNDMORE,
+        bench_send_fast(router1, id, id_len, ZLINK_SNDMORE,
                         "lat send id back");
         bench_send_fast(router1, buffer.data(), msg_size, 0,
                         "lat send data back");
@@ -130,9 +130,9 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        // We use zmq_send_const if available for zero-copy like behavior on send,
+        // We use zlink_send_const if available for zero-copy like behavior on send,
         // but here standard send is fine.
-        bench_send_fast(router2, "ROUTER1", 7, ZMQ_SNDMORE, "thr send id");
+        bench_send_fast(router2, "ROUTER1", 7, ZLINK_SNDMORE, "thr send id");
         bench_send_fast(router2, buffer.data(), msg_size, 0, "thr send data");
     }
     receiver.join();
@@ -140,9 +140,9 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
 
     print_result(lib_name, "ROUTER_ROUTER", transport, msg_size, throughput, latency);
 
-    zmq_close(router1);
-    zmq_close(router2);
-    zmq_ctx_term(ctx);
+    zlink_close(router1);
+    zlink_close(router2);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

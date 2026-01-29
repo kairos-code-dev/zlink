@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_GENERIC_MTRIE_HPP_INCLUDED__
-#define __ZMQ_GENERIC_MTRIE_HPP_INCLUDED__
+#ifndef __ZLINK_GENERIC_MTRIE_HPP_INCLUDED__
+#define __ZLINK_GENERIC_MTRIE_HPP_INCLUDED__
 
 #include <stddef.h>
 #include <set>
@@ -10,7 +10,7 @@
 #include "utils/stdint.hpp"
 #include "utils/atomic_counter.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Multi-trie (prefix tree). Each node in the trie is a set of pointers.
 template <typename T> class generic_mtrie_t
@@ -90,7 +90,7 @@ template <typename T> class generic_mtrie_t
         bool processed_for_removal;
     };
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (generic_mtrie_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (generic_mtrie_t)
 };
 }
 

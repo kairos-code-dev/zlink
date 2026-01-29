@@ -12,7 +12,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <string.h>
 
@@ -29,13 +29,13 @@ void tearDown ()
 // Test 1: Basic message send/receive with PAIR sockets
 void test_pair_basic_message ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -56,13 +56,13 @@ void test_pair_basic_message ()
 // Test 2: Multi-part message
 void test_multipart_message ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -71,8 +71,8 @@ void test_multipart_message ()
     const char *part2 = "Part 2";
     const char *part3 = "Part 3";
 
-    send_string_expect_success (server, part1, ZMQ_SNDMORE);
-    send_string_expect_success (server, part2, ZMQ_SNDMORE);
+    send_string_expect_success (server, part1, ZLINK_SNDMORE);
+    send_string_expect_success (server, part2, ZLINK_SNDMORE);
     send_string_expect_success (server, part3, 0);
 
     //  Receive and verify all parts
@@ -80,17 +80,17 @@ void test_multipart_message ()
     int more;
     size_t more_size = sizeof (more);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (client, ZMQ_RCVMORE, &more, &more_size));
+      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
     TEST_ASSERT_TRUE (more);
 
     recv_string_expect_success (client, part2, 0);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (client, ZMQ_RCVMORE, &more, &more_size));
+      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
     TEST_ASSERT_TRUE (more);
 
     recv_string_expect_success (client, part3, 0);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (client, ZMQ_RCVMORE, &more, &more_size));
+      zlink_getsockopt (client, ZLINK_RCVMORE, &more, &more_size));
     TEST_ASSERT_FALSE (more);
 
     test_context_socket_close (client);
@@ -100,13 +100,13 @@ void test_multipart_message ()
 // Test 3: Large message transfer
 void test_large_message ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -122,14 +122,14 @@ void test_large_message ()
 
     //  Send large message
     TEST_ASSERT_EQUAL_INT (static_cast<int> (msg_size),
-                           zmq_send (server, large_msg, msg_size, 0));
+                           zlink_send (server, large_msg, msg_size, 0));
 
     //  Receive and verify
     char *recv_buf = static_cast<char *> (malloc (msg_size));
     TEST_ASSERT_NOT_NULL (recv_buf);
 
     TEST_ASSERT_EQUAL_INT (static_cast<int> (msg_size),
-                           zmq_recv (client, recv_buf, msg_size, 0));
+                           zlink_recv (client, recv_buf, msg_size, 0));
 
     TEST_ASSERT_EQUAL_MEMORY (large_msg, recv_buf, msg_size);
 
@@ -143,16 +143,16 @@ void test_large_message ()
 // Test 4: PUB/SUB message pattern
 void test_pubsub_pattern ()
 {
-    void *pub = test_context_socket (ZMQ_PUB);
-    void *sub = test_context_socket (ZMQ_SUB);
+    void *pub = test_context_socket (ZLINK_PUB);
+    void *sub = test_context_socket (ZLINK_SUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (pub, endpoint, sizeof (endpoint));
 
     //  Subscribe to all messages
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
 
     //  Wait for subscription to propagate
     msleep (SETTLE_TIME * 2);
@@ -175,18 +175,18 @@ void test_pubsub_pattern ()
 // Test 5: DEALER/ROUTER message pattern
 void test_dealer_router_pattern ()
 {
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer = test_context_socket (ZMQ_DEALER);
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer = test_context_socket (ZLINK_DEALER);
 
     //  Set identity for dealer
     const char *identity = "TestDealer";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer, ZMQ_ROUTING_ID, identity, strlen (identity)));
+      zlink_setsockopt (dealer, ZLINK_ROUTING_ID, identity, strlen (identity)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (router, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -195,30 +195,30 @@ void test_dealer_router_pattern ()
     send_string_expect_success (dealer, msg, 0);
 
     //  Router receives message with identity
-    zmq_msg_t recv_identity, recv_msg;
-    zmq_msg_init (&recv_identity);
-    zmq_msg_init (&recv_msg);
+    zlink_msg_t recv_identity, recv_msg;
+    zlink_msg_init (&recv_identity);
+    zlink_msg_init (&recv_msg);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&recv_identity, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&recv_identity, router, 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (identity)),
-                           zmq_msg_size (&recv_identity));
+                           zlink_msg_size (&recv_identity));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&recv_msg, router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&recv_msg, router, 0));
     TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (msg)),
-                           zmq_msg_size (&recv_msg));
+                           zlink_msg_size (&recv_msg));
 
     //  Router replies to dealer
     const char *reply = "Reply from router";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_send (router, zmq_msg_data (&recv_identity),
-                zmq_msg_size (&recv_identity), ZMQ_SNDMORE));
+      zlink_send (router, zlink_msg_data (&recv_identity),
+                zlink_msg_size (&recv_identity), ZLINK_SNDMORE));
     send_string_expect_success (router, reply, 0);
 
     //  Dealer receives reply
     recv_string_expect_success (dealer, reply, 0);
 
-    zmq_msg_close (&recv_identity);
-    zmq_msg_close (&recv_msg);
+    zlink_msg_close (&recv_identity);
+    zlink_msg_close (&recv_msg);
 
     test_context_socket_close (dealer);
     test_context_socket_close (router);
@@ -227,13 +227,13 @@ void test_dealer_router_pattern ()
 // Test 6: Multiple message burst
 void test_message_burst ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -259,21 +259,21 @@ void test_message_burst ()
 // Test 7: Non-blocking send/receive
 void test_nonblocking_io ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
     //  Non-blocking receive should return -1 with EAGAIN when no message
     char buf[32];
-    int rc = zmq_recv (client, buf, sizeof (buf), ZMQ_DONTWAIT);
+    int rc = zlink_recv (client, buf, sizeof (buf), ZLINK_DONTWAIT);
     TEST_ASSERT_EQUAL_INT (-1, rc);
-    TEST_ASSERT_EQUAL_INT (EAGAIN, zmq_errno ());
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 
     //  Send a message
     const char *msg = "Non-blocking test";
@@ -290,24 +290,24 @@ void test_nonblocking_io ()
 // Test 8: XPUB/XSUB pattern with subscription message
 void test_xpub_xsub_pattern ()
 {
-    void *xpub = test_context_socket (ZMQ_XPUB);
-    void *xsub = test_context_socket (ZMQ_XSUB);
+    void *xpub = test_context_socket (ZLINK_XPUB);
+    void *xsub = test_context_socket (ZLINK_XSUB);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (xpub, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (xsub, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (xsub, endpoint));
 
     msleep (SETTLE_TIME);
 
     //  Subscribe via XSUB (send subscription message)
     const char sub_msg[] = {1, 'A'};  //  Subscribe to "A"
     TEST_ASSERT_EQUAL_INT (
-      2, zmq_send (xsub, sub_msg, sizeof (sub_msg), 0));
+      2, zlink_send (xsub, sub_msg, sizeof (sub_msg), 0));
 
     //  XPUB receives subscription notification
     char sub_recv[32];
-    int sub_size = zmq_recv (xpub, sub_recv, sizeof (sub_recv), 0);
+    int sub_size = zlink_recv (xpub, sub_recv, sizeof (sub_recv), 0);
     TEST_ASSERT_EQUAL_INT (2, sub_size);
     TEST_ASSERT_EQUAL_INT (1, sub_recv[0]);  //  Subscribe
     TEST_ASSERT_EQUAL_INT ('A', sub_recv[1]);
@@ -326,20 +326,20 @@ void test_xpub_xsub_pattern ()
 // Test 9: High-water mark behavior
 void test_hwm_behavior ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     //  Set low HWM
     int hwm = 5;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_SNDHWM, &hwm, sizeof (int)));
+      zlink_setsockopt (server, ZLINK_SNDHWM, &hwm, sizeof (int)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_RCVHWM, &hwm, sizeof (int)));
+      zlink_setsockopt (client, ZLINK_RCVHWM, &hwm, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -363,13 +363,13 @@ void test_hwm_behavior ()
 // Test 10: Socket bounce (full duplex test)
 void test_socket_bounce ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -380,7 +380,7 @@ void test_socket_bounce ()
     test_context_socket_close (server);
 }
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO
+#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 void setUp ()
 {
@@ -396,7 +396,7 @@ void test_asio_tcp_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {
@@ -404,7 +404,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
     RUN_TEST (test_pair_basic_message);
     RUN_TEST (test_multipart_message);
     RUN_TEST (test_large_message);

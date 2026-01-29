@@ -10,22 +10,22 @@ As indicated in the main [README](../../README.md#supported-platforms-with-prima
 
 ### Basics
 
-Basically, LIBZMQ build for Android, relies on exported variables.
+Basically, LIBZLINK build for Android, relies on exported variables.
 
 Provided build scripts can mainly be used like
 
     export XXX=xxx
     export YYY=yyy
     ...
-    cd <libzmq>/builds/android
+    cd <libzlink>/builds/android
     ./<build_script>
 
 
 ### Android NDK
 
-LIBZMQ is tested against Android NDK versions r19 to r25.
+LIBZLINK is tested against Android NDK versions r19 to r25.
 
-By default, LIBZMQ uses NDK `android-ndk-r25`, but you can specify
+By default, LIBZLINK uses NDK `android-ndk-r25`, but you can specify
 a different one:
 
     export NDK_VERSION=android-ndk-r23c
@@ -109,7 +109,7 @@ Select your preferred parameters:
 
 and run:
 
-    cd <libzmq>/builds/android
+    cd <libzlink>/builds/android
     ./build.sh [ arm | arm64 | x86 | x86_64 ]
 
 Parameter selection and the calls to build.sh can be located in a
@@ -121,13 +121,13 @@ Basically, it will call `build.sh` once, for each Android target.
 
 This script accepts the same configuration variables, but some are set
 with different default values. For instance, the dependencies are not
-downloaded or cloned in `/tmp/tmp-deps, but inside LIBZMQ clone.
+downloaded or cloned in `/tmp/tmp-deps, but inside LIBZLINK clone.
 
 It can be used in the same way as build.sh
 
     export XXX=xxx
     export YYY=yyy
-    cd <libzmq>/builds/android
+    cd <libzlink>/builds/android
     ./ci_build.sh
 
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# macOS build script for libzmq
+# macOS build script for libzlink
 # Supports both x86_64 and arm64 architectures
 # Requires: Xcode Command Line Tools, cmake
 #
@@ -12,9 +12,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Read VERSION file
 if [ -f "$REPO_ROOT/VERSION" ]; then
-    LIBZMQ_VERSION=$(grep '^LIBZMQ_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
+    LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' "$REPO_ROOT/VERSION" | cut -d'=' -f2)
 else
-    LIBZMQ_VERSION="4.3.5"
+    LIBZLINK_VERSION="4.3.5"
 fi
 
 # Parse arguments: ARCH RUN_TESTS
@@ -39,7 +39,7 @@ echo "==================================="
 echo "macOS Build Configuration"
 echo "==================================="
 echo "Architecture:      ${ARCH}"
-echo "libzmq version:    ${LIBZMQ_VERSION}"
+echo "libzlink version:    ${LIBZLINK_VERSION}"
 echo "RUN_TESTS:         ${RUN_TESTS}"
 echo "Build type:        ${BUILD_TYPE}"
 echo "Output directory:  ${OUTPUT_DIR}"
@@ -54,14 +54,14 @@ BUILD_DIR="build/macos-${ARCH}"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-echo "Step 1: Using local repository source for libzmq..."
+echo "Step 1: Using local repository source for libzlink..."
 
-# Step 2: Configure libzmq with CMake for ${ARCH}
+# Step 2: Configure libzlink with CMake for ${ARCH}
 echo ""
-echo "Step 2: Configuring libzmq with CMake for ${ARCH}..."
+echo "Step 2: Configuring libzlink with CMake for ${ARCH}..."
 cd "$BUILD_DIR"
 
-LIBZMQ_SRC_ABS="$REPO_ROOT"
+LIBZLINK_SRC_ABS="$REPO_ROOT"
 
 # Set architecture-specific CMake flags
 CMAKE_ARCH_FLAGS="-DCMAKE_OSX_ARCHITECTURES=$ARCH"
@@ -85,7 +85,7 @@ if [ -n "$OPENSSL_ROOT_DIR" ]; then
     CMAKE_OPENSSL_ARGS="-DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR -DOPENSSL_LIBRARIES=$OPENSSL_ROOT_DIR/lib/libssl.dylib;$OPENSSL_ROOT_DIR/lib/libcrypto.dylib -DOPENSSL_INCLUDE_DIR=$OPENSSL_ROOT_DIR/include"
 fi
 
-cmake "$LIBZMQ_SRC_ABS" \
+cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     $CMAKE_OPENSSL_ARGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -93,14 +93,14 @@ cmake "$LIBZMQ_SRC_ABS" \
     -DBUILD_SHARED=ON \
     -DBUILD_STATIC=OFF \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
-    -DZMQ_CXX_STANDARD=17 \
+    -DZLINK_CXX_STANDARD=17 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX="$(pwd)/install" \
     -DCMAKE_MACOSX_RPATH=ON
 
-# Step 3: Build libzmq
+# Step 3: Build libzlink
 echo ""
-echo "Step 3: Building libzmq for ${ARCH}..."
+echo "Step 3: Building libzlink for ${ARCH}..."
 make -j$(sysctl -n hw.ncpu)
 
 # Step 4: Install
@@ -109,21 +109,21 @@ echo "Step 4: Installing to output directory..."
 make install
 
 # Copy .dylib to output
-DYLIB_FILE=$(find install/lib -name "libzmq.5.dylib" 2>/dev/null | head -n 1)
+DYLIB_FILE=$(find install/lib -name "libzlink.5.dylib" 2>/dev/null | head -n 1)
 if [ -z "$DYLIB_FILE" ]; then
-    DYLIB_FILE=$(find lib -name "libzmq.5.dylib" 2>/dev/null | head -n 1)
+    DYLIB_FILE=$(find lib -name "libzlink.5.dylib" 2>/dev/null | head -n 1)
 fi
 
 if [ -n "$DYLIB_FILE" ]; then
-    TARGET_DYLIB="$REPO_ROOT/$OUTPUT_DIR/libzmq.dylib"
+    TARGET_DYLIB="$REPO_ROOT/$OUTPUT_DIR/libzlink.dylib"
     cp "$DYLIB_FILE" "$TARGET_DYLIB"
 
     # Update install name for better portability
-    install_name_tool -id "@rpath/libzmq.dylib" "$TARGET_DYLIB"
+    install_name_tool -id "@rpath/libzlink.dylib" "$TARGET_DYLIB"
 
     echo "Copied: $DYLIB_FILE -> $TARGET_DYLIB"
 else
-    echo "Error: libzmq.dylib not found!"
+    echo "Error: libzlink.dylib not found!"
     exit 1
 fi
 
@@ -132,9 +132,9 @@ echo ""
 echo "Copying public headers..."
 INCLUDE_DIR="$REPO_ROOT/$OUTPUT_DIR/include"
 mkdir -p "$INCLUDE_DIR"
-cp install/include/zmq.h "$INCLUDE_DIR/"
-cp install/include/zmq_utils.h "$INCLUDE_DIR/"
-echo "Copied: zmq.h, zmq_utils.h -> $INCLUDE_DIR/"
+cp install/include/zlink.h "$INCLUDE_DIR/"
+cp install/include/zlink_utils.h "$INCLUDE_DIR/"
+echo "Copied: zlink.h, zlink_utils.h -> $INCLUDE_DIR/"
 
 cd "$REPO_ROOT"
 
@@ -168,7 +168,7 @@ fi
 # Step 6: Verify build
 echo ""
 echo "Step 6: Verifying build for ${ARCH}..."
-FINAL_DYLIB="$OUTPUT_DIR/libzmq.dylib"
+FINAL_DYLIB="$OUTPUT_DIR/libzlink.dylib"
 
 if [ -f "$FINAL_DYLIB" ]; then
     echo "File size: $(stat -f%z "$FINAL_DYLIB") bytes"

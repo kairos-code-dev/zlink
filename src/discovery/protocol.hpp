@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_DISCOVERY_PROTOCOL_HPP_INCLUDED__
-#define __ZMQ_DISCOVERY_PROTOCOL_HPP_INCLUDED__
+#ifndef __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_PROTOCOL_HPP_INCLUDED__
 
 #include "core/msg.hpp"
 #include "utils/err.hpp"
@@ -9,7 +9,7 @@
 
 #include <string>
 
-namespace zmq
+namespace zlink
 {
 namespace discovery_protocol
 {
@@ -23,14 +23,14 @@ static const uint16_t msg_update_weight = 0x0007;
 
 inline int send_frame (void *socket_, const void *data_, size_t size_, int flags_)
 {
-    zmq_msg_t msg;
-    if (zmq_msg_init_size (&msg, size_) != 0)
+    zlink_msg_t msg;
+    if (zlink_msg_init_size (&msg, size_) != 0)
         return -1;
     if (size_ > 0 && data_)
-        memcpy (zmq_msg_data (&msg), data_, size_);
-    const int rc = zmq_msg_send (&msg, socket_, flags_);
+        memcpy (zlink_msg_data (&msg), data_, size_);
+    const int rc = zlink_msg_send (&msg, socket_, flags_);
     if (rc == -1)
-        zmq_msg_close (&msg);
+        zlink_msg_close (&msg);
     return rc;
 }
 
@@ -55,66 +55,66 @@ inline int send_string (void *socket_, const std::string &value_, int flags_)
                        value_.size (), flags_);
 }
 
-inline int send_routing_id (void *socket_, const zmq_routing_id_t &rid_,
+inline int send_routing_id (void *socket_, const zlink_routing_id_t &rid_,
                             int flags_)
 {
     return send_frame (socket_, rid_.size ? rid_.data : NULL, rid_.size, flags_);
 }
 
-inline bool read_u16 (const zmq_msg_t &msg_, uint16_t *out_)
+inline bool read_u16 (const zlink_msg_t &msg_, uint16_t *out_)
 {
     if (!out_)
         return false;
-    if (zmq_msg_size (&msg_) != sizeof (uint16_t))
+    if (zlink_msg_size (&msg_) != sizeof (uint16_t))
         return false;
-    memcpy (out_, zmq_msg_data (const_cast<zmq_msg_t *> (&msg_)),
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
             sizeof (uint16_t));
     return true;
 }
 
-inline bool read_u32 (const zmq_msg_t &msg_, uint32_t *out_)
+inline bool read_u32 (const zlink_msg_t &msg_, uint32_t *out_)
 {
     if (!out_)
         return false;
-    if (zmq_msg_size (&msg_) != sizeof (uint32_t))
+    if (zlink_msg_size (&msg_) != sizeof (uint32_t))
         return false;
-    memcpy (out_, zmq_msg_data (const_cast<zmq_msg_t *> (&msg_)),
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
             sizeof (uint32_t));
     return true;
 }
 
-inline bool read_u64 (const zmq_msg_t &msg_, uint64_t *out_)
+inline bool read_u64 (const zlink_msg_t &msg_, uint64_t *out_)
 {
     if (!out_)
         return false;
-    if (zmq_msg_size (&msg_) != sizeof (uint64_t))
+    if (zlink_msg_size (&msg_) != sizeof (uint64_t))
         return false;
-    memcpy (out_, zmq_msg_data (const_cast<zmq_msg_t *> (&msg_)),
+    memcpy (out_, zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)),
             sizeof (uint64_t));
     return true;
 }
 
-inline std::string read_string (const zmq_msg_t &msg_)
+inline std::string read_string (const zlink_msg_t &msg_)
 {
-    const size_t size = zmq_msg_size (&msg_);
+    const size_t size = zlink_msg_size (&msg_);
     if (size == 0)
         return std::string ();
     const char *data =
-      static_cast<const char *> (zmq_msg_data (const_cast<zmq_msg_t *> (&msg_)));
+      static_cast<const char *> (zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)));
     return std::string (data, data + size);
 }
 
-inline bool read_routing_id (const zmq_msg_t &msg_, zmq_routing_id_t *out_)
+inline bool read_routing_id (const zlink_msg_t &msg_, zlink_routing_id_t *out_)
 {
     if (!out_)
         return false;
-    const size_t size = zmq_msg_size (&msg_);
+    const size_t size = zlink_msg_size (&msg_);
     if (size > sizeof (out_->data))
         return false;
     out_->size = static_cast<uint8_t> (size);
     if (size > 0)
         memcpy (out_->data,
-                zmq_msg_data (const_cast<zmq_msg_t *> (&msg_)), size);
+                zlink_msg_data (const_cast<zlink_msg_t *> (&msg_)), size);
     return true;
 }
 }

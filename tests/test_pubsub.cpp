@@ -8,19 +8,19 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test (const char *address)
 {
     //  Create a publisher
-    void *publisher = test_context_socket (ZMQ_PUB);
+    void *publisher = test_context_socket (ZLINK_PUB);
     char my_endpoint[MAX_SOCKET_STRING];
 
     //  Bind publisher
     test_bind (publisher, address, my_endpoint, MAX_SOCKET_STRING);
 
     //  Create a subscriber
-    void *subscriber = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (subscriber, my_endpoint));
+    void *subscriber = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (subscriber, my_endpoint));
 
     //  Subscribe to all messages.
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (subscriber, ZMQ_SUBSCRIBE, "", 0));
+      zlink_setsockopt (subscriber, ZLINK_SUBSCRIBE, "", 0));
 
     //  Wait a bit till the subscription gets to the publisher
     msleep (SETTLE_TIME);

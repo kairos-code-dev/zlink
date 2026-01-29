@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ZMP_PROTOCOL_HPP_INCLUDED__
-#define __ZMQ_ZMP_PROTOCOL_HPP_INCLUDED__
+#ifndef __ZLINK_ZMP_PROTOCOL_HPP_INCLUDED__
+#define __ZLINK_ZMP_PROTOCOL_HPP_INCLUDED__
 
 #include <stddef.h>
 #include <stdint.h>
 
-namespace zmq
+namespace zlink
 {
 const unsigned char zmp_magic = 0x5a;
 const unsigned char zmp_version = 0x02;
@@ -70,6 +70,6 @@ inline uint16_t zmp_effective_ttl_ds (uint16_t local_ttl_ds_,
     return local_ttl_ds_ < remote_ttl_ds_ ? local_ttl_ds_ : remote_ttl_ds_;
 }
 
-} // namespace zmq
+} // namespace zlink
 
 #endif

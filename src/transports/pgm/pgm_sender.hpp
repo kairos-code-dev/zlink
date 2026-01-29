@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_PGM_SENDER_HPP_INCLUDED__
-#define __ZMQ_PGM_SENDER_HPP_INCLUDED__
+#ifndef __ZLINK_PGM_SENDER_HPP_INCLUDED__
+#define __ZLINK_PGM_SENDER_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_OPENPGM
+#if defined ZLINK_HAVE_OPENPGM
 
 #include "utils/stdint.hpp"
 #include "core/io_object.hpp"
@@ -13,22 +13,22 @@
 #include "protocol/zmp_encoder.hpp"
 #include "core/msg.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class session_base_t;
 
-class pgm_sender_t ZMQ_FINAL : public io_object_t, public i_engine
+class pgm_sender_t ZLINK_FINAL : public io_object_t, public i_engine
 {
   public:
-    pgm_sender_t (zmq::io_thread_t *parent_, const options_t &options_);
+    pgm_sender_t (zlink::io_thread_t *parent_, const options_t &options_);
     ~pgm_sender_t ();
 
     int init (bool udp_encapsulation_, const char *network_);
 
     //  i_engine interface implementation.
     bool has_handshake_stage () { return false; };
-    void plug (zmq::io_thread_t *io_thread_, zmq::session_base_t *session_);
+    void plug (zlink::io_thread_t *io_thread_, zlink::session_base_t *session_);
     void terminate ();
     bool restart_input ();
     void restart_output ();
@@ -89,7 +89,7 @@ class pgm_sender_t ZMQ_FINAL : public io_object_t, public i_engine
     //  If zero, there are no data to be sent.
     size_t write_size;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (pgm_sender_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (pgm_sender_t)
 };
 }
 #endif

@@ -27,7 +27,7 @@
 PUB/SUB의 대규모 fanout에서 TCP 기반 다중 연결은 연결 수와
 복제 비용이 급격히 증가한다. PGM/EPGM 멀티캐스트는 네트워크
 레벨에서 패킷 복제를 수행해 **대규모 fanout 효율**을 개선할 수 있다.
-본 기능은 **libzmq와 동일하게 OpenPGM**(멀티캐스트 라이브러리)을
+본 기능은 **libzlink와 동일하게 OpenPGM**(멀티캐스트 라이브러리)을
 연동해 구현한다.
 
 ### 1.2 목표
@@ -35,7 +35,7 @@ PUB/SUB의 대규모 fanout에서 TCP 기반 다중 연결은 연결 수와
 - **PUB/SUB 멀티캐스트 지원**: `pgm://`, `epgm://` 전송 지원
 - **저비용 fanout**: 다수 구독자에 대한 송신 비용 절감
 - **옵션 기반 활성화**: 빌드 시 의존성 발견 시에만 활성
-- **기존 API 유지**: `zmq_bind/connect`와 기존 옵션만 사용
+- **기존 API 유지**: `zlink_bind/connect`와 기존 옵션만 사용
 
 ### 1.3 비목표
 
@@ -72,17 +72,17 @@ PUB (bind: pgm/epgm)  -->  [Multicast 네트워크]  -->  SUB (connect)
 - `pgm://<iface>;<multicast_addr>:<port>`
 - `epgm://<iface>;<multicast_addr>:<port>`
 
-> 정확한 형식은 libzmq의 PGM URI 규칙을 따른다.
+> 정확한 형식은 libzlink의 PGM URI 규칙을 따른다.
 
 ### 3.2 관련 소켓 옵션
 
 다음 옵션은 이미 공개 API에 존재하며 PGM/EPGM에서 사용된다.
 
-- `ZMQ_RATE`: 송신 속도 제한 (Kbps)
-- `ZMQ_RECOVERY_IVL`: 재전송/복구 타이밍
-- `ZMQ_SNDBUF`, `ZMQ_RCVBUF`: OS 버퍼 크기
-- `ZMQ_MULTICAST_HOPS`: 멀티캐스트 홉 제한
-- `ZMQ_MULTICAST_MAXTPDU`: 최대 전송 단위 (TPDU)
+- `ZLINK_RATE`: 송신 속도 제한 (Kbps)
+- `ZLINK_RECOVERY_IVL`: 재전송/복구 타이밍
+- `ZLINK_SNDBUF`, `ZLINK_RCVBUF`: OS 버퍼 크기
+- `ZLINK_MULTICAST_HOPS`: 멀티캐스트 홉 제한
+- `ZLINK_MULTICAST_MAXTPDU`: 최대 전송 단위 (TPDU)
 
 ---
 
@@ -91,13 +91,13 @@ PUB (bind: pgm/epgm)  -->  [Multicast 네트워크]  -->  SUB (connect)
 ### 4.1 API 변경 없음
 
 - **신규 API 추가 없음**
-- 기존 `zmq_bind`, `zmq_connect`, `zmq_setsockopt`로 사용
+- 기존 `zlink_bind`, `zlink_connect`, `zlink_setsockopt`로 사용
 
 ### 4.2 예시
 
 ```
-zmq_setsockopt(pub, ZMQ_RATE, &rate, sizeof(rate));
-zmq_bind(pub, "epgm://eth0;239.192.1.1:5555");
+zlink_setsockopt(pub, ZLINK_RATE, &rate, sizeof(rate));
+zlink_bind(pub, "epgm://eth0;239.192.1.1:5555");
 ```
 
 ---
@@ -126,7 +126,7 @@ zmq_bind(pub, "epgm://eth0;239.192.1.1:5555");
 - PUB->PGM 송신, SUB->PGM 수신 구현
 
 3) 소켓 옵션 매핑
-- `ZMQ_RATE`, `ZMQ_RECOVERY_IVL` 등 옵션을 PGM 핸들에 전달
+- `ZLINK_RATE`, `ZLINK_RECOVERY_IVL` 등 옵션을 PGM 핸들에 전달
 
 ### 5.3 SPOT 연동
 

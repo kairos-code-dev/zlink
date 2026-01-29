@@ -6,23 +6,23 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zmq::fq_t::fq_t () : _active (0), _current (0), _more (false)
+zlink::fq_t::fq_t () : _active (0), _current (0), _more (false)
 {
 }
 
-zmq::fq_t::~fq_t ()
+zlink::fq_t::~fq_t ()
 {
-    zmq_assert (_pipes.empty ());
+    zlink_assert (_pipes.empty ());
 }
 
-void zmq::fq_t::attach (pipe_t *pipe_)
+void zlink::fq_t::attach (pipe_t *pipe_)
 {
     _pipes.push_back (pipe_);
     _pipes.swap (_active, _pipes.size () - 1);
     _active++;
 }
 
-void zmq::fq_t::pipe_terminated (pipe_t *pipe_)
+void zlink::fq_t::pipe_terminated (pipe_t *pipe_)
 {
     const pipes_t::size_type index = _pipes.index (pipe_);
 
@@ -37,19 +37,19 @@ void zmq::fq_t::pipe_terminated (pipe_t *pipe_)
     _pipes.erase (pipe_);
 }
 
-void zmq::fq_t::activated (pipe_t *pipe_)
+void zlink::fq_t::activated (pipe_t *pipe_)
 {
     //  Move the pipe to the list of active pipes.
     _pipes.swap (_pipes.index (pipe_), _active);
     _active++;
 }
 
-int zmq::fq_t::recv (msg_t *msg_)
+int zlink::fq_t::recv (msg_t *msg_)
 {
     return recvpipe (msg_, NULL);
 }
 
-int zmq::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
+int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
 {
     //  Deallocate old content of the message.
     int rc = msg_->close ();
@@ -77,7 +77,7 @@ int zmq::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
         //  Check the atomicity of the message.
         //  If we've already received the first part of the message
         //  we should get the remaining parts without blocking.
-        zmq_assert (!_more);
+        zlink_assert (!_more);
 
         _active--;
         _pipes.swap (_current, _active);
@@ -93,7 +93,7 @@ int zmq::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
     return -1;
 }
 
-bool zmq::fq_t::has_in ()
+bool zlink::fq_t::has_in ()
 {
     //  There are subsequent parts of the partly-read message available.
     if (_more)

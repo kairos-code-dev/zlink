@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_BLOB_HASH_HPP_INCLUDED__
-#define __ZMQ_BLOB_HASH_HPP_INCLUDED__
+#ifndef __ZLINK_BLOB_HASH_HPP_INCLUDED__
+#define __ZLINK_BLOB_HASH_HPP_INCLUDED__
 
 #include "utils/blob.hpp"
 #include <functional>
 #include <cstring>
 
-namespace zmq
+namespace zlink
 {
 
 //  Hash functor for blob_t with transparent hashing support.
@@ -18,7 +18,7 @@ struct blob_hash {
 
     //  Hash computation using FNV-1a algorithm.
     //  FNV-1a provides excellent distribution for byte strings and is
-    //  particularly efficient for the small routing IDs used in ZeroMQ.
+    //  particularly efficient for the small routing IDs used in Zlink.
     size_t hash_bytes(const unsigned char* data, size_t size) const noexcept {
         // FNV-1a 64-bit constants
         constexpr size_t fnv_offset_basis = 14695981039346656037ULL;
@@ -69,6 +69,6 @@ struct blob_equal {
     }
 };
 
-} // namespace zmq
+} // namespace zlink
 
 #endif

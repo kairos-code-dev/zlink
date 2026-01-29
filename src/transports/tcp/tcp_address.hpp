@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_TCP_ADDRESS_HPP_INCLUDED__
-#define __ZMQ_TCP_ADDRESS_HPP_INCLUDED__
+#ifndef __ZLINK_TCP_ADDRESS_HPP_INCLUDED__
+#define __ZLINK_TCP_ADDRESS_HPP_INCLUDED__
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <sys/socket.h>
 #include <netinet/in.h>
 #endif
 
 #include "utils/ip_resolver.hpp"
 
-namespace zmq
+namespace zlink
 {
 class tcp_address_t
 {
@@ -27,7 +27,7 @@ class tcp_address_t
     //  The opposite to resolve()
     int to_string (std::string &addr_) const;
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     unsigned short family () const;
 #else
     sa_family_t family () const;

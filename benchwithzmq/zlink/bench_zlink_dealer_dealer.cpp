@@ -1,32 +1,32 @@
-#include "../common/bench_common.hpp"
-#include <zmq.h>
+#include "../common/bench_common_zlink.hpp"
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 
 void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *s1 = zmq_socket(ctx, ZMQ_DEALER);
-    void *s2 = zmq_socket(ctx, ZMQ_DEALER);
+    void *ctx = zlink_ctx_new();
+    void *s1 = zlink_socket(ctx, ZLINK_DEALER);
+    void *s2 = zlink_socket(ctx, ZLINK_DEALER);
 
     int hwm = 0;
-    set_sockopt_int(s1, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(s1, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(s2, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    set_sockopt_int(s2, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
+    set_sockopt_int(s1, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(s1, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(s2, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    set_sockopt_int(s2, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
 
     std::string endpoint = bind_and_resolve_endpoint(s1, transport, lib_name + "_dealer_dealer");
     if (endpoint.empty()) {
-        zmq_close(s1);
-        zmq_close(s2);
-        zmq_ctx_term(ctx);
+        zlink_close(s1);
+        zlink_close(s2);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(s2, endpoint)) {
-        zmq_close(s1);
-        zmq_close(s2);
-        zmq_ctx_term(ctx);
+        zlink_close(s1);
+        zlink_close(s2);
+        zlink_ctx_term(ctx);
         return;
     }
     apply_debug_timeouts(s1, transport);
@@ -73,9 +73,9 @@ void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_co
 
     print_result(lib_name, "DEALER_DEALER", transport, msg_size, throughput, latency);
 
-    zmq_close(s1);
-    zmq_close(s2);
-    zmq_ctx_term(ctx);
+    zlink_close(s1);
+    zlink_close(s2);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

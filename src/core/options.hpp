@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_OPTIONS_HPP_INCLUDED__
-#define __ZMQ_OPTIONS_HPP_INCLUDED__
+#ifndef __ZLINK_OPTIONS_HPP_INCLUDED__
+#define __ZLINK_OPTIONS_HPP_INCLUDED__
 
 #include <string>
 #include <vector>
@@ -12,11 +12,11 @@
 #include "utils/stdint.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
-#if defined ZMQ_HAVE_SO_PEERCRED || defined ZMQ_HAVE_LOCAL_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED || defined ZLINK_HAVE_LOCAL_PEERCRED
 #include <set>
 #include <sys/types.h>
 #endif
-#ifdef ZMQ_HAVE_LOCAL_PEERCRED
+#ifdef ZLINK_HAVE_LOCAL_PEERCRED
 #include <sys/ucred.h>
 #endif
 
@@ -24,7 +24,7 @@
 #include <type_traits>
 #endif
 
-namespace zmq
+namespace zlink
 {
 struct options_t
 {
@@ -137,13 +137,13 @@ struct options_t
     tcp_accept_filters_t tcp_accept_filters;
 
     // IPC accept() filters
-#if defined ZMQ_HAVE_SO_PEERCRED || defined ZMQ_HAVE_LOCAL_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED || defined ZLINK_HAVE_LOCAL_PEERCRED
     typedef std::set<uid_t> ipc_uid_accept_filters_t;
     ipc_uid_accept_filters_t ipc_uid_accept_filters;
     typedef std::set<gid_t> ipc_gid_accept_filters_t;
     ipc_gid_accept_filters_t ipc_gid_accept_filters;
 #endif
-#if defined ZMQ_HAVE_SO_PEERCRED
+#if defined ZLINK_HAVE_SO_PEERCRED
     typedef std::set<pid_t> ipc_pid_accept_filters_t;
     ipc_pid_accept_filters_t ipc_pid_accept_filters;
 #endif
@@ -174,7 +174,7 @@ struct options_t
     //  Time in milliseconds to wait for a PING response before disconnecting
     int heartbeat_timeout;
 
-    //  When creating a new ZMQ socket, if this option is set the value
+    //  When creating a new ZLINK socket, if this option is set the value
     //  will be used as the File Descriptor instead of allocating a new
     //  one via the socket () system call.
     int use_fd;
@@ -214,7 +214,7 @@ struct options_t
     //  This option removes several delays caused by scheduling, interrupts and context switching.
     int busy_poll;
 
-#ifdef ZMQ_HAVE_TLS
+#ifdef ZLINK_HAVE_TLS
     //  TLS protocol options
     std::string tls_cert;              // Server certificate file path
     std::string tls_key;               // Server private key file path
@@ -231,8 +231,8 @@ inline bool get_effective_conflate_option (const options_t &options)
 {
     // conflate is only effective for some socket types
     return options.conflate
-           && (options.type == ZMQ_DEALER || options.type == ZMQ_PUB
-               || options.type == ZMQ_SUB);
+           && (options.type == ZLINK_DEALER || options.type == ZLINK_PUB
+               || options.type == ZLINK_SUB);
 }
 
 int do_getsockopt (void *optval_,

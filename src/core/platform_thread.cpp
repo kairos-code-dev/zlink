@@ -5,13 +5,13 @@
 #include "utils/err.hpp"
 #include "utils/macros.hpp"
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
 #include <process.h>
 #if defined __MINGW32__
 #include "pthread.h"
 #endif
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 #include <vxWorks.h>
 #include <taskLib.h>
 #include <limits.h>
@@ -27,12 +27,12 @@ namespace
 {
 struct thread_start_t
 {
-    zmq::thread_entry_t entry;
+    zlink::thread_entry_t entry;
     void *arg;
 };
 }
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 namespace
 {
 #if defined _WIN32_WCE
@@ -42,7 +42,7 @@ static unsigned int __stdcall thread_routine (void *arg_)
 #endif
 {
     thread_start_t *start = static_cast<thread_start_t *> (arg_);
-    zmq::thread_entry_t entry = start->entry;
+    zlink::thread_entry_t entry = start->entry;
     void *arg = start->arg;
     delete start;
     entry (arg);
@@ -50,13 +50,13 @@ static unsigned int __stdcall thread_routine (void *arg_)
 }
 }
 
-struct zmq::platform_thread_t
+struct zlink::platform_thread_t
 {
     HANDLE handle;
     unsigned int thread_id;
 };
 
-zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
+zlink::platform_thread_t *zlink::platform_thread_start (thread_entry_t entry_,
                                                     void *arg_)
 {
     platform_thread_t *thread = new (std::nothrow) platform_thread_t ();
@@ -83,7 +83,7 @@ zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
     return thread;
 }
 
-void zmq::platform_thread_stop (platform_thread_t *thread_)
+void zlink::platform_thread_stop (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
@@ -94,14 +94,14 @@ void zmq::platform_thread_stop (platform_thread_t *thread_)
     thread_->handle = NULL;
 }
 
-bool zmq::platform_thread_is_current (const platform_thread_t *thread_)
+bool zlink::platform_thread_is_current (const platform_thread_t *thread_)
 {
     if (!thread_)
         return false;
     return GetCurrentThreadId () == thread_->thread_id;
 }
 
-void zmq::platform_thread_destroy (platform_thread_t *thread_)
+void zlink::platform_thread_destroy (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
@@ -110,15 +110,15 @@ void zmq::platform_thread_destroy (platform_thread_t *thread_)
     delete thread_;
 }
 
-void zmq::platform_thread_apply_scheduling (
+void zlink::platform_thread_apply_scheduling (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
-    LIBZMQ_UNUSED (priority_);
-    LIBZMQ_UNUSED (scheduling_policy_);
-    LIBZMQ_UNUSED (affinity_cpus_);
+    LIBZLINK_UNUSED (priority_);
+    LIBZLINK_UNUSED (scheduling_policy_);
+    LIBZLINK_UNUSED (affinity_cpus_);
 }
 
-void zmq::platform_thread_apply_name (const char *name_)
+void zlink::platform_thread_apply_name (const char *name_)
 {
     if (!name_ || !name_[0] || !IsDebuggerPresent ())
         return;
@@ -155,14 +155,14 @@ void zmq::platform_thread_apply_name (const char *name_)
 #endif
 }
 
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 
 namespace
 {
 static void *thread_routine (void *arg_)
 {
     thread_start_t *start = static_cast<thread_start_t *> (arg_);
-    zmq::thread_entry_t entry = start->entry;
+    zlink::thread_entry_t entry = start->entry;
     void *arg = start->arg;
     delete start;
     entry (arg);
@@ -170,12 +170,12 @@ static void *thread_routine (void *arg_)
 }
 }
 
-struct zmq::platform_thread_t
+struct zlink::platform_thread_t
 {
     int descriptor;
 };
 
-zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
+zlink::platform_thread_t *zlink::platform_thread_start (thread_entry_t entry_,
                                                     void *arg_)
 {
     platform_thread_t *thread = new (std::nothrow) platform_thread_t ();
@@ -197,7 +197,7 @@ zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
     return thread;
 }
 
-void zmq::platform_thread_stop (platform_thread_t *thread_)
+void zlink::platform_thread_stop (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
@@ -206,14 +206,14 @@ void zmq::platform_thread_stop (platform_thread_t *thread_)
     }
 }
 
-bool zmq::platform_thread_is_current (const platform_thread_t *thread_)
+bool zlink::platform_thread_is_current (const platform_thread_t *thread_)
 {
     if (!thread_)
         return false;
     return taskIdSelf () == thread_->descriptor;
 }
 
-void zmq::platform_thread_destroy (platform_thread_t *thread_)
+void zlink::platform_thread_destroy (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
@@ -222,19 +222,19 @@ void zmq::platform_thread_destroy (platform_thread_t *thread_)
     delete thread_;
 }
 
-void zmq::platform_thread_apply_scheduling (
+void zlink::platform_thread_apply_scheduling (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
-    LIBZMQ_UNUSED (scheduling_policy_);
-    LIBZMQ_UNUSED (affinity_cpus_);
+    LIBZLINK_UNUSED (scheduling_policy_);
+    LIBZLINK_UNUSED (affinity_cpus_);
     int priority = (priority_ >= 0 ? priority_ : 100);
     priority = (priority < UCHAR_MAX ? priority : 100);
     taskPrioritySet (taskIdSelf (), priority);
 }
 
-void zmq::platform_thread_apply_name (const char *name_)
+void zlink::platform_thread_apply_name (const char *name_)
 {
-    LIBZMQ_UNUSED (name_);
+    LIBZLINK_UNUSED (name_);
 }
 
 #else
@@ -243,7 +243,7 @@ namespace
 {
 static void *thread_routine (void *arg_)
 {
-#if !defined ZMQ_HAVE_OPENVMS && !defined ZMQ_HAVE_ANDROID
+#if !defined ZLINK_HAVE_OPENVMS && !defined ZLINK_HAVE_ANDROID
     sigset_t signal_set;
     int rc = sigfillset (&signal_set);
     errno_assert (rc == 0);
@@ -251,19 +251,19 @@ static void *thread_routine (void *arg_)
     posix_assert (rc);
 #endif
     thread_start_t *start = static_cast<thread_start_t *> (arg_);
-    zmq::thread_entry_t entry = start->entry;
+    zlink::thread_entry_t entry = start->entry;
     void *arg = start->arg;
     delete start;
     return entry (arg);
 }
 }
 
-struct zmq::platform_thread_t
+struct zlink::platform_thread_t
 {
     pthread_t handle;
 };
 
-zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
+zlink::platform_thread_t *zlink::platform_thread_start (thread_entry_t entry_,
                                                     void *arg_)
 {
     platform_thread_t *thread = new (std::nothrow) platform_thread_t ();
@@ -279,7 +279,7 @@ zmq::platform_thread_t *zmq::platform_thread_start (thread_entry_t entry_,
     return thread;
 }
 
-void zmq::platform_thread_stop (platform_thread_t *thread_)
+void zlink::platform_thread_stop (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
@@ -287,21 +287,21 @@ void zmq::platform_thread_stop (platform_thread_t *thread_)
     posix_assert (rc);
 }
 
-bool zmq::platform_thread_is_current (const platform_thread_t *thread_)
+bool zlink::platform_thread_is_current (const platform_thread_t *thread_)
 {
     if (!thread_)
         return false;
     return bool (pthread_equal (pthread_self (), thread_->handle));
 }
 
-void zmq::platform_thread_destroy (platform_thread_t *thread_)
+void zlink::platform_thread_destroy (platform_thread_t *thread_)
 {
     if (!thread_)
         return;
     delete thread_;
 }
 
-void zmq::platform_thread_apply_scheduling (
+void zlink::platform_thread_apply_scheduling (
   int priority_, int scheduling_policy_, const std::set<int> &affinity_cpus_)
 {
 #if defined _POSIX_THREAD_PRIORITY_SCHEDULING                                  \
@@ -318,7 +318,7 @@ void zmq::platform_thread_apply_scheduling (
     int rc = pthread_getschedparam (pthread_self (), &policy, &param);
     posix_assert (rc);
 
-    if (scheduling_policy_ != ZMQ_THREAD_SCHED_POLICY_DFLT) {
+    if (scheduling_policy_ != ZLINK_THREAD_SCHED_POLICY_DFLT) {
         policy = scheduling_policy_;
     }
 
@@ -327,7 +327,7 @@ void zmq::platform_thread_apply_scheduling (
 
     if (use_nice_instead_priority)
         param.sched_priority = 0;
-    else if (priority_ != ZMQ_THREAD_PRIORITY_DFLT)
+    else if (priority_ != ZLINK_THREAD_PRIORITY_DFLT)
         param.sched_priority = priority_;
 
 #ifdef __NetBSD__
@@ -344,15 +344,15 @@ void zmq::platform_thread_apply_scheduling (
 
     posix_assert (rc);
 
-#if !defined ZMQ_HAVE_VXWORKS
-    if (use_nice_instead_priority && priority_ != ZMQ_THREAD_PRIORITY_DFLT
+#if !defined ZLINK_HAVE_VXWORKS
+    if (use_nice_instead_priority && priority_ != ZLINK_THREAD_PRIORITY_DFLT
         && priority_ > 0) {
         rc = nice (-20);
         errno_assert (rc != -1);
     }
 #endif
 
-#ifdef ZMQ_HAVE_PTHREAD_SET_AFFINITY
+#ifdef ZLINK_HAVE_PTHREAD_SET_AFFINITY
     if (!affinity_cpus_.empty ()) {
         cpu_set_t cpuset;
         CPU_ZERO (&cpuset);
@@ -367,34 +367,34 @@ void zmq::platform_thread_apply_scheduling (
     }
 #endif
 #else
-    LIBZMQ_UNUSED (priority_);
-    LIBZMQ_UNUSED (scheduling_policy_);
-    LIBZMQ_UNUSED (affinity_cpus_);
+    LIBZLINK_UNUSED (priority_);
+    LIBZLINK_UNUSED (scheduling_policy_);
+    LIBZLINK_UNUSED (affinity_cpus_);
 #endif
 }
 
-void zmq::platform_thread_apply_name (const char *name_)
+void zlink::platform_thread_apply_name (const char *name_)
 {
     if (!name_ || !name_[0])
         return;
 
-#if defined(ZMQ_HAVE_ANDROID)
+#if defined(ZLINK_HAVE_ANDROID)
     return;
 #endif
 
-#if defined(ZMQ_HAVE_PTHREAD_SETNAME_1)
+#if defined(ZLINK_HAVE_PTHREAD_SETNAME_1)
     int rc = pthread_setname_np (name_);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_2)
+#elif defined(ZLINK_HAVE_PTHREAD_SETNAME_2)
     int rc = pthread_setname_np (pthread_self (), name_);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SETNAME_3)
+#elif defined(ZLINK_HAVE_PTHREAD_SETNAME_3)
     int rc = pthread_setname_np (pthread_self (), name_, NULL);
     if (rc)
         return;
-#elif defined(ZMQ_HAVE_PTHREAD_SET_NAME)
+#elif defined(ZLINK_HAVE_PTHREAD_SET_NAME)
     pthread_set_name_np (pthread_self (), name_);
 #endif
 }

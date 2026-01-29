@@ -11,32 +11,32 @@ void test_immediate_3 ()
     // occurs with an existing connection that is broken. We will send
     // messages to a connected pipe, disconnect and verify the messages
     // block. Then we reconnect and verify messages flow again.
-    void *backend = test_context_socket (ZMQ_DEALER);
-    void *frontend = test_context_socket (ZMQ_DEALER);
+    void *backend = test_context_socket (ZLINK_DEALER);
+    void *frontend = test_context_socket (ZLINK_DEALER);
 
     int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (backend, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (backend, ZLINK_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (frontend, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (frontend, ZLINK_LINGER, &zero, sizeof (zero)));
 
     //  Frontend connects to backend using IMMEDIATE
     int on = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (frontend, ZMQ_IMMEDIATE, &on, sizeof (on)));
+      zlink_setsockopt (frontend, ZLINK_IMMEDIATE, &on, sizeof (on)));
 
     size_t len = MAX_SOCKET_STRING;
     char my_endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (backend, my_endpoint, len);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (frontend, my_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (frontend, my_endpoint));
 
     //  Ping backend to frontend so we know when the connection is up
     send_string_expect_success (backend, "Hello", 0);
     recv_string_expect_success (frontend, "Hello", 0);
 
     // Send message from frontend to backend
-    send_string_expect_success (frontend, "Hello", ZMQ_DONTWAIT);
+    send_string_expect_success (frontend, "Hello", ZLINK_DONTWAIT);
 
     test_context_socket_close (backend);
 
@@ -45,20 +45,20 @@ void test_immediate_3 ()
 
     // Send a message, should fail
     TEST_ASSERT_FAILURE_ERRNO (EAGAIN,
-                               zmq_send (frontend, "Hello", 5, ZMQ_DONTWAIT));
+                               zlink_send (frontend, "Hello", 5, ZLINK_DONTWAIT));
 
     //  Recreate backend socket
-    backend = test_context_socket (ZMQ_DEALER);
+    backend = test_context_socket (ZLINK_DEALER);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (backend, ZMQ_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (backend, my_endpoint));
+      zlink_setsockopt (backend, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (backend, my_endpoint));
 
     //  Ping backend to frontend so we know when the connection is up
     send_string_expect_success (backend, "Hello", 0);
     recv_string_expect_success (frontend, "Hello", 0);
 
     // After the reconnect, should succeed
-    send_string_expect_success (frontend, "Hello", ZMQ_DONTWAIT);
+    send_string_expect_success (frontend, "Hello", ZLINK_DONTWAIT);
 
     test_context_socket_close (backend);
     test_context_socket_close (frontend);

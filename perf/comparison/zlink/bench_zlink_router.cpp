@@ -1,36 +1,36 @@
 #include "../common/bench_common.hpp"
-#include <zmq.h>
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 
-#ifndef ZMQ_TCP_NODELAY
-#define ZMQ_TCP_NODELAY 26
+#ifndef ZLINK_TCP_NODELAY
+#define ZLINK_TCP_NODELAY 26
 #endif
 
 void run_router(const std::string& transport, size_t msg_size, int msg_count) {
-    void *ctx = zmq_ctx_new();
-    void *server = zmq_socket(ctx, ZMQ_ROUTER);
-    void *client = zmq_socket(ctx, ZMQ_ROUTER);
+    void *ctx = zlink_ctx_new();
+    void *server = zlink_socket(ctx, ZLINK_ROUTER);
+    void *client = zlink_socket(ctx, ZLINK_ROUTER);
 
     int nodelay = 1;
-    zmq_setsockopt(server, ZMQ_TCP_NODELAY, &nodelay, sizeof(nodelay));
-    zmq_setsockopt(client, ZMQ_TCP_NODELAY, &nodelay, sizeof(nodelay));
+    zlink_setsockopt(server, ZLINK_TCP_NODELAY, &nodelay, sizeof(nodelay));
+    zlink_setsockopt(client, ZLINK_TCP_NODELAY, &nodelay, sizeof(nodelay));
 
     int hwm = msg_count * 2;
-    zmq_setsockopt(server, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(server, ZMQ_RCVHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(client, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-    zmq_setsockopt(client, ZMQ_RCVHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(server, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(server, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(client, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(client, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
-    zmq_setsockopt(client, ZMQ_ROUTING_ID, "CLIENT", 6);
-    zmq_setsockopt(server, ZMQ_ROUTING_ID, "SERVER", 6);
+    zlink_setsockopt(client, ZLINK_ROUTING_ID, "CLIENT", 6);
+    zlink_setsockopt(server, ZLINK_ROUTING_ID, "SERVER", 6);
     int handover = 1;
-    zmq_setsockopt(server, ZMQ_ROUTER_HANDOVER, &handover, sizeof(handover));
+    zlink_setsockopt(server, ZLINK_ROUTER_HANDOVER, &handover, sizeof(handover));
 
-    std::string endpoint = make_endpoint(transport, "zmq_router");
-    zmq_bind(server, endpoint.c_str());
-    zmq_connect(client, endpoint.c_str());
+    std::string endpoint = make_endpoint(transport, "zlink_router");
+    zlink_bind(server, endpoint.c_str());
+    zlink_connect(client, endpoint.c_str());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
@@ -42,41 +42,41 @@ void run_router(const std::string& transport, size_t msg_size, int msg_count) {
     int lat_count = 1000;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        zmq_send(client, "SERVER", 6, ZMQ_SNDMORE);
-        zmq_send(client, payload.data(), msg_size, 0);
+        zlink_send(client, "SERVER", 6, ZLINK_SNDMORE);
+        zlink_send(client, payload.data(), msg_size, 0);
 
-        zmq_recv(server, recv_buf.data(), recv_buf.size(), 0);
-        zmq_recv(server, recv_buf.data(), recv_buf.size(), 0);
+        zlink_recv(server, recv_buf.data(), recv_buf.size(), 0);
+        zlink_recv(server, recv_buf.data(), recv_buf.size(), 0);
 
-        zmq_send(server, "CLIENT", 6, ZMQ_SNDMORE);
-        zmq_send(server, payload.data(), msg_size, 0);
+        zlink_send(server, "CLIENT", 6, ZLINK_SNDMORE);
+        zlink_send(server, payload.data(), msg_size, 0);
 
-        zmq_recv(client, recv_buf.data(), recv_buf.size(), 0);
-        zmq_recv(client, recv_buf.data(), recv_buf.size(), 0);
+        zlink_recv(client, recv_buf.data(), recv_buf.size(), 0);
+        zlink_recv(client, recv_buf.data(), recv_buf.size(), 0);
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
     // Throughput
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
-            zmq_recv(server, recv_buf.data(), recv_buf.size(), 0);
-            zmq_recv(server, recv_buf.data(), recv_buf.size(), 0);
+            zlink_recv(server, recv_buf.data(), recv_buf.size(), 0);
+            zlink_recv(server, recv_buf.data(), recv_buf.size(), 0);
         }
     });
 
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        zmq_send(client, "SERVER", 6, ZMQ_SNDMORE);
-        zmq_send(client, payload.data(), msg_size, 0);
+        zlink_send(client, "SERVER", 6, ZLINK_SNDMORE);
+        zlink_send(client, payload.data(), msg_size, 0);
     }
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 
     print_result("zlink", "ROUTER", transport, msg_size, throughput, latency);
 
-    zmq_close(server);
-    zmq_close(client);
-    zmq_ctx_term(ctx);
+    zlink_close(server);
+    zlink_close(client);
+    zlink_ctx_term(ctx);
 }
 
 int main() {

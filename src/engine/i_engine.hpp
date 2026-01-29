@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_I_ENGINE_HPP_INCLUDED__
-#define __ZMQ_I_ENGINE_HPP_INCLUDED__
+#ifndef __ZLINK_I_ENGINE_HPP_INCLUDED__
+#define __ZLINK_I_ENGINE_HPP_INCLUDED__
 
 #include "core/endpoint.hpp"
 #include "utils/macros.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 
@@ -21,14 +21,14 @@ struct i_engine
         timeout_error
     };
 
-    virtual ~i_engine () ZMQ_DEFAULT;
+    virtual ~i_engine () ZLINK_DEFAULT;
 
     //  Indicate if the engine has an handshake stage.
     //  If engine has handshake stage, engine must call session.engine_ready when the handshake is complete.
     virtual bool has_handshake_stage () = 0;
 
     //  Plug the engine to the session.
-    virtual void plug (zmq::io_thread_t *io_thread_,
+    virtual void plug (zlink::io_thread_t *io_thread_,
                        class session_base_t *session_) = 0;
 
     //  Terminate and deallocate the engine. Note that 'detached'

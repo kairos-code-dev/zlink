@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SOCKET_POLLING_UTIL_HPP_INCLUDED__
-#define __ZMQ_SOCKET_POLLING_UTIL_HPP_INCLUDED__
+#ifndef __ZLINK_SOCKET_POLLING_UTIL_HPP_INCLUDED__
+#define __ZLINK_SOCKET_POLLING_UTIL_HPP_INCLUDED__
 
 #include <stdlib.h>
 #include <vector>
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include <winsock.h>
 #else
 #include <sys/select.h>
@@ -17,7 +17,7 @@
 #include "platform.hpp"
 #include "utils/err.hpp"
 
-namespace zmq
+namespace zlink
 {
 template <typename T, size_t S> class fast_vector_t
 {
@@ -45,7 +45,7 @@ template <typename T, size_t S> class fast_vector_t
     T _static_buf[S];
     T *_buf;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (fast_vector_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (fast_vector_t)
 };
 
 template <typename T, size_t S> class resizable_fast_vector_t
@@ -79,18 +79,18 @@ template <typename T, size_t S> class resizable_fast_vector_t
     T _static_buf[S];
     std::vector<T> *_dynamic_buf;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (resizable_fast_vector_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (resizable_fast_vector_t)
 };
 
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
 typedef int timeout_t;
 
 timeout_t
 compute_timeout (bool first_pass_, long timeout_, uint64_t now_, uint64_t end_);
 #endif
-#if (!defined ZMQ_POLL_BASED_ON_POLL && defined ZMQ_POLL_BASED_ON_SELECT)      \
-  || defined ZMQ_HAVE_PPOLL
-#if defined ZMQ_HAVE_WINDOWS
+#if (!defined ZLINK_POLL_BASED_ON_POLL && defined ZLINK_POLL_BASED_ON_SELECT)      \
+  || defined ZLINK_HAVE_PPOLL
+#if defined ZLINK_HAVE_WINDOWS
 inline size_t valid_pollset_bytes (const fd_set &pollset_)
 {
     // On Windows we don't need to copy the whole fd_set.
@@ -109,7 +109,7 @@ inline size_t valid_pollset_bytes (const fd_set & /*pollset_*/)
 #endif
 
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 // struct fd_set {
 //  u_int   fd_count;
 //  SOCKET  fd_array[1];
@@ -124,7 +124,7 @@ class optimized_fd_set_t
     fd_set *get () { return reinterpret_cast<fd_set *> (&_fd_set[0]); }
 
   private:
-    fast_vector_t<SOCKET, 1 + ZMQ_POLLITEMS_DFLT> _fd_set;
+    fast_vector_t<SOCKET, 1 + ZLINK_POLLITEMS_DFLT> _fd_set;
 };
 
 class resizable_optimized_fd_set_t
@@ -135,7 +135,7 @@ class resizable_optimized_fd_set_t
     fd_set *get () { return reinterpret_cast<fd_set *> (&_fd_set[0]); }
 
   private:
-    resizable_fast_vector_t<SOCKET, 1 + ZMQ_POLLITEMS_DFLT> _fd_set;
+    resizable_fast_vector_t<SOCKET, 1 + ZLINK_POLLITEMS_DFLT> _fd_set;
 };
 #else
 class optimized_fd_set_t

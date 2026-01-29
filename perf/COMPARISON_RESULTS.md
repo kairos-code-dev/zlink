@@ -1,8 +1,8 @@
 
 Comparing PAIR pattern...
-  Run 1/3 for comp_std_zmq_pair...
-  Run 2/3 for comp_std_zmq_pair...
-  Run 3/3 for comp_std_zmq_pair...
+  Run 1/3 for comp_std_zlink_pair...
+  Run 2/3 for comp_std_zlink_pair...
+  Run 3/3 for comp_std_zlink_pair...
   Run 1/3 for comp_zlink_pair...
   Run 2/3 for comp_zlink_pair...
   Run 3/3 for comp_zlink_pair...
@@ -10,7 +10,7 @@ Comparing PAIR pattern...
 ================================================================================================
 Pattern: PAIR | Transport: inproc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.44 M/s           | 5.45 M/s           |   +0.22%
            | Latency      | 0.07         us | 0.09         us |  -23.81% (inv)
@@ -29,7 +29,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: PAIR | Transport: ipc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.67 M/s           | 5.75 M/s           |   +1.43%
            | Latency      | 32.03        us | 33.38        us |   -4.23% (inv)
@@ -48,7 +48,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: PAIR | Transport: tcp
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.85 M/s           | 5.69 M/s           |   -2.85%
            | Latency      | 38.03        us | 40.57        us |   -6.68% (inv)
@@ -65,9 +65,9 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 
 Comparing ROUTER pattern...
-  Run 1/3 for comp_std_zmq_router...
-  Run 2/3 for comp_std_zmq_router...
-  Run 3/3 for comp_std_zmq_router...
+  Run 1/3 for comp_std_zlink_router...
+  Run 2/3 for comp_std_zlink_router...
+  Run 3/3 for comp_std_zlink_router...
   Run 1/3 for comp_zlink_router...
   Run 2/3 for comp_zlink_router...
   Run 3/3 for comp_zlink_router...
@@ -75,7 +75,7 @@ Comparing ROUTER pattern...
 ================================================================================================
 Pattern: ROUTER | Transport: inproc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 4.43 M/s           | 4.35 M/s           |   -1.98%
            | Latency      | 0.17         us | 0.17         us |   -2.00% (inv)
@@ -94,7 +94,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: ROUTER | Transport: ipc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.68 M/s           | 5.42 M/s           |   -4.52%
            | Latency      | 29.33        us | 32.16        us |   -9.64% (inv)
@@ -113,7 +113,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: ROUTER | Transport: tcp
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.13 M/s           | 5.24 M/s           |   +2.24%
            | Latency      | 30.95        us | 41.84        us |  -35.19% (inv)
@@ -130,9 +130,9 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 
 Comparing PUBSUB pattern...
-  Run 1/3 for comp_std_zmq_pubsub...
-  Run 2/3 for comp_std_zmq_pubsub...
-  Run 3/3 for comp_std_zmq_pubsub...
+  Run 1/3 for comp_std_zlink_pubsub...
+  Run 2/3 for comp_std_zlink_pubsub...
+  Run 3/3 for comp_std_zlink_pubsub...
   Run 1/3 for comp_zlink_pubsub...
   Run 2/3 for comp_zlink_pubsub...
   Run 3/3 for comp_zlink_pubsub...
@@ -140,7 +140,7 @@ Comparing PUBSUB pattern...
 ================================================================================================
 Pattern: PUBSUB | Transport: inproc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 4.99 M/s           | 5.01 M/s           |   +0.53%
            | Latency      | 0.09         us | 0.12         us |  -29.63% (inv)
@@ -159,7 +159,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: PUBSUB | Transport: ipc
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.69 M/s           | 5.22 M/s           |   -8.32%
            | Latency      | 33.68        us | 32.20        us |   +4.38% (inv)
@@ -178,7 +178,7 @@ Size       | Metric       | Standard libzmq    | zlink              | Diff (%)
 ================================================================================================
 Pattern: PUBSUB | Transport: tcp
 ================================================================================================
-Size       | Metric       | Standard libzmq    | zlink              | Diff (%)       
+Size       | Metric       | Standard libzlink    | zlink              | Diff (%)       
 -----------|--------------|--------------------|--------------------|----------------
 64 B       | Throughput   | 5.73 M/s           | 5.58 M/s           |   -2.58%
            | Latency      | 30.58        us | 39.27        us |  -28.41% (inv)

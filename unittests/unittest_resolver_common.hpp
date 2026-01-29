@@ -12,13 +12,13 @@
 //  we're in this situation then we compare to 'expected_addr_v4_failover_'
 //  instead.
 void validate_address (int family,
-                       const zmq::ip_addr_t *addr_,
+                       const zlink::ip_addr_t *addr_,
                        const char *expected_addr_,
                        uint16_t expected_port_ = 0,
                        uint16_t expected_zone_ = 0,
                        const char *expected_addr_v4_failover_ = NULL)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     if (family == AF_INET6 && expected_addr_v4_failover_ != NULL
         && addr_->family () == AF_INET) {
         //  We've requested an IPv6 but the system gave us an IPv4, use the

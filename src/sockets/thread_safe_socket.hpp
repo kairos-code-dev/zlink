@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_THREAD_SAFE_SOCKET_HPP_INCLUDED__
-#define __ZMQ_THREAD_SAFE_SOCKET_HPP_INCLUDED__
+#ifndef __ZLINK_THREAD_SAFE_SOCKET_HPP_INCLUDED__
+#define __ZLINK_THREAD_SAFE_SOCKET_HPP_INCLUDED__
 
 #include <boost/asio.hpp>
 #include <errno.h>
@@ -16,9 +16,9 @@
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
 #include "utils/mutex.hpp"
-#include "zmq.h"
+#include "zlink.h"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class msg_t;
@@ -61,49 +61,49 @@ class thread_safe_socket_t
                  int event_version_,
                  int type_);
 
-    int socket_stats (zmq_socket_stats_t *stats_);
-    int socket_stats_ex (zmq_socket_stats_ex_t *stats_);
-    int socket_peer_info (const zmq_routing_id_t *routing_id_,
-                          zmq_peer_info_t *info_);
-    int socket_peer_routing_id (int index_, zmq_routing_id_t *out_);
+    int socket_stats (zlink_socket_stats_t *stats_);
+    int socket_stats_ex (zlink_socket_stats_ex_t *stats_);
+    int socket_peer_info (const zlink_routing_id_t *routing_id_,
+                          zlink_peer_info_t *info_);
+    int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
     int socket_peer_count ();
-    int socket_peers (zmq_peer_info_t *peers_, size_t *count_);
+    int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
     int get_peer_state (const void *routing_id_, size_t routing_id_size_);
 
-    uint64_t request (const zmq_routing_id_t *routing_id_,
-                      zmq_msg_t *parts_,
+    uint64_t request (const zlink_routing_id_t *routing_id_,
+                      zlink_msg_t *parts_,
                       size_t part_count_,
-                      zmq_request_cb_fn callback_,
+                      zlink_request_cb_fn callback_,
                       int timeout_ms_);
-    uint64_t group_request (const zmq_routing_id_t *routing_id_,
+    uint64_t group_request (const zlink_routing_id_t *routing_id_,
                             uint64_t group_id_,
-                            zmq_msg_t *parts_,
+                            zlink_msg_t *parts_,
                             size_t part_count_,
-                            zmq_request_cb_fn callback_,
+                            zlink_request_cb_fn callback_,
                             int timeout_ms_);
-    uint64_t request_send (const zmq_routing_id_t *routing_id_,
-                           zmq_msg_t *parts_,
+    uint64_t request_send (const zlink_routing_id_t *routing_id_,
+                           zlink_msg_t *parts_,
                            size_t part_count_);
-    int request_recv (zmq_completion_t *completion_, int timeout_ms_);
+    int request_recv (zlink_completion_t *completion_, int timeout_ms_);
     int pending_requests ();
     int cancel_all_requests ();
 
-    int on_request (zmq_server_cb_fn handler_);
-    int reply (const zmq_routing_id_t *routing_id_,
+    int on_request (zlink_server_cb_fn handler_);
+    int reply (const zlink_routing_id_t *routing_id_,
                uint64_t request_id_,
-               zmq_msg_t *parts_,
+               zlink_msg_t *parts_,
                size_t part_count_);
-    int reply_simple (zmq_msg_t *parts_, size_t part_count_);
+    int reply_simple (zlink_msg_t *parts_, size_t part_count_);
 
   private:
     struct pending_request_t
     {
         uint64_t request_id;
         uint64_t group_id;
-        zmq_routing_id_t routing_id;
+        zlink_routing_id_t routing_id;
         bool has_routing_id;
         bool use_callback;
-        zmq_request_cb_fn callback;
+        zlink_request_cb_fn callback;
         std::vector<msg_t> parts;
         std::chrono::steady_clock::time_point deadline;
         bool has_deadline;
@@ -157,7 +157,7 @@ class thread_safe_socket_t
 
     struct incoming_message_t
     {
-        zmq_routing_id_t routing_id;
+        zlink_routing_id_t routing_id;
         bool has_routing_id;
         uint64_t request_id;
         std::vector<msg_t> parts;
@@ -166,16 +166,16 @@ class thread_safe_socket_t
     template <typename Result, typename Func>
     Result dispatch (Func func_, int *err_);
 
-    uint64_t request_common (const zmq_routing_id_t *routing_id_,
+    uint64_t request_common (const zlink_routing_id_t *routing_id_,
                              uint64_t group_id_,
-                             zmq_msg_t *parts_,
+                             zlink_msg_t *parts_,
                              size_t part_count_,
-                             zmq_request_cb_fn callback_,
+                             zlink_request_cb_fn callback_,
                              int timeout_ms_,
                              bool use_callback_);
-    int reply_common (const zmq_routing_id_t *routing_id_,
+    int reply_common (const zlink_routing_id_t *routing_id_,
                       uint64_t request_id_,
-                      zmq_msg_t *parts_,
+                      zlink_msg_t *parts_,
                       size_t part_count_);
     void ensure_request_pump ();
     void schedule_request_pump (std::chrono::milliseconds delay_);
@@ -189,7 +189,7 @@ class thread_safe_socket_t
     void process_timeouts ();
     int send_request (pending_request_t &req_);
     int send_request_direct (pending_request_t &req_,
-                             zmq_msg_t *parts_,
+                             zlink_msg_t *parts_,
                              size_t part_count_,
                              int socket_type_);
     void enqueue_non_correlate (const pending_request_t &req_);
@@ -199,19 +199,19 @@ class thread_safe_socket_t
     bool get_request_correlate ();
     int get_request_timeout ();
     bool validate_request_params (int socket_type_,
-                                  const zmq_routing_id_t *routing_id_,
-                                  zmq_msg_t *parts_,
+                                  const zlink_routing_id_t *routing_id_,
+                                  zlink_msg_t *parts_,
                                   size_t part_count_,
-                                  zmq_request_cb_fn callback_,
+                                  zlink_request_cb_fn callback_,
                                   bool require_callback_);
-    bool copy_parts_in (zmq_msg_t *parts_,
+    bool copy_parts_in (zlink_msg_t *parts_,
                         size_t part_count_,
                         std::vector<msg_t> *out_);
-    void close_msg_array (zmq_msg_t *parts_, size_t part_count_);
+    void close_msg_array (zlink_msg_t *parts_, size_t part_count_);
     void close_parts (std::vector<msg_t> *parts_);
-    zmq_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
+    zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                       size_t *count_);
-    routing_id_key_t make_routing_id_key (const zmq_routing_id_t &rid_) const;
+    routing_id_key_t make_routing_id_key (const zlink_routing_id_t &rid_) const;
     void add_active ();
     void release_active ();
 
@@ -233,15 +233,15 @@ class thread_safe_socket_t
                        routing_id_key_hash,
                        routing_id_key_equal>
       _non_correlate_by_rid;
-    zmq_server_cb_fn _request_handler;
+    zlink_server_cb_fn _request_handler;
     bool _in_request_handler;
-    zmq_routing_id_t _current_routing_id;
+    zlink_routing_id_t _current_routing_id;
     uint64_t _current_request_id;
     mutex_t _completion_sync;
     condition_variable_t _completion_cv;
     std::deque<completion_entry_t> _completion_queue;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (thread_safe_socket_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (thread_safe_socket_t)
 };
 
 template <typename Result, typename Func>

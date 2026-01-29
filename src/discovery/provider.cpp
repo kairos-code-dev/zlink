@@ -9,7 +9,7 @@
 #include "utils/random.hpp"
 #include "sockets/socket_base.hpp"
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
 #else
 #include <unistd.h>
@@ -18,13 +18,13 @@
 #include <string.h>
 #include <vector>
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t provider_tag_value = 0x1e6700d8;
 
 static void sleep_ms (int ms_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     Sleep (ms_);
 #else
     usleep (static_cast<useconds_t> (ms_) * 1000);
@@ -92,20 +92,20 @@ static int recv_register_ack (thread_safe_socket_t *socket_,
     if (error_out_)
         error_out_->clear ();
 
-    zmq_msg_t reply;
-    zmq_msg_init (&reply);
+    zlink_msg_t reply;
+    zlink_msg_init (&reply);
     if (socket_->recv (reinterpret_cast<msg_t *> (&reply), 0) != 0) {
-        zmq_msg_close (&reply);
+        zlink_msg_close (&reply);
         return -1;
     }
 
-    std::vector<zmq_msg_t> frames;
+    std::vector<zlink_msg_t> frames;
     frames.push_back (reply);
-    while (zmq_msg_more (&frames.back ())) {
-        zmq_msg_t frame;
-        zmq_msg_init (&frame);
+    while (zlink_msg_more (&frames.back ())) {
+        zlink_msg_t frame;
+        zlink_msg_init (&frame);
         if (socket_->recv (reinterpret_cast<msg_t *> (&frame), 0) != 0) {
-            zmq_msg_close (&frame);
+            zlink_msg_close (&frame);
             break;
         }
         frames.push_back (frame);
@@ -116,8 +116,8 @@ static int recv_register_ack (thread_safe_socket_t *socket_,
         && discovery_protocol::read_u16 (frames[0], &msg_id)
         && msg_id == discovery_protocol::msg_register_ack) {
         uint8_t status = 0xFF;
-        if (zmq_msg_size (&frames[1]) == sizeof (uint8_t))
-            memcpy (&status, zmq_msg_data (&frames[1]), sizeof (uint8_t));
+        if (zlink_msg_size (&frames[1]) == sizeof (uint8_t))
+            memcpy (&status, zlink_msg_data (&frames[1]), sizeof (uint8_t));
         *status_out_ = static_cast<int> (status);
         if (resolved_out_ && frames.size () >= 3)
             *resolved_out_ = discovery_protocol::read_string (frames[2]);
@@ -126,7 +126,7 @@ static int recv_register_ack (thread_safe_socket_t *socket_,
     }
 
     for (size_t i = 0; i < frames.size (); ++i)
-        zmq_msg_close (&frames[i]);
+        zlink_msg_close (&frames[i]);
 
     return 0;
 }
@@ -143,7 +143,7 @@ provider_t::provider_t (ctx_t *ctx_) :
     _heartbeat_interval_ms (5000),
     _stop (0)
 {
-    zmq_assert (_ctx);
+    zlink_assert (_ctx);
 }
 
 provider_t::~provider_t ()
@@ -185,7 +185,7 @@ int provider_t::bind (const char *endpoint_)
 
     scoped_lock_t lock (_sync);
     if (!_router) {
-        if (create_threadsafe_socket (_ctx, ZMQ_ROUTER, &_router,
+        if (create_threadsafe_socket (_ctx, ZLINK_ROUTER, &_router,
                                       &_router_threadsafe)
             != 0)
             return -1;
@@ -200,13 +200,13 @@ bool provider_t::ensure_routing_id ()
     if (!_router && !_router_threadsafe)
         return false;
 
-    zmq_routing_id_t rid;
+    zlink_routing_id_t rid;
     size_t size = sizeof (rid.data);
     int rc = -1;
     if (_router_threadsafe)
-        rc = _router_threadsafe->getsockopt (ZMQ_ROUTING_ID, rid.data, &size);
+        rc = _router_threadsafe->getsockopt (ZLINK_ROUTING_ID, rid.data, &size);
     else
-        rc = zmq_getsockopt (static_cast<void *> (_router), ZMQ_ROUTING_ID,
+        rc = zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
                              rid.data, &size);
     if (rc == 0) {
         rid.size = static_cast<uint8_t> (size);
@@ -214,17 +214,17 @@ bool provider_t::ensure_routing_id ()
             return true;
     }
 
-    uint32_t random_id = zmq::generate_random ();
+    uint32_t random_id = zlink::generate_random ();
     if (random_id == 0)
         random_id = 1;
     rid.size = static_cast<uint8_t> (1 + sizeof (random_id));
     rid.data[0] = 0;
     memcpy (rid.data + 1, &random_id, sizeof (random_id));
     if (_router_threadsafe)
-        return _router_threadsafe->setsockopt (ZMQ_ROUTING_ID, rid.data,
+        return _router_threadsafe->setsockopt (ZLINK_ROUTING_ID, rid.data,
                                                rid.size)
                == 0;
-    return zmq_setsockopt (static_cast<void *> (_router), ZMQ_ROUTING_ID,
+    return zlink_setsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
                            rid.data, rid.size)
            == 0;
 }
@@ -238,7 +238,7 @@ int provider_t::connect_registry (const char *registry_router_endpoint_)
 
     scoped_lock_t lock (_sync);
     if (!_dealer) {
-        if (create_threadsafe_socket (_ctx, ZMQ_DEALER, &_dealer,
+        if (create_threadsafe_socket (_ctx, ZLINK_DEALER, &_dealer,
                                       &_dealer_threadsafe)
             != 0)
             return -1;
@@ -249,18 +249,18 @@ int provider_t::connect_registry (const char *registry_router_endpoint_)
         return -1;
     }
 
-    zmq_routing_id_t rid;
+    zlink_routing_id_t rid;
     size_t size = sizeof (rid.data);
     int rc = -1;
     if (_router_threadsafe)
-        rc = _router_threadsafe->getsockopt (ZMQ_ROUTING_ID, rid.data, &size);
+        rc = _router_threadsafe->getsockopt (ZLINK_ROUTING_ID, rid.data, &size);
     else if (_router)
-        rc = zmq_getsockopt (static_cast<void *> (_router), ZMQ_ROUTING_ID,
+        rc = zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
                              rid.data, &size);
     if (rc == 0) {
         rid.size = static_cast<uint8_t> (size);
         if (rid.size > 0)
-            _dealer_threadsafe->setsockopt (ZMQ_ROUTING_ID, rid.data, rid.size);
+            _dealer_threadsafe->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
     }
 
     _registry_endpoint = registry_router_endpoint_;
@@ -314,13 +314,13 @@ int provider_t::register_service (const char *service_name_,
     _weight = weight_ == 0 ? 1 : weight_;
 
     if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_register, ZMQ_SNDMORE)
+                             discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
         || send_string_threadsafe (_dealer_threadsafe, _service_name,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_u32_threadsafe (_dealer_threadsafe, _weight, 0) != 0)
         return -1;
@@ -363,13 +363,13 @@ int provider_t::update_weight (const char *service_name_, uint32_t weight_)
     const uint32_t value = weight_ == 0 ? 1 : weight_;
     if (send_u16_threadsafe (_dealer_threadsafe,
                              discovery_protocol::msg_update_weight,
-                             ZMQ_SNDMORE)
+                             ZLINK_SNDMORE)
           != 0
         || send_string_threadsafe (_dealer_threadsafe, service_name_,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_u32_threadsafe (_dealer_threadsafe, value, 0) != 0)
         return -1;
@@ -398,10 +398,10 @@ int provider_t::unregister_service (const char *service_name_)
     }
 
     if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_unregister, ZMQ_SNDMORE)
+                             discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
         || send_string_threadsafe (_dealer_threadsafe, service_name_,
-                                   ZMQ_SNDMORE)
+                                   ZLINK_SNDMORE)
              != 0
         || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint, 0)
              != 0)
@@ -456,9 +456,9 @@ void provider_t::send_heartbeat ()
                 && !_advertise_endpoint.empty ()) {
                 send_u16_threadsafe (_dealer_threadsafe,
                                      discovery_protocol::msg_heartbeat,
-                                     ZMQ_SNDMORE);
+                                     ZLINK_SNDMORE);
                 send_string_threadsafe (_dealer_threadsafe, _service_name,
-                                        ZMQ_SNDMORE);
+                                        ZLINK_SNDMORE);
                 send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
                                         0);
             }

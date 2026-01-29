@@ -9,7 +9,7 @@
 #include "utils/err.hpp"
 #include "utils/ip.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -22,16 +22,16 @@
 
 #include <limits.h>
 
-zmq::tcp_address_t::tcp_address_t () : _has_src_addr (false)
+zlink::tcp_address_t::tcp_address_t () : _has_src_addr (false)
 {
     memset (&_address, 0, sizeof (_address));
     memset (&_source_address, 0, sizeof (_source_address));
 }
 
-zmq::tcp_address_t::tcp_address_t (const sockaddr *sa_, socklen_t sa_len_) :
+zlink::tcp_address_t::tcp_address_t (const sockaddr *sa_, socklen_t sa_len_) :
     _has_src_addr (false)
 {
-    zmq_assert (sa_ && sa_len_ > 0);
+    zlink_assert (sa_ && sa_len_ > 0);
 
     memset (&_address, 0, sizeof (_address));
     memset (&_source_address, 0, sizeof (_source_address));
@@ -43,7 +43,7 @@ zmq::tcp_address_t::tcp_address_t (const sockaddr *sa_, socklen_t sa_len_) :
         memcpy (&_address.ipv6, sa_, sizeof (_address.ipv6));
 }
 
-int zmq::tcp_address_t::resolve (const char *name_, bool local_, bool ipv6_)
+int zlink::tcp_address_t::resolve (const char *name_, bool local_, bool ipv6_)
 {
     // Test the ';' to know if we have a source address in name_
     const char *src_delimiter = strrchr (name_, ';');
@@ -103,12 +103,12 @@ static std::string make_address_string (const char *hbuf_,
     memcpy (pos, ipv6_suffix_, sizeof ipv6_suffix_ - 1);
     pos += sizeof ipv6_suffix_ - 1;
     int res = snprintf (pos, max_port_str_length + 1, "%d", ntohs (port_));
-    zmq_assert (res > 0 && res < (int) (max_port_str_length + 1));
+    zlink_assert (res > 0 && res < (int) (max_port_str_length + 1));
     pos += res;
     return std::string (buf, pos - buf);
 }
 
-int zmq::tcp_address_t::to_string (std::string &addr_) const
+int zlink::tcp_address_t::to_string (std::string &addr_) const
 {
     if (_address.family () != AF_INET && _address.family () != AF_INET6) {
         addr_.clear ();
@@ -116,7 +116,7 @@ int zmq::tcp_address_t::to_string (std::string &addr_) const
     }
 
     //  Not using service resolving because of
-    //  https://github.com/zeromq/libzmq/commit/1824574f9b5a8ce786853320e3ea09fe1f822bc4
+    //  https://github.com/zlink/libzlink/commit/1824574f9b5a8ce786853320e3ea09fe1f822bc4
     char hbuf[NI_MAXHOST];
     const int rc = getnameinfo (addr (), addrlen (), hbuf, sizeof (hbuf), NULL,
                                 0, NI_NUMERICHOST);
@@ -139,46 +139,46 @@ int zmq::tcp_address_t::to_string (std::string &addr_) const
     return 0;
 }
 
-const sockaddr *zmq::tcp_address_t::addr () const
+const sockaddr *zlink::tcp_address_t::addr () const
 {
     return _address.as_sockaddr ();
 }
 
-socklen_t zmq::tcp_address_t::addrlen () const
+socklen_t zlink::tcp_address_t::addrlen () const
 {
     return _address.sockaddr_len ();
 }
 
-const sockaddr *zmq::tcp_address_t::src_addr () const
+const sockaddr *zlink::tcp_address_t::src_addr () const
 {
     return _source_address.as_sockaddr ();
 }
 
-socklen_t zmq::tcp_address_t::src_addrlen () const
+socklen_t zlink::tcp_address_t::src_addrlen () const
 {
     return _source_address.sockaddr_len ();
 }
 
-bool zmq::tcp_address_t::has_src_addr () const
+bool zlink::tcp_address_t::has_src_addr () const
 {
     return _has_src_addr;
 }
 
-#if defined ZMQ_HAVE_WINDOWS
-unsigned short zmq::tcp_address_t::family () const
+#if defined ZLINK_HAVE_WINDOWS
+unsigned short zlink::tcp_address_t::family () const
 #else
-sa_family_t zmq::tcp_address_t::family () const
+sa_family_t zlink::tcp_address_t::family () const
 #endif
 {
     return _address.family ();
 }
 
-zmq::tcp_address_mask_t::tcp_address_mask_t () : _address_mask (-1)
+zlink::tcp_address_mask_t::tcp_address_mask_t () : _address_mask (-1)
 {
     memset (&_network_address, 0, sizeof (_network_address));
 }
 
-int zmq::tcp_address_mask_t::resolve (const char *name_, bool ipv6_)
+int zlink::tcp_address_mask_t::resolve (const char *name_, bool ipv6_)
 {
     // Find '/' at the end that separates address from the cidr mask number.
     // Allow empty mask clause and treat it like '/32' for ipv4 or '/128' for ipv6.
@@ -234,10 +234,10 @@ int zmq::tcp_address_mask_t::resolve (const char *name_, bool ipv6_)
     return 0;
 }
 
-bool zmq::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
+bool zlink::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
                                              const socklen_t ss_len_) const
 {
-    zmq_assert (_address_mask != -1 && ss_ != NULL
+    zlink_assert (_address_mask != -1 && ss_ != NULL
                 && ss_len_
                      >= static_cast<socklen_t> (sizeof (struct sockaddr)));
 
@@ -248,7 +248,7 @@ bool zmq::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
         int mask;
         const uint8_t *our_bytes, *their_bytes;
         if (ss_->sa_family == AF_INET6) {
-            zmq_assert (ss_len_ == sizeof (struct sockaddr_in6));
+            zlink_assert (ss_len_ == sizeof (struct sockaddr_in6));
             their_bytes = reinterpret_cast<const uint8_t *> (
               &((reinterpret_cast<const struct sockaddr_in6 *> (ss_))
                   ->sin6_addr));
@@ -256,7 +256,7 @@ bool zmq::tcp_address_mask_t::match_address (const struct sockaddr *ss_,
               &_network_address.ipv6.sin6_addr);
             mask = sizeof (struct in6_addr) * 8;
         } else {
-            zmq_assert (ss_len_ == sizeof (struct sockaddr_in));
+            zlink_assert (ss_len_ == sizeof (struct sockaddr_in));
             their_bytes = reinterpret_cast<const uint8_t *> (&(
               (reinterpret_cast<const struct sockaddr_in *> (ss_))->sin_addr));
             our_bytes = reinterpret_cast<const uint8_t *> (

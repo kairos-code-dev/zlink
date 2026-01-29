@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_XSUB_HPP_INCLUDED__
-#define __ZMQ_XSUB_HPP_INCLUDED__
+#ifndef __ZLINK_XSUB_HPP_INCLUDED__
+#define __ZLINK_XSUB_HPP_INCLUDED__
 
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
 #include "sockets/dist.hpp"
 #include "sockets/fq.hpp"
-#ifdef ZMQ_USE_RADIX_TREE
+#ifdef ZLINK_USE_RADIX_TREE
 #include "utils/radix_tree.hpp"
 #else
 #include "utils/trie.hpp"
 #endif
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class pipe_t;
@@ -22,30 +22,30 @@ class io_thread_t;
 class xsub_t : public socket_base_t
 {
   public:
-    xsub_t (zmq::ctx_t *parent_, uint32_t tid_, int sid_);
-    ~xsub_t () ZMQ_OVERRIDE;
+    xsub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    ~xsub_t () ZLINK_OVERRIDE;
 
   protected:
     //  Overrides of functions from socket_base_t.
-    void xattach_pipe (zmq::pipe_t *pipe_,
+    void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
-                       bool locally_initiated_) ZMQ_FINAL;
+                       bool locally_initiated_) ZLINK_FINAL;
     int xsetsockopt (int option_,
                      const void *optval_,
-                     size_t optvallen_) ZMQ_OVERRIDE;
-    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZMQ_FINAL;
-    int xsend (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    bool xhas_out () ZMQ_OVERRIDE;
-    int xrecv (zmq::msg_t *msg_) ZMQ_FINAL;
-    bool xhas_in () ZMQ_FINAL;
-    void xread_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void xwrite_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void xhiccuped (pipe_t *pipe_) ZMQ_FINAL;
-    void xpipe_terminated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+                     size_t optvallen_) ZLINK_OVERRIDE;
+    int xgetsockopt (int option_, void *optval_, size_t *optvallen_) ZLINK_FINAL;
+    int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    bool xhas_out () ZLINK_OVERRIDE;
+    int xrecv (zlink::msg_t *msg_) ZLINK_FINAL;
+    bool xhas_in () ZLINK_FINAL;
+    void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void xwrite_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void xhiccuped (pipe_t *pipe_) ZLINK_FINAL;
+    void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
 
   private:
     //  Check whether the message matches at least one subscription.
-    bool match (zmq::msg_t *msg_);
+    bool match (zlink::msg_t *msg_);
 
     //  Function to be applied to the trie to send all the subsciptions
     //  upstream.
@@ -59,7 +59,7 @@ class xsub_t : public socket_base_t
     dist_t _dist;
 
     //  The repository of subscriptions.
-#ifdef ZMQ_USE_RADIX_TREE
+#ifdef ZLINK_USE_RADIX_TREE
     radix_tree_t _subscriptions;
 #else
     trie_with_size_t _subscriptions;
@@ -86,12 +86,12 @@ class xsub_t : public socket_base_t
     //  of multipart message.
     bool _process_subscribe;
 
-    //  This option is enabled with ZMQ_ONLY_FIRST_SUBSCRIBE.
+    //  This option is enabled with ZLINK_ONLY_FIRST_SUBSCRIBE.
     //  If true, messages following subscribe/unsubscribe in a multipart
     //  message are treated as user data regardless of the first byte.
     bool _only_first_subscribe;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (xsub_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (xsub_t)
 };
 }
 

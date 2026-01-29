@@ -12,7 +12,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <string.h>
 
@@ -29,13 +29,13 @@ void tearDown ()
 // Test 1: Basic connect/disconnect
 void test_connect_disconnect ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -51,15 +51,15 @@ void test_connect_disconnect ()
 // Test 2: Multiple rapid connect/disconnect cycles
 void test_connect_stress ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
     const int iterations = 20;
     for (int i = 0; i < iterations; i++) {
-        void *client = test_context_socket (ZMQ_PAIR);
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+        void *client = test_context_socket (ZLINK_PAIR);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
         msleep (10);
         test_context_socket_close_zero_linger (client);
     }
@@ -70,21 +70,21 @@ void test_connect_stress ()
 // Test 3: Connect before bind (reconnect behavior)
 void test_connect_before_bind ()
 {
-    void *client = test_context_socket (ZMQ_PAIR);
-    void *server = test_context_socket (ZMQ_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
 
     //  Set reconnect interval
     int reconnect_ivl = 100;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_RECONNECT_IVL, &reconnect_ivl, sizeof (int)));
+      zlink_setsockopt (client, ZLINK_RECONNECT_IVL, &reconnect_ivl, sizeof (int)));
 
     //  Connect first (before server binds)
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, "tcp://127.0.0.1:15560"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://127.0.0.1:15560"));
 
     msleep (50);
 
     //  Now bind the server
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "tcp://127.0.0.1:15560"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:15560"));
 
     //  Wait for reconnect
     msleep (300);
@@ -101,7 +101,7 @@ void test_connect_before_bind ()
 // Test 4: Multiple clients connecting to same server
 void test_multiple_clients ()
 {
-    void *server = test_context_socket (ZMQ_ROUTER);
+    void *server = test_context_socket (ZLINK_ROUTER);
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
@@ -111,8 +111,8 @@ void test_multiple_clients ()
 
     //  Create and connect all clients
     for (int i = 0; i < num_clients; i++) {
-        clients[i] = test_context_socket (ZMQ_DEALER);
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (clients[i], endpoint));
+        clients[i] = test_context_socket (ZLINK_DEALER);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (clients[i], endpoint));
     }
 
     msleep (SETTLE_TIME);
@@ -126,15 +126,15 @@ void test_multiple_clients ()
 
     //  Server receives all messages (with identity frame)
     for (int i = 0; i < num_clients; i++) {
-        zmq_msg_t identity, msg;
-        zmq_msg_init (&identity);
-        zmq_msg_init (&msg);
+        zlink_msg_t identity, msg;
+        zlink_msg_init (&identity);
+        zlink_msg_init (&msg);
 
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&identity, server, 0));
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&msg, server, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&identity, server, 0));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, server, 0));
 
-        zmq_msg_close (&identity);
-        zmq_msg_close (&msg);
+        zlink_msg_close (&identity);
+        zlink_msg_close (&msg);
     }
 
     //  Clean up
@@ -152,17 +152,17 @@ void test_ipv6_connect ()
         return;
     }
 
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     int ipv6 = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_IPV6, &ipv6, sizeof (int)));
+      zlink_setsockopt (server, ZLINK_IPV6, &ipv6, sizeof (int)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_IPV6, &ipv6, sizeof (int)));
+      zlink_setsockopt (client, ZLINK_IPV6, &ipv6, sizeof (int)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "tcp://[::1]:15561"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, "tcp://[::1]:15561"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://[::1]:15561"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://[::1]:15561"));
 
     msleep (SETTLE_TIME);
 
@@ -177,17 +177,17 @@ void test_ipv6_connect ()
 // Test 6: Connect with immediate flag (should not block)
 void test_connect_immediate ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     int immediate = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_IMMEDIATE, &immediate, sizeof (int)));
+      zlink_setsockopt (client, ZLINK_IMMEDIATE, &immediate, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -202,20 +202,20 @@ void test_connect_immediate ()
 // Test 7: Wildcard port binding
 void test_wildcard_port ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     //  Bind to wildcard port
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:*"));
 
     //  Get the actual bound endpoint
     char endpoint[MAX_SOCKET_STRING];
     size_t endpoint_len = sizeof (endpoint);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (server, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len));
+      zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
 
     //  Connect using the resolved endpoint
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -230,8 +230,8 @@ void test_wildcard_port ()
 // Test 8: Connection with TCP keepalive options
 void test_tcp_keepalive ()
 {
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     //  Set TCP keepalive options
     int tcp_keepalive = 1;
@@ -239,19 +239,19 @@ void test_tcp_keepalive ()
     int tcp_keepalive_cnt = 5;
     int tcp_keepalive_intvl = 10;
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TCP_KEEPALIVE, &tcp_keepalive, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TCP_KEEPALIVE_IDLE, &tcp_keepalive_idle, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TCP_KEEPALIVE_CNT, &tcp_keepalive_cnt, sizeof (int)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TCP_KEEPALIVE_INTVL, &tcp_keepalive_intvl, sizeof (int)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     msleep (SETTLE_TIME);
 
@@ -263,7 +263,7 @@ void test_tcp_keepalive ()
     test_context_socket_close (server);
 }
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO
+#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 void setUp ()
 {
@@ -279,7 +279,7 @@ void test_asio_connect_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio poller not enabled, skipping tests");
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 int main ()
 {
@@ -287,7 +287,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
     RUN_TEST (test_connect_disconnect);
     RUN_TEST (test_connect_stress);
     RUN_TEST (test_connect_before_bind);

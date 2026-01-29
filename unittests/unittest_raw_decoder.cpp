@@ -23,14 +23,14 @@ static void append_frame (std::vector<unsigned char> &buf_,
 {
     const size_t offset = buf_.size ();
     buf_.resize (offset + 4 + size_);
-    zmq::put_uint32 (&buf_[offset], static_cast<uint32_t> (size_));
+    zlink::put_uint32 (&buf_[offset], static_cast<uint32_t> (size_));
     if (size_ > 0)
         memcpy (&buf_[offset + 4], data_, size_);
 }
 
 void test_decode_two_messages_single_buffer ()
 {
-    zmq::raw_decoder_t decoder (64, -1);
+    zlink::raw_decoder_t decoder (64, -1);
 
     std::vector<unsigned char> buf;
     const unsigned char msg1[] = "abc";
@@ -57,10 +57,10 @@ void test_decode_two_messages_single_buffer ()
 
 void test_decode_zero_length ()
 {
-    zmq::raw_decoder_t decoder (64, -1);
+    zlink::raw_decoder_t decoder (64, -1);
 
     unsigned char header[4];
-    zmq::put_uint32 (header, 0);
+    zlink::put_uint32 (header, 0);
     size_t processed = 0;
     const int rc = decoder.decode (header, sizeof (header), processed);
     TEST_ASSERT_EQUAL_INT (1, rc);
@@ -69,10 +69,10 @@ void test_decode_zero_length ()
 
 void test_body_too_large ()
 {
-    zmq::raw_decoder_t decoder (64, 4);
+    zlink::raw_decoder_t decoder (64, 4);
 
     unsigned char header[4];
-    zmq::put_uint32 (header, 8);
+    zlink::put_uint32 (header, 8);
     size_t processed = 0;
     const int rc = decoder.decode (header, sizeof (header), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
@@ -83,14 +83,14 @@ int main (void)
 {
     UNITY_BEGIN ();
 
-    zmq::initialize_network ();
+    zlink::initialize_network ();
     setup_test_environment ();
 
     RUN_TEST (test_decode_two_messages_single_buffer);
     RUN_TEST (test_decode_zero_length);
     RUN_TEST (test_body_too_large);
 
-    zmq::shutdown_network ();
+    zlink::shutdown_network ();
 
     return UNITY_END ();
 }

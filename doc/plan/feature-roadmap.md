@@ -8,7 +8,7 @@
 
 | 우선순위 | 기능 | 설명 | 스펙 문서 |
 |:--------:|------|------|:----------:|
-| 0 | Routing ID 통합 | zmq_routing_id_t 표준 타입, 자동 생성 값 uint32 통일 | [00](00-routing-id-unification.md) |
+| 0 | Routing ID 통합 | zlink_routing_id_t 표준 타입, 자동 생성 값 uint32 통일 | [00](00-routing-id-unification.md) |
 
 ## 핵심 기능 (Core Features)
 

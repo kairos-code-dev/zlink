@@ -11,28 +11,28 @@ void test ()
     char endpoint2[MAX_SOCKET_STRING];
 
     //  First, create an intermediate device
-    void *xpub = test_context_socket (ZMQ_XPUB);
+    void *xpub = test_context_socket (ZLINK_XPUB);
     bind_loopback_ipv4 (xpub, endpoint1, sizeof (endpoint1));
 
-    void *xsub = test_context_socket (ZMQ_XSUB);
+    void *xsub = test_context_socket (ZLINK_XSUB);
     bind_loopback_ipv4 (xsub, endpoint2, sizeof (endpoint2));
 
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_PUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (pub, endpoint2));
+    void *pub = test_context_socket (ZLINK_PUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, endpoint2));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, endpoint1));
+    void *sub = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint1));
 
     //  Subscribe for all messages.
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
 
     //  Pass the subscription upstream through the device
     char buff[32];
     int size;
-    TEST_ASSERT_SUCCESS_ERRNO (size = zmq_recv (xpub, buff, sizeof (buff), 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (xsub, buff, size, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (size = zlink_recv (xpub, buff, sizeof (buff), 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (xsub, buff, size, 0));
 
     //  Wait a bit till the subscription gets to the publisher
     msleep (SETTLE_TIME);
@@ -41,8 +41,8 @@ void test ()
     send_string_expect_success (pub, "", 0);
 
     //  Pass the message downstream through the device
-    TEST_ASSERT_SUCCESS_ERRNO (size = zmq_recv (xsub, buff, sizeof (buff), 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (xpub, buff, size, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (size = zlink_recv (xsub, buff, sizeof (buff), 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (xpub, buff, size, 0));
 
     //  Receive the message in the subscriber
     recv_string_expect_success (sub, "", 0);

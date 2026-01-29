@@ -301,11 +301,11 @@ Q3: REQ/REP, PUSH/PULL, STREAM 소켓을 사용 중인가?
 
 ```bash
 # Linux
-cmake -B build -DBUILD_BENCHMARKS=ON -DZMQ_CXX_STANDARD=20
+cmake -B build -DBUILD_BENCHMARKS=ON -DZLINK_CXX_STANDARD=20
 cmake --build build --config Release
 
 # Windows (PowerShell)
-cmake -B build -DBUILD_BENCHMARKS=ON -DZMQ_CXX_STANDARD=20
+cmake -B build -DBUILD_BENCHMARKS=ON -DZLINK_CXX_STANDARD=20
 cmake --build build --config Release
 ```
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_BLOB_HPP_INCLUDED__
-#define __ZMQ_BLOB_HPP_INCLUDED__
+#ifndef __ZLINK_BLOB_HPP_INCLUDED__
+#define __ZLINK_BLOB_HPP_INCLUDED__
 
 #include "utils/macros.hpp"
 #include "utils/err.hpp"
@@ -12,10 +12,10 @@
 #include <ios>
 
 #if __cplusplus >= 201103L || defined(_MSC_VER) && _MSC_VER > 1700
-#define ZMQ_HAS_MOVE_SEMANTICS
-#define ZMQ_MAP_INSERT_OR_EMPLACE(k, v) emplace (k, v)
-#define ZMQ_PUSH_OR_EMPLACE_BACK emplace_back
-#define ZMQ_MOVE(x) std::move (x)
+#define ZLINK_HAS_MOVE_SEMANTICS
+#define ZLINK_MAP_INSERT_OR_EMPLACE(k, v) emplace (k, v)
+#define ZLINK_PUSH_OR_EMPLACE_BACK emplace_back
+#define ZLINK_MOVE(x) std::move (x)
 #else
 #if defined __SUNPRO_CC
 template <typename K, typename V>
@@ -24,16 +24,16 @@ std::pair<const K, V> make_pair_fix_const (const K &k, const V &v)
     return std::pair<const K, V> (k, v);
 }
 
-#define ZMQ_MAP_INSERT_OR_EMPLACE(k, v) insert (make_pair_fix_const (k, v))
+#define ZLINK_MAP_INSERT_OR_EMPLACE(k, v) insert (make_pair_fix_const (k, v))
 #else
-#define ZMQ_MAP_INSERT_OR_EMPLACE(k, v) insert (std::make_pair (k, v))
+#define ZLINK_MAP_INSERT_OR_EMPLACE(k, v) insert (std::make_pair (k, v))
 #endif
 
-#define ZMQ_PUSH_OR_EMPLACE_BACK push_back
-#define ZMQ_MOVE(x) (x)
+#define ZLINK_PUSH_OR_EMPLACE_BACK push_back
+#define ZLINK_MOVE(x) (x)
 #endif
 
-namespace zmq
+namespace zlink
 {
 struct reference_tag_t
 {
@@ -139,17 +139,17 @@ struct blob_t
         }
     }
 
-#ifdef ZMQ_HAS_MOVE_SEMANTICS
+#ifdef ZLINK_HAS_MOVE_SEMANTICS
     blob_t (const blob_t &) = delete;
     blob_t &operator= (const blob_t &) = delete;
 
-    blob_t (blob_t &&other_) ZMQ_NOEXCEPT : _data (other_._data),
+    blob_t (blob_t &&other_) ZLINK_NOEXCEPT : _data (other_._data),
                                             _size (other_._size),
                                             _owned (other_._owned)
     {
         other_._owned = false;
     }
-    blob_t &operator= (blob_t &&other_) ZMQ_NOEXCEPT
+    blob_t &operator= (blob_t &&other_) ZLINK_NOEXCEPT
     {
         if (this != &other_) {
             clear ();

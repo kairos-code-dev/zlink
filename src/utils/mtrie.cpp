@@ -4,7 +4,7 @@
 #include "utils/mtrie.hpp"
 #include "utils/generic_mtrie_impl.hpp"
 
-namespace zmq
+namespace zlink
 {
 template class generic_mtrie_t<pipe_t>;
 }

@@ -12,7 +12,7 @@
 #include "core/ypipe.hpp"
 #include "core/ypipe_conflate.hpp"
 
-int zmq::pipepair (object_t *parents_[2],
+int zlink::pipepair (object_t *parents_[2],
                    pipe_t *pipes_[2],
                    const int hwms_[2],
                    const bool conflate_[2])
@@ -50,30 +50,30 @@ int zmq::pipepair (object_t *parents_[2],
     return 0;
 }
 
-void zmq::send_routing_id (pipe_t *pipe_, const options_t &options_)
+void zlink::send_routing_id (pipe_t *pipe_, const options_t &options_)
 {
-    zmq::msg_t id;
+    zlink::msg_t id;
     const int rc = id.init_size (options_.routing_id_size);
     errno_assert (rc == 0);
     memcpy (id.data (), options_.routing_id, options_.routing_id_size);
-    id.set_flags (zmq::msg_t::routing_id);
+    id.set_flags (zlink::msg_t::routing_id);
     const bool written = pipe_->write (&id);
-    zmq_assert (written);
+    zlink_assert (written);
     pipe_->flush ();
 }
 
-void zmq::send_hello_msg (pipe_t *pipe_, const options_t &options_)
+void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
 {
-    zmq::msg_t hello;
+    zlink::msg_t hello;
     const int rc =
       hello.init_buffer (&options_.hello_msg[0], options_.hello_msg.size ());
     errno_assert (rc == 0);
     const bool written = pipe_->write (&hello);
-    zmq_assert (written);
+    zlink_assert (written);
     pipe_->flush ();
 }
 
-zmq::pipe_t::pipe_t (object_t *parent_,
+zlink::pipe_t::pipe_t (object_t *parent_,
                      upipe_t *inpipe_,
                      upipe_t *outpipe_,
                      int inhwm_,
@@ -105,48 +105,48 @@ zmq::pipe_t::pipe_t (object_t *parent_,
     _disconnect_msg.init ();
 }
 
-zmq::pipe_t::~pipe_t ()
+zlink::pipe_t::~pipe_t ()
 {
     _disconnect_msg.close ();
 }
 
-void zmq::pipe_t::set_peer (pipe_t *peer_)
+void zlink::pipe_t::set_peer (pipe_t *peer_)
 {
     //  Peer can be set once only.
-    zmq_assert (!_peer);
+    zlink_assert (!_peer);
     _peer = peer_;
 }
 
-void zmq::pipe_t::set_event_sink (i_pipe_events *sink_)
+void zlink::pipe_t::set_event_sink (i_pipe_events *sink_)
 {
     // Sink can be set once only.
-    zmq_assert (!_sink);
+    zlink_assert (!_sink);
     _sink = sink_;
 }
 
-void zmq::pipe_t::set_server_socket_routing_id (
+void zlink::pipe_t::set_server_socket_routing_id (
   uint32_t server_socket_routing_id_)
 {
     _server_socket_routing_id = server_socket_routing_id_;
 }
 
-uint32_t zmq::pipe_t::get_server_socket_routing_id () const
+uint32_t zlink::pipe_t::get_server_socket_routing_id () const
 {
     return _server_socket_routing_id;
 }
 
-void zmq::pipe_t::set_router_socket_routing_id (
+void zlink::pipe_t::set_router_socket_routing_id (
   const blob_t &router_socket_routing_id_)
 {
     _router_socket_routing_id.set_deep_copy (router_socket_routing_id_);
 }
 
-const zmq::blob_t &zmq::pipe_t::get_routing_id () const
+const zlink::blob_t &zlink::pipe_t::get_routing_id () const
 {
     return _router_socket_routing_id;
 }
 
-void zmq::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
+void zlink::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
 {
     blob_t routing_id;
     if (data_ && size_ > 0)
@@ -156,49 +156,49 @@ void zmq::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
         _connected_time = static_cast<uint64_t> (time (NULL));
 }
 
-uint64_t zmq::pipe_t::get_msgs_written () const
+uint64_t zlink::pipe_t::get_msgs_written () const
 {
     return _msgs_written;
 }
 
-uint64_t zmq::pipe_t::get_msgs_read () const
+uint64_t zlink::pipe_t::get_msgs_read () const
 {
     return _msgs_read;
 }
 
-uint64_t zmq::pipe_t::get_bytes_written () const
+uint64_t zlink::pipe_t::get_bytes_written () const
 {
     return _bytes_written;
 }
 
-uint64_t zmq::pipe_t::get_bytes_read () const
+uint64_t zlink::pipe_t::get_bytes_read () const
 {
     return _bytes_read;
 }
 
-uint64_t zmq::pipe_t::get_outbound_queue_count () const
+uint64_t zlink::pipe_t::get_outbound_queue_count () const
 {
     return _msgs_written - _peers_msgs_read;
 }
 
-uint64_t zmq::pipe_t::get_inbound_queue_count () const
+uint64_t zlink::pipe_t::get_inbound_queue_count () const
 {
     if (!_in_pipe)
         return 0;
     return static_cast<uint64_t> (_in_pipe->count ());
 }
 
-uint32_t zmq::pipe_t::get_hwm_reached () const
+uint32_t zlink::pipe_t::get_hwm_reached () const
 {
     return _hwm_reached;
 }
 
-uint64_t zmq::pipe_t::get_connected_time () const
+uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;
 }
 
-bool zmq::pipe_t::check_read ()
+bool zlink::pipe_t::check_read ()
 {
     if (unlikely (!_in_active))
         return false;
@@ -216,7 +216,7 @@ bool zmq::pipe_t::check_read ()
     if (_in_pipe->probe (is_delimiter)) {
         msg_t msg;
         const bool ok = _in_pipe->read (&msg);
-        zmq_assert (ok);
+        zlink_assert (ok);
         process_delimiter ();
         return false;
     }
@@ -224,7 +224,7 @@ bool zmq::pipe_t::check_read ()
     return true;
 }
 
-bool zmq::pipe_t::read (msg_t *msg_)
+bool zlink::pipe_t::read (msg_t *msg_)
 {
     if (unlikely (!_in_active))
         return false;
@@ -240,7 +240,7 @@ bool zmq::pipe_t::read (msg_t *msg_)
         //  If this is a credential, ignore it and receive next message.
         if (unlikely (msg_->is_credential ())) {
             const int rc = msg_->close ();
-            zmq_assert (rc == 0);
+            zlink_assert (rc == 0);
         } else {
             break;
         }
@@ -264,7 +264,7 @@ bool zmq::pipe_t::read (msg_t *msg_)
     return true;
 }
 
-bool zmq::pipe_t::check_write ()
+bool zlink::pipe_t::check_write ()
 {
     if (unlikely (!_out_active || _state != active))
         return false;
@@ -280,7 +280,7 @@ bool zmq::pipe_t::check_write ()
     return true;
 }
 
-bool zmq::pipe_t::write (const msg_t *msg_)
+bool zlink::pipe_t::write (const msg_t *msg_)
 {
     if (unlikely (!check_write ()))
         return false;
@@ -296,20 +296,20 @@ bool zmq::pipe_t::write (const msg_t *msg_)
     return true;
 }
 
-void zmq::pipe_t::rollback () const
+void zlink::pipe_t::rollback () const
 {
     //  Remove incomplete message from the outbound pipe.
     msg_t msg;
     if (_out_pipe) {
         while (_out_pipe->unwrite (&msg)) {
-            zmq_assert (msg.flags () & msg_t::more);
+            zlink_assert (msg.flags () & msg_t::more);
             const int rc = msg.close ();
             errno_assert (rc == 0);
         }
     }
 }
 
-void zmq::pipe_t::flush ()
+void zlink::pipe_t::flush ()
 {
     //  The peer does not exist anymore at this point.
     if (_state == term_ack_sent)
@@ -319,7 +319,7 @@ void zmq::pipe_t::flush ()
         send_activate_read (_peer);
 }
 
-void zmq::pipe_t::process_activate_read ()
+void zlink::pipe_t::process_activate_read ()
 {
     if (!_in_active && (_state == active || _state == waiting_for_delimiter)) {
         _in_active = true;
@@ -327,7 +327,7 @@ void zmq::pipe_t::process_activate_read ()
     }
 }
 
-void zmq::pipe_t::process_activate_write (uint64_t msgs_read_)
+void zlink::pipe_t::process_activate_write (uint64_t msgs_read_)
 {
     //  Remember the peer's message sequence number.
     _peers_msgs_read = msgs_read_;
@@ -338,11 +338,11 @@ void zmq::pipe_t::process_activate_write (uint64_t msgs_read_)
     }
 }
 
-void zmq::pipe_t::process_hiccup (void *pipe_)
+void zlink::pipe_t::process_hiccup (void *pipe_)
 {
     //  Destroy old outpipe. Note that the read end of the pipe was already
     //  migrated to this thread.
-    zmq_assert (_out_pipe);
+    zlink_assert (_out_pipe);
     _out_pipe->flush ();
     msg_t msg;
     while (_out_pipe->read (&msg)) {
@@ -351,10 +351,10 @@ void zmq::pipe_t::process_hiccup (void *pipe_)
         const int rc = msg.close ();
         errno_assert (rc == 0);
     }
-    LIBZMQ_DELETE (_out_pipe);
+    LIBZLINK_DELETE (_out_pipe);
 
     //  Plug in the new outpipe.
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
     _out_pipe = static_cast<upipe_t *> (pipe_);
     _out_active = true;
 
@@ -363,9 +363,9 @@ void zmq::pipe_t::process_hiccup (void *pipe_)
         _sink->hiccuped (this);
 }
 
-void zmq::pipe_t::process_pipe_term ()
+void zlink::pipe_t::process_pipe_term ()
 {
-    zmq_assert (_state == active || _state == delimiter_received
+    zlink_assert (_state == active || _state == delimiter_received
                 || _state == term_req_sent1);
 
     //  This is the simple case of peer-induced termination. If there are no
@@ -401,10 +401,10 @@ void zmq::pipe_t::process_pipe_term ()
     }
 }
 
-void zmq::pipe_t::process_pipe_term_ack ()
+void zlink::pipe_t::process_pipe_term_ack ()
 {
     //  Notify the user that all the references to the pipe should be dropped.
-    zmq_assert (_sink);
+    zlink_assert (_sink);
     _sink->pipe_terminated (this);
 
     //  In term_ack_sent and term_req_sent2 states there's nothing to do.
@@ -415,7 +415,7 @@ void zmq::pipe_t::process_pipe_term_ack ()
         _out_pipe = NULL;
         send_pipe_term_ack (_peer);
     } else
-        zmq_assert (_state == term_ack_sent || _state == term_req_sent2);
+        zlink_assert (_state == term_ack_sent || _state == term_req_sent2);
 
     //  We'll deallocate the inbound pipe, the peer will deallocate the outbound
     //  pipe (which is an inbound pipe from its point of view).
@@ -431,23 +431,23 @@ void zmq::pipe_t::process_pipe_term_ack ()
         }
     }
 
-    LIBZMQ_DELETE (_in_pipe);
+    LIBZLINK_DELETE (_in_pipe);
 
     //  Deallocate the pipe object
     delete this;
 }
 
-void zmq::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)
+void zlink::pipe_t::process_pipe_hwm (int inhwm_, int outhwm_)
 {
     set_hwms (inhwm_, outhwm_);
 }
 
-void zmq::pipe_t::set_nodelay ()
+void zlink::pipe_t::set_nodelay ()
 {
     this->_delay = false;
 }
 
-void zmq::pipe_t::terminate (bool delay_)
+void zlink::pipe_t::terminate (bool delay_)
 {
     //  Overload the value specified at pipe creation.
     _delay = delay_;
@@ -488,7 +488,7 @@ void zmq::pipe_t::terminate (bool delay_)
     }
     //  There are no other states.
     else {
-        zmq_assert (false);
+        zlink_assert (false);
     }
 
     //  Stop outbound flow of messages.
@@ -507,12 +507,12 @@ void zmq::pipe_t::terminate (bool delay_)
     }
 }
 
-bool zmq::pipe_t::is_delimiter (const msg_t &msg_)
+bool zlink::pipe_t::is_delimiter (const msg_t &msg_)
 {
     return msg_.is_delimiter ();
 }
 
-int zmq::pipe_t::compute_lwm (int hwm_)
+int zlink::pipe_t::compute_lwm (int hwm_)
 {
     //  Compute the low water mark. Following point should be taken
     //  into consideration:
@@ -535,9 +535,9 @@ int zmq::pipe_t::compute_lwm (int hwm_)
     return result;
 }
 
-void zmq::pipe_t::process_delimiter ()
+void zlink::pipe_t::process_delimiter ()
 {
-    zmq_assert (_state == active || _state == waiting_for_delimiter);
+    zlink_assert (_state == active || _state == waiting_for_delimiter);
 
     if (_state == active)
         _state = delimiter_received;
@@ -549,7 +549,7 @@ void zmq::pipe_t::process_delimiter ()
     }
 }
 
-void zmq::pipe_t::hiccup ()
+void zlink::pipe_t::hiccup ()
 {
     //  If termination is already under way do nothing.
     if (_state != active)
@@ -571,7 +571,7 @@ void zmq::pipe_t::hiccup ()
     send_hiccup (_peer, _in_pipe);
 }
 
-void zmq::pipe_t::set_hwms (int inhwm_, int outhwm_)
+void zlink::pipe_t::set_hwms (int inhwm_, int outhwm_)
 {
     int in = inhwm_ + std::max (_in_hwm_boost, 0);
     int out = outhwm_ + std::max (_out_hwm_boost, 0);
@@ -587,35 +587,35 @@ void zmq::pipe_t::set_hwms (int inhwm_, int outhwm_)
     _hwm = out;
 }
 
-void zmq::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)
+void zlink::pipe_t::set_hwms_boost (int inhwmboost_, int outhwmboost_)
 {
     _in_hwm_boost = inhwmboost_;
     _out_hwm_boost = outhwmboost_;
 }
 
-bool zmq::pipe_t::check_hwm () const
+bool zlink::pipe_t::check_hwm () const
 {
     const bool full =
       _hwm > 0 && _msgs_written - _peers_msgs_read >= uint64_t (_hwm);
     return !full;
 }
 
-void zmq::pipe_t::send_hwms_to_peer (int inhwm_, int outhwm_)
+void zlink::pipe_t::send_hwms_to_peer (int inhwm_, int outhwm_)
 {
     send_pipe_hwm (_peer, inhwm_, outhwm_);
 }
 
-void zmq::pipe_t::set_endpoint_pair (zmq::endpoint_uri_pair_t endpoint_pair_)
+void zlink::pipe_t::set_endpoint_pair (zlink::endpoint_uri_pair_t endpoint_pair_)
 {
-    _endpoint_pair = ZMQ_MOVE (endpoint_pair_);
+    _endpoint_pair = ZLINK_MOVE (endpoint_pair_);
 }
 
-const zmq::endpoint_uri_pair_t &zmq::pipe_t::get_endpoint_pair () const
+const zlink::endpoint_uri_pair_t &zlink::pipe_t::get_endpoint_pair () const
 {
     return _endpoint_pair;
 }
 
-void zmq::pipe_t::send_stats_to_peer (own_t *socket_base_)
+void zlink::pipe_t::send_stats_to_peer (own_t *socket_base_)
 {
     endpoint_uri_pair_t *ep =
       new (std::nothrow) endpoint_uri_pair_t (_endpoint_pair);
@@ -623,7 +623,7 @@ void zmq::pipe_t::send_stats_to_peer (own_t *socket_base_)
                           ep);
 }
 
-void zmq::pipe_t::process_pipe_peer_stats (uint64_t queue_count_,
+void zlink::pipe_t::process_pipe_peer_stats (uint64_t queue_count_,
                                            own_t *socket_base_,
                                            endpoint_uri_pair_t *endpoint_pair_)
 {
@@ -631,7 +631,7 @@ void zmq::pipe_t::process_pipe_peer_stats (uint64_t queue_count_,
                              _msgs_written - _peers_msgs_read, endpoint_pair_);
 }
 
-void zmq::pipe_t::send_disconnect_msg ()
+void zlink::pipe_t::send_disconnect_msg ()
 {
     if (_disconnect_msg.size () > 0 && _out_pipe) {
         // Rollback any incomplete message in the pipe, and push the disconnect message.
@@ -643,7 +643,7 @@ void zmq::pipe_t::send_disconnect_msg ()
     }
 }
 
-void zmq::pipe_t::set_disconnect_msg (
+void zlink::pipe_t::set_disconnect_msg (
   const std::vector<unsigned char> &disconnect_)
 {
     _disconnect_msg.close ();
@@ -652,7 +652,7 @@ void zmq::pipe_t::set_disconnect_msg (
     errno_assert (rc == 0);
 }
 
-void zmq::pipe_t::send_hiccup_msg (const std::vector<unsigned char> &hiccup_)
+void zlink::pipe_t::send_hiccup_msg (const std::vector<unsigned char> &hiccup_)
 {
     if (!hiccup_.empty () && _out_pipe) {
         msg_t msg;

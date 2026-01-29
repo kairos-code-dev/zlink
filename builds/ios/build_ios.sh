@@ -1,17 +1,17 @@
 #!/bin/sh
-# This is a first attempt to create a script to libzmq for iOS >= 13.5, including arm64
-# inspired on https://raw.githubusercontent.com/drewcrawford/libzmq-ios/master/libzmq.sh
+# This is a first attempt to create a script to libzlink for iOS >= 13.5, including arm64
+# inspired on https://raw.githubusercontent.com/drewcrawford/libzlink-ios/master/libzlink.sh
 
 set -e
-LIBNAME="libzmq.a"
+LIBNAME="libzlink.a"
 ARCHS=${ARCHS:-"armv7 armv7s arm64 x86_64"}
 DEVELOPER=$(xcode-select -print-path)
 LIPO=$(xcrun -sdk iphoneos -find lipo)
 SCRIPTDIR=$( (cd -P $(dirname $0) && pwd) )
 DISTLIBDIR="${SCRIPTDIR}/lib"
 DSTDIR=${SCRIPTDIR}
-BUILDDIR="${DSTDIR}/libzmq_build"
-DISTDIR="${DSTDIR}/libzmq_dist"
+BUILDDIR="${DSTDIR}/libzlink_build"
+DISTDIR="${DSTDIR}/libzlink_dist"
 LIBDIR=$(dirname $(dirname ${SCRIPTDIR}))
 SDK=$(xcodebuild -showsdks \
     | grep iphoneos | sort | tail -n 1 | awk '{print substr($NF, 9)}'

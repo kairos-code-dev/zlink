@@ -8,15 +8,15 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_basic ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
+    void *pub = test_context_socket (ZLINK_XPUB);
     int manual = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub, ZMQ_XPUB_MANUAL, &manual, 4));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (pub, "inproc://soname"));
+      zlink_setsockopt (pub, ZLINK_XPUB_MANUAL, &manual, 4));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, "inproc://soname"));
+    void *sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Subscribe for A
     const char subscription[] = {1, 'A', 0};
@@ -26,13 +26,13 @@ void test_basic ()
     recv_string_expect_success (pub, subscription, 0);
 
     // Subscribe socket for B instead
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_SUBSCRIBE, "B", 1));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SUBSCRIBE, "B", 1));
 
     // Sending A message and B Message
     send_string_expect_success (pub, "A", 0);
     send_string_expect_success (pub, "B", 0);
 
-    recv_string_expect_success (sub, "B", ZMQ_DONTWAIT);
+    recv_string_expect_success (sub, "B", ZLINK_DONTWAIT);
 
     //  Clean up.
     test_context_socket_close (pub);
@@ -42,17 +42,17 @@ void test_basic ()
 void test_unsubscribe_manual ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (pub, "inproc://soname"));
+    void *pub = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  set pub socket options
     int manual = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub, ZMQ_XPUB_MANUAL, &manual, sizeof (manual)));
+      zlink_setsockopt (pub, ZLINK_XPUB_MANUAL, &manual, sizeof (manual)));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, "inproc://soname"));
+    void *sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Subscribe for A
     const uint8_t subscription1[] = {1, 'A'};
@@ -68,13 +68,13 @@ void test_unsubscribe_manual ()
     recv_array_expect_success (pub, subscription1, 0);
 
     // Subscribe socket for XA instead
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_SUBSCRIBE, "XA", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SUBSCRIBE, "XA", 2));
 
     // Receive subscription "B" from subscriber
     recv_array_expect_success (pub, subscription2, 0);
 
     // Subscribe socket for XB instead
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_SUBSCRIBE, "XB", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SUBSCRIBE, "XB", 2));
 
     //  Unsubscribe from A
     const uint8_t unsubscription1[2] = {0, 'A'};
@@ -84,14 +84,14 @@ void test_unsubscribe_manual ()
     recv_array_expect_success (pub, unsubscription1, 0);
 
     // Unsubscribe socket from XA instead
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_UNSUBSCRIBE, "XA", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_UNSUBSCRIBE, "XA", 2));
 
     // Sending messages XA, XB
     send_string_expect_success (pub, "XA", 0);
     send_string_expect_success (pub, "XB", 0);
 
     // Subscriber should receive XB only
-    recv_string_expect_success (sub, "XB", ZMQ_DONTWAIT);
+    recv_string_expect_success (sub, "XB", ZLINK_DONTWAIT);
 
     // Close subscriber
     test_context_socket_close (sub);
@@ -100,12 +100,12 @@ void test_unsubscribe_manual ()
     const char unsubscription2[2] = {0, 'B'};
     TEST_ASSERT_EQUAL_INT (
       sizeof unsubscription2,
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (pub, buffer, sizeof buffer, 0)));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (pub, buffer, sizeof buffer, 0)));
     TEST_ASSERT_EQUAL_INT8_ARRAY (unsubscription2, buffer,
                                   sizeof unsubscription2);
 
     // Unsubscribe socket from XB instead
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_UNSUBSCRIBE, "XB", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_UNSUBSCRIBE, "XB", 2));
 
     //  Clean up.
     test_context_socket_close (pub);
@@ -122,77 +122,77 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     int manual = 1;
 
     // proxy frontend
-    void *xsub_proxy = test_context_socket (ZMQ_XSUB);
+    void *xsub_proxy = test_context_socket (ZLINK_XSUB);
     bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
                         sizeof my_endpoint_frontend);
 
     // proxy backend
-    void *xpub_proxy = test_context_socket (ZMQ_XPUB);
+    void *xpub_proxy = test_context_socket (ZLINK_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_XPUB_MANUAL, &manual, 4));
+      zlink_setsockopt (xpub_proxy, ZLINK_XPUB_MANUAL, &manual, 4));
     bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
                         sizeof my_endpoint_backend);
 
     // publisher
-    void *pub = test_context_socket (ZMQ_PUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (pub, my_endpoint_frontend));
+    void *pub = test_context_socket (ZLINK_PUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, my_endpoint_frontend));
 
     // first subscriber subscribes
-    void *sub1 = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub1, my_endpoint_backend));
+    void *sub1 = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub1, ZMQ_SUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (sub1, ZLINK_SUBSCRIBE, topic_buff, 1));
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy reroutes and confirms subscriptions
     const uint8_t subscription[2] = {1, *topic_buff};
-    recv_array_expect_success (xpub_proxy, subscription, ZMQ_DONTWAIT);
+    recv_array_expect_success (xpub_proxy, subscription, ZLINK_DONTWAIT);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_SUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_SUBSCRIBE, topic_buff, 1));
     send_array_expect_success (xsub_proxy, subscription, 0);
 
     // second subscriber subscribes
-    void *sub2 = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub2, my_endpoint_backend));
+    void *sub2 = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, my_endpoint_backend));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sub2, ZMQ_SUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (sub2, ZLINK_SUBSCRIBE, topic_buff, 1));
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy reroutes
-    recv_array_expect_success (xpub_proxy, subscription, ZMQ_DONTWAIT);
+    recv_array_expect_success (xpub_proxy, subscription, ZLINK_DONTWAIT);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_SUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_SUBSCRIBE, topic_buff, 1));
     send_array_expect_success (xsub_proxy, subscription, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // let publisher send a msg
-    send_array_expect_success (pub, topic_buff, ZMQ_SNDMORE);
+    send_array_expect_success (pub, topic_buff, ZLINK_SNDMORE);
     send_array_expect_success (pub, payload_buff, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy reroutes data messages to subscribers
-    recv_array_expect_success (xsub_proxy, topic_buff, ZMQ_DONTWAIT);
-    recv_array_expect_success (xsub_proxy, payload_buff, ZMQ_DONTWAIT);
-    send_array_expect_success (xpub_proxy, topic_buff, ZMQ_SNDMORE);
+    recv_array_expect_success (xsub_proxy, topic_buff, ZLINK_DONTWAIT);
+    recv_array_expect_success (xsub_proxy, payload_buff, ZLINK_DONTWAIT);
+    send_array_expect_success (xpub_proxy, topic_buff, ZLINK_SNDMORE);
     send_array_expect_success (xpub_proxy, payload_buff, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // each subscriber should now get a message
-    recv_array_expect_success (sub2, topic_buff, ZMQ_DONTWAIT);
-    recv_array_expect_success (sub2, payload_buff, ZMQ_DONTWAIT);
+    recv_array_expect_success (sub2, topic_buff, ZLINK_DONTWAIT);
+    recv_array_expect_success (sub2, payload_buff, ZLINK_DONTWAIT);
 
-    recv_array_expect_success (sub1, topic_buff, ZMQ_DONTWAIT);
-    recv_array_expect_success (sub1, payload_buff, ZMQ_DONTWAIT);
+    recv_array_expect_success (sub1, topic_buff, ZLINK_DONTWAIT);
+    recv_array_expect_success (sub1, payload_buff, ZLINK_DONTWAIT);
 
     //  Disconnect both subscribers
     test_context_socket_close (sub1);
@@ -205,20 +205,20 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     const uint8_t unsubscription[] = {0, *topic_buff};
     recv_array_expect_success (xpub_proxy, unsubscription, 0);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_UNSUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_UNSUBSCRIBE, topic_buff, 1));
     send_array_expect_success (xsub_proxy, unsubscription, 0);
 
     // should receive another unsubscribe msg
     recv_array_expect_success (xpub_proxy, unsubscription, 0);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_UNSUBSCRIBE, topic_buff, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_UNSUBSCRIBE, topic_buff, 1));
     send_array_expect_success (xsub_proxy, unsubscription, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // let publisher send a msg
-    send_array_expect_success (pub, topic_buff, ZMQ_SNDMORE);
+    send_array_expect_success (pub, topic_buff, ZLINK_SNDMORE);
     send_array_expect_success (pub, payload_buff, 0);
 
     // wait
@@ -227,7 +227,7 @@ void test_xpub_proxy_unsubscribe_on_disconnect ()
     // nothing should come to the proxy
     char buffer[1];
     TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zmq_recv (xsub_proxy, buffer, sizeof buffer, ZMQ_DONTWAIT));
+      EAGAIN, zlink_recv (xsub_proxy, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     test_context_socket_close (pub);
     test_context_socket_close (xpub_proxy);
@@ -246,86 +246,86 @@ void test_missing_subscriptions ()
     int manual = 1;
 
     // proxy frontend
-    void *xsub_proxy = test_context_socket (ZMQ_XSUB);
+    void *xsub_proxy = test_context_socket (ZLINK_XSUB);
     bind_loopback_ipv4 (xsub_proxy, my_endpoint_frontend,
                         sizeof my_endpoint_frontend);
 
     // proxy backend
-    void *xpub_proxy = test_context_socket (ZMQ_XPUB);
+    void *xpub_proxy = test_context_socket (ZLINK_XPUB);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_XPUB_MANUAL, &manual, 4));
+      zlink_setsockopt (xpub_proxy, ZLINK_XPUB_MANUAL, &manual, 4));
     bind_loopback_ipv4 (xpub_proxy, my_endpoint_backend,
                         sizeof my_endpoint_backend);
 
     // publisher
-    void *pub = test_context_socket (ZMQ_PUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (pub, my_endpoint_frontend));
+    void *pub = test_context_socket (ZLINK_PUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (pub, my_endpoint_frontend));
 
     // Here's the problem: because subscribers subscribe in quick succession,
     // the proxy is unable to confirm the first subscription before receiving
     // the second. This causes the first subscription to get lost.
 
     // first subscriber
-    void *sub1 = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub1, my_endpoint_backend));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub1, ZMQ_SUBSCRIBE, topic1, 1));
+    void *sub1 = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub1, my_endpoint_backend));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub1, ZLINK_SUBSCRIBE, topic1, 1));
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy now reroutes and confirms subscriptions
     const uint8_t subscription1[] = {1, static_cast<uint8_t> (topic1[0])};
-    recv_array_expect_success (xpub_proxy, subscription1, ZMQ_DONTWAIT);
+    recv_array_expect_success (xpub_proxy, subscription1, ZLINK_DONTWAIT);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_SUBSCRIBE, topic1, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_SUBSCRIBE, topic1, 1));
     send_array_expect_success (xsub_proxy, subscription1, 0);
 
     // second subscriber
-    void *sub2 = test_context_socket (ZMQ_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub2, my_endpoint_backend));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub2, ZMQ_SUBSCRIBE, topic2, 1));
+    void *sub2 = test_context_socket (ZLINK_SUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub2, my_endpoint_backend));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub2, ZLINK_SUBSCRIBE, topic2, 1));
 
     // wait
     msleep (SETTLE_TIME);
 
     const uint8_t subscription2[] = {1, static_cast<uint8_t> (topic2[0])};
-    recv_array_expect_success (xpub_proxy, subscription2, ZMQ_DONTWAIT);
+    recv_array_expect_success (xpub_proxy, subscription2, ZLINK_DONTWAIT);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (xpub_proxy, ZMQ_SUBSCRIBE, topic2, 1));
+      zlink_setsockopt (xpub_proxy, ZLINK_SUBSCRIBE, topic2, 1));
     send_array_expect_success (xsub_proxy, subscription2, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // let publisher send 2 msgs, each with its own topic_buff
-    send_string_expect_success (pub, topic1, ZMQ_SNDMORE);
+    send_string_expect_success (pub, topic1, ZLINK_SNDMORE);
     send_string_expect_success (pub, payload, 0);
-    send_string_expect_success (pub, topic2, ZMQ_SNDMORE);
+    send_string_expect_success (pub, topic2, ZLINK_SNDMORE);
     send_string_expect_success (pub, payload, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // proxy reroutes data messages to subscribers
-    recv_string_expect_success (xsub_proxy, topic1, ZMQ_DONTWAIT);
-    recv_string_expect_success (xsub_proxy, payload, ZMQ_DONTWAIT);
-    send_string_expect_success (xpub_proxy, topic1, ZMQ_SNDMORE);
+    recv_string_expect_success (xsub_proxy, topic1, ZLINK_DONTWAIT);
+    recv_string_expect_success (xsub_proxy, payload, ZLINK_DONTWAIT);
+    send_string_expect_success (xpub_proxy, topic1, ZLINK_SNDMORE);
     send_string_expect_success (xpub_proxy, payload, 0);
 
-    recv_string_expect_success (xsub_proxy, topic2, ZMQ_DONTWAIT);
-    recv_string_expect_success (xsub_proxy, payload, ZMQ_DONTWAIT);
-    send_string_expect_success (xpub_proxy, topic2, ZMQ_SNDMORE);
+    recv_string_expect_success (xsub_proxy, topic2, ZLINK_DONTWAIT);
+    recv_string_expect_success (xsub_proxy, payload, ZLINK_DONTWAIT);
+    send_string_expect_success (xpub_proxy, topic2, ZLINK_SNDMORE);
     send_string_expect_success (xpub_proxy, payload, 0);
 
     // wait
     msleep (SETTLE_TIME);
 
     // each subscriber should now get a message
-    recv_string_expect_success (sub2, topic2, ZMQ_DONTWAIT);
-    recv_string_expect_success (sub2, payload, ZMQ_DONTWAIT);
+    recv_string_expect_success (sub2, topic2, ZLINK_DONTWAIT);
+    recv_string_expect_success (sub2, payload, ZLINK_DONTWAIT);
 
-    recv_string_expect_success (sub1, topic1, ZMQ_DONTWAIT);
-    recv_string_expect_success (sub1, payload, ZMQ_DONTWAIT);
+    recv_string_expect_success (sub1, topic1, ZLINK_DONTWAIT);
+    recv_string_expect_success (sub1, payload, ZLINK_DONTWAIT);
 
     //  Clean up
     test_context_socket_close (sub1);
@@ -340,15 +340,15 @@ void test_unsubscribe_cleanup ()
     char my_endpoint[MAX_SOCKET_STRING];
 
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
+    void *pub = test_context_socket (ZLINK_XPUB);
     int manual = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (pub, ZMQ_XPUB_MANUAL, &manual, 4));
+      zlink_setsockopt (pub, ZLINK_XPUB_MANUAL, &manual, 4));
     bind_loopback_ipv4 (pub, my_endpoint, sizeof my_endpoint);
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, my_endpoint));
+    void *sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, my_endpoint));
 
     //  Subscribe for A
     const uint8_t subscription1[2] = {1, 'A'};
@@ -357,7 +357,7 @@ void test_unsubscribe_cleanup ()
 
     // Receive subscriptions from subscriber
     recv_array_expect_success (pub, subscription1, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_SUBSCRIBE, "XA", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SUBSCRIBE, "XA", 2));
 
     // send 2 messages
     send_string_expect_success (pub, "XA", 0);
@@ -369,7 +369,7 @@ void test_unsubscribe_cleanup ()
     // should be nothing left in the queue
     char buffer[2];
     TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zmq_recv (sub, buffer, sizeof buffer, ZMQ_DONTWAIT));
+      EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     // close the socket
     test_context_socket_close (sub);
@@ -380,11 +380,11 @@ void test_unsubscribe_cleanup ()
 
     // this doesn't really do anything
     // there is no last_pipe set it will just fail silently
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_UNSUBSCRIBE, "XA", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_UNSUBSCRIBE, "XA", 2));
 
     // reconnect
-    sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, my_endpoint));
+    sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, my_endpoint));
 
     // send a subscription for B
     const uint8_t subscription2[2] = {1, 'B'};
@@ -392,7 +392,7 @@ void test_unsubscribe_cleanup ()
 
     // receive the subscription, overwrite it to XB
     recv_array_expect_success (pub, subscription2, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_SUBSCRIBE, "XB", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_SUBSCRIBE, "XB", 2));
 
     // send 2 messages
     send_string_expect_success (pub, "XA", 0);
@@ -403,7 +403,7 @@ void test_unsubscribe_cleanup ()
 
     // should be nothing left in the queue
     TEST_ASSERT_FAILURE_ERRNO (
-      EAGAIN, zmq_recv (sub, buffer, sizeof buffer, ZMQ_DONTWAIT));
+      EAGAIN, zlink_recv (sub, buffer, sizeof buffer, ZLINK_DONTWAIT));
 
     //  Clean up.
     test_context_socket_close (pub);
@@ -413,12 +413,12 @@ void test_unsubscribe_cleanup ()
 void test_user_message ()
 {
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (pub, "inproc://soname"));
+    void *pub = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, "inproc://soname"));
+    void *sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
 
     //  Send some data that is neither sub nor unsub
     const char subscription[] = {2, 'A', 0};
@@ -432,22 +432,22 @@ void test_user_message ()
     test_context_socket_close (sub);
 }
 
-#ifdef ZMQ_ONLY_FIRST_SUBSCRIBE
+#ifdef ZLINK_ONLY_FIRST_SUBSCRIBE
 void test_user_message_multi ()
 {
     const int only_first_subscribe = 1;
 
     //  Create a publisher
-    void *pub = test_context_socket (ZMQ_XPUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (pub, "inproc://soname"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (pub, ZMQ_ONLY_FIRST_SUBSCRIBE,
+    void *pub = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (pub, "inproc://soname"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (pub, ZLINK_ONLY_FIRST_SUBSCRIBE,
                                                &only_first_subscribe,
                                                sizeof (only_first_subscribe)));
 
     //  Create a subscriber
-    void *sub = test_context_socket (ZMQ_XSUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, "inproc://soname"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_ONLY_FIRST_SUBSCRIBE,
+    void *sub = test_context_socket (ZLINK_XSUB);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, "inproc://soname"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_ONLY_FIRST_SUBSCRIBE,
                                                &only_first_subscribe,
                                                sizeof (only_first_subscribe)));
 
@@ -461,7 +461,7 @@ void test_user_message_multi ()
     const uint8_t msg_1b[] = {1, 'C', 'D'};
 
     // Test second message starting with 0
-    send_array_expect_success (sub, msg_common, ZMQ_SNDMORE);
+    send_array_expect_success (sub, msg_common, ZLINK_SNDMORE);
     send_array_expect_success (sub, msg_0a, 0);
 
     // Receive messages from subscriber
@@ -469,7 +469,7 @@ void test_user_message_multi ()
     recv_array_expect_success (pub, msg_0a, 0);
 
     // Test second message starting with 1
-    send_array_expect_success (sub, msg_common, ZMQ_SNDMORE);
+    send_array_expect_success (sub, msg_common, ZLINK_SNDMORE);
     send_array_expect_success (sub, msg_1a, 0);
 
     // Receive messages from subscriber
@@ -477,12 +477,12 @@ void test_user_message_multi ()
     recv_array_expect_success (pub, msg_1a, 0);
 
     // Test first message starting with 1
-    send_array_expect_success (sub, msg_1a, ZMQ_SNDMORE);
+    send_array_expect_success (sub, msg_1a, ZLINK_SNDMORE);
     send_array_expect_success (sub, msg_1b, 0);
     recv_array_expect_success (pub, msg_1a, 0);
     recv_array_expect_success (pub, msg_1b, 0);
 
-    send_array_expect_success (sub, msg_0a, ZMQ_SNDMORE);
+    send_array_expect_success (sub, msg_0a, ZLINK_SNDMORE);
     send_array_expect_success (sub, msg_0b, 0);
     recv_array_expect_success (pub, msg_0a, 0);
     recv_array_expect_success (pub, msg_0b, 0);
@@ -504,7 +504,7 @@ int main ()
     RUN_TEST (test_missing_subscriptions);
     RUN_TEST (test_unsubscribe_cleanup);
     RUN_TEST (test_user_message);
-#ifdef ZMQ_ONLY_FIRST_SUBSCRIBE
+#ifdef ZLINK_ONLY_FIRST_SUBSCRIBE
     RUN_TEST (test_user_message_multi);
 #endif
 

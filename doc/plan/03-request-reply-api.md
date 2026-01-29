@@ -54,14 +54,14 @@ zlink는 기존의 **REQ/REP 소켓을 제거**하고, ROUTER/DEALER 소켓에 R
 
 | 소켓 타입 | 역할 | 설명 |
 |----------|------|------|
-| **ZMQ_ROUTER (thread-safe)** | Server / Client | 가장 범용적. `reply()`로 특정 클라이언트에 응답, `request(target)`으로 특정 서버에 요청 |
-| **ZMQ_DEALER (thread-safe)** | Client | 주로 클라이언트용. `request()` 호출 시 연결된 피어들에게 로드 밸런싱 |
+| **ZLINK_ROUTER (thread-safe)** | Server / Client | 가장 범용적. `reply()`로 특정 클라이언트에 응답, `request(target)`으로 특정 서버에 요청 |
+| **ZLINK_DEALER (thread-safe)** | Client | 주로 클라이언트용. `request()` 호출 시 연결된 피어들에게 로드 밸런싱 |
 
 > **주의**:
 > - PUB, SUB, PAIR, XPUB, XSUB 등 다른 소켓 타입에서는 이 API를 사용할 수 없다.
 > - thread-safe가 아닌 소켓에서 호출 시 `ENOTSUP`로 실패한다.
-> - 생성은 `zmq_socket_threadsafe(ctx, type)` 사용을 권장한다.
-> - 대상 지정 API는 `zmq_routing_id_t` 기반으로 동작한다.
+> - 생성은 `zlink_socket_threadsafe(ctx, type)` 사용을 권장한다.
+> - 대상 지정 API는 `zlink_routing_id_t` 기반으로 동작한다.
 
 ---
 
@@ -134,8 +134,8 @@ Client                          Server
 - `group_id=0`은 기본 그룹(기존 동작과 동일)으로 취급한다.
 - 그룹 내 첫 요청이 지연/타임아웃되면 **해당 그룹이 대기**하므로,
   타임아웃 설정이 필수다.
-- C++ 오버로드에서는 timeout 생략 시 `ZMQ_REQUEST_TIMEOUT` 기본값(5000ms)이 적용된다.
-- C API에서는 timeout_ms에 `ZMQ_REQUEST_TIMEOUT_DEFAULT`를 전달하면 기본값이 적용된다.
+- C++ 오버로드에서는 timeout 생략 시 `ZLINK_REQUEST_TIMEOUT` 기본값(5000ms)이 적용된다.
+- C API에서는 timeout_ms에 `ZLINK_REQUEST_TIMEOUT_DEFAULT`를 전달하면 기본값이 적용된다.
 
 ---
 
@@ -144,10 +144,10 @@ Client                          Server
 ### 4.1 C++ API
 
 ```cpp
-namespace zmq {
+namespace zlink {
 
-// routing_id는 zmq_routing_id_t 기반으로 처리
-using routing_id_t = zmq_routing_id_t;
+// routing_id는 zlink_routing_id_t 기반으로 처리
+using routing_id_t = zlink_routing_id_t;
 using msg_vec_t = std::vector<msg_t>;
 
 class thread_safe_socket_t {
@@ -293,7 +293,7 @@ public:
     void cancel_all_requests();
 };
 
-} // namespace zmq
+} // namespace zlink
 ```
 
 **C++ 소유권 규칙 요약:**
@@ -302,16 +302,16 @@ public:
 - 응답을 보관하려면 콜백 내부에서 **복사/이동**한다.
 - `msg_t` 오버로드는 **단일 프레임 전용**이며, multipart 응답은 첫 프레임만 전달됨.
 
-### 4.2 C API 상세 명세 (zmq.h 추가 내용)
+### 4.2 C API 상세 명세 (zlink.h 추가 내용)
 
 ```c
 /* ============================================================
  * Request/Reply API - Thread-safe Requirement
  * ============================================================ *
  *
- * 모든 zmq_request* / zmq_reply* / zmq_request_recv 계열은
+ * 모든 zlink_request* / zlink_reply* / zlink_request_recv 계열은
  * thread-safe 소켓에서만 동작한다.
- * (zmq_socket_threadsafe()로 생성된 소켓)
+ * (zlink_socket_threadsafe()로 생성된 소켓)
  */
 
 /* ============================================================
@@ -319,14 +319,14 @@ public:
  * ============================================================ */
 
 /* 요청 관련 소켓 옵션 */
-#define ZMQ_REQUEST_TIMEOUT         90   /* 기본 요청 타임아웃 (ms, 기본값=5000) */
-#define ZMQ_REQUEST_CORRELATE       91   /* 요청-응답 자동 상관관계 활성화 */
+#define ZLINK_REQUEST_TIMEOUT         90   /* 기본 요청 타임아웃 (ms, 기본값=5000) */
+#define ZLINK_REQUEST_CORRELATE       91   /* 요청-응답 자동 상관관계 활성화 */
 /* 요청 타임아웃 상수 */
-#define ZMQ_REQUEST_TIMEOUT_DEFAULT -2   /* 소켓 기본값 사용 */
+#define ZLINK_REQUEST_TIMEOUT_DEFAULT -2   /* 소켓 기본값 사용 */
 
 /* 에러 코드 (errno에 설정됨) */
-#define ETIMEDOUT_ZMQ   110   /* 요청 타임아웃 */
-#define ECANCELED_ZMQ   125   /* 요청 취소됨 */
+#define ETIMEDOUT_ZLINK   110   /* 요청 타임아웃 */
+#define ECANCELED_ZLINK   125   /* 요청 취소됨 */
 
 /* ============================================================
  * Request/Reply API - Type Definitions
@@ -335,7 +335,7 @@ public:
 /*
  * 응답 수신 콜백
  *
- * @param request_id  요청 ID (zmq_request*() 반환값)
+ * @param request_id  요청 ID (zlink_request*() 반환값)
  * @param reply_parts 응답 메시지 배열 (에러 시 NULL)
  * @param reply_count 응답 프레임 개수
  * @param error       0: 성공
@@ -346,14 +346,14 @@ public:
  *
  * 참고:
  *   - request_id를 키로 사용하여 애플리케이션 컨텍스트 관리 가능
- *   - reply_parts는 호출자 소유, 사용 후 zmq_msgv_close() 필요
+ *   - reply_parts는 호출자 소유, 사용 후 zlink_msgv_close() 필요
  *   - reply_parts는 콜백 반환 전까지 유효하며, 보관하려면 복사/이동 필요
  *   - 에러 시 reply_parts=NULL, reply_count=0
- *   - 언어 바인딩에서는 zmq_request_recv() 폴링 API 사용 권장
+ *   - 언어 바인딩에서는 zlink_request_recv() 폴링 API 사용 권장
  */
-typedef void (*zmq_request_cb_fn)(
+typedef void (*zlink_request_cb_fn)(
     uint64_t request_id,
-    zmq_msg_t *reply_parts,
+    zlink_msg_t *reply_parts,
     size_t reply_count,
     int error
 );
@@ -363,18 +363,18 @@ typedef void (*zmq_request_cb_fn)(
  *
  * @param request_parts  수신된 요청 메시지 배열
  * @param part_count     수신된 프레임 개수
- * @param routing_id     요청자의 routing_id (zmq_routing_id_t)
+ * @param routing_id     요청자의 routing_id (zlink_routing_id_t)
  * @param request_id     요청 ID (응답 시 사용)
  *
  * 참고:
  *   - request_parts 소유권은 핸들러에게 있음
- *   - request_parts는 핸들러 반환 전까지 유효하며, 사용 후 zmq_msgv_close() 필요
+ *   - request_parts는 핸들러 반환 전까지 유효하며, 사용 후 zlink_msgv_close() 필요
  *   - 애플리케이션 컨텍스트는 전역 또는 소켓별 상태로 관리
  */
-typedef void (*zmq_server_cb_fn)(
-    zmq_msg_t *request_parts,
+typedef void (*zlink_server_cb_fn)(
+    zlink_msg_t *request_parts,
     size_t part_count,
-    const zmq_routing_id_t *routing_id,
+    const zlink_routing_id_t *routing_id,
     uint64_t request_id
 );
 
@@ -383,7 +383,7 @@ typedef void (*zmq_server_cb_fn)(
  * ============================================================ */
 
 /*
- * zmq_request - 요청 전송 (routing_id 선택)
+ * zlink_request - 요청 전송 (routing_id 선택)
  *
  * @param socket      DEALER 또는 ROUTER 소켓
  * @param routing_id  대상의 routing_id (NULL이면 기본 동작)
@@ -391,7 +391,7 @@ typedef void (*zmq_server_cb_fn)(
  * @param part_count  요청 프레임 개수 (>= 1)
  * @param callback    응답 수신 콜백 (필수)
  * @param timeout_ms  타임아웃 (밀리초)
- *                   - ZMQ_REQUEST_TIMEOUT_DEFAULT: 소켓 기본값 사용
+ *                   - ZLINK_REQUEST_TIMEOUT_DEFAULT: 소켓 기본값 사용
  *                   - -1: 무제한
  * @return            요청 ID (>0), 실패 시 0 (errno 설정)
  *
@@ -405,23 +405,23 @@ typedef void (*zmq_server_cb_fn)(
  *   EINVAL    - timeout_ms가 유효하지 않음
  *
  * 참고:
- *   - 소켓 기본 타임아웃은 ZMQ_REQUEST_TIMEOUT 옵션으로 설정 (기본값 5000ms)
+ *   - 소켓 기본 타임아웃은 ZLINK_REQUEST_TIMEOUT 옵션으로 설정 (기본값 5000ms)
  *   - 반환된 request_id가 콜백에 전달되므로 이를 키로 컨텍스트 관리
- *   - parts는 연속된 zmq_msg_t 배열 (parts[0..part_count-1])
+ *   - parts는 연속된 zlink_msg_t 배열 (parts[0..part_count-1])
  *   - 성공 시 parts의 각 msg 소유권은 라이브러리로 이전됨
  *   - 실패 시 parts의 소유권은 호출자에게 남음
  */
-ZMQ_EXPORT uint64_t zmq_request(
+ZLINK_EXPORT uint64_t zlink_request(
     void *socket,
-    const zmq_routing_id_t *routing_id,
-    zmq_msg_t *parts,
+    const zlink_routing_id_t *routing_id,
+    zlink_msg_t *parts,
     size_t part_count,
-    zmq_request_cb_fn callback,
+    zlink_request_cb_fn callback,
     int timeout_ms
 );
 
 /*
- * zmq_group_request - 그룹 단위 요청 전송 (routing_id 선택)
+ * zlink_group_request - 그룹 단위 요청 전송 (routing_id 선택)
  *
  * @param socket      DEALER 또는 ROUTER 소켓
  * @param routing_id  대상의 routing_id (NULL이면 기본 동작)
@@ -430,7 +430,7 @@ ZMQ_EXPORT uint64_t zmq_request(
  * @param part_count  요청 프레임 개수 (>= 1)
  * @param callback    응답 수신 콜백
  * @param timeout_ms  타임아웃 (밀리초)
- *                   - ZMQ_REQUEST_TIMEOUT_DEFAULT: 소켓 기본값 사용
+ *                   - ZLINK_REQUEST_TIMEOUT_DEFAULT: 소켓 기본값 사용
  *                   - -1: 무제한
  * @return            요청 ID (>0), 실패 시 0
  *
@@ -441,17 +441,17 @@ ZMQ_EXPORT uint64_t zmq_request(
  *
  * 참고:
  *   - 동일 group_id는 inflight=1로 직렬 처리되어 순서 보장
- *   - parts는 연속된 zmq_msg_t 배열 (parts[0..part_count-1])
+ *   - parts는 연속된 zlink_msg_t 배열 (parts[0..part_count-1])
  *   - 성공 시 parts의 각 msg 소유권은 라이브러리로 이전됨
  *   - 실패 시 parts의 소유권은 호출자에게 남음
  */
-ZMQ_EXPORT uint64_t zmq_group_request(
+ZLINK_EXPORT uint64_t zlink_group_request(
     void *socket,
-    const zmq_routing_id_t *routing_id,
+    const zlink_routing_id_t *routing_id,
     uint64_t group_id,
-    zmq_msg_t *parts,
+    zlink_msg_t *parts,
     size_t part_count,
-    zmq_request_cb_fn callback,
+    zlink_request_cb_fn callback,
     int timeout_ms
 );
 
@@ -460,7 +460,7 @@ ZMQ_EXPORT uint64_t zmq_group_request(
  * ============================================================ */
 
 /*
- * zmq_on_request - 요청 핸들러 등록
+ * zlink_on_request - 요청 핸들러 등록
  *
  * @param socket     ROUTER 또는 DEALER 소켓
  * @param handler    요청 수신 핸들러
@@ -472,20 +472,20 @@ ZMQ_EXPORT uint64_t zmq_group_request(
  *
  * 참고:
  *   - 핸들러는 NULL 전달로 해제 가능
- *   - 핸들러가 등록되면 zmq_recv()로 메시지 수신 불가
+ *   - 핸들러가 등록되면 zlink_recv()로 메시지 수신 불가
  *   - 핸들러는 proxy worker thread(직렬 executor)에서 호출됨
  *   - 애플리케이션 컨텍스트는 전역 또는 소켓별로 관리
  */
-ZMQ_EXPORT int zmq_on_request(
+ZLINK_EXPORT int zlink_on_request(
     void *socket,
-    zmq_server_cb_fn handler
+    zlink_server_cb_fn handler
 );
 
 /*
- * zmq_reply - 요청에 대한 응답 전송
+ * zlink_reply - 요청에 대한 응답 전송
  *
  * @param socket       소켓 핸들
- * @param routing_id   응답 대상의 routing_id (zmq_routing_id_t)
+ * @param routing_id   응답 대상의 routing_id (zlink_routing_id_t)
  * @param request_id   원본 요청 ID (핸들러에서 받은 값)
  * @param parts        응답 메시지 배열 (소유권 이전됨)
  * @param part_count   응답 프레임 개수 (>= 1)
@@ -499,20 +499,20 @@ ZMQ_EXPORT int zmq_on_request(
  * 참고:
  *   - request_id는 클라이언트가 콜백 매칭에 사용
  *   - request_id가 0이면 상관관계 프레임 없이 전송
- *   - parts는 연속된 zmq_msg_t 배열 (parts[0..part_count-1])
+ *   - parts는 연속된 zlink_msg_t 배열 (parts[0..part_count-1])
  *   - 성공 시 parts의 각 msg 소유권은 라이브러리로 이전됨
  *   - 실패 시 parts의 소유권은 호출자에게 남음
  */
-ZMQ_EXPORT int zmq_reply(
+ZLINK_EXPORT int zlink_reply(
     void *socket,
-    const zmq_routing_id_t *routing_id,
+    const zlink_routing_id_t *routing_id,
     uint64_t request_id,
-    zmq_msg_t *parts,
+    zlink_msg_t *parts,
     size_t part_count
 );
 
 /*
- * zmq_reply_simple - 단순화된 응답 전송 (request_id 자동 처리)
+ * zlink_reply_simple - 단순화된 응답 전송 (request_id 자동 처리)
  *
  * 서버에서 on_request 핸들러 내에서 호출하는 경우,
  * 현재 처리 중인 요청에 대한 응답을 자동으로 전송
@@ -527,9 +527,9 @@ ZMQ_EXPORT int zmq_reply(
  *   - 성공 시 parts의 각 msg 소유권은 라이브러리로 이전됨
  *   - 실패 시 parts의 소유권은 호출자에게 남음
  */
-ZMQ_EXPORT int zmq_reply_simple(
+ZLINK_EXPORT int zlink_reply_simple(
     void *socket,
-    zmq_msg_t *parts,
+    zlink_msg_t *parts,
     size_t part_count
 );
 
@@ -543,18 +543,18 @@ ZMQ_EXPORT int zmq_reply_simple(
  * 참고:
  *   - 언어 바인딩에서 콜백 대신 폴링 방식으로 응답 수신 시 사용
  *   - Java Virtual Thread, C# Task, Kotlin Coroutine 등과 함께 사용 권장
- *   - completion.parts는 호출자가 zmq_msgv_close() 필요
- *   - completion.parts는 연속된 zmq_msg_t 배열
+ *   - completion.parts는 호출자가 zlink_msgv_close() 필요
+ *   - completion.parts는 연속된 zlink_msg_t 배열
  */
-typedef struct zmq_completion_t {
+typedef struct zlink_completion_t {
     uint64_t request_id;     /* 완료된 요청 ID */
-    zmq_msg_t *parts;        /* 응답 메시지 배열 */
+    zlink_msg_t *parts;        /* 응답 메시지 배열 */
     size_t part_count;       /* 응답 프레임 개수 */
     int error;               /* 에러 코드 (0 = 성공) */
-} zmq_completion_t;
+} zlink_completion_t;
 
 /*
- * zmq_msgv_close - multipart 메시지 해제 헬퍼
+ * zlink_msgv_close - multipart 메시지 해제 헬퍼
  *
  * @param parts       메시지 배열
  * @param part_count  배열 길이
@@ -563,10 +563,10 @@ typedef struct zmq_completion_t {
  *   - parts 배열과 내부 메시지를 모두 해제
  *   - on_request/콜백/recv에서 받은 배열에만 사용
  */
-ZMQ_EXPORT void zmq_msgv_close(zmq_msg_t *parts, size_t part_count);
+ZLINK_EXPORT void zlink_msgv_close(zlink_msg_t *parts, size_t part_count);
 
 /*
- * zmq_request_send - 요청 전송 (콜백 없는 버전, routing_id 선택)
+ * zlink_request_send - 요청 전송 (콜백 없는 버전, routing_id 선택)
  *
  * @param socket      DEALER 또는 ROUTER 소켓
  * @param routing_id  대상의 routing_id (NULL이면 기본 동작)
@@ -582,22 +582,22 @@ ZMQ_EXPORT void zmq_msgv_close(zmq_msg_t *parts, size_t part_count);
  *   EHOSTUNREACH - 연결된 피어 없음
  *
  * 참고:
- *   - zmq_request_recv()로 응답 수신
+ *   - zlink_request_recv()로 응답 수신
  *   - 언어 바인딩에서 coroutine/Task와 함께 사용 권장
- *   - 콜백 기반 zmq_request()와 혼용 가능
- *   - parts는 연속된 zmq_msg_t 배열 (parts[0..part_count-1])
+ *   - 콜백 기반 zlink_request()와 혼용 가능
+ *   - parts는 연속된 zlink_msg_t 배열 (parts[0..part_count-1])
  *   - 성공 시 parts의 각 msg 소유권은 라이브러리로 이전됨
  *   - 실패 시 parts의 소유권은 호출자에게 남음
  */
-ZMQ_EXPORT uint64_t zmq_request_send(
+ZLINK_EXPORT uint64_t zlink_request_send(
     void *socket,
-    const zmq_routing_id_t *routing_id,
-    zmq_msg_t *parts,
+    const zlink_routing_id_t *routing_id,
+    zlink_msg_t *parts,
     size_t part_count
 );
 
 /*
- * zmq_request_recv - 완료된 응답 수신
+ * zlink_request_recv - 완료된 응답 수신
  *
  * @param socket      소켓 핸들
  * @param completion  완료 정보를 받을 구조체 (out)
@@ -609,15 +609,15 @@ ZMQ_EXPORT uint64_t zmq_request_send(
  *   ETIMEDOUT - 타임아웃 만료
  *
  * 참고:
- *   - completion.parts는 호출자가 zmq_msgv_close() 필요
+ *   - completion.parts는 호출자가 zlink_msgv_close() 필요
  *   - 성공 시 completion.parts가 유효하며, 에러 시 NULL
  *   - 여러 요청이 완료되었으면 가장 먼저 완료된 것 반환
- *   - zmq_request_send()로 전송한 요청의 응답만 수신
- *   - 콜백 기반 zmq_request()의 응답은 콜백으로만 수신됨
+ *   - zlink_request_send()로 전송한 요청의 응답만 수신
+ *   - 콜백 기반 zlink_request()의 응답은 콜백으로만 수신됨
  */
-ZMQ_EXPORT int zmq_request_recv(
+ZLINK_EXPORT int zlink_request_recv(
     void *socket,
-    zmq_completion_t *completion,
+    zlink_completion_t *completion,
     int timeout_ms
 );
 
@@ -626,15 +626,15 @@ ZMQ_EXPORT int zmq_request_recv(
  * ============================================================ */
 
 /*
- * zmq_pending_requests - 대기 중인 요청 수 조회
+ * zlink_pending_requests - 대기 중인 요청 수 조회
  *
  * @param socket  소켓 핸들
  * @return        대기 중인 요청 수, -1: 에러
  */
-ZMQ_EXPORT int zmq_pending_requests(void *socket);
+ZLINK_EXPORT int zlink_pending_requests(void *socket);
 
 /*
- * zmq_cancel_all_requests - 모든 대기 요청 취소
+ * zlink_cancel_all_requests - 모든 대기 요청 취소
  *
  * @param socket  소켓 핸들
  * @return        취소된 요청 수, -1: 에러
@@ -642,18 +642,18 @@ ZMQ_EXPORT int zmq_pending_requests(void *socket);
  * 참고:
  *   - 모든 대기 중인 요청의 콜백이 error=ECANCELED로 호출됨
  */
-ZMQ_EXPORT int zmq_cancel_all_requests(void *socket);
+ZLINK_EXPORT int zlink_cancel_all_requests(void *socket);
 ```
 
 ### 4.2.1 소유권 규칙 (C)
 
-- **송신 계열**(`zmq_request`, `zmq_group_request`, `zmq_request_send`, `zmq_reply`):
+- **송신 계열**(`zlink_request`, `zlink_group_request`, `zlink_request_send`, `zlink_reply`):
   - 성공 시 **각 msg는 라이브러리가 소유/해제**한다.
   - `parts` 배열 메모리는 **호출자가 소유**한다 (스택/힙 모두 가능).
   - 실패 시 **호출자가 msg를 해제**해야 한다.
-- **수신 계열**(`zmq_on_request` 핸들러, `zmq_request` 콜백, `zmq_request_recv`):
+- **수신 계열**(`zlink_on_request` 핸들러, `zlink_request` 콜백, `zlink_request_recv`):
   - `parts` 배열은 **라이브러리에서 할당**되며 호출자가 소유한다.
-  - 사용 후 반드시 `zmq_msgv_close(parts, part_count)`로 해제한다.
+  - 사용 후 반드시 `zlink_msgv_close(parts, part_count)`로 해제한다.
 
 ### 4.3 C API 에러 코드 요약
 
@@ -674,10 +674,10 @@ ZMQ_EXPORT int zmq_cancel_all_requests(void *socket);
 │                      Client Flow                             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  1. zmq_socket_threadsafe(ctx, ZMQ_DEALER)                 │
-│  2. zmq_connect(socket, "tcp://server:5555")               │
-│  3. uint64_t req_id = zmq_request(socket, NULL, &msg, 1,   │
-│                                 cb, ZMQ_REQUEST_TIMEOUT_DEFAULT)│
+│  1. zlink_socket_threadsafe(ctx, ZLINK_DEALER)                 │
+│  2. zlink_connect(socket, "tcp://server:5555")               │
+│  3. uint64_t req_id = zlink_request(socket, NULL, &msg, 1,   │
+│                                 cb, ZLINK_REQUEST_TIMEOUT_DEFAULT)│
 │       ↓                                                     │
 │     [요청 전송됨, req_id로 추적 가능]                        │
 │       ↓                                                     │
@@ -691,16 +691,16 @@ ZMQ_EXPORT int zmq_cancel_all_requests(void *socket);
 │                      Server Flow                             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  1. zmq_socket_threadsafe(ctx, ZMQ_ROUTER)                 │
-│  2. zmq_bind(socket, "tcp://*:5555")                       │
-│  3. zmq_on_request(socket, handler)                        │
+│  1. zlink_socket_threadsafe(ctx, ZLINK_ROUTER)                 │
+│  2. zlink_bind(socket, "tcp://*:5555")                       │
+│  3. zlink_on_request(socket, handler)                        │
 │       ↓                                                     │
 │     [핸들러 등록됨]                                         │
 │       ↓                                                     │
 │  4. handler(parts, part_count, routing_id, req_id) 호출    │
-│       │         └─ routing_id_t (zmq_routing_id_t)          │
+│       │         └─ routing_id_t (zlink_routing_id_t)          │
 │       ↓                                                     │
-│  5. zmq_reply(socket, routing_id, req_id, &reply, 1)       │
+│  5. zlink_reply(socket, routing_id, req_id, &reply, 1)       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -771,9 +771,9 @@ void thread_safe_socket_t::request(msg_t&& payload,
     memcpy(id_frame.data(), &req_id, 8);
 
     // 4. 송신 (DEALER는 LB가 자동 처리)
-    xsend(&id_frame, ZMQ_SNDMORE);
+    xsend(&id_frame, ZLINK_SNDMORE);
     for (size_t i = 0; i < req.parts.size(); ++i) {
-        int flags = (i + 1 < req.parts.size()) ? ZMQ_SNDMORE : 0;
+        int flags = (i + 1 < req.parts.size()) ? ZLINK_SNDMORE : 0;
         xsend(&req.parts[i], flags);
     }
 }
@@ -789,7 +789,7 @@ void thread_safe_socket_t::handle_incoming_request(pipe_t *pipe) {
     routing_id_t routing_id = {};
 
     // ROUTER인 경우 routing_id 수신 (메시지 헤더에서 추출)
-    if (options.type == ZMQ_ROUTER) {
+    if (options.type == ZLINK_ROUTER) {
         routing_id = pipe->get_routing_id();  // routing_id_t
     }
 
@@ -892,18 +892,18 @@ void on_group_response(uint64_t group_id, uint64_t request_id) {
 
 ```c
 // 서버 설정
-void *ctx = zmq_ctx_new();
-void *server = zmq_socket_threadsafe(ctx, ZMQ_ROUTER);
+void *ctx = zlink_ctx_new();
+void *server = zlink_socket_threadsafe(ctx, ZLINK_ROUTER);
 const char *server_rid = "router-A";
-zmq_setsockopt(server, ZMQ_ROUTING_ID, server_rid, strlen(server_rid));
-zmq_bind(server, "tcp://*:5555");
+zlink_setsockopt(server, ZLINK_ROUTING_ID, server_rid, strlen(server_rid));
+zlink_bind(server, "tcp://*:5555");
 
 // routing_id는 자동 생성됨 (5B [0x00][u32])
 uint8_t rid_buf[255];
 size_t rid_size = sizeof(rid_buf);
-zmq_getsockopt(server, ZMQ_ROUTING_ID, rid_buf, &rid_size);
+zlink_getsockopt(server, ZLINK_ROUTING_ID, rid_buf, &rid_size);
 
-zmq_routing_id_t my_rid;
+zlink_routing_id_t my_rid;
 my_rid.size = (uint8_t)rid_size;
 memcpy(my_rid.data, rid_buf, rid_size);
 
@@ -913,9 +913,9 @@ for (size_t i = 0; i < rid_size; ++i)
 printf("\n");
 
 // 요청 핸들러 등록
-zmq_on_request(server, [](zmq_msg_t *parts,
+zlink_on_request(server, [](zlink_msg_t *parts,
                           size_t part_count,
-                          const zmq_routing_id_t *routing_id,
+                          const zlink_routing_id_t *routing_id,
                           uint64_t request_id) {
     printf("Request from routing_id(size=%u) (req_id: %llu) = ",
            routing_id ? routing_id->size : 0, request_id);
@@ -925,15 +925,15 @@ zmq_on_request(server, [](zmq_msg_t *parts,
     }
     printf("\n");
     if (part_count > 0) {
-        printf("Payload[0]: %.*s\n", (int)zmq_msg_size(&parts[0]),
-               (char*)zmq_msg_data(&parts[0]));
+        printf("Payload[0]: %.*s\n", (int)zlink_msg_size(&parts[0]),
+               (char*)zlink_msg_data(&parts[0]));
     }
-    zmq_msgv_close(parts, part_count);
+    zlink_msgv_close(parts, part_count);
 
     // 응답 전송
-    zmq_msg_t reply;
-    zmq_msg_init_data(&reply, "World", 5, NULL, NULL);
-    zmq_reply(server, routing_id, request_id, &reply, 1);
+    zlink_msg_t reply;
+    zlink_msg_init_data(&reply, "World", 5, NULL, NULL);
+    zlink_reply(server, routing_id, request_id, &reply, 1);
 });
 ```
 
@@ -941,17 +941,17 @@ zmq_on_request(server, [](zmq_msg_t *parts,
 
 ```c
 // 클라이언트 설정
-void *client = zmq_socket_threadsafe(ctx, ZMQ_DEALER);
+void *client = zlink_socket_threadsafe(ctx, ZLINK_DEALER);
 const char *client_rid = "client-1";
-zmq_setsockopt(client, ZMQ_ROUTING_ID, client_rid, strlen(client_rid));
-zmq_connect(client, "tcp://localhost:5555");
+zlink_setsockopt(client, ZLINK_ROUTING_ID, client_rid, strlen(client_rid));
+zlink_connect(client, "tcp://localhost:5555");
 
 // routing_id는 자동 생성됨 (5B [0x00][u32])
 uint8_t rid_buf[255];
 size_t rid_size = sizeof(rid_buf);
-zmq_getsockopt(client, ZMQ_ROUTING_ID, rid_buf, &rid_size);
+zlink_getsockopt(client, ZLINK_ROUTING_ID, rid_buf, &rid_size);
 
-zmq_routing_id_t my_rid;
+zlink_routing_id_t my_rid;
 my_rid.size = (uint8_t)rid_size;
 memcpy(my_rid.data, rid_buf, rid_size);
 
@@ -961,25 +961,25 @@ for (size_t i = 0; i < rid_size; ++i)
 printf("\n");
 
 // 요청 전송 (로드 밸런싱)
-zmq_msg_t request;
-zmq_msg_init_data(&request, "Hello", 5, NULL, NULL);
+zlink_msg_t request;
+zlink_msg_init_data(&request, "Hello", 5, NULL, NULL);
 
 // request_id가 콜백에 전달됨 - 이를 키로 컨텍스트 관리 가능
-uint64_t req_id = zmq_request(client, NULL, &request, 1,
-    [](uint64_t request_id, zmq_msg_t *reply_parts, size_t reply_count, int err) {
+uint64_t req_id = zlink_request(client, NULL, &request, 1,
+    [](uint64_t request_id, zlink_msg_t *reply_parts, size_t reply_count, int err) {
         if (err == 0) {
             if (reply_count > 0) {
                 printf("Got reply for req %llu: %.*s\n",
                        request_id,
-                       (int)zmq_msg_size(&reply_parts[0]),
-                       (char*)zmq_msg_data(&reply_parts[0]));
+                       (int)zlink_msg_size(&reply_parts[0]),
+                       (char*)zlink_msg_data(&reply_parts[0]));
             }
-            zmq_msgv_close(reply_parts, reply_count);
+            zlink_msgv_close(reply_parts, reply_count);
         } else {
             printf("Request %llu failed: %d\n", request_id, err);
         }
     },
-    ZMQ_REQUEST_TIMEOUT_DEFAULT);
+    ZLINK_REQUEST_TIMEOUT_DEFAULT);
 printf("Sent request with ID: %llu\n", req_id);
 ```
 
@@ -987,49 +987,49 @@ printf("Sent request with ID: %llu\n", req_id);
 
 ```c
 // ROUTER 클라이언트 설정
-void *client = zmq_socket_threadsafe(ctx, ZMQ_ROUTER);
-zmq_connect(client, "tcp://server1:5555");
+void *client = zlink_socket_threadsafe(ctx, ZLINK_ROUTER);
+zlink_connect(client, "tcp://server1:5555");
 
 // 연결된 피어의 routing_id 조회
-zmq_routing_id_t peer_rid;
-if (zmq_socket_peer_routing_id(client, 0, &peer_rid) != 0) {
+zlink_routing_id_t peer_rid;
+if (zlink_socket_peer_routing_id(client, 0, &peer_rid) != 0) {
     /* handle error */
 }
 
 // 특정 서버에 요청 (routing_id로 지정)
-zmq_msg_t request;
-zmq_msg_init_data(&request, "Hello", 5, NULL, NULL);
+zlink_msg_t request;
+zlink_msg_init_data(&request, "Hello", 5, NULL, NULL);
 
-zmq_request(client, &peer_rid, &request, 1,
-    [](uint64_t request_id, zmq_msg_t *reply_parts, size_t reply_count, int err) {
+zlink_request(client, &peer_rid, &request, 1,
+    [](uint64_t request_id, zlink_msg_t *reply_parts, size_t reply_count, int err) {
         if (err == 0) {
             /* use reply_parts */
-            zmq_msgv_close(reply_parts, reply_count);
+            zlink_msgv_close(reply_parts, reply_count);
         }
     },
-    ZMQ_REQUEST_TIMEOUT_DEFAULT);
+    ZLINK_REQUEST_TIMEOUT_DEFAULT);
 ```
 
 ### 6.4 Client - Polling API (언어 바인딩용)
 
 ```c
 // 콜백 없이 폴링 방식으로 응답 수신
-zmq_msg_t request;
-zmq_msg_init_data(&request, "Hello", 5, NULL, NULL);
+zlink_msg_t request;
+zlink_msg_init_data(&request, "Hello", 5, NULL, NULL);
 
 // 요청 전송 (콜백 없음)
-uint64_t req_id = zmq_request_send(client, NULL, &request, 1);
+uint64_t req_id = zlink_request_send(client, NULL, &request, 1);
 
 // 응답 대기 (blocking)
-zmq_completion_t completion;
-if (zmq_request_recv(client, &completion, -1) == 0) {
+zlink_completion_t completion;
+if (zlink_request_recv(client, &completion, -1) == 0) {
     if (completion.part_count > 0) {
         printf("Got reply for req %llu: %.*s\n",
                completion.request_id,
-               (int)zmq_msg_size(&completion.parts[0]),
-               (char*)zmq_msg_data(&completion.parts[0]));
+               (int)zlink_msg_size(&completion.parts[0]),
+               (char*)zlink_msg_data(&completion.parts[0]));
     }
-    zmq_msgv_close(completion.parts, completion.part_count);
+    zlink_msgv_close(completion.parts, completion.part_count);
 }
 ```
 
@@ -1037,31 +1037,31 @@ if (zmq_request_recv(client, &completion, -1) == 0) {
 
 ```cpp
 // 서버 (thread-safe)
-zmq::thread_safe_socket<zmq::router_t> server(ctx);
+zlink::thread_safe_socket<zlink::router_t> server(ctx);
 server.bind("tcp://*:5555");
 
-server.on_request([&server](zmq::msg_vec_t& parts,
-                            const zmq::routing_id_t &src_id,
+server.on_request([&server](zlink::msg_vec_t& parts,
+                            const zlink::routing_id_t &src_id,
                             uint64_t req_id) {
     std::cout << "Request from routing_id(size=" << (int)src_id.size << ")" << std::endl;
     if (!parts.empty()) {
         std::cout << "Payload[0]: " << parts[0].to_string() << std::endl;
     }
 
-    zmq::msg_t reply("World");
+    zlink::msg_t reply("World");
     server.reply(src_id, req_id, std::move(reply));
 });
 
 // 클라이언트 (thread-safe)
-zmq::thread_safe_socket<zmq::dealer_t> client(ctx);
+zlink::thread_safe_socket<zlink::dealer_t> client(ctx);
 client.connect("tcp://localhost:5555");
 
-client.request(zmq::msg_t("Hello"), [](zmq::msg_t& reply) {
+client.request(zlink::msg_t("Hello"), [](zlink::msg_t& reply) {
     std::cout << "Got reply: " << reply.to_string() << std::endl;
 });
 
 // routing_id 조회
-zmq::routing_id_t my_id = client.routing_id();  // 자동 생성된 ID
+zlink::routing_id_t my_id = client.routing_id();  // 자동 생성된 ID
 ```
 
 ### 6.6 파이프라인 요청 (다중 동시 요청)
@@ -1070,8 +1070,8 @@ zmq::routing_id_t my_id = client.routing_id();  // 자동 생성된 ID
 // 여러 요청을 동시에 보내고 응답을 개별 처리
 for (int i = 0; i < 100; ++i) {
     client.request(
-        zmq::msg_t(fmt::format("Request {}", i)),
-        [i](zmq::msg_t& reply) {
+        zlink::msg_t(fmt::format("Request {}", i)),
+        [i](zlink::msg_t& reply) {
             std::cout << "Reply for request " << i << ": "
                       << reply.to_string() << std::endl;
         }
@@ -1088,16 +1088,16 @@ uint64_t group_id = 42;
 
 client.group_request(
     group_id,
-    zmq::msg_t("A"),
-    [](zmq::msg_t* reply, int error) {
+    zlink::msg_t("A"),
+    [](zlink::msg_t* reply, int error) {
         /* handle */
     }
 );
 
 client.group_request(
     group_id,
-    zmq::msg_t("B"),
-    [](zmq::msg_t* reply, int error) {
+    zlink::msg_t("B"),
+    [](zlink::msg_t* reply, int error) {
         /* handle */
     }
 );
@@ -1107,8 +1107,8 @@ client.group_request(
 
 ```cpp
 client.request(
-    zmq::msg_t("Hello"),
-    [](zmq::msg_t* reply, int error) {
+    zlink::msg_t("Hello"),
+    [](zlink::msg_t* reply, int error) {
         if (error == 0) {
             std::cout << "Got reply: " << reply->to_string() << std::endl;
         } else if (error == ETIMEDOUT) {
@@ -1125,12 +1125,12 @@ client.request(
 
 ```cpp
 // multipart 요청
-zmq::msg_vec_t parts;
+zlink::msg_vec_t parts;
 parts.emplace_back("header");
 parts.emplace_back("body");
 
 client.request(std::move(parts),
-    [](zmq::msg_vec_t& reply_parts) {
+    [](zlink::msg_vec_t& reply_parts) {
         if (!reply_parts.empty()) {
             std::cout << "Reply[0]: " << reply_parts[0].to_string() << std::endl;
         }
@@ -1144,43 +1144,43 @@ client.request(std::move(parts),
 
 **Java (Virtual Thread):**
 ```java
-public final class ZmqSocket {
+public final class ZlinkSocket {
     private final Pointer socket;
-    private final ConcurrentHashMap<Long, CompletableFuture<ZmqMessage>> pending =
+    private final ConcurrentHashMap<Long, CompletableFuture<ZlinkMessage>> pending =
         new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final Thread recvThread;
 
-    public ZmqSocket(Pointer socket) {
+    public ZlinkSocket(Pointer socket) {
         this.socket = socket;
-        this.recvThread = Thread.ofVirtual().name("zmq-recv").start(this::recvLoop);
+        this.recvThread = Thread.ofVirtual().name("zlink-recv").start(this::recvLoop);
     }
 
-    public CompletableFuture<ZmqMessage> request(ZmqMessage msg) {
-        long requestId = zmq_request_send(socket, null, msg.toNative(), 1);
+    public CompletableFuture<ZlinkMessage> request(ZlinkMessage msg) {
+        long requestId = zlink_request_send(socket, null, msg.toNative(), 1);
         if (requestId == 0)
-            throw new ZmqException(getLastError());
+            throw new ZlinkException(getLastError());
 
-        CompletableFuture<ZmqMessage> fut = new CompletableFuture<>();
+        CompletableFuture<ZlinkMessage> fut = new CompletableFuture<>();
         pending.put(requestId, fut);
         return fut;
     }
 
     private void recvLoop() {
         while (running.get()) {
-            ZmqCompletion completion = new ZmqCompletion();
-            if (zmq_request_recv(socket, completion, -1) != 0)
+            ZlinkCompletion completion = new ZlinkCompletion();
+            if (zlink_request_recv(socket, completion, -1) != 0)
                 continue;
 
-            CompletableFuture<ZmqMessage> fut = pending.remove(completion.requestId);
+            CompletableFuture<ZlinkMessage> fut = pending.remove(completion.requestId);
             if (fut == null)
                 continue;
 
             if (completion.error != 0)
-                fut.completeExceptionally(new ZmqException(completion.error));
+                fut.completeExceptionally(new ZlinkException(completion.error));
             else {
-                ZmqMessage reply = ZmqMessage.fromParts(completion.parts, completion.partCount);
-                zmq_msgv_close(completion.parts, completion.partCount);
+                ZlinkMessage reply = ZlinkMessage.fromParts(completion.parts, completion.partCount);
+                zlink_msgv_close(completion.parts, completion.partCount);
                 fut.complete(reply);
             }
         }
@@ -1192,46 +1192,46 @@ public final class ZmqSocket {
 }
 
 // 사용 예시
-var reply = socket.request(new ZmqMessage("Hello")).get();
+var reply = socket.request(new ZlinkMessage("Hello")).get();
 ```
 
 **C# (async/await):**
 ```csharp
-public sealed class ZmqSocket {
+public sealed class ZlinkSocket {
     private readonly IntPtr _socket;
-    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<ZmqMessage>> _pending =
-        new ConcurrentDictionary<ulong, TaskCompletionSource<ZmqMessage>>();
+    private readonly ConcurrentDictionary<ulong, TaskCompletionSource<ZlinkMessage>> _pending =
+        new ConcurrentDictionary<ulong, TaskCompletionSource<ZlinkMessage>>();
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly Thread _recvThread;
 
-    public ZmqSocket(IntPtr socket) {
+    public ZlinkSocket(IntPtr socket) {
         _socket = socket;
         _recvThread = new Thread(RecvLoop) { IsBackground = true };
         _recvThread.Start();
     }
 
-    public Task<ZmqMessage> RequestAsync(ZmqMessage msg) {
-        ulong requestId = zmq_request_send(_socket, null, msg.ToNative(), 1);
+    public Task<ZlinkMessage> RequestAsync(ZlinkMessage msg) {
+        ulong requestId = zlink_request_send(_socket, null, msg.ToNative(), 1);
         if (requestId == 0)
-            throw new ZmqException(Marshal.GetLastWin32Error());
+            throw new ZlinkException(Marshal.GetLastWin32Error());
 
-        var tcs = new TaskCompletionSource<ZmqMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<ZlinkMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[requestId] = tcs;
         return tcs.Task;
     }
 
     private void RecvLoop() {
         while (!_cts.IsCancellationRequested) {
-            var completion = new ZmqCompletion();
-            if (zmq_request_recv(_socket, ref completion, -1) != 0)
+            var completion = new ZlinkCompletion();
+            if (zlink_request_recv(_socket, ref completion, -1) != 0)
                 continue;
 
             if (_pending.TryRemove(completion.RequestId, out var tcs)) {
                 if (completion.Error != 0)
-                    tcs.TrySetException(new ZmqException(completion.Error));
+                    tcs.TrySetException(new ZlinkException(completion.Error));
                 else {
-                    var reply = ZmqMessage.FromParts(completion.Parts, completion.PartCount);
-                    zmq_msgv_close(completion.Parts, completion.PartCount);
+                    var reply = ZlinkMessage.FromParts(completion.Parts, completion.PartCount);
+                    zlink_msgv_close(completion.Parts, completion.PartCount);
                     tcs.TrySetResult(reply);
                 }
             }
@@ -1242,40 +1242,40 @@ public sealed class ZmqSocket {
 }
 
 // 사용 예시
-var reply = await socket.RequestAsync(new ZmqMessage("Hello"));
+var reply = await socket.RequestAsync(new ZlinkMessage("Hello"));
 ```
 
 **Kotlin (Coroutine):**
 ```kotlin
-class ZmqSocket(private val socket: Pointer) {
-    private val pending = ConcurrentHashMap<Long, CompletableDeferred<ZmqMessage>>()
+class ZlinkSocket(private val socket: Pointer) {
+    private val pending = ConcurrentHashMap<Long, CompletableDeferred<ZlinkMessage>>()
     private val running = AtomicBoolean(true)
     private val recvThread = Thread {
         recvLoop()
     }.apply { isDaemon = true; start() }
 
-    suspend fun request(msg: ZmqMessage): ZmqMessage {
-        val requestId = zmq_request_send(socket, null, msg.toNative(), 1)
+    suspend fun request(msg: ZlinkMessage): ZlinkMessage {
+        val requestId = zlink_request_send(socket, null, msg.toNative(), 1)
         if (requestId == 0L) {
-            throw ZmqException(getLastError())
+            throw ZlinkException(getLastError())
         }
 
-        val deferred = CompletableDeferred<ZmqMessage>()
+        val deferred = CompletableDeferred<ZlinkMessage>()
         pending[requestId] = deferred
         return deferred.await()
     }
 
     private fun recvLoop() {
         while (running.get()) {
-            val completion = ZmqCompletion()
-            if (zmq_request_recv(socket, completion, -1) != 0) continue
+            val completion = ZlinkCompletion()
+            if (zlink_request_recv(socket, completion, -1) != 0) continue
 
             val deferred = pending.remove(completion.requestId) ?: continue
             if (completion.error != 0)
-                deferred.completeExceptionally(ZmqException(completion.error))
+                deferred.completeExceptionally(ZlinkException(completion.error))
             else {
-                val reply = ZmqMessage.fromParts(completion.parts, completion.partCount)
-                zmq_msgv_close(completion.parts, completion.partCount)
+                val reply = ZlinkMessage.fromParts(completion.parts, completion.partCount)
+                zlink_msgv_close(completion.parts, completion.partCount)
                 deferred.complete(reply)
             }
         }
@@ -1287,7 +1287,7 @@ class ZmqSocket(private val socket: Pointer) {
 }
 
 // 사용 예시
-val reply = socket.request(ZmqMessage("Hello"))
+val reply = socket.request(ZlinkMessage("Hello"))
 ```
 
 **장점:**
@@ -1311,8 +1311,8 @@ val reply = socket.request(ZmqMessage("Hello"))
 
 | 파일 | 변경 내용 |
 |------|----------|
-| `include/zmq.h` | multipart 지원 API 및 msgv 헬퍼 선언 |
-| `src/api/zmq.cpp` | 새 API 구현 |
+| `include/zlink.h` | multipart 지원 API 및 msgv 헬퍼 선언 |
+| `src/api/zlink.cpp` | 새 API 구현 |
 | `src/sockets/socket_base.hpp` | request/reply 메서드 추가, pending_requests 관리 |
 | `src/sockets/socket_base.cpp` | request/reply 기본 구현 |
 | `src/sockets/router.cpp` | ROUTER 특화 request/reply 처리 |
@@ -1324,15 +1324,15 @@ val reply = socket.request(ZmqMessage("Hello"))
 ┌─────────────────────────────────────────────────────────────┐
 │                       Public API Layer                       │
 ├─────────────────────────────────────────────────────────────┤
-│  zmq.h                                                      │
-│  ├─ zmq_request()           - 요청 (routing_id 선택)        │
-│  ├─ zmq_group_request()     - 그룹 요청 (routing_id 선택)   │
-│  ├─ zmq_request_send()      - 콜백 없는 요청 (routing_id 선택)│
-│  ├─ zmq_request_recv()      - 완료 응답 수신                │
-│  ├─ zmq_msgv_close()        - multipart 응답 해제           │
-│  ├─ zmq_on_request()        - 요청 핸들러 등록              │
-│  ├─ zmq_reply()             - 응답 전송                     │
-│  └─ zmq_pending_requests()  - 대기 요청 수 조회             │
+│  zlink.h                                                      │
+│  ├─ zlink_request()           - 요청 (routing_id 선택)        │
+│  ├─ zlink_group_request()     - 그룹 요청 (routing_id 선택)   │
+│  ├─ zlink_request_send()      - 콜백 없는 요청 (routing_id 선택)│
+│  ├─ zlink_request_recv()      - 완료 응답 수신                │
+│  ├─ zlink_msgv_close()        - multipart 응답 해제           │
+│  ├─ zlink_on_request()        - 요청 핸들러 등록              │
+│  ├─ zlink_reply()             - 응답 전송                     │
+│  └─ zlink_pending_requests()  - 대기 요청 수 조회             │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼

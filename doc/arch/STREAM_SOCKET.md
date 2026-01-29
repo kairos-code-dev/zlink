@@ -7,7 +7,7 @@
 
 ## 1. 목표
 
-- ZMQ 스타일의 API/스레드 모델을 유지하면서 STREAM 소켓 제공
+- ZLINK 스타일의 API/스레드 모델을 유지하면서 STREAM 소켓 제공
 - TCP/TLS/WS/WSS 전송 계층에서 일관된 동작
 - WS/WSS 성능을 기존 Beast 단독 성능에 최대한 근접
 
@@ -223,7 +223,7 @@ Command: build/bin/bench_beast_stream <transport> 1024 --runs 10
 
 - WS/WSS는 프레임 기반이라 TCP만큼의 배칭 효과가 어렵다
 - speculative_write는 I/O 스레드 블로킹 위험으로 미사용 유지
-- API 호환성(zmq 스타일)을 유지하기 위해 pipe/session 경로를 유지
+- API 호환성(zlink 스타일)을 유지하기 위해 pipe/session 경로를 유지
 
 ---
 

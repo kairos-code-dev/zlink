@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_IP_RESOLVER_HPP_INCLUDED__
-#define __ZMQ_IP_RESOLVER_HPP_INCLUDED__
+#ifndef __ZLINK_IP_RESOLVER_HPP_INCLUDED__
+#define __ZLINK_IP_RESOLVER_HPP_INCLUDED__
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -11,7 +11,7 @@
 
 #include "core/address.hpp"
 
-namespace zmq
+namespace zlink
 {
 union ip_addr_t
 {
@@ -24,7 +24,7 @@ union ip_addr_t
     uint16_t port () const;
 
     const struct sockaddr *as_sockaddr () const;
-    zmq_socklen_t sockaddr_len () const;
+    zlink_socklen_t sockaddr_len () const;
 
     void set_port (uint16_t);
 
@@ -84,7 +84,7 @@ class ip_resolver_t
     int resolve_nic_name (ip_addr_t *ip_addr_, const char *nic_);
     int resolve_getaddrinfo (ip_addr_t *ip_addr_, const char *addr_);
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     int get_interface_name (unsigned long index_, char **dest_) const;
     int wchar_to_utf8 (const WCHAR *src_, char **dest_) const;
 #endif

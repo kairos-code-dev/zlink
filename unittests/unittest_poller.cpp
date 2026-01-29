@@ -18,31 +18,31 @@ void tearDown ()
 
 void test_create ()
 {
-    zmq::thread_ctx_t thread_ctx;
-    zmq::poller_t poller (thread_ctx);
+    zlink::thread_ctx_t thread_ctx;
+    zlink::poller_t poller (thread_ctx);
 }
 
 #if 0
 // TODO this triggers an assertion. should it be a valid use case?
 void test_start_empty ()
 {
-    zmq::thread_ctx_t thread_ctx;
-    zmq::poller_t poller (thread_ctx);
+    zlink::thread_ctx_t thread_ctx;
+    zlink::poller_t poller (thread_ctx);
     poller.start ();
     msleep (SETTLE_TIME);
 }
 #endif
 
-struct test_events_t : zmq::i_poll_events
+struct test_events_t : zlink::i_poll_events
 {
-    test_events_t (zmq::poller_t &poller_) : _poller (poller_)
+    test_events_t (zlink::poller_t &poller_) : _poller (poller_)
     {
     }
 
-    void in_event () ZMQ_OVERRIDE
+    void in_event () ZLINK_OVERRIDE
     {
         _poller.rm_socket (_handle);
-        _handle = (zmq::poller_t::handle_t) NULL;
+        _handle = (zlink::poller_t::handle_t) NULL;
         _poller.stop ();
 
         // this must only be incremented after rm_fd
@@ -50,58 +50,58 @@ struct test_events_t : zmq::i_poll_events
     }
 
 
-    void out_event () ZMQ_OVERRIDE
+    void out_event () ZLINK_OVERRIDE
     {
         // TODO
     }
 
 
-    void timer_event (int id_) ZMQ_OVERRIDE
+    void timer_event (int id_) ZLINK_OVERRIDE
     {
-        LIBZMQ_UNUSED (id_);
+        LIBZLINK_UNUSED (id_);
         _poller.rm_socket (_handle);
-        _handle = (zmq::poller_t::handle_t) NULL;
+        _handle = (zlink::poller_t::handle_t) NULL;
         _poller.stop ();
 
         // this must only be incremented after rm_fd
         timer_events.add (1);
     }
 
-    void set_handle (zmq::poller_t::handle_t handle_) { _handle = handle_; }
+    void set_handle (zlink::poller_t::handle_t handle_) { _handle = handle_; }
 
-    zmq::atomic_counter_t in_events, timer_events;
+    zlink::atomic_counter_t in_events, timer_events;
 
   private:
-    zmq::poller_t &_poller;
-    zmq::poller_t::handle_t _handle;
+    zlink::poller_t &_poller;
+    zlink::poller_t::handle_t _handle;
 };
 
 void wait_in_events (test_events_t &events_)
 {
-    void *watch = zmq_stopwatch_start ();
+    void *watch = zlink_stopwatch_start ();
     while (events_.in_events.get () < 1) {
         msleep (1);
-#ifdef ZMQ_BUILD_DRAFT
+#ifdef ZLINK_BUILD_DRAFT
         TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (SETTLE_TIME,
-                                           zmq_stopwatch_intermediate (watch),
+                                           zlink_stopwatch_intermediate (watch),
                                            "Timeout waiting for in event");
 #endif
     }
-    zmq_stopwatch_stop (watch);
+    zlink_stopwatch_stop (watch);
 }
 
 void wait_timer_events (test_events_t &events_)
 {
-    void *watch = zmq_stopwatch_start ();
+    void *watch = zlink_stopwatch_start ();
     while (events_.timer_events.get () < 1) {
         msleep (1);
-#ifdef ZMQ_BUILD_DRAFT
+#ifdef ZLINK_BUILD_DRAFT
         TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (SETTLE_TIME,
-                                           zmq_stopwatch_intermediate (watch),
+                                           zlink_stopwatch_intermediate (watch),
                                            "Timeout waiting for timer event");
 #endif
     }
-    zmq_stopwatch_stop (watch);
+    zlink_stopwatch_stop (watch);
 }
 
 void create_connected_tcp_pair (boost::asio::io_context &io_context_,
@@ -145,8 +145,8 @@ void send_tcp_signal (boost::asio::ip::tcp::socket *socket_)
 
 void test_add_fd_and_start_and_receive_data ()
 {
-    zmq::thread_ctx_t thread_ctx;
-    zmq::poller_t poller (thread_ctx);
+    zlink::thread_ctx_t thread_ctx;
+    zlink::poller_t poller (thread_ctx);
 
     boost::asio::io_context &io_context = poller.get_io_context ();
     boost::asio::ip::tcp::socket server (io_context);
@@ -155,7 +155,7 @@ void test_add_fd_and_start_and_receive_data ()
 
     test_events_t events (poller);
 
-    zmq::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
+    zlink::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
     events.set_handle (handle);
     poller.set_pollin (handle);
     poller.start ();
@@ -167,8 +167,8 @@ void test_add_fd_and_start_and_receive_data ()
 
 void test_add_fd_and_remove_by_timer ()
 {
-    zmq::thread_ctx_t thread_ctx;
-    zmq::poller_t poller (thread_ctx);
+    zlink::thread_ctx_t thread_ctx;
+    zlink::poller_t poller (thread_ctx);
 
     boost::asio::io_context &io_context = poller.get_io_context ();
     boost::asio::ip::tcp::socket server (io_context);
@@ -177,7 +177,7 @@ void test_add_fd_and_remove_by_timer ()
 
     test_events_t events (poller);
 
-    zmq::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
+    zlink::poller_t::handle_t handle = poller.add_tcp_socket (&server, &events);
     events.set_handle (handle);
 
     poller.add_timer (50, &events, 0);
@@ -190,14 +190,14 @@ int main (void)
 {
     UNITY_BEGIN ();
 
-    zmq::initialize_network ();
+    zlink::initialize_network ();
     setup_test_environment ();
 
     RUN_TEST (test_create);
     RUN_TEST (test_add_fd_and_start_and_receive_data);
     RUN_TEST (test_add_fd_and_remove_by_timer);
 
-    zmq::shutdown_network ();
+    zlink::shutdown_network ();
 
     return UNITY_END ();
 }

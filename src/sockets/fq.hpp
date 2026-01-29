@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_FQ_HPP_INCLUDED__
-#define __ZMQ_FQ_HPP_INCLUDED__
+#ifndef __ZLINK_FQ_HPP_INCLUDED__
+#define __ZLINK_FQ_HPP_INCLUDED__
 
 #include "utils/array.hpp"
 #include "utils/blob.hpp"
 
-namespace zmq
+namespace zlink
 {
 class msg_t;
 class pipe_t;
@@ -45,7 +45,7 @@ class fq_t
     //  there are following parts still waiting in the current pipe.
     bool _more;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (fq_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (fq_t)
 };
 }
 

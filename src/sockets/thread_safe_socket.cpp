@@ -15,7 +15,7 @@
 #include <string.h>
 #include <utility>
 
-zmq::thread_safe_socket_t::thread_safe_socket_t (ctx_t *ctx_,
+zlink::thread_safe_socket_t::thread_safe_socket_t (ctx_t *ctx_,
                                                  socket_base_t *socket_) :
     _tag (threadsafe_socket_tag_value),
     _ctx (ctx_),
@@ -28,33 +28,33 @@ zmq::thread_safe_socket_t::thread_safe_socket_t (ctx_t *ctx_,
     _in_request_handler (false),
     _current_request_id (0)
 {
-    zmq_assert (_ctx);
-    zmq_assert (_socket);
+    zlink_assert (_ctx);
+    zlink_assert (_socket);
     _current_routing_id.size = 0;
 }
 
-zmq::thread_safe_socket_t::~thread_safe_socket_t ()
+zlink::thread_safe_socket_t::~thread_safe_socket_t ()
 {
-    zmq_assert (_socket == NULL);
+    zlink_assert (_socket == NULL);
     _tag = 0xdeadbeef;
 }
 
-bool zmq::thread_safe_socket_t::check_tag () const
+bool zlink::thread_safe_socket_t::check_tag () const
 {
     return _tag == threadsafe_socket_tag_value;
 }
 
-zmq::socket_base_t *zmq::thread_safe_socket_t::get_socket () const
+zlink::socket_base_t *zlink::thread_safe_socket_t::get_socket () const
 {
     return _socket;
 }
 
-zmq::ctx_t *zmq::thread_safe_socket_t::get_ctx () const
+zlink::ctx_t *zlink::thread_safe_socket_t::get_ctx () const
 {
     return _ctx;
 }
 
-int zmq::thread_safe_socket_t::close ()
+int zlink::thread_safe_socket_t::close ()
 {
     if (!_socket)
         return 0;
@@ -79,7 +79,7 @@ int zmq::thread_safe_socket_t::close ()
     return rc;
 }
 
-void zmq::thread_safe_socket_t::wait_for_idle ()
+void zlink::thread_safe_socket_t::wait_for_idle ()
 {
     _sync.lock ();
     while (_active_calls.get () != 0)
@@ -87,12 +87,12 @@ void zmq::thread_safe_socket_t::wait_for_idle ()
     _sync.unlock ();
 }
 
-void zmq::thread_safe_socket_t::add_active ()
+void zlink::thread_safe_socket_t::add_active ()
 {
     _active_calls.add (1);
 }
 
-void zmq::thread_safe_socket_t::release_active ()
+void zlink::thread_safe_socket_t::release_active ()
 {
     if (_active_calls.sub (1))
         return;
@@ -100,9 +100,9 @@ void zmq::thread_safe_socket_t::release_active ()
     _sync_cv.broadcast ();
 }
 
-zmq::thread_safe_socket_t::routing_id_key_t
-zmq::thread_safe_socket_t::make_routing_id_key (
-  const zmq_routing_id_t &rid_) const
+zlink::thread_safe_socket_t::routing_id_key_t
+zlink::thread_safe_socket_t::make_routing_id_key (
+  const zlink_routing_id_t &rid_) const
 {
     routing_id_key_t key;
     key.size = rid_.size;
@@ -111,7 +111,7 @@ zmq::thread_safe_socket_t::make_routing_id_key (
     return key;
 }
 
-int zmq::thread_safe_socket_t::setsockopt (int option_,
+int zlink::thread_safe_socket_t::setsockopt (int option_,
                                            const void *optval_,
                                            size_t optvallen_)
 {
@@ -130,11 +130,11 @@ int zmq::thread_safe_socket_t::setsockopt (int option_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::getsockopt (int option_,
+int zlink::thread_safe_socket_t::getsockopt (int option_,
                                            void *optval_,
                                            size_t *optvallen_)
 {
-    if (option_ == ZMQ_THREAD_SAFE) {
+    if (option_ == ZLINK_THREAD_SAFE) {
         if (!optval_ || !optvallen_ || *optvallen_ < sizeof (int)) {
             errno = EINVAL;
             return -1;
@@ -160,7 +160,7 @@ int zmq::thread_safe_socket_t::getsockopt (int option_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::bind (const char *endpoint_)
+int zlink::thread_safe_socket_t::bind (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -177,7 +177,7 @@ int zmq::thread_safe_socket_t::bind (const char *endpoint_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::connect (const char *endpoint_)
+int zlink::thread_safe_socket_t::connect (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -194,7 +194,7 @@ int zmq::thread_safe_socket_t::connect (const char *endpoint_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::term_endpoint (const char *endpoint_)
+int zlink::thread_safe_socket_t::term_endpoint (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -211,7 +211,7 @@ int zmq::thread_safe_socket_t::term_endpoint (const char *endpoint_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::send (msg_t *msg_, int flags_)
+int zlink::thread_safe_socket_t::send (msg_t *msg_, int flags_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -228,7 +228,7 @@ int zmq::thread_safe_socket_t::send (msg_t *msg_, int flags_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::recv (msg_t *msg_, int flags_)
+int zlink::thread_safe_socket_t::recv (msg_t *msg_, int flags_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -249,19 +249,19 @@ int zmq::thread_safe_socket_t::recv (msg_t *msg_, int flags_)
     return rc;
 }
 
-bool zmq::thread_safe_socket_t::has_in ()
+bool zlink::thread_safe_socket_t::has_in ()
 {
     return dispatch<bool> (
       [this] () { return _socket ? _socket->has_in () : false; }, NULL);
 }
 
-bool zmq::thread_safe_socket_t::has_out ()
+bool zlink::thread_safe_socket_t::has_out ()
 {
     return dispatch<bool> (
       [this] () { return _socket ? _socket->has_out () : false; }, NULL);
 }
 
-int zmq::thread_safe_socket_t::join (const char *group_)
+int zlink::thread_safe_socket_t::join (const char *group_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -278,7 +278,7 @@ int zmq::thread_safe_socket_t::join (const char *group_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::leave (const char *group_)
+int zlink::thread_safe_socket_t::leave (const char *group_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -295,7 +295,7 @@ int zmq::thread_safe_socket_t::leave (const char *group_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::monitor (const char *endpoint_,
+int zlink::thread_safe_socket_t::monitor (const char *endpoint_,
                                         uint64_t events_,
                                         int event_version_,
                                         int type_)
@@ -315,7 +315,7 @@ int zmq::thread_safe_socket_t::monitor (const char *endpoint_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_stats (zmq_socket_stats_t *stats_)
+int zlink::thread_safe_socket_t::socket_stats (zlink_socket_stats_t *stats_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -332,7 +332,7 @@ int zmq::thread_safe_socket_t::socket_stats (zmq_socket_stats_t *stats_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_stats_ex (zmq_socket_stats_ex_t *stats_)
+int zlink::thread_safe_socket_t::socket_stats_ex (zlink_socket_stats_ex_t *stats_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -349,8 +349,8 @@ int zmq::thread_safe_socket_t::socket_stats_ex (zmq_socket_stats_ex_t *stats_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_peer_info (
-  const zmq_routing_id_t *routing_id_, zmq_peer_info_t *info_)
+int zlink::thread_safe_socket_t::socket_peer_info (
+  const zlink_routing_id_t *routing_id_, zlink_peer_info_t *info_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -367,8 +367,8 @@ int zmq::thread_safe_socket_t::socket_peer_info (
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_peer_routing_id (int index_,
-                                                       zmq_routing_id_t *out_)
+int zlink::thread_safe_socket_t::socket_peer_routing_id (int index_,
+                                                       zlink_routing_id_t *out_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -385,7 +385,7 @@ int zmq::thread_safe_socket_t::socket_peer_routing_id (int index_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_peer_count ()
+int zlink::thread_safe_socket_t::socket_peer_count ()
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -402,7 +402,7 @@ int zmq::thread_safe_socket_t::socket_peer_count ()
     return rc;
 }
 
-int zmq::thread_safe_socket_t::socket_peers (zmq_peer_info_t *peers_,
+int zlink::thread_safe_socket_t::socket_peers (zlink_peer_info_t *peers_,
                                              size_t *count_)
 {
     int err = 0;
@@ -420,7 +420,7 @@ int zmq::thread_safe_socket_t::socket_peers (zmq_peer_info_t *peers_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::get_peer_state (const void *routing_id_,
+int zlink::thread_safe_socket_t::get_peer_state (const void *routing_id_,
                                                size_t routing_id_size_)
 {
     int err = 0;
@@ -438,7 +438,7 @@ int zmq::thread_safe_socket_t::get_peer_state (const void *routing_id_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::get_socket_type ()
+int zlink::thread_safe_socket_t::get_socket_type ()
 {
     if (!_socket) {
         errno = ENOTSOCK;
@@ -446,42 +446,42 @@ int zmq::thread_safe_socket_t::get_socket_type ()
     }
     int type = 0;
     size_t size = sizeof (type);
-    if (_socket->getsockopt (ZMQ_TYPE, &type, &size) != 0)
+    if (_socket->getsockopt (ZLINK_TYPE, &type, &size) != 0)
         return -1;
     return type;
 }
 
-bool zmq::thread_safe_socket_t::get_request_correlate ()
+bool zlink::thread_safe_socket_t::get_request_correlate ()
 {
     int value = 1;
     size_t size = sizeof (value);
     if (!_socket)
         return true;
-    if (_socket->getsockopt (ZMQ_REQUEST_CORRELATE, &value, &size) != 0)
+    if (_socket->getsockopt (ZLINK_REQUEST_CORRELATE, &value, &size) != 0)
         return true;
     return value != 0;
 }
 
-int zmq::thread_safe_socket_t::get_request_timeout ()
+int zlink::thread_safe_socket_t::get_request_timeout ()
 {
     int value = 5000;
     size_t size = sizeof (value);
     if (!_socket)
         return value;
-    if (_socket->getsockopt (ZMQ_REQUEST_TIMEOUT, &value, &size) != 0)
+    if (_socket->getsockopt (ZLINK_REQUEST_TIMEOUT, &value, &size) != 0)
         return 5000;
     return value;
 }
 
-bool zmq::thread_safe_socket_t::validate_request_params (
+bool zlink::thread_safe_socket_t::validate_request_params (
   int socket_type_,
-  const zmq_routing_id_t *routing_id_,
-  zmq_msg_t *parts_,
+  const zlink_routing_id_t *routing_id_,
+  zlink_msg_t *parts_,
   size_t part_count_,
-  zmq_request_cb_fn callback_,
+  zlink_request_cb_fn callback_,
   bool require_callback_)
 {
-    if (socket_type_ != ZMQ_ROUTER && socket_type_ != ZMQ_DEALER) {
+    if (socket_type_ != ZLINK_ROUTER && socket_type_ != ZLINK_DEALER) {
         errno = ENOTSUP;
         return false;
     }
@@ -493,7 +493,7 @@ bool zmq::thread_safe_socket_t::validate_request_params (
         errno = EINVAL;
         return false;
     }
-    if (socket_type_ == ZMQ_ROUTER) {
+    if (socket_type_ == ZLINK_ROUTER) {
         if (!routing_id_ || routing_id_->size == 0) {
             errno = EINVAL;
             return false;
@@ -505,7 +505,7 @@ bool zmq::thread_safe_socket_t::validate_request_params (
     return true;
 }
 
-bool zmq::thread_safe_socket_t::copy_parts_in (zmq_msg_t *parts_,
+bool zlink::thread_safe_socket_t::copy_parts_in (zlink_msg_t *parts_,
                                                size_t part_count_,
                                                std::vector<msg_t> *out_)
 {
@@ -528,16 +528,16 @@ bool zmq::thread_safe_socket_t::copy_parts_in (zmq_msg_t *parts_,
     return true;
 }
 
-void zmq::thread_safe_socket_t::close_msg_array (zmq_msg_t *parts_,
+void zlink::thread_safe_socket_t::close_msg_array (zlink_msg_t *parts_,
                                                  size_t part_count_)
 {
     if (!parts_)
         return;
     for (size_t i = 0; i < part_count_; ++i)
-        zmq_msg_close (&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 }
 
-void zmq::thread_safe_socket_t::close_parts (std::vector<msg_t> *parts_)
+void zlink::thread_safe_socket_t::close_parts (std::vector<msg_t> *parts_)
 {
     if (!parts_)
         return;
@@ -546,8 +546,8 @@ void zmq::thread_safe_socket_t::close_parts (std::vector<msg_t> *parts_)
     parts_->clear ();
 }
 
-zmq_msg_t *
-zmq::thread_safe_socket_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
+zlink_msg_t *
+zlink::thread_safe_socket_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                                   size_t *count_)
 {
     if (count_)
@@ -556,8 +556,8 @@ zmq::thread_safe_socket_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         return NULL;
 
     const size_t count = parts_->size ();
-    zmq_msg_t *out =
-      static_cast<zmq_msg_t *> (malloc (count * sizeof (zmq_msg_t)));
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (count * sizeof (zlink_msg_t)));
     if (!out) {
         errno = ENOMEM;
         close_parts (parts_);
@@ -567,7 +567,7 @@ zmq::thread_safe_socket_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         msg_t *dst = reinterpret_cast<msg_t *> (&out[i]);
         if (dst->init () != 0 || dst->move ((*parts_)[i]) != 0) {
             for (size_t j = 0; j <= i; ++j)
-                zmq_msg_close (&out[j]);
+                zlink_msg_close (&out[j]);
             free (out);
             close_parts (parts_);
             errno = EFAULT;
@@ -580,10 +580,10 @@ zmq::thread_safe_socket_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
     return out;
 }
 
-uint64_t zmq::thread_safe_socket_t::request (const zmq_routing_id_t *routing_id_,
-                                             zmq_msg_t *parts_,
+uint64_t zlink::thread_safe_socket_t::request (const zlink_routing_id_t *routing_id_,
+                                             zlink_msg_t *parts_,
                                              size_t part_count_,
-                                             zmq_request_cb_fn callback_,
+                                             zlink_request_cb_fn callback_,
                                              int timeout_ms_)
 {
     int err = 0;
@@ -599,11 +599,11 @@ uint64_t zmq::thread_safe_socket_t::request (const zmq_routing_id_t *routing_id_
 }
 
 uint64_t
-zmq::thread_safe_socket_t::group_request (const zmq_routing_id_t *routing_id_,
+zlink::thread_safe_socket_t::group_request (const zlink_routing_id_t *routing_id_,
                                           uint64_t group_id_,
-                                          zmq_msg_t *parts_,
+                                          zlink_msg_t *parts_,
                                           size_t part_count_,
-                                          zmq_request_cb_fn callback_,
+                                          zlink_request_cb_fn callback_,
                                           int timeout_ms_)
 {
     int err = 0;
@@ -620,8 +620,8 @@ zmq::thread_safe_socket_t::group_request (const zmq_routing_id_t *routing_id_,
 }
 
 uint64_t
-zmq::thread_safe_socket_t::request_send (const zmq_routing_id_t *routing_id_,
-                                         zmq_msg_t *parts_,
+zlink::thread_safe_socket_t::request_send (const zlink_routing_id_t *routing_id_,
+                                         zlink_msg_t *parts_,
                                          size_t part_count_)
 {
     int err = 0;
@@ -636,7 +636,7 @@ zmq::thread_safe_socket_t::request_send (const zmq_routing_id_t *routing_id_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::on_request (zmq_server_cb_fn handler_)
+int zlink::thread_safe_socket_t::on_request (zlink_server_cb_fn handler_)
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -646,7 +646,7 @@ int zmq::thread_safe_socket_t::on_request (zmq_server_cb_fn handler_)
               return -1;
           }
           const int type = get_socket_type ();
-          if (type != ZMQ_ROUTER && type != ZMQ_DEALER) {
+          if (type != ZLINK_ROUTER && type != ZLINK_DEALER) {
               errno = ENOTSUP;
               return -1;
           }
@@ -665,9 +665,9 @@ int zmq::thread_safe_socket_t::on_request (zmq_server_cb_fn handler_)
     return rc;
 }
 
-int zmq::thread_safe_socket_t::reply (const zmq_routing_id_t *routing_id_,
+int zlink::thread_safe_socket_t::reply (const zlink_routing_id_t *routing_id_,
                                       uint64_t request_id_,
-                                      zmq_msg_t *parts_,
+                                      zlink_msg_t *parts_,
                                       size_t part_count_)
 {
     int err = 0;
@@ -681,7 +681,7 @@ int zmq::thread_safe_socket_t::reply (const zmq_routing_id_t *routing_id_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::reply_simple (zmq_msg_t *parts_,
+int zlink::thread_safe_socket_t::reply_simple (zlink_msg_t *parts_,
                                              size_t part_count_)
 {
     int err = 0;
@@ -691,7 +691,7 @@ int zmq::thread_safe_socket_t::reply_simple (zmq_msg_t *parts_,
               errno = EINVAL;
               return -1;
           }
-          const zmq_routing_id_t *rid =
+          const zlink_routing_id_t *rid =
             _current_routing_id.size > 0 ? &_current_routing_id : NULL;
           return reply_common (rid, _current_request_id, parts_, part_count_);
       },
@@ -701,7 +701,7 @@ int zmq::thread_safe_socket_t::reply_simple (zmq_msg_t *parts_,
     return rc;
 }
 
-int zmq::thread_safe_socket_t::request_recv (zmq_completion_t *completion_,
+int zlink::thread_safe_socket_t::request_recv (zlink_completion_t *completion_,
                                              int timeout_ms_)
 {
     struct active_guard_t
@@ -781,9 +781,9 @@ int zmq::thread_safe_socket_t::request_recv (zmq_completion_t *completion_,
     if (entry.parts.empty ())
         return 0;
 
-    zmq_msg_t *out =
-      static_cast<zmq_msg_t *> (malloc (entry.parts.size ()
-                                        * sizeof (zmq_msg_t)));
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (entry.parts.size ()
+                                        * sizeof (zlink_msg_t)));
     if (!out) {
         _completion_sync.lock ();
         _completion_queue.push_front (std::move (entry));
@@ -796,7 +796,7 @@ int zmq::thread_safe_socket_t::request_recv (zmq_completion_t *completion_,
         msg_t *dst = reinterpret_cast<msg_t *> (&out[i]);
         if (dst->init () != 0 || dst->move (entry.parts[i]) != 0) {
             for (size_t j = 0; j <= i; ++j)
-                zmq_msg_close (&out[j]);
+                zlink_msg_close (&out[j]);
             free (out);
             close_parts (&entry.parts);
             errno = EFAULT;
@@ -809,7 +809,7 @@ int zmq::thread_safe_socket_t::request_recv (zmq_completion_t *completion_,
     return 0;
 }
 
-int zmq::thread_safe_socket_t::pending_requests ()
+int zlink::thread_safe_socket_t::pending_requests ()
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -826,7 +826,7 @@ int zmq::thread_safe_socket_t::pending_requests ()
     return rc;
 }
 
-int zmq::thread_safe_socket_t::cancel_all_requests ()
+int zlink::thread_safe_socket_t::cancel_all_requests ()
 {
     int err = 0;
     const int rc = dispatch<int> (
@@ -843,12 +843,12 @@ int zmq::thread_safe_socket_t::cancel_all_requests ()
     return rc;
 }
 
-uint64_t zmq::thread_safe_socket_t::request_common (
-  const zmq_routing_id_t *routing_id_,
+uint64_t zlink::thread_safe_socket_t::request_common (
+  const zlink_routing_id_t *routing_id_,
   uint64_t group_id_,
-  zmq_msg_t *parts_,
+  zlink_msg_t *parts_,
   size_t part_count_,
-  zmq_request_cb_fn callback_,
+  zlink_request_cb_fn callback_,
   int timeout_ms_,
   bool use_callback_)
 {
@@ -858,7 +858,7 @@ uint64_t zmq::thread_safe_socket_t::request_common (
     }
 
     const int socket_type = get_socket_type ();
-    if (socket_type != ZMQ_ROUTER && socket_type != ZMQ_DEALER) {
+    if (socket_type != ZLINK_ROUTER && socket_type != ZLINK_DEALER) {
         errno = ENOTSUP;
         return 0;
     }
@@ -867,7 +867,7 @@ uint64_t zmq::thread_safe_socket_t::request_common (
         return 0;
 
     int timeout = timeout_ms_;
-    if (timeout_ms_ == ZMQ_REQUEST_TIMEOUT_DEFAULT)
+    if (timeout_ms_ == ZLINK_REQUEST_TIMEOUT_DEFAULT)
         timeout = get_request_timeout ();
     if (timeout < -1) {
         errno = EINVAL;
@@ -948,9 +948,9 @@ uint64_t zmq::thread_safe_socket_t::request_common (
     return request_id;
 }
 
-int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_,
+int zlink::thread_safe_socket_t::reply_common (const zlink_routing_id_t *routing_id_,
                                              uint64_t request_id_,
-                                             zmq_msg_t *parts_,
+                                             zlink_msg_t *parts_,
                                              size_t part_count_)
 {
     if (!_socket) {
@@ -959,7 +959,7 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
     }
 
     const int socket_type = get_socket_type ();
-    if (socket_type != ZMQ_ROUTER && socket_type != ZMQ_DEALER) {
+    if (socket_type != ZLINK_ROUTER && socket_type != ZLINK_DEALER) {
         errno = ENOTSUP;
         return -1;
     }
@@ -967,7 +967,7 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
         errno = EINVAL;
         return -1;
     }
-    if (socket_type == ZMQ_ROUTER) {
+    if (socket_type == ZLINK_ROUTER) {
         if (!routing_id_ || routing_id_->size == 0) {
             errno = EINVAL;
             return -1;
@@ -980,14 +980,14 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
     const bool correlate = get_request_correlate ();
     const bool send_id = correlate && request_id_ != 0;
 
-    if (socket_type == ZMQ_ROUTER) {
+    if (socket_type == ZLINK_ROUTER) {
         msg_t rid;
         if (rid.init_size (routing_id_->size) != 0
             || rid.size () != routing_id_->size) {
             return -1;
         }
         memcpy (rid.data (), routing_id_->data, routing_id_->size);
-        int flags = (send_id || part_count_ > 0) ? ZMQ_SNDMORE : 0;
+        int flags = (send_id || part_count_ > 0) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&rid, flags) != 0) {
             return -1;
         }
@@ -999,7 +999,7 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
             return -1;
         }
         memcpy (id.data (), &request_id_, sizeof (uint64_t));
-        int flags = part_count_ > 0 ? ZMQ_SNDMORE : 0;
+        int flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
         if (_socket->send (&id, flags) != 0) {
             return -1;
         }
@@ -1007,7 +1007,7 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
 
     for (size_t i = 0; i < part_count_; ++i) {
         msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
-        int flags = (i + 1 < part_count_) ? ZMQ_SNDMORE : 0;
+        int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&part, flags) != 0)
             return -1;
     }
@@ -1016,7 +1016,7 @@ int zmq::thread_safe_socket_t::reply_common (const zmq_routing_id_t *routing_id_
     return 0;
 }
 
-int zmq::thread_safe_socket_t::send_request (pending_request_t &req_)
+int zlink::thread_safe_socket_t::send_request (pending_request_t &req_)
 {
     if (!_socket) {
         errno = ENOTSOCK;
@@ -1024,14 +1024,14 @@ int zmq::thread_safe_socket_t::send_request (pending_request_t &req_)
     }
 
     const int socket_type = get_socket_type ();
-    if (socket_type != ZMQ_ROUTER && socket_type != ZMQ_DEALER) {
+    if (socket_type != ZLINK_ROUTER && socket_type != ZLINK_DEALER) {
         errno = ENOTSUP;
         return -1;
     }
     const bool correlate = req_.correlate;
     const bool send_id = correlate;
 
-    if (socket_type == ZMQ_ROUTER) {
+    if (socket_type == ZLINK_ROUTER) {
         if (!req_.has_routing_id || req_.routing_id.size == 0) {
             errno = EINVAL;
             return -1;
@@ -1041,7 +1041,7 @@ int zmq::thread_safe_socket_t::send_request (pending_request_t &req_)
             return -1;
         }
         memcpy (rid.data (), req_.routing_id.data, req_.routing_id.size);
-        int flags = (send_id || !req_.parts.empty ()) ? ZMQ_SNDMORE : 0;
+        int flags = (send_id || !req_.parts.empty ()) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&rid, flags) != 0)
             return -1;
     }
@@ -1051,13 +1051,13 @@ int zmq::thread_safe_socket_t::send_request (pending_request_t &req_)
         if (id.init_size (sizeof (uint64_t)) != 0)
             return -1;
         memcpy (id.data (), &req_.request_id, sizeof (uint64_t));
-        int flags = !req_.parts.empty () ? ZMQ_SNDMORE : 0;
+        int flags = !req_.parts.empty () ? ZLINK_SNDMORE : 0;
         if (_socket->send (&id, flags) != 0)
             return -1;
     }
 
     for (size_t i = 0; i < req_.parts.size (); ++i) {
-        int flags = (i + 1 < req_.parts.size ()) ? ZMQ_SNDMORE : 0;
+        int flags = (i + 1 < req_.parts.size ()) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&req_.parts[i], flags) != 0)
             return -1;
     }
@@ -1065,8 +1065,8 @@ int zmq::thread_safe_socket_t::send_request (pending_request_t &req_)
     return 0;
 }
 
-int zmq::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
-                                                    zmq_msg_t *parts_,
+int zlink::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
+                                                    zlink_msg_t *parts_,
                                                     size_t part_count_,
                                                     int socket_type_)
 {
@@ -1075,13 +1075,13 @@ int zmq::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
         return -1;
     }
 
-    if (socket_type_ != ZMQ_ROUTER && socket_type_ != ZMQ_DEALER) {
+    if (socket_type_ != ZLINK_ROUTER && socket_type_ != ZLINK_DEALER) {
         errno = ENOTSUP;
         return -1;
     }
     const bool send_id = req_.correlate;
 
-    if (socket_type_ == ZMQ_ROUTER) {
+    if (socket_type_ == ZLINK_ROUTER) {
         if (!req_.has_routing_id || req_.routing_id.size == 0) {
             errno = EINVAL;
             return -1;
@@ -1090,7 +1090,7 @@ int zmq::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
         if (rid.init_size (req_.routing_id.size) != 0)
             return -1;
         memcpy (rid.data (), req_.routing_id.data, req_.routing_id.size);
-        int flags = (send_id || part_count_ > 0) ? ZMQ_SNDMORE : 0;
+        int flags = (send_id || part_count_ > 0) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&rid, flags) != 0)
             return -1;
     }
@@ -1100,14 +1100,14 @@ int zmq::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
         if (id.init_size (sizeof (uint64_t)) != 0)
             return -1;
         memcpy (id.data (), &req_.request_id, sizeof (uint64_t));
-        int flags = part_count_ > 0 ? ZMQ_SNDMORE : 0;
+        int flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
         if (_socket->send (&id, flags) != 0)
             return -1;
     }
 
     for (size_t i = 0; i < part_count_; ++i) {
         msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
-        int flags = (i + 1 < part_count_) ? ZMQ_SNDMORE : 0;
+        int flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         if (_socket->send (&part, flags) != 0)
             return -1;
     }
@@ -1115,14 +1115,14 @@ int zmq::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
     return 0;
 }
 
-void zmq::thread_safe_socket_t::ensure_request_pump ()
+void zlink::thread_safe_socket_t::ensure_request_pump ()
 {
     if (!_request_pump_active)
         _request_pump_active = true;
     schedule_request_pump (std::chrono::milliseconds (0));
 }
 
-void zmq::thread_safe_socket_t::schedule_request_pump (
+void zlink::thread_safe_socket_t::schedule_request_pump (
   std::chrono::milliseconds delay_)
 {
     _request_timer.expires_after (delay_);
@@ -1131,7 +1131,7 @@ void zmq::thread_safe_socket_t::schedule_request_pump (
       [this] (const boost::system::error_code &ec_) { pump_requests (ec_); }));
 }
 
-void zmq::thread_safe_socket_t::pump_requests (
+void zlink::thread_safe_socket_t::pump_requests (
   const boost::system::error_code &ec_)
 {
     if (ec_ == boost::asio::error::operation_aborted)
@@ -1175,7 +1175,7 @@ void zmq::thread_safe_socket_t::pump_requests (
     schedule_request_pump (delay);
 }
 
-bool zmq::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)
+bool zlink::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)
 {
     if (!out_)
         return false;
@@ -1183,7 +1183,7 @@ bool zmq::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)
     msg_t first;
     if (first.init () != 0)
         return false;
-    if (_socket->recv (&first, ZMQ_DONTWAIT) != 0) {
+    if (_socket->recv (&first, ZLINK_DONTWAIT) != 0) {
         first.close ();
         return false;
     }
@@ -1205,7 +1205,7 @@ bool zmq::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)
         return false;
     }
 
-    if (socket_type == ZMQ_ROUTER) {
+    if (socket_type == ZLINK_ROUTER) {
         out_->has_routing_id = true;
         if (current.size () > sizeof (out_->routing_id.data)) {
             close_parts (&out_->parts);
@@ -1277,7 +1277,7 @@ bool zmq::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)
     return true;
 }
 
-void zmq::thread_safe_socket_t::handle_incoming_message (
+void zlink::thread_safe_socket_t::handle_incoming_message (
   incoming_message_t *msg_)
 {
     if (!msg_)
@@ -1356,7 +1356,7 @@ void zmq::thread_safe_socket_t::handle_incoming_message (
             _current_routing_id.size = 0;
 
         size_t count = 0;
-        zmq_msg_t *parts = alloc_msgv_from_parts (&msg_->parts, &count);
+        zlink_msg_t *parts = alloc_msgv_from_parts (&msg_->parts, &count);
         if (parts) {
             _request_handler (parts, count,
                               msg_->has_routing_id ? &msg_->routing_id : NULL,
@@ -1371,13 +1371,13 @@ void zmq::thread_safe_socket_t::handle_incoming_message (
     }
 }
 
-void zmq::thread_safe_socket_t::handle_request_complete (
+void zlink::thread_safe_socket_t::handle_request_complete (
   pending_request_t &req_,
   std::vector<msg_t> *parts_,
   int error_)
 {
     if (req_.use_callback) {
-        zmq_msg_t *out_parts = NULL;
+        zlink_msg_t *out_parts = NULL;
         size_t out_count = 0;
         if (error_ == 0 && parts_ && !parts_->empty ()) {
             out_parts = alloc_msgv_from_parts (parts_, &out_count);
@@ -1407,7 +1407,7 @@ void zmq::thread_safe_socket_t::handle_request_complete (
     close_parts (&req_.parts);
 }
 
-void zmq::thread_safe_socket_t::handle_group_complete (pending_request_t &req_)
+void zlink::thread_safe_socket_t::handle_group_complete (pending_request_t &req_)
 {
     if (req_.group_id == 0)
         return;
@@ -1456,7 +1456,7 @@ void zmq::thread_safe_socket_t::handle_group_complete (pending_request_t &req_)
         _group_queues.erase (it);
 }
 
-void zmq::thread_safe_socket_t::process_timeouts ()
+void zlink::thread_safe_socket_t::process_timeouts ()
 {
     const std::chrono::steady_clock::time_point now =
       std::chrono::steady_clock::now ();
@@ -1483,7 +1483,7 @@ void zmq::thread_safe_socket_t::process_timeouts ()
     }
 }
 
-void zmq::thread_safe_socket_t::enqueue_non_correlate (
+void zlink::thread_safe_socket_t::enqueue_non_correlate (
   const pending_request_t &req_)
 {
     if (req_.has_routing_id && req_.routing_id.size > 0) {
@@ -1494,7 +1494,7 @@ void zmq::thread_safe_socket_t::enqueue_non_correlate (
     }
 }
 
-void zmq::thread_safe_socket_t::remove_non_correlate (
+void zlink::thread_safe_socket_t::remove_non_correlate (
   const pending_request_t &req_)
 {
     if (req_.has_routing_id && req_.routing_id.size > 0) {
@@ -1527,7 +1527,7 @@ void zmq::thread_safe_socket_t::remove_non_correlate (
     }
 }
 
-int zmq::thread_safe_socket_t::cancel_all_requests_internal (int error_)
+int zlink::thread_safe_socket_t::cancel_all_requests_internal (int error_)
 {
     const int count = static_cast<int> (_pending_requests.size ());
     if (count == 0)

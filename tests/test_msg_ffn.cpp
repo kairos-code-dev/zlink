@@ -19,35 +19,35 @@ void test_msg_init_ffn ()
     //  Create the infrastructure
     char my_endpoint[MAX_SOCKET_STRING];
 
-    void *router = test_context_socket (ZMQ_ROUTER);
+    void *router = test_context_socket (ZLINK_ROUTER);
     bind_loopback_ipv4 (router, my_endpoint, sizeof my_endpoint);
 
-    void *dealer = test_context_socket (ZMQ_DEALER);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer, my_endpoint));
+    void *dealer = test_context_socket (ZLINK_DEALER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, my_endpoint));
 
     // Test that creating and closing a message triggers ffn
-    zmq_msg_t msg;
+    zlink_msg_t msg;
     char hint[5];
     char data[255];
     memset (data, 0, 255);
     memcpy (data, (void *) "data", 4);
     memcpy (hint, (void *) "hint", 4);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     msleep (SETTLE_TIME);
     TEST_ASSERT_EQUAL_STRING_LEN ("freed", hint, 5);
     memcpy (hint, (void *) "hint", 4);
 
     // Making and closing a copy triggers ffn
-    zmq_msg_t msg2;
-    zmq_msg_init (&msg2);
+    zlink_msg_t msg2;
+    zlink_msg_init (&msg2);
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_copy (&msg2, &msg));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg2));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg2, &msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     msleep (SETTLE_TIME);
     TEST_ASSERT_EQUAL_STRING_LEN ("freed", hint, 5);
@@ -55,31 +55,31 @@ void test_msg_init_ffn ()
 
     // Test that sending a message triggers ffn
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
 
-    zmq_msg_send (&msg, dealer, 0);
+    zlink_msg_send (&msg, dealer, 0);
     char buf[255];
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, buf, 255, 0));
-    TEST_ASSERT_EQUAL_INT (255, zmq_recv (router, buf, 255, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, buf, 255, 0));
+    TEST_ASSERT_EQUAL_INT (255, zlink_recv (router, buf, 255, 0));
     TEST_ASSERT_EQUAL_STRING_LEN (data, buf, 4);
 
     msleep (SETTLE_TIME);
     TEST_ASSERT_EQUAL_STRING_LEN ("freed", hint, 5);
     memcpy (hint, (void *) "hint", 4);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     // Sending a copy of a message triggers ffn
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_init (&msg2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg2));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_copy (&msg2, &msg));
+      zlink_msg_init_data (&msg, (void *) data, 255, ffn, (void *) hint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_copy (&msg2, &msg));
 
-    zmq_msg_send (&msg, dealer, 0);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, buf, 255, 0));
-    TEST_ASSERT_EQUAL_INT (255, zmq_recv (router, buf, 255, 0));
+    zlink_msg_send (&msg, dealer, 0);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, buf, 255, 0));
+    TEST_ASSERT_EQUAL_INT (255, zlink_recv (router, buf, 255, 0));
     TEST_ASSERT_EQUAL_STRING_LEN (data, buf, 4);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg2));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     msleep (SETTLE_TIME);
     TEST_ASSERT_EQUAL_STRING_LEN ("freed", hint, 5);

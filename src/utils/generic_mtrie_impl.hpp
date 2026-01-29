@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_GENERIC_MTRIE_IMPL_HPP_INCLUDED__
-#define __ZMQ_GENERIC_MTRIE_IMPL_HPP_INCLUDED__
+#ifndef __ZLINK_GENERIC_MTRIE_IMPL_HPP_INCLUDED__
+#define __ZLINK_GENERIC_MTRIE_IMPL_HPP_INCLUDED__
 
 
 #include <stdlib.h>
@@ -14,7 +14,7 @@
 #include "utils/macros.hpp"
 #include "utils/generic_mtrie.hpp"
 
-namespace zmq
+namespace zlink
 {
 template <typename T>
 generic_mtrie_t<T>::generic_mtrie_t () :
@@ -24,14 +24,14 @@ generic_mtrie_t<T>::generic_mtrie_t () :
 
 template <typename T> generic_mtrie_t<T>::~generic_mtrie_t ()
 {
-    LIBZMQ_DELETE (_pipes);
+    LIBZLINK_DELETE (_pipes);
 
     if (_count == 1) {
-        zmq_assert (_next.node);
-        LIBZMQ_DELETE (_next.node);
+        zlink_assert (_next.node);
+        LIBZLINK_DELETE (_next.node);
     } else if (_count > 1) {
         for (unsigned short i = 0; i != _count; ++i) {
-            LIBZMQ_DELETE (_next.table[i]);
+            LIBZLINK_DELETE (_next.table[i]);
         }
         free (_next.table);
     }
@@ -162,7 +162,7 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                 }
 
                 if (it.node->_pipes->empty ()) {
-                    LIBZMQ_DELETE (it.node->_pipes);
+                    LIBZLINK_DELETE (it.node->_pipes);
                 }
             }
 
@@ -244,10 +244,10 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
 
                     //  Prune the node if it was made redundant by the removal
                     if (it.node->_next.node->is_redundant ()) {
-                        LIBZMQ_DELETE (it.node->_next.node);
+                        LIBZLINK_DELETE (it.node->_next.node);
                         it.node->_count = 0;
                         --it.node->_live_nodes;
-                        zmq_assert (it.node->_live_nodes == 0);
+                        zlink_assert (it.node->_live_nodes == 0);
                     }
                     break;
                 default:
@@ -257,10 +257,10 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                             //  Prune redundant nodes from the mtrie
                             if (it.node->_next.table[it.current_child]
                                   ->is_redundant ()) {
-                                LIBZMQ_DELETE (
+                                LIBZLINK_DELETE (
                                   it.node->_next.table[it.current_child]);
 
-                                zmq_assert (it.node->_live_nodes > 0);
+                                zlink_assert (it.node->_live_nodes > 0);
                                 --it.node->_live_nodes;
                             } else {
                                 //  The node is not redundant, so it's a candidate for being
@@ -296,7 +296,7 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                         //  All children have been visited and removed if needed, and
                         //  all pre- and post-visit operations have been carried.
                         //  Resize/free the node table if needed.
-                        zmq_assert (it.node->_count > 1);
+                        zlink_assert (it.node->_count > 1);
 
                         //  Free the node table if it's no longer used.
                         switch (it.node->_live_nodes) {
@@ -311,15 +311,15 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                                 //  If there's only one live node in the table we can
                                 //  switch to using the more compact single-node
                                 //  representation
-                                zmq_assert (it.new_min == it.new_max);
-                                zmq_assert (it.new_min >= it.node->_min);
-                                zmq_assert (it.new_min
+                                zlink_assert (it.new_min == it.new_max);
+                                zlink_assert (it.new_min >= it.node->_min);
+                                zlink_assert (it.new_min
                                             < it.node->_min + it.node->_count);
                                 {
                                     generic_mtrie_t *node =
                                       it.node->_next
                                         .table[it.new_min - it.node->_min];
-                                    zmq_assert (node);
+                                    zlink_assert (node);
                                     free (it.node->_next.table);
                                     it.node->_next.node = node;
                                 }
@@ -330,20 +330,20 @@ void generic_mtrie_t<T>::rm (value_t *pipe_,
                                 if (it.new_min > it.node->_min
                                     || it.new_max < it.node->_min
                                                       + it.node->_count - 1) {
-                                    zmq_assert (it.new_max - it.new_min + 1
+                                    zlink_assert (it.new_max - it.new_min + 1
                                                 > 1);
 
                                     generic_mtrie_t **old_table =
                                       it.node->_next.table;
-                                    zmq_assert (it.new_min > it.node->_min
+                                    zlink_assert (it.new_min > it.node->_min
                                                 || it.new_max
                                                      < it.node->_min
                                                          + it.node->_count - 1);
-                                    zmq_assert (it.new_min >= it.node->_min);
-                                    zmq_assert (it.new_max
+                                    zlink_assert (it.new_min >= it.node->_min);
+                                    zlink_assert (it.new_max
                                                 <= it.node->_min
                                                      + it.node->_count - 1);
-                                    zmq_assert (it.new_max - it.new_min + 1
+                                    zlink_assert (it.new_max - it.new_min + 1
                                                 < it.node->_count);
 
                                     it.node->_count =
@@ -403,8 +403,8 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                 typename pipes_t::size_type erased =
                   it.node->_pipes->erase (pipe_);
                 if (it.node->_pipes->empty ()) {
-                    zmq_assert (erased == 1);
-                    LIBZMQ_DELETE (it.node->_pipes);
+                    zlink_assert (erased == 1);
+                    LIBZLINK_DELETE (it.node->_pipes);
                     ret = last_value_removed;
                     continue;
                 }
@@ -438,17 +438,17 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
             it.processed_for_removal = false;
 
             if (it.next_node->is_redundant ()) {
-                LIBZMQ_DELETE (it.next_node);
-                zmq_assert (it.node->_count > 0);
+                LIBZLINK_DELETE (it.next_node);
+                zlink_assert (it.node->_count > 0);
 
                 if (it.node->_count == 1) {
                     it.node->_next.node = NULL;
                     it.node->_count = 0;
                     --it.node->_live_nodes;
-                    zmq_assert (it.node->_live_nodes == 0);
+                    zlink_assert (it.node->_live_nodes == 0);
                 } else {
                     it.node->_next.table[it.current_child - it.node->_min] = 0;
-                    zmq_assert (it.node->_live_nodes > 1);
+                    zlink_assert (it.node->_live_nodes > 1);
                     --it.node->_live_nodes;
 
                     //  Compact the table if possible
@@ -461,7 +461,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                             if (it.node->_next.table[i])
                                 break;
 
-                        zmq_assert (i < it.node->_count);
+                        zlink_assert (i < it.node->_count);
                         it.node->_min += i;
                         it.node->_count = 1;
                         generic_mtrie_t *oldp = it.node->_next.table[i];
@@ -475,7 +475,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                             if (it.node->_next.table[i])
                                 break;
 
-                        zmq_assert (i < it.node->_count);
+                        zlink_assert (i < it.node->_count);
                         it.node->_min += i;
                         it.node->_count -= i;
                         generic_mtrie_t **old_table = it.node->_next.table;
@@ -494,7 +494,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
                             if (it.node->_next.table[it.node->_count - 1 - i])
                                 break;
 
-                        zmq_assert (i < it.node->_count);
+                        zlink_assert (i < it.node->_count);
                         it.node->_count -= i;
                         generic_mtrie_t **old_table = it.node->_next.table;
                         it.node->_next.table =
@@ -511,7 +511,7 @@ generic_mtrie_t<T>::rm (prefix_t prefix_, size_t size_, value_t *pipe_)
     }
 
     if (ret == last_value_removed) {
-        zmq_assert (_num_prefixes.get () > 0);
+        zlink_assert (_num_prefixes.get () > 0);
         _num_prefixes.sub (1);
     }
 

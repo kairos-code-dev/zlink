@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_WS_TRANSPORT_HPP_INCLUDED__
-#define __ZMQ_WS_TRANSPORT_HPP_INCLUDED__
+#ifndef __ZLINK_WS_TRANSPORT_HPP_INCLUDED__
+#define __ZLINK_WS_TRANSPORT_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_WS
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -15,7 +15,7 @@
 
 #include "engine/asio/i_asio_transport.hpp"
 
-namespace zmq
+namespace zlink
 {
 
 //  WebSocket transport implementation using Boost.Beast
@@ -25,7 +25,7 @@ namespace zmq
 //
 //  WebSocket specifics:
 //  - Requires HTTP upgrade handshake before data transfer
-//  - Uses binary frames for ZMQ messages (not text frames)
+//  - Uses binary frames for ZLINK messages (not text frames)
 //  - Frame-based protocol (read_some returns message data chunks)
 //
 //  Usage:
@@ -45,44 +45,44 @@ class ws_transport_t : public i_asio_transport
     };
 
     //  Create WebSocket transport
-    //  path: URL path for WebSocket endpoint (e.g., "/zmq")
+    //  path: URL path for WebSocket endpoint (e.g., "/zlink")
     //  host: Host name for client handshake (e.g., "127.0.0.1:9000")
     ws_transport_t (const std::string &path = "/",
                     const std::string &host = "localhost");
-    ~ws_transport_t () ZMQ_OVERRIDE;
+    ~ws_transport_t () ZLINK_OVERRIDE;
 
     //  i_asio_transport interface
-    bool open (boost::asio::io_context &io_context, fd_t fd) ZMQ_OVERRIDE;
-    bool is_open () const ZMQ_OVERRIDE;
-    void close () ZMQ_OVERRIDE;
+    bool open (boost::asio::io_context &io_context, fd_t fd) ZLINK_OVERRIDE;
+    bool is_open () const ZLINK_OVERRIDE;
+    void close () ZLINK_OVERRIDE;
 
     void async_read_some (unsigned char *buffer,
                           std::size_t buffer_size,
-                          completion_handler_t handler) ZMQ_OVERRIDE;
+                          completion_handler_t handler) ZLINK_OVERRIDE;
 
     std::size_t read_some (std::uint8_t *buffer,
-                           std::size_t len) ZMQ_OVERRIDE;
+                           std::size_t len) ZLINK_OVERRIDE;
 
     void async_write_some (const unsigned char *buffer,
                            std::size_t buffer_size,
-                           completion_handler_t handler) ZMQ_OVERRIDE;
+                           completion_handler_t handler) ZLINK_OVERRIDE;
 
     std::size_t write_some (const std::uint8_t *data,
-                            std::size_t len) ZMQ_OVERRIDE;
+                            std::size_t len) ZLINK_OVERRIDE;
 
     //  WebSocket-specific overrides
-    bool requires_handshake () const ZMQ_OVERRIDE { return true; }
+    bool requires_handshake () const ZLINK_OVERRIDE { return true; }
     void async_handshake (int handshake_type,
-                          completion_handler_t handler) ZMQ_OVERRIDE;
-    bool supports_speculative_write () const ZMQ_OVERRIDE { return false; }
-    bool supports_gather_write () const ZMQ_OVERRIDE { return true; }
+                          completion_handler_t handler) ZLINK_OVERRIDE;
+    bool supports_speculative_write () const ZLINK_OVERRIDE { return false; }
+    bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
     void async_writev (const unsigned char *header,
                        std::size_t header_size,
                        const unsigned char *body,
                        std::size_t body_size,
-                       completion_handler_t handler) ZMQ_OVERRIDE;
-    bool is_encrypted () const ZMQ_OVERRIDE { return false; }
-    const char *name () const ZMQ_OVERRIDE { return "ws"; }
+                       completion_handler_t handler) ZLINK_OVERRIDE;
+    bool is_encrypted () const ZLINK_OVERRIDE { return false; }
+    const char *name () const ZLINK_OVERRIDE { return "ws"; }
 
     //  Set the host for client handshake
     void set_host (const std::string &host) { _host = host; }
@@ -100,11 +100,11 @@ class ws_transport_t : public i_asio_transport
     std::unique_ptr<ws_stream_t> _ws_stream;
     bool _handshake_complete;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (ws_transport_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (ws_transport_t)
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_WS
 
-#endif  // __ZMQ_WS_TRANSPORT_HPP_INCLUDED__
+#endif  // __ZLINK_WS_TRANSPORT_HPP_INCLUDED__

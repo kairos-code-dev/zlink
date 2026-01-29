@@ -18,19 +18,19 @@ void tearDown ()
 {
 }
 
-bool tree_add (zmq::radix_tree_t &tree_, const std::string &key_)
+bool tree_add (zlink::radix_tree_t &tree_, const std::string &key_)
 {
     return tree_.add (reinterpret_cast<const unsigned char *> (key_.data ()),
                       key_.size ());
 }
 
-bool tree_rm (zmq::radix_tree_t &tree_, const std::string &key_)
+bool tree_rm (zlink::radix_tree_t &tree_, const std::string &key_)
 {
     return tree_.rm (reinterpret_cast<const unsigned char *> (key_.data ()),
                      key_.size ());
 }
 
-bool tree_check (zmq::radix_tree_t &tree_, const std::string &key_)
+bool tree_check (zlink::radix_tree_t &tree_, const std::string &key_)
 {
     return tree_.check (reinterpret_cast<const unsigned char *> (key_.data ()),
                         key_.size ());
@@ -38,21 +38,21 @@ bool tree_check (zmq::radix_tree_t &tree_, const std::string &key_)
 
 void test_empty ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     TEST_ASSERT_TRUE (tree.size () == 0);
 }
 
 void test_add_single_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     TEST_ASSERT_TRUE (tree_add (tree, "foo"));
 }
 
 void test_add_same_entry_twice ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     TEST_ASSERT_TRUE (tree_add (tree, "test"));
     TEST_ASSERT_FALSE (tree_add (tree, "test"));
@@ -60,14 +60,14 @@ void test_add_same_entry_twice ()
 
 void test_rm_when_empty ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     TEST_ASSERT_FALSE (tree_rm (tree, "test"));
 }
 
 void test_rm_single_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "temporary");
     TEST_ASSERT_TRUE (tree_rm (tree, "temporary"));
@@ -75,7 +75,7 @@ void test_rm_single_entry ()
 
 void test_rm_unique_entry_twice ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "test");
     TEST_ASSERT_TRUE (tree_rm (tree, "test"));
@@ -84,7 +84,7 @@ void test_rm_unique_entry_twice ()
 
 void test_rm_duplicate_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "test");
     tree_add (tree, "test");
@@ -94,7 +94,7 @@ void test_rm_duplicate_entry ()
 
 void test_rm_common_prefix ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "checkpoint");
     tree_add (tree, "checklist");
@@ -103,7 +103,7 @@ void test_rm_common_prefix ()
 
 void test_rm_common_prefix_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "checkpoint");
     tree_add (tree, "checklist");
@@ -113,7 +113,7 @@ void test_rm_common_prefix_entry ()
 
 void test_rm_null_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "");
     TEST_ASSERT_TRUE (tree_rm (tree, ""));
@@ -121,14 +121,14 @@ void test_rm_null_entry ()
 
 void test_check_empty ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     TEST_ASSERT_FALSE (tree_check (tree, "foo"));
 }
 
 void test_check_added_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "entry");
     TEST_ASSERT_TRUE (tree_check (tree, "entry"));
@@ -136,7 +136,7 @@ void test_check_added_entry ()
 
 void test_check_common_prefix ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "introduce");
     tree_add (tree, "introspect");
@@ -145,7 +145,7 @@ void test_check_common_prefix ()
 
 void test_check_prefix ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "toasted");
     TEST_ASSERT_FALSE (tree_check (tree, "toast"));
@@ -155,7 +155,7 @@ void test_check_prefix ()
 
 void test_check_nonexistent_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "red");
     TEST_ASSERT_FALSE (tree_check (tree, "blue"));
@@ -163,7 +163,7 @@ void test_check_nonexistent_entry ()
 
 void test_check_query_longer_than_entry ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "foo");
     TEST_ASSERT_TRUE (tree_check (tree, "foobar"));
@@ -171,7 +171,7 @@ void test_check_query_longer_than_entry ()
 
 void test_check_null_entry_added ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     tree_add (tree, "");
     TEST_ASSERT_TRUE (tree_check (tree, "all queries return true"));
@@ -179,7 +179,7 @@ void test_check_null_entry_added ()
 
 void test_size ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     // Adapted from the example on wikipedia.
     std::vector<std::string> keys;
@@ -217,7 +217,7 @@ void return_key (unsigned char *data_, size_t size_, void *arg_)
 
 void test_apply ()
 {
-    zmq::radix_tree_t tree;
+    zlink::radix_tree_t tree;
 
     std::set<std::string> keys;
     keys.insert ("tester");

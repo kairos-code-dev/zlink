@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_FD_HPP_INCLUDED__
-#define __ZMQ_FD_HPP_INCLUDED__
+#ifndef __ZLINK_FD_HPP_INCLUDED__
+#define __ZLINK_FD_HPP_INCLUDED__
 
 #if defined _WIN32
 #include "utils/windows.hpp"
 #endif
 
-namespace zmq
+namespace zlink
 {
-typedef zmq_fd_t fd_t;
+typedef zlink_fd_t fd_t;
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 #if defined _MSC_VER && _MSC_VER <= 1400
 enum
 {

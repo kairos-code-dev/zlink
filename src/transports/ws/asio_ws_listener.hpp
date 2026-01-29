@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
-#define __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_WS_LISTENER_HPP_INCLUDED__
+#define __ZLINK_ASIO_WS_LISTENER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include <boost/asio.hpp>
 #include <string>
@@ -15,7 +15,7 @@
 #include "core/io_object.hpp"
 #include "transports/ws/ws_address.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class socket_base_t;
@@ -30,11 +30,11 @@ class socket_base_t;
 //  not by the listener. This allows for proper async handshake processing
 //  within the engine's lifecycle.
 
-class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
+class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
 {
   public:
-    asio_ws_listener_t (zmq::io_thread_t *io_thread_,
-                        zmq::socket_base_t *socket_,
+    asio_ws_listener_t (zlink::io_thread_t *io_thread_,
+                        zlink::socket_base_t *socket_,
                         const options_t &options_);
     ~asio_ws_listener_t ();
 
@@ -49,8 +49,8 @@ class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
 
   private:
     //  Handlers for incoming commands
-    void process_plug () ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_FINAL;
+    void process_plug () ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_FINAL;
 
     //  Start accepting connections
     void start_accept ();
@@ -82,7 +82,7 @@ class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
     boost::asio::ip::tcp::socket _accept_socket;
 
     //  Socket the listener belongs to
-    zmq::socket_base_t *_socket;
+    zlink::socket_base_t *_socket;
 
     //  WebSocket address (host, path, port)
     std::string _host;
@@ -98,11 +98,11 @@ class asio_ws_listener_t ZMQ_FINAL : public own_t, public io_object_t
     bool _terminating;
     int _linger;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_listener_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_listener_t)
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZMQ_ASIO_WS_LISTENER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_WS_LISTENER_HPP_INCLUDED__

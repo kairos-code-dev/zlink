@@ -1,6 +1,6 @@
 #if defined _WIN32_WCE
 
-//#include "..\..\include\zmq.h"
+//#include "..\..\include\zlink.h"
 #include "..\..\src\err.hpp"
 
 int errno;

@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-### 1.1 zlink vs Standard libzmq (Goal: Parity)
+### 1.1 zlink vs Standard libzlink (Goal: Parity)
 > **Verdict:** Native performance parity achieved.
 > - **Inproc/TCP**: Virtually identical performance (+/- 1%).
 > - **IPC**: Slight overhead (~3%) due to full async implementation.
@@ -33,10 +33,10 @@
 - Date: 2026-01-24
 - Runs: 10
 - CPU pinning: disabled (`--no-taskset`)
-- benchwithzmq baseline file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzmq/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
+- benchwithzlink-baseline baseline file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink-baseline/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
 - benchwithzlink result file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`
 
-## 3. zlink vs standard libzmq (benchwithzmq)
+## 3. zlink vs standard libzlink (benchwithzlink-baseline)
 Median throughput diff across sizes per pattern/transport (positive = zlink faster).
 
 | Pattern | Transport | Median Diff (%) | Min Diff (%) | Max Diff (%) |
@@ -176,5 +176,5 @@ Changes >= ±10% (throughput only).
 | +75.17 | ROUTER_ROUTER | ws | 1024B |
 
 ## 6. Raw Result Files
-- `/home/ulalax/project/ulalax/zlink-codex/benchwithzmq/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
+- `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink-baseline/baseline/20260124/bench_linux_ALL_20260124_152322.txt`
 - `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`

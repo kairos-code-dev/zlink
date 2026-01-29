@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ERR_HPP_INCLUDED__
-#define __ZMQ_ERR_HPP_INCLUDED__
+#ifndef __ZLINK_ERR_HPP_INCLUDED__
+#define __ZLINK_ERR_HPP_INCLUDED__
 
 #include <assert.h>
 #if defined _WIN32_WCE
@@ -13,39 +13,39 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <netdb.h>
 #endif
 
 #include "utils/likely.hpp"
 
-//  0MQ-specific error codes are defined in zmq.h
+//  0MQ-specific error codes are defined in zlink.h
 
 // EPROTO is not used by OpenBSD and maybe other platforms.
 #ifndef EPROTO
 #define EPROTO 0
 #endif
 
-namespace zmq
+namespace zlink
 {
 const char *errno_to_string (int errno_);
 #if defined __clang__
 #if __has_feature(attribute_analyzer_noreturn)
-void zmq_abort (const char *errmsg_) __attribute__ ((analyzer_noreturn));
+void zlink_abort (const char *errmsg_) __attribute__ ((analyzer_noreturn));
 #else
-void zmq_abort (const char *errmsg_);
+void zlink_abort (const char *errmsg_);
 #endif
 #elif defined __MSCVER__
-__declspec(noreturn) void zmq_abort (const char *errmsg_);
+__declspec(noreturn) void zlink_abort (const char *errmsg_);
 #else
-void zmq_abort (const char *errmsg_);
+void zlink_abort (const char *errmsg_);
 #endif
 void print_backtrace ();
 }
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 
-namespace zmq
+namespace zlink
 {
 const char *wsa_error ();
 const char *
@@ -59,12 +59,12 @@ int wsa_error_to_errno (int errcode_);
 #define wsa_assert(x)                                                          \
     do {                                                                       \
         if (unlikely (!(x))) {                                                 \
-            const char *errstr = zmq::wsa_error ();                            \
+            const char *errstr = zlink::wsa_error ();                            \
             if (errstr != NULL) {                                              \
                 fprintf (stderr, "Assertion failed: %s [%i] (%s:%d)\n",        \
                          errstr, WSAGetLastError (), __FILE__, __LINE__);      \
                 fflush (stderr);                                               \
-                zmq::zmq_abort (errstr);                                       \
+                zlink::zlink_abort (errstr);                                       \
             }                                                                  \
         }                                                                      \
     } while (false)
@@ -72,12 +72,12 @@ int wsa_error_to_errno (int errcode_);
 //  Provides convenient way to assert on WSA-style errors on Windows.
 #define wsa_assert_no(no)                                                      \
     do {                                                                       \
-        const char *errstr = zmq::wsa_error_no (no);                           \
+        const char *errstr = zlink::wsa_error_no (no);                           \
         if (errstr != NULL) {                                                  \
             fprintf (stderr, "Assertion failed: %s (%s:%d)\n", errstr,         \
                      __FILE__, __LINE__);                                      \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (errstr);                                           \
+            zlink::zlink_abort (errstr);                                           \
         }                                                                      \
     } while (false)
 
@@ -86,11 +86,11 @@ int wsa_error_to_errno (int errcode_);
     do {                                                                       \
         if (unlikely (!(x))) {                                                 \
             char errstr[256];                                                  \
-            zmq::win_error (errstr, 256);                                      \
+            zlink::win_error (errstr, 256);                                      \
             fprintf (stderr, "Assertion failed: %s (%s:%d)\n", errstr,         \
                      __FILE__, __LINE__);                                      \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (errstr);                                           \
+            zlink::zlink_abort (errstr);                                           \
         }                                                                      \
     } while (false)
 
@@ -99,13 +99,13 @@ int wsa_error_to_errno (int errcode_);
 //  This macro works in exactly the same way as the normal assert. It is used
 //  in its stead because standard assert on Win32 in broken - it prints nothing
 //  when used within the scope of JNI library.
-#define zmq_assert(x)                                                          \
+#define zlink_assert(x)                                                          \
     do {                                                                       \
         if (unlikely (!(x))) {                                                 \
             fprintf (stderr, "Assertion failed: %s (%s:%d)\n", #x, __FILE__,   \
                      __LINE__);                                                \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (#x);                                               \
+            zlink::zlink_abort (#x);                                               \
         }                                                                      \
     } while (false)
 
@@ -116,7 +116,7 @@ int wsa_error_to_errno (int errcode_);
             const char *errstr = strerror (errno);                             \
             fprintf (stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__);      \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (errstr);                                           \
+            zlink::zlink_abort (errstr);                                           \
         }                                                                      \
     } while (false)
 
@@ -127,7 +127,7 @@ int wsa_error_to_errno (int errcode_);
             const char *errstr = strerror (x);                                 \
             fprintf (stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__);      \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (errstr);                                           \
+            zlink::zlink_abort (errstr);                                           \
         }                                                                      \
     } while (false)
 
@@ -138,7 +138,7 @@ int wsa_error_to_errno (int errcode_);
             const char *errstr = gai_strerror (x);                             \
             fprintf (stderr, "%s (%s:%d)\n", errstr, __FILE__, __LINE__);      \
             fflush (stderr);                                                   \
-            zmq::zmq_abort (errstr);                                           \
+            zlink::zlink_abort (errstr);                                           \
         }                                                                      \
     } while (false)
 
@@ -149,7 +149,7 @@ int wsa_error_to_errno (int errcode_);
             fprintf (stderr, "FATAL ERROR: OUT OF MEMORY (%s:%d)\n", __FILE__, \
                      __LINE__);                                                \
             fflush (stderr);                                                   \
-            zmq::zmq_abort ("FATAL ERROR: OUT OF MEMORY");                     \
+            zlink::zlink_abort ("FATAL ERROR: OUT OF MEMORY");                     \
         }                                                                      \
     } while (false)
 

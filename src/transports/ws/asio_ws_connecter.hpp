@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
-#define __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_WS_CONNECTER_HPP_INCLUDED__
+#define __ZLINK_ASIO_WS_CONNECTER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include <boost/asio.hpp>
 #include <string>
@@ -13,7 +13,7 @@
 #include "core/own.hpp"
 #include "core/io_object.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class session_base_t;
@@ -28,12 +28,12 @@ struct address_t;
 //  Note: The WebSocket handshake is handled by the engine via the transport,
 //  not by the connecter. This follows the pattern used in asio_tcp_connecter.
 
-class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
+class asio_ws_connecter_t ZLINK_FINAL : public own_t, public io_object_t
 {
   public:
     //  If 'delayed_start' is true, connecter first waits before connecting
-    asio_ws_connecter_t (zmq::io_thread_t *io_thread_,
-                         zmq::session_base_t *session_,
+    asio_ws_connecter_t (zlink::io_thread_t *io_thread_,
+                         zlink::session_base_t *session_,
                          const options_t &options_,
                          address_t *addr_,
                          bool delayed_start_);
@@ -48,11 +48,11 @@ class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     };
 
     //  Handlers for incoming commands
-    void process_plug () ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_OVERRIDE;
+    void process_plug () ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_OVERRIDE;
 
     //  Timer event handler
-    void timer_event (int id_) ZMQ_OVERRIDE;
+    void timer_event (int id_) ZLINK_OVERRIDE;
 
     //  Start connection process
     void start_connecting ();
@@ -90,10 +90,10 @@ class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     std::string _endpoint_str;
 
     //  Session to attach engine to
-    zmq::session_base_t *const _session;
+    zlink::session_base_t *const _session;
 
     //  Socket
-    zmq::socket_base_t *const _socket_ptr;
+    zlink::socket_base_t *const _socket_ptr;
 
     //  WebSocket-specific data
     std::string _host;
@@ -110,11 +110,11 @@ class asio_ws_connecter_t ZMQ_FINAL : public own_t, public io_object_t
     int _linger;
     int _current_reconnect_ivl;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_ws_connecter_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_ws_connecter_t)
 };
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS
 
-#endif  // __ZMQ_ASIO_WS_CONNECTER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_WS_CONNECTER_HPP_INCLUDED__

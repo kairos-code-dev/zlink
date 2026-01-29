@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 #include "transports/tls/ssl_transport.hpp"
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include "engine/asio/asio_debug.hpp"
 #include "engine/asio/asio_error_handler.hpp"
@@ -11,14 +11,14 @@
 
 #include <openssl/ssl.h>
 
-namespace zmq
+namespace zlink
 {
 namespace
 {
 boost::asio::ip::tcp protocol_for_fd (fd_t fd_)
 {
     sockaddr_storage ss;
-    const zmq_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
+    const zlink_socklen_t sl = get_socket_address (fd_, socket_end_local, &ss);
     if (sl != 0 && ss.ss_family == AF_INET6)
         return boost::asio::ip::tcp::v6 ();
     return boost::asio::ip::tcp::v4 ();
@@ -266,6 +266,6 @@ void ssl_transport_t::async_handshake (int handshake_type,
       });
 }
 
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_MAILBOX_SAFE_HPP_INCLUDED__
-#define __ZMQ_MAILBOX_SAFE_HPP_INCLUDED__
+#ifndef __ZLINK_MAILBOX_SAFE_HPP_INCLUDED__
+#define __ZLINK_MAILBOX_SAFE_HPP_INCLUDED__
 
 #include <vector>
 #include <stddef.h>
@@ -24,9 +24,9 @@ namespace asio
 class io_context;
 }
 }
-namespace zmq
+namespace zlink
 {
-class mailbox_safe_t ZMQ_FINAL : public i_mailbox
+class mailbox_safe_t ZLINK_FINAL : public i_mailbox
 {
   public:
     mailbox_safe_t (mutex_t *sync_);
@@ -53,7 +53,7 @@ class mailbox_safe_t ZMQ_FINAL : public i_mailbox
     // close the file descriptors in the signaller. This is used in a forked
     // child process to close the file descriptors so that they do not interfere
     // with the context in the parent process.
-    void forked () ZMQ_FINAL
+    void forked () ZLINK_FINAL
     {
         // TODO: call fork on the condition variable
     }
@@ -70,7 +70,7 @@ class mailbox_safe_t ZMQ_FINAL : public i_mailbox
     //  Synchronize access to the mailbox from receivers and senders
     mutex_t *const _sync;
 
-    std::vector<zmq::signaler_t *> _signalers;
+    std::vector<zlink::signaler_t *> _signalers;
 
     boost::asio::io_context *_io_context;
     mailbox_handler_t _handler;
@@ -78,7 +78,7 @@ class mailbox_safe_t ZMQ_FINAL : public i_mailbox
     mailbox_pre_post_t _pre_post;
     std::atomic<bool> _scheduled;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (mailbox_safe_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (mailbox_safe_t)
 };
 }
 

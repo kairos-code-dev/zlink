@@ -6,7 +6,7 @@ set -e
 if [[ $BUILD_TYPE == "default" && -z $DRAFT ]]; then
     # Tell travis to deploy all files in dist
     mkdir dist
-    export LIBZMQ_DEPLOYMENT=dist/*
+    export LIBZLINK_DEPLOYMENT=dist/*
     # Move archives to dist
     mv *.tar.gz dist
     mv *.zip dist
@@ -16,5 +16,5 @@ if [[ $BUILD_TYPE == "default" && -z $DRAFT ]]; then
     sha1sum *.zip *.tar.gz > SHA1SUMS
     cd -
 else
-    export LIBZMQ_DEPLOYMENT=""
+    export LIBZLINK_DEPLOYMENT=""
 fi

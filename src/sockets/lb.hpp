@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_LB_HPP_INCLUDED__
-#define __ZMQ_LB_HPP_INCLUDED__
+#ifndef __ZLINK_LB_HPP_INCLUDED__
+#define __ZLINK_LB_HPP_INCLUDED__
 
 #include "utils/array.hpp"
 
-namespace zmq
+namespace zlink
 {
 class msg_t;
 class pipe_t;
@@ -51,7 +51,7 @@ class lb_t
     //  True if we are dropping current message.
     bool _dropping;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (lb_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (lb_t)
 };
 }
 

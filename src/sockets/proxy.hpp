@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_PROXY_HPP_INCLUDED__
-#define __ZMQ_PROXY_HPP_INCLUDED__
+#ifndef __ZLINK_PROXY_HPP_INCLUDED__
+#define __ZLINK_PROXY_HPP_INCLUDED__
 
-namespace zmq
+namespace zlink
 {
 int proxy (class socket_base_t *frontend_,
            class socket_base_t *backend_,

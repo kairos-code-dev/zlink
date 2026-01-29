@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_IP_HPP_INCLUDED__
-#define __ZMQ_IP_HPP_INCLUDED__
+#ifndef __ZLINK_IP_HPP_INCLUDED__
+#define __ZLINK_IP_HPP_INCLUDED__
 
 #include <string>
 #include "utils/fd.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Same as socket(2), but allows for transparent tweaking the options.
 fd_t open_socket (int domain_, int type_, int protocol_);
@@ -53,7 +53,7 @@ void make_socket_noninheritable (fd_t sock_);
 //  - and, if a socket error occurred, it can be recovered from.
 void assert_success_or_recoverable (fd_t s_, int rc_);
 
-#ifdef ZMQ_HAVE_IPC
+#ifdef ZLINK_HAVE_IPC
 // Create an IPC wildcard path address
 int create_ipc_wildcard_address (std::string &path_, std::string &file_);
 #endif

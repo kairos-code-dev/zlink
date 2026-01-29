@@ -1,0 +1,736 @@
+
+## PATTERN: PAIR
+  > Benchmarking libzlink for PAIR...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for PAIR...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      4.52 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          5.14 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      2.46 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          5.20 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.92 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          5.35 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |     2151.29 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |         12.92 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |     2546.63 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |         20.97 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |     2112.03 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |         34.87 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      7.88 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.09 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      5.97 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.08 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      2.87 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.10 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |    10063.30 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          2.09 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## PATTERN: PUBSUB
+  > Benchmarking libzlink for PUBSUB...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for PUBSUB...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## PATTERN: DEALER_DEALER
+  > Benchmarking libzlink for DEALER_DEALER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for DEALER_DEALER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## PATTERN: DEALER_ROUTER
+  > Benchmarking libzlink for DEALER_ROUTER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for DEALER_ROUTER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## PATTERN: ROUTER_ROUTER
+  > Benchmarking libzlink for ROUTER_ROUTER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for ROUTER_ROUTER...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## PATTERN: ROUTER_ROUTER_POLL
+  > Benchmarking libzlink for ROUTER_ROUTER_POLL...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+  > Benchmarking zlink for ROUTER_ROUTER_POLL...
+    Testing tcp | 64B: 1 (failures=1) Done
+    Testing tcp | 256B: 1 (failures=1) Done
+    Testing tcp | 1024B: 1 (failures=1) Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing inproc | 64B: 1 (failures=1) Done
+    Testing inproc | 256B: 1 (failures=1) Done
+    Testing inproc | 1024B: 1 (failures=1) Done
+    Testing inproc | 65536B: 1 (failures=1) Done
+    Testing inproc | 131072B: 1 (failures=1) Done
+    Testing inproc | 262144B: 1 (failures=1) Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: inproc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ipc
+| Size   | Metric     |  Standard libzlink |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Mmsg/s |      0.00 Mmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |        0.00 MB/s |        0.00 MB/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+## Failures
+- PAIR libzlink tcp 64B: no_data
+- PAIR libzlink tcp 256B: no_data
+- PAIR libzlink tcp 1024B: no_data
+- PAIR libzlink tcp 65536B: no_data
+- PAIR libzlink tcp 131072B: no_data
+- PAIR libzlink tcp 262144B: no_data
+- PAIR libzlink inproc 64B: no_data
+- PAIR libzlink inproc 256B: no_data
+- PAIR libzlink inproc 1024B: no_data
+- PAIR libzlink inproc 65536B: no_data
+- PAIR libzlink inproc 131072B: no_data
+- PAIR libzlink inproc 262144B: no_data
+- PAIR libzlink ipc 64B: no_data
+- PAIR libzlink ipc 256B: no_data
+- PAIR libzlink ipc 1024B: no_data
+- PAIR libzlink ipc 65536B: no_data
+- PAIR libzlink ipc 131072B: no_data
+- PAIR libzlink ipc 262144B: no_data
+- PAIR zlink inproc 131072B: no_data
+- PAIR zlink inproc 262144B: no_data
+- PAIR zlink ipc 64B: no_data
+- PAIR zlink ipc 256B: no_data
+- PAIR zlink ipc 1024B: no_data
+- PAIR zlink ipc 65536B: no_data
+- PAIR zlink ipc 131072B: no_data
+- PAIR zlink ipc 262144B: no_data
+- PUBSUB libzlink tcp 64B: no_data
+- PUBSUB libzlink tcp 256B: no_data
+- PUBSUB libzlink tcp 1024B: no_data
+- PUBSUB libzlink tcp 65536B: no_data
+- PUBSUB libzlink tcp 131072B: no_data
+- PUBSUB libzlink tcp 262144B: no_data
+- PUBSUB libzlink inproc 64B: no_data
+- PUBSUB libzlink inproc 256B: no_data
+- PUBSUB libzlink inproc 1024B: no_data
+- PUBSUB libzlink inproc 65536B: no_data
+- PUBSUB libzlink inproc 131072B: no_data
+- PUBSUB libzlink inproc 262144B: no_data
+- PUBSUB libzlink ipc 64B: no_data
+- PUBSUB libzlink ipc 256B: no_data
+- PUBSUB libzlink ipc 1024B: no_data
+- PUBSUB libzlink ipc 65536B: no_data
+- PUBSUB libzlink ipc 131072B: no_data
+- PUBSUB libzlink ipc 262144B: no_data
+- PUBSUB zlink tcp 64B: no_data
+- PUBSUB zlink tcp 256B: no_data
+- PUBSUB zlink tcp 1024B: no_data
+- PUBSUB zlink tcp 65536B: no_data
+- PUBSUB zlink tcp 131072B: no_data
+- PUBSUB zlink tcp 262144B: no_data
+- PUBSUB zlink inproc 64B: no_data
+- PUBSUB zlink inproc 256B: no_data
+- PUBSUB zlink inproc 1024B: no_data
+- PUBSUB zlink inproc 65536B: no_data
+- PUBSUB zlink inproc 131072B: no_data
+- PUBSUB zlink inproc 262144B: no_data
+- PUBSUB zlink ipc 64B: no_data
+- PUBSUB zlink ipc 256B: no_data
+- PUBSUB zlink ipc 1024B: no_data
+- PUBSUB zlink ipc 65536B: no_data
+- PUBSUB zlink ipc 131072B: no_data
+- PUBSUB zlink ipc 262144B: no_data
+- DEALER_DEALER libzlink tcp 64B: no_data
+- DEALER_DEALER libzlink tcp 256B: no_data
+- DEALER_DEALER libzlink tcp 1024B: no_data
+- DEALER_DEALER libzlink tcp 65536B: no_data
+- DEALER_DEALER libzlink tcp 131072B: no_data
+- DEALER_DEALER libzlink tcp 262144B: no_data
+- DEALER_DEALER libzlink inproc 64B: no_data
+- DEALER_DEALER libzlink inproc 256B: no_data
+- DEALER_DEALER libzlink inproc 1024B: no_data
+- DEALER_DEALER libzlink inproc 65536B: no_data
+- DEALER_DEALER libzlink inproc 131072B: no_data
+- DEALER_DEALER libzlink inproc 262144B: no_data
+- DEALER_DEALER libzlink ipc 64B: no_data
+- DEALER_DEALER libzlink ipc 256B: no_data
+- DEALER_DEALER libzlink ipc 1024B: no_data
+- DEALER_DEALER libzlink ipc 65536B: no_data
+- DEALER_DEALER libzlink ipc 131072B: no_data
+- DEALER_DEALER libzlink ipc 262144B: no_data
+- DEALER_DEALER zlink tcp 64B: no_data
+- DEALER_DEALER zlink tcp 256B: no_data
+- DEALER_DEALER zlink tcp 1024B: no_data
+- DEALER_DEALER zlink tcp 65536B: no_data
+- DEALER_DEALER zlink tcp 131072B: no_data
+- DEALER_DEALER zlink tcp 262144B: no_data
+- DEALER_DEALER zlink inproc 64B: no_data
+- DEALER_DEALER zlink inproc 256B: no_data
+- DEALER_DEALER zlink inproc 1024B: no_data
+- DEALER_DEALER zlink inproc 65536B: no_data
+- DEALER_DEALER zlink inproc 131072B: no_data
+- DEALER_DEALER zlink inproc 262144B: no_data
+- DEALER_DEALER zlink ipc 64B: no_data
+- DEALER_DEALER zlink ipc 256B: no_data
+- DEALER_DEALER zlink ipc 1024B: no_data
+- DEALER_DEALER zlink ipc 65536B: no_data
+- DEALER_DEALER zlink ipc 131072B: no_data
+- DEALER_DEALER zlink ipc 262144B: no_data
+- DEALER_ROUTER libzlink tcp 64B: no_data
+- DEALER_ROUTER libzlink tcp 256B: no_data
+- DEALER_ROUTER libzlink tcp 1024B: no_data
+- DEALER_ROUTER libzlink tcp 65536B: no_data
+- DEALER_ROUTER libzlink tcp 131072B: no_data
+- DEALER_ROUTER libzlink tcp 262144B: no_data
+- DEALER_ROUTER libzlink inproc 64B: no_data
+- DEALER_ROUTER libzlink inproc 256B: no_data
+- DEALER_ROUTER libzlink inproc 1024B: no_data
+- DEALER_ROUTER libzlink inproc 65536B: no_data
+- DEALER_ROUTER libzlink inproc 131072B: no_data
+- DEALER_ROUTER libzlink inproc 262144B: no_data
+- DEALER_ROUTER libzlink ipc 64B: no_data
+- DEALER_ROUTER libzlink ipc 256B: no_data
+- DEALER_ROUTER libzlink ipc 1024B: no_data
+- DEALER_ROUTER libzlink ipc 65536B: no_data
+- DEALER_ROUTER libzlink ipc 131072B: no_data
+- DEALER_ROUTER libzlink ipc 262144B: no_data
+- DEALER_ROUTER zlink tcp 64B: no_data
+- DEALER_ROUTER zlink tcp 256B: no_data
+- DEALER_ROUTER zlink tcp 1024B: no_data
+- DEALER_ROUTER zlink tcp 65536B: no_data
+- DEALER_ROUTER zlink tcp 131072B: no_data
+- DEALER_ROUTER zlink tcp 262144B: no_data
+- DEALER_ROUTER zlink inproc 64B: no_data
+- DEALER_ROUTER zlink inproc 256B: no_data
+- DEALER_ROUTER zlink inproc 1024B: no_data
+- DEALER_ROUTER zlink inproc 65536B: no_data
+- DEALER_ROUTER zlink inproc 131072B: no_data
+- DEALER_ROUTER zlink inproc 262144B: no_data
+- DEALER_ROUTER zlink ipc 64B: no_data
+- DEALER_ROUTER zlink ipc 256B: no_data
+- DEALER_ROUTER zlink ipc 1024B: no_data
+- DEALER_ROUTER zlink ipc 65536B: no_data
+- DEALER_ROUTER zlink ipc 131072B: no_data
+- DEALER_ROUTER zlink ipc 262144B: no_data
+- ROUTER_ROUTER libzlink tcp 64B: no_data
+- ROUTER_ROUTER libzlink tcp 256B: no_data
+- ROUTER_ROUTER libzlink tcp 1024B: no_data
+- ROUTER_ROUTER libzlink tcp 65536B: no_data
+- ROUTER_ROUTER libzlink tcp 131072B: no_data
+- ROUTER_ROUTER libzlink tcp 262144B: no_data
+- ROUTER_ROUTER libzlink inproc 64B: no_data
+- ROUTER_ROUTER libzlink inproc 256B: no_data
+- ROUTER_ROUTER libzlink inproc 1024B: no_data
+- ROUTER_ROUTER libzlink inproc 65536B: no_data
+- ROUTER_ROUTER libzlink inproc 131072B: no_data
+- ROUTER_ROUTER libzlink inproc 262144B: no_data
+- ROUTER_ROUTER libzlink ipc 64B: no_data
+- ROUTER_ROUTER libzlink ipc 256B: no_data
+- ROUTER_ROUTER libzlink ipc 1024B: no_data
+- ROUTER_ROUTER libzlink ipc 65536B: no_data
+- ROUTER_ROUTER libzlink ipc 131072B: no_data
+- ROUTER_ROUTER libzlink ipc 262144B: no_data
+- ROUTER_ROUTER zlink tcp 64B: no_data
+- ROUTER_ROUTER zlink tcp 256B: no_data
+- ROUTER_ROUTER zlink tcp 1024B: no_data
+- ROUTER_ROUTER zlink tcp 65536B: no_data
+- ROUTER_ROUTER zlink tcp 131072B: no_data
+- ROUTER_ROUTER zlink tcp 262144B: no_data
+- ROUTER_ROUTER zlink inproc 64B: no_data
+- ROUTER_ROUTER zlink inproc 256B: no_data
+- ROUTER_ROUTER zlink inproc 1024B: no_data
+- ROUTER_ROUTER zlink inproc 65536B: no_data
+- ROUTER_ROUTER zlink inproc 131072B: no_data
+- ROUTER_ROUTER zlink inproc 262144B: no_data
+- ROUTER_ROUTER zlink ipc 64B: no_data
+- ROUTER_ROUTER zlink ipc 256B: no_data
+- ROUTER_ROUTER zlink ipc 1024B: no_data
+- ROUTER_ROUTER zlink ipc 65536B: no_data
+- ROUTER_ROUTER zlink ipc 131072B: no_data
+- ROUTER_ROUTER zlink ipc 262144B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 64B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 256B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 1024B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 65536B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 131072B: no_data
+- ROUTER_ROUTER_POLL libzlink tcp 262144B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 64B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 256B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 1024B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 65536B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 131072B: no_data
+- ROUTER_ROUTER_POLL libzlink inproc 262144B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 64B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 256B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 1024B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 65536B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 131072B: no_data
+- ROUTER_ROUTER_POLL libzlink ipc 262144B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 64B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 256B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 1024B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 65536B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 131072B: no_data
+- ROUTER_ROUTER_POLL zlink tcp 262144B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 64B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 256B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 1024B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 65536B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 131072B: no_data
+- ROUTER_ROUTER_POLL zlink inproc 262144B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 64B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 256B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 1024B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 65536B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 131072B: no_data
+- ROUTER_ROUTER_POLL zlink ipc 262144B: no_data

@@ -29,12 +29,12 @@ RUN		apt-get install -y -q \
 			unzip \
 			wget
 
-# Create user ZMQ, and run Android build with it.
+# Create user ZLINK, and run Android build with it.
 # This ensures that nothing weird is performed with
 # ROOT privileges.
-RUN		useradd -d /home/zmq -m -s /bin/bash zmq
-USER		zmq
-WORKDIR		/home/zmq
+RUN		useradd -d /home/zlink -m -s /bin/bash zlink
+USER		zlink
+WORKDIR		/home/zlink
 
 # Install android NDK (up to NDK 22):
 # ENV		NDK_VERSION=android-ndk-r18  # Build failed to detect NDK tools (bug).
@@ -54,10 +54,10 @@ RUN		wget -q -O ndk_archive.zip http://dl.google.com/android/repository/${NDK_VE
 
 RUN		unzip -q ndk_archive.zip
 
-# Clone and build LIBZMQ
-ENV		ANDROID_NDK_ROOT=/home/zmq/${NDK_VERSION}
+# Clone and build LIBZLINK
+ENV		ANDROID_NDK_ROOT=/home/zlink/${NDK_VERSION}
 
-RUN		git clone --quiet --depth 1 https://github.com/zeromq/libzmq.git
+RUN		git clone --quiet --depth 1 https://github.com/zlink/libzlink.git
 
-RUN		libzmq/builds/android/ci_build.sh
+RUN		libzlink/builds/android/ci_build.sh
 

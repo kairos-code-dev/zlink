@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_TRIE_HPP_INCLUDED__
-#define __ZMQ_TRIE_HPP_INCLUDED__
+#ifndef __ZLINK_TRIE_HPP_INCLUDED__
+#define __ZLINK_TRIE_HPP_INCLUDED__
 
 #include <stddef.h>
 
@@ -9,7 +9,7 @@
 #include "utils/stdint.hpp"
 #include "utils/atomic_counter.hpp"
 
-namespace zmq
+namespace zlink
 {
 class trie_t
 {
@@ -52,7 +52,7 @@ class trie_t
         class trie_t **table;
     } _next;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (trie_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (trie_t)
 };
 
 

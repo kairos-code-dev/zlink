@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_WS
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include "transports/ws/asio_ws_listener.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
@@ -9,7 +9,7 @@
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "transports/ws/ws_transport.hpp"
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
 #include "transports/tls/wss_transport.hpp"
 #endif
 #include "core/io_thread.hpp"
@@ -20,7 +20,7 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -43,11 +43,11 @@
 #define WS_LISTENER_DBG(fmt, ...)
 #endif
 
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
 namespace
 {
 std::unique_ptr<boost::asio::ssl::context>
-create_wss_server_context (const zmq::options_t &options_)
+create_wss_server_context (const zlink::options_t &options_)
 {
     //  Server requires certificate and private key
     if (options_.tls_cert.empty () || options_.tls_key.empty ()) {
@@ -55,7 +55,7 @@ create_wss_server_context (const zmq::options_t &options_)
     }
 
     std::unique_ptr<boost::asio::ssl::context> ssl_context =
-      zmq::ssl_context_helper_t::create_server_context (
+      zlink::ssl_context_helper_t::create_server_context (
         options_.tls_cert, options_.tls_key, options_.tls_password);
     if (!ssl_context)
         return std::unique_ptr<boost::asio::ssl::context> ();
@@ -69,7 +69,7 @@ create_wss_server_context (const zmq::options_t &options_)
         }
 
         if (!options_.tls_ca.empty ()) {
-            if (!zmq::ssl_context_helper_t::load_ca_certificate (
+            if (!zlink::ssl_context_helper_t::load_ca_certificate (
                   *ssl_context, options_.tls_ca)) {
                 return std::unique_ptr<boost::asio::ssl::context> ();
             }
@@ -77,13 +77,13 @@ create_wss_server_context (const zmq::options_t &options_)
             ssl_context->set_default_verify_paths ();
         }
     } else if (!options_.tls_ca.empty ()) {
-        if (!zmq::ssl_context_helper_t::load_ca_certificate (
+        if (!zlink::ssl_context_helper_t::load_ca_certificate (
               *ssl_context, options_.tls_ca)) {
             return std::unique_ptr<boost::asio::ssl::context> ();
         }
     }
 
-    if (!zmq::ssl_context_helper_t::configure_server_verification (
+    if (!zlink::ssl_context_helper_t::configure_server_verification (
           *ssl_context, require_client_cert)) {
         return std::unique_ptr<boost::asio::ssl::context> ();
     }
@@ -93,7 +93,7 @@ create_wss_server_context (const zmq::options_t &options_)
 }
 #endif
 
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
 namespace
 {
 size_t parse_size_env (const char *name_)
@@ -109,11 +109,11 @@ size_t parse_size_env (const char *name_)
     return static_cast<size_t> (value);
 }
 
-zmq::options_t adjust_ws_options (const zmq::options_t &options_)
+zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 {
-    zmq::options_t adjusted = options_;
-    const size_t ws_out = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE");
-    const size_t ws_in = parse_size_env ("ZMQ_WS_IN_BATCH_SIZE");
+    zlink::options_t adjusted = options_;
+    const size_t ws_out = parse_size_env ("ZLINK_WS_OUT_BATCH_SIZE");
+    const size_t ws_in = parse_size_env ("ZLINK_WS_IN_BATCH_SIZE");
     const int default_ws_batch = 65536;
 
     if (ws_out > 0)
@@ -145,11 +145,11 @@ size_t parse_size_env (const char *name_)
     return static_cast<size_t> (value);
 }
 
-zmq::options_t adjust_ws_options (const zmq::options_t &options_)
+zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 {
-    zmq::options_t adjusted = options_;
-    const size_t ws_out = parse_size_env ("ZMQ_WS_OUT_BATCH_SIZE");
-    const size_t ws_in = parse_size_env ("ZMQ_WS_IN_BATCH_SIZE");
+    zlink::options_t adjusted = options_;
+    const size_t ws_out = parse_size_env ("ZLINK_WS_OUT_BATCH_SIZE");
+    const size_t ws_in = parse_size_env ("ZLINK_WS_IN_BATCH_SIZE");
     const int default_ws_batch = 65536;
 
     if (ws_out > 0)
@@ -167,7 +167,7 @@ zmq::options_t adjust_ws_options (const zmq::options_t &options_)
 }
 #endif
 
-zmq::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
+zlink::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
                                               socket_base_t *socket_,
                                               const options_t &options_) :
     own_t (io_thread_, options_),
@@ -186,12 +186,12 @@ zmq::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
     WS_LISTENER_DBG ("Constructor called, this=%p", static_cast<void *> (this));
 }
 
-zmq::asio_ws_listener_t::~asio_ws_listener_t ()
+zlink::asio_ws_listener_t::~asio_ws_listener_t ()
 {
     WS_LISTENER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
 }
 
-int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
+int zlink::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
                                                 bool secure_)
 {
     WS_LISTENER_DBG ("set_local_address: host=%s, port=%u, path=%s",
@@ -199,7 +199,7 @@ int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
                      addr_->path ().c_str ());
 
     _secure = secure_;
-#if !defined ZMQ_HAVE_WSS
+#if !defined ZLINK_HAVE_WSS
     if (_secure) {
         errno = EPROTONOSUPPORT;
         return -1;
@@ -227,7 +227,7 @@ int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
     }
 
     //  Set socket options
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     _acceptor.set_option (
       boost::asio::detail::socket_option::boolean<SOL_SOCKET,
                                                    SO_EXCLUSIVEADDRUSE> (true),
@@ -313,20 +313,20 @@ int zmq::asio_ws_listener_t::set_local_address (const ws_address_t *addr_,
     return 0;
 }
 
-int zmq::asio_ws_listener_t::get_local_address (std::string &addr_) const
+int zlink::asio_ws_listener_t::get_local_address (std::string &addr_) const
 {
     addr_ = _endpoint;
     return addr_.empty () ? -1 : 0;
 }
 
 std::string
-zmq::asio_ws_listener_t::get_socket_name (fd_t fd_,
+zlink::asio_ws_listener_t::get_socket_name (fd_t fd_,
                                            socket_end_t socket_end_) const
 {
-    return zmq::get_socket_name<tcp_address_t> (fd_, socket_end_);
+    return zlink::get_socket_name<tcp_address_t> (fd_, socket_end_);
 }
 
-void zmq::asio_ws_listener_t::process_plug ()
+void zlink::asio_ws_listener_t::process_plug ()
 {
     WS_LISTENER_DBG ("process_plug called");
 
@@ -334,7 +334,7 @@ void zmq::asio_ws_listener_t::process_plug ()
     start_accept ();
 }
 
-void zmq::asio_ws_listener_t::process_term (int linger_)
+void zlink::asio_ws_listener_t::process_term (int linger_)
 {
     WS_LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
                      _accepting);
@@ -359,7 +359,7 @@ void zmq::asio_ws_listener_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_ws_listener_t::start_accept ()
+void zlink::asio_ws_listener_t::start_accept ()
 {
     if (_accepting || !_acceptor.is_open ())
         return;
@@ -372,7 +372,7 @@ void zmq::asio_ws_listener_t::start_accept ()
       [this] (const boost::system::error_code &ec) { on_accept (ec); });
 }
 
-void zmq::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
+void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
 {
     _accepting = false;
     WS_LISTENER_DBG ("on_accept: ec=%s, terminating=%d", ec.message ().c_str (),
@@ -450,8 +450,8 @@ void zmq::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
     if (tune_socket (fd) != 0) {
         WS_LISTENER_DBG ("on_accept: tune_socket failed");
         _socket->event_accept_failed (
-          make_unconnected_bind_endpoint_pair (_endpoint), zmq_errno ());
-#ifdef ZMQ_HAVE_WINDOWS
+          make_unconnected_bind_endpoint_pair (_endpoint), zlink_errno ());
+#ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
@@ -469,7 +469,7 @@ void zmq::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
     start_accept ();
 }
 
-void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
+void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
 {
     WS_LISTENER_DBG ("create_engine: fd=%d", fd_);
 
@@ -487,14 +487,14 @@ void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
       endpoint_type_bind);
 
     std::unique_ptr<i_asio_transport> transport;
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     std::unique_ptr<boost::asio::ssl::context> ssl_context;
     if (_secure) {
         ssl_context = create_wss_server_context (options);
         if (!ssl_context) {
             _socket->event_accept_failed (
               make_unconnected_bind_endpoint_pair (_endpoint), EINVAL);
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
             closesocket (fd_);
 #else
             ::close (fd_);
@@ -515,10 +515,10 @@ void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
         transport.reset (ws_transport.release ());
     }
 
-    const bool is_stream = options.type == ZMQ_STREAM;
+    const bool is_stream = options.type == ZLINK_STREAM;
     const options_t engine_options = is_stream ? options : adjust_ws_options (options);
     i_engine *engine = NULL;
-#if defined ZMQ_HAVE_WSS
+#if defined ZLINK_HAVE_WSS
     if (_secure) {
         if (is_stream)
             engine = new (std::nothrow) asio_raw_engine_t (
@@ -542,7 +542,7 @@ void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
 
     //  Choose I/O thread for engine
     io_thread_t *io_thread = choose_io_thread (options.affinity);
-    zmq_assert (io_thread);
+    zlink_assert (io_thread);
 
     //  Create and launch session
     session_base_t *session =
@@ -555,7 +555,7 @@ void zmq::asio_ws_listener_t::create_engine (fd_t fd_)
     _socket->event_accepted (endpoint_pair, fd_);
 }
 
-void zmq::asio_ws_listener_t::close ()
+void zlink::asio_ws_listener_t::close ()
 {
     WS_LISTENER_DBG ("close called");
 
@@ -569,7 +569,7 @@ void zmq::asio_ws_listener_t::close ()
     }
 }
 
-int zmq::asio_ws_listener_t::tune_socket (fd_t fd_) const
+int zlink::asio_ws_listener_t::tune_socket (fd_t fd_) const
 {
     int rc = tune_tcp_socket (fd_);
     rc = rc
@@ -581,7 +581,7 @@ int zmq::asio_ws_listener_t::tune_socket (fd_t fd_) const
     return rc;
 }
 
-bool zmq::asio_ws_listener_t::apply_accept_filters (
+bool zlink::asio_ws_listener_t::apply_accept_filters (
   fd_t fd_, const struct sockaddr_storage &ss, socklen_t ss_len) const
 {
     //  Make socket non-inheritable
@@ -608,7 +608,7 @@ bool zmq::asio_ws_listener_t::apply_accept_filters (
     }
 
     //  Set NOSIGPIPE
-    if (zmq::set_nosigpipe (fd_)) {
+    if (zlink::set_nosigpipe (fd_)) {
         return false;
     }
 
@@ -623,4 +623,4 @@ bool zmq::asio_ws_listener_t::apply_accept_filters (
     return true;
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_WS
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_WS

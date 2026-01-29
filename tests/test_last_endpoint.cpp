@@ -7,20 +7,20 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 static void do_bind_and_verify (void *s_, const char *endpoint_)
 {
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (s_, endpoint_));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (s_, endpoint_));
     char reported[255];
     size_t size = 255;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (s_, ZMQ_LAST_ENDPOINT, reported, &size));
+      zlink_getsockopt (s_, ZLINK_LAST_ENDPOINT, reported, &size));
     TEST_ASSERT_EQUAL_STRING (endpoint_, reported);
 }
 
 void test_last_endpoint ()
 {
-    void *sb = test_context_socket (ZMQ_ROUTER);
+    void *sb = test_context_socket (ZLINK_ROUTER);
     int val = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (sb, ZMQ_LINGER, &val, sizeof (val)));
+      zlink_setsockopt (sb, ZLINK_LINGER, &val, sizeof (val)));
 
     do_bind_and_verify (sb, ENDPOINT_1);
     do_bind_and_verify (sb, ENDPOINT_2);

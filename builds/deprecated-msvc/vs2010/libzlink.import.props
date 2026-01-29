@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="Globals">
+    <_PropertySheetDisplayName>ZLINK Import Settings</_PropertySheetDisplayName>
+  </PropertyGroup>
+
+  <!-- User Interface -->
+
+  <ItemGroup Label="BuildOptionsExtension">
+    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)libzlink.import.xml" />
+  </ItemGroup>
+
+  <!-- Configuration -->
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(Option-sodium)' == 'true'">ZLINK_USE_LIBSODIUM;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Option-openpgm)' == 'true'">ZLINK_HAVE_OPENPGM;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Option-gssapi)' == 'true'">HAVE_LIBGSSAPI_KRB5;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Option-draftapi)' == 'true'">ZLINK_BUILD_DRAFT_API;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- Linkage -->
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\..\..\..\libzlink\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions Condition="'$(Linkage-libzlink)' == 'static' Or '$(Linkage-libzlink)' == 'ltcg'">ZLINK_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies Condition="'$(Linkage-libzlink)' != ''">libzlink.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories Condition="$(Configuration.IndexOf('Debug')) != -1">$(ProjectDir)..\..\..\..\..\libzlink\bin\$(PlatformName)\Debug\$(PlatformToolset)\$(Linkage-libzlink)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="$(Configuration.IndexOf('Release')) != -1">$(ProjectDir)..\..\..\..\..\libzlink\bin\$(PlatformName)\Release\$(PlatformToolset)\$(Linkage-libzlink)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Copy -->
+
+  <Target Name="Linkage-libzlink-dynamic" AfterTargets="AfterBuild" Condition="'$(Linkage-libzlink)' == 'dynamic'">
+    <Copy Condition="$(Configuration.IndexOf('Debug')) != -1"
+          SourceFiles="$(ProjectDir)..\..\..\..\..\libzlink\bin\$(PlatformName)\Debug\$(PlatformToolset)\dynamic\libzlink.dll"
+          DestinationFiles="$(TargetDir)libzlink.dll"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="$(Configuration.IndexOf('Debug')) != -1"
+          SourceFiles="$(ProjectDir)..\..\..\..\..\libzlink\bin\$(PlatformName)\Debug\$(PlatformToolset)\dynamic\libzlink.pdb"
+          DestinationFiles="$(TargetDir)libzlink.pdb"
+          SkipUnchangedFiles="true" />
+    <Copy Condition="$(Configuration.IndexOf('Release')) != -1"
+          SourceFiles="$(ProjectDir)..\..\..\..\..\libzlink\bin\$(PlatformName)\Release\$(PlatformToolset)\dynamic\libzlink.dll"
+          DestinationFiles="$(TargetDir)libzlink.dll"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Messages -->
+
+  <Target Name="libzlink-info" BeforeTargets="AfterBuild" Condition="'$(Linkage-libzlink)' == 'dynamic'">
+    <Message Text="Copying libzlink.dll -&gt; $(TargetDir)libzlink.dll" Importance="high"/>
+    <Message Text="Copying libzlink.pdb -&gt; $(TargetDir)libzlink.pdb" Importance="high" Condition="$(Configuration.IndexOf('Debug')) != -1" />
+  </Target>
+
+</Project>

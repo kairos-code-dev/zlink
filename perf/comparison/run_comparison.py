@@ -7,7 +7,7 @@ import math
 # Configuration
 BUILD_DIR = "build-bench-asio/bin"
 ZLINK_LIB_DIR = os.path.abspath("build-bench-asio/lib")
-LIBZMQ_LIB_DIR = os.path.abspath("benchwithzmq/libzmq/libzmq_dist/lib")
+LIBZLINK_LIB_DIR = os.path.abspath("benchwithzlink-baseline/libzlink/libzlink_dist/lib")
 
 # Base environment
 base_env = os.environ.copy()
@@ -24,7 +24,7 @@ def run_benchmark(binary_name):
     if binary_name.startswith("comp_zlink"):
         env["LD_LIBRARY_PATH"] = f"{ZLINK_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
     else:
-        env["LD_LIBRARY_PATH"] = f"{LIBZMQ_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
+        env["LD_LIBRARY_PATH"] = f"{LIBZLINK_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
 
     print(f"Running {binary_name}...", file=sys.stderr)
     try:
@@ -77,9 +77,9 @@ def format_size(size):
 def main():
     # 1. Define comparisons
     comparisons = [
-        ("comp_std_zmq_pair", "comp_zlink_pair", "PAIR"),
-        ("comp_std_zmq_router", "comp_zlink_router", "ROUTER"),
-        ("comp_std_zmq_pubsub", "comp_zlink_pubsub", "PUBSUB"),
+        ("comp_std_zlink_pair", "comp_zlink_pair", "PAIR"),
+        ("comp_std_zlink_router", "comp_zlink_router", "ROUTER"),
+        ("comp_std_zlink_pubsub", "comp_zlink_pubsub", "PUBSUB"),
     ]
 
     for std_bin, zlk_bin, pattern_name in comparisons:
@@ -132,7 +132,7 @@ def main():
             print(f"\n================================================================================================")
             print(f"Pattern: {pattern_name} | Transport: {transport}")
             print(f"================================================================================================")
-            print(f"{ 'Size':<10} | {'Metric':<12} | {'Standard libzmq':<18} | {'zlink':<18} | {'Diff (%)':<15}")
+            print(f"{ 'Size':<10} | {'Metric':<12} | {'Standard libzlink':<18} | {'zlink':<18} | {'Diff (%)':<15}")
             print(f"-----------|--------------|--------------------|--------------------|----------------")
 
             # Get sizes present for this transport

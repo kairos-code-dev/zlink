@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_I_ENCODER_HPP_INCLUDED__
-#define __ZMQ_I_ENCODER_HPP_INCLUDED__
+#ifndef __ZLINK_I_ENCODER_HPP_INCLUDED__
+#define __ZLINK_I_ENCODER_HPP_INCLUDED__
 
 #include "utils/macros.hpp"
 #include "utils/stdint.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Forward declaration
 class msg_t;
@@ -15,7 +15,7 @@ class msg_t;
 
 struct i_encoder
 {
-    virtual ~i_encoder () ZMQ_DEFAULT;
+    virtual ~i_encoder () ZLINK_DEFAULT;
 
     //  The function returns a batch of binary data. The data
     //  are filled to a supplied buffer. If no buffer is supplied (data_

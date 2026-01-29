@@ -1,6 +1,6 @@
 # Windows ARM64 Cross-Compilation Guide
 
-This document explains how to build ARM64 binaries of libzmq on Windows x64 machines.
+This document explains how to build ARM64 binaries of libzlink on Windows x64 machines.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ Or explicitly:
 ```powershell
 .\build-scripts\windows\build.ps1 `
     -Architecture arm64 `
-    -LibzmqVersion "4.3.5" `
+    -LibzlinkVersion "4.3.5" `
     -BuildType Release `
     -OutputDir "dist\windows-arm64"
 ```
@@ -66,8 +66,8 @@ Or explicitly:
 
 After a successful build, you'll find these files in the output directory:
 
-- `libzmq.dll` - Main ZeroMQ library (ARM64 or x64)
-- `libzmq.lib` - Import library for linking
+- `libzlink.dll` - Main Zlink library (ARM64 or x64)
+- `libzlink.lib` - Import library for linking
 - `msvcp140.dll` - VC++ runtime (matching architecture)
 - `vcruntime140.dll` - VC++ runtime (matching architecture)
 - `vcruntime140_1.dll` - VC++ runtime (matching architecture, if available)
@@ -99,24 +99,24 @@ For x64 builds, you should see:
 ## Build Directory Structure
 
 ```
-libzmq-native/
+libzlink-native/
 ├── build/
 │   ├── windows-x64/         # x64 build artifacts
 │   └── windows-arm64/       # ARM64 build artifacts
 ├── deps/
 │   ├── vcpkg/               # Shared vcpkg installation
 │   ├── windows-x64/         # x64 dependencies
-│   │   └── zeromq-4.3.5/
+│   │   └── zlink-4.3.5/
 │   └── windows-arm64/       # ARM64 dependencies
-│       └── zeromq-4.3.5/
+│       └── zlink-4.3.5/
 └── dist/
     ├── windows-x64/         # x64 output binaries
-    │   ├── libzmq.dll
-    │   ├── libzmq.lib
+    │   ├── libzlink.dll
+    │   ├── libzlink.lib
     │   └── *.dll (runtime)
     └── windows-arm64/       # ARM64 output binaries
-        ├── libzmq.dll
-        ├── libzmq.lib
+        ├── libzlink.dll
+        ├── libzlink.lib
         └── *.dll (runtime)
 ```
 
@@ -150,7 +150,7 @@ Get-Job | Wait-Job | Receive-Job
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `-Architecture` | String (x64/arm64) | `x64` | Target architecture for compilation |
-| `-LibzmqVersion` | String | `4.3.5` | Version label (defaults to VERSION file) |
+| `-LibzlinkVersion` | String | `4.3.5` | Version label (defaults to VERSION file) |
 | `-BuildType` | String | `Release` | CMake build type (Release/Debug) |
 | `-OutputDir` | String | `dist\windows-{arch}` | Custom output directory for binaries |
 
@@ -167,7 +167,7 @@ Get-Job | Wait-Job | Receive-Job
 ```powershell
 .\build-scripts\windows\build.ps1 `
     -Architecture arm64 `
-    -LibzmqVersion "4.3.6"
+    -LibzlinkVersion "4.3.6"
 ```
 
 ### Custom Output Location

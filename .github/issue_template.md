@@ -6,7 +6,7 @@
 
 # Environment
 
-* libzmq version (commit hash if unreleased): 
+* libzlink version (commit hash if unreleased): 
 * OS: 
 
 # Minimal test code / Steps to reproduce the issue

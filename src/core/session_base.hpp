@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_SESSION_BASE_HPP_INCLUDED__
-#define __ZMQ_SESSION_BASE_HPP_INCLUDED__
+#ifndef __ZLINK_SESSION_BASE_HPP_INCLUDED__
+#define __ZLINK_SESSION_BASE_HPP_INCLUDED__
 
 #include <stdarg.h>
 
@@ -12,7 +12,7 @@
 #include "engine/i_engine.hpp"
 #include "core/msg.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 struct i_engine;
@@ -22,27 +22,27 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
 {
   public:
     //  Create a session of the particular type.
-    static session_base_t *create (zmq::io_thread_t *io_thread_,
+    static session_base_t *create (zlink::io_thread_t *io_thread_,
                                    bool active_,
-                                   zmq::socket_base_t *socket_,
+                                   zlink::socket_base_t *socket_,
                                    const options_t &options_,
                                    address_t *addr_);
 
     //  To be used once only, when creating the session.
-    void attach_pipe (zmq::pipe_t *pipe_);
+    void attach_pipe (zlink::pipe_t *pipe_);
 
     //  Following functions are the interface exposed towards the engine.
     virtual void reset ();
     void flush ();
     void rollback ();
-    void engine_error (bool handshaked_, zmq::i_engine::error_reason_t reason_);
+    void engine_error (bool handshaked_, zlink::i_engine::error_reason_t reason_);
     void engine_ready ();
 
     //  i_pipe_events interface implementation.
-    void read_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void write_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void hiccuped (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void pipe_terminated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+    void read_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void write_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void hiccuped (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void pipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
 
     //  Delivers a message. Returns 0 if successful; -1 otherwise.
     //  The function takes ownership of the message.
@@ -59,12 +59,12 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     const blob_t &peer_routing_id () const;
 
   protected:
-    session_base_t (zmq::io_thread_t *io_thread_,
+    session_base_t (zlink::io_thread_t *io_thread_,
                     bool active_,
-                    zmq::socket_base_t *socket_,
+                    zlink::socket_base_t *socket_,
                     const options_t &options_,
                     address_t *addr_);
-    ~session_base_t () ZMQ_OVERRIDE;
+    ~session_base_t () ZLINK_OVERRIDE;
 
   private:
     void start_connecting (bool wait_);
@@ -72,13 +72,13 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void reconnect ();
 
     //  Handlers for incoming commands.
-    void process_plug () ZMQ_FINAL;
-    void process_attach (zmq::i_engine *engine_) ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_FINAL;
-    void process_conn_failed () ZMQ_OVERRIDE;
+    void process_plug () ZLINK_FINAL;
+    void process_attach (zlink::i_engine *engine_) ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_FINAL;
+    void process_conn_failed () ZLINK_OVERRIDE;
 
     //  i_poll_events handlers.
-    void timer_event (int id_) ZMQ_FINAL;
+    void timer_event (int id_) ZLINK_FINAL;
 
     //  Remove any half processed messages. Flush unflushed messages.
     //  Call this function when engine disconnect to get rid of leftovers.
@@ -89,7 +89,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     const bool _active;
 
     //  Pipe connecting the session to its socket.
-    zmq::pipe_t *_pipe;
+    zlink::pipe_t *_pipe;
 
     //  This set is added to with pipes we are disconnecting, but haven't yet completed
     std::set<pipe_t *> _terminating_pipes;
@@ -103,14 +103,14 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     bool _pending;
 
     //  The protocol I/O engine connected to the session.
-    zmq::i_engine *_engine;
+    zlink::i_engine *_engine;
 
     //  The socket the session belongs to.
-    zmq::socket_base_t *_socket;
+    zlink::socket_base_t *_socket;
 
     //  I/O thread the session is living in. It will be used to plug in
     //  the engines into the same thread.
-    zmq::io_thread_t *_io_thread;
+    zlink::io_thread_t *_io_thread;
 
     //  ID of the linger timer
     enum
@@ -124,7 +124,7 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  Protocol and address to use when connecting.
     address_t *_addr;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (session_base_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (session_base_t)
 };
 }
 

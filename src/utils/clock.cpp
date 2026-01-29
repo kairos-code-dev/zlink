@@ -20,7 +20,7 @@
 #endif
 #endif
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <sys/time.h>
 #endif
 
@@ -28,11 +28,11 @@
 #include <time.h>
 #endif
 
-#if defined ZMQ_HAVE_VXWORKS
+#if defined ZLINK_HAVE_VXWORKS
 #include "timers.h"
 #endif
 
-#if defined ZMQ_HAVE_OSX
+#if defined ZLINK_HAVE_OSX
 int alt_clock_gettime (int clock_id, timespec *ts)
 {
     clock_serv_t cclock;
@@ -46,18 +46,18 @@ int alt_clock_gettime (int clock_id, timespec *ts)
 }
 #endif
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 typedef ULONGLONG (*f_compatible_get_tick_count64) ();
 
-static zmq::mutex_t compatible_get_tick_count64_mutex;
+static zlink::mutex_t compatible_get_tick_count64_mutex;
 
 ULONGLONG compatible_get_tick_count64 ()
 {
-#ifdef ZMQ_HAVE_WINDOWS_UWP
+#ifdef ZLINK_HAVE_WINDOWS_UWP
     const ULONGLONG result = ::GetTickCount64 ();
     return result;
 #else
-    zmq::scoped_lock_t locker (compatible_get_tick_count64_mutex);
+    zlink::scoped_lock_t locker (compatible_get_tick_count64_mutex);
 
     static DWORD s_wrap = 0;
     static DWORD s_last_tick = 0;
@@ -77,7 +77,7 @@ ULONGLONG compatible_get_tick_count64 ()
 f_compatible_get_tick_count64 init_compatible_get_tick_count64 ()
 {
     f_compatible_get_tick_count64 func = NULL;
-#if !defined ZMQ_HAVE_WINDOWS_UWP
+#if !defined ZLINK_HAVE_WINDOWS_UWP
 
     const HMODULE module = ::LoadLibraryA ("Kernel32.dll");
     if (module != NULL)
@@ -87,7 +87,7 @@ f_compatible_get_tick_count64 init_compatible_get_tick_count64 ()
     if (func == NULL)
         func = compatible_get_tick_count64;
 
-#if !defined ZMQ_HAVE_WINDOWS_UWP
+#if !defined ZLINK_HAVE_WINDOWS_UWP
     if (module != NULL)
         ::FreeLibrary (module);
 #endif
@@ -99,15 +99,15 @@ static f_compatible_get_tick_count64 my_get_tick_count64 =
   init_compatible_get_tick_count64 ();
 #endif
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 const uint64_t usecs_per_msec = 1000;
 const uint64_t nsecs_per_usec = 1000;
 #endif
 const uint64_t usecs_per_sec = 1000000;
 
-zmq::clock_t::clock_t () :
+zlink::clock_t::clock_t () :
     _last_tsc (rdtsc ()),
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     _last_time (static_cast<uint64_t> ((*my_get_tick_count64) ()))
 #else
     _last_time (now_us () / usecs_per_msec)
@@ -115,9 +115,9 @@ zmq::clock_t::clock_t () :
 {
 }
 
-uint64_t zmq::clock_t::now_us ()
+uint64_t zlink::clock_t::now_us ()
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 
     //  Get the high resolution counter's accuracy.
     //  While QueryPerformanceFrequency only needs to be called once, since its
@@ -137,12 +137,12 @@ uint64_t zmq::clock_t::now_us ()
     return static_cast<uint64_t> (tick.QuadPart / ticks_div);
 
 #elif defined HAVE_CLOCK_GETTIME                                               \
-  && (defined CLOCK_MONOTONIC || defined ZMQ_HAVE_VXWORKS)
+  && (defined CLOCK_MONOTONIC || defined ZLINK_HAVE_VXWORKS)
 
     //  Use POSIX clock_gettime function to get precise monotonic time.
     struct timespec tv;
 
-#if defined ZMQ_HAVE_OSX                                                       \
+#if defined ZLINK_HAVE_OSX                                                       \
   && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
     int rc = alt_clock_gettime (SYSTEM_CLOCK, &tv);
 #else
@@ -152,7 +152,7 @@ uint64_t zmq::clock_t::now_us ()
     // This should be a configuration check, but I looked into it and writing an
     // AC_FUNC_CLOCK_MONOTONIC seems beyond my powers.
     if (rc != 0) {
-#ifndef ZMQ_HAVE_VXWORKS
+#ifndef ZLINK_HAVE_VXWORKS
         //  Use POSIX gettimeofday function to get precise time.
         struct timeval tv;
         int rc = gettimeofday (&tv, NULL);
@@ -168,7 +168,7 @@ uint64_t zmq::clock_t::now_us ()
 
 #else
 
-    LIBZMQ_UNUSED (nsecs_per_usec);
+    LIBZLINK_UNUSED (nsecs_per_usec);
     //  Use POSIX gettimeofday function to get precise time.
     struct timeval tv;
     int rc = gettimeofday (&tv, NULL);
@@ -178,13 +178,13 @@ uint64_t zmq::clock_t::now_us ()
 #endif
 }
 
-uint64_t zmq::clock_t::now_ms ()
+uint64_t zlink::clock_t::now_ms ()
 {
     const uint64_t tsc = rdtsc ();
 
     //  If TSC is not supported, get precise time and chop off the microseconds.
     if (!tsc) {
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         // Under Windows, now_us is not so reliable since QueryPerformanceCounter
         // does not guarantee that it will use a hardware that offers a monotonic timer.
         // So, lets use GetTickCount when GetTickCount64 is not available with an workaround
@@ -202,7 +202,7 @@ uint64_t zmq::clock_t::now_ms ()
         return _last_time;
 
     _last_tsc = tsc;
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     _last_time = static_cast<uint64_t> ((*my_get_tick_count64) ());
 #else
     _last_time = now_us () / usecs_per_msec;
@@ -210,7 +210,7 @@ uint64_t zmq::clock_t::now_ms ()
     return _last_time;
 }
 
-uint64_t zmq::clock_t::rdtsc ()
+uint64_t zlink::clock_t::rdtsc ()
 {
 #if (defined _MSC_VER && (defined _M_IX86 || defined _M_X64))
     return __rdtsc ();
@@ -242,7 +242,7 @@ uint64_t zmq::clock_t::rdtsc ()
     return tsc;
 #else
     struct timespec ts;
-#if defined ZMQ_HAVE_OSX                                                       \
+#if defined ZLINK_HAVE_OSX                                                       \
   && __MAC_OS_X_VERSION_MIN_REQUIRED < 101200 // less than macOS 10.12
     alt_clock_gettime (SYSTEM_CLOCK, &ts);
 #else

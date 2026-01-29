@@ -1,59 +1,59 @@
 #include "../common/bench_common.hpp"
-#include <zmq.h>
+#include <zlink.h>
 #include <thread>
 #include <vector>
 #include <cstring>
 
 void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
-    void *ctx = zmq_ctx_new();
-    void *pub = zmq_socket(ctx, ZMQ_PUB);
-    void *sub = zmq_socket(ctx, ZMQ_SUB);
+    void *ctx = zlink_ctx_new();
+    void *pub = zlink_socket(ctx, ZLINK_PUB);
+    void *sub = zlink_socket(ctx, ZLINK_SUB);
 
     const bool is_pgm = transport == "pgm" || transport == "epgm";
     int hwm = is_pgm ? 1000 : 0;
-    set_sockopt_int(pub, ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
-    set_sockopt_int(sub, ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
-    zmq_setsockopt(sub, ZMQ_SUBSCRIBE, "", 0);
+    set_sockopt_int(pub, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(sub, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
     int poll_timeout_ms = 0;
     if (is_pgm) {
         poll_timeout_ms =
           resolve_bench_count("BENCH_PGM_POLL_TIMEOUT_MS", 50);
         const int linger_ms = 0;
-        set_sockopt_int(pub, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
-        set_sockopt_int(sub, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
+        set_sockopt_int(pub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+        set_sockopt_int(sub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
         const char *cap = transport == "pgm" ? "pgm" : "epgm";
-        if (!zmq_has(cap)) {
+        if (!zlink_has(cap)) {
             print_result(lib_name, "PUBSUB", transport, msg_size, 0.0, 0.0);
-            zmq_close(pub);
-            zmq_close(sub);
-            zmq_ctx_term(ctx);
+            zlink_close(pub);
+            zlink_close(sub);
+            zlink_ctx_term(ctx);
             return;
         }
         const int timeout_ms = poll_timeout_ms;
-        set_sockopt_int(pub, ZMQ_SNDTIMEO, timeout_ms, "ZMQ_SNDTIMEO");
-        set_sockopt_int(sub, ZMQ_RCVTIMEO, timeout_ms, "ZMQ_RCVTIMEO");
+        set_sockopt_int(pub, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+        set_sockopt_int(sub, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
     }
 
     if (!setup_tls_server(pub, transport) ||
         !setup_tls_client(sub, transport)) {
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     }
 
     std::string endpoint = bind_and_resolve_endpoint(pub, transport, lib_name + "_pubsub");
     if (endpoint.empty()) {
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     }
     if (!connect_checked(sub, endpoint)) {
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     }
 
@@ -84,9 +84,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     if (is_pgm) {
         for (int i = 0; i < warmup_count; ++i) {
             bench_send_fast(pub, buffer.data(), msg_size, 0, "warmup send");
-            zmq_pollitem_t items[] = {{sub, 0, ZMQ_POLLIN, 0}};
-            if (zmq_poll(items, 1, poll_timeout_ms) > 0
-                && (items[0].revents & ZMQ_POLLIN)) {
+            zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll(items, 1, poll_timeout_ms) > 0
+                && (items[0].revents & ZLINK_POLLIN)) {
                 bench_recv_fast(sub, recv_buf.data(), msg_size, 0, "warmup recv");
             }
         }
@@ -95,9 +95,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
         int received = 0;
         for (int i = 0; i < msg_count; ++i) {
             bench_send_fast(pub, buffer.data(), msg_size, 0, "thr send");
-            zmq_pollitem_t items[] = {{sub, 0, ZMQ_POLLIN, 0}};
-            if (zmq_poll(items, 1, poll_timeout_ms) > 0
-                && (items[0].revents & ZMQ_POLLIN)) {
+            zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll(items, 1, poll_timeout_ms) > 0
+                && (items[0].revents & ZLINK_POLLIN)) {
                 if (bench_recv_fast(sub, recv_buf.data(), msg_size, 0, "thr recv") >= 0)
                     ++received;
             }
@@ -106,9 +106,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
         double throughput = received > 0 ? (double)received / (elapsed_ms / 1000.0) : 0.0;
         double latency = received > 0 ? elapsed_ms * 1000.0 / received : 0.0;
         print_result(lib_name, "PUBSUB", transport, msg_size, throughput, latency);
-        zmq_close(pub);
-        zmq_close(sub);
-        zmq_ctx_term(ctx);
+        zlink_close(pub);
+        zlink_close(sub);
+        zlink_ctx_term(ctx);
         return;
     } else {
         for (int i = 0; i < warmup_count; ++i) {
@@ -134,9 +134,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
 
     print_result(lib_name, "PUBSUB", transport, msg_size, throughput, latency);
 
-    zmq_close(pub);
-    zmq_close(sub);
-    zmq_ctx_term(ctx);
+    zlink_close(pub);
+    zlink_close(sub);
+    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {

@@ -22,15 +22,15 @@ void test_version ()
 {
     int major, minor, patch;
 
-    zmq_version (&major, &minor, &patch);
-    TEST_ASSERT_EQUAL_INT (ZMQ_VERSION_MAJOR, major);
-    TEST_ASSERT_EQUAL_INT (ZMQ_VERSION_MINOR, minor);
-    TEST_ASSERT_EQUAL_INT (ZMQ_VERSION_PATCH, patch);
+    zlink_version (&major, &minor, &patch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_VERSION_MAJOR, major);
+    TEST_ASSERT_EQUAL_INT (ZLINK_VERSION_MINOR, minor);
+    TEST_ASSERT_EQUAL_INT (ZLINK_VERSION_PATCH, patch);
 }
 
 void test_strerrror ()
 {
-    TEST_ASSERT_NOT_NULL (zmq_strerror (EINVAL));
+    TEST_ASSERT_NOT_NULL (zlink_strerror (EINVAL));
 }
 
 int main ()

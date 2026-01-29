@@ -13,7 +13,7 @@ const unsigned char stream_event_connect = 0x01;
 const unsigned char stream_event_disconnect = 0x00;
 }
 
-zmq::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
@@ -21,7 +21,7 @@ zmq::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _more_out (false),
     _next_integral_routing_id (1)
 {
-    options.type = ZMQ_STREAM;
+    options.type = ZLINK_STREAM;
     const int stream_batch_size = 65536;
     if (options.in_batch_size < stream_batch_size)
         options.in_batch_size = stream_batch_size;
@@ -32,19 +32,19 @@ zmq::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _prefetched_msg.init ();
 }
 
-zmq::stream_t::~stream_t ()
+zlink::stream_t::~stream_t ()
 {
     _prefetched_routing_id.close ();
     _prefetched_msg.close ();
 }
 
-void zmq::stream_t::xattach_pipe (pipe_t *pipe_,
+void zlink::stream_t::xattach_pipe (pipe_t *pipe_,
                                   bool subscribe_to_all_,
                                   bool locally_initiated_)
 {
-    LIBZMQ_UNUSED (subscribe_to_all_);
+    LIBZLINK_UNUSED (subscribe_to_all_);
 
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
 
     identify_peer (pipe_, locally_initiated_);
     _fq.attach (pipe_);
@@ -52,7 +52,7 @@ void zmq::stream_t::xattach_pipe (pipe_t *pipe_,
     queue_event (pipe_->get_routing_id (), stream_event_connect);
 }
 
-void zmq::stream_t::xpipe_terminated (pipe_t *pipe_)
+void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
 {
     const blob_t &routing_id = pipe_->get_routing_id ();
 
@@ -64,15 +64,15 @@ void zmq::stream_t::xpipe_terminated (pipe_t *pipe_)
     queue_event (routing_id, stream_event_disconnect);
 }
 
-void zmq::stream_t::xread_activated (pipe_t *pipe_)
+void zlink::stream_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);
 }
 
-int zmq::stream_t::xsend (msg_t *msg_)
+int zlink::stream_t::xsend (msg_t *msg_)
 {
     if (!_more_out) {
-        zmq_assert (!_current_out);
+        zlink_assert (!_current_out);
 
         if (msg_->flags () & msg_t::more) {
             if (msg_->size () == 0) {
@@ -140,7 +140,7 @@ int zmq::stream_t::xsend (msg_t *msg_)
     return 0;
 }
 
-int zmq::stream_t::xrecv (msg_t *msg_)
+int zlink::stream_t::xrecv (msg_t *msg_)
 {
     if (_prefetched) {
         if (!_routing_id_sent) {
@@ -164,7 +164,7 @@ int zmq::stream_t::xrecv (msg_t *msg_)
     if (rc != 0)
         return -1;
 
-    zmq_assert (pipe != NULL);
+    zlink_assert (pipe != NULL);
 
     const blob_t &routing_id = pipe->get_routing_id ();
     rc = msg_->close ();
@@ -185,7 +185,7 @@ int zmq::stream_t::xrecv (msg_t *msg_)
     return 0;
 }
 
-bool zmq::stream_t::xhas_in ()
+bool zlink::stream_t::xhas_in ()
 {
     if (_prefetched)
         return true;
@@ -198,7 +198,7 @@ bool zmq::stream_t::xhas_in ()
     if (rc != 0)
         return false;
 
-    zmq_assert (pipe != NULL);
+    zlink_assert (pipe != NULL);
 
     const blob_t &routing_id = pipe->get_routing_id ();
     rc = _prefetched_routing_id.init_size (routing_id.size ());
@@ -218,16 +218,16 @@ bool zmq::stream_t::xhas_in ()
     return true;
 }
 
-bool zmq::stream_t::xhas_out ()
+bool zlink::stream_t::xhas_out ()
 {
     return true;
 }
 
-int zmq::stream_t::xsetsockopt (int option_,
+int zlink::stream_t::xsetsockopt (int option_,
                                 const void *optval_,
                                 size_t optvallen_)
 {
-    if (option_ == ZMQ_CONNECT_ROUTING_ID) {
+    if (option_ == ZLINK_CONNECT_ROUTING_ID) {
         if (optval_ && optvallen_ > 0) {
             return routing_socket_base_t::xsetsockopt (option_, optval_,
                                                        optvallen_);
@@ -239,7 +239,7 @@ int zmq::stream_t::xsetsockopt (int option_,
     return routing_socket_base_t::xsetsockopt (option_, optval_, optvallen_);
 }
 
-void zmq::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
+void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 {
     blob_t routing_id;
 
@@ -249,7 +249,7 @@ void zmq::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
           reinterpret_cast<const unsigned char *> (
             connect_routing_id.c_str ()),
           connect_routing_id.size ());
-        zmq_assert (!has_out_pipe (routing_id));
+        zlink_assert (!has_out_pipe (routing_id));
     }
 
     if (routing_id.size () == 0) {
@@ -265,24 +265,24 @@ void zmq::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     }
 
     pipe_->set_router_socket_routing_id (routing_id);
-    add_out_pipe (ZMQ_MOVE (routing_id), pipe_);
+    add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
 }
 
-void zmq::stream_t::queue_event (const blob_t &routing_id_,
+void zlink::stream_t::queue_event (const blob_t &routing_id_,
                                  unsigned char code_)
 {
     stream_event_t ev;
     ev.routing_id.set (routing_id_.data (), routing_id_.size ());
     ev.code = code_;
-    _pending_events.push_back (ZMQ_MOVE (ev));
+    _pending_events.push_back (ZLINK_MOVE (ev));
 }
 
-bool zmq::stream_t::prefetch_event ()
+bool zlink::stream_t::prefetch_event ()
 {
     if (_pending_events.empty ())
         return false;
 
-    stream_event_t ev = ZMQ_MOVE (_pending_events.front ());
+    stream_event_t ev = ZLINK_MOVE (_pending_events.front ());
     _pending_events.pop_front ();
 
     int rc = _prefetched_routing_id.init_size (ev.routing_id.size ());

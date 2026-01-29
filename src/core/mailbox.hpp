@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_MAILBOX_HPP_INCLUDED__
-#define __ZMQ_MAILBOX_HPP_INCLUDED__
+#ifndef __ZLINK_MAILBOX_HPP_INCLUDED__
+#define __ZLINK_MAILBOX_HPP_INCLUDED__
 
 #include <stddef.h>
 
@@ -24,10 +24,10 @@ class io_context;
 }
 }
 
-namespace zmq
+namespace zlink
 {
 
-class mailbox_t ZMQ_FINAL : public i_mailbox
+class mailbox_t ZLINK_FINAL : public i_mailbox
 {
   public:
     mailbox_t ();
@@ -48,7 +48,7 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     void schedule_if_needed ();
     bool reschedule_if_needed ();
 
-    // Signaler support for ZMQ_FD
+    // Signaler support for ZLINK_FD
     void add_signaler (signaler_t *signaler_);
     void remove_signaler (signaler_t *signaler_);
     void clear_signalers ();
@@ -57,7 +57,7 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     // close the file descriptors in the signaller. This is used in a forked
     // child process to close the file descriptors so that they do not interfere
     // with the context in the parent process.
-    void forked () ZMQ_FINAL
+    void forked () ZLINK_FINAL
     {
         _signaler.forked ();
     }
@@ -84,10 +84,10 @@ class mailbox_t ZMQ_FINAL : public i_mailbox
     mailbox_pre_post_t _pre_post;
     std::atomic<bool> _scheduled;
 
-    //  Signalers for ZMQ_FD support
+    //  Signalers for ZLINK_FD support
     std::vector<signaler_t *> _signalers;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (mailbox_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (mailbox_t)
 };
 }
 

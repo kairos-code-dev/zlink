@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_TLS_LISTENER_HPP_INCLUDED__
-#define __ZMQ_ASIO_TLS_LISTENER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_TLS_LISTENER_HPP_INCLUDED__
+#define __ZLINK_ASIO_TLS_LISTENER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -17,7 +17,7 @@
 #include "core/io_object.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class socket_base_t;
@@ -34,11 +34,11 @@ class socket_base_t;
 //    - tls_key: Server private key file (REQUIRED)
 //    - tls_ca: CA certificate file (for client verification, OPTIONAL)
 
-class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
+class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
 {
   public:
-    asio_tls_listener_t (zmq::io_thread_t *io_thread_,
-                         zmq::socket_base_t *socket_,
+    asio_tls_listener_t (zlink::io_thread_t *io_thread_,
+                         zlink::socket_base_t *socket_,
                          const options_t &options_);
     ~asio_tls_listener_t ();
 
@@ -50,8 +50,8 @@ class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
 
   private:
     //  Handlers for incoming commands.
-    void process_plug () ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_OVERRIDE;
+    void process_plug () ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_OVERRIDE;
 
     //  Start accepting connections
     void start_accept ();
@@ -96,7 +96,7 @@ class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
     std::string _endpoint;
 
     //  Reference to the socket we belong to
-    zmq::socket_base_t *const _socket;
+    zlink::socket_base_t *const _socket;
 
     //  True if async accept is in progress
     bool _accepting;
@@ -107,10 +107,10 @@ class asio_tls_listener_t ZMQ_FINAL : public own_t, public io_object_t
     //  Linger value saved from process_term
     int _linger;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_tls_listener_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_tls_listener_t)
 };
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
-#endif  // __ZMQ_ASIO_TLS_LISTENER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_TLS_LISTENER_HPP_INCLUDED__

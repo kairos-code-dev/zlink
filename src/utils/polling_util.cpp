@@ -3,11 +3,11 @@
 #include "utils/precompiled.hpp"
 #include "utils/polling_util.hpp"
 
-#if defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_POLL_BASED_ON_POLL
 #include <limits.h>
 #include <algorithm>
 
-zmq::timeout_t zmq::compute_timeout (const bool first_pass_,
+zlink::timeout_t zlink::compute_timeout (const bool first_pass_,
                                      const long timeout_,
                                      const uint64_t now_,
                                      const uint64_t end_)
@@ -18,7 +18,7 @@ zmq::timeout_t zmq::compute_timeout (const bool first_pass_,
     if (timeout_ < 0)
         return -1;
 
-    return static_cast<zmq::timeout_t> (
+    return static_cast<zlink::timeout_t> (
       std::min<uint64_t> (end_ - now_, INT_MAX));
 }
 #endif

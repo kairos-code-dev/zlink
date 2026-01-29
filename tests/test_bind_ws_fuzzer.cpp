@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifdef ZMQ_USE_FUZZING_ENGINE
+#ifdef ZLINK_USE_FUZZING_ENGINE
 #include <fuzzer/FuzzedDataProvider.h>
 #endif
 
@@ -8,28 +8,28 @@
 #include "testutil_unity.hpp"
 
 // Test that the ZMTP WebSocket engine handles invalid handshake when connecting
-// https://rfc.zeromq.org/spec/45/
+// https://rfc.zlink.org/spec/45/
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
 {
     setup_test_context ();
     char my_endpoint[MAX_SOCKET_STRING];
     size_t my_endpoint_size = sizeof (my_endpoint);
-    void *server = test_context_socket (ZMQ_DEALER);
+    void *server = test_context_socket (ZLINK_DEALER);
     //  As per API by default there's no limit to the size of a message,
     //  but the sanitizer allocator will barf over a gig or so
     int64_t max_msg_size = 64 * 1024 * 1024;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (server, "ws://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_getsockopt (server, ZMQ_LAST_ENDPOINT,
+      zlink_setsockopt (server, ZLINK_MAXMSGSIZE, &max_msg_size, sizeof (int64_t)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "ws://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT,
                                                my_endpoint, &my_endpoint_size));
     //  Remove trailing /
     my_endpoint[my_endpoint_size - 2] = '\0';
     fd_t client = connect_socket (my_endpoint, AF_INET, IPPROTO_WS);
 
-    void *client_good = test_context_socket (ZMQ_DEALER);
+    void *client_good = test_context_socket (ZLINK_DEALER);
     my_endpoint[my_endpoint_size - 2] = '/';
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client_good, my_endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client_good, my_endpoint));
 
     //  If there is not enough data for a full handshake, just send what we can
     //  Otherwise send websocket handshake first, as expected by the protocol
@@ -47,11 +47,11 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     msleep (250);
     recv (client, buf, 256, MSG_DONTWAIT);
 
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
-    while (-1 != zmq_msg_recv (&msg, server, ZMQ_DONTWAIT)) {
-        zmq_msg_close (&msg);
-        zmq_msg_init (&msg);
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
+    while (-1 != zlink_msg_recv (&msg, server, ZLINK_DONTWAIT)) {
+        zlink_msg_close (&msg);
+        zlink_msg_init (&msg);
     }
 
     send_string_expect_success (client_good, "abc", 0);
@@ -65,13 +65,13 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
     return 0;
 }
 
-#ifndef ZMQ_USE_FUZZING_ENGINE
+#ifndef ZLINK_USE_FUZZING_ENGINE
 void test_bind_ws_fuzzer ()
 {
     uint8_t **data;
     size_t *len, num_cases = 0;
     if (fuzzer_corpus_encode (
-          "tests/libzmq-fuzz-corpora/test_bind_ws_fuzzer_seed_corpus", &data,
+          "tests/libzlink-fuzz-corpora/test_bind_ws_fuzzer_seed_corpus", &data,
           &len, &num_cases)
         != 0)
         exit (77);

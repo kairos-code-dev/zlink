@@ -3,7 +3,7 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#if defined(ZMQ_HAVE_WINDOWS)
+#if defined(ZLINK_HAVE_WINDOWS)
 #include <winsock2.h>
 #include <stdexcept>
 #else
@@ -15,13 +15,13 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 //  Solaris has a default of 256 max files per process
-#ifdef ZMQ_HAVE_SOLARIS
+#ifdef ZLINK_HAVE_SOLARIS
 #define MAX_SOCKETS 200
 #else
 #define MAX_SOCKETS 1000
 #endif
 
-#if defined(ZMQ_HAVE_WINDOWS)
+#if defined(ZLINK_HAVE_WINDOWS)
 
 void initialise_network (void)
 {
@@ -40,12 +40,12 @@ void initialise_network (void)
 
 void test_localhost ()
 {
-    //  Check that we have local networking via ZeroMQ
-    void *dealer = test_context_socket (ZMQ_DEALER);
-    if (zmq_bind (dealer, "tcp://127.0.0.1:*") == -1) {
+    //  Check that we have local networking via Zlink
+    void *dealer = test_context_socket (ZLINK_DEALER);
+    if (zlink_bind (dealer, "tcp://127.0.0.1:*") == -1) {
         TEST_FAIL_MESSAGE (
           "E: Cannot find 127.0.0.1 -- your system does not have local\n"
-          "E: networking. Please fix this before running libzmq checks.\n");
+          "E: networking. Please fix this before running libzlink checks.\n");
     }
 
     test_context_socket_close (dealer);
@@ -62,7 +62,7 @@ void test_max_sockets ()
             printf ("W: Only able to create %d sockets on this box\n", count);
             const char msg[] =
               "I: Tune your system to increase maximum allowed file handles\n"
-#if !defined(ZMQ_HAVE_WINDOWS)
+#if !defined(ZLINK_HAVE_WINDOWS)
               "I: Run 'ulimit -n 1200' in bash\n"
 #endif
               ;

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ASIO_TCP_LISTENER_HPP_INCLUDED__
-#define __ZMQ_ASIO_TCP_LISTENER_HPP_INCLUDED__
+#ifndef __ZLINK_ASIO_TCP_LISTENER_HPP_INCLUDED__
+#define __ZLINK_ASIO_TCP_LISTENER_HPP_INCLUDED__
 
 #include "core/poller.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include <boost/asio.hpp>
 #include <string>
@@ -15,7 +15,7 @@
 #include "core/io_object.hpp"
 #include "transports/tcp/tcp_address.hpp"
 
-namespace zmq
+namespace zlink
 {
 class io_thread_t;
 class socket_base_t;
@@ -23,11 +23,11 @@ class socket_base_t;
 //  ASIO-based TCP listener using async_accept for connection handling.
 //  Connections are handled using true proactor mode with asio_zmp_engine.
 
-class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
+class asio_tcp_listener_t ZLINK_FINAL : public own_t, public io_object_t
 {
   public:
-    asio_tcp_listener_t (zmq::io_thread_t *io_thread_,
-                         zmq::socket_base_t *socket_,
+    asio_tcp_listener_t (zlink::io_thread_t *io_thread_,
+                         zlink::socket_base_t *socket_,
                          const options_t &options_);
     ~asio_tcp_listener_t ();
 
@@ -42,8 +42,8 @@ class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
 
   private:
     //  Handlers for incoming commands.
-    void process_plug () ZMQ_FINAL;
-    void process_term (int linger_) ZMQ_FINAL;
+    void process_plug () ZLINK_FINAL;
+    void process_term (int linger_) ZLINK_FINAL;
 
     //  Start accepting incoming connections
     void start_accept ();
@@ -75,7 +75,7 @@ class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
     boost::asio::ip::tcp::socket _accept_socket;
 
     //  Socket the listener belongs to.
-    zmq::socket_base_t *_socket;
+    zlink::socket_base_t *_socket;
 
     //  Address to listen on.
     tcp_address_t _address;
@@ -92,10 +92,10 @@ class asio_tcp_listener_t ZMQ_FINAL : public own_t, public io_object_t
     //  Linger value saved from process_term for deferred termination
     int _linger;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (asio_tcp_listener_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_tcp_listener_t)
 };
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO
 
-#endif  // __ZMQ_ASIO_TCP_LISTENER_HPP_INCLUDED__
+#endif  // __ZLINK_ASIO_TCP_LISTENER_HPP_INCLUDED__

@@ -22,11 +22,11 @@ SRC="${TOP}/src"
 TESTS="${TOP}/tests"
 
 # Remove object/library files
-echo "Removing libzmq built files"
-(cd "${SRC}" && rm -f *.o *.a *.dbg *.x *.so libzmq)
+echo "Removing libzlink built files"
+(cd "${SRC}" && rm -f *.o *.a *.dbg *.x *.so libzlink)
 
 # Remove test object files
-echo "Removing libzmq tests"
+echo "Removing libzlink tests"
 (cd "${TESTS}" && rm -f *.o *.dbg)
 (cd "${TESTS}"; 
  EXES=$(ls test_* | grep -v "\.")

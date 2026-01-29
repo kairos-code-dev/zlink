@@ -7,7 +7,7 @@
 #include "sockets/xsub.hpp"
 #include "utils/err.hpp"
 
-zmq::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     socket_base_t (parent_, tid_, sid_),
     _verbose_unsubs (false),
     _has_message (false),
@@ -16,7 +16,7 @@ zmq::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _process_subscribe (false),
     _only_first_subscribe (false)
 {
-    options.type = ZMQ_XSUB;
+    options.type = ZLINK_XSUB;
 
     //  When socket is being closed down we don't want to wait till pending
     //  subscription commands are sent to the wire.
@@ -26,20 +26,20 @@ zmq::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     errno_assert (rc == 0);
 }
 
-zmq::xsub_t::~xsub_t ()
+zlink::xsub_t::~xsub_t ()
 {
     const int rc = _message.close ();
     errno_assert (rc == 0);
 }
 
-void zmq::xsub_t::xattach_pipe (pipe_t *pipe_,
+void zlink::xsub_t::xattach_pipe (pipe_t *pipe_,
                                 bool subscribe_to_all_,
                                 bool locally_initiated_)
 {
-    LIBZMQ_UNUSED (subscribe_to_all_);
-    LIBZMQ_UNUSED (locally_initiated_);
+    LIBZLINK_UNUSED (subscribe_to_all_);
+    LIBZLINK_UNUSED (locally_initiated_);
 
-    zmq_assert (pipe_);
+    zlink_assert (pipe_);
     _fq.attach (pipe_);
     _dist.attach (pipe_);
 
@@ -48,34 +48,34 @@ void zmq::xsub_t::xattach_pipe (pipe_t *pipe_,
     pipe_->flush ();
 }
 
-void zmq::xsub_t::xread_activated (pipe_t *pipe_)
+void zlink::xsub_t::xread_activated (pipe_t *pipe_)
 {
     _fq.activated (pipe_);
 }
 
-void zmq::xsub_t::xwrite_activated (pipe_t *pipe_)
+void zlink::xsub_t::xwrite_activated (pipe_t *pipe_)
 {
     _dist.activated (pipe_);
 }
 
-void zmq::xsub_t::xpipe_terminated (pipe_t *pipe_)
+void zlink::xsub_t::xpipe_terminated (pipe_t *pipe_)
 {
     _fq.pipe_terminated (pipe_);
     _dist.pipe_terminated (pipe_);
 }
 
-void zmq::xsub_t::xhiccuped (pipe_t *pipe_)
+void zlink::xsub_t::xhiccuped (pipe_t *pipe_)
 {
     //  Send all the cached subscriptions to the hiccuped pipe.
     _subscriptions.apply (send_subscription, pipe_);
     pipe_->flush ();
 }
 
-int zmq::xsub_t::xsetsockopt (int option_,
+int zlink::xsub_t::xsetsockopt (int option_,
                               const void *optval_,
                               size_t optvallen_)
 {
-    if (option_ == ZMQ_ONLY_FIRST_SUBSCRIBE) {
+    if (option_ == ZLINK_ONLY_FIRST_SUBSCRIBE) {
         if (optvallen_ != sizeof (int)
             || *static_cast<const int *> (optval_) < 0) {
             errno = EINVAL;
@@ -88,12 +88,12 @@ int zmq::xsub_t::xsetsockopt (int option_,
     return -1;
 }
 
-int zmq::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
+int zlink::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
 {
-    if (option_ == ZMQ_TOPICS_COUNT) {
+    if (option_ == ZLINK_TOPICS_COUNT) {
         // make sure to use a multi-thread safe function to avoid race conditions with I/O threads
         // where subscriptions are processed:
-#ifdef ZMQ_USE_RADIX_TREE
+#ifdef ZLINK_USE_RADIX_TREE
         uint64_t num_subscriptions = _subscriptions.size ();
 #else
         uint64_t num_subscriptions = _subscriptions.num_prefixes ();
@@ -109,7 +109,7 @@ int zmq::xsub_t::xgetsockopt (int option_, void *optval_, size_t *optvallen_)
     return -1;
 }
 
-int zmq::xsub_t::xsend (msg_t *msg_)
+int zlink::xsub_t::xsend (msg_t *msg_)
 {
     size_t size = msg_->size ();
     unsigned char *data = static_cast<unsigned char *> (msg_->data ());
@@ -128,7 +128,7 @@ int zmq::xsub_t::xsend (msg_t *msg_)
         //  Process subscribe message
         //  This used to filter out duplicate subscriptions,
         //  however this is already done on the XPUB side and
-        //  doing it here as well breaks ZMQ_XPUB_VERBOSE
+        //  doing it here as well breaks ZLINK_XPUB_VERBOSE
         //  when there are forwarding devices involved.
         if (!msg_->is_subscribe ()) {
             data = data + 1;
@@ -160,15 +160,15 @@ int zmq::xsub_t::xsend (msg_t *msg_)
     return 0;
 }
 
-bool zmq::xsub_t::xhas_out ()
+bool zlink::xsub_t::xhas_out ()
 {
     //  Subscription can be added/removed anytime.
     return true;
 }
 
-int zmq::xsub_t::xrecv (msg_t *msg_)
+int zlink::xsub_t::xrecv (msg_t *msg_)
 {
-    //  If there's already a message prepared by a previous call to zmq_poll,
+    //  If there's already a message prepared by a previous call to zlink_poll,
     //  return it straight ahead.
     if (_has_message) {
         const int rc = msg_->move (_message);
@@ -208,13 +208,13 @@ int zmq::xsub_t::xrecv (msg_t *msg_)
     }
 }
 
-bool zmq::xsub_t::xhas_in ()
+bool zlink::xsub_t::xhas_in ()
 {
     //  There are subsequent parts of the partly-read message available.
     if (_more_recv)
         return true;
 
-    //  If there's already a message prepared by a previous call to zmq_poll,
+    //  If there's already a message prepared by a previous call to zlink_poll,
     //  return straight ahead.
     if (_has_message)
         return true;
@@ -249,7 +249,7 @@ bool zmq::xsub_t::xhas_in ()
     }
 }
 
-bool zmq::xsub_t::match (msg_t *msg_)
+bool zlink::xsub_t::match (msg_t *msg_)
 {
     const bool matching = _subscriptions.check (
       static_cast<unsigned char *> (msg_->data ()), msg_->size ());
@@ -257,7 +257,7 @@ bool zmq::xsub_t::match (msg_t *msg_)
     return matching ^ options.invert_matching;
 }
 
-void zmq::xsub_t::send_subscription (unsigned char *data_,
+void zlink::xsub_t::send_subscription (unsigned char *data_,
                                      size_t size_,
                                      void *arg_)
 {
@@ -272,7 +272,7 @@ void zmq::xsub_t::send_subscription (unsigned char *data_,
     const bool sent = pipe->write (&msg);
     //  If we reached the SNDHWM, and thus cannot send the subscription, drop
     //  the subscription message instead. This matches the behaviour of
-    //  zmq_setsockopt(ZMQ_SUBSCRIBE, ...), which also drops subscriptions
+    //  zlink_setsockopt(ZLINK_SUBSCRIBE, ...), which also drops subscriptions
     //  when the SNDHWM is reached.
     if (!sent)
         msg.close ();

@@ -84,7 +84,7 @@ struct match_result_t
     node_t _grandparent_node;
 };
 
-namespace zmq
+namespace zlink
 {
 class radix_tree_t
 {

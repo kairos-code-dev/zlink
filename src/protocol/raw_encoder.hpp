@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_RAW_ENCODER_HPP_INCLUDED__
-#define __ZMQ_RAW_ENCODER_HPP_INCLUDED__
+#ifndef __ZLINK_RAW_ENCODER_HPP_INCLUDED__
+#define __ZLINK_RAW_ENCODER_HPP_INCLUDED__
 
 #include "protocol/encoder.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Encoder for raw STREAM framing (4-byte length prefix).
-class raw_encoder_t ZMQ_FINAL : public encoder_base_t<raw_encoder_t>
+class raw_encoder_t ZLINK_FINAL : public encoder_base_t<raw_encoder_t>
 {
   public:
     explicit raw_encoder_t (size_t bufsize_);
@@ -20,7 +20,7 @@ class raw_encoder_t ZMQ_FINAL : public encoder_base_t<raw_encoder_t>
 
     unsigned char _tmp_buf[4];
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (raw_encoder_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (raw_encoder_t)
 };
 }
 

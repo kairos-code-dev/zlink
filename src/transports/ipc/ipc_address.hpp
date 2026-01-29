@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_IPC_ADDRESS_HPP_INCLUDED__
-#define __ZMQ_IPC_ADDRESS_HPP_INCLUDED__
+#ifndef __ZLINK_IPC_ADDRESS_HPP_INCLUDED__
+#define __ZLINK_IPC_ADDRESS_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_IPC
+#if defined ZLINK_HAVE_IPC
 
 #include <string>
 
@@ -16,7 +16,7 @@
 
 #include "utils/macros.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ipc_address_t
 {
@@ -38,7 +38,7 @@ class ipc_address_t
     struct sockaddr_un _address;
     socklen_t _addrlen;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (ipc_address_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (ipc_address_t)
 };
 }
 

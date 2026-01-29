@@ -1,4 +1,4 @@
-name: Build libzmq Native Libraries
+name: Build libzlink Native Libraries
 
 on:
   push:
@@ -12,8 +12,8 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      libzmq_version:
-        description: 'libzmq version to build (default: from VERSION file)'
+      libzlink_version:
+        description: 'libzlink version to build (default: from VERSION file)'
         required: false
         type: string
 
@@ -25,7 +25,7 @@ jobs:
     name: Read Version Information
     runs-on: ubuntu-22.04
     outputs:
-      libzmq_version: ${{ steps.versions.outputs.libzmq_version }}
+      libzlink_version: ${{ steps.versions.outputs.libzlink_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -33,16 +33,16 @@ jobs:
       - name: Read versions from VERSION file
         id: versions
         run: |
-          LIBZMQ_VERSION=$(grep '^LIBZMQ_VERSION=' VERSION | cut -d'=' -f2)
+          LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' VERSION | cut -d'=' -f2)
 
           # Use manual input if provided, otherwise use VERSION file
-          if [ -n "${{ github.event.inputs.libzmq_version }}" ]; then
-            LIBZMQ_VERSION="${{ github.event.inputs.libzmq_version }}"
+          if [ -n "${{ github.event.inputs.libzlink_version }}" ]; then
+            LIBZLINK_VERSION="${{ github.event.inputs.libzlink_version }}"
           fi
 
-          echo "libzmq_version=${LIBZMQ_VERSION}" >> $GITHUB_OUTPUT
+          echo "libzlink_version=${LIBZLINK_VERSION}" >> $GITHUB_OUTPUT
 
-          echo "Using libzmq version: ${LIBZMQ_VERSION}"
+          echo "Using libzlink version: ${LIBZLINK_VERSION}"
 
   build-windows:
     name: Build Windows x64
@@ -52,7 +52,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build libzmq
+      - name: Build libzlink
         shell: pwsh
         run: |
           $buildDir = "build-win-x64"
@@ -65,7 +65,7 @@ jobs:
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=OFF `
             -DBUILD_TESTS=ON `
-            -DZMQ_CXX_STANDARD=20 `
+            -DZLINK_CXX_STANDARD=20 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
           cmake --build . --config Release --parallel
           cmake --install . --config Release --prefix ../dist/windows-x64
@@ -121,8 +121,8 @@ jobs:
       - name: Check DLL dependencies
         shell: cmd
         run: |
-          echo === libzmq.dll dependencies ===
-          dumpbin /DEPENDENTS dist\windows-x64\libzmq.dll
+          echo === libzlink.dll dependencies ===
+          dumpbin /DEPENDENTS dist\windows-x64\libzlink.dll
           echo.
           echo === Files in dist ===
           dir /s dist\windows-x64\
@@ -131,7 +131,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-windows-x64
+          name: libzlink-windows-x64
           path: dist/windows-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -152,7 +152,7 @@ jobs:
           echo "OPENSSL_ROOT_DIR=$opensslDir" >> $env:GITHUB_ENV
           Write-Host "OpenSSL (ARM64) installed via vcpkg at $opensslDir"
 
-      - name: Build libzmq
+      - name: Build libzlink
         shell: pwsh
         run: |
           $buildDir = "build-win-arm64"
@@ -165,7 +165,7 @@ jobs:
             -DBUILD_SHARED=ON `
             -DBUILD_STATIC=OFF `
             -DBUILD_TESTS=OFF `
-            -DZMQ_CXX_STANDARD=20 `
+            -DZLINK_CXX_STANDARD=20 `
             -DWITH_TLS=ON `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
@@ -175,7 +175,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-windows-arm64
+          name: libzlink-windows-arm64
           path: dist/windows-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -197,7 +197,7 @@ jobs:
             pkg-config \
             libssl-dev
 
-      - name: Build libzmq
+      - name: Build libzlink
         run: |
           chmod +x ./build-scripts/linux/build.sh
           ./build-scripts/linux/build.sh \
@@ -207,7 +207,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-linux-x64
+          name: libzlink-linux-x64
           path: dist/linux-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -229,7 +229,7 @@ jobs:
             pkg-config \
             libssl-dev
 
-      - name: Build libzmq
+      - name: Build libzlink
         run: |
           chmod +x ./build-scripts/linux/build.sh
           ./build-scripts/linux/build.sh \
@@ -239,7 +239,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-linux-arm64
+          name: libzlink-linux-arm64
           path: dist/linux-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -255,7 +255,7 @@ jobs:
         run: |
           vcpkg install openssl:x64-osx
 
-      - name: Build libzmq
+      - name: Build libzlink
         run: |
           export VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT
           export OPENSSL_ROOT_DIR="$VCPKG_ROOT/installed/x64-osx"
@@ -270,13 +270,13 @@ jobs:
       - name: Verify build
         run: |
           echo "Verifying x86_64 build..."
-          file dist/macos-x86_64/libzmq.dylib
+          file dist/macos-x86_64/libzlink.dylib
           ls -la dist/macos-x86_64/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-macos-x64
+          name: libzlink-macos-x64
           path: dist/macos-x86_64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -295,7 +295,7 @@ jobs:
             pkg-config \
             openssl@3
 
-      - name: Build libzmq
+      - name: Build libzlink
         run: |
           # Use ARM64 Homebrew for Apple Silicon
           export OPENSSL_ROOT_DIR=$(/opt/homebrew/bin/brew --prefix openssl@3)
@@ -312,7 +312,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libzmq-macos-arm64
+          name: libzlink-macos-arm64
           path: dist/macos-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
@@ -348,16 +348,16 @@ jobs:
         run: |
           echo "## Build Verification Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**libzmq Version:** ${{ needs.read-versions.outputs.libzmq_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**libzlink Version:** ${{ needs.read-versions.outputs.libzlink_version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           echo "### Built Platforms" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           for platform in windows-x64 windows-arm64 linux-x64 linux-arm64 macos-x64 macos-arm64; do
-            if [ -d "artifacts/libzmq-${platform}" ]; then
+            if [ -d "artifacts/libzlink-${platform}" ]; then
               echo "- ✅ ${platform}" >> $GITHUB_STEP_SUMMARY
-              file_count=$(find "artifacts/libzmq-${platform}" -type f | wc -l)
+              file_count=$(find "artifacts/libzlink-${platform}" -type f | wc -l)
               echo "  - Files: ${file_count}" >> $GITHUB_STEP_SUMMARY
             else
               echo "- ❌ ${platform}" >> $GITHUB_STEP_SUMMARY
@@ -397,22 +397,22 @@ jobs:
         run: |
           cd artifacts
           # Use recursive zip to handle subdirectories and avoid 'Nothing to do' error
-          zip -r libzmq-windows-x64.zip libzmq-windows-x64/
-          zip -r libzmq-windows-arm64.zip libzmq-windows-arm64/
-          zip -r libzmq-linux-x64.zip libzmq-linux-x64/
-          zip -r libzmq-linux-arm64.zip libzmq-linux-arm64/
-          zip -r libzmq-macos-x64.zip libzmq-macos-x64/
-          zip -r libzmq-macos-arm64.zip libzmq-macos-arm64/
+          zip -r libzlink-windows-x64.zip libzlink-windows-x64/
+          zip -r libzlink-windows-arm64.zip libzlink-windows-arm64/
+          zip -r libzlink-linux-x64.zip libzlink-linux-x64/
+          zip -r libzlink-linux-arm64.zip libzlink-linux-arm64/
+          zip -r libzlink-macos-x64.zip libzlink-macos-x64/
+          zip -r libzlink-macos-arm64.zip libzlink-macos-arm64/
           ls -lh *.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: libzmq ${{ needs.read-versions.outputs.libzmq_version }}
+          name: libzlink ${{ needs.read-versions.outputs.libzlink_version }}
           body: |
-            ## libzmq Native Libraries (zlink)
+            ## libzlink Native Libraries (zlink)
 
-            **Version**: ${{ needs.read-versions.outputs.libzmq_version }}
+            **Version**: ${{ needs.read-versions.outputs.libzlink_version }}
 
             ### Features
             - **I/O Backend**: ASIO (Boost.Asio) for high-performance async I/O
@@ -431,17 +431,17 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | Windows x64 | `libzmq-windows-x64.zip` |
-            | Windows ARM64 | `libzmq-windows-arm64.zip` |
-            | Linux x64 | `libzmq-linux-x64.zip` |
-            | Linux ARM64 | `libzmq-linux-arm64.zip` |
-            | macOS x64 (Intel) | `libzmq-macos-x64.zip` |
-            | macOS ARM64 (Apple Silicon) | `libzmq-macos-arm64.zip` |
+            | Windows x64 | `libzlink-windows-x64.zip` |
+            | Windows ARM64 | `libzlink-windows-arm64.zip` |
+            | Linux x64 | `libzlink-linux-x64.zip` |
+            | Linux ARM64 | `libzlink-linux-arm64.zip` |
+            | macOS x64 (Intel) | `libzlink-macos-x64.zip` |
+            | macOS ARM64 (Apple Silicon) | `libzlink-macos-arm64.zip` |
 
             ### Package Contents
             Each archive contains:
             - Native library (`.dll`/`.so`/`.dylib`)
-            - Public headers (`include/zmq.h`, `include/zmq_utils.h`)
+            - Public headers (`include/zlink.h`, `include/zlink_utils.h`)
             - OpenSSL dependency required for TLS features
 
             ### Verification
@@ -450,12 +450,12 @@ jobs:
             - Transport matrix tests (all socket patterns × all transports)
             - TLS/WebSocket functionality
           files: |
-            artifacts/libzmq-windows-x64.zip
-            artifacts/libzmq-windows-arm64.zip
-            artifacts/libzmq-linux-x64.zip
-            artifacts/libzmq-linux-arm64.zip
-            artifacts/libzmq-macos-x64.zip
-            artifacts/libzmq-macos-arm64.zip
+            artifacts/libzlink-windows-x64.zip
+            artifacts/libzlink-windows-arm64.zip
+            artifacts/libzlink-linux-x64.zip
+            artifacts/libzlink-linux-arm64.zip
+            artifacts/libzlink-macos-x64.zip
+            artifacts/libzlink-macos-arm64.zip
             artifacts/checksums/checksums.txt
           draft: false
           prerelease: false

@@ -9,7 +9,7 @@
 #include "utils/random.hpp"
 #include "sockets/socket_base.hpp"
 
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
 #else
 #include <unistd.h>
@@ -18,14 +18,14 @@
 #include <algorithm>
 #include <string.h>
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t gateway_tag_value = 0x1e6700d7;
 static const int gateway_default_timeout_ms = 5000;
 
 static void sleep_ms (int ms_)
 {
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     Sleep (ms_);
 #else
     usleep (static_cast<useconds_t> (ms_) * 1000);
@@ -39,7 +39,7 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
     _next_request_id (1),
     _stop (0)
 {
-    zmq_assert (_ctx);
+    zlink_assert (_ctx);
     _worker.start (run, this, "gateway");
     if (_discovery)
         _discovery->add_listener (this);
@@ -75,7 +75,7 @@ void gateway_t::on_discovery_event (int event_,
 static int allocate_threadsafe_router (ctx_t *ctx_, socket_base_t **socket_,
                                        thread_safe_socket_t **threadsafe_)
 {
-    *socket_ = ctx_->create_socket (ZMQ_ROUTER);
+    *socket_ = ctx_->create_socket (ZLINK_ROUTER);
     if (!*socket_)
         return -1;
 
@@ -103,7 +103,7 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
     pool.socket = NULL;
     pool.threadsafe = NULL;
     pool.rr_index = 0;
-    pool.lb_strategy = ZMQ_GATEWAY_LB_ROUND_ROBIN;
+    pool.lb_strategy = ZLINK_GATEWAY_LB_ROUND_ROBIN;
 
     if (allocate_threadsafe_router (_ctx, &pool.socket, &pool.threadsafe)
         != 0)
@@ -122,7 +122,7 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
     _discovery->snapshot_providers (pool_->service_name, &providers);
 
     std::vector<std::string> next_endpoints;
-    std::map<std::string, zmq_routing_id_t> next_routing;
+    std::map<std::string, zlink_routing_id_t> next_routing;
 
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &entry = providers[i];
@@ -135,11 +135,11 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
         if (std::find (pool_->endpoints.begin (), pool_->endpoints.end (),
                        endpoint)
             == pool_->endpoints.end ()) {
-            std::map<std::string, zmq_routing_id_t>::iterator rit =
+            std::map<std::string, zlink_routing_id_t>::iterator rit =
               next_routing.find (endpoint);
             if (rit != next_routing.end () && rit->second.size > 0) {
                 pool_->threadsafe->setsockopt (
-                  ZMQ_CONNECT_ROUTING_ID, rit->second.data, rit->second.size);
+                  ZLINK_CONNECT_ROUTING_ID, rit->second.data, rit->second.size);
             }
             pool_->threadsafe->connect (endpoint.c_str ());
         }
@@ -160,12 +160,12 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
 }
 
 bool gateway_t::select_provider (service_pool_t *pool_,
-                                 zmq_routing_id_t *rid_)
+                                 zlink_routing_id_t *rid_)
 {
     if (!pool_ || pool_->providers.empty () || !rid_)
         return false;
 
-    if (pool_->lb_strategy == ZMQ_GATEWAY_LB_WEIGHTED) {
+    if (pool_->lb_strategy == ZLINK_GATEWAY_LB_WEIGHTED) {
         uint32_t total = 0;
         for (size_t i = 0; i < pool_->providers.size (); ++i) {
             uint32_t weight = pool_->providers[i].weight;
@@ -175,7 +175,7 @@ bool gateway_t::select_provider (service_pool_t *pool_,
         }
         if (total == 0)
             total = 1;
-        uint32_t pick = zmq::generate_random () % total;
+        uint32_t pick = zlink::generate_random () % total;
         uint32_t acc = 0;
         for (size_t i = 0; i < pool_->providers.size (); ++i) {
             uint32_t weight = pool_->providers[i].weight;
@@ -196,9 +196,9 @@ bool gateway_t::select_provider (service_pool_t *pool_,
 }
 
 int gateway_t::send_request_frames (service_pool_t *pool_,
-                                    const zmq_routing_id_t &rid_,
+                                    const zlink_routing_id_t &rid_,
                                     uint64_t request_id_,
-                                    zmq_msg_t *parts_,
+                                    zlink_msg_t *parts_,
                                     size_t part_count_,
                                     int flags_)
 {
@@ -216,7 +216,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
         return -1;
     if (rid_.size > 0)
         memcpy (rid.data (), rid_.data, rid_.size);
-    int flags = (part_count_ > 0 || request_id_ != 0) ? ZMQ_SNDMORE : 0;
+    int flags = (part_count_ > 0 || request_id_ != 0) ? ZLINK_SNDMORE : 0;
     if (pool_->threadsafe->send (&rid, flags) != 0) {
         rid.close ();
         return -1;
@@ -227,7 +227,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     if (req_id.init_size (sizeof (uint64_t)) != 0)
         return -1;
     memcpy (req_id.data (), &request_id_, sizeof (uint64_t));
-    flags = part_count_ > 0 ? ZMQ_SNDMORE : 0;
+    flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
     if (pool_->threadsafe->send (&req_id, flags) != 0) {
         req_id.close ();
         return -1;
@@ -236,7 +236,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
 
     for (size_t i = 0; i < part_count_; ++i) {
         msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
-        flags = (i + 1 < part_count_) ? ZMQ_SNDMORE : 0;
+        flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         if (pool_->threadsafe->send (&part, flags) != 0)
             return -1;
     }
@@ -245,7 +245,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
 }
 
 int gateway_t::send (const char *service_name_,
-                     zmq_msg_t *parts_,
+                     zlink_msg_t *parts_,
                      size_t part_count_,
                      int flags_,
                      uint64_t *request_id_out_)
@@ -270,7 +270,7 @@ int gateway_t::send (const char *service_name_,
         }
 
         refresh_pool (pool);
-        zmq_routing_id_t rid;
+        zlink_routing_id_t rid;
         if (!select_provider (pool, &rid)) {
             errno = EHOSTUNREACH;
             return -1;
@@ -303,12 +303,12 @@ int gateway_t::send (const char *service_name_,
         *request_id_out_ = request_id;
 
     for (size_t i = 0; i < part_count_; ++i)
-        zmq_msg_close (&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 
     return 0;
 }
 
-zmq_msg_t *gateway_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
+zlink_msg_t *gateway_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                              size_t *count_)
 {
     if (count_)
@@ -317,8 +317,8 @@ zmq_msg_t *gateway_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         return NULL;
 
     const size_t count = parts_->size ();
-    zmq_msg_t *out =
-      static_cast<zmq_msg_t *> (malloc (count * sizeof (zmq_msg_t)));
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (count * sizeof (zlink_msg_t)));
     if (!out) {
         errno = ENOMEM;
         close_parts (parts_);
@@ -329,7 +329,7 @@ zmq_msg_t *gateway_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
         msg_t *dst = reinterpret_cast<msg_t *> (&out[i]);
         if (dst->init () != 0 || dst->move ((*parts_)[i]) != 0) {
             for (size_t j = 0; j <= i; ++j)
-                zmq_msg_close (&out[j]);
+                zlink_msg_close (&out[j]);
             free (out);
             close_parts (parts_);
             errno = EFAULT;
@@ -364,7 +364,7 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     msg_t routing;
     if (routing.init () != 0)
         return -1;
-    if (pool_->threadsafe->recv (&routing, ZMQ_DONTWAIT) != 0) {
+    if (pool_->threadsafe->recv (&routing, ZLINK_DONTWAIT) != 0) {
         routing.close ();
         return -1;
     }
@@ -427,7 +427,7 @@ void gateway_t::handle_response (uint64_t request_id_,
                                  const std::string &fallback_service_,
                                  std::deque<callback_entry_t> *callbacks_)
 {
-    zmq_gateway_request_cb_fn callback = NULL;
+    zlink_gateway_request_cb_fn callback = NULL;
     std::string service_name = fallback_service_;
 
     if (request_id_ != 0) {
@@ -526,7 +526,7 @@ void gateway_t::loop ()
             callback_entry_t &entry = *it;
             if (!entry.callback)
                 continue;
-            zmq_msg_t *parts = NULL;
+            zlink_msg_t *parts = NULL;
             size_t count = 0;
             int err = entry.error;
             if (err == 0 && !entry.parts.empty ()) {
@@ -604,7 +604,7 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
     return 0;
 }
 
-int gateway_t::recv (zmq_msg_t **parts_,
+int gateway_t::recv (zlink_msg_t **parts_,
                      size_t *part_count_,
                      int flags_,
                      char *service_name_out_,
@@ -626,7 +626,7 @@ int gateway_t::recv (zmq_msg_t **parts_,
     if (request_id_out_)
         *request_id_out_ = entry.request_id;
 
-    zmq_msg_t *out_parts = NULL;
+    zlink_msg_t *out_parts = NULL;
     size_t out_count = 0;
     if (!entry.parts.empty ()) {
         out_parts = alloc_msgv_from_parts (&entry.parts, &out_count);
@@ -652,9 +652,9 @@ int gateway_t::recv (zmq_msg_t **parts_,
 }
 
 uint64_t gateway_t::request (const char *service_name_,
-                             zmq_msg_t *parts_,
+                             zlink_msg_t *parts_,
                              size_t part_count_,
-                             zmq_gateway_request_cb_fn callback_,
+                             zlink_gateway_request_cb_fn callback_,
                              int timeout_ms_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !parts_
@@ -668,7 +668,7 @@ uint64_t gateway_t::request (const char *service_name_,
     }
 
     int timeout = timeout_ms_;
-    if (timeout_ms_ == ZMQ_REQUEST_TIMEOUT_DEFAULT)
+    if (timeout_ms_ == ZLINK_REQUEST_TIMEOUT_DEFAULT)
         timeout = gateway_default_timeout_ms;
     if (timeout < -1) {
         errno = EINVAL;
@@ -683,7 +683,7 @@ uint64_t gateway_t::request (const char *service_name_,
             return 0;
 
         refresh_pool (pool);
-        zmq_routing_id_t rid;
+        zlink_routing_id_t rid;
         if (!select_provider (pool, &rid)) {
             errno = EHOSTUNREACH;
             return 0;
@@ -715,13 +715,13 @@ uint64_t gateway_t::request (const char *service_name_,
     }
 
     for (size_t i = 0; i < part_count_; ++i)
-        zmq_msg_close (&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 
     return request_id;
 }
 
 uint64_t gateway_t::request_send (const char *service_name_,
-                                  zmq_msg_t *parts_,
+                                  zlink_msg_t *parts_,
                                   size_t part_count_,
                                   int flags_)
 {
@@ -743,7 +743,7 @@ uint64_t gateway_t::request_send (const char *service_name_,
             return 0;
 
         refresh_pool (pool);
-        zmq_routing_id_t rid;
+        zlink_routing_id_t rid;
         if (!select_provider (pool, &rid)) {
             errno = EHOSTUNREACH;
             return 0;
@@ -773,12 +773,12 @@ uint64_t gateway_t::request_send (const char *service_name_,
     }
 
     for (size_t i = 0; i < part_count_; ++i)
-        zmq_msg_close (&parts_[i]);
+        zlink_msg_close (&parts_[i]);
 
     return request_id;
 }
 
-int gateway_t::request_recv (zmq_gateway_completion_t *completion_,
+int gateway_t::request_recv (zlink_gateway_completion_t *completion_,
                              int timeout_ms_)
 {
     if (!completion_) {
@@ -821,8 +821,8 @@ int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
         errno = EINVAL;
         return -1;
     }
-    if (strategy_ != ZMQ_GATEWAY_LB_ROUND_ROBIN
-        && strategy_ != ZMQ_GATEWAY_LB_WEIGHTED) {
+    if (strategy_ != ZLINK_GATEWAY_LB_ROUND_ROBIN
+        && strategy_ != ZLINK_GATEWAY_LB_WEIGHTED) {
         errno = EINVAL;
         return -1;
     }

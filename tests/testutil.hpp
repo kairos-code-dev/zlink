@@ -3,12 +3,12 @@
 #ifndef __TESTUTIL_HPP_INCLUDED__
 #define __TESTUTIL_HPP_INCLUDED__
 
-#if defined ZMQ_CUSTOM_PLATFORM_HPP
+#if defined ZLINK_CUSTOM_PLATFORM_HPP
 #include "platform.hpp"
 #else
 #include "../src/platform.hpp"
 #endif
-#include "../include/zmq.h"
+#include "../include/zlink.h"
 #include "utils/stdint.hpp"
 #include <string>
 
@@ -30,7 +30,7 @@
 //  get test failures on slower systems due to binds/connects not
 //  settled. Tested to work reliably at 1 msec on a fast PC.
 #define SETTLE_TIME 300 //  In msec
-//  Commonly used buffer size for ZMQ_LAST_ENDPOINT
+//  Commonly used buffer size for ZLINK_LAST_ENDPOINT
 //  this used to be sizeof ("tcp://[::ffff:127.127.127.127]:65536"), but this
 //  may be too short for ipc wildcard binds, e.g.
 #define MAX_SOCKET_STRING 256
@@ -50,7 +50,7 @@
 #endif
 
 // duplicated from fd.hpp
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
 #ifndef NOMINMAX
 #define NOMINMAX // Macros min(a,b) and max(a,b)
 #endif
@@ -73,17 +73,17 @@ inline const void *as_setsockopt_opt_t (const void *opt_)
 #endif
 
 // duplicated from fd.hpp
-typedef zmq_fd_t fd_t;
-#ifdef ZMQ_HAVE_WINDOWS
+typedef zlink_fd_t fd_t;
+#ifdef ZLINK_HAVE_WINDOWS
 #if defined _MSC_VER && _MSC_VER <= 1400
 enum
 {
-    retired_fd = (zmq_fd_t) (~0)
+    retired_fd = (zlink_fd_t) (~0)
 };
 #else
 enum
 #if _MSC_VER >= 1800
-  : zmq_fd_t
+  : zlink_fd_t
 #endif
 {
     retired_fd = INVALID_SOCKET
@@ -103,7 +103,7 @@ enum
     _snprintf_s (buffer_, count_, _TRUNCATE, format_, __VA_ARGS__)
 #endif
 
-#define LIBZMQ_UNUSED(object) (void) object
+#define LIBZLINK_UNUSED(object) (void) object
 
 //  Bounce a message from client to server and back
 //  For REQ/REP or DEALER/DEALER pairs only
@@ -180,13 +180,13 @@ struct sockaddr_in bind_bsd_socket (int socket);
 #define IPPROTO_WS 10000
 #define IPPROTO_WSS 10001
 
-//  Connects a BSD socket to the ZMQ endpoint. Works with ipv4/ipv6/unix.
+//  Connects a BSD socket to the ZLINK endpoint. Works with ipv4/ipv6/unix.
 fd_t connect_socket (const char *endpoint_,
                      const int af_ = AF_INET,
                      const int protocol_ = IPPROTO_TCP);
 
 //  Binds a BSD socket to an ephemeral port, returns the file descriptor.
-//  The resulting ZMQ endpoint will be stored in my_endpoint, including the protocol
+//  The resulting ZLINK endpoint will be stored in my_endpoint, including the protocol
 //  prefix, so ensure it is writable and of appropriate size.
 //  Works with ipv4/ipv6/unix. With unix sockets address_/port_ can be empty and
 //  my_endpoint_ will contain a random path.

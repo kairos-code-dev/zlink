@@ -4,20 +4,20 @@
 #include "core/poller.hpp"
 #include "utils/polling_util.hpp"
 
-#if defined ZMQ_POLL_BASED_ON_POLL
-#if !defined ZMQ_HAVE_WINDOWS && !defined ZMQ_HAVE_AIX
+#if defined ZLINK_POLL_BASED_ON_POLL
+#if !defined ZLINK_HAVE_WINDOWS && !defined ZLINK_HAVE_AIX
 #include <poll.h>
 #endif
-#elif defined ZMQ_POLL_BASED_ON_SELECT
-#if defined ZMQ_HAVE_WINDOWS
-#elif defined ZMQ_HAVE_HPUX
+#elif defined ZLINK_POLL_BASED_ON_SELECT
+#if defined ZLINK_HAVE_WINDOWS
+#elif defined ZLINK_HAVE_HPUX
 #include <sys/param.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#elif defined ZMQ_HAVE_OPENVMS
+#elif defined ZLINK_HAVE_OPENVMS
 #include <sys/types.h>
 #include <sys/time.h>
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sockLib.h>
@@ -36,24 +36,24 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#if !defined ZMQ_HAVE_WINDOWS
+#if !defined ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #endif
 
-#if !defined(ZMQ_HAVE_WINDOWS)
+#if !defined(ZLINK_HAVE_WINDOWS)
 // Helper to sleep for specific number of milliseconds (or until signal)
 //
 static int sleep_ms (unsigned int ms_)
 {
     if (ms_ == 0)
         return 0;
-#if defined ZMQ_HAVE_ANDROID
+#if defined ZLINK_HAVE_ANDROID
     usleep (ms_ * 1000);
     return 0;
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
     struct timespec ns_;
     ns_.tv_sec = ms_ / 1000;
     ns_.tv_nsec = ms_ % 1000 * 1000000;
@@ -88,7 +88,7 @@ static int close_wait_ms (int fd_, unsigned int max_ms_ = 2000)
 }
 #endif
 
-zmq::signaler_t::signaler_t ()
+zlink::signaler_t::signaler_t ()
 {
     //  Create the socketpair for signaling.
     if (make_fdpair (&_r, &_w) == 0) {
@@ -102,14 +102,14 @@ zmq::signaler_t::signaler_t ()
 
 // This might get run after some part of construction failed, leaving one or
 // both of _r and _w retired_fd.
-zmq::signaler_t::~signaler_t ()
+zlink::signaler_t::~signaler_t ()
 {
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
     if (_r == retired_fd)
         return;
     int rc = close_wait_ms (_r);
     errno_assert (rc == 0);
-#elif defined ZMQ_HAVE_WINDOWS
+#elif defined ZLINK_HAVE_WINDOWS
     if (_w != retired_fd) {
         const struct linger so_linger = {1, 0};
         int rc = setsockopt (_w, SOL_SOCKET, SO_LINGER,
@@ -138,12 +138,12 @@ zmq::signaler_t::~signaler_t ()
 #endif
 }
 
-zmq::fd_t zmq::signaler_t::get_fd () const
+zlink::fd_t zlink::signaler_t::get_fd () const
 {
     return _r;
 }
 
-void zmq::signaler_t::send ()
+void zlink::signaler_t::send ()
 {
 #if defined HAVE_FORK
     if (unlikely (pid != getpid ())) {
@@ -151,11 +151,11 @@ void zmq::signaler_t::send ()
         return; // do not send anything in forked child context
     }
 #endif
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
     const uint64_t inc = 1;
     ssize_t sz = write (_w, &inc, sizeof (inc));
     errno_assert (sz == sizeof (inc));
-#elif defined ZMQ_HAVE_WINDOWS
+#elif defined ZLINK_HAVE_WINDOWS
     const char dummy = 0;
     int nbytes;
     do {
@@ -164,8 +164,8 @@ void zmq::signaler_t::send ()
         // wsa_assert does not abort on WSAEWOULDBLOCK. If we get this, we retry.
     } while (nbytes == SOCKET_ERROR);
     // Given the small size of dummy (should be 1) expect that send was able to send everything.
-    zmq_assert (nbytes == sizeof (dummy));
-#elif defined ZMQ_HAVE_VXWORKS
+    zlink_assert (nbytes == sizeof (dummy));
+#elif defined ZLINK_HAVE_VXWORKS
     unsigned char dummy = 0;
     while (true) {
         ssize_t nbytes = ::send (_w, (char *) &dummy, sizeof (dummy), 0);
@@ -178,7 +178,7 @@ void zmq::signaler_t::send ()
             break;
         }
 #endif
-        zmq_assert (nbytes == sizeof dummy);
+        zlink_assert (nbytes == sizeof dummy);
         break;
     }
 #else
@@ -194,13 +194,13 @@ void zmq::signaler_t::send ()
             break;
         }
 #endif
-        zmq_assert (nbytes == sizeof dummy);
+        zlink_assert (nbytes == sizeof dummy);
         break;
     }
 #endif
 }
 
-int zmq::signaler_t::wait (int timeout_) const
+int zlink::signaler_t::wait (int timeout_) const
 {
 #ifdef HAVE_FORK
     if (unlikely (pid != getpid ())) {
@@ -212,7 +212,7 @@ int zmq::signaler_t::wait (int timeout_) const
     }
 #endif
 
-#ifdef ZMQ_POLL_BASED_ON_POLL
+#ifdef ZLINK_POLL_BASED_ON_POLL
     struct pollfd pfd;
     pfd.fd = _r;
     pfd.events = POLLIN;
@@ -234,11 +234,11 @@ int zmq::signaler_t::wait (int timeout_) const
         return -1;
     }
 #endif
-    zmq_assert (rc == 1);
-    zmq_assert (pfd.revents & POLLIN);
+    zlink_assert (rc == 1);
+    zlink_assert (pfd.revents & POLLIN);
     return 0;
 
-#elif defined ZMQ_POLL_BASED_ON_SELECT
+#elif defined ZLINK_POLL_BASED_ON_SELECT
 
     optimized_fd_set_t fds (1);
     FD_ZERO (fds.get ());
@@ -248,7 +248,7 @@ int zmq::signaler_t::wait (int timeout_) const
         timeout.tv_sec = timeout_ / 1000;
         timeout.tv_usec = timeout_ % 1000 * 1000;
     }
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     int rc =
       select (0, fds.get (), NULL, NULL, timeout_ >= 0 ? &timeout : NULL);
     wsa_assert (rc != SOCKET_ERROR);
@@ -264,7 +264,7 @@ int zmq::signaler_t::wait (int timeout_) const
         errno = EAGAIN;
         return -1;
     }
-    zmq_assert (rc == 1);
+    zlink_assert (rc == 1);
     return 0;
 
 #else
@@ -272,10 +272,10 @@ int zmq::signaler_t::wait (int timeout_) const
 #endif
 }
 
-void zmq::signaler_t::recv ()
+void zlink::signaler_t::recv ()
 {
 //  Attempt to read a signal.
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
     uint64_t dummy;
     ssize_t sz = read (_r, &dummy, sizeof (dummy));
     errno_assert (sz == sizeof (dummy));
@@ -289,29 +289,29 @@ void zmq::signaler_t::recv ()
         return;
     }
 
-    zmq_assert (dummy == 1);
+    zlink_assert (dummy == 1);
 #else
     unsigned char dummy;
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     const int nbytes =
       ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
     wsa_assert (nbytes != SOCKET_ERROR);
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
     ssize_t nbytes = ::recv (_r, (char *) &dummy, sizeof (dummy), 0);
     errno_assert (nbytes >= 0);
 #else
     ssize_t nbytes = ::recv (_r, &dummy, sizeof (dummy), 0);
     errno_assert (nbytes >= 0);
 #endif
-    zmq_assert (nbytes == sizeof (dummy));
-    zmq_assert (dummy == 0);
+    zlink_assert (nbytes == sizeof (dummy));
+    zlink_assert (dummy == 0);
 #endif
 }
 
-int zmq::signaler_t::recv_failable ()
+int zlink::signaler_t::recv_failable ()
 {
 //  Attempt to read a signal.
-#if defined ZMQ_HAVE_EVENTFD
+#if defined ZLINK_HAVE_EVENTFD
     uint64_t dummy;
     ssize_t sz = read (_r, &dummy, sizeof (dummy));
     if (sz == -1) {
@@ -329,11 +329,11 @@ int zmq::signaler_t::recv_failable ()
         return 0;
     }
 
-    zmq_assert (dummy == 1);
+    zlink_assert (dummy == 1);
 
 #else
     unsigned char dummy;
-#if defined ZMQ_HAVE_WINDOWS
+#if defined ZLINK_HAVE_WINDOWS
     const int nbytes =
       ::recv (_r, reinterpret_cast<char *> (&dummy), sizeof (dummy), 0);
     if (nbytes == SOCKET_ERROR) {
@@ -344,7 +344,7 @@ int zmq::signaler_t::recv_failable ()
         }
         wsa_assert (last_error == WSAEWOULDBLOCK);
     }
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
     ssize_t nbytes = ::recv (_r, (char *) &dummy, sizeof (dummy), 0);
     if (nbytes == -1) {
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
@@ -365,19 +365,19 @@ int zmq::signaler_t::recv_failable ()
                       || errno == EINTR);
     }
 #endif
-    zmq_assert (nbytes == sizeof (dummy));
-    zmq_assert (dummy == 0);
+    zlink_assert (nbytes == sizeof (dummy));
+    zlink_assert (dummy == 0);
 #endif
     return 0;
 }
 
-bool zmq::signaler_t::valid () const
+bool zlink::signaler_t::valid () const
 {
     return _w != retired_fd;
 }
 
 #ifdef HAVE_FORK
-void zmq::signaler_t::forked ()
+void zlink::signaler_t::forked ()
 {
     //  Close file descriptors created in the parent and create new pair
     close (_r);

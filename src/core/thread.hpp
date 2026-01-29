@@ -1,18 +1,18 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_THREAD_HPP_INCLUDED__
-#define __ZMQ_THREAD_HPP_INCLUDED__
+#ifndef __ZLINK_THREAD_HPP_INCLUDED__
+#define __ZLINK_THREAD_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_VXWORKS
+#if defined ZLINK_HAVE_VXWORKS
 #include <vxWorks.h>
 #include <taskLib.h>
-#elif !defined ZMQ_HAVE_WINDOWS
+#elif !defined ZLINK_HAVE_WINDOWS
 #include <pthread.h>
 #endif
 #include <set>
 #include <cstring>
 
-namespace zmq
+namespace zlink
 {
 typedef void (thread_fn) (void *);
 
@@ -30,13 +30,13 @@ class thread_t
         _tfn (NULL),
         _arg (NULL),
         _started (false),
-        _thread_priority (ZMQ_THREAD_PRIORITY_DFLT),
-        _thread_sched_policy (ZMQ_THREAD_SCHED_POLICY_DFLT)
+        _thread_priority (ZLINK_THREAD_PRIORITY_DFLT),
+        _thread_sched_policy (ZLINK_THREAD_SCHED_POLICY_DFLT)
     {
         memset (_name, 0, sizeof (_name));
     }
 
-#ifdef ZMQ_HAVE_VXWORKS
+#ifdef ZLINK_HAVE_VXWORKS
     ~thread_t ()
     {
         if (descriptor != NULL || descriptor > 0) {
@@ -78,14 +78,14 @@ class thread_t
   private:
     bool _started;
 
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
     HANDLE _descriptor;
 #if defined _WIN32_WCE
     DWORD _thread_id;
 #else
     unsigned int _thread_id;
 #endif
-#elif defined ZMQ_HAVE_VXWORKS
+#elif defined ZLINK_HAVE_VXWORKS
     int _descriptor;
     enum
     {
@@ -102,7 +102,7 @@ class thread_t
     int _thread_sched_policy;
     std::set<int> _thread_affinity_cpus;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (thread_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (thread_t)
 };
 }
 

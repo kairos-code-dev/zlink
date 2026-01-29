@@ -1,4 +1,4 @@
-# CMake build script for ZeroMQ tests
+# CMake build script for Zlink tests
 cmake_minimum_required(VERSION 3.10)
 
 # On Windows: solution file will be called tests.sln
@@ -74,11 +74,11 @@ if(ENABLE_CAPSH)
   endif()
 endif()
 
-if(ZMQ_HAVE_IPC)
+if(ZLINK_HAVE_IPC)
   list(APPEND tests test_ipc_wildcard test_pair_ipc)
 endif()
 
-if(ZMQ_HAVE_OPENPGM)
+if(ZLINK_HAVE_OPENPGM)
   list(APPEND tests pgm/test_pgm_epgm pgm/test_pgm_smoke)
 endif()
 
@@ -114,7 +114,7 @@ list(APPEND tests test_asio_ws)
 
 # add location of platform.hpp for Windows builds
 if(WIN32)
-  add_definitions(-DZMQ_CUSTOM_PLATFORM_HPP)
+  add_definitions(-DZLINK_CUSTOM_PLATFORM_HPP)
   add_definitions(-D_WINSOCK_DEPRECATED_NO_WARNINGS)
 
   # Same name on 64bit systems
@@ -139,12 +139,12 @@ set(TESTUTIL_SOURCES
 
 if(BUILD_STATIC)
   add_library(testutil-static STATIC ${TESTUTIL_SOURCES})
-  target_link_libraries(testutil-static libzmq-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
+  target_link_libraries(testutil-static libzlink-static ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 endif()
 
 if(BUILD_SHARED)
   add_library(testutil STATIC ${TESTUTIL_SOURCES})
-  target_link_libraries(testutil libzmq ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
+  target_link_libraries(testutil libzlink ${OPTIONAL_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} unity)
 endif()
 
 if(BUILD_STATIC AND NOT BUILD_SHARED)
@@ -164,7 +164,7 @@ if(MSVC_VERSION LESS 1600)
 endif()
 
 # add include dirs for all targets
-# Note: Using CMAKE_SOURCE_DIR instead of ZeroMQ_SOURCE_DIR since project name is now zlink
+# Note: Using CMAKE_SOURCE_DIR instead of Zlink_SOURCE_DIR since project name is now zlink
 include_directories("${CMAKE_SOURCE_DIR}/include" "${CMAKE_BINARY_DIR}")
 include_directories("${CMAKE_CURRENT_LIST_DIR}")
 
@@ -190,15 +190,15 @@ foreach(test_source ${tests})
   if(WIN32)
     # This is the output for Debug dynamic builds on Visual Studio 6.0 You should provide the correct directory, don't
     # know how to do it automatically
-    find_path(LIBZMQ_PATH "libzmq.lib" PATHS "../bin/Win32/Debug/v120/dynamic")
+    find_path(LIBZLINK_PATH "libzlink.lib" PATHS "../bin/Win32/Debug/v120/dynamic")
 
-    if(NOT ${LIBZMQ_PATH} STREQUAL "LIBZMQ_PATH-NOTFOUND")
-      set_target_properties(${test} PROPERTIES LINK_FLAGS "/LIBPATH:${LIBZMQ_PATH}")
+    if(NOT ${LIBZLINK_PATH} STREQUAL "LIBZLINK_PATH-NOTFOUND")
+      set_target_properties(${test} PROPERTIES LINK_FLAGS "/LIBPATH:${LIBZLINK_PATH}")
     endif()
   else()
     # per-test directories not generated on OS X / Darwin
     if(NOT APPLE)
-      link_directories(${test} PRIVATE "${ZeroMQ_SOURCE_DIR}/../lib")
+      link_directories(${test} PRIVATE "${Zlink_SOURCE_DIR}/../lib")
     endif()
   endif()
 
@@ -227,13 +227,13 @@ foreach(test_source ${tests})
   set_tests_properties(${test} PROPERTIES TIMEOUT 10)
   set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
 
-  # Automatically set library path for tests to find libzmq shared library
+  # Automatically set library path for tests to find libzlink shared library
   if(WIN32)
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzmq>;$ENV{PATH}")
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
   elseif(APPLE)
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzmq>:$ENV{DYLD_LIBRARY_PATH}")
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
   else()
-    set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzmq>:$ENV{LD_LIBRARY_PATH}")
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
   endif()
 
   if(QNX)

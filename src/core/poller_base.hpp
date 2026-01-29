@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_POLLER_BASE_HPP_INCLUDED__
-#define __ZMQ_POLLER_BASE_HPP_INCLUDED__
+#ifndef __ZLINK_POLLER_BASE_HPP_INCLUDED__
+#define __ZLINK_POLLER_BASE_HPP_INCLUDED__
 
 #include <map>
 
@@ -9,16 +9,16 @@
 #include "utils/atomic_counter.hpp"
 #include "core/ctx.hpp"
 
-namespace zmq
+namespace zlink
 {
 struct i_poll_events;
 
-// A build of libzmq must provide an implementation of the poller_t concept. By
+// A build of libzlink must provide an implementation of the poller_t concept. By
 // convention, this is done via a typedef.
 //
 // At the time of writing, the following implementations of the poller_t
-// concept exist: zmq::devpoll_t, zmq::epoll_t, zmq::kqueue_t, zmq::poll_t,
-// zmq::pollset_t, zmq::select_t
+// concept exist: zlink::devpoll_t, zlink::epoll_t, zlink::kqueue_t, zlink::poll_t,
+// zlink::pollset_t, zlink::select_t
 //
 // An implementation of the poller_t concept must provide the following public
 // methods:
@@ -28,14 +28,14 @@ struct i_poll_events;
 //   Add a timeout to expire in timeout_ milliseconds. After the
 //   expiration, timer_event on sink_ object will be called with
 //   argument set to id_.
-// void add_timer(int timeout_, zmq::i_poll_events *sink_, int id_);
+// void add_timer(int timeout_, zlink::i_poll_events *sink_, int id_);
 //
 //   Cancel the timer created by sink_ object with ID equal to id_.
-// void cancel_timer(zmq::i_poll_events *sink_, int id_);
+// void cancel_timer(zlink::i_poll_events *sink_, int id_);
 //
 //   Adds a fd to the poller. Initially, no events are activated. These must
 //   be activated by the set_* methods using the returned handle_.
-// handle_t add_fd(fd_t fd_, zmq::i_poll_events *events_);
+// handle_t add_fd(fd_t fd_, zlink::i_poll_events *events_);
 //
 //   Deactivates any events that may be active for the given handle_, and
 //   removes the fd associated with the given handle_.
@@ -43,7 +43,7 @@ struct i_poll_events;
 //
 //   The set_* and reset_* methods activate resp. deactivate polling for
 //   input/output readiness on the respective handle_, such that the
-//   in_event/out_event methods on the associated zmq::i_poll_events object
+//   in_event/out_event methods on the associated zlink::i_poll_events object
 //   will be called.
 //   Note: while handle_t and fd_t may be the same type, and may even have the
 //   same values for some implementation, this may not be assumed in general.
@@ -64,7 +64,7 @@ struct i_poll_events;
 //   poller at the same time, or -1 if there is no such fixed limit.
 // static int max_fds();
 //
-// Most of the methods may only be called from a zmq::i_poll_events callback
+// Most of the methods may only be called from a zlink::i_poll_events callback
 // function when invoked by the poller (and, therefore, typically from the
 // poller's worker thread), with the following exceptions:
 // - get_load may be called from outside
@@ -73,7 +73,7 @@ struct i_poll_events;
 //
 // After a poller is started, it waits for the registered events (input/output
 // readiness, timeout) to happen, and calls the respective functions on the
-// zmq::i_poll_events object. It terminates when no further registrations (fds
+// zlink::i_poll_events object. It terminates when no further registrations (fds
 // or timers) exist.
 //
 // Before start, add_fd must have been called at least once. Behavior may be
@@ -95,13 +95,13 @@ struct i_poll_events;
 class poller_base_t
 {
   public:
-    poller_base_t () ZMQ_DEFAULT;
+    poller_base_t () ZLINK_DEFAULT;
     virtual ~poller_base_t ();
 
     // Methods from the poller concept.
     int get_load () const;
-    void add_timer (int timeout_, zmq::i_poll_events *sink_, int id_);
-    void cancel_timer (zmq::i_poll_events *sink_, int id_);
+    void add_timer (int timeout_, zlink::i_poll_events *sink_, int id_);
+    void cancel_timer (zlink::i_poll_events *sink_, int id_);
 
   protected:
     //  Called by individual poller implementations to manage the load.
@@ -118,7 +118,7 @@ class poller_base_t
     //  List of active timers.
     struct timer_info_t
     {
-        zmq::i_poll_events *sink;
+        zlink::i_poll_events *sink;
         int id;
     };
     typedef std::multimap<uint64_t, timer_info_t> timers_t;
@@ -128,7 +128,7 @@ class poller_base_t
     //  registered.
     atomic_counter_t _load;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (poller_base_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (poller_base_t)
 };
 
 //  Base class for a poller with a single worker thread.
@@ -157,7 +157,7 @@ class worker_poller_base_t : public poller_base_t
 
     virtual void loop () = 0;
 
-    // Reference to ZMQ context.
+    // Reference to ZLINK context.
     const thread_ctx_t &_ctx;
 
     //  Handle of the physical thread doing the I/O work.

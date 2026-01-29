@@ -1,7 +1,7 @@
-# libzmq Performance Benchmark Results
+# libzlink Performance Benchmark Results
 
 **Test Date:** 2026-01-11
-**libzmq Version:** 4.3.5
+**libzlink Version:** 4.3.5
 **Platform:** Linux (WSL2) 6.6.87.2-microsoft-standard-WSL2
 **Build Type:** Release
 
@@ -103,7 +103,7 @@ Subscription matching performance comparison.
 
 ## 6. Socket Pattern Benchmarks
 
-Comprehensive benchmarks for different ZeroMQ socket patterns across all transports.
+Comprehensive benchmarks for different Zlink socket patterns across all transports.
 
 ### 6.1 PAIR Pattern
 
@@ -314,4 +314,4 @@ Addressable routing pattern for request/reply scenarios.
 **Performance Summary after Cleanup:**
 - **In-process Latency:** Remained extremely low (< 0.2 us), showing no regression after API modernization.
 - **Throughput:** Small message throughput remains high (~4-6M msg/s).
-- **Binary Size:** The resulting `libzmq.so` is significantly smaller due to the removal of Sodium and unused socket types.
+- **Binary Size:** The resulting `libzlink.so` is significantly smaller due to the removal of Sodium and unused socket types.

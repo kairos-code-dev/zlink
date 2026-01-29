@@ -1,5 +1,5 @@
 #! /bin/sh
-# Run ZeroMQ tests, in order.  This is extracted from the tests/Makefile
+# Run Zlink tests, in order.  This is extracted from the tests/Makefile
 # which won't run as-is because it relies on libtool building things, and 
 # thus creating various libtool files, which don't work well on z/OS
 #
@@ -39,7 +39,7 @@ esac
 if [ -x "test_system" ]; then
   :
 else
-  echo "Run makelibzmq and maketests before runtests" >&2
+  echo "Run makelibzlink and maketests before runtests" >&2
   exit 1
 fi
 

@@ -3,7 +3,7 @@
 #ifndef __TESTUTIL_MONITORING_HPP_INCLUDED__
 #define __TESTUTIL_MONITORING_HPP_INCLUDED__
 
-#include "../include/zmq.h"
+#include "../include/zlink.h"
 #include "utils/stdint.hpp"
 
 #include <stddef.h>
@@ -30,10 +30,10 @@ void print_unexpected_event_stderr (int event_,
 //  expects that one or more occurrences of the expected event are received
 //  via the specified socket monitor
 //  returns the number of occurrences of the expected event
-//  interrupts, if a ZMQ_EVENT_HANDSHAKE_FAILED_NO_DETAIL with EPIPE, ECONNRESET
+//  interrupts, if a ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL with EPIPE, ECONNRESET
 //  or ECONNABORTED occurs; in this case, 0 is returned
 //  this should be investigated further, see
-//  https://github.com/zeromq/libzmq/issues/2644
+//  https://github.com/zlink/libzlink/issues/2644
 int expect_monitor_event_multiple (void *server_mon_,
                                    int expected_event_,
                                    int expected_err_ = -1,
@@ -50,7 +50,7 @@ void expect_monitor_event_v2 (void *monitor_,
                               const char *expected_remote_address_ = NULL);
 
 
-const char *get_zmqEventName (uint64_t event);
+const char *get_zlinkEventName (uint64_t event);
 void print_events (void *socket, int timeout, int limit);
 
 #endif

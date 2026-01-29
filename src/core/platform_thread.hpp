@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_PLATFORM_THREAD_HPP_INCLUDED__
-#define __ZMQ_PLATFORM_THREAD_HPP_INCLUDED__
+#ifndef __ZLINK_PLATFORM_THREAD_HPP_INCLUDED__
+#define __ZLINK_PLATFORM_THREAD_HPP_INCLUDED__
 
 #include <set>
 
-namespace zmq
+namespace zlink
 {
 typedef void *(*thread_entry_t) (void *arg_);
 

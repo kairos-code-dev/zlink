@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ROUTER_HPP_INCLUDED__
-#define __ZMQ_ROUTER_HPP_INCLUDED__
+#ifndef __ZLINK_ROUTER_HPP_INCLUDED__
+#define __ZLINK_ROUTER_HPP_INCLUDED__
 
 #include <map>
 
@@ -12,7 +12,7 @@
 #include "core/msg.hpp"
 #include "sockets/fq.hpp"
 
-namespace zmq
+namespace zlink
 {
 class ctx_t;
 class pipe_t;
@@ -21,23 +21,23 @@ class pipe_t;
 class router_t : public routing_socket_base_t
 {
   public:
-    router_t (zmq::ctx_t *parent_, uint32_t tid_, int sid_);
-    ~router_t () ZMQ_OVERRIDE;
+    router_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    ~router_t () ZLINK_OVERRIDE;
 
     //  Overrides of functions from socket_base_t.
-    void xattach_pipe (zmq::pipe_t *pipe_,
+    void xattach_pipe (zlink::pipe_t *pipe_,
                        bool subscribe_to_all_,
-                       bool locally_initiated_) ZMQ_FINAL;
+                       bool locally_initiated_) ZLINK_FINAL;
     int
-    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZMQ_FINAL;
-    int xsend (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    int xrecv (zmq::msg_t *msg_) ZMQ_OVERRIDE;
-    bool xhas_in () ZMQ_OVERRIDE;
-    bool xhas_out () ZMQ_OVERRIDE;
-    void xread_activated (zmq::pipe_t *pipe_) ZMQ_FINAL;
-    void xpipe_terminated (zmq::pipe_t *pipe_) ZMQ_FINAL;
+    xsetsockopt (int option_, const void *optval_, size_t optvallen_) ZLINK_FINAL;
+    int xsend (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    int xrecv (zlink::msg_t *msg_) ZLINK_OVERRIDE;
+    bool xhas_in () ZLINK_OVERRIDE;
+    bool xhas_out () ZLINK_OVERRIDE;
+    void xread_activated (zlink::pipe_t *pipe_) ZLINK_FINAL;
+    void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int get_peer_state (const void *routing_id_,
-                        size_t routing_id_size_) const ZMQ_FINAL;
+                        size_t routing_id_size_) const ZLINK_FINAL;
 
   protected:
     //  Rollback any message parts that were sent but not yet flushed.
@@ -64,7 +64,7 @@ class router_t : public routing_socket_base_t
     msg_t _prefetched_msg;
 
     //  The pipe we are currently reading from
-    zmq::pipe_t *_current_in;
+    zlink::pipe_t *_current_in;
 
     //  Should current_in should be terminate after all parts received?
     bool _terminate_current_in;
@@ -76,7 +76,7 @@ class router_t : public routing_socket_base_t
     std::set<pipe_t *> _anonymous_pipes;
 
     //  The pipe we are currently writing to.
-    zmq::pipe_t *_current_out;
+    zlink::pipe_t *_current_out;
 
     //  If true, more outgoing message parts are expected.
     bool _more_out;
@@ -96,7 +96,7 @@ class router_t : public routing_socket_base_t
     // will be terminated.
     bool _handover;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (router_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (router_t)
 };
 }
 

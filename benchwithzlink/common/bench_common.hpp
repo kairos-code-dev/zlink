@@ -12,7 +12,7 @@
 #include <iomanip>
 #include <thread>
 #include <fstream>
-#include <zmq.h>
+#include <zlink.h>
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -21,17 +21,17 @@
 #endif
 
 // --- TLS Socket Options ---
-#ifndef ZMQ_TLS_CERT
-#define ZMQ_TLS_CERT 95
+#ifndef ZLINK_TLS_CERT
+#define ZLINK_TLS_CERT 95
 #endif
-#ifndef ZMQ_TLS_KEY
-#define ZMQ_TLS_KEY 96
+#ifndef ZLINK_TLS_KEY
+#define ZLINK_TLS_KEY 96
 #endif
-#ifndef ZMQ_TLS_CA
-#define ZMQ_TLS_CA 97
+#ifndef ZLINK_TLS_CA
+#define ZLINK_TLS_CA 97
 #endif
-#ifndef ZMQ_TLS_HOSTNAME
-#define ZMQ_TLS_HOSTNAME 100
+#ifndef ZLINK_TLS_HOSTNAME
+#define ZLINK_TLS_HOSTNAME 100
 #endif
 
 // --- Configuration ---
@@ -90,15 +90,15 @@ inline int bench_trace_next_id() {
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_) {
-    const int rc = zmq_setsockopt(socket_, option_, &value_, sizeof(value_));
+    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "setsockopt(" << name_ << ") failed: "
-                  << zmq_strerror(zmq_errno()) << std::endl;
+                  << zlink_strerror(zlink_errno()) << std::endl;
     }
     if (bench_debug_enabled()) {
         int out = 0;
         size_t out_size = sizeof(out);
-        const int grc = zmq_getsockopt(socket_, option_, &out, &out_size);
+        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
         if (grc == 0) {
             std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
         }
@@ -111,8 +111,8 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
     if (transport == "tcp" || transport == "ws") {
         const int timeout_ms = 2000;
-        set_sockopt_int(socket_, ZMQ_SNDTIMEO, timeout_ms, "ZMQ_SNDTIMEO");
-        set_sockopt_int(socket_, ZMQ_RCVTIMEO, timeout_ms, "ZMQ_RCVTIMEO");
+        set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+        set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
     }
 }
 
@@ -127,10 +127,10 @@ inline int bench_send(void *socket_, const void *buf_, size_t len_, int flags_,
                       << ", len=" << len_ << ")" << std::endl;
         }
     }
-    const int rc = zmq_send(socket_, buf_, len_, flags_);
+    const int rc = zlink_send(socket_, buf_, len_, flags_);
     if (rc == -1 && bench_debug_enabled()) {
         std::cerr << "send failed (" << tag_ << "): "
-                  << zmq_strerror(zmq_errno()) << std::endl;
+                  << zlink_strerror(zlink_errno()) << std::endl;
     }
     if (limit > 0 && trace_id > 0 && trace_id <= limit) {
         std::cerr << "send done #" << trace_id << " rc=" << rc << std::endl;
@@ -141,7 +141,7 @@ inline int bench_send(void *socket_, const void *buf_, size_t len_, int flags_,
 inline int bench_send_fast(void *socket_, const void *buf_, size_t len_,
                            int flags_, const char *tag_) {
     if (!bench_debug_enabled())
-        return zmq_send(socket_, buf_, len_, flags_);
+        return zlink_send(socket_, buf_, len_, flags_);
     return bench_send(socket_, buf_, len_, flags_, tag_);
 }
 
@@ -156,10 +156,10 @@ inline int bench_recv(void *socket_, void *buf_, size_t len_, int flags_,
                       << ", len=" << len_ << ")" << std::endl;
         }
     }
-    const int rc = zmq_recv(socket_, buf_, len_, flags_);
+    const int rc = zlink_recv(socket_, buf_, len_, flags_);
     if (rc == -1 && bench_debug_enabled()) {
         std::cerr << "recv failed (" << tag_ << "): "
-                  << zmq_strerror(zmq_errno()) << std::endl;
+                  << zlink_strerror(zlink_errno()) << std::endl;
     }
     if (limit > 0 && trace_id > 0 && trace_id <= limit) {
         std::cerr << "recv done #" << trace_id << " rc=" << rc << std::endl;
@@ -170,7 +170,7 @@ inline int bench_recv(void *socket_, void *buf_, size_t len_, int flags_,
 inline int bench_recv_fast(void *socket_, void *buf_, size_t len_,
                            int flags_, const char *tag_) {
     if (!bench_debug_enabled())
-        return zmq_recv(socket_, buf_, len_, flags_);
+        return zlink_recv(socket_, buf_, len_, flags_);
     return bench_recv(socket_, buf_, len_, flags_, tag_);
 }
 
@@ -325,14 +325,14 @@ inline bool setup_tls_server(void* socket, const std::string& transport) {
     static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
     static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
 
-    if (zmq_setsockopt(socket, ZMQ_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
+    if (zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZMQ_TLS_CERT: " << zmq_strerror(zmq_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_TLS_CERT: " << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    if (zmq_setsockopt(socket, ZMQ_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
+    if (zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZMQ_TLS_KEY: " << zmq_strerror(zmq_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_TLS_KEY: " << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -345,20 +345,20 @@ inline bool setup_tls_client(void* socket, const std::string& transport) {
     static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
     static const char* hostname = "localhost";
 
-    if (zmq_setsockopt(socket, ZMQ_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
+    if (zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZMQ_TLS_CA: " << zmq_strerror(zmq_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_TLS_CA: " << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
-    if (zmq_setsockopt(socket, ZMQ_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
+    if (zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZMQ_TLS_HOSTNAME: " << zmq_strerror(zmq_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_TLS_HOSTNAME: " << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     int trust_system = 0;
-    if (zmq_setsockopt(socket, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
+    if (zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to set ZMQ_TLS_TRUST_SYSTEM: " << zmq_strerror(zmq_errno()) << std::endl;
+            std::cerr << "Failed to set ZLINK_TLS_TRUST_SYSTEM: " << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     return true;
@@ -372,17 +372,17 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
         std::cerr << "No endpoint available for transport " << transport << std::endl;
         return std::string();
     }
-    if (zmq_bind(socket_, endpoint.c_str()) != 0) {
+    if (zlink_bind(socket_, endpoint.c_str()) != 0) {
         std::cerr << "bind failed for " << endpoint << ": "
-                  << zmq_strerror(zmq_errno()) << std::endl;
+                  << zlink_strerror(zlink_errno()) << std::endl;
         return std::string();
     }
     if (transport != "inproc") {
         char last_endpoint[MAX_SOCKET_STRING] = "";
         size_t size = sizeof(last_endpoint);
-        if (zmq_getsockopt(socket_, ZMQ_LAST_ENDPOINT, last_endpoint, &size) != 0) {
-            std::cerr << "getsockopt(ZMQ_LAST_ENDPOINT) failed: "
-                      << zmq_strerror(zmq_errno()) << std::endl;
+        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
             return std::string();
         }
         endpoint.assign(last_endpoint);
@@ -407,7 +407,7 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
 }
 
 inline bool transport_available(const std::string& transport) {
-    if (transport == "ipc") return zmq_has("ipc") != 0;
+    if (transport == "ipc") return zlink_has("ipc") != 0;
     return true;
 }
 
@@ -416,9 +416,9 @@ inline void settle() {
 }
 
 inline bool connect_checked(void *socket_, const std::string& endpoint) {
-    if (zmq_connect(socket_, endpoint.c_str()) != 0) {
+    if (zlink_connect(socket_, endpoint.c_str()) != 0) {
         std::cerr << "connect failed for " << endpoint << ": "
-                  << zmq_strerror(zmq_errno()) << std::endl;
+                  << zlink_strerror(zlink_errno()) << std::endl;
         return false;
     }
     if (bench_debug_enabled()) {

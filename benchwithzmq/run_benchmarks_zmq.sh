@@ -124,12 +124,12 @@ else
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20
+      -DZLINK_CXX_STANDARD=20
   else
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
-      -DZMQ_CXX_STANDARD=20
+      -DZLINK_CXX_STANDARD=20
   fi
 
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then

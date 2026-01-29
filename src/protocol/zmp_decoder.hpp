@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_ZMP_DECODER_HPP_INCLUDED__
-#define __ZMQ_ZMP_DECODER_HPP_INCLUDED__
+#ifndef __ZLINK_ZMP_DECODER_HPP_INCLUDED__
+#define __ZLINK_ZMP_DECODER_HPP_INCLUDED__
 
 #include "protocol/decoder.hpp"
 #include "protocol/decoder_allocators.hpp"
 #include "protocol/zmp_protocol.hpp"
 
-namespace zmq
+namespace zlink
 {
 //  Decoder for ZMP framing protocol (v1).
-class zmp_decoder_t ZMQ_FINAL
+class zmp_decoder_t ZLINK_FINAL
     : public decoder_base_t<zmp_decoder_t, shared_message_memory_allocator>
 {
   public:
@@ -32,7 +32,7 @@ class zmp_decoder_t ZMQ_FINAL
     msg_t _in_progress;
     const uint32_t _max_msg_size_effective;
 
-    ZMQ_NON_COPYABLE_NOR_MOVABLE (zmp_decoder_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (zmp_decoder_t)
 };
 }
 

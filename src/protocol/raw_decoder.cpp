@@ -17,7 +17,7 @@ uint32_t compute_effective_max (int64_t maxmsgsize_)
 }
 }
 
-zmq::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
+zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     decoder_base_t<raw_decoder_t, shared_message_memory_allocator> (bufsize_),
     _max_msg_size_effective (compute_effective_max (maxmsgsize_))
 {
@@ -27,19 +27,19 @@ zmq::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     next_step (_tmpbuf, sizeof (_tmpbuf), &raw_decoder_t::header_ready);
 }
 
-zmq::raw_decoder_t::~raw_decoder_t ()
+zlink::raw_decoder_t::~raw_decoder_t ()
 {
     const int rc = _in_progress.close ();
     errno_assert (rc == 0);
 }
 
-int zmq::raw_decoder_t::header_ready (unsigned char const *read_from_)
+int zlink::raw_decoder_t::header_ready (unsigned char const *read_from_)
 {
     const uint32_t msg_size = get_uint32 (_tmpbuf);
     return size_ready (msg_size, read_from_);
 }
 
-int zmq::raw_decoder_t::size_ready (uint32_t msg_size_,
+int zlink::raw_decoder_t::size_ready (uint32_t msg_size_,
                                     unsigned char const *read_from_)
 {
     if (unlikely (msg_size_ > _max_msg_size_effective)) {
@@ -87,7 +87,7 @@ int zmq::raw_decoder_t::size_ready (uint32_t msg_size_,
     return 0;
 }
 
-int zmq::raw_decoder_t::body_ready (unsigned char const *)
+int zlink::raw_decoder_t::body_ready (unsigned char const *)
 {
     next_step (_tmpbuf, sizeof (_tmpbuf), &raw_decoder_t::header_ready);
     return 1;

@@ -7,7 +7,7 @@
 #include <string.h>
 #include <vector>
 
-#if !defined(ZMQ_HAVE_WINDOWS)
+#if !defined(ZLINK_HAVE_WINDOWS)
 #include <ifaddrs.h>
 #include <net/if.h>
 #endif
@@ -37,7 +37,7 @@ static void add_unique_addr (std::vector<std::string> &addrs_,
 
 static void collect_multicast_addrs (std::vector<std::string> &addrs_)
 {
-#if !defined(ZMQ_HAVE_WINDOWS)
+#if !defined(ZLINK_HAVE_WINDOWS)
     struct ifaddrs *ifaddr = NULL;
     if (getifaddrs (&ifaddr) != 0)
         return;
@@ -73,38 +73,38 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
 {
     *bound_out_ = false;
 
-    void *ctx = zmq_ctx_new ();
+    void *ctx = zlink_ctx_new ();
     if (!ctx)
         return false;
 
-    void *pub = zmq_socket (ctx, ZMQ_PUB);
+    void *pub = zlink_socket (ctx, ZLINK_PUB);
     if (!pub) {
-        zmq_ctx_term (ctx);
+        zlink_ctx_term (ctx);
         return false;
     }
-    void *sub = zmq_socket (ctx, ZMQ_SUB);
+    void *sub = zlink_socket (ctx, ZLINK_SUB);
     if (!sub) {
         close_zero_linger (pub);
-        zmq_ctx_term (ctx);
+        zlink_ctx_term (ctx);
         return false;
     }
 
     const int hwm = 10;
-    zmq_setsockopt (pub, ZMQ_SNDHWM, &hwm, sizeof (hwm));
-    zmq_setsockopt (sub, ZMQ_RCVHWM, &hwm, sizeof (hwm));
-    zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0);
+    zlink_setsockopt (pub, ZLINK_SNDHWM, &hwm, sizeof (hwm));
+    zlink_setsockopt (sub, ZLINK_RCVHWM, &hwm, sizeof (hwm));
+    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
 
-    if (zmq_bind (pub, endpoint_) != 0) {
+    if (zlink_bind (pub, endpoint_) != 0) {
         close_zero_linger (pub);
         close_zero_linger (sub);
-        zmq_ctx_term (ctx);
+        zlink_ctx_term (ctx);
         return false;
     }
 
-    if (zmq_connect (sub, endpoint_) != 0) {
+    if (zlink_connect (sub, endpoint_) != 0) {
         close_zero_linger (pub);
         close_zero_linger (sub);
-        zmq_ctx_term (ctx);
+        zlink_ctx_term (ctx);
         return false;
     }
     *bound_out_ = true;
@@ -116,18 +116,18 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
     bool received = false;
 
     for (int attempt = 0; attempt < 25 && !received; ++attempt) {
-        const int rc = zmq_send (pub, payload, payload_size, ZMQ_DONTWAIT);
-        if (rc < 0 && zmq_errno () != EAGAIN)
+        const int rc = zlink_send (pub, payload, payload_size, ZLINK_DONTWAIT);
+        if (rc < 0 && zlink_errno () != EAGAIN)
             break;
 
-        zmq_pollitem_t items[] = {{sub, 0, ZMQ_POLLIN, 0}};
-        const int poll_rc = zmq_poll (items, 1, 200);
+        zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
+        const int poll_rc = zlink_poll (items, 1, 200);
         if (poll_rc < 0)
             break;
 
-        if (items[0].revents & ZMQ_POLLIN) {
+        if (items[0].revents & ZLINK_POLLIN) {
             char buffer[32];
-            const int recv_rc = zmq_recv (sub, buffer, sizeof (buffer), 0);
+            const int recv_rc = zlink_recv (sub, buffer, sizeof (buffer), 0);
             if (recv_rc >= 0) {
                 if ((size_t) recv_rc == payload_size
                     && memcmp (buffer, payload, payload_size) == 0)
@@ -141,20 +141,20 @@ static bool try_pgm_endpoint (const char *endpoint_, bool *bound_out_)
 
     close_zero_linger (pub);
     close_zero_linger (sub);
-    zmq_ctx_term (ctx);
+    zlink_ctx_term (ctx);
     return received;
 }
 
 static void test_pgm_smoke_pub_sub ()
 {
-#if defined(ZMQ_HAVE_OPENPGM)
+#if defined(ZLINK_HAVE_OPENPGM)
     std::vector<std::string> endpoints;
-    const char *env_endpoint = getenv ("ZMQ_PGM_SMOKE_ENDPOINT");
+    const char *env_endpoint = getenv ("ZLINK_PGM_SMOKE_ENDPOINT");
     if (env_endpoint && env_endpoint[0] != '\0') {
         if (!has_prefix (env_endpoint, "pgm://")
             && !has_prefix (env_endpoint, "epgm://")) {
             TEST_FAIL_MESSAGE (
-              "ZMQ_PGM_SMOKE_ENDPOINT must start with pgm:// or epgm://");
+              "ZLINK_PGM_SMOKE_ENDPOINT must start with pgm:// or epgm://");
         }
         endpoints.push_back (env_endpoint);
     } else {

@@ -5,17 +5,17 @@
 #include "core/msg.hpp"
 #include "protocol/wire.hpp"
 
-zmq::zmp_encoder_t::zmp_encoder_t (size_t bufsize_) :
+zlink::zmp_encoder_t::zmp_encoder_t (size_t bufsize_) :
     encoder_base_t<zmp_encoder_t> (bufsize_)
 {
     next_step (NULL, 0, &zmp_encoder_t::header_ready, true);
 }
 
-zmq::zmp_encoder_t::~zmp_encoder_t ()
+zlink::zmp_encoder_t::~zmp_encoder_t ()
 {
 }
 
-void zmq::zmp_encoder_t::header_ready ()
+void zlink::zmp_encoder_t::header_ready ()
 {
     const msg_t *msg = in_progress ();
     const size_t size = msg->size ();
@@ -46,7 +46,7 @@ void zmq::zmp_encoder_t::header_ready ()
     next_step (_tmp_buf, zmp_header_size, &zmp_encoder_t::body_ready, false);
 }
 
-void zmq::zmp_encoder_t::body_ready ()
+void zlink::zmp_encoder_t::body_ready ()
 {
     next_step (in_progress ()->data (), in_progress ()->size (),
                &zmp_encoder_t::header_ready, true);

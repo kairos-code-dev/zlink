@@ -33,10 +33,10 @@
  *       -CAcreateserial -out client.crt
  */
 
-#ifndef __ZMQ_TEST_CERTS_HPP_INCLUDED__
-#define __ZMQ_TEST_CERTS_HPP_INCLUDED__
+#ifndef __ZLINK_TEST_CERTS_HPP_INCLUDED__
+#define __ZLINK_TEST_CERTS_HPP_INCLUDED__
 
-namespace zmq
+namespace zlink
 {
 namespace test_certs
 {
@@ -177,6 +177,6 @@ static const char *client_key_pem =
   "-----END PRIVATE KEY-----\n";
 
 }  // namespace test_certs
-}  // namespace zmq
+}  // namespace zlink
 
-#endif  // __ZMQ_TEST_CERTS_HPP_INCLUDED__
+#endif  // __ZLINK_TEST_CERTS_HPP_INCLUDED__

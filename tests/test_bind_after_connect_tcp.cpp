@@ -7,16 +7,16 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 void test_x ()
 {
-    void *sb = test_context_socket (ZMQ_DEALER);
-    void *sc = test_context_socket (ZMQ_DEALER);
+    void *sb = test_context_socket (ZLINK_DEALER);
+    void *sc = test_context_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sc, ENDPOINT_3));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sc, ENDPOINT_3));
 
     send_string_expect_success (sc, "foobar", 0);
     send_string_expect_success (sc, "baz", 0);
     send_string_expect_success (sc, "buzz", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (sb, ENDPOINT_3));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sb, ENDPOINT_3));
 
     recv_string_expect_success (sb, "foobar", 0);
     recv_string_expect_success (sb, "baz", 0);

@@ -13,31 +13,31 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_fair_queue_in (const char *bind_address_)
 {
     char connect_address[MAX_SOCKET_STRING];
-    void *receiver = test_context_socket (ZMQ_ROUTER);
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (receiver, bind_address_));
+    void *receiver = test_context_socket (ZLINK_ROUTER);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (receiver, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (receiver, ZMQ_LAST_ENDPOINT, connect_address, &len));
+      zlink_getsockopt (receiver, ZLINK_LAST_ENDPOINT, connect_address, &len));
 
     const unsigned char services = 5;
     void *senders[services];
     for (unsigned char peer = 0; peer < services; ++peer) {
-        senders[peer] = test_context_socket (ZMQ_DEALER);
+        senders[peer] = test_context_socket (ZLINK_DEALER);
 
         char *str = strdup ("A");
         str[0] += peer;
         TEST_ASSERT_SUCCESS_ERRNO (
-          zmq_setsockopt (senders[peer], ZMQ_ROUTING_ID, str, 2));
+          zlink_setsockopt (senders[peer], ZLINK_ROUTING_ID, str, 2));
         free (str);
 
         TEST_ASSERT_SUCCESS_ERRNO (
-          zmq_connect (senders[peer], connect_address));
+          zlink_connect (senders[peer], connect_address));
     }
 
     msleep (SETTLE_TIME);
 
-    zmq_msg_t msg;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_init (&msg));
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
 
     s_send_seq (senders[0], "M", SEQ_END);
     s_recv_seq (receiver, "A", "M", SEQ_END);
@@ -58,8 +58,8 @@ void test_fair_queue_in (const char *bind_address_)
     // handle N requests
     for (unsigned char peer = 0; peer < services; ++peer) {
         TEST_ASSERT_EQUAL_INT (
-          2, TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_recv (&msg, receiver, 0)));
-        const char *id = static_cast<const char *> (zmq_msg_data (&msg));
+          2, TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&msg, receiver, 0)));
+        const char *id = static_cast<const char *> (zlink_msg_data (&msg));
         sum -= id[0];
 
         s_recv_seq (receiver, "M", SEQ_END);
@@ -67,7 +67,7 @@ void test_fair_queue_in (const char *bind_address_)
 
     TEST_ASSERT_EQUAL_INT (0, sum);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     test_context_socket_close_zero_linger (receiver);
 
@@ -83,23 +83,23 @@ void test_fair_queue_in (const char *bind_address_)
 // discard any messages it contains.
 void test_destroy_queue_on_disconnect (const char *bind_address_)
 {
-    void *a = test_context_socket (ZMQ_ROUTER);
+    void *a = test_context_socket (ZLINK_ROUTER);
 
     int enabled = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (a, ZMQ_ROUTER_MANDATORY, &enabled, sizeof (enabled)));
+      zlink_setsockopt (a, ZLINK_ROUTER_MANDATORY, &enabled, sizeof (enabled)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (a, bind_address_));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (a, bind_address_));
     size_t len = MAX_SOCKET_STRING;
     char connect_address[MAX_SOCKET_STRING];
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_getsockopt (a, ZMQ_LAST_ENDPOINT, connect_address, &len));
+      zlink_getsockopt (a, ZLINK_LAST_ENDPOINT, connect_address, &len));
 
-    void *b = test_context_socket (ZMQ_DEALER);
+    void *b = test_context_socket (ZLINK_DEALER);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (b, ZMQ_ROUTING_ID, "B", 2));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (b, ZLINK_ROUTING_ID, "B", 2));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (b, connect_address));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
 
     // Wait for connection.
     msleep (SETTLE_TIME);
@@ -108,30 +108,30 @@ void test_destroy_queue_on_disconnect (const char *bind_address_)
     s_send_seq (a, "B", "ABC", SEQ_END);
     s_send_seq (b, "DEF", SEQ_END);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_disconnect (b, connect_address));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_disconnect (b, connect_address));
 
     // Disconnect may take time and need command processing.
-    zmq_pollitem_t poller[2] = {{a, 0, 0, 0}, {b, 0, 0, 0}};
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_poll (poller, 2, 100));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_poll (poller, 2, 100));
+    zlink_pollitem_t poller[2] = {{a, 0, 0, 0}, {b, 0, 0, 0}};
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_poll (poller, 2, 100));
 
     // No messages should be available, sending should fail.
-    zmq_msg_t msg;
-    zmq_msg_init (&msg);
+    zlink_msg_t msg;
+    zlink_msg_init (&msg);
 
     TEST_ASSERT_FAILURE_ERRNO (
-      EHOSTUNREACH, zmq_send (a, "B", 2, ZMQ_SNDMORE | ZMQ_DONTWAIT));
+      EHOSTUNREACH, zlink_send (a, "B", 2, ZLINK_SNDMORE | ZLINK_DONTWAIT));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zmq_msg_recv (&msg, a, ZMQ_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, a, ZLINK_DONTWAIT));
 
     // After a reconnect of B, the messages should still be gone
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (b, connect_address));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (b, connect_address));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zmq_msg_recv (&msg, a, ZMQ_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, a, ZLINK_DONTWAIT));
 
-    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zmq_msg_recv (&msg, b, ZMQ_DONTWAIT));
+    TEST_ASSERT_FAILURE_ERRNO (EAGAIN, zlink_msg_recv (&msg, b, ZLINK_DONTWAIT));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_msg_close (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     test_context_socket_close_zero_linger (a);
     test_context_socket_close_zero_linger (b);
@@ -160,7 +160,7 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_fair_queue_in_tcp);
     RUN_TEST (test_fair_queue_in_inproc);
-    // TODO commented out until libzmq implements this properly
+    // TODO commented out until libzlink implements this properly
     // RUN_TEST (test_destroy_queue_on_disconnect_tcp);
     // RUN_TEST (test_destroy_queue_on_disconnect_inproc);
     return UNITY_END ();

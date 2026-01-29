@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_STDINT_HPP_INCLUDED__
-#define __ZMQ_STDINT_HPP_INCLUDED__
+#ifndef __ZLINK_STDINT_HPP_INCLUDED__
+#define __ZLINK_STDINT_HPP_INCLUDED__
 
-#if defined ZMQ_HAVE_SOLARIS || defined ZMQ_HAVE_OPENVMS
+#if defined ZLINK_HAVE_SOLARIS || defined ZLINK_HAVE_OPENVMS
 
 #include <inttypes.h>
 

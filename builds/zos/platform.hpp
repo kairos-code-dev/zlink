@@ -142,19 +142,19 @@
 #define LT_OBJDIR ".libs/"
 
 /* Name of package */
-#define PACKAGE "zeromq"
+#define PACKAGE "zlink"
 
 /* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "zeromq-dev@lists.zeromq.org"
+#define PACKAGE_BUGREPORT "zlink-dev@lists.zlink.org"
 
 /* Define to the full name of this package. */
-#define PACKAGE_NAME "zeromq"
+#define PACKAGE_NAME "zlink"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "zeromq 4.1.0"
+#define PACKAGE_STRING "zlink 4.1.0"
 
 /* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "zeromq"
+#define PACKAGE_TARNAME "zlink"
 
 /* Define to the home page for this package. */
 #define PACKAGE_URL ""
@@ -175,91 +175,91 @@
 #define VERSION "4.1.0"
 
 /* Enable militant API assertions */
-/* #undef ZMQ_ACT_MILITANT */
+/* #undef ZLINK_ACT_MILITANT */
 
 /* Force to use mutexes */
-/* #undef ZMQ_FORCE_MUTEXES */
+/* #undef ZLINK_FORCE_MUTEXES */
 
 /* Have AIX OS */
-/* #undef ZMQ_HAVE_AIX */
+/* #undef ZLINK_HAVE_AIX */
 
 /* Have Android OS */
-/* #undef ZMQ_HAVE_ANDROID */
+/* #undef ZLINK_HAVE_ANDROID */
 
 /* Have Cygwin */
-/* #undef ZMQ_HAVE_CYGWIN */
+/* #undef ZLINK_HAVE_CYGWIN */
 
 /* Have eventfd extension. */
-/* #undef ZMQ_HAVE_EVENTFD */
+/* #undef ZLINK_HAVE_EVENTFD */
 
 /* Have FreeBSD OS */
-/* #undef ZMQ_HAVE_FREEBSD */
+/* #undef ZLINK_HAVE_FREEBSD */
 
 /* Have HPUX OS */
-/* #undef ZMQ_HAVE_HPUX */
+/* #undef ZLINK_HAVE_HPUX */
 
 /* Have ifaddrs.h header. */
-#define ZMQ_HAVE_IFADDRS 1
+#define ZLINK_HAVE_IFADDRS 1
 
 /* Have Linux OS */
-/* #undef ZMQ_HAVE_LINUX */
+/* #undef ZLINK_HAVE_LINUX */
 
 /* Have LOCAL_PEERCRED socket option */
-/* #undef ZMQ_HAVE_LOCAL_PEERCRED */
+/* #undef ZLINK_HAVE_LOCAL_PEERCRED */
 
 /* Have MinGW32 */
-/* #undef ZMQ_HAVE_MINGW32 */
+/* #undef ZLINK_HAVE_MINGW32 */
 
 /* Have NetBSD OS */
-/* #undef ZMQ_HAVE_NETBSD */
+/* #undef ZLINK_HAVE_NETBSD */
 
 /* Have NORM protocol extension */
-/* #undef ZMQ_HAVE_NORM */
+/* #undef ZLINK_HAVE_NORM */
 
 /* Have OpenBSD OS */
-/* #undef ZMQ_HAVE_OPENBSD */
+/* #undef ZLINK_HAVE_OPENBSD */
 
 /* Have OpenPGM extension */
-/* #undef ZMQ_HAVE_OPENPGM */
+/* #undef ZLINK_HAVE_OPENPGM */
 
 /* Have DarwinOSX OS */
-/* #undef ZMQ_HAVE_OSX */
+/* #undef ZLINK_HAVE_OSX */
 
 /* Have QNX Neutrino OS */
-/* #undef ZMQ_HAVE_QNXNTO */
+/* #undef ZLINK_HAVE_QNXNTO */
 
 /* Whether SOCK_CLOEXEC is defined and functioning. */
-/* #undef ZMQ_HAVE_SOCK_CLOEXEC */
+/* #undef ZLINK_HAVE_SOCK_CLOEXEC */
 
 /* Have Solaris OS */
-/* #undef ZMQ_HAVE_SOLARIS */
+/* #undef ZLINK_HAVE_SOLARIS */
 
 /* Whether SO_KEEPALIVE is supported. */
-#define ZMQ_HAVE_SO_KEEPALIVE 1
+#define ZLINK_HAVE_SO_KEEPALIVE 1
 
 /* Have SO_PEERCRED socket option */
-/* #undef ZMQ_HAVE_SO_PEERCRED */
+/* #undef ZLINK_HAVE_SO_PEERCRED */
 
 /* Whether TCP_KEEPALIVE is supported. */
-/* #undef ZMQ_HAVE_TCP_KEEPALIVE */
+/* #undef ZLINK_HAVE_TCP_KEEPALIVE */
 
 /* Whether TCP_KEEPCNT is supported. */
-/* #undef ZMQ_HAVE_TCP_KEEPCNT */
+/* #undef ZLINK_HAVE_TCP_KEEPCNT */
 
 /* Whether TCP_KEEPIDLE is supported. */
-/* #undef ZMQ_HAVE_TCP_KEEPIDLE */
+/* #undef ZLINK_HAVE_TCP_KEEPIDLE */
 
 /* Whether TCP_KEEPINTVL is supported. */
-/* #undef ZMQ_HAVE_TCP_KEEPINTVL */
+/* #undef ZLINK_HAVE_TCP_KEEPINTVL */
 
 /* Have TIPC support */
-/* #undef ZMQ_HAVE_TIPC */
+/* #undef ZLINK_HAVE_TIPC */
 
 /* Have uio.h header. */
-#define ZMQ_HAVE_UIO 1
+#define ZLINK_HAVE_UIO 1
 
 /* Have Windows OS */
-/* #undef ZMQ_HAVE_WINDOWS */
+/* #undef ZLINK_HAVE_WINDOWS */
 
 /* Define for Solaris 2.5.1 so the uint32_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the

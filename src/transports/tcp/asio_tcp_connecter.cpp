@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
 #include "transports/tcp/asio_tcp_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -16,7 +16,7 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -39,7 +39,7 @@
 #define CONNECTER_DBG(fmt, ...)
 #endif
 
-zmq::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
+zlink::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
                                                  session_base_t *session_,
                                                  const options_t &options_,
                                                  address_t *addr_,
@@ -59,27 +59,27 @@ zmq::asio_tcp_connecter_t::asio_tcp_connecter_t (io_thread_t *io_thread_,
     _linger (0),
     _current_reconnect_ivl (-1)
 {
-    zmq_assert (_addr);
+    zlink_assert (_addr);
     bool is_tcp_protocol = _addr->protocol == protocol_name::tcp;
-#ifdef ZMQ_HAVE_TLS
+#ifdef ZLINK_HAVE_TLS
     // TLS uses TCP address format
     is_tcp_protocol = is_tcp_protocol || _addr->protocol == protocol_name::tls;
 #endif
-    zmq_assert (is_tcp_protocol);
+    zlink_assert (is_tcp_protocol);
     _addr->to_string (_endpoint_str);
 
     CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",
                    _endpoint_str.c_str (), static_cast<void *> (this));
 }
 
-zmq::asio_tcp_connecter_t::~asio_tcp_connecter_t ()
+zlink::asio_tcp_connecter_t::~asio_tcp_connecter_t ()
 {
     CONNECTER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
-    zmq_assert (!_reconnect_timer_started);
-    zmq_assert (!_connect_timer_started);
+    zlink_assert (!_reconnect_timer_started);
+    zlink_assert (!_connect_timer_started);
 }
 
-void zmq::asio_tcp_connecter_t::process_plug ()
+void zlink::asio_tcp_connecter_t::process_plug ()
 {
     CONNECTER_DBG ("process_plug called, delayed_start=%d", _delayed_start);
 
@@ -89,7 +89,7 @@ void zmq::asio_tcp_connecter_t::process_plug ()
         start_connecting ();
 }
 
-void zmq::asio_tcp_connecter_t::process_term (int linger_)
+void zlink::asio_tcp_connecter_t::process_term (int linger_)
 {
     CONNECTER_DBG ("process_term called, linger=%d, connecting=%d", linger_,
                    _connecting);
@@ -121,7 +121,7 @@ void zmq::asio_tcp_connecter_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_tcp_connecter_t::timer_event (int id_)
+void zlink::asio_tcp_connecter_t::timer_event (int id_)
 {
     CONNECTER_DBG ("timer_event: id=%d", id_);
 
@@ -139,17 +139,17 @@ void zmq::asio_tcp_connecter_t::timer_event (int id_)
         close ();
         add_reconnect_timer ();
     } else {
-        zmq_assert (false);
+        zlink_assert (false);
     }
 }
 
-void zmq::asio_tcp_connecter_t::start_connecting ()
+void zlink::asio_tcp_connecter_t::start_connecting ()
 {
     CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
     //  Resolve the address if not already done
     if (_addr->resolved.tcp_addr != NULL) {
-        LIBZMQ_DELETE (_addr->resolved.tcp_addr);
+        LIBZLINK_DELETE (_addr->resolved.tcp_addr);
     }
 
     _addr->resolved.tcp_addr = new (std::nothrow) tcp_address_t ();
@@ -160,7 +160,7 @@ void zmq::asio_tcp_connecter_t::start_connecting ()
                                          options.ipv6);
     if (rc != 0) {
         CONNECTER_DBG ("start_connecting: resolve failed");
-        LIBZMQ_DELETE (_addr->resolved.tcp_addr);
+        LIBZLINK_DELETE (_addr->resolved.tcp_addr);
         add_reconnect_timer ();
         return;
     }
@@ -254,7 +254,7 @@ void zmq::asio_tcp_connecter_t::start_connecting ()
       make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
 }
 
-void zmq::asio_tcp_connecter_t::on_connect (const boost::system::error_code &ec)
+void zlink::asio_tcp_connecter_t::on_connect (const boost::system::error_code &ec)
 {
     _connecting = false;
     CONNECTER_DBG ("on_connect: ec=%s, terminating=%d", ec.message ().c_str (),
@@ -296,7 +296,7 @@ void zmq::asio_tcp_connecter_t::on_connect (const boost::system::error_code &ec)
     //  Tune the socket
     if (!tune_socket (fd)) {
         CONNECTER_DBG ("on_connect: tune_socket failed");
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
@@ -313,7 +313,7 @@ void zmq::asio_tcp_connecter_t::on_connect (const boost::system::error_code &ec)
     create_engine (fd, local_address);
 }
 
-void zmq::asio_tcp_connecter_t::add_connect_timer ()
+void zlink::asio_tcp_connecter_t::add_connect_timer ()
 {
     if (options.connect_timeout > 0) {
         CONNECTER_DBG ("add_connect_timer: timeout=%d", options.connect_timeout);
@@ -322,7 +322,7 @@ void zmq::asio_tcp_connecter_t::add_connect_timer ()
     }
 }
 
-void zmq::asio_tcp_connecter_t::add_reconnect_timer ()
+void zlink::asio_tcp_connecter_t::add_reconnect_timer ()
 {
     if (options.reconnect_ivl > 0) {
         const int interval = get_new_reconnect_ivl ();
@@ -334,7 +334,7 @@ void zmq::asio_tcp_connecter_t::add_reconnect_timer ()
     }
 }
 
-int zmq::asio_tcp_connecter_t::get_new_reconnect_ivl ()
+int zlink::asio_tcp_connecter_t::get_new_reconnect_ivl ()
 {
     if (options.reconnect_ivl_max > 0) {
         int candidate_interval = 0;
@@ -364,7 +364,7 @@ int zmq::asio_tcp_connecter_t::get_new_reconnect_ivl ()
     }
 }
 
-void zmq::asio_tcp_connecter_t::create_engine (fd_t fd_,
+void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
                                                const std::string &local_address_)
 {
     CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
@@ -375,7 +375,7 @@ void zmq::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
     //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = NULL;
-    if (options.type == ZMQ_STREAM)
+    if (options.type == ZLINK_STREAM)
         engine = new (std::nothrow) asio_raw_engine_t (fd_, options, endpoint_pair);
     else
         engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
@@ -390,7 +390,7 @@ void zmq::asio_tcp_connecter_t::create_engine (fd_t fd_,
     _socket_ptr->event_connected (endpoint_pair, fd_);
 }
 
-bool zmq::asio_tcp_connecter_t::tune_socket (fd_t fd_)
+bool zlink::asio_tcp_connecter_t::tune_socket (fd_t fd_)
 {
     const int rc = tune_tcp_socket (fd_)
                    | tune_tcp_keepalives (fd_, options.tcp_keepalive,
@@ -401,7 +401,7 @@ bool zmq::asio_tcp_connecter_t::tune_socket (fd_t fd_)
     return rc == 0;
 }
 
-void zmq::asio_tcp_connecter_t::close ()
+void zlink::asio_tcp_connecter_t::close ()
 {
     CONNECTER_DBG ("close called");
 
@@ -415,4 +415,4 @@ void zmq::asio_tcp_connecter_t::close ()
     }
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

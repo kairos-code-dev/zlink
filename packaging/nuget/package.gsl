@@ -1,7 +1,7 @@
 .#  Generate NuGet nuspec file (for subsequent packing).
 .#
 .#  This is a code generator built using the iMatix GSL code generation
-.#  language. See https://github.com/zeromq/gsl for details. This script
+.#  language. See https://github.com/zlink/gsl for details. This script
 .#  is licensed under MIT/X11.
 .#
 .echo "Generating package.nuspec from template."
@@ -17,18 +17,18 @@
         <id>$(package.id)</id>
         <version>$(package.version)</version>
         <title>$(package.id)</title>
-        <authors>libzmq contributors</authors>
+        <authors>libzlink contributors</authors>
         <owners>Eric Voskuil</owners>
-        <licenseUrl>https://raw.github.com/zeromq/libzmq/master/LICENSE</licenseUrl>
-        <projectUrl>https://github.com/zeromq/libzmq</projectUrl>
+        <licenseUrl>https://raw.github.com/zlink/libzlink/master/LICENSE</licenseUrl>
+        <projectUrl>https://github.com/zlink/libzlink</projectUrl>
         <iconUrl>https://avatars1.githubusercontent.com/u/109777?s=32</iconUrl>
         <requireLicenseAcceptance>true</requireLicenseAcceptance>
         <developmentDependency>false</developmentDependency>
         <description>The 0MQ lightweight messaging kernel is a library which extends the standard socket interfaces with features traditionally provided by specialised messaging middleware products. 0MQ sockets provide an abstraction of asynchronous message queues, multiple messaging patterns, message filtering (subscriptions), seamless access to multiple transport protocols and more.</description>
         <summary>The 0MQ lightweight messaging kernel, packaged for specific Visual Studio compiler.</summary>
-        <releaseNotes>https://raw.github.com/zeromq/libzmq/master/NEWS</releaseNotes>
+        <releaseNotes>https://raw.github.com/zlink/libzlink/master/NEWS</releaseNotes>
         <copyright>MPL-2.0</copyright>
-        <tags>native, libzmq, zmq, 0MQ, messaging, sockets, C++</tags>
+        <tags>native, libzlink, zlink, 0MQ, messaging, sockets, C++</tags>
         <dependencies>
 .for dependency
             <dependency id="$(id)" version="$(version)" />
@@ -133,7 +133,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$\(Linkage-$(package.target))' == 'static' Or '$\(Linkage-$(package.target))' == 'ltcg'">
     <ClCompile>
-      <PreprocessorDefinitions>ZMQ_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ZLINK_STATIC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 

@@ -14,13 +14,13 @@ static bool is_transport_available (const char *transport_)
         return true;
 
     //  IPC is available on Unix-like systems
-#ifdef ZMQ_HAVE_IPC
+#ifdef ZLINK_HAVE_IPC
     if (strcmp (transport_, "ipc") == 0)
         return true;
 #endif
 
-    //  WebSocket and TLS transports are optional and reported by zmq_has()
-    return zmq_has (transport_) != 0;
+    //  WebSocket and TLS transports are optional and reported by zlink_has()
+    return zlink_has (transport_) != 0;
 }
 
 static bool is_tls_transport (const char *transport_)
@@ -33,21 +33,21 @@ static void configure_tls (void *server_,
                            const tls_test_files_t &files_)
 {
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client_, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client_, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      server_, ZMQ_TLS_CERT, files_.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server_, ZLINK_TLS_CERT, files_.server_cert.c_str (),
       files_.server_cert.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      server_, ZMQ_TLS_KEY, files_.server_key.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server_, ZLINK_TLS_KEY, files_.server_key.c_str (),
       files_.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client_, ZMQ_TLS_CA, files_.ca_cert.c_str (), files_.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client_, ZLINK_TLS_CA, files_.ca_cert.c_str (), files_.ca_cert.size ()));
 
     const char hostname[] = "localhost";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client_, ZMQ_TLS_HOSTNAME, hostname, strlen (hostname)));
+      zlink_setsockopt (client_, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
 }
 
 static void bind_endpoint (void *socket_,
@@ -58,7 +58,7 @@ static void bind_endpoint (void *socket_,
 {
     if (strcmp (transport_, "inproc") == 0) {
         snprintf (endpoint_, endpoint_len_, "inproc://%s", inproc_name_);
-        TEST_ASSERT_SUCCESS_ERRNO (zmq_bind (socket_, endpoint_));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (socket_, endpoint_));
         return;
     }
 
@@ -95,8 +95,8 @@ static void run_pair (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -107,7 +107,7 @@ static void run_pair (const char *transport_)
     char endpoint[MAX_SOCKET_STRING];
     bind_endpoint (server, transport_, "matrix_pair", endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     msleep (SETTLE_TIME);
 
     send_string_expect_success (client, "pair-hello", 0);
@@ -126,8 +126,8 @@ static void run_pubsub (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *pub = test_context_socket (ZMQ_PUB);
-    void *sub = test_context_socket (ZMQ_SUB);
+    void *pub = test_context_socket (ZLINK_PUB);
+    void *sub = test_context_socket (ZLINK_SUB);
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -138,8 +138,8 @@ static void run_pubsub (const char *transport_)
     char endpoint[MAX_SOCKET_STRING];
     bind_endpoint (pub, transport_, "matrix_pubsub", endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (sub, endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0));
     msleep (SETTLE_TIME);
 
     send_string_expect_success (pub, "pubsub-hello", 0);
@@ -156,11 +156,11 @@ static void run_router_dealer (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *router = test_context_socket (ZMQ_ROUTER);
-    void *dealer = test_context_socket (ZMQ_DEALER);
+    void *router = test_context_socket (ZLINK_ROUTER);
+    void *dealer = test_context_socket (ZLINK_DEALER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (dealer, ZMQ_ROUTING_ID, "DEALER1", 7));
+      zlink_setsockopt (dealer, ZLINK_ROUTING_ID, "DEALER1", 7));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -172,19 +172,19 @@ static void run_router_dealer (const char *transport_)
     bind_endpoint (router, transport_, "matrix_router_dealer", endpoint,
                    sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (dealer, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (dealer, endpoint));
     msleep (SETTLE_TIME);
 
     send_string_expect_success (dealer, "dealer-msg", 0);
 
     char identity[32];
     int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (router, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (router, identity, sizeof (identity), 0));
     TEST_ASSERT_EQUAL_INT (7, id_size);
     TEST_ASSERT_EQUAL_STRING_LEN ("DEALER1", identity, 7);
     recv_string_expect_success (router, "dealer-msg", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (router, "DEALER1", 7, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (router, "DEALER1", 7, ZLINK_SNDMORE));
     send_string_expect_success (router, "router-reply", 0);
     recv_string_expect_success (dealer, "router-reply", 0);
 
@@ -199,13 +199,13 @@ static void run_router_router (const char *transport_)
     if (!is_transport_available (transport_))
         TEST_IGNORE_MESSAGE ("transport not available");
 
-    void *server = test_context_socket (ZMQ_ROUTER);
-    void *client = test_context_socket (ZMQ_ROUTER);
+    void *server = test_context_socket (ZLINK_ROUTER);
+    void *client = test_context_socket (ZLINK_ROUTER);
 
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_ROUTING_ID, "SERVER", 6));
+      zlink_setsockopt (server, ZLINK_ROUTING_ID, "SERVER", 6));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_ROUTING_ID, "CLIENT", 6));
+      zlink_setsockopt (client, ZLINK_ROUTING_ID, "CLIENT", 6));
 
     tls_test_files_t tls_files;
     if (is_tls_transport (transport_)) {
@@ -217,24 +217,24 @@ static void run_router_router (const char *transport_)
     bind_endpoint (server, transport_, "matrix_router_router", endpoint,
                    sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     msleep (SETTLE_TIME);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (client, "SERVER", 6, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "SERVER", 6, ZLINK_SNDMORE));
     send_string_expect_success (client, "router-msg", 0);
 
     char identity[32];
     int id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (server, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (server, identity, sizeof (identity), 0));
     TEST_ASSERT_EQUAL_INT (6, id_size);
     TEST_ASSERT_EQUAL_STRING_LEN ("CLIENT", identity, 6);
     recv_string_expect_success (server, "router-msg", 0);
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_send (server, "CLIENT", 6, ZMQ_SNDMORE));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "CLIENT", 6, ZLINK_SNDMORE));
     send_string_expect_success (server, "router-reply", 0);
 
     id_size =
-      TEST_ASSERT_SUCCESS_ERRNO (zmq_recv (client, identity, sizeof (identity), 0));
+      TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, identity, sizeof (identity), 0));
     TEST_ASSERT_EQUAL_INT (6, id_size);
     TEST_ASSERT_EQUAL_STRING_LEN ("SERVER", identity, 6);
     recv_string_expect_success (client, "router-reply", 0);

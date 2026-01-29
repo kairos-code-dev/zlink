@@ -4,11 +4,11 @@
  * Test suite for the ASIO SSL infrastructure
  *
  * These tests verify that the Boost.Asio SSL layer works correctly
- * for encrypted TCP connections. The actual ZMQ SSL integration will
+ * for encrypted TCP connections. The actual ZLINK SSL integration will
  * use ssl_transport_t which wraps these primitives.
  *
  * NOTE: These tests require OpenSSL and are only compiled when
- * ZMQ_HAVE_ASIO_SSL is defined.
+ * ZLINK_HAVE_ASIO_SSL is defined.
  */
 
 #include "testutil.hpp"
@@ -16,7 +16,7 @@
 
 #include <unity.h>
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -67,12 +67,12 @@ void test_ssl_certificate_loading ()
     //  Try to load the server certificate
     try {
         server_ctx.use_certificate_chain (
-          net::buffer (zmq::test_certs::server_cert_pem,
-                       strlen (zmq::test_certs::server_cert_pem)));
+          net::buffer (zlink::test_certs::server_cert_pem,
+                       strlen (zlink::test_certs::server_cert_pem)));
 
         server_ctx.use_private_key (
-          net::buffer (zmq::test_certs::server_key_pem,
-                       strlen (zmq::test_certs::server_key_pem)),
+          net::buffer (zlink::test_certs::server_key_pem,
+                       strlen (zlink::test_certs::server_key_pem)),
           ssl::context::pem);
 
         TEST_PASS ();
@@ -182,11 +182,11 @@ void test_ssl_handshake ()
     //  Configure server context with test certificates
     try {
         server_ssl_ctx.use_certificate_chain (
-          net::buffer (zmq::test_certs::server_cert_pem,
-                       strlen (zmq::test_certs::server_cert_pem)));
+          net::buffer (zlink::test_certs::server_cert_pem,
+                       strlen (zlink::test_certs::server_cert_pem)));
         server_ssl_ctx.use_private_key (
-          net::buffer (zmq::test_certs::server_key_pem,
-                       strlen (zmq::test_certs::server_key_pem)),
+          net::buffer (zlink::test_certs::server_key_pem,
+                       strlen (zlink::test_certs::server_key_pem)),
           ssl::context::pem);
     }
     catch (const std::exception &e) {
@@ -284,43 +284,43 @@ void test_ssl_handshake ()
     //  Let the streams destruct naturally
 }
 
-//  Test 6: ZMQ tls:// end-to-end
-void test_zmq_tls_pair ()
+//  Test 6: ZLINK tls:// end-to-end
+void test_zlink_tls_pair ()
 {
-#if defined ZMQ_HAVE_TLS
+#if defined ZLINK_HAVE_TLS
     setup_test_context ();
     const tls_test_files_t files = make_tls_test_files ();
 
-    void *server = test_context_socket (ZMQ_PAIR);
-    void *client = test_context_socket (ZMQ_PAIR);
+    void *server = test_context_socket (ZLINK_PAIR);
+    void *client = test_context_socket (ZLINK_PAIR);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
 
     const int trust_system = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof (trust_system)));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      server, ZMQ_TLS_CERT, files.server_cert.c_str (),
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_TLS_CERT, files.server_cert.c_str (),
       files.server_cert.size ()));
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (server, ZMQ_TLS_KEY, files.server_key.c_str (),
+      zlink_setsockopt (server, ZLINK_TLS_KEY, files.server_key.c_str (),
                       files.server_key.size ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_setsockopt (
-      client, ZMQ_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_TLS_CA, files.ca_cert.c_str (), files.ca_cert.size ()));
 
     const char hostname[] = "localhost";
     TEST_ASSERT_SUCCESS_ERRNO (
-      zmq_setsockopt (client, ZMQ_TLS_HOSTNAME, hostname, strlen (hostname)));
+      zlink_setsockopt (client, ZLINK_TLS_HOSTNAME, hostname, strlen (hostname)));
 
     char endpoint[MAX_SOCKET_STRING];
     test_bind (server, "tls://127.0.0.1:*", endpoint, sizeof (endpoint));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zmq_connect (client, endpoint));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     send_string_expect_success (client, "hello", 0);
     recv_string_expect_success (server, "hello", 0);
@@ -384,11 +384,11 @@ void test_ssl_data_exchange ()
     //  Configure server context with test certificates
     try {
         server_ssl_ctx.use_certificate_chain (
-          net::buffer (zmq::test_certs::server_cert_pem,
-                       strlen (zmq::test_certs::server_cert_pem)));
+          net::buffer (zlink::test_certs::server_cert_pem,
+                       strlen (zlink::test_certs::server_cert_pem)));
         server_ssl_ctx.use_private_key (
-          net::buffer (zmq::test_certs::server_key_pem,
-                       strlen (zmq::test_certs::server_key_pem)),
+          net::buffer (zlink::test_certs::server_key_pem,
+                       strlen (zlink::test_certs::server_key_pem)),
           ssl::context::pem);
     }
     catch (const std::exception &e) {
@@ -506,7 +506,7 @@ void test_ssl_data_exchange ()
     //  Let the streams destruct naturally
 }
 
-#else  // !ZMQ_IOTHREAD_POLLER_USE_ASIO || !ZMQ_HAVE_ASIO_SSL
+#else  // !ZLINK_IOTHREAD_POLLER_USE_ASIO || !ZLINK_HAVE_ASIO_SSL
 
 void setUp ()
 {
@@ -522,7 +522,7 @@ void test_asio_ssl_not_enabled ()
     TEST_IGNORE_MESSAGE ("Asio SSL not enabled, skipping tests");
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL
 
 int main ()
 {
@@ -530,7 +530,7 @@ int main ()
 
     UNITY_BEGIN ();
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
     RUN_TEST (test_ssl_context_creation);
     RUN_TEST (test_ssl_certificate_loading);
     RUN_TEST (test_ssl_stream_creation);
@@ -539,7 +539,7 @@ int main ()
     RUN_TEST (test_multiple_ssl_contexts);
     RUN_TEST (test_ssl_context_reuse);
     RUN_TEST (test_ssl_data_exchange);
-    RUN_TEST (test_zmq_tls_pair);
+    RUN_TEST (test_zlink_tls_pair);
 #else
     RUN_TEST (test_asio_ssl_not_enabled);
 #endif

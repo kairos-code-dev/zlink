@@ -1,5 +1,5 @@
 FROM debian:buster-slim AS builder
-LABEL maintainer="ZeroMQ Project <zeromq@imatix.com>"
+LABEL maintainer="Zlink Project <zlink@imatix.com>"
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
     && apt-get install -qq --yes --no-install-recommends \
@@ -10,7 +10,7 @@ RUN apt-get update -qq \
         libtool \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /opt/libzmq
+WORKDIR /opt/libzlink
 COPY . .
 RUN ./autogen.sh \
     && ./configure --prefix=/usr/local \
@@ -19,10 +19,10 @@ RUN ./autogen.sh \
     && make install
 
 FROM debian:buster-slim
-LABEL maintainer="ZeroMQ Project <zeromq@imatix.com>"
+LABEL maintainer="Zlink Project <zlink@imatix.com>"
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
     && apt-get install -qq --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/local /usr/local
-RUN ldconfig && ldconfig -p | grep libzmq
+RUN ldconfig && ldconfig -p | grep libzlink

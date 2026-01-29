@@ -10,16 +10,16 @@
 #include <algorithm>
 #include <string.h>
 
-namespace zmq
+namespace zlink
 {
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 
-static void close_frames (std::vector<zmq_msg_t> *frames_)
+static void close_frames (std::vector<zlink_msg_t> *frames_)
 {
     if (!frames_)
         return;
     for (size_t i = 0; i < frames_->size (); ++i)
-        zmq_msg_close (&(*frames_)[i]);
+        zlink_msg_close (&(*frames_)[i]);
     frames_->clear ();
 }
 
@@ -29,7 +29,7 @@ discovery_t::discovery_t (ctx_t *ctx_) :
     _stop (0),
     _listeners_in_dispatch (0)
 {
-    zmq_assert (_ctx);
+    zlink_assert (_ctx);
 }
 
 discovery_t::~discovery_t ()
@@ -118,7 +118,7 @@ void discovery_t::remove_listener (discovery_listener_t *listener_)
 }
 
 int discovery_t::get_providers (const char *service_name_,
-                                zmq_provider_info_t *providers_,
+                                zlink_provider_info_t *providers_,
                                 size_t *count_)
 {
     if (!service_name_ || !count_) {
@@ -202,11 +202,11 @@ void discovery_t::run (void *arg_)
 
 void discovery_t::loop ()
 {
-    void *sub = zmq_socket (static_cast<void *> (_ctx), ZMQ_SUB);
+    void *sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
     if (!sub)
         return;
 
-    zmq_setsockopt (sub, ZMQ_SUBSCRIBE, "", 0);
+    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
 
     std::set<std::string> connected;
 
@@ -220,29 +220,29 @@ void discovery_t::loop ()
         for (std::set<std::string>::const_iterator it = endpoints.begin ();
              it != endpoints.end (); ++it) {
             if (connected.find (*it) == connected.end ()) {
-                zmq_connect (sub, it->c_str ());
+                zlink_connect (sub, it->c_str ());
                 connected.insert (*it);
             }
         }
 
-        zmq_pollitem_t item;
+        zlink_pollitem_t item;
         item.socket = sub;
         item.fd = 0;
-        item.events = ZMQ_POLLIN;
+        item.events = ZLINK_POLLIN;
         item.revents = 0;
 
-        const int rc = zmq_poll (&item, 1, 100);
-        if (rc > 0 && (item.revents & ZMQ_POLLIN)) {
-            std::vector<zmq_msg_t> frames;
+        const int rc = zlink_poll (&item, 1, 100);
+        if (rc > 0 && (item.revents & ZLINK_POLLIN)) {
+            std::vector<zlink_msg_t> frames;
             while (true) {
-                zmq_msg_t frame;
-                zmq_msg_init (&frame);
-                if (zmq_msg_recv (&frame, sub, 0) == -1) {
-                    zmq_msg_close (&frame);
+                zlink_msg_t frame;
+                zlink_msg_init (&frame);
+                if (zlink_msg_recv (&frame, sub, 0) == -1) {
+                    zlink_msg_close (&frame);
                     break;
                 }
                 frames.push_back (frame);
-                if (!zmq_msg_more (&frame))
+                if (!zlink_msg_more (&frame))
                     break;
             }
             if (!frames.empty ())
@@ -251,10 +251,10 @@ void discovery_t::loop ()
         }
     }
 
-    zmq_close (sub);
+    zlink_close (sub);
 }
 
-void discovery_t::handle_service_list (const std::vector<zmq_msg_t> &frames_)
+void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
 {
     if (frames_.size () < 4)
         return;

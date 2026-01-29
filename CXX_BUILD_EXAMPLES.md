@@ -2,7 +2,7 @@
 
 ## Overview
 
-zlink supports building with multiple C++ standards via the `ZMQ_CXX_STANDARD` CMake option.
+zlink supports building with multiple C++ standards via the `ZLINK_CXX_STANDARD` CMake option.
 
 ## Build Options
 
@@ -10,7 +10,7 @@ zlink supports building with multiple C++ standards via the `ZMQ_CXX_STANDARD` C
 
 ```bash
 # Configure with C++17
-cmake -B build -DZMQ_CXX_STANDARD=17
+cmake -B build -DZLINK_CXX_STANDARD=17
 
 # Build
 cmake --build build
@@ -20,7 +20,7 @@ cmake --build build
 
 ```powershell
 # Configure with C++17
-cmake -B build -DZMQ_CXX_STANDARD=17
+cmake -B build -DZLINK_CXX_STANDARD=17
 
 # Build
 cmake --build build --config Release
@@ -39,29 +39,29 @@ cmake --build build --config Release
 
 ```bash
 # C++14
-cmake -B build -DZMQ_CXX_STANDARD=14
+cmake -B build -DZLINK_CXX_STANDARD=14
 
 # C++17
-cmake -B build -DZMQ_CXX_STANDARD=17
+cmake -B build -DZLINK_CXX_STANDARD=17
 
 # C++20
-cmake -B build -DZMQ_CXX_STANDARD=20
+cmake -B build -DZLINK_CXX_STANDARD=20
 
 # C++23 (if compiler supports)
-cmake -B build -DZMQ_CXX_STANDARD=23
+cmake -B build -DZLINK_CXX_STANDARD=23
 ```
 
 ### Combined with Other Options
 
 ```bash
 # C++17 with tests enabled
-cmake -B build -DZMQ_CXX_STANDARD=17 -DBUILD_TESTS=ON
+cmake -B build -DZLINK_CXX_STANDARD=17 -DBUILD_TESTS=ON
 
 # C++17 with benchmarks enabled
-cmake -B build -DZMQ_CXX_STANDARD=17 -DBUILD_BENCHMARKS=ON
+cmake -B build -DZLINK_CXX_STANDARD=17 -DBUILD_BENCHMARKS=ON
 
 # C++17 with Release build type
-cmake -B build -DZMQ_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DZLINK_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 ```
 
 ### Using Build Scripts
@@ -71,7 +71,7 @@ cmake -B build -DZMQ_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 ```bash
 # Modify build-scripts/linux/build.sh to add:
 # cmake -B "$BUILD_DIR" \
-#   -DZMQ_CXX_STANDARD=17 \
+#   -DZLINK_CXX_STANDARD=17 \
 #   -DCMAKE_BUILD_TYPE=Release \
 #   ...
 
@@ -90,7 +90,7 @@ cmake -B build -DZMQ_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 ```powershell
 # Modify build-scripts/windows/build.ps1 to add:
 # cmake -B "$buildDir" `
-#   -DZMQ_CXX_STANDARD=17 `
+#   -DZLINK_CXX_STANDARD=17 `
 #   -G "Visual Studio 17 2022" `
 #   ...
 
@@ -131,7 +131,7 @@ cl.exe /?
   - **Linux/macOS**: Display a warning and fall back to C++11
   - **MSVC**: Display a warning and use compiler default
 
-- If `ZMQ_CXX_STANDARD` is not specified, the build uses:
+- If `ZLINK_CXX_STANDARD` is not specified, the build uses:
   - **Linux/macOS**: C++17
   - **MSVC**: C++17 (`/std:c++17`)
 
@@ -141,9 +141,9 @@ cl.exe /?
 
 2. **Feature Usage**: zlink's core code targets C++17. Higher standards allow users to link zlink with their C++20/23 projects without ABI issues.
 
-3. **CMake Cache**: If changing standards, clean the build directory or use `-U ZMQ_CXX_STANDARD` to force reconfiguration:
+3. **CMake Cache**: If changing standards, clean the build directory or use `-U ZLINK_CXX_STANDARD` to force reconfiguration:
    ```bash
-   cmake -B build -U ZMQ_CXX_STANDARD -DZMQ_CXX_STANDARD=17
+   cmake -B build -U ZLINK_CXX_STANDARD -DZLINK_CXX_STANDARD=17
    ```
 
 4. **Per-Platform Differences**:
@@ -167,7 +167,7 @@ CMake Warning:
 **Solution**: Your compiler is too old. Update to a newer version or use a lower C++ standard:
 
 ```bash
-cmake -B build -DZMQ_CXX_STANDARD=14
+cmake -B build -DZLINK_CXX_STANDARD=14
 ```
 
 ### Cache issues when switching standards
@@ -176,5 +176,5 @@ cmake -B build -DZMQ_CXX_STANDARD=14
 
 ```bash
 rm -rf build
-cmake -B build -DZMQ_CXX_STANDARD=17
+cmake -B build -DZLINK_CXX_STANDARD=17
 ```

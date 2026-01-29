@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZMQ_WINDOWS_HPP_INCLUDED__
-#define __ZMQ_WINDOWS_HPP_INCLUDED__
+#ifndef __ZLINK_WINDOWS_HPP_INCLUDED__
+#define __ZLINK_WINDOWS_HPP_INCLUDED__
 
 #ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
@@ -12,7 +12,7 @@
 
 //  Set target version to Windows Server 2008, Windows Vista or higher.
 //  Windows XP (0x0501) is supported but without client & server socket types.
-#if !defined _WIN32_WINNT && !defined ZMQ_HAVE_WINDOWS_UWP
+#if !defined _WIN32_WINNT && !defined ZLINK_HAVE_WINDOWS_UWP
 #define _WIN32_WINNT 0x0600
 #endif
 
@@ -52,7 +52,7 @@ struct tcp_keepalive
 #include <process.h>
 #endif
 
-#if defined ZMQ_IOTHREAD_POLLER_USE_POLL || defined ZMQ_POLL_BASED_ON_POLL
+#if defined ZLINK_IOTHREAD_POLLER_USE_POLL || defined ZLINK_POLL_BASED_ON_POLL
 static inline int poll (struct pollfd *pfd, unsigned long nfds, int timeout)
 {
     return WSAPoll (pfd, nfds, timeout);
@@ -73,7 +73,7 @@ static inline int poll (struct pollfd *pfd, unsigned long nfds, int timeout)
 
 //  Workaround missing struct sockaddr_un in afunix.h.
 //  Fix #3949.
-#if defined(ZMQ_HAVE_IPC) && !defined(ZMQ_HAVE_STRUCT_SOCKADDR_UN)
+#if defined(ZLINK_HAVE_IPC) && !defined(ZLINK_HAVE_STRUCT_SOCKADDR_UN)
 struct sockaddr_un
 {
     ADDRESS_FAMILY sun_family; /* AF_UNIX */

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "utils/precompiled.hpp"
-#if defined ZMQ_IOTHREAD_POLLER_USE_ASIO && defined ZMQ_HAVE_ASIO_SSL
+#if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_ASIO_SSL
 
 #include "transports/tls/asio_tls_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
@@ -18,7 +18,7 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
-#ifndef ZMQ_HAVE_WINDOWS
+#ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -72,7 +72,7 @@ std::string extract_tls_hostname (const std::string &address)
 }
 }
 
-zmq::asio_tls_connecter_t::asio_tls_connecter_t (
+zlink::asio_tls_connecter_t::asio_tls_connecter_t (
   io_thread_t *io_thread_,
   session_base_t *session_,
   const options_t &options_,
@@ -93,22 +93,22 @@ zmq::asio_tls_connecter_t::asio_tls_connecter_t (
     _linger (0),
     _current_reconnect_ivl (-1)
 {
-    zmq_assert (_addr);
-    zmq_assert (_addr->protocol == protocol_name::tls);
+    zlink_assert (_addr);
+    zlink_assert (_addr->protocol == protocol_name::tls);
     _addr->to_string (_endpoint_str);
 
     TLS_CONNECTER_DBG ("Constructor called, endpoint=%s, this=%p",
                        _endpoint_str.c_str (), static_cast<void *> (this));
 }
 
-zmq::asio_tls_connecter_t::~asio_tls_connecter_t ()
+zlink::asio_tls_connecter_t::~asio_tls_connecter_t ()
 {
     TLS_CONNECTER_DBG ("Destructor called, this=%p", static_cast<void *> (this));
-    zmq_assert (!_reconnect_timer_started);
-    zmq_assert (!_connect_timer_started);
+    zlink_assert (!_reconnect_timer_started);
+    zlink_assert (!_connect_timer_started);
 }
 
-void zmq::asio_tls_connecter_t::process_plug ()
+void zlink::asio_tls_connecter_t::process_plug ()
 {
     TLS_CONNECTER_DBG ("process_plug called, delayed_start=%d", _delayed_start);
 
@@ -118,7 +118,7 @@ void zmq::asio_tls_connecter_t::process_plug ()
         start_connecting ();
 }
 
-void zmq::asio_tls_connecter_t::process_term (int linger_)
+void zlink::asio_tls_connecter_t::process_term (int linger_)
 {
     TLS_CONNECTER_DBG ("process_term called, linger=%d, tcp_connecting=%d",
                        linger_, _tcp_connecting);
@@ -147,7 +147,7 @@ void zmq::asio_tls_connecter_t::process_term (int linger_)
     own_t::process_term (linger_);
 }
 
-void zmq::asio_tls_connecter_t::timer_event (int id_)
+void zlink::asio_tls_connecter_t::timer_event (int id_)
 {
     TLS_CONNECTER_DBG ("timer_event: id=%d", id_);
 
@@ -165,11 +165,11 @@ void zmq::asio_tls_connecter_t::timer_event (int id_)
         close ();
         add_reconnect_timer ();
     } else {
-        zmq_assert (false);
+        zlink_assert (false);
     }
 }
 
-void zmq::asio_tls_connecter_t::start_connecting ()
+void zlink::asio_tls_connecter_t::start_connecting ()
 {
     TLS_CONNECTER_DBG ("start_connecting: endpoint=%s", _endpoint_str.c_str ());
 
@@ -187,7 +187,7 @@ void zmq::asio_tls_connecter_t::start_connecting ()
 
     //  Resolve the address if not already done
     if (_addr->resolved.tcp_addr != NULL) {
-        LIBZMQ_DELETE (_addr->resolved.tcp_addr);
+        LIBZLINK_DELETE (_addr->resolved.tcp_addr);
     }
 
     _addr->resolved.tcp_addr = new (std::nothrow) tcp_address_t ();
@@ -197,7 +197,7 @@ void zmq::asio_tls_connecter_t::start_connecting ()
                                                  options.ipv6);
     if (rc != 0) {
         TLS_CONNECTER_DBG ("start_connecting: resolve failed");
-        LIBZMQ_DELETE (_addr->resolved.tcp_addr);
+        LIBZLINK_DELETE (_addr->resolved.tcp_addr);
         add_reconnect_timer ();
         return;
     }
@@ -287,7 +287,7 @@ void zmq::asio_tls_connecter_t::start_connecting ()
       make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
 }
 
-void zmq::asio_tls_connecter_t::on_tcp_connect (
+void zlink::asio_tls_connecter_t::on_tcp_connect (
   const boost::system::error_code &ec)
 {
     _tcp_connecting = false;
@@ -330,7 +330,7 @@ void zmq::asio_tls_connecter_t::on_tcp_connect (
     //  Tune the socket
     if (!tune_socket (fd)) {
         TLS_CONNECTER_DBG ("on_tcp_connect: tune_socket failed");
-#ifdef ZMQ_HAVE_WINDOWS
+#ifdef ZLINK_HAVE_WINDOWS
         closesocket (fd);
 #else
         ::close (fd);
@@ -347,7 +347,7 @@ void zmq::asio_tls_connecter_t::on_tcp_connect (
     create_engine (fd, local_address);
 }
 
-void zmq::asio_tls_connecter_t::add_connect_timer ()
+void zlink::asio_tls_connecter_t::add_connect_timer ()
 {
     if (options.connect_timeout > 0) {
         TLS_CONNECTER_DBG ("add_connect_timer: timeout=%d",
@@ -357,7 +357,7 @@ void zmq::asio_tls_connecter_t::add_connect_timer ()
     }
 }
 
-void zmq::asio_tls_connecter_t::add_reconnect_timer ()
+void zlink::asio_tls_connecter_t::add_reconnect_timer ()
 {
     if (options.reconnect_ivl > 0) {
         const int interval = get_new_reconnect_ivl ();
@@ -369,7 +369,7 @@ void zmq::asio_tls_connecter_t::add_reconnect_timer ()
     }
 }
 
-int zmq::asio_tls_connecter_t::get_new_reconnect_ivl ()
+int zlink::asio_tls_connecter_t::get_new_reconnect_ivl ()
 {
     if (options.reconnect_ivl_max > 0) {
         int candidate_interval = 0;
@@ -398,7 +398,7 @@ int zmq::asio_tls_connecter_t::get_new_reconnect_ivl ()
     }
 }
 
-bool zmq::asio_tls_connecter_t::create_ssl_context (
+bool zlink::asio_tls_connecter_t::create_ssl_context (
   const std::string &hostname_)
 {
     TLS_CONNECTER_DBG ("create_ssl_context: ca=%s, cert=%s, key=%s",
@@ -453,7 +453,7 @@ bool zmq::asio_tls_connecter_t::create_ssl_context (
     return true;
 }
 
-void zmq::asio_tls_connecter_t::create_engine (fd_t fd_,
+void zlink::asio_tls_connecter_t::create_engine (fd_t fd_,
                                                 const std::string &local_address_)
 {
     TLS_CONNECTER_DBG ("create_engine: fd=%d, local=%s", fd_,
@@ -484,7 +484,7 @@ void zmq::asio_tls_connecter_t::create_engine (fd_t fd_,
         transport->set_hostname (_tls_hostname);
 
     i_engine *engine = NULL;
-    if (options.type == ZMQ_STREAM) {
+    if (options.type == ZLINK_STREAM) {
         engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair,
           std::unique_ptr<i_asio_transport> (transport.release ()),
@@ -506,7 +506,7 @@ void zmq::asio_tls_connecter_t::create_engine (fd_t fd_,
     _socket_ptr->event_connected (endpoint_pair, fd_);
 }
 
-bool zmq::asio_tls_connecter_t::tune_socket (fd_t fd_)
+bool zlink::asio_tls_connecter_t::tune_socket (fd_t fd_)
 {
     const int rc = tune_tcp_socket (fd_)
                    | tune_tcp_keepalives (fd_, options.tcp_keepalive,
@@ -517,7 +517,7 @@ bool zmq::asio_tls_connecter_t::tune_socket (fd_t fd_)
     return rc == 0;
 }
 
-void zmq::asio_tls_connecter_t::close ()
+void zlink::asio_tls_connecter_t::close ()
 {
     TLS_CONNECTER_DBG ("close called");
 
@@ -532,4 +532,4 @@ void zmq::asio_tls_connecter_t::close ()
     }
 }
 
-#endif  // ZMQ_IOTHREAD_POLLER_USE_ASIO && ZMQ_HAVE_ASIO_SSL
+#endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO && ZLINK_HAVE_ASIO_SSL

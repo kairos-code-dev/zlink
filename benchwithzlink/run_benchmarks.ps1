@@ -4,8 +4,8 @@ param(
     [string]$OutputFile = "",
     [int]$Runs = 3,
     [switch]$WithBaseline,
-    [switch]$WithLibzmq,
-    [switch]$SkipLibzmq,
+    [switch]$WithLibzlink,
+    [switch]$SkipLibzlink,
     [switch]$CurrentOnly,
     [switch]$ReuseBuild,
     [Alias("Baseline", "SaveResults")]
@@ -31,7 +31,7 @@ Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
   1. Copy previous version library to benchwithzlink\baseline\lib\
-     - Windows: libzmq.dll + libzmq.lib
+     - Windows: libzlink.dll + libzlink.lib
 
 IMPORTANT: Use PowerShell parameter syntax with '-', not bash '--' syntax.
 
@@ -150,16 +150,16 @@ if (-not $BuildDir.StartsWith($RootDir)) {
 
 # Check baseline library exists when baseline run is requested
 $BaselineLibDir = Join-Path $ScriptDir "baseline\lib"
-if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzmq)) {
+if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzlink)) {
     if (-not (Test-Path $BaselineLibDir)) {
         Write-Error "Error: baseline lib directory not found: $BaselineLibDir"
         Write-Error "Please create benchwithzlink\\baseline\\lib and copy previous zlink library there."
         exit 1
     }
-    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "libzmq.*" -ErrorAction SilentlyContinue
+    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "libzlink.*" -ErrorAction SilentlyContinue
     if (-not $BaselineLibFiles) {
-        Write-Error "Error: No libzmq library found in $BaselineLibDir"
-        Write-Error "Please copy previous zlink library (libzmq.dll + libzmq.lib) there."
+        Write-Error "Error: No libzlink library found in $BaselineLibDir"
+        Write-Error "Please copy previous zlink library (libzlink.dll + libzlink.lib) there."
         exit 1
     }
 }
@@ -198,10 +198,10 @@ if ($ReuseBuild) {
         -A "$CMakeArch" `
         "-DCMAKE_BUILD_TYPE=Release" `
         "-DCMAKE_PREFIX_PATH=$VcpkgInstalled" `
-        "-DZMQ_BOOST_INCLUDE_DIR=$VcpkgInclude" `
+        "-DZLINK_BOOST_INCLUDE_DIR=$VcpkgInclude" `
         "-DBUILD_BENCHMARKS=ON" `
         "-DBUILD_TESTS=OFF" `
-        "-DZMQ_CXX_STANDARD=20"
+        "-DZLINK_CXX_STANDARD=20"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "CMake configuration failed"
@@ -260,13 +260,13 @@ if ($Transports) {
 if ($CurrentOnly) {
     $RunArgs += "--current-only"
 } else {
-    $WithBaselineFlag = $WithBaseline -or $WithLibzmq
-    if ($SkipLibzmq) {
+    $WithBaselineFlag = $WithBaseline -or $WithLibzlink
+    if ($SkipLibzlink) {
         $WithBaselineFlag = $false
     }
 
     if ($WithBaselineFlag) {
-        $RunArgs += "--refresh-libzmq"
+        $RunArgs += "--refresh-libzlink"
     } else {
         $CacheFile = Join-Path $RootDir "benchwithzlink" "baseline_cache.json"
         if (-not (Test-Path $CacheFile)) {

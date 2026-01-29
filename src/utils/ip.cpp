@@ -7,6 +7,10 @@
 #include "utils/config.hpp"
 #include "core/address.hpp"
 
+#if defined ZMQ_HAVE_OPENPGM
+#include <pgm/pgm.h>
+#endif
+
 #if !defined ZMQ_HAVE_WINDOWS
 #include <fcntl.h>
 #include <sys/types.h>
@@ -250,6 +254,25 @@ int zmq::bind_to_device (fd_t s_, const std::string &bound_device_)
 
 bool zmq::initialize_network ()
 {
+#if defined ZMQ_HAVE_OPENPGM
+    //  Init PGM transport. Ensure threading and timer are enabled.
+    pgm_error_t *pgm_error = NULL;
+    const bool ok = pgm_init (&pgm_error);
+    if (ok != TRUE) {
+        //  Invalid parameters don't set pgm_error_t.
+        zmq_assert (pgm_error != NULL);
+        if (pgm_error->domain == PGM_ERROR_DOMAIN_TIME
+            && pgm_error->code == PGM_ERROR_FAILED) {
+            pgm_error_free (pgm_error);
+            errno = EINVAL;
+            return false;
+        }
+
+        //  Fatal OpenPGM internal error.
+        zmq_assert (false);
+    }
+#endif
+
 #ifdef ZMQ_HAVE_WINDOWS
     //  Initialise Windows sockets. Note that WSAStartup can be called multiple
     //  times given that WSACleanup will be called for each WSAStartup.
@@ -271,6 +294,12 @@ void zmq::shutdown_network ()
     //  On Windows, uninitialise socket layer.
     const int rc = WSACleanup ();
     wsa_assert (rc != SOCKET_ERROR);
+#endif
+
+#if defined ZMQ_HAVE_OPENPGM
+    //  Shut down the OpenPGM library.
+    if (pgm_shutdown () != TRUE)
+        zmq_assert (false);
 #endif
 }
 

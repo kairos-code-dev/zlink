@@ -78,7 +78,7 @@ if(ZMQ_HAVE_IPC)
 endif()
 
 if(ZMQ_HAVE_OPENPGM)
-  list(APPEND tests test_pgm_epgm)
+  list(APPEND tests test_pgm_epgm test_pgm_smoke)
 endif()
 
 if(NOT WIN32)

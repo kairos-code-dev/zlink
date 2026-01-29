@@ -150,11 +150,6 @@ if (-not $BuildDir.StartsWith($RootDir)) {
 
 # Check baseline library exists when baseline run is requested
 $BaselineLibDir = Join-Path $ScriptDir "baseline\lib"
-$LegacyBaselineLibDir = Join-Path $ScriptDir "baseline_lib"
-if (-not (Test-Path $BaselineLibDir) -and (Test-Path $LegacyBaselineLibDir)) {
-    Write-Warning "Baseline lib dir moved to benchwithzlink\\baseline\\lib; using legacy baseline_lib."
-    $BaselineLibDir = $LegacyBaselineLibDir
-}
 if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzmq)) {
     if (-not (Test-Path $BaselineLibDir)) {
         Write-Error "Error: baseline lib directory not found: $BaselineLibDir"

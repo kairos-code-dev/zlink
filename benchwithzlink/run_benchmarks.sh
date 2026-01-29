@@ -208,11 +208,6 @@ fi
 
 # Check baseline library exists when baseline run is requested
 BASELINE_LIB_DIR="${SCRIPT_DIR}/baseline/lib"
-BASELINE_LEGACY_LIB_DIR="${SCRIPT_DIR}/baseline_lib"
-if [[ ! -d "${BASELINE_LIB_DIR}" && -d "${BASELINE_LEGACY_LIB_DIR}" ]]; then
-  echo "Warning: baseline lib dir moved to benchwithzlink/baseline/lib; using legacy baseline_lib." >&2
-  BASELINE_LIB_DIR="${BASELINE_LEGACY_LIB_DIR}"
-fi
 if [[ "${ZLINK_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 1 ]]; then
   if [[ ! -d "${BASELINE_LIB_DIR}" ]]; then
     echo "Error: baseline lib directory not found: ${BASELINE_LIB_DIR}" >&2

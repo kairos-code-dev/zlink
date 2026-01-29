@@ -14,31 +14,16 @@
 
 # Define baseline zlink location
 set(BASELINE_ZLINK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/lib")
-set(BASELINE_ZLINK_ROOT_LEGACY "${CMAKE_CURRENT_SOURCE_DIR}/baseline_lib")
 
 # Find baseline library
 if(WIN32)
     file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/*.lib")
     file(GLOB BASELINE_ZLINK_DLL "${BASELINE_ZLINK_ROOT}/*.dll")
-    if(NOT BASELINE_ZLINK_LIBRARY AND EXISTS "${BASELINE_ZLINK_ROOT_LEGACY}")
-        message(STATUS "Baseline libs moved to baseline/lib; falling back to baseline_lib.")
-        set(BASELINE_ZLINK_ROOT "${BASELINE_ZLINK_ROOT_LEGACY}")
-        file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/*.lib")
-        file(GLOB BASELINE_ZLINK_DLL "${BASELINE_ZLINK_ROOT}/*.dll")
-    endif()
 else()
     # Try to find .so first, then .dylib
     file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzmq.so*")
     if(NOT BASELINE_ZLINK_LIBRARY)
         file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzmq.dylib*")
-    endif()
-    if(NOT BASELINE_ZLINK_LIBRARY AND EXISTS "${BASELINE_ZLINK_ROOT_LEGACY}")
-        message(STATUS "Baseline libs moved to baseline/lib; falling back to baseline_lib.")
-        set(BASELINE_ZLINK_ROOT "${BASELINE_ZLINK_ROOT_LEGACY}")
-        file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzmq.so*")
-        if(NOT BASELINE_ZLINK_LIBRARY)
-            file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzmq.dylib*")
-        endif()
     endif()
 endif()
 

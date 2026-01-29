@@ -28,18 +28,11 @@ def resolve_linux_paths():
         os.path.join(ROOT_DIR, "build", "linux-x64", "benchwithzlink"),
     ]
     build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-    baseline_lib_dir = resolve_baseline_lib_dir()
+    baseline_lib_dir = os.path.abspath(
+        os.path.join(ROOT_DIR, "benchwithzlink", "baseline", "lib")
+    )
     current_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build", "lib"))
     return build_dir, baseline_lib_dir, current_lib_dir
-
-def resolve_baseline_lib_dir():
-    primary = os.path.abspath(os.path.join(ROOT_DIR, "benchwithzlink", "baseline", "lib"))
-    legacy = os.path.abspath(os.path.join(ROOT_DIR, "benchwithzlink", "baseline_lib"))
-    if os.path.isdir(primary):
-        return primary
-    if os.path.isdir(legacy):
-        return legacy
-    return primary
 
 def normalize_build_dir(path):
     if not path:
@@ -73,7 +66,7 @@ def derive_current_lib_dir(build_dir):
 
 if IS_WINDOWS:
     BUILD_DIR = os.path.join("build", "windows-x64", "bin", "Release")
-    BASELINE_LIB_DIR = resolve_baseline_lib_dir()
+    BASELINE_LIB_DIR = os.path.abspath(os.path.join("benchwithzlink", "baseline", "lib"))
     CURRENT_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "bin", "Release"))
 else:
     BUILD_DIR, BASELINE_LIB_DIR, CURRENT_LIB_DIR = resolve_linux_paths()

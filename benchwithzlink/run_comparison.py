@@ -334,9 +334,6 @@ def main():
             c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports)
             all_failures.extend(failures)
         else:
-            c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports)
-            all_failures.extend(failures)
-
             if refresh or p_name not in cache:
                 b_stats, failures = collect_data(baseline_bin, "baseline", p_name, num_runs, pattern_transports)
                 all_failures.extend(failures)
@@ -346,6 +343,9 @@ def main():
             else:
                 print(f"  [baseline] Using cached baseline.")
                 b_stats = cache[p_name]
+
+            c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports)
+            all_failures.extend(failures)
 
         # Print Table
         size_w = 6

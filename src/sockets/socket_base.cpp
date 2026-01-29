@@ -348,8 +348,8 @@ int zlink::socket_base_t::socket_stats_ex (zlink_socket_stats_ex_t *stats_)
     stats_->drops_hwm = _drops_hwm;
     stats_->drops_no_peers = _drops_no_peers;
     stats_->drops_filter = _drops_filter;
-    stats_->last_send_ms = _last_send_ms;
-    stats_->last_recv_ms = _last_recv_ms;
+    stats_->last_send_ms = options.stats_timestamps ? _last_send_ms : 0;
+    stats_->last_recv_ms = options.stats_timestamps ? _last_recv_ms : 0;
 
     return 0;
 }
@@ -1306,7 +1306,8 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     if (rc == 0) {
         _msgs_sent++;
         _bytes_sent += msg_size;
-        _last_send_ms = _clock.now_ms ();
+        if (options.stats_timestamps)
+            _last_send_ms = _clock.now_ms ();
         return 0;
     }
     //  Special case: -2 means pipe is dead while a
@@ -1352,7 +1353,8 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
         if (rc == 0) {
             _msgs_sent++;
             _bytes_sent += msg_size;
-            _last_send_ms = _clock.now_ms ();
+            if (options.stats_timestamps)
+                _last_send_ms = _clock.now_ms ();
             break;
         }
         if (unlikely (errno != EAGAIN)) {
@@ -1412,7 +1414,8 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
         extract_flags (msg_);
         _msgs_received++;
         _bytes_received += msg_->size ();
-        _last_recv_ms = _clock.now_ms ();
+        if (options.stats_timestamps)
+            _last_recv_ms = _clock.now_ms ();
         return 0;
     }
 
@@ -1433,7 +1436,8 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
         extract_flags (msg_);
         _msgs_received++;
         _bytes_received += msg_->size ();
-        _last_recv_ms = _clock.now_ms ();
+        if (options.stats_timestamps)
+            _last_recv_ms = _clock.now_ms ();
 
         return 0;
     }
@@ -1471,7 +1475,8 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     extract_flags (msg_);
     _msgs_received++;
     _bytes_received += msg_->size ();
-    _last_recv_ms = _clock.now_ms ();
+    if (options.stats_timestamps)
+        _last_recv_ms = _clock.now_ms ();
     return 0;
 }
 

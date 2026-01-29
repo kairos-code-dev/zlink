@@ -10,6 +10,12 @@ static void test_stats_ex_send_recv ()
     void *sender = test_context_socket (ZLINK_PAIR);
     void *receiver = test_context_socket (ZLINK_PAIR);
 
+    const int enable = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sender, ZLINK_STATS_TIMESTAMPS, &enable, sizeof (enable)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (receiver, ZLINK_STATS_TIMESTAMPS, &enable, sizeof (enable)));
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (sender, "inproc://stats_ex"));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (receiver, "inproc://stats_ex"));
     msleep (SETTLE_TIME);

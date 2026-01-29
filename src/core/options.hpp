@@ -196,6 +196,9 @@ struct options_t
     // Use zero copy strategy for storing message content when decoding.
     bool zero_copy;
 
+    // If true, update last_send_ms/last_recv_ms on send/recv.
+    bool stats_timestamps;
+
     // Version of monitor events to emit
     int monitor_event_version;
 

@@ -21,42 +21,30 @@
 // STREAM socket benchmark for zlink
 //
 // zlink STREAM protocol:
-// - routing_id: exactly 4 bytes (uint32, Big Endian)
-// - Connect event: [routing_id (4B)][0x01]
-// - Disconnect event: [routing_id (4B)][0x00]
-// - Data message: [routing_id (4B)][payload]
+// - routing_id: variable length (1..255 bytes)
+// - Connect event: [routing_id][0x01]
+// - Disconnect event: [routing_id][0x00]
+// - Data message: [routing_id][payload]
 
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 
-// Helper: Convert uint32 to Big Endian bytes
-inline void uint32_to_be(uint32_t val, unsigned char* buf) {
-    buf[0] = (val >> 24) & 0xFF;
-    buf[1] = (val >> 16) & 0xFF;
-    buf[2] = (val >> 8) & 0xFF;
-    buf[3] = val & 0xFF;
-}
-
-// Helper: Convert Big Endian bytes to uint32
-inline uint32_t be_to_uint32(const unsigned char* buf) {
-    return (static_cast<uint32_t>(buf[0]) << 24) |
-           (static_cast<uint32_t>(buf[1]) << 16) |
-           (static_cast<uint32_t>(buf[2]) << 8) |
-           static_cast<uint32_t>(buf[3]);
-}
-
-// Helper: Receive STREAM connect event, returns routing_id
-// Returns 0 on failure
-uint32_t expect_connect_event(void* socket) {
-    unsigned char id_buf[4];
-    int id_len = zmq_recv(socket, id_buf, 4, 0);
-    if (id_len != 4) {
+// Helper: Receive STREAM connect event, returns routing_id bytes
+std::vector<unsigned char> expect_connect_event(void* socket) {
+    zmq_msg_t id_frame;
+    zmq_msg_init(&id_frame);
+    int id_len = zmq_msg_recv(&id_frame, socket, 0);
+    if (id_len <= 0) {
         if (bench_debug_enabled())
-            std::cerr << "Failed to receive routing_id (expected 4, got " << id_len << "): "
+            std::cerr << "Failed to receive routing_id: "
                       << zmq_strerror(zmq_errno()) << std::endl;
-        return 0;
+        zmq_msg_close(&id_frame);
+        return {};
     }
 
-    uint32_t routing_id = be_to_uint32(id_buf);
+    std::vector<unsigned char> routing_id(
+        static_cast<const unsigned char*>(zmq_msg_data(&id_frame)),
+        static_cast<const unsigned char*>(zmq_msg_data(&id_frame)) + id_len);
+    zmq_msg_close(&id_frame);
 
     // Check for MORE flag
     int more = 0;
@@ -65,7 +53,7 @@ uint32_t expect_connect_event(void* socket) {
     if (!more) {
         if (bench_debug_enabled())
             std::cerr << "Expected MORE flag for connect event" << std::endl;
-        return 0;
+        return {};
     }
 
     // Receive payload (should be 0x01 for connect)
@@ -75,31 +63,46 @@ uint32_t expect_connect_event(void* socket) {
         if (bench_debug_enabled())
             std::cerr << "Expected connect event (0x01), got len=" << payload_len
                       << " val=" << (int)payload[0] << std::endl;
-        return 0;
+        return {};
     }
 
     if (bench_debug_enabled())
-        std::cerr << "Got connect event, routing_id=" << routing_id << std::endl;
+        std::cerr << "Got connect event, routing_id_size=" << routing_id.size()
+                  << std::endl;
 
     return routing_id;
 }
 
 // Helper: Send STREAM message
-inline void send_stream_msg(void* socket, uint32_t routing_id, const void* data, size_t len) {
-    unsigned char id_buf[4];
-    uint32_to_be(routing_id, id_buf);
-    zmq_send(socket, id_buf, 4, ZMQ_SNDMORE);
+inline void send_stream_msg(void* socket,
+                            const std::vector<unsigned char>& routing_id,
+                            const void* data,
+                            size_t len) {
+    if (routing_id.empty())
+        return;
+    zmq_send(socket, routing_id.data(), routing_id.size(), ZMQ_SNDMORE);
     zmq_send(socket, data, len, 0);
 }
 
 // Helper: Receive STREAM message
-// Returns payload length, stores routing_id in routing_id_out
-inline int recv_stream_msg(void* socket, uint32_t* routing_id_out, void* buf, size_t buf_size) {
-    unsigned char id_buf[4];
-    int id_len = zmq_recv(socket, id_buf, 4, 0);
-    if (id_len != 4) return -1;
-
-    *routing_id_out = be_to_uint32(id_buf);
+// Returns payload length, optionally stores routing_id in routing_id_out
+inline int recv_stream_msg(void* socket,
+                           std::vector<unsigned char>* routing_id_out,
+                           void* buf,
+                           size_t buf_size) {
+    zmq_msg_t id_frame;
+    zmq_msg_init(&id_frame);
+    int id_len = zmq_msg_recv(&id_frame, socket, 0);
+    if (id_len <= 0) {
+        zmq_msg_close(&id_frame);
+        return -1;
+    }
+    if (routing_id_out) {
+        routing_id_out->assign(
+            static_cast<const unsigned char*>(zmq_msg_data(&id_frame)),
+            static_cast<const unsigned char*>(zmq_msg_data(&id_frame)) + id_len);
+    }
+    zmq_msg_close(&id_frame);
     return zmq_recv(socket, buf, buf_size, 0);
 }
 
@@ -150,8 +153,8 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     settle();
 
     // Get routing_ids from connect events
-    uint32_t server_client_id = expect_connect_event(server);
-    if (server_client_id == 0) {
+    std::vector<unsigned char> server_client_id = expect_connect_event(server);
+    if (server_client_id.empty()) {
         if (bench_debug_enabled())
             std::cerr << "Failed to get server_client_id" << std::endl;
         zmq_close(server);
@@ -160,8 +163,8 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
         return;
     }
 
-    uint32_t client_server_id = expect_connect_event(client);
-    if (client_server_id == 0) {
+    std::vector<unsigned char> client_server_id = expect_connect_event(client);
+    if (client_server_id.empty()) {
         if (bench_debug_enabled())
             std::cerr << "Failed to get client_server_id" << std::endl;
         zmq_close(server);
@@ -171,8 +174,10 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     }
 
     if (bench_debug_enabled()) {
-        std::cerr << "Connection established: server_client_id=" << server_client_id
-                  << ", client_server_id=" << client_server_id << std::endl;
+        std::cerr << "Connection established: server_client_id_size="
+                  << server_client_id.size()
+                  << ", client_server_id_size=" << client_server_id.size()
+                  << std::endl;
     }
 
     std::vector<char> buffer(msg_size, 'a');
@@ -186,23 +191,20 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
 
         // Server receives: [routing_id (4B)][data]
-        uint32_t recv_id;
-        recv_stream_msg(server, &recv_id, recv_buf.data(), recv_buf.size());
+        recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size());
     }
 
     // Latency test (round-trip)
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        uint32_t recv_id;
-
         // Client -> Server
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
-        recv_stream_msg(server, &recv_id, recv_buf.data(), recv_buf.size());
+        recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size());
 
         // Server -> Client
         send_stream_msg(server, server_client_id, recv_buf.data(), msg_size);
-        recv_stream_msg(client, &recv_id, recv_buf.data(), recv_buf.size());
+        recv_stream_msg(client, NULL, recv_buf.data(), recv_buf.size());
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
@@ -210,8 +212,7 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     std::thread receiver([&]() {
         std::vector<char> data_buf(msg_size > 256 ? msg_size : 256);
         for (int i = 0; i < msg_count; ++i) {
-            uint32_t recv_id;
-            recv_stream_msg(server, &recv_id, data_buf.data(), data_buf.size());
+            recv_stream_msg(server, NULL, data_buf.data(), data_buf.size());
         }
     });
 

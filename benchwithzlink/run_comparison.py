@@ -148,7 +148,11 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
             cmd = [binary_path, lib_name, transport, str(size)]
         else:
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(cmd,
+                                env=env,
+                                capture_output=True,
+                                text=True,
+                                timeout=60)
         if result.returncode != 0:
             return []
 

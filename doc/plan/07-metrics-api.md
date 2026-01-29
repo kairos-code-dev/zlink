@@ -1,7 +1,7 @@
 # 메트릭스 API 스펙 (Metrics API)
 
 > **우선순위**: 7 (Recommended Feature)
-> **상태**: Draft
+> **상태**: Implemented (2026-01-29)
 > **버전**: 1.0
 > **의존성**:
 > - `zmq_socket_stats_t` (기존 소켓 통계)
@@ -95,35 +95,30 @@
 
 ---
 
-## 4. 구현 계획
+## 4. 구현 현황
 
-### 4.1 1차: 소켓 메트릭 확장/안정화
+### 4.1 완료 항목
 
-1) `zmq_socket_stats_ex` 추가
-- `queue_outbound/inbound`, 드롭 원인, 마지막 송수신 시각 제공
+- `zmq_socket_stats_ex` 추가 및 구현
+  - `queue_outbound/inbound`, 드롭 원인, 마지막 송수신 시각 제공
+- 스냅샷 일관성 확보
+  - 내부 카운터/큐 스냅샷을 단일 호출로 반환
+- 테스트 추가
+  - `monitoring/test_socket_stats_ex` (송수신/드롭 카운터, last_send/recv)
 
-2) 스냅샷 일관성
-- 수집 시점의 내부 카운터와 큐 상태를 안정적으로 스냅샷
+### 4.2 미구현(옵션)
 
-3) 테스트 추가
-- 송수신/드롭 카운터 증가 검증
-- 큐 적체 시 `queue_outbound`, `hwm_reached` 증가 확인
-
-### 4.2 2차: 피어 메트릭 정합성 강화
-
-- `zmq_socket_peers` 반환 순서/수량 보장 규칙 정의
-- 라우팅 ID 기반 조회 오류 코드 정리
-
-### 4.3 3차: 확장 API (옵션)
-
-- `zmq_socket_stats_reset` 추가
-- 컨텍스트/프로세스 레벨 집계 구조 설계
+- `zmq_socket_stats_reset`
+- `zmq_context_stats`
+  - 컨텍스트/프로세스 레벨 집계는 추후 확장
 
 ---
 
 ## 5. 검증 방법
 
-- 기능 테스트: 통계 값 증가/감소 동작 확인
+- 기능 테스트:
+  - `monitoring/test_socket_stats_ex`
+  - `monitoring/test_monitor_enhanced`
 - 멀티스레드: thread-safe 소켓에서도 동일 동작 확인
 - 성능 테스트: 통계 호출 오버헤드 측정
 
@@ -132,3 +127,4 @@
 ## 6. 변경 이력
 
 - 2026-01-29: 초안 작성
+- 2026-01-29: 구현 및 테스트 추가, 상태 Implemented로 전환

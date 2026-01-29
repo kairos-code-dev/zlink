@@ -129,9 +129,19 @@ int zmq::zmp_decoder_t::size_ready (uint32_t msg_size_,
     errno_assert (rc == 0);
 
     shared_message_memory_allocator &allocator = get_allocator ();
-    if (unlikely (msg_size_ > static_cast<size_t> (allocator.data ()
-                                                   + allocator.size ()
-                                                   - read_from_))) {
+    const unsigned char *allocator_data = allocator.data ();
+    const size_t allocator_size = allocator.size ();
+    const uintptr_t base =
+      reinterpret_cast<uintptr_t> (allocator_data);
+    const uintptr_t end = base + allocator_size;
+    const uintptr_t ptr = reinterpret_cast<uintptr_t> (read_from_);
+    const bool in_allocator = ptr >= base && ptr <= end;
+    const size_t available =
+      in_allocator ? static_cast<size_t> (allocator_data + allocator_size
+                                          - read_from_)
+                   : 0;
+
+    if (unlikely (!in_allocator || msg_size_ > available)) {
         rc = _in_progress.init_size (static_cast<size_t> (msg_size_));
     } else {
         rc = _in_progress.init (const_cast<unsigned char *> (read_from_),

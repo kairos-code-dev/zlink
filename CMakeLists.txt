@@ -187,7 +187,7 @@ set(pkg_config_defines "")
 # ASIO backend is mandatory in zlink - no option needed
 # WebSocket is always enabled - no option needed
 option(WITH_TLS "Build with TLS support (requires OpenSSL)" ON)
-option(WITH_OPENPGM "Build with OpenPGM support (PGM/EPGM transports)" ON)
+option(WITH_OPENPGM "Build with OpenPGM support (PGM/EPGM transports)" OFF)
 
 # ASIO backend is mandatory in zlink
 set(ZMQ_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bundled Boost)")

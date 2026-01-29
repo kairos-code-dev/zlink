@@ -26,7 +26,8 @@ static void close_frames (std::vector<zmq_msg_t> *frames_)
 discovery_t::discovery_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
-    _stop (0)
+    _stop (0),
+    _listeners_in_dispatch (0)
 {
     zmq_assert (_ctx);
 }
@@ -112,6 +113,8 @@ void discovery_t::remove_listener (discovery_listener_t *listener_)
         return;
     scoped_lock_t lock (_sync);
     _listeners.erase (listener_);
+    while (_listeners_in_dispatch > 0)
+        _listeners_cv.wait (&_sync, -1);
 }
 
 int discovery_t::get_providers (const char *service_name_,
@@ -302,6 +305,7 @@ void discovery_t::handle_service_list (const std::vector<zmq_msg_t> &frames_)
 
     std::vector<std::pair<int, std::string> > events;
     std::vector<discovery_listener_t *> listeners;
+    bool dispatch = false;
     {
         scoped_lock_t lock (_sync);
         std::map<uint32_t, uint64_t>::iterator sit =
@@ -383,15 +387,27 @@ void discovery_t::handle_service_list (const std::vector<zmq_msg_t> &frames_)
 
         _services.swap (updated);
         listeners.assign (_listeners.begin (), _listeners.end ());
+        dispatch = !events.empty () && !listeners.empty ();
+        if (dispatch)
+            ++_listeners_in_dispatch;
     }
 
-    for (size_t i = 0; i < events.size (); ++i) {
-        for (size_t l = 0; l < listeners.size (); ++l) {
-            discovery_listener_t *listener = listeners[l];
-            if (!listener)
-                continue;
-            listener->on_discovery_event (events[i].first, events[i].second);
+    if (dispatch) {
+        for (size_t i = 0; i < events.size (); ++i) {
+            for (size_t l = 0; l < listeners.size (); ++l) {
+                discovery_listener_t *listener = listeners[l];
+                if (!listener)
+                    continue;
+                listener->on_discovery_event (events[i].first,
+                                              events[i].second);
+            }
         }
+
+        scoped_lock_t lock (_sync);
+        if (_listeners_in_dispatch > 0)
+            --_listeners_in_dispatch;
+        if (_listeners_in_dispatch == 0)
+            _listeners_cv.broadcast ();
     }
 }
 }

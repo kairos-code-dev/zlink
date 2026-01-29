@@ -14,6 +14,12 @@
 #include <fstream>
 #include <zmq.h>
 
+#if !defined(_WIN32)
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#endif
+
 // --- TLS Socket Options ---
 #ifndef ZMQ_TLS_CERT
 #define ZMQ_TLS_CERT 95
@@ -169,6 +175,47 @@ inline int bench_recv_fast(void *socket_, void *buf_, size_t len_,
 }
 
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {
+    if (transport == "pgm" || transport == "epgm") {
+        if (transport == "pgm") {
+            if (const char *env = std::getenv("BENCH_PGM_ENDPOINT")) {
+                if (*env)
+                    return std::string(env);
+            }
+        } else {
+            if (const char *env = std::getenv("BENCH_EPGM_ENDPOINT")) {
+                if (*env)
+                    return std::string(env);
+            }
+        }
+#if !defined(_WIN32)
+        struct ifaddrs *ifaddr = nullptr;
+        if (getifaddrs(&ifaddr) == 0) {
+            for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+                if (!ifa->ifa_addr)
+                    continue;
+                if (!(ifa->ifa_flags & IFF_UP))
+                    continue;
+                if (!(ifa->ifa_flags & IFF_MULTICAST))
+                    continue;
+                if (ifa->ifa_flags & IFF_LOOPBACK)
+                    continue;
+                if (ifa->ifa_addr->sa_family != AF_INET)
+                    continue;
+                char addr[INET_ADDRSTRLEN];
+                const struct sockaddr_in *sa =
+                  reinterpret_cast<const struct sockaddr_in *>(ifa->ifa_addr);
+                if (inet_ntop(AF_INET, &sa->sin_addr, addr, sizeof(addr))) {
+                    std::string endpoint =
+                      transport + "://" + addr + ";239.192.1.1:5555";
+                    freeifaddrs(ifaddr);
+                    return endpoint;
+                }
+            }
+            freeifaddrs(ifaddr);
+        }
+#endif
+        return std::string();
+    }
     if (transport == "inproc") return "inproc://" + id;
     if (transport == "ipc") return "ipc://*";
     if (transport == "ws") return "ws://127.0.0.1:*";
@@ -321,6 +368,10 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
                                              const std::string& transport,
                                              const std::string& id) {
     std::string endpoint = make_endpoint(transport, id);
+    if (endpoint.empty()) {
+        std::cerr << "No endpoint available for transport " << transport << std::endl;
+        return std::string();
+    }
     if (zmq_bind(socket_, endpoint.c_str()) != 0) {
         std::cerr << "bind failed for " << endpoint << ": "
                   << zmq_strerror(zmq_errno()) << std::endl;

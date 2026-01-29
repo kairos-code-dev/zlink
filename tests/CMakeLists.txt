@@ -52,6 +52,7 @@ set(tests
   routing-id/test_stream_routing_id_size
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
+  monitoring/test_socket_stats_ex
   request/test_request_reply_api
   discovery/test_service_discovery_basic
   spot/test_spot_pubsub_basic
@@ -78,7 +79,7 @@ if(ZMQ_HAVE_IPC)
 endif()
 
 if(ZMQ_HAVE_OPENPGM)
-  list(APPEND tests test_pgm_epgm test_pgm_smoke)
+  list(APPEND tests pgm/test_pgm_epgm pgm/test_pgm_smoke)
 endif()
 
 if(NOT WIN32)

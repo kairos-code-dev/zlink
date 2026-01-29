@@ -6,6 +6,7 @@
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
+#include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
@@ -86,6 +87,8 @@ class discovery_t
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
     std::set<discovery_listener_t *> _listeners;
+    condition_variable_t _listeners_cv;
+    size_t _listeners_in_dispatch;
 
     ZMQ_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };

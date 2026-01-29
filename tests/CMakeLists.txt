@@ -77,6 +77,10 @@ if(ZMQ_HAVE_IPC)
   list(APPEND tests test_ipc_wildcard test_pair_ipc)
 endif()
 
+if(ZMQ_HAVE_OPENPGM)
+  list(APPEND tests test_pgm_epgm)
+endif()
+
 if(NOT WIN32)
   list(
     APPEND

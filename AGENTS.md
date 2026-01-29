@@ -6,7 +6,7 @@
 - `tests/`: functional test suite (Unity), files named `tests/test_*.cpp`.
 - `unittests/`: internal tests named `unittests/unittest_*.cpp`.
 - `build-scripts/`: platform build scripts (e.g., `build-scripts/linux/build.sh`).
-- `benchwithzlink-baseline/` and `perf/`: benchmarks and comparison tooling.
+- `benchwithzlink/` and `perf/`: benchmarks and comparison tooling.
 - `dist/`: packaged build outputs by platform.
 
 ## Build, Test, and Development Commands

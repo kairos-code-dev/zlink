@@ -4,10 +4,12 @@ import os
 import sys
 import math
 
+SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
+
 # Configuration
 BUILD_DIR = "build-bench-asio/bin"
 ZLINK_LIB_DIR = os.path.abspath("build-bench-asio/lib")
-LIBZLINK_LIB_DIR = os.path.abspath("benchwithzlink-baseline/libzlink/libzlink_dist/lib")
+LIBZLINK_LIB_DIR = os.path.join(SCRIPT_DIR, "libzlink", "libzlink_dist", "lib")
 
 # Base environment
 base_env = os.environ.copy()

@@ -49,7 +49,7 @@ Compare baseline zlink (previous version) vs current zlink (new build).
 Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
-  1. Copy previous zlink library to benchwithzlink/baseline_lib/
+  1. Copy previous zlink library to benchwithzlink/baseline/lib/
      - Linux: libzmq.so
      - macOS: libzmq.dylib
      - Windows: libzmq.dll + libzmq.lib
@@ -207,11 +207,16 @@ if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
 fi
 
 # Check baseline library exists when baseline run is requested
-BASELINE_LIB_DIR="${SCRIPT_DIR}/baseline_lib"
+BASELINE_LIB_DIR="${SCRIPT_DIR}/baseline/lib"
+BASELINE_LEGACY_LIB_DIR="${SCRIPT_DIR}/baseline_lib"
+if [[ ! -d "${BASELINE_LIB_DIR}" && -d "${BASELINE_LEGACY_LIB_DIR}" ]]; then
+  echo "Warning: baseline lib dir moved to benchwithzlink/baseline/lib; using legacy baseline_lib." >&2
+  BASELINE_LIB_DIR="${BASELINE_LEGACY_LIB_DIR}"
+fi
 if [[ "${ZLINK_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 1 ]]; then
   if [[ ! -d "${BASELINE_LIB_DIR}" ]]; then
-    echo "Error: baseline_lib directory not found: ${BASELINE_LIB_DIR}" >&2
-    echo "Please create it and copy previous zlink library there." >&2
+    echo "Error: baseline lib directory not found: ${BASELINE_LIB_DIR}" >&2
+    echo "Please create benchwithzlink/baseline/lib and copy previous zlink library there." >&2
     exit 1
   fi
   BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzmq.*)

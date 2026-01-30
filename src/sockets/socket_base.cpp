@@ -279,12 +279,14 @@ int zlink::socket_base_t::socket_stats (zlink_socket_stats_t *stats_)
     scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     memset (stats_, 0, sizeof (*stats_));
-    stats_->msgs_sent = _msgs_sent;
-    stats_->msgs_received = _msgs_received;
-    stats_->bytes_sent = _bytes_sent;
-    stats_->bytes_received = _bytes_received;
-    stats_->msgs_dropped = _msgs_dropped;
-    stats_->monitor_events_dropped = _monitor_events_dropped;
+    if (options.stats_counters) {
+        stats_->msgs_sent = _msgs_sent;
+        stats_->msgs_received = _msgs_received;
+        stats_->bytes_sent = _bytes_sent;
+        stats_->bytes_received = _bytes_received;
+        stats_->msgs_dropped = _msgs_dropped;
+        stats_->monitor_events_dropped = _monitor_events_dropped;
+    }
 
     uint64_t queue_total = 0;
     uint64_t hwm_total = 0;
@@ -317,12 +319,14 @@ int zlink::socket_base_t::socket_stats_ex (zlink_socket_stats_ex_t *stats_)
     scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     memset (stats_, 0, sizeof (*stats_));
-    stats_->msgs_sent = _msgs_sent;
-    stats_->msgs_received = _msgs_received;
-    stats_->bytes_sent = _bytes_sent;
-    stats_->bytes_received = _bytes_received;
-    stats_->msgs_dropped = _msgs_dropped;
-    stats_->monitor_events_dropped = _monitor_events_dropped;
+    if (options.stats_counters) {
+        stats_->msgs_sent = _msgs_sent;
+        stats_->msgs_received = _msgs_received;
+        stats_->bytes_sent = _bytes_sent;
+        stats_->bytes_received = _bytes_received;
+        stats_->msgs_dropped = _msgs_dropped;
+        stats_->monitor_events_dropped = _monitor_events_dropped;
+    }
 
     uint64_t outbound_total = 0;
     uint64_t inbound_total = 0;
@@ -345,9 +349,11 @@ int zlink::socket_base_t::socket_stats_ex (zlink_socket_stats_ex_t *stats_)
     stats_->hwm_reached = static_cast<uint32_t> (hwm_total);
     stats_->peer_count = static_cast<uint32_t> (_pipes.size ());
 
-    stats_->drops_hwm = _drops_hwm;
-    stats_->drops_no_peers = _drops_no_peers;
-    stats_->drops_filter = _drops_filter;
+    if (options.stats_counters) {
+        stats_->drops_hwm = _drops_hwm;
+        stats_->drops_no_peers = _drops_no_peers;
+        stats_->drops_filter = _drops_filter;
+    }
     stats_->last_send_ms = options.stats_timestamps ? _last_send_ms : 0;
     stats_->last_recv_ms = options.stats_timestamps ? _last_recv_ms : 0;
 
@@ -1299,13 +1305,16 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
     msg_->reset_metadata ();
 
-    const size_t msg_size = msg_->size ();
+    const bool stats_enabled = options.stats_counters;
+    const size_t msg_size = stats_enabled ? msg_->size () : 0;
 
     //  Try to send the message using method in each socket class
     rc = xsend (msg_);
     if (rc == 0) {
-        _msgs_sent++;
-        _bytes_sent += msg_size;
+        if (stats_enabled) {
+            _msgs_sent++;
+            _bytes_sent += msg_size;
+        }
         if (options.stats_timestamps)
             _last_send_ms = _clock.now_ms ();
         return 0;
@@ -1329,11 +1338,13 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     //  In case of non-blocking send we'll simply propagate
     //  the error - including EAGAIN - up the stack.
     if ((flags_ & ZLINK_DONTWAIT) || options.sndtimeo == 0) {
-        _msgs_dropped++;
-        if (_pipes.empty ())
-            _drops_no_peers++;
-        else
-            _drops_hwm++;
+        if (stats_enabled) {
+            _msgs_dropped++;
+            if (_pipes.empty ())
+                _drops_no_peers++;
+            else
+                _drops_hwm++;
+        }
         return -1;
     }
 
@@ -1351,8 +1362,10 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
         }
         rc = xsend (msg_);
         if (rc == 0) {
-            _msgs_sent++;
-            _bytes_sent += msg_size;
+            if (stats_enabled) {
+                _msgs_sent++;
+                _bytes_sent += msg_size;
+            }
             if (options.stats_timestamps)
                 _last_send_ms = _clock.now_ms ();
             break;
@@ -1388,6 +1401,8 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
         return -1;
     }
 
+    const bool stats_enabled = options.stats_counters;
+
     //  Once every inbound_poll_rate messages check for signals and process
     //  incoming commands. This happens only if we are not polling altogether
     //  because there are messages available all the time. If poll occurs,
@@ -1412,8 +1427,10 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     //  If we have the message, return immediately.
     if (rc == 0) {
         extract_flags (msg_);
-        _msgs_received++;
-        _bytes_received += msg_->size ();
+        if (stats_enabled) {
+            _msgs_received++;
+            _bytes_received += msg_->size ();
+        }
         if (options.stats_timestamps)
             _last_recv_ms = _clock.now_ms ();
         return 0;
@@ -1434,8 +1451,10 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
             return rc;
         }
         extract_flags (msg_);
-        _msgs_received++;
-        _bytes_received += msg_->size ();
+        if (stats_enabled) {
+            _msgs_received++;
+            _bytes_received += msg_->size ();
+        }
         if (options.stats_timestamps)
             _last_recv_ms = _clock.now_ms ();
 
@@ -1473,8 +1492,10 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     }
 
     extract_flags (msg_);
-    _msgs_received++;
-    _bytes_received += msg_->size ();
+    if (stats_enabled) {
+        _msgs_received++;
+        _bytes_received += msg_->size ();
+    }
     if (options.stats_timestamps)
         _last_recv_ms = _clock.now_ms ();
     return 0;

@@ -10,6 +10,14 @@ static void test_stats_ex_send_recv ()
     void *sender = test_context_socket (ZLINK_PAIR);
     void *receiver = test_context_socket (ZLINK_PAIR);
 
+    const int counters = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sender, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (receiver, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
+
     const int enable = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sender, ZLINK_STATS_TIMESTAMPS, &enable, sizeof (enable)));
@@ -48,6 +56,10 @@ static void test_stats_ex_send_recv ()
 static void test_stats_ex_drop_no_peers ()
 {
     void *sender = test_context_socket (ZLINK_DEALER);
+    const int counters = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sender, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
     const int sndtimeo = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sender, ZLINK_SNDTIMEO, &sndtimeo, sizeof (sndtimeo)));
@@ -69,6 +81,14 @@ static void test_stats_ex_drop_hwm ()
 {
     void *sender = test_context_socket (ZLINK_PAIR);
     void *receiver = test_context_socket (ZLINK_PAIR);
+
+    const int counters = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (sender, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (receiver, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
 
     const int hwm = 1;
     TEST_ASSERT_SUCCESS_ERRNO (

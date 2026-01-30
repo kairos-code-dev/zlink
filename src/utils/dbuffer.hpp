@@ -5,7 +5,6 @@
 
 #include <stdlib.h>
 #include <stddef.h>
-#include <algorithm>
 
 #include "utils/mutex.hpp"
 #include "core/msg.hpp"
@@ -91,13 +90,6 @@ template <> class dbuffer_t<msg_t>
         scoped_lock_t lock (_sync);
         return (*fn_) (*_front);
     }
-
-    size_t count () const
-    {
-        scoped_lock_t lock (_sync);
-        return _has_msg ? 1 : 0;
-    }
-
 
   private:
     msg_t _storage[2];

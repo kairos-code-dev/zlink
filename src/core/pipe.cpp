@@ -163,18 +163,6 @@ uint64_t zlink::pipe_t::get_msgs_read () const
     return _msgs_read;
 }
 
-uint64_t zlink::pipe_t::get_outbound_queue_count () const
-{
-    return _msgs_written - _peers_msgs_read;
-}
-
-uint64_t zlink::pipe_t::get_inbound_queue_count () const
-{
-    if (!_in_pipe)
-        return 0;
-    return static_cast<uint64_t> (_in_pipe->count ());
-}
-
 uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;

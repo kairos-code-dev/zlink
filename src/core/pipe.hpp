@@ -69,8 +69,6 @@ class pipe_t ZLINK_FINAL : public object_t,
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
-    uint64_t get_outbound_queue_count () const;
-    uint64_t get_inbound_queue_count () const;
     uint64_t get_connected_time () const;
 
     //  Returns true if there is at least one message to read in the pipe.

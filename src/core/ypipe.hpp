@@ -4,7 +4,6 @@
 #define __ZLINK_YPIPE_HPP_INCLUDED__
 
 #include "utils/atomic_ptr.hpp"
-#include "utils/atomic_counter.hpp"
 #include "core/yqueue.hpp"
 #include "core/ypipe_base.hpp"
 
@@ -30,7 +29,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
         //  (unless pipe is dead, in which case c is set to NULL).
         _r = _w = _f = &_queue.back ();
         _c.set (&_queue.back ());
-        _count.set (0);
     }
 
     //  Following function (write) deliberately copies uninitialised data
@@ -51,7 +49,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
         //  Place the value to the queue, add new terminator element.
         _queue.back () = value_;
         _queue.push ();
-        _count.add (1);
 
         //  Move the "flush up to here" pointer.
         if (!incomplete_)
@@ -70,7 +67,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
             return false;
         _queue.unpush ();
         *value_ = _queue.back ();
-        _count.sub (1);
         return true;
     }
 
@@ -137,7 +133,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
         //  Return it to the caller.
         *value_ = _queue.front ();
         _queue.pop ();
-        _count.sub (1);
         return true;
     }
 
@@ -151,8 +146,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
 
         return (*fn_) (_queue.front ());
     }
-
-    size_t count () const { return _count.get (); }
 
   protected:
     //  Allocation-efficient queue to store pipe items.
@@ -177,9 +170,6 @@ template <typename T, int N> class ypipe_t ZLINK_FINAL : public ypipe_base_t<T>
     //  reader is asleep. This pointer should be always accessed using
     //  atomic operations.
     atomic_ptr_t<T> _c;
-
-    //  Number of items currently queued.
-    atomic_counter_t _count;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (ypipe_t)
 };

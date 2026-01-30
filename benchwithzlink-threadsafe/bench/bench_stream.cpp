@@ -76,8 +76,8 @@ inline void send_stream_msg(void* socket,
                             size_t len) {
     if (routing_id.empty())
         return;
-    bench_send_fast(socket, routing_id.data(), routing_id.size(), ZLINK_SNDMORE, "stream id send");
-    bench_send_fast(socket, data, len, 0, "stream payload send");
+    bench_send_multipart(socket, routing_id.data(), routing_id.size(),
+                         data, len, "stream id send", "stream payload send");
 }
 
 // Helper: Receive STREAM message
@@ -208,9 +208,9 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     });
 
     sw.start();
-    for (int i = 0; i < msg_count; ++i) {
+    bench_run_senders(msg_count, [&]() {
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
-    }
+    });
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 

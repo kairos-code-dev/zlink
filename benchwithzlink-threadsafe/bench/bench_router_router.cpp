@@ -129,12 +129,11 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     });
 
     sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        // We use zlink_send_const if available for zero-copy like behavior on send,
-        // but here standard send is fine.
-        bench_send_fast(router2, "ROUTER1", 7, ZLINK_SNDMORE, "thr send id");
-        bench_send_fast(router2, buffer.data(), msg_size, 0, "thr send data");
-    }
+    bench_run_senders(msg_count, [&]() {
+        bench_send_multipart(router2, "ROUTER1", 7,
+                             buffer.data(), msg_size,
+                             "thr send id", "thr send data");
+    });
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 

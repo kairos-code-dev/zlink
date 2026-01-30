@@ -73,9 +73,9 @@ void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_co
     });
 
     sw.start();
-    for (int i = 0; i < msg_count; ++i) {
+    bench_run_senders(msg_count, [&]() {
         bench_send_fast(s2, buffer.data(), msg_size, 0, "thr send");
-    }
+    });
     receiver.join();
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 

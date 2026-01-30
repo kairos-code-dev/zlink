@@ -96,7 +96,7 @@ def parse_env_list(name, cast_fn):
 _env_transports = parse_env_list("BENCH_TRANSPORTS", str)
 
 # Default transports for ZMP sockets (non-STREAM)
-TRANSPORTS = ["tcp"]
+TRANSPORTS = ["tcp", "ipc", "inproc"]
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp"]

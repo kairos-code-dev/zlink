@@ -1,6 +1,7 @@
 #ifndef BENCH_COMMON_HPP
 #define BENCH_COMMON_HPP
 
+#include <atomic>
 #include <chrono>
 #include <vector>
 #include <string>
@@ -12,6 +13,9 @@
 #include <iomanip>
 #include <thread>
 #include <fstream>
+#include <deque>
+#include <mutex>
+#include <condition_variable>
 #include <zlink.h>
 
 #if !defined(_WIN32)
@@ -180,6 +184,180 @@ inline int bench_recv_fast(void *socket_, void *buf_, size_t len_,
     if (!bench_debug_enabled())
         return zlink_recv(socket_, buf_, len_, flags_);
     return bench_recv(socket_, buf_, len_, flags_, tag_);
+}
+
+inline int resolve_send_threads() {
+    static const int threads = []() {
+        const char *env = std::getenv("BENCH_SEND_THREADS");
+        if (!env)
+            return 4;
+        const int val = std::atoi(env);
+        return val > 0 ? val : 1;
+    }();
+    return threads;
+}
+
+inline size_t resolve_queue_size() {
+    static const size_t qsize = []() {
+        const char *env = std::getenv("BENCH_QUEUE_SIZE");
+        if (!env)
+            return static_cast<size_t>(65536);
+        errno = 0;
+        const long val = std::strtol(env, NULL, 10);
+        if (errno != 0 || val < 0)
+            return static_cast<size_t>(65536);
+        return static_cast<size_t>(val);
+    }();
+    return qsize;
+}
+
+inline int resolve_send_batch() {
+    static const int batch = []() {
+        const char *env = std::getenv("BENCH_SEND_BATCH");
+        if (!env)
+            return 64;
+        const int val = std::atoi(env);
+        return val > 0 ? val : 1;
+    }();
+    return batch;
+}
+
+class bench_send_queue_t {
+  public:
+    explicit bench_send_queue_t(size_t max_size_)
+        : _max_size(max_size_), _pending(0), _closed(false) {}
+
+    void push(int count) {
+        std::unique_lock<std::mutex> lock(_mutex);
+        while (!_closed && _max_size > 0
+               && (_pending + static_cast<size_t>(count) > _max_size)) {
+            _cv.wait(lock);
+        }
+        if (_closed)
+            return;
+        _queue.push_back(count);
+        _pending += static_cast<size_t>(count);
+        _cv.notify_one();
+    }
+
+    bool pop(int &count) {
+        std::unique_lock<std::mutex> lock(_mutex);
+        while (_queue.empty() && !_closed) {
+            _cv.wait(lock);
+        }
+        if (_queue.empty())
+            return false;
+        count = _queue.front();
+        _queue.pop_front();
+        if (_pending >= static_cast<size_t>(count))
+            _pending -= static_cast<size_t>(count);
+        _cv.notify_all();
+        return true;
+    }
+
+    void close() {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _closed = true;
+        _cv.notify_all();
+    }
+
+  private:
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    std::deque<int> _queue;
+    size_t _max_size;
+    size_t _pending;
+    bool _closed;
+};
+
+template <typename SendFn>
+inline void bench_run_senders(int msg_count, SendFn send_fn) {
+    const int threads = resolve_send_threads();
+    if (threads <= 1) {
+        for (int i = 0; i < msg_count; ++i) {
+            send_fn();
+        }
+        return;
+    }
+
+#if defined(BENCH_THREADSAFE)
+    const int batch = resolve_send_batch();
+    std::atomic<int> counter(0);
+    std::vector<std::thread> producers;
+    producers.reserve(threads);
+    for (int t = 0; t < threads; ++t) {
+        producers.push_back(std::thread([&]() {
+            while (true) {
+                const int start = counter.fetch_add(batch);
+                if (start >= msg_count)
+                    break;
+                int end = start + batch;
+                if (end > msg_count)
+                    end = msg_count;
+                for (int i = start; i < end; ++i) {
+                    send_fn();
+                }
+            }
+        }));
+    }
+    for (size_t i = 0; i < producers.size(); ++i) {
+        producers[i].join();
+    }
+#else
+    const int batch = resolve_send_batch();
+    bench_send_queue_t queue(resolve_queue_size());
+
+    std::thread sender([&]() {
+        int count = 0;
+        while (queue.pop(count)) {
+            for (int i = 0; i < count; ++i) {
+                send_fn();
+            }
+        }
+    });
+
+    std::vector<std::thread> producers;
+    producers.reserve(threads);
+    const int base = msg_count / threads;
+    const int rem = msg_count % threads;
+    for (int t = 0; t < threads; ++t) {
+        const int quota = base + (t < rem ? 1 : 0);
+        producers.push_back(std::thread([&, quota]() {
+            int remaining = quota;
+            while (remaining > 0) {
+                const int chunk = remaining < batch ? remaining : batch;
+                queue.push(chunk);
+                remaining -= chunk;
+            }
+        }));
+    }
+
+    for (size_t i = 0; i < producers.size(); ++i) {
+        producers[i].join();
+    }
+    queue.close();
+    sender.join();
+#endif
+}
+
+inline void bench_send_multipart(void *socket_,
+                                 const void *part1_,
+                                 size_t len1_,
+                                 const void *part2_,
+                                 size_t len2_,
+                                 const char *tag1_,
+                                 const char *tag2_) {
+#if defined(BENCH_THREADSAFE)
+    if (resolve_send_threads() > 1) {
+        static std::mutex multipart_mutex;
+        std::lock_guard<std::mutex> lock(multipart_mutex);
+        bench_send_fast(socket_, part1_, len1_, ZLINK_SNDMORE, tag1_);
+        bench_send_fast(socket_, part2_, len2_, 0, tag2_);
+        return;
+    }
+#endif
+    bench_send_fast(socket_, part1_, len1_, ZLINK_SNDMORE, tag1_);
+    bench_send_fast(socket_, part2_, len2_, 0, tag2_);
 }
 
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {

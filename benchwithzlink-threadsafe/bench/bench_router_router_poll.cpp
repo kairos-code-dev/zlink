@@ -212,10 +212,11 @@ void run_router_router_poll(const std::string &transport,
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));  // Let receiver start
     sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        bench_send_fast(router2, "ROUTER1", 7, ZLINK_SNDMORE, "thr send id");
-        bench_send_fast(router2, buffer.data(), msg_size, 0, "thr send data");
-    }
+    bench_run_senders(msg_count, [&]() {
+        bench_send_multipart(router2, "ROUTER1", 7,
+                             buffer.data(), msg_size,
+                             "thr send id", "thr send data");
+    });
     if (debug) {
         std::cerr << "DEBUG: Sent all " << msg_count
                   << " messages, waiting for receiver..." << std::endl;

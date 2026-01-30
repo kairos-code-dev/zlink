@@ -214,7 +214,7 @@ void *zlink_socket_threadsafe (void *ctx_, int type_)
     }
 
     zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_);
-    zlink::socket_base_t *s = ctx->create_socket (type_);
+    zlink::socket_base_t *s = ctx->create_socket (type_, true);
     if (!s)
         return NULL;
 
@@ -1679,13 +1679,21 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
     }
 
     zlink::fast_vector_t<pollfd, ZLINK_POLLITEMS_DFLT> pollfds (nitems_);
+    zlink::fast_vector_t<zlink::socket_base_t *, ZLINK_POLLITEMS_DFLT>
+      sockets (nitems_);
     bool socket_fd_unavailable = false;
 
     for (int i = 0; i != nitems_; i++) {
         if (items_[i].socket) {
+            zlink::socket_base_t *socket =
+              static_cast<zlink::socket_base_t *> (items_[i].socket);
+            if (!socket->check_tag ()) {
+                errno = ENOTSOCK;
+                return -1;
+            }
+            sockets[i] = socket;
             size_t zlink_fd_size = sizeof (zlink::fd_t);
-            if (zlink_getsockopt (items_[i].socket, ZLINK_FD, &pollfds[i].fd,
-                                &zlink_fd_size)
+            if (socket->getsockopt (ZLINK_FD, &pollfds[i].fd, &zlink_fd_size)
                 == -1) {
                 if (errno == EINVAL) {
                     socket_fd_unavailable = true;
@@ -1698,6 +1706,7 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
             pollfds[i].events = items_[i].events ? POLLIN : 0;
         }
         else {
+            sockets[i] = NULL;
             pollfds[i].fd = items_[i].fd;
             pollfds[i].events =
               (items_[i].events & ZLINK_POLLIN ? POLLIN : 0)
@@ -1740,11 +1749,9 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
 
         for (int i = 0; i != nitems_; i++) {
             items_[i].revents = 0;
-            if (items_[i].socket) {
-                size_t zlink_events_size = sizeof (uint32_t);
-                uint32_t zlink_events;
-                if (zlink_getsockopt (items_[i].socket, ZLINK_EVENTS, &zlink_events,
-                                    &zlink_events_size)
+            if (sockets[i]) {
+                uint32_t zlink_events = 0;
+                if (sockets[i]->get_events (items_[i].events, &zlink_events)
                     == -1) {
                     return -1;
                 }

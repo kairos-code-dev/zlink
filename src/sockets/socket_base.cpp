@@ -128,33 +128,34 @@ void zlink::socket_base_t::set_threadsafe_proxy (thread_safe_socket_t *proxy_)
 zlink::socket_base_t *zlink::socket_base_t::create (int type_,
                                                 class ctx_t *parent_,
                                                 uint32_t tid_,
-                                                int sid_)
+                                                int sid_,
+                                                bool thread_safe_)
 {
     socket_base_t *s = NULL;
     switch (type_) {
         case ZLINK_PAIR:
-            s = new (std::nothrow) pair_t (parent_, tid_, sid_);
+            s = new (std::nothrow) pair_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_PUB:
-            s = new (std::nothrow) pub_t (parent_, tid_, sid_);
+            s = new (std::nothrow) pub_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_SUB:
-            s = new (std::nothrow) sub_t (parent_, tid_, sid_);
+            s = new (std::nothrow) sub_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_DEALER:
-            s = new (std::nothrow) dealer_t (parent_, tid_, sid_);
+            s = new (std::nothrow) dealer_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_ROUTER:
-            s = new (std::nothrow) router_t (parent_, tid_, sid_);
+            s = new (std::nothrow) router_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_STREAM:
-            s = new (std::nothrow) stream_t (parent_, tid_, sid_);
+            s = new (std::nothrow) stream_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_XPUB:
-            s = new (std::nothrow) xpub_t (parent_, tid_, sid_);
+            s = new (std::nothrow) xpub_t (parent_, tid_, sid_, thread_safe_);
             break;
         case ZLINK_XSUB:
-            s = new (std::nothrow) xsub_t (parent_, tid_, sid_);
+            s = new (std::nothrow) xsub_t (parent_, tid_, sid_, thread_safe_);
             break;
         default:
             errno = EINVAL;
@@ -554,11 +555,23 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZLINK_EVENTS) {
-        const int rc = process_commands (0, false);
-        if (rc != 0 && (errno == EINTR || errno == ETERM)) {
-            return -1;
+        if (_thread_safe) {
+            mailbox_safe_t *mailbox =
+              static_cast<mailbox_safe_t *> (_mailbox);
+            if (mailbox->has_pending ()) {
+                const int rc = process_commands (0, false);
+                if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+                    return -1;
+                }
+                errno_assert (rc == 0);
+            }
+        } else {
+            const int rc = process_commands (0, false);
+            if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+                return -1;
+            }
+            errno_assert (rc == 0);
         }
-        errno_assert (rc == 0);
 
         return do_getsockopt<int> (optval_, optvallen_,
                                    (has_out () ? ZLINK_POLLOUT : 0)
@@ -574,6 +587,47 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     return options.getsockopt (option_, optval_, optvallen_);
+}
+
+int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
+{
+    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+
+    if (!out_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (_thread_safe) {
+        mailbox_safe_t *mailbox =
+          static_cast<mailbox_safe_t *> (_mailbox);
+        if (mailbox->has_pending ()) {
+            const int rc = process_commands (0, false);
+            if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+                return -1;
+            }
+            errno_assert (rc == 0);
+        }
+    } else {
+        const int rc = process_commands (0, false);
+        if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+            return -1;
+        }
+        errno_assert (rc == 0);
+    }
+
+    uint32_t events = 0;
+    if (events_ & ZLINK_POLLOUT) {
+        if (has_out ())
+            events |= ZLINK_POLLOUT;
+    }
+    if (events_ & ZLINK_POLLIN) {
+        if (has_in ())
+            events |= ZLINK_POLLIN;
+    }
+
+    *out_ = events;
+    return 0;
 }
 
 int zlink::socket_base_t::join (const char *group_)
@@ -2033,8 +2087,9 @@ bool zlink::socket_base_t::is_ctx_terminated () const
 
 zlink::routing_socket_base_t::routing_socket_base_t (class ctx_t *parent_,
                                                    uint32_t tid_,
-                                                   int sid_) :
-    socket_base_t (parent_, tid_, sid_)
+                                                   int sid_,
+                                                   bool thread_safe_) :
+    socket_base_t (parent_, tid_, sid_, thread_safe_)
 {
 }
 

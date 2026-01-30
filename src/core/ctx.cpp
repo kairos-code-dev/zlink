@@ -427,7 +427,8 @@ void zlink::ctx_t::threadsafe_worker (void *arg_)
     self->_threadsafe_io_context.run ();
 }
 
-zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
+zlink::socket_base_t *zlink::ctx_t::create_socket (int type_,
+                                                 bool thread_safe_)
 {
     scoped_lock_t locker (_slot_sync);
 
@@ -457,7 +458,8 @@ zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
     const int sid = (static_cast<int> (max_socket_id.add (1))) + 1;
 
     //  Create the socket and register its mailbox.
-    socket_base_t *s = socket_base_t::create (type_, this, slot, sid);
+    socket_base_t *s =
+      socket_base_t::create (type_, this, slot, sid, thread_safe_);
     if (!s) {
         _empty_slots.push_back (slot);
         return NULL;

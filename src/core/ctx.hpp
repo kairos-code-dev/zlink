@@ -94,7 +94,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int get (int option_);
 
     //  Create and destroy a socket.
-    zlink::socket_base_t *create_socket (int type_);
+    zlink::socket_base_t *create_socket (int type_, bool thread_safe_ = false);
     void destroy_socket (zlink::socket_base_t *socket_);
 
     //  Send command to the destination thread.

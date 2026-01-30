@@ -7,8 +7,11 @@
 #include "sockets/xsub.hpp"
 #include "utils/err.hpp"
 
-zlink::xsub_t::xsub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
-    socket_base_t (parent_, tid_, sid_),
+zlink::xsub_t::xsub_t (class ctx_t *parent_,
+                     uint32_t tid_,
+                     int sid_,
+                     bool thread_safe_) :
+    socket_base_t (parent_, tid_, sid_, thread_safe_),
     _verbose_unsubs (false),
     _has_message (false),
     _more_send (false),

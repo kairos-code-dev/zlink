@@ -22,7 +22,10 @@ class io_thread_t;
 class xsub_t : public socket_base_t
 {
   public:
-    xsub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    xsub_t (zlink::ctx_t *parent_,
+            uint32_t tid_,
+            int sid_,
+            bool thread_safe_ = false);
     ~xsub_t () ZLINK_OVERRIDE;
 
   protected:

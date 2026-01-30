@@ -61,8 +61,6 @@ class thread_safe_socket_t
                  int event_version_,
                  int type_);
 
-    int socket_stats (zlink_socket_stats_t *stats_);
-    int socket_stats_ex (zlink_socket_stats_ex_t *stats_);
     int socket_peer_info (const zlink_routing_id_t *routing_id_,
                           zlink_peer_info_t *info_);
     int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);

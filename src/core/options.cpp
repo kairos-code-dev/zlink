@@ -181,8 +181,6 @@ zlink::options_t::options_t () :
     in_batch_size (8192),
     out_batch_size (8192),
     zero_copy (true),
-    stats_timestamps (false),
-    stats_counters (false),
     monitor_event_version (1),
     busy_poll (0),
     zmp_metadata (false)
@@ -408,14 +406,6 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_ZMP_METADATA:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &zmp_metadata);
-
-        case ZLINK_STATS_TIMESTAMPS:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &stats_timestamps);
-
-        case ZLINK_STATS_COUNTERS:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &stats_counters);
 
         case ZLINK_HEARTBEAT_IVL:
             if (is_int && value >= 0) {
@@ -734,20 +724,6 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_ZMP_METADATA:
             if (is_int) {
                 *value = zmp_metadata ? 1 : 0;
-                return 0;
-            }
-            break;
-
-        case ZLINK_STATS_TIMESTAMPS:
-            if (is_int) {
-                *value = stats_timestamps ? 1 : 0;
-                return 0;
-            }
-            break;
-
-        case ZLINK_STATS_COUNTERS:
-            if (is_int) {
-                *value = stats_counters ? 1 : 0;
                 return 0;
             }
             break;

@@ -315,40 +315,6 @@ int zlink::thread_safe_socket_t::monitor (const char *endpoint_,
     return rc;
 }
 
-int zlink::thread_safe_socket_t::socket_stats (zlink_socket_stats_t *stats_)
-{
-    int err = 0;
-    const int rc = dispatch<int> (
-      [this, stats_] () {
-          if (!_socket) {
-              errno = ENOTSOCK;
-              return -1;
-          }
-          return _socket->socket_stats (stats_);
-      },
-      &err);
-    if (rc == -1)
-        errno = err;
-    return rc;
-}
-
-int zlink::thread_safe_socket_t::socket_stats_ex (zlink_socket_stats_ex_t *stats_)
-{
-    int err = 0;
-    const int rc = dispatch<int> (
-      [this, stats_] () {
-          if (!_socket) {
-              errno = ENOTSOCK;
-              return -1;
-          }
-          return _socket->socket_stats_ex (stats_);
-      },
-      &err);
-    if (rc == -1)
-        errno = err;
-    return rc;
-}
-
 int zlink::thread_safe_socket_t::socket_peer_info (
   const zlink_routing_id_t *routing_id_, zlink_peer_info_t *info_)
 {

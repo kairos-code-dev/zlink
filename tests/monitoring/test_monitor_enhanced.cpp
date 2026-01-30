@@ -86,7 +86,7 @@ void test_monitor_open_and_connection_ready ()
     test_context_socket_close_zero_linger (server);
 }
 
-void test_metrics_and_peer_enumeration ()
+void test_peer_enumeration ()
 {
     void *server = test_context_socket (ZLINK_ROUTER);
     void *client = test_context_socket (ZLINK_DEALER);
@@ -101,11 +101,6 @@ void test_metrics_and_peer_enumeration ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_CONNECTION_READY, NULL));
-
-    const int counters = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_STATS_COUNTERS, &counters,
-                        sizeof (counters)));
 
     const int peer_count = zlink_socket_peer_count (server);
     TEST_ASSERT_TRUE (peer_count >= 1);
@@ -135,11 +130,6 @@ void test_metrics_and_peer_enumeration ()
     send_string_expect_success (server, payload, 0);
     recv_string_expect_success (client, payload, 0);
 
-    zlink_socket_stats_t stats;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_socket_stats (server, &stats));
-    TEST_ASSERT_TRUE (stats.msgs_received >= 1);
-    TEST_ASSERT_TRUE (stats.msgs_sent >= 1);
-
     zlink_socket_monitor (server, NULL, 0);
     int linger = 0;
     zlink_setsockopt (mon, ZLINK_LINGER, &linger, sizeof (linger));
@@ -157,6 +147,6 @@ int main ()
     UNITY_BEGIN ();
     RUN_TEST (test_auto_routing_id_generation);
     RUN_TEST (test_monitor_open_and_connection_ready);
-    RUN_TEST (test_metrics_and_peer_enumeration);
+    RUN_TEST (test_peer_enumeration);
     return UNITY_END ();
 }

@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Removed MinGW/Cygwin Makefiles (Makefile.mingw32, Makefile.cygwin, README.cygwin.md)
 - **CMake is now the only supported build system**
 
+**Socket Statistics API**
+- Removed `zlink_socket_stats` and `zlink_socket_stats_ex` APIs
+- Removed `ZLINK_STATS_COUNTERS` and `ZLINK_STATS_TIMESTAMPS` socket options
+
 **Rationale:**
 - CMake already supports all target platforms (Windows, Linux, macOS)
 - Legacy build files referenced removed source files (req.cpp, pgm_socket.cpp, etc.)

@@ -27,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+**Context Defaults**
+- Changed default IO thread count to 2 (`ZLINK_IO_THREADS_DFLT`).
+
 **Build Scripts**
 - Updated 4 CI/CD scripts to use CMake instead of autotools:
   - ci_build.sh - Main CI build script

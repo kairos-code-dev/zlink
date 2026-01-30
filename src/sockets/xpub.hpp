@@ -20,7 +20,10 @@ class io_thread_t;
 class xpub_t : public socket_base_t
 {
   public:
-    xpub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    xpub_t (zlink::ctx_t *parent_,
+            uint32_t tid_,
+            int sid_,
+            bool thread_safe_ = false);
     ~xpub_t () ZLINK_OVERRIDE;
 
     //  Implementations of virtual functions from socket_base_t.

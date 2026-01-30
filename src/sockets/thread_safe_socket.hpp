@@ -4,6 +4,7 @@
 #define __ZLINK_THREAD_SAFE_SOCKET_HPP_INCLUDED__
 
 #include <boost/asio.hpp>
+#include <atomic>
 #include <errno.h>
 #include <stddef.h>
 #include <chrono>
@@ -231,7 +232,7 @@ class thread_safe_socket_t
                        routing_id_key_hash,
                        routing_id_key_equal>
       _non_correlate_by_rid;
-    zlink_server_cb_fn _request_handler;
+    std::atomic<zlink_server_cb_fn> _request_handler;
     bool _in_request_handler;
     zlink_routing_id_t _current_routing_id;
     uint64_t _current_request_id;

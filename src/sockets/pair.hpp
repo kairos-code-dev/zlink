@@ -17,7 +17,10 @@ class io_thread_t;
 class pair_t ZLINK_FINAL : public socket_base_t
 {
   public:
-    pair_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    pair_t (zlink::ctx_t *parent_,
+            uint32_t tid_,
+            int sid_,
+            bool thread_safe_ = false);
     ~pair_t ();
 
     //  Overrides of functions from socket_base_t.

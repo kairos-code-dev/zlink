@@ -6,8 +6,11 @@
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 
-zlink::pub_t::pub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
-    xpub_t (parent_, tid_, sid_)
+zlink::pub_t::pub_t (class ctx_t *parent_,
+                   uint32_t tid_,
+                   int sid_,
+                   bool thread_safe_) :
+    xpub_t (parent_, tid_, sid_, thread_safe_)
 {
     options.type = ZLINK_PUB;
 }

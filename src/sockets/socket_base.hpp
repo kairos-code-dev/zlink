@@ -52,7 +52,11 @@ class socket_base_t : public own_t,
 
     //  Create a socket of a specified type.
     static socket_base_t *
-    create (int type_, zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    create (int type_,
+            zlink::ctx_t *parent_,
+            uint32_t tid_,
+            int sid_,
+            bool thread_safe_ = false);
 
     //  Returns the mailbox associated with this socket.
     i_mailbox *get_mailbox () const;
@@ -64,6 +68,7 @@ class socket_base_t : public own_t,
     //  Interface for communication with the API layer.
     int setsockopt (int option_, const void *optval_, size_t optvallen_);
     int getsockopt (int option_, void *optval_, size_t *optvallen_);
+    int get_events (int events_, uint32_t *out_);
     int bind (const char *endpoint_uri_);
     int connect (const char *endpoint_uri_);
     int term_endpoint (const char *endpoint_uri_);
@@ -355,7 +360,10 @@ class socket_base_t : public own_t,
 class routing_socket_base_t : public socket_base_t
 {
   protected:
-    routing_socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_);
+    routing_socket_base_t (class ctx_t *parent_,
+                           uint32_t tid_,
+                           int sid_,
+                           bool thread_safe_ = false);
     ~routing_socket_base_t () ZLINK_OVERRIDE;
 
     // methods from socket_base_t

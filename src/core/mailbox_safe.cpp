@@ -20,6 +20,7 @@ zlink::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
     _handler_arg = NULL;
     _pre_post = NULL;
     _scheduled.store (false, std::memory_order_release);
+    _has_pending.store (false, std::memory_order_release);
 }
 
 zlink::mailbox_safe_t::~mailbox_safe_t ()
@@ -58,6 +59,7 @@ void zlink::mailbox_safe_t::send (const command_t &cmd_)
     _sync->lock ();
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
+    _has_pending.store (true, std::memory_order_release);
     if (!ok) {
         _cond_var.broadcast ();
 
@@ -76,14 +78,17 @@ void zlink::mailbox_safe_t::send (const command_t &cmd_)
 int zlink::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
 {
     //  Try to get the command straight away.
-    if (_cpipe.read (cmd_))
+    if (_cpipe.read (cmd_)) {
+        if (!_cpipe.check_read ())
+            _has_pending.store (false, std::memory_order_release);
         return 0;
+    }
 
-    //  If the timeout is zero, it will be quicker to release the lock, giving other a chance to send a command
-    //  and immediately relock it.
+    //  If the timeout is zero, return immediately without waiting.
     if (timeout_ == 0) {
-        _sync->unlock ();
-        _sync->lock ();
+        _has_pending.store (false, std::memory_order_release);
+        errno = EAGAIN;
+        return -1;
     } else {
         //  Wait for signal from the command sender.
         const int rc = _cond_var.wait (_sync, timeout_);
@@ -97,11 +102,19 @@ int zlink::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
     const bool ok = _cpipe.read (cmd_);
 
     if (!ok) {
+        _has_pending.store (false, std::memory_order_release);
         errno = EAGAIN;
         return -1;
     }
 
+    if (!_cpipe.check_read ())
+        _has_pending.store (false, std::memory_order_release);
     return 0;
+}
+
+bool zlink::mailbox_safe_t::has_pending () const
+{
+    return _has_pending.load (std::memory_order_acquire);
 }
 
 void zlink::mailbox_safe_t::set_io_context (

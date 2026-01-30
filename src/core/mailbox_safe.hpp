@@ -34,6 +34,7 @@ class mailbox_safe_t ZLINK_FINAL : public i_mailbox
 
     void send (const command_t &cmd_);
     int recv (command_t *cmd_, int timeout_);
+    bool has_pending () const;
 
     // Add signaler to mailbox which will be called when a message is ready
     void add_signaler (signaler_t *signaler_);
@@ -77,6 +78,7 @@ class mailbox_safe_t ZLINK_FINAL : public i_mailbox
     void *_handler_arg;
     mailbox_pre_post_t _pre_post;
     std::atomic<bool> _scheduled;
+    std::atomic<bool> _has_pending;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (mailbox_safe_t)
 };

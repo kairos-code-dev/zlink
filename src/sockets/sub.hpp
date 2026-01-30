@@ -15,7 +15,10 @@ class socket_base_t;
 class sub_t ZLINK_FINAL : public xsub_t
 {
   public:
-    sub_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
+    sub_t (zlink::ctx_t *parent_,
+           uint32_t tid_,
+           int sid_,
+           bool thread_safe_ = false);
     ~sub_t ();
 
   protected:

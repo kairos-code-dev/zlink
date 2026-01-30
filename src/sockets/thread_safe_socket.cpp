@@ -65,7 +65,7 @@ int zlink::thread_safe_socket_t::close ()
           if (!_socket)
               return 0;
           cancel_all_requests_internal (ECANCELED);
-          _request_handler = NULL;
+          _request_handler.store (NULL, std::memory_order_release);
           _request_pump_active = false;
           _request_timer.cancel ();
           const int rc = _socket->close ();
@@ -213,40 +213,24 @@ int zlink::thread_safe_socket_t::term_endpoint (const char *endpoint_)
 
 int zlink::thread_safe_socket_t::send (msg_t *msg_, int flags_)
 {
-    int err = 0;
-    const int rc = dispatch<int> (
-      [this, msg_, flags_] () {
-          if (!_socket) {
-              errno = ENOTSOCK;
-              return -1;
-          }
-          return _socket->send (msg_, flags_);
-      },
-      &err);
-    if (rc == -1)
-        errno = err;
-    return rc;
+    if (!_socket) {
+        errno = ENOTSOCK;
+        return -1;
+    }
+    return _socket->send (msg_, flags_);
 }
 
 int zlink::thread_safe_socket_t::recv (msg_t *msg_, int flags_)
 {
-    int err = 0;
-    const int rc = dispatch<int> (
-      [this, msg_, flags_] () {
-          if (!_socket) {
-              errno = ENOTSOCK;
-              return -1;
-          }
-          if (_request_handler) {
-              errno = EBUSY;
-              return -1;
-          }
-          return _socket->recv (msg_, flags_);
-      },
-      &err);
-    if (rc == -1)
-        errno = err;
-    return rc;
+    if (!_socket) {
+        errno = ENOTSOCK;
+        return -1;
+    }
+    if (_request_handler.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+    return _socket->recv (msg_, flags_);
 }
 
 bool zlink::thread_safe_socket_t::has_in ()
@@ -616,8 +600,8 @@ int zlink::thread_safe_socket_t::on_request (zlink_server_cb_fn handler_)
               errno = ENOTSUP;
               return -1;
           }
-          _request_handler = handler_;
-          if (_request_handler)
+          _request_handler.store (handler_, std::memory_order_release);
+          if (_request_handler.load (std::memory_order_acquire))
               ensure_request_pump ();
           else if (_pending_requests.empty ()) {
               _request_pump_active = false;
@@ -1113,7 +1097,8 @@ void zlink::thread_safe_socket_t::pump_requests (
 
     process_timeouts ();
 
-    if (!_request_handler && _pending_requests.empty ()) {
+    if (!_request_handler.load (std::memory_order_acquire)
+        && _pending_requests.empty ()) {
         _request_pump_active = false;
         return;
     }
@@ -1313,7 +1298,9 @@ void zlink::thread_safe_socket_t::handle_incoming_message (
         }
     }
 
-    if (_request_handler) {
+    zlink_server_cb_fn handler =
+      _request_handler.load (std::memory_order_acquire);
+    if (handler) {
         _in_request_handler = true;
         _current_request_id = msg_->request_id;
         if (msg_->has_routing_id)
@@ -1324,9 +1311,9 @@ void zlink::thread_safe_socket_t::handle_incoming_message (
         size_t count = 0;
         zlink_msg_t *parts = alloc_msgv_from_parts (&msg_->parts, &count);
         if (parts) {
-            _request_handler (parts, count,
-                              msg_->has_routing_id ? &msg_->routing_id : NULL,
-                              msg_->request_id);
+            handler (parts, count,
+                     msg_->has_routing_id ? &msg_->routing_id : NULL,
+                     msg_->request_id);
         }
 
         _in_request_handler = false;

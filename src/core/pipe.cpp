@@ -90,9 +90,6 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _out_hwm_boost (-1),
     _msgs_read (0),
     _msgs_written (0),
-    _bytes_read (0),
-    _bytes_written (0),
-    _hwm_reached (0),
     _connected_time (0),
     _peers_msgs_read (0),
     _peer (NULL),
@@ -166,16 +163,6 @@ uint64_t zlink::pipe_t::get_msgs_read () const
     return _msgs_read;
 }
 
-uint64_t zlink::pipe_t::get_bytes_written () const
-{
-    return _bytes_written;
-}
-
-uint64_t zlink::pipe_t::get_bytes_read () const
-{
-    return _bytes_read;
-}
-
 uint64_t zlink::pipe_t::get_outbound_queue_count () const
 {
     return _msgs_written - _peers_msgs_read;
@@ -186,11 +173,6 @@ uint64_t zlink::pipe_t::get_inbound_queue_count () const
     if (!_in_pipe)
         return 0;
     return static_cast<uint64_t> (_in_pipe->count ());
-}
-
-uint32_t zlink::pipe_t::get_hwm_reached () const
-{
-    return _hwm_reached;
 }
 
 uint64_t zlink::pipe_t::get_connected_time () const
@@ -252,9 +234,6 @@ bool zlink::pipe_t::read (msg_t *msg_)
         return false;
     }
 
-    if (!msg_->is_routing_id ())
-        _bytes_read += msg_->size ();
-
     if (!(msg_->flags () & msg_t::more) && !msg_->is_routing_id ())
         _msgs_read++;
 
@@ -272,7 +251,6 @@ bool zlink::pipe_t::check_write ()
     const bool full = !check_hwm ();
 
     if (unlikely (full)) {
-        _hwm_reached++;
         _out_active = false;
         return false;
     }
@@ -288,8 +266,6 @@ bool zlink::pipe_t::write (const msg_t *msg_)
     const bool more = (msg_->flags () & msg_t::more) != 0;
     const bool is_routing_id = msg_->is_routing_id ();
     _out_pipe->write (*msg_, more);
-    if (!is_routing_id)
-        _bytes_written += msg_->size ();
     if (!more && !is_routing_id)
         _msgs_written++;
 
@@ -613,22 +589,6 @@ void zlink::pipe_t::set_endpoint_pair (zlink::endpoint_uri_pair_t endpoint_pair_
 const zlink::endpoint_uri_pair_t &zlink::pipe_t::get_endpoint_pair () const
 {
     return _endpoint_pair;
-}
-
-void zlink::pipe_t::send_stats_to_peer (own_t *socket_base_)
-{
-    endpoint_uri_pair_t *ep =
-      new (std::nothrow) endpoint_uri_pair_t (_endpoint_pair);
-    send_pipe_peer_stats (_peer, _msgs_written - _peers_msgs_read, socket_base_,
-                          ep);
-}
-
-void zlink::pipe_t::process_pipe_peer_stats (uint64_t queue_count_,
-                                           own_t *socket_base_,
-                                           endpoint_uri_pair_t *endpoint_pair_)
-{
-    send_pipe_stats_publish (socket_base_, queue_count_,
-                             _msgs_written - _peers_msgs_read, endpoint_pair_);
 }
 
 void zlink::pipe_t::send_disconnect_msg ()

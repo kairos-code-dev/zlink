@@ -72,14 +72,6 @@ class object_t
     void send_activate_read (zlink::pipe_t *destination_);
     void send_activate_write (zlink::pipe_t *destination_, uint64_t msgs_read_);
     void send_hiccup (zlink::pipe_t *destination_, void *pipe_);
-    void send_pipe_peer_stats (zlink::pipe_t *destination_,
-                               uint64_t queue_count_,
-                               zlink::own_t *socket_base,
-                               endpoint_uri_pair_t *endpoint_pair_);
-    void send_pipe_stats_publish (zlink::own_t *destination_,
-                                  uint64_t outbound_queue_count_,
-                                  uint64_t inbound_queue_count_,
-                                  endpoint_uri_pair_t *endpoint_pair_);
     void send_pipe_term (zlink::pipe_t *destination_);
     void send_pipe_term_ack (zlink::pipe_t *destination_);
     void send_pipe_hwm (zlink::pipe_t *destination_, int inhwm_, int outhwm_);
@@ -103,13 +95,6 @@ class object_t
     virtual void process_activate_read ();
     virtual void process_activate_write (uint64_t msgs_read_);
     virtual void process_hiccup (void *pipe_);
-    virtual void process_pipe_peer_stats (uint64_t queue_count_,
-                                          zlink::own_t *socket_base_,
-                                          endpoint_uri_pair_t *endpoint_pair_);
-    virtual void
-    process_pipe_stats_publish (uint64_t outbound_queue_count_,
-                                uint64_t inbound_queue_count_,
-                                endpoint_uri_pair_t *endpoint_pair_);
     virtual void process_pipe_term ();
     virtual void process_pipe_term_ack ();
     virtual void process_pipe_hwm (int inhwm_, int outhwm_);

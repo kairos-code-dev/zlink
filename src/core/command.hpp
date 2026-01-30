@@ -44,8 +44,6 @@ struct command_t
         reaped,
         inproc_connected,
         conn_failed,
-        pipe_peer_stats,
-        pipe_stats_publish,
         done
     } type;
 
@@ -158,23 +156,6 @@ struct command_t
         struct
         {
         } reaped;
-
-        //  Send application-side pipe count and ask to send monitor event
-        struct
-        {
-            uint64_t queue_count;
-            zlink::own_t *socket_base;
-            endpoint_uri_pair_t *endpoint_pair;
-        } pipe_peer_stats;
-
-        //  Collate application thread and I/O thread pipe counts and endpoints
-        //  and send as event
-        struct
-        {
-            uint64_t outbound_queue_count;
-            uint64_t inbound_queue_count;
-            endpoint_uri_pair_t *endpoint_pair;
-        } pipe_stats_publish;
 
         //  Sent by reaper thread to the term thread when all the sockets
         //  are successfully deallocated.

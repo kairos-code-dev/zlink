@@ -69,11 +69,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
-    uint64_t get_bytes_written () const;
-    uint64_t get_bytes_read () const;
     uint64_t get_outbound_queue_count () const;
     uint64_t get_inbound_queue_count () const;
-    uint32_t get_hwm_reached () const;
     uint64_t get_connected_time () const;
 
     //  Returns true if there is at least one message to read in the pipe.
@@ -127,8 +124,6 @@ class pipe_t ZLINK_FINAL : public object_t,
     void set_endpoint_pair (endpoint_uri_pair_t endpoint_pair_);
     const endpoint_uri_pair_t &get_endpoint_pair () const;
 
-    void send_stats_to_peer (own_t *socket_base_);
-
     void send_disconnect_msg ();
     void set_disconnect_msg (const std::vector<unsigned char> &disconnect_);
 
@@ -142,10 +137,6 @@ class pipe_t ZLINK_FINAL : public object_t,
     void process_activate_read () ZLINK_OVERRIDE;
     void process_activate_write (uint64_t msgs_read_) ZLINK_OVERRIDE;
     void process_hiccup (void *pipe_) ZLINK_OVERRIDE;
-    void
-    process_pipe_peer_stats (uint64_t queue_count_,
-                             own_t *socket_base_,
-                             endpoint_uri_pair_t *endpoint_pair_) ZLINK_OVERRIDE;
     void process_pipe_term () ZLINK_OVERRIDE;
     void process_pipe_term_ack () ZLINK_OVERRIDE;
     void process_pipe_hwm (int inhwm_, int outhwm_) ZLINK_OVERRIDE;
@@ -190,9 +181,6 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  Number of messages read and written so far.
     uint64_t _msgs_read;
     uint64_t _msgs_written;
-    uint64_t _bytes_read;
-    uint64_t _bytes_written;
-    uint32_t _hwm_reached;
     uint64_t _connected_time;
 
     //  Last received peer's msgs_read. The actual number in the peer

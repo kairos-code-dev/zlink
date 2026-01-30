@@ -286,8 +286,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_ONLY_FIRST_SUBSCRIBE 108
 #define ZLINK_TOPICS_COUNT 116
 #define ZLINK_ZMP_METADATA 117
-#define ZLINK_STATS_TIMESTAMPS 118
-#define ZLINK_STATS_COUNTERS 119
 
 //  TLS protocol options
 #define ZLINK_TLS_CERT 95
@@ -381,41 +379,6 @@ typedef struct {
 ZLINK_EXPORT int zlink_monitor_recv (void *monitor_socket_,
                                  zlink_monitor_event_t *event_,
                                  int flags_);
-
-typedef struct {
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    uint64_t bytes_sent;
-    uint64_t bytes_received;
-    uint64_t msgs_dropped;
-    uint64_t monitor_events_dropped;
-    uint32_t queue_size;
-    uint32_t hwm_reached;
-    uint32_t peer_count;
-} zlink_socket_stats_t;
-
-ZLINK_EXPORT int zlink_socket_stats (void *socket_, zlink_socket_stats_t *stats_);
-
-typedef struct {
-    uint64_t msgs_sent;
-    uint64_t msgs_received;
-    uint64_t bytes_sent;
-    uint64_t bytes_received;
-    uint64_t msgs_dropped;
-    uint64_t monitor_events_dropped;
-    uint32_t queue_outbound;
-    uint32_t queue_inbound;
-    uint32_t hwm_reached;
-    uint32_t peer_count;
-    uint64_t drops_hwm;
-    uint64_t drops_no_peers;
-    uint64_t drops_filter;
-    uint64_t last_send_ms;
-    uint64_t last_recv_ms;
-} zlink_socket_stats_ex_t;
-
-ZLINK_EXPORT int zlink_socket_stats_ex (void *socket_,
-                                   zlink_socket_stats_ex_t *stats_);
 
 typedef struct {
     zlink_routing_id_t routing_id;

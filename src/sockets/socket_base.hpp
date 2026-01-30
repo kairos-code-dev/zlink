@@ -144,8 +144,6 @@ class socket_base_t : public own_t,
     virtual int get_peer_state (const void *routing_id_,
                                 size_t routing_id_size_) const;
 
-    int socket_stats (zlink_socket_stats_t *stats_);
-    int socket_stats_ex (zlink_socket_stats_ex_t *stats_);
     int socket_peer_info (const zlink_routing_id_t *routing_id_,
                           zlink_peer_info_t *info_);
     int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
@@ -201,8 +199,6 @@ class socket_base_t : public own_t,
     void process_destroy () ZLINK_FINAL;
 
     int connect_internal (const char *endpoint_uri_);
-
-    void inc_drop_filter ();
 
     // Mutex for synchronize access to the socket in thread safe mode
     mutex_t _sync;
@@ -352,18 +348,6 @@ class socket_base_t : public own_t,
 
     // Add a flag for mark disconnect action
     bool _disconnected;
-
-    uint64_t _msgs_sent;
-    uint64_t _msgs_received;
-    uint64_t _bytes_sent;
-    uint64_t _bytes_received;
-    uint64_t _msgs_dropped;
-    uint64_t _drops_hwm;
-    uint64_t _drops_no_peers;
-    uint64_t _drops_filter;
-    uint64_t _last_send_ms;
-    uint64_t _last_recv_ms;
-    uint64_t _monitor_events_dropped;
 
     thread_safe_socket_t *_threadsafe_proxy;
 };

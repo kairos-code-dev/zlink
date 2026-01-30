@@ -437,26 +437,6 @@ int zlink_monitor_recv (void *monitor_socket_,
     return 0;
 }
 
-int zlink_socket_stats (void *socket_, zlink_socket_stats_t *stats_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_stats (stats_);
-    return handle.socket->socket_stats (stats_);
-}
-
-int zlink_socket_stats_ex (void *socket_, zlink_socket_stats_ex_t *stats_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_stats_ex (stats_);
-    return handle.socket->socket_stats_ex (stats_);
-}
-
 int zlink_socket_peer_info (void *socket_,
                           const zlink_routing_id_t *routing_id_,
                           zlink_peer_info_t *info_)

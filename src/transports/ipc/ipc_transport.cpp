@@ -35,65 +35,28 @@ std::atomic<uint64_t> ipc_write_some_eagain (0);
 std::atomic<uint64_t> ipc_write_some_errors (0);
 std::atomic<bool> ipc_stats_registered (false);
 
-bool ipc_stats_enabled ()
+bool env_flag_enabled (const char *name_)
 {
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_IPC_STATS");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
+    const char *env = std::getenv (name_);
+    return env && *env && *env != '0';
 }
 
-bool ipc_force_async ()
-{
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_IPC_FORCE_ASYNC");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
+const bool ipc_stats_on = env_flag_enabled ("ZLINK_ASIO_IPC_STATS");
 
-bool ipc_allow_sync_write ()
-{
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_IPC_SYNC_WRITE");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
+const bool ipc_force_async_on =
+  env_flag_enabled ("ZLINK_ASIO_IPC_FORCE_ASYNC");
 
-bool ipc_use_async_write_some ()
-{
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_IPC_ASYNC_WRITE_SOME");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
+const bool ipc_allow_sync_write_on =
+  env_flag_enabled ("ZLINK_ASIO_IPC_SYNC_WRITE");
 
-bool ipc_writev_single_shot ()
-{
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
+const bool ipc_use_async_write_some_on =
+  env_flag_enabled ("ZLINK_ASIO_IPC_ASYNC_WRITE_SOME");
 
-bool ipc_use_asio_writev ()
-{
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_WRITEV_USE_ASIO");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
+const bool ipc_writev_single_shot_on =
+  env_flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
+
+const bool ipc_use_asio_writev_on =
+  env_flag_enabled ("ZLINK_ASIO_WRITEV_USE_ASIO");
 
 void ipc_stats_dump ()
 {
@@ -121,8 +84,6 @@ void ipc_stats_dump ()
 
 void ipc_stats_maybe_register ()
 {
-    if (!ipc_stats_enabled ())
-        return;
     bool expected = false;
     if (ipc_stats_registered.compare_exchange_strong (expected, true)) {
         std::atexit (ipc_stats_dump);
@@ -190,13 +151,13 @@ void ipc_transport_t::async_read_some (
   std::size_t buffer_size,
   completion_handler_t handler)
 {
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         ipc_stats_maybe_register ();
         ++ipc_async_read_calls;
     }
 
     if (_socket) {
-        if (ipc_stats_enabled ()) {
+        if (ipc_stats_on) {
             _socket->async_read_some (
               boost::asio::buffer (buffer, buffer_size),
               [handler](const boost::system::error_code &ec,
@@ -229,7 +190,7 @@ std::size_t ipc_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         return 0;
     }
 
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         ipc_stats_maybe_register ();
         ++ipc_read_some_calls;
     }
@@ -242,7 +203,7 @@ std::size_t ipc_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         if (ec == boost::asio::error::would_block
             || ec == boost::asio::error::try_again) {
             errno = EAGAIN;
-            if (ipc_stats_enabled ())
+            if (ipc_stats_on)
                 ++ipc_read_some_eagain;
             return 0;
         }
@@ -257,13 +218,13 @@ std::size_t ipc_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         } else {
             errno = EIO;
         }
-        if (ipc_stats_enabled ())
+        if (ipc_stats_on)
             ++ipc_read_some_errors;
         return 0;
     }
 
     errno = 0;
-    if (ipc_stats_enabled ())
+    if (ipc_stats_on)
         ipc_read_some_bytes += bytes_read;
     return bytes_read;
 }
@@ -273,13 +234,13 @@ void ipc_transport_t::async_write_some (
   std::size_t buffer_size,
   completion_handler_t handler)
 {
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         ipc_stats_maybe_register ();
         ++ipc_async_write_calls;
     }
 
     if (_socket) {
-        if (ipc_stats_enabled ()) {
+        if (ipc_stats_on) {
             const auto stats_handler =
               [handler](const boost::system::error_code &ec,
                         std::size_t bytes) {
@@ -290,7 +251,7 @@ void ipc_transport_t::async_write_some (
                   if (handler)
                       handler (ec, bytes);
               };
-            if (ipc_use_async_write_some ()) {
+            if (ipc_use_async_write_some_on) {
                 _socket->async_write_some (
                   boost::asio::buffer (buffer, buffer_size), stats_handler);
             } else {
@@ -299,7 +260,7 @@ void ipc_transport_t::async_write_some (
                   stats_handler);
             }
         } else {
-            if (ipc_use_async_write_some ()) {
+            if (ipc_use_async_write_some_on) {
                 _socket->async_write_some (
                   boost::asio::buffer (buffer, buffer_size), handler);
             } else {
@@ -318,7 +279,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
                                     std::size_t body_size,
                                     completion_handler_t handler)
 {
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         ipc_stats_maybe_register ();
         ++ipc_async_write_calls;
     }
@@ -340,7 +301,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
     }
 
 #if defined(ZLINK_HAVE_WINDOWS)
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         const auto stats_handler =
           [handler](const boost::system::error_code &ec, std::size_t bytes) {
               if (ec)
@@ -361,8 +322,8 @@ void ipc_transport_t::async_writev (const unsigned char *header,
         boost::asio::async_write (*_socket, buffers, handler);
     }
 #else
-    if (ipc_use_asio_writev ()) {
-        if (ipc_stats_enabled ()) {
+    if (ipc_use_asio_writev_on) {
+        if (ipc_stats_on) {
             const auto stats_handler =
               [handler](const boost::system::error_code &ec, std::size_t bytes) {
                   if (ec)
@@ -404,7 +365,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
 
     *do_write = [this, state, do_write](const boost::system::error_code &ec) {
         if (ec) {
-            if (ipc_stats_enabled ())
+            if (ipc_stats_on)
                 ++ipc_async_write_errors;
             if (state->handler)
                 state->handler (ec, state->header_sent + state->body_sent);
@@ -422,7 +383,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
             const size_t header_left = state->header_size - state->header_sent;
             const size_t body_left = state->body_size - state->body_sent;
             if (header_left == 0 && body_left == 0) {
-                if (ipc_stats_enabled ())
+                if (ipc_stats_on)
                     ipc_async_write_bytes +=
                       (state->header_size + state->body_size);
                 if (state->handler)
@@ -458,12 +419,12 @@ void ipc_transport_t::async_writev (const unsigned char *header,
                 if (remaining > 0 && body_left > 0) {
                     state->body_sent += remaining;
                 }
-                if (ipc_writev_single_shot ()) {
+                if (ipc_writev_single_shot_on) {
                     const size_t left =
                       (state->header_size - state->header_sent)
                       + (state->body_size - state->body_sent);
                     if (left == 0) {
-                        if (ipc_stats_enabled ())
+                        if (ipc_stats_on)
                             ipc_async_write_bytes +=
                               (state->header_size + state->body_size);
                         if (state->handler)
@@ -495,7 +456,7 @@ void ipc_transport_t::async_writev (const unsigned char *header,
 
             boost::system::error_code werr (errno,
                                             boost::system::system_category ());
-            if (ipc_stats_enabled ())
+            if (ipc_stats_on)
                 ++ipc_async_write_errors;
             if (state->handler)
                 state->handler (werr, state->header_sent + state->body_sent);
@@ -522,9 +483,9 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
     //  Only force EAGAIN if explicitly requested via ZLINK_ASIO_IPC_FORCE_ASYNC.
     //  Otherwise, attempt actual socket write like TCP transport does.
     //  Since write_some() is non-blocking, there's no deadlock risk.
-    if (ipc_force_async ()) {
+    if (ipc_force_async_on) {
         errno = EAGAIN;
-        if (ipc_stats_enabled ()) {
+        if (ipc_stats_on) {
             ipc_stats_maybe_register ();
             ++ipc_write_some_calls;
             ++ipc_write_some_eagain;
@@ -532,7 +493,7 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         return 0;
     }
 
-    if (ipc_stats_enabled ()) {
+    if (ipc_stats_on) {
         ipc_stats_maybe_register ();
         ++ipc_write_some_calls;
     }
@@ -545,7 +506,7 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         if (ec == boost::asio::error::would_block
             || ec == boost::asio::error::try_again) {
             errno = EAGAIN;
-            if (ipc_stats_enabled ())
+            if (ipc_stats_on)
                 ++ipc_write_some_eagain;
             return 0;
         }
@@ -559,20 +520,20 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
         } else {
             errno = EIO;
         }
-        if (ipc_stats_enabled ())
+        if (ipc_stats_on)
             ++ipc_write_some_errors;
         return 0;
     }
 
     errno = 0;
-    if (ipc_stats_enabled ())
+    if (ipc_stats_on)
         ipc_write_some_bytes += bytes_written;
     return bytes_written;
 }
 
 bool ipc_transport_t::supports_speculative_write () const
 {
-    return ipc_allow_sync_write () && !ipc_force_async ();
+    return ipc_allow_sync_write_on && !ipc_force_async_on;
 }
 
 }  // namespace zlink

@@ -37,14 +37,10 @@ namespace
 const size_t zmp_hello_min_body = 3;
 const size_t zmp_hello_max_body = 3 + 255;
 
-bool gather_write_enabled ()
+bool env_flag_enabled (const char *name_)
 {
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char *env = std::getenv ("ZLINK_ASIO_GATHER_WRITE");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
+    const char *env = std::getenv (name_);
+    return env && *env && *env != '0';
 }
 
 size_t parse_size_env (const char *name_, size_t fallback_)
@@ -60,14 +56,11 @@ size_t parse_size_env (const char *name_, size_t fallback_)
     return static_cast<size_t> (value);
 }
 
-size_t gather_threshold ()
-{
-    static size_t threshold = 0;
-    if (threshold == 0) {
-        threshold = parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
-    }
-    return threshold;
-}
+const bool ws_gather_write_on =
+  env_flag_enabled ("ZLINK_ASIO_GATHER_WRITE");
+
+const size_t ws_gather_threshold =
+  parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 }
 
 //  Debug logging for ASIO WS engine - set to 1 to enable
@@ -1102,7 +1095,7 @@ bool zlink::asio_ws_engine_t::build_gather_header (const msg_t &msg_,
 
 bool zlink::asio_ws_engine_t::prepare_gather_output ()
 {
-    if (!gather_write_enabled ())
+    if (!ws_gather_write_on)
         return false;
     if (!_transport || !_transport->supports_gather_write ())
         return false;
@@ -1127,7 +1120,7 @@ bool zlink::asio_ws_engine_t::prepare_gather_output ()
     }
 
     const size_t body_size = _tx_msg.size ();
-    if (body_size < gather_threshold ()) {
+    if (body_size < ws_gather_threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }

@@ -199,6 +199,9 @@ struct options_t
     // If true, update last_send_ms/last_recv_ms on send/recv.
     bool stats_timestamps;
 
+    // If true, update stats counters on send/recv/drop paths.
+    bool stats_counters;
+
     // Version of monitor events to emit
     int monitor_event_version;
 

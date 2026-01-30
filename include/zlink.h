@@ -287,6 +287,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TOPICS_COUNT 116
 #define ZLINK_ZMP_METADATA 117
 #define ZLINK_STATS_TIMESTAMPS 118
+#define ZLINK_STATS_COUNTERS 119
 
 //  TLS protocol options
 #define ZLINK_TLS_CERT 95

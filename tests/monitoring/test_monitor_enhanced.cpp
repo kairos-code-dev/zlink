@@ -102,6 +102,11 @@ void test_metrics_and_peer_enumeration ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
     TEST_ASSERT_TRUE (wait_for_event (mon, ZLINK_EVENT_CONNECTION_READY, NULL));
 
+    const int counters = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_STATS_COUNTERS, &counters,
+                        sizeof (counters)));
+
     const int peer_count = zlink_socket_peer_count (server);
     TEST_ASSERT_TRUE (peer_count >= 1);
 

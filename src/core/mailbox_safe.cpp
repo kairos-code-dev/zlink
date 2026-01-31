@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <boost/asio.hpp>
 
-zlink::mailbox_safe_t::mailbox_safe_t (mutex_t *sync_) : _sync (sync_)
+zlink::mailbox_safe_t::mailbox_safe_t ()
 {
     //  Get the pipe into passive state. That way, if the users starts by
     //  polling on the associated file descriptor it will get woken up when
@@ -29,17 +29,19 @@ zlink::mailbox_safe_t::~mailbox_safe_t ()
 
     // Work around problem that other threads might still be in our
     // send() method, by waiting on the mutex before disappearing.
-    _sync->lock ();
-    _sync->unlock ();
+    _sync.lock ();
+    _sync.unlock ();
 }
 
 void zlink::mailbox_safe_t::add_signaler (signaler_t *signaler_)
 {
+    scoped_lock_t lock (_sync);
     _signalers.push_back (signaler_);
 }
 
 void zlink::mailbox_safe_t::remove_signaler (signaler_t *signaler_)
 {
+    scoped_lock_t lock (_sync);
     // TODO: make a copy of array and signal outside the lock
     const std::vector<zlink::signaler_t *>::iterator end = _signalers.end ();
     const std::vector<signaler_t *>::iterator it =
@@ -51,12 +53,13 @@ void zlink::mailbox_safe_t::remove_signaler (signaler_t *signaler_)
 
 void zlink::mailbox_safe_t::clear_signalers ()
 {
+    scoped_lock_t lock (_sync);
     _signalers.clear ();
 }
 
 void zlink::mailbox_safe_t::send (const command_t &cmd_)
 {
-    _sync->lock ();
+    _sync.lock ();
     _cpipe.write (cmd_, false);
     const bool ok = _cpipe.flush ();
     _has_pending.store (true, std::memory_order_release);
@@ -69,7 +72,7 @@ void zlink::mailbox_safe_t::send (const command_t &cmd_)
             (*it)->send ();
         }
     }
-    _sync->unlock ();
+    _sync.unlock ();
 
     if (!ok)
         schedule_if_needed ();
@@ -77,6 +80,7 @@ void zlink::mailbox_safe_t::send (const command_t &cmd_)
 
 int zlink::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
 {
+    scoped_lock_t lock (_sync);
     //  Try to get the command straight away.
     if (_cpipe.read (cmd_)) {
         if (!_cpipe.check_read ())
@@ -91,7 +95,7 @@ int zlink::mailbox_safe_t::recv (command_t *cmd_, int timeout_)
         return -1;
     } else {
         //  Wait for signal from the command sender.
-        const int rc = _cond_var.wait (_sync, timeout_);
+        const int rc = _cond_var.wait (&_sync, timeout_);
         if (rc == -1) {
             errno_assert (errno == EAGAIN || errno == EINTR);
             return -1;
@@ -134,9 +138,9 @@ void zlink::mailbox_safe_t::schedule_if_needed ()
     if (!_io_context || !_handler)
         return;
 
-    _sync->lock ();
+    _sync.lock ();
     const bool has_data = _cpipe.check_read ();
-    _sync->unlock ();
+    _sync.unlock ();
 
     if (!has_data)
         return;
@@ -155,9 +159,9 @@ bool zlink::mailbox_safe_t::reschedule_if_needed ()
 {
     _scheduled.store (false, std::memory_order_release);
 
-    _sync->lock ();
+    _sync.lock ();
     const bool has_data = _cpipe.check_read ();
-    _sync->unlock ();
+    _sync.unlock ();
 
     if (!has_data)
         return false;

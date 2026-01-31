@@ -212,6 +212,19 @@ def collect_data(binary_name, variant_name, pattern_name, num_runs, transports=N
     return final_stats, failures
 
 
+def cache_is_complete(stats, transports):
+    if not stats:
+        return False
+    required_metrics = ("throughput", "latency")
+    for tr in transports:
+        for sz in MSG_SIZES:
+            for metric in required_metrics:
+                key = f"{tr}|{sz}|{metric}"
+                if key not in stats:
+                    return False
+    return True
+
+
 def format_throughput(size, msgs_per_sec):
     return f"{msgs_per_sec/1e3:6.2f} Kmsg/s"
 
@@ -346,8 +359,16 @@ def main():
                 with open(CACHE_FILE, 'w') as f:
                     json.dump(cache, f, indent=2)
             else:
-                print("  [plain] Using cached plain results.")
                 p_stats = cache[p_name]
+                if cache_is_complete(p_stats, pattern_transports):
+                    print("  [plain] Using cached plain results.")
+                else:
+                    print("  [plain] Cache incomplete. Refreshing plain results.")
+                    p_stats, failures = collect_data(plain_bin, "plain", p_name, num_runs, pattern_transports)
+                    all_failures.extend(failures)
+                    cache[p_name] = p_stats
+                    with open(CACHE_FILE, 'w') as f:
+                        json.dump(cache, f, indent=2)
 
             t_stats, failures = collect_data(threadsafe_bin, "threadsafe", p_name, num_runs, pattern_transports)
             all_failures.extend(failures)

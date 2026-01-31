@@ -212,7 +212,7 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     }
 
     if (_thread_safe) {
-        _mailbox = new (std::nothrow) mailbox_safe_t (&_sync);
+        _mailbox = new (std::nothrow) mailbox_safe_t ();
         zlink_assert (_mailbox);
     } else {
         mailbox_t *m = new (std::nothrow) mailbox_t ();
@@ -266,7 +266,7 @@ int zlink::socket_base_t::socket_peer_info (const zlink_routing_id_t *routing_id
 
     process_commands (0, false);
 
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
         pipe_t *pipe = _pipes[i];
@@ -303,7 +303,7 @@ int zlink::socket_base_t::socket_peer_routing_id (int index_,
 
     process_commands (0, false);
 
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (static_cast<pipes_t::size_type> (index_) >= _pipes.size ()) {
         errno = EINVAL;
@@ -319,7 +319,7 @@ int zlink::socket_base_t::socket_peer_count ()
 {
     process_commands (0, false);
 
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
     return static_cast<int> (_pipes.size ());
 }
 
@@ -333,7 +333,7 @@ int zlink::socket_base_t::socket_peers (zlink_peer_info_t *peers_,
 
     process_commands (0, false);
 
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     const size_t available = _pipes.size ();
     if (!peers_) {
@@ -493,7 +493,7 @@ int zlink::socket_base_t::setsockopt (int option_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -518,7 +518,7 @@ int zlink::socket_base_t::getsockopt (int option_,
                                     void *optval_,
                                     size_t *optvallen_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -591,7 +591,7 @@ int zlink::socket_base_t::getsockopt (int option_,
 
 int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (!out_) {
         errno = EINVAL;
@@ -632,14 +632,14 @@ int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
 
 int zlink::socket_base_t::join (const char *group_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     return xjoin (group_);
 }
 
 int zlink::socket_base_t::leave (const char *group_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     return xleave (group_);
 }
@@ -648,7 +648,7 @@ void zlink::socket_base_t::add_signaler (signaler_t *s_)
 {
     zlink_assert (_thread_safe);
 
-    scoped_lock_t sync_lock (_sync);
+    scoped_fast_lock_t sync_lock (_sync);
     (static_cast<mailbox_safe_t *> (_mailbox))->add_signaler (s_);
 }
 
@@ -656,13 +656,13 @@ void zlink::socket_base_t::remove_signaler (signaler_t *s_)
 {
     zlink_assert (_thread_safe);
 
-    scoped_lock_t sync_lock (_sync);
+    scoped_fast_lock_t sync_lock (_sync);
     (static_cast<mailbox_safe_t *> (_mailbox))->remove_signaler (s_);
 }
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -840,7 +840,7 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
 int zlink::socket_base_t::connect (const char *endpoint_uri_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
     return connect_internal (endpoint_uri_);
 }
 
@@ -1152,7 +1152,7 @@ void zlink::socket_base_t::add_endpoint (
 
 int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1220,7 +1220,7 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1309,7 +1309,7 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
 int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1405,7 +1405,7 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 
 int zlink::socket_base_t::close ()
 {
-    scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Remove all existing signalers for thread safe sockets
     if (_thread_safe)
@@ -1650,7 +1650,7 @@ void zlink::socket_base_t::in_event ()
         //  threads/sockets that may be available at the moment. Ultimately,
         //  the socket will be destroyed.
         {
-            scoped_optional_lock_t sync_lock (_thread_safe ? &_sync : NULL);
+            scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
             process_commands (0, false);
         }
         if (_destroyed) {

@@ -3,19 +3,21 @@
 #ifndef __ZLINK_THREAD_SAFE_SOCKET_HPP_INCLUDED__
 #define __ZLINK_THREAD_SAFE_SOCKET_HPP_INCLUDED__
 
-#include <boost/asio.hpp>
 #include <atomic>
 #include <errno.h>
 #include <stddef.h>
 #include <chrono>
 #include <deque>
+#include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "utils/macros.hpp"
+#include "core/thread.hpp"
 #include "core/msg.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
-#include "utils/macros.hpp"
 #include "utils/mutex.hpp"
 #include "zlink.h"
 
@@ -31,70 +33,77 @@ class thread_safe_socket_t
 {
   public:
     thread_safe_socket_t (ctx_t *ctx_, socket_base_t *socket_);
-    ~thread_safe_socket_t ();
+    virtual ~thread_safe_socket_t ();
 
     bool check_tag () const;
 
     socket_base_t *get_socket () const;
     ctx_t *get_ctx () const;
 
-    int close ();
+    virtual int close ();
     void wait_for_idle ();
 
-    int setsockopt (int option_, const void *optval_, size_t optvallen_);
-    int getsockopt (int option_, void *optval_, size_t *optvallen_);
+    virtual int setsockopt (int option_,
+                            const void *optval_,
+                            size_t optvallen_);
+    virtual int getsockopt (int option_,
+                            void *optval_,
+                            size_t *optvallen_);
 
-    int bind (const char *endpoint_);
-    int connect (const char *endpoint_);
-    int term_endpoint (const char *endpoint_);
+    virtual int bind (const char *endpoint_);
+    virtual int connect (const char *endpoint_);
+    virtual int term_endpoint (const char *endpoint_);
 
-    int send (msg_t *msg_, int flags_);
-    int recv (msg_t *msg_, int flags_);
+    virtual int send (msg_t *msg_, int flags_);
+    virtual int recv (msg_t *msg_, int flags_);
 
-    bool has_in ();
-    bool has_out ();
+    virtual bool has_in ();
+    virtual bool has_out ();
 
-    int join (const char *group_);
-    int leave (const char *group_);
+    virtual int join (const char *group_);
+    virtual int leave (const char *group_);
 
-    int monitor (const char *endpoint_,
-                 uint64_t events_,
-                 int event_version_,
-                 int type_);
+    virtual int monitor (const char *endpoint_,
+                         uint64_t events_,
+                         int event_version_,
+                         int type_);
 
-    int socket_peer_info (const zlink_routing_id_t *routing_id_,
-                          zlink_peer_info_t *info_);
-    int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
-    int socket_peer_count ();
-    int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
-    int get_peer_state (const void *routing_id_, size_t routing_id_size_);
+    virtual int socket_peer_info (const zlink_routing_id_t *routing_id_,
+                                  zlink_peer_info_t *info_);
+    virtual int socket_peer_routing_id (int index_,
+                                        zlink_routing_id_t *out_);
+    virtual int socket_peer_count ();
+    virtual int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
+    virtual int get_peer_state (const void *routing_id_,
+                                size_t routing_id_size_);
 
-    uint64_t request (const zlink_routing_id_t *routing_id_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      zlink_request_cb_fn callback_,
-                      int timeout_ms_);
-    uint64_t group_request (const zlink_routing_id_t *routing_id_,
-                            uint64_t group_id_,
-                            zlink_msg_t *parts_,
-                            size_t part_count_,
-                            zlink_request_cb_fn callback_,
-                            int timeout_ms_);
-    uint64_t request_send (const zlink_routing_id_t *routing_id_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_);
-    int request_recv (zlink_completion_t *completion_, int timeout_ms_);
-    int pending_requests ();
-    int cancel_all_requests ();
+    virtual uint64_t request (const zlink_routing_id_t *routing_id_,
+                              zlink_msg_t *parts_,
+                              size_t part_count_,
+                              zlink_request_cb_fn callback_,
+                              int timeout_ms_);
+    virtual uint64_t group_request (const zlink_routing_id_t *routing_id_,
+                                    uint64_t group_id_,
+                                    zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    zlink_request_cb_fn callback_,
+                                    int timeout_ms_);
+    virtual uint64_t request_send (const zlink_routing_id_t *routing_id_,
+                                   zlink_msg_t *parts_,
+                                   size_t part_count_);
+    virtual int request_recv (zlink_completion_t *completion_,
+                              int timeout_ms_);
+    virtual int pending_requests ();
+    virtual int cancel_all_requests ();
 
-    int on_request (zlink_server_cb_fn handler_);
-    int reply (const zlink_routing_id_t *routing_id_,
-               uint64_t request_id_,
-               zlink_msg_t *parts_,
-               size_t part_count_);
-    int reply_simple (zlink_msg_t *parts_, size_t part_count_);
+    virtual int on_request (zlink_server_cb_fn handler_);
+    virtual int reply (const zlink_routing_id_t *routing_id_,
+                       uint64_t request_id_,
+                       zlink_msg_t *parts_,
+                       size_t part_count_);
+    virtual int reply_simple (zlink_msg_t *parts_, size_t part_count_);
 
-  private:
+  protected:
     struct pending_request_t
     {
         uint64_t request_id;
@@ -177,8 +186,9 @@ class thread_safe_socket_t
                       zlink_msg_t *parts_,
                       size_t part_count_);
     void ensure_request_pump ();
-    void schedule_request_pump (std::chrono::milliseconds delay_);
-    void pump_requests (const boost::system::error_code &ec_);
+    void stop_request_pump ();
+    static void request_pump_worker (void *arg_);
+    void run_request_pump ();
     bool recv_request_message (incoming_message_t *out_);
     void handle_incoming_message (incoming_message_t *msg_);
     void handle_request_complete (pending_request_t &req_,
@@ -217,11 +227,13 @@ class thread_safe_socket_t
     uint32_t _tag;
     ctx_t *_ctx;
     socket_base_t *_socket;
-    boost::asio::strand<boost::asio::io_context::executor_type> _strand;
     mutex_t _sync;
     condition_variable_t _sync_cv;
-    boost::asio::steady_timer _request_timer;
     bool _request_pump_active;
+    std::atomic<bool> _request_thread_running;
+    std::atomic<bool> _request_thread_stop;
+    condition_variable_t _request_cv;
+    thread_t _request_thread;
     uint64_t _next_request_id;
     atomic_counter_t _active_calls;
     std::unordered_map<uint64_t, pending_request_t> _pending_requests;
@@ -246,39 +258,26 @@ class thread_safe_socket_t
 template <typename Result, typename Func>
 Result thread_safe_socket_t::dispatch (Func func_, int *err_)
 {
-    add_active ();
-
-    if (_strand.running_in_this_thread ()) {
-        Result res = func_ ();
-        if (err_)
-            *err_ = errno;
-        release_active ();
-        return res;
-    }
+    struct active_guard_t
+    {
+        active_guard_t (thread_safe_socket_t *self_) : self (self_)
+        {
+            self->add_active ();
+        }
+        ~active_guard_t () { self->release_active (); }
+        thread_safe_socket_t *self;
+    } guard (this);
 
     Result res = Result ();
     int err = 0;
-    bool done = false;
-
-    boost::asio::post (_strand, [this, func_, &res, &err, &done]() mutable {
-        Result local_res = func_ ();
-        int local_err = errno;
-
+    {
         scoped_lock_t lock (_sync);
-        res = local_res;
-        err = local_err;
-        done = true;
-        _sync_cv.broadcast ();
-    });
-
-    _sync.lock ();
-    while (!done)
-        _sync_cv.wait (&_sync, -1);
-    _sync.unlock ();
+        res = func_ ();
+        err = errno;
+    }
 
     if (err_)
         *err_ = err;
-    release_active ();
     return res;
 }
 }

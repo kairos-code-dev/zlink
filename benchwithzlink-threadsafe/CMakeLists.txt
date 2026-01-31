@@ -57,6 +57,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_threadsafe_bench(comp_threadsafe_router_router bench/bench_router_router.cpp)
     add_threadsafe_bench(comp_threadsafe_router_router_poll bench/bench_router_router_poll.cpp)
     add_threadsafe_bench(comp_threadsafe_stream bench/bench_stream.cpp)
+
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

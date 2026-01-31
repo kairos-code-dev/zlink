@@ -29,7 +29,7 @@ namespace zlink
 class mailbox_safe_t ZLINK_FINAL : public i_mailbox
 {
   public:
-    mailbox_safe_t (mutex_t *sync_);
+    mailbox_safe_t ();
     ~mailbox_safe_t ();
 
     void send (const command_t &cmd_);
@@ -69,7 +69,7 @@ class mailbox_safe_t ZLINK_FINAL : public i_mailbox
     condition_variable_t _cond_var;
 
     //  Synchronize access to the mailbox from receivers and senders
-    mutex_t *const _sync;
+    mutex_t _sync;
 
     std::vector<zlink::signaler_t *> _signalers;
 

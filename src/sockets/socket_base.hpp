@@ -18,6 +18,7 @@
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
+#include "utils/fast_mutex.hpp"
 #include "zlink.h"
 
 extern "C" {
@@ -206,7 +207,7 @@ class socket_base_t : public own_t,
     int connect_internal (const char *endpoint_uri_);
 
     // Mutex for synchronize access to the socket in thread safe mode
-    mutex_t _sync;
+    fast_mutex_t _sync;
 
   private:
     // test if event should be sent and then dispatch it

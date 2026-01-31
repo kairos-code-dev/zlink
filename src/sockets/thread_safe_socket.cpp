@@ -20,9 +20,9 @@ zlink::thread_safe_socket_t::thread_safe_socket_t (ctx_t *ctx_,
     _tag (threadsafe_socket_tag_value),
     _ctx (ctx_),
     _socket (socket_),
-    _strand (ctx_->get_threadsafe_io_context ().get_executor ()),
-    _request_timer (ctx_->get_threadsafe_io_context ()),
     _request_pump_active (false),
+    _request_thread_running (false),
+    _request_thread_stop (false),
     _next_request_id (1),
     _request_handler (NULL),
     _in_request_handler (false),
@@ -35,6 +35,7 @@ zlink::thread_safe_socket_t::thread_safe_socket_t (ctx_t *ctx_,
 
 zlink::thread_safe_socket_t::~thread_safe_socket_t ()
 {
+    stop_request_pump ();
     zlink_assert (_socket == NULL);
     _tag = 0xdeadbeef;
 }
@@ -59,17 +60,19 @@ int zlink::thread_safe_socket_t::close ()
     if (!_socket)
         return 0;
 
+    stop_request_pump ();
+
     int err = 0;
     const int rc = dispatch<int> (
       [this] () {
           if (!_socket)
               return 0;
+          socket_base_t *sock = _socket;
+          _socket = NULL;
           cancel_all_requests_internal (ECANCELED);
           _request_handler.store (NULL, std::memory_order_release);
           _request_pump_active = false;
-          _request_timer.cancel ();
-          const int rc = _socket->close ();
-          _socket = NULL;
+          const int rc = sock->close ();
           _tag = 0xdeadbeef;
           return rc;
       },
@@ -117,7 +120,7 @@ int zlink::thread_safe_socket_t::setsockopt (int option_,
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, option_, optval_, optvallen_] () {
+      [this, option_, optval_, optvallen_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -147,7 +150,7 @@ int zlink::thread_safe_socket_t::getsockopt (int option_,
 
     int err = 0;
     const int rc = dispatch<int> (
-      [this, option_, optval_, optvallen_] () {
+      [this, option_, optval_, optvallen_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -164,7 +167,7 @@ int zlink::thread_safe_socket_t::bind (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, endpoint_] () {
+      [this, endpoint_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -181,7 +184,7 @@ int zlink::thread_safe_socket_t::connect (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, endpoint_] () {
+      [this, endpoint_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -198,7 +201,7 @@ int zlink::thread_safe_socket_t::term_endpoint (const char *endpoint_)
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, endpoint_] () {
+      [this, endpoint_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -249,7 +252,7 @@ int zlink::thread_safe_socket_t::join (const char *group_)
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, group_] () {
+      [this, group_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -266,7 +269,7 @@ int zlink::thread_safe_socket_t::leave (const char *group_)
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, group_] () {
+      [this, group_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -286,12 +289,13 @@ int zlink::thread_safe_socket_t::monitor (const char *endpoint_,
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, endpoint_, events_, event_version_, type_] () {
+      [this, endpoint_, events_, event_version_, type_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
           }
-          return _socket->monitor (endpoint_, events_, event_version_, type_);
+          return _socket->monitor (
+            endpoint_, events_, event_version_, type_);
       },
       &err);
     if (rc == -1)
@@ -304,7 +308,7 @@ int zlink::thread_safe_socket_t::socket_peer_info (
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, routing_id_, info_] () {
+      [this, routing_id_, info_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -322,7 +326,7 @@ int zlink::thread_safe_socket_t::socket_peer_routing_id (int index_,
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, index_, out_] () {
+      [this, index_, out_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -339,7 +343,7 @@ int zlink::thread_safe_socket_t::socket_peer_count ()
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this] () {
+      [this]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -357,7 +361,7 @@ int zlink::thread_safe_socket_t::socket_peers (zlink_peer_info_t *peers_,
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, peers_, count_] () {
+      [this, peers_, count_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -375,7 +379,7 @@ int zlink::thread_safe_socket_t::get_peer_state (const void *routing_id_,
 {
     int err = 0;
     const int rc = dispatch<int> (
-      [this, routing_id_, routing_id_size_] () {
+      [this, routing_id_, routing_id_size_]() {
           if (!_socket) {
               errno = ENOTSOCK;
               return -1;
@@ -605,7 +609,7 @@ int zlink::thread_safe_socket_t::on_request (zlink_server_cb_fn handler_)
               ensure_request_pump ();
           else if (_pending_requests.empty ()) {
               _request_pump_active = false;
-              _request_timer.cancel ();
+              _request_cv.broadcast ();
           }
           return 0;
       },
@@ -668,7 +672,7 @@ int zlink::thread_safe_socket_t::request_recv (zlink_completion_t *completion_,
         errno = EINVAL;
         return -1;
     }
-    if (_strand.running_in_this_thread ()) {
+    if (_request_thread_running && _request_thread.is_current_thread ()) {
         errno = EAGAIN;
         return -1;
     }
@@ -1067,63 +1071,96 @@ int zlink::thread_safe_socket_t::send_request_direct (pending_request_t &req_,
 
 void zlink::thread_safe_socket_t::ensure_request_pump ()
 {
-    if (!_request_pump_active)
-        _request_pump_active = true;
-    schedule_request_pump (std::chrono::milliseconds (0));
+    scoped_lock_t lock (_sync);
+    if (!_request_thread_running.load (std::memory_order_acquire)) {
+        _request_thread_stop.store (false, std::memory_order_release);
+        _request_thread_running.store (true, std::memory_order_release);
+        _ctx->start_thread (_request_thread, request_pump_worker, this,
+                            "threadsafe");
+    }
+    _request_pump_active = true;
+    _request_cv.broadcast ();
 }
 
-void zlink::thread_safe_socket_t::schedule_request_pump (
-  std::chrono::milliseconds delay_)
+void zlink::thread_safe_socket_t::stop_request_pump ()
 {
-    _request_timer.expires_after (delay_);
-    _request_timer.async_wait (boost::asio::bind_executor (
-      _strand,
-      [this] (const boost::system::error_code &ec_) { pump_requests (ec_); }));
+    bool join_thread = false;
+    _sync.lock ();
+    if (_request_thread_running.load (std::memory_order_acquire)) {
+        _request_thread_stop.store (true, std::memory_order_release);
+        _request_pump_active = false;
+        _request_cv.broadcast ();
+        join_thread = !_request_thread.is_current_thread ();
+    }
+    _sync.unlock ();
+
+    if (join_thread)
+        _request_thread.stop ();
 }
 
-void zlink::thread_safe_socket_t::pump_requests (
-  const boost::system::error_code &ec_)
+void zlink::thread_safe_socket_t::request_pump_worker (void *arg_)
 {
-    if (ec_ == boost::asio::error::operation_aborted)
-        return;
-    if (!_socket) {
-        _request_pump_active = false;
-        return;
-    }
+    thread_safe_socket_t *self =
+      static_cast<thread_safe_socket_t *> (arg_);
+    self->run_request_pump ();
+}
 
-    incoming_message_t msg;
-    while (recv_request_message (&msg))
-        handle_incoming_message (&msg);
+void zlink::thread_safe_socket_t::run_request_pump ()
+{
+    _sync.lock ();
+    while (!_request_thread_stop.load (std::memory_order_acquire)) {
+        while (!_request_pump_active
+               && !_request_thread_stop.load (std::memory_order_acquire))
+            _request_cv.wait (&_sync, -1);
 
-    process_timeouts ();
-
-    if (!_request_handler.load (std::memory_order_acquire)
-        && _pending_requests.empty ()) {
-        _request_pump_active = false;
-        return;
-    }
-
-    std::chrono::milliseconds delay (1);
-    const std::chrono::steady_clock::time_point now =
-      std::chrono::steady_clock::now ();
-    for (std::unordered_map<uint64_t, pending_request_t>::iterator it =
-           _pending_requests.begin ();
-         it != _pending_requests.end (); ++it) {
-        pending_request_t &req = it->second;
-        if (!req.has_deadline)
-            continue;
-        if (req.deadline <= now) {
-            delay = std::chrono::milliseconds (0);
+        if (_request_thread_stop.load (std::memory_order_acquire))
             break;
+
+        if (!_socket) {
+            _request_pump_active = false;
+            continue;
         }
-        const auto remaining =
-          std::chrono::duration_cast<std::chrono::milliseconds> (req.deadline
-                                                                 - now);
-        if (remaining < delay)
-            delay = remaining;
+
+        incoming_message_t msg;
+        while (recv_request_message (&msg))
+            handle_incoming_message (&msg);
+
+        process_timeouts ();
+
+        if (!_request_handler.load (std::memory_order_acquire)
+            && _pending_requests.empty ()) {
+            _request_pump_active = false;
+            continue;
+        }
+
+        std::chrono::milliseconds delay (1);
+        const std::chrono::steady_clock::time_point now =
+          std::chrono::steady_clock::now ();
+        for (std::unordered_map<uint64_t, pending_request_t>::iterator it =
+               _pending_requests.begin ();
+             it != _pending_requests.end (); ++it) {
+            pending_request_t &req = it->second;
+            if (!req.has_deadline)
+                continue;
+            if (req.deadline <= now) {
+                delay = std::chrono::milliseconds (0);
+                break;
+            }
+            const auto remaining =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                req.deadline - now);
+            if (remaining < delay)
+                delay = remaining;
+        }
+
+        int wait_ms = static_cast<int> (delay.count ());
+        if (wait_ms < 0)
+            wait_ms = 0;
+        _request_cv.wait (&_sync, wait_ms);
     }
 
-    schedule_request_pump (delay);
+    _request_thread_running.store (false, std::memory_order_release);
+    _sync.unlock ();
 }
 
 bool zlink::thread_safe_socket_t::recv_request_message (incoming_message_t *out_)

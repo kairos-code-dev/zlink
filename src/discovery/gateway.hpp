@@ -6,7 +6,6 @@
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
 #include "core/thread.hpp"
-#include "sockets/thread_safe_socket.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
@@ -44,24 +43,11 @@ class gateway_t : public discovery_listener_t
               char *service_name_out_,
               uint64_t *request_id_out_);
 
-    uint64_t request (const char *service_name_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      zlink_gateway_request_cb_fn callback_,
-                      int timeout_ms_);
-
-    uint64_t request_send (const char *service_name_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_,
-                           int flags_);
-
-    int request_recv (zlink_gateway_completion_t *completion_,
-                      int timeout_ms_);
-
     int set_lb_strategy (const char *service_name_, int strategy_);
     int connection_count (const char *service_name_);
-
-    void *threadsafe_router (const char *service_name_);
+    int set_tls_client (const char *ca_cert_,
+                        const char *hostname_,
+                        int trust_system_);
 
     int destroy ();
 
@@ -70,9 +56,7 @@ class gateway_t : public discovery_listener_t
     {
         std::string service_name;
         socket_base_t *socket;
-        thread_safe_socket_t *threadsafe;
         std::vector<provider_info_t> providers;
-        std::map<std::string, zlink_routing_id_t> routing_map;
         std::vector<std::string> endpoints;
         size_t rr_index;
         int lb_strategy;
@@ -81,22 +65,11 @@ class gateway_t : public discovery_listener_t
     struct pending_request_t
     {
         std::string service_name;
-        zlink_gateway_request_cb_fn callback;
-        bool has_deadline;
-        std::chrono::steady_clock::time_point deadline;
     };
 
     struct completion_entry_t
     {
         std::string service_name;
-        uint64_t request_id;
-        int error;
-        std::vector<msg_t> parts;
-    };
-
-    struct callback_entry_t
-    {
-        zlink_gateway_request_cb_fn callback;
         uint64_t request_id;
         int error;
         std::vector<msg_t> parts;
@@ -118,9 +91,9 @@ class gateway_t : public discovery_listener_t
     int recv_from_pool (service_pool_t *pool_,
                         uint64_t *request_id_,
                         std::vector<msg_t> *parts_);
-    void handle_response (uint64_t request_id_, std::vector<msg_t> *parts_,
-                          const std::string &fallback_service_,
-                          std::deque<callback_entry_t> *callbacks_);
+    void handle_response (uint64_t request_id_,
+                          std::vector<msg_t> *parts_,
+                          const std::string &fallback_service_);
 
     void close_parts (std::vector<msg_t> *parts_);
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
@@ -138,8 +111,13 @@ class gateway_t : public discovery_listener_t
     uint64_t _next_request_id;
     std::set<std::string> _refresh_queue;
 
+    std::string _tls_ca;
+    std::string _tls_hostname;
+    int _tls_trust_system;
+
     atomic_counter_t _stop;
     thread_t _worker;
+    bool _single_thread;
 
     mutex_t _completion_sync;
     condition_variable_t _completion_cv;

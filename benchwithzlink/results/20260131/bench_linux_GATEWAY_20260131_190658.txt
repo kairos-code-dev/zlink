@@ -1,0 +1,4 @@
+
+## PATTERN: GATEWAY
+  > Benchmarking baseline for GATEWAY...
+    Testing tcp | 64B: 1 FAILED (no_data)

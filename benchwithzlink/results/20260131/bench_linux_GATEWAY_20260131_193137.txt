@@ -1,0 +1,91 @@
+N: GATEWAY
+  [baseline] Using cached baseline.
+  > Benchmarking current for GATEWAY...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tls | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing ws | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 256B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 1024B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 65536B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 131072B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing wss | 262144B: 1 2 3 4 5 6 7 8 9 10 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 256B   | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 256B   | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 1024B  | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 1024B  | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 65536B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 65536B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 131072B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 131072B | Latency    |          0.00 us |          0.00 us |   +0.00% |
+| 262144B | Throughput |      0.00 Kmsg/s |      0.00 Kmsg/s |   +0.00% |
+| 262144B | Latency    |          0.00 us |          0.00 us |   +0.00% |

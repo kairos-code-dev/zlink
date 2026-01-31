@@ -7,11 +7,8 @@
 #include "core/pipe.hpp"
 #include "core/msg.hpp"
 
-zlink::pair_t::pair_t (class ctx_t *parent_,
-                     uint32_t tid_,
-                     int sid_,
-                     bool thread_safe_) :
-    socket_base_t (parent_, tid_, sid_, thread_safe_), _pipe (NULL)
+zlink::pair_t::pair_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    socket_base_t (parent_, tid_, sid_), _pipe (NULL)
 {
     options.type = ZLINK_PAIR;
 }

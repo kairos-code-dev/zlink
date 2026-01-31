@@ -10,11 +10,8 @@
 #include "utils/macros.hpp"
 #include "utils/generic_mtrie_impl.hpp"
 
-zlink::xpub_t::xpub_t (class ctx_t *parent_,
-                     uint32_t tid_,
-                     int sid_,
-                     bool thread_safe_) :
-    socket_base_t (parent_, tid_, sid_, thread_safe_),
+zlink::xpub_t::xpub_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    socket_base_t (parent_, tid_, sid_),
     _verbose_subs (false),
     _verbose_unsubs (false),
     _more_send (false),

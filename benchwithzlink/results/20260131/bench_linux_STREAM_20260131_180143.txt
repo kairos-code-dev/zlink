@@ -1,0 +1,5 @@
+
+## PATTERN: STREAM
+  > Benchmarking baseline for STREAM...
+    Testing tcp | 64B: 1 2 3 4 5 6 7 8 9 10 Done
+    Testing tcp | 256B: 1 2 FAILED (timeout)

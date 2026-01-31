@@ -21,8 +21,7 @@ class dealer_t : public socket_base_t
   public:
     dealer_t (zlink::ctx_t *parent_,
               uint32_t tid_,
-              int sid_,
-              bool thread_safe_ = false);
+              int sid_);
     ~dealer_t () ZLINK_OVERRIDE;
 
   protected:

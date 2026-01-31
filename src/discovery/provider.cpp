@@ -31,10 +31,10 @@ static void sleep_ms (int ms_)
 #endif
 }
 
-static int send_frame_threadsafe (thread_safe_socket_t *socket_,
-                                  const void *data_,
-                                  size_t size_,
-                                  int flags_)
+static int send_frame (socket_base_t *socket_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_)
 {
     if (!socket_) {
         errno = ENOTSUP;
@@ -53,30 +53,25 @@ static int send_frame_threadsafe (thread_safe_socket_t *socket_,
     return 0;
 }
 
-static int send_u16_threadsafe (thread_safe_socket_t *socket_,
-                                uint16_t value_,
-                                int flags_)
+static int send_u16 (socket_base_t *socket_, uint16_t value_, int flags_)
 {
-    return send_frame_threadsafe (socket_, &value_, sizeof (value_), flags_);
+    return send_frame (socket_, &value_, sizeof (value_), flags_);
 }
 
-static int send_u32_threadsafe (thread_safe_socket_t *socket_,
-                                uint32_t value_,
-                                int flags_)
+static int send_u32 (socket_base_t *socket_, uint32_t value_, int flags_)
 {
-    return send_frame_threadsafe (socket_, &value_, sizeof (value_), flags_);
+    return send_frame (socket_, &value_, sizeof (value_), flags_);
 }
 
-static int send_string_threadsafe (thread_safe_socket_t *socket_,
-                                   const std::string &value_,
-                                   int flags_)
+static int send_string (socket_base_t *socket_,
+                        const std::string &value_,
+                        int flags_)
 {
-    return send_frame_threadsafe (socket_, value_.empty () ? NULL
-                                                             : value_.data (),
-                                  value_.size (), flags_);
+    return send_frame (socket_, value_.empty () ? NULL : value_.data (),
+                       value_.size (), flags_);
 }
 
-static int recv_register_ack (thread_safe_socket_t *socket_,
+static int recv_register_ack (socket_base_t *socket_,
                               int *status_out_,
                               std::string *resolved_out_,
                               std::string *error_out_)
@@ -135,15 +130,14 @@ provider_t::provider_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (provider_tag_value),
     _router (NULL),
-    _router_threadsafe (NULL),
     _dealer (NULL),
-    _dealer_threadsafe (NULL),
     _weight (1),
     _last_status (-1),
     _heartbeat_interval_ms (5000),
     _stop (0)
 {
     zlink_assert (_ctx);
+    _routing_id.size = 0;
 }
 
 provider_t::~provider_t ()
@@ -156,23 +150,11 @@ bool provider_t::check_tag () const
     return _tag == provider_tag_value;
 }
 
-static int create_threadsafe_socket (ctx_t *ctx_, int type_,
-                                     socket_base_t **socket_,
-                                     thread_safe_socket_t **threadsafe_)
+static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
 {
     *socket_ = ctx_->create_socket (type_);
     if (!*socket_)
         return -1;
-
-    *threadsafe_ = new (std::nothrow) thread_safe_socket_t (ctx_, *socket_);
-    if (!*threadsafe_) {
-        (*socket_)->close ();
-        *socket_ = NULL;
-        errno = ENOMEM;
-        return -1;
-    }
-
-    (*socket_)->set_threadsafe_proxy (*threadsafe_);
     return 0;
 }
 
@@ -185,33 +167,38 @@ int provider_t::bind (const char *endpoint_)
 
     scoped_lock_t lock (_sync);
     if (!_router) {
-        if (create_threadsafe_socket (_ctx, ZLINK_ROUTER, &_router,
-                                      &_router_threadsafe)
-            != 0)
+        if (create_socket (_ctx, ZLINK_ROUTER, &_router) != 0)
+            return -1;
+    }
+    if (!_tls_cert.empty ()) {
+        if (_router->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
+                                 _tls_cert.size ())
+              != 0
+            || _router->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
+                                    _tls_key.size ())
+                 != 0)
             return -1;
     }
 
     _bind_endpoint = endpoint_;
-    return _router_threadsafe->bind (endpoint_);
+    return _router->bind (endpoint_);
 }
 
 bool provider_t::ensure_routing_id ()
 {
-    if (!_router && !_router_threadsafe)
+    if (!_router)
         return false;
 
     zlink_routing_id_t rid;
     size_t size = sizeof (rid.data);
-    int rc = -1;
-    if (_router_threadsafe)
-        rc = _router_threadsafe->getsockopt (ZLINK_ROUTING_ID, rid.data, &size);
-    else
-        rc = zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
-                             rid.data, &size);
+    int rc = zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
+                               rid.data, &size);
     if (rc == 0) {
         rid.size = static_cast<uint8_t> (size);
-        if (rid.size > 0)
+        if (rid.size > 0) {
+            _routing_id = rid;
             return true;
+        }
     }
 
     uint32_t random_id = zlink::generate_random ();
@@ -220,13 +207,13 @@ bool provider_t::ensure_routing_id ()
     rid.size = static_cast<uint8_t> (1 + sizeof (random_id));
     rid.data[0] = 0;
     memcpy (rid.data + 1, &random_id, sizeof (random_id));
-    if (_router_threadsafe)
-        return _router_threadsafe->setsockopt (ZLINK_ROUTING_ID, rid.data,
-                                               rid.size)
-               == 0;
-    return zlink_setsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
-                           rid.data, rid.size)
-           == 0;
+    if (zlink_setsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
+                          rid.data, rid.size)
+        == 0) {
+        _routing_id = rid;
+        return true;
+    }
+    return false;
 }
 
 int provider_t::connect_registry (const char *registry_router_endpoint_)
@@ -238,9 +225,7 @@ int provider_t::connect_registry (const char *registry_router_endpoint_)
 
     scoped_lock_t lock (_sync);
     if (!_dealer) {
-        if (create_threadsafe_socket (_ctx, ZLINK_DEALER, &_dealer,
-                                      &_dealer_threadsafe)
-            != 0)
+        if (create_socket (_ctx, ZLINK_DEALER, &_dealer) != 0)
             return -1;
     }
 
@@ -251,20 +236,17 @@ int provider_t::connect_registry (const char *registry_router_endpoint_)
 
     zlink_routing_id_t rid;
     size_t size = sizeof (rid.data);
-    int rc = -1;
-    if (_router_threadsafe)
-        rc = _router_threadsafe->getsockopt (ZLINK_ROUTING_ID, rid.data, &size);
-    else if (_router)
-        rc = zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
-                             rid.data, &size);
+    int rc =
+      zlink_getsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
+                        rid.data, &size);
     if (rc == 0) {
         rid.size = static_cast<uint8_t> (size);
         if (rid.size > 0)
-            _dealer_threadsafe->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
+            _dealer->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
     }
 
     _registry_endpoint = registry_router_endpoint_;
-    return _dealer_threadsafe->connect (registry_router_endpoint_);
+    return _dealer->connect (registry_router_endpoint_);
 }
 
 std::string provider_t::resolve_advertise (const char *advertise_endpoint_)
@@ -300,7 +282,7 @@ int provider_t::register_service (const char *service_name_,
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer_threadsafe) {
+    if (!_dealer) {
         errno = ENOTSUP;
         return -1;
     }
@@ -313,23 +295,16 @@ int provider_t::register_service (const char *service_name_,
     }
     _weight = weight_ == 0 ? 1 : weight_;
 
-    if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_register, ZLINK_SNDMORE)
+    if (send_u16 (_dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
-        || send_string_threadsafe (_dealer_threadsafe, _service_name,
-                                   ZLINK_SNDMORE)
-             != 0
-        || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
-                                   ZLINK_SNDMORE)
-             != 0
-        || send_u32_threadsafe (_dealer_threadsafe, _weight, 0) != 0)
+        || send_string (_dealer, _service_name, ZLINK_SNDMORE) != 0
+        || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
+        || send_u32 (_dealer, _weight, 0) != 0)
         return -1;
 
     std::string resolved;
     std::string error;
-    if (recv_register_ack (_dealer_threadsafe, &_last_status, &resolved,
-                           &error)
-        != 0)
+    if (recv_register_ack (_dealer, &_last_status, &resolved, &error) != 0)
         return -1;
     _last_resolved.swap (resolved);
     _last_error.swap (error);
@@ -355,27 +330,22 @@ int provider_t::update_weight (const char *service_name_, uint32_t weight_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer_threadsafe) {
+    if (!_dealer) {
         errno = ENOTSUP;
         return -1;
     }
 
     const uint32_t value = weight_ == 0 ? 1 : weight_;
-    if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_update_weight,
-                             ZLINK_SNDMORE)
+    if (send_u16 (_dealer, discovery_protocol::msg_update_weight,
+                  ZLINK_SNDMORE)
           != 0
-        || send_string_threadsafe (_dealer_threadsafe, service_name_,
-                                   ZLINK_SNDMORE)
-             != 0
-        || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
-                                   ZLINK_SNDMORE)
-             != 0
-        || send_u32_threadsafe (_dealer_threadsafe, value, 0) != 0)
+        || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
+        || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
+        || send_u32 (_dealer, value, 0) != 0)
         return -1;
 
     int status = -1;
-    if (recv_register_ack (_dealer_threadsafe, &status, NULL, NULL) != 0)
+    if (recv_register_ack (_dealer, &status, NULL, NULL) != 0)
         return -1;
     if (status != 0) {
         errno = EINVAL;
@@ -392,19 +362,15 @@ int provider_t::unregister_service (const char *service_name_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!_dealer_threadsafe) {
+    if (!_dealer) {
         errno = ENOTSUP;
         return -1;
     }
 
-    if (send_u16_threadsafe (_dealer_threadsafe,
-                             discovery_protocol::msg_unregister, ZLINK_SNDMORE)
+    if (send_u16 (_dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
-        || send_string_threadsafe (_dealer_threadsafe, service_name_,
-                                   ZLINK_SNDMORE)
-             != 0
-        || send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint, 0)
-             != 0)
+        || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
+        || send_string (_dealer, _advertise_endpoint, 0) != 0)
         return -1;
     return 0;
 }
@@ -433,7 +399,36 @@ int provider_t::register_result (const char *service_name_,
     return 0;
 }
 
-void *provider_t::threadsafe_router ()
+int provider_t::set_tls_server (const char *cert_, const char *key_)
+{
+    if (!cert_ || !key_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    if (cert_[0] == '\0' || key_[0] == '\0') {
+        _tls_cert.clear ();
+        _tls_key.clear ();
+        return 0;
+    }
+
+    _tls_cert = cert_;
+    _tls_key = key_;
+
+    if (_router) {
+        if (_router->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
+                                 _tls_cert.size ())
+              != 0
+            || _router->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
+                                    _tls_key.size ())
+                 != 0)
+            return -1;
+    }
+    return 0;
+}
+
+void *provider_t::router ()
 {
     scoped_lock_t lock (_sync);
     if (!_router)
@@ -449,26 +444,56 @@ void provider_t::heartbeat_worker (void *arg_)
 
 void provider_t::send_heartbeat ()
 {
+    socket_base_t *dealer = NULL;
+    std::string last_registry;
+    zlink_routing_id_t rid;
+    rid.size = 0;
     while (_stop.get () == 0) {
+        std::string registry;
+        std::string service;
+        std::string advertise;
         {
             scoped_lock_t lock (_sync);
-            if (_dealer_threadsafe && !_service_name.empty ()
-                && !_advertise_endpoint.empty ()) {
-                send_u16_threadsafe (_dealer_threadsafe,
-                                     discovery_protocol::msg_heartbeat,
-                                     ZLINK_SNDMORE);
-                send_string_threadsafe (_dealer_threadsafe, _service_name,
-                                        ZLINK_SNDMORE);
-                send_string_threadsafe (_dealer_threadsafe, _advertise_endpoint,
-                                        0);
+            registry = _registry_endpoint;
+            service = _service_name;
+            advertise = _advertise_endpoint;
+            rid = _routing_id;
+        }
+
+        if (registry != last_registry) {
+            if (dealer) {
+                dealer->close ();
+                dealer = NULL;
+            }
+            last_registry = registry;
+        }
+
+        if (!dealer && !registry.empty ()) {
+            dealer = _ctx->create_socket (ZLINK_DEALER);
+            if (dealer) {
+                if (rid.size > 0)
+                    dealer->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
+                dealer->connect (registry.c_str ());
             }
         }
+
+        if (dealer && !service.empty () && !advertise.empty ()) {
+            send_u16 (dealer, discovery_protocol::msg_heartbeat,
+                      ZLINK_SNDMORE);
+            send_string (dealer, service, ZLINK_SNDMORE);
+            send_string (dealer, advertise, 0);
+        }
+
         uint32_t remaining = _heartbeat_interval_ms;
         while (remaining > 0 && _stop.get () == 0) {
             const uint32_t chunk = remaining > 100 ? 100 : remaining;
             sleep_ms (static_cast<int> (chunk));
             remaining -= chunk;
         }
+    }
+
+    if (dealer) {
+        dealer->close ();
     }
 }
 
@@ -479,25 +504,11 @@ int provider_t::destroy ()
         _heartbeat_thread.stop ();
 
     scoped_lock_t lock (_sync);
-    if (_dealer_threadsafe) {
-        _dealer_threadsafe->close ();
-        if (_dealer)
-            _dealer->set_threadsafe_proxy (NULL);
-        delete _dealer_threadsafe;
-        _dealer_threadsafe = NULL;
-        _dealer = NULL;
-    } else if (_dealer) {
+    if (_dealer) {
         _dealer->close ();
         _dealer = NULL;
     }
-    if (_router_threadsafe) {
-        _router_threadsafe->close ();
-        if (_router)
-            _router->set_threadsafe_proxy (NULL);
-        delete _router_threadsafe;
-        _router_threadsafe = NULL;
-        _router = NULL;
-    } else if (_router) {
+    if (_router) {
         _router->close ();
         _router = NULL;
     }

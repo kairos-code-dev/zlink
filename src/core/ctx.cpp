@@ -51,12 +51,7 @@ zlink::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _blocky (true),
-    _ipv6 (false),
-    _threadsafe_io_context (),
-    _threadsafe_work_guard (
-      boost::asio::make_work_guard (_threadsafe_io_context)),
-    _threadsafe_thread (),
-    _threadsafe_started (false)
+    _ipv6 (false)
 {
 #ifdef HAVE_FORK
     _pid = getpid ();
@@ -75,12 +70,6 @@ zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
     zlink_assert (_sockets.empty ());
-
-    if (_threadsafe_started) {
-        _threadsafe_work_guard.reset ();
-        _threadsafe_io_context.stop ();
-        _threadsafe_thread.stop ();
-    }
 
     //  Ask I/O threads to terminate. If stop signal wasn't sent to I/O
     //  thread subsequent invocation of destructor would hang-up.
@@ -402,12 +391,6 @@ bool zlink::ctx_t::start ()
         _empty_slots.push_back (i);
     }
 
-    if (!_threadsafe_started) {
-        start_thread (_threadsafe_thread, threadsafe_worker, this,
-                      "threadsafe");
-        _threadsafe_started = true;
-    }
-
     _starting = false;
     return true;
 
@@ -421,14 +404,7 @@ fail_cleanup_slots:
     return false;
 }
 
-void zlink::ctx_t::threadsafe_worker (void *arg_)
-{
-    ctx_t *self = static_cast<ctx_t *> (arg_);
-    self->_threadsafe_io_context.run ();
-}
-
-zlink::socket_base_t *zlink::ctx_t::create_socket (int type_,
-                                                 bool thread_safe_)
+zlink::socket_base_t *zlink::ctx_t::create_socket (int type_)
 {
     scoped_lock_t locker (_slot_sync);
 
@@ -458,8 +434,7 @@ zlink::socket_base_t *zlink::ctx_t::create_socket (int type_,
     const int sid = (static_cast<int> (max_socket_id.add (1))) + 1;
 
     //  Create the socket and register its mailbox.
-    socket_base_t *s =
-      socket_base_t::create (type_, this, slot, sid, thread_safe_);
+    socket_base_t *s = socket_base_t::create (type_, this, slot, sid);
     if (!s) {
         _empty_slots.push_back (slot);
         return NULL;
@@ -491,11 +466,6 @@ void zlink::ctx_t::destroy_socket (class socket_base_t *socket_)
 zlink::object_t *zlink::ctx_t::get_reaper () const
 {
     return _reaper;
-}
-
-boost::asio::io_context &zlink::ctx_t::get_threadsafe_io_context ()
-{
-    return _threadsafe_io_context;
 }
 
 zlink::thread_ctx_t::thread_ctx_t () :

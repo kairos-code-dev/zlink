@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "sockets/socket_base.hpp"
-#include "core/signaler.hpp"
 #include "utils/polling_util.hpp"
 
 //  Draft API types (kept for internal use)
@@ -51,7 +50,7 @@ class socket_poller_t
     int add_fd (fd_t fd_, void *user_data_, short events_);
     int modify_fd (fd_t fd_, short events_);
     int remove_fd (fd_t fd_);
-    // Returns the signaler's fd if there is one, otherwise errors.
+    // Returns an error (signalers are not used).
     int signaler_fd (fd_t *fd_) const;
 
     int wait (event_t *events_, int n_events_, long timeout_);
@@ -104,18 +103,12 @@ class socket_poller_t
     //  Used to check whether the object is a socket_poller.
     uint32_t _tag;
 
-    //  Signaler used for thread safe sockets polling
-    signaler_t *_signaler;
-
     //  List of sockets
     typedef std::vector<item_t> items_t;
     items_t _items;
 
     //  Does the pollset needs rebuilding?
     bool _need_rebuild;
-
-    //  Should the signaler be used for the thread safe polling?
-    bool _use_signaler;
 
     //  Size of the pollset
     int _pollset_size;

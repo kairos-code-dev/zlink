@@ -18,7 +18,6 @@
 #include "core/pipe.hpp"
 #include "core/endpoint.hpp"
 #include "utils/atomic_counter.hpp"
-#include "utils/fast_mutex.hpp"
 #include "zlink.h"
 
 extern "C" {
@@ -30,9 +29,6 @@ namespace zlink
 class ctx_t;
 class msg_t;
 class pipe_t;
-class signaler_t;
-class thread_safe_socket_t;
-
 class socket_base_t : public own_t,
                       public array_item_t<>,
                       public i_poll_events,
@@ -44,20 +40,9 @@ class socket_base_t : public own_t,
     //  Returns false if object is not a socket.
     bool check_tag () const;
 
-    //  Returns whether the socket is thread-safe.
-    bool is_thread_safe () const;
-
-    //  Thread-safe proxy created via zlink_socket_threadsafe (if any).
-    thread_safe_socket_t *get_threadsafe_proxy () const;
-    void set_threadsafe_proxy (thread_safe_socket_t *proxy_);
-
     //  Create a socket of a specified type.
     static socket_base_t *
-    create (int type_,
-            zlink::ctx_t *parent_,
-            uint32_t tid_,
-            int sid_,
-            bool thread_safe_ = false);
+    create (int type_, zlink::ctx_t *parent_, uint32_t tid_, int sid_);
 
     //  Returns the mailbox associated with this socket.
     i_mailbox *get_mailbox () const;
@@ -75,8 +60,6 @@ class socket_base_t : public own_t,
     int term_endpoint (const char *endpoint_uri_);
     int send (zlink::msg_t *msg_, int flags_);
     int recv (zlink::msg_t *msg_, int flags_);
-    void add_signaler (signaler_t *s_);
-    void remove_signaler (signaler_t *s_);
     int close ();
 
     //  These functions are used by the polling mechanism to determine
@@ -103,8 +86,6 @@ class socket_base_t : public own_t,
     void write_activated (pipe_t *pipe_) ZLINK_FINAL;
     void hiccuped (pipe_t *pipe_) ZLINK_FINAL;
     void pipe_terminated (pipe_t *pipe_) ZLINK_FINAL;
-    void lock ();
-    void unlock ();
 
     int monitor (const char *endpoint_,
                  uint64_t events_,
@@ -160,10 +141,7 @@ class socket_base_t : public own_t,
     bool is_ctx_terminated () const;
 
   protected:
-    socket_base_t (zlink::ctx_t *parent_,
-                   uint32_t tid_,
-                   int sid_,
-                   bool thread_safe_ = false);
+    socket_base_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~socket_base_t () ZLINK_OVERRIDE;
 
     //  Concrete algorithms for the x- methods are to be defined by
@@ -205,9 +183,6 @@ class socket_base_t : public own_t,
     void process_destroy () ZLINK_FINAL;
 
     int connect_internal (const char *endpoint_uri_);
-
-    // Mutex for synchronize access to the socket in thread safe mode
-    fast_mutex_t _sync;
 
   private:
     // test if event should be sent and then dispatch it
@@ -338,8 +313,6 @@ class socket_base_t : public own_t,
     // Last socket endpoint resolved URI
     std::string _last_endpoint;
 
-    // Indicate if the socket is thread safe
-    const bool _thread_safe;
 
     atomic_counter_t _mailbox_refcnt;
     bool _destroy_pending;
@@ -347,24 +320,17 @@ class socket_base_t : public own_t,
     // Mutex to synchronize access to the monitor Pair socket
     mutex_t _monitor_sync;
 
-    //  Signaler for ZLINK_FD exposure (created on-demand)
-    signaler_t *_zlink_fd_signaler;
-
     ZLINK_NON_COPYABLE_NOR_MOVABLE (socket_base_t)
 
     // Add a flag for mark disconnect action
     bool _disconnected;
 
-    thread_safe_socket_t *_threadsafe_proxy;
 };
 
 class routing_socket_base_t : public socket_base_t
 {
   protected:
-    routing_socket_base_t (class ctx_t *parent_,
-                           uint32_t tid_,
-                           int sid_,
-                           bool thread_safe_ = false);
+    routing_socket_base_t (class ctx_t *parent_, uint32_t tid_, int sid_);
     ~routing_socket_base_t () ZLINK_OVERRIDE;
 
     // methods from socket_base_t

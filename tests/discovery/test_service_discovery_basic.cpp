@@ -4,6 +4,26 @@
 #include "../testutil.hpp"
 
 #include <string.h>
+#include <stdlib.h>
+
+static bool test_debug_enabled ()
+{
+    return getenv ("ZLINK_TEST_DEBUG") != NULL;
+}
+
+static void dump_msg (const char *label_, const zlink_msg_t *msg_)
+{
+    if (!test_debug_enabled () || !label_ || !msg_)
+        return;
+    const size_t size = zlink_msg_size (msg_);
+    fprintf (stderr, "[%s] size=%zu data=0x", label_, size);
+    const unsigned char *data =
+      static_cast<const unsigned char *> (zlink_msg_data (const_cast<zlink_msg_t *> (msg_)));
+    const size_t dump = size < 16 ? size : 16;
+    for (size_t i = 0; i < dump; ++i)
+        fprintf (stderr, "%02x", data[i]);
+    fprintf (stderr, "\n");
+}
 
 static void setup_registry (void *ctx,
                             void **registry_out,
@@ -92,7 +112,7 @@ static void test_gateway_send_recv ()
       zlink_gateway_send (gateway, "svc", &req, 1, 0, &request_id));
     TEST_ASSERT_TRUE (request_id != 0);
 
-    void *router = zlink_provider_threadsafe_router (provider);
+    void *router = zlink_provider_router (provider);
     TEST_ASSERT_NOT_NULL (router);
 
     zlink_msg_t rid;
@@ -105,6 +125,10 @@ static void test_gateway_send_recv ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&rid, router, 0));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&reqid, router, 0));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&payload, router, 0));
+
+    dump_msg ("gateway_rid", &rid);
+    dump_msg ("gateway_reqid", &reqid);
+    dump_msg ("gateway_payload", &payload);
 
     TEST_ASSERT_EQUAL_INT (5, (int) zlink_msg_size (&payload));
     TEST_ASSERT_EQUAL_MEMORY ("hello", zlink_msg_data (&payload), 5);

@@ -52,10 +52,9 @@ set(tests
   routing-id/test_stream_routing_id_size
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
-  request/test_request_reply_api
   discovery/test_service_discovery_basic
-  spot/test_spot_pubsub_basic
-  threadsafe/test_thread_safe_socket)
+  discovery/test_service_discovery_tcp
+  spot/test_spot_pubsub_basic)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)

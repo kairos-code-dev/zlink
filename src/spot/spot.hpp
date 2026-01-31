@@ -21,7 +21,7 @@ class spot_node_t;
 class spot_t
 {
   public:
-    spot_t (spot_node_t *node_, bool threadsafe_);
+    explicit spot_t (spot_node_t *node_);
     ~spot_t ();
 
     bool check_tag () const;
@@ -64,9 +64,6 @@ class spot_t
 
     spot_node_t *_node;
     uint32_t _tag;
-    bool _threadsafe;
-    mutex_t _sync;
-
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
     std::map<std::string, uint64_t> _ring_cursors;

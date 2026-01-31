@@ -7,7 +7,6 @@
 #include "core/msg.hpp"
 #include "core/thread.hpp"
 #include "discovery/discovery.hpp"
-#include "sockets/thread_safe_socket.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
@@ -39,8 +38,12 @@ class spot_node_t
     int unregister_node (const char *service_name_);
     int set_discovery (discovery_t *discovery_,
                        const char *service_name_);
+    int set_tls_server (const char *cert_, const char *key_);
+    int set_tls_client (const char *ca_cert_,
+                        const char *hostname_,
+                        int trust_system_);
 
-    spot_t *create_spot (bool threadsafe_);
+    spot_t *create_spot ();
     void remove_spot (spot_t *spot_);
 
     int publish (spot_t *spot_,
@@ -79,6 +82,8 @@ class spot_node_t
                          const std::vector<msg_t> &payload_);
     void refresh_peers ();
     void send_heartbeat (uint64_t now_ms_);
+    void ensure_worker_sockets ();
+    void flush_pending ();
 
     static bool validate_topic (const char *topic_, std::string *out_);
     static bool validate_pattern (const char *pattern_, std::string *prefix_);
@@ -95,11 +100,14 @@ class spot_node_t
     uint32_t _tag;
 
     socket_base_t *_pub;
-    thread_safe_socket_t *_pub_threadsafe;
     socket_base_t *_sub;
-    thread_safe_socket_t *_sub_threadsafe;
     socket_base_t *_dealer;
-    thread_safe_socket_t *_dealer_threadsafe;
+
+    std::deque<std::string> _pending_subscribe;
+    std::deque<std::string> _pending_unsubscribe;
+    std::deque<std::string> _pending_peer_connect;
+    std::deque<std::string> _pending_peer_disconnect;
+    std::deque<std::string> _pending_registry_connect;
 
     std::vector<std::string> _bind_endpoints;
     std::set<std::string> _peer_endpoints;
@@ -122,6 +130,12 @@ class spot_node_t
     std::set<spot_t *> _spots;
     std::map<std::string, size_t> _filter_refcount;
     std::map<std::string, topic_state_t> _topics;
+
+    std::string _tls_cert;
+    std::string _tls_key;
+    std::string _tls_ca;
+    std::string _tls_hostname;
+    int _tls_trust_system;
 
     atomic_counter_t _stop;
     thread_t _worker;

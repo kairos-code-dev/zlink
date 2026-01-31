@@ -942,7 +942,6 @@ set(core-sources
     src/core/ctx.cpp
     src/core/pipe.cpp
     src/core/mailbox.cpp
-    src/core/mailbox_safe.cpp
     src/core/object.cpp
     src/core/own.cpp
     src/core/io_object.cpp
@@ -979,7 +978,6 @@ set(spot-sources
 
 set(socket-sources
     src/sockets/socket_base.cpp
-    src/sockets/thread_safe_socket.cpp
     src/sockets/dealer.cpp
     src/sockets/router.cpp
     src/sockets/stream.cpp
@@ -1103,7 +1101,7 @@ if(MINGW)
   endif()
 endif()
 
-set(public_headers include/zlink.h include/zlink_utils.h include/zlink_threadsafe.h)
+set(public_headers include/zlink.h include/zlink_utils.h)
 
 set(readme-docs AUTHORS LICENSE NEWS)
 
@@ -1494,9 +1492,6 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
   endif()
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
     add_subdirectory(benchwithzlink)
-  endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink-threadsafe/CMakeLists.txt")
-    add_subdirectory(benchwithzlink-threadsafe)
   endif()
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithbeast/CMakeLists.txt")
     add_subdirectory(benchwithbeast)

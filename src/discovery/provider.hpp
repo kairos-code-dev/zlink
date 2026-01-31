@@ -5,7 +5,6 @@
 
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
-#include "sockets/thread_safe_socket.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -33,7 +32,8 @@ class provider_t
                          int *status_,
                          char *resolved_endpoint_,
                          char *error_message_);
-    void *threadsafe_router ();
+    int set_tls_server (const char *cert_, const char *key_);
+    void *router ();
     int destroy ();
 
   private:
@@ -46,9 +46,9 @@ class provider_t
     uint32_t _tag;
 
     socket_base_t *_router;
-    thread_safe_socket_t *_router_threadsafe;
     socket_base_t *_dealer;
-    thread_safe_socket_t *_dealer_threadsafe;
+
+    zlink_routing_id_t _routing_id;
 
     std::string _bind_endpoint;
     std::string _registry_endpoint;
@@ -66,6 +66,9 @@ class provider_t
     thread_t _heartbeat_thread;
 
     mutex_t _sync;
+
+    std::string _tls_cert;
+    std::string _tls_key;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (provider_t)
 };

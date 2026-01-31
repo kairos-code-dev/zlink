@@ -7,7 +7,6 @@
 #include <vector>
 #include <string>
 #include <stdarg.h>
-#include <boost/asio.hpp>
 
 #include "core/mailbox.hpp"
 #include "utils/array.hpp"
@@ -94,7 +93,7 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int get (int option_);
 
     //  Create and destroy a socket.
-    zlink::socket_base_t *create_socket (int type_, bool thread_safe_ = false);
+    zlink::socket_base_t *create_socket (int type_);
     void destroy_socket (zlink::socket_base_t *socket_);
 
     //  Send command to the destination thread.
@@ -107,9 +106,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     //  Returns reaper thread object.
     zlink::object_t *get_reaper () const;
-
-    //  Thread-safe API worker io_context.
-    boost::asio::io_context &get_threadsafe_io_context ();
 
     //  Management of inproc endpoints.
     int register_endpoint (const char *addr_, const endpoint_t &endpoint_);
@@ -135,7 +131,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
   private:
     bool start ();
-    static void threadsafe_worker (void *arg_);
 
     struct pending_connection_t
     {
@@ -212,13 +207,6 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     //  Is IPv6 enabled on this context?
     bool _ipv6;
-
-    //  Thread-safe API worker thread.
-    boost::asio::io_context _threadsafe_io_context;
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      _threadsafe_work_guard;
-    thread_t _threadsafe_thread;
-    bool _threadsafe_started;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (ctx_t)
 

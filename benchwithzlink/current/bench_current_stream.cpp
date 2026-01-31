@@ -28,12 +28,26 @@
 
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 
+static bool recv_msg_with_timeout(void *socket, zlink_msg_t *msg, int timeout_ms) {
+    const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (true) {
+        const int rc = zlink_msg_recv(msg, socket, ZLINK_DONTWAIT);
+        if (rc >= 0)
+            return true;
+        if (zlink_errno() != EAGAIN)
+            return false;
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
 // Helper: Receive STREAM connect event, returns routing_id bytes
 std::vector<unsigned char> expect_connect_event(void* socket) {
     zlink_msg_t id_frame;
     zlink_msg_init(&id_frame);
-    int id_len = zlink_msg_recv(&id_frame, socket, 0);
-    if (id_len <= 0) {
+    if (!recv_msg_with_timeout(socket, &id_frame, 2000)) {
         if (bench_debug_enabled())
             std::cerr << "Failed to receive routing_id: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -41,6 +55,7 @@ std::vector<unsigned char> expect_connect_event(void* socket) {
         return {};
     }
 
+    const size_t id_len = zlink_msg_size(&id_frame);
     std::vector<unsigned char> routing_id(
         static_cast<const unsigned char*>(zlink_msg_data(&id_frame)),
         static_cast<const unsigned char*>(zlink_msg_data(&id_frame)) + id_len);
@@ -57,14 +72,23 @@ std::vector<unsigned char> expect_connect_event(void* socket) {
     }
 
     // Receive payload (should be 0x01 for connect)
-    unsigned char payload[16];
-    int payload_len = zlink_recv(socket, payload, sizeof(payload), 0);
-    if (payload_len != 1 || payload[0] != STREAM_EVENT_CONNECT) {
-        if (bench_debug_enabled())
-            std::cerr << "Expected connect event (0x01), got len=" << payload_len
-                      << " val=" << (int)payload[0] << std::endl;
+    zlink_msg_t payload;
+    zlink_msg_init(&payload);
+    if (!recv_msg_with_timeout(socket, &payload, 2000)) {
+        zlink_msg_close(&payload);
         return {};
     }
+    const size_t payload_len = zlink_msg_size(&payload);
+    unsigned char *payload_data =
+      static_cast<unsigned char *>(zlink_msg_data(&payload));
+    if (payload_len != 1 || payload_data[0] != STREAM_EVENT_CONNECT) {
+        if (bench_debug_enabled())
+            std::cerr << "Expected connect event (0x01), got len=" << payload_len
+                      << " val=" << (int)payload_data[0] << std::endl;
+        zlink_msg_close(&payload);
+        return {};
+    }
+    zlink_msg_close(&payload);
 
     if (bench_debug_enabled())
         std::cerr << "Got connect event, routing_id_size=" << routing_id.size()
@@ -92,18 +116,35 @@ inline int recv_stream_msg(void* socket,
                            size_t buf_size) {
     zlink_msg_t id_frame;
     zlink_msg_init(&id_frame);
-    int id_len = zlink_msg_recv(&id_frame, socket, 0);
-    if (id_len <= 0) {
+    if (!recv_msg_with_timeout(socket, &id_frame, 5000)) {
         zlink_msg_close(&id_frame);
         return -1;
     }
+    if (!zlink_msg_more(&id_frame)) {
+        zlink_msg_close(&id_frame);
+        return -1;
+    }
+    const size_t id_len = zlink_msg_size(&id_frame);
     if (routing_id_out) {
         routing_id_out->assign(
             static_cast<const unsigned char*>(zlink_msg_data(&id_frame)),
             static_cast<const unsigned char*>(zlink_msg_data(&id_frame)) + id_len);
     }
     zlink_msg_close(&id_frame);
-    return zlink_recv(socket, buf, buf_size, 0);
+    zlink_msg_t payload;
+    zlink_msg_init(&payload);
+    if (!recv_msg_with_timeout(socket, &payload, 5000)) {
+        zlink_msg_close(&payload);
+        return -1;
+    }
+    const size_t payload_len = zlink_msg_size(&payload);
+    if (payload_len > buf_size) {
+        zlink_msg_close(&payload);
+        return -1;
+    }
+    memcpy(buf, zlink_msg_data(&payload), payload_len);
+    zlink_msg_close(&payload);
+    return static_cast<int>(payload_len);
 }
 
 void run_stream(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
@@ -116,6 +157,11 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     set_sockopt_int(server, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
     set_sockopt_int(client, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
     set_sockopt_int(client, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+    const int io_timeout_ms = 5000;
+    set_sockopt_int(server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(client, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(client, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
 
     // Setup TLS for server (sets cert/key for tls/wss)
     if (!setup_tls_server(server, transport)) {
@@ -151,6 +197,13 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     apply_debug_timeouts(server, transport);
     apply_debug_timeouts(client, transport);
     settle();
+
+    auto fail_and_cleanup = [&]() {
+        print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
+        zlink_close(server);
+        zlink_close(client);
+        zlink_ctx_term(ctx);
+    };
 
     // Get routing_ids from connect events
     std::vector<unsigned char> server_client_id = expect_connect_event(server);
@@ -191,7 +244,10 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
 
         // Server receives: [routing_id (4B)][data]
-        recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size());
+        if (recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size()) < 0) {
+            fail_and_cleanup();
+            return;
+        }
     }
 
     // Latency test (round-trip)
@@ -200,19 +256,29 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     for (int i = 0; i < lat_count; ++i) {
         // Client -> Server
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
-        recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size());
+        if (recv_stream_msg(server, NULL, recv_buf.data(), recv_buf.size()) < 0) {
+            fail_and_cleanup();
+            return;
+        }
 
         // Server -> Client
         send_stream_msg(server, server_client_id, recv_buf.data(), msg_size);
-        recv_stream_msg(client, NULL, recv_buf.data(), recv_buf.size());
+        if (recv_stream_msg(client, NULL, recv_buf.data(), recv_buf.size()) < 0) {
+            fail_and_cleanup();
+            return;
+        }
     }
     double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
     // Throughput test
+    std::atomic<bool> recv_ok(true);
     std::thread receiver([&]() {
         std::vector<char> data_buf(msg_size > 256 ? msg_size : 256);
         for (int i = 0; i < msg_count; ++i) {
-            recv_stream_msg(server, NULL, data_buf.data(), data_buf.size());
+            if (recv_stream_msg(server, NULL, data_buf.data(), data_buf.size()) < 0) {
+                recv_ok.store(false);
+                break;
+            }
         }
     });
 
@@ -221,6 +287,10 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
         send_stream_msg(client, client_server_id, buffer.data(), msg_size);
     }
     receiver.join();
+    if (!recv_ok.load()) {
+        fail_and_cleanup();
+        return;
+    }
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 
     print_result(lib_name, "STREAM", transport, msg_size, throughput, latency);

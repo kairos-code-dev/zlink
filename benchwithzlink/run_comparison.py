@@ -101,7 +101,7 @@ if not IS_WINDOWS:
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 
 def select_transports(pattern_name):
-    base = STREAM_TRANSPORTS if pattern_name == "STREAM" else TRANSPORTS
+    base = STREAM_TRANSPORTS if pattern_name in ("STREAM", "GATEWAY", "SPOT") else TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -319,6 +319,8 @@ def main():
         ("comp_baseline_router_router_poll", "comp_current_router_router_poll",
          "ROUTER_ROUTER_POLL"),
         ("comp_baseline_stream", "comp_current_stream", "STREAM"),
+        ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
+        ("comp_baseline_spot", "comp_current_spot", "SPOT"),
     ]
 
     all_failures = []

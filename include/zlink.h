@@ -276,7 +276,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_XPUB_VERBOSER 78
 #define ZLINK_CONNECT_TIMEOUT 79
 #define ZLINK_TCP_MAXRT 80
-#define ZLINK_THREAD_SAFE 81
 #define ZLINK_MULTICAST_MAXTPDU 84
 #define ZLINK_USE_FD 89
 #define ZLINK_REQUEST_TIMEOUT 90
@@ -350,13 +349,11 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED 0x30000000
 
 ZLINK_EXPORT void *zlink_socket (void *, int type_);
-ZLINK_EXPORT void *zlink_socket_threadsafe (void *, int type_);
 ZLINK_EXPORT int zlink_close (void *s_);
 ZLINK_EXPORT int
 zlink_setsockopt (void *s_, int option_, const void *optval_, size_t optvallen_);
 ZLINK_EXPORT int
 zlink_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_);
-ZLINK_EXPORT int zlink_is_threadsafe (void *s_);
 ZLINK_EXPORT int zlink_bind (void *s_, const char *addr_);
 ZLINK_EXPORT int zlink_connect (void *s_, const char *addr_);
 ZLINK_EXPORT int zlink_unbind (void *s_, const char *addr_);
@@ -399,65 +396,7 @@ ZLINK_EXPORT int zlink_socket_peers (void *socket_,
                                  zlink_peer_info_t *peers_,
                                  size_t *count_);
 
-/******************************************************************************/
-/*  Request/Reply API (thread-safe sockets only)                              */
-/******************************************************************************/
-
-#define ZLINK_REQUEST_TIMEOUT_DEFAULT -2
-
-#define ETIMEDOUT_ZLINK 110
-#define ECANCELED_ZLINK 125
-
-typedef void (*zlink_request_cb_fn) (uint64_t request_id,
-                                   zlink_msg_t *reply_parts,
-                                   size_t reply_count,
-                                   int error);
-
-typedef void (*zlink_server_cb_fn) (zlink_msg_t *request_parts,
-                                  size_t part_count,
-                                  const zlink_routing_id_t *routing_id,
-                                  uint64_t request_id);
-
-typedef struct zlink_completion_t
-{
-    uint64_t request_id;
-    zlink_msg_t *parts;
-    size_t part_count;
-    int error;
-} zlink_completion_t;
-
-ZLINK_EXPORT uint64_t zlink_request (void *socket,
-                                 const zlink_routing_id_t *routing_id,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 zlink_request_cb_fn callback,
-                                 int timeout_ms);
-ZLINK_EXPORT uint64_t zlink_group_request (void *socket,
-                                       const zlink_routing_id_t *routing_id,
-                                       uint64_t group_id,
-                                       zlink_msg_t *parts,
-                                       size_t part_count,
-                                       zlink_request_cb_fn callback,
-                                       int timeout_ms);
-ZLINK_EXPORT int zlink_on_request (void *socket, zlink_server_cb_fn handler);
-ZLINK_EXPORT int zlink_reply (void *socket,
-                          const zlink_routing_id_t *routing_id,
-                          uint64_t request_id,
-                          zlink_msg_t *parts,
-                          size_t part_count);
-ZLINK_EXPORT int zlink_reply_simple (void *socket,
-                                 zlink_msg_t *parts,
-                                 size_t part_count);
 ZLINK_EXPORT void zlink_msgv_close (zlink_msg_t *parts, size_t part_count);
-ZLINK_EXPORT uint64_t zlink_request_send (void *socket,
-                                      const zlink_routing_id_t *routing_id,
-                                      zlink_msg_t *parts,
-                                      size_t part_count);
-ZLINK_EXPORT int zlink_request_recv (void *socket,
-                                 zlink_completion_t *completion,
-                                 int timeout_ms);
-ZLINK_EXPORT int zlink_pending_requests (void *socket);
-ZLINK_EXPORT int zlink_cancel_all_requests (void *socket);
 
 /******************************************************************************/
 /*  Service Discovery API                                                     */
@@ -470,19 +409,6 @@ typedef struct {
     uint32_t weight;
     uint64_t registered_at;
 } zlink_provider_info_t;
-
-typedef struct {
-    char service_name[256];
-    uint64_t request_id;
-    int error;
-    zlink_msg_t *parts;
-    size_t part_count;
-} zlink_gateway_completion_t;
-
-typedef void (*zlink_gateway_request_cb_fn) (uint64_t request_id,
-                                           zlink_msg_t *reply_parts,
-                                           size_t reply_count,
-                                           int error);
 
 /* Registry */
 ZLINK_EXPORT void *zlink_registry_new (void *ctx);
@@ -532,23 +458,6 @@ ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
                                  int flags,
                                  char *service_name_out,
                                  uint64_t *request_id_out);
-ZLINK_EXPORT void *zlink_gateway_threadsafe_router (void *gateway,
-                                                const char *service_name);
-
-ZLINK_EXPORT uint64_t zlink_gateway_request (void *gateway,
-                                         const char *service_name,
-                                         zlink_msg_t *parts,
-                                         size_t part_count,
-                                         zlink_gateway_request_cb_fn callback,
-                                         int timeout_ms);
-ZLINK_EXPORT uint64_t zlink_gateway_request_send (void *gateway,
-                                              const char *service_name,
-                                              zlink_msg_t *parts,
-                                              size_t part_count,
-                                              int flags);
-ZLINK_EXPORT int zlink_gateway_request_recv (void *gateway,
-                                         zlink_gateway_completion_t *completion,
-                                         int timeout_ms);
 
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0
 #define ZLINK_GATEWAY_LB_WEIGHTED 1
@@ -556,6 +465,10 @@ ZLINK_EXPORT int zlink_gateway_request_recv (void *gateway,
 ZLINK_EXPORT int zlink_gateway_set_lb_strategy (void *gateway,
                                             const char *service_name,
                                             int strategy);
+ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
+                                           const char *ca_cert,
+                                           const char *hostname,
+                                           int trust_system);
 ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
                                              const char *service_name);
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
@@ -580,7 +493,10 @@ ZLINK_EXPORT int zlink_provider_register_result (void *provider,
                                              int *status,
                                              char *resolved_endpoint,
                                              char *error_message);
-ZLINK_EXPORT void *zlink_provider_threadsafe_router (void *provider);
+ZLINK_EXPORT int zlink_provider_set_tls_server (void *provider,
+                                            const char *cert,
+                                            const char *key);
+ZLINK_EXPORT void *zlink_provider_router (void *provider);
 ZLINK_EXPORT int zlink_provider_destroy (void **provider_p);
 
 /******************************************************************************/
@@ -608,10 +524,16 @@ ZLINK_EXPORT int zlink_spot_node_unregister (void *node,
 ZLINK_EXPORT int zlink_spot_node_set_discovery (void *node,
                                             void *discovery,
                                             const char *service_name);
+ZLINK_EXPORT int zlink_spot_node_set_tls_server (void *node,
+                                             const char *cert,
+                                             const char *key);
+ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
+                                             const char *ca_cert,
+                                             const char *hostname,
+                                             int trust_system);
 
 /* SPOT Instance */
 ZLINK_EXPORT void *zlink_spot_new (void *node);
-ZLINK_EXPORT void *zlink_spot_new_threadsafe (void *node);
 ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
 ZLINK_EXPORT int zlink_spot_topic_create (void *spot,
                                       const char *topic_id,

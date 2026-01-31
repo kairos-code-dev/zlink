@@ -16,12 +16,49 @@
 #endif
 
 #include <algorithm>
+#include <inttypes.h>
 #include <string.h>
+#include <cstdlib>
 
 namespace zlink
 {
 static const uint32_t gateway_tag_value = 0x1e6700d7;
-static const int gateway_default_timeout_ms = 5000;
+
+static bool gateway_debug_enabled ()
+{
+    return std::getenv ("ZLINK_GATEWAY_DEBUG") != NULL;
+}
+
+static void dump_gateway_peers (socket_base_t *socket_)
+{
+    if (!gateway_debug_enabled () || !socket_)
+        return;
+    size_t count = 0;
+    if (socket_->socket_peers (NULL, &count) != 0 || count == 0) {
+        fprintf (stderr, "gateway peers: <none>\n");
+        return;
+    }
+    std::vector<zlink_peer_info_t> peers;
+    peers.resize (count);
+    if (socket_->socket_peers (&peers[0], &count) != 0) {
+        fprintf (stderr, "gateway peers: <error>\n");
+        return;
+    }
+    fprintf (stderr, "gateway peers: %zu\n", count);
+    for (size_t i = 0; i < count; ++i) {
+        const zlink_peer_info_t &info = peers[i];
+        fprintf (stderr,
+                 "gateway peer[%zu] rid_size=%u remote=%s sent=%" PRIu64
+                 " recv=%" PRIu64 " rid=0x",
+                 i, static_cast<unsigned> (info.routing_id.size),
+                 info.remote_addr, static_cast<uint64_t> (info.msgs_sent),
+                 static_cast<uint64_t> (info.msgs_received));
+        for (uint8_t j = 0; j < info.routing_id.size; ++j)
+            fprintf (stderr, "%02x",
+                     static_cast<unsigned> (info.routing_id.data[j]));
+        fprintf (stderr, "\n");
+    }
+}
 
 static void sleep_ms (int ms_)
 {
@@ -32,15 +69,63 @@ static void sleep_ms (int ms_)
 #endif
 }
 
+static void ensure_gateway_routing_id (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+    unsigned char buf[5];
+    size_t size = sizeof (buf);
+    if (socket_->getsockopt (ZLINK_ROUTING_ID, buf, &size) == 0 && size > 0)
+        return;
+
+    uint32_t random_id = generate_random ();
+    if (random_id == 0)
+        random_id = 1;
+    buf[0] = 0;
+    memcpy (buf + 1, &random_id, sizeof (random_id));
+    socket_->setsockopt (ZLINK_ROUTING_ID, buf, sizeof (buf));
+}
+
+static bool wait_for_peer_ready (socket_base_t *socket_,
+                                 const zlink_routing_id_t &rid_,
+                                 int timeout_ms_)
+{
+    if (!socket_)
+        return false;
+
+    const std::chrono::steady_clock::time_point deadline =
+      timeout_ms_ > 0 ? std::chrono::steady_clock::now ()
+                            + std::chrono::milliseconds (timeout_ms_)
+                      : std::chrono::steady_clock::time_point ();
+
+    while (true) {
+        const int state =
+          socket_->get_peer_state (rid_.data, rid_.size);
+        if (state >= 0) {
+            if (state & ZLINK_POLLOUT)
+                return true;
+        } else if (errno != EHOSTUNREACH) {
+            return false;
+        }
+        if (timeout_ms_ == 0)
+            return false;
+        if (timeout_ms_ > 0
+            && std::chrono::steady_clock::now () >= deadline)
+            return false;
+        sleep_ms (1);
+    }
+}
+
 gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
     _ctx (ctx_),
     _discovery (discovery_),
     _tag (gateway_tag_value),
     _next_request_id (1),
-    _stop (0)
+    _tls_trust_system (0),
+    _stop (0),
+    _single_thread (true)
 {
     zlink_assert (_ctx);
-    _worker.start (run, this, "gateway");
     if (_discovery)
         _discovery->add_listener (this);
 }
@@ -72,21 +157,35 @@ void gateway_t::on_discovery_event (int event_,
     _refresh_queue.insert (service_name_);
 }
 
-static int allocate_threadsafe_router (ctx_t *ctx_, socket_base_t **socket_,
-                                       thread_safe_socket_t **threadsafe_)
+static int allocate_router (ctx_t *ctx_, socket_base_t **socket_)
 {
     *socket_ = ctx_->create_socket (ZLINK_ROUTER);
     if (!*socket_)
         return -1;
+    return 0;
+}
 
-    *threadsafe_ = new (std::nothrow) thread_safe_socket_t (ctx_, *socket_);
-    if (!*threadsafe_) {
-        (*socket_)->close ();
-        *socket_ = NULL;
-        errno = ENOMEM;
+static int apply_tls_client (socket_base_t *socket_,
+                             const std::string &ca_cert_,
+                             const std::string &hostname_,
+                             int trust_system_)
+{
+    if (!socket_)
         return -1;
-    }
-    (*socket_)->set_threadsafe_proxy (*threadsafe_);
+    if (ca_cert_.empty () || hostname_.empty ())
+        return 0;
+    if (socket_->setsockopt (ZLINK_TLS_CA, ca_cert_.data (),
+                             ca_cert_.size ())
+        != 0)
+        return -1;
+    if (socket_->setsockopt (ZLINK_TLS_HOSTNAME, hostname_.data (),
+                             hostname_.size ())
+        != 0)
+        return -1;
+    if (socket_->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &trust_system_,
+                             sizeof (trust_system_))
+        != 0)
+        return -1;
     return 0;
 }
 
@@ -101,13 +200,40 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
     service_pool_t pool;
     pool.service_name = service_name_;
     pool.socket = NULL;
-    pool.threadsafe = NULL;
     pool.rr_index = 0;
     pool.lb_strategy = ZLINK_GATEWAY_LB_ROUND_ROBIN;
 
-    if (allocate_threadsafe_router (_ctx, &pool.socket, &pool.threadsafe)
-        != 0)
+    if (allocate_router (_ctx, &pool.socket) != 0)
         return NULL;
+    ensure_gateway_routing_id (pool.socket);
+    int probe = 1;
+    pool.socket->setsockopt (ZLINK_PROBE_ROUTER, &probe, sizeof (probe));
+    if (gateway_debug_enabled () && pool.socket) {
+        unsigned char buf[256];
+        size_t size = sizeof (buf);
+        if (pool.socket->getsockopt (ZLINK_ROUTING_ID, buf, &size) == 0) {
+            fprintf (stderr, "gateway socket routing_id size=%zu data=0x",
+                     size);
+            for (size_t i = 0; i < size; ++i)
+                fprintf (stderr, "%02x", static_cast<unsigned> (buf[i]));
+            fprintf (stderr, "\n");
+        }
+    }
+    int mandatory = 1;
+    if (pool.socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
+                                 sizeof (mandatory))
+        != 0) {
+        pool.socket->close ();
+        pool.socket = NULL;
+        return NULL;
+    }
+    if (apply_tls_client (pool.socket, _tls_ca, _tls_hostname,
+                          _tls_trust_system)
+        != 0) {
+        pool.socket->close ();
+        pool.socket = NULL;
+        return NULL;
+    }
 
     _pools.insert (std::make_pair (service_name_, pool));
     return &_pools.find (service_name_)->second;
@@ -122,12 +248,11 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
     _discovery->snapshot_providers (pool_->service_name, &providers);
 
     std::vector<std::string> next_endpoints;
-    std::map<std::string, zlink_routing_id_t> next_routing;
-
+    std::map<std::string, zlink_routing_id_t> routing_map;
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &entry = providers[i];
         next_endpoints.push_back (entry.endpoint);
-        next_routing[entry.endpoint] = entry.routing_id;
+        routing_map[entry.endpoint] = entry.routing_id;
     }
 
     for (size_t i = 0; i < next_endpoints.size (); ++i) {
@@ -135,13 +260,13 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
         if (std::find (pool_->endpoints.begin (), pool_->endpoints.end (),
                        endpoint)
             == pool_->endpoints.end ()) {
-            std::map<std::string, zlink_routing_id_t>::iterator rit =
-              next_routing.find (endpoint);
-            if (rit != next_routing.end () && rit->second.size > 0) {
-                pool_->threadsafe->setsockopt (
-                  ZLINK_CONNECT_ROUTING_ID, rit->second.data, rit->second.size);
+            const std::map<std::string, zlink_routing_id_t>::iterator it =
+              routing_map.find (endpoint);
+            if (it != routing_map.end () && it->second.size > 0) {
+                pool_->socket->setsockopt (ZLINK_CONNECT_ROUTING_ID,
+                                           it->second.data, it->second.size);
             }
-            pool_->threadsafe->connect (endpoint.c_str ());
+            pool_->socket->connect (endpoint.c_str ());
         }
     }
 
@@ -150,13 +275,12 @@ void gateway_t::refresh_pool (service_pool_t *pool_)
         if (std::find (next_endpoints.begin (), next_endpoints.end (),
                        endpoint)
             == next_endpoints.end ()) {
-            pool_->threadsafe->term_endpoint (endpoint.c_str ());
+            pool_->socket->term_endpoint (endpoint.c_str ());
         }
     }
 
     pool_->providers.swap (providers);
     pool_->endpoints.swap (next_endpoints);
-    pool_->routing_map.swap (next_routing);
 }
 
 bool gateway_t::select_provider (service_pool_t *pool_,
@@ -202,7 +326,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
                                     size_t part_count_,
                                     int flags_)
 {
-    if (!pool_ || !pool_->threadsafe) {
+    if (!pool_ || !pool_->socket) {
         errno = ENOTSUP;
         return -1;
     }
@@ -217,7 +341,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     if (rid_.size > 0)
         memcpy (rid.data (), rid_.data, rid_.size);
     int flags = (part_count_ > 0 || request_id_ != 0) ? ZLINK_SNDMORE : 0;
-    if (pool_->threadsafe->send (&rid, flags) != 0) {
+    if (pool_->socket->send (&rid, flags) != 0) {
         rid.close ();
         return -1;
     }
@@ -228,7 +352,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
         return -1;
     memcpy (req_id.data (), &request_id_, sizeof (uint64_t));
     flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
-    if (pool_->threadsafe->send (&req_id, flags) != 0) {
+    if (pool_->socket->send (&req_id, flags) != 0) {
         req_id.close ();
         return -1;
     }
@@ -237,7 +361,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     for (size_t i = 0; i < part_count_; ++i) {
         msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
         flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (pool_->threadsafe->send (&part, flags) != 0)
+        if (pool_->socket->send (&part, flags) != 0)
             return -1;
     }
 
@@ -275,6 +399,10 @@ int gateway_t::send (const char *service_name_,
             errno = EHOSTUNREACH;
             return -1;
         }
+        if (!wait_for_peer_ready (pool->socket, rid, 2000)) {
+            errno = EHOSTUNREACH;
+            return -1;
+        }
 
         request_id = _next_request_id++;
         if (request_id == 0)
@@ -282,8 +410,6 @@ int gateway_t::send (const char *service_name_,
 
         pending_request_t pending;
         pending.service_name = service_name_;
-        pending.callback = NULL;
-        pending.has_deadline = false;
 
         if (_pending.find (request_id) != _pending.end ()) {
             errno = EAGAIN;
@@ -291,11 +417,45 @@ int gateway_t::send (const char *service_name_,
         }
         _pending.insert (std::make_pair (request_id, pending));
 
-        if (send_request_frames (pool, rid, request_id, parts_, part_count_,
-                                 flags_)
-            != 0) {
-            _pending.erase (request_id);
-            return -1;
+        if (gateway_debug_enabled ()) {
+            fprintf (stderr, "gateway send: service=%s req_id=%" PRIu64
+                             " rid_size=%u rid=0x",
+                     service_name_, static_cast<uint64_t> (request_id),
+                     static_cast<unsigned> (rid.size));
+            for (uint8_t i = 0; i < rid.size; ++i)
+                fprintf (stderr, "%02x",
+                         static_cast<unsigned> (rid.data[i]));
+            fprintf (stderr, "\n");
+            dump_gateway_peers (pool->socket);
+        }
+
+        const std::chrono::steady_clock::time_point deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
+        while (true) {
+            if (send_request_frames (pool, rid, request_id, parts_, part_count_,
+                                     flags_)
+                == 0)
+                break;
+            const int err = errno;
+            if (gateway_debug_enabled ()) {
+                fprintf (stderr, "gateway send retry: errno=%d\n", err);
+            }
+            if (err != EHOSTUNREACH) {
+                _pending.erase (request_id);
+                errno = err;
+                return -1;
+            }
+            if (std::chrono::steady_clock::now () >= deadline) {
+                _pending.erase (request_id);
+                errno = err;
+                return -1;
+            }
+            sleep_ms (1);
+        }
+
+        if (gateway_debug_enabled ()) {
+            fprintf (stderr, "gateway send complete\n");
+            dump_gateway_peers (pool->socket);
         }
     }
 
@@ -356,7 +516,7 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
                                uint64_t *request_id_,
                                std::vector<msg_t> *parts_)
 {
-    if (!pool_ || !pool_->threadsafe || !request_id_ || !parts_) {
+    if (!pool_ || !pool_->socket || !request_id_ || !parts_) {
         errno = EINVAL;
         return -1;
     }
@@ -364,7 +524,7 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     msg_t routing;
     if (routing.init () != 0)
         return -1;
-    if (pool_->threadsafe->recv (&routing, ZLINK_DONTWAIT) != 0) {
+    if (pool_->socket->recv (&routing, ZLINK_DONTWAIT) != 0) {
         routing.close ();
         return -1;
     }
@@ -380,7 +540,7 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
         routing.close ();
         return -1;
     }
-    if (pool_->threadsafe->recv (&current, 0) != 0) {
+    if (pool_->socket->recv (&current, 0) != 0) {
         current.close ();
         routing.close ();
         return -1;
@@ -406,7 +566,7 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
             routing.close ();
             return -1;
         }
-        if (pool_->threadsafe->recv (&part, 0) != 0) {
+        if (pool_->socket->recv (&part, 0) != 0) {
             part.close ();
             close_parts (parts_);
             routing.close ();
@@ -424,10 +584,8 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
 
 void gateway_t::handle_response (uint64_t request_id_,
                                  std::vector<msg_t> *parts_,
-                                 const std::string &fallback_service_,
-                                 std::deque<callback_entry_t> *callbacks_)
+                                 const std::string &fallback_service_)
 {
-    zlink_gateway_request_cb_fn callback = NULL;
     std::string service_name = fallback_service_;
 
     if (request_id_ != 0) {
@@ -435,19 +593,8 @@ void gateway_t::handle_response (uint64_t request_id_,
           _pending.find (request_id_);
         if (it != _pending.end ()) {
             service_name = it->second.service_name;
-            callback = it->second.callback;
             _pending.erase (it);
         }
-    }
-
-    if (callback) {
-        callbacks_->push_back (callback_entry_t ());
-        callback_entry_t &entry = callbacks_->back ();
-        entry.callback = callback;
-        entry.request_id = request_id_;
-        entry.error = 0;
-        entry.parts.swap (*parts_);
-        return;
     }
 
     scoped_lock_t lock (_completion_sync);
@@ -470,7 +617,6 @@ void gateway_t::loop ()
 {
     while (_stop.get () == 0) {
         bool handled = false;
-        std::deque<callback_entry_t> callbacks;
 
         {
             scoped_lock_t lock (_sync);
@@ -494,51 +640,10 @@ void gateway_t::loop ()
                 uint64_t request_id = 0;
                 std::vector<msg_t> parts;
                 if (recv_from_pool (&pool, &request_id, &parts) == 0) {
-                    handle_response (request_id, &parts, pool.service_name,
-                                     &callbacks);
+                    handle_response (request_id, &parts, pool.service_name);
                     handled = true;
                 }
             }
-
-            const std::chrono::steady_clock::time_point now =
-              std::chrono::steady_clock::now ();
-            for (std::map<uint64_t, pending_request_t>::iterator it =
-                   _pending.begin ();
-                 it != _pending.end ();) {
-                pending_request_t &pending = it->second;
-                if (pending.callback && pending.has_deadline
-                    && pending.deadline <= now) {
-                    callbacks.push_back (callback_entry_t ());
-                    callback_entry_t &entry = callbacks.back ();
-                    entry.callback = pending.callback;
-                    entry.request_id = it->first;
-                    entry.error = ETIMEDOUT;
-                    _pending.erase (it++);
-                    handled = true;
-                } else {
-                    ++it;
-                }
-            }
-        }
-
-        for (std::deque<callback_entry_t>::iterator it = callbacks.begin ();
-             it != callbacks.end (); ++it) {
-            callback_entry_t &entry = *it;
-            if (!entry.callback)
-                continue;
-            zlink_msg_t *parts = NULL;
-            size_t count = 0;
-            int err = entry.error;
-            if (err == 0 && !entry.parts.empty ()) {
-                parts = alloc_msgv_from_parts (&entry.parts, &count);
-                if (!parts) {
-                    err = errno ? errno : ENOMEM;
-                    count = 0;
-                }
-            } else if (!entry.parts.empty ()) {
-                close_parts (&entry.parts);
-            }
-            entry.callback (entry.request_id, parts, count, err);
         }
 
         if (!handled)
@@ -556,6 +661,59 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
     if (timeout_ms_ < -1) {
         errno = EINVAL;
         return -1;
+    }
+
+    if (_single_thread) {
+        const std::chrono::steady_clock::time_point deadline =
+          timeout_ms_ > 0 ? std::chrono::steady_clock::now ()
+                                + std::chrono::milliseconds (timeout_ms_)
+                          : std::chrono::steady_clock::time_point ();
+
+        while (true) {
+            {
+                scoped_lock_t lock (_sync);
+                for (std::map<std::string, service_pool_t>::iterator it =
+                       _pools.begin ();
+                     it != _pools.end (); ++it) {
+                    service_pool_t &pool = it->second;
+                    uint64_t request_id = 0;
+                    std::vector<msg_t> parts;
+                    if (recv_from_pool (&pool, &request_id, &parts) == 0) {
+                        handle_response (request_id, &parts,
+                                         pool.service_name);
+                    }
+                }
+            }
+
+            _completion_sync.lock ();
+            if (!_completion_queue.empty ()) {
+                completion_entry_t &stored = _completion_queue.front ();
+                entry_->service_name = stored.service_name;
+                entry_->request_id = stored.request_id;
+                entry_->error = stored.error;
+                entry_->parts.swap (stored.parts);
+                _completion_queue.pop_front ();
+                _completion_sync.unlock ();
+                return 0;
+            }
+            _completion_sync.unlock ();
+
+            if (timeout_ms_ == 0) {
+                errno = EAGAIN;
+                return -1;
+            }
+
+            if (timeout_ms_ > 0) {
+                const std::chrono::steady_clock::time_point now =
+                  std::chrono::steady_clock::now ();
+                if (now >= deadline) {
+                    errno = ETIMEDOUT;
+                    return -1;
+                }
+            }
+
+            sleep_ms (1);
+        }
     }
 
     _completion_sync.lock ();
@@ -610,13 +768,14 @@ int gateway_t::recv (zlink_msg_t **parts_,
                      char *service_name_out_,
                      uint64_t *request_id_out_)
 {
-    if (flags_ != 0) {
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
         return -1;
     }
 
     completion_entry_t entry;
-    if (wait_for_completion (&entry, -1) != 0)
+    const int timeout_ms = (flags_ == ZLINK_DONTWAIT) ? 0 : -1;
+    if (wait_for_completion (&entry, timeout_ms) != 0)
         return -1;
 
     if (service_name_out_) {
@@ -646,170 +805,6 @@ int gateway_t::recv (zlink_msg_t **parts_,
 
     if (entry.error != 0) {
         errno = entry.error;
-        return -1;
-    }
-    return 0;
-}
-
-uint64_t gateway_t::request (const char *service_name_,
-                             zlink_msg_t *parts_,
-                             size_t part_count_,
-                             zlink_gateway_request_cb_fn callback_,
-                             int timeout_ms_)
-{
-    if (!service_name_ || service_name_[0] == '\0' || !parts_
-        || part_count_ == 0) {
-        errno = EINVAL;
-        return 0;
-    }
-    if (!callback_) {
-        errno = EINVAL;
-        return 0;
-    }
-
-    int timeout = timeout_ms_;
-    if (timeout_ms_ == ZLINK_REQUEST_TIMEOUT_DEFAULT)
-        timeout = gateway_default_timeout_ms;
-    if (timeout < -1) {
-        errno = EINVAL;
-        return 0;
-    }
-
-    uint64_t request_id = 0;
-    {
-        scoped_lock_t lock (_sync);
-        service_pool_t *pool = get_or_create_pool (service_name_);
-        if (!pool)
-            return 0;
-
-        refresh_pool (pool);
-        zlink_routing_id_t rid;
-        if (!select_provider (pool, &rid)) {
-            errno = EHOSTUNREACH;
-            return 0;
-        }
-
-        request_id = _next_request_id++;
-        if (request_id == 0)
-            request_id = _next_request_id++;
-
-        pending_request_t pending;
-        pending.service_name = service_name_;
-        pending.callback = callback_;
-        pending.has_deadline = timeout >= 0;
-        if (pending.has_deadline)
-            pending.deadline = std::chrono::steady_clock::now ()
-                               + std::chrono::milliseconds (timeout);
-
-        if (_pending.find (request_id) != _pending.end ()) {
-            errno = EAGAIN;
-            return 0;
-        }
-        _pending.insert (std::make_pair (request_id, pending));
-
-        if (send_request_frames (pool, rid, request_id, parts_, part_count_, 0)
-            != 0) {
-            _pending.erase (request_id);
-            return 0;
-        }
-    }
-
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-
-    return request_id;
-}
-
-uint64_t gateway_t::request_send (const char *service_name_,
-                                  zlink_msg_t *parts_,
-                                  size_t part_count_,
-                                  int flags_)
-{
-    if (!service_name_ || service_name_[0] == '\0' || !parts_
-        || part_count_ == 0) {
-        errno = EINVAL;
-        return 0;
-    }
-    if (flags_ != 0) {
-        errno = ENOTSUP;
-        return 0;
-    }
-
-    uint64_t request_id = 0;
-    {
-        scoped_lock_t lock (_sync);
-        service_pool_t *pool = get_or_create_pool (service_name_);
-        if (!pool)
-            return 0;
-
-        refresh_pool (pool);
-        zlink_routing_id_t rid;
-        if (!select_provider (pool, &rid)) {
-            errno = EHOSTUNREACH;
-            return 0;
-        }
-
-        request_id = _next_request_id++;
-        if (request_id == 0)
-            request_id = _next_request_id++;
-
-        pending_request_t pending;
-        pending.service_name = service_name_;
-        pending.callback = NULL;
-        pending.has_deadline = false;
-
-        if (_pending.find (request_id) != _pending.end ()) {
-            errno = EAGAIN;
-            return 0;
-        }
-        _pending.insert (std::make_pair (request_id, pending));
-
-        if (send_request_frames (pool, rid, request_id, parts_, part_count_,
-                                 flags_)
-            != 0) {
-            _pending.erase (request_id);
-            return 0;
-        }
-    }
-
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
-
-    return request_id;
-}
-
-int gateway_t::request_recv (zlink_gateway_completion_t *completion_,
-                             int timeout_ms_)
-{
-    if (!completion_) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    completion_entry_t entry;
-    if (wait_for_completion (&entry, timeout_ms_) != 0)
-        return -1;
-
-    memset (completion_->service_name, 0, sizeof (completion_->service_name));
-    strncpy (completion_->service_name, entry.service_name.c_str (),
-             sizeof (completion_->service_name) - 1);
-    completion_->request_id = entry.request_id;
-    completion_->error = entry.error;
-    completion_->parts = NULL;
-    completion_->part_count = 0;
-
-    if (!entry.parts.empty ()) {
-        completion_->parts = alloc_msgv_from_parts (&entry.parts,
-                                                    &completion_->part_count);
-        if (!completion_->parts) {
-            completion_->error = errno ? errno : ENOMEM;
-            errno = completion_->error;
-            return -1;
-        }
-    }
-
-    if (completion_->error != 0) {
-        errno = completion_->error;
         return -1;
     }
     return 0;
@@ -847,21 +842,40 @@ int gateway_t::connection_count (const char *service_name_)
       _pools.find (service_name_);
     if (it == _pools.end ())
         return 0;
+    refresh_pool (&it->second);
     return static_cast<int> (it->second.endpoints.size ());
 }
 
-void *gateway_t::threadsafe_router (const char *service_name_)
+int gateway_t::set_tls_client (const char *ca_cert_,
+                               const char *hostname_,
+                               int trust_system_)
 {
-    if (!service_name_ || service_name_[0] == '\0') {
+    if (!ca_cert_ || !hostname_) {
         errno = EINVAL;
-        return NULL;
+        return -1;
     }
 
     scoped_lock_t lock (_sync);
-    service_pool_t *pool = get_or_create_pool (service_name_);
-    if (!pool)
-        return NULL;
-    return static_cast<void *> (pool->socket);
+    if (ca_cert_[0] == '\0' || hostname_[0] == '\0') {
+        _tls_ca.clear ();
+        _tls_hostname.clear ();
+        _tls_trust_system = trust_system_;
+        return 0;
+    }
+
+    _tls_ca = ca_cert_;
+    _tls_hostname = hostname_;
+    _tls_trust_system = trust_system_;
+
+    for (std::map<std::string, service_pool_t>::iterator it = _pools.begin ();
+         it != _pools.end (); ++it) {
+        if (it->second.socket
+            && apply_tls_client (it->second.socket, _tls_ca, _tls_hostname,
+                                 _tls_trust_system)
+                 != 0)
+            return -1;
+    }
+    return 0;
 }
 
 int gateway_t::destroy ()
@@ -877,14 +891,7 @@ int gateway_t::destroy ()
            _pools.begin ();
          it != _pools.end (); ++it) {
         service_pool_t &pool = it->second;
-        if (pool.threadsafe) {
-            pool.threadsafe->close ();
-            if (pool.socket)
-                pool.socket->set_threadsafe_proxy (NULL);
-            delete pool.threadsafe;
-            pool.threadsafe = NULL;
-            pool.socket = NULL;
-        } else if (pool.socket) {
+        if (pool.socket) {
             pool.socket->close ();
             pool.socket = NULL;
         }

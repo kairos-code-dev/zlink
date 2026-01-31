@@ -8,12 +8,6 @@
 
 #include <limits.h>
 
-static bool is_thread_safe (const zlink::socket_base_t &socket_)
-{
-    // do not use getsockopt here, since that would fail during context termination
-    return socket_.is_thread_safe ();
-}
-
 // compare elements to value
 template <class It, class T, class Pred>
 static It find_if2 (It b_, It e_, const T &value, Pred pred)
@@ -27,8 +21,7 @@ static It find_if2 (It b_, It e_, const T &value, Pred pred)
 }
 
 zlink::socket_poller_t::socket_poller_t () :
-    _tag (0xCAFEBABE),
-    _signaler (NULL)
+    _tag (0xCAFEBABE)
 #if defined ZLINK_POLL_BASED_ON_POLL
     ,
     _pollfds (NULL)
@@ -45,19 +38,6 @@ zlink::socket_poller_t::~socket_poller_t ()
     //  Mark the socket_poller as dead
     _tag = 0xdeadbeef;
 
-    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
-         ++it) {
-        // TODO shouldn't this zlink_assert (it->socket->check_tag ()) instead?
-        if (it->socket && it->socket->check_tag ()
-            && is_thread_safe (*it->socket)) {
-            it->socket->remove_signaler (_signaler);
-        }
-    }
-
-    if (_signaler != NULL) {
-        LIBZLINK_DELETE (_signaler);
-    }
-
 #if defined ZLINK_POLL_BASED_ON_POLL
     if (_pollfds) {
         free (_pollfds);
@@ -73,11 +53,7 @@ bool zlink::socket_poller_t::check_tag () const
 
 int zlink::socket_poller_t::signaler_fd (fd_t *fd_) const
 {
-    if (_signaler) {
-        *fd_ = _signaler->get_fd ();
-        return 0;
-    }
-    // Only thread-safe socket types are guaranteed to have a signaler.
+    (void) fd_;
     errno = EINVAL;
     return -1;
 }
@@ -90,24 +66,6 @@ int zlink::socket_poller_t::add (socket_base_t *socket_,
         != _items.end ()) {
         errno = EINVAL;
         return -1;
-    }
-
-    if (is_thread_safe (*socket_)) {
-        if (_signaler == NULL) {
-            _signaler = new (std::nothrow) signaler_t ();
-            if (!_signaler) {
-                errno = ENOMEM;
-                return -1;
-            }
-            if (!_signaler->valid ()) {
-                delete _signaler;
-                _signaler = NULL;
-                errno = EMFILE;
-                return -1;
-            }
-        }
-
-        socket_->add_signaler (_signaler);
     }
 
     const item_t item = {
@@ -209,10 +167,6 @@ int zlink::socket_poller_t::remove (socket_base_t *socket_)
     _items.erase (it);
     _need_rebuild = true;
 
-    if (is_thread_safe (*socket_)) {
-        socket_->remove_signaler (_signaler);
-    }
-
     return 0;
 }
 
@@ -234,7 +188,6 @@ int zlink::socket_poller_t::remove_fd (fd_t fd_)
 
 int zlink::socket_poller_t::rebuild ()
 {
-    _use_signaler = false;
     _pollset_size = 0;
     _need_rebuild = false;
 
@@ -247,15 +200,8 @@ int zlink::socket_poller_t::rebuild ()
 
     for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
          ++it) {
-        if (it->events) {
-            if (it->socket && is_thread_safe (*it->socket)) {
-                if (!_use_signaler) {
-                    _use_signaler = true;
-                    _pollset_size++;
-                }
-            } else
-                _pollset_size++;
-        }
+        if (it->events)
+            _pollset_size++;
     }
 
     if (_pollset_size == 0)
@@ -271,25 +217,17 @@ int zlink::socket_poller_t::rebuild ()
 
     int item_nbr = 0;
 
-    if (_use_signaler) {
-        item_nbr = 1;
-        _pollfds[0].fd = _signaler->get_fd ();
-        _pollfds[0].events = POLLIN;
-    }
-
     for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
          ++it) {
         if (it->events) {
             if (it->socket) {
-                if (!is_thread_safe (*it->socket)) {
-                    size_t fd_size = sizeof (zlink::fd_t);
-                    const int rc = it->socket->getsockopt (
-                      ZLINK_FD, &_pollfds[item_nbr].fd, &fd_size);
-                    zlink_assert (rc == 0);
+                size_t fd_size = sizeof (zlink::fd_t);
+                const int rc = it->socket->getsockopt (
+                  ZLINK_FD, &_pollfds[item_nbr].fd, &fd_size);
+                zlink_assert (rc == 0);
 
-                    _pollfds[item_nbr].events = POLLIN;
-                    item_nbr++;
-                }
+                _pollfds[item_nbr].events = POLLIN;
+                item_nbr++;
             } else {
                 _pollfds[item_nbr].fd = it->fd;
                 _pollfds[item_nbr].events =
@@ -316,16 +254,6 @@ int zlink::socket_poller_t::rebuild ()
     FD_ZERO (_pollset_out.get ());
     FD_ZERO (_pollset_err.get ());
 
-    for (items_t::iterator it = _items.begin (), end = _items.end (); it != end;
-         ++it) {
-        if (it->socket && is_thread_safe (*it->socket) && it->events) {
-            _use_signaler = true;
-            FD_SET (_signaler->get_fd (), _pollset_in.get ());
-            _pollset_size = 1;
-            break;
-        }
-    }
-
     _max_fd = 0;
 
     //  Build the fd_sets for passing to select ().
@@ -335,19 +263,17 @@ int zlink::socket_poller_t::rebuild ()
             //  If the poll item is a 0MQ socket we are interested in input on the
             //  notification file descriptor retrieved by the ZLINK_FD socket option.
             if (it->socket) {
-                if (!is_thread_safe (*it->socket)) {
-                    zlink::fd_t notify_fd;
-                    size_t fd_size = sizeof (zlink::fd_t);
-                    int rc =
-                      it->socket->getsockopt (ZLINK_FD, &notify_fd, &fd_size);
-                    zlink_assert (rc == 0);
+                zlink::fd_t notify_fd;
+                size_t fd_size = sizeof (zlink::fd_t);
+                int rc =
+                  it->socket->getsockopt (ZLINK_FD, &notify_fd, &fd_size);
+                zlink_assert (rc == 0);
 
-                    FD_SET (notify_fd, _pollset_in.get ());
-                    if (_max_fd < notify_fd)
-                        _max_fd = notify_fd;
+                FD_SET (notify_fd, _pollset_in.get ());
+                if (_max_fd < notify_fd)
+                    _max_fd = notify_fd;
 
-                    _pollset_size++;
-                }
+                _pollset_size++;
             }
             //  Else, the poll item is a raw file descriptor. Convert the poll item
             //  events to the appropriate fd_sets.
@@ -569,10 +495,6 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
         }
         errno_assert (rc >= 0);
 
-        //  Receive the signal from pollfd
-        if (_use_signaler && _pollfds[0].revents & POLLIN)
-            _signaler->recv ();
-
         //  Check for the events.
         const int found = check_events (events_, n_events_);
         if (found) {
@@ -637,9 +559,6 @@ int zlink::socket_poller_t::wait (zlink::socket_poller_t::event_t *events_,
             return -1;
         }
 #endif
-
-        if (_use_signaler && FD_ISSET (_signaler->get_fd (), inset.get ()))
-            _signaler->recv ();
 
         //  Check for the events.
         const int found = check_events (events_, n_events_, *inset.get (),

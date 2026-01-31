@@ -23,8 +23,7 @@ class router_t : public routing_socket_base_t
   public:
     router_t (zlink::ctx_t *parent_,
               uint32_t tid_,
-              int sid_,
-              bool thread_safe_ = false);
+              int sid_);
     ~router_t () ZLINK_OVERRIDE;
 
     //  Overrides of functions from socket_base_t.

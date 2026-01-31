@@ -192,11 +192,6 @@ void test_poller_exists_with_socket_on_zlink_ctx_term (const int socket_type_)
 #endif
 }
 
-void test_poller_exists_with_socket_on_zlink_ctx_term_thread_safe_socket ()
-{
-    TEST_IGNORE_MESSAGE ("libzlink without DRAFT support, ignoring test");
-}
-
 void test_poller_exists_with_socket_on_zlink_ctx_term_non_thread_safe_socket ()
 {
     test_poller_exists_with_socket_on_zlink_ctx_term (ZLINK_DEALER);
@@ -217,8 +212,6 @@ int main (void)
 
     RUN_TEST (
       test_poller_exists_with_socket_on_zlink_ctx_term_non_thread_safe_socket);
-    RUN_TEST (
-      test_poller_exists_with_socket_on_zlink_ctx_term_thread_safe_socket);
 
     return UNITY_END ();
 }

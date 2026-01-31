@@ -52,9 +52,6 @@
 #include "transports/pgm/pgm_socket.hpp"
 #endif
 #include "core/mailbox.hpp"
-#include "core/mailbox_safe.hpp"
-#include "core/signaler.hpp"
-#include "sockets/thread_safe_socket.hpp"
 
 #include <boost/asio.hpp>
 
@@ -110,52 +107,36 @@ bool zlink::socket_base_t::check_tag () const
     return _tag == 0xbaddecaf;
 }
 
-bool zlink::socket_base_t::is_thread_safe () const
-{
-    return _thread_safe;
-}
-
-zlink::thread_safe_socket_t *zlink::socket_base_t::get_threadsafe_proxy () const
-{
-    return _threadsafe_proxy;
-}
-
-void zlink::socket_base_t::set_threadsafe_proxy (thread_safe_socket_t *proxy_)
-{
-    _threadsafe_proxy = proxy_;
-}
-
 zlink::socket_base_t *zlink::socket_base_t::create (int type_,
                                                 class ctx_t *parent_,
                                                 uint32_t tid_,
-                                                int sid_,
-                                                bool thread_safe_)
+                                                int sid_)
 {
     socket_base_t *s = NULL;
     switch (type_) {
         case ZLINK_PAIR:
-            s = new (std::nothrow) pair_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) pair_t (parent_, tid_, sid_);
             break;
         case ZLINK_PUB:
-            s = new (std::nothrow) pub_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) pub_t (parent_, tid_, sid_);
             break;
         case ZLINK_SUB:
-            s = new (std::nothrow) sub_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) sub_t (parent_, tid_, sid_);
             break;
         case ZLINK_DEALER:
-            s = new (std::nothrow) dealer_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) dealer_t (parent_, tid_, sid_);
             break;
         case ZLINK_ROUTER:
-            s = new (std::nothrow) router_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) router_t (parent_, tid_, sid_);
             break;
         case ZLINK_STREAM:
-            s = new (std::nothrow) stream_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) stream_t (parent_, tid_, sid_);
             break;
         case ZLINK_XPUB:
-            s = new (std::nothrow) xpub_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) xpub_t (parent_, tid_, sid_);
             break;
         case ZLINK_XSUB:
-            s = new (std::nothrow) xsub_t (parent_, tid_, sid_, thread_safe_);
+            s = new (std::nothrow) xsub_t (parent_, tid_, sid_);
             break;
         default:
             errno = EINVAL;
@@ -175,10 +156,8 @@ zlink::socket_base_t *zlink::socket_base_t::create (int type_,
 
 zlink::socket_base_t::socket_base_t (ctx_t *parent_,
                                    uint32_t tid_,
-                                   int sid_,
-                                   bool thread_safe_) :
+                                   int sid_) :
     own_t (parent_, tid_),
-    _sync (),
     _tag (0xbaddecaf),
     _ctx_terminated (false),
     _destroyed (false),
@@ -188,13 +167,10 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _rcvmore (false),
     _monitor_socket (NULL),
     _monitor_events (0),
-    _thread_safe (thread_safe_),
     _mailbox_refcnt (0),
     _destroy_pending (false),
     _monitor_sync (),
-    _zlink_fd_signaler (NULL),
-    _disconnected (false),
-    _threadsafe_proxy (NULL)
+    _disconnected (false)
 {
     options.socket_id = sid_;
     options.ipv6 = (parent_->get (ZLINK_IPV6) != 0);
@@ -211,14 +187,9 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
         options.routing_id_size = static_cast<unsigned char> (sizeof buf);
     }
 
-    if (_thread_safe) {
-        _mailbox = new (std::nothrow) mailbox_safe_t ();
-        zlink_assert (_mailbox);
-    } else {
-        mailbox_t *m = new (std::nothrow) mailbox_t ();
-        zlink_assert (m);
-        _mailbox = m;
-    }
+    mailbox_t *m = new (std::nothrow) mailbox_t ();
+    zlink_assert (m);
+    _mailbox = m;
 }
 
 int zlink::socket_base_t::get_peer_state (const void *routing_id_,
@@ -266,8 +237,6 @@ int zlink::socket_base_t::socket_peer_info (const zlink_routing_id_t *routing_id
 
     process_commands (0, false);
 
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
         pipe_t *pipe = _pipes[i];
         if (routing_id_matches (pipe->get_routing_id (), routing_id_)) {
@@ -303,8 +272,6 @@ int zlink::socket_base_t::socket_peer_routing_id (int index_,
 
     process_commands (0, false);
 
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     if (static_cast<pipes_t::size_type> (index_) >= _pipes.size ()) {
         errno = EINVAL;
         return -1;
@@ -319,7 +286,6 @@ int zlink::socket_base_t::socket_peer_count ()
 {
     process_commands (0, false);
 
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
     return static_cast<int> (_pipes.size ());
 }
 
@@ -332,8 +298,6 @@ int zlink::socket_base_t::socket_peers (zlink_peer_info_t *peers_,
     }
 
     process_commands (0, false);
-
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     const size_t available = _pipes.size ();
     if (!peers_) {
@@ -365,25 +329,6 @@ int zlink::socket_base_t::socket_peers (zlink_peer_info_t *peers_,
 
 zlink::socket_base_t::~socket_base_t ()
 {
-    if (_threadsafe_proxy) {
-        zlink_assert (_threadsafe_proxy->get_socket () == NULL);
-        _threadsafe_proxy->wait_for_idle ();
-        delete _threadsafe_proxy;
-        _threadsafe_proxy = NULL;
-    }
-
-    //  Cleanup ZLINK_FD signaler if it was created
-    if (_zlink_fd_signaler) {
-        if (_mailbox) {
-            if (_thread_safe)
-                static_cast<mailbox_safe_t *> (_mailbox)->remove_signaler (_zlink_fd_signaler);
-            else
-                static_cast<mailbox_t *> (_mailbox)->remove_signaler (_zlink_fd_signaler);
-        }
-        LIBZLINK_DELETE (_zlink_fd_signaler);
-        _zlink_fd_signaler = NULL;
-    }
-
     if (_mailbox)
         LIBZLINK_DELETE (_mailbox);
 
@@ -493,8 +438,6 @@ int zlink::socket_base_t::setsockopt (int option_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;
@@ -518,8 +461,6 @@ int zlink::socket_base_t::getsockopt (int option_,
                                     void *optval_,
                                     size_t *optvallen_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
         return -1;
@@ -536,42 +477,16 @@ int zlink::socket_base_t::getsockopt (int option_,
     }
 
     if (option_ == ZLINK_FD) {
-        if (!_thread_safe) {
-            return do_getsockopt<fd_t> (
-              optval_, optvallen_,
-              static_cast<mailbox_t *> (_mailbox)->get_fd ());
-        }
-
-        //  Create signaler on first access for ZLINK_FD support (thread-safe)
-        if (!_zlink_fd_signaler) {
-            _zlink_fd_signaler = new (std::nothrow) signaler_t ();
-            zlink_assert (_zlink_fd_signaler);
-            static_cast<mailbox_safe_t *> (_mailbox)->add_signaler (
-              _zlink_fd_signaler);
-        }
-
         return do_getsockopt<fd_t> (
-          optval_, optvallen_, _zlink_fd_signaler->get_fd ());
+          optval_, optvallen_, static_cast<mailbox_t *> (_mailbox)->get_fd ());
     }
 
     if (option_ == ZLINK_EVENTS) {
-        if (_thread_safe) {
-            mailbox_safe_t *mailbox =
-              static_cast<mailbox_safe_t *> (_mailbox);
-            if (mailbox->has_pending ()) {
-                const int rc = process_commands (0, false);
-                if (rc != 0 && (errno == EINTR || errno == ETERM)) {
-                    return -1;
-                }
-                errno_assert (rc == 0);
-            }
-        } else {
-            const int rc = process_commands (0, false);
-            if (rc != 0 && (errno == EINTR || errno == ETERM)) {
-                return -1;
-            }
-            errno_assert (rc == 0);
+        const int rc = process_commands (0, false);
+        if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+            return -1;
         }
+        errno_assert (rc == 0);
 
         return do_getsockopt<int> (optval_, optvallen_,
                                    (has_out () ? ZLINK_POLLOUT : 0)
@@ -582,39 +497,21 @@ int zlink::socket_base_t::getsockopt (int option_,
         return do_getsockopt (optval_, optvallen_, _last_endpoint);
     }
 
-    if (option_ == ZLINK_THREAD_SAFE) {
-        return do_getsockopt<int> (optval_, optvallen_, _thread_safe ? 1 : 0);
-    }
-
     return options.getsockopt (option_, optval_, optvallen_);
 }
 
 int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     if (!out_) {
         errno = EINVAL;
         return -1;
     }
 
-    if (_thread_safe) {
-        mailbox_safe_t *mailbox =
-          static_cast<mailbox_safe_t *> (_mailbox);
-        if (mailbox->has_pending ()) {
-            const int rc = process_commands (0, false);
-            if (rc != 0 && (errno == EINTR || errno == ETERM)) {
-                return -1;
-            }
-            errno_assert (rc == 0);
-        }
-    } else {
-        const int rc = process_commands (0, false);
-        if (rc != 0 && (errno == EINTR || errno == ETERM)) {
-            return -1;
-        }
-        errno_assert (rc == 0);
+    const int rc = process_commands (0, false);
+    if (rc != 0 && (errno == EINTR || errno == ETERM)) {
+        return -1;
     }
+    errno_assert (rc == 0);
 
     uint32_t events = 0;
     if (events_ & ZLINK_POLLOUT) {
@@ -632,37 +529,16 @@ int zlink::socket_base_t::get_events (int events_, uint32_t *out_)
 
 int zlink::socket_base_t::join (const char *group_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     return xjoin (group_);
 }
 
 int zlink::socket_base_t::leave (const char *group_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
     return xleave (group_);
-}
-
-void zlink::socket_base_t::add_signaler (signaler_t *s_)
-{
-    zlink_assert (_thread_safe);
-
-    scoped_fast_lock_t sync_lock (_sync);
-    (static_cast<mailbox_safe_t *> (_mailbox))->add_signaler (s_);
-}
-
-void zlink::socket_base_t::remove_signaler (signaler_t *s_)
-{
-    zlink_assert (_thread_safe);
-
-    scoped_fast_lock_t sync_lock (_sync);
-    (static_cast<mailbox_safe_t *> (_mailbox))->remove_signaler (s_);
 }
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -840,7 +716,6 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 
 int zlink::socket_base_t::connect (const char *endpoint_uri_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
     return connect_internal (endpoint_uri_);
 }
 
@@ -1152,7 +1027,6 @@ void zlink::socket_base_t::add_endpoint (
 
 int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1220,7 +1094,6 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
 
 int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1309,7 +1182,6 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
 
 int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
 
     //  Check whether the context hasn't been shut down yet.
     if (unlikely (_ctx_terminated)) {
@@ -1405,11 +1277,8 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
 
 int zlink::socket_base_t::close ()
 {
-    scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
-
-    //  Remove all existing signalers for thread safe sockets
-    if (_thread_safe)
-        (static_cast<mailbox_safe_t *> (_mailbox))->clear_signalers ();
+    if (_mailbox)
+        static_cast<mailbox_t *> (_mailbox)->clear_signalers ();
 
     //  Mark the socket as dead
     _tag = 0xdeadbeef;
@@ -1451,20 +1320,11 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
     //  Plug the socket to the reaper thread.
     _poller = poller_;
 
-    if (_thread_safe) {
-        mailbox_safe_t *mailbox =
-          static_cast<mailbox_safe_t *> (_mailbox);
-        mailbox->set_io_context (&_poller->get_io_context (),
-                                 &socket_base_t::reaper_mailbox_handler, this,
-                                 &socket_base_t::reaper_mailbox_pre_post);
-        mailbox->schedule_if_needed ();
-    } else {
-        mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
-        mailbox->set_io_context (&_poller->get_io_context (),
-                                 &socket_base_t::reaper_mailbox_handler, this,
-                                 &socket_base_t::reaper_mailbox_pre_post);
-        mailbox->schedule_if_needed ();
-    }
+    mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
+    mailbox->set_io_context (&_poller->get_io_context (),
+                             &socket_base_t::reaper_mailbox_handler, this,
+                             &socket_base_t::reaper_mailbox_pre_post);
+    mailbox->schedule_if_needed ();
 
     //  Initialise the termination and check whether it can be deallocated
     //  immediately.
@@ -1650,17 +1510,13 @@ void zlink::socket_base_t::in_event ()
         //  threads/sockets that may be available at the moment. Ultimately,
         //  the socket will be destroyed.
         {
-            scoped_optional_fast_lock_t sync_lock (_thread_safe ? &_sync : NULL);
             process_commands (0, false);
         }
         if (_destroyed) {
             check_destroy ();
             return;
         }
-    } while (_thread_safe
-               ? static_cast<mailbox_safe_t *> (_mailbox)
-                   ->reschedule_if_needed ()
-               : static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
+    } while (static_cast<mailbox_t *> (_mailbox)->reschedule_if_needed ());
 }
 
 void zlink::socket_base_t::out_event ()
@@ -2087,9 +1943,8 @@ bool zlink::socket_base_t::is_ctx_terminated () const
 
 zlink::routing_socket_base_t::routing_socket_base_t (class ctx_t *parent_,
                                                    uint32_t tid_,
-                                                   int sid_,
-                                                   bool thread_safe_) :
-    socket_base_t (parent_, tid_, sid_, thread_safe_)
+                                                   int sid_) :
+    socket_base_t (parent_, tid_, sid_)
 {
 }
 

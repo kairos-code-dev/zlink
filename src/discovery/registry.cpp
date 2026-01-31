@@ -9,6 +9,7 @@
 #include "utils/random.hpp"
 
 #include <algorithm>
+#include <set>
 #include <vector>
 
 namespace zlink
@@ -145,9 +146,10 @@ void registry_t::loop ()
         registry_id_set = _registry_id_set;
     }
 
-    void *pub = zlink_socket (static_cast<void *> (_ctx), ZLINK_PUB);
+    void *pub = zlink_socket (static_cast<void *> (_ctx), ZLINK_XPUB);
     void *router = zlink_socket (static_cast<void *> (_ctx), ZLINK_ROUTER);
     void *peer_sub = NULL;
+    std::set<std::string> peer_connected;
 
     if (!pub || !router) {
         if (pub)
@@ -156,6 +158,9 @@ void registry_t::loop ()
             zlink_close (router);
         return;
     }
+
+    int verbose = 1;
+    zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose));
 
     if (zlink_bind (pub, pub_endpoint.c_str ()) != 0
         || zlink_bind (router, router_endpoint.c_str ()) != 0) {
@@ -168,8 +173,10 @@ void registry_t::loop ()
         peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
         if (peer_sub) {
             zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
-            for (size_t i = 0; i < peer_pubs.size (); ++i)
+            for (size_t i = 0; i < peer_pubs.size (); ++i) {
                 zlink_connect (peer_sub, peer_pubs[i].c_str ());
+                peer_connected.insert (peer_pubs[i]);
+            }
         }
     }
 
@@ -187,9 +194,33 @@ void registry_t::loop ()
     uint64_t last_sent_seq = _list_seq;
 
     while (_stop.get () == 0) {
-        zlink_pollitem_t items[2];
+        {
+            scoped_lock_t lock (_sync);
+            peer_pubs = _peer_pubs;
+        }
+        if (!peer_pubs.empty () && !peer_sub) {
+            peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
+            if (peer_sub)
+                zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
+        }
+        if (peer_sub) {
+            for (size_t i = 0; i < peer_pubs.size (); ++i) {
+                const std::string &endpoint = peer_pubs[i];
+                if (peer_connected.find (endpoint) == peer_connected.end ()) {
+                    zlink_connect (peer_sub, endpoint.c_str ());
+                    peer_connected.insert (endpoint);
+                }
+            }
+        }
+
+        zlink_pollitem_t items[3];
         int item_count = 0;
         items[item_count].socket = router;
+        items[item_count].fd = 0;
+        items[item_count].events = ZLINK_POLLIN;
+        items[item_count].revents = 0;
+        item_count++;
+        items[item_count].socket = pub;
         items[item_count].fd = 0;
         items[item_count].events = ZLINK_POLLIN;
         items[item_count].revents = 0;
@@ -204,9 +235,29 @@ void registry_t::loop ()
 
         const int rc = zlink_poll (items, item_count, 100);
         if (rc > 0) {
-            if (items[0].revents & ZLINK_POLLIN)
+            int idx = 0;
+            if (items[idx].revents & ZLINK_POLLIN)
                 handle_router (router);
-            if (peer_sub && (items[1].revents & ZLINK_POLLIN))
+            idx++;
+            if (items[idx].revents & ZLINK_POLLIN) {
+                while (true) {
+                    zlink_msg_t submsg;
+                    zlink_msg_init (&submsg);
+                    if (zlink_msg_recv (&submsg, pub, ZLINK_DONTWAIT) == -1) {
+                        zlink_msg_close (&submsg);
+                        break;
+                    }
+                    if (zlink_msg_size (&submsg) > 0) {
+                        unsigned char *data = static_cast<unsigned char *> (
+                          zlink_msg_data (&submsg));
+                        if (data && data[0] == 1)
+                            send_service_list (pub);
+                    }
+                    zlink_msg_close (&submsg);
+                }
+            }
+            idx++;
+            if (peer_sub && (items[idx].revents & ZLINK_POLLIN))
                 handle_peer (peer_sub);
         }
 

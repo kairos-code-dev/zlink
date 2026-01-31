@@ -20,8 +20,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
   public:
     stream_t (zlink::ctx_t *parent_,
               uint32_t tid_,
-              int sid_,
-              bool thread_safe_ = false);
+              int sid_);
     ~stream_t () ZLINK_OVERRIDE;
 
     void xattach_pipe (zlink::pipe_t *pipe_,

@@ -41,7 +41,6 @@ struct iovec
 
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
-#include "sockets/thread_safe_socket.hpp"
 #include "discovery/registry.hpp"
 #include "discovery/discovery.hpp"
 #include "discovery/gateway.hpp"
@@ -170,14 +169,12 @@ int zlink_ctx_get (void *ctx_, int option_)
 struct socket_handle_t
 {
     zlink::socket_base_t *socket;
-    zlink::thread_safe_socket_t *threadsafe;
 };
 
 static inline socket_handle_t as_socket_handle (void *s_)
 {
     socket_handle_t handle;
     handle.socket = NULL;
-    handle.threadsafe = NULL;
 
     if (!s_) {
         errno = ENOTSOCK;
@@ -191,7 +188,6 @@ static inline socket_handle_t as_socket_handle (void *s_)
     }
 
     handle.socket = s;
-    handle.threadsafe = s->get_threadsafe_proxy ();
     return handle;
 }
 
@@ -206,40 +202,11 @@ void *zlink_socket (void *ctx_, int type_)
     return static_cast<void *> (s);
 }
 
-void *zlink_socket_threadsafe (void *ctx_, int type_)
-{
-    if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    zlink::ctx_t *ctx = static_cast<zlink::ctx_t *> (ctx_);
-    zlink::socket_base_t *s = ctx->create_socket (type_, true);
-    if (!s)
-        return NULL;
-
-    zlink::thread_safe_socket_t *ts =
-      new (std::nothrow) zlink::thread_safe_socket_t (ctx, s);
-    if (!ts) {
-        s->close ();
-        errno = ENOMEM;
-        return NULL;
-    }
-    s->set_threadsafe_proxy (ts);
-    return static_cast<void *> (s);
-}
-
 int zlink_close (void *s_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe) {
-        const int rc = handle.threadsafe->close ();
-        if (rc == -1)
-            return -1;
-        return 0;
-    }
     handle.socket->close ();
     return 0;
 }
@@ -252,8 +219,6 @@ int zlink_setsockopt (void *s_,
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->setsockopt (option_, optval_, optvallen_);
     return handle.socket->setsockopt (option_, optval_, optvallen_);
 }
 
@@ -262,19 +227,7 @@ int zlink_getsockopt (void *s_, int option_, void *optval_, size_t *optvallen_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->getsockopt (option_, optval_, optvallen_);
     return handle.socket->getsockopt (option_, optval_, optvallen_);
-}
-
-int zlink_is_threadsafe (void *s_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    if (handle.threadsafe)
-        return 1;
-    return handle.socket->is_thread_safe () ? 1 : 0;
 }
 
 int zlink_socket_monitor (void *s_, const char *addr_, int events_)
@@ -282,8 +235,6 @@ int zlink_socket_monitor (void *s_, const char *addr_, int events_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->monitor (addr_, events_, 3, ZLINK_PAIR);
     return handle.socket->monitor (addr_, events_, 3, ZLINK_PAIR);
 }
 
@@ -299,27 +250,19 @@ void *zlink_socket_monitor_open (void *s_, int events_)
               static_cast<void *> (s_), rand_id);
 
     const int monitor_rc =
-      handle.threadsafe
-        ? handle.threadsafe->monitor (endpoint, events_, 3, ZLINK_PAIR)
-        : handle.socket->monitor (endpoint, events_, 3, ZLINK_PAIR);
+      handle.socket->monitor (endpoint, events_, 3, ZLINK_PAIR);
     if (monitor_rc != 0)
         return NULL;
 
     void *monitor_socket = zlink_socket (handle.socket->get_ctx (), ZLINK_PAIR);
     if (!monitor_socket) {
-        if (handle.threadsafe)
-            handle.threadsafe->monitor (NULL, 0, 3, ZLINK_PAIR);
-        else
-            handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
         return NULL;
     }
 
     if (zlink_connect (monitor_socket, endpoint) != 0) {
         zlink_close (monitor_socket);
-        if (handle.threadsafe)
-            handle.threadsafe->monitor (NULL, 0, 3, ZLINK_PAIR);
-        else
-            handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
+        handle.socket->monitor (NULL, 0, 3, ZLINK_PAIR);
         return NULL;
     }
 
@@ -444,8 +387,6 @@ int zlink_socket_peer_info (void *socket_,
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_peer_info (routing_id_, info_);
     return handle.socket->socket_peer_info (routing_id_, info_);
 }
 
@@ -456,8 +397,6 @@ int zlink_socket_peer_routing_id (void *socket_,
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_peer_routing_id (index_, out_);
     return handle.socket->socket_peer_routing_id (index_, out_);
 }
 
@@ -466,8 +405,6 @@ int zlink_socket_peer_count (void *socket_)
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_peer_count ();
     return handle.socket->socket_peer_count ();
 }
 
@@ -476,88 +413,7 @@ int zlink_socket_peers (void *socket_, zlink_peer_info_t *peers_, size_t *count_
     socket_handle_t handle = as_socket_handle (socket_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->socket_peers (peers_, count_);
     return handle.socket->socket_peers (peers_, count_);
-}
-
-uint64_t zlink_request (void *socket_,
-                      const zlink_routing_id_t *routing_id_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      zlink_request_cb_fn callback_,
-                      int timeout_ms_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return 0;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return 0;
-    }
-    return handle.threadsafe->request (routing_id_, parts_, part_count_,
-                                       callback_, timeout_ms_);
-}
-
-uint64_t zlink_group_request (void *socket_,
-                            const zlink_routing_id_t *routing_id_,
-                            uint64_t group_id_,
-                            zlink_msg_t *parts_,
-                            size_t part_count_,
-                            zlink_request_cb_fn callback_,
-                            int timeout_ms_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return 0;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return 0;
-    }
-    return handle.threadsafe->group_request (routing_id_, group_id_, parts_,
-                                             part_count_, callback_,
-                                             timeout_ms_);
-}
-
-int zlink_on_request (void *socket_, zlink_server_cb_fn handler_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->on_request (handler_);
-}
-
-int zlink_reply (void *socket_,
-               const zlink_routing_id_t *routing_id_,
-               uint64_t request_id_,
-               zlink_msg_t *parts_,
-               size_t part_count_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->reply (routing_id_, request_id_, parts_,
-                                     part_count_);
-}
-
-int zlink_reply_simple (void *socket_, zlink_msg_t *parts_, size_t part_count_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->reply_simple (parts_, part_count_);
 }
 
 void zlink_msgv_close (zlink_msg_t *parts_, size_t part_count_)
@@ -567,59 +423,6 @@ void zlink_msgv_close (zlink_msg_t *parts_, size_t part_count_)
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_close (&parts_[i]);
     free (parts_);
-}
-
-uint64_t zlink_request_send (void *socket_,
-                           const zlink_routing_id_t *routing_id_,
-                           zlink_msg_t *parts_,
-                           size_t part_count_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return 0;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return 0;
-    }
-    return handle.threadsafe->request_send (routing_id_, parts_, part_count_);
-}
-
-int zlink_request_recv (void *socket_,
-                      zlink_completion_t *completion_,
-                      int timeout_ms_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->request_recv (completion_, timeout_ms_);
-}
-
-int zlink_pending_requests (void *socket_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->pending_requests ();
-}
-
-int zlink_cancel_all_requests (void *socket_)
-{
-    socket_handle_t handle = as_socket_handle (socket_);
-    if (!handle.socket)
-        return -1;
-    if (!handle.threadsafe) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return handle.threadsafe->cancel_all_requests ();
 }
 
 // Service Discovery API
@@ -903,66 +706,6 @@ int zlink_gateway_recv (void *gateway_,
                           request_id_out_);
 }
 
-void *zlink_gateway_threadsafe_router (void *gateway_, const char *service_name_)
-{
-    if (!gateway_)
-        return NULL;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return gateway->threadsafe_router (service_name_);
-}
-
-uint64_t zlink_gateway_request (void *gateway_,
-                              const char *service_name_,
-                              zlink_msg_t *parts_,
-                              size_t part_count_,
-                              zlink_gateway_request_cb_fn callback_,
-                              int timeout_ms_)
-{
-    if (!gateway_)
-        return 0;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return 0;
-    }
-    return gateway->request (service_name_, parts_, part_count_, callback_,
-                             timeout_ms_);
-}
-
-uint64_t zlink_gateway_request_send (void *gateway_,
-                                   const char *service_name_,
-                                   zlink_msg_t *parts_,
-                                   size_t part_count_,
-                                   int flags_)
-{
-    if (!gateway_)
-        return 0;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return 0;
-    }
-    return gateway->request_send (service_name_, parts_, part_count_, flags_);
-}
-
-int zlink_gateway_request_recv (void *gateway_,
-                              zlink_gateway_completion_t *completion_,
-                              int timeout_ms_)
-{
-    if (!gateway_)
-        return -1;
-    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
-    if (!gateway->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return gateway->request_recv (completion_, timeout_ms_);
-}
-
 int zlink_gateway_set_lb_strategy (void *gateway_,
                                  const char *service_name_,
                                  int strategy_)
@@ -975,6 +718,21 @@ int zlink_gateway_set_lb_strategy (void *gateway_,
         return -1;
     }
     return gateway->set_lb_strategy (service_name_, strategy_);
+}
+
+int zlink_gateway_set_tls_client (void *gateway_,
+                                const char *ca_cert_,
+                                const char *hostname_,
+                                int trust_system_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
 int zlink_gateway_connection_count (void *gateway_, const char *service_name_)
@@ -1105,7 +863,21 @@ int zlink_provider_register_result (void *provider_,
                                       error_message_);
 }
 
-void *zlink_provider_threadsafe_router (void *provider_)
+int zlink_provider_set_tls_server (void *provider_,
+                                 const char *cert_,
+                                 const char *key_)
+{
+    if (!provider_)
+        return -1;
+    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->set_tls_server (cert_, key_);
+}
+
+void *zlink_provider_router (void *provider_)
 {
     if (!provider_)
         return NULL;
@@ -1114,7 +886,7 @@ void *zlink_provider_threadsafe_router (void *provider_)
         errno = EFAULT;
         return NULL;
     }
-    return provider->threadsafe_router ();
+    return provider->router ();
 }
 
 int zlink_provider_destroy (void **provider_p_)
@@ -1244,8 +1016,8 @@ int zlink_spot_node_unregister (void *node_, const char *service_name_)
 }
 
 int zlink_spot_node_set_discovery (void *node_,
-                                 void *discovery_,
-                                 const char *service_name_)
+                                void *discovery_,
+                                const char *service_name_)
 {
     if (!node_ || !discovery_)
         return -1;
@@ -1262,6 +1034,35 @@ int zlink_spot_node_set_discovery (void *node_,
     return node->set_discovery (disc, service_name_);
 }
 
+int zlink_spot_node_set_tls_server (void *node_,
+                                  const char *cert_,
+                                  const char *key_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_tls_server (cert_, key_);
+}
+
+int zlink_spot_node_set_tls_client (void *node_,
+                                  const char *ca_cert_,
+                                  const char *hostname_,
+                                  int trust_system_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_tls_client (ca_cert_, hostname_, trust_system_);
+}
+
 void *zlink_spot_new (void *node_)
 {
     if (!node_)
@@ -1271,22 +1072,7 @@ void *zlink_spot_new (void *node_)
         errno = EFAULT;
         return NULL;
     }
-    zlink::spot_t *spot = node->create_spot (false);
-    if (!spot)
-        return NULL;
-    return static_cast<void *> (spot);
-}
-
-void *zlink_spot_new_threadsafe (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    zlink::spot_t *spot = node->create_spot (true);
+    zlink::spot_t *spot = node->create_spot ();
     if (!spot)
         return NULL;
     return static_cast<void *> (spot);
@@ -1407,8 +1193,6 @@ int zlink_bind (void *s_, const char *addr_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->bind (addr_);
     return handle.socket->bind (addr_);
 }
 
@@ -1417,8 +1201,6 @@ int zlink_connect (void *s_, const char *addr_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->connect (addr_);
     return handle.socket->connect (addr_);
 }
 
@@ -1427,8 +1209,6 @@ int zlink_unbind (void *s_, const char *addr_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->term_endpoint (addr_);
     return handle.socket->term_endpoint (addr_);
 }
 
@@ -1437,8 +1217,6 @@ int zlink_disconnect (void *s_, const char *addr_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (handle.threadsafe)
-        return handle.threadsafe->term_endpoint (addr_);
     return handle.socket->term_endpoint (addr_);
 }
 
@@ -1448,12 +1226,7 @@ static inline int
 s_sendmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
 {
     size_t sz = zlink_msg_size (msg_);
-    int rc = 0;
-    if (unlikely (handle_.threadsafe != NULL))
-        rc = handle_.threadsafe->send (reinterpret_cast<zlink::msg_t *> (msg_),
-                                       flags_);
-    else
-        rc = handle_.socket->send (reinterpret_cast<zlink::msg_t *> (msg_),
+    int rc = handle_.socket->send (reinterpret_cast<zlink::msg_t *> (msg_),
                                    flags_);
     if (unlikely (rc < 0))
         return -1;
@@ -1507,13 +1280,8 @@ int zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_)
 
 static int s_recvmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
 {
-    int rc = 0;
-    if (unlikely (handle_.threadsafe != NULL))
-        rc = handle_.threadsafe->recv (reinterpret_cast<zlink::msg_t *> (msg_),
-                                       flags_);
-    else
-        rc = handle_.socket->recv (reinterpret_cast<zlink::msg_t *> (msg_),
-                                   flags_);
+    int rc =
+      handle_.socket->recv (reinterpret_cast<zlink::msg_t *> (msg_), flags_);
     if (unlikely (rc < 0))
         return -1;
 

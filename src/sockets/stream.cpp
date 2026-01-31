@@ -13,11 +13,8 @@ const unsigned char stream_event_connect = 0x01;
 const unsigned char stream_event_disconnect = 0x00;
 }
 
-zlink::stream_t::stream_t (class ctx_t *parent_,
-                         uint32_t tid_,
-                         int sid_,
-                         bool thread_safe_) :
-    routing_socket_base_t (parent_, tid_, sid_, thread_safe_),
+zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
     _current_out (NULL),

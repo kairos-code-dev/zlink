@@ -18,6 +18,9 @@
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <dlfcn.h>
+#else
+#include <windows.h>
 #endif
 
 // --- TLS Socket Options ---
@@ -222,6 +225,26 @@ inline std::string make_endpoint(const std::string& transport, const std::string
     if (transport == "wss") return "wss://127.0.0.1:*";
     if (transport == "tls") return "tls://127.0.0.1:*";
     return "tcp://127.0.0.1:*";
+}
+
+inline std::string make_fixed_endpoint(const std::string& transport, int port) {
+    const std::string host = "127.0.0.1";
+    const std::string port_str = std::to_string(port);
+    if (transport == "ws") return "ws://" + host + ":" + port_str;
+    if (transport == "wss") return "wss://" + host + ":" + port_str;
+    if (transport == "tls") return "tls://" + host + ":" + port_str;
+    return "tcp://" + host + ":" + port_str;
+}
+
+inline void *resolve_symbol(const char *name) {
+#if defined(_WIN32)
+    HMODULE module = GetModuleHandleA(NULL);
+    if (!module)
+        return NULL;
+    return reinterpret_cast<void *>(GetProcAddress(module, name));
+#else
+    return dlsym(RTLD_DEFAULT, name);
+#endif
 }
 
 // --- Embedded Test Certificates for TLS ---

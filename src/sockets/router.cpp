@@ -8,12 +8,16 @@
 #include "utils/random.hpp"
 #include "utils/likely.hpp"
 #include "utils/err.hpp"
+#include <cstdlib>
+#include <cstdio>
 
-zlink::router_t::router_t (class ctx_t *parent_,
-                         uint32_t tid_,
-                         int sid_,
-                         bool thread_safe_) :
-    routing_socket_base_t (parent_, tid_, sid_, thread_safe_),
+static bool router_debug_enabled ()
+{
+    return std::getenv ("ZLINK_ROUTER_DEBUG") != NULL;
+}
+
+zlink::router_t::router_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
+    routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
     _current_in (NULL),
@@ -173,12 +177,24 @@ int zlink::router_t::xsend (msg_t *msg_)
                             errno = EAGAIN;
                         else
                             errno = EHOSTUNREACH;
+                        if (router_debug_enabled ()) {
+                            fprintf (stderr,
+                                     "router xsend: pipe not writable "
+                                     "(mandatory) size=%zu errno=%d\n",
+                                     msg_->size (), errno);
+                        }
                         return -1;
                     }
                 }
             } else if (_mandatory) {
                 _more_out = false;
                 errno = EHOSTUNREACH;
+                if (router_debug_enabled ()) {
+                    fprintf (stderr,
+                             "router xsend: no out pipe (mandatory) "
+                             "rid_size=%zu errno=%d\n",
+                             msg_->size (), errno);
+                }
                 return -1;
             }
         }
@@ -197,6 +213,11 @@ int zlink::router_t::xsend (msg_t *msg_)
     if (_current_out) {
         const bool ok = _current_out->write (msg_);
         if (unlikely (!ok)) {
+            if (router_debug_enabled ()) {
+                fprintf (stderr,
+                         "router xsend: drop message size=%zu\n",
+                         msg_->size ());
+            }
             // Message failed to send - we must close it ourselves.
             const int rc = msg_->close ();
             errno_assert (rc == 0);
@@ -211,6 +232,11 @@ int zlink::router_t::xsend (msg_t *msg_)
             }
         }
     } else {
+        if (router_debug_enabled ()) {
+            fprintf (stderr,
+                     "router xsend: no current out, drop size=%zu\n",
+                     msg_->size ());
+        }
         const int rc = msg_->close ();
         errno_assert (rc == 0);
     }
@@ -399,52 +425,61 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         //  Not allowed to duplicate an existing rid
         zlink_assert (!has_out_pipe (routing_id));
     } else {
-        //  Pick up handshake cases and also case where next integral routing id is set
-        msg.init ();
-        const bool ok = pipe_->read (&msg);
-        if (!ok)
-            return false;
-
-        if (msg.size () == 0) {
-            //  Fall back on the auto-generation
-            unsigned char buf[5];
-            buf[0] = 0;
-            put_uint32 (buf + 1, _next_integral_routing_id++);
-            routing_id.set (buf, sizeof buf);
-            msg.close ();
+        const blob_t &peer_routing_id = pipe_->get_routing_id ();
+        if (peer_routing_id.size () > 0) {
+            routing_id.set (peer_routing_id.data (), peer_routing_id.size ());
+            if (router_debug_enabled ()) {
+                fprintf (stderr, "router identify_peer: handshake rid size=%zu\n",
+                         peer_routing_id.size ());
+            }
         } else {
-            routing_id.set (static_cast<unsigned char *> (msg.data ()),
-                            msg.size ());
-            msg.close ();
+            //  Pick up handshake cases and also case where next integral routing id is set
+            msg.init ();
+            const bool ok = pipe_->read (&msg);
+            if (!ok)
+                return false;
 
-            //  Try to remove an existing routing id entry to allow the new
-            //  connection to take the routing id.
-            const out_pipe_t *const existing_outpipe =
-              lookup_out_pipe (routing_id);
-
-            if (existing_outpipe) {
-                if (!_handover)
-                    //  Ignore peers with duplicate ID
-                    return false;
-
-                //  We will allow the new connection to take over this
-                //  routing id. Temporarily assign a new routing id to the
-                //  existing pipe so we can terminate it asynchronously.
+            if (msg.size () == 0) {
+                //  Fall back on the auto-generation
                 unsigned char buf[5];
                 buf[0] = 0;
                 put_uint32 (buf + 1, _next_integral_routing_id++);
-                blob_t new_routing_id (buf, sizeof buf);
+                routing_id.set (buf, sizeof buf);
+                msg.close ();
+            } else {
+                routing_id.set (static_cast<unsigned char *> (msg.data ()),
+                                msg.size ());
+                msg.close ();
 
-                pipe_t *const old_pipe = existing_outpipe->pipe;
+                //  Try to remove an existing routing id entry to allow the new
+                //  connection to take the routing id.
+                const out_pipe_t *const existing_outpipe =
+                  lookup_out_pipe (routing_id);
 
-                erase_out_pipe (old_pipe);
-                old_pipe->set_router_socket_routing_id (new_routing_id);
-                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
+                if (existing_outpipe) {
+                    if (!_handover)
+                        //  Ignore peers with duplicate ID
+                        return false;
 
-                if (old_pipe == _current_in)
-                    _terminate_current_in = true;
-                else
-                    old_pipe->terminate (true);
+                    //  We will allow the new connection to take over this
+                    //  routing id. Temporarily assign a new routing id to the
+                    //  existing pipe so we can terminate it asynchronously.
+                    unsigned char buf[5];
+                    buf[0] = 0;
+                    put_uint32 (buf + 1, _next_integral_routing_id++);
+                    blob_t new_routing_id (buf, sizeof buf);
+
+                    pipe_t *const old_pipe = existing_outpipe->pipe;
+
+                    erase_out_pipe (old_pipe);
+                    old_pipe->set_router_socket_routing_id (new_routing_id);
+                    add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
+
+                    if (old_pipe == _current_in)
+                        _terminate_current_in = true;
+                    else
+                        old_pipe->terminate (true);
+                }
             }
         }
     }

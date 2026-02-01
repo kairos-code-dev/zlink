@@ -108,6 +108,10 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     //  The socket the session belongs to.
     zlink::socket_base_t *_socket;
 
+    //  Peer routing id received during handshake before the pipe exists.
+    blob_t _pending_peer_routing_id;
+    bool _pending_peer_routing_id_valid;
+
     //  I/O thread the session is living in. It will be used to plug in
     //  the engines into the same thread.
     zlink::io_thread_t *_io_thread;

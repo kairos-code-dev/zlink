@@ -68,6 +68,8 @@ zlink::session_base_t::session_base_t (class io_thread_t *io_thread_,
     _pending (false),
     _engine (NULL),
     _socket (socket_),
+    _pending_peer_routing_id (),
+    _pending_peer_routing_id_valid (false),
     _io_thread (io_thread_),
     _has_linger_timer (false),
     _addr (addr_)
@@ -82,8 +84,18 @@ const zlink::endpoint_uri_pair_t &zlink::session_base_t::get_endpoint () const
 void zlink::session_base_t::set_peer_routing_id (const unsigned char *data_,
                                                size_t size_)
 {
-    if (_pipe)
+    if (_pipe) {
         _pipe->set_peer_routing_id (data_, size_);
+        return;
+    }
+
+    if (size_ > 0 && data_) {
+        _pending_peer_routing_id.set (data_, size_);
+        _pending_peer_routing_id_valid = true;
+    } else {
+        _pending_peer_routing_id.clear ();
+        _pending_peer_routing_id_valid = false;
+    }
 }
 
 const zlink::blob_t &zlink::session_base_t::peer_routing_id () const
@@ -298,6 +310,15 @@ void zlink::session_base_t::engine_ready ()
         //  events can use them.
         pipes[0]->set_endpoint_pair (_engine->get_endpoint ());
         pipes[1]->set_endpoint_pair (_engine->get_endpoint ());
+
+        if (_pending_peer_routing_id_valid) {
+            // Apply peer routing id to the socket-side pipe (pipes[1]),
+            // so routing sockets can identify the peer before reading data.
+            pipes[1]->set_peer_routing_id (_pending_peer_routing_id.data (),
+                                           _pending_peer_routing_id.size ());
+            _pending_peer_routing_id.clear ();
+            _pending_peer_routing_id_valid = false;
+        }
 
         //  Ask socket to plug into the remote end of the pipe.
         send_bind (_socket, pipes[1]);

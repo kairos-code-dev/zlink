@@ -17,6 +17,7 @@ set(tests
   test_immediate
   test_last_endpoint
   test_router_mandatory
+  test_router_fixed_endpoint
   test_probe_router
   test_disconnect_inproc
   test_ctx_options
@@ -54,6 +55,7 @@ set(tests
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery_basic
   discovery/test_service_discovery_tcp
+  discovery/test_discovery_router_send
   spot/test_spot_pubsub_basic)
 
 if(NOT WIN32)

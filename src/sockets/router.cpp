@@ -432,6 +432,17 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 fprintf (stderr, "router identify_peer: handshake rid size=%zu\n",
                          peer_routing_id.size ());
             }
+            if (has_out_pipe (routing_id)) {
+                if (!_handover) {
+                    // Duplicate routing id; fall back to auto-generated id.
+                    unsigned char buf[5];
+                    buf[0] = 0;
+                    put_uint32 (buf + 1, _next_integral_routing_id++);
+                    routing_id.set (buf, sizeof buf);
+                } else {
+                    // Allow handover logic below to handle duplicates.
+                }
+            }
         } else {
             //  Pick up handshake cases and also case where next integral routing id is set
             msg.init ();

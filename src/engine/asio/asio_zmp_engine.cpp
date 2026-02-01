@@ -295,11 +295,14 @@ bool zlink::asio_zmp_engine_t::handshake ()
     }
 
     if (_has_handshake_stage) {
+        session ()->set_peer_routing_id (_peer_routing_id,
+                                         _peer_routing_id_size);
         session ()->engine_ready ();
         _has_handshake_stage = false;
+    } else {
+        session ()->set_peer_routing_id (_peer_routing_id,
+                                         _peer_routing_id_size);
     }
-
-    session ()->set_peer_routing_id (_peer_routing_id, _peer_routing_id_size);
 
     if (_options.recv_routing_id) {
         msg_t routing_id;

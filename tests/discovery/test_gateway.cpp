@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "testutil.hpp"
-#include "testutil_unity.hpp"
+#include "../testutil.hpp"
+#include "../testutil_unity.hpp"
 #include "../../src/discovery/protocol.hpp"
 #ifndef ZLINK_BUILD_TESTS
 #define ZLINK_BUILD_TESTS 1
@@ -504,9 +504,7 @@ void test_gateway_protocol_ws ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
 }
 
-// Test: TLS transport
-// Note: Full TLS communication requires certificates.
-// This test verifies TLS availability only.
+// Test: TLS transport with self-signed certificates
 void test_gateway_protocol_tls ()
 {
     // Check if TLS is available
@@ -515,13 +513,130 @@ void test_gateway_protocol_tls ()
         return;
     }
 
-    // TLS communication requires certificates - skip actual test
-    TEST_IGNORE_MESSAGE ("TLS available (requires certificates for full test)");
+    // Create temporary certificate files
+    const tls_test_files_t files = make_tls_test_files ();
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    const char *service_name = "svc-tls";
+
+    // Setup registry
+    void *registry = NULL;
+    step_log ("setup registry");
+    setup_registry (ctx, &registry, "inproc://reg-pub-gateway-tls",
+                    "inproc://reg-router-gateway-tls");
+    msleep (100);
+
+    // Setup discovery client
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-tls"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
+
+    // Setup provider with TLS endpoint
+    step_log ("bind provider with tls://");
+    char advertise_ep[256] = {0};
+    void *provider = zlink_provider_new (ctx);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    // Configure TLS server certificates on provider
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_set_tls_server (provider, files.server_cert.c_str (),
+                                     files.server_key.c_str ()));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, "tls://127.0.0.1:*"));
+
+    void *provider_router = zlink_provider_router (provider);
+    TEST_ASSERT_NOT_NULL (provider_router);
+
+    int probe = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
+    const char rid[] = "PROVTLS";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
+    size_t len = sizeof (advertise_ep);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep, &len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_connect_registry (provider, "inproc://reg-router-gateway-tls"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_register (provider, service_name, advertise_ep, 1));
+
+    msleep (200);
+
+    // Create gateway with CA cert for TLS verification
+    step_log ("create gateway");
+    void *gateway = zlink_gateway_new (ctx, discovery);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    // Configure TLS client settings on gateway BEFORE connections are made
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_tls_client (gateway, files.ca_cert.c_str (), "localhost", 0));
+
+    int timeout_ms = 2000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    msleep (200);
+
+    // Send message via gateway
+    step_log ("send payload");
+    zlink_msg_t payload;
+    zlink_msg_init_size (&payload, 8);
+    memcpy (zlink_msg_data (&payload), "tls-test", 8);
+    zlink_msg_t parts[1];
+    parts[0] = payload;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send (gateway, service_name, parts, 1, 0));
+
+    // Provider receives
+    zlink_msg_t frame;
+    zlink_msg_t payload_msg;
+    zlink_msg_init (&frame);
+    zlink_msg_init (&payload_msg);
+    bool got_payload = false;
+    for (int i = 0; i < 3 && !got_payload; ++i) {
+        recv_one_with_timeout (provider_router, &frame, timeout_ms);
+        if (zlink_msg_size (&frame) == 8
+            && memcmp (zlink_msg_data (&frame), "tls-test", 8) == 0) {
+            payload_msg = frame;
+            zlink_msg_init (&frame);
+            got_payload = true;
+            break;
+        }
+        if (!zlink_msg_more (&frame)) {
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+            zlink_msg_init (&frame);
+            continue;
+        }
+        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
+        if (zlink_msg_size (&payload_msg) == 8
+            && memcmp (zlink_msg_data (&payload_msg), "tls-test", 8) == 0) {
+            got_payload = true;
+            break;
+        }
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+        zlink_msg_init (&frame);
+        zlink_msg_init (&payload_msg);
+    }
+    TEST_ASSERT_TRUE (got_payload);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+
+    step_log ("cleanup");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+
+    // Cleanup temp files
+    cleanup_tls_test_files (files);
 }
 
-// Test: WebSocket with TLS (wss://)
-// Note: Full WSS communication requires certificates.
-// This test verifies WSS availability only.
+// Test: WebSocket with TLS (wss://) with self-signed certificates
 void test_gateway_protocol_wss ()
 {
     // Check if WSS is available
@@ -530,8 +645,127 @@ void test_gateway_protocol_wss ()
         return;
     }
 
-    // WSS communication requires certificates - skip actual test
-    TEST_IGNORE_MESSAGE ("WSS available (requires certificates for full test)");
+    // Create temporary certificate files
+    const tls_test_files_t files = make_tls_test_files ();
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    const char *service_name = "svc-wss";
+
+    // Setup registry
+    void *registry = NULL;
+    step_log ("setup registry");
+    setup_registry (ctx, &registry, "inproc://reg-pub-gateway-wss",
+                    "inproc://reg-router-gateway-wss");
+    msleep (100);
+
+    // Setup discovery client
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-wss"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
+
+    // Setup provider with WSS endpoint
+    step_log ("bind provider with wss://");
+    char advertise_ep[256] = {0};
+    void *provider = zlink_provider_new (ctx);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    // Configure TLS server certificates on provider
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_set_tls_server (provider, files.server_cert.c_str (),
+                                     files.server_key.c_str ()));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, "wss://127.0.0.1:*"));
+
+    void *provider_router = zlink_provider_router (provider);
+    TEST_ASSERT_NOT_NULL (provider_router);
+
+    int probe = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
+    const char rid[] = "PROVWSS";
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, rid, sizeof (rid) - 1));
+    size_t len = sizeof (advertise_ep);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep, &len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_connect_registry (provider, "inproc://reg-router-gateway-wss"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_register (provider, service_name, advertise_ep, 1));
+
+    msleep (200);
+
+    // Create gateway with CA cert for WSS verification
+    step_log ("create gateway");
+    void *gateway = zlink_gateway_new (ctx, discovery);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    // Configure TLS client settings on gateway BEFORE connections are made
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_set_tls_client (gateway, files.ca_cert.c_str (), "localhost", 0));
+
+    int timeout_ms = 2000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
+    msleep (200);
+
+    // Send message via gateway
+    step_log ("send payload");
+    zlink_msg_t payload;
+    zlink_msg_init_size (&payload, 8);
+    memcpy (zlink_msg_data (&payload), "wss-test", 8);
+    zlink_msg_t parts[1];
+    parts[0] = payload;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send (gateway, service_name, parts, 1, 0));
+
+    // Provider receives
+    zlink_msg_t frame;
+    zlink_msg_t payload_msg;
+    zlink_msg_init (&frame);
+    zlink_msg_init (&payload_msg);
+    bool got_payload = false;
+    for (int i = 0; i < 3 && !got_payload; ++i) {
+        recv_one_with_timeout (provider_router, &frame, timeout_ms);
+        if (zlink_msg_size (&frame) == 8
+            && memcmp (zlink_msg_data (&frame), "wss-test", 8) == 0) {
+            payload_msg = frame;
+            zlink_msg_init (&frame);
+            got_payload = true;
+            break;
+        }
+        if (!zlink_msg_more (&frame)) {
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+            zlink_msg_init (&frame);
+            continue;
+        }
+        recv_one_with_timeout (provider_router, &payload_msg, timeout_ms);
+        if (zlink_msg_size (&payload_msg) == 8
+            && memcmp (zlink_msg_data (&payload_msg), "wss-test", 8) == 0) {
+            got_payload = true;
+            break;
+        }
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+        zlink_msg_init (&frame);
+        zlink_msg_init (&payload_msg);
+    }
+    TEST_ASSERT_TRUE (got_payload);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&frame));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
+
+    step_log ("cleanup");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+
+    // Cleanup temp files
+    cleanup_tls_test_files (files);
 }
 
 int main (void)

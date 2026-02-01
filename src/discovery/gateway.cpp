@@ -60,6 +60,33 @@ static void dump_gateway_peers (socket_base_t *socket_)
     }
 }
 
+static bool lookup_peer_rid (socket_base_t *socket_,
+                             const std::string &endpoint_,
+                             zlink_routing_id_t *rid_out_)
+{
+    if (!socket_ || !rid_out_)
+        return false;
+    size_t count = 0;
+    if (socket_->socket_peers (NULL, &count) != 0 || count == 0)
+        return false;
+    std::vector<zlink_peer_info_t> peers;
+    peers.resize (count);
+    if (socket_->socket_peers (&peers[0], &count) != 0)
+        return false;
+    for (size_t i = 0; i < count; ++i) {
+        const zlink_peer_info_t &info = peers[i];
+        if (!info.remote_addr)
+            continue;
+        if (endpoint_ != info.remote_addr)
+            continue;
+        if (info.routing_id.size == 0)
+            continue;
+        *rid_out_ = info.routing_id;
+        return true;
+    }
+    return false;
+}
+
 static void sleep_ms (int ms_)
 {
 #if defined ZLINK_HAVE_WINDOWS
@@ -120,7 +147,6 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
     _ctx (ctx_),
     _discovery (discovery_),
     _tag (gateway_tag_value),
-    _next_request_id (1),
     _tls_trust_system (0),
     _stop (0),
     _single_thread (true)
@@ -206,8 +232,6 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
     if (allocate_router (_ctx, &pool.socket) != 0)
         return NULL;
     ensure_gateway_routing_id (pool.socket);
-    int probe = 1;
-    pool.socket->setsockopt (ZLINK_PROBE_ROUTER, &probe, sizeof (probe));
     if (gateway_debug_enabled () && pool.socket) {
         unsigned char buf[256];
         size_t size = sizeof (buf);
@@ -219,14 +243,6 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
             fprintf (stderr, "\n");
         }
     }
-    int mandatory = 1;
-    if (pool.socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
-                                 sizeof (mandatory))
-        != 0) {
-        pool.socket->close ();
-        pool.socket = NULL;
-        return NULL;
-    }
     if (apply_tls_client (pool.socket, _tls_ca, _tls_hostname,
                           _tls_trust_system)
         != 0) {
@@ -234,6 +250,13 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
         pool.socket = NULL;
         return NULL;
     }
+    int mandatory = 1;
+    pool.socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
+                             sizeof (mandatory));
+    int sndtimeo = 2000;
+    pool.socket->setsockopt (ZLINK_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
+    int probe = 1;
+    pool.socket->setsockopt (ZLINK_PROBE_ROUTER, &probe, sizeof (probe));
 
     _pools.insert (std::make_pair (service_name_, pool));
     return &_pools.find (service_name_)->second;
@@ -321,7 +344,6 @@ bool gateway_t::select_provider (service_pool_t *pool_,
 
 int gateway_t::send_request_frames (service_pool_t *pool_,
                                     const zlink_routing_id_t &rid_,
-                                    uint64_t request_id_,
                                     zlink_msg_t *parts_,
                                     size_t part_count_,
                                     int flags_)
@@ -335,34 +357,62 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
         return -1;
     }
 
-    msg_t rid;
-    if (rid.init_size (rid_.size) != 0)
+    zlink_msg_t rid_msg;
+    if (zlink_msg_init_size (&rid_msg, rid_.size) != 0)
         return -1;
     if (rid_.size > 0)
-        memcpy (rid.data (), rid_.data, rid_.size);
-    int flags = (part_count_ > 0 || request_id_ != 0) ? ZLINK_SNDMORE : 0;
-    if (pool_->socket->send (&rid, flags) != 0) {
-        rid.close ();
-        return -1;
+        memcpy (zlink_msg_data (&rid_msg), rid_.data, rid_.size);
+    int flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
+    bool rid_sent = false;
+    while (true) {
+        if (zlink_msg_send (&rid_msg, pool_->socket, flags) >= 0) {
+            rid_sent = true;
+            break;
+        }
+        if (errno != EAGAIN) {
+            if (gateway_debug_enabled ()) {
+                fprintf (stderr, "gateway send rid failed errno=%d\n", errno);
+            }
+            zlink_msg_close (&rid_msg);
+            return -1;
+        }
+        if (std::chrono::steady_clock::now () >= deadline) {
+            if (gateway_debug_enabled ()) {
+                fprintf (stderr, "gateway send rid timeout errno=%d\n", errno);
+            }
+            zlink_msg_close (&rid_msg);
+            return -1;
+        }
+        sleep_ms (1);
     }
-    rid.close ();
-
-    msg_t req_id;
-    if (req_id.init_size (sizeof (uint64_t)) != 0)
-        return -1;
-    memcpy (req_id.data (), &request_id_, sizeof (uint64_t));
-    flags = part_count_ > 0 ? ZLINK_SNDMORE : 0;
-    if (pool_->socket->send (&req_id, flags) != 0) {
-        req_id.close ();
-        return -1;
-    }
-    req_id.close ();
+    if (rid_sent)
+        zlink_msg_close (&rid_msg);
 
     for (size_t i = 0; i < part_count_; ++i) {
-        msg_t &part = *reinterpret_cast<msg_t *> (&parts_[i]);
         flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
-        if (pool_->socket->send (&part, flags) != 0)
-            return -1;
+        while (true) {
+            if (zlink_msg_send (&parts_[i], pool_->socket, flags) >= 0) {
+                zlink_msg_close (&parts_[i]);
+                break;
+            }
+            if (errno != EAGAIN) {
+                if (gateway_debug_enabled ()) {
+                    fprintf (stderr, "gateway send part failed errno=%d\n",
+                             errno);
+                }
+                return -1;
+            }
+            if (std::chrono::steady_clock::now () >= deadline) {
+                if (gateway_debug_enabled ()) {
+                    fprintf (stderr,
+                             "gateway send part timeout errno=%d\n", errno);
+                }
+                return -1;
+            }
+            sleep_ms (1);
+        }
     }
 
     return 0;
@@ -371,8 +421,7 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
 int gateway_t::send (const char *service_name_,
                      zlink_msg_t *parts_,
                      size_t part_count_,
-                     int flags_,
-                     uint64_t *request_id_out_)
+                     int flags_)
 {
     if (!service_name_ || service_name_[0] == '\0' || !parts_
         || part_count_ == 0) {
@@ -384,88 +433,57 @@ int gateway_t::send (const char *service_name_,
         return -1;
     }
 
-    uint64_t request_id = 0;
-    {
-        scoped_lock_t lock (_sync);
-        service_pool_t *pool = get_or_create_pool (service_name_);
-        if (!pool) {
-            errno = ENOMEM;
-            return -1;
-        }
-
-        refresh_pool (pool);
-        zlink_routing_id_t rid;
-        if (!select_provider (pool, &rid)) {
-            errno = EHOSTUNREACH;
-            return -1;
-        }
-        if (!wait_for_peer_ready (pool->socket, rid, 2000)) {
-            errno = EHOSTUNREACH;
-            return -1;
-        }
-
-        request_id = _next_request_id++;
-        if (request_id == 0)
-            request_id = _next_request_id++;
-
-        pending_request_t pending;
-        pending.service_name = service_name_;
-
-        if (_pending.find (request_id) != _pending.end ()) {
-            errno = EAGAIN;
-            return -1;
-        }
-        _pending.insert (std::make_pair (request_id, pending));
-
-        if (gateway_debug_enabled ()) {
-            fprintf (stderr, "gateway send: service=%s req_id=%" PRIu64
-                             " rid_size=%u rid=0x",
-                     service_name_, static_cast<uint64_t> (request_id),
-                     static_cast<unsigned> (rid.size));
-            for (uint8_t i = 0; i < rid.size; ++i)
-                fprintf (stderr, "%02x",
-                         static_cast<unsigned> (rid.data[i]));
-            fprintf (stderr, "\n");
-            dump_gateway_peers (pool->socket);
-        }
-
-        const std::chrono::steady_clock::time_point deadline =
-          std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
-        while (true) {
-            if (send_request_frames (pool, rid, request_id, parts_, part_count_,
-                                     flags_)
-                == 0)
-                break;
-            const int err = errno;
-            if (gateway_debug_enabled ()) {
-                fprintf (stderr, "gateway send retry: errno=%d\n", err);
-            }
-            if (err != EHOSTUNREACH) {
-                _pending.erase (request_id);
-                errno = err;
-                return -1;
-            }
-            if (std::chrono::steady_clock::now () >= deadline) {
-                _pending.erase (request_id);
-                errno = err;
-                return -1;
-            }
-            sleep_ms (1);
-        }
-
-        if (gateway_debug_enabled ()) {
-            fprintf (stderr, "gateway send complete\n");
-            dump_gateway_peers (pool->socket);
-        }
+    // Simple, non-threadsafe send path.
+    service_pool_t *pool = get_or_create_pool (service_name_);
+    if (!pool) {
+        errno = ENOMEM;
+        return -1;
     }
 
-    if (request_id_out_)
-        *request_id_out_ = request_id;
+    for (int i = 0; i < 200; ++i) {
+        refresh_pool (pool);
+        if (!pool->endpoints.empty ())
+            break;
+        sleep_ms (10);
+    }
+    zlink_routing_id_t rid;
+    if (!select_provider (pool, &rid)) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
 
-    for (size_t i = 0; i < part_count_; ++i)
-        zlink_msg_close (&parts_[i]);
+    if (gateway_debug_enabled ()) {
+        fprintf (stderr, "gateway send: service=%s rid_size=%u rid=0x",
+                 service_name_, static_cast<unsigned> (rid.size));
+        for (uint8_t i = 0; i < rid.size; ++i)
+            fprintf (stderr, "%02x", static_cast<unsigned> (rid.data[i]));
+        fprintf (stderr, "\n");
+        dump_gateway_peers (pool->socket);
+    }
+    {
+        int mandatory = 1;
+        pool->socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
+                                  sizeof (mandatory));
+    }
+    {
+        int sndtimeo = 2000;
+        pool->socket->setsockopt (ZLINK_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
+    }
 
-    return 0;
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
+    while (true) {
+        if (send_request_frames (pool, rid, parts_, part_count_, flags_) == 0)
+            return 0;
+        if (errno != EHOSTUNREACH && errno != EAGAIN)
+            return -1;
+        if (std::chrono::steady_clock::now () >= deadline)
+            return -1;
+        refresh_pool (pool);
+        sleep_ms (5);
+    }
+
+    return -1;
 }
 
 zlink_msg_t *gateway_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
@@ -513,10 +531,9 @@ void gateway_t::close_parts (std::vector<msg_t> *parts_)
 }
 
 int gateway_t::recv_from_pool (service_pool_t *pool_,
-                               uint64_t *request_id_,
                                std::vector<msg_t> *parts_)
 {
-    if (!pool_ || !pool_->socket || !request_id_ || !parts_) {
+    if (!pool_ || !pool_->socket || !parts_) {
         errno = EINVAL;
         return -1;
     }
@@ -547,17 +564,10 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     }
 
     parts_->clear ();
-    *request_id_ = 0;
-
     bool more = current.flags () & msg_t::more;
-    if (current.size () == sizeof (uint64_t) && more) {
-        memcpy (request_id_, current.data (), sizeof (uint64_t));
-        current.close ();
-    } else {
-        parts_->push_back (msg_t ());
-        parts_->back ().init ();
-        parts_->back ().move (current);
-    }
+    parts_->push_back (msg_t ());
+    parts_->back ().init ();
+    parts_->back ().move (current);
 
     while (more) {
         msg_t part;
@@ -582,26 +592,15 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     return 0;
 }
 
-void gateway_t::handle_response (uint64_t request_id_,
-                                 std::vector<msg_t> *parts_,
+void gateway_t::handle_response (std::vector<msg_t> *parts_,
                                  const std::string &fallback_service_)
 {
     std::string service_name = fallback_service_;
-
-    if (request_id_ != 0) {
-        std::map<uint64_t, pending_request_t>::iterator it =
-          _pending.find (request_id_);
-        if (it != _pending.end ()) {
-            service_name = it->second.service_name;
-            _pending.erase (it);
-        }
-    }
 
     scoped_lock_t lock (_completion_sync);
     _completion_queue.push_back (completion_entry_t ());
     completion_entry_t &completion = _completion_queue.back ();
     completion.service_name = service_name;
-    completion.request_id = request_id_;
     completion.error = 0;
     completion.parts.swap (*parts_);
     _completion_cv.broadcast ();
@@ -637,10 +636,9 @@ void gateway_t::loop ()
                    _pools.begin ();
                  it != _pools.end (); ++it) {
                 service_pool_t &pool = it->second;
-                uint64_t request_id = 0;
                 std::vector<msg_t> parts;
-                if (recv_from_pool (&pool, &request_id, &parts) == 0) {
-                    handle_response (request_id, &parts, pool.service_name);
+                if (recv_from_pool (&pool, &parts) == 0) {
+                    handle_response (&parts, pool.service_name);
                     handled = true;
                 }
             }
@@ -676,10 +674,9 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
                        _pools.begin ();
                      it != _pools.end (); ++it) {
                     service_pool_t &pool = it->second;
-                    uint64_t request_id = 0;
                     std::vector<msg_t> parts;
-                    if (recv_from_pool (&pool, &request_id, &parts) == 0) {
-                        handle_response (request_id, &parts,
+                    if (recv_from_pool (&pool, &parts) == 0) {
+                        handle_response (&parts,
                                          pool.service_name);
                     }
                 }
@@ -689,7 +686,6 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
             if (!_completion_queue.empty ()) {
                 completion_entry_t &stored = _completion_queue.front ();
                 entry_->service_name = stored.service_name;
-                entry_->request_id = stored.request_id;
                 entry_->error = stored.error;
                 entry_->parts.swap (stored.parts);
                 _completion_queue.pop_front ();
@@ -754,7 +750,6 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
 
     completion_entry_t &stored = _completion_queue.front ();
     entry_->service_name = stored.service_name;
-    entry_->request_id = stored.request_id;
     entry_->error = stored.error;
     entry_->parts.swap (stored.parts);
     _completion_queue.pop_front ();
@@ -765,8 +760,7 @@ int gateway_t::wait_for_completion (completion_entry_t *entry_,
 int gateway_t::recv (zlink_msg_t **parts_,
                      size_t *part_count_,
                      int flags_,
-                     char *service_name_out_,
-                     uint64_t *request_id_out_)
+                     char *service_name_out_)
 {
     if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
@@ -782,8 +776,6 @@ int gateway_t::recv (zlink_msg_t **parts_,
         memset (service_name_out_, 0, 256);
         strncpy (service_name_out_, entry.service_name.c_str (), 255);
     }
-    if (request_id_out_)
-        *request_id_out_ = entry.request_id;
 
     zlink_msg_t *out_parts = NULL;
     size_t out_count = 0;
@@ -897,8 +889,6 @@ int gateway_t::destroy ()
         }
     }
     _pools.clear ();
-
-    _pending.clear ();
 
     scoped_lock_t completion_lock (_completion_sync);
     for (std::deque<completion_entry_t>::iterator it =

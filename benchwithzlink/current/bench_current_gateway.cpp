@@ -212,23 +212,20 @@ static bool pump_provider(void *router, int timeout_ms) {
 }
 
 static bool send_one(void *gateway, const std::string &service,
-                     size_t msg_size, uint64_t *request_id) {
+                     size_t msg_size) {
     static int logged = 0;
     zlink_msg_t msg;
     zlink_msg_init_size(&msg, msg_size);
     if (msg_size > 0)
         memset(zlink_msg_data(&msg), 'a', msg_size);
-    const int rc = zlink_gateway_send(gateway, service.c_str(), &msg, 1, 0, request_id);
+    const int rc = zlink_gateway_send(gateway, service.c_str(), &msg, 1, 0);
     if (rc != 0)
         zlink_msg_close(&msg);
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "gateway_send failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
     }
-    if (rc == 0 && bench_debug_enabled() && logged < 5) {
-        std::cerr << "gateway_send ok req_id=" << *request_id << std::endl;
-        ++logged;
-    }
+    (void) logged;
     return rc == 0;
 }
 
@@ -236,9 +233,8 @@ static bool recv_one_blocking(void *gateway) {
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     char service_name[256];
-    uint64_t request_id = 0;
     const int rc =
-      zlink_gateway_recv(gateway, &parts, &count, 0, service_name, &request_id);
+      zlink_gateway_recv(gateway, &parts, &count, 0, service_name);
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "gateway_recv failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
@@ -261,10 +257,9 @@ static bool recv_one_with_timeout(void *gateway, int timeout_ms) {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
         char service_name[256];
-        uint64_t request_id = 0;
         const int rc =
           zlink_gateway_recv(gateway, &parts, &count, ZLINK_DONTWAIT,
-                             service_name, &request_id);
+                             service_name);
         if (rc == 0) {
             if (parts)
                 zlink_msgv_close(parts, count);
@@ -298,8 +293,7 @@ static bool prime_gateway(void *gateway, void *router, size_t msg_size,
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (std::chrono::steady_clock::now() < deadline) {
-        uint64_t req_id = 0;
-        if (send_one(gateway, "svc", msg_size, &req_id)
+        if (send_one(gateway, "svc", msg_size)
             && pump_provider(router, 2000)
             && recv_one_with_timeout(gateway, 2000)) {
             return true;
@@ -526,8 +520,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
     bool ok = true;
     for (int i = 0; i < warmup_count; ++i) {
-        uint64_t req_id = 0;
-        if (!send_one(gateway, "svc", msg_size, &req_id)
+        if (!send_one(gateway, "svc", msg_size)
             || !pump_provider(router, recv_timeout_ms)
             || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
             ok = false;
@@ -548,8 +541,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        uint64_t req_id = 0;
-        if (!send_one(gateway, "svc", msg_size, &req_id)
+        if (!send_one(gateway, "svc", msg_size)
             || !pump_provider(router, recv_timeout_ms)
             || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
             ok = false;
@@ -570,8 +562,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     int sent = 0;
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        uint64_t req_id = 0;
-        if (!send_one(gateway, "svc", msg_size, &req_id)
+        if (!send_one(gateway, "svc", msg_size)
             || !pump_provider(router, recv_timeout_ms)
             || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
             break;

@@ -674,8 +674,7 @@ int zlink_gateway_send (void *gateway_,
                       const char *service_name_,
                       zlink_msg_t *parts_,
                       size_t part_count_,
-                      int flags_,
-                      uint64_t *request_id_out_)
+                      int flags_)
 {
     if (!gateway_)
         return -1;
@@ -684,16 +683,14 @@ int zlink_gateway_send (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->send (service_name_, parts_, part_count_, flags_,
-                          request_id_out_);
+    return gateway->send (service_name_, parts_, part_count_, flags_);
 }
 
 int zlink_gateway_recv (void *gateway_,
                       zlink_msg_t **parts_,
                       size_t *part_count_,
                       int flags_,
-                      char *service_name_out_,
-                      uint64_t *request_id_out_)
+                      char *service_name_out_)
 {
     if (!gateway_)
         return -1;
@@ -702,8 +699,7 @@ int zlink_gateway_recv (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->recv (parts_, part_count_, flags_, service_name_out_,
-                          request_id_out_);
+    return gateway->recv (parts_, part_count_, flags_, service_name_out_);
 }
 
 int zlink_gateway_set_lb_strategy (void *gateway_,

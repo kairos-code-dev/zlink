@@ -34,14 +34,12 @@ class gateway_t : public discovery_listener_t
     int send (const char *service_name_,
               zlink_msg_t *parts_,
               size_t part_count_,
-              int flags_,
-              uint64_t *request_id_out_);
+              int flags_);
 
     int recv (zlink_msg_t **parts_,
               size_t *part_count_,
               int flags_,
-              char *service_name_out_,
-              uint64_t *request_id_out_);
+              char *service_name_out_);
 
     int set_lb_strategy (const char *service_name_, int strategy_);
     int connection_count (const char *service_name_);
@@ -64,15 +62,9 @@ class gateway_t : public discovery_listener_t
         int lb_strategy;
     };
 
-    struct pending_request_t
-    {
-        std::string service_name;
-    };
-
     struct completion_entry_t
     {
         std::string service_name;
-        uint64_t request_id;
         int error;
         std::vector<msg_t> parts;
     };
@@ -86,15 +78,12 @@ class gateway_t : public discovery_listener_t
 
     int send_request_frames (service_pool_t *pool_,
                              const zlink_routing_id_t &rid_,
-                             uint64_t request_id_,
                              zlink_msg_t *parts_,
                              size_t part_count_,
                              int flags_);
     int recv_from_pool (service_pool_t *pool_,
-                        uint64_t *request_id_,
                         std::vector<msg_t> *parts_);
-    void handle_response (uint64_t request_id_,
-                          std::vector<msg_t> *parts_,
+    void handle_response (std::vector<msg_t> *parts_,
                           const std::string &fallback_service_);
 
     void close_parts (std::vector<msg_t> *parts_);
@@ -109,8 +98,6 @@ class gateway_t : public discovery_listener_t
 
     mutex_t _sync;
     std::map<std::string, service_pool_t> _pools;
-    std::map<uint64_t, pending_request_t> _pending;
-    uint64_t _next_request_id;
     std::set<std::string> _refresh_queue;
 
     std::string _tls_ca;

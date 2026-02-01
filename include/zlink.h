@@ -450,14 +450,12 @@ ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                  const char *service_name,
                                  zlink_msg_t *parts,
                                  size_t part_count,
-                                 int flags,
-                                 uint64_t *request_id_out);
+                                 int flags);
 ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
                                  zlink_msg_t **parts,
                                  size_t *part_count,
                                  int flags,
-                                 char *service_name_out,
-                                 uint64_t *request_id_out);
+                                 char *service_name_out);
 
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0
 #define ZLINK_GATEWAY_LB_WEIGHTED 1

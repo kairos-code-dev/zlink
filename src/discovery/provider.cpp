@@ -158,6 +158,18 @@ static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
     return 0;
 }
 
+static void ensure_ascii_routing_id (socket_base_t *socket_)
+{
+    if (!socket_)
+        return;
+    uint32_t random_id = zlink::generate_random ();
+    if (random_id == 0)
+        random_id = 1;
+    char rid_buf[9];
+    snprintf (rid_buf, sizeof (rid_buf), "P%08x", random_id);
+    socket_->setsockopt (ZLINK_ROUTING_ID, rid_buf, strlen (rid_buf));
+}
+
 int provider_t::bind (const char *endpoint_)
 {
     if (!endpoint_) {
@@ -170,6 +182,7 @@ int provider_t::bind (const char *endpoint_)
         if (create_socket (_ctx, ZLINK_ROUTER, &_router) != 0)
             return -1;
     }
+    ensure_ascii_routing_id (_router);
     if (!_tls_cert.empty ()) {
         if (_router->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
                                  _tls_cert.size ())
@@ -204,9 +217,11 @@ bool provider_t::ensure_routing_id ()
     uint32_t random_id = zlink::generate_random ();
     if (random_id == 0)
         random_id = 1;
-    rid.size = static_cast<uint8_t> (1 + sizeof (random_id));
-    rid.data[0] = 0;
-    memcpy (rid.data + 1, &random_id, sizeof (random_id));
+    char buf[9];
+    // Use an ASCII routing id to avoid embedded NUL bytes.
+    snprintf (buf, sizeof (buf), "P%08x", random_id);
+    rid.size = static_cast<uint8_t> (strlen (buf));
+    memcpy (rid.data, buf, rid.size);
     if (zlink_setsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
                           rid.data, rid.size)
         == 0) {

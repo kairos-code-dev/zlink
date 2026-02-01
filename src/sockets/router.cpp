@@ -432,17 +432,6 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 fprintf (stderr, "router identify_peer: handshake rid size=%zu\n",
                          peer_routing_id.size ());
             }
-            if (has_out_pipe (routing_id)) {
-                if (!_handover) {
-                    // Duplicate routing id; fall back to auto-generated id.
-                    unsigned char buf[5];
-                    buf[0] = 0;
-                    put_uint32 (buf + 1, _next_integral_routing_id++);
-                    routing_id.set (buf, sizeof buf);
-                } else {
-                    // Allow handover logic below to handle duplicates.
-                }
-            }
         } else {
             //  Pick up handshake cases and also case where next integral routing id is set
             msg.init ();
@@ -493,6 +482,28 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                 }
             }
         }
+    }
+
+    const out_pipe_t *const existing_outpipe = lookup_out_pipe (routing_id);
+    if (existing_outpipe) {
+        if (!_handover)
+            return false;
+
+        unsigned char buf[5];
+        buf[0] = 0;
+        put_uint32 (buf + 1, _next_integral_routing_id++);
+        blob_t new_routing_id (buf, sizeof buf);
+
+        pipe_t *const old_pipe = existing_outpipe->pipe;
+
+        erase_out_pipe (old_pipe);
+        old_pipe->set_router_socket_routing_id (new_routing_id);
+        add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
+
+        if (old_pipe == _current_in)
+            _terminate_current_in = true;
+        else
+            old_pipe->terminate (true);
     }
 
     pipe_->set_router_socket_routing_id (routing_id);

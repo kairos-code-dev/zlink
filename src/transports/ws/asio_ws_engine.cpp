@@ -570,9 +570,9 @@ void zlink::asio_ws_engine_t::on_read_complete (
 
         //  Notify session that engine is ready
         if (_session) {
-            _session->engine_ready ();
             _session->set_peer_routing_id (_peer_routing_id,
                                            _peer_routing_id_size);
+            _session->engine_ready ();
         }
 
         //  Notify socket about successful handshake

@@ -51,6 +51,8 @@ class gateway_t : public discovery_listener_t
 
     int destroy ();
 
+    socket_base_t *get_router_socket (const char *service_name_);
+
   private:
     struct service_pool_t
     {

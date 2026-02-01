@@ -11,10 +11,30 @@
 #include <algorithm>
 #include <set>
 #include <vector>
+#include <cstdio>
 
 namespace zlink
 {
 static const uint32_t registry_tag_value = 0x1e6700d5;
+
+static void registry_debug (const char *msg_)
+{
+    if (std::getenv ("ZLINK_REGISTRY_DEBUG"))
+        std::fprintf (stderr, "[registry] %s\n", msg_ ? msg_ : "");
+}
+
+static void registry_debug_rid (const char *label_,
+                                const zlink_routing_id_t &rid_)
+{
+    if (!std::getenv ("ZLINK_REGISTRY_DEBUG"))
+        return;
+    std::fprintf (stderr, "[registry] %s rid(size=%u):", label_,
+                  static_cast<unsigned int> (rid_.size));
+    for (uint8_t i = 0; i < rid_.size; ++i)
+        std::fprintf (stderr, " %02x",
+                      static_cast<unsigned int> (rid_.data[i]));
+    std::fprintf (stderr, "\n");
+}
 
 registry_t::registry_t (ctx_t *ctx_) :
     _ctx (ctx_),
@@ -161,6 +181,11 @@ void registry_t::loop ()
 
     int verbose = 1;
     zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose));
+    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+        int mandatory = 1;
+        zlink_setsockopt (router, ZLINK_ROUTER_MANDATORY, &mandatory,
+                          sizeof (mandatory));
+    }
 
     if (zlink_bind (pub, pub_endpoint.c_str ()) != 0
         || zlink_bind (router, router_endpoint.c_str ()) != 0) {
@@ -292,6 +317,8 @@ void registry_t::handle_router (void *router_)
     sender.size = 0;
     discovery_protocol::read_routing_id (msg, &sender);
     zlink_msg_close (&msg);
+    registry_debug ("handle_router recv");
+    registry_debug_rid ("sender", sender);
 
     std::vector<zlink_msg_t> frames;
     while (true) {
@@ -300,6 +327,11 @@ void registry_t::handle_router (void *router_)
         if (zlink_msg_recv (&frame, router_, 0) == -1) {
             zlink_msg_close (&frame);
             break;
+        }
+        if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+            std::fprintf (stderr, "[registry] frame size=%zu more=%d\n",
+                          zlink_msg_size (&frame),
+                          zlink_msg_more (&frame));
         }
         frames.push_back (frame);
         if (!zlink_msg_more (&frame))
@@ -317,6 +349,11 @@ void registry_t::handle_router (void *router_)
         for (size_t i = 0; i < frames.size (); ++i)
             zlink_msg_close (&frames[i]);
         return;
+    }
+
+    if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
+        std::fprintf (stderr, "[registry] msg_id=0x%04x frames=%zu\n",
+                      msg_id, frames.size ());
     }
 
     switch (msg_id) {
@@ -713,23 +750,39 @@ void registry_t::send_register_ack (void *router_,
                                     const std::string &endpoint_,
                                     const std::string &error_)
 {
+    registry_debug ("send_register_ack");
+    registry_debug_rid ("ack target", sender_id_);
+    auto log_rc = [] (const char *label_, int rc_) {
+        if (!std::getenv ("ZLINK_REGISTRY_DEBUG"))
+            return;
+        if (rc_ == -1) {
+            std::fprintf (stderr, "[registry] %s failed errno=%d (%s)\n",
+                          label_, errno, std::strerror (errno));
+        }
+    };
     zlink_msg_t id_frame;
     zlink_msg_init_size (&id_frame, sender_id_.size);
     if (sender_id_.size > 0)
         memcpy (zlink_msg_data (&id_frame), sender_id_.data, sender_id_.size);
 
-    if (zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE) == -1) {
+    const int rc_id = zlink_msg_send (&id_frame, router_, ZLINK_SNDMORE);
+    log_rc ("send ack id", rc_id);
+    if (rc_id == -1) {
         zlink_msg_close (&id_frame);
         return;
     }
 
-    discovery_protocol::send_u16 (router_,
-                                  discovery_protocol::msg_register_ack,
-                                  ZLINK_SNDMORE);
-    discovery_protocol::send_frame (router_, &status_, sizeof (status_),
-                                    ZLINK_SNDMORE);
-    discovery_protocol::send_string (router_, endpoint_, ZLINK_SNDMORE);
-    discovery_protocol::send_string (router_, error_, 0);
+    log_rc ("send ack msg_id",
+            discovery_protocol::send_u16 (
+              router_, discovery_protocol::msg_register_ack, ZLINK_SNDMORE));
+    log_rc ("send ack status",
+            discovery_protocol::send_frame (router_, &status_,
+                                            sizeof (status_), ZLINK_SNDMORE));
+    log_rc ("send ack endpoint",
+            discovery_protocol::send_string (router_, endpoint_,
+                                             ZLINK_SNDMORE));
+    log_rc ("send ack error",
+            discovery_protocol::send_string (router_, error_, 0));
 }
 
 void registry_t::send_service_list (void *pub_)

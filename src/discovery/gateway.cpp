@@ -910,4 +910,13 @@ int gateway_t::destroy ()
 
     return 0;
 }
+
+socket_base_t *gateway_t::get_router_socket (const char *service_name_)
+{
+    if (!service_name_)
+        return NULL;
+    scoped_lock_t lock (_sync);
+    service_pool_t *pool = get_or_create_pool (service_name_);
+    return pool ? pool->socket : NULL;
+}
 }

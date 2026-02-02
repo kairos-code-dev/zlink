@@ -384,6 +384,11 @@ jobs:
           export ZLINK_LIB_PATH="${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/${{ matrix.lib_file }}"
           cd bindings/node
           npx node-gyp configure build
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            cp -f "${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/"libzlink.so* build/Release/ || true
+          else
+            cp -f "${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/${{ matrix.lib_file }}" build/Release/ || true
+          fi
 
       - name: Build Node addon (windows)
         if: runner.os == 'Windows'
@@ -392,6 +397,7 @@ jobs:
           $env:ZLINK_LIB_PATH = \"$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\${{ matrix.lib_file }}\"
           cd bindings/node
           npx node-gyp configure build
+          Copy-Item \"$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll\" build\\Release -Force
 
       - name: Stage prebuilds (unix)
         if: runner.os != 'Windows'

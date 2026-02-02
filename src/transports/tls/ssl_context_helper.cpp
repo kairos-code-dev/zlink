@@ -13,6 +13,13 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
+// Platform-specific headers for inet_pton()
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#endif
+
 namespace zlink
 {
 
@@ -419,17 +426,28 @@ bool ssl_context_helper_t::set_hostname_verification (
         return false;
     }
 
-    //  Enable hostname checking (flags for DNS name verification)
-    X509_VERIFY_PARAM_set_hostflags (param,
-                                     X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-
-    //  Set the expected hostname for verification
-    if (!X509_VERIFY_PARAM_set1_host (param, hostname.c_str (),
-                                      hostname.size ())) {
-        ASIO_GLOBAL_ERROR (
-          "set_hostname_verification: failed to set hostname '%s'",
-          hostname.c_str ());
-        return false;
+    //  Detect if hostname is an IP address
+    unsigned char buf[16];
+    if (inet_pton (AF_INET, hostname.c_str (), buf) == 1
+        || inet_pton (AF_INET6, hostname.c_str (), buf) == 1) {
+        //  IP address verification
+        if (!X509_VERIFY_PARAM_set1_ip_asc (param, hostname.c_str ())) {
+            ASIO_GLOBAL_ERROR (
+              "set_hostname_verification: failed to set IP '%s'",
+              hostname.c_str ());
+            return false;
+        }
+    } else {
+        //  DNS hostname verification
+        X509_VERIFY_PARAM_set_hostflags (param,
+                                         X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+        if (!X509_VERIFY_PARAM_set1_host (param, hostname.c_str (),
+                                          hostname.size ())) {
+            ASIO_GLOBAL_ERROR (
+              "set_hostname_verification: failed to set hostname '%s'",
+              hostname.c_str ());
+            return false;
+        }
     }
 
     return true;

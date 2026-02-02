@@ -203,6 +203,10 @@ void close_zero_linger (void *socket_)
 
 void setup_test_environment (int timeout_seconds_)
 {
+    // Disable output buffering to prevent hang when stdout is not a TTY
+    setvbuf (stdout, NULL, _IONBF, 0);
+    setvbuf (stderr, NULL, _IONBF, 0);
+
 #if defined _WIN32
 #if defined _MSC_VER
     _set_abort_behavior (0, _WRITE_ABORT_MSG);

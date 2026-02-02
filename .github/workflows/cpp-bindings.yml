@@ -1,0 +1,35 @@
+name: C++ Bindings
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  cpp-bindings:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Configure
+        run: |
+          cmake -B build_cpp_ci \
+            -DZLINK_BUILD_CPP_BINDINGS=ON \
+            -DZLINK_CPP_BUILD_TESTS=ON \
+            -DZLINK_CPP_BUILD_EXAMPLES=ON \
+            -DZLINK_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build_cpp_ci
+
+      - name: Test
+        run: ctest --test-dir build_cpp_ci --output-on-failure -R test_cpp_

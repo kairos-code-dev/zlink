@@ -313,6 +313,11 @@ class socket_t
         return rc;
     }
 
+    int send_const (const void *buf_, size_t len_, int flags_ = 0)
+    {
+        return zlink_send_const (_socket, buf_, len_, flags_);
+    }
+
     int recv (message_t &msg_, int flags_ = 0)
     {
         if (!msg_.valid () && msg_.init () != 0)

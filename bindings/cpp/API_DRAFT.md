@@ -169,6 +169,46 @@ private:
 
 ---
 
+## msgv_t (멀티파트 수신 관리)
+```cpp
+namespace zlink {
+
+class msgv_t {
+public:
+    msgv_t();
+    ~msgv_t();
+
+    msgv_t(msgv_t&&) noexcept;
+    msgv_t& operator=(msgv_t&&) noexcept;
+
+    zlink_msg_t* data();
+    size_t size() const;
+    zlink_msg_t& operator[](size_t idx);
+
+    void adopt(zlink_msg_t* parts, size_t count);
+};
+
+} // namespace zlink
+```
+
+---
+
+## discovery/gateway/provider/spot (요약)
+```cpp
+namespace zlink {
+
+class registry_t { /* zlink_registry_* */ };
+class discovery_t { /* zlink_discovery_* */ };
+class gateway_t { /* zlink_gateway_* */ };
+class provider_t { /* zlink_provider_* */ };
+class spot_node_t { /* zlink_spot_node_* */ };
+class spot_t { /* zlink_spot_* */ };
+
+} // namespace zlink
+```
+
+---
+
 ## 예외 모드
 ```cpp
 #ifdef ZLINK_CPP_EXCEPTIONS

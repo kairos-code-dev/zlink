@@ -38,6 +38,7 @@
 - socket: bind/connect/send/recv/close
 - message: init/init_size/init_data/copy/move
 - monitor/events: 최소 래핑
+- discovery/gateway/provider/spot: 전체 래핑
 
 상세 API 초안은 `bindings/cpp/API_DRAFT.md` 참조.
 
@@ -93,6 +94,8 @@
   - send/recv 기본 시나리오 (PAIR/DEALER/ROUTER/STREAM)
   - message move/copy
   - poller 기본 동작
+
+테스트 실행 방법은 `bindings/cpp/TESTING.md` 참조.
 
 ---
 

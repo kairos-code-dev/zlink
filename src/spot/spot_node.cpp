@@ -602,6 +602,29 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     _tls_ca = ca_cert_;
     _tls_hostname = hostname_;
     _tls_trust_system = trust_system_;
+    if (_sub) {
+        if (_sub->setsockopt (ZLINK_TLS_CA, _tls_ca.data (), _tls_ca.size ())
+              != 0
+            || _sub->setsockopt (ZLINK_TLS_HOSTNAME, _tls_hostname.data (),
+                                 _tls_hostname.size ())
+                 != 0
+            || _sub->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &_tls_trust_system,
+                                 sizeof (_tls_trust_system))
+                 != 0)
+            return -1;
+    }
+    if (_dealer) {
+        if (_dealer->setsockopt (ZLINK_TLS_CA, _tls_ca.data (),
+                                 _tls_ca.size ())
+              != 0
+            || _dealer->setsockopt (ZLINK_TLS_HOSTNAME, _tls_hostname.data (),
+                                    _tls_hostname.size ())
+                 != 0
+            || _dealer->setsockopt (ZLINK_TLS_TRUST_SYSTEM, &_tls_trust_system,
+                                    sizeof (_tls_trust_system))
+                 != 0)
+            return -1;
+    }
     return 0;
 }
 

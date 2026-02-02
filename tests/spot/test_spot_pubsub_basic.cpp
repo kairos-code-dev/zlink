@@ -307,9 +307,6 @@ static void test_spot_peer_tls ()
 {
     // TODO: TLS peer connection hangs - needs investigation
     // TCP/WS/WSS peer tests pass, but TLS has different behavior
-    TEST_IGNORE_MESSAGE ("TLS peer test needs investigation");
-    return;
-
     if (!zlink_has ("tls")) {
         TEST_IGNORE_MESSAGE ("TLS not available");
         return;
@@ -383,9 +380,6 @@ static void test_spot_peer_tls ()
 static void test_spot_peer_wss ()
 {
     // TODO: WSS peer connection hangs - same issue as TLS peer test
-    TEST_IGNORE_MESSAGE ("WSS peer test needs investigation");
-    return;
-
     if (!zlink_has ("wss")) {
         TEST_IGNORE_MESSAGE ("WSS not available");
         return;

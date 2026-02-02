@@ -49,8 +49,8 @@ public final class Gateway implements AutoCloseable {
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment parts = partsPtr.get(ValueLayout.ADDRESS, 0);
-            byte[][] data = NativeMsg.readMsgVector(parts, partCount);
+            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
+            byte[][] data = NativeMsg.readMsgVector(partsAddr, partCount);
             String serviceName = NativeHelpers.fromCString(service, 256);
             return new GatewayMessage(serviceName, data);
         }

@@ -91,8 +91,8 @@ public final class Spot implements AutoCloseable {
             if (rc != 0)
                 throw new RuntimeException("zlink_spot_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment parts = partsPtr.get(ValueLayout.ADDRESS, 0);
-            byte[][] messages = NativeMsg.readMsgVector(parts, partCount);
+            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
+            byte[][] messages = NativeMsg.readMsgVector(partsAddr, partCount);
             String topicId = NativeHelpers.fromCString(topic, 256);
             return new SpotMessage(topicId, messages);
         }

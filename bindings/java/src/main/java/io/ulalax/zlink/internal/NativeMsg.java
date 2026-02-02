@@ -116,20 +116,24 @@ public final class NativeMsg {
         }
     }
 
-    public static byte[][] readMsgVector(MemorySegment parts, long count) {
-        if (parts == null || parts.address() == 0 || count <= 0)
+    public static byte[][] readMsgVector(MemorySegment partsAddr, long count) {
+        if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
             return new byte[0][];
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
         byte[][] out = new byte[(int) count][];
-        for (int i = 0; i < count; i++) {
-            MemorySegment msg = parts.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
-                NativeLayouts.MSG_LAYOUT.byteSize());
-            long size = msgSize(msg);
-            MemorySegment data = msgData(msg).reinterpret(size);
-            byte[] buf = new byte[(int) size];
-            MemorySegment.copy(data, 0, MemorySegment.ofArray(buf), 0, size);
-            out[i] = buf;
+        try {
+            MemorySegment parts = MemorySegment.ofAddress(partsAddr.address()).reinterpret(msgSize * count);
+            for (int i = 0; i < count; i++) {
+                MemorySegment msg = parts.asSlice((long) i * msgSize, msgSize);
+                long size = msgSize(msg);
+                MemorySegment data = msgData(msg).reinterpret(size);
+                byte[] buf = new byte[(int) size];
+                MemorySegment.copy(data, 0, MemorySegment.ofArray(buf), 0, size);
+                out[i] = buf;
+            }
+        } finally {
+            msgvClose(partsAddr, count);
         }
-        msgvClose(parts, count);
         return out;
     }
 }

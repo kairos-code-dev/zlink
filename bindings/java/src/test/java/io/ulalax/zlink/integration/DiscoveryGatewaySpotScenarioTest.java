@@ -8,7 +8,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public class DiscoveryGatewaySpotScenarioTest {
     @Test
@@ -58,13 +57,10 @@ public class DiscoveryGatewaySpotScenarioTest {
 
                                     byte[] rid = TestTransports.recvWithTimeout(providerRouter, 256, 2000);
                                     byte[] payload = new byte[0];
-                                    boolean needsEmpty = false;
                                     for (int i = 0; i < 3; i++) {
                                         payload = TestTransports.recvWithTimeout(providerRouter, 256, 2000);
-                                        if (payload.length == 0) {
-                                            needsEmpty = true;
+                                        if (payload.length == 0)
                                             continue;
-                                        }
                                         if ("hello".equals(new String(payload, StandardCharsets.UTF_8).trim())) {
                                             break;
                                         }
@@ -72,18 +68,10 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertEquals("hello", new String(payload, StandardCharsets.UTF_8).trim());
 
                                     providerRouter.send(rid, TestTransports.ZLINK_SNDMORE);
-                                    if (needsEmpty) {
-                                        providerRouter.send(new byte[0], TestTransports.ZLINK_SNDMORE);
-                                    }
                                     TestTransports.sendWithRetry(providerRouter, "world".getBytes(), 0, 2000);
 
-                                    Gateway.GatewayMessage gwMsg;
-                                    try {
-                                        gwMsg = TestTransports.gatewayReceiveWithTimeout(gateway, 5000);
-                                    } catch (RuntimeException ex) {
-                                        assumeTrue(false, "gateway recv failed for " + tc.name + ": " + ex.getMessage());
-                                        return;
-                                    }
+                                    Gateway.GatewayMessage gwMsg =
+                                      TestTransports.gatewayReceiveWithTimeout(gateway, 5000);
                                     assertEquals("svc", gwMsg.serviceName());
                                     assertEquals(1, gwMsg.parts().length);
                                     assertEquals("world", new String(gwMsg.parts()[0], StandardCharsets.UTF_8).trim());
@@ -106,13 +94,8 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     spot.subscribe("topic");
                                     spot.publish("topic",
                                         new Message[]{Message.fromBytes("spot-msg".getBytes())}, 0);
-                                    Spot.SpotMessage spotMsg;
-                                    try {
-                                        spotMsg = TestTransports.spotReceiveWithTimeout(spot, 5000);
-                                    } catch (RuntimeException ex) {
-                                        assumeTrue(false, "spot recv failed for " + tc.name + ": " + ex.getMessage());
-                                        return;
-                                    }
+                                    Spot.SpotMessage spotMsg =
+                                      TestTransports.spotReceiveWithTimeout(spot, 5000);
                                     assertEquals("topic", spotMsg.topicId());
                                     assertTrue(spotMsg.parts().length == 1);
                                     assertEquals("spot-msg",

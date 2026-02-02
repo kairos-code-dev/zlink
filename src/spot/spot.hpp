@@ -17,6 +17,7 @@
 namespace zlink
 {
 class spot_node_t;
+class socket_base_t;
 
 class spot_t
 {
@@ -41,6 +42,9 @@ class spot_t
               int flags_,
               char *topic_out_,
               size_t *topic_len_);
+
+    socket_base_t *pub_socket () const;
+    socket_base_t *sub_socket () const;
 
     int destroy ();
 

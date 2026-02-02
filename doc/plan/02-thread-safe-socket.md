@@ -1,7 +1,11 @@
 # Thread-safe 소켓 스펙 (Thread-safe Socket)
 
+> ⚠️ **DEPRECATED**: 이 기능은 폐기되었습니다.
+> - 폐기 사유: 설계 재검토 결과, thread-safe 소켓 기능은 zlink의 핵심 범위에서 제외되었습니다.
+> - 대안: 애플리케이션 레벨에서 외부 동기화(뮤텍스 등)를 사용하거나, 소켓을 스레드별로 분리하여 사용하세요.
+
 > **우선순위**: 2 (Core Feature)
-> **상태**: Draft
+> **상태**: ~~Draft~~ **DEPRECATED**
 > **버전**: 0.8
 
 ## 목차

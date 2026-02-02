@@ -301,6 +301,16 @@ int spot_t::recv (zlink_msg_t **parts_,
     return 0;
 }
 
+socket_base_t *spot_t::pub_socket () const
+{
+    return _node ? _node->pub_socket () : NULL;
+}
+
+socket_base_t *spot_t::sub_socket () const
+{
+    return _node ? _node->sub_socket () : NULL;
+}
+
 int spot_t::destroy ()
 {
     if (_node)

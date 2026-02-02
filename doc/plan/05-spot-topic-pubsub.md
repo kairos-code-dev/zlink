@@ -133,7 +133,7 @@ Peer PUB -> Node SUB -> [로컬 구독자]
 
 - **SPOT Instance는 기본적으로 thread-safe 하지 않다.**
   - 단일 스레드에서 사용 권장
-  - 필요 시 `zlink_spot_new_threadsafe()` 사용
+  - ~~필요 시 `zlink_spot_new_threadsafe()` 사용~~ **DEPRECATED** (Thread-safe 소켓 기능 폐기됨)
 - **SPOT Node는 내부 동기화를 포함하며 thread-safe**하게 제공한다.
 
 ### 2.7 SPOT Node 소켓 구성
@@ -438,7 +438,7 @@ ZLINK_EXPORT int zlink_spot_node_set_discovery(
 ```c
 /* SPOT 인스턴스 생성/종료 */
 ZLINK_EXPORT void *zlink_spot_new(void *node);
-ZLINK_EXPORT void *zlink_spot_new_threadsafe(void *node);
+// ZLINK_EXPORT void *zlink_spot_new_threadsafe(void *node);  /* DEPRECATED: Thread-safe 소켓 기능 폐기됨 */
 ZLINK_EXPORT int zlink_spot_destroy(void **spot_p);
 
 /* 토픽 생성/삭제 (로컬 설정) */

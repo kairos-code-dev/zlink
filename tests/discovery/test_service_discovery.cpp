@@ -398,6 +398,104 @@ static void test_discovery_heartbeat_timeout ()
     step_log ("=== test_discovery_heartbeat_timeout done ===");
 }
 
+// Test: Provider weight update
+static void test_discovery_weight_update ()
+{
+    step_log ("=== test_discovery_weight_update ===");
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    // Setup registry
+    step_log ("setup registry");
+    void *registry = NULL;
+    setup_registry (ctx, &registry, "inproc://reg-pub-weight",
+                    "inproc://reg-router-weight");
+    msleep (50);
+
+    // Create discovery
+    step_log ("setup discovery");
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, "inproc://reg-pub-weight"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, "weight-svc"));
+    msleep (50);
+
+    // Create provider
+    step_log ("create provider");
+    void *provider = zlink_provider_new (ctx);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    char bind_ep[64];
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
+              test_port (5704));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, bind_ep));
+
+    char advertise_ep[256] = {0};
+    size_t advertise_len = sizeof (advertise_ep);
+    void *router = zlink_provider_router (provider);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
+                        &advertise_len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_connect_registry (provider, "inproc://reg-router-weight"));
+
+    // Register with initial weight
+    step_log ("register with weight=10");
+    const uint32_t initial_weight = 10;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_register (provider, "weight-svc", advertise_ep, initial_weight));
+
+    // Wait for provider to appear
+    step_log ("wait for provider");
+    TEST_ASSERT_TRUE (wait_for_provider (discovery, "weight-svc", 2000));
+
+    // Verify initial weight
+    step_log ("verify initial weight");
+    zlink_provider_info_t providers[4];
+    size_t count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_get_providers (discovery, "weight-svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (1, (int) count);
+    TEST_ASSERT_EQUAL_UINT32 (initial_weight, providers[0].weight);
+
+    if (test_debug_enabled ()) {
+        fprintf (stderr, "[weight] initial weight=%u\n", providers[0].weight);
+    }
+
+    // Update weight
+    step_log ("update weight to 50");
+    const uint32_t updated_weight = 50;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_update_weight (provider, "weight-svc", updated_weight));
+
+    // Give time for update to propagate
+    msleep (200);
+
+    // Verify updated weight
+    step_log ("verify updated weight");
+    count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_get_providers (discovery, "weight-svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (1, (int) count);
+    TEST_ASSERT_EQUAL_UINT32 (updated_weight, providers[0].weight);
+
+    if (test_debug_enabled ()) {
+        fprintf (stderr, "[weight] updated weight=%u\n", providers[0].weight);
+    }
+
+    // Cleanup
+    step_log ("cleanup");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+
+    step_log ("=== test_discovery_weight_update done ===");
+}
+
 int main (void)
 {
     setup_test_environment ();
@@ -406,5 +504,6 @@ int main (void)
     RUN_TEST (test_discovery_provider_registration);
     RUN_TEST (test_discovery_service_filtering);
     RUN_TEST (test_discovery_heartbeat_timeout);
+    RUN_TEST (test_discovery_weight_update);
     return UNITY_END ();
 }

@@ -4,9 +4,9 @@
 #define __ZLINK_H_INCLUDED__
 
 /*  Version macros for compile-time API version detection                     */
-#define ZLINK_VERSION_MAJOR 4
-#define ZLINK_VERSION_MINOR 3
-#define ZLINK_VERSION_PATCH 5
+#define ZLINK_VERSION_MAJOR 0
+#define ZLINK_VERSION_MINOR 6
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))

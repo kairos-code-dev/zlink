@@ -1,81 +1,8 @@
-# Gemini Context: zlink (libzlink custom build)
+# Gemini Instructions
 
-## Project Overview
-**zlink** is a cross-platform native build system for **libzlink (Zlink) v4.3.5**. It produces pre-built minimal native libraries.
+This repository uses `AGENTS.md` as the single source of truth for
+repository guidelines and agent instructions.
 
-**Key Characteristics:**
-*   **Minimal API:** Draft APIs AND standard REQ/REP, PUSH/PULL socket types have been completely removed.
-*   **No Encryption:** Removed libsodium and CURVE support for a lightweight footprint.
-*   **Platforms:** Linux, macOS, Windows (supporting both x64 and ARM64).
-*   **Language:** C++ (primarily C++98 with optional C++11 fragments).
-
-## Architecture & Directory Structure
-*   **`build-scripts/`**: Platform-specific scripts to configure and compile libzlink.
-    *   `linux/build.sh`, `macos/build.sh`, `windows/build.ps1`
-*   **`src/`**: Core libzlink source code.
-*   **`include/`**: Public headers (`zlink.h`).
-*   **`tests/`**: Test suite using the Unity framework.
-*   **`VERSION`**: Configuration file defining versions and features.
-*   **`CMakeLists.txt`**: Main build configuration.
-
-## Building and Running
-
-### Standard Local Build (Linux)
-Use the provided `build.sh` in the root directory for a quick local clean build and test run:
-```bash
-./build.sh
-```
-
-### Platform-Specific Builds
-Scripts in `build-scripts/` allow for more granular control (arch, versions).
-
-**Linux:**
-```bash
-./build-scripts/linux/build.sh [ARCH] [RUN_TESTS]
-# Example: ./build-scripts/linux/build.sh x64 ON
-```
-
-**macOS:**
-```bash
-./build-scripts/macos/build.sh [ARCH] [RUN_TESTS]
-```
-
-**Windows (PowerShell):**
-```powershell
-.\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
-```
-
-### Running Tests
-Tests are typically run as part of the build scripts if `RUN_TESTS=ON`.
-To run manually after a build:
-```bash
-cd build
-ctest --output-on-failure
-```
-Current status: **61 tests passed** (100% success rate for functional tests).
-
-### Performance Comparison
-A comprehensive benchmark suite is available in `benchwithzlink/`.
-```bash
-benchwithzlink/run_benchmarks.sh --with-baseline --result
-```
-Results are saved under `benchwithzlink/results/YYYYMMDD/`.
-
-## Development Conventions
-*   **Optimization**: C++11 + LTO (Link Time Optimization) is used to achieve maximum performance.
-*   **Migration**: C++20 migration roadmap is defined in `doc/CPP20_MIGRATION_RESEARCH.md`.
-*   **Contribution Process**: Follows the [C4 (Collective Code Construction Contract)](https://rfc.zlink.org/spec:42/C4/).
-*   **Code Style**: Adhere to existing C++98/C++11 patterns found in `src/`.
-*   **Testing**: All new features or fixes must include relevant tests in `tests/`.
-*   **Agent Persona**: Addressed as "팀장님" (Team Leader) by the user.
-
-## Supported Socket Types
-*   **PAIR**: Exclusive pair.
-*   **PUB/SUB, XPUB/XSUB**: Publish-subscribe.
-*   **DEALER/ROUTER**: Async request-reply (Load balancing / Explicit routing).
-*   **ROUTER-to-ROUTER**: P2P and Broker patterns (Verified in benchmarks).
-
-## Memories
-*   `msg_t` MUST be exactly 64 bytes and trivially copyable to survive bitwise moves in `ypipe_t` and cross-boundary calls.
-*   **LTO (Link Time Optimization)** is critical for `inproc` performance; ensure `-flto` is enabled in `CMakeLists.txt`.
-*   Always perform a `git pull --rebase` before pushing to avoid history conflicts.
+If any instructions need to change, update `AGENTS.md`. If new agent
+documents are added, they must reference `AGENTS.md` and direct changes
+there as well.

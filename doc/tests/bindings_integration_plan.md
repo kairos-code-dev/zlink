@@ -8,8 +8,10 @@
 - Net.Zmq.Tests/Integration 패턴 참고: https://github.com/ulala-x/net-zmq/tree/main/tests/Net.Zmq.Tests/Integration
 
 ## 공통 전제
-- 테스트는 기본적으로 `inproc://` 우선 (플랫폼 제약 최소화)
-- 필요 시 `tcp://127.0.0.1:PORT` 사용
+- 테스트는 기본적으로 `tcp://`, `ws://`, `inproc://` **3가지 transport를 루프**로 돌린다
+  - `tcp://127.0.0.1:PORT`
+  - `ws://127.0.0.1:PORT`
+  - `inproc://name`
 - 타임아웃은 짧게, 재시도(최대 2~3회) 허용
 - 동일한 메시지 payload/프레임 구조 사용
 - 실패 시 상세 로그 출력 (서비스명/토픽/프레임 수)

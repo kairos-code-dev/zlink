@@ -52,24 +52,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build libzlink
-        shell: pwsh
-        run: |
-          $buildDir = "build-win-x64"
-          New-Item -ItemType Directory -Force -Path $buildDir
-          cd $buildDir
-          cmake .. `
-            -G "Visual Studio 17 2022" `
-            -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_SHARED=ON `
-            -DBUILD_STATIC=OFF `
-            -DBUILD_TESTS=ON `
-            -DZLINK_CXX_STANDARD=20 `
-            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
-          cmake --build . --config Release --parallel
-          cmake --install . --config Release --prefix ../dist/windows-x64
-
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -92,6 +74,24 @@ jobs:
               Write-Error "OpenSSL installation failed or path incorrect"
             }
           }
+
+      - name: Build libzlink
+        shell: pwsh
+        run: |
+          $buildDir = "build-win-x64"
+          New-Item -ItemType Directory -Force -Path $buildDir
+          cd $buildDir
+          cmake .. `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED=ON `
+            -DBUILD_STATIC=OFF `
+            -DBUILD_TESTS=ON `
+            -DZLINK_CXX_STANDARD=20 `
+            -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
+          cmake --build . --config Release --parallel
+          cmake --install . --config Release --prefix ../dist/windows-x64
 
       - name: Install Visual C++ Redistributable
         shell: pwsh
@@ -213,7 +213,7 @@ jobs:
 
   build-linux-arm64:
     name: Build Linux ARM64
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-22.04-arm64
     needs: read-versions
     steps:
       - name: Checkout repository

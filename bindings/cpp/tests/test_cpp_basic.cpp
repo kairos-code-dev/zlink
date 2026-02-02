@@ -84,5 +84,18 @@ int main()
     const int n = poller.wait(events, 1000);
     assert(n > 0);
 
+    // utilities
+    zlink::atomic_counter_t counter;
+    counter.set(1);
+    assert(counter.value() == 1);
+    assert(counter.inc() == 2);
+    assert(counter.dec() == 1);
+
+    zlink::stopwatch_t sw;
+    (void)sw.intermediate();
+    (void)sw.stop();
+
+    (void)zlink::has("ipc");
+
     return 0;
 }

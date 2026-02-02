@@ -6,6 +6,10 @@ namespace Zlink.Native;
 internal static class NativeMethods
 {
     private const string LibraryName = "zlink";
+    static NativeMethods()
+    {
+        NativeLibraryLoader.EnsureLoaded();
+    }
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_version(out int major, out int minor,

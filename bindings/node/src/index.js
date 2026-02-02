@@ -4,7 +4,13 @@ function loadNative() {
   try {
     return require('../build/Release/zlink.node');
   } catch (err) {
-    return null;
+    try {
+      const path = require('path');
+      const prebuilt = path.join(__dirname, '..', 'prebuilds', `${process.platform}-${process.arch}`, 'zlink.node');
+      return require(prebuilt);
+    } catch (err2) {
+      return null;
+    }
   }
 }
 

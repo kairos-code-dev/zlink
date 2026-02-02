@@ -123,18 +123,13 @@ class Gateway:
             _raise_last_error()
 
     def send(self, service, parts, flags=0):
-        if not parts:
-            raise ValueError("parts required")
-        arr = (ZlinkMsg * len(parts))()
-        for i, msg in enumerate(parts):
-            if isinstance(msg, Message):
-                arr[i] = msg._msg
-            else:
-                m = Message.from_bytes(msg)
-                arr[i] = m._msg
-        rc = lib().zlink_gateway_send(self._handle, service.encode(), ctypes.byref(arr), len(parts), flags)
-        if rc != 0:
-            _raise_last_error()
+        arr, built = _build_msg_array(parts)
+        try:
+            rc = lib().zlink_gateway_send(self._handle, service.encode(), ctypes.byref(arr), len(parts), flags)
+            if rc != 0:
+                _raise_last_error()
+        finally:
+            _close_msg_array(arr, built)
 
     def recv(self, flags=0):
         parts = ctypes.c_void_p()
@@ -226,6 +221,47 @@ class Provider:
             handle = ctypes.c_void_p(self._handle)
             lib().zlink_provider_destroy(ctypes.byref(handle))
             self._handle = None
+
+
+def _init_msg_from_bytes(data: bytes) -> ZlinkMsg:
+    msg = ZlinkMsg()
+    rc = lib().zlink_msg_init_size(ctypes.byref(msg), len(data))
+    if rc != 0:
+        _raise_last_error()
+    if data:
+        ptr = lib().zlink_msg_data(ctypes.byref(msg))
+        ctypes.memmove(ptr, data, len(data))
+    return msg
+
+
+def _clone_msg(src: Message) -> ZlinkMsg:
+    msg = ZlinkMsg()
+    rc = lib().zlink_msg_init(ctypes.byref(msg))
+    if rc != 0:
+        _raise_last_error()
+    rc = lib().zlink_msg_copy(ctypes.byref(msg), ctypes.byref(src._msg))
+    if rc != 0:
+        _raise_last_error()
+    return msg
+
+
+def _build_msg_array(parts):
+    if not parts:
+        raise ValueError("parts required")
+    arr = (ZlinkMsg * len(parts))()
+    built = 0
+    for i, msg in enumerate(parts):
+        if isinstance(msg, Message):
+            arr[i] = _clone_msg(msg)
+        else:
+            arr[i] = _init_msg_from_bytes(bytes(msg))
+        built += 1
+    return arr, built
+
+
+def _close_msg_array(arr, count: int):
+    for i in range(count):
+        lib().zlink_msg_close(ctypes.byref(arr[i]))
 
 
 def _parts_to_bytes(parts_ptr, count):

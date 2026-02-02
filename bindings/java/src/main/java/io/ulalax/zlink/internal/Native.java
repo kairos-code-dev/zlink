@@ -5,7 +5,6 @@ import io.ulalax.zlink.Poller;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
-import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -16,23 +15,6 @@ import java.util.List;
 public final class Native {
     private static final Linker LINKER = Linker.nativeLinker();
     private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
-
-    public static final MemoryLayout MSG_LAYOUT = MemoryLayout.sequenceLayout(64, ValueLayout.JAVA_BYTE);
-    public static final MemoryLayout PROVIDER_INFO_LAYOUT = MemoryLayout.sequenceLayout(
-            256 + 256 + 256 + 4 + 8, ValueLayout.JAVA_BYTE);
-    public static final long PROVIDER_SERVICE_OFFSET = 0;
-    public static final long PROVIDER_ENDPOINT_OFFSET = 256;
-    public static final long PROVIDER_ROUTING_OFFSET = 512;
-    public static final long PROVIDER_WEIGHT_OFFSET = 512 + 256;
-    public static final long PROVIDER_REGISTERED_OFFSET = PROVIDER_WEIGHT_OFFSET + 4;
-
-    public static final MemoryLayout MONITOR_EVENT_LAYOUT = MemoryLayout.sequenceLayout(
-            8 + 8 + 256 + 256 + 256, ValueLayout.JAVA_BYTE);
-    public static final long MONITOR_EVENT_OFFSET = 0;
-    public static final long MONITOR_VALUE_OFFSET = 8;
-    public static final long MONITOR_ROUTING_OFFSET = 16;
-    public static final long MONITOR_LOCAL_OFFSET = 16 + 256;
-    public static final long MONITOR_REMOTE_OFFSET = 16 + 512;
 
     private static MethodHandle downcall(String name, FunctionDescriptor fd) {
         return LINKER.downcallHandle(LOOKUP.find(name).orElseThrow(), fd);
@@ -56,27 +38,6 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-
-    private static final MethodHandle MH_MSG_INIT = downcall("zlink_msg_init",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_INIT_SIZE = downcall("zlink_msg_init_size",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_MSG_SEND = downcall("zlink_msg_send",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_MSG_RECV = downcall("zlink_msg_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_MSG_CLOSE = downcall("zlink_msg_close",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_MOVE = downcall("zlink_msg_move",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_COPY = downcall("zlink_msg_copy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_DATA = downcall("zlink_msg_data",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSG_SIZE = downcall("zlink_msg_size",
-            FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSGV_CLOSE = downcall("zlink_msgv_close",
-            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
 
     private static final MethodHandle MH_POLL = downcall("zlink_poll",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
@@ -288,102 +249,6 @@ public final class Native {
         }
     }
 
-    public static int msgInit(MemorySegment msg) {
-        try {
-            return (int) MH_MSG_INIT.invokeExact(msg);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_init failed", t);
-        }
-    }
-
-    public static int msgInitSize(MemorySegment msg, long size) {
-        try {
-            return (int) MH_MSG_INIT_SIZE.invokeExact(msg, size);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_init_size failed", t);
-        }
-    }
-
-    public static int msgSend(MemorySegment msg, MemorySegment socket, int flags) {
-        try {
-            return (int) MH_MSG_SEND.invokeExact(msg, socket, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_send failed", t);
-        }
-    }
-
-    public static int msgRecv(MemorySegment msg, MemorySegment socket, int flags) {
-        try {
-            return (int) MH_MSG_RECV.invokeExact(msg, socket, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_recv failed", t);
-        }
-    }
-
-    public static int msgClose(MemorySegment msg) {
-        try {
-            return (int) MH_MSG_CLOSE.invokeExact(msg);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_close failed", t);
-        }
-    }
-
-    public static int msgMove(MemorySegment dest, MemorySegment src) {
-        try {
-            return (int) MH_MSG_MOVE.invokeExact(dest, src);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_move failed", t);
-        }
-    }
-
-    public static int msgCopy(MemorySegment dest, MemorySegment src) {
-        try {
-            return (int) MH_MSG_COPY.invokeExact(dest, src);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_copy failed", t);
-        }
-    }
-
-    public static MemorySegment msgData(MemorySegment msg) {
-        try {
-            return (MemorySegment) MH_MSG_DATA.invokeExact(msg);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_data failed", t);
-        }
-    }
-
-    public static long msgSize(MemorySegment msg) {
-        try {
-            return (long) MH_MSG_SIZE.invokeExact(msg);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msg_size failed", t);
-        }
-    }
-
-    public static void msgvClose(MemorySegment parts, long count) {
-        try {
-            MH_MSGV_CLOSE.invokeExact(parts, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_msgv_close failed", t);
-        }
-    }
-
-    public static byte[][] readMsgVector(MemorySegment parts, long count) {
-        if (parts == null || parts.address() == 0 || count <= 0)
-            return new byte[0][];
-        byte[][] out = new byte[(int) count][];
-        for (int i = 0; i < count; i++) {
-            MemorySegment msg = parts.asSlice((long) i * MSG_LAYOUT.byteSize(), MSG_LAYOUT.byteSize());
-            long size = msgSize(msg);
-            MemorySegment data = msgData(msg);
-            byte[] buf = new byte[(int) size];
-            MemorySegment.copy(data, 0, MemorySegment.ofArray(buf), 0, size);
-            out[i] = buf;
-        }
-        msgvClose(parts, count);
-        return out;
-    }
-
     public static MemorySegment monitorOpen(MemorySegment socket, int events) {
         try {
             return (MemorySegment) MH_MONITOR_OPEN.invokeExact(socket, events);
@@ -394,15 +259,20 @@ public final class Native {
 
     public static MonitorEvent monitorRecv(MemorySegment socket, int flags) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment evt = arena.allocate(MONITOR_EVENT_LAYOUT);
+            MemorySegment evt = arena.allocate(NativeLayouts.MONITOR_EVENT_LAYOUT);
             int rc = (int) MH_MONITOR_RECV.invokeExact(socket, evt, flags);
             if (rc != 0)
                 throw new RuntimeException("zlink_monitor_recv failed");
-            long event = evt.get(ValueLayout.JAVA_LONG, MONITOR_EVENT_OFFSET);
-            long value = evt.get(ValueLayout.JAVA_LONG, MONITOR_VALUE_OFFSET);
-            byte[] routing = evt.asSlice(MONITOR_ROUTING_OFFSET, 256).toArray(ValueLayout.JAVA_BYTE);
-            String local = NativeHelpers.fromCString(evt.asSlice(MONITOR_LOCAL_OFFSET, 256), 256);
-            String remote = NativeHelpers.fromCString(evt.asSlice(MONITOR_REMOTE_OFFSET, 256), 256);
+            long event = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_EVENT_OFFSET);
+            long value = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_VALUE_OFFSET);
+            int routingSize = evt.get(ValueLayout.JAVA_BYTE, NativeLayouts.MONITOR_ROUTING_OFFSET) & 0xFF;
+            byte[] routing = new byte[routingSize];
+            if (routingSize > 0) {
+                MemorySegment.copy(evt, NativeLayouts.MONITOR_ROUTING_OFFSET + 1,
+                    MemorySegment.ofArray(routing), 0, routingSize);
+            }
+            String local = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_LOCAL_OFFSET, 256), 256);
+            String remote = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_REMOTE_OFFSET, 256), 256);
             return new MonitorEvent(event, value, routing, local, remote);
         } catch (Throwable t) {
             throw new RuntimeException("monitor recv failed", t);

@@ -6,10 +6,13 @@ on:
       - main
       - develop
     tags:
+      - '*.*'
       - 'v*'
   pull_request:
     branches:
       - main
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       libzlink_version:
@@ -384,7 +387,7 @@ jobs:
     needs:
       - read-versions
       - verify
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
     permissions:
       contents: write
     steps:
@@ -421,6 +424,9 @@ jobs:
         run: |
           VERSION="${{ needs.read-versions.outputs.libzlink_version }}"
           TAG_NAME="${GITHUB_REF_NAME}"
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          fi
           TAR_NAME="zlink-${VERSION}-source.tar.gz"
           git archive --format=tar.gz --output "${TAR_NAME}" "${TAG_NAME}"
           ls -lh "${TAR_NAME}"

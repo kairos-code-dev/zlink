@@ -1,6 +1,6 @@
 package io.ulalax.zlink;
 
-import io.ulalax.zlink.internal.Native;
+import io.ulalax.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 
@@ -12,7 +12,7 @@ public final class Message implements AutoCloseable {
     public Message() {
         this.arena = Arena.ofConfined();
         this.msg = arena.allocate(64);
-        int rc = Native.msgInit(msg);
+        int rc = NativeMsg.msgInit(msg);
         if (rc != 0)
             throw new RuntimeException("zlink_msg_init failed");
         valid = true;
@@ -21,35 +21,35 @@ public final class Message implements AutoCloseable {
     public Message(int size) {
         this.arena = Arena.ofConfined();
         this.msg = arena.allocate(64);
-        int rc = Native.msgInitSize(msg, size);
+        int rc = NativeMsg.msgInitSize(msg, size);
         if (rc != 0)
             throw new RuntimeException("zlink_msg_init_size failed");
         valid = true;
     }
 
     public void send(Socket socket, int flags) {
-        int rc = Native.msgSend(msg, socket.handle(), flags);
+        int rc = NativeMsg.msgSend(msg, socket.handle(), flags);
         if (rc != 0)
             throw new RuntimeException("zlink_msg_send failed");
         valid = false;
     }
 
     public void recv(Socket socket, int flags) {
-        int rc = Native.msgRecv(msg, socket.handle(), flags);
+        int rc = NativeMsg.msgRecv(msg, socket.handle(), flags);
         if (rc != 0)
             throw new RuntimeException("zlink_msg_recv failed");
         valid = true;
     }
 
     public int size() {
-        return (int) Native.msgSize(msg);
+        return (int) NativeMsg.msgSize(msg);
     }
 
     public byte[] data() {
         int size = size();
         if (size <= 0)
             return new byte[0];
-        MemorySegment data = Native.msgData(msg);
+        MemorySegment data = NativeMsg.msgData(msg);
         byte[] out = new byte[size];
         MemorySegment.copy(data, 0, MemorySegment.ofArray(out), 0, size);
         return out;
@@ -61,10 +61,10 @@ public final class Message implements AutoCloseable {
 
     @Override
     public void close() {
-        if (!valid)
-            return;
-        Native.msgClose(msg);
-        valid = false;
+        if (valid) {
+            NativeMsg.msgClose(msg);
+            valid = false;
+        }
         arena.close();
     }
 }

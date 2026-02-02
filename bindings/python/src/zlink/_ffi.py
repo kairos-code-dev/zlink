@@ -1,6 +1,7 @@
 import ctypes
 import ctypes.util
 import os
+import pathlib
 
 
 class _Lib:
@@ -8,6 +9,8 @@ class _Lib:
         path = os.environ.get("ZLINK_LIBRARY_PATH")
         if not path:
             path = ctypes.util.find_library("zlink")
+        if not path:
+            path = _find_bundled_library()
         if not path:
             raise OSError("zlink native library not found")
         self.lib = ctypes.CDLL(path)
@@ -220,3 +223,23 @@ def lib():
     if _lib is None:
         _lib = _Lib()
     return _lib.lib
+
+
+def _find_bundled_library():
+    base = pathlib.Path(__file__).resolve().parent
+    os_name = os.name
+    if os_name == "nt":
+        os_dir = "windows-x86_64" if "64" in os.environ.get("PROCESSOR_ARCHITECTURE", "") else "windows-x86"
+        name = "zlink.dll"
+    else:
+        uname = os.uname().sysname.lower()
+        if "darwin" in uname or "mac" in uname:
+            os_dir = "darwin-aarch64" if os.uname().machine in ("arm64", "aarch64") else "darwin-x86_64"
+            name = "libzlink.dylib"
+        else:
+            os_dir = "linux-aarch64" if os.uname().machine in ("arm64", "aarch64") else "linux-x86_64"
+            name = "libzlink.so"
+    candidate = base / "native" / os_dir / name
+    if candidate.exists():
+        return str(candidate)
+    return None

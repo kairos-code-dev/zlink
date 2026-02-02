@@ -1,7 +1,7 @@
 import ctypes
 from ._ffi import lib
 from ._core import _raise_last_error, Message, ZlinkMsg
-from ._discovery import _parts_to_bytes
+from ._discovery import _parts_to_bytes, _build_msg_array, _close_msg_array
 
 
 class SpotNode:
@@ -79,18 +79,13 @@ class Spot:
             _raise_last_error()
 
     def publish(self, topic_id, parts, flags=0):
-        if not parts:
-            raise ValueError("parts required")
-        arr = (ZlinkMsg * len(parts))()
-        for i, msg in enumerate(parts):
-            if isinstance(msg, Message):
-                arr[i] = msg._msg
-            else:
-                m = Message.from_bytes(msg)
-                arr[i] = m._msg
-        rc = lib().zlink_spot_publish(self._handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
-        if rc != 0:
-            _raise_last_error()
+        arr, built = _build_msg_array(parts)
+        try:
+            rc = lib().zlink_spot_publish(self._handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
+            if rc != 0:
+                _raise_last_error()
+        finally:
+            _close_msg_array(arr, built)
 
     def subscribe(self, topic_id):
         rc = lib().zlink_spot_subscribe(self._handle, topic_id.encode())

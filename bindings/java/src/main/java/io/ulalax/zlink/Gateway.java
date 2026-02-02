@@ -2,10 +2,11 @@ package io.ulalax.zlink;
 
 import io.ulalax.zlink.internal.Native;
 import io.ulalax.zlink.internal.NativeHelpers;
+import io.ulalax.zlink.internal.NativeLayouts;
+import io.ulalax.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.charset.StandardCharsets;
 
 public final class Gateway implements AutoCloseable {
     private MemorySegment handle;
@@ -20,14 +21,23 @@ public final class Gateway implements AutoCloseable {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment vec = arena.allocate(Native.MSG_LAYOUT, parts.length);
+            MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
             for (int i = 0; i < parts.length; i++) {
-                MemorySegment dest = vec.asSlice((long) i * Native.MSG_LAYOUT.byteSize(), Native.MSG_LAYOUT.byteSize());
-                Native.msgCopy(dest, parts[i].handle());
+                MemorySegment dest = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
+                    NativeLayouts.MSG_LAYOUT.byteSize());
+                NativeMsg.msgCopy(dest, parts[i].handle());
             }
-            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags);
-            if (rc != 0)
-                throw new RuntimeException("zlink_gateway_send failed");
+            try {
+                int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags);
+                if (rc != 0)
+                    throw new RuntimeException("zlink_gateway_send failed");
+            } finally {
+                for (int i = 0; i < parts.length; i++) {
+                    MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
+                        NativeLayouts.MSG_LAYOUT.byteSize());
+                    NativeMsg.msgClose(msg);
+                }
+            }
         }
     }
 
@@ -41,7 +51,7 @@ public final class Gateway implements AutoCloseable {
                 throw new RuntimeException("zlink_gateway_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
             MemorySegment parts = partsPtr.get(ValueLayout.ADDRESS, 0);
-            byte[][] data = Native.readMsgVector(parts, partCount);
+            byte[][] data = NativeMsg.readMsgVector(parts, partCount);
             String serviceName = NativeHelpers.fromCString(service, 256);
             return new GatewayMessage(serviceName, data);
         }

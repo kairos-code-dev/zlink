@@ -2,6 +2,7 @@ package io.ulalax.zlink;
 
 import io.ulalax.zlink.internal.Native;
 import io.ulalax.zlink.internal.NativeHelpers;
+import io.ulalax.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -67,7 +68,7 @@ public final class Discovery implements AutoCloseable {
         if (count <= 0)
             return new ProviderInfo[0];
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment arr = arena.allocate(Native.PROVIDER_INFO_LAYOUT, count);
+            MemorySegment arr = arena.allocate(NativeLayouts.PROVIDER_INFO_LAYOUT, count);
             MemorySegment cnt = arena.allocate(ValueLayout.JAVA_LONG);
             cnt.set(ValueLayout.JAVA_LONG, 0, count);
             int rc = Native.discoveryGetProviders(handle, NativeHelpers.toCString(arena, serviceName), arr, cnt);
@@ -76,8 +77,8 @@ public final class Discovery implements AutoCloseable {
             long actual = cnt.get(ValueLayout.JAVA_LONG, 0);
             ProviderInfo[] out = new ProviderInfo[(int) actual];
             for (int i = 0; i < actual; i++) {
-                MemorySegment item = arr.asSlice((long) i * Native.PROVIDER_INFO_LAYOUT.byteSize(),
-                    Native.PROVIDER_INFO_LAYOUT.byteSize());
+                MemorySegment item = arr.asSlice((long) i * NativeLayouts.PROVIDER_INFO_LAYOUT.byteSize(),
+                    NativeLayouts.PROVIDER_INFO_LAYOUT.byteSize());
                 out[i] = ProviderInfo.from(item);
             }
             return out;

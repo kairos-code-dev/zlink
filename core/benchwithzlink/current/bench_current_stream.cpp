@@ -28,26 +28,12 @@
 
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 
-static bool recv_msg_with_timeout(void *socket, zlink_msg_t *msg, int timeout_ms) {
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (true) {
-        const int rc = zlink_msg_recv(msg, socket, ZLINK_DONTWAIT);
-        if (rc >= 0)
-            return true;
-        if (zlink_errno() != EAGAIN)
-            return false;
-        if (std::chrono::steady_clock::now() >= deadline)
-            return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-}
-
 // Helper: Receive STREAM connect event, returns routing_id bytes
 std::vector<unsigned char> expect_connect_event(void* socket) {
     zlink_msg_t id_frame;
     zlink_msg_init(&id_frame);
-    if (!recv_msg_with_timeout(socket, &id_frame, 2000)) {
+    const int id_len = zlink_msg_recv(&id_frame, socket, 0);
+    if (id_len <= 0) {
         if (bench_debug_enabled())
             std::cerr << "Failed to receive routing_id: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -55,7 +41,6 @@ std::vector<unsigned char> expect_connect_event(void* socket) {
         return {};
     }
 
-    const size_t id_len = zlink_msg_size(&id_frame);
     std::vector<unsigned char> routing_id(
         static_cast<const unsigned char*>(zlink_msg_data(&id_frame)),
         static_cast<const unsigned char*>(zlink_msg_data(&id_frame)) + id_len);
@@ -72,23 +57,14 @@ std::vector<unsigned char> expect_connect_event(void* socket) {
     }
 
     // Receive payload (should be 0x01 for connect)
-    zlink_msg_t payload;
-    zlink_msg_init(&payload);
-    if (!recv_msg_with_timeout(socket, &payload, 2000)) {
-        zlink_msg_close(&payload);
-        return {};
-    }
-    const size_t payload_len = zlink_msg_size(&payload);
-    unsigned char *payload_data =
-      static_cast<unsigned char *>(zlink_msg_data(&payload));
-    if (payload_len != 1 || payload_data[0] != STREAM_EVENT_CONNECT) {
+    unsigned char payload[16];
+    int payload_len = zlink_recv(socket, payload, sizeof(payload), 0);
+    if (payload_len != 1 || payload[0] != STREAM_EVENT_CONNECT) {
         if (bench_debug_enabled())
             std::cerr << "Expected connect event (0x01), got len=" << payload_len
-                      << " val=" << (int)payload_data[0] << std::endl;
-        zlink_msg_close(&payload);
+                      << " val=" << (int)payload[0] << std::endl;
         return {};
     }
-    zlink_msg_close(&payload);
 
     if (bench_debug_enabled())
         std::cerr << "Got connect event, routing_id_size=" << routing_id.size()
@@ -116,35 +92,18 @@ inline int recv_stream_msg(void* socket,
                            size_t buf_size) {
     zlink_msg_t id_frame;
     zlink_msg_init(&id_frame);
-    if (!recv_msg_with_timeout(socket, &id_frame, 5000)) {
+    const int id_len = zlink_msg_recv(&id_frame, socket, 0);
+    if (id_len <= 0) {
         zlink_msg_close(&id_frame);
         return -1;
     }
-    if (!zlink_msg_more(&id_frame)) {
-        zlink_msg_close(&id_frame);
-        return -1;
-    }
-    const size_t id_len = zlink_msg_size(&id_frame);
     if (routing_id_out) {
         routing_id_out->assign(
             static_cast<const unsigned char*>(zlink_msg_data(&id_frame)),
             static_cast<const unsigned char*>(zlink_msg_data(&id_frame)) + id_len);
     }
     zlink_msg_close(&id_frame);
-    zlink_msg_t payload;
-    zlink_msg_init(&payload);
-    if (!recv_msg_with_timeout(socket, &payload, 5000)) {
-        zlink_msg_close(&payload);
-        return -1;
-    }
-    const size_t payload_len = zlink_msg_size(&payload);
-    if (payload_len > buf_size) {
-        zlink_msg_close(&payload);
-        return -1;
-    }
-    memcpy(buf, zlink_msg_data(&payload), payload_len);
-    zlink_msg_close(&payload);
-    return static_cast<int>(payload_len);
+    return zlink_recv(socket, buf, buf_size, 0);
 }
 
 void run_stream(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {

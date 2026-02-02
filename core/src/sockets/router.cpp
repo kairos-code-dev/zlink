@@ -425,61 +425,52 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         //  Not allowed to duplicate an existing rid
         zlink_assert (!has_out_pipe (routing_id));
     } else {
-        const blob_t &peer_routing_id = pipe_->get_routing_id ();
-        if (peer_routing_id.size () > 0) {
-            routing_id.set (peer_routing_id.data (), peer_routing_id.size ());
-            if (router_debug_enabled ()) {
-                fprintf (stderr, "router identify_peer: handshake rid size=%zu\n",
-                         peer_routing_id.size ());
-            }
-        } else {
-            //  Pick up handshake cases and also case where next integral routing id is set
-            msg.init ();
-            const bool ok = pipe_->read (&msg);
-            if (!ok)
-                return false;
+        //  Pick up handshake cases and also case where next integral routing id is set
+        msg.init ();
+        const bool ok = pipe_->read (&msg);
+        if (!ok)
+            return false;
 
-            if (msg.size () == 0) {
-                //  Fall back on the auto-generation
+        if (msg.size () == 0) {
+            //  Fall back on the auto-generation
+            unsigned char buf[5];
+            buf[0] = 0;
+            put_uint32 (buf + 1, _next_integral_routing_id++);
+            routing_id.set (buf, sizeof buf);
+            msg.close ();
+        } else {
+            routing_id.set (static_cast<unsigned char *> (msg.data ()),
+                            msg.size ());
+            msg.close ();
+
+            //  Try to remove an existing routing id entry to allow the new
+            //  connection to take the routing id.
+            const out_pipe_t *const existing_outpipe =
+              lookup_out_pipe (routing_id);
+
+            if (existing_outpipe) {
+                if (!_handover)
+                    //  Ignore peers with duplicate ID
+                    return false;
+
+                //  We will allow the new connection to take over this
+                //  routing id. Temporarily assign a new routing id to the
+                //  existing pipe so we can terminate it asynchronously.
                 unsigned char buf[5];
                 buf[0] = 0;
                 put_uint32 (buf + 1, _next_integral_routing_id++);
-                routing_id.set (buf, sizeof buf);
-                msg.close ();
-            } else {
-                routing_id.set (static_cast<unsigned char *> (msg.data ()),
-                                msg.size ());
-                msg.close ();
+                blob_t new_routing_id (buf, sizeof buf);
 
-                //  Try to remove an existing routing id entry to allow the new
-                //  connection to take the routing id.
-                const out_pipe_t *const existing_outpipe =
-                  lookup_out_pipe (routing_id);
+                pipe_t *const old_pipe = existing_outpipe->pipe;
 
-                if (existing_outpipe) {
-                    if (!_handover)
-                        //  Ignore peers with duplicate ID
-                        return false;
+                erase_out_pipe (old_pipe);
+                old_pipe->set_router_socket_routing_id (new_routing_id);
+                add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
 
-                    //  We will allow the new connection to take over this
-                    //  routing id. Temporarily assign a new routing id to the
-                    //  existing pipe so we can terminate it asynchronously.
-                    unsigned char buf[5];
-                    buf[0] = 0;
-                    put_uint32 (buf + 1, _next_integral_routing_id++);
-                    blob_t new_routing_id (buf, sizeof buf);
-
-                    pipe_t *const old_pipe = existing_outpipe->pipe;
-
-                    erase_out_pipe (old_pipe);
-                    old_pipe->set_router_socket_routing_id (new_routing_id);
-                    add_out_pipe (ZLINK_MOVE (new_routing_id), old_pipe);
-
-                    if (old_pipe == _current_in)
-                        _terminate_current_in = true;
-                    else
-                        old_pipe->terminate (true);
-                }
+                if (old_pipe == _current_in)
+                    _terminate_current_in = true;
+                else
+                    old_pipe->terminate (true);
             }
         }
     }

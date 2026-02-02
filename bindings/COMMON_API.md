@@ -80,11 +80,11 @@
 
 ---
 
-## 향후 바인딩별 문서
+## 바인딩별 문서
 - `bindings/cpp/` : C++ API 초안 및 구현 계획
-- `bindings/dotnet/` : .NET 설계 문서 (추가 예정)
-- `bindings/java/` : Java 설계 문서 (추가 예정)
-- `bindings/node/` : Node.js 설계 문서 (추가 예정)
+- `bindings/dotnet/PLAN.md` : .NET 설계 문서
+- `bindings/java/PLAN.md` : Java 설계 문서
+- `bindings/node/PLAN.md` : Node.js 설계 문서
 
 ---
 

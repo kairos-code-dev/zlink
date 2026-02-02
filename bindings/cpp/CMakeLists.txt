@@ -43,4 +43,7 @@ if(ZLINK_CPP_BUILD_EXAMPLES)
 
   add_executable(cpp_spot_basic examples/spot_basic.cpp)
   target_link_libraries(cpp_spot_basic PRIVATE libzlink zlink-cpp)
+
+  add_executable(cpp_monitor_basic examples/monitor_basic.cpp)
+  target_link_libraries(cpp_monitor_basic PRIVATE libzlink zlink-cpp)
 endif()

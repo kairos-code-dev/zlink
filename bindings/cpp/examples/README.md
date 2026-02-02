@@ -12,3 +12,4 @@ cmake --build build
 - `pair_basic.cpp` : PAIR basic send/recv
 - `dealer_router.cpp` : DEALER/ROUTER roundtrip
 - `spot_basic.cpp` : SPOT local publish/recv
+- `monitor_basic.cpp` : socket monitor events (bind/connect)

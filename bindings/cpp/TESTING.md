@@ -21,3 +21,4 @@ ctest --test-dir build --output-on-failure -R test_cpp_
 - `cpp_pair_basic`
 - `cpp_dealer_router`
 - `cpp_spot_basic`
+- `cpp_monitor_basic`

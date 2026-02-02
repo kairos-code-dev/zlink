@@ -285,6 +285,9 @@ class asio_engine_t : public i_engine
 
     //  True if async write is in progress
     bool _write_pending;
+
+    //  True if transport handshake is in progress
+    bool _handshake_pending;
     bool _async_zero_copy;
     bool _async_gather;
 

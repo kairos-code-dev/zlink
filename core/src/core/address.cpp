@@ -6,6 +6,10 @@
 #include "core/ctx.hpp"
 #include "utils/err.hpp"
 #include "transports/tcp/tcp_address.hpp"
+#include "transports/ws/ws_address.hpp"
+#ifdef ZLINK_HAVE_WSS
+#include "transports/tls/wss_address.hpp"
+#endif
 #include "transports/ipc/ipc_address.hpp"
 
 #include <string>
@@ -31,6 +35,16 @@ zlink::address_t::~address_t ()
 #if defined ZLINK_HAVE_IPC
     else if (protocol == protocol_name::ipc) {
         LIBZLINK_DELETE (resolved.ipc_addr);
+    }
+#endif
+#ifdef ZLINK_HAVE_WS
+    else if (protocol == protocol_name::ws) {
+        LIBZLINK_DELETE (resolved.ws_addr);
+    }
+#endif
+#ifdef ZLINK_HAVE_WSS
+    else if (protocol == protocol_name::wss) {
+        LIBZLINK_DELETE (resolved.wss_addr);
     }
 #endif
 }

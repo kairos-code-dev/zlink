@@ -52,6 +52,52 @@ static void recv_one_with_timeout (void *sock, zlink_msg_t *msg, int timeout_ms)
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (msg, sock, 0));
 }
 
+static void recv_one_with_timeout_flags (void *sock,
+                                         zlink_msg_t *msg,
+                                         int timeout_ms,
+                                         int flags)
+{
+    zlink_pollitem_t items[1];
+    items[0].socket = sock;
+    items[0].fd = 0;
+    items[0].events = ZLINK_POLLIN;
+    items[0].revents = 0;
+
+    const int sleep_ms_step = 5;
+    const int attempts = timeout_ms / sleep_ms_step;
+    for (int i = 0; i < attempts; ++i) {
+        int prc = zlink_poll (items, 1, sleep_ms_step);
+        if (prc <= 0)
+            continue;
+        int rc = zlink_msg_recv (msg, sock, flags);
+        if (rc == 0)
+            return;
+        if (errno != EAGAIN)
+            break;
+    }
+    TEST_FAIL_MESSAGE ("recv timeout");
+}
+
+static void gateway_recv_with_timeout (void *gateway,
+                                       zlink_msg_t **parts,
+                                       size_t *count,
+                                       char *service,
+                                       int timeout_ms)
+{
+    const int sleep_ms_step = 5;
+    const int attempts = timeout_ms / sleep_ms_step;
+    for (int i = 0; i < attempts; ++i) {
+        int rc = zlink_gateway_recv (gateway, parts, count, ZLINK_DONTWAIT,
+                                     service);
+        if (rc == 0)
+            return;
+        if (errno != EAGAIN)
+            break;
+        msleep (sleep_ms_step);
+    }
+    TEST_FAIL_MESSAGE ("gateway recv timeout");
+}
+
 // Setup registry with given pub/router endpoints
 static void setup_registry (void *ctx,
                             void **registry_out,
@@ -207,6 +253,110 @@ void test_gateway_single_service_tcp ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&payload_msg));
 
     step_log ("cleanup");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
+// Test: Provider reply path - provider sends response back to gateway client
+void test_gateway_single_service_reply_tcp ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    const char *service_name = "svc";
+
+    void *registry = NULL;
+    setup_registry (ctx, &registry, "inproc://reg-pub-gateway-reply",
+                    "inproc://reg-router-gateway-reply");
+    msleep (100);
+
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery,
+                                        "inproc://reg-pub-gateway-reply"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
+
+    const char provider_rid[] = "PROV1";
+    char advertise_ep[256] = {0};
+    void *provider = zlink_provider_new (ctx);
+    TEST_ASSERT_NOT_NULL (provider);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_bind (provider, "tcp://127.0.0.1:*"));
+    void *provider_router = zlink_provider_router (provider);
+    TEST_ASSERT_NOT_NULL (provider_router);
+    int probe = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe,
+                        sizeof (probe)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, provider_rid,
+                        sizeof (provider_rid) - 1));
+    size_t advertise_len = sizeof (advertise_ep);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep,
+                        &advertise_len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_connect_registry (provider,
+                                       "inproc://reg-router-gateway-reply"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_register (provider, service_name, advertise_ep, 1));
+    msleep (200);
+
+    void *gateway = zlink_gateway_new (ctx, discovery);
+    TEST_ASSERT_NOT_NULL (gateway);
+
+    zlink_msg_t payload;
+    zlink_msg_init_size (&payload, 3);
+    memcpy (zlink_msg_data (&payload), "req", 3);
+    zlink_msg_t parts[1];
+    parts[0] = payload;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_send (gateway, service_name, parts, 1, 0));
+
+    zlink_msg_t rid_frame;
+    zlink_msg_t data_frame;
+    zlink_msg_init (&rid_frame);
+    zlink_msg_init (&data_frame);
+
+    int rcvtimeo = 2000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &rcvtimeo,
+                        sizeof (rcvtimeo)));
+
+    step_log ("reply: recv routing id");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_recv (&rid_frame, provider_router, 0));
+    TEST_ASSERT_TRUE (zlink_msg_more (&rid_frame));
+    step_log ("reply: recv payload");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_recv (&data_frame, provider_router, 0));
+    TEST_ASSERT_EQUAL_MEMORY ("req", zlink_msg_data (&data_frame), 3);
+
+    step_log ("reply: send routing id");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_msg_send (&rid_frame, provider_router, ZLINK_SNDMORE));
+    zlink_msg_t reply;
+    zlink_msg_init_size (&reply, 4);
+    memcpy (zlink_msg_data (&reply), "resp", 4);
+    step_log ("reply: send payload");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_send (&reply, provider_router, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&reply));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&rid_frame));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&data_frame));
+
+    zlink_msg_t *out_parts = NULL;
+    size_t out_count = 0;
+    char service_out[256] = {0};
+    step_log ("reply: gateway recv");
+    gateway_recv_with_timeout (gateway, &out_parts, &out_count, service_out,
+                               2000);
+    TEST_ASSERT_EQUAL_STRING (service_name, service_out);
+    TEST_ASSERT_EQUAL_INT (1, (int) out_count);
+    TEST_ASSERT_EQUAL_MEMORY ("resp", zlink_msg_data (&out_parts[0]), 4);
+    zlink_msgv_close (out_parts, out_count);
+
     TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
@@ -948,7 +1098,13 @@ void test_gateway_load_balancing ()
 int main (void)
 {
     UNITY_BEGIN ();
+    if (getenv ("ZLINK_TEST_GATEWAY_REPLY_ONLY")) {
+        RUN_TEST (test_gateway_single_service_reply_tcp);
+        return UNITY_END ();
+    }
     RUN_TEST (test_gateway_single_service_tcp);
+    if (getenv ("ZLINK_TEST_GATEWAY_REPLY"))
+        RUN_TEST (test_gateway_single_service_reply_tcp);
     RUN_TEST (test_gateway_multi_service_tcp);
     RUN_TEST (test_gateway_protocol_ws);
     RUN_TEST (test_gateway_protocol_tls);

@@ -124,7 +124,7 @@ public final class NativeMsg {
             MemorySegment msg = parts.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
                 NativeLayouts.MSG_LAYOUT.byteSize());
             long size = msgSize(msg);
-            MemorySegment data = msgData(msg);
+            MemorySegment data = msgData(msg).reinterpret(size);
             byte[] buf = new byte[(int) size];
             MemorySegment.copy(data, 0, MemorySegment.ofArray(buf), 0, size);
             out[i] = buf;

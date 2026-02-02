@@ -38,6 +38,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_getsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_POLL = downcall("zlink_poll",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG));
@@ -246,6 +250,22 @@ public final class Native {
             return (int) MH_RECV.invokeExact(socket, buf, len, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_recv failed", t);
+        }
+    }
+
+    public static int setSockOpt(MemorySegment socket, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_SETSOCKOPT.invokeExact(socket, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_setsockopt failed", t);
+        }
+    }
+
+    public static int getSockOpt(MemorySegment socket, int option, MemorySegment value, MemorySegment len) {
+        try {
+            return (int) MH_GETSOCKOPT.invokeExact(socket, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_getsockopt failed", t);
         }
     }
 

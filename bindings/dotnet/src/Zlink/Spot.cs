@@ -165,24 +165,21 @@ public sealed class Spot : IDisposable
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
         var tmp = new ZlinkMsg[parts.Length];
         int built = 0;
-        try
+        for (int i = 0; i < parts.Length; i++)
         {
-            for (int i = 0; i < parts.Length; i++)
-            {
-                parts[i].CopyTo(ref tmp[i]);
-                built++;
-            }
-            int rc = NativeMethods.zlink_spot_publish(_handle, topicId, tmp,
-                (nuint)tmp.Length, (int)flags);
-            ZlinkException.ThrowIfError(rc);
+            parts[i].CopyTo(ref tmp[i]);
+            built++;
         }
-        finally
+        int rc = NativeMethods.zlink_spot_publish(_handle, topicId, tmp,
+            (nuint)tmp.Length, (int)flags);
+        if (rc < 0)
         {
             for (int i = 0; i < built; i++)
             {
                 NativeMethods.zlink_msg_close(ref tmp[i]);
             }
         }
+        ZlinkException.ThrowIfError(rc);
     }
 
     public void Subscribe(string topicId)

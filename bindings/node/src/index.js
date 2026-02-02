@@ -57,6 +57,15 @@ class Socket {
     return requireNative().socketRecv(this._native, size, flags);
   }
 
+  setSockOpt(option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().socketSetOpt(this._native, option, b);
+  }
+
+  getSockOpt(option) {
+    return requireNative().socketGetOpt(this._native, option);
+  }
+
   monitorOpen(events) {
     return new MonitorSocket(requireNative().monitorOpen(this._native, events));
   }

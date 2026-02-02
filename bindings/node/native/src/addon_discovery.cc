@@ -311,7 +311,6 @@ napi_value gateway_send(napi_env env, napi_callback_info info)
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
     int rc = zlink_gateway_send(gw, service.c_str(), parts.data(), parts.size(), flags);
-    close_msg_vector(parts);
     if (rc != 0)
         return throw_last_error(env, "gateway_send failed");
     napi_value ok;

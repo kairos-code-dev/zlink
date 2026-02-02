@@ -124,12 +124,10 @@ class Gateway:
 
     def send(self, service, parts, flags=0):
         arr, built = _build_msg_array(parts)
-        try:
-            rc = lib().zlink_gateway_send(self._handle, service.encode(), ctypes.byref(arr), len(parts), flags)
-            if rc != 0:
-                _raise_last_error()
-        finally:
+        rc = lib().zlink_gateway_send(self._handle, service.encode(), ctypes.byref(arr), len(parts), flags)
+        if rc != 0:
             _close_msg_array(arr, built)
+            _raise_last_error()
 
     def recv(self, flags=0):
         parts = ctypes.c_void_p()
@@ -214,7 +212,8 @@ class Provider:
         handle = lib().zlink_provider_router(self._handle)
         if not handle:
             _raise_last_error()
-        return handle
+        from ._core import Socket
+        return Socket._from_handle(handle, own=False)
 
     def close(self):
         if self._handle:

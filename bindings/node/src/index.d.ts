@@ -10,6 +10,8 @@ export class Socket {
   connect(endpoint: string): void;
   send(buf: Buffer | Uint8Array | string, flags?: number): number;
   recv(size: number, flags?: number): Buffer;
+  setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
+  getSockOpt(option: number): Buffer;
   monitorOpen(events: number): MonitorSocket;
   close(): void;
 }

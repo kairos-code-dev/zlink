@@ -151,6 +151,7 @@ zlink::asio_engine_t::asio_engine_t (
     _io_error (false),
     _read_pending (false),
     _write_pending (false),
+    _handshake_pending (false),
     _async_zero_copy (false),
     _async_gather (false),
     _gather_header_size (0),
@@ -266,6 +267,7 @@ void zlink::asio_engine_t::start_transport_handshake ()
 {
     ENGINE_DBG ("start_transport_handshake");
 
+    _handshake_pending = true;
     if (_options.handshake_ivl > 0)
         set_handshake_timer ();
 
@@ -285,6 +287,7 @@ void zlink::asio_engine_t::on_transport_handshake (
     ENGINE_DBG ("on_transport_handshake: ec=%s, terminating=%d",
                 ec.message ().c_str (), _terminating);
 
+    _handshake_pending = false;
     if (_terminating)
         return;
 
@@ -374,7 +377,8 @@ void zlink::asio_engine_t::terminate ()
 
     //  Drain any pending async handlers while the object is still alive.
     //  The _terminating flag ensures callbacks are no-ops.
-    if (_io_context && (_read_pending || _write_pending)) {
+    if (_io_context
+        && (_read_pending || _write_pending || _handshake_pending)) {
         _io_context->poll ();
     }
 

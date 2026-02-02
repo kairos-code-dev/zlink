@@ -69,3 +69,16 @@
 - 메시지 move/ownership 검증
 - poller 기본 동작
 - TLS 옵션 적용 (가능한 플랫폼)
+
+---
+
+## 샘플/테스트 작성 계획
+- `bindings/*/examples/`에 각 언어별 최소 샘플 제공
+  - PAIR 기본 send/recv
+  - DEALER/ROUTER 라우팅 예시
+  - TLS connect/bind 예시 (가능한 플랫폼)
+- `bindings/*/tests/`에 공통 시나리오 기반 테스트 작성
+  - smoke test (context/socket/message)
+  - send/recv 기본
+  - 옵션 set/get
+  - poller

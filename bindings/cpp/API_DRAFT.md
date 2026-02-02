@@ -209,6 +209,23 @@ class spot_t { /* zlink_spot_* */ };
 
 ---
 
+## utilities (atomic/timer/thread/proxy)
+```cpp
+namespace zlink {
+
+class atomic_counter_t { /* zlink_atomic_counter_* */ };
+class stopwatch_t { /* zlink_stopwatch_* */ };
+class thread_t { /* zlink_threadstart/close */ };
+
+int proxy(socket_t&, socket_t&, socket_t* capture = nullptr);
+int proxy_steerable(socket_t&, socket_t&, socket_t* capture, socket_t& control);
+bool has(const char* capability);
+
+} // namespace zlink
+```
+
+---
+
 ## 예외 모드
 ```cpp
 #ifdef ZLINK_CPP_EXCEPTIONS

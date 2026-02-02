@@ -7,20 +7,38 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <chrono>
+#include <utility>
 
 #if defined(ZLINK_CPP_EXCEPTIONS)
 #include <stdexcept>
+#include <exception>
 #endif
 
 namespace zlink
 {
 
+#if __cplusplus >= 201703L
+#define ZLINK_CPP_NODISCARD [[nodiscard]]
+#else
+#define ZLINK_CPP_NODISCARD
+#endif
+
 class error_t
+#if defined(ZLINK_CPP_EXCEPTIONS)
+  : public std::exception
+#endif
 {
   public:
     explicit error_t (int code_) : _code (code_) {}
     int code () const noexcept { return _code; }
-    const char *what () const noexcept { return zlink_strerror (_code); }
+    const char *what () const noexcept
+#if defined(ZLINK_CPP_EXCEPTIONS)
+      override
+#endif
+    {
+        return zlink_strerror (_code);
+    }
 
   private:
     int _code;
@@ -472,6 +490,12 @@ class poller_t
         return static_cast<int> (events_.size ());
     }
 
+    int wait (std::vector<poll_event_t> &events_,
+              std::chrono::milliseconds timeout_)
+    {
+        return wait (events_, static_cast<long> (timeout_.count ()));
+    }
+
   private:
     struct item_t
     {
@@ -537,6 +561,20 @@ class msgv_t
   private:
     zlink_msg_t *_parts;
     size_t _count;
+};
+
+class monitor_socket_t
+{
+  public:
+    explicit monitor_socket_t (socket_t &&sock_) : _sock (std::move (sock_)) {}
+
+    int recv (zlink_monitor_event_t &event_, int flags_ = 0)
+    {
+        return zlink_monitor_recv (_sock.handle (), &event_, flags_);
+    }
+
+  private:
+    socket_t _sock;
 };
 
 class registry_t
@@ -931,6 +969,134 @@ class spot_t
   private:
     void *_spot;
 };
+
+class atomic_counter_t
+{
+  public:
+    atomic_counter_t () : _counter (zlink_atomic_counter_new ()) {}
+    ~atomic_counter_t () { destroy (); }
+
+    atomic_counter_t (atomic_counter_t &&other) noexcept
+        : _counter (other._counter)
+    {
+        other._counter = NULL;
+    }
+    atomic_counter_t &operator= (atomic_counter_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        destroy ();
+        _counter = other._counter;
+        other._counter = NULL;
+        return *this;
+    }
+
+    atomic_counter_t (const atomic_counter_t &) = delete;
+    atomic_counter_t &operator= (const atomic_counter_t &) = delete;
+
+    void set (int value_) { zlink_atomic_counter_set (_counter, value_); }
+    int inc () { return zlink_atomic_counter_inc (_counter); }
+    int dec () { return zlink_atomic_counter_dec (_counter); }
+    int value () const { return zlink_atomic_counter_value (_counter); }
+
+    void destroy ()
+    {
+        if (!_counter)
+            return;
+        void *tmp = _counter;
+        _counter = NULL;
+        zlink_atomic_counter_destroy (&tmp);
+    }
+
+  private:
+    void *_counter;
+};
+
+class stopwatch_t
+{
+  public:
+    stopwatch_t () : _watch (zlink_stopwatch_start ()) {}
+    ~stopwatch_t () { _watch = NULL; }
+
+    stopwatch_t (stopwatch_t &&other) noexcept : _watch (other._watch)
+    {
+        other._watch = NULL;
+    }
+    stopwatch_t &operator= (stopwatch_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        _watch = other._watch;
+        other._watch = NULL;
+        return *this;
+    }
+
+    stopwatch_t (const stopwatch_t &) = delete;
+    stopwatch_t &operator= (const stopwatch_t &) = delete;
+
+    unsigned long intermediate () { return zlink_stopwatch_intermediate (_watch); }
+    unsigned long stop () { return zlink_stopwatch_stop (_watch); }
+
+  private:
+    void *_watch;
+};
+
+class thread_t
+{
+  public:
+    thread_t () : _thread (NULL) {}
+    explicit thread_t (zlink_thread_fn *fn_, void *arg_)
+        : _thread (zlink_threadstart (fn_, arg_))
+    {
+    }
+    ~thread_t () { close (); }
+
+    thread_t (thread_t &&other) noexcept : _thread (other._thread)
+    {
+        other._thread = NULL;
+    }
+    thread_t &operator= (thread_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+        close ();
+        _thread = other._thread;
+        other._thread = NULL;
+        return *this;
+    }
+
+    thread_t (const thread_t &) = delete;
+    thread_t &operator= (const thread_t &) = delete;
+
+    void close ()
+    {
+        if (_thread) {
+            zlink_threadclose (_thread);
+            _thread = NULL;
+        }
+    }
+
+  private:
+    void *_thread;
+};
+
+inline int proxy (socket_t &frontend_, socket_t &backend_, socket_t *capture_ = NULL)
+{
+    return zlink_proxy (frontend_.handle (), backend_.handle (),
+                        capture_ ? capture_->handle () : NULL);
+}
+
+inline int proxy_steerable (socket_t &frontend_,
+                            socket_t &backend_,
+                            socket_t *capture_,
+                            socket_t &control_)
+{
+    return zlink_proxy_steerable (
+      frontend_.handle (), backend_.handle (),
+      capture_ ? capture_->handle () : NULL, control_.handle ());
+}
+
+inline bool has (const char *capability_) { return zlink_has (capability_) != 0; }
 
 } // namespace zlink
 

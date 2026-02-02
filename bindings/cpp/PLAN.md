@@ -26,7 +26,7 @@
 
 ---
 
-## API 범위 (1차)
+## API 범위 (전체 구현)
 ### 핵심 타입
 - `zlink::context_t`
 - `zlink::socket_t`
@@ -39,10 +39,8 @@
 - message: init/init_size/init_data/copy/move
 - monitor/events: 최소 래핑
 
-### 제외/후순위
-- advanced stats/metrics
+### 제외
 - experimental APIs
-- gateway/spot 전용 래핑은 2차
 
 ---
 
@@ -91,21 +89,14 @@
 
 ---
 
-## 단계별 구현 계획
-### Phase 1: 스켈레톤
+## 구현 계획
 - 기본 RAII 클래스/헤더 구조
 - context/socket/message 타입 정의
-
-### Phase 2: 송수신/옵션
 - send/recv 오버로드
 - setsockopt/getsockopt 래핑
-
-### Phase 3: 고급 기능
 - poller
 - monitor 이벤트
 - TLS 옵션 헬퍼
-
-### Phase 4: 문서/예제
 - examples 추가
 - 바인딩 전용 README
 
@@ -115,4 +106,3 @@
 - API 이름 충돌 방지(네임스페이스 `zlink` 고정)
 - 성능 회귀 방지(불필요한 복사 금지)
 - ABI 안정성: header-only이지만 템플릿 남발 금지
-

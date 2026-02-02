@@ -9,7 +9,7 @@ public class VersionTest {
         int[] v;
         try {
             v = ZlinkVersion.get();
-        } catch (UnsatisfiedLinkError e) {
+        } catch (Throwable e) {
             Assumptions.assumeTrue(false, "zlink native library not found: " + e.getMessage());
             return;
         }

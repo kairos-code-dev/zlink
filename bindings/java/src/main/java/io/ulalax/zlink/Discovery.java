@@ -1,0 +1,94 @@
+package io.ulalax.zlink;
+
+import io.ulalax.zlink.internal.Native;
+import io.ulalax.zlink.internal.NativeHelpers;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
+public final class Discovery implements AutoCloseable {
+    private MemorySegment handle;
+
+    public Discovery(Context ctx) {
+        this.handle = Native.discoveryNew(ctx.handle());
+        if (handle == null || handle.address() == 0)
+            throw new RuntimeException("zlink_discovery_new failed");
+    }
+
+    MemorySegment handle() {
+        return handle;
+    }
+
+    public void connectRegistry(String registryPubEndpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoveryConnectRegistry(handle,
+                NativeHelpers.toCString(arena, registryPubEndpoint));
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_connect_registry failed");
+        }
+    }
+
+    public void subscribe(String serviceName) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoverySubscribe(handle, NativeHelpers.toCString(arena, serviceName));
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_subscribe failed");
+        }
+    }
+
+    public void unsubscribe(String serviceName) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoveryUnsubscribe(handle, NativeHelpers.toCString(arena, serviceName));
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_unsubscribe failed");
+        }
+    }
+
+    public int providerCount(String serviceName) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoveryProviderCount(handle, NativeHelpers.toCString(arena, serviceName));
+            if (rc < 0)
+                throw new RuntimeException("zlink_discovery_provider_count failed");
+            return rc;
+        }
+    }
+
+    public boolean serviceAvailable(String serviceName) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.discoveryServiceAvailable(handle, NativeHelpers.toCString(arena, serviceName));
+            if (rc < 0)
+                throw new RuntimeException("zlink_discovery_service_available failed");
+            return rc != 0;
+        }
+    }
+
+    public ProviderInfo[] getProviders(String serviceName) {
+        int count = providerCount(serviceName);
+        if (count <= 0)
+            return new ProviderInfo[0];
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment arr = arena.allocate(Native.PROVIDER_INFO_LAYOUT, count);
+            MemorySegment cnt = arena.allocate(ValueLayout.JAVA_LONG);
+            cnt.set(ValueLayout.JAVA_LONG, 0, count);
+            int rc = Native.discoveryGetProviders(handle, NativeHelpers.toCString(arena, serviceName), arr, cnt);
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_get_providers failed");
+            long actual = cnt.get(ValueLayout.JAVA_LONG, 0);
+            ProviderInfo[] out = new ProviderInfo[(int) actual];
+            for (int i = 0; i < actual; i++) {
+                MemorySegment item = arr.asSlice((long) i * Native.PROVIDER_INFO_LAYOUT.byteSize(),
+                    Native.PROVIDER_INFO_LAYOUT.byteSize());
+                out[i] = ProviderInfo.from(item);
+            }
+            return out;
+        }
+    }
+
+    @Override
+    public void close() {
+        if (handle == null || handle.address() == 0)
+            return;
+        Native.discoveryDestroy(handle);
+        handle = MemorySegment.NULL;
+    }
+}

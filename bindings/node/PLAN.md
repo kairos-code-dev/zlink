@@ -5,6 +5,7 @@
 - 공통 계약은 `bindings/COMMON_API.md` 준수
 - 코어 버전과 바인딩 버전을 동일하게 유지
 - TypeScript 타입 정의를 동일 패키지에서 제공
+- Node.js 최소 버전은 20+로 고정
 
 ## 설계 원칙
 - Socket은 thread-unsafe, Context만 thread-safe

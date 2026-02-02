@@ -12,6 +12,8 @@ static napi_value init(napi_env env, napi_value exports)
         {"socketConnect", 0, socket_connect, 0, 0, 0, napi_default, 0},
         {"socketSend", 0, socket_send, 0, 0, 0, napi_default, 0},
         {"socketRecv", 0, socket_recv, 0, 0, 0, napi_default, 0},
+        {"socketSetOpt", 0, socket_setopt, 0, 0, 0, napi_default, 0},
+        {"socketGetOpt", 0, socket_getopt, 0, 0, 0, napi_default, 0},
 
         {"registryNew", 0, registry_new, 0, 0, 0, napi_default, 0},
         {"registrySetEndpoints", 0, registry_set_endpoints, 0, 0, 0, napi_default, 0},

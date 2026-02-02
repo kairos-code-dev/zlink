@@ -76,12 +76,13 @@ void ssl_transport_t::close ()
     if (_ssl_stream) {
         boost::system::error_code ec;
 
+        _ssl_stream->lowest_layer ().cancel (ec);
+
         //  Avoid blocking SSL shutdown on close; just close the TCP layer.
         _ssl_stream->lowest_layer ().shutdown (
           boost::asio::ip::tcp::socket::shutdown_both, ec);
         _ssl_stream->lowest_layer ().close (ec);
 
-        _ssl_stream.reset ();
         _handshake_complete = false;
     }
 }

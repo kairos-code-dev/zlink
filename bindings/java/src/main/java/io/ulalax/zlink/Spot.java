@@ -41,18 +41,17 @@ public final class Spot implements AutoCloseable {
             for (int i = 0; i < parts.length; i++) {
                 MemorySegment dest = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
                     NativeLayouts.MSG_LAYOUT.byteSize());
+                NativeMsg.msgInit(dest);
                 NativeMsg.msgCopy(dest, parts[i].handle());
             }
-            try {
-                int rc = Native.spotPublish(handle, NativeHelpers.toCString(arena, topicId), vec, parts.length, flags);
-                if (rc != 0)
-                    throw new RuntimeException("zlink_spot_publish failed");
-            } finally {
+            int rc = Native.spotPublish(handle, NativeHelpers.toCString(arena, topicId), vec, parts.length, flags);
+            if (rc != 0) {
                 for (int i = 0; i < parts.length; i++) {
                     MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
                         NativeLayouts.MSG_LAYOUT.byteSize());
                     NativeMsg.msgClose(msg);
                 }
+                throw new RuntimeException("zlink_spot_publish failed");
             }
         }
     }

@@ -1,4 +1,5 @@
 #include "addon_api.h"
+#include <errno.h>
 
 napi_value throw_last_error(napi_env env, const char *prefix)
 {
@@ -186,7 +187,7 @@ napi_value socket_send(napi_env env, napi_callback_info info)
     int32_t flags = 0;
     napi_get_value_int32(env, argv[2], &flags);
     int rc = zlink_send(sock, data, len, flags);
-    if (rc != 0)
+    if (rc < 0)
         return throw_last_error(env, "send failed");
     napi_value out;
     napi_create_int32(env, rc, &out);
@@ -216,6 +217,60 @@ napi_value socket_recv(napi_env env, napi_callback_info info)
         return buffer;
     napi_value out;
     napi_create_buffer_copy(env, rc, buf, NULL, &out);
+    return out;
+}
+
+napi_value socket_setopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[1], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_setsockopt(sock, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_getopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[1], &opt);
+    size_t len = 256;
+    void *data = NULL;
+    napi_value buf;
+    napi_create_buffer(env, len, &data, &buf);
+    int rc = zlink_getsockopt(sock, opt, data, &len);
+    if (rc != 0) {
+        int err = zlink_errno();
+        if (err == EINVAL) {
+            len = sizeof(int);
+            napi_create_buffer(env, len, &data, &buf);
+            rc = zlink_getsockopt(sock, opt, data, &len);
+        }
+    }
+    if (rc != 0)
+        return throw_last_error(env, "getsockopt failed");
+    if (len == 256 || len == sizeof(int))
+        return buf;
+    napi_value out;
+    napi_create_buffer_copy(env, len, data, NULL, &out);
     return out;
 }
 

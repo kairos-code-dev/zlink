@@ -25,18 +25,17 @@ public final class Gateway implements AutoCloseable {
             for (int i = 0; i < parts.length; i++) {
                 MemorySegment dest = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
                     NativeLayouts.MSG_LAYOUT.byteSize());
+                NativeMsg.msgInit(dest);
                 NativeMsg.msgCopy(dest, parts[i].handle());
             }
-            try {
-                int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags);
-                if (rc != 0)
-                    throw new RuntimeException("zlink_gateway_send failed");
-            } finally {
+            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags);
+            if (rc != 0) {
                 for (int i = 0; i < parts.length; i++) {
                     MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
                         NativeLayouts.MSG_LAYOUT.byteSize());
                     NativeMsg.msgClose(msg);
                 }
+                throw new RuntimeException("zlink_gateway_send failed");
             }
         }
     }

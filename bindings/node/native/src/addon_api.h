@@ -25,6 +25,8 @@ napi_value socket_bind(napi_env env, napi_callback_info info);
 napi_value socket_connect(napi_env env, napi_callback_info info);
 napi_value socket_send(napi_env env, napi_callback_info info);
 napi_value socket_recv(napi_env env, napi_callback_info info);
+napi_value socket_setopt(napi_env env, napi_callback_info info);
+napi_value socket_getopt(napi_env env, napi_callback_info info);
 
 napi_value registry_new(napi_env env, napi_callback_info info);
 napi_value registry_set_endpoints(napi_env env, napi_callback_info info);

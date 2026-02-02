@@ -12,7 +12,10 @@ public final class LibraryLoader {
     public static SymbolLookup lookup() {
         String path = System.getenv("ZLINK_LIBRARY_PATH");
         if (path != null && !path.isEmpty()) {
-            System.load(path);
+            Path p = Path.of(path);
+            if (!p.isAbsolute())
+                p = p.toAbsolutePath();
+            System.load(p.toString());
             return SymbolLookup.loaderLookup();
         }
         try {

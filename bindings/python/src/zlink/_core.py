@@ -52,6 +52,14 @@ class Socket:
         self._handle = lib().zlink_socket(context._handle, int(sock_type))
         if not self._handle:
             _raise_last_error()
+        self._own = True
+
+    @classmethod
+    def _from_handle(cls, handle, own=False):
+        obj = cls.__new__(cls)
+        obj._handle = handle
+        obj._own = own
+        return obj
 
     def bind(self, endpoint: str):
         rc = lib().zlink_bind(self._handle, endpoint.encode())
@@ -76,7 +84,7 @@ class Socket:
     def send(self, data: bytes, flags: int = 0):
         buf = ctypes.create_string_buffer(data)
         rc = lib().zlink_send(self._handle, buf, len(data), flags)
-        if rc != 0:
+        if rc < 0:
             _raise_last_error()
         return rc
 
@@ -102,9 +110,9 @@ class Socket:
         return buf.raw[: sz.value]
 
     def close(self):
-        if self._handle:
+        if self._handle and self._own:
             lib().zlink_close(self._handle)
-            self._handle = None
+        self._handle = None
 
 
 class ZlinkMsg(ctypes.Structure):
@@ -142,13 +150,13 @@ class Message:
 
     def send(self, socket, flags: int = 0):
         rc = lib().zlink_msg_send(ctypes.byref(self._msg), socket._handle, flags)
-        if rc != 0:
+        if rc < 0:
             _raise_last_error()
         self._valid = False
 
     def recv(self, socket, flags: int = 0):
         rc = lib().zlink_msg_recv(ctypes.byref(self._msg), socket._handle, flags)
-        if rc != 0:
+        if rc < 0:
             _raise_last_error()
         self._valid = True
 

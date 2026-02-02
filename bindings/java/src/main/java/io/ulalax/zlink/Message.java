@@ -27,6 +27,15 @@ public final class Message implements AutoCloseable {
         valid = true;
     }
 
+    public static Message fromBytes(byte[] data) {
+        Message msg = new Message(data.length);
+        if (data.length > 0) {
+            MemorySegment dst = NativeMsg.msgData(msg.msg).reinterpret(data.length);
+            MemorySegment.copy(MemorySegment.ofArray(data), 0, dst, 0, data.length);
+        }
+        return msg;
+    }
+
     public void send(Socket socket, int flags) {
         int rc = NativeMsg.msgSend(msg, socket.handle(), flags);
         if (rc != 0)
@@ -49,7 +58,7 @@ public final class Message implements AutoCloseable {
         int size = size();
         if (size <= 0)
             return new byte[0];
-        MemorySegment data = NativeMsg.msgData(msg);
+        MemorySegment data = NativeMsg.msgData(msg).reinterpret(size);
         byte[] out = new byte[size];
         MemorySegment.copy(data, 0, MemorySegment.ofArray(out), 0, size);
         return out;

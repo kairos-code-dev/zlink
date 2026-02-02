@@ -80,12 +80,10 @@ class Spot:
 
     def publish(self, topic_id, parts, flags=0):
         arr, built = _build_msg_array(parts)
-        try:
-            rc = lib().zlink_spot_publish(self._handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
-            if rc != 0:
-                _raise_last_error()
-        finally:
+        rc = lib().zlink_spot_publish(self._handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
+        if rc != 0:
             _close_msg_array(arr, built)
+            _raise_last_error()
 
     def subscribe(self, topic_id):
         rc = lib().zlink_spot_subscribe(self._handle, topic_id.encode())

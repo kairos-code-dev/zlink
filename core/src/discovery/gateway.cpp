@@ -234,9 +234,6 @@ gateway_t::get_or_create_pool (const std::string &service_name_)
                              sizeof (mandatory));
     int sndtimeo = 2000;
     pool.socket->setsockopt (ZLINK_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
-    int probe = 1;
-    pool.socket->setsockopt (ZLINK_PROBE_ROUTER, &probe, sizeof (probe));
-
     _pools.insert (std::make_pair (service_name_, pool));
     return &_pools.find (service_name_)->second;
 }
@@ -346,7 +343,8 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
       std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
     bool rid_sent = false;
     while (true) {
-        if (zlink_msg_send (&rid_msg, pool_->socket, flags) >= 0) {
+        const int send_rc = zlink_msg_send (&rid_msg, pool_->socket, flags);
+        if (send_rc >= 0) {
             rid_sent = true;
             break;
         }
@@ -372,7 +370,9 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     for (size_t i = 0; i < part_count_; ++i) {
         flags = (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         while (true) {
-            if (zlink_msg_send (&parts_[i], pool_->socket, flags) >= 0) {
+            const int send_rc =
+              zlink_msg_send (&parts_[i], pool_->socket, flags);
+            if (send_rc >= 0) {
                 zlink_msg_close (&parts_[i]);
                 break;
             }
@@ -529,6 +529,14 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     if (pool_->socket->recv (&current, 0) != 0) {
         current.close ();
         routing.close ();
+        return -1;
+    }
+
+    if (current.size () == 0 && !(current.flags () & msg_t::more)) {
+        //  Ignore probe/empty frames from ROUTER peers.
+        current.close ();
+        routing.close ();
+        errno = EAGAIN;
         return -1;
     }
 

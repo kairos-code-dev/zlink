@@ -1044,7 +1044,7 @@ void spot_node_t::process_sub ()
                 close_parts (&payload);
                 break;
             }
-            if (_sub->recv (&part, 0) != 0) {
+            if (_sub->recv (&part, ZLINK_DONTWAIT) != 0) {
                 part.close ();
                 close_parts (&payload);
                 break;

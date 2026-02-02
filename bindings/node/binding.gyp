@@ -24,7 +24,7 @@
             ]
           }
         ],
-        [ "OS==\"linux\"", { "ldflags": [ "-Wl,-rpath,$ORIGIN" ] } ],
+        [ "OS==\"linux\"", { "ldflags": [ "-Wl,-rpath,\\$$ORIGIN" ] } ],
         [ "OS==\"mac\"", { "ldflags": [ "-Wl,-rpath,@loader_path" ] } ]
       ]
     }

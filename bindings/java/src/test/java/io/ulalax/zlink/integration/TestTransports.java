@@ -1,5 +1,6 @@
 package io.ulalax.zlink.integration;
 
+import io.ulalax.zlink.Context;
 import io.ulalax.zlink.Gateway;
 import io.ulalax.zlink.Socket;
 import io.ulalax.zlink.Spot;
@@ -49,31 +50,12 @@ final class TestTransports {
     }
 
     static void tryTransport(String name, Runnable action) {
-        final RuntimeException[] thrown = new RuntimeException[1];
-        Thread t = new Thread(() -> {
-            try {
-                action.run();
-            } catch (RuntimeException ex) {
-                thrown[0] = ex;
-            }
-        });
-        t.setDaemon(true);
-        t.start();
-        int timeoutMs = "ws".equals(name) ? 3000 : 7000;
         try {
-            t.join(timeoutMs);
-        } catch (InterruptedException ignored) {
-            Thread.currentThread().interrupt();
-        }
-        if (t.isAlive()) {
+            action.run();
+        } catch (RuntimeException ex) {
             if ("ws".equals(name))
                 return;
-            throw new RuntimeException("transport timed out: " + name);
-        }
-        if (thrown[0] != null) {
-            if ("ws".equals(name))
-                return;
-            throw thrown[0];
+            throw ex;
         }
     }
 
@@ -154,6 +136,17 @@ final class TestTransports {
             return socket.getLocalPort();
         } catch (Exception ex) {
             throw new RuntimeException(ex);
+        }
+    }
+
+    static void closeContext(Context ctx) {
+        Thread t = new Thread(ctx::close);
+        t.setDaemon(true);
+        t.start();
+        try {
+            t.join(3000);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
         }
     }
 

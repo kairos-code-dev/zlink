@@ -433,7 +433,7 @@ void registry_t::handle_peer (void *sub_)
     uint32_t local_registry_id = 0;
     {
         scoped_lock_t lock (_sync);
-        local_registry_id = _registry_id_set ? _registry_id : _registry_id;
+        local_registry_id = _registry_id;
         if (local_registry_id == 0)
             local_registry_id = 1;
 
@@ -668,8 +668,6 @@ void registry_t::handle_unregister (const zlink_msg_t *frames_,
         return;
     if (pit->second.source_registry != _registry_id)
         return;
-    if (pit->second.source_registry != _registry_id)
-        return;
 
     sit->second.providers.erase (pit);
     if (sit->second.providers.empty ())
@@ -790,7 +788,7 @@ void registry_t::send_service_list (void *pub_)
     uint32_t registry_id = 0;
     {
         scoped_lock_t lock (_sync);
-        registry_id = _registry_id_set ? _registry_id : _registry_id;
+        registry_id = _registry_id;
         if (registry_id == 0)
             registry_id = 1;
     }

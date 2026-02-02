@@ -5,31 +5,22 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
-#include "core/thread.hpp"
-#include "utils/atomic_counter.hpp"
-#include "utils/condition_variable.hpp"
-#include "utils/mutex.hpp"
-
 #include "discovery/discovery.hpp"
 
 #include <chrono>
-#include <deque>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
 
 namespace zlink
 {
-class gateway_t : public discovery_listener_t
+class gateway_t
 {
   public:
     gateway_t (ctx_t *ctx_, discovery_t *discovery_);
     ~gateway_t ();
 
     bool check_tag () const;
-    void on_discovery_event (int event_,
-                             const std::string &service_name_);
 
     int send (const char *service_name_,
               zlink_msg_t *parts_,
@@ -73,9 +64,6 @@ class gateway_t : public discovery_listener_t
     void refresh_pool (service_pool_t *pool_);
     bool select_provider (service_pool_t *pool_, zlink_routing_id_t *rid_);
 
-    static void run (void *arg_);
-    void loop ();
-
     int send_request_frames (service_pool_t *pool_,
                              const zlink_routing_id_t &rid_,
                              zlink_msg_t *parts_,
@@ -83,34 +71,21 @@ class gateway_t : public discovery_listener_t
                              int flags_);
     int recv_from_pool (service_pool_t *pool_,
                         std::vector<msg_t> *parts_);
-    void handle_response (std::vector<msg_t> *parts_,
-                          const std::string &fallback_service_);
+    bool recv_any (completion_entry_t *entry_, int timeout_ms_);
 
     void close_parts (std::vector<msg_t> *parts_);
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                       size_t *count_);
-    int wait_for_completion (completion_entry_t *entry_,
-                             int timeout_ms_);
 
     ctx_t *_ctx;
     discovery_t *_discovery;
     uint32_t _tag;
 
-    mutex_t _sync;
     std::map<std::string, service_pool_t> _pools;
-    std::set<std::string> _refresh_queue;
 
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
-
-    atomic_counter_t _stop;
-    thread_t _worker;
-    bool _single_thread;
-
-    mutex_t _completion_sync;
-    condition_variable_t _completion_cv;
-    std::deque<completion_entry_t> _completion_queue;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)
 };

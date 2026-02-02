@@ -147,40 +147,19 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
     _ctx (ctx_),
     _discovery (discovery_),
     _tag (gateway_tag_value),
-    _tls_trust_system (0),
-    _stop (0),
-    _single_thread (true)
+    _tls_trust_system (0)
 {
     zlink_assert (_ctx);
-    if (_discovery)
-        _discovery->add_listener (this);
 }
 
 gateway_t::~gateway_t ()
 {
-    if (_discovery)
-        _discovery->remove_listener (this);
     _tag = 0xdeadbeef;
 }
 
 bool gateway_t::check_tag () const
 {
     return _tag == gateway_tag_value;
-}
-
-void gateway_t::on_discovery_event (int event_,
-                                    const std::string &service_name_)
-{
-    if (service_name_.empty ())
-        return;
-    if (event_ != DISCOVERY_EVENT_PROVIDER_ADDED
-        && event_ != DISCOVERY_EVENT_PROVIDER_REMOVED
-        && event_ != DISCOVERY_EVENT_SERVICE_AVAILABLE
-        && event_ != DISCOVERY_EVENT_SERVICE_UNAVAILABLE)
-        return;
-
-    scoped_lock_t lock (_sync);
-    _refresh_queue.insert (service_name_);
 }
 
 static int allocate_router (ctx_t *ctx_, socket_base_t **socket_)
@@ -460,16 +439,6 @@ int gateway_t::send (const char *service_name_,
         fprintf (stderr, "\n");
         dump_gateway_peers (pool->socket);
     }
-    {
-        int mandatory = 1;
-        pool->socket->setsockopt (ZLINK_ROUTER_MANDATORY, &mandatory,
-                                  sizeof (mandatory));
-    }
-    {
-        int sndtimeo = 2000;
-        pool->socket->setsockopt (ZLINK_SNDTIMEO, &sndtimeo, sizeof (sndtimeo));
-    }
-
     const std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (2000);
     while (true) {
@@ -592,169 +561,36 @@ int gateway_t::recv_from_pool (service_pool_t *pool_,
     return 0;
 }
 
-void gateway_t::handle_response (std::vector<msg_t> *parts_,
-                                 const std::string &fallback_service_)
+bool gateway_t::recv_any (completion_entry_t *entry_, int timeout_ms_)
 {
-    std::string service_name = fallback_service_;
-
-    scoped_lock_t lock (_completion_sync);
-    _completion_queue.push_back (completion_entry_t ());
-    completion_entry_t &completion = _completion_queue.back ();
-    completion.service_name = service_name;
-    completion.error = 0;
-    completion.parts.swap (*parts_);
-    _completion_cv.broadcast ();
-}
-
-void gateway_t::run (void *arg_)
-{
-    gateway_t *self = static_cast<gateway_t *> (arg_);
-    self->loop ();
-}
-
-void gateway_t::loop ()
-{
-    while (_stop.get () == 0) {
-        bool handled = false;
-
-        {
-            scoped_lock_t lock (_sync);
-            if (!_refresh_queue.empty ()) {
-                for (std::set<std::string>::const_iterator it =
-                       _refresh_queue.begin ();
-                     it != _refresh_queue.end (); ++it) {
-                    std::map<std::string, service_pool_t>::iterator pit =
-                      _pools.find (*it);
-                    if (pit != _pools.end ())
-                        refresh_pool (&pit->second);
-                }
-                _refresh_queue.clear ();
-                handled = true;
-            }
-
-            for (std::map<std::string, service_pool_t>::iterator it =
-                   _pools.begin ();
-                 it != _pools.end (); ++it) {
-                service_pool_t &pool = it->second;
-                std::vector<msg_t> parts;
-                if (recv_from_pool (&pool, &parts) == 0) {
-                    handle_response (&parts, pool.service_name);
-                    handled = true;
-                }
-            }
-        }
-
-        if (!handled)
-            sleep_ms (1);
-    }
-}
-
-int gateway_t::wait_for_completion (completion_entry_t *entry_,
-                                    int timeout_ms_)
-{
-    if (!entry_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (timeout_ms_ < -1) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (_single_thread) {
-        const std::chrono::steady_clock::time_point deadline =
-          timeout_ms_ > 0 ? std::chrono::steady_clock::now ()
-                                + std::chrono::milliseconds (timeout_ms_)
-                          : std::chrono::steady_clock::time_point ();
-
-        while (true) {
-            {
-                scoped_lock_t lock (_sync);
-                for (std::map<std::string, service_pool_t>::iterator it =
-                       _pools.begin ();
-                     it != _pools.end (); ++it) {
-                    service_pool_t &pool = it->second;
-                    std::vector<msg_t> parts;
-                    if (recv_from_pool (&pool, &parts) == 0) {
-                        handle_response (&parts,
-                                         pool.service_name);
-                    }
-                }
-            }
-
-            _completion_sync.lock ();
-            if (!_completion_queue.empty ()) {
-                completion_entry_t &stored = _completion_queue.front ();
-                entry_->service_name = stored.service_name;
-                entry_->error = stored.error;
-                entry_->parts.swap (stored.parts);
-                _completion_queue.pop_front ();
-                _completion_sync.unlock ();
-                return 0;
-            }
-            _completion_sync.unlock ();
-
-            if (timeout_ms_ == 0) {
-                errno = EAGAIN;
-                return -1;
-            }
-
-            if (timeout_ms_ > 0) {
-                const std::chrono::steady_clock::time_point now =
-                  std::chrono::steady_clock::now ();
-                if (now >= deadline) {
-                    errno = ETIMEDOUT;
-                    return -1;
-                }
-            }
-
-            sleep_ms (1);
-        }
-    }
-
-    _completion_sync.lock ();
-    if (timeout_ms_ == 0 && _completion_queue.empty ()) {
-        _completion_sync.unlock ();
-        errno = EAGAIN;
-        return -1;
-    }
-
+    if (!entry_)
+        return false;
     const std::chrono::steady_clock::time_point deadline =
       timeout_ms_ > 0 ? std::chrono::steady_clock::now ()
                             + std::chrono::milliseconds (timeout_ms_)
                       : std::chrono::steady_clock::time_point ();
 
-    while (_completion_queue.empty ()) {
-        if (timeout_ms_ < 0) {
-            _completion_cv.wait (&_completion_sync, -1);
-        } else {
-            const std::chrono::steady_clock::time_point now =
-              std::chrono::steady_clock::now ();
-            if (now >= deadline) {
-                _completion_sync.unlock ();
-                errno = ETIMEDOUT;
-                return -1;
-            }
-            const auto remaining =
-              std::chrono::duration_cast<std::chrono::milliseconds> (deadline
-                                                                     - now);
-            int rc = _completion_cv.wait (
-              &_completion_sync, static_cast<int> (remaining.count ()));
-            if (rc == -1 && errno == EAGAIN && _completion_queue.empty ()) {
-                _completion_sync.unlock ();
-                errno = ETIMEDOUT;
-                return -1;
+    while (true) {
+        for (std::map<std::string, service_pool_t>::iterator it =
+               _pools.begin ();
+             it != _pools.end (); ++it) {
+            service_pool_t &pool = it->second;
+            std::vector<msg_t> parts;
+            if (recv_from_pool (&pool, &parts) == 0) {
+                entry_->service_name = pool.service_name;
+                entry_->error = 0;
+                entry_->parts.swap (parts);
+                return true;
             }
         }
-    }
 
-    completion_entry_t &stored = _completion_queue.front ();
-    entry_->service_name = stored.service_name;
-    entry_->error = stored.error;
-    entry_->parts.swap (stored.parts);
-    _completion_queue.pop_front ();
-    _completion_sync.unlock ();
-    return 0;
+        if (timeout_ms_ == 0)
+            return false;
+        if (timeout_ms_ > 0
+            && std::chrono::steady_clock::now () >= deadline)
+            return false;
+        sleep_ms (1);
+    }
 }
 
 int gateway_t::recv (zlink_msg_t **parts_,
@@ -769,8 +605,10 @@ int gateway_t::recv (zlink_msg_t **parts_,
 
     completion_entry_t entry;
     const int timeout_ms = (flags_ == ZLINK_DONTWAIT) ? 0 : -1;
-    if (wait_for_completion (&entry, timeout_ms) != 0)
+    if (!recv_any (&entry, timeout_ms)) {
+        errno = (flags_ == ZLINK_DONTWAIT) ? EAGAIN : ETIMEDOUT;
         return -1;
+    }
 
     if (service_name_out_) {
         memset (service_name_out_, 0, 256);
@@ -814,7 +652,6 @@ int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
     service_pool_t *pool = get_or_create_pool (service_name_);
     if (!pool)
         return -1;
@@ -829,7 +666,6 @@ int gateway_t::connection_count (const char *service_name_)
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
     std::map<std::string, service_pool_t>::iterator it =
       _pools.find (service_name_);
     if (it == _pools.end ())
@@ -847,7 +683,6 @@ int gateway_t::set_tls_client (const char *ca_cert_,
         return -1;
     }
 
-    scoped_lock_t lock (_sync);
     if (ca_cert_[0] == '\0' || hostname_[0] == '\0') {
         _tls_ca.clear ();
         _tls_hostname.clear ();
@@ -872,13 +707,6 @@ int gateway_t::set_tls_client (const char *ca_cert_,
 
 int gateway_t::destroy ()
 {
-    if (_discovery)
-        _discovery->remove_listener (this);
-    _stop.set (1);
-    if (_worker.get_started ())
-        _worker.stop ();
-
-    scoped_lock_t lock (_sync);
     for (std::map<std::string, service_pool_t>::iterator it =
            _pools.begin ();
          it != _pools.end (); ++it) {
@@ -889,15 +717,6 @@ int gateway_t::destroy ()
         }
     }
     _pools.clear ();
-
-    scoped_lock_t completion_lock (_completion_sync);
-    for (std::deque<completion_entry_t>::iterator it =
-           _completion_queue.begin ();
-         it != _completion_queue.end (); ++it) {
-        close_parts (&it->parts);
-    }
-    _completion_queue.clear ();
-
     return 0;
 }
 
@@ -905,7 +724,6 @@ socket_base_t *gateway_t::get_router_socket (const char *service_name_)
 {
     if (!service_name_)
         return NULL;
-    scoped_lock_t lock (_sync);
     service_pool_t *pool = get_or_create_pool (service_name_);
     return pool ? pool->socket : NULL;
 }

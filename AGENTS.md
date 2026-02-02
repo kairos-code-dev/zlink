@@ -1,13 +1,16 @@
 # Repository Guidelines
 
 ## Project Structure and Module Organization
-- `src/`: core libzlink implementation (C++98/11 style).
-- `include/`: public headers like `include/zlink.h`.
-- `tests/`: functional test suite (Unity), files named `tests/test_*.cpp`.
-- `unittests/`: internal tests named `unittests/unittest_*.cpp`.
+- `core/src/`: core libzlink implementation (C++98/11 style).
+- `core/include/`: public headers like `core/include/zlink.h`.
+- `core/tests/`: functional test suite (Unity), files named `core/tests/test_*.cpp`.
+- `core/unittests/`: internal tests named `core/unittests/unittest_*.cpp`.
 - `build-scripts/`: platform build scripts (e.g., `build-scripts/linux/build.sh`).
-- `benchwithzlink/` and `perf/`: benchmarks and comparison tooling.
+- `core/benchwithzlink/` and `core/perf/`: benchmarks and comparison tooling.
 - `dist/`: packaged build outputs by platform.
+- `bindings/`: language wrappers (C++, Java, C#, Node.js).
+- `docs/`: project documentation.
+- `tools/`: dev/build helper scripts.
 
 ## Build, Test, and Development Commands
 - `./build.sh`: clean CMake build in `build/` and runs tests (Linux-style `nproc`).
@@ -19,7 +22,7 @@
 
 ## Coding Style and Naming Conventions
 - Follow `.clang-format`: 4-space indent, no tabs, 80-column limit, C++03 mode.
-- Keep style consistent with existing `src/` patterns; use minimal C++11 unless required.
+- Keep style consistent with existing `core/src/` patterns; use minimal C++11 unless required.
 - Use existing naming patterns; new tests should match `test_*.cpp` or `unittest_*.cpp`.
 
 ## Testing Guidelines
@@ -28,7 +31,7 @@
 
 ## Commit and Pull Request Guidelines
 - Commit messages typically use conventional prefixes like `feat:`, `fix:`, `docs:` with a short summary.
-- Follow the C4 contribution model (see `GEMINI.md`) and keep PRs focused.
+- Follow the C4 contribution model and keep PRs focused.
 - PRs should include: summary, test commands/results, platform(s) tested, and benchmark notes for perf-sensitive changes.
 
 ## Security and Configuration
@@ -37,6 +40,10 @@
 
 ## Communication
 - Address the user as "팀장님".
+
+## Agent Instructions
+- `AGENTS.md` is the single source of truth for repo guidelines.
+- If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 
 ## External References
 - libzlink reference source: `/home/ulalax/project/ulalax/libzlink-ref`

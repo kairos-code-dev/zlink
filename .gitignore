@@ -60,10 +60,10 @@ libunity.a
 .libs
 __pycache__/
 
-# /src
+# /core/src
 ## Ignore generated files in configuration process
-src/platform.hpp*
-src/libzlink.pc
+core/src/platform.hpp*
+core/src/libzlink.pc
 
 # /tools
 ## Executable binaries are ignored
@@ -72,45 +72,45 @@ tools/curve_keygen
 !tools/*.[ch]
 !tools/*.[ch]pp
 
-# /tests
+# /core/tests
 ## Test binaries and logs are ignored
-tests/test*
-tests/test*.log
-tests/test*.trs
+core/tests/test*
+core/tests/test*.log
+core/tests/test*.trs
 ## Test source files must be tracked
-!tests/test*.[ch]
-!tests/test*.[ch]pp
+!core/tests/test*.[ch]
+!core/tests/test*.[ch]pp
 ## Build script and documentations must be tracked
-!tests/CMakeLists.txt
-!tests/README.md
+!core/tests/CMakeLists.txt
+!core/tests/README.md
 
-# /unittests
+# /core/unittests
 ## Unit test binaries and logs are ignored
-unittests/unittest_*
-unittests/unittest*.log
-unittests/unittest*.trs
+core/unittests/unittest_*
+core/unittests/unittest*.log
+core/unittests/unittest*.trs
 ## Unit test source files must be tracked
-!unittests/unittest*.[ch]
-!unittests/unittest*.[ch]pp
+!core/unittests/unittest*.[ch]
+!core/unittests/unittest*.[ch]pp
 ## Build script and documentations must be tracked
-!unittests/CMakeLists.txt
-!unittests/README.md
+!core/unittests/CMakeLists.txt
+!core/unittests/README.md
 
 # check test log files
 test-suite*.log
 
-# /perf
+# /core/perf
 ## Benchmarking binaries and result files are ignored
-perf/*_lat
-perf/*_thr
-perf/benchmark_*
-perf/results
+core/perf/*_lat
+core/perf/*_thr
+core/perf/benchmark_*
+core/perf/results
 ## Benchmarking source files must be tracked
-!perf/*.[ch]
-!perf/*.[ch]pp
+!core/perf/*.[ch]
+!core/perf/*.[ch]pp
 ## Benchmarking tool scripts must be tracked
-!perf/*.py
-!perf/*.sh
+!core/perf/*.py
+!core/perf/*.sh
 
 # /doc
 ## Generated document files 
@@ -133,9 +133,54 @@ deps/
 dist/
 build_check/
 build-*/
-perf/comparison/build
+core/perf/comparison/build
 benchmark_result.txt
 /test_*
 !/test_*.cpp
 tmp/
 !build-scripts/
+
+# bindings (language wrappers)
+## Node.js
+bindings/**/node_modules/
+bindings/**/npm-debug.log*
+bindings/**/yarn-debug.log*
+bindings/**/yarn-error.log*
+bindings/**/.npmrc
+bindings/**/.yarnrc
+bindings/**/.yarn/cache/
+bindings/**/.yarn/unplugged/
+bindings/**/.yarn/build-state.yml
+bindings/**/.pnp.cjs
+bindings/**/.pnp.loader.mjs
+bindings/**/dist/
+bindings/**/build/
+bindings/**/.next/
+
+## Java (Maven/Gradle)
+bindings/**/target/
+bindings/**/.gradle/
+bindings/**/build/
+bindings/**/*.class
+bindings/**/*.jar
+bindings/**/*.war
+bindings/**/*.ear
+bindings/**/.classpath
+bindings/**/.project
+bindings/**/.settings/
+
+## C#/.NET
+bindings/**/bin/
+bindings/**/obj/
+bindings/**/.vs/
+bindings/**/*.user
+bindings/**/*.suo
+bindings/**/*.userosscache
+bindings/**/*.sln.docstates
+
+## C/C++ wrapper build artifacts
+bindings/**/CMakeFiles/
+bindings/**/CMakeCache.txt
+bindings/**/cmake_install.cmake
+bindings/**/Makefile
+bindings/**/compile_commands.json

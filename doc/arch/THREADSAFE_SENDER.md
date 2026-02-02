@@ -59,12 +59,16 @@ typedef struct zlink_threadsafe_sender_opts_t {
 ```
 
 기본값 제안:
-- `capacity = 65536`
-- `policy = ZLINK_SENDQ_DROP`
+- `capacity = 0` (auto)
+- `policy = ZLINK_THREADSAFE_SENDER_DROP`
 - `timeout_ms = 0`
 - `flush_on_close = 0`
 - `close_timeout_ms = 0`
 - `allow_msg = 0`
+
+자동 capacity 규칙 (capacity=0일 때):
+- `capacity = max(1024, sndhwm)`
+- `sndhwm = 0`(무제한)인 경우 `capacity = 65536`
 
 ---
 

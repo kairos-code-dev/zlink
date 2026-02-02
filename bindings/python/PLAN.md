@@ -18,8 +18,8 @@
 - 유틸: atomic_counter, stopwatch, proxy
 
 ## 인터롭 전략
-- 1안: CPython C-API 확장 모듈(최고 성능)
-- 2안: CFFI 기반 모듈(개발 속도/이식성)
+- 1안: ctypes 기반 로딩(의존성 최소화, 개발 속도)
+- 2안: CFFI 기반 모듈(배포용 wheel 최적화)
 - 배포용 바이너리는 manylinux/macos/windows wheel 제공
 
 ## 구조
@@ -32,6 +32,8 @@
 - `pyproject.toml` 기반 빌드 (PEP 517)
 - PyPI 배포
 - 코어 release 태그 자산을 참조하거나 로컬 빌드
+- 네이티브 포함형 wheel을 기본 전략으로 한다
+- CI에서 manylinux/macos/windows wheel을 빌드해 업로드한다
 
 ## 테스트 시나리오
 - Context 생성/종료

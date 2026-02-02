@@ -23,6 +23,7 @@
 - 네이티브 라이브러리 로딩은 플랫폼별 바이너리 제공
 - Buffer/Uint8Array로 메시지 전송
 - TypeScript는 `.d.ts` 제공 또는 TS 소스 → JS 빌드 출력 방식 중 하나로 통합
+ - node-gyp 기반 빌드 + prebuildify로 prebuild 배포
 
 ## 구조
 - `bindings/node/src/` : JS/TS API

@@ -1,0 +1,10 @@
+{
+  "name": "@ulalax/zlink",
+  "version": "0.6.0",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "gypfile": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

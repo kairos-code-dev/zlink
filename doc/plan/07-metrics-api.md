@@ -1,7 +1,11 @@
 # 메트릭스 API 스펙 (Metrics API)
 
+> ⚠️ **DEPRECATED**: 이 기능은 폐기되었습니다.
+> - 폐기 사유: 메트릭스 수집 기능은 zlink의 핵심 범위에서 제외되었습니다.
+> - 대안: 애플리케이션 레벨에서 필요한 통계를 직접 수집하세요.
+
 > **우선순위**: 7 (Recommended Feature)
-> **상태**: Implemented (2026-01-29)
+> **상태**: ~~Implemented (2026-01-29)~~ **DEPRECATED**
 > **버전**: 1.0
 > **의존성**:
 > - `zlink_socket_stats_t` (기존 소켓 통계)

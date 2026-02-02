@@ -1,11 +1,15 @@
 # Request/Reply API 스펙 (Request/Reply API Extension)
 
+> ⚠️ **DEPRECATED**: 이 기능은 폐기되었습니다.
+> - 폐기 사유: Request/Reply 패턴은 zlink의 핵심 범위에서 제외되었습니다.
+> - 대안: ROUTER/DEALER 소켓을 직접 사용하여 요청-응답 패턴을 구현하세요.
+
 > **우선순위**: 3 (Core Feature)
-> **상태**: Draft
+> **상태**: ~~Draft~~ **DEPRECATED**
 > **버전**: 1.0
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md) (routing_id_t)
-> - [02-thread-safe-socket.md](02-thread-safe-socket.md) (thread-safe 소켓)
+> - ~~[02-thread-safe-socket.md](02-thread-safe-socket.md) (thread-safe 소켓)~~ **DEPRECATED**
 
 ## 목차
 1. [개요](#1-개요)

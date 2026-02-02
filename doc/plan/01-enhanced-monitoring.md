@@ -119,12 +119,15 @@ HELLO body: [control_type][socket_type][routing_id_len][routing_id(0~255B)]
 - **기존 버전과의 호환성은 고려하지 않는다.**
 - 기존 이벤트/포맷/함수는 필요 시 교체 또는 제거한다.
 
-### 2.6 Thread-safe/Proxy 소켓 모니터링 정책
+### 2.6 ~~Thread-safe/~~Proxy 소켓 모니터링 정책
+
+> ⚠️ **DEPRECATED**: Thread-safe 소켓 기능은 폐기되었습니다.
+> 아래 내용 중 Thread-safe 관련 부분은 더 이상 적용되지 않습니다.
 
 - 모니터링 대상은 **사용자가 가진 소켓 핸들(Proxy 포함)**이다.
 - 실제 이벤트는 **내부 Raw Socket**의 상태를 반영한다.
-- Thread-safe 소켓이라면 `zlink_socket_monitor*` 호출은 **직렬화되어 안전**하다.
-- Thread-safe가 아닌 소켓은 **소켓 소유 스레드에서만** 모니터 설정/해제를 수행한다.
+- ~~Thread-safe 소켓이라면 `zlink_socket_monitor*` 호출은 **직렬화되어 안전**하다.~~ **DEPRECATED**
+- ~~Thread-safe가 아닌~~ 소켓은 **소켓 소유 스레드에서만** 모니터 설정/해제를 수행한다.
 - 모니터 소켓은 별도 소켓이므로 **기본적으로 thread-safe하지 않다**.
 
 ---
@@ -369,9 +372,13 @@ CONNECTION_READY (value=0)
 DISCONNECTED (value=1)  // LOCAL_DISCONNECT
 ```
 
-### 3.7 메트릭스 API
+### 3.7 ~~메트릭스 API~~ **DEPRECATED**
+
+> ⚠️ **DEPRECATED**: 메트릭스 API 기능은 폐기되었습니다.
+> 애플리케이션 레벨에서 필요한 통계를 직접 수집하세요.
 
 ```c
+// DEPRECATED - 아래 API는 더 이상 제공되지 않습니다
 typedef struct {
     uint64_t msgs_sent;        // 송신 메시지 수
     uint64_t msgs_received;    // 수신 메시지 수

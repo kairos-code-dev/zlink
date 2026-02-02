@@ -43,6 +43,9 @@ class spot_node_t
                         const char *hostname_,
                         int trust_system_);
 
+    socket_base_t *pub_socket () const { return _pub; }
+    socket_base_t *sub_socket () const { return _sub; }
+
     spot_t *create_spot ();
     void remove_spot (spot_t *spot_);
 

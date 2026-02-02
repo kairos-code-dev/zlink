@@ -1184,6 +1184,55 @@ int zlink_spot_recv (void *spot_,
     return spot->recv (parts_, part_count_, flags_, topic_id_out_,
                        topic_id_len_);
 }
+
+void *zlink_spot_node_pub_socket (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (node->pub_socket ());
+}
+
+void *zlink_spot_node_sub_socket (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (node->sub_socket ());
+}
+
+void *zlink_spot_pub_socket (void *spot_)
+{
+    if (!spot_)
+        return NULL;
+    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (spot->pub_socket ());
+}
+
+void *zlink_spot_sub_socket (void *spot_)
+{
+    if (!spot_)
+        return NULL;
+    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return static_cast<void *> (spot->sub_socket ());
+}
+
 int zlink_bind (void *s_, const char *addr_)
 {
     socket_handle_t handle = as_socket_handle (s_);

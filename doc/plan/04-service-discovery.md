@@ -5,7 +5,7 @@
 > **버전**: 3.5
 > **의존성**:
 > - [00-routing-id-unification.md](00-routing-id-unification.md)
-> - [03-request-reply-api.md](03-request-reply-api.md) (msgv helper)
+> - ~~[03-request-reply-api.md](03-request-reply-api.md) (msgv helper)~~ **DEPRECATED**
 
 ## 목차
 1. [개요](#1-개요)
@@ -302,10 +302,10 @@ Registry1 ◄──────────► Registry2
 
 - **Registry / Discovery / Gateway / Provider**의 공개 API는
   내부에서 직렬화되어 **멀티스레드 호출을 허용**한다.
-- Gateway/Provider의 내부 ROUTER는 **raw 소켓**이지만,
-  외부에는 **thread-safe 핸들만 노출**한다.
-  - `zlink_gateway_threadsafe_router()` / `zlink_provider_threadsafe_router()`
-    반환값은 thread-safe 사용을 보장한다.
+- ~~Gateway/Provider의 내부 ROUTER는 **raw 소켓**이지만,
+  외부에는 **thread-safe 핸들만 노출**한다.~~
+  - ~~`zlink_gateway_threadsafe_router()` / `zlink_provider_threadsafe_router()`
+    반환값은 thread-safe 사용을 보장한다.~~ **DEPRECATED** (Thread-safe 소켓 기능 폐기됨)
 - `recv` 계열은 **단일 소비자(한 스레드)** 사용을 권장한다.
 ---
 

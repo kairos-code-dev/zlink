@@ -2,6 +2,16 @@
 
 function loadNative() {
   try {
+    if (process.platform === 'linux') {
+      const path = require('path');
+      const addonDir = path.join(__dirname, '..', 'build', 'Release');
+      const coreDir = path.join(__dirname, '..', '..', 'build_cpp', 'lib');
+      const existing = process.env.LD_LIBRARY_PATH || '';
+      const entries = existing.split(':').filter(Boolean);
+      if (!entries.includes(addonDir)) entries.unshift(addonDir);
+      if (!entries.includes(coreDir)) entries.unshift(coreDir);
+      process.env.LD_LIBRARY_PATH = entries.join(':');
+    }
     return require('../build/Release/zlink.node');
   } catch (err) {
     try {
@@ -38,6 +48,7 @@ class Context {
 class Socket {
   constructor(ctx, type) {
     this._native = requireNative().socketNew(ctx._native, type);
+    this._own = true;
   }
 
   bind(endpoint) {
@@ -72,7 +83,9 @@ class Socket {
 
   close() {
     if (!this._native) return;
-    requireNative().socketClose(this._native);
+    if (this._own) {
+      requireNative().socketClose(this._native);
+    }
     this._native = null;
   }
 }
@@ -150,7 +163,13 @@ class Provider {
   unregister(service) { requireNative().providerUnregister(this._native, service); }
   registerResult(service) { return requireNative().providerRegisterResult(this._native, service); }
   setTlsServer(cert, key) { requireNative().providerSetTlsServer(this._native, cert, key); }
-  routerSocket() { const h = requireNative().providerRouter(this._native); const s = Object.create(Socket.prototype); s._native = h; return s; }
+  routerSocket() {
+    const h = requireNative().providerRouter(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
   close() { if (!this._native) return; requireNative().providerDestroy(this._native); this._native = null; }
 }
 
@@ -165,8 +184,20 @@ class SpotNode {
   setDiscovery(discovery, service) { requireNative().spotNodeSetDiscovery(this._native, discovery._native, service); }
   setTlsServer(cert, key) { requireNative().spotNodeSetTlsServer(this._native, cert, key); }
   setTlsClient(ca, host, trust) { requireNative().spotNodeSetTlsClient(this._native, ca, host, trust); }
-  pubSocket() { const h = requireNative().spotNodePubSocket(this._native); const s = Object.create(Socket.prototype); s._native = h; return s; }
-  subSocket() { const h = requireNative().spotNodeSubSocket(this._native); const s = Object.create(Socket.prototype); s._native = h; return s; }
+  pubSocket() {
+    const h = requireNative().spotNodePubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
+  subSocket() {
+    const h = requireNative().spotNodeSubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
   close() { if (!this._native) return; requireNative().spotNodeDestroy(this._native); this._native = null; }
 }
 
@@ -179,8 +210,20 @@ class Spot {
   subscribePattern(pattern) { requireNative().spotSubscribePattern(this._native, pattern); }
   unsubscribe(topicOrPattern) { requireNative().spotUnsubscribe(this._native, topicOrPattern); }
   recv(flags = 0) { return requireNative().spotRecv(this._native, flags); }
-  pubSocket() { const h = requireNative().spotPubSocket(this._native); const s = Object.create(Socket.prototype); s._native = h; return s; }
-  subSocket() { const h = requireNative().spotSubSocket(this._native); const s = Object.create(Socket.prototype); s._native = h; return s; }
+  pubSocket() {
+    const h = requireNative().spotPubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
+  subSocket() {
+    const h = requireNative().spotSubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
   close() { if (!this._native) return; requireNative().spotDestroy(this._native); this._native = null; }
 }
 

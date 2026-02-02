@@ -388,6 +388,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -403,7 +409,21 @@ jobs:
           zip -r libzlink-linux-arm64.zip libzlink-linux-arm64/
           zip -r libzlink-macos-x64.zip libzlink-macos-x64/
           zip -r libzlink-macos-arm64.zip libzlink-macos-arm64/
+          tar -czf libzlink-windows-x64.tar.gz libzlink-windows-x64/
+          tar -czf libzlink-windows-arm64.tar.gz libzlink-windows-arm64/
+          tar -czf libzlink-linux-x64.tar.gz libzlink-linux-x64/
+          tar -czf libzlink-linux-arm64.tar.gz libzlink-linux-arm64/
+          tar -czf libzlink-macos-x64.tar.gz libzlink-macos-x64/
+          tar -czf libzlink-macos-arm64.tar.gz libzlink-macos-arm64/
           ls -lh *.zip
+
+      - name: Create source tarball
+        run: |
+          VERSION="${{ needs.read-versions.outputs.libzlink_version }}"
+          TAG_NAME="${GITHUB_REF_NAME}"
+          TAR_NAME="zlink-${VERSION}-source.tar.gz"
+          git archive --format=tar.gz --output "${TAR_NAME}" "${TAG_NAME}"
+          ls -lh "${TAR_NAME}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -456,6 +476,13 @@ jobs:
             artifacts/libzlink-linux-arm64.zip
             artifacts/libzlink-macos-x64.zip
             artifacts/libzlink-macos-arm64.zip
+            artifacts/libzlink-windows-x64.tar.gz
+            artifacts/libzlink-windows-arm64.tar.gz
+            artifacts/libzlink-linux-x64.tar.gz
+            artifacts/libzlink-linux-arm64.tar.gz
+            artifacts/libzlink-macos-x64.tar.gz
+            artifacts/libzlink-macos-arm64.tar.gz
             artifacts/checksums/checksums.txt
+            zlink-${{ needs.read-versions.outputs.libzlink_version }}-source.tar.gz
           draft: false
           prerelease: false

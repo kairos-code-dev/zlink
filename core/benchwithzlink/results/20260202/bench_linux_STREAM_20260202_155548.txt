@@ -1,0 +1,116 @@
+
+## PATTERN: STREAM
+  > Benchmarking baseline for STREAM...
+    Testing tcp | 64B: 1 2 3 Done
+    Testing tcp | 256B: 1 2 3 Done
+    Testing tcp | 1024B: 1 2 3 Done
+    Testing tcp | 65536B: 1 2 3 Done
+    Testing tcp | 131072B: 1 2 3 Done
+    Testing tcp | 262144B: 1 2 3 Done
+    Testing tls | 64B: 1 2 3 Done
+    Testing tls | 256B: 1 2 3 Done
+    Testing tls | 1024B: 1 2 3 Done
+    Testing tls | 65536B: 1 2 3 Done
+    Testing tls | 131072B: 1 2 3 Done
+    Testing tls | 262144B: 1 2 3 Done
+    Testing ws | 64B: 1 2 3 Done
+    Testing ws | 256B: 1 2 3 Done
+    Testing ws | 1024B: 1 2 3 Done
+    Testing ws | 65536B: 1 2 3 Done
+    Testing ws | 131072B: 1 2 3 Done
+    Testing ws | 262144B: 1 2 3 Done
+    Testing wss | 64B: 1 2 3 Done
+    Testing wss | 256B: 1 2 3 Done
+    Testing wss | 1024B: 1 2 3 Done
+    Testing wss | 65536B: 1 2 3 Done
+    Testing wss | 131072B: 1 2 3 Done
+    Testing wss | 262144B: 1 2 3 Done
+  > Benchmarking current for STREAM...
+    Testing tcp | 64B: 1 2 3 Done
+    Testing tcp | 256B: 1 2 3 Done
+    Testing tcp | 1024B: 1 2 3 Done
+    Testing tcp | 65536B: 1 2 3 Done
+    Testing tcp | 131072B: 1 2 3 Done
+    Testing tcp | 262144B: 1 2 3 Done
+    Testing tls | 64B: 1 2 3 Done
+    Testing tls | 256B: 1 2 3 Done
+    Testing tls | 1024B: 1 2 3 Done
+    Testing tls | 65536B: 1 2 3 Done
+    Testing tls | 131072B: 1 2 3 Done
+    Testing tls | 262144B: 1 2 3 Done
+    Testing ws | 64B: 1 2 3 Done
+    Testing ws | 256B: 1 2 3 Done
+    Testing ws | 1024B: 1 2 3 Done
+    Testing ws | 65536B: 1 2 3 Done
+    Testing ws | 131072B: 1 2 3 Done
+    Testing ws | 262144B: 1 2 3 Done
+    Testing wss | 64B: 1 2 3 Done
+    Testing wss | 256B: 1 2 3 Done
+    Testing wss | 1024B: 1 2 3 Done
+    Testing wss | 65536B: 1 2 3 Done
+    Testing wss | 131072B: 1 2 3 Done
+    Testing wss | 262144B: 1 2 3 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   2678.75 Kmsg/s |   2754.66 Kmsg/s |   +2.83% |
+| 64B    | Latency    |       3936.91 us |       3477.84 us |  +11.66% |
+| 256B   | Throughput |   2211.44 Kmsg/s |   2094.77 Kmsg/s |   -5.28% |
+| 256B   | Latency    |       4068.38 us |       4415.80 us |   -8.54% |
+| 1024B  | Throughput |   1012.73 Kmsg/s |   1008.16 Kmsg/s |   -0.45% |
+| 1024B  | Latency    |       4646.61 us |       3402.53 us |  +26.77% |
+| 65536B | Throughput |     29.82 Kmsg/s |     28.18 Kmsg/s |   -5.49% |
+| 65536B | Latency    |       4215.55 us |       4865.97 us |  -15.43% |
+| 131072B | Throughput |     12.67 Kmsg/s |     12.90 Kmsg/s |   +1.83% |
+| 131072B | Latency    |       5375.20 us |       5026.12 us |   +6.49% |
+| 262144B | Throughput |      7.46 Kmsg/s |      6.97 Kmsg/s |   -6.55% |
+| 262144B | Latency    |       4864.61 us |       3051.73 us |  +37.27% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    740.49 Kmsg/s |    759.36 Kmsg/s |   +2.55% |
+| 64B    | Latency    |       5436.41 us |       4808.14 us |  +11.56% |
+| 256B   | Throughput |    712.19 Kmsg/s |    716.08 Kmsg/s |   +0.55% |
+| 256B   | Latency    |       2704.03 us |       4889.60 us |  -80.83% |
+| 1024B  | Throughput |    296.55 Kmsg/s |    426.48 Kmsg/s |  +43.81% |
+| 1024B  | Latency    |       4376.07 us |       5320.26 us |  -21.58% |
+| 65536B | Throughput |     12.50 Kmsg/s |     13.25 Kmsg/s |   +5.96% |
+| 65536B | Latency    |       5457.31 us |       4343.07 us |  +20.42% |
+| 131072B | Throughput |      6.26 Kmsg/s |      6.27 Kmsg/s |   +0.06% |
+| 131072B | Latency    |       5356.05 us |       5483.82 us |   -2.39% |
+| 262144B | Throughput |      3.27 Kmsg/s |      3.12 Kmsg/s |   -4.69% |
+| 262144B | Latency    |       5443.30 us |       5336.41 us |   +1.96% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    727.74 Kmsg/s |    779.84 Kmsg/s |   +7.16% |
+| 64B    | Latency    |       2555.65 us |       1807.15 us |  +29.29% |
+| 256B   | Throughput |    713.75 Kmsg/s |    709.21 Kmsg/s |   -0.64% |
+| 256B   | Latency    |       5252.22 us |       3804.45 us |  +27.56% |
+| 1024B  | Throughput |    536.30 Kmsg/s |    557.59 Kmsg/s |   +3.97% |
+| 1024B  | Latency    |       2204.39 us |       3203.01 us |  -45.30% |
+| 65536B | Throughput |     18.30 Kmsg/s |     19.70 Kmsg/s |   +7.63% |
+| 65536B | Latency    |       5377.06 us |       5391.20 us |   -0.26% |
+| 131072B | Throughput |     10.03 Kmsg/s |      9.54 Kmsg/s |   -4.97% |
+| 131072B | Latency    |       5208.68 us |       5022.01 us |   +3.58% |
+| 262144B | Throughput |      5.68 Kmsg/s |      5.34 Kmsg/s |   -5.96% |
+| 262144B | Latency    |       4906.86 us |       5150.33 us |   -4.96% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |    735.37 Kmsg/s |    752.67 Kmsg/s |   +2.35% |
+| 64B    | Latency    |       5364.95 us |       5379.05 us |   -0.26% |
+| 256B   | Throughput |    702.36 Kmsg/s |    718.06 Kmsg/s |   +2.23% |
+| 256B   | Latency    |       3108.25 us |       2954.78 us |   +4.94% |
+| 1024B  | Throughput |    301.77 Kmsg/s |    262.89 Kmsg/s |  -12.88% |
+| 1024B  | Latency    |       5372.84 us |       4879.52 us |   +9.18% |
+| 65536B | Throughput |     10.75 Kmsg/s |     10.89 Kmsg/s |   +1.32% |
+| 65536B | Latency    |       4970.05 us |       5010.43 us |   -0.81% |
+| 131072B | Throughput |      5.37 Kmsg/s |      5.12 Kmsg/s |   -4.72% |
+| 131072B | Latency    |       5365.29 us |       5254.30 us |   +2.07% |
+| 262144B | Throughput |      2.68 Kmsg/s |      2.74 Kmsg/s |   +2.35% |
+| 262144B | Latency    |       5354.65 us |       5373.65 us |   -0.35% |

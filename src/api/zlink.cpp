@@ -1679,6 +1679,9 @@ int zlink_proxy_steerable (void *frontend_,
 
 int zlink_has (const char *capability_)
 {
+    // TCP is always available as a core transport
+    if (strcmp (capability_, "tcp") == 0)
+        return true;
 #if defined(ZLINK_HAVE_IPC)
     if (strcmp (capability_, zlink::protocol_name::ipc) == 0)
         return true;

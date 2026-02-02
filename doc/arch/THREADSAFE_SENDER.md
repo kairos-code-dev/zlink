@@ -115,3 +115,40 @@ typedef struct zlink_threadsafe_sender_opts_t {
 - "thread-safe socket" 대신 "threadsafe sender" 명칭 사용
 - 연결/라우팅 공유는 원 소켓에만 존재함을 강조
 - 사용 예제는 **send-only, recv 단일 스레드** 패턴으로 제공
+
+---
+
+## 테스트 시나리오 (초안)
+
+### 1) 기본 동작 (단일 sender)
+- 원 소켓 1개 + sender 1개 생성
+- 별도 스레드에서 sender로 1,000회 전송
+- 원 소켓에서 모든 메시지 수신 확인
+
+### 2) 다중 sender
+- 동일 소켓에 sender 2개 생성 허용 시
+- 서로 다른 스레드에서 동시에 send
+- 수신 측에서 메시지 개수/순서 검증 (FIFO는 sender 단위 보장)
+
+### 3) backpressure 정책
+- DROP/BLOCK/TIMEOUT 각각에 대해
+- 큐 용량을 작은 값으로 설정 후 overflow 유발
+- 반환 코드(EAGAIN/ETIMEDOUT) 검증
+
+### 4) close/flush 정책
+- flush_on_close=0: 남은 큐 폐기 확인
+- flush_on_close=1 + close_timeout_ms 설정:
+  - 정상 drain 완료 시 성공
+  - timeout 시 ETIMEDOUT 반환
+
+### 5) 원 소켓 종료
+- sender 사용 중 원 소켓 close/ctx term
+- sender send 호출 시 ETERM 반환 확인
+
+### 6) 소켓 타입별 검증
+- PUB/SUB, DEALER/ROUTER, STREAM 각각에서
+- send 전용 동작이 정상인지 확인
+
+### 7) 성능/지연 영향
+- sender on/off 비교
+- send 경로 성능 저하 여부 측정

@@ -183,6 +183,68 @@ static void test_spot_peer_pubsub ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_peer_ipc ()
+{
+#if !defined(ZLINK_HAVE_IPC)
+    TEST_IGNORE_MESSAGE ("IPC not compiled");
+    return;
+#else
+    if (!zlink_has ("ipc")) {
+        TEST_IGNORE_MESSAGE ("IPC not available");
+        return;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node_a = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_a);
+    void *node_b = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    char endpoint_a[MAX_SOCKET_STRING];
+    char endpoint_b[MAX_SOCKET_STRING];
+    make_random_ipc_endpoint (endpoint_a);
+    make_random_ipc_endpoint (endpoint_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, endpoint_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint_a));
+
+    void *spot_b = zlink_spot_new (node_b);
+    TEST_ASSERT_NOT_NULL (spot_b);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "ipc:test"));
+
+    msleep (50);
+
+    void *spot_a = zlink_spot_new (node_a);
+    TEST_ASSERT_NOT_NULL (spot_a);
+
+    zlink_msg_t parts[1];
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 7));
+    memcpy (zlink_msg_data (&parts[0]), "ipc-msg", 7);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_publish (spot_a, "ipc:test", parts, 1, 0));
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
+    TEST_ASSERT_EQUAL_STRING ("ipc:test", topic);
+    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
+    TEST_ASSERT_EQUAL_MEMORY ("ipc-msg", zlink_msg_data (&recv_parts[0]), 7);
+    zlink_msgv_close (recv_parts, recv_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+#endif
+}
+
 static void test_spot_peer_tcp ()
 {
     if (!zlink_has ("tcp")) {
@@ -612,6 +674,7 @@ int main (int, char **)
     RUN_TEST (test_spot_publish_no_subscribers);
     RUN_TEST (test_spot_multipart_publish);
     RUN_TEST (test_spot_peer_pubsub);
+    RUN_TEST (test_spot_peer_ipc);
     RUN_TEST (test_spot_peer_tcp);
     RUN_TEST (test_spot_peer_ws);
     RUN_TEST (test_spot_peer_tls);

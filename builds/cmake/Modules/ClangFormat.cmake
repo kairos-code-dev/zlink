@@ -3,11 +3,11 @@
 # get all project files
 file(GLOB_RECURSE ALL_SOURCE_FILES 
      RELATIVE ${CMAKE_CURRENT_BINARY_DIR} 
-     ${CMAKE_SOURCE_DIR}/src/*.cpp ${CMAKE_SOURCE_DIR}/src/*.h ${CMAKE_SOURCE_DIR}/src/*.hpp 
-     ${CMAKE_SOURCE_DIR}/tests/*.cpp ${CMAKE_SOURCE_DIR}/tests/*.h ${CMAKE_SOURCE_DIR}/tests/*.hpp 
-     ${CMAKE_SOURCE_DIR}/perf/*.cpp ${CMAKE_SOURCE_DIR}/perf/*.h ${CMAKE_SOURCE_DIR}/perf/*.hpp 
+     ${CMAKE_SOURCE_DIR}/core/src/*.cpp ${CMAKE_SOURCE_DIR}/core/src/*.h ${CMAKE_SOURCE_DIR}/core/src/*.hpp 
+     ${CMAKE_SOURCE_DIR}/core/tests/*.cpp ${CMAKE_SOURCE_DIR}/core/tests/*.h ${CMAKE_SOURCE_DIR}/core/tests/*.hpp 
+     ${CMAKE_SOURCE_DIR}/core/perf/*.cpp ${CMAKE_SOURCE_DIR}/core/perf/*.h ${CMAKE_SOURCE_DIR}/core/perf/*.hpp 
      ${CMAKE_SOURCE_DIR}/tools/*.cpp ${CMAKE_SOURCE_DIR}/tools/*.h ${CMAKE_SOURCE_DIR}/tools/*.hpp 
-     ${CMAKE_SOURCE_DIR}/include/*.h
+     ${CMAKE_SOURCE_DIR}/core/include/*.h
     )
 
 if("${CLANG_FORMAT}" STREQUAL "")
@@ -24,7 +24,7 @@ function(JOIN VALUES GLUE OUTPUT)
   set (${OUTPUT} "${_TMP_STR}" PARENT_SCOPE)
 endfunction()
 
-configure_file(builds/cmake/clang-format-check.sh.in clang-format-check.sh @ONLY)
+configure_file(${CMAKE_SOURCE_DIR}/builds/cmake/clang-format-check.sh.in clang-format-check.sh @ONLY)
 
 add_custom_target(
         clang-format-check

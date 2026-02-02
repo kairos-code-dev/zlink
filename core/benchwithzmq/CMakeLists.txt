@@ -10,7 +10,7 @@ else()
     file(GLOB STD_LIBZMQ_LIBRARY "${STD_LIBZMQ_ROOT}/lib/libzmq.so*")
 endif()
 
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
 
 set(BENCH_CXX_FLAGS "-O3")
 

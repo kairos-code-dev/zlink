@@ -28,7 +28,7 @@ else()
 endif()
 
 # Use current zlink's zlink.h header (API should be compatible)
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     set(BENCH_CXX_FLAGS "-O3")

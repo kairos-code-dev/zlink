@@ -21,13 +21,29 @@ if(ZLINK_CPP_BUILD_TESTS)
     message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
   endif()
 
-  add_executable(test_cpp_basic tests/test_cpp_basic.cpp)
-  target_link_libraries(test_cpp_basic PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_basic COMMAND test_cpp_basic)
+  add_executable(test_cpp_pair tests/test_cpp_pair.cpp)
+  target_link_libraries(test_cpp_pair PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_pair COMMAND test_cpp_pair)
 
-  add_executable(test_cpp_spot tests/test_cpp_spot.cpp)
-  target_link_libraries(test_cpp_spot PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_spot COMMAND test_cpp_spot)
+  add_executable(test_cpp_pubsub tests/test_cpp_pubsub.cpp)
+  target_link_libraries(test_cpp_pubsub PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_pubsub COMMAND test_cpp_pubsub)
+
+  add_executable(test_cpp_dealer_router tests/test_cpp_dealer_router.cpp)
+  target_link_libraries(test_cpp_dealer_router PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_dealer_router COMMAND test_cpp_dealer_router)
+
+  add_executable(test_cpp_xpub_xsub tests/test_cpp_xpub_xsub.cpp)
+  target_link_libraries(test_cpp_xpub_xsub PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_xpub_xsub COMMAND test_cpp_xpub_xsub)
+
+  add_executable(test_cpp_multipart tests/test_cpp_multipart.cpp)
+  target_link_libraries(test_cpp_multipart PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_multipart COMMAND test_cpp_multipart)
+
+  add_executable(test_cpp_discovery tests/test_cpp_discovery_gateway_spot.cpp)
+  target_link_libraries(test_cpp_discovery PRIVATE libzlink zlink-cpp)
+  add_test(NAME test_cpp_discovery COMMAND test_cpp_discovery)
 endif()
 
 if(ZLINK_CPP_BUILD_EXAMPLES)

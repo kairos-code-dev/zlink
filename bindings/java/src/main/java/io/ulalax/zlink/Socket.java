@@ -108,7 +108,7 @@ public final class Socket implements AutoCloseable {
                 MemorySegment.copy(MemorySegment.ofArray(data), 0, buf, 0, data.length);
             }
             int rc = Native.send(handle, buf, data.length, flags);
-            if (rc != 0)
+            if (rc < 0)
                 throw new RuntimeException("zlink_send failed");
             return rc;
         }
@@ -125,7 +125,7 @@ public final class Socket implements AutoCloseable {
         }
         MemorySegment seg = MemorySegment.ofBuffer(nio);
         int rc = Native.send(handle, seg, len, flags);
-        if (rc != 0)
+        if (rc < 0)
             throw new RuntimeException("zlink_send failed");
         buf.advanceReader(len);
         return rc;

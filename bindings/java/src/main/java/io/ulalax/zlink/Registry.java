@@ -1,0 +1,67 @@
+package io.ulalax.zlink;
+
+import io.ulalax.zlink.internal.Native;
+import io.ulalax.zlink.internal.NativeHelpers;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+
+public final class Registry implements AutoCloseable {
+    private MemorySegment handle;
+
+    public Registry(Context ctx) {
+        this.handle = Native.registryNew(ctx.handle());
+        if (handle == null || handle.address() == 0)
+            throw new RuntimeException("zlink_registry_new failed");
+    }
+
+    public void setEndpoints(String pubEndpoint, String routerEndpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.registrySetEndpoints(handle,
+                NativeHelpers.toCString(arena, pubEndpoint),
+                NativeHelpers.toCString(arena, routerEndpoint));
+            if (rc != 0)
+                throw new RuntimeException("zlink_registry_set_endpoints failed");
+        }
+    }
+
+    public void setId(int id) {
+        int rc = Native.registrySetId(handle, id);
+        if (rc != 0)
+            throw new RuntimeException("zlink_registry_set_id failed");
+    }
+
+    public void addPeer(String peerPubEndpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.registryAddPeer(handle,
+                NativeHelpers.toCString(arena, peerPubEndpoint));
+            if (rc != 0)
+                throw new RuntimeException("zlink_registry_add_peer failed");
+        }
+    }
+
+    public void setHeartbeat(int intervalMs, int timeoutMs) {
+        int rc = Native.registrySetHeartbeat(handle, intervalMs, timeoutMs);
+        if (rc != 0)
+            throw new RuntimeException("zlink_registry_set_heartbeat failed");
+    }
+
+    public void setBroadcastInterval(int intervalMs) {
+        int rc = Native.registrySetBroadcastInterval(handle, intervalMs);
+        if (rc != 0)
+            throw new RuntimeException("zlink_registry_set_broadcast_interval failed");
+    }
+
+    public void start() {
+        int rc = Native.registryStart(handle);
+        if (rc != 0)
+            throw new RuntimeException("zlink_registry_start failed");
+    }
+
+    @Override
+    public void close() {
+        if (handle == null || handle.address() == 0)
+            return;
+        Native.registryDestroy(handle);
+        handle = MemorySegment.NULL;
+    }
+}

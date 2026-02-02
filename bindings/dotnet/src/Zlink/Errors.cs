@@ -17,7 +17,15 @@ public sealed class ZlinkException : Exception
     {
         int errno = NativeMethods.zlink_errno();
         IntPtr msgPtr = NativeMethods.zlink_strerror(errno);
-        string message = msgPtr == IntPtr.Zero ? "zlink error" : Marshal.PtrToStringAnsi(msgPtr) ?? "zlink error";
+        string message = msgPtr == IntPtr.Zero
+            ? "zlink error"
+            : Marshal.PtrToStringAnsi(msgPtr) ?? "zlink error";
         return new ZlinkException(errno, message);
+    }
+
+    public static void ThrowIfError(int rc)
+    {
+        if (rc < 0)
+            throw FromLastError();
     }
 }

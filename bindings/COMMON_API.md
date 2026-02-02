@@ -1,7 +1,7 @@
 # Cross-Language API Alignment
 
 ## 목표
-모든 바인딩(C++, .NET, Java, Node.js)이 **동일한 개념/메서드 이름/에러 규칙**을 공유하도록
+모든 바인딩(C++, .NET, Java, Node.js, Python)이 **동일한 개념/메서드 이름/에러 규칙**을 공유하도록
 코어 API를 기준으로 공통 계약을 정의한다.
 
 ---
@@ -15,8 +15,8 @@
 ---
 
 ## 공통 메서드 (이름 매핑)
-| 개념 | C++ | .NET | Java | Node.js |
-|---|---|---|---|---|
+| 개념 | C++ | .NET | Java | Node.js | Python |
+|---|---|---|---|---|---|
 | Context 생성 | `context_t()` | `Context()` | `new Context()` | `new Context()` |
 | Context 종료 | `~context_t()` | `Dispose()` | `close()` | `close()` |
 | Socket 생성 | `socket_t(ctx, type)` | `new Socket(ctx, type)` | `ctx.createSocket(type)` | `ctx.socket(type)` |
@@ -85,6 +85,7 @@
 - `bindings/dotnet/PLAN.md` : .NET 설계 문서
 - `bindings/java/PLAN.md` : Java 설계 문서
 - `bindings/node/PLAN.md` : Node.js 설계 문서
+- `bindings/python/PLAN.md` : Python 설계 문서
 
 ---
 

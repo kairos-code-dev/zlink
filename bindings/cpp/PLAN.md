@@ -39,6 +39,8 @@
 - message: init/init_size/init_data/copy/move
 - monitor/events: 최소 래핑
 
+상세 API 초안은 `bindings/cpp/API_DRAFT.md` 참조.
+
 ### 제외
 - experimental APIs
 

@@ -41,6 +41,8 @@
 
 상세 API 초안은 `bindings/cpp/API_DRAFT.md` 참조.
 
+전체 바인딩 공통 규칙은 `bindings/COMMON_API.md` 참조.
+
 ### 제외
 - experimental APIs
 
@@ -78,6 +80,9 @@
 - header-only → 설치는 `include/`만
 - `bindings/cpp` 단독 빌드 가능하도록 구성
 - 코어 빌드 옵션과 분리되되, CI에서 헤더 유효성 검사
+- 패키징은 코어 릴리즈 tarball 기준으로 연동
+  - Conan: `packaging/conan/conanfile.py`
+  - vcpkg: overlay 포트 방식 (`vcpkg/ports/zlink`)
 
 ---
 

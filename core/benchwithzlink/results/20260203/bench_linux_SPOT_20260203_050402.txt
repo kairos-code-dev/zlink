@@ -1,0 +1,25 @@
+
+## PATTERN: SPOT
+  > Benchmarking current for SPOT...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 64B    | Throughput |      0.12 Kmsg/s |
+| 64B    | Latency    |       1142.04 us |
+| 256B   | Throughput |      0.00 Kmsg/s |
+| 256B   | Latency    |       1137.78 us |
+| 1024B  | Throughput |      0.00 Kmsg/s |
+| 1024B  | Latency    |       1140.26 us |
+| 65536B | Throughput |      0.12 Kmsg/s |
+| 65536B | Latency    |       1133.45 us |
+| 131072B | Throughput |      0.12 Kmsg/s |
+| 131072B | Latency    |       1136.58 us |
+| 262144B | Throughput |      0.29 Kmsg/s |
+| 262144B | Latency    |       1136.86 us |

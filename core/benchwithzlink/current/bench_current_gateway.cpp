@@ -100,7 +100,8 @@ static bool pump_provider(void *router, int timeout_ms) {
     zlink_msg_t reqid;
     zlink_msg_init(&rid);
     while (true) {
-        if (zlink_msg_recv(&rid, router, ZLINK_DONTWAIT) == 0) {
+        const int rid_rc = zlink_msg_recv(&rid, router, ZLINK_DONTWAIT);
+        if (rid_rc >= 0) {
             if (!zlink_msg_more(&rid)) {
                 if (bench_debug_enabled()) {
                     std::cerr << "pump_provider rid missing more size="
@@ -148,7 +149,7 @@ static bool pump_provider(void *router, int timeout_ms) {
         ++logged;
     }
     zlink_msg_init(&reqid);
-    if (zlink_msg_recv(&reqid, router, 0) != 0) {
+    if (zlink_msg_recv(&reqid, router, 0) < 0) {
         if (bench_debug_enabled()) {
             std::cerr << "pump_provider recv reqid failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -162,7 +163,7 @@ static bool pump_provider(void *router, int timeout_ms) {
     while (zlink_msg_more(&reqid)) {
         zlink_msg_t part;
         zlink_msg_init(&part);
-        if (zlink_msg_recv(&part, router, 0) != 0) {
+        if (zlink_msg_recv(&part, router, 0) < 0) {
             zlink_msg_close(&part);
             break;
         }
@@ -171,7 +172,7 @@ static bool pump_provider(void *router, int timeout_ms) {
             break;
     }
 
-    if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) != 0) {
+    if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) < 0) {
         if (bench_debug_enabled()) {
             std::cerr << "pump_provider send rid failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -183,7 +184,7 @@ static bool pump_provider(void *router, int timeout_ms) {
         return false;
     }
     int flags = parts.empty() ? 0 : ZLINK_SNDMORE;
-    if (zlink_msg_send(&reqid, router, flags) != 0) {
+    if (zlink_msg_send(&reqid, router, flags) < 0) {
         if (bench_debug_enabled()) {
             std::cerr << "pump_provider send reqid failed: "
                       << zlink_strerror(zlink_errno()) << std::endl;
@@ -195,7 +196,7 @@ static bool pump_provider(void *router, int timeout_ms) {
     }
     for (size_t i = 0; i < parts.size(); ++i) {
         flags = (i + 1 < parts.size()) ? ZLINK_SNDMORE : 0;
-        if (zlink_msg_send(&parts[i], router, flags) != 0) {
+        if (zlink_msg_send(&parts[i], router, flags) < 0) {
             if (bench_debug_enabled()) {
                 std::cerr << "pump_provider send part failed: "
                           << zlink_strerror(zlink_errno()) << std::endl;

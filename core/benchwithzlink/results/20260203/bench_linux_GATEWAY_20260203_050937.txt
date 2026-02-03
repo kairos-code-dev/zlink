@@ -1,0 +1,25 @@
+
+## PATTERN: GATEWAY
+  > Benchmarking current for GATEWAY...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 64B    | Throughput |      0.00 Kmsg/s |
+| 64B    | Latency    |          0.00 us |
+| 256B   | Throughput |      0.00 Kmsg/s |
+| 256B   | Latency    |          0.00 us |
+| 1024B  | Throughput |      0.00 Kmsg/s |
+| 1024B  | Latency    |          0.00 us |
+| 65536B | Throughput |      0.00 Kmsg/s |
+| 65536B | Latency    |          0.00 us |
+| 131072B | Throughput |      0.00 Kmsg/s |
+| 131072B | Latency    |          0.00 us |
+| 262144B | Throughput |      0.00 Kmsg/s |
+| 262144B | Latency    |          0.00 us |

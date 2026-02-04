@@ -65,12 +65,7 @@
      │       - recv routing_id (MORE flag)      │
      │       - recv payload                     │
      │                                           │
-     │  3. Provider sends reply                 │
-     │  ◄────────────────────────────────────   │
-     │     [routing_id][reply_payload]          │
-     │                                           │
-     │  4. zlink_gateway_recv()                 │
-     │     Gateway receives reply               │
+     │  3. Provider recv-only (no reply)        │
      ▼                                           ▼
 ```
 
@@ -129,7 +124,6 @@ static int s_recvmsg(socket_handle_t handle_, zlink_msg_t *msg_, int flags_)
 | 함수 | 성공 시 반환값 | 실패 시 반환값 |
 |------|---------------|---------------|
 | `zlink_gateway_send()` | **0** | -1 |
-| `zlink_gateway_recv()` | **0** | -1 |
 | `zlink_spot_publish()` | **0** | -1 |
 | `zlink_spot_recv()` | **0** | -1 |
 

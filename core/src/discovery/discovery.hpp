@@ -24,6 +24,13 @@ struct provider_info_t
     uint64_t registered_at;
 };
 
+class discovery_observer_t
+{
+  public:
+    virtual ~discovery_observer_t () {}
+    virtual void on_service_update (const std::string &service_name_) = 0;
+};
+
 class discovery_t
 {
   public:
@@ -45,6 +52,10 @@ class discovery_t
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
+    uint64_t update_seq ();
+    uint64_t service_update_seq (const std::string &service_name_);
+    void add_observer (discovery_observer_t *observer_);
+    void remove_observer (discovery_observer_t *observer_);
 
   private:
     struct service_state_t
@@ -55,6 +66,7 @@ class discovery_t
     static void run (void *arg_);
     void loop ();
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
+    void notify_observers (const std::set<std::string> &services_);
 
     ctx_t *_ctx;
     uint32_t _tag;
@@ -67,6 +79,9 @@ class discovery_t
     std::map<std::string, service_state_t> _services;
     std::map<uint32_t, uint64_t> _registry_seq;
     std::set<std::string> _subscriptions;
+    std::set<discovery_observer_t *> _observers;
+    uint64_t _update_seq;
+    std::map<std::string, uint64_t> _service_seq;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }

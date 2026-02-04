@@ -446,23 +446,29 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 
 /* Gateway */
 ZLINK_EXPORT void *zlink_gateway_new (void *ctx, void *discovery);
+
 ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                  const char *service_name,
                                  zlink_msg_t *parts,
                                  size_t part_count,
                                  int flags);
-ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
-                                 zlink_msg_t **parts,
-                                 size_t *part_count,
-                                 int flags,
-                                 char *service_name_out);
+ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
+                                     const char *service_name,
+                                     const zlink_routing_id_t *routing_id,
+                                     zlink_msg_t *parts,
+                                     size_t part_count,
+                                     int flags);
 
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0
 #define ZLINK_GATEWAY_LB_WEIGHTED 1
 
 ZLINK_EXPORT int zlink_gateway_set_lb_strategy (void *gateway,
-                                            const char *service_name,
-                                            int strategy);
+                                                const char *service_name,
+                                                int strategy);
+ZLINK_EXPORT int zlink_gateway_setsockopt (void *gateway,
+                                           int option,
+                                           const void *optval,
+                                           size_t optvallen);
 ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *ca_cert,
                                            const char *hostname,

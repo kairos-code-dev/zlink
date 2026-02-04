@@ -1,9 +1,9 @@
 #include "../common/bench_common.hpp"
+#include "../../src/discovery/gateway.hpp"
 #include <zlink.h>
 #include <thread>
 #include <vector>
 #include <string>
-#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -92,214 +92,245 @@ static std::string bind_provider(void *provider,
     return std::string();
 }
 
-static bool pump_provider(void *router, int timeout_ms) {
+static int pump_provider(void *router, int timeout_ms) {
     static int logged = 0;
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    zlink_msg_t rid;
-    zlink_msg_t reqid;
-    zlink_msg_init(&rid);
+    zlink_pollitem_t item;
+    item.socket = router;
+    item.fd = 0;
+    item.events = ZLINK_POLLIN;
+    item.revents = 0;
+    const int prc = zlink_poll(&item, 1, timeout_ms);
+    if (prc <= 0 || !(item.revents & ZLINK_POLLIN))
+        return 0;
+
+    int processed = 0;
     while (true) {
+        zlink_msg_t rid;
+        zlink_msg_init(&rid);
         const int rid_rc = zlink_msg_recv(&rid, router, ZLINK_DONTWAIT);
-        if (rid_rc >= 0) {
-            if (!zlink_msg_more(&rid)) {
-                if (bench_debug_enabled()) {
-                    std::cerr << "pump_provider rid missing more size="
-                              << zlink_msg_size(&rid) << std::endl;
-                }
-                if (zlink_msg_size(&rid) == 0) {
-                    // Ignore probe/handshake empty messages.
-                    zlink_msg_close(&rid);
-                    zlink_msg_init(&rid);
-                    if (std::chrono::steady_clock::now() >= deadline) {
-                        if (bench_debug_enabled()) {
-                            std::cerr
-                              << "pump_provider timeout after empty message"
-                              << std::endl;
-                        }
-                        return false;
-                    }
-                    continue;
-                }
-                zlink_msg_close(&rid);
-                return false;
-            }
-            break;
-        }
-        if (zlink_errno() != EAGAIN) {
+        if (rid_rc < 0) {
+            zlink_msg_close(&rid);
+            if (zlink_errno() == EAGAIN)
+                break;
             if (bench_debug_enabled()) {
                 std::cerr << "pump_provider recv rid failed: "
                           << zlink_strerror(zlink_errno()) << std::endl;
             }
-            zlink_msg_close(&rid);
-            return false;
+            return -1;
         }
-        if (std::chrono::steady_clock::now() >= deadline) {
+        if (!zlink_msg_more(&rid)) {
             if (bench_debug_enabled()) {
-                std::cerr << "pump_provider timeout waiting rid" << std::endl;
+                std::cerr << "pump_provider rid missing more size="
+                          << zlink_msg_size(&rid) << std::endl;
+            }
+            const bool empty = zlink_msg_size(&rid) == 0;
+            zlink_msg_close(&rid);
+            if (empty)
+                continue;
+            return -1;
+        }
+        if (bench_debug_enabled() && logged < 1) {
+            std::cerr << "pump_provider rid_size=" << zlink_msg_size(&rid)
+                      << std::endl;
+            ++logged;
+        }
+        zlink_msg_t payload;
+        zlink_msg_init(&payload);
+        if (zlink_msg_recv(&payload, router, 0) < 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "pump_provider recv payload failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
             }
             zlink_msg_close(&rid);
-            return false;
+            zlink_msg_close(&payload);
+            return -1;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    if (bench_debug_enabled() && logged < 1) {
-        std::cerr << "pump_provider rid_size=" << zlink_msg_size(&rid)
-                  << std::endl;
-        ++logged;
-    }
-    zlink_msg_init(&reqid);
-    if (zlink_msg_recv(&reqid, router, 0) < 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "pump_provider recv reqid failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
+
+        std::vector<zlink_msg_t> parts;
+        while (zlink_msg_more(&payload)) {
+            zlink_msg_t part;
+            zlink_msg_init(&part);
+            if (zlink_msg_recv(&part, router, 0) < 0) {
+                zlink_msg_close(&part);
+                break;
+            }
+            parts.push_back(part);
+            if (!zlink_msg_more(&part))
+                break;
         }
+
+        if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) < 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "pump_provider send rid failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            zlink_msg_close(&rid);
+            zlink_msg_close(&payload);
+            for (size_t i = 0; i < parts.size(); ++i)
+                zlink_msg_close(&parts[i]);
+            return -1;
+        }
+        int flags = parts.empty() ? 0 : ZLINK_SNDMORE;
+        if (zlink_msg_send(&payload, router, flags) < 0) {
+            if (bench_debug_enabled()) {
+                std::cerr << "pump_provider send payload failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            zlink_msg_close(&payload);
+            for (size_t i = 0; i < parts.size(); ++i)
+                zlink_msg_close(&parts[i]);
+            return -1;
+        }
+        for (size_t i = 0; i < parts.size(); ++i) {
+            flags = (i + 1 < parts.size()) ? ZLINK_SNDMORE : 0;
+            if (zlink_msg_send(&parts[i], router, flags) < 0) {
+                if (bench_debug_enabled()) {
+                    std::cerr << "pump_provider send part failed: "
+                              << zlink_strerror(zlink_errno()) << std::endl;
+                }
+                break;
+            }
+        }
+
         zlink_msg_close(&rid);
-        zlink_msg_close(&reqid);
-        return false;
+        zlink_msg_close(&payload);
+        for (size_t i = 0; i < parts.size(); ++i)
+            zlink_msg_close(&parts[i]);
+        processed++;
     }
 
-    std::vector<zlink_msg_t> parts;
-    while (zlink_msg_more(&reqid)) {
+    return processed;
+}
+
+static bool recv_one_provider_message(void *router,
+                                      std::atomic<int> *recv_fail) {
+    zlink_msg_t rid;
+    zlink_msg_init(&rid);
+    if (zlink_msg_recv(&rid, router, 0) < 0) {
+        zlink_msg_close(&rid);
+        if (recv_fail)
+            ++(*recv_fail);
+        return false;
+    }
+    if (!zlink_msg_more(&rid)) {
+        zlink_msg_close(&rid);
+        if (recv_fail)
+            ++(*recv_fail);
+        return false;
+    }
+    zlink_msg_t payload;
+    zlink_msg_init(&payload);
+    if (zlink_msg_recv(&payload, router, 0) < 0) {
+        zlink_msg_close(&rid);
+        zlink_msg_close(&payload);
+        if (recv_fail)
+            ++(*recv_fail);
+        return false;
+    }
+    while (zlink_msg_more(&payload)) {
         zlink_msg_t part;
         zlink_msg_init(&part);
         if (zlink_msg_recv(&part, router, 0) < 0) {
             zlink_msg_close(&part);
+            if (recv_fail)
+                ++(*recv_fail);
             break;
         }
-        parts.push_back(part);
+        zlink_msg_close(&part);
         if (!zlink_msg_more(&part))
             break;
     }
-
-    if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) < 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "pump_provider send rid failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
-        }
-        zlink_msg_close(&rid);
-        zlink_msg_close(&reqid);
-        for (size_t i = 0; i < parts.size(); ++i)
-            zlink_msg_close(&parts[i]);
-        return false;
-    }
-    int flags = parts.empty() ? 0 : ZLINK_SNDMORE;
-    if (zlink_msg_send(&reqid, router, flags) < 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "pump_provider send reqid failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
-        }
-        zlink_msg_close(&reqid);
-        for (size_t i = 0; i < parts.size(); ++i)
-            zlink_msg_close(&parts[i]);
-        return false;
-    }
-    for (size_t i = 0; i < parts.size(); ++i) {
-        flags = (i + 1 < parts.size()) ? ZLINK_SNDMORE : 0;
-        if (zlink_msg_send(&parts[i], router, flags) < 0) {
-            if (bench_debug_enabled()) {
-                std::cerr << "pump_provider send part failed: "
-                          << zlink_strerror(zlink_errno()) << std::endl;
-            }
-            break;
-        }
-    }
-
     zlink_msg_close(&rid);
-    zlink_msg_close(&reqid);
-    for (size_t i = 0; i < parts.size(); ++i)
-        zlink_msg_close(&parts[i]);
+    zlink_msg_close(&payload);
     return true;
 }
 
-static bool send_one(void *gateway, const std::string &service,
-                     size_t msg_size) {
-    static int logged = 0;
+static bool send_one_gateway(void *gateway, const std::string &service,
+                             size_t msg_size, std::atomic<int> *send_fail) {
     zlink_msg_t msg;
     zlink_msg_init_size(&msg, msg_size);
     if (msg_size > 0)
         memset(zlink_msg_data(&msg), 'a', msg_size);
-    const int rc = zlink_gateway_send(gateway, service.c_str(), &msg, 1, 0);
+    const int rc =
+      zlink_gateway_send(gateway, service.c_str(), &msg, 1, 0);
     if (rc != 0)
         zlink_msg_close(&msg);
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "gateway_send failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
-    (void) logged;
+    if (rc != 0 && send_fail)
+        ++(*send_fail);
     return rc == 0;
 }
 
-static bool recv_one_blocking(void *gateway) {
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
-    char service_name[256];
-    const int rc =
-      zlink_gateway_recv(gateway, &parts, &count, 0, service_name);
-    if (rc != 0 && bench_debug_enabled()) {
-        std::cerr << "gateway_recv failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
-    if (rc != 0)
+static bool send_one_direct(void *router,
+                            const zlink_routing_id_t &rid,
+                            size_t msg_size) {
+    if (!router || rid.size == 0)
         return false;
-    if (parts)
-        zlink_msgv_close(parts, count);
+    zlink_pollitem_t out_item;
+    out_item.socket = router;
+    out_item.fd = 0;
+    out_item.events = ZLINK_POLLOUT;
+    out_item.revents = 0;
+    if (zlink_poll(&out_item, 1, 2000) <= 0
+        || !(out_item.revents & ZLINK_POLLOUT)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "direct send pollout timeout" << std::endl;
+        }
+        return false;
+    }
+    zlink_msg_t rid_msg;
+    zlink_msg_init_size(&rid_msg, rid.size);
+    memcpy(zlink_msg_data(&rid_msg), rid.data, rid.size);
+
+    zlink_msg_t msg;
+    zlink_msg_init_size(&msg, msg_size);
+    if (msg_size > 0)
+        memset(zlink_msg_data(&msg), 'a', msg_size);
+
+    const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+    while (true) {
+        const int rc1 = zlink_msg_send(&rid_msg, router, ZLINK_SNDMORE);
+        if (rc1 == 0)
+            break;
+        if (zlink_errno() != EAGAIN
+            || std::chrono::steady_clock::now() >= deadline) {
+            if (bench_debug_enabled()) {
+                std::cerr << "gateway direct send failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            zlink_msg_close(&rid_msg);
+            zlink_msg_close(&msg);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    while (true) {
+        const int rc2 = zlink_msg_send(&msg, router, 0);
+        if (rc2 == 0)
+            break;
+        if (zlink_errno() != EAGAIN
+            || std::chrono::steady_clock::now() >= deadline) {
+            if (bench_debug_enabled()) {
+                std::cerr << "gateway direct send failed: "
+                          << zlink_strerror(zlink_errno()) << std::endl;
+            }
+            zlink_msg_close(&msg);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     return true;
 }
 
-static bool recv_one_with_timeout(void *gateway, int timeout_ms) {
-    static int supports_dontwait = -1;
-    if (supports_dontwait == 0)
-        return recv_one_blocking(gateway);
-
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (true) {
-        zlink_msg_t *parts = NULL;
-        size_t count = 0;
-        char service_name[256];
-        const int rc =
-          zlink_gateway_recv(gateway, &parts, &count, ZLINK_DONTWAIT,
-                             service_name);
-        if (rc == 0) {
-            if (parts)
-                zlink_msgv_close(parts, count);
+static bool prime_gateway_sendonly(void *gateway, void *router,
+                                   size_t msg_size,
+                                   std::atomic<int> *send_fail,
+                                   std::atomic<int> *recv_fail) {
+    for (int i = 0; i < 10; ++i) {
+        if (send_one_gateway(gateway, "svc", msg_size, send_fail)
+            && recv_one_provider_message(router, recv_fail)) {
             return true;
         }
-        if (rc != 0 && bench_debug_enabled()
-            && zlink_errno() != EAGAIN && zlink_errno() != ENOTSUP) {
-            std::cerr << "gateway_recv (dontwait) failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
-        }
-        if (supports_dontwait == -1 && zlink_errno() == ENOTSUP) {
-            supports_dontwait = 0;
-            return recv_one_blocking(gateway);
-        }
-        supports_dontwait = 1;
-        if (zlink_errno() != EAGAIN)
-            return false;
-        if (std::chrono::steady_clock::now() >= deadline) {
-            if (bench_debug_enabled()) {
-                std::cerr << "gateway_recv timeout after "
-                          << timeout_ms << "ms" << std::endl;
-            }
-            return false;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-}
-
-static bool prime_gateway(void *gateway, void *router, size_t msg_size,
-                          int timeout_ms) {
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (send_one(gateway, "svc", msg_size)
-            && pump_provider(router, 2000)
-            && recv_one_with_timeout(gateway, 2000)) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return false;
 }
@@ -316,6 +347,23 @@ static bool wait_for_discovery(void *discovery, const char *service,
             const int count = zlink_discovery_provider_count(discovery, service);
             std::cerr << "discovery waiting: available=" << available
                       << " providers=" << count << std::endl;
+        }
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+static bool wait_for_gateway(void *gateway, const char *service,
+                             int timeout_ms) {
+    const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (true) {
+        const int count = zlink_gateway_connection_count(gateway, service);
+        if (count > 0)
+            return true;
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway waiting: connections=" << count << std::endl;
         }
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
@@ -393,7 +441,8 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
     zlink_discovery_connect_registry(discovery, reg_pub.c_str());
-    zlink_discovery_subscribe(discovery, "svc");
+    const char *service_name = "svc";
+    zlink_discovery_subscribe(discovery, service_name);
 
     void *provider = zlink_provider_new(ctx);
     if (!provider) {
@@ -429,7 +478,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     }
 
     if (zlink_provider_connect_registry(provider, reg_router.c_str()) != 0
-        || zlink_provider_register(provider, "svc", endpoint.c_str(), 1) != 0) {
+        || zlink_provider_register(provider, service_name, endpoint.c_str(), 1) != 0) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_provider_destroy(&provider);
         zlink_discovery_destroy(&discovery);
@@ -449,6 +498,9 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     }
     int probe = 1;
     zlink_setsockopt(router, ZLINK_PROBE_ROUTER, &probe, sizeof(probe));
+    int hwm = 1000000;
+    zlink_setsockopt(router, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router, ZLINK_RCVHWM, &hwm, sizeof(hwm));
     log_socket_routing_id("provider router", router);
 
     void *gateway = zlink_gateway_new(ctx, discovery);
@@ -460,7 +512,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    if (!wait_for_discovery(discovery, "svc", 8000)) {
+    if (!wait_for_discovery(discovery, service_name, 8000)) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_gateway_destroy(&gateway);
         zlink_provider_destroy(&provider);
@@ -503,8 +555,27 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
+    zlink_gateway_setsockopt(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_gateway_setsockopt(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+
+    if (!wait_for_gateway(gateway, service_name, 8000)) {
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway connect timeout" << std::endl;
+        }
+        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        zlink_gateway_destroy(&gateway);
+        zlink_provider_destroy(&provider);
+        zlink_discovery_destroy(&discovery);
+        zlink_registry_destroy(&registry);
+        zlink_ctx_term(ctx);
+        return;
+    }
+
     settle();
-    if (!prime_gateway(gateway, router, msg_size, 8000)) {
+    std::atomic<int> send_fail(0);
+    std::atomic<int> recv_fail(0);
+    if (!prime_gateway_sendonly(gateway, router, msg_size,
+                                &send_fail, &recv_fail)) {
         if (bench_debug_enabled()) {
             log_provider_peers(router, "provider router after prime");
         }
@@ -516,19 +587,19 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         zlink_ctx_term(ctx);
         return;
     }
-
-    const int recv_timeout_ms = 5000;
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
     bool ok = true;
     for (int i = 0; i < warmup_count; ++i) {
-        if (!send_one(gateway, "svc", msg_size)
-            || !pump_provider(router, recv_timeout_ms)
-            || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
+        if (!send_one_gateway(gateway, service_name, msg_size, &send_fail)
+            || !recv_one_provider_message(router, &recv_fail)) {
             ok = false;
             break;
         }
     }
     if (!ok) {
+        if (bench_debug_enabled()) {
+            std::cerr << "warmup failed" << std::endl;
+        }
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_gateway_destroy(&gateway);
         zlink_provider_destroy(&provider);
@@ -542,14 +613,16 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        if (!send_one(gateway, "svc", msg_size)
-            || !pump_provider(router, recv_timeout_ms)
-            || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
+        if (!send_one_gateway(gateway, service_name, msg_size, &send_fail)
+            || !recv_one_provider_message(router, &recv_fail)) {
             ok = false;
             break;
         }
     }
     if (!ok) {
+        if (bench_debug_enabled()) {
+            std::cerr << "latency loop failed" << std::endl;
+        }
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_gateway_destroy(&gateway);
         zlink_provider_destroy(&provider);
@@ -560,17 +633,31 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     }
     double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
 
-    int sent = 0;
+    std::atomic<int> recv_count(0);
+    std::thread receiver([&]() {
+        for (int i = 0; i < msg_count; ++i) {
+            if (recv_one_provider_message(router, &recv_fail))
+                ++recv_count;
+        }
+    });
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        if (!send_one(gateway, "svc", msg_size)
-            || !pump_provider(router, recv_timeout_ms)
-            || !recv_one_with_timeout(gateway, recv_timeout_ms)) {
+        if (!send_one_gateway(gateway, service_name, msg_size, &send_fail))
             break;
-        }
-        ++sent;
     }
-    if (sent == 0) {
+    const uint64_t deadline_ms = sw.elapsed_ms () + 5000;
+    while (true) {
+        if (recv_count.load() >= msg_count)
+            break;
+        if (sw.elapsed_ms() >= deadline_ms)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    receiver.join();
+    if (msg_count == 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "throughput msg_count=0" << std::endl;
+        }
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, latency);
         zlink_gateway_destroy(&gateway);
         zlink_provider_destroy(&provider);
@@ -579,7 +666,14 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         zlink_ctx_term(ctx);
         return;
     }
-    double throughput = (double)sent / (sw.elapsed_ms() / 1000.0);
+    double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
+
+    if (bench_debug_enabled()) {
+        std::cerr << "[gwbench] send_fail=" << send_fail.load()
+                  << " recv_fail=" << recv_fail.load()
+                  << " recv_count=" << recv_count.load()
+                  << " msg_count=" << msg_count << std::endl;
+    }
 
     print_result(lib_name, "GATEWAY", transport, msg_size, throughput, latency);
 
@@ -595,10 +689,10 @@ int main(int argc, char **argv) {
         return 1;
 #if !defined(_WIN32)
     if (!std::getenv("BENCH_GATEWAY_SINGLE_THREAD"))
-        setenv("ZLINK_GATEWAY_SINGLE_THREAD", "0", 1);
+        setenv("ZLINK_GATEWAY_SINGLE_THREAD", "1", 1);
 #else
     if (!std::getenv("BENCH_GATEWAY_SINGLE_THREAD"))
-        _putenv_s("ZLINK_GATEWAY_SINGLE_THREAD", "0");
+        _putenv_s("ZLINK_GATEWAY_SINGLE_THREAD", "1");
 #endif
     std::string lib_name = argv[1];
     std::string transport = argv[2];

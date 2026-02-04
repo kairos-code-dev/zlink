@@ -671,10 +671,10 @@ void *zlink_gateway_new (void *ctx_, void *discovery_)
 }
 
 int zlink_gateway_send (void *gateway_,
-                      const char *service_name_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      int flags_)
+                        const char *service_name_,
+                        zlink_msg_t *parts_,
+                        size_t part_count_,
+                        int flags_)
 {
     if (!gateway_)
         return -1;
@@ -686,11 +686,12 @@ int zlink_gateway_send (void *gateway_,
     return gateway->send (service_name_, parts_, part_count_, flags_);
 }
 
-int zlink_gateway_recv (void *gateway_,
-                      zlink_msg_t **parts_,
-                      size_t *part_count_,
-                      int flags_,
-                      char *service_name_out_)
+int zlink_gateway_send_rid (void *gateway_,
+                            const char *service_name_,
+                            const zlink_routing_id_t *routing_id_,
+                            zlink_msg_t *parts_,
+                            size_t part_count_,
+                            int flags_)
 {
     if (!gateway_)
         return -1;
@@ -699,12 +700,13 @@ int zlink_gateway_recv (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->recv (parts_, part_count_, flags_, service_name_out_);
+    return gateway->send_rid (service_name_, routing_id_, parts_, part_count_,
+                              flags_);
 }
 
 int zlink_gateway_set_lb_strategy (void *gateway_,
-                                 const char *service_name_,
-                                 int strategy_)
+                                   const char *service_name_,
+                                   int strategy_)
 {
     if (!gateway_)
         return -1;
@@ -714,6 +716,21 @@ int zlink_gateway_set_lb_strategy (void *gateway_,
         return -1;
     }
     return gateway->set_lb_strategy (service_name_, strategy_);
+}
+
+int zlink_gateway_setsockopt (void *gateway_,
+                              int option_,
+                              const void *optval_,
+                              size_t optvallen_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->set_router_option (option_, optval_, optvallen_);
 }
 
 int zlink_gateway_set_tls_client (void *gateway_,

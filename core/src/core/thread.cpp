@@ -70,6 +70,8 @@ void zlink::thread_t::stop ()
         win_assert (rc != WAIT_FAILED);
         const BOOL rc2 = CloseHandle (_descriptor);
         win_assert (rc2 != 0);
+        _descriptor = NULL;
+        _started = false;
     }
 }
 
@@ -168,10 +170,13 @@ void zlink::thread_t::start (thread_fn *tfn_, void *arg_, const char *name_)
 
 void zlink::thread_t::stop ()
 {
-    if (_started)
+    if (_started) {
         while ((_descriptor != NULL || _descriptor > 0)
                && taskIdVerify (_descriptor) == 0) {
         }
+        _descriptor = NULL;
+        _started = false;
+    }
 }
 
 bool zlink::thread_t::is_current_thread () const
@@ -246,7 +251,12 @@ void zlink::thread_t::stop ()
 {
     if (_started) {
         int rc = pthread_join (_descriptor, NULL);
-        posix_assert (rc);
+        if (rc != 0) {
+            if (rc != ESRCH && rc != EINVAL)
+                posix_assert (rc);
+        }
+        memset (&_descriptor, 0, sizeof (_descriptor));
+        _started = false;
     }
 }
 

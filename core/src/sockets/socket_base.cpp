@@ -819,16 +819,9 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         options.connected = true;
         return 0;
     }
-    const bool is_single_connect =
-      (options.type == ZLINK_DEALER || options.type == ZLINK_SUB
-       || options.type == ZLINK_PUB);
-    if (unlikely (is_single_connect)) {
-        if (0 != _endpoints.count (endpoint_uri_)) {
-            // There is no valid use for multiple connects for SUB-PUB nor
-            // DEALER-ROUTER. Multiple connects produces
-            // nonsensical results.
-            return 0;
-        }
+    if (unlikely (0 != _endpoints.count (endpoint_uri_))) {
+        // Treat duplicate connects as no-ops for all socket types.
+        return 0;
     }
 
     //  Choose the I/O thread to run the session in.

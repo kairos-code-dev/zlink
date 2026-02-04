@@ -26,7 +26,8 @@ static void close_frames (std::vector<zlink_msg_t> *frames_)
 discovery_t::discovery_t (ctx_t *ctx_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
-    _stop (0)
+    _stop (0),
+    _update_seq (0)
 {
     zlink_assert (_ctx);
 }
@@ -96,6 +97,38 @@ void discovery_t::snapshot_providers (const std::string &service_name_,
     if (it == _services.end ())
         return;
     *out_ = it->second.providers;
+}
+
+uint64_t discovery_t::update_seq ()
+{
+    scoped_lock_t lock (_sync);
+    return _update_seq;
+}
+
+uint64_t discovery_t::service_update_seq (const std::string &service_name_)
+{
+    scoped_lock_t lock (_sync);
+    std::map<std::string, uint64_t>::iterator it =
+      _service_seq.find (service_name_);
+    if (it == _service_seq.end ())
+        return 0;
+    return it->second;
+}
+
+void discovery_t::add_observer (discovery_observer_t *observer_)
+{
+    if (!observer_)
+        return;
+    scoped_lock_t lock (_sync);
+    _observers.insert (observer_);
+}
+
+void discovery_t::remove_observer (discovery_observer_t *observer_)
+{
+    if (!observer_)
+        return;
+    scoped_lock_t lock (_sync);
+    _observers.erase (observer_);
 }
 
 int discovery_t::get_providers (const char *service_name_,
@@ -235,7 +268,27 @@ void discovery_t::loop ()
     zlink_close (sub);
 }
 
-void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
+void discovery_t::notify_observers (const std::set<std::string> &services_)
+{
+    if (services_.empty ())
+        return;
+    std::vector<discovery_observer_t *> observers;
+    {
+        scoped_lock_t lock (_sync);
+        observers.assign (_observers.begin (), _observers.end ());
+    }
+    if (observers.empty ())
+        return;
+    for (std::set<std::string>::const_iterator sit = services_.begin ();
+         sit != services_.end (); ++sit) {
+        for (size_t i = 0; i < observers.size (); ++i) {
+            if (observers[i])
+                observers[i]->on_service_update (*sit);
+        }
+    }
+}
+
+void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_)
 {
     if (frames_.size () < 4)
         return;
@@ -284,6 +337,7 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
         updated[service_name] = state;
     }
 
+    std::set<std::string> changed;
     {
         scoped_lock_t lock (_sync);
         std::map<uint32_t, uint64_t>::iterator sit =
@@ -292,7 +346,54 @@ void discovery_t::handle_service_list (const std::vector<zlink_msg_t> &frames_)
             return;
         _registry_seq[registry_id] = list_seq;
 
+        const auto provider_equal =
+          [] (const provider_info_t &a_, const provider_info_t &b_) {
+              if (a_.endpoint != b_.endpoint)
+                  return false;
+              if (a_.routing_id.size != b_.routing_id.size)
+                  return false;
+              if (a_.routing_id.size > 0
+                  && memcmp (a_.routing_id.data, b_.routing_id.data,
+                             a_.routing_id.size)
+                       != 0)
+                  return false;
+              return a_.weight == b_.weight;
+          };
+        const auto providers_equal =
+          [&] (const service_state_t &a_, const service_state_t &b_) {
+              if (a_.providers.size () != b_.providers.size ())
+                  return false;
+              for (size_t i = 0; i < a_.providers.size (); ++i) {
+                  if (!provider_equal (a_.providers[i], b_.providers[i]))
+                      return false;
+              }
+              return true;
+          };
+
+        for (std::map<std::string, service_state_t>::iterator uit =
+               updated.begin ();
+             uit != updated.end (); ++uit) {
+            std::map<std::string, service_state_t>::iterator oit =
+              _services.find (uit->first);
+            if (oit == _services.end ()
+                || !providers_equal (oit->second, uit->second)) {
+                _service_seq[uit->first] = _update_seq + 1;
+                changed.insert (uit->first);
+            }
+        }
+        for (std::map<std::string, service_state_t>::iterator oit =
+               _services.begin ();
+             oit != _services.end (); ++oit) {
+            if (updated.find (oit->first) == updated.end ()) {
+                _service_seq[oit->first] = _update_seq + 1;
+                changed.insert (oit->first);
+            }
+        }
         _services.swap (updated);
+        _update_seq++;
     }
+
+    if (!changed.empty ())
+        notify_observers (changed);
 }
 }

@@ -5,7 +5,8 @@ set -euo pipefail
 # Compares baseline (previous zlink) vs current (new build)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# repo root (one level above core/)
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 IS_WINDOWS=0
 PLATFORM="linux"
@@ -278,7 +279,7 @@ else
   fi
 fi
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzlink/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/core/benchwithzlink/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
 if [[ "${NO_TASKSET}" -eq 1 ]]; then
   RUN_ENV+=(BENCH_NO_TASKSET=1)

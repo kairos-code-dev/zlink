@@ -144,9 +144,17 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "Unknown option: $1" >&2
-      usage >&2
-      exit 1
+      if [[ "$1" != --* ]]; then
+        if [[ -z "${PATTERN}" || "${PATTERN}" == "ALL" ]]; then
+          PATTERN="$1"
+        else
+          PATTERN="${PATTERN},$1"
+        fi
+      else
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 1
+      fi
       ;;
   esac
   shift
@@ -156,6 +164,11 @@ if [[ -z "${PATTERN}" ]]; then
   echo "Pattern name is required." >&2
   usage >&2
   exit 1
+fi
+
+# Normalize pattern to uppercase for consistent matching
+if [[ "${PATTERN}" != "ALL" ]]; then
+  PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 fi
 
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then

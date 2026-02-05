@@ -143,6 +143,11 @@ if [[ -z "${PATTERN}" ]]; then
   exit 1
 fi
 
+# Normalize pattern to uppercase for consistent matching
+if [[ "${PATTERN}" != "ALL" ]]; then
+  PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
+fi
+
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
   usage >&2

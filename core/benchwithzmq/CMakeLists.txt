@@ -1,5 +1,14 @@
 # Define standard libzmq location
-set(STD_LIBZMQ_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist")
+if(WIN32)
+    set(STD_LIBZMQ_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist")
+else()
+    set(STD_LIBZMQ_LINUX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist-linux-x64")
+    if(EXISTS "${STD_LIBZMQ_LINUX_ROOT}")
+        set(STD_LIBZMQ_ROOT "${STD_LIBZMQ_LINUX_ROOT}")
+    else()
+        set(STD_LIBZMQ_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/libzmq_dist")
+    endif()
+endif()
 set(STD_LIBZMQ_INCLUDE_DIR "${STD_LIBZMQ_ROOT}/include")
 
 if(WIN32)

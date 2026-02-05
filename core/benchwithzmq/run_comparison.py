@@ -21,9 +21,12 @@ def resolve_linux_paths():
         os.path.join(ROOT_DIR, "build", "linux-x64", "benchwithzmq"),
     ]
     build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-    libzmq_lib_dir = os.path.abspath(
-        os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist", "lib")
-    )
+    linux_dist_dir = os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist-linux-x64", "lib")
+    default_dist_dir = os.path.join(ROOT_DIR, "benchwithzmq", "libzmq", "libzmq_dist", "lib")
+    if os.path.exists(linux_dist_dir):
+        libzmq_lib_dir = os.path.abspath(linux_dist_dir)
+    else:
+        libzmq_lib_dir = os.path.abspath(default_dist_dir)
     env_libzmq_dir = os.environ.get("BENCH_LIBZMQ_LIB_DIR")
     if env_libzmq_dir:
         libzmq_lib_dir = os.path.abspath(env_libzmq_dir)
@@ -239,7 +242,7 @@ def parse_args():
             build_dir = sys.argv[i + 1]
             i += 1
         elif not arg.startswith("--") and p_req == "ALL":
-            p_req = arg
+            p_req = arg.upper()
         i += 1
 
     if num_runs < 1:

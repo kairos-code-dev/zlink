@@ -5,6 +5,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 
 #if !defined(_WIN32)
 #include <unistd.h>

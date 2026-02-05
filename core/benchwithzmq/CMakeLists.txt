@@ -10,7 +10,11 @@ else()
     file(GLOB STD_LIBZMQ_LIBRARY "${STD_LIBZMQ_ROOT}/lib/libzmq.so*")
 endif()
 
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+if(EXISTS "${CMAKE_SOURCE_DIR}/core/include")
+    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
+else()
+    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+endif()
 
 if(MSVC)
     set(BENCH_CXX_FLAGS "/O2")

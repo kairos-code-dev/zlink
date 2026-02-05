@@ -28,7 +28,11 @@ else()
 endif()
 
 # Use current zlink's zlink.h header (API should be compatible)
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+if(EXISTS "${CMAKE_SOURCE_DIR}/core/include")
+    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
+else()
+    set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
+endif()
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     if(MSVC)

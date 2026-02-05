@@ -45,7 +45,7 @@ cmake -B build -DZLINK_CXX_STANDARD=14
 cmake -B build -DZLINK_CXX_STANDARD=17
 
 # C++20
-cmake -B build -DZLINK_CXX_STANDARD=20
+cmake -B build -DZLINK_CXX_STANDARD=17
 
 # C++23 (if compiler supports)
 cmake -B build -DZLINK_CXX_STANDARD=23

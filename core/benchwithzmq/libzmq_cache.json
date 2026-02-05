@@ -1,26 +1,26 @@
 {
   "PAIR": {
-    "tcp|64|throughput": 4553630.38,
-    "tcp|64|latency": 24.67
+    "tcp|64|throughput": 4350266.02,
+    "tcp|64|latency": 5.27
   },
   "PUBSUB": {
-    "tcp|64|throughput": 4435642.16,
-    "tcp|64|latency": 0.23
+    "tcp|64|throughput": 3974479.71,
+    "tcp|64|latency": 0.25
   },
   "DEALER_DEALER": {
-    "tcp|64|throughput": 3943155.47,
-    "tcp|64|latency": 24.93
+    "tcp|64|throughput": 4289090.81,
+    "tcp|64|latency": 5.31
   },
   "DEALER_ROUTER": {
-    "tcp|64|throughput": 4324455.23,
-    "tcp|64|latency": 30.63
+    "tcp|64|throughput": 3560614.03,
+    "tcp|64|latency": 5.47
   },
   "ROUTER_ROUTER": {
-    "tcp|64|throughput": 4436419.45,
-    "tcp|64|latency": 15.61
+    "tcp|64|throughput": 3324659.35,
+    "tcp|64|latency": 4.47
   },
   "ROUTER_ROUTER_POLL": {
-    "tcp|64|throughput": 4297221.63,
-    "tcp|64|latency": 16.14
+    "tcp|64|throughput": 3332229.14,
+    "tcp|64|latency": 4.76
   }
 }

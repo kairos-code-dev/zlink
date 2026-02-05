@@ -1489,14 +1489,20 @@ endif()
 # -----------------------------------------------------------------------------
 # benchmarks
 option(BUILD_BENCHMARKS "Build benchmark tools for performance comparison" OFF)
+option(ZLINK_BUILD_BENCHWITHZMQ "Build benchwithzmq benchmarks" ON)
+option(ZLINK_BUILD_BENCHWITHZLINK "Build benchwithzlink benchmarks" ON)
+option(ZLINK_BUILD_BENCHWITHBEAST "Build benchwithbeast benchmarks" ON)
 if(BUILD_BENCHMARKS AND BUILD_SHARED)
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzmq/CMakeLists.txt")
+  if(ZLINK_BUILD_BENCHWITHZMQ AND
+      EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzmq/CMakeLists.txt")
     add_subdirectory(benchwithzmq)
   endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
+  if(ZLINK_BUILD_BENCHWITHZLINK AND
+      EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
     add_subdirectory(benchwithzlink)
   endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithbeast/CMakeLists.txt")
+  if(ZLINK_BUILD_BENCHWITHBEAST AND
+      EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithbeast/CMakeLists.txt")
     add_subdirectory(benchwithbeast)
   endif()
 endif()

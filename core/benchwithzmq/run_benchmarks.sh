@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# Repo root (allow running from repo root or anywhere)
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 IS_WINDOWS=0
 PLATFORM="linux"
@@ -20,9 +21,9 @@ case "$(uname -s)" in
 esac
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/build/windows-x64"
+  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/build"
+  BUILD_DIR="${ROOT_DIR}/core/build"
 fi
 PATTERN="ALL"
 WITH_LIBZMQ=1
@@ -33,6 +34,7 @@ ZLINK_ONLY=0
 NO_TASKSET=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
+BENCH_TRANSPORTS=""
 BASELINE=0
 BASELINE_DIR=""
 BASELINE_TAG=""
@@ -58,6 +60,7 @@ Options:
   --io-threads N       Set BENCH_IO_THREADS for the benchmark run.
   --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N             Convenience alias for --msg-sizes N.
+  --transport LIST     Comma-separated transports (e.g., tcp or tcp,inproc,ipc).
 USAGE
 }
 
@@ -117,6 +120,10 @@ while [[ $# -gt 0 ]]; do
       BENCH_MSG_SIZES="${2:-}"
       shift
       ;;
+    --transport)
+      BENCH_TRANSPORTS="${2:-}"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -150,6 +157,11 @@ fi
 
 if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
   echo "BENCH_MSG_SIZES must be a comma-separated list of integers." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-zA-Z0-9]+(,[a-zA-Z0-9]+)*$ ]]; then
+  echo "BENCH_TRANSPORTS must be a comma-separated list of names." >&2
   usage >&2
   exit 1
 fi
@@ -197,11 +209,15 @@ else
       -A "${CMAKE_ARCH}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_BENCHWITHZLINK=OFF \
+      -DZLINK_BUILD_BENCHWITHBEAST=OFF \
       -DZLINK_CXX_STANDARD=17
   else
     cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_BENCHWITHZLINK=OFF \
+      -DZLINK_BUILD_BENCHWITHBEAST=OFF \
       -DZLINK_CXX_STANDARD=17
   fi
 
@@ -235,7 +251,7 @@ else
   fi
 fi
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/core/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
 if [[ "${NO_TASKSET}" -eq 1 ]]; then
   RUN_ENV+=(BENCH_NO_TASKSET=1)
@@ -246,6 +262,9 @@ fi
 if [[ -n "${BENCH_MSG_SIZES}" ]]; then
   RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")
 fi
+if [[ -n "${BENCH_TRANSPORTS}" ]]; then
+  RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
+fi
 
 if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
   RUN_CMD+=(--zlink-only)
@@ -253,7 +272,7 @@ else
   if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
     RUN_CMD+=(--refresh-libzmq)
   else
-    CACHE_FILE="${ROOT_DIR}/benchwithzmq/libzmq_cache.json"
+    CACHE_FILE="${ROOT_DIR}/core/benchwithzmq/libzmq_cache.json"
     if [[ ! -f "${CACHE_FILE}" ]]; then
       echo "libzmq cache not found: ${CACHE_FILE}" >&2
       echo "Run with --with-libzmq once to generate the baseline." >&2

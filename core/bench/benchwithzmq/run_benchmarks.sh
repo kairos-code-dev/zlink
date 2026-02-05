@@ -108,9 +108,6 @@ while [[ $# -gt 0 ]]; do
     --pin-cpu)
       PIN_CPU=1
       ;;
-    --no-taskset)
-      PIN_CPU=0
-      ;;
     --io-threads)
       BENCH_IO_THREADS="${2:-}"
       shift
@@ -228,12 +225,12 @@ else
       -DZLINK_BUILD_BENCHWITHBEAST=OFF \
       -DZLINK_CXX_STANDARD=17
   fi
+fi
 
-  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-    cmake --build "${BUILD_DIR}" --config Release
-  else
-    cmake --build "${BUILD_DIR}"
-  fi
+if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+  cmake --build "${BUILD_DIR}" --config Release
+else
+  cmake --build "${BUILD_DIR}"
 fi
 
 PYTHON_BIN=()

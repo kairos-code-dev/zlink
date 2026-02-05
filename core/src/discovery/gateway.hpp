@@ -49,6 +49,7 @@ class gateway_t : public discovery_observer_t
     int set_router_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *router ();
     int connection_count (const char *service_name_);
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,

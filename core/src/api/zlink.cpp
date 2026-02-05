@@ -764,6 +764,18 @@ int zlink_gateway_set_tls_client (void *gateway_,
     return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
+void *zlink_gateway_router (void *gateway_)
+{
+    if (!gateway_)
+        return NULL;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return gateway->router ();
+}
+
 int zlink_gateway_connection_count (void *gateway_, const char *service_name_)
 {
     if (!gateway_)

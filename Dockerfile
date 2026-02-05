@@ -12,7 +12,7 @@ RUN apt-get update -qq \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/libzlink
 COPY . .
-RUN ./autogen.sh \
+RUN ./core/autogen.sh \
     && ./configure --prefix=/usr/local \
     && make \
     && make check \

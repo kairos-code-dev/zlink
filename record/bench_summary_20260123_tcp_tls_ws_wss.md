@@ -1,6 +1,6 @@
 # Benchmark Summary (TCP vs TLS/WS/WSS)
 
-- Source: `benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
+- Source: `core/bench/benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
 - Runs: 10 (no-taskset)
 - Transports: tcp, tls, ws, wss
 - Units: Throughput = Kmsg/s, Latency = us

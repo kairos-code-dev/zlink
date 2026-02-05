@@ -135,18 +135,18 @@ transport (tcp/tls/ws/wss)
 - WS/WSS 모두 **대폭 개선**
 - 특히 64KB 이상 구간에서 throughput/latency 급격히 개선
 
-(벤치 결과는 `benchwithzlink/results/20260123/` 참조)
+(벤치 결과는 `core/bench/benchwithzlink/results/20260123/` 참조)
 
 ---
 
 ## 5. 성능 측정 방식
 
-- 벤치: `benchwithzlink/run_benchmarks.sh`
+- 벤치: `core/bench/benchwithzlink/run_benchmarks.sh`
 - 반복: `--runs 10`
 - 메시지 크기: 64B ~ 262144B
 - 비교: baseline vs current
 
-추가적으로 Beast 단독 비교는 `benchwithbeast/bench_beast_stream.cpp`로 수행
+추가적으로 Beast 단독 비교는 `core/bench/benchwithbeast/bench_beast_stream.cpp`로 수행
 
 ---
 
@@ -242,4 +242,4 @@ Command: build/bin/bench_beast_stream <transport> 1024 --runs 10
 - `src/protocol/raw_encoder.*`, `src/protocol/raw_decoder.*`
 - `src/transports/ws/*`, `src/transports/tls/wss_transport.*`
 - `tests/test_stream_socket.cpp`, `unittests/unittest_raw_decoder.cpp`
-- `benchwithzlink/`, `benchwithbeast/`
+- `core/bench/benchwithzlink/`, `core/bench/benchwithbeast/`

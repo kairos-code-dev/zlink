@@ -33,7 +33,7 @@
 - Date: 2026-01-24
 - Runs: 10
 - CPU pinning: disabled (`--no-taskset`)
-- benchwithzlink result file: `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`
+- benchwithzlink result file: `/home/ulalax/project/ulalax/zlink-codex/core/bench/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`
 
 ## 3. current vs baseline (benchwithzlink)
 Median throughput diff across sizes per pattern/transport (positive = current faster).
@@ -151,4 +151,4 @@ Changes >= ±10% (throughput only).
 | +75.17 | ROUTER_ROUTER | ws | 1024B |
 
 ## 5. Raw Result Files
-- `/home/ulalax/project/ulalax/zlink-codex/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`
+- `/home/ulalax/project/ulalax/zlink-codex/core/bench/benchwithzlink/results/20260124/bench_linux_ALL_20260124_154903.txt`

@@ -1,7 +1,7 @@
 # TCP 대비 성능 비율 요약 (zlink vs Beast)
 
-- zlink ALL source: `benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
-- zlink STREAM 512/2048 source: `benchwithzlink/results/20260123/bench_linux_STREAM_20260123_193854.txt`
+- zlink ALL source: `core/bench/benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
+- zlink STREAM 512/2048 source: `core/bench/benchwithzlink/results/20260123/bench_linux_STREAM_20260123_193854.txt`
 - Beast: `build/bin/bench_beast_stream` (STREAM)
 - Runs: 10 (no-taskset)
 

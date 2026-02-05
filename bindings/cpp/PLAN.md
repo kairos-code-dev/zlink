@@ -82,7 +82,7 @@
 - `bindings/cpp` 단독 빌드 가능하도록 구성
 - 코어 빌드 옵션과 분리되되, CI에서 헤더 유효성 검사
 - 패키징은 코어 릴리즈 tarball 기준으로 연동
-  - Conan: `packaging/conan/conanfile.py`
+  - Conan: `core/packaging/conan/conanfile.py`
   - vcpkg: overlay 포트 방식 (`vcpkg/ports/zlink`)
 
 ---

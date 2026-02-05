@@ -448,15 +448,20 @@ ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 ZLINK_EXPORT void *zlink_gateway_new (void *ctx, void *discovery);
 
 ZLINK_EXPORT int zlink_gateway_send (void *gateway,
-                                 const char *service_name,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 int flags);
-ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
                                      const char *service_name,
-                                     const zlink_routing_id_t *routing_id,
                                      zlink_msg_t *parts,
                                      size_t part_count,
+                                     int flags);
+ZLINK_EXPORT int zlink_gateway_recv (void *gateway,
+                                     zlink_msg_t **parts,
+                                     size_t *part_count,
+                                     int flags,
+                                     char *service_name_out);
+ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
+                                         const char *service_name,
+                                         const zlink_routing_id_t *routing_id,
+                                         zlink_msg_t *parts,
+                                         size_t part_count,
                                      int flags);
 
 #define ZLINK_GATEWAY_LB_ROUND_ROBIN 0

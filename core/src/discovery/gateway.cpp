@@ -482,6 +482,133 @@ int gateway_t::send (const char *service_name_,
                                 flags_);
 }
 
+int gateway_t::recv (zlink_msg_t **parts_,
+                     size_t *part_count_,
+                     int flags_,
+                     char *service_name_out_)
+{
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
+    if (ensure_router_socket () != 0 || !_router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    zlink_msg_t msg;
+    if (zlink_msg_init (&msg) != 0) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const int rc = zlink_msg_recv (&msg, _router_socket, flags_);
+    if (rc != 0) {
+        zlink_msg_close (&msg);
+        return -1;
+    }
+
+    zlink_routing_id_t rid;
+    rid.size = 0;
+    const size_t rid_size = zlink_msg_size (&msg);
+    if (rid_size > 0) {
+        size_t copy_size = rid_size;
+        if (copy_size > sizeof (rid.data))
+            copy_size = sizeof (rid.data);
+        rid.size = static_cast<uint8_t> (copy_size);
+        memcpy (rid.data, zlink_msg_data (&msg), copy_size);
+    }
+
+    std::string service_name;
+    if (rid.size > 0) {
+        for (std::map<std::string, service_pool_t>::const_iterator it =
+               _pools.begin ();
+             it != _pools.end (); ++it) {
+            const service_pool_t &pool = it->second;
+            for (size_t i = 0; i < pool.routing_ids.size (); ++i) {
+                const zlink_routing_id_t &candidate = pool.routing_ids[i];
+                if (candidate.size != rid.size)
+                    continue;
+                if (candidate.size == 0)
+                    continue;
+                if (memcmp (candidate.data, rid.data, candidate.size) == 0) {
+                    service_name = pool.service_name;
+                    break;
+                }
+            }
+            if (!service_name.empty ())
+                break;
+        }
+    }
+
+    if (service_name_out_) {
+        memset (service_name_out_, 0, 256);
+        if (!service_name.empty ())
+            strncpy (service_name_out_, service_name.c_str (), 255);
+    }
+
+    const int more = zlink_msg_more (&msg);
+    zlink_msg_close (&msg);
+
+    if (!more) {
+        if (parts_)
+            *parts_ = NULL;
+        if (part_count_)
+            *part_count_ = 0;
+        return 0;
+    }
+
+    std::vector<zlink_msg_t> tmp_parts;
+    while (true) {
+        zlink_msg_t part;
+        if (zlink_msg_init (&part) != 0) {
+            errno = EFAULT;
+            return -1;
+        }
+        const int prc = zlink_msg_recv (&part, _router_socket, flags_);
+        if (prc != 0) {
+            zlink_msg_close (&part);
+            for (size_t i = 0; i < tmp_parts.size (); ++i)
+                zlink_msg_close (&tmp_parts[i]);
+            return -1;
+        }
+        tmp_parts.push_back (part);
+        if (!zlink_msg_more (&part))
+            break;
+    }
+
+    const size_t out_count = tmp_parts.size ();
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t) * out_count));
+    if (!out) {
+        for (size_t i = 0; i < tmp_parts.size (); ++i)
+            zlink_msg_close (&tmp_parts[i]);
+        errno = ENOMEM;
+        return -1;
+    }
+
+    for (size_t i = 0; i < out_count; ++i) {
+        if (zlink_msg_init (&out[i]) != 0
+            || zlink_msg_move (&out[i], &tmp_parts[i]) != 0) {
+            for (size_t j = 0; j <= i && j < out_count; ++j)
+                zlink_msg_close (&out[j]);
+            free (out);
+            for (size_t j = i; j < tmp_parts.size (); ++j)
+                zlink_msg_close (&tmp_parts[j]);
+            errno = EFAULT;
+            return -1;
+        }
+    }
+
+    if (parts_)
+        *parts_ = out;
+    if (part_count_)
+        *part_count_ = out_count;
+    return 0;
+}
+
 int gateway_t::send_rid (const char *service_name_,
                          const zlink_routing_id_t *routing_id_,
                          zlink_msg_t *parts_,

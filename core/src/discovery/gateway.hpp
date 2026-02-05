@@ -35,6 +35,10 @@ class gateway_t : public discovery_observer_t
               zlink_msg_t *parts_,
               size_t part_count_,
               int flags_);
+    int recv (zlink_msg_t **parts_,
+              size_t *part_count_,
+              int flags_,
+              char *service_name_out_);
     int send_rid (const char *service_name_,
                   const zlink_routing_id_t *routing_id_,
                   zlink_msg_t *parts_,

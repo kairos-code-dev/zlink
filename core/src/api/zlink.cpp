@@ -686,6 +686,22 @@ int zlink_gateway_send (void *gateway_,
     return gateway->send (service_name_, parts_, part_count_, flags_);
 }
 
+int zlink_gateway_recv (void *gateway_,
+                        zlink_msg_t **parts_,
+                        size_t *part_count_,
+                        int flags_,
+                        char *service_name_out_)
+{
+    if (!gateway_)
+        return -1;
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return gateway->recv (parts_, part_count_, flags_, service_name_out_);
+}
+
 int zlink_gateway_send_rid (void *gateway_,
                             const char *service_name_,
                             const zlink_routing_id_t *routing_id_,

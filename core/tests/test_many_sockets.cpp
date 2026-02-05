@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/resource.h>
 #include <vector>
 
 SETUP_TEARDOWN_TESTCONTEXT
@@ -12,7 +13,28 @@ SETUP_TEARDOWN_TESTCONTEXT
 void test_system_max ()
 {
     // Keep allocating sockets until we run out of system resources
-    const int no_of_sockets = 2 * 65536;
+    const int requested_sockets = 2 * 65536;
+    int no_of_sockets = requested_sockets;
+
+    struct rlimit rl;
+    if (getrlimit (RLIMIT_NOFILE, &rl) == 0) {
+        // Reserve some fds for stdio and runtime, and assume each socket may
+        // consume multiple fds (signaler, pipes, etc.). Use a conservative factor.
+        const unsigned long reserve_fds = 256;
+        const unsigned long fds_per_socket = 4;
+        const unsigned long max_fds =
+          (rl.rlim_cur == RLIM_INFINITY) ? 1048576UL : static_cast<unsigned long> (rl.rlim_cur);
+
+        if (max_fds > reserve_fds) {
+            unsigned long max_sockets = (max_fds - reserve_fds) / fds_per_socket;
+            if (max_sockets < static_cast<unsigned long> (no_of_sockets))
+                no_of_sockets = static_cast<int> (max_sockets);
+        }
+    }
+
+    if (no_of_sockets < 1)
+        no_of_sockets = 1;
+
     zlink_ctx_set (get_test_context (), ZLINK_MAX_SOCKETS, no_of_sockets);
     std::vector<void *> sockets;
 

@@ -273,7 +273,7 @@ def parse_args():
             build_dir = sys.argv[i + 1]
             i += 1
         elif not arg.startswith("--") and p_req == "ALL":
-            p_req = arg
+            p_req = arg.upper()
         i += 1
 
     if num_runs < 1:
@@ -324,8 +324,16 @@ def main():
     ]
 
     all_failures = []
+    if p_req == "ALL":
+        requested = None
+    else:
+        requested = {p.strip().upper() for p in p_req.split(",") if p.strip()}
+        if not requested:
+            print("Error: --pattern requires at least one value.", file=sys.stderr)
+            sys.exit(1)
+
     for baseline_bin, current_bin, p_name in comparisons:
-        if p_req != "ALL" and p_name != p_req:
+        if requested is not None and p_name not in requested:
             continue
 
         print(f"\n## PATTERN: {p_name}")

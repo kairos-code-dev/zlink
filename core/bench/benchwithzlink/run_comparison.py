@@ -3,7 +3,7 @@
 benchwithzlink - zlink version comparison benchmarks
 
 Compares:
-- baseline: Previous zlink version (from baseline/lib/)
+- baseline: Previous zlink version (from baseline/zlink_dist/<platform>-<arch>/)
 - current: Current zlink build
 """
 import subprocess
@@ -11,6 +11,7 @@ import os
 import sys
 import statistics
 import json
+import platform
 
 # Environment helpers
 IS_WINDOWS = os.name == 'nt'
@@ -18,18 +19,66 @@ EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 
+def platform_arch_tag():
+    sys_name = platform.system().lower()
+    if "darwin" in sys_name:
+        platform_tag = "macos"
+    elif "windows" in sys_name:
+        platform_tag = "windows"
+    else:
+        platform_tag = "linux"
+
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        arch_tag = "x64"
+    elif machine in ("aarch64", "arm64"):
+        arch_tag = "arm64"
+    else:
+        arch_tag = machine
+    return platform_tag, arch_tag
+
 def resolve_linux_paths():
-    """Return build/library paths for Linux/WSL environments."""
+    """Return build/library paths for Linux/macOS environments."""
+    sys_name = platform.system().lower()
+    if "darwin" in sys_name:
+        platform_tag = "macos"
+    else:
+        platform_tag = "linux"
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        arch_tag = "x64"
+    elif machine in ("aarch64", "arm64"):
+        arch_tag = "arm64"
+    else:
+        arch_tag = machine
+
     possible_paths = [
+        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin"),
+        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin", "Release"),
         os.path.join(ROOT_DIR, "core", "build", "bin"),
-        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "bin"),
-        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "bin", "Release"),
     ]
     build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
     baseline_lib_dir = os.path.abspath(
-        os.path.join(ROOT_DIR, "core", "bench", "benchwithzlink", "baseline", "lib")
+        os.path.join(
+            ROOT_DIR,
+            "core",
+            "bench",
+            "benchwithzlink",
+            "baseline",
+            "zlink_dist",
+            f"{platform_tag}-{arch_tag}",
+            "lib",
+        )
     )
-    current_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "core", "build", "lib"))
+    build_root = build_dir
+    base = os.path.basename(build_root)
+    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+        bin_root = os.path.dirname(build_root)
+        if os.path.basename(bin_root) == "bin":
+            build_root = os.path.dirname(bin_root)
+    elif base == "bin":
+        build_root = os.path.dirname(build_root)
+    current_lib_dir = os.path.abspath(os.path.join(build_root, "lib"))
     return build_dir, baseline_lib_dir, current_lib_dir
 
 def normalize_build_dir(path):
@@ -64,13 +113,30 @@ def derive_current_lib_dir(build_dir):
 
 if IS_WINDOWS:
     BUILD_DIR = os.path.join("core", "build", "windows-x64", "bin", "Release")
-    BASELINE_LIB_DIR = os.path.abspath(os.path.join("core", "bench", "benchwithzlink", "baseline", "lib"))
+    BASELINE_LIB_DIR = os.path.abspath(
+        os.path.join(
+            "core",
+            "bench",
+            "benchwithzlink",
+            "baseline",
+            "zlink_dist",
+            "windows-x64",
+            "bin",
+        )
+    )
     CURRENT_LIB_DIR = os.path.abspath(os.path.join("core", "build", "windows-x64", "bin", "Release"))
 else:
     BUILD_DIR, BASELINE_LIB_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 3
-CACHE_FILE = os.path.join(ROOT_DIR, "core", "bench", "benchwithzlink", "baseline_cache.json")
+_platform_tag, _arch_tag = platform_arch_tag()
+CACHE_FILE = os.path.join(
+    ROOT_DIR,
+    "core",
+    "bench",
+    "benchwithzlink",
+    f"baseline_cache_{_platform_tag}-{_arch_tag}.json",
+)
 
 def parse_env_list(name, cast_fn):
     val = os.environ.get(name)
@@ -225,7 +291,7 @@ def parse_args():
         "  --current-only          Run only current benchmarks\n"
         "  --zlink-only            Alias for --current-only\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
-        "  --build-dir PATH        Build directory (default: core/build/)\n"
+        "  --build-dir PATH        Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"

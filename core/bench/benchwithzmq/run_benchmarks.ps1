@@ -7,9 +7,9 @@ param(
     [switch]$WithLibzmq,
     [switch]$ZlinkOnly,
     [switch]$ReuseBuild,
-    [switch]$Baseline,
-    [string]$BaselineDir = "",
-    [string]$BaselineTag = "",
+    [switch]$Result,
+    [string]$ResultsDir = "",
+    [string]$ResultsTag = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Size = "",
@@ -27,12 +27,12 @@ Options:
   -Help                Show this help.
   -SkipLibzmq         Skip libzmq baseline run (uses existing cache).
   -WithLibzmq         Run libzmq baseline and refresh cache (default).
-  -Pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, ALL) [default: ALL].
+  -Pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, STREAM, ALL) [default: ALL].
   -BuildDir PATH      Build directory (default: core/build/windows-x64).
   -OutputFile PATH    Tee results to a file.
-  -Baseline           Write results under core\bench\benchwithzmq/baseline/YYYYMMDD/.
-  -BaselineDir PATH   Override baseline root directory.
-  -BaselineTag NAME   Optional tag appended to the baseline filename.
+  -Result             Write results under core\bench\benchwithzmq\results\YYYYMMDD/.
+  -ResultsDir PATH    Override results root directory.
+  -ResultsTag NAME    Optional tag appended to the results filename.
   -Runs N             Iterations per configuration (default: 3).
   -ZlinkOnly          Run only zlink benchmarks (no libzmq baseline).
   -ReuseBuild         Reuse existing build dir without re-running CMake.
@@ -40,13 +40,14 @@ Options:
   -MsgSizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   -Size N             Convenience alias for -MsgSizes N.
   -PinCpu             Pin CPU core during benchmarks (Linux taskset).
+                      STREAM pattern runs on tcp only.
 
 Examples:
   .\core/bench/benchwithzmq\run_benchmarks.ps1
   .\core/bench/benchwithzmq\run_benchmarks.ps1 -Pattern PAIR
   .\core/bench/benchwithzmq\run_benchmarks.ps1 -Pattern DEALER_DEALER -Runs 5
-  .\core/bench/benchwithzmq\run_benchmarks.ps1 -Pattern ALL -Baseline
-  .\core/bench/benchwithzmq\run_benchmarks.ps1 -Runs 10 -Baseline
+  .\core/bench/benchwithzmq\run_benchmarks.ps1 -Pattern ALL -Result
+  .\core/bench/benchwithzmq\run_benchmarks.ps1 -Runs 10 -Result
 "@
 }
 
@@ -90,22 +91,22 @@ if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     exit 1
 }
 
-# Baseline logic
-if ($Baseline) {
+# Results logic
+if ($Result) {
     if ($OutputFile) {
-        Write-Error "Error: -Baseline cannot be used with -OutputFile."
+        Write-Error "Error: -Result cannot be used with -OutputFile."
         exit 1
     }
-    if (-not $BaselineDir) {
-        $BaselineDir = Join-Path $PSScriptRoot "baseline"
+    if (-not $ResultsDir) {
+        $ResultsDir = Join-Path $PSScriptRoot "results"
     }
     $DateDir = Get-Date -Format "yyyyMMdd"
     $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $Name = "bench_windows_${Pattern}_${Timestamp}"
-    if ($BaselineTag) {
-        $Name = "${Name}_${BaselineTag}"
+    if ($ResultsTag) {
+        $Name = "${Name}_${ResultsTag}"
     }
-    $OutputFile = Join-Path (Join-Path $BaselineDir $DateDir) "${Name}.txt"
+    $OutputFile = Join-Path (Join-Path $ResultsDir $DateDir) "${Name}.txt"
 }
 
 # Determine script and root directories
@@ -235,7 +236,7 @@ if ($ZlinkOnly) {
     if ($WithLibzmqFlag) {
         $RunArgs += "--refresh-libzmq"
     } else {
-        $CacheFile = Join-Path $RootDir "core/bench/benchwithzmq" "libzmq_cache.json"
+        $CacheFile = Join-Path $RootDir "core/bench/benchwithzmq" "libzmq_cache_windows-x64.json"
         if (-not (Test-Path $CacheFile)) {
             Write-Error "libzmq cache not found: $CacheFile"
             Write-Error "Run with -WithLibzmq once to generate the baseline."

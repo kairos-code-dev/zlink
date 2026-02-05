@@ -2,11 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Repo root (allow running from repo root or anywhere)
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# Repo root (three levels above: core/bench/benchwithzmq)
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 IS_WINDOWS=0
 PLATFORM="linux"
+ARCH="x64"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     IS_WINDOWS=1
@@ -20,10 +21,22 @@ case "$(uname -s)" in
     ;;
 esac
 
+case "$(uname -m)" in
+  x86_64|amd64)
+    ARCH="x64"
+    ;;
+  aarch64|arm64)
+    ARCH="arm64"
+    ;;
+  *)
+    ARCH="$(uname -m)"
+    ;;
+esac
+
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/core/build"
+  BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
 PATTERN="ALL"
 WITH_LIBZMQ=1
@@ -35,9 +48,9 @@ PIN_CPU=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
-BASELINE=0
-BASELINE_DIR=""
-BASELINE_TAG=""
+RESULTS=0
+RESULTS_DIR=""
+RESULTS_TAG=""
 
 usage() {
   cat <<'USAGE'
@@ -47,12 +60,12 @@ Options:
   -h, --help            Show this help.
   --skip-libzmq        Skip libzmq baseline run (uses existing cache).
   --with-libzmq        Run libzmq baseline and refresh cache (default).
-  --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: core/build/).
+  --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, STREAM).
+  --build-dir PATH     Build directory (default: core/build/<platform>-<arch>).
   --output PATH        Tee results to a file.
-  --baseline           Write results under core/bench/benchwithzmq/baseline/YYYYMMDD/.
-  --baseline-dir PATH  Override baseline root directory.
-  --baseline-tag NAME  Optional tag appended to the baseline filename.
+  --result             Write results under core/bench/benchwithzmq/results/YYYYMMDD/.
+  --results-dir PATH   Override results root directory.
+  --results-tag NAME   Optional tag appended to the results filename.
   --runs N             Iterations per configuration (default: 3).
   --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
@@ -61,6 +74,7 @@ Options:
   --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N             Convenience alias for --msg-sizes N.
   --transport LIST     Comma-separated transports (e.g., tcp or tcp,inproc,ipc).
+                       STREAM pattern runs on tcp only.
 USAGE
 }
 
@@ -87,15 +101,15 @@ while [[ $# -gt 0 ]]; do
       OUTPUT_FILE="${2:-}"
       shift
       ;;
-    --baseline)
-      BASELINE=1
+    --result)
+      RESULTS=1
       ;;
-    --baseline-dir)
-      BASELINE_DIR="${2:-}"
+    --results-dir)
+      RESULTS_DIR="${2:-}"
       shift
       ;;
-    --baseline-tag)
-      BASELINE_TAG="${2:-}"
+    --results-tag)
+      RESULTS_TAG="${2:-}"
       shift
       ;;
     --runs)
@@ -171,21 +185,21 @@ if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-zA-Z0-9]+(,[a-z
   exit 1
 fi
 
-if [[ "${BASELINE}" -eq 1 ]]; then
+if [[ "${RESULTS}" -eq 1 ]]; then
   if [[ -n "${OUTPUT_FILE}" ]]; then
-    echo "Error: --baseline cannot be used with --output." >&2
+    echo "Error: --result cannot be used with --output." >&2
     exit 1
   fi
-  if [[ -z "${BASELINE_DIR}" ]]; then
-    BASELINE_DIR="${SCRIPT_DIR}/baseline"
+  if [[ -z "${RESULTS_DIR}" ]]; then
+    RESULTS_DIR="${SCRIPT_DIR}/results"
   fi
   DATE_DIR="$(date +%Y%m%d)"
   TS="$(date +%Y%m%d_%H%M%S)"
   NAME="bench_${PLATFORM}_${PATTERN}_${TS}"
-  if [[ -n "${BASELINE_TAG}" ]]; then
-    NAME="${NAME}_${BASELINE_TAG}"
+  if [[ -n "${RESULTS_TAG}" ]]; then
+    NAME="${NAME}_${RESULTS_TAG}"
   fi
-  OUTPUT_FILE="${BASELINE_DIR}/${DATE_DIR}/${NAME}.txt"
+  OUTPUT_FILE="${RESULTS_DIR}/${DATE_DIR}/${NAME}.txt"
 fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
@@ -233,6 +247,13 @@ else
   cmake --build "${BUILD_DIR}"
 fi
 
+if [[ "${IS_WINDOWS}" -eq 0 ]]; then
+  LIBZMQ_LIB_DIR="${ROOT_DIR}/core/bench/benchwithzmq/libzmq/libzmq_dist/${PLATFORM}-${ARCH}/lib"
+  if [[ -f "${LIBZMQ_LIB_DIR}/libzmq.so" && ! -e "${LIBZMQ_LIB_DIR}/libzmq.so.5" ]]; then
+    ln -sf "libzmq.so" "${LIBZMQ_LIB_DIR}/libzmq.so.5"
+  fi
+fi
+
 PYTHON_BIN=()
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   if command -v py >/dev/null 2>&1; then
@@ -277,7 +298,7 @@ else
   if [[ "${WITH_LIBZMQ}" -eq 1 ]]; then
     RUN_CMD+=(--refresh-libzmq)
   else
-    CACHE_FILE="${ROOT_DIR}/core/bench/benchwithzmq/libzmq_cache.json"
+    CACHE_FILE="${ROOT_DIR}/core/bench/benchwithzmq/libzmq_cache_${PLATFORM}-${ARCH}.json"
     if [[ ! -f "${CACHE_FILE}" ]]; then
       echo "libzmq cache not found: ${CACHE_FILE}" >&2
       echo "Run with --with-libzmq once to generate the baseline." >&2

@@ -31,7 +31,7 @@ Compare baseline zlink (previous version) vs current zlink (new build).
 Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
-  1. Copy previous version library to core\bench\benchwithzlink\baseline\lib\
+  1. Copy previous version library to core\bench\benchwithzlink\baseline\zlink_dist\<platform>-<arch>\
      - Windows: libzlink.dll + libzlink.lib
 
 IMPORTANT: Use PowerShell parameter syntax with '-', not bash '--' syntax.
@@ -167,16 +167,23 @@ if (-not $BuildDir.StartsWith($RootDir)) {
 }
 
 # Check baseline library exists when baseline run is requested
-$BaselineLibDir = Join-Path $ScriptDir "baseline\lib"
+$BaselineRoot = Join-Path $ScriptDir "baseline\zlink_dist\windows-x64"
+$BaselineLibDir = Join-Path $BaselineRoot "lib"
+$BaselineBinDir = Join-Path $BaselineRoot "bin"
 if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzlink)) {
-    if (-not (Test-Path $BaselineLibDir)) {
-        Write-Error "Error: baseline lib directory not found: $BaselineLibDir"
-        Write-Error "Please create core\bench\benchwithzlink\\baseline\\lib and copy previous zlink library there."
+    if (-not (Test-Path $BaselineRoot)) {
+        Write-Error "Error: baseline directory not found: $BaselineRoot"
+        Write-Error "Please create core\bench\benchwithzlink\\baseline\\zlink_dist\\windows-x64 and copy previous zlink library there."
         exit 1
     }
-    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "libzlink.*" -ErrorAction SilentlyContinue
-    if (-not $BaselineLibFiles) {
-        Write-Error "Error: No libzlink library found in $BaselineLibDir"
+    if (-not (Test-Path $BaselineLibDir) -or -not (Test-Path $BaselineBinDir)) {
+        Write-Error "Error: baseline bin/lib directories not found under $BaselineRoot"
+        exit 1
+    }
+    $BaselineDllFiles = Get-ChildItem -Path $BaselineBinDir -Filter "libzlink*.dll" -ErrorAction SilentlyContinue
+    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "libzlink*.lib" -ErrorAction SilentlyContinue
+    if (-not $BaselineDllFiles -or -not $BaselineLibFiles) {
+        Write-Error "Error: No baseline libzlink dll/lib found in $BaselineRoot"
         Write-Error "Please copy previous zlink library (libzlink.dll + libzlink.lib) there."
         exit 1
     }
@@ -310,7 +317,7 @@ if ($CurrentOnly) {
     if ($WithBaselineFlag) {
         $RunArgs += "--refresh-libzlink"
     } else {
-        $CacheFile = Join-Path $RootDir "core\bench\benchwithzlink" "baseline_cache.json"
+        $CacheFile = Join-Path $RootDir "core\bench\benchwithzlink" "baseline_cache_windows-x64.json"
         if (-not (Test-Path $CacheFile)) {
             Write-Error "Baseline cache not found: $CacheFile"
             Write-Error "Run with -WithBaseline once to generate the baseline."

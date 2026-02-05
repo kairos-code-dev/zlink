@@ -76,7 +76,7 @@ static bool recv_one_provider_message(void *router,
                                       std::atomic<int> *recv_fail) {
     zlink_msg_t rid;
     zlink_msg_init(&rid);
-    if (zlink_msg_recv(&rid, router, 0) != 0) {
+    if (zlink_msg_recv(&rid, router, 0) < 0) {
         zlink_msg_close(&rid);
         if (recv_fail)
             ++(*recv_fail);
@@ -90,7 +90,7 @@ static bool recv_one_provider_message(void *router,
     }
     zlink_msg_t payload;
     zlink_msg_init(&payload);
-    if (zlink_msg_recv(&payload, router, 0) != 0) {
+    if (zlink_msg_recv(&payload, router, 0) < 0) {
         zlink_msg_close(&rid);
         zlink_msg_close(&payload);
         if (recv_fail)
@@ -100,14 +100,15 @@ static bool recv_one_provider_message(void *router,
     while (zlink_msg_more(&payload)) {
         zlink_msg_t part;
         zlink_msg_init(&part);
-        if (zlink_msg_recv(&part, router, 0) != 0) {
+        if (zlink_msg_recv(&part, router, 0) < 0) {
             zlink_msg_close(&part);
             if (recv_fail)
                 ++(*recv_fail);
             break;
         }
+        const int more = zlink_msg_more(&part);
         zlink_msg_close(&part);
-        if (!zlink_msg_more(&part))
+        if (!more)
             break;
     }
     zlink_msg_close(&rid);

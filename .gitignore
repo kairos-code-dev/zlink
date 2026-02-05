@@ -3,8 +3,8 @@ syntax: glob # for hg-git users
 # Generated build scripts and IDE generating files
 ## autotools
 /Makefile
-builds/Makefile
-builds/deprecated-msvc/Makefile
+core/builds/Makefile
+core/builds/deprecated-msvc/Makefile
 doc/Makefile
 libtool
 ### automake
@@ -24,7 +24,7 @@ cmake-build-*/
 build/
 build_*/
 ## Android
-builds/android/prefix
+core/builds/android/prefix
 ## IntelliJ
 .idea/
 ## Visual Code
@@ -36,7 +36,7 @@ obj/
 ## Doxygen
 doxygen/
 ## Packaging 
-packaging/nuget/*.nupkg
+core/packaging/nuget/*.nupkg
 
 # Test related build files
 libtestutil.a
@@ -65,12 +65,12 @@ __pycache__/
 core/src/platform.hpp*
 core/src/libzlink.pc
 
-# /tools
+# /core/tools
 ## Executable binaries are ignored
-tools/curve_keygen
+core/tools/curve_keygen
 ## Executable source files must be tracked
-!tools/*.[ch]
-!tools/*.[ch]pp
+!core/tools/*.[ch]
+!core/tools/*.[ch]pp
 
 # /core/tests
 ## Test binaries and logs are ignored
@@ -131,6 +131,7 @@ mybuild
 # Build output directories
 deps/
 dist/
+core/dist/
 build_check/
 build-*/
 core/perf/comparison/build
@@ -138,7 +139,7 @@ benchmark_result.txt
 /test_*
 !/test_*.cpp
 tmp/
-!build-scripts/
+!core/build-scripts/
 
 # bindings (language wrappers)
 ## Node.js

@@ -4,13 +4,13 @@
 - Date: 2026-01-29
 - Runs: 10
 - CPU pinning: enabled (taskset)
-- benchwithzlink baseline libzlink: not found (benchwithzlink/baseline/lib contains libzmq only)
-- benchwithzmq standard libzmq: not found (benchwithzmq/libzmq/libzmq_dist has no lib/)
+- benchwithzlink baseline libzlink: not found (core/bench/benchwithzlink/baseline/lib contains libzmq only)
+- benchwithzmq standard libzmq: not found (core/bench/benchwithzmq/libzmq/libzmq_dist has no lib/)
 
 ## Raw Result Files
-- benchwithzlink: `benchwithzlink/results/20260129/bench_linux_ALL_20260129_184803.txt`
-- benchwithzmq (zlink-only): `benchwithzmq/baseline/20260129/bench_linux_ALL_20260129_194404.txt`
-- benchwithbeast (STREAM): `benchwithbeast/results/20260129/bench_beast_STREAM_20260129_200645.csv`
+- benchwithzlink: `core/bench/benchwithzlink/results/20260129/bench_linux_ALL_20260129_184803.txt`
+- benchwithzmq (zlink-only): `core/bench/benchwithzmq/baseline/20260129/bench_linux_ALL_20260129_194404.txt`
+- benchwithbeast (STREAM): `core/bench/benchwithbeast/results/20260129/bench_beast_STREAM_20260129_200645.csv`
 
 ## benchwithzlink (zlink-only) Summary
 | Pattern | Transport | 64B Throughput | 262144B Throughput | 64B Latency | 262144B Latency |

@@ -26,7 +26,7 @@ include(CheckTypeSize)
 include(CMakePackageConfigHelpers)
 
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}")
-set(ZLINK_CMAKE_MODULES_DIR ${CMAKE_SOURCE_DIR}/builds/cmake/Modules)
+set(ZLINK_CMAKE_MODULES_DIR ${PROJECT_SOURCE_DIR}/builds/cmake/Modules)
 list(APPEND CMAKE_MODULE_PATH ${ZLINK_CMAKE_MODULES_DIR})
 
 include(TestZLINKVersion)
@@ -194,7 +194,7 @@ set(ZLINK_BOOST_INCLUDE_DIR "" CACHE PATH "Boost include directory (override bun
 if(ZLINK_BOOST_INCLUDE_DIR)
   set(BUNDLED_BOOST_INCLUDE_DIR "${ZLINK_BOOST_INCLUDE_DIR}")
 else()
-  set(BUNDLED_BOOST_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/boost")
+  set(BUNDLED_BOOST_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/boost")
 endif()
 if(EXISTS "${BUNDLED_BOOST_INCLUDE_DIR}/boost/asio.hpp")
   message(STATUS "ASIO headers found: ${BUNDLED_BOOST_INCLUDE_DIR}")
@@ -1121,7 +1121,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.rc.in ${CMAKE_CURRENT_BIN
 # Delete any src/platform.hpp left by configure
 file(REMOVE ${CMAKE_CURRENT_SOURCE_DIR}/src/platform.hpp)
 
-configure_file(${CMAKE_SOURCE_DIR}/builds/cmake/platform.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
+configure_file(${PROJECT_SOURCE_DIR}/builds/cmake/platform.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
 list(APPEND sources ${CMAKE_CURRENT_BINARY_DIR}/platform.hpp)
 
 set(prefix ${CMAKE_INSTALL_PREFIX})
@@ -1138,9 +1138,9 @@ endif()
 
 if(MSVC)
   if(CMAKE_CL_64)
-    set(nsis-template ${CMAKE_SOURCE_DIR}/builds/cmake/NSIS.template64.in)
+    set(nsis-template ${PROJECT_SOURCE_DIR}/builds/cmake/NSIS.template64.in)
   else()
-    set(nsis-template ${CMAKE_SOURCE_DIR}/builds/cmake/NSIS.template32.in)
+    set(nsis-template ${PROJECT_SOURCE_DIR}/builds/cmake/NSIS.template32.in)
   endif()
 
   add_custom_command(
@@ -1493,19 +1493,19 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
   option(ZLINK_BUILD_BENCH_ZMQ "Build ZeroMQ comparison benchmarks" ON)
   option(ZLINK_BUILD_BENCH_ZLINK "Build zlink benchmarks" ON)
   option(ZLINK_BUILD_BENCH_BEAST "Build Beast benchmarks" ON)
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzmq/CMakeLists.txt")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithzmq/CMakeLists.txt")
     if(ZLINK_BUILD_BENCH_ZMQ)
-      add_subdirectory(benchwithzmq)
+      add_subdirectory(bench/benchwithzmq)
     endif()
   endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithzlink/CMakeLists.txt")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithzlink/CMakeLists.txt")
     if(ZLINK_BUILD_BENCH_ZLINK)
-      add_subdirectory(benchwithzlink)
+      add_subdirectory(bench/benchwithzlink)
     endif()
   endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchwithbeast/CMakeLists.txt")
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")
     if(ZLINK_BUILD_BENCH_BEAST)
-      add_subdirectory(benchwithbeast)
+      add_subdirectory(bench/benchwithbeast)
     endif()
   endif()
 endif()
@@ -1585,7 +1585,7 @@ if((NOT CMAKE_VERSION VERSION_LESS 3.0) AND (BUILD_SHARED OR BUILD_STATIC))
   export(EXPORT ${PROJECT_NAME}-targets FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Targets.cmake")
 endif()
 configure_package_config_file(
-  ${CMAKE_SOURCE_DIR}/builds/cmake/ZlinkConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  ${PROJECT_SOURCE_DIR}/builds/cmake/ZlinkConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
   INSTALL_DESTINATION ${ZEROMQ_CMAKECONFIG_INSTALL_DIR})
 write_basic_package_version_file(
   ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake

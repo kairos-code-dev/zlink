@@ -24,11 +24,11 @@ env:
     - secure: "ZFL7hLJlGwYix8fF835OnQYakBt/o5iS7IfSW7el44ejEvGAOM9O5/ufxCcqSqn8Np7nOaM3RriAVTqWPZD6S7tMeflGTSGYHPYwWUc83z4rUPyG2FWVKXdB8ufpebAwu3hCgLiSmVeoQG47dl6xNk1oKCd+3UIjgz33u1Ecfps="
 
 # Build and check this project according to the BUILD_TYPE
-script: ./ci_build.sh
+script: ./core/ci_build.sh
 
 # Deploy tags
 before_deploy:
-- . ./ci_deploy.sh
+- . ./core/ci_deploy.sh
 deploy:
   provider: releases
   api_key:

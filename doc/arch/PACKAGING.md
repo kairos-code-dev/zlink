@@ -27,13 +27,13 @@
 
 ---
 
-## Conan (packaging/conan)
+## Conan (core/packaging/conan)
 GitHub Release tarball에서 소스를 가져온다.
 
 파일:
-- `packaging/conan/conanfile.py`
-- `packaging/conan/conandata.yml`
-- `packaging/conan/README.md`
+- `core/packaging/conan/conanfile.py`
+- `core/packaging/conan/conandata.yml`
+- `core/packaging/conan/README.md`
 
 업데이트 절차:
 1) 릴리즈 태그 생성 및 GitHub Release 확인

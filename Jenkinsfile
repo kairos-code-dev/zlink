@@ -88,7 +88,7 @@ pipeline {
                             sh 'chmod -R u+w .'
                             deleteDir()
                         }
-                        sh './autogen.sh'
+                        sh './core/autogen.sh'
                         stash (name: 'prepped', includes: '**/*', excludes: '**/cppcheck.xml')
                     }
         }

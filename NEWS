@@ -105,7 +105,7 @@
     https://github.com/zlink/libzlink/security/advisories/GHSA-fc3w-qxf5-7hp6
 
 * Note for packagers: an external, self-contained sha1 library is now
-  included in the source tree under external/sha1/ - it is licensed
+  included in the source tree under core/external/sha1/ - it is licensed
   under BSD-3-Clause and thus it is fully compatible with libzlink's
   license.
   It is only used if WebSockets support is enabled, and if neither GnuTLS nor
@@ -450,7 +450,7 @@
   It is licensed under the BSD-2-Clause and thus it is compatible with LGPL-3.0.
   Note that, if selected at build time, the license text must be distributed
   with the binary in accordance to the license terms. A copy can be found at:
-  external/wepoll/license.txt
+  core/external/wepoll/license.txt
 
 * The pre-made Visual Studio solutions file are deprecated, and users are
   encouraged to use the CMake solution generation feature instead.

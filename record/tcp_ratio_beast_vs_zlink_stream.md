@@ -2,7 +2,7 @@
 
 - Runs: 10
 - Beast: `build/bin/bench_beast_stream` (STREAM)
-- zlink: STREAM results from `benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
+- zlink: STREAM results from `core/bench/benchwithzlink/results/20260123/bench_linux_ALL_20260123_170718.txt`
 
 ## Size 64B
 

@@ -121,11 +121,11 @@ endif()
 
 add_library(
   unity STATIC
-  "${CMAKE_SOURCE_DIR}/external/unity/unity.c" "${CMAKE_SOURCE_DIR}/external/unity/unity.h"
-  "${CMAKE_SOURCE_DIR}/external/unity/unity_internals.h")
-set_target_properties(unity PROPERTIES PUBLIC_HEADER "${CMAKE_SOURCE_DIR}/external/unity/unity.h")
+  "${CMAKE_SOURCE_DIR}/core/external/unity/unity.c" "${CMAKE_SOURCE_DIR}/core/external/unity/unity.h"
+  "${CMAKE_SOURCE_DIR}/core/external/unity/unity_internals.h")
+set_target_properties(unity PROPERTIES PUBLIC_HEADER "${CMAKE_SOURCE_DIR}/core/external/unity/unity.h")
 target_compile_definitions(unity PUBLIC "UNITY_USE_COMMAND_LINE_ARGS" "UNITY_EXCLUDE_FLOAT")
-target_include_directories(unity PUBLIC "${CMAKE_SOURCE_DIR}/external/unity")
+target_include_directories(unity PUBLIC "${CMAKE_SOURCE_DIR}/core/external/unity")
 
 set(TESTUTIL_SOURCES
   testutil.cpp
@@ -154,7 +154,7 @@ else()
 endif()
 
 if(MSVC_VERSION LESS 1700)
-  set_source_files_properties("${CMAKE_SOURCE_DIR}/external/unity/unity.c" PROPERTIES LANGUAGE CXX)
+  set_source_files_properties("${CMAKE_SOURCE_DIR}/core/external/unity/unity.c" PROPERTIES LANGUAGE CXX)
 endif()
 
 if(MSVC_VERSION LESS 1600)

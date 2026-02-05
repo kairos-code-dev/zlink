@@ -5,19 +5,23 @@
 - `core/include/`: public headers like `core/include/zlink.h`.
 - `core/tests/`: functional test suite (Unity), files named `core/tests/test_*.cpp`.
 - `core/unittests/`: internal tests named `core/unittests/unittest_*.cpp`.
-- `build-scripts/`: platform build scripts (e.g., `build-scripts/linux/build.sh`).
-- `core/benchwithzlink/` and `core/perf/`: benchmarks and comparison tooling.
-- `dist/`: packaged build outputs by platform.
+- `core/build-scripts/`: platform build scripts (e.g., `core/build-scripts/linux/build.sh`).
+- `core/builds/`: build helpers, templates, and CI tooling (CMake modules, platform helpers).
+- `core/external/`: bundled third-party sources (Boost, Unity, etc.).
+- `core/tools/`: dev/build helper scripts.
+- `core/packaging/`: packaging metadata (conan, debian, nuget, obs, etc.).
+- `core/m4/`: autotools macro definitions.
+- `core/bench/benchwithzlink/` and `core/perf/`: benchmarks and comparison tooling.
+- `core/dist/`: packaged build outputs by platform.
 - `bindings/`: language wrappers (C++, Java, C#, Node.js).
-- `docs/`: project documentation.
-- `tools/`: dev/build helper scripts.
+- `doc/`: project documentation.
 
 ## Build, Test, and Development Commands
-- `./build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
-- `./build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
+- `./core/build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
+- `./core/build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
 - `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
 - `ctest --output-on-failure`: run tests from a build dir (e.g., `core/build/linux-x64`).
-- Autotools fallback: `./autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
+- Autotools fallback: `./core/autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
 - Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 
 ## Coding Style and Naming Conventions

@@ -522,7 +522,7 @@ static void test_spot_peer_wss ()
 
 static void test_spot_unsubscribe ()
 {
-    // TODO: zlink_spot_sub_socket API 추가 후 활성화
+    // TODO: zlink_spot_sub_socket API ??? ???????
     TEST_IGNORE_MESSAGE ("Unsubscribe test pending - requires spot_sub_socket API");
     return;
 
@@ -691,3 +691,4 @@ int main (int, char **)
     RUN_TEST (test_spot_multi_publisher);
     return UNITY_END ();
 }
+

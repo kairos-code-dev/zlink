@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **Build System Cleanup**
 - Removed Autotools build system (configure.ac, acinclude.m4, Makefile.am files)
-- Removed GYP build configuration (builds/gyp/project.gyp)
+- Removed GYP build configuration (core/builds/gyp/project.gyp)
 - Removed MinGW/Cygwin Makefiles (Makefile.mingw32, Makefile.cygwin, README.cygwin.md)
 - **CMake is now the only supported build system**
 
@@ -32,15 +32,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 **Build Scripts**
 - Updated 4 CI/CD scripts to use CMake instead of autotools:
-  - ci_build.sh - Main CI build script
-  - builds/cmake/ci_build.sh - CMake-specific builds
-  - builds/coverage/ci_build.sh - Code coverage testing
-  - builds/valgrind/ci_build.sh - Memory testing
+  - core/ci_build.sh - Main CI build script
+  - core/builds/cmake/ci_build.sh - CMake-specific builds
+  - core/builds/coverage/ci_build.sh - Code coverage testing
+  - core/builds/valgrind/ci_build.sh - Memory testing
 - Documented 4 scripts that retain autotools for dependency builds:
-  - builds/abi-compliance-checker/ci_build.sh - Upstream libzlink ABI checks
-  - builds/fuzz/ci_build.sh - OSS-Fuzz integration
-  - builds/android/build.sh - Android NDK dependency builder
-  - builds/android/android_build_helper.sh - Generic autotools helper
+  - core/builds/abi-compliance-checker/ci_build.sh - Upstream libzlink ABI checks
+  - core/builds/fuzz/ci_build.sh - OSS-Fuzz integration
+  - core/builds/android/build.sh - Android NDK dependency builder
+  - core/builds/android/android_build_helper.sh - Generic autotools helper
 
 ### Migration Guide
 
@@ -48,7 +48,7 @@ If you were using Autotools or other legacy build systems:
 
 **Before:**
 ```bash
-./autogen.sh
+./core/autogen.sh
 ./configure
 make
 make install
@@ -61,7 +61,7 @@ cmake --build build
 cmake --install build
 ```
 
-All platforms (Windows, Linux, macOS) now use CMake exclusively. See build-scripts/ directory for platform-specific build scripts, or refer to CLAUDE.md for detailed build instructions.
+All platforms (Windows, Linux, macOS) now use CMake exclusively. See core/build-scripts/ directory for platform-specific build scripts, or refer to CLAUDE.md for detailed build instructions.
 
 ## [0.3.0] - 2026-01-15
 
@@ -249,7 +249,7 @@ All versions support the following platforms:
 - CMake 3.10+
 - C++11 compiler (GCC 5+, Clang 3.8+, MSVC 2015+)
 - OpenSSL (for TLS support)
-- Boost.Asio (bundled in `external/boost/`)
+- Boost.Asio (bundled in `core/external/boost/`)
 
 ### v0.1.x
 - CMake 3.10+

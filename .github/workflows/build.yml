@@ -94,7 +94,7 @@ jobs:
             -DZLINK_CXX_STANDARD=20 `
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR"
           cmake --build . --config Release --parallel
-          cmake --install . --config Release --prefix ../dist/windows-x64
+          cmake --install . --config Release --prefix ../core/dist/windows-x64
 
       - name: Install Visual C++ Redistributable
         shell: pwsh
@@ -135,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-windows-x64
-          path: dist/windows-x64/
+          path: core/dist/windows-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-windows-arm64:
@@ -173,13 +173,13 @@ jobs:
             -DOPENSSL_ROOT_DIR="$env:OPENSSL_ROOT_DIR" `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           cmake --build . --config Release --parallel
-          cmake --install . --config Release --prefix ../dist/windows-arm64
+          cmake --install . --config Release --prefix ../core/dist/windows-arm64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-windows-arm64
-          path: dist/windows-arm64/
+          path: core/dist/windows-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-linux:
@@ -202,8 +202,8 @@ jobs:
 
       - name: Build libzlink
         run: |
-          chmod +x ./build-scripts/linux/build.sh
-          ./build-scripts/linux/build.sh \
+          chmod +x ./core/build-scripts/linux/build.sh
+          ./core/build-scripts/linux/build.sh \
             x64 \
             "ON"
 
@@ -211,7 +211,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-linux-x64
-          path: dist/linux-x64/
+          path: core/dist/linux-x64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-linux-arm64:
@@ -234,8 +234,8 @@ jobs:
 
       - name: Build libzlink
         run: |
-          chmod +x ./build-scripts/linux/build.sh
-          ./build-scripts/linux/build.sh \
+          chmod +x ./core/build-scripts/linux/build.sh
+          ./core/build-scripts/linux/build.sh \
             arm64 \
             "ON"
 
@@ -243,7 +243,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-linux-arm64
-          path: dist/linux-arm64/
+          path: core/dist/linux-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-macos-intel:
@@ -264,8 +264,8 @@ jobs:
           export OPENSSL_ROOT_DIR="$VCPKG_ROOT/installed/x64-osx"
           echo "Using OpenSSL from $OPENSSL_ROOT_DIR"
           
-          chmod +x ./build-scripts/macos/build.sh
-          ./build-scripts/macos/build.sh \
+          chmod +x ./core/build-scripts/macos/build.sh
+          ./core/build-scripts/macos/build.sh \
             x86_64 \
             "ON" \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-osx -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR"
@@ -273,14 +273,14 @@ jobs:
       - name: Verify build
         run: |
           echo "Verifying x86_64 build..."
-          file dist/macos-x86_64/libzlink.dylib
-          ls -la dist/macos-x86_64/
+          file core/dist/macos-x86_64/libzlink.dylib
+          ls -la core/dist/macos-x86_64/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-macos-x64
-          path: dist/macos-x86_64/
+          path: core/dist/macos-x86_64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-macos-arm64:
@@ -307,8 +307,8 @@ jobs:
           export LDFLAGS="-L$OPENSSL_ROOT_DIR/lib"
           export CPPFLAGS="-I$OPENSSL_ROOT_DIR/include"
           export PKG_CONFIG_PATH="$OPENSSL_ROOT_DIR/lib/pkgconfig"
-          chmod +x ./build-scripts/macos/build.sh
-          ./build-scripts/macos/build.sh \
+          chmod +x ./core/build-scripts/macos/build.sh
+          ./core/build-scripts/macos/build.sh \
             arm64 \
             "ON"
 
@@ -316,7 +316,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libzlink-macos-arm64
-          path: dist/macos-arm64/
+          path: core/dist/macos-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
   build-node-prebuilds:

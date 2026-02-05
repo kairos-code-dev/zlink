@@ -663,8 +663,8 @@ int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
 }
 
 int gateway_t::set_router_option (int option_,
-                                  const void *optval_,
-                                  size_t optvallen_)
+                                 const void *optval_,
+                                 size_t optvallen_)
 {
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
@@ -697,6 +697,13 @@ int gateway_t::set_router_option (int option_,
         return -1;
     }
     return _router_socket->setsockopt (option_, optval_, optvallen_);
+}
+
+void *gateway_t::router ()
+{
+    if (ensure_router_socket () != 0)
+        return NULL;
+    return static_cast<void *> (_router_socket);
 }
 
 void gateway_t::on_service_update (const std::string &service_name_)

@@ -478,6 +478,7 @@ ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *ca_cert,
                                            const char *hostname,
                                            int trust_system);
+ZLINK_EXPORT void *zlink_gateway_router (void *gateway);
 ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
                                              const char *service_name);
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);

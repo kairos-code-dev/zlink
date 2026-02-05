@@ -143,7 +143,7 @@ try {
         -DBUILD_STATIC=OFF `
         -DBUILD_TESTS="$BUILD_TESTS_FLAG" `
         -DZLINK_CXX_STANDARD=17 `
-        -DBUILD_BENCHMARKS=ON `
+        -DBUILD_BENCHMARKS=OFF `
         -DCMAKE_INSTALL_PREFIX="$PWD\install" `
         $BoostIncludeArgs `
         $OpenSSLArgs
@@ -263,8 +263,8 @@ try {
         Write-Host "Copying public headers..."
         $IncludeDir = "..\..\$OutputDir\include"
         New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
-        Copy-Item "..\..\include\zlink.h" $IncludeDir
-        Copy-Item "..\..\include\zlink_utils.h" $IncludeDir
+        Copy-Item "..\..\core\include\zlink.h" $IncludeDir
+        Copy-Item "..\..\core\include\zlink_utils.h" $IncludeDir
         Write-Host "Copied: zlink.h, zlink_utils.h -> $IncludeDir"
     } else {
         throw "libzlink.dll not found!"

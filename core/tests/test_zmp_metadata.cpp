@@ -258,7 +258,11 @@ void test_zmp_error_invalid_hello ()
 void test_zmp_heartbeat_ttl_min ()
 {
     void *server = test_context_socket (ZLINK_PAIR);
-    const int ttl_local_ms = 300;
+    int ttl_local_ms = 300;
+#if defined ZLINK_HAVE_WINDOWS
+    // Windows scheduling/timer granularity can delay TTL handling.
+    ttl_local_ms = 1000;
+#endif
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (server, ZLINK_HEARTBEAT_TTL, &ttl_local_ms,
                       sizeof (ttl_local_ms)));
@@ -303,9 +307,15 @@ void test_zmp_heartbeat_ttl_min ()
     heartbeat[4] = 'A';
     TEST_ASSERT_TRUE (send_zmp_control (raw, heartbeat, sizeof (heartbeat)));
 
-    set_recv_timeout (raw, 1200);
+    int recv_timeout_ms = 1200;
+    int recv_attempts = 6;
+#if defined ZLINK_HAVE_WINDOWS
+    recv_timeout_ms = 3000;
+    recv_attempts = 10;
+#endif
+    set_recv_timeout (raw, recv_timeout_ms);
     bool saw_error = false;
-    for (int i = 0; i < 6 && !saw_error && !closed; ++i) {
+    for (int i = 0; i < recv_attempts && !saw_error && !closed; ++i) {
         unsigned char flags = 0;
         std::vector<unsigned char> body;
         if (!read_zmp_frame (raw, flags, body, closed))

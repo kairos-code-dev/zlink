@@ -16,14 +16,16 @@ def parse_args():
         "Options:\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Build directory (default: build/bench)\n"
+        "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"
         "Env:\n"
-        "  BENCH_NO_TASKSET=1      Disable taskset CPU pinning on Linux\n"
+        "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
     )
     p_req = "ALL"
     num_runs = rc.DEFAULT_NUM_RUNS
     build_dir = ""
+    pin_cpu = False
 
     i = 1
     while i < len(sys.argv):
@@ -53,6 +55,8 @@ def parse_args():
                 sys.exit(1)
             build_dir = sys.argv[i + 1]
             i += 1
+        elif arg == "--pin-cpu":
+            pin_cpu = True
         elif arg.startswith("--build-dir="):
             build_dir = arg.split("=", 1)[1]
         elif arg.startswith("--"):
@@ -66,13 +70,15 @@ def parse_args():
     if num_runs < 1:
         print("Error: --runs must be >= 1.", file=sys.stderr)
         sys.exit(1)
-    return p_req, num_runs, build_dir
+    return p_req, num_runs, build_dir, pin_cpu
 
 def main():
-    p_req, num_runs, build_dir = parse_args()
+    p_req, num_runs, build_dir, pin_cpu = parse_args()
     if build_dir:
         build_dir = rc.normalize_build_dir(build_dir)
         rc.BUILD_DIR = build_dir
+    if pin_cpu:
+        rc.base_env["BENCH_TASKSET"] = "1"
 
     check_bin = os.path.join(rc.BUILD_DIR, "comp_std_zmq_pair" + rc.EXE_SUFFIX)
     if not os.path.exists(check_bin):

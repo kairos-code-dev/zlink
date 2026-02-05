@@ -31,7 +31,7 @@ OUTPUT_FILE=""
 RUNS=3
 REUSE_BUILD=0
 ZLINK_ONLY=0
-NO_TASKSET=0
+PIN_CPU=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
@@ -56,7 +56,7 @@ Options:
   --runs N             Iterations per configuration (default: 3).
   --zlink-only         Run only zlink benchmarks (no libzmq baseline).
   --reuse-build        Reuse existing build dir without re-running CMake.
-  --no-taskset         Disable taskset CPU pinning on Linux.
+  --pin-cpu            Pin CPU core during benchmarks (Linux taskset).
   --io-threads N       Set BENCH_IO_THREADS for the benchmark run.
   --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N             Convenience alias for --msg-sizes N.
@@ -105,8 +105,11 @@ while [[ $# -gt 0 ]]; do
     --zlink-only)
       ZLINK_ONLY=1
       ;;
+    --pin-cpu)
+      PIN_CPU=1
+      ;;
     --no-taskset)
-      NO_TASKSET=1
+      PIN_CPU=0
       ;;
     --io-threads)
       BENCH_IO_THREADS="${2:-}"
@@ -258,8 +261,8 @@ fi
 
 RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/core/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
-if [[ "${NO_TASKSET}" -eq 1 ]]; then
-  RUN_ENV+=(BENCH_NO_TASKSET=1)
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  RUN_ENV+=(BENCH_TASKSET=1)
 fi
 if [[ -n "${BENCH_IO_THREADS}" ]]; then
   RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")

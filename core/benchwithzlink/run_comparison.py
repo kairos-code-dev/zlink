@@ -141,13 +141,13 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
 
     try:
         # Args: [lib_name] [transport] [size]
-        # Use taskset on Linux to pin to CPU 1 for reduced variance unless disabled.
+        # Default: do not pin CPU. Enable with BENCH_TASKSET=1 on Linux.
         if IS_WINDOWS:
             cmd = [binary_path, lib_name, transport, str(size)]
-        elif os.environ.get("BENCH_NO_TASKSET"):
-            cmd = [binary_path, lib_name, transport, str(size)]
-        else:
+        elif os.environ.get("BENCH_TASKSET") == "1":
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
+        else:
+            cmd = [binary_path, lib_name, transport, str(size)]
         result = subprocess.run(cmd,
                                 env=env,
                                 capture_output=True,
@@ -228,10 +228,11 @@ def parse_args():
         "  --zlink-only            Alias for --current-only\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Build directory (default: build/)\n"
+        "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"
         "Env:\n"
-        "  BENCH_NO_TASKSET=1      Disable taskset CPU pinning on Linux\n"
+        "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
         "  BENCH_TRANSPORTS=list  Comma-separated transports (e.g., tcp,ws,wss)\n"
     )
     refresh = False
@@ -239,6 +240,7 @@ def parse_args():
     num_runs = DEFAULT_NUM_RUNS
     build_dir = ""
     current_only = False
+    pin_cpu = False
 
     i = 1
     while i < len(sys.argv):
@@ -250,6 +252,8 @@ def parse_args():
             refresh = True
         elif arg == "--current-only" or arg == "--zlink-only":
             current_only = True
+        elif arg == "--pin-cpu":
+            pin_cpu = True
         elif arg == "--runs":
             if i + 1 >= len(sys.argv):
                 print("Error: --runs requires a value.", file=sys.stderr)
@@ -280,17 +284,19 @@ def parse_args():
         print("Error: --runs must be >= 1.", file=sys.stderr)
         sys.exit(1)
 
-    return p_req, refresh, num_runs, build_dir, current_only
+    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu
 
 def main():
-    p_req, refresh, num_runs, build_dir, current_only = parse_args()
-    global BUILD_DIR, CURRENT_LIB_DIR
+    global BUILD_DIR, CURRENT_LIB_DIR, base_env
+    p_req, refresh, num_runs, build_dir, current_only, pin_cpu = parse_args()
     if build_dir:
         BUILD_DIR = normalize_build_dir(build_dir)
     else:
         BUILD_DIR = normalize_build_dir(BUILD_DIR)
 
     CURRENT_LIB_DIR = derive_current_lib_dir(BUILD_DIR)
+    if pin_cpu:
+        base_env["BENCH_TASKSET"] = "1"
 
     # Check if any target binary exists
     check_bin = os.path.join(BUILD_DIR, "comp_current_pair" + EXE_SUFFIX)

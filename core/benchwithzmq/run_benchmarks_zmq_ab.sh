@@ -20,7 +20,7 @@ PATTERN="ALL"
 OUTPUT_FILE=""
 RUNS=3
 REUSE_BUILD=0
-NO_TASKSET=0
+PIN_CPU=0
 BENCH_IO_THREADS=""
 CORE_SIZES=0
 
@@ -35,7 +35,7 @@ Options:
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
   --reuse-build        Reuse existing build dir without re-running CMake.
-  --no-taskset         Disable taskset CPU pinning on Linux.
+  --pin-cpu            Pin CPU core during benchmarks (Linux taskset).
   --io-threads N       Set BENCH_IO_THREADS for the benchmark run.
   --core-sizes         Use core sizes only (64,1024,65536).
 USAGE
@@ -62,8 +62,11 @@ while [[ $# -gt 0 ]]; do
       RUNS="${2:-}"
       shift
       ;;
+    --pin-cpu)
+      PIN_CPU=1
+      ;;
     --no-taskset)
-      NO_TASKSET=1
+      PIN_CPU=0
       ;;
     --io-threads)
       BENCH_IO_THREADS="${2:-}"
@@ -169,8 +172,8 @@ fi
 
 RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/benchwithzmq/run_comparison_zmq_ab.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
-if [[ "${NO_TASKSET}" -eq 1 ]]; then
-  RUN_ENV+=(BENCH_NO_TASKSET=1)
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  RUN_ENV+=(BENCH_TASKSET=1)
 fi
 if [[ -n "${BENCH_IO_THREADS}" ]]; then
   RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")

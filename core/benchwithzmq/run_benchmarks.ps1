@@ -13,6 +13,7 @@ param(
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Size = "",
+    [switch]$PinCpu,
     [switch]$Help
 )
 
@@ -38,6 +39,7 @@ Options:
   -IoThreads N        Set BENCH_IO_THREADS for the benchmark run.
   -MsgSizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   -Size N             Convenience alias for -MsgSizes N.
+  -PinCpu             Pin CPU core during benchmarks (Linux taskset).
 
 Examples:
   .\benchwithzmq\run_benchmarks.ps1
@@ -216,6 +218,9 @@ if ($IoThreads) {
 }
 if ($MsgSizes) {
     $RunEnv["BENCH_MSG_SIZES"] = $MsgSizes
+}
+if ($PinCpu) {
+    $RunEnv["BENCH_TASKSET"] = "1"
 }
 
 # Add flags

@@ -5,6 +5,14 @@
 
 #include <string.h>
 
+void setUp ()
+{
+}
+
+void tearDown ()
+{
+}
+
 static void test_spot_local_pubsub ()
 {
     void *ctx = zlink_ctx_new ();

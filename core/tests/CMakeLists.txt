@@ -244,6 +244,9 @@ set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
 set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
+if(WIN32)
+  set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
+endif()
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

@@ -19,6 +19,7 @@ param(
     [string]$Size = "",
     [Alias("Transport")]
     [string]$Transports = "",
+    [switch]$PinCpu,
     [switch]$Help
 )
 
@@ -51,6 +52,7 @@ Options:
   -MsgSizes LIST       Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   -Size N              Convenience alias for -MsgSizes N.
   -Transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
+  -PinCpu              Pin CPU core during benchmarks (Linux taskset).
 
 Examples:
   .\benchwithzlink\run_benchmarks.ps1
@@ -125,9 +127,25 @@ if ($Result) {
     $OutputFile = Join-Path (Join-Path $ResultsDir $DateDir) "${Name}.txt"
 }
 
-# Determine script and root directories
+# Determine script and repo root directories
 $ScriptDir = $PSScriptRoot
-$RootDir = Split-Path $ScriptDir -Parent
+$RootDir = $null
+$ProbeDir = $ScriptDir
+while ($ProbeDir) {
+    if (Test-Path (Join-Path $ProbeDir ".git")) {
+        $RootDir = $ProbeDir
+        break
+    }
+    $Parent = Split-Path $ProbeDir -Parent
+    if ($Parent -eq $ProbeDir) {
+        break
+    }
+    $ProbeDir = $Parent
+}
+if (-not $RootDir) {
+    # Fallback: assume repo root is two levels above script dir
+    $RootDir = Split-Path (Split-Path $ScriptDir -Parent) -Parent
+}
 
 # Set default build directory
 if (-not $BuildDir) {
@@ -193,15 +211,24 @@ if ($ReuseBuild) {
     $VcpkgInstalled = Join-Path $RootDir "deps\vcpkg\installed\x64-windows-static"
     $VcpkgInclude = Join-Path $VcpkgInstalled "include"
 
-    cmake -S "$RootDir" -B "$BuildDir" `
-        -G "$CMakeGenerator" `
-        -A "$CMakeArch" `
-        "-DCMAKE_BUILD_TYPE=Release" `
-        "-DCMAKE_PREFIX_PATH=$VcpkgInstalled" `
-        "-DZLINK_BOOST_INCLUDE_DIR=$VcpkgInclude" `
-        "-DBUILD_BENCHMARKS=ON" `
-        "-DBUILD_TESTS=OFF" `
+    $CMakeArgs = @(
+        "-S", "$RootDir",
+        "-B", "$BuildDir",
+        "-G", "$CMakeGenerator",
+        "-A", "$CMakeArch",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_PREFIX_PATH=$VcpkgInstalled",
+        "-DZLINK_BOOST_INCLUDE_DIR=$VcpkgInclude",
+        "-DBUILD_BENCHMARKS=ON",
+        "-DBUILD_TESTS=OFF",
         "-DZLINK_CXX_STANDARD=17"
+    )
+
+    if ($CurrentOnly) {
+        $CMakeArgs += "-DZLINK_BUILD_BENCH_ZMQ=OFF"
+    }
+
+    cmake @CMakeArgs
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "CMake configuration failed"
@@ -241,7 +268,7 @@ if (-not $PythonCmd) {
 Write-Host "Using Python: $PythonCmd"
 
 # Build run command
-$RunScript = Join-Path (Join-Path $RootDir "benchwithzlink") "run_comparison.py"
+$RunScript = Join-Path $ScriptDir "run_comparison.py"
 $RunArgs = @($Pattern, "--build-dir", $BuildDir, "--runs", $Runs.ToString())
 
 # Environment variables
@@ -254,6 +281,9 @@ if ($MsgSizes) {
 }
 if ($Transports) {
     $RunEnv["BENCH_TRANSPORTS"] = $Transports
+}
+if ($PinCpu) {
+    $RunEnv["BENCH_TASKSET"] = "1"
 }
 
 # Add flags

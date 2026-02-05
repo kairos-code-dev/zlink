@@ -1,11 +1,11 @@
 # benchwithzlink - zlink version comparison benchmarks
 #
 # This benchmark compares:
-# - baseline: Previous zlink version (manually copied to baseline/lib/)
+# - baseline: Previous zlink version (manually copied to baseline/zlink_dist/<platform>-<arch>/)
 # - current: Current zlink build
 #
 # Usage:
-# 1. Copy previous zlink library to core/bench/benchwithzlink/baseline/lib/
+# 1. Copy previous zlink library to core/bench/benchwithzlink/baseline/zlink_dist/<platform>-<arch>/
 #    - Linux: libzlink.so
 #    - macOS: libzlink.dylib
 #    - Windows: libzlink.dll + libzlink.lib
@@ -13,17 +13,31 @@
 # 3. Run: ./core/bench/benchwithzlink/run_benchmarks.sh ALL
 
 # Define baseline zlink location
-set(BASELINE_ZLINK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/lib")
+if(WIN32)
+    set(BASELINE_ZLINK_PLATFORM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/zlink_dist/windows-x64")
+    if(EXISTS "${BASELINE_ZLINK_PLATFORM_ROOT}")
+        set(BASELINE_ZLINK_ROOT "${BASELINE_ZLINK_PLATFORM_ROOT}")
+    else()
+        set(BASELINE_ZLINK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/lib")
+    endif()
+else()
+    set(BASELINE_ZLINK_PLATFORM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/zlink_dist/linux-x64")
+    if(EXISTS "${BASELINE_ZLINK_PLATFORM_ROOT}")
+        set(BASELINE_ZLINK_ROOT "${BASELINE_ZLINK_PLATFORM_ROOT}")
+    else()
+        set(BASELINE_ZLINK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/baseline/lib")
+    endif()
+endif()
 
 # Find baseline library
 if(WIN32)
-    file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/*.lib")
-    file(GLOB BASELINE_ZLINK_DLL "${BASELINE_ZLINK_ROOT}/*.dll")
+    file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/lib/*.lib")
+    file(GLOB BASELINE_ZLINK_DLL "${BASELINE_ZLINK_ROOT}/bin/*.dll")
 else()
     # Try to find .so first, then .dylib
-    file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzlink.so*")
+    file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/lib/libzlink.so*")
     if(NOT BASELINE_ZLINK_LIBRARY)
-        file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/libzlink.dylib*")
+        file(GLOB BASELINE_ZLINK_LIBRARY "${BASELINE_ZLINK_ROOT}/lib/libzlink.dylib*")
     endif()
 endif()
 

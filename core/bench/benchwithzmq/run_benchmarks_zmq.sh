@@ -2,19 +2,40 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 IS_WINDOWS=0
+PLATFORM="linux"
+ARCH="x64"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     IS_WINDOWS=1
+    PLATFORM="windows"
+    ;;
+  Darwin*)
+    PLATFORM="macos"
+    ;;
+  Linux*)
+    PLATFORM="linux"
+    ;;
+esac
+
+case "$(uname -m)" in
+  x86_64|amd64)
+    ARCH="x64"
+    ;;
+  aarch64|arm64)
+    ARCH="arm64"
+    ;;
+  *)
+    ARCH="$(uname -m)"
     ;;
 esac
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/core/build/bench"
+  BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
 PATTERN="ALL"
 OUTPUT_FILE=""
@@ -30,7 +51,7 @@ Usage: core/bench/benchwithzmq/run_benchmarks_zmq.sh [options]
 Options:
   -h, --help            Show this help.
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: core/build/bench).
+  --build-dir PATH     Build directory (default: core/build/<platform>-<arch>).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
   --reuse-build        Reuse existing build dir without re-running CMake.

@@ -4,6 +4,7 @@ import os
 import sys
 import statistics
 import json
+import platform
 
 # Environment helpers
 IS_WINDOWS = os.name == 'nt'
@@ -11,16 +12,53 @@ EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 
+def platform_arch_tag():
+    sys_name = platform.system().lower()
+    if "darwin" in sys_name:
+        platform_tag = "macos"
+    elif "windows" in sys_name:
+        platform_tag = "windows"
+    else:
+        platform_tag = "linux"
+
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        arch_tag = "x64"
+    elif machine in ("aarch64", "arm64"):
+        arch_tag = "arm64"
+    else:
+        arch_tag = machine
+    return platform_tag, arch_tag
+
 def resolve_linux_paths():
-    """Return build/library paths for Linux/WSL environments."""
+    """Return build/library paths for Linux/macOS environments."""
+    sys_name = platform.system().lower()
+    if "darwin" in sys_name:
+        platform_tag = "macos"
+    else:
+        platform_tag = "linux"
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        arch_tag = "x64"
+    elif machine in ("aarch64", "arm64"):
+        arch_tag = "arm64"
+    else:
+        arch_tag = machine
+
     possible_paths = [
+        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin"),
+        os.path.join(ROOT_DIR, "core", "build", f"{platform_tag}-{arch_tag}", "bin", "Release"),
         os.path.join(ROOT_DIR, "core", "build", "bin"),
-        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "bin"),
-        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "bin", "Release"),
     ]
     build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-    linux_dist_dir = os.path.join(ROOT_DIR, "core", "bench", "benchwithzmq", "libzmq", "libzmq_dist-linux-x64", "lib")
-    default_dist_dir = os.path.join(ROOT_DIR, "core", "bench", "benchwithzmq", "libzmq", "libzmq_dist", "lib")
+    linux_dist_dir = os.path.join(
+        ROOT_DIR, "core", "bench", "benchwithzmq", "libzmq",
+        "libzmq_dist", "linux-x64", "lib"
+    )
+    default_dist_dir = os.path.join(
+        ROOT_DIR, "core", "bench", "benchwithzmq", "libzmq",
+        "libzmq_dist", "lib"
+    )
     if os.path.exists(linux_dist_dir):
         libzmq_lib_dir = os.path.abspath(linux_dist_dir)
     else:
@@ -28,7 +66,15 @@ def resolve_linux_paths():
     env_libzmq_dir = os.environ.get("BENCH_LIBZMQ_LIB_DIR")
     if env_libzmq_dir:
         libzmq_lib_dir = os.path.abspath(env_libzmq_dir)
-    zlink_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "core", "build", "lib"))
+    build_root = build_dir
+    base = os.path.basename(build_root)
+    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+        bin_root = os.path.dirname(build_root)
+        if os.path.basename(bin_root) == "bin":
+            build_root = os.path.dirname(bin_root)
+    elif base == "bin":
+        build_root = os.path.dirname(build_root)
+    zlink_lib_dir = os.path.abspath(os.path.join(build_root, "lib"))
     return build_dir, libzmq_lib_dir, zlink_lib_dir
 
 def normalize_build_dir(path):
@@ -63,7 +109,10 @@ def derive_zlink_lib_dir(build_dir):
 
 if IS_WINDOWS:
     BUILD_DIR = os.path.join("core", "build", "windows-x64", "bin", "Release")
-    LIBZMQ_LIB_DIR = os.path.abspath(os.path.join("core", "bench", "benchwithzmq", "libzmq", "libzmq_dist", "bin"))
+    LIBZMQ_LIB_DIR = os.path.abspath(os.path.join(
+        "core", "bench", "benchwithzmq", "libzmq",
+        "libzmq_dist", "windows-x64", "bin"
+    ))
     env_libzmq_dir = os.environ.get("BENCH_LIBZMQ_BIN_DIR")
     if env_libzmq_dir:
         LIBZMQ_LIB_DIR = os.path.abspath(env_libzmq_dir)
@@ -72,7 +121,14 @@ else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 3  # Reduced from 10 for faster testing
-CACHE_FILE = os.path.join(ROOT_DIR, "core", "bench", "benchwithzmq", "libzmq_cache.json")
+_platform_tag, _arch_tag = platform_arch_tag()
+CACHE_FILE = os.path.join(
+    ROOT_DIR,
+    "core",
+    "bench",
+    "benchwithzmq",
+    f"libzmq_cache_{_platform_tag}-{_arch_tag}.json",
+)
 
 def parse_env_list(name, cast_fn):
     val = os.environ.get(name)
@@ -146,12 +202,12 @@ def run_single_test(binary_name, lib_name, transport, size):
     except Exception:
         return []
 
-def collect_data(binary_name, lib_name, pattern_name, num_runs):
+def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
     final_stats = {} # (tr, size, metric) -> avg_value
     failures = []
     
-    for tr in TRANSPORTS:
+    for tr in transports:
         for sz in MSG_SIZES:
             print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
             metrics_raw = {} # metric_name -> list of values
@@ -195,12 +251,15 @@ def parse_args():
         "  --refresh-libzmq        Refresh libzmq baseline cache\n"
         "  --zlink-only            Run only zlink benchmarks\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
-        "  --build-dir PATH        Build directory (default: core/build/bench)\n"
+        "  --build-dir PATH        Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"
         "Env:\n"
         "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
+        "\n"
+        "Notes:\n"
+        "  STREAM pattern only runs on tcp transport.\n"
     )
     refresh = False
     p_req = "ALL"
@@ -291,20 +350,39 @@ def main():
         ("comp_std_zmq_router_router", "comp_zlink_router_router", "ROUTER_ROUTER"),
         ("comp_std_zmq_router_router_poll", "comp_zlink_router_router_poll",
          "ROUTER_ROUTER_POLL"),
+        ("comp_std_zmq_stream", "comp_zlink_stream", "STREAM"),
     ]
+    supported = sorted({p_name for _, _, p_name in comparisons})
+    if p_req != "ALL" and p_req not in supported:
+        print(
+            f"Error: unsupported pattern '{p_req}'. "
+            f"Supported patterns: {', '.join(supported)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     all_failures = []
+    matched = 0
     for std_bin, zlk_bin, p_name in comparisons:
         if p_req != "ALL" and p_name != p_req: continue
+        matched += 1
         
         print(f"\n## PATTERN: {p_name}")
+        if p_name == "STREAM":
+            if _env_transports and any(tr != "tcp" for tr in _env_transports):
+                print("  [STREAM] Forcing transport to tcp only.")
+            transports = ["tcp"]
+        else:
+            transports = TRANSPORTS
         
         if zlink_only:
-            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs)
+            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs,
+                                             transports)
             all_failures.extend(failures)
         else:
             if refresh or p_name not in cache:
-                s_stats, failures = collect_data(std_bin, "libzmq", p_name, num_runs)
+                s_stats, failures = collect_data(std_bin, "libzmq", p_name,
+                                                 num_runs, transports)
                 all_failures.extend(failures)
                 cache[p_name] = s_stats
                 with open(CACHE_FILE, 'w') as f: json.dump(cache, f, indent=2)
@@ -312,7 +390,8 @@ def main():
                 print(f"  [libzmq] Using cached baseline.")
                 s_stats = cache[p_name]
 
-            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs)
+            z_stats, failures = collect_data(zlk_bin, "zlink", p_name, num_runs,
+                                             transports)
             all_failures.extend(failures)
 
         # Print Table
@@ -320,7 +399,7 @@ def main():
         metric_w = 10
         val_w = 16
         diff_w = 9
-        for tr in TRANSPORTS:
+        for tr in transports:
             print(f"\n### Transport: {tr}")
             if zlink_only:
                 print(
@@ -364,6 +443,13 @@ def main():
                         f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {sl_s:>{val_w}} | {zl_s:>{val_w}} | {ld:>+7.2f}% |"
                     )
 
+    if matched == 0:
+        print(
+            "Error: no matching benchmarks found. "
+            "Use one of the supported patterns.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     if all_failures:
         print("\n## Failures")
         for pattern, lib_name, tr, sz, reason in all_failures:

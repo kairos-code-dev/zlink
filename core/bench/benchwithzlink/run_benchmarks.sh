@@ -5,11 +5,12 @@ set -euo pipefail
 # Compares baseline (previous zlink) vs current (new build)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# repo root (one level above core/)
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# repo root (three levels above: core/bench/benchwithzlink)
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 IS_WINDOWS=0
 PLATFORM="linux"
+ARCH="x64"
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     IS_WINDOWS=1
@@ -23,10 +24,22 @@ case "$(uname -s)" in
     ;;
 esac
 
+case "$(uname -m)" in
+  x86_64|amd64)
+    ARCH="x64"
+    ;;
+  aarch64|arm64)
+    ARCH="arm64"
+    ;;
+  *)
+    ARCH="$(uname -m)"
+    ;;
+esac
+
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/core/build"
+  BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
 PATTERN="ALL"
 WITH_BASELINE=0
@@ -50,7 +63,7 @@ Compare baseline zlink (previous version) vs current zlink (new build).
 Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
-  1. Copy previous zlink library to core/bench/benchwithzlink/baseline/lib/
+  1. Copy previous zlink library to core/bench/benchwithzlink/baseline/zlink_dist/<platform>-<arch>/
      - Linux: libzlink.so
      - macOS: libzlink.dylib
      - Windows: libzlink.dll + libzlink.lib
@@ -59,7 +72,7 @@ Options:
   -h, --help            Show this help.
   --with-baseline       Run baseline and refresh cache (default: use cache).
   --pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH      Build directory (default: core/build/).
+  --build-dir PATH      Build directory (default: core/build/<platform>-<arch>).
   --output PATH         Tee results to a file.
   --result              Write results under core/bench/benchwithzlink/results/YYYYMMDD/.
   --results-dir PATH    Override results root directory.
@@ -221,18 +234,37 @@ if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
 fi
 
 # Check baseline library exists when baseline run is requested
-BASELINE_LIB_DIR="${SCRIPT_DIR}/baseline/lib"
+BASELINE_ROOT="${SCRIPT_DIR}/baseline/zlink_dist/${PLATFORM}-${ARCH}"
+BASELINE_LIB_DIR="${BASELINE_ROOT}/lib"
+BASELINE_BIN_DIR="${BASELINE_ROOT}/bin"
 if [[ "${ZLINK_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 1 ]]; then
-  if [[ ! -d "${BASELINE_LIB_DIR}" ]]; then
-    echo "Error: baseline lib directory not found: ${BASELINE_LIB_DIR}" >&2
-    echo "Please create core/bench/benchwithzlink/baseline/lib and copy previous zlink library there." >&2
+  if [[ ! -d "${BASELINE_ROOT}" ]]; then
+    echo "Error: baseline directory not found: ${BASELINE_ROOT}" >&2
+    echo "Please create core/bench/benchwithzlink/baseline/zlink_dist/${PLATFORM}-${ARCH} and copy previous zlink library there." >&2
     exit 1
   fi
-  BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzlink.*)
-  if [[ ! -e "${BASELINE_LIB_FILES[0]}" ]]; then
-    echo "Error: No libzlink library found in ${BASELINE_LIB_DIR}" >&2
-    echo "Please copy previous zlink library (libzlink.so/dylib/dll) there." >&2
-    exit 1
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    if [[ ! -d "${BASELINE_BIN_DIR}" || ! -d "${BASELINE_LIB_DIR}" ]]; then
+      echo "Error: baseline bin/lib directories not found under ${BASELINE_ROOT}" >&2
+      exit 1
+    fi
+    BASELINE_DLL_FILES=("${BASELINE_BIN_DIR}"/libzlink*.dll)
+    BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzlink*.lib)
+    if [[ ! -e "${BASELINE_DLL_FILES[0]}" || ! -e "${BASELINE_LIB_FILES[0]}" ]]; then
+      echo "Error: No baseline libzlink dll/lib found in ${BASELINE_ROOT}" >&2
+      exit 1
+    fi
+  else
+    if [[ ! -d "${BASELINE_LIB_DIR}" ]]; then
+      echo "Error: baseline lib directory not found: ${BASELINE_LIB_DIR}" >&2
+      exit 1
+    fi
+    BASELINE_LIB_FILES=("${BASELINE_LIB_DIR}"/libzlink.*)
+    if [[ ! -e "${BASELINE_LIB_FILES[0]}" ]]; then
+      echo "Error: No libzlink library found in ${BASELINE_LIB_DIR}" >&2
+      echo "Please copy previous zlink library (libzlink.so/dylib) there." >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -317,7 +349,7 @@ else
   if [[ "${WITH_BASELINE}" -eq 1 ]]; then
     RUN_CMD+=(--refresh-libzlink)
   else
-    CACHE_FILE="${ROOT_DIR}/core/bench/benchwithzlink/baseline_cache.json"
+    CACHE_FILE="${ROOT_DIR}/core/bench/benchwithzlink/baseline_cache_${PLATFORM}-${ARCH}.json"
     if [[ ! -f "${CACHE_FILE}" ]]; then
       echo "Baseline cache not found: ${CACHE_FILE}" >&2
       echo "Run with --with-baseline once to generate the baseline." >&2

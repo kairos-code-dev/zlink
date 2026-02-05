@@ -394,10 +394,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:ZLINK_LIB_PATH = \"$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\${{ matrix.lib_file }}\"
+          $env:ZLINK_LIB_PATH = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\${{ matrix.lib_file }}"
           cd bindings/node
           npx node-gyp configure build
-          Copy-Item \"$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll\" build\\Release -Force
+          Copy-Item "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" build\\Release -Force
 
       - name: Stage prebuilds (unix)
         if: runner.os != 'Windows'
@@ -411,11 +411,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $stage = \"node-prebuilds\\${{ matrix.platform }}-${{ matrix.arch }}\"
+          $stage = "node-prebuilds\\${{ matrix.platform }}-${{ matrix.arch }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item bindings\\node\\build\\Release\\zlink.node \"$stage\\zlink.node\" -Force
-          Copy-Item \"artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll\" $stage -Force
-          $ucrt = \"artifacts\\${{ matrix.lib_artifact }}\\ucrtbase.dll\"
+          Copy-Item bindings\\node\\build\\Release\\zlink.node "$stage\\zlink.node" -Force
+          Copy-Item "artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" $stage -Force
+          $ucrt = "artifacts\\${{ matrix.lib_artifact }}\\ucrtbase.dll"
           if (Test-Path $ucrt) { Copy-Item $ucrt $stage -Force }
 
       - name: Upload Node prebuild

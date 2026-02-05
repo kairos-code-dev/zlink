@@ -114,7 +114,7 @@ jobs:
           }
 
           # Also copy ucrtbase.dll to dist if available
-          $distDir = "dist\windows-x64"
+          $distDir = "core\dist\windows-x64"
           $ucrtPath = "C:\Windows\System32\ucrtbase.dll"
           if (Test-Path $ucrtPath) {
             Copy-Item $ucrtPath "$distDir\ucrtbase.dll" -Force
@@ -125,10 +125,10 @@ jobs:
         shell: cmd
         run: |
           echo === libzlink.dll dependencies ===
-          dumpbin /DEPENDENTS dist\windows-x64\libzlink.dll
+          dumpbin /DEPENDENTS core\dist\windows-x64\libzlink.dll
           echo.
           echo === Files in dist ===
-          dir /s dist\windows-x64\
+          dir /s core\dist\windows-x64\
         continue-on-error: true
 
       - name: Upload artifacts

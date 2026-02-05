@@ -325,6 +325,23 @@ void test_zmp_heartbeat_ttl_min ()
                 saw_error = true;
         }
     }
+#if defined ZLINK_HAVE_WINDOWS
+    // Windows timers/scheduling can delay TTL-driven disconnect/error.
+    if (!saw_error && !closed) {
+        msleep (200);
+        set_recv_timeout (raw, recv_timeout_ms);
+        for (int i = 0; i < recv_attempts && !saw_error && !closed; ++i) {
+            unsigned char flags = 0;
+            std::vector<unsigned char> body;
+            if (!read_zmp_frame (raw, flags, body, closed))
+                continue;
+            if ((flags & zlink::zmp_flag_control) && !body.empty ()) {
+                if (body[0] == zlink::zmp_control_error)
+                    saw_error = true;
+            }
+        }
+    }
+#endif
 
     TEST_ASSERT_TRUE_MESSAGE (
       saw_error || closed,

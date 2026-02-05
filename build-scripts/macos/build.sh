@@ -50,7 +50,7 @@ echo ""
 cd "$REPO_ROOT"
 
 # Create build directories
-BUILD_DIR="build/macos-${ARCH}"
+BUILD_DIR="core/build/macos-${ARCH}"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUTPUT_DIR"
 

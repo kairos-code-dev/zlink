@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$BENCH_DIR = "D:\project\ulalax\zlink\build\windows-x64\bin\Release"
+$BENCH_DIR = "D:\project\ulalax\zlink\core\build\windows-x64\bin\Release"
 $ITERATIONS = 10
 
 Write-Host "===================================" -ForegroundColor Cyan

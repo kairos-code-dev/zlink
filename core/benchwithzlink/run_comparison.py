@@ -21,17 +21,17 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 def resolve_linux_paths():
     """Return build/library paths for Linux/WSL environments."""
     possible_paths = [
-        os.path.join(ROOT_DIR, "build", "bin"),
-        os.path.join(ROOT_DIR, "build", "bench", "bin"),
-        os.path.join(ROOT_DIR, "build", "linux-x64", "bin"),
-        os.path.join(ROOT_DIR, "build", "benchwithzlink"),
-        os.path.join(ROOT_DIR, "build", "linux-x64", "benchwithzlink"),
+        os.path.join(ROOT_DIR, "core", "build", "bin"),
+        os.path.join(ROOT_DIR, "core", "build", "bench", "bin"),
+        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "bin"),
+        os.path.join(ROOT_DIR, "core", "build", "benchwithzlink"),
+        os.path.join(ROOT_DIR, "core", "build", "linux-x64", "benchwithzlink"),
     ]
     build_dir = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
     baseline_lib_dir = os.path.abspath(
         os.path.join(ROOT_DIR, "benchwithzlink", "baseline", "lib")
     )
-    current_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "build", "lib"))
+    current_lib_dir = os.path.abspath(os.path.join(ROOT_DIR, "core", "build", "lib"))
     return build_dir, baseline_lib_dir, current_lib_dir
 
 def normalize_build_dir(path):
@@ -65,9 +65,9 @@ def derive_current_lib_dir(build_dir):
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 if IS_WINDOWS:
-    BUILD_DIR = os.path.join("build", "windows-x64", "bin", "Release")
+    BUILD_DIR = os.path.join("core", "build", "windows-x64", "bin", "Release")
     BASELINE_LIB_DIR = os.path.abspath(os.path.join("benchwithzlink", "baseline", "lib"))
-    CURRENT_LIB_DIR = os.path.abspath(os.path.join("build", "windows-x64", "bin", "Release"))
+    CURRENT_LIB_DIR = os.path.abspath(os.path.join("core", "build", "windows-x64", "bin", "Release"))
 else:
     BUILD_DIR, BASELINE_LIB_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
 
@@ -227,7 +227,7 @@ def parse_args():
         "  --current-only          Run only current benchmarks\n"
         "  --zlink-only            Alias for --current-only\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
-        "  --build-dir PATH        Build directory (default: build/)\n"
+        "  --build-dir PATH        Build directory (default: core/build/)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"

@@ -14,7 +14,7 @@ def parse_args():
         "Usage: run_comparison_zmq_ab.py [PATTERN] [options]\n\n"
         "Options:\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
-        "  --build-dir PATH        Build directory (default: build/bench)\n"
+        "  --build-dir PATH        Build directory (default: core/build/bench)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
         "\n"

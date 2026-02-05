@@ -24,9 +24,9 @@ case "$(uname -s)" in
 esac
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/build/windows-x64"
+  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/build"
+  BUILD_DIR="${ROOT_DIR}/core/build"
 fi
 PATTERN="ALL"
 WITH_BASELINE=0
@@ -59,7 +59,7 @@ Options:
   -h, --help            Show this help.
   --with-baseline       Run baseline and refresh cache (default: use cache).
   --pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH      Build directory (default: build/).
+  --build-dir PATH      Build directory (default: core/build/).
   --output PATH         Tee results to a file.
   --result              Write results under benchwithzlink/results/YYYYMMDD/.
   --results-dir PATH    Override results root directory.

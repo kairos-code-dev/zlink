@@ -13,10 +13,10 @@
 - `tools/`: dev/build helper scripts.
 
 ## Build, Test, and Development Commands
-- `./build.sh`: clean CMake build in `build/` and runs tests (Linux-style `nproc`).
+- `./build.sh`: clean CMake build in `core/build/` and runs tests (Linux-style `nproc`).
 - `./build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
 - `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
-- `ctest --output-on-failure`: run tests from a build dir (e.g., `build/linux-x64`).
+- `ctest --output-on-failure`: run tests from a build dir (e.g., `core/build/linux-x64`).
 - Autotools fallback: `./autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
 - Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 

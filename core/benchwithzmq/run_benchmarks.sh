@@ -48,7 +48,7 @@ Options:
   --skip-libzmq        Skip libzmq baseline run (uses existing cache).
   --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: build/).
+  --build-dir PATH     Build directory (default: core/build/).
   --output PATH        Tee results to a file.
   --baseline           Write results under benchwithzmq/baseline/YYYYMMDD/.
   --baseline-dir PATH  Override baseline root directory.

@@ -55,7 +55,7 @@ echo ""
 cd "$REPO_ROOT"
 
 # Create build directories
-BUILD_DIR="build/linux-${ARCH}"
+BUILD_DIR="core/build/linux-${ARCH}"
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUTPUT_DIR"
 

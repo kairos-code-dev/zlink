@@ -12,9 +12,9 @@ case "$(uname -s)" in
 esac
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/build/windows-x64"
+  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/build/bench"
+  BUILD_DIR="${ROOT_DIR}/core/build/bench"
 fi
 PATTERN="ALL"
 OUTPUT_FILE=""
@@ -30,7 +30,7 @@ Usage: benchwithzmq/run_benchmarks_zmq.sh [options]
 Options:
   -h, --help            Show this help.
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-  --build-dir PATH     Build directory (default: build/bench).
+  --build-dir PATH     Build directory (default: core/build/bench).
   --output PATH        Tee results to a file.
   --runs N             Iterations per configuration (default: 3).
   --reuse-build        Reuse existing build dir without re-running CMake.

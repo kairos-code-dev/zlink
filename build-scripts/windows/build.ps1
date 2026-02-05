@@ -98,7 +98,7 @@ Write-Host "==================================="
 Write-Host ""
 
 # Create build directories with architecture suffix
-$BUILD_DIR = "build\windows-$Architecture"
+$BUILD_DIR = "core\build\windows-$Architecture"
 New-Item -ItemType Directory -Force -Path $BUILD_DIR | Out-Null
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 

@@ -56,7 +56,7 @@ Or explicitly:
 |-----------|-----|-------|
 | vcpkg triplet | `x64-windows-static` | `arm64-windows-static` |
 | CMake platform | `-A x64` | `-A ARM64` |
-| Build directory | `build/windows-x64` | `build/windows-arm64` |
+| Build directory | `core/build/windows-x64` | `core/build/windows-arm64` |
 | Deps directory | `deps/windows-x64` | `deps/windows-arm64` |
 | Default output | `dist/windows-x64` | `dist/windows-arm64` |
 

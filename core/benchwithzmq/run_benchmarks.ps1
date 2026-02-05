@@ -28,7 +28,7 @@ Options:
   -SkipLibzmq         Skip libzmq baseline run (uses existing cache).
   -WithLibzmq         Run libzmq baseline and refresh cache (default).
   -Pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, ALL) [default: ALL].
-  -BuildDir PATH      Build directory (default: build/windows-x64).
+  -BuildDir PATH      Build directory (default: core/build/windows-x64).
   -OutputFile PATH    Tee results to a file.
   -Baseline           Write results under benchwithzmq/baseline/YYYYMMDD/.
   -BaselineDir PATH   Override baseline root directory.
@@ -114,7 +114,7 @@ $RootDir = Split-Path $ScriptDir -Parent
 
 # Set default build directory
 if (-not $BuildDir) {
-    $BuildDir = Join-Path $RootDir "build\windows-x64"
+    $BuildDir = Join-Path $RootDir "core\build\windows-x64"
 }
 
 # Convert to absolute paths

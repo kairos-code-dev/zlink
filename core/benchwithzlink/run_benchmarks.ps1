@@ -40,7 +40,7 @@ Options:
   -Help                Show this help.
   -WithBaseline        Run baseline and refresh cache (default: use cache).
   -Pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, ALL) [default: ALL].
-  -BuildDir PATH       Build directory (default: build/windows-x64).
+  -BuildDir PATH       Build directory (default: core/build/windows-x64).
   -OutputFile PATH     Tee results to a file.
   -Result              Write results under benchwithzlink\results\YYYYMMDD\.
   -ResultsDir PATH     Override results root directory.
@@ -149,7 +149,7 @@ if (-not $RootDir) {
 
 # Set default build directory
 if (-not $BuildDir) {
-    $BuildDir = Join-Path $RootDir "build\windows-x64"
+    $BuildDir = Join-Path $RootDir "core\build\windows-x64"
 }
 
 # Convert to absolute paths

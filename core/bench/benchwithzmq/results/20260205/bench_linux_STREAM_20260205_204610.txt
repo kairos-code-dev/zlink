@@ -1,0 +1,10 @@
+
+## PATTERN: STREAM
+  > Benchmarking zlink for STREAM...
+    Testing tcp | 64B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |            zlink |
+|--------|------------|------------------|
+| 64B    | Throughput |   5010.96 Kmsg/s |
+| 64B    | Latency    |         36.62 us |

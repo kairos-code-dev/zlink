@@ -1,0 +1,12 @@
+
+## PATTERN: STREAM
+  > Benchmarking libzmq for STREAM...
+    Testing tcp | 64B: 1 Done
+  > Benchmarking zlink for STREAM...
+    Testing tcp | 64B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |  Standard libzmq |            zlink |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |      0.00 Kmsg/s |   4996.22 Kmsg/s |   +0.00% |
+| 64B    | Latency    |          0.00 us |         64.81 us |   +0.00% |

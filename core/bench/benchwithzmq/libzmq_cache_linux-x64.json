@@ -1,0 +1,6 @@
+{
+  "STREAM": {
+    "tcp|64|throughput": 1694698.45,
+    "tcp|64|latency": 19788.23
+  }
+}

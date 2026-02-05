@@ -1,0 +1,10 @@
+
+## PATTERN: GATEWAY
+  > Benchmarking current for GATEWAY...
+    Testing tcp | 64B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 64B    | Throughput |   3450.93 Kmsg/s |
+| 64B    | Latency    |         52.29 us |

@@ -1,0 +1,2 @@
+RESULT,beast,STREAM,tcp,64,throughput,1.77665e+06
+RESULT,beast,STREAM,tcp,64,latency,15.404

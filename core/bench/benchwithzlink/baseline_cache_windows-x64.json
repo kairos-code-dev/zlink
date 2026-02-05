@@ -1,0 +1,6 @@
+{
+  "PAIR": {
+    "tcp|64|throughput": 3055016.26,
+    "tcp|64|latency": 53.32
+  }
+}

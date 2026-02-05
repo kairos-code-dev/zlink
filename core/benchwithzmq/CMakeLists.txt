@@ -10,9 +10,13 @@ else()
     file(GLOB STD_LIBZMQ_LIBRARY "${STD_LIBZMQ_ROOT}/lib/libzmq.so*")
 endif()
 
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
+set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
 
-set(BENCH_CXX_FLAGS "-O3")
+if(MSVC)
+    set(BENCH_CXX_FLAGS "/O2")
+else()
+    set(BENCH_CXX_FLAGS "-O3")
+endif()
 
 function(add_std_zmq_bench name source)
     add_executable(${name} ${source})

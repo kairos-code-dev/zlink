@@ -166,7 +166,7 @@ if ($ReuseBuild) {
         "-DZMQ_BOOST_INCLUDE_DIR=$VcpkgInclude" `
         "-DBUILD_BENCHMARKS=ON" `
         "-DBUILD_TESTS=OFF" `
-        "-DZLINK_CXX_STANDARD=20"
+        "-DZLINK_CXX_STANDARD=17"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error "CMake configuration failed"

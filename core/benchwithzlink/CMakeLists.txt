@@ -28,10 +28,14 @@ else()
 endif()
 
 # Use current zlink's zlink.h header (API should be compatible)
-set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
+set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/include")
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
-    set(BENCH_CXX_FLAGS "-O3")
+    if(MSVC)
+        set(BENCH_CXX_FLAGS "/O2")
+    else()
+        set(BENCH_CXX_FLAGS "-O3")
+    endif()
 
     # Function to add baseline benchmarks (linked against baseline zlink)
     function(add_baseline_bench name source)

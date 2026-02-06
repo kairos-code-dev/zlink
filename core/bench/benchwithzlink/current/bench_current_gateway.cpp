@@ -146,7 +146,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     const char *service_name = "svc2";
     zlink_discovery_subscribe(discovery, service_name);
 
-    void *gateway = zlink_gateway_new_with_routing_id(ctx, discovery, "GW-1");
+    void *gateway = zlink_gateway_new(ctx, discovery);
     if (!gateway) {
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -154,7 +154,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *provider = zlink_provider_new_with_routing_id(ctx, "PR-1");
+    void *provider = zlink_provider_new(ctx);
     if (!provider) {
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
@@ -232,7 +232,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     // }
 
     settle();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
     for (int i = 0; i < warmup_count; ++i) {

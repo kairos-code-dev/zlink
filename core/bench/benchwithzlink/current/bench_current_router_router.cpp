@@ -4,6 +4,39 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
+#include <atomic>
+#include <chrono>
+#include <cerrno>
+
+static void *open_monitor(void *socket) {
+    return zlink_socket_monitor_open(socket,
+                                     ZLINK_EVENT_CONNECTION_READY
+                                       | ZLINK_EVENT_DISCONNECTED
+                                       | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+                                       | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+                                       | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
+}
+
+static void monitor_drain(void *monitor_socket, const char *name) {
+    if (!monitor_socket)
+        return;
+    while (true) {
+        zlink_monitor_event_t event;
+        const int rc = zlink_monitor_recv(monitor_socket, &event,
+                                          ZLINK_DONTWAIT);
+        if (rc != 0) {
+            if (errno == EAGAIN)
+                return;
+            return;
+        }
+        if (event.remote_addr[0] == '\0')
+            continue;
+        std::cerr << "[router_router] " << name
+                  << " monitor event=" << event.event
+                  << " endpoint=" << event.remote_addr
+                  << std::endl;
+    }
+}
 
 void run_router_router(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport)) return;
@@ -51,6 +84,22 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     apply_debug_timeouts(router1, transport);
     apply_debug_timeouts(router2, transport);
     settle();
+
+    void *monitor1 = NULL;
+    void *monitor2 = NULL;
+    std::atomic<int> monitor_stop(0);
+    std::thread monitor_thread;
+    if (bench_debug_enabled()) {
+        monitor1 = open_monitor(router1);
+        monitor2 = open_monitor(router2);
+        monitor_thread = std::thread([&]() {
+            while (monitor_stop.load() == 0) {
+                monitor_drain(monitor1, "router1");
+                monitor_drain(monitor2, "router2");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+    }
 
     // --- HANDSHAKE PHASE (Crucial for Router-Router) ---
     // Router drops messages if connection isn't fully established.
@@ -139,6 +188,14 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
 
     print_result(lib_name, "ROUTER_ROUTER", transport, msg_size, throughput, latency);
+
+    monitor_stop.store(1);
+    if (monitor_thread.joinable())
+        monitor_thread.join();
+    if (monitor1)
+        zlink_close(monitor1);
+    if (monitor2)
+        zlink_close(monitor2);
 
     zlink_close(router1);
     zlink_close(router2);

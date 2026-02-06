@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <atomic>
 #include <iostream>
+#include <cerrno>
 
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -14,101 +15,53 @@
 #include <process.h>
 #endif
 
-typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
-typedef int (*gateway_setsockopt_fn)(void *, int, const void *, size_t);
-typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
-typedef void *(*provider_router_fn)(void *);
-
-static void configure_gateway_hwm(void *gateway, int hwm);
-
-static const std::string &tls_ca_path() {
-    static std::string path =
-      write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
-    return path;
+static void *open_monitor(void *socket) {
+    return zlink_socket_monitor_open(
+      socket,
+      ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED
+        | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
+        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
+        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH);
 }
 
-static const std::string &tls_cert_path() {
-    static std::string path =
-      write_temp_cert(test_certs::server_cert_pem, "server_cert");
-    return path;
+static void monitor_drain(void *monitor_socket, const char *name) {
+    if (!monitor_socket)
+        return;
+    while (true) {
+        zlink_monitor_event_t event;
+        const int rc = zlink_monitor_recv(monitor_socket, &event,
+                                          ZLINK_DONTWAIT);
+        if (rc != 0) {
+            if (errno == EAGAIN)
+                return;
+            return;
+        }
+        if (event.remote_addr[0] == '\0')
+            continue;
+        std::cerr << "[monitor] " << name << " event=" << event.event
+                  << " endpoint=" << event.remote_addr << std::endl;
+    }
 }
 
-static const std::string &tls_key_path() {
-    static std::string path =
-      write_temp_cert(test_certs::server_key_pem, "server_key");
-    return path;
-}
-
-static bool configure_gateway_tls(void *gateway,
-                                  const std::string &transport) {
-    if (transport != "tls" && transport != "wss")
-        return true;
-    gateway_set_tls_client_fn fn =
-      reinterpret_cast<gateway_set_tls_client_fn>(
-        resolve_symbol("zlink_gateway_set_tls_client"));
-    if (!fn)
-        return false;
-    const std::string &ca = tls_ca_path();
-    const char *hostname = "localhost";
-    const int trust_system = 0;
-    return fn(gateway, ca.c_str(), hostname, trust_system) == 0;
-}
-
-static bool configure_provider_tls(void *provider,
-                                   const std::string &transport) {
-    if (transport != "tls" && transport != "wss")
-        return true;
-    provider_set_tls_server_fn fn =
-      reinterpret_cast<provider_set_tls_server_fn>(
-        resolve_symbol("zlink_provider_set_tls_server"));
-    if (!fn)
-        return false;
-    const std::string &cert = tls_cert_path();
-    const std::string &key = tls_key_path();
-    return fn(provider, cert.c_str(), key.c_str()) == 0;
-}
-
-static std::string bind_provider(void *provider, const std::string &transport,
-                                 int base_port) {
+static std::string bind_router_socket(void *router,
+                                      const std::string &transport,
+                                      int base_port) {
     for (int i = 0; i < 50; ++i) {
         const int port = base_port + i;
         std::string endpoint = make_fixed_endpoint(transport, port);
-        if (zlink_provider_bind(provider, endpoint.c_str()) == 0)
+        if (zlink_bind(router, endpoint.c_str()) == 0)
             return endpoint;
     }
     return std::string();
-}
-
-static bool wait_for_discovery(void *discovery, const char *service,
-                               int timeout_ms) {
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (true) {
-        if (zlink_discovery_service_available(discovery, service) > 0)
-            return true;
-        if (std::chrono::steady_clock::now() >= deadline)
-            return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-}
-
-static bool wait_for_gateway(void *gateway, const char *service,
-                             int timeout_ms) {
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (true) {
-        if (zlink_gateway_connection_count(gateway, service) > 0)
-            return true;
-        if (std::chrono::steady_clock::now() >= deadline)
-            return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
 }
 
 static bool recv_one_provider_message(void *router) {
     zlink_msg_t rid;
     zlink_msg_init(&rid);
     if (zlink_msg_recv(&rid, router, 0) < 0) {
+        if (bench_debug_enabled())
+            std::cerr << "gateway recv rid failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         zlink_msg_close(&rid);
         return false;
     }
@@ -119,36 +72,121 @@ static bool recv_one_provider_message(void *router) {
     zlink_msg_t payload;
     zlink_msg_init(&payload);
     if (zlink_msg_recv(&payload, router, 0) < 0) {
+        if (bench_debug_enabled())
+            std::cerr << "gateway recv payload failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
         zlink_msg_close(&rid);
         zlink_msg_close(&payload);
         return false;
-    }
-    while (zlink_msg_more(&payload)) {
-        zlink_msg_t part;
-        zlink_msg_init(&part);
-        if (zlink_msg_recv(&part, router, 0) < 0) {
-            zlink_msg_close(&part);
-            zlink_msg_close(&rid);
-            zlink_msg_close(&payload);
-            return false;
-        }
-        zlink_msg_close(&part);
     }
     zlink_msg_close(&rid);
     zlink_msg_close(&payload);
     return true;
 }
 
-static bool send_one(void *gateway, size_t msg_size) {
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, msg_size);
+static bool recv_id_payload(void *router, std::vector<char> &id_buf,
+                            size_t &id_len) {
+    zlink_msg_t rid;
+    zlink_msg_init(&rid);
+    if (zlink_msg_recv(&rid, router, 0) < 0) {
+        if (bench_debug_enabled())
+            std::cerr << "gateway recv rid failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        zlink_msg_close(&rid);
+        return false;
+    }
+    if (!zlink_msg_more(&rid)) {
+        zlink_msg_close(&rid);
+        return false;
+    }
+    id_len = zlink_msg_size(&rid);
+    if (id_len > id_buf.size())
+        id_len = id_buf.size();
+    if (id_len > 0)
+        memcpy(id_buf.data(), zlink_msg_data(&rid), id_len);
+
+    zlink_msg_t payload;
+    zlink_msg_init(&payload);
+    if (zlink_msg_recv(&payload, router, 0) < 0) {
+        if (bench_debug_enabled())
+            std::cerr << "gateway recv payload failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        zlink_msg_close(&rid);
+        zlink_msg_close(&payload);
+        return false;
+    }
+    zlink_msg_close(&rid);
+    zlink_msg_close(&payload);
+    return true;
+}
+
+static bool send_one(void *router,
+                     const char *target_id,
+                     size_t target_id_len,
+                     size_t msg_size) {
+    zlink_msg_t rid;
+    zlink_msg_init_size(&rid, target_id_len);
+    if (target_id_len > 0)
+        memcpy(zlink_msg_data(&rid), target_id, target_id_len);
+    if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) < 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway send rid failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+        zlink_msg_close(&rid);
+        return false;
+    }
+    zlink_msg_close(&rid);
+
+    zlink_msg_t payload;
+    zlink_msg_init_size(&payload, msg_size);
     if (msg_size > 0)
-        memset(zlink_msg_data(&msg), 'a', msg_size);
-    const int rc =
-      zlink_gateway_send(gateway, "svc", &msg, 1, 0);
-    if (rc != 0)
-        zlink_msg_close(&msg);
-    return rc == 0;
+        memset(zlink_msg_data(&payload), 'a', msg_size);
+    if (zlink_msg_send(&payload, router, 0) < 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway send payload failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+        zlink_msg_close(&payload);
+        return false;
+    }
+    zlink_msg_close(&payload);
+    return true;
+}
+
+static bool send_payload(void *router,
+                         const char *target_id,
+                         size_t target_id_len,
+                         const void *data,
+                         size_t data_len) {
+    zlink_msg_t rid;
+    zlink_msg_init_size(&rid, target_id_len);
+    if (target_id_len > 0)
+        memcpy(zlink_msg_data(&rid), target_id, target_id_len);
+    if (zlink_msg_send(&rid, router, ZLINK_SNDMORE) < 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway send rid failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+        zlink_msg_close(&rid);
+        return false;
+    }
+    zlink_msg_close(&rid);
+
+    zlink_msg_t payload;
+    zlink_msg_init_size(&payload, data_len);
+    if (data_len > 0)
+        memcpy(zlink_msg_data(&payload), data, data_len);
+    if (zlink_msg_send(&payload, router, 0) < 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "gateway send payload failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+        zlink_msg_close(&payload);
+        return false;
+    }
+    zlink_msg_close(&payload);
+    return true;
 }
 
 void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
@@ -156,66 +194,40 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     if (!transport_available(transport))
         return;
 
-    if (!resolve_symbol("zlink_provider_router")) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        return;
-    }
-
-    if ((transport == "tls" || transport == "wss")
-        && !resolve_symbol("zlink_gateway_set_tls_client")) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        return;
-    }
-
     void *ctx = zlink_ctx_new();
     if (!ctx)
         return;
 
-    std::string suffix = lib_name + "_gw_" + transport;
-#if !defined(_WIN32)
-    suffix += "_" + std::to_string(getpid());
-#else
-    suffix += "_" + std::to_string(_getpid());
-#endif
-
-    std::string reg_pub = "inproc://gw_pub_" + suffix;
-    std::string reg_router = "inproc://gw_router_" + suffix;
-
-    void *registry = zlink_registry_new(ctx);
-    if (!registry) {
-        zlink_ctx_term(ctx);
-        return;
-    }
-    if (zlink_registry_set_endpoints(registry, reg_pub.c_str(),
-                                     reg_router.c_str()) != 0
-        || zlink_registry_start(registry) != 0) {
-        zlink_registry_destroy(&registry);
+    void *router1 = zlink_socket(ctx, ZLINK_ROUTER);
+    void *router2 = zlink_socket(ctx, ZLINK_ROUTER);
+    if (!router1 || !router2) {
+        if (router1)
+            zlink_close(router1);
+        if (router2)
+            zlink_close(router2);
         zlink_ctx_term(ctx);
         return;
     }
 
-    void *discovery = zlink_discovery_new(ctx);
-    if (!discovery) {
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-    zlink_discovery_connect_registry(discovery, reg_pub.c_str());
-    zlink_discovery_subscribe(discovery, "svc");
+    zlink_setsockopt(router1, ZLINK_ROUTING_ID, "SERVER", 6);
+    zlink_setsockopt(router2, ZLINK_ROUTING_ID, "CLIENT", 6);
 
-    void *provider = zlink_provider_new(ctx);
-    if (!provider) {
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
+    int mandatory = 1;
+    zlink_setsockopt(router1, ZLINK_ROUTER_MANDATORY, &mandatory,
+                     sizeof(mandatory));
+    zlink_setsockopt(router2, ZLINK_ROUTER_MANDATORY, &mandatory,
+                     sizeof(mandatory));
 
-    if (!configure_provider_tls(provider, transport)) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
+    int hwm = 1000000;
+    zlink_setsockopt(router1, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router1, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router2, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_setsockopt(router2, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+
+    if (!setup_tls_server(router1, transport)
+        || !setup_tls_client(router2, transport)) {
+        zlink_close(router1);자
+        zlink_close(router2);
         zlink_ctx_term(ctx);
         return;
     }
@@ -226,111 +238,96 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 #else
     base_port += (_getpid() % 2000);
 #endif
-    std::string endpoint = bind_provider(provider, transport, base_port);
+    std::string endpoint = bind_router_socket(router1, transport, base_port);
     if (endpoint.empty()) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
+        zlink_close(router1);
+        zlink_close(router2);
+        zlink_ctx_term(ctx);
+        return;
+    }
+    if (zlink_connect(router2, endpoint.c_str()) != 0) {
+        zlink_close(router1);
+        zlink_close(router2);
         zlink_ctx_term(ctx);
         return;
     }
 
-    if (zlink_provider_connect_registry(provider, reg_router.c_str()) != 0
-        || zlink_provider_register(provider, "svc", endpoint.c_str(), 1) != 0) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-
-    provider_router_fn router_fn =
-      reinterpret_cast<provider_router_fn>(
-        resolve_symbol("zlink_provider_router"));
-    void *router = router_fn ? router_fn(provider) : NULL;
-    if (!router) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-
-    int hwm = 1000000;
-    zlink_setsockopt(router, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    zlink_setsockopt(router, ZLINK_RCVHWM, &hwm, sizeof(hwm));
-
-    void *gateway = zlink_gateway_new(ctx, discovery);
-    if (!gateway) {
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-
-    configure_gateway_hwm(gateway, hwm);
-
-    if (!wait_for_discovery(discovery, "svc", 8000)) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_gateway_destroy(&gateway);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-
-    if (!configure_gateway_tls(gateway, transport)) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_gateway_destroy(&gateway);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
-
-    if (!wait_for_gateway(gateway, "svc", 8000)) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_gateway_destroy(&gateway);
-        zlink_provider_destroy(&provider);
-        zlink_discovery_destroy(&discovery);
-        zlink_registry_destroy(&registry);
-        zlink_ctx_term(ctx);
-        return;
-    }
+    const int io_timeout_ms = 5000;
+    zlink_setsockopt(router1, ZLINK_SNDTIMEO, &io_timeout_ms,
+                     sizeof(io_timeout_ms));
+    zlink_setsockopt(router1, ZLINK_RCVTIMEO, &io_timeout_ms,
+                     sizeof(io_timeout_ms));
+    zlink_setsockopt(router2, ZLINK_SNDTIMEO, &io_timeout_ms,
+                     sizeof(io_timeout_ms));
+    zlink_setsockopt(router2, ZLINK_RCVTIMEO, &io_timeout_ms,
+                     sizeof(io_timeout_ms));
 
     settle();
+    if (bench_debug_enabled())
+        std::cerr << "gateway: settle done" << std::endl;
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
+    void *monitor1 = NULL;
+    void *monitor2 = NULL;
+    std::atomic<int> monitor_stop(0);
+    std::thread monitor_thread;
+    if (bench_debug_enabled()) {
+        monitor1 = open_monitor(router1);
+        monitor2 = open_monitor(router2);
+        monitor_thread = std::thread([&]() {
+            while (monitor_stop.load() == 0) {
+                monitor_drain(monitor1, "server_router");
+                monitor_drain(monitor2, "client_router");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        });
+    }
+
+    std::vector<char> buffer(msg_size, 'a');
+    std::vector<char> recv_buf(msg_size + 256);
+    stopwatch_t sw;
+
+    const int warmup_count = 1;
     for (int i = 0; i < warmup_count; ++i) {
-        if (!send_one(gateway, msg_size)
-            || !recv_one_provider_message(router)) {
+        if (bench_debug_enabled() && i == 0)
+            std::cerr << "gateway: warmup start" << std::endl;
+        bench_send_fast(router2, "SERVER", 6, ZLINK_SNDMORE, "warmup send id");
+        bench_send_fast(router2, buffer.data(), msg_size, 0,
+                        "warmup send data");
+        if (!recv_one_provider_message(router1)) {
+            if (bench_debug_enabled())
+                std::cerr << "warmup recv failed" << std::endl;
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-            zlink_gateway_destroy(&gateway);
-            zlink_provider_destroy(&provider);
-            zlink_discovery_destroy(&discovery);
-            zlink_registry_destroy(&registry);
+            monitor_stop.store(1);
+            if (monitor_thread.joinable())
+                monitor_thread.join();
+            if (monitor1)
+                zlink_close(monitor1);
+            if (monitor2)
+                zlink_close(monitor2);
+            zlink_close(router1);
+            zlink_close(router2);
             zlink_ctx_term(ctx);
             return;
         }
     }
 
-    stopwatch_t sw;
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        if (!send_one(gateway, msg_size)
-            || !recv_one_provider_message(router)) {
+        if (bench_debug_enabled() && i == 0)
+            std::cerr << "gateway: latency start" << std::endl;
+        if (!send_one(router2, "SERVER", 6, msg_size)
+            || !recv_one_provider_message(router1)) {
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-            zlink_gateway_destroy(&gateway);
-            zlink_provider_destroy(&provider);
-            zlink_discovery_destroy(&discovery);
-            zlink_registry_destroy(&registry);
+            monitor_stop.store(1);
+            if (monitor_thread.joinable())
+                monitor_thread.join();
+            if (monitor1)
+                zlink_close(monitor1);
+            if (monitor2)
+                zlink_close(monitor2);
+            zlink_close(router1);
+            zlink_close(router2);
             zlink_ctx_term(ctx);
             return;
         }
@@ -338,28 +335,73 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
 
     std::atomic<int> sent_ok(0);
+    std::atomic<int> recv_fail(0);
     std::thread receiver([&]() {
+        if (bench_debug_enabled())
+            std::cerr << "gateway: throughput recv start" << std::endl;
         for (int i = 0; i < msg_count; ++i) {
-            if (recv_one_provider_message(router))
+            if (recv_one_provider_message(router1)) {
                 ++sent_ok;
+            } else {
+                if (bench_debug_enabled())
+                    std::cerr << "gateway recv failed at " << i << std::endl;
+                ++recv_fail;
+                break;
+            }
         }
     });
 
     sw.start();
+    int send_fail = 0;
     for (int i = 0; i < msg_count; ++i) {
-        if (!send_one(gateway, msg_size))
+        if (!send_one(router2, "SERVER", 6, msg_size)) {
+            if (bench_debug_enabled())
+                std::cerr << "gateway send failed at " << i << std::endl;
+            send_fail = 1;
             break;
+        }
     }
-
     receiver.join();
-    double throughput = (double)sent_ok / (sw.elapsed_ms() / 1000.0);
+    const double elapsed_ms = sw.elapsed_ms();
+    if (bench_debug_enabled()) {
+        std::cerr << "gateway throughput sent_ok=" << sent_ok.load()
+                  << " elapsed_ms=" << elapsed_ms << std::endl;
+    }
+    if (bench_debug_enabled() && (send_fail || recv_fail.load() > 0)) {
+        std::cerr << "gateway send_fail=" << send_fail
+                  << " recv_fail=" << recv_fail.load()
+                  << " sent_ok=" << sent_ok.load()
+                  << " msg_count=" << msg_count << std::endl;
+    }
+    double throughput = 0.0;
+    if (elapsed_ms <= 0.0) {
+        std::cerr << "[gwbench] invalid elapsed_ms=" << elapsed_ms
+                  << " sent_ok=" << sent_ok.load()
+                  << " send_fail=" << send_fail
+                  << " recv_fail=" << recv_fail.load() << std::endl;
+    } else {
+        throughput = (double)sent_ok / (elapsed_ms / 1000.0);
+        if (throughput < 0.0) {
+            std::cerr << "[gwbench] negative throughput=" << throughput
+                      << " elapsed_ms=" << elapsed_ms
+                      << " sent_ok=" << sent_ok.load()
+                      << " send_fail=" << send_fail
+                      << " recv_fail=" << recv_fail.load() << std::endl;
+        }
+    }
 
     print_result(lib_name, "GATEWAY", transport, msg_size, throughput, latency);
 
-    zlink_gateway_destroy(&gateway);
-    zlink_provider_destroy(&provider);
-    zlink_discovery_destroy(&discovery);
-    zlink_registry_destroy(&registry);
+    monitor_stop.store(1);
+    if (monitor_thread.joinable())
+        monitor_thread.join();
+    if (monitor1)
+        zlink_close(monitor1);
+    if (monitor2)
+        zlink_close(monitor2);
+
+    zlink_close(router1);
+    zlink_close(router2);
     zlink_ctx_term(ctx);
 }
 
@@ -377,14 +419,4 @@ int main(int argc, char **argv) {
     int count = resolve_msg_count(size);
     run_gateway(transport, size, count, lib_name);
     return 0;
-}
-
-static void configure_gateway_hwm(void *gateway, int hwm) {
-    gateway_setsockopt_fn fn =
-      reinterpret_cast<gateway_setsockopt_fn>(
-        resolve_symbol("zlink_gateway_setsockopt"));
-    if (!fn)
-        return;
-    fn(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    fn(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 }

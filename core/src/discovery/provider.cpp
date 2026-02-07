@@ -151,6 +151,12 @@ provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
             _dealer = NULL;
         }
         _tag = 0xdeadbeef;
+    } else {
+        zlink::discovery::set_socket_routing_id (_router, &_routing_id_override,
+                                                 NULL);
+        int hwm = 1000000;
+        _router->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
+        _router->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
     }
 }
 
@@ -181,11 +187,9 @@ int provider_t::bind (const char *endpoint_)
 
     scoped_lock_t lock (_sync);
     if (!_router) {
-        if (create_socket (_ctx, ZLINK_ROUTER, &_router) != 0)
-            return -1;
+        errno = ENOTSUP;
+        return -1;
     }
-    zlink::discovery::set_socket_routing_id (_router, &_routing_id_override,
-                                             NULL);
     if (!_tls_cert.empty ()) {
         if (_router->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
                                  _tls_cert.size ())

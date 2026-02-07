@@ -88,6 +88,55 @@ static bool send_one_gateway(void *gateway, const char *service,
     return rc == 0;
 }
 
+typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *,
+                                         int);
+typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
+
+static const std::string &tls_ca_path() {
+    static std::string path =
+      write_temp_cert(test_certs::ca_cert_pem, "gw_ca_cert");
+    return path;
+}
+
+static const std::string &tls_cert_path() {
+    static std::string path =
+      write_temp_cert(test_certs::server_cert_pem, "gw_server_cert");
+    return path;
+}
+
+static const std::string &tls_key_path() {
+    static std::string path =
+      write_temp_cert(test_certs::server_key_pem, "gw_server_key");
+    return path;
+}
+
+static bool configure_gateway_tls(void *gateway,
+                                  const std::string &transport) {
+    if (transport != "tls" && transport != "wss")
+        return true;
+    gateway_set_tls_client_fn fn =
+      reinterpret_cast<gateway_set_tls_client_fn>(
+        resolve_symbol("zlink_gateway_set_tls_client"));
+    if (!fn)
+        return false;
+    const std::string &ca = tls_ca_path();
+    return fn(gateway, ca.c_str(), "localhost", 0) == 0;
+}
+
+static bool configure_provider_tls(void *provider,
+                                   const std::string &transport) {
+    if (transport != "tls" && transport != "wss")
+        return true;
+    provider_set_tls_server_fn fn =
+      reinterpret_cast<provider_set_tls_server_fn>(
+        resolve_symbol("zlink_provider_set_tls_server"));
+    if (!fn)
+        return false;
+    const std::string &cert = tls_cert_path();
+    const std::string &key = tls_key_path();
+    return fn(provider, cert.c_str(), key.c_str()) == 0;
+}
+
 void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
                  const std::string &lib_name) {
     if (!transport_available(transport))
@@ -155,6 +204,15 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
+    if (!configure_provider_tls(provider, transport)) {
+        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        zlink_gateway_destroy(&gateway);
+        zlink_discovery_destroy(&discovery);
+        zlink_registry_destroy(&registry);
+        zlink_ctx_term(ctx);
+        return;
+    }
+
     int base_port = 30000;
 #if !defined(_WIN32)
     base_port += (getpid() % 2000);
@@ -184,15 +242,20 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    int hwm = 1000000;
-    zlink_provider_setsockopt(provider, ZLINK_PROVIDER_SOCKET_ROUTER,
-                              ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    zlink_provider_setsockopt(provider, ZLINK_PROVIDER_SOCKET_ROUTER,
-                              ZLINK_RCVHWM, &hwm, sizeof(hwm));
     // keepalive/heartbeat disabled
 
     if (zlink_provider_register(provider, service_name,
                                 provider_endpoint.c_str(), 1) != 0) {
+        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        zlink_provider_destroy(&provider);
+        zlink_gateway_destroy(&gateway);
+        zlink_discovery_destroy(&discovery);
+        zlink_registry_destroy(&registry);
+        zlink_ctx_term(ctx);
+        return;
+    }
+
+    if (!configure_gateway_tls(gateway, transport)) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_provider_destroy(&provider);
         zlink_gateway_destroy(&gateway);
@@ -226,8 +289,6 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     //     return;
     // }
 
-    zlink_gateway_setsockopt(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    zlink_gateway_setsockopt(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
     // keepalive/heartbeat disabled
 
     if (!wait_for_discovery(discovery, service_name, 1000)) {
@@ -250,32 +311,6 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         zlink_registry_destroy(&registry);
         zlink_ctx_term(ctx);
         return;
-    }
-
-    {
-        const int conn_count =
-          zlink_gateway_connection_count(gateway, service_name);
-        std::cerr << "gateway connection_count=" << conn_count
-                  << " service=" << service_name << "\n";
-        const int provider_count =
-          zlink_discovery_provider_count(discovery, service_name);
-        std::cerr << "discovery providers=" << provider_count
-                  << " service=" << service_name << "\n";
-        if (provider_count > 0) {
-            std::vector<zlink_provider_info_t> providers;
-            providers.resize(static_cast<size_t>(provider_count));
-            size_t count = providers.size();
-            if (zlink_discovery_get_providers(discovery, service_name,
-                                              providers.data(), &count)
-                == 0) {
-                for (size_t i = 0; i < count; ++i) {
-                    const zlink_provider_info_t &info = providers[i];
-                    std::cerr << "provider[" << i << "] rid_size="
-                              << static_cast<int>(info.routing_id.size)
-                              << " endpoint=" << info.endpoint << "\n";
-                }
-            }
-        }
     }
 
     settle();
@@ -308,27 +343,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         }
     }
 
-    const int provider_count =
-      zlink_discovery_provider_count(discovery, service_name);
-    if (provider_count <= 0) {
-        std::cerr << "discovery providers=0 service=" << service_name << "\n";
-    } else {
-        std::vector<zlink_provider_info_t> providers;
-        providers.resize(static_cast<size_t>(provider_count));
-        size_t count = providers.size();
-        if (zlink_discovery_get_providers(discovery, service_name,
-                                          providers.data(), &count)
-            == 0) {
-            for (size_t i = 0; i < count; ++i) {
-                const zlink_provider_info_t &info = providers[i];
-                std::cerr << "discovery provider[" << i << "] rid_size="
-                          << static_cast<int>(info.routing_id.size)
-                          << " endpoint=" << info.endpoint << "\n";
-            }
-        }
-    }
-
-stopwatch_t sw;
+    stopwatch_t sw;
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {

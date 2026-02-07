@@ -413,7 +413,12 @@ jobs:
           $env:ZLINK_LIB_PATH = $libCandidate.FullName
           Write-Host "Using ZLINK_LIB_PATH=$env:ZLINK_LIB_PATH"
           cd bindings/node
-          npx node-gyp configure build
+          if ("${{ matrix.arch }}" -eq "arm64") {
+            npx node-gyp configure --arch=arm64
+            npx node-gyp build --arch=arm64
+          } else {
+            npx node-gyp configure build
+          }
           Copy-Item "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" build\\Release -Force
 
       - name: Stage prebuilds (unix)

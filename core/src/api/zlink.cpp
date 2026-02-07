@@ -556,7 +556,7 @@ int zlink_registry_destroy (void **registry_p_)
 void *zlink_discovery_new (void *ctx_)
 {
     return zlink_discovery_new_typed (ctx_,
-                                      ZLINK_SERVICE_TYPE_GATEWAY_PROVIDER);
+                                      ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
 }
 
 void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
@@ -565,7 +565,7 @@ void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
         errno = EFAULT;
         return NULL;
     }
-    if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY_PROVIDER
+    if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER
         && service_type_ != ZLINK_SERVICE_TYPE_SPOT_NODE) {
         errno = EINVAL;
         return NULL;
@@ -617,9 +617,9 @@ int zlink_discovery_unsubscribe (void *discovery_, const char *service_name_)
     return discovery->unsubscribe (service_name_);
 }
 
-int zlink_discovery_get_providers (void *discovery_,
+int zlink_discovery_get_receivers (void *discovery_,
                                  const char *service_name_,
-                                 zlink_provider_info_t *providers_,
+                                 zlink_receiver_info_t *providers_,
                                  size_t *count_)
 {
     if (!discovery_)
@@ -629,10 +629,10 @@ int zlink_discovery_get_providers (void *discovery_,
         errno = EFAULT;
         return -1;
     }
-    return discovery->get_providers (service_name_, providers_, count_);
+    return discovery->get_receivers (service_name_, providers_, count_);
 }
 
-int zlink_discovery_provider_count (void *discovery_,
+int zlink_discovery_receiver_count (void *discovery_,
                                   const char *service_name_)
 {
     if (!discovery_)
@@ -642,7 +642,7 @@ int zlink_discovery_provider_count (void *discovery_,
         errno = EFAULT;
         return -1;
     }
-    return discovery->provider_count (service_name_);
+    return discovery->receiver_count (service_name_);
 }
 
 int zlink_discovery_service_available (void *discovery_,
@@ -852,7 +852,7 @@ int zlink_gateway_destroy (void **gateway_p_)
     return 0;
 }
 
-void *zlink_provider_new (void *ctx_, const char *routing_id_)
+void *zlink_receiver_new (void *ctx_, const char *routing_id_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -868,7 +868,7 @@ void *zlink_provider_new (void *ctx_, const char *routing_id_)
     return static_cast<void *> (provider);
 }
 
-int zlink_provider_bind (void *provider_, const char *bind_endpoint_)
+int zlink_receiver_bind (void *provider_, const char *bind_endpoint_)
 {
     if (!provider_)
         return -1;
@@ -880,7 +880,7 @@ int zlink_provider_bind (void *provider_, const char *bind_endpoint_)
     return provider->bind (bind_endpoint_);
 }
 
-int zlink_provider_connect_registry (void *provider_,
+int zlink_receiver_connect_registry (void *provider_,
                                    const char *registry_endpoint_)
 {
     if (!provider_)
@@ -893,7 +893,7 @@ int zlink_provider_connect_registry (void *provider_,
     return provider->connect_registry (registry_endpoint_);
 }
 
-int zlink_provider_register (void *provider_,
+int zlink_receiver_register (void *provider_,
                            const char *service_name_,
                            const char *advertise_endpoint_,
                            uint32_t weight_)
@@ -909,7 +909,7 @@ int zlink_provider_register (void *provider_,
                                        weight_);
 }
 
-int zlink_provider_update_weight (void *provider_,
+int zlink_receiver_update_weight (void *provider_,
                                 const char *service_name_,
                                 uint32_t weight_)
 {
@@ -923,7 +923,7 @@ int zlink_provider_update_weight (void *provider_,
     return provider->update_weight (service_name_, weight_);
 }
 
-int zlink_provider_unregister (void *provider_, const char *service_name_)
+int zlink_receiver_unregister (void *provider_, const char *service_name_)
 {
     if (!provider_)
         return -1;
@@ -935,7 +935,7 @@ int zlink_provider_unregister (void *provider_, const char *service_name_)
     return provider->unregister_service (service_name_);
 }
 
-int zlink_provider_register_result (void *provider_,
+int zlink_receiver_register_result (void *provider_,
                                   const char *service_name_,
                                   int *status_,
                                   char *resolved_endpoint_,
@@ -952,7 +952,7 @@ int zlink_provider_register_result (void *provider_,
                                       error_message_);
 }
 
-int zlink_provider_set_tls_server (void *provider_,
+int zlink_receiver_set_tls_server (void *provider_,
                                    const char *cert_,
                                    const char *key_)
 {
@@ -966,7 +966,7 @@ int zlink_provider_set_tls_server (void *provider_,
     return provider->set_tls_server (cert_, key_);
 }
 
-int zlink_provider_setsockopt (void *provider_,
+int zlink_receiver_setsockopt (void *provider_,
                                int socket_role_,
                                int option_,
                                const void *optval_,
@@ -983,7 +983,7 @@ int zlink_provider_setsockopt (void *provider_,
                                         optvallen_);
 }
 
-void *zlink_provider_router (void *provider_)
+void *zlink_receiver_router (void *provider_)
 {
     if (!provider_)
         return NULL;
@@ -995,7 +995,7 @@ void *zlink_provider_router (void *provider_)
     return provider->router ();
 }
 
-int zlink_provider_destroy (void **provider_p_)
+int zlink_receiver_destroy (void **provider_p_)
 {
     if (!provider_p_ || !*provider_p_) {
         errno = EFAULT;

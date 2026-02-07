@@ -15,7 +15,7 @@ namespace zlink
 static const uint32_t discovery_tag_value = 0x1e6700d6;
 static bool is_valid_service_type (uint16_t service_type_)
 {
-    return service_type_ == discovery_protocol::service_type_gateway_provider
+    return service_type_ == discovery_protocol::service_type_gateway_receiver
            || service_type_ == discovery_protocol::service_type_spot_node;
 }
 
@@ -171,8 +171,8 @@ void discovery_t::remove_observer (discovery_observer_t *observer_)
     _observers.erase (observer_);
 }
 
-int discovery_t::get_providers (const char *service_name_,
-                                zlink_provider_info_t *providers_,
+int discovery_t::get_receivers (const char *service_name_,
+                                zlink_receiver_info_t *providers_,
                                 size_t *count_)
 {
     if (!service_name_ || !count_) {
@@ -204,7 +204,7 @@ int discovery_t::get_providers (const char *service_name_,
     return 0;
 }
 
-int discovery_t::provider_count (const char *service_name_)
+int discovery_t::receiver_count (const char *service_name_)
 {
     if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
@@ -370,12 +370,12 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
             break;
         const std::string service_name =
           discovery_protocol::read_string (frames_[index++]);
-        uint32_t provider_count = 0;
-        if (!discovery_protocol::read_u32 (frames_[index++], &provider_count))
+        uint32_t receiver_count = 0;
+        if (!discovery_protocol::read_u32 (frames_[index++], &receiver_count))
             break;
 
         service_state_t state;
-        for (uint32_t p = 0; p < provider_count && index + 2 < frames_.size ();
+        for (uint32_t p = 0; p < receiver_count && index + 2 < frames_.size ();
              ++p) {
             provider_info_t info;
             info.service_name = service_name;

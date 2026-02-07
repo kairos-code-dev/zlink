@@ -195,6 +195,141 @@ static void test_spot_peer_pubsub ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+enum peer_transport_t
+{
+    peer_transport_ipc = 0,
+    peer_transport_tcp,
+    peer_transport_ws,
+    peer_transport_tls,
+    peer_transport_wss
+};
+
+static void run_spot_peer_transport_test (peer_transport_t transport_)
+{
+    const bool is_ipc = transport_ == peer_transport_ipc;
+    const bool use_tls =
+      transport_ == peer_transport_tls || transport_ == peer_transport_wss;
+
+    const char *topic = NULL;
+    const char *payload = NULL;
+    const char *bind_endpoint = NULL;
+
+    switch (transport_) {
+        case peer_transport_ipc:
+            topic = "ipc:test";
+            payload = "ipc-msg";
+            break;
+        case peer_transport_tcp:
+            topic = "tcp:test";
+            payload = "tcp-msg";
+            bind_endpoint = "tcp://127.0.0.1:*";
+            break;
+        case peer_transport_ws:
+            topic = "ws:test";
+            payload = "ws-msg";
+            bind_endpoint = "ws://127.0.0.1:*";
+            break;
+        case peer_transport_tls:
+            topic = "tls:test";
+            payload = "tls-msg";
+            bind_endpoint = "tls://localhost:*";
+            break;
+        case peer_transport_wss:
+            topic = "wss:test";
+            payload = "wss-msg";
+            bind_endpoint = "wss://localhost:*";
+            break;
+        default:
+            TEST_FAIL_MESSAGE ("Unknown peer transport");
+            return;
+    }
+
+    tls_test_files_t files;
+    if (use_tls)
+        files = make_tls_test_files ();
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node_a = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_a);
+    void *node_b = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    char endpoint_a[MAX_SOCKET_STRING] = {0};
+
+    if (is_ipc) {
+        char endpoint_b[MAX_SOCKET_STRING];
+        make_random_ipc_endpoint (endpoint_a);
+        make_random_ipc_endpoint (endpoint_b);
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint_a));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, endpoint_b));
+    } else {
+        if (use_tls) {
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_spot_node_set_tls_server (node_a, files.server_cert.c_str (),
+                                              files.server_key.c_str ()));
+        }
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, bind_endpoint));
+
+        size_t endpoint_len = sizeof (endpoint_a);
+        void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
+        TEST_ASSERT_NOT_NULL (pub_socket_a);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (
+          pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint_a, &endpoint_len));
+
+        if (use_tls) {
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_tls_client (
+              node_b, files.ca_cert.c_str (), "localhost", 0));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_spot_node_set_tls_server (node_b, files.server_cert.c_str (),
+                                              files.server_key.c_str ()));
+        }
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, bind_endpoint));
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint_a));
+
+    void *spot_b = zlink_spot_new (node_b);
+    TEST_ASSERT_NOT_NULL (spot_b);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, topic));
+
+    msleep (use_tls ? 500 : 50);
+
+    void *spot_a = zlink_spot_new (node_a);
+    TEST_ASSERT_NOT_NULL (spot_a);
+
+    zlink_msg_t parts[1];
+    const size_t payload_size = strlen (payload);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], payload_size));
+    memcpy (zlink_msg_data (&parts[0]), payload, payload_size);
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_publish (spot_a, topic, parts, 1, 0));
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char recv_topic[256];
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, recv_topic, NULL));
+    TEST_ASSERT_EQUAL_STRING (topic, recv_topic);
+    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
+    TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&recv_parts[0]), payload_size);
+    zlink_msgv_close (recv_parts, recv_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+
+    if (use_tls)
+        cleanup_tls_test_files (files);
+}
+
 static void test_spot_peer_ipc ()
 {
 #if !defined(ZLINK_HAVE_IPC)
@@ -205,55 +340,7 @@ static void test_spot_peer_ipc ()
         TEST_IGNORE_MESSAGE ("IPC not available");
         return;
     }
-
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node_a = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_a);
-    void *node_b = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_b);
-
-    char endpoint_a[MAX_SOCKET_STRING];
-    char endpoint_b[MAX_SOCKET_STRING];
-    make_random_ipc_endpoint (endpoint_a);
-    make_random_ipc_endpoint (endpoint_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, endpoint_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint_a));
-
-    void *spot_b = zlink_spot_new (node_b);
-    TEST_ASSERT_NOT_NULL (spot_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "ipc:test"));
-
-    msleep (50);
-
-    void *spot_a = zlink_spot_new (node_a);
-    TEST_ASSERT_NOT_NULL (spot_a);
-
-    zlink_msg_t parts[1];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 7));
-    memcpy (zlink_msg_data (&parts[0]), "ipc-msg", 7);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a, "ipc:test", parts, 1, 0));
-
-    zlink_msg_t *recv_parts = NULL;
-    size_t recv_count = 0;
-    char topic[256];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
-    TEST_ASSERT_EQUAL_STRING ("ipc:test", topic);
-    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-    TEST_ASSERT_EQUAL_MEMORY ("ipc-msg", zlink_msg_data (&recv_parts[0]), 7);
-    zlink_msgv_close (recv_parts, recv_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    run_spot_peer_transport_test (peer_transport_ipc);
 #endif
 }
 
@@ -263,58 +350,7 @@ static void test_spot_peer_tcp ()
         TEST_IGNORE_MESSAGE ("TCP not available");
         return;
     }
-
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node_a = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_a);
-    void *node_b = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "tcp://127.0.0.1:*"));
-
-    char endpoint[MAX_SOCKET_STRING];
-    size_t endpoint_len = sizeof (endpoint);
-    void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
-    TEST_ASSERT_NOT_NULL (pub_socket_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "tcp://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint));
-
-    void *spot_b = zlink_spot_new (node_b);
-    TEST_ASSERT_NOT_NULL (spot_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "tcp:test"));
-
-    msleep (50);
-
-    void *spot_a = zlink_spot_new (node_a);
-    TEST_ASSERT_NOT_NULL (spot_a);
-
-    zlink_msg_t parts[1];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 7));
-    memcpy (zlink_msg_data (&parts[0]), "tcp-msg", 7);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a, "tcp:test", parts, 1, 0));
-
-    zlink_msg_t *recv_parts = NULL;
-    size_t recv_count = 0;
-    char topic[256];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
-    TEST_ASSERT_EQUAL_STRING ("tcp:test", topic);
-    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-    TEST_ASSERT_EQUAL_MEMORY ("tcp-msg", zlink_msg_data (&recv_parts[0]), 7);
-    zlink_msgv_close (recv_parts, recv_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    run_spot_peer_transport_test (peer_transport_tcp);
 }
 
 static void test_spot_peer_ws ()
@@ -323,205 +359,25 @@ static void test_spot_peer_ws ()
         TEST_IGNORE_MESSAGE ("WS not available");
         return;
     }
-
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node_a = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_a);
-    void *node_b = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "ws://127.0.0.1:*"));
-
-    char endpoint[MAX_SOCKET_STRING];
-    size_t endpoint_len = sizeof (endpoint);
-    void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
-    TEST_ASSERT_NOT_NULL (pub_socket_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "ws://127.0.0.1:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint));
-
-    void *spot_b = zlink_spot_new (node_b);
-    TEST_ASSERT_NOT_NULL (spot_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "ws:test"));
-
-    msleep (50);
-
-    void *spot_a = zlink_spot_new (node_a);
-    TEST_ASSERT_NOT_NULL (spot_a);
-
-    zlink_msg_t parts[1];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 6));
-    memcpy (zlink_msg_data (&parts[0]), "ws-msg", 6);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a, "ws:test", parts, 1, 0));
-
-    zlink_msg_t *recv_parts = NULL;
-    size_t recv_count = 0;
-    char topic[256];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
-    TEST_ASSERT_EQUAL_STRING ("ws:test", topic);
-    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-    TEST_ASSERT_EQUAL_MEMORY ("ws-msg", zlink_msg_data (&recv_parts[0]), 6);
-    zlink_msgv_close (recv_parts, recv_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+    run_spot_peer_transport_test (peer_transport_ws);
 }
 
 static void test_spot_peer_tls ()
 {
-    // TODO: TLS peer connection hangs - needs investigation
-    // TCP/WS/WSS peer tests pass, but TLS has different behavior
     if (!zlink_has ("tls")) {
         TEST_IGNORE_MESSAGE ("TLS not available");
         return;
     }
-
-    const tls_test_files_t files = make_tls_test_files ();
-
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node_a = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_a);
-    void *node_b = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_server (node_a, files.server_cert.c_str (),
-                                       files.server_key.c_str ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "tls://localhost:*"));
-
-    char endpoint[MAX_SOCKET_STRING];
-    size_t endpoint_len = sizeof (endpoint);
-    void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
-    TEST_ASSERT_NOT_NULL (pub_socket_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_client (node_b, files.ca_cert.c_str (), "localhost", 0));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_server (node_b, files.server_cert.c_str (),
-                                       files.server_key.c_str ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "tls://localhost:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint));
-
-    void *spot_b = zlink_spot_new (node_b);
-    TEST_ASSERT_NOT_NULL (spot_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "tls:test"));
-
-    msleep (500);  // TLS handshake needs more time
-
-    void *spot_a = zlink_spot_new (node_a);
-    TEST_ASSERT_NOT_NULL (spot_a);
-
-    zlink_msg_t parts[1];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 7));
-    memcpy (zlink_msg_data (&parts[0]), "tls-msg", 7);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a, "tls:test", parts, 1, 0));
-
-    zlink_msg_t *recv_parts = NULL;
-    size_t recv_count = 0;
-    char topic[256];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
-    TEST_ASSERT_EQUAL_STRING ("tls:test", topic);
-    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-    TEST_ASSERT_EQUAL_MEMORY ("tls-msg", zlink_msg_data (&recv_parts[0]), 7);
-    zlink_msgv_close (recv_parts, recv_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-
-    cleanup_tls_test_files (files);
+    run_spot_peer_transport_test (peer_transport_tls);
 }
 
 static void test_spot_peer_wss ()
 {
-    // TODO: WSS peer connection hangs - same issue as TLS peer test
     if (!zlink_has ("wss")) {
         TEST_IGNORE_MESSAGE ("WSS not available");
         return;
     }
-
-    const tls_test_files_t files = make_tls_test_files ();
-
-    void *ctx = zlink_ctx_new ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node_a = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_a);
-    void *node_b = zlink_spot_node_new (ctx);
-    TEST_ASSERT_NOT_NULL (node_b);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_server (node_a, files.server_cert.c_str (),
-                                       files.server_key.c_str ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "wss://localhost:*"));
-
-    char endpoint[MAX_SOCKET_STRING];
-    size_t endpoint_len = sizeof (endpoint);
-    void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
-    TEST_ASSERT_NOT_NULL (pub_socket_a);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint, &endpoint_len));
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_client (node_b, files.ca_cert.c_str (), "localhost", 0));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_node_set_tls_server (node_b, files.server_cert.c_str (),
-                                       files.server_key.c_str ()));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "wss://localhost:*"));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint));
-
-    void *spot_b = zlink_spot_new (node_b);
-    TEST_ASSERT_NOT_NULL (spot_b);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "wss:test"));
-
-    msleep (500);  // TLS handshake needs more time
-
-    void *spot_a = zlink_spot_new (node_a);
-    TEST_ASSERT_NOT_NULL (spot_a);
-
-    zlink_msg_t parts[1];
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&parts[0], 7));
-    memcpy (zlink_msg_data (&parts[0]), "wss-msg", 7);
-
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_publish (spot_a, "wss:test", parts, 1, 0));
-
-    zlink_msg_t *recv_parts = NULL;
-    size_t recv_count = 0;
-    char topic[256];
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_spot_recv (spot_b, &recv_parts, &recv_count, 0, topic, NULL));
-    TEST_ASSERT_EQUAL_STRING ("wss:test", topic);
-    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-    TEST_ASSERT_EQUAL_MEMORY ("wss-msg", zlink_msg_data (&recv_parts[0]), 7);
-    zlink_msgv_close (recv_parts, recv_count);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
-
-    cleanup_tls_test_files (files);
+    run_spot_peer_transport_test (peer_transport_wss);
 }
 
 static void test_spot_unsubscribe ()
@@ -714,7 +570,7 @@ static bool wait_for_provider_count (void *discovery_,
 
     for (int i = 0; i < max_attempts; ++i) {
         const int count =
-          zlink_discovery_provider_count (discovery_, service_name_);
+          zlink_discovery_receiver_count (discovery_, service_name_);
         if (count == expected_count_)
             return true;
         msleep (sleep_ms_step);

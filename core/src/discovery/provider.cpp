@@ -313,7 +313,7 @@ int provider_t::register_service (const char *service_name_,
     if (send_u16 (_dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
         || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_provider,
+                     discovery_protocol::service_type_gateway_receiver,
                      ZLINK_SNDMORE)
              != 0
         || send_string (_dealer, _service_name, ZLINK_SNDMORE) != 0
@@ -359,7 +359,7 @@ int provider_t::update_weight (const char *service_name_, uint32_t weight_)
                   ZLINK_SNDMORE)
           != 0
         || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_provider,
+                     discovery_protocol::service_type_gateway_receiver,
                      ZLINK_SNDMORE)
              != 0
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
@@ -393,7 +393,7 @@ int provider_t::unregister_service (const char *service_name_)
     if (send_u16 (_dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
         || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_provider,
+                     discovery_protocol::service_type_gateway_receiver,
                      ZLINK_SNDMORE)
              != 0
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
@@ -467,9 +467,9 @@ int provider_t::set_socket_option (int socket_role_,
 
     scoped_lock_t lock (_sync);
     socket_base_t *target = NULL;
-    if (socket_role_ == ZLINK_PROVIDER_SOCKET_ROUTER)
+    if (socket_role_ == ZLINK_RECEIVER_SOCKET_ROUTER)
         target = _router;
-    else if (socket_role_ == ZLINK_PROVIDER_SOCKET_DEALER)
+    else if (socket_role_ == ZLINK_RECEIVER_SOCKET_DEALER)
         target = _dealer;
     else {
         errno = EINVAL;
@@ -537,7 +537,7 @@ void provider_t::send_heartbeat ()
             send_u16 (dealer, discovery_protocol::msg_heartbeat,
                       ZLINK_SNDMORE);
             send_u16 (dealer,
-                      discovery_protocol::service_type_gateway_provider,
+                      discovery_protocol::service_type_gateway_receiver,
                       ZLINK_SNDMORE);
             send_string (dealer, service, ZLINK_SNDMORE);
             send_string (dealer, advertise, 0);

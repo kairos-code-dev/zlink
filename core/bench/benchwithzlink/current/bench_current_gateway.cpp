@@ -129,7 +129,7 @@ static bool configure_provider_tls(void *provider,
         return true;
     provider_set_tls_server_fn fn =
       reinterpret_cast<provider_set_tls_server_fn>(
-        resolve_symbol("zlink_provider_set_tls_server"));
+        resolve_symbol("zlink_receiver_set_tls_server"));
     if (!fn)
         return false;
     const std::string &cert = tls_cert_path();
@@ -195,7 +195,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *provider = zlink_provider_new(ctx, NULL);
+    void *provider = zlink_receiver_new(ctx, NULL);
     if (!provider) {
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
@@ -221,10 +221,10 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 #endif
 
     std::string provider_endpoint = make_fixed_endpoint(transport, base_port);
-    if (zlink_provider_bind(provider, provider_endpoint.c_str()) != 0
-        || zlink_provider_connect_registry(provider, reg_router.c_str()) != 0) {
+    if (zlink_receiver_bind(provider, provider_endpoint.c_str()) != 0
+        || zlink_receiver_connect_registry(provider, reg_router.c_str()) != 0) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -232,9 +232,9 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *provider_router = zlink_provider_router(provider);
+    void *provider_router = zlink_receiver_router(provider);
     if (!provider_router) {
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -244,10 +244,10 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 
     // keepalive/heartbeat disabled
 
-    if (zlink_provider_register(provider, service_name,
+    if (zlink_receiver_register(provider, service_name,
                                 provider_endpoint.c_str(), 1) != 0) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -257,7 +257,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 
     if (!configure_gateway_tls(gateway, transport)) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -270,7 +270,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     void *gateway_router = zlink_gateway_router(gateway);
     if (!gateway_router) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -281,7 +281,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     // NOTE: direct connect disabled for auto-connect test.
     // if (zlink_connect(gateway_router, provider_endpoint.c_str()) != 0) {
     //     print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-    //     zlink_provider_destroy(&provider);
+    //     zlink_receiver_destroy(&provider);
     //     zlink_gateway_destroy(&gateway);
     //     zlink_discovery_destroy(&discovery);
     //     zlink_registry_destroy(&registry);
@@ -296,7 +296,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
                   << "\n";
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
         zlink_gateway_destroy(&gateway);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
         zlink_ctx_term(ctx);
@@ -305,7 +305,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 
     if (!wait_for_gateway(gateway, service_name, 1000)) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-        zlink_provider_destroy(&provider);
+        zlink_receiver_destroy(&provider);
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -322,7 +322,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
                       << " transport=" << transport << " size=" << msg_size
                       << " errno=" << errno << "\n";
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-            zlink_provider_destroy(&provider);
+            zlink_receiver_destroy(&provider);
             zlink_gateway_destroy(&gateway);
             zlink_discovery_destroy(&discovery);
             zlink_registry_destroy(&registry);
@@ -334,7 +334,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
                       << " transport=" << transport << " size=" << msg_size
                       << " errno=" << errno << "\n";
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-            zlink_provider_destroy(&provider);
+            zlink_receiver_destroy(&provider);
             zlink_gateway_destroy(&gateway);
             zlink_discovery_destroy(&discovery);
             zlink_registry_destroy(&registry);
@@ -350,7 +350,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         if (!send_one_gateway(gateway, service_name, msg_size)
             || !recv_one_provider_message(recv_router)) {
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
-            zlink_provider_destroy(&provider);
+            zlink_receiver_destroy(&provider);
             zlink_gateway_destroy(&gateway);
             zlink_discovery_destroy(&discovery);
             zlink_registry_destroy(&registry);
@@ -379,7 +379,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 
     print_result(lib_name, "GATEWAY", transport, msg_size, throughput, latency);
 
-    zlink_provider_destroy(&provider);
+    zlink_receiver_destroy(&provider);
     zlink_gateway_destroy(&gateway);
     zlink_discovery_destroy(&discovery);
     zlink_registry_destroy(&registry);

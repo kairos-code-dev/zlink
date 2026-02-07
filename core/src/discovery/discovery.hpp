@@ -47,10 +47,10 @@ class discovery_t
                            const void *optval_,
                            size_t optvallen_);
 
-    int get_providers (const char *service_name_,
-                       zlink_provider_info_t *providers_,
+    int get_receivers (const char *service_name_,
+                       zlink_receiver_info_t *providers_,
                        size_t *count_);
-    int provider_count (const char *service_name_);
+    int receiver_count (const char *service_name_);
     int service_available (const char *service_name_);
     int destroy ();
 

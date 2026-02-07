@@ -408,7 +408,7 @@ typedef struct {
     zlink_routing_id_t routing_id;
     uint32_t weight;
     uint64_t registered_at;
-} zlink_provider_info_t;
+} zlink_receiver_info_t;
 
 /* Registry */
 ZLINK_EXPORT void *zlink_registry_new (void *ctx);
@@ -437,7 +437,7 @@ ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 
 /* Discovery */
 /* Service registration type */
-#define ZLINK_SERVICE_TYPE_GATEWAY_PROVIDER 1
+#define ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER 1
 #define ZLINK_SERVICE_TYPE_SPOT_NODE 2
 
 ZLINK_EXPORT void *zlink_discovery_new (void *ctx);
@@ -448,11 +448,11 @@ ZLINK_EXPORT int zlink_discovery_subscribe (void *discovery,
                                         const char *service_name);
 ZLINK_EXPORT int zlink_discovery_unsubscribe (void *discovery,
                                           const char *service_name);
-ZLINK_EXPORT int zlink_discovery_get_providers (void *discovery,
+ZLINK_EXPORT int zlink_discovery_get_receivers (void *discovery,
                                             const char *service_name,
-                                            zlink_provider_info_t *providers,
+                                            zlink_receiver_info_t *providers,
                                             size_t *count);
-ZLINK_EXPORT int zlink_discovery_provider_count (void *discovery,
+ZLINK_EXPORT int zlink_discovery_receiver_count (void *discovery,
                                              const char *service_name);
 ZLINK_EXPORT int zlink_discovery_service_available (void *discovery,
                                                 const char *service_name);
@@ -508,39 +508,39 @@ ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
                                              const char *service_name);
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 
-/* Provider */
-ZLINK_EXPORT void *zlink_provider_new (void *ctx, const char *routing_id);
-ZLINK_EXPORT int zlink_provider_bind (void *provider,
+/* Receiver */
+ZLINK_EXPORT void *zlink_receiver_new (void *ctx, const char *routing_id);
+ZLINK_EXPORT int zlink_receiver_bind (void *provider,
                                   const char *bind_endpoint);
-ZLINK_EXPORT int zlink_provider_connect_registry (void *provider,
+ZLINK_EXPORT int zlink_receiver_connect_registry (void *provider,
                                               const char *registry_endpoint);
-ZLINK_EXPORT int zlink_provider_register (void *provider,
+ZLINK_EXPORT int zlink_receiver_register (void *provider,
                                       const char *service_name,
                                       const char *advertise_endpoint,
                                       uint32_t weight);
-ZLINK_EXPORT int zlink_provider_update_weight (void *provider,
+ZLINK_EXPORT int zlink_receiver_update_weight (void *provider,
                                            const char *service_name,
                                            uint32_t weight);
-ZLINK_EXPORT int zlink_provider_unregister (void *provider,
+ZLINK_EXPORT int zlink_receiver_unregister (void *provider,
                                         const char *service_name);
-ZLINK_EXPORT int zlink_provider_register_result (void *provider,
+ZLINK_EXPORT int zlink_receiver_register_result (void *provider,
                                              const char *service_name,
                                              int *status,
                                              char *resolved_endpoint,
                                              char *error_message);
-ZLINK_EXPORT int zlink_provider_set_tls_server (void *provider,
+ZLINK_EXPORT int zlink_receiver_set_tls_server (void *provider,
                                             const char *cert,
                                             const char *key);
 /* Provider socket roles */
-#define ZLINK_PROVIDER_SOCKET_ROUTER 1
-#define ZLINK_PROVIDER_SOCKET_DEALER 2
-ZLINK_EXPORT int zlink_provider_setsockopt (void *provider,
+#define ZLINK_RECEIVER_SOCKET_ROUTER 1
+#define ZLINK_RECEIVER_SOCKET_DEALER 2
+ZLINK_EXPORT int zlink_receiver_setsockopt (void *provider,
                                         int socket_role,
                                         int option,
                                         const void *optval,
                                         size_t optvallen);
-ZLINK_EXPORT void *zlink_provider_router (void *provider);
-ZLINK_EXPORT int zlink_provider_destroy (void **provider_p);
+ZLINK_EXPORT void *zlink_receiver_router (void *provider);
+ZLINK_EXPORT int zlink_receiver_destroy (void **provider_p);
 
 /******************************************************************************/
 /*  SPOT Topic PUB/SUB API                                                    */

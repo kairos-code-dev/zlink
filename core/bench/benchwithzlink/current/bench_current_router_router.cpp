@@ -54,7 +54,7 @@ void run_router_router(const std::string& transport, size_t msg_size, int msg_co
     zlink_setsockopt(router2, ZLINK_ROUTER_MANDATORY, &mandatory, sizeof(mandatory));
 
     // Set very high HWM for benchmarking (default 1000 causes deadlock with IPC)
-    int hwm = 1000000;
+    int hwm = 100000;
     zlink_setsockopt(router1, ZLINK_SNDHWM, &hwm, sizeof(hwm));
     zlink_setsockopt(router1, ZLINK_RCVHWM, &hwm, sizeof(hwm));
     zlink_setsockopt(router2, ZLINK_SNDHWM, &hwm, sizeof(hwm));

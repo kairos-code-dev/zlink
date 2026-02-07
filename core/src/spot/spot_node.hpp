@@ -66,7 +66,7 @@ class spot_node_t
     friend class spot_t;
     struct ringbuffer_t
     {
-        ringbuffer_t () : start_seq (1), hwm (1024) {}
+        ringbuffer_t () : start_seq (1), hwm (100000) {}
         uint64_t start_seq;
         size_t hwm;
         std::deque<std::vector<msg_t> > entries;

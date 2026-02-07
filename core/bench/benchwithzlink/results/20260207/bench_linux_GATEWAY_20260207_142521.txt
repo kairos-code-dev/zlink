@@ -1,0 +1,26 @@
+
+## PATTERN: GATEWAY
+  [baseline] Using cached baseline.
+  > Benchmarking current for GATEWAY...
+    Testing tls | 64B: 1 Done
+    Testing tls | 256B: 1 Done
+    Testing tls | 1024B: 1 Done
+    Testing tls | 65536B: 1 Done
+    Testing tls | 131072B: 1 Done
+    Testing tls | 262144B: 1 Done
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   3827.40 Kmsg/s |   4332.66 Kmsg/s |  +13.20% |
+| 64B    | Latency    |         45.92 us |         34.99 us |  +23.80% |
+| 256B   | Throughput |   1748.03 Kmsg/s |   1864.76 Kmsg/s |   +6.68% |
+| 256B   | Latency    |         39.97 us |         69.68 us |  -74.33% |
+| 1024B  | Throughput |    136.76 Kmsg/s |    710.02 Kmsg/s | +419.18% |
+| 1024B  | Latency    |         40.11 us |         41.54 us |   -3.57% |
+| 65536B | Throughput |     20.79 Kmsg/s |     21.33 Kmsg/s |   +2.57% |
+| 65536B | Latency    |        107.10 us |        120.87 us |  -12.86% |
+| 131072B | Throughput |     10.57 Kmsg/s |     11.20 Kmsg/s |   +5.93% |
+| 131072B | Latency    |        178.94 us |        191.99 us |   -7.29% |
+| 262144B | Throughput |      5.92 Kmsg/s |      6.01 Kmsg/s |   +1.49% |
+| 262144B | Latency    |        281.55 us |        228.22 us |  +18.94% |

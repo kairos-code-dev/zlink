@@ -1,0 +1,7 @@
+
+## PATTERN: GATEWAY
+  [baseline] Using cached baseline.
+  > Benchmarking current for GATEWAY...
+    Testing wss | 64B: 1 Done
+    Testing wss | 256B: 1 Done
+    Testing wss | 1024B: 1 

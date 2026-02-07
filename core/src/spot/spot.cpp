@@ -12,7 +12,7 @@
 namespace zlink
 {
 static const uint32_t spot_tag_value = 0x1e6700da;
-static const size_t spot_queue_hwm_default = 1024;
+static const size_t spot_queue_hwm_default = 100000;
 
 static void close_parts_local (std::vector<msg_t> *parts_)
 {

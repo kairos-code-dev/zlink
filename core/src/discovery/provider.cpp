@@ -154,7 +154,7 @@ provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
     } else {
         zlink::discovery::set_socket_routing_id (_router, &_routing_id_override,
                                                  NULL);
-        int hwm = 1000000;
+    int hwm = 1000000;
         _router->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
         _router->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
     }

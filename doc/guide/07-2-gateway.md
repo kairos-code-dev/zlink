@@ -4,6 +4,8 @@
 
 Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 요청을 전송하고 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱, 자동 연결/해제, 요청-응답 매핑을 처리한다.
 
+**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 내부적으로 mutex 보호와 백그라운드 워커 스레드를 통해 여러 스레드에서 안전하게 동시 호출할 수 있다.
+
 ## 2. Receiver 설정
 
 ```c
@@ -90,14 +92,90 @@ zlink_msgv_close(reply_parts, reply_count);
 zlink_receiver_update_weight(receiver, "payment-service", 5);
 ```
 
-## 6. 자동 연결/해제
+## 6. Thread-Safety
+
+### 일반 소켓 vs Gateway
+
+| | 일반 소켓 (PAIR, DEALER, ROUTER 등) | Gateway |
+|---|---|---|
+| **스레드 안전성** | 단일 스레드에서만 사용 | **Thread-safe** — 여러 스레드에서 동시 사용 |
+| **외부 동기화** | 멀티스레드 시 애플리케이션이 직접 동기화 필요 | 불필요 — 내부 mutex 보호 |
+| **백그라운드 작업** | 없음 | Discovery 갱신을 백그라운드 워커가 처리 |
+
+### Thread-safe API
+
+Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드에서 동시에 호출해도 안전하다.
+
+- `zlink_gateway_send()` / `zlink_gateway_recv()`
+- `zlink_gateway_send_rid()`
+- `zlink_gateway_set_lb_strategy()`
+- `zlink_gateway_setsockopt()`
+- `zlink_gateway_set_tls_client()`
+- `zlink_gateway_connection_count()`
+
+### 멀티스레드 사용 예제
+
+```c
+/* Gateway는 thread-safe하므로 여러 스레드에서 공유 가능 */
+void *gateway = zlink_gateway_new(ctx, discovery, "gw-1");
+
+/* 워커 스레드 함수 */
+void *send_worker(void *arg) {
+    void *gw = arg;
+    zlink_msg_t req;
+    zlink_msg_init_data(&req, "request", 7, NULL, NULL);
+    zlink_gateway_send(gw, "my-service", &req, 1, 0);
+    return NULL;
+}
+
+/* 여러 스레드에서 동시 전송 */
+for (int i = 0; i < 4; i++)
+    zlink_threadstart(&send_worker, gateway);
+
+/* 메인 스레드에서 응답 수신 */
+zlink_msg_t *reply = NULL;
+size_t count = 0;
+char svc[256];
+zlink_gateway_recv(gateway, &reply, &count, 0, svc);
+zlink_msgv_close(reply, count);
+```
+
+### 장점
+
+**1. 애플리케이션 아키텍처 단순화**
+
+일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의 메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가 직접 send/recv를 호출할 수 있다.
+
+```
+일반 소켓 (멀티스레드):
+  Thread A ──┐
+  Thread B ──┼── inproc 큐 ── 전용 I/O 스레드 ── ROUTER 소켓
+  Thread C ──┘
+
+Gateway (멀티스레드):
+  Thread A ──┐
+  Thread B ──┼── Gateway (내부 mutex 보호)
+  Thread C ──┘
+```
+
+**2. Discovery 갱신이 API 호출을 블록하지 않음**
+
+서비스 풀 갱신(Receiver 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가 처리한다. send/recv 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
+
+**3. 동시 전송과 가중치 갱신이 안전**
+
+여러 스레드가 동시에 메시지를 전송하면서, 동시에 Receiver가 `zlink_receiver_update_weight()`로 가중치를 갱신해도 데이터 경합 없이 안전하게 처리된다.
+
+> 참고: `core/tests/discovery/test_gateway.cpp` — `test_gateway_concurrent_send_and_updates()`: 다중 스레드 동시 전송 + 가중치 갱신 검증
+
+## 7. 자동 연결/해제
 
 Gateway는 Discovery 이벤트를 받아 자동으로 Receiver를 연결/해제한다.
 
 - `RECEIVER_ADDED`: 신규 Receiver에 ROUTER connect
 - `RECEIVER_REMOVED`: 제거된 Receiver disconnect
 
-## 7. End-to-End 예제
+## 8. End-to-End 예제
 
 ```c
 void *ctx = zlink_ctx_new();
@@ -139,7 +217,7 @@ zlink_registry_destroy(&registry);
 zlink_ctx_term(ctx);
 ```
 
-## 8. API 요약
+## 9. API 요약
 
 ### Gateway API
 | 함수 | 설명 |

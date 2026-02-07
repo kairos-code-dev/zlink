@@ -39,8 +39,9 @@ Registry 클러스터 기반의 서비스 등록/발견 시스템. Receiver가 R
 
 ### 3.2 Gateway — 위치투명 요청/응답
 
-Discovery 기반으로 서비스 Receiver를 자동 발견하고, 로드밸런싱된 요청/응답을 처리한다.
+Discovery 기반으로 서비스 Receiver를 자동 발견하고, 로드밸런싱된 요청/응답을 처리한다. **Thread-safe**하므로 여러 스레드에서 동시에 호출할 수 있다.
 
+- **Thread-safe** — 여러 스레드에서 동시 send/recv 가능
 - Round Robin / Weighted 로드밸런싱
 - 자동 연결/해제 (Discovery 이벤트 기반)
 - 요청-응답 매핑

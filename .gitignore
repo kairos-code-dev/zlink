@@ -32,6 +32,8 @@ core/builds/android/prefix
 ## other results-like folders
 bin/
 lib/
+!core/bench/benchwithzlink/baseline/zlink_dist/**/lib/
+!core/bench/benchwithzlink/baseline/zlink_dist/**/lib/libzlink*
 obj/
 ## Doxygen
 doxygen/

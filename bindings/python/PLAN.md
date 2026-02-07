@@ -14,7 +14,7 @@
 ## API 표면 (1차/2차 합쳐서 전부 구현)
 - Context, Socket, Message, Poller
 - Monitor (monitor open/recv)
-- Spot, Registry, Discovery, Provider, Gateway
+- Spot, Registry, Discovery, Receiver, Gateway
 - 유틸: atomic_counter, stopwatch, proxy
 
 ## 인터롭 전략

@@ -655,16 +655,16 @@ class discovery_t
     int connect_registry (const char *pub_) { return zlink_discovery_connect_registry (_disc, pub_); }
     int subscribe (const char *service_) { return zlink_discovery_subscribe (_disc, service_); }
     int unsubscribe (const char *service_) { return zlink_discovery_unsubscribe (_disc, service_); }
-    int provider_count (const char *service_) { return zlink_discovery_provider_count (_disc, service_); }
+    int receiver_count (const char *service_) { return zlink_discovery_receiver_count (_disc, service_); }
     int service_available (const char *service_) { return zlink_discovery_service_available (_disc, service_); }
     int set_sockopt (int role_, int option_, const void *value_, size_t len_)
     {
         return zlink_discovery_setsockopt (_disc, role_, option_, value_, len_);
     }
 
-    int get_providers (const char *service_, zlink_provider_info_t *providers_, size_t *count_)
+    int get_receivers (const char *service_, zlink_receiver_info_t *providers_, size_t *count_)
     {
-        return zlink_discovery_get_providers (_disc, service_, providers_, count_);
+        return zlink_discovery_get_receivers (_disc, service_, providers_, count_);
     }
 
     int destroy ()
@@ -769,18 +769,18 @@ class gateway_t
     void *_gw;
 };
 
-class provider_t
+class receiver_t
 {
   public:
-    explicit provider_t (context_t &ctx_) : _prov (zlink_provider_new (ctx_.handle (), NULL)) {}
-    provider_t (context_t &ctx_, const char *routing_id_)
-        : _prov (zlink_provider_new (ctx_.handle (), routing_id_))
+    explicit receiver_t (context_t &ctx_) : _prov (zlink_receiver_new (ctx_.handle (), NULL)) {}
+    receiver_t (context_t &ctx_, const char *routing_id_)
+        : _prov (zlink_receiver_new (ctx_.handle (), routing_id_))
     {
     }
-    ~provider_t () { destroy (); }
+    ~receiver_t () { destroy (); }
 
-    provider_t (provider_t &&other) noexcept : _prov (other._prov) { other._prov = NULL; }
-    provider_t &operator= (provider_t &&other) noexcept
+    receiver_t (receiver_t &&other) noexcept : _prov (other._prov) { other._prov = NULL; }
+    receiver_t &operator= (receiver_t &&other) noexcept
     {
         if (this == &other)
             return *this;
@@ -790,40 +790,40 @@ class provider_t
         return *this;
     }
 
-    provider_t (const provider_t &) = delete;
-    provider_t &operator= (const provider_t &) = delete;
+    receiver_t (const receiver_t &) = delete;
+    receiver_t &operator= (const receiver_t &) = delete;
 
-    int bind (const char *endpoint_) { return zlink_provider_bind (_prov, endpoint_); }
+    int bind (const char *endpoint_) { return zlink_receiver_bind (_prov, endpoint_); }
     int connect_registry (const char *endpoint_)
     {
-        return zlink_provider_connect_registry (_prov, endpoint_);
+        return zlink_receiver_connect_registry (_prov, endpoint_);
     }
     int set_sockopt (int role_, int option_, const void *value_, size_t len_)
     {
-        return zlink_provider_setsockopt (_prov, role_, option_, value_, len_);
+        return zlink_receiver_setsockopt (_prov, role_, option_, value_, len_);
     }
     int register_service (const char *service_, const char *advertise_, uint32_t weight_)
     {
-        return zlink_provider_register (_prov, service_, advertise_, weight_);
+        return zlink_receiver_register (_prov, service_, advertise_, weight_);
     }
     int update_weight (const char *service_, uint32_t weight_)
     {
-        return zlink_provider_update_weight (_prov, service_, weight_);
+        return zlink_receiver_update_weight (_prov, service_, weight_);
     }
     int unregister_service (const char *service_)
     {
-        return zlink_provider_unregister (_prov, service_);
+        return zlink_receiver_unregister (_prov, service_);
     }
     int register_result (const char *service_, int *status_, char *resolved_, char *err_)
     {
-        return zlink_provider_register_result (_prov, service_, status_, resolved_, err_);
+        return zlink_receiver_register_result (_prov, service_, status_, resolved_, err_);
     }
     int set_tls_server (const char *cert_, const char *key_)
     {
-        return zlink_provider_set_tls_server (_prov, cert_, key_);
+        return zlink_receiver_set_tls_server (_prov, cert_, key_);
     }
 
-    void *router_handle () const { return zlink_provider_router (_prov); }
+    void *router_handle () const { return zlink_receiver_router (_prov); }
 
     int destroy ()
     {
@@ -831,7 +831,7 @@ class provider_t
             return 0;
         void *tmp = _prov;
         _prov = NULL;
-        return zlink_provider_destroy (&tmp);
+        return zlink_receiver_destroy (&tmp);
     }
 
     void *handle () const { return _prov; }

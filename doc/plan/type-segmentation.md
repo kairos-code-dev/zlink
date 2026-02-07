@@ -4,8 +4,8 @@
 > **상태**: Draft
 > **버전**: 1.0
 > **의존성**:
-> - [04-service-discovery.md](04-service-discovery.md)
-> - [05-spot-topic-pubsub.md](05-spot-topic-pubsub.md)
+> - [Service Discovery 가이드](../guide/07-1-discovery.md)
+> - [SPOT 토픽 PUB/SUB 가이드](../guide/07-3-spot.md)
 
 ## 목차
 1. [문제 정의](#1-문제-정의)
@@ -25,7 +25,7 @@
 
 ## 1. 문제 정의
 
-현재 Registry/Discovery 경로에서 Provider(Gateway 대상)와 SPOT Node가 같은 서비스 네임 공간을 공유한다.
+현재 Registry/Discovery 경로에서 Receiver(Gateway 대상)와 SPOT Node가 같은 서비스 네임 공간을 공유한다.
 이 구조에서는 다음 문제가 있다.
 
 - Registry가 수신한 등록 엔트리가 Gateway용인지 SPOT용인지 구분할 수 없다.
@@ -38,7 +38,7 @@
 
 - Registry가 등록/해제/heartbeat/update_weight 요청을 받을 때 엔트리 타입을 구분 저장한다.
 - 타입을 최소 2종으로 분리한다.
-  - `gateway_provider`
+  - `gateway_receiver`
   - `spot_node`
 - Discovery는 생성 시점에 타입을 고정하고, 구독/조회는 고정 타입으로 동작한다.
 - SPOT는 `service_name` 단위 군 분리를 유지하되, 같은 이름의 Gateway 엔트리와 충돌하지 않게 한다.
@@ -58,14 +58,14 @@
 - Registry 내부 저장 키를 `(type, service_name)` 기준으로 관리한다.
 - Discovery 인스턴스는 생성 시 `service_type`을 고정 보관한다.
 - Discovery 구독/조회는 `(fixed_type, service_name)`으로 처리한다.
-- Provider/Gateway API는 기본 타입을 `gateway_provider`로 동작한다.
+- Receiver/Gateway API는 기본 타입을 `gateway_receiver`로 동작한다.
 - SPOT Node 등록 API는 기본 타입을 `spot_node`로 동작한다.
 - SPOT `set_discovery()`는 `spot_node` 타입만 조회/연결한다.
 
 ### 4.2 호환 요구사항
 
 - 하위 호환은 제공하지 않는다.
-- Registry/Discovery/Provider/SPOT을 동일 릴리스 기준으로 일괄 적용한다.
+- Registry/Discovery/Receiver/SPOT을 동일 릴리스 기준으로 일괄 적용한다.
 
 ### 4.3 운영 요구사항
 
@@ -86,14 +86,14 @@
 
 Registry의 내부 맵을 아래와 같이 재구성한다.
 
-- 기존: `map<string service_name, vector<provider_entry>>`
-- 변경: `map<service_key(type, name), vector<provider_entry>>`
+- 기존: `map<string service_name, vector<receiver_entry>>`
+- 변경: `map<service_key(type, name), vector<receiver_entry>>`
 
 ### 5.2 타입 정의
 
 초기 enum:
 
-- `1`: gateway_provider
+- `1`: gateway_receiver
 - `2`: spot_node
 
 원칙:
@@ -129,7 +129,7 @@ SPOT 등록 시 `service_name=spot-field-a`처럼 군 이름을 명시한다.
 
 결과:
 
-- `gateway_provider/spot-field-a`와 `spot_node/spot-field-a`가 공존 가능
+- `gateway_receiver/spot-field-a`와 `spot_node/spot-field-a`가 공존 가능
 - SPOT는 동일 이름의 Gateway 군과 충돌 없이 자동 연결
 
 ## 6. 프로토콜 변경안
@@ -144,14 +144,14 @@ SPOT 등록 시 `service_name=spot-field-a`처럼 군 이름을 명시한다.
 
 ### 6.2 SERVICE_LIST
 
-provider 엔트리 단위에 `service_type`을 포함한다.
+receiver 엔트리 단위에 `service_type`을 포함한다.
 
 - 기존 엔트리: `endpoint, routing_id, weight`
 - 변경 엔트리: `service_type, endpoint, routing_id, weight`
 
 ### 6.3 타입 결정 원칙
 
-- Provider/Gateway 경로는 내부적으로 `gateway_provider`를 사용한다.
+- Receiver/Gateway 경로는 내부적으로 `gateway_receiver`를 사용한다.
 - SPOT Node 경로는 내부적으로 `spot_node`를 사용한다.
 - Discovery 경로는 생성 시 고정된 타입을 사용한다.
 - 사용자는 `subscribe/get/count` 호출 시 기존처럼 `service_name`만 전달한다.
@@ -163,7 +163,7 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 - Discovery 생성 API에서만 타입 입력을 받는다.
 - Discovery 구독/조회 API는 `service_name`만 받는 기존 시그니처를 유지한다.
 - `service_type` enum은 Discovery 생성 파라미터 검증용으로만 공개한다.
-- 타입 분기는 내부 구현(Registry/Discovery/Provider/SpotNode)에서 처리한다.
+- 타입 분기는 내부 구현(Registry/Discovery/Receiver/SpotNode)에서 처리한다.
 
 ### 7.2 SPOT API 반영
 
@@ -177,7 +177,7 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 ### 단계 1: 내부 타입 모델 도입
 
 - Registry 내부 자료구조를 `(type, name)` 키로 전환
-- provider entry에 type 저장
+- receiver entry에 type 저장
 - 기존 로직 컴파일/단위테스트 통과
 
 산출물:
@@ -206,14 +206,14 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 
 - `discovery.cpp/hpp`, `api/zlink.cpp`, `include/zlink.h`, `spot/spot_node.cpp`
 
-### 단계 4: Gateway/Provider 경로 정합
+### 단계 4: Gateway/Receiver 경로 정합
 
-- Provider register/update/unregister/heartbeat에서 type=`gateway_provider` 송신
+- Receiver register/update/unregister/heartbeat에서 type=`gateway_receiver` 송신
 - Gateway 테스트 전체 회귀
 
 산출물:
 
-- `provider.cpp`, `gateway.cpp` 영향 최소 검증
+- `receiver.cpp`, `gateway.cpp` 영향 최소 검증
 
 ### 단계 5: SPOT 경로 정합
 
@@ -240,7 +240,7 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 
 ### 9.2 통합 테스트
 
-- Gateway provider와 Spot node가 동일 service_name 사용 시 상호 비간섭 검증
+- Gateway receiver와 Spot node가 동일 service_name 사용 시 상호 비간섭 검증
 - Spot discovery 자동 연결 시 spot_node 타입만 연결되는지 검증
 - discovery 생성 타입 불일치 시 `spot_node_set_discovery()` 실패 검증
 
@@ -253,7 +253,7 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 
 ### 10.1 적용 순서
 
-1. Registry/Discovery/Provider/SpotNode를 동일 브랜치에서 동시 반영
+1. Registry/Discovery/Receiver/SpotNode를 동일 브랜치에서 동시 반영
 2. 통합 테스트(gateway + spot + discovery) 전체 통과 확인
 3. 단일 릴리스로 일괄 배포
 
@@ -282,7 +282,7 @@ provider 엔트리 단위에 `service_type`을 포함한다.
 아래 항목을 모두 만족하면 완료로 본다.
 
 - Registry 내부 저장/조회가 `(type, service_name)` 기준으로 동작
-- Gateway/Provider와 SPOT이 같은 service_name을 사용해도 분리 동작
+- Gateway/Receiver와 SPOT이 같은 service_name을 사용해도 분리 동작
 - Spot discovery 자동연결이 `spot_node` 타입만 대상으로 연결
 - 기존 discovery/gateway/spot 테스트 무회귀
 - 신규 typed 분리 테스트 100% PASS

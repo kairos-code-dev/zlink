@@ -4,45 +4,35 @@
 > 특히 서비스 디스커버리 + gateway 기능을 통해 **서비스 내부 통신을 빠르고 직관적으로 구성**하는 것을 목표로 한다.
 > 외부 트래픽의 엣지 게이트웨이 역할은 필요 시 기존 LB/API Gateway와 병행 가능하도록 설계한다.
 
-## 기반 기능 (Foundation)
+## 구현 완료 기능
 
-| 우선순위 | 기능 | 설명 | 스펙 문서 |
-|:--------:|------|------|:----------:|
-| 0 | Routing ID 통합 | zlink_routing_id_t 표준 타입, 자동 생성 값 uint32 통일 | [00](00-routing-id-unification.md) |
+| 기능 | 설명 | 가이드 |
+|------|------|:------:|
+| Routing ID 통합 | zlink_routing_id_t 표준 타입, own 16B UUID / peer 4B uint32 | [guide/08](../guide/08-routing-id.md) |
+| 모니터링 강화 | routing_id 기반 이벤트 식별, polling 방식 모니터 API | [guide/06](../guide/06-monitoring.md) |
+| 서비스 디스커버리 | Registry 클러스터 기반, 클라이언트 사이드 로드밸런싱 | [guide/07-1](../guide/07-1-discovery.md) |
+| Gateway | Discovery 기반 위치투명 요청/응답 | [guide/07-2](../guide/07-2-gateway.md) |
+| SPOT 토픽 PUB/SUB | 토픽 기반 발행/구독, 패턴 구독, 위치 투명성 | [guide/07-3](../guide/07-3-spot.md) |
 
-## 핵심 기능 (Core Features)
+## 향후 계획
 
-| 우선순위 | 기능 | 설명 | 스펙 문서 |
-|:--------:|------|------|:----------:|
-| 1 | 모니터링 강화 | routing_id 기반 이벤트 식별, 사용 편의성 개선 | [01](01-enhanced-monitoring.md) |
-| ~~2~~ | ~~Thread-safe 소켓~~ | ~~여러 스레드에서 하나의 소켓 안전하게 사용~~ | ~~[02](02-thread-safe-socket.md)~~ **DEPRECATED** |
-| ~~3~~ | ~~Request/Reply API~~ | ~~ROUTER 소켓에서 요청-응답 패턴 쉽게 처리~~ | ~~[03](03-request-reply-api.md)~~ **DEPRECATED** |
-| 4 | 서비스 디스커버리 | Registry 클러스터 기반, 클라이언트 사이드 로드밸런싱 | [04](04-service-discovery.md) |
-| 5 | SPOT 토픽 PUB/SUB | 토픽 기반 발행/구독, 패턴 구독, 위치 투명성 | [05](05-spot-topic-pubsub.md) |
+| 기능 | 설명 | 상세 |
+|------|------|:----:|
+| PUB/SUB PGM/EPGM | 멀티캐스트 전송(고성능 fanout) 지원 | [internals/design-decisions](../internals/design-decisions.md) |
+| Discovery 타입 분리 | Registry/Discovery에 service_type 도입, Gateway/SPOT 분리 운영 | [type-segmentation](type-segmentation.md) |
 
-## 추천 기능 (Recommended Features)
-
-| 우선순위 | 기능 | 설명 | 스펙 문서 |
-|:--------:|------|------|:----------:|
-| 6 | PUB/SUB PGM/EPGM | 멀티캐스트 전송(고성능 fanout) 지원 | [06](06-pubsub-pgm-epgm.md) |
-| ~~7~~ | ~~메트릭스 API~~ | ~~송수신 메시지 수/바이트, 큐 상태, 드롭 수~~ | ~~[07](07-metrics-api.md)~~ **DEPRECATED** |
-
-## 의존성 (Dependencies)
+## 의존성
 
 ```
-[0] Routing ID 통합
- ├──> [1] 모니터링 강화
- ├──> [3] Request/Reply API (DEPRECATED)
- ├──> [4] 서비스 디스커버리
- └──> [5] SPOT 토픽 PUB/SUB
+Routing ID 통합
+ ├──> 모니터링 강화
+ ├──> 서비스 디스커버리
+ └──> SPOT 토픽 PUB/SUB
 
-[2] Thread-safe 소켓 (DEPRECATED)
- └──> [3] Request/Reply API (DEPRECATED)
+서비스 디스커버리
+ ├──> Gateway
+ └──> SPOT 토픽 PUB/SUB (자동 연결)
 ```
-
-**[0] Routing ID 통합**은 다른 기능의 선행 작업이며, routing_id를 사용하는 [1]/[4]/[5]에 직접적인 영향을 미침.
-
-> ⚠️ **폐기된 기능**: [2] Thread-safe 소켓, [3] Request/Reply API, [7] 메트릭스 API는 폐기되었습니다.
 
 ## 테스트 작성 규칙
 

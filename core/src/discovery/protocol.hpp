@@ -21,6 +21,9 @@ static const uint16_t msg_service_list = 0x0005;
 static const uint16_t msg_registry_sync = 0x0006;
 static const uint16_t msg_update_weight = 0x0007;
 
+static const uint16_t service_type_gateway_provider = 1;
+static const uint16_t service_type_spot_node = 2;
+
 inline int send_frame (void *socket_, const void *data_, size_t size_, int flags_)
 {
     zlink_msg_t msg;

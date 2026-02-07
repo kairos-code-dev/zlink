@@ -415,6 +415,9 @@ int spot_node_t::register_node (const char *service_name_,
 
     if (send_u16 (dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
+        || send_u16 (dealer, discovery_protocol::service_type_spot_node,
+                     ZLINK_SNDMORE)
+             != 0
         || send_string (dealer, service, ZLINK_SNDMORE) != 0
         || send_string (dealer, advertise, ZLINK_SNDMORE) != 0
         || send_u32 (dealer, 1, 0) != 0) {
@@ -525,6 +528,9 @@ int spot_node_t::unregister_node (const char *service_name_)
 
     if (send_u16 (dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
+        || send_u16 (dealer, discovery_protocol::service_type_spot_node,
+                     ZLINK_SNDMORE)
+             != 0
         || send_string (dealer, service, ZLINK_SNDMORE) != 0
         || send_string (dealer, advertise, 0) != 0) {
         dealer->close ();
@@ -540,6 +546,11 @@ int spot_node_t::set_discovery (discovery_t *discovery_,
                                 const char *service_name_)
 {
     if (!discovery_) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (discovery_->service_type ()
+        != discovery_protocol::service_type_spot_node) {
         errno = EINVAL;
         return -1;
     }
@@ -1220,6 +1231,8 @@ void spot_node_t::send_heartbeat (uint64_t now_ms_)
     }
 
     send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE);
+    send_u16 (dealer, discovery_protocol::service_type_spot_node,
+              ZLINK_SNDMORE);
     send_string (dealer, service, ZLINK_SNDMORE);
     send_string (dealer, endpoint, 0);
 }

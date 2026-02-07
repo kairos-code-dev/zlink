@@ -13,6 +13,11 @@
 namespace zlink
 {
 static const uint32_t discovery_tag_value = 0x1e6700d6;
+static bool is_valid_service_type (uint16_t service_type_)
+{
+    return service_type_ == discovery_protocol::service_type_gateway_provider
+           || service_type_ == discovery_protocol::service_type_spot_node;
+}
 
 static void close_frames (std::vector<zlink_msg_t> *frames_)
 {
@@ -23,13 +28,15 @@ static void close_frames (std::vector<zlink_msg_t> *frames_)
     frames_->clear ();
 }
 
-discovery_t::discovery_t (ctx_t *ctx_) :
+discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
     _stop (0),
-    _update_seq (0)
+    _update_seq (0),
+    _service_type (service_type_)
 {
     zlink_assert (_ctx);
+    zlink_assert (is_valid_service_type (_service_type));
 }
 
 discovery_t::~discovery_t ()
@@ -356,7 +363,10 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames_.size (); ++i) {
-        if (index + 1 >= frames_.size ())
+        if (index + 2 >= frames_.size ())
+            break;
+        uint16_t service_type = 0;
+        if (!discovery_protocol::read_u16 (frames_[index++], &service_type))
             break;
         const std::string service_name =
           discovery_protocol::read_string (frames_[index++]);
@@ -374,10 +384,22 @@ void discovery_t::  handle_service_list (const std::vector<zlink_msg_t> &frames_
                                                  &info.routing_id);
             discovery_protocol::read_u32 (frames_[index++], &info.weight);
             info.registered_at = 0;
-            state.providers.push_back (info);
+            if (service_type == _service_type)
+                state.providers.push_back (info);
         }
 
-        updated[service_name] = state;
+        if (service_type != _service_type)
+            continue;
+
+        std::map<std::string, service_state_t>::iterator it =
+          updated.find (service_name);
+        if (it == updated.end ()) {
+            updated[service_name] = state;
+        } else {
+            it->second.providers.insert (it->second.providers.end (),
+                                         state.providers.begin (),
+                                         state.providers.end ());
+        }
     }
 
     std::set<std::string> changed;

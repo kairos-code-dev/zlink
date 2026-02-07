@@ -527,7 +527,10 @@ void registry_t::handle_peer (void *sub_)
 
     size_t index = 4;
     for (uint32_t i = 0; i < service_count && index < frames.size (); ++i) {
-        if (index + 1 >= frames.size ())
+        if (index + 2 >= frames.size ())
+            break;
+        uint16_t service_type = 0;
+        if (!discovery_protocol::read_u16 (frames[index++], &service_type))
             break;
         const std::string service_name =
           discovery_protocol::read_string (frames[index++]);
@@ -535,7 +538,10 @@ void registry_t::handle_peer (void *sub_)
         if (!discovery_protocol::read_u32 (frames[index++], &provider_count))
             break;
 
-        service_entry_t &service = incoming[service_name];
+        service_key_t service_key;
+        service_key.service_type = service_type;
+        service_key.service_name = service_name;
+        service_entry_t &service = incoming[service_key];
         for (uint32_t p = 0; p < provider_count && index + 2 < frames.size ();
              ++p) {
             provider_entry_t entry;
@@ -567,10 +573,10 @@ void registry_t::handle_peer (void *sub_)
 
         for (service_map_t::const_iterator sit = incoming.begin ();
              sit != incoming.end (); ++sit) {
-            const std::string &service_name = sit->first;
+            const service_key_t &service_key = sit->first;
             const provider_map_t &providers = sit->second.providers;
             service_map_t::const_iterator existing_service =
-              _services.find (service_name);
+              _services.find (service_key);
             for (provider_map_t::const_iterator pit = providers.begin ();
                  pit != providers.end (); ++pit) {
                 bool match = false;
@@ -654,9 +660,9 @@ void registry_t::handle_peer (void *sub_)
 
         for (service_map_t::const_iterator sit = incoming.begin ();
              sit != incoming.end (); ++sit) {
-            const std::string &service_name = sit->first;
+            const service_key_t &service_key = sit->first;
             const provider_map_t &providers = sit->second.providers;
-            service_entry_t &service = _services[service_name];
+            service_entry_t &service = _services[service_key];
             for (provider_map_t::const_iterator pit = providers.begin ();
                  pit != providers.end (); ++pit) {
                 provider_map_t::iterator existing =
@@ -681,16 +687,24 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
                                   size_t frame_count_,
                                   const zlink_routing_id_t &sender_id_)
 {
-    if (frame_count_ < 3) {
+    if (frame_count_ < 4) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid register");
         return;
     }
 
+    uint16_t service_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &service_type)
+        || (service_type != discovery_protocol::service_type_gateway_provider
+            && service_type != discovery_protocol::service_type_spot_node)) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid type");
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[1]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[2]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[3]);
 
     if (service_name.empty () || endpoint.empty ()) {
         send_register_ack (router_, sender_id_, 0x02, endpoint,
@@ -699,15 +713,18 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
     }
 
     uint32_t weight = 1;
-    if (frame_count_ >= 4)
-        discovery_protocol::read_u32 (frames_[3], &weight);
+    if (frame_count_ >= 5)
+        discovery_protocol::read_u32 (frames_[4], &weight);
     if (weight == 0)
         weight = 1;
 
     zlink::clock_t clock;
     const uint64_t now = clock.now_ms ();
 
-    service_entry_t &service = _services[service_name];
+    service_key_t service_key;
+    service_key.service_type = service_type;
+    service_key.service_name = service_name;
+    service_entry_t &service = _services[service_key];
     provider_entry_t &entry = service.providers[endpoint];
     entry.endpoint = endpoint;
     entry.routing_id = sender_id_;
@@ -723,15 +740,22 @@ void registry_t::handle_register (void *router_, const zlink_msg_t *frames_,
 void registry_t::handle_unregister (const zlink_msg_t *frames_,
                                     size_t frame_count_)
 {
-    if (frame_count_ < 3)
+    if (frame_count_ < 4)
         return;
 
+    uint16_t service_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &service_type))
+        return;
     const std::string service_name =
-      discovery_protocol::read_string (frames_[1]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[2]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[3]);
 
-    service_map_t::iterator sit = _services.find (service_name);
+    service_key_t service_key;
+    service_key.service_type = service_type;
+    service_key.service_name = service_name;
+
+    service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ())
         return;
 
@@ -751,15 +775,22 @@ void registry_t::handle_unregister (const zlink_msg_t *frames_,
 void registry_t::handle_heartbeat (const zlink_msg_t *frames_,
                                    size_t frame_count_)
 {
-    if (frame_count_ < 3)
+    if (frame_count_ < 4)
         return;
 
+    uint16_t service_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &service_type))
+        return;
     const std::string service_name =
-      discovery_protocol::read_string (frames_[1]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[2]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[3]);
 
-    service_map_t::iterator sit = _services.find (service_name);
+    service_key_t service_key;
+    service_key.service_type = service_type;
+    service_key.service_name = service_name;
+
+    service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ())
         return;
 
@@ -775,22 +806,33 @@ void registry_t::handle_update_weight (void *router_, const zlink_msg_t *frames_
                                        size_t frame_count_,
                                        const zlink_routing_id_t &sender_id_)
 {
-    if (frame_count_ < 4) {
+    if (frame_count_ < 5) {
         send_register_ack (router_, sender_id_, 0xFF, std::string (),
                            "invalid update");
         return;
     }
 
+    uint16_t service_type = 0;
+    if (!discovery_protocol::read_u16 (frames_[1], &service_type)
+        || (service_type != discovery_protocol::service_type_gateway_provider
+            && service_type != discovery_protocol::service_type_spot_node)) {
+        send_register_ack (router_, sender_id_, 0xFF, std::string (),
+                           "invalid type");
+        return;
+    }
     const std::string service_name =
-      discovery_protocol::read_string (frames_[1]);
-    const std::string endpoint =
       discovery_protocol::read_string (frames_[2]);
+    const std::string endpoint =
+      discovery_protocol::read_string (frames_[3]);
     uint32_t weight = 1;
-    discovery_protocol::read_u32 (frames_[3], &weight);
+    discovery_protocol::read_u32 (frames_[4], &weight);
     if (weight == 0)
         weight = 1;
 
-    service_map_t::iterator sit = _services.find (service_name);
+    service_key_t service_key;
+    service_key.service_type = service_type;
+    service_key.service_name = service_name;
+    service_map_t::iterator sit = _services.find (service_key);
     if (sit == _services.end ()) {
         send_register_ack (router_, sender_id_, 0x01, endpoint,
                            "service not found");
@@ -889,12 +931,15 @@ void registry_t::send_service_list (void *pub_)
         if (it->second.providers.empty ())
             continue;
 
-        const std::string &service_name = it->first;
+        const service_key_t &service_key = it->first;
         const provider_map_t &providers = it->second.providers;
         const uint32_t provider_count =
           static_cast<uint32_t> (providers.size ());
 
-        discovery_protocol::send_string (pub_, service_name, ZLINK_SNDMORE);
+        discovery_protocol::send_u16 (pub_, service_key.service_type,
+                                      ZLINK_SNDMORE);
+        discovery_protocol::send_string (pub_, service_key.service_name,
+                                         ZLINK_SNDMORE);
         discovery_protocol::send_u32 (pub_, provider_count,
                                       ZLINK_SNDMORE);
 

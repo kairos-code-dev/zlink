@@ -34,7 +34,7 @@ class discovery_observer_t
 class discovery_t
 {
   public:
-    explicit discovery_t (ctx_t *ctx_);
+    discovery_t (ctx_t *ctx_, uint16_t service_type_);
     ~discovery_t ();
 
     bool check_tag () const;
@@ -53,6 +53,8 @@ class discovery_t
     int provider_count (const char *service_name_);
     int service_available (const char *service_name_);
     int destroy ();
+
+    uint16_t service_type () const { return _service_type; }
 
     void snapshot_providers (const std::string &service_name_,
                              std::vector<provider_info_t> *out_);
@@ -92,6 +94,7 @@ class discovery_t
         std::vector<unsigned char> value;
     };
     std::vector<socket_opt_t> _sub_opts;
+    uint16_t _service_type;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }

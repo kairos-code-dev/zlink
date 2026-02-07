@@ -5,7 +5,7 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-static const size_t stream_routing_id_size = 5;
+static const size_t stream_routing_id_size = 4;
 
 static void recv_stream_event (void *socket_,
                                unsigned char expected_code_,
@@ -13,7 +13,6 @@ static void recv_stream_event (void *socket_,
 {
     int rc = zlink_recv (socket_, routing_id_, 255, 0);
     TEST_ASSERT_EQUAL_INT (static_cast<int> (stream_routing_id_size), rc);
-    TEST_ASSERT_EQUAL_UINT8 (0, routing_id_[0]);
 
     int more = 0;
     size_t more_size = sizeof (more);

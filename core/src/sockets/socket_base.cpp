@@ -24,6 +24,7 @@
 #include "sockets/socket_base.hpp"
 #include "protocol/wire.hpp"
 #include "zlink.h"
+#include "utils/random.hpp"
 
 // ASIO-only build: Transport listeners are always included
 #include "transports/tcp/asio_tcp_listener.hpp"
@@ -67,6 +68,28 @@
 #include "sockets/stream.hpp"
 #include "sockets/xpub.hpp"
 #include "sockets/xsub.hpp"
+
+namespace
+{
+static void generate_default_routing_id (unsigned char out_[16])
+{
+    zlink::generate_random_bytes (out_, 16);
+
+    // RFC 4122 variant/version layout.
+    out_[6] = static_cast<unsigned char> ((out_[6] & 0x0F) | 0x40);
+    out_[8] = static_cast<unsigned char> ((out_[8] & 0x3F) | 0x80);
+
+    bool all_zero = true;
+    for (size_t i = 0; i < 16; ++i) {
+        if (out_[i] != 0) {
+            all_zero = false;
+            break;
+        }
+    }
+    if (all_zero)
+        out_[15] = 1;
+}
+}
 
 void zlink::socket_base_t::inprocs_t::emplace (const char *endpoint_uri_,
                                              pipe_t *pipe_)
@@ -177,12 +200,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     options.linger.store (parent_->get (ZLINK_BLOCKY) ? -1 : 0);
 
     if (options.routing_id_size == 0) {
-        unsigned char buf[5];
-        buf[0] = 0;
-        uint32_t routing_id = static_cast<uint32_t> (sid_);
-        if (routing_id == 0)
-            routing_id = 1;
-        put_uint32 (buf + 1, routing_id);
+        unsigned char buf[16];
+        generate_default_routing_id (buf);
         memcpy (options.routing_id, buf, sizeof buf);
         options.routing_id_size = static_cast<unsigned char> (sizeof buf);
     }

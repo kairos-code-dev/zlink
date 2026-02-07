@@ -34,7 +34,7 @@ void test_probe_router_router ()
     // receive the routing ID, which is auto-generated in this case, since the
     // peer did not set one explicitly
     TEST_ASSERT_EQUAL_INT (
-      5, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, buffer, 255, 0)));
+      16, TEST_ASSERT_SUCCESS_ERRNO (zlink_recv (client, buffer, 255, 0)));
 
     recv_string_expect_success (client, "Hello", 0);
 

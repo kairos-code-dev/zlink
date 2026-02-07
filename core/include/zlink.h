@@ -423,6 +423,15 @@ ZLINK_EXPORT int zlink_registry_set_heartbeat (void *registry,
                                            uint32_t timeout_ms);
 ZLINK_EXPORT int zlink_registry_set_broadcast_interval (void *registry,
                                                     uint32_t interval_ms);
+/* Registry socket roles */
+#define ZLINK_REGISTRY_SOCKET_PUB 1
+#define ZLINK_REGISTRY_SOCKET_ROUTER 2
+#define ZLINK_REGISTRY_SOCKET_PEER_SUB 3
+ZLINK_EXPORT int zlink_registry_setsockopt (void *registry,
+                                        int socket_role,
+                                        int option,
+                                        const void *optval,
+                                        size_t optvallen);
 ZLINK_EXPORT int zlink_registry_start (void *registry);
 ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 
@@ -442,10 +451,19 @@ ZLINK_EXPORT int zlink_discovery_provider_count (void *discovery,
                                              const char *service_name);
 ZLINK_EXPORT int zlink_discovery_service_available (void *discovery,
                                                 const char *service_name);
+/* Discovery socket roles */
+#define ZLINK_DISCOVERY_SOCKET_SUB 1
+ZLINK_EXPORT int zlink_discovery_setsockopt (void *discovery,
+                                         int socket_role,
+                                         int option,
+                                         const void *optval,
+                                         size_t optvallen);
 ZLINK_EXPORT int zlink_discovery_destroy (void **discovery_p);
 
 /* Gateway */
-ZLINK_EXPORT void *zlink_gateway_new (void *ctx, void *discovery);
+ZLINK_EXPORT void *zlink_gateway_new (void *ctx,
+                                      void *discovery,
+                                      const char *routing_id);
 
 ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                      const char *service_name,
@@ -474,6 +492,8 @@ ZLINK_EXPORT int zlink_gateway_setsockopt (void *gateway,
                                            int option,
                                            const void *optval,
                                            size_t optvallen);
+/* Gateway socket role */
+#define ZLINK_GATEWAY_SOCKET_ROUTER 1
 ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *ca_cert,
                                            const char *hostname,
@@ -484,7 +504,7 @@ ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
 ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 
 /* Provider */
-ZLINK_EXPORT void *zlink_provider_new (void *ctx);
+ZLINK_EXPORT void *zlink_provider_new (void *ctx, const char *routing_id);
 ZLINK_EXPORT int zlink_provider_bind (void *provider,
                                   const char *bind_endpoint);
 ZLINK_EXPORT int zlink_provider_connect_registry (void *provider,
@@ -506,6 +526,14 @@ ZLINK_EXPORT int zlink_provider_register_result (void *provider,
 ZLINK_EXPORT int zlink_provider_set_tls_server (void *provider,
                                             const char *cert,
                                             const char *key);
+/* Provider socket roles */
+#define ZLINK_PROVIDER_SOCKET_ROUTER 1
+#define ZLINK_PROVIDER_SOCKET_DEALER 2
+ZLINK_EXPORT int zlink_provider_setsockopt (void *provider,
+                                        int socket_role,
+                                        int option,
+                                        const void *optval,
+                                        size_t optvallen);
 ZLINK_EXPORT void *zlink_provider_router (void *provider);
 ZLINK_EXPORT int zlink_provider_destroy (void **provider_p);
 

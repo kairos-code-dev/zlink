@@ -35,6 +35,7 @@ napi_value registry_add_peer(napi_env env, napi_callback_info info);
 napi_value registry_set_heartbeat(napi_env env, napi_callback_info info);
 napi_value registry_set_broadcast(napi_env env, napi_callback_info info);
 napi_value registry_start(napi_env env, napi_callback_info info);
+napi_value registry_setsockopt(napi_env env, napi_callback_info info);
 napi_value registry_destroy(napi_env env, napi_callback_info info);
 
 napi_value discovery_new(napi_env env, napi_callback_info info);
@@ -45,6 +46,7 @@ napi_value discovery_provider_count(napi_env env, napi_callback_info info);
 napi_value discovery_service_available(napi_env env, napi_callback_info info);
 napi_value discovery_get_providers(napi_env env, napi_callback_info info);
 napi_value discovery_destroy(napi_env env, napi_callback_info info);
+napi_value discovery_setsockopt(napi_env env, napi_callback_info info);
 
 napi_value gateway_new(napi_env env, napi_callback_info info);
 napi_value gateway_send(napi_env env, napi_callback_info info);
@@ -52,6 +54,7 @@ napi_value gateway_recv(napi_env env, napi_callback_info info);
 napi_value gateway_set_lb(napi_env env, napi_callback_info info);
 napi_value gateway_set_tls(napi_env env, napi_callback_info info);
 napi_value gateway_connection_count(napi_env env, napi_callback_info info);
+napi_value gateway_setsockopt(napi_env env, napi_callback_info info);
 napi_value gateway_destroy(napi_env env, napi_callback_info info);
 
 napi_value provider_new(napi_env env, napi_callback_info info);
@@ -63,6 +66,7 @@ napi_value provider_unregister(napi_env env, napi_callback_info info);
 napi_value provider_register_result(napi_env env, napi_callback_info info);
 napi_value provider_set_tls_server(napi_env env, napi_callback_info info);
 napi_value provider_router(napi_env env, napi_callback_info info);
+napi_value provider_setsockopt(napi_env env, napi_callback_info info);
 napi_value provider_destroy(napi_env env, napi_callback_info info);
 
 napi_value spot_node_new(napi_env env, napi_callback_info info);

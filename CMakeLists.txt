@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 project(zlink-root LANGUAGES C CXX)
 
 option(ZLINK_CPP_BUILD_TESTS "Build C++ binding tests" OFF)
-if(BUILD_TESTS OR ZLINK_CPP_BUILD_TESTS)
+if(BUILD_TESTS OR ZLINK_CPP_BUILD_TESTS OR ZLINK_BUILD_TESTS)
   enable_testing()
 endif()
 

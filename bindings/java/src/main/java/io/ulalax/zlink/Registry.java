@@ -4,6 +4,7 @@ import io.ulalax.zlink.internal.Native;
 import io.ulalax.zlink.internal.NativeHelpers;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public final class Registry implements AutoCloseable {
     private MemorySegment handle;
@@ -49,6 +50,26 @@ public final class Registry implements AutoCloseable {
         int rc = Native.registrySetBroadcastInterval(handle, intervalMs);
         if (rc != 0)
             throw new RuntimeException("zlink_registry_set_broadcast_interval failed");
+    }
+
+    public void setSockOpt(int role, int option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.registrySetSockOpt(handle, role, option, buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_registry_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(int role, int option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.registrySetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_registry_setsockopt failed");
+        }
     }
 
     public void start() {

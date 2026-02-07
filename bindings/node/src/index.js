@@ -130,6 +130,10 @@ class Registry {
   setHeartbeat(intervalMs, timeoutMs) { requireNative().registrySetHeartbeat(this._native, intervalMs, timeoutMs); }
   setBroadcastInterval(intervalMs) { requireNative().registrySetBroadcastInterval(this._native, intervalMs); }
   start() { requireNative().registryStart(this._native); }
+  setSockOpt(role, option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().registrySetSockOpt(this._native, role, option, b);
+  }
   close() { if (!this._native) return; requireNative().registryDestroy(this._native); this._native = null; }
 }
 
@@ -141,21 +145,31 @@ class Discovery {
   providerCount(service) { return requireNative().discoveryProviderCount(this._native, service); }
   serviceAvailable(service) { return requireNative().discoveryServiceAvailable(this._native, service); }
   getProviders(service) { return requireNative().discoveryGetProviders(this._native, service); }
+  setSockOpt(role, option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().discoverySetSockOpt(this._native, role, option, b);
+  }
   close() { if (!this._native) return; requireNative().discoveryDestroy(this._native); this._native = null; }
 }
 
 class Gateway {
-  constructor(ctx, discovery) { this._native = requireNative().gatewayNew(ctx._native, discovery._native); }
+  constructor(ctx, discovery, routingId = null) {
+    this._native = requireNative().gatewayNew(ctx._native, discovery._native, routingId);
+  }
   send(service, parts, flags = 0) { requireNative().gatewaySend(this._native, service, parts, flags); }
   recv(flags = 0) { return requireNative().gatewayRecv(this._native, flags); }
   setLoadBalancing(service, strategy) { requireNative().gatewaySetLbStrategy(this._native, service, strategy); }
   setTlsClient(ca, host, trust) { requireNative().gatewaySetTlsClient(this._native, ca, host, trust); }
   connectionCount(service) { return requireNative().gatewayConnectionCount(this._native, service); }
+  setSockOpt(option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().gatewaySetSockOpt(this._native, option, b);
+  }
   close() { if (!this._native) return; requireNative().gatewayDestroy(this._native); this._native = null; }
 }
 
 class Provider {
-  constructor(ctx) { this._native = requireNative().providerNew(ctx._native); }
+  constructor(ctx, routingId = null) { this._native = requireNative().providerNew(ctx._native, routingId); }
   bind(endpoint) { requireNative().providerBind(this._native, endpoint); }
   connectRegistry(endpoint) { requireNative().providerConnectRegistry(this._native, endpoint); }
   register(service, endpoint, weight) { requireNative().providerRegister(this._native, service, endpoint, weight); }
@@ -163,6 +177,10 @@ class Provider {
   unregister(service) { requireNative().providerUnregister(this._native, service); }
   registerResult(service) { return requireNative().providerRegisterResult(this._native, service); }
   setTlsServer(cert, key) { requireNative().providerSetTlsServer(this._native, cert, key); }
+  setSockOpt(role, option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().providerSetSockOpt(this._native, role, option, b);
+  }
   routerSocket() {
     const h = requireNative().providerRouter(this._native);
     const s = Object.create(Socket.prototype);

@@ -34,6 +34,7 @@ export class Registry {
   setHeartbeat(intervalMs: number, timeoutMs: number): void;
   setBroadcastInterval(intervalMs: number): void;
   start(): void;
+  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
 
@@ -45,21 +46,23 @@ export class Discovery {
   providerCount(service: string): number;
   serviceAvailable(service: string): boolean;
   getProviders(service: string): Array<{ serviceName: string; endpoint: string; weight: number; registeredAt: number }>;
+  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
 
 export class Gateway {
-  constructor(ctx: Context, discovery: Discovery);
+  constructor(ctx: Context, discovery: Discovery, routingId?: string | null);
   send(service: string, parts: Buffer[], flags?: number): void;
   recv(flags?: number): { service: string; parts: Buffer[] };
   setLoadBalancing(service: string, strategy: number): void;
   setTlsClient(ca: string, host: string, trust: number): void;
   connectionCount(service: string): number;
+  setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
 
 export class Provider {
-  constructor(ctx: Context);
+  constructor(ctx: Context, routingId?: string | null);
   bind(endpoint: string): void;
   connectRegistry(endpoint: string): void;
   register(service: string, endpoint: string, weight: number): void;
@@ -67,6 +70,7 @@ export class Provider {
   unregister(service: string): void;
   registerResult(service: string): { status: number; resolvedEndpoint: string; errorMessage: string };
   setTlsServer(cert: string, key: string): void;
+  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   routerSocket(): Socket;
   close(): void;
 }

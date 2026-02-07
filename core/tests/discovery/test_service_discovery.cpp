@@ -98,7 +98,7 @@ static void test_discovery_provider_registration ()
 
     // Create provider and register
     step_log ("create provider");
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
 
     char bind_ep[64];
@@ -192,7 +192,7 @@ static void test_discovery_service_filtering ()
 
     // Create provider-A
     step_log ("create provider-A");
-    void *provider_a = zlink_provider_new (ctx);
+    void *provider_a = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_a);
 
     char bind_ep_a[64];
@@ -215,7 +215,7 @@ static void test_discovery_service_filtering ()
 
     // Create provider-B
     step_log ("create provider-B");
-    void *provider_b = zlink_provider_new (ctx);
+    void *provider_b = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_b);
 
     char bind_ep_b[64];
@@ -331,7 +331,7 @@ static void test_discovery_heartbeat_timeout ()
 
     // Create provider
     step_log ("create provider");
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
 
     char bind_ep[64];
@@ -424,7 +424,7 @@ static void test_discovery_weight_update ()
 
     // Create provider
     step_log ("create provider");
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
 
     char bind_ep[64];

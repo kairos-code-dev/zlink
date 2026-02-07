@@ -86,7 +86,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_GATEWAY_NEW = downcall("zlink_gateway_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_SEND = downcall("zlink_gateway_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_RECV = downcall("zlink_gateway_recv",
@@ -101,7 +102,19 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_PROVIDER_NEW = downcall("zlink_provider_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_GATEWAY_SETSOCKOPT = downcall("zlink_gateway_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_PROVIDER_SETSOCKOPT = downcall("zlink_provider_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_REGISTRY_SETSOCKOPT = downcall("zlink_registry_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_DISCOVERY_SETSOCKOPT = downcall("zlink_discovery_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_PROVIDER_BIND = downcall("zlink_provider_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_PROVIDER_CONN = downcall("zlink_provider_connect_registry",
@@ -458,9 +471,9 @@ public final class Native {
         }
     }
 
-    public static MemorySegment gatewayNew(MemorySegment ctx, MemorySegment disc) {
+    public static MemorySegment gatewayNew(MemorySegment ctx, MemorySegment disc, MemorySegment routingId) {
         try {
-            return (MemorySegment) MH_GATEWAY_NEW.invokeExact(ctx, disc);
+            return (MemorySegment) MH_GATEWAY_NEW.invokeExact(ctx, disc, routingId);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_gateway_new failed", t);
         }
@@ -506,6 +519,14 @@ public final class Native {
         }
     }
 
+    public static int gatewaySetSockOpt(MemorySegment gw, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_GATEWAY_SETSOCKOPT.invokeExact(gw, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_setsockopt failed", t);
+        }
+    }
+
     public static int gatewayDestroy(MemorySegment gwPtr) {
         try {
             return (int) MH_GATEWAY_DESTROY.invokeExact(gwPtr);
@@ -514,9 +535,9 @@ public final class Native {
         }
     }
 
-    public static MemorySegment providerNew(MemorySegment ctx) {
+    public static MemorySegment providerNew(MemorySegment ctx, MemorySegment routingId) {
         try {
-            return (MemorySegment) MH_PROVIDER_NEW.invokeExact(ctx);
+            return (MemorySegment) MH_PROVIDER_NEW.invokeExact(ctx, routingId);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_provider_new failed", t);
         }
@@ -591,6 +612,30 @@ public final class Native {
             return (int) MH_PROVIDER_DESTROY.invokeExact(pPtr);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_provider_destroy failed", t);
+        }
+    }
+
+    public static int providerSetSockOpt(MemorySegment p, int role, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_PROVIDER_SETSOCKOPT.invokeExact(p, role, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_provider_setsockopt failed", t);
+        }
+    }
+
+    public static int registrySetSockOpt(MemorySegment r, int role, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_REGISTRY_SETSOCKOPT.invokeExact(r, role, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_registry_setsockopt failed", t);
+        }
+    }
+
+    public static int discoverySetSockOpt(MemorySegment d, int role, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_DISCOVERY_SETSOCKOPT.invokeExact(d, role, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_discovery_setsockopt failed", t);
         }
     }
 

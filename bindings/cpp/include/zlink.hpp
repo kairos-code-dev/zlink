@@ -611,6 +611,10 @@ class registry_t
     {
         return zlink_registry_set_broadcast_interval (_reg, ivl_ms_);
     }
+    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    {
+        return zlink_registry_setsockopt (_reg, role_, option_, value_, len_);
+    }
     int start () { return zlink_registry_start (_reg); }
 
     int destroy ()
@@ -653,6 +657,10 @@ class discovery_t
     int unsubscribe (const char *service_) { return zlink_discovery_unsubscribe (_disc, service_); }
     int provider_count (const char *service_) { return zlink_discovery_provider_count (_disc, service_); }
     int service_available (const char *service_) { return zlink_discovery_service_available (_disc, service_); }
+    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    {
+        return zlink_discovery_setsockopt (_disc, role_, option_, value_, len_);
+    }
 
     int get_providers (const char *service_, zlink_provider_info_t *providers_, size_t *count_)
     {
@@ -678,7 +686,11 @@ class gateway_t
 {
   public:
     gateway_t (context_t &ctx_, discovery_t &disc_)
-        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle ()))
+        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), NULL))
+    {
+    }
+    gateway_t (context_t &ctx_, discovery_t &disc_, const char *routing_id_)
+        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), routing_id_))
     {
     }
     ~gateway_t () { destroy (); }
@@ -722,6 +734,10 @@ class gateway_t
         service_.assign (name);
         return 0;
     }
+    int set_sockopt (int option_, const void *value_, size_t len_)
+    {
+        return zlink_gateway_setsockopt (_gw, option_, value_, len_);
+    }
 
     int set_lb_strategy (const char *service_, int strategy_)
     {
@@ -756,7 +772,11 @@ class gateway_t
 class provider_t
 {
   public:
-    explicit provider_t (context_t &ctx_) : _prov (zlink_provider_new (ctx_.handle ())) {}
+    explicit provider_t (context_t &ctx_) : _prov (zlink_provider_new (ctx_.handle (), NULL)) {}
+    provider_t (context_t &ctx_, const char *routing_id_)
+        : _prov (zlink_provider_new (ctx_.handle (), routing_id_))
+    {
+    }
     ~provider_t () { destroy (); }
 
     provider_t (provider_t &&other) noexcept : _prov (other._prov) { other._prov = NULL; }
@@ -777,6 +797,10 @@ class provider_t
     int connect_registry (const char *endpoint_)
     {
         return zlink_provider_connect_registry (_prov, endpoint_);
+    }
+    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    {
+        return zlink_provider_setsockopt (_prov, role_, option_, value_, len_);
     }
     int register_service (const char *service_, const char *advertise_, uint32_t weight_)
     {

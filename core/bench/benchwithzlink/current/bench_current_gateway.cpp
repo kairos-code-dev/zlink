@@ -3,17 +3,15 @@
 #include <thread>
 #include <vector>
 #include <string>
-#include <cstdlib>
 #include <cstring>
 #include <atomic>
-#include <iostream>
+#include <cerrno>
 
 #if !defined(_WIN32)
 #include <unistd.h>
 #else
 #include <process.h>
 #endif
-
 
 static bool wait_for_discovery(void *discovery, const char *service,
                                int timeout_ms) {
@@ -23,9 +21,10 @@ static bool wait_for_discovery(void *discovery, const char *service,
         if (zlink_discovery_service_available(discovery, service) > 0)
             return true;
         if (std::chrono::steady_clock::now() >= deadline)
-            return false;
+            break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    return false;
 }
 
 static bool wait_for_gateway(void *gateway, const char *service,
@@ -33,33 +32,30 @@ static bool wait_for_gateway(void *gateway, const char *service,
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (true) {
-        if (zlink_gateway_connection_count(gateway, service) > 0)
+        const int count = zlink_gateway_connection_count(gateway, service);
+        if (count > 0)
             return true;
         if (std::chrono::steady_clock::now() >= deadline)
-            return false;
+            break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    return false;
 }
 
 static bool recv_one_provider_message(void *router) {
     zlink_msg_t rid;
     zlink_msg_init(&rid);
     if (zlink_msg_recv(&rid, router, 0) < 0) {
-        std::cerr << "recv rid failed: " << zlink_strerror(zlink_errno())
-                  << std::endl;
         zlink_msg_close(&rid);
         return false;
     }
     if (!zlink_msg_more(&rid)) {
-        std::cerr << "recv rid missing payload" << std::endl;
         zlink_msg_close(&rid);
         return false;
     }
     zlink_msg_t payload;
     zlink_msg_init(&payload);
     if (zlink_msg_recv(&payload, router, 0) < 0) {
-        std::cerr << "recv payload failed: "
-                  << zlink_strerror(zlink_errno()) << std::endl;
         zlink_msg_close(&rid);
         zlink_msg_close(&payload);
         return false;
@@ -68,8 +64,6 @@ static bool recv_one_provider_message(void *router) {
         zlink_msg_t part;
         zlink_msg_init(&part);
         if (zlink_msg_recv(&part, router, 0) < 0) {
-            std::cerr << "recv part failed: "
-                      << zlink_strerror(zlink_errno()) << std::endl;
             zlink_msg_close(&part);
             zlink_msg_close(&rid);
             zlink_msg_close(&payload);
@@ -89,11 +83,8 @@ static bool send_one_gateway(void *gateway, const char *service,
     if (msg_size > 0)
         memset(zlink_msg_data(&msg), 'a', msg_size);
     const int rc = zlink_gateway_send(gateway, service, &msg, 1, 0);
-    if (rc != 0) {
-        std::cerr << "gateway send failed: " << zlink_strerror(zlink_errno())
-                  << std::endl;
+    if (rc != 0)
         zlink_msg_close(&msg);
-    }
     return rc == 0;
 }
 
@@ -127,6 +118,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         zlink_ctx_term(ctx);
         return;
     }
+    zlink_registry_set_heartbeat(registry, 5000, 60000);
     if (zlink_registry_set_endpoints(registry, reg_pub.c_str(),
                                      reg_router.c_str()) != 0
         || zlink_registry_start(registry) != 0) {
@@ -146,7 +138,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     const char *service_name = "svc2";
     zlink_discovery_subscribe(discovery, service_name);
 
-    void *gateway = zlink_gateway_new(ctx, discovery);
+    void *gateway = zlink_gateway_new(ctx, discovery, NULL);
     if (!gateway) {
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -154,7 +146,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *provider = zlink_provider_new(ctx);
+    void *provider = zlink_provider_new(ctx, NULL);
     if (!provider) {
         zlink_gateway_destroy(&gateway);
         zlink_discovery_destroy(&discovery);
@@ -192,9 +184,12 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    // int hwm = 1000000;
-    // zlink_setsockopt(provider_router, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    // zlink_setsockopt(provider_router, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    int hwm = 1000000;
+    zlink_provider_setsockopt(provider, ZLINK_PROVIDER_SOCKET_ROUTER,
+                              ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_provider_setsockopt(provider, ZLINK_PROVIDER_SOCKET_ROUTER,
+                              ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    // keepalive/heartbeat disabled
 
     if (zlink_provider_register(provider, service_name,
                                 provider_endpoint.c_str(), 1) != 0) {
@@ -231,13 +226,78 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     //     return;
     // }
 
+    zlink_gateway_setsockopt(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    zlink_gateway_setsockopt(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    // keepalive/heartbeat disabled
+
+    if (!wait_for_discovery(discovery, service_name, 1000)) {
+        std::cerr << "wait_for_discovery timeout: service=" << service_name
+                  << "\n";
+        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        zlink_gateway_destroy(&gateway);
+        zlink_provider_destroy(&provider);
+        zlink_discovery_destroy(&discovery);
+        zlink_registry_destroy(&registry);
+        zlink_ctx_term(ctx);
+        return;
+    }
+
+    if (!wait_for_gateway(gateway, service_name, 1000)) {
+        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        zlink_provider_destroy(&provider);
+        zlink_gateway_destroy(&gateway);
+        zlink_discovery_destroy(&discovery);
+        zlink_registry_destroy(&registry);
+        zlink_ctx_term(ctx);
+        return;
+    }
+
+    {
+        const int conn_count =
+          zlink_gateway_connection_count(gateway, service_name);
+        std::cerr << "gateway connection_count=" << conn_count
+                  << " service=" << service_name << "\n";
+        const int provider_count =
+          zlink_discovery_provider_count(discovery, service_name);
+        std::cerr << "discovery providers=" << provider_count
+                  << " service=" << service_name << "\n";
+        if (provider_count > 0) {
+            std::vector<zlink_provider_info_t> providers;
+            providers.resize(static_cast<size_t>(provider_count));
+            size_t count = providers.size();
+            if (zlink_discovery_get_providers(discovery, service_name,
+                                              providers.data(), &count)
+                == 0) {
+                for (size_t i = 0; i < count; ++i) {
+                    const zlink_provider_info_t &info = providers[i];
+                    std::cerr << "provider[" << i << "] rid_size="
+                              << static_cast<int>(info.routing_id.size)
+                              << " endpoint=" << info.endpoint << "\n";
+                }
+            }
+        }
+    }
+
     settle();
-    //std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
     for (int i = 0; i < warmup_count; ++i) {
-        if (!send_one_gateway(gateway, service_name, msg_size)
-            || !recv_one_provider_message(recv_router)) {
+        if (!send_one_gateway(gateway, service_name, msg_size)) {
+            std::cerr << "warmup send failed at " << i
+                      << " transport=" << transport << " size=" << msg_size
+                      << " errno=" << errno << "\n";
+            print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+            zlink_provider_destroy(&provider);
+            zlink_gateway_destroy(&gateway);
+            zlink_discovery_destroy(&discovery);
+            zlink_registry_destroy(&registry);
+            zlink_ctx_term(ctx);
+            return;
+        }
+        if (!recv_one_provider_message(recv_router)) {
+            std::cerr << "warmup recv failed at " << i
+                      << " transport=" << transport << " size=" << msg_size
+                      << " errno=" << errno << "\n";
             print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
             zlink_provider_destroy(&provider);
             zlink_gateway_destroy(&gateway);
@@ -248,7 +308,27 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         }
     }
 
-    stopwatch_t sw;
+    const int provider_count =
+      zlink_discovery_provider_count(discovery, service_name);
+    if (provider_count <= 0) {
+        std::cerr << "discovery providers=0 service=" << service_name << "\n";
+    } else {
+        std::vector<zlink_provider_info_t> providers;
+        providers.resize(static_cast<size_t>(provider_count));
+        size_t count = providers.size();
+        if (zlink_discovery_get_providers(discovery, service_name,
+                                          providers.data(), &count)
+            == 0) {
+            for (size_t i = 0; i < count; ++i) {
+                const zlink_provider_info_t &info = providers[i];
+                std::cerr << "discovery provider[" << i << "] rid_size="
+                          << static_cast<int>(info.routing_id.size)
+                          << " endpoint=" << info.endpoint << "\n";
+            }
+        }
+    }
+
+stopwatch_t sw;
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
@@ -294,11 +374,6 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 int main(int argc, char **argv) {
     if (argc < 4)
         return 1;
-#if !defined(_WIN32)
-    setenv("ZLINK_GATEWAY_SINGLE_THREAD", "1", 1);
-#else
-    _putenv_s("ZLINK_GATEWAY_SINGLE_THREAD", "1");
-#endif
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);

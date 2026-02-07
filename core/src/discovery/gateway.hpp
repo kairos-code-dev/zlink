@@ -26,7 +26,8 @@ class socket_base_t;
 class gateway_t : public discovery_observer_t
 {
   public:
-    gateway_t (ctx_t *ctx_, discovery_t *discovery_);
+    gateway_t (ctx_t *ctx_, discovery_t *discovery_,
+               const char *routing_id_ = NULL);
     ~gateway_t ();
 
     bool check_tag () const;
@@ -46,7 +47,7 @@ class gateway_t : public discovery_observer_t
                   int flags_);
 
     int set_lb_strategy (const char *service_name_, int strategy_);
-    int set_router_option (int option_,
+    int set_socket_option (int option_,
                            const void *optval_,
                            size_t optvallen_);
     void *router ();
@@ -72,6 +73,7 @@ class gateway_t : public discovery_observer_t
 
     service_pool_t *get_or_create_pool (const std::string &service_name_);
     service_pool_t *get_or_create_pool_cached (const char *service_name_);
+    int init_router_socket ();
     int ensure_router_socket ();
     void refresh_pool (service_pool_t *pool_,
                        const std::vector<provider_info_t> &providers_,
@@ -105,12 +107,6 @@ class gateway_t : public discovery_observer_t
     std::set<std::string> _pending_updates;
     void *_monitor_socket;
     socket_base_t *_router_socket;
-    struct router_opt_t
-    {
-        int option;
-        std::vector<unsigned char> value;
-    };
-    std::vector<router_opt_t> _router_opts;
     bool _use_lock;
     atomic_counter_t _stop;
     thread_t _refresh_worker;
@@ -120,6 +116,7 @@ class gateway_t : public discovery_observer_t
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
+    std::string _routing_id_override;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (gateway_t)
 };

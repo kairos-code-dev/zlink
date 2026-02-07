@@ -507,6 +507,23 @@ int zlink_registry_set_broadcast_interval (void *registry_,
     return registry->set_broadcast_interval (interval_ms_);
 }
 
+int zlink_registry_setsockopt (void *registry_,
+                               int socket_role_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    if (!registry_)
+        return -1;
+    zlink::registry_t *registry = static_cast<zlink::registry_t *> (registry_);
+    if (!registry->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return registry->set_socket_option (socket_role_, option_, optval_,
+                                        optvallen_);
+}
+
 int zlink_registry_start (void *registry_)
 {
     if (!registry_)
@@ -617,7 +634,7 @@ int zlink_discovery_provider_count (void *discovery_,
 }
 
 int zlink_discovery_service_available (void *discovery_,
-                                     const char *service_name_)
+                                       const char *service_name_)
 {
     if (!discovery_)
         return -1;
@@ -627,6 +644,23 @@ int zlink_discovery_service_available (void *discovery_,
         return -1;
     }
     return discovery->service_available (service_name_);
+}
+
+int zlink_discovery_setsockopt (void *discovery_,
+                                int socket_role_,
+                                int option_,
+                                const void *optval_,
+                                size_t optvallen_)
+{
+    if (!discovery_)
+        return -1;
+    zlink::discovery_t *discovery = static_cast<zlink::discovery_t *> (discovery_);
+    if (!discovery->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return discovery->set_socket_option (socket_role_, option_, optval_,
+                                         optvallen_);
 }
 
 int zlink_discovery_destroy (void **discovery_p_)
@@ -646,7 +680,7 @@ int zlink_discovery_destroy (void **discovery_p_)
     return 0;
 }
 
-void *zlink_gateway_new (void *ctx_, void *discovery_)
+void *zlink_gateway_new (void *ctx_, void *discovery_, const char *routing_id_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
@@ -662,7 +696,8 @@ void *zlink_gateway_new (void *ctx_, void *discovery_)
         return NULL;
     }
     zlink::gateway_t *gateway =
-      new (std::nothrow) zlink::gateway_t (static_cast<zlink::ctx_t *> (ctx_), disc);
+      new (std::nothrow) zlink::gateway_t (static_cast<zlink::ctx_t *> (ctx_),
+                                           disc, routing_id_);
     if (!gateway) {
         errno = ENOMEM;
         return NULL;
@@ -746,7 +781,7 @@ int zlink_gateway_setsockopt (void *gateway_,
         errno = EFAULT;
         return -1;
     }
-    return gateway->set_router_option (option_, optval_, optvallen_);
+    return gateway->set_socket_option (option_, optval_, optvallen_);
 }
 
 int zlink_gateway_set_tls_client (void *gateway_,
@@ -805,14 +840,15 @@ int zlink_gateway_destroy (void **gateway_p_)
     return 0;
 }
 
-void *zlink_provider_new (void *ctx_)
+void *zlink_provider_new (void *ctx_, const char *routing_id_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
     zlink::provider_t *provider =
-      new (std::nothrow) zlink::provider_t (static_cast<zlink::ctx_t *> (ctx_));
+      new (std::nothrow) zlink::provider_t (static_cast<zlink::ctx_t *> (ctx_),
+                                            routing_id_);
     if (!provider) {
         errno = ENOMEM;
         return NULL;
@@ -905,8 +941,8 @@ int zlink_provider_register_result (void *provider_,
 }
 
 int zlink_provider_set_tls_server (void *provider_,
-                                 const char *cert_,
-                                 const char *key_)
+                                   const char *cert_,
+                                   const char *key_)
 {
     if (!provider_)
         return -1;
@@ -916,6 +952,23 @@ int zlink_provider_set_tls_server (void *provider_,
         return -1;
     }
     return provider->set_tls_server (cert_, key_);
+}
+
+int zlink_provider_setsockopt (void *provider_,
+                               int socket_role_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    if (!provider_)
+        return -1;
+    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
+    if (!provider->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return provider->set_socket_option (socket_role_, option_, optval_,
+                                        optvallen_);
 }
 
 void *zlink_provider_router (void *provider_)

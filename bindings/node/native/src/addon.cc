@@ -22,6 +22,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"registrySetHeartbeat", 0, registry_set_heartbeat, 0, 0, 0, napi_default, 0},
         {"registrySetBroadcastInterval", 0, registry_set_broadcast, 0, 0, 0, napi_default, 0},
         {"registryStart", 0, registry_start, 0, 0, 0, napi_default, 0},
+        {"registrySetSockOpt", 0, registry_setsockopt, 0, 0, 0, napi_default, 0},
         {"registryDestroy", 0, registry_destroy, 0, 0, 0, napi_default, 0},
 
         {"discoveryNew", 0, discovery_new, 0, 0, 0, napi_default, 0},
@@ -31,6 +32,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"discoveryProviderCount", 0, discovery_provider_count, 0, 0, 0, napi_default, 0},
         {"discoveryServiceAvailable", 0, discovery_service_available, 0, 0, 0, napi_default, 0},
         {"discoveryGetProviders", 0, discovery_get_providers, 0, 0, 0, napi_default, 0},
+        {"discoverySetSockOpt", 0, discovery_setsockopt, 0, 0, 0, napi_default, 0},
         {"discoveryDestroy", 0, discovery_destroy, 0, 0, 0, napi_default, 0},
 
         {"gatewayNew", 0, gateway_new, 0, 0, 0, napi_default, 0},
@@ -39,6 +41,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"gatewaySetLbStrategy", 0, gateway_set_lb, 0, 0, 0, napi_default, 0},
         {"gatewaySetTlsClient", 0, gateway_set_tls, 0, 0, 0, napi_default, 0},
         {"gatewayConnectionCount", 0, gateway_connection_count, 0, 0, 0, napi_default, 0},
+        {"gatewaySetSockOpt", 0, gateway_setsockopt, 0, 0, 0, napi_default, 0},
         {"gatewayDestroy", 0, gateway_destroy, 0, 0, 0, napi_default, 0},
 
         {"providerNew", 0, provider_new, 0, 0, 0, napi_default, 0},
@@ -50,6 +53,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"providerRegisterResult", 0, provider_register_result, 0, 0, 0, napi_default, 0},
         {"providerSetTlsServer", 0, provider_set_tls_server, 0, 0, 0, napi_default, 0},
         {"providerRouter", 0, provider_router, 0, 0, 0, napi_default, 0},
+        {"providerSetSockOpt", 0, provider_setsockopt, 0, 0, 0, napi_default, 0},
         {"providerDestroy", 0, provider_destroy, 0, 0, 0, napi_default, 0},
 
         {"spotNodeNew", 0, spot_node_new, 0, 0, 0, napi_default, 0},

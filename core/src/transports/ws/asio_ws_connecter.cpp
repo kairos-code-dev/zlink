@@ -570,7 +570,6 @@ void zlink::asio_ws_connecter_t::close ()
         fd_t fd = _socket.native_handle ();
         boost::system::error_code ec;
         _socket.close (ec);
-
         _socket_ptr->event_closed (
           make_unconnected_connect_endpoint_pair (_endpoint_str), fd);
     }

@@ -282,14 +282,24 @@ napi_value discovery_destroy(napi_env env, napi_callback_info info)
 
 napi_value gateway_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[2];
-    size_t argc = 2;
+    napi_value argv[3];
+    size_t argc = 3;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     void *disc = NULL;
     napi_get_value_external(env, argv[0], &ctx);
     napi_get_value_external(env, argv[1], &disc);
-    void *gw = zlink_gateway_new(ctx, disc);
+    const char *routing_id = NULL;
+    std::string routing_id_str;
+    if (argc >= 3) {
+        napi_valuetype type;
+        napi_typeof(env, argv[2], &type);
+        if (type != napi_undefined && type != napi_null) {
+            routing_id_str = get_string(env, argv[2]);
+            routing_id = routing_id_str.c_str();
+        }
+    }
+    void *gw = zlink_gateway_new(ctx, disc, routing_id);
     if (!gw)
         return throw_last_error(env, "gateway_new failed");
     napi_value ext;
@@ -423,12 +433,22 @@ napi_value gateway_destroy(napi_env env, napi_callback_info info)
 
 napi_value provider_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    void *p = zlink_provider_new(ctx);
+    const char *routing_id = NULL;
+    std::string routing_id_str;
+    if (argc >= 2) {
+        napi_valuetype type;
+        napi_typeof(env, argv[1], &type);
+        if (type != napi_undefined && type != napi_null) {
+            routing_id_str = get_string(env, argv[1]);
+            routing_id = routing_id_str.c_str();
+        }
+    }
+    void *p = zlink_provider_new(ctx, routing_id);
     if (!p)
         return throw_last_error(env, "provider_new failed");
     napi_value ext;
@@ -577,6 +597,104 @@ napi_value provider_router(napi_env env, napi_callback_info info)
     napi_value ext;
     napi_create_external(env, sock, NULL, NULL, &ext);
     return ext;
+}
+
+napi_value gateway_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *gw = NULL;
+    napi_get_value_external(env, argv[0], &gw);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[1], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_gateway_setsockopt(gw, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "gateway_setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value provider_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *p = NULL;
+    napi_get_value_external(env, argv[0], &p);
+    int32_t role = 0;
+    napi_get_value_int32(env, argv[1], &role);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[2], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_provider_setsockopt(p, role, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "provider_setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value registry_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *r = NULL;
+    napi_get_value_external(env, argv[0], &r);
+    int32_t role = 0;
+    napi_get_value_int32(env, argv[1], &role);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[2], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_registry_setsockopt(r, role, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "registry_setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value discovery_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *d = NULL;
+    napi_get_value_external(env, argv[0], &d);
+    int32_t role = 0;
+    napi_get_value_int32(env, argv[1], &role);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[2], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_discovery_setsockopt(d, role, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "discovery_setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
 }
 
 napi_value provider_destroy(napi_env env, napi_callback_info info)

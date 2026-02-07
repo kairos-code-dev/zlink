@@ -82,6 +82,39 @@ int discovery_t::unsubscribe (const char *service_name_)
     return 0;
 }
 
+int discovery_t::set_socket_option (int socket_role_,
+                                    int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (socket_role_ != ZLINK_DISCOVERY_SOCKET_SUB) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    for (size_t i = 0; i < _sub_opts.size (); ++i) {
+        if (_sub_opts[i].option == option_) {
+            _sub_opts[i].value.assign (
+              static_cast<const unsigned char *> (optval_),
+              static_cast<const unsigned char *> (optval_) + optvallen_);
+            return 0;
+        }
+    }
+    socket_opt_t opt;
+    opt.option = option_;
+    opt.value.assign (static_cast<const unsigned char *> (optval_),
+                      static_cast<const unsigned char *> (optval_)
+                        + optvallen_);
+    _sub_opts.push_back (opt);
+    return 0;
+}
+
 void discovery_t::snapshot_providers (const std::string &service_name_,
                                       std::vector<provider_info_t> *out_)
 {
@@ -220,6 +253,16 @@ void discovery_t::loop ()
     if (!sub)
         return;
 
+    std::vector<socket_opt_t> sub_opts;
+    {
+        scoped_lock_t lock (_sync);
+        sub_opts = _sub_opts;
+    }
+    for (size_t i = 0; i < sub_opts.size (); ++i) {
+        if (!sub_opts[i].value.empty ())
+            zlink_setsockopt (sub, sub_opts[i].option, &sub_opts[i].value[0],
+                              sub_opts[i].value.size ());
+    }
     zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
 
     std::set<std::string> connected;

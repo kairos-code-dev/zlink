@@ -45,6 +45,26 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
+    public void setSockOpt(int role, int option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.discoverySetSockOpt(handle, role, option, buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(int role, int option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.discoverySetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_discovery_setsockopt failed");
+        }
+    }
+
     public int providerCount(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.discoveryProviderCount(handle, NativeHelpers.toCString(arena, serviceName));

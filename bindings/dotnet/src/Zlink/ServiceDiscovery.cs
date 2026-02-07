@@ -55,6 +55,28 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    {
+        EnsureNotDisposed();
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_registry_setsockopt(_handle, role,
+                option, (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public unsafe void SetSockOpt(int role, int option, int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_registry_setsockopt(_handle, role,
+            option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
     public void Start()
     {
         EnsureNotDisposed();
@@ -115,6 +137,28 @@ public sealed class Discovery : IDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_discovery_unsubscribe(_handle, serviceName);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    {
+        EnsureNotDisposed();
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_discovery_setsockopt(_handle, role,
+                option, (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public unsafe void SetSockOpt(int role, int option, int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, role,
+            option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -215,7 +259,15 @@ public sealed class Gateway : IDisposable
     public Gateway(Context context, Discovery discovery)
     {
         _handle = NativeMethods.zlink_gateway_new(context.Handle,
-            discovery.Handle);
+            discovery.Handle, null);
+        if (_handle == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+    }
+
+    public Gateway(Context context, Discovery discovery, string routingId)
+    {
+        _handle = NativeMethods.zlink_gateway_new(context.Handle,
+            discovery.Handle, routingId);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
@@ -290,6 +342,28 @@ public sealed class Gateway : IDisposable
         return count;
     }
 
+    public unsafe void SetSockOpt(int option, byte[] value)
+    {
+        EnsureNotDisposed();
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_gateway_setsockopt(_handle, option,
+                (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public unsafe void SetSockOpt(int option, int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, option,
+            (IntPtr)(&tmp), (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -329,7 +403,14 @@ public sealed class Provider : IDisposable
 
     public Provider(Context context)
     {
-        _handle = NativeMethods.zlink_provider_new(context.Handle);
+        _handle = NativeMethods.zlink_provider_new(context.Handle, null);
+        if (_handle == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+    }
+
+    public Provider(Context context, string routingId)
+    {
+        _handle = NativeMethods.zlink_provider_new(context.Handle, routingId);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
@@ -394,6 +475,28 @@ public sealed class Provider : IDisposable
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_provider_set_tls_server(_handle, cert, key);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    {
+        EnsureNotDisposed();
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_provider_setsockopt(_handle, role,
+                option, (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public unsafe void SetSockOpt(int role, int option, int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_provider_setsockopt(_handle, role,
+            option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 

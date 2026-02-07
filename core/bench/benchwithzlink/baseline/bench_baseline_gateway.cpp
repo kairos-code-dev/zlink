@@ -17,9 +17,11 @@
 typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
 typedef int (*gateway_setsockopt_fn)(void *, int, const void *, size_t);
 typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
+typedef int (*provider_setsockopt_fn)(void *, int, int, const void *, size_t);
 typedef void *(*provider_router_fn)(void *);
 
 static void configure_gateway_hwm(void *gateway, int hwm);
+static void configure_provider_hwm(void *provider, int hwm);
 
 static const std::string &tls_ca_path() {
     static std::string path =
@@ -66,6 +68,28 @@ static bool configure_provider_tls(void *provider,
     const std::string &cert = tls_cert_path();
     const std::string &key = tls_key_path();
     return fn(provider, cert.c_str(), key.c_str()) == 0;
+}
+
+static void configure_gateway_hwm(void *gateway, int hwm) {
+    gateway_setsockopt_fn fn =
+      reinterpret_cast<gateway_setsockopt_fn>(
+        resolve_symbol("zlink_gateway_setsockopt"));
+    if (!fn)
+        return;
+    fn(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    fn(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+}
+
+static void configure_provider_hwm(void *provider, int hwm) {
+    provider_setsockopt_fn fn =
+      reinterpret_cast<provider_setsockopt_fn>(
+        resolve_symbol("zlink_provider_setsockopt"));
+    if (!fn)
+        return;
+    fn(provider, ZLINK_PROVIDER_SOCKET_ROUTER, ZLINK_SNDHWM, &hwm,
+       sizeof(hwm));
+    fn(provider, ZLINK_PROVIDER_SOCKET_ROUTER, ZLINK_RCVHWM, &hwm,
+       sizeof(hwm));
 }
 
 static std::string bind_provider(void *provider, const std::string &transport,
@@ -203,7 +227,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     zlink_discovery_connect_registry(discovery, reg_pub.c_str());
     zlink_discovery_subscribe(discovery, "svc");
 
-    void *provider = zlink_provider_new(ctx);
+    void *provider = zlink_provider_new(ctx, NULL);
     if (!provider) {
         zlink_discovery_destroy(&discovery);
         zlink_registry_destroy(&registry);
@@ -260,10 +284,10 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
     }
 
     int hwm = 1000000;
-    zlink_setsockopt(router, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    zlink_setsockopt(router, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    configure_provider_hwm(provider, hwm);
 
-    void *gateway = zlink_gateway_new(ctx, discovery);
+
+    void *gateway = zlink_gateway_new(ctx, discovery, NULL);
     if (!gateway) {
         zlink_provider_destroy(&provider);
         zlink_discovery_destroy(&discovery);
@@ -366,25 +390,10 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
 int main(int argc, char **argv) {
     if (argc < 4)
         return 1;
-#if !defined(_WIN32)
-    setenv("ZLINK_GATEWAY_SINGLE_THREAD", "1", 1);
-#else
-    _putenv_s("ZLINK_GATEWAY_SINGLE_THREAD", "1");
-#endif
     std::string lib_name = argv[1];
     std::string transport = argv[2];
     size_t size = std::stoul(argv[3]);
     int count = resolve_msg_count(size);
     run_gateway(transport, size, count, lib_name);
     return 0;
-}
-
-static void configure_gateway_hwm(void *gateway, int hwm) {
-    gateway_setsockopt_fn fn =
-      reinterpret_cast<gateway_setsockopt_fn>(
-        resolve_symbol("zlink_gateway_setsockopt"));
-    if (!fn)
-        return;
-    fn(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    fn(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 }

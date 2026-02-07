@@ -3,14 +3,11 @@
 #include "discovery/gateway.hpp"
 
 #include "core/msg.hpp"
-#include "utils/random.hpp"
-#include "sockets/socket_base.hpp"
+#include "discovery/routing_id_utils.hpp"
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <cerrno>
-#include <cstdio>
 #include <cstring>
 #include <thread>
 
@@ -22,13 +19,9 @@ namespace
 {
 static const uint32_t gateway_tag_value = 0x1e6700d7;
 
-static bool gateway_debug_enabled ()
-{
-    return std::getenv ("ZLINK_GATEWAY_DEBUG") != NULL;
-}
-
 // Ensure the ROUTER socket has a routing id so peers can reply.
-static void ensure_gateway_routing_id (socket_base_t *socket_)
+static void ensure_gateway_routing_id (socket_base_t *socket_,
+                                       const std::string *override_id_)
 {
     if (!socket_)
         return;
@@ -38,11 +31,7 @@ static void ensure_gateway_routing_id (socket_base_t *socket_)
         return;
     if (size > 0)
         return;
-
-    char id[64];
-    const unsigned int r = zlink::generate_random ();
-    snprintf (id, sizeof (id), "gw-%u", r);
-    socket_->setsockopt (ZLINK_ROUTING_ID, id, strlen (id));
+    zlink::discovery::set_socket_routing_id (socket_, override_id_, NULL);
 }
 
 static int allocate_router (ctx_t *ctx_, socket_base_t **socket_)
@@ -87,7 +76,8 @@ static int monitor_event_mask ()
 }
 }
 
-gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
+gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
+                      const char *routing_id_) :
     _ctx (ctx_),
     _discovery (discovery_),
     _tag (gateway_tag_value),
@@ -97,11 +87,14 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_) :
     _router_socket (NULL),
     _use_lock (true),
     _stop (0),
-    _tls_trust_system (0)
+    _tls_trust_system (0),
+    _routing_id_override (routing_id_ ? routing_id_ : "")
 {
     zlink_assert (_ctx);
     if (_discovery)
         _discovery->add_observer (this);
+    if (init_router_socket () != 0)
+        _tag = 0xdeadbeef;
     _refresh_worker.start (refresh_run, this, "gateway-refresh");
 }
 
@@ -185,13 +178,13 @@ void gateway_t::refresh_loop ()
     }
 }
 
-int gateway_t::ensure_router_socket ()
+int gateway_t::init_router_socket ()
 {
     if (_router_socket)
         return 0;
     if (allocate_router (_ctx, &_router_socket) != 0)
         return -1;
-    ensure_gateway_routing_id (_router_socket);
+    ensure_gateway_routing_id (_router_socket, &_routing_id_override);
     // Enable socket monitor to receive connection-ready events.
     if (!_monitor_socket) {
         void *monitor =
@@ -217,14 +210,12 @@ int gateway_t::ensure_router_socket ()
     // Avoid long linger during teardown.
     int linger = 0;
     _router_socket->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-    for (size_t i = 0; i < _router_opts.size (); ++i) {
-        const router_opt_t &opt = _router_opts[i];
-        if (!opt.value.empty ()) {
-            _router_socket->setsockopt (opt.option, &opt.value[0],
-                                        opt.value.size ());
-        }
-    }
     return 0;
+}
+
+int gateway_t::ensure_router_socket ()
+{
+    return _router_socket ? 0 : -1;
 }
 
 gateway_t::service_pool_t *
@@ -316,20 +307,21 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
                                                              rid.size);
             if (state >= 0 && (state & ZLINK_POLLOUT)) {
                 _ready_endpoints.insert (endpoint);
-            } else {
-                continue;
+                next_endpoints.push_back (endpoint);
+                next_routing_ids.push_back (rid);
             }
+            // Not ready yet: do not add to pool, but also do not term.
+            continue;
         }
         next_endpoints.push_back (endpoint);
         next_routing_ids.push_back (rid);
     }
 
-    // 4) Disconnect endpoints that disappeared or are no longer ready.
+    // 4) Disconnect endpoints that disappeared from discovery only.
+    //    Readiness is transient; do not term on temporary not-ready.
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         const std::string &endpoint = pool_->endpoints[i];
-        if (std::find (next_endpoints.begin (), next_endpoints.end (),
-                       endpoint)
-            == next_endpoints.end ()) {
+        if (routing_map.find (endpoint) == routing_map.end ()) {
             _router_socket->term_endpoint (endpoint.c_str ());
         }
     }
@@ -403,15 +395,6 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
         return -1;
     }
 
-    if (gateway_debug_enabled ()) {
-        fprintf (stderr,
-                 "[gateway] send_request_frames service=%s idx=%zu pool=%zu down=%zu ready=%zu\n",
-                 pool_->service_name.c_str (), provider_index_,
-                 pool_->routing_ids.size (), _down_endpoints.size (),
-                 _ready_endpoints.size ());
-        fflush (stderr);
-    }
-
     const zlink_routing_id_t &rid = pool_->routing_ids[provider_index_];
     zlink_msg_t rid_msg;
     zlink_msg_init_size (&rid_msg, rid.size);
@@ -420,12 +403,6 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
     int send_flags =
       (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
     if (zlink_msg_send (&rid_msg, _router_socket, send_flags) < 0) {
-        if (gateway_debug_enabled ()) {
-            fprintf (stderr,
-                     "[gateway] send rid failed errno=%d (%s)\n",
-                     errno, zlink_strerror (errno));
-            fflush (stderr);
-        }
         zlink_msg_close (&rid_msg);
         return -1;
     }
@@ -436,12 +413,6 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
           (i + 1 < part_count_) ? ZLINK_SNDMORE : 0;
         send_flags |= (flags_ & ZLINK_DONTWAIT);
         if (zlink_msg_send (&parts_[i], _router_socket, send_flags) < 0) {
-            if (gateway_debug_enabled ()) {
-                fprintf (stderr,
-                         "[gateway] send part failed errno=%d (%s)\n",
-                         errno, zlink_strerror (errno));
-                fflush (stderr);
-            }
             return -1;
         }
         zlink_msg_close (&parts_[i]);
@@ -662,9 +633,9 @@ int gateway_t::set_lb_strategy (const char *service_name_, int strategy_)
     return 0;
 }
 
-int gateway_t::set_router_option (int option_,
-                                 const void *optval_,
-                                 size_t optvallen_)
+int gateway_t::set_socket_option (int option_,
+                                  const void *optval_,
+                                  size_t optvallen_)
 {
     if (!optval_ || optvallen_ == 0) {
         errno = EINVAL;
@@ -672,26 +643,6 @@ int gateway_t::set_router_option (int option_,
     }
 
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
-    bool updated = false;
-    for (size_t i = 0; i < _router_opts.size (); ++i) {
-        if (_router_opts[i].option == option_) {
-            _router_opts[i].value.assign (
-              static_cast<const unsigned char *> (optval_),
-              static_cast<const unsigned char *> (optval_) + optvallen_);
-            updated = true;
-            break;
-        }
-    }
-    if (!updated) {
-        router_opt_t opt;
-        opt.option = option_;
-        opt.value.assign (static_cast<const unsigned char *> (optval_),
-                          static_cast<const unsigned char *> (optval_)
-                            + optvallen_);
-        _router_opts.push_back (opt);
-    }
-    if (ensure_router_socket () != 0)
-        return -1;
     if (!_router_socket) {
         errno = ENOTSUP;
         return -1;
@@ -727,41 +678,11 @@ int gateway_t::connection_count (const char *service_name_)
         return -1;
     }
 
-    std::string service (service_name_);
-    bool have_discovery = false;
-    {
-        scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
-        process_monitor_events ();
-
-        service_pool_t *pool = get_or_create_pool (service_name_);
-        if (!pool)
-            return 0;
-        have_discovery = (_discovery != NULL);
-    }
-
-    std::vector<provider_info_t> providers;
-    uint64_t seq = 0;
-    if (have_discovery) {
-        _discovery->snapshot_providers (service, &providers);
-        seq = _discovery->service_update_seq (service);
-    }
-
     scoped_optional_lock_t lock (_use_lock ? &_sync : NULL);
     process_monitor_events ();
     service_pool_t *pool = get_or_create_pool (service_name_);
     if (!pool)
         return 0;
-    if (have_discovery && seq != pool->last_seen_seq)
-        pool->dirty = true;
-    if (pool->dirty && have_discovery) {
-        if (gateway_debug_enabled ()) {
-            fprintf (stderr,
-                     "[gateway] connection_count refresh service=%s\n",
-                     service_name_);
-            fflush (stderr);
-        }
-        refresh_pool (pool, providers, seq);
-    }
     return static_cast<int> (pool->endpoints.size ());
 }
 

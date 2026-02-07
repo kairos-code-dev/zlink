@@ -49,6 +49,12 @@ class Registry:
         if rc != 0:
             _raise_last_error()
 
+    def set_sockopt(self, role, option, value: bytes):
+        buf = ctypes.create_string_buffer(value)
+        rc = lib().zlink_registry_setsockopt(self._handle, role, option, buf, len(value))
+        if rc != 0:
+            _raise_last_error()
+
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)
@@ -109,6 +115,12 @@ class Discovery:
             })
         return result
 
+    def set_sockopt(self, role, option, value: bytes):
+        buf = ctypes.create_string_buffer(value)
+        rc = lib().zlink_discovery_setsockopt(self._handle, role, option, buf, len(value))
+        if rc != 0:
+            _raise_last_error()
+
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)
@@ -117,8 +129,9 @@ class Discovery:
 
 
 class Gateway:
-    def __init__(self, ctx, discovery):
-        self._handle = lib().zlink_gateway_new(ctx._handle, discovery._handle)
+    def __init__(self, ctx, discovery, routing_id=None):
+        rid = routing_id.encode() if routing_id else None
+        self._handle = lib().zlink_gateway_new(ctx._handle, discovery._handle, rid)
         if not self._handle:
             _raise_last_error()
 
@@ -156,6 +169,12 @@ class Gateway:
             _raise_last_error()
         return rc
 
+    def set_sockopt(self, option, value: bytes):
+        buf = ctypes.create_string_buffer(value)
+        rc = lib().zlink_gateway_setsockopt(self._handle, option, buf, len(value))
+        if rc != 0:
+            _raise_last_error()
+
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)
@@ -164,8 +183,9 @@ class Gateway:
 
 
 class Provider:
-    def __init__(self, ctx):
-        self._handle = lib().zlink_provider_new(ctx._handle)
+    def __init__(self, ctx, routing_id=None):
+        rid = routing_id.encode() if routing_id else None
+        self._handle = lib().zlink_provider_new(ctx._handle, rid)
         if not self._handle:
             _raise_last_error()
 
@@ -205,6 +225,12 @@ class Provider:
 
     def set_tls_server(self, cert, key):
         rc = lib().zlink_provider_set_tls_server(self._handle, cert.encode(), key.encode())
+        if rc != 0:
+            _raise_last_error()
+
+    def set_sockopt(self, role, option, value: bytes):
+        buf = ctypes.create_string_buffer(value)
+        rc = lib().zlink_provider_setsockopt(self._handle, role, option, buf, len(value))
         if rc != 0:
             _raise_last_error()
 

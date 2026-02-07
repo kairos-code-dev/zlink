@@ -42,6 +42,10 @@ class discovery_t
     int connect_registry (const char *registry_pub_endpoint_);
     int subscribe (const char *service_name_);
     int unsubscribe (const char *service_name_);
+    int set_socket_option (int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
 
     int get_providers (const char *service_name_,
                        zlink_provider_info_t *providers_,
@@ -82,6 +86,12 @@ class discovery_t
     std::set<discovery_observer_t *> _observers;
     uint64_t _update_seq;
     std::map<std::string, uint64_t> _service_seq;
+    struct socket_opt_t
+    {
+        int option;
+        std::vector<unsigned char> value;
+    };
+    std::vector<socket_opt_t> _sub_opts;
     ZLINK_NON_COPYABLE_NOR_MOVABLE (discovery_t)
 };
 }

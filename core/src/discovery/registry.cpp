@@ -115,6 +115,49 @@ int registry_t::set_broadcast_interval (uint32_t interval_ms_)
     return 0;
 }
 
+int registry_t::set_socket_option (int socket_role_,
+                                   int option_,
+                                   const void *optval_,
+                                   size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    std::vector<socket_opt_t> *opts = NULL;
+    switch (socket_role_) {
+        case ZLINK_REGISTRY_SOCKET_PUB:
+            opts = &_pub_opts;
+            break;
+        case ZLINK_REGISTRY_SOCKET_ROUTER:
+            opts = &_router_opts;
+            break;
+        case ZLINK_REGISTRY_SOCKET_PEER_SUB:
+            opts = &_peer_sub_opts;
+            break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+    for (size_t i = 0; i < opts->size (); ++i) {
+        if ((*opts)[i].option == option_) {
+            (*opts)[i].value.assign (
+              static_cast<const unsigned char *> (optval_),
+              static_cast<const unsigned char *> (optval_) + optvallen_);
+            return 0;
+        }
+    }
+    socket_opt_t opt;
+    opt.option = option_;
+    opt.value.assign (static_cast<const unsigned char *> (optval_),
+                      static_cast<const unsigned char *> (optval_)
+                        + optvallen_);
+    opts->push_back (opt);
+    return 0;
+}
+
 int registry_t::start ()
 {
     scoped_lock_t lock (_sync);
@@ -179,6 +222,28 @@ void registry_t::loop ()
         return;
     }
 
+    std::vector<socket_opt_t> pub_opts;
+    std::vector<socket_opt_t> router_opts;
+    std::vector<socket_opt_t> peer_sub_opts;
+    {
+        scoped_lock_t lock (_sync);
+        pub_opts = _pub_opts;
+        router_opts = _router_opts;
+        peer_sub_opts = _peer_sub_opts;
+    }
+
+    for (size_t i = 0; i < pub_opts.size (); ++i) {
+        if (!pub_opts[i].value.empty ())
+            zlink_setsockopt (pub, pub_opts[i].option, &pub_opts[i].value[0],
+                              pub_opts[i].value.size ());
+    }
+    for (size_t i = 0; i < router_opts.size (); ++i) {
+        if (!router_opts[i].value.empty ())
+            zlink_setsockopt (router, router_opts[i].option,
+                              &router_opts[i].value[0],
+                              router_opts[i].value.size ());
+    }
+
     int verbose = 1;
     zlink_setsockopt (pub, ZLINK_XPUB_VERBOSE, &verbose, sizeof (verbose));
     if (std::getenv ("ZLINK_REGISTRY_DEBUG")) {
@@ -197,6 +262,13 @@ void registry_t::loop ()
     if (!peer_pubs.empty ()) {
         peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
         if (peer_sub) {
+            for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
+                if (!peer_sub_opts[i].value.empty ())
+                    zlink_setsockopt (peer_sub,
+                                      peer_sub_opts[i].option,
+                                      &peer_sub_opts[i].value[0],
+                                      peer_sub_opts[i].value.size ());
+            }
             zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
             for (size_t i = 0; i < peer_pubs.size (); ++i) {
                 zlink_connect (peer_sub, peer_pubs[i].c_str ());

@@ -115,6 +115,75 @@ static void wait_gateway_ready (void *gateway,
     TEST_FAIL_MESSAGE ("gateway connection timeout");
 }
 
+static void test_gateway_provider_setsockopt ()
+{
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    const int linger = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_setsockopt (discovery, ZLINK_DISCOVERY_SOCKET_SUB,
+                                  ZLINK_LINGER, &linger, sizeof (linger)));
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_setsockopt (registry, ZLINK_REGISTRY_SOCKET_PUB,
+                                 ZLINK_LINGER, &linger, sizeof (linger)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_setsockopt (registry, ZLINK_REGISTRY_SOCKET_ROUTER,
+                                 ZLINK_LINGER, &linger, sizeof (linger)));
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
+    TEST_ASSERT_NOT_NULL (gateway);
+    void *provider = zlink_provider_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    const int hwm = 1000000;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_setsockopt (gateway, ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_gateway_setsockopt (gateway, ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_setsockopt (provider, ZLINK_PROVIDER_SOCKET_ROUTER,
+                                 ZLINK_SNDHWM, &hwm, sizeof (hwm)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_provider_setsockopt (provider, ZLINK_PROVIDER_SOCKET_ROUTER,
+                                 ZLINK_RCVHWM, &hwm, sizeof (hwm)));
+
+    void *gateway_router = zlink_gateway_router (gateway);
+    TEST_ASSERT_NOT_NULL (gateway_router);
+    void *provider_router = zlink_provider_router (provider);
+    TEST_ASSERT_NOT_NULL (provider_router);
+
+    int out = 0;
+    size_t out_size = sizeof (out);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (gateway_router, ZLINK_SNDHWM, &out, &out_size));
+    TEST_ASSERT_EQUAL_INT (hwm, out);
+    out = 0;
+    out_size = sizeof (out);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (gateway_router, ZLINK_RCVHWM, &out, &out_size));
+    TEST_ASSERT_EQUAL_INT (hwm, out);
+
+    out = 0;
+    out_size = sizeof (out);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (provider_router, ZLINK_SNDHWM, &out, &out_size));
+    TEST_ASSERT_EQUAL_INT (hwm, out);
+    out = 0;
+    out_size = sizeof (out);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (provider_router, ZLINK_RCVHWM, &out, &out_size));
+    TEST_ASSERT_EQUAL_INT (hwm, out);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_gateway_destroy (&gateway));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+}
+
 static void send_gateway_with_timeout (void *gateway,
                                        const char *service_name,
                                        zlink_msg_t *parts,
@@ -286,7 +355,7 @@ void test_gateway_single_service_tcp ()
     step_log ("bind provider router");
     const char provider_rid[] = "PROV1";
     char advertise_ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, "tcp://127.0.0.1:*"));
     void *provider_router = zlink_provider_router (provider);
@@ -325,7 +394,7 @@ void test_gateway_single_service_tcp ()
 
     // Create gateway
     step_log ("create gateway socket");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
     msleep (200);
@@ -418,7 +487,7 @@ void test_gateway_send_rid_tcp ()
 
     const char provider_rid[] = "PROV-RID";
     char advertise_ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_provider_bind (provider, "tcp://127.0.0.1:*"));
@@ -451,7 +520,7 @@ void test_gateway_send_rid_tcp ()
                                      &count));
     TEST_ASSERT_EQUAL_INT (1, (int) count);
 
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -534,7 +603,7 @@ void test_gateway_multi_service_tcp ()
     // Setup provider A
     step_log ("setup provider A");
     char ep_a[256] = {0};
-    void *provider_a = zlink_provider_new (ctx);
+    void *provider_a = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_a);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_a, "tcp://127.0.0.1:*"));
     void *router_a = zlink_provider_router (provider_a);
@@ -556,7 +625,7 @@ void test_gateway_multi_service_tcp ()
     // Setup provider B
     step_log ("setup provider B");
     char ep_b[256] = {0};
-    void *provider_b = zlink_provider_new (ctx);
+    void *provider_b = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_b);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_b, "tcp://127.0.0.1:*"));
     void *router_b = zlink_provider_router (provider_b);
@@ -578,7 +647,7 @@ void test_gateway_multi_service_tcp ()
 
     // Create gateway
     step_log ("create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, "svc-A", 2000);
     wait_gateway_ready (gateway, "svc-B", 2000);
@@ -708,7 +777,7 @@ void test_gateway_refresh_on_update ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_subscribe (discovery, service_name));
 
     char ep_1[256] = {0};
-    void *provider_1 = zlink_provider_new (ctx);
+    void *provider_1 = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_1, "tcp://127.0.0.1:*"));
     void *router_1 = zlink_provider_router (provider_1);
@@ -730,7 +799,7 @@ void test_gateway_refresh_on_update ()
 
     msleep (200);
 
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -763,7 +832,7 @@ void test_gateway_refresh_on_update ()
     msleep (200);
 
     char ep_2[256] = {0};
-    void *provider_2 = zlink_provider_new (ctx);
+    void *provider_2 = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_2, "tcp://127.0.0.1:*"));
     void *router_2 = zlink_provider_router (provider_2);
@@ -851,7 +920,7 @@ void test_gateway_protocol_ws ()
     // Setup provider with WebSocket endpoint
     step_log ("bind provider with ws://");
     char advertise_ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, "ws://127.0.0.1:*"));
     void *provider_router = zlink_provider_router (provider);
@@ -875,7 +944,7 @@ void test_gateway_protocol_ws ()
 
     // Create gateway
     step_log ("create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -968,7 +1037,7 @@ void test_gateway_protocol_tls ()
     // Setup provider with TLS endpoint
     step_log ("bind provider with tls://");
     char advertise_ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
 
     // Configure TLS server certificates on provider
@@ -1000,7 +1069,7 @@ void test_gateway_protocol_tls ()
 
     // Create gateway with CA cert for TLS verification
     step_log ("create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     // Configure TLS client settings on gateway BEFORE connections are made
@@ -1100,7 +1169,7 @@ void test_gateway_protocol_wss ()
     // Setup provider with WSS endpoint
     step_log ("bind provider with wss://");
     char advertise_ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
 
     // Configure TLS server certificates on provider
@@ -1132,7 +1201,7 @@ void test_gateway_protocol_wss ()
 
     // Create gateway with CA cert for WSS verification
     step_log ("create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
 
     // Configure TLS client settings on gateway BEFORE connections are made
@@ -1224,7 +1293,7 @@ void test_gateway_load_balancing ()
     // Setup provider 1
     step_log ("setup provider 1");
     char ep_1[256] = {0};
-    void *provider_1 = zlink_provider_new (ctx);
+    void *provider_1 = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_1, "tcp://127.0.0.1:*"));
     void *router_1 = zlink_provider_router (provider_1);
@@ -1246,7 +1315,7 @@ void test_gateway_load_balancing ()
     // Setup provider 2
     step_log ("setup provider 2");
     char ep_2[256] = {0};
-    void *provider_2 = zlink_provider_new (ctx);
+    void *provider_2 = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider_2, "tcp://127.0.0.1:*"));
     void *router_2 = zlink_provider_router (provider_2);
@@ -1268,7 +1337,7 @@ void test_gateway_load_balancing ()
 
     // Create gateway
     step_log ("create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -1399,7 +1468,7 @@ void test_gateway_concurrent_send_and_updates ()
 
     step_log ("sync: setup provider");
     char ep[256] = {0};
-    void *provider = zlink_provider_new (ctx);
+    void *provider = zlink_provider_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_provider_bind (provider, "tcp://127.0.0.1:*"));
     void *router = zlink_provider_router (provider);
@@ -1422,7 +1491,7 @@ void test_gateway_concurrent_send_and_updates ()
     msleep (200);
 
     step_log ("sync: create gateway");
-    void *gateway = zlink_gateway_new (ctx, discovery);
+    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
     TEST_ASSERT_NOT_NULL (gateway);
     wait_gateway_ready (gateway, service_name, 2000);
 
@@ -1521,6 +1590,7 @@ int main (void)
     RUN_TEST (test_gateway_protocol_ws);
     RUN_TEST (test_gateway_protocol_tls);
     RUN_TEST (test_gateway_protocol_wss);
+    RUN_TEST (test_gateway_provider_setsockopt);
     // TODO: Fix load balancing test - currently hangs
     // RUN_TEST (test_gateway_load_balancing);
     return UNITY_END ();

@@ -28,6 +28,10 @@ class registry_t
     int add_peer (const char *peer_pub_endpoint_);
     int set_heartbeat (uint32_t interval_ms_, uint32_t timeout_ms_);
     int set_broadcast_interval (uint32_t interval_ms_);
+    int set_socket_option (int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
     int start ();
     int destroy ();
 
@@ -87,6 +91,15 @@ class registry_t
     uint32_t _heartbeat_interval_ms;
     uint32_t _heartbeat_timeout_ms;
     uint32_t _broadcast_interval_ms;
+
+    struct socket_opt_t
+    {
+        int option;
+        std::vector<unsigned char> value;
+    };
+    std::vector<socket_opt_t> _pub_opts;
+    std::vector<socket_opt_t> _router_opts;
+    std::vector<socket_opt_t> _peer_sub_opts;
 
     atomic_counter_t _stop;
     thread_t _worker;

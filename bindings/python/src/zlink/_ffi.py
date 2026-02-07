@@ -123,7 +123,8 @@ class _Lib:
         L.zlink_discovery_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
         L.zlink_discovery_destroy.restype = ctypes.c_int
 
-        L.zlink_gateway_new.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        L.zlink_gateway_new.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                        ctypes.c_char_p]
         L.zlink_gateway_new.restype = ctypes.c_void_p
         L.zlink_gateway_send.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_gateway_send.restype = ctypes.c_int
@@ -138,8 +139,23 @@ class _Lib:
         L.zlink_gateway_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
         L.zlink_gateway_destroy.restype = ctypes.c_int
 
-        L.zlink_provider_new.argtypes = [ctypes.c_void_p]
+        L.zlink_provider_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_provider_new.restype = ctypes.c_void_p
+        L.zlink_gateway_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                               ctypes.c_void_p, ctypes.c_size_t]
+        L.zlink_gateway_setsockopt.restype = ctypes.c_int
+        L.zlink_provider_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                                ctypes.c_int, ctypes.c_void_p,
+                                                ctypes.c_size_t]
+        L.zlink_provider_setsockopt.restype = ctypes.c_int
+        L.zlink_registry_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                                ctypes.c_int, ctypes.c_void_p,
+                                                ctypes.c_size_t]
+        L.zlink_registry_setsockopt.restype = ctypes.c_int
+        L.zlink_discovery_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                                 ctypes.c_int, ctypes.c_void_p,
+                                                 ctypes.c_size_t]
+        L.zlink_discovery_setsockopt.restype = ctypes.c_int
         L.zlink_provider_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_provider_bind.restype = ctypes.c_int
         L.zlink_provider_connect_registry.argtypes = [ctypes.c_void_p, ctypes.c_char_p]

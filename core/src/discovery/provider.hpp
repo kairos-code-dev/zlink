@@ -16,7 +16,7 @@ namespace zlink
 class provider_t
 {
   public:
-    explicit provider_t (ctx_t *ctx_);
+    explicit provider_t (ctx_t *ctx_, const char *routing_id_ = NULL);
     ~provider_t ();
 
     bool check_tag () const;
@@ -33,6 +33,10 @@ class provider_t
                          char *resolved_endpoint_,
                          char *error_message_);
     int set_tls_server (const char *cert_, const char *key_);
+    int set_socket_option (int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
     void *router ();
     int destroy ();
 
@@ -56,6 +60,7 @@ class provider_t
     std::string _service_name;
     std::string _advertise_endpoint;
     uint32_t _weight;
+    std::string _routing_id_override;
 
     int _last_status;
     std::string _last_resolved;

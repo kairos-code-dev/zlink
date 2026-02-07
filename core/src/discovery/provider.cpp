@@ -7,7 +7,7 @@
 
 #include "utils/err.hpp"
 #include "utils/random.hpp"
-#include "sockets/socket_base.hpp"
+#include "discovery/routing_id_utils.hpp"
 
 #if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"
@@ -126,11 +126,12 @@ static int recv_register_ack (socket_base_t *socket_,
     return 0;
 }
 
-provider_t::provider_t (ctx_t *ctx_) :
+provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
     _ctx (ctx_),
     _tag (provider_tag_value),
     _router (NULL),
     _dealer (NULL),
+    _routing_id_override (routing_id_ ? routing_id_ : ""),
     _weight (1),
     _last_status (-1),
     _heartbeat_interval_ms (5000),
@@ -138,6 +139,19 @@ provider_t::provider_t (ctx_t *ctx_) :
 {
     zlink_assert (_ctx);
     _routing_id.size = 0;
+    _router = _ctx->create_socket (ZLINK_ROUTER);
+    _dealer = _ctx->create_socket (ZLINK_DEALER);
+    if (!_router || !_dealer) {
+        if (_router) {
+            _router->close ();
+            _router = NULL;
+        }
+        if (_dealer) {
+            _dealer->close ();
+            _dealer = NULL;
+        }
+        _tag = 0xdeadbeef;
+    }
 }
 
 provider_t::~provider_t ()
@@ -158,18 +172,6 @@ static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
     return 0;
 }
 
-static void ensure_ascii_routing_id (socket_base_t *socket_)
-{
-    if (!socket_)
-        return;
-    uint32_t random_id = zlink::generate_random ();
-    if (random_id == 0)
-        random_id = 1;
-    char rid_buf[9];
-    snprintf (rid_buf, sizeof (rid_buf), "P%08x", random_id);
-    socket_->setsockopt (ZLINK_ROUTING_ID, rid_buf, strlen (rid_buf));
-}
-
 int provider_t::bind (const char *endpoint_)
 {
     if (!endpoint_) {
@@ -182,7 +184,8 @@ int provider_t::bind (const char *endpoint_)
         if (create_socket (_ctx, ZLINK_ROUTER, &_router) != 0)
             return -1;
     }
-    ensure_ascii_routing_id (_router);
+    zlink::discovery::set_socket_routing_id (_router, &_routing_id_override,
+                                             NULL);
     if (!_tls_cert.empty ()) {
         if (_router->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
                                  _tls_cert.size ())
@@ -214,21 +217,10 @@ bool provider_t::ensure_routing_id ()
         }
     }
 
-    uint32_t random_id = zlink::generate_random ();
-    if (random_id == 0)
-        random_id = 1;
-    char buf[9];
-    // Use an ASCII routing id to avoid embedded NUL bytes.
-    snprintf (buf, sizeof (buf), "P%08x", random_id);
-    rid.size = static_cast<uint8_t> (strlen (buf));
-    memcpy (rid.data, buf, rid.size);
-    if (zlink_setsockopt (static_cast<void *> (_router), ZLINK_ROUTING_ID,
-                          rid.data, rid.size)
-        == 0) {
-        _routing_id = rid;
-        return true;
-    }
-    return false;
+    if (!zlink::discovery::set_socket_routing_id (
+          _router, &_routing_id_override, &_routing_id))
+        return false;
+    return true;
 }
 
 int provider_t::connect_registry (const char *registry_router_endpoint_)
@@ -441,6 +433,35 @@ int provider_t::set_tls_server (const char *cert_, const char *key_)
             return -1;
     }
     return 0;
+}
+
+int provider_t::set_socket_option (int socket_role_,
+                                   int option_,
+                                   const void *optval_,
+                                   size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    socket_base_t *target = NULL;
+    if (socket_role_ == ZLINK_PROVIDER_SOCKET_ROUTER)
+        target = _router;
+    else if (socket_role_ == ZLINK_PROVIDER_SOCKET_DEALER)
+        target = _dealer;
+    else {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!target) {
+        errno = ENOTSUP;
+        return -1;
+    }
+
+    return target->setsockopt (option_, optval_, optvallen_);
 }
 
 void *provider_t::router ()

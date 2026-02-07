@@ -12,7 +12,15 @@ public final class Gateway implements AutoCloseable {
     private MemorySegment handle;
 
     public Gateway(Context ctx, Discovery discovery) {
-        this.handle = Native.gatewayNew(ctx.handle(), discovery.handle());
+        this(ctx, discovery, null);
+    }
+
+    public Gateway(Context ctx, Discovery discovery, String routingId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = routingId == null ? MemorySegment.NULL
+                : NativeHelpers.toCString(arena, routingId);
+            this.handle = Native.gatewayNew(ctx.handle(), discovery.handle(), rid);
+        }
         if (handle == null || handle.address() == 0)
             throw new RuntimeException("zlink_gateway_new failed");
     }
@@ -79,6 +87,26 @@ public final class Gateway implements AutoCloseable {
             if (rc < 0)
                 throw new RuntimeException("zlink_gateway_connection_count failed");
             return rc;
+        }
+    }
+
+    public void setSockOpt(int option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.gatewaySetSockOpt(handle, option, buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(int option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.gatewaySetSockOpt(handle, option, buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_setsockopt failed");
         }
     }
 

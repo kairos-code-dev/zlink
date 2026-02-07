@@ -219,7 +219,7 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_gateway_new(IntPtr ctx,
-        IntPtr discovery);
+        IntPtr discovery, [MarshalAs(UnmanagedType.LPUTF8Str)] string routingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_send(IntPtr gateway,
@@ -244,10 +244,15 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_gateway_setsockopt(IntPtr gateway,
+        int option, IntPtr value, nuint length);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_gateway_destroy(ref IntPtr gateway);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_provider_new(IntPtr ctx);
+    internal static extern IntPtr zlink_provider_new(IntPtr ctx,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string routingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_provider_bind(IntPtr provider,
@@ -283,6 +288,18 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_provider_router(IntPtr provider);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_provider_setsockopt(IntPtr provider, int role,
+        int option, IntPtr value, nuint length);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_registry_setsockopt(IntPtr registry, int role,
+        int option, IntPtr value, nuint length);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_discovery_setsockopt(IntPtr discovery, int role,
+        int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_provider_destroy(ref IntPtr provider);

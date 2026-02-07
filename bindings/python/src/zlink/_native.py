@@ -309,7 +309,8 @@ def _load_lib():
     _lib.zlink_discovery_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.zlink_discovery_destroy.restype = ctypes.c_int
 
-    _lib.zlink_gateway_new.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    _lib.zlink_gateway_new.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                       ctypes.c_char_p]
     _lib.zlink_gateway_new.restype = ctypes.c_void_p
 
     _lib.zlink_gateway_send.argtypes = [
@@ -354,8 +355,43 @@ def _load_lib():
     _lib.zlink_gateway_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.zlink_gateway_destroy.restype = ctypes.c_int
 
-    _lib.zlink_provider_new.argtypes = [ctypes.c_void_p]
+    _lib.zlink_provider_new.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     _lib.zlink_provider_new.restype = ctypes.c_void_p
+
+    _lib.zlink_gateway_setsockopt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    _lib.zlink_gateway_setsockopt.restype = ctypes.c_int
+
+    _lib.zlink_provider_setsockopt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    _lib.zlink_provider_setsockopt.restype = ctypes.c_int
+
+    _lib.zlink_registry_setsockopt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    _lib.zlink_registry_setsockopt.restype = ctypes.c_int
+
+    _lib.zlink_discovery_setsockopt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    _lib.zlink_discovery_setsockopt.restype = ctypes.c_int
 
     _lib.zlink_provider_bind.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     _lib.zlink_provider_bind.restype = ctypes.c_int

@@ -10,7 +10,15 @@ public final class Provider implements AutoCloseable {
     private MemorySegment handle;
 
     public Provider(Context ctx) {
-        this.handle = Native.providerNew(ctx.handle());
+        this(ctx, null);
+    }
+
+    public Provider(Context ctx, String routingId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = routingId == null ? MemorySegment.NULL
+                : NativeHelpers.toCString(arena, routingId);
+            this.handle = Native.providerNew(ctx.handle(), rid);
+        }
         if (handle == null || handle.address() == 0)
             throw new RuntimeException("zlink_provider_new failed");
     }
@@ -56,6 +64,26 @@ public final class Provider implements AutoCloseable {
             int rc = Native.providerUnregister(handle, NativeHelpers.toCString(arena, serviceName));
             if (rc != 0)
                 throw new RuntimeException("zlink_provider_unregister failed");
+        }
+    }
+
+    public void setSockOpt(int role, int option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.providerSetSockOpt(handle, role, option, buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_provider_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(int role, int option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.providerSetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_provider_setsockopt failed");
         }
     }
 

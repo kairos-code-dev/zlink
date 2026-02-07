@@ -11,7 +11,7 @@ public class VersionTests
             return;
         var (major, minor, patch) = ZlinkVersion.Get();
         Assert.Equal(0, major);
-        Assert.Equal(6, minor);
+        Assert.Equal(7, minor);
         Assert.Equal(0, patch);
     }
 }

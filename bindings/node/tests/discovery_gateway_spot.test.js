@@ -24,7 +24,7 @@ test('discovery/gateway/spot: flow across transports', async () => {
       registry.setEndpoints(regPub, regRouter);
       registry.start();
 
-      const discovery = new zlink.Discovery(ctx);
+      const discovery = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY_RECEIVER);
       discovery.connectRegistry(regPub);
       discovery.subscribe('svc');
 

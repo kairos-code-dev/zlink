@@ -13,7 +13,7 @@ public class ServiceDiscoveryTests
         {
             using var ctx = new Context();
             using var registry = new Registry(ctx);
-            using var discovery = new Discovery(ctx);
+            using var discovery = new Discovery(ctx, DiscoveryServiceType.GatewayReceiver);
             using var gateway = new Gateway(ctx, discovery);
             using var provider = new Receiver(ctx);
             Assert.NotNull(registry);

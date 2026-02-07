@@ -22,7 +22,7 @@ public class DiscoveryGatewaySpotScenarioTests
                 registry.SetEndpoints(regPub, regRouter);
                 registry.Start();
 
-                using var discovery = new Discovery(ctx);
+                using var discovery = new Discovery(ctx, DiscoveryServiceType.GatewayReceiver);
                 discovery.ConnectRegistry(regPub);
                 discovery.Subscribe("svc");
 

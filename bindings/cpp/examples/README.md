@@ -4,8 +4,7 @@
 Use the root build with C++ bindings enabled:
 
 ```bash
-cmake -B build -DZLINK_BUILD_CPP_BINDINGS=ON
-cmake --build build
+./bindings/cpp/build.sh OFF ON
 ```
 
 ## Examples

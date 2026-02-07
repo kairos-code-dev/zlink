@@ -8,12 +8,15 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public final class Discovery implements AutoCloseable {
+    public static final short SERVICE_TYPE_GATEWAY_RECEIVER = 1;
+    public static final short SERVICE_TYPE_SPOT_NODE = 2;
+
     private MemorySegment handle;
 
-    public Discovery(Context ctx) {
-        this.handle = Native.discoveryNew(ctx.handle());
+    public Discovery(Context ctx, short serviceType) {
+        this.handle = Native.discoveryNew(ctx.handle(), serviceType);
         if (handle == null || handle.address() == 0)
-            throw new RuntimeException("zlink_discovery_new failed");
+            throw new RuntimeException("zlink_discovery_new_typed failed");
     }
 
     MemorySegment handle() {

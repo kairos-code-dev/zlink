@@ -21,7 +21,7 @@ int main()
         assert(registry.start() == 0);
         sleep_ms(50);
 
-        zlink::discovery_t discovery(ctx);
+        zlink::discovery_t discovery(ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
         assert(discovery.connect_registry(reg_pub.c_str()) == 0);
         assert(discovery.subscribe(service) == 0);
 

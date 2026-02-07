@@ -1,6 +1,6 @@
 # zlink
 
-> [libzlink](https://github.com/zlink/libzlink) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
+> [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
@@ -9,11 +9,11 @@
 
 ## 왜 zlink인가?
 
-libzlink는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
+libzmq는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
 
-**zlink는 libzlink의 핵심만 남기고 현대적으로 재구축합니다:**
+**zlink는 libzmq의 핵심만 남기고 현대적으로 재구축합니다:**
 
-| | libzlink | zlink |
+| | libzmq | zlink |
 |---|--------|-------|
 | **Socket Types** | 17종 (draft 포함) | **7종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
@@ -68,8 +68,8 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 │  Proactor 패턴 · Speculative I/O · Backpressure       │
 ├──────────────────────────────────────────────────────┤
 │  Transport Layer                                      │
-│  tcp · ipc · ws — 평문                                │
-│  tls · wss      — OpenSSL 암호화                      │
+│  tcp · ipc · inproc · ws — 평문                       │
+│  tls · wss             — OpenSSL 암호화               │
 ├──────────────────────────────────────────────────────┤
 │  Core Infrastructure                                  │
 │  msg_t(64B 고정) · pipe_t(Lock-free YPipe)            │
@@ -93,23 +93,21 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 - **Reaper Thread**: 종료된 소켓/세션의 자원 정리
 - Thread 간 통신은 Lock-free YPipe + Mailbox 시스템으로 처리
 
-> 상세한 내부 아키텍처는 [Architecture Document](doc/arch/ARCHITECTURE.md)를 참고하세요.
+> 상세한 내부 아키텍처는 [Architecture Document](doc/internals/architecture.md)를 참고하세요.
 
 ---
 
-## 개발 편의 기능 (계획)
+## 개발 편의 기능
 
 간소화된 core를 넘어, 실전 분산 시스템을 위한 **고수준 메시징 스택**을 구축합니다:
 
-| 기능 | 설명 | 스펙 |
-|------|------|:----:|
-| **Routing ID 통합** | `zlink_routing_id_t` 표준 타입, 자동 생성 포맷 통일 | [00](doc/plan/00-routing-id-unification.md) |
-| **모니터링 강화** | Routing-ID 기반 이벤트 식별, Callback API, Socket별 메트릭스 | [01](doc/plan/01-enhanced-monitoring.md) |
-| **Thread-safe Socket** | Asio Strand 직렬화로 여러 thread에서 단일 socket 공유 | [02](doc/plan/02-thread-safe-socket.md) |
-| **Request/Reply API** | DEALER/ROUTER 기반 비동기 요청-응답 (REQ/REP 대체) | [03](doc/plan/03-request-reply-api.md) |
-| **Service Discovery** | Registry 클러스터, Client-side Load Balancing, Health Monitoring | [04](doc/plan/04-service-discovery.md) |
-| **SPOT Topic PUB/SUB** | 위치 투명한 토픽 메시징, 클러스터 전체 PUB/SUB | [05](doc/plan/05-spot-topic-pubsub.md) |
-| **PGM/EPGM Transport** | PUB/SUB 소켓용 멀티캐스트 프로토콜 지원 (계획) | - |
+| 기능 | 설명 | 가이드 |
+|------|------|:------:|
+| **Routing ID 통합** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
+| **모니터링 강화** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](doc/guide/06-monitoring.md) |
+| **Service Discovery** | Registry 클러스터, Client-side Load Balancing, Health Monitoring | [Discovery](doc/guide/07-1-discovery.md) |
+| **Gateway** | Discovery 기반 위치투명 요청/응답, 로드밸런싱 | [Gateway](doc/guide/07-2-gateway.md) |
+| **SPOT Topic PUB/SUB** | 위치 투명한 토픽 메시징, Discovery 기반 자동 Mesh | [SPOT](doc/guide/07-3-spot.md) |
 
 > 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.md)을 참고하세요.
 
@@ -139,9 +137,9 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 ### CMake 직접 빌드
 
 ```bash
-cmake -B build -DWITH_TLS=ON -DBUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake -S . -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
+cmake --build core/build/local
+ctest --test-dir core/build/local --output-on-failure
 ```
 
 ### CMake 옵션
@@ -152,6 +150,7 @@ ctest --test-dir build --output-on-failure
 | `BUILD_TESTS` | `ON` | 테스트 빌드 |
 | `BUILD_BENCHMARKS` | `OFF` | 벤치마크 빌드 |
 | `BUILD_SHARED` | `ON` | Shared Library 빌드 |
+| `BUILD_STATIC` | `ON` | Static Library 빌드 |
 | `ZLINK_CXX_STANDARD` | `17` | C++ 표준 (11, 14, 17, 20, 23) |
 
 ### OpenSSL 설치
@@ -191,7 +190,7 @@ vcpkg install openssl:x64-windows
 | DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
 | ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
 
-> 표준 libzlink 대비 ~99% 처리량 동등성. 상세 분석은 [성능 리포트](doc/report/performance/tag_0.5_performance_report.md)를 참고하세요.
+> 표준 libzmq 대비 ~99% 처리량 동등성. 상세 분석은 [성능 가이드](doc/guide/10-performance.md)를 참고하세요.
 
 ---
 
@@ -199,10 +198,12 @@ vcpkg install openssl:x64-windows
 
 | 문서 | 설명 |
 |------|------|
-| [Feature Roadmap](doc/plan/feature-roadmap.md) | 계획 중인 기능과 의존성 그래프 |
-| [Architecture](doc/arch/ARCHITECTURE.md) | 내부 아키텍처 상세 문서 |
-| [TLS Usage Guide](doc/TLS_USAGE_GUIDE.md) | TLS/WSS 설정 가이드 |
-| [C++ Standard Build Guide](CXX_BUILD_EXAMPLES.md) | C++ 표준별 빌드 방법 |
+| [문서 네비게이션](doc/README.md) | 전체 문서 목차 및 독자별 경로 |
+| [사용자 가이드](doc/guide/01-overview.md) | zlink API 가이드 (12편) |
+| [바인딩 가이드](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python 바인딩 |
+| [내부 아키텍처](doc/internals/architecture.md) | 시스템 아키텍처 및 내부 구현 |
+| [빌드 가이드](doc/build/build-guide.md) | 빌드, 테스트, 패키징 |
+| [Feature Roadmap](doc/plan/feature-roadmap.md) | 기능 로드맵과 의존성 그래프 |
 
 ---
 
@@ -210,4 +211,4 @@ vcpkg install openssl:x64-windows
 
 [Mozilla Public License 2.0](LICENSE)
 
-[Zlink (libzlink)](https://github.com/zlink/libzlink) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.
+[libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

@@ -8,9 +8,8 @@
 
 ## 예시
 ```bash
-cmake -B build -DZLINK_BUILD_CPP_BINDINGS=ON -DZLINK_CPP_BUILD_TESTS=ON
-cmake --build build
-ctest --test-dir build --output-on-failure -R test_cpp_
+./bindings/cpp/build.sh ON
+ctest --test-dir bindings/cpp/build --output-on-failure -R test_cpp_
 ```
 
 ## 테스트 목록

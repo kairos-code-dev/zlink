@@ -553,12 +553,6 @@ int zlink_registry_destroy (void **registry_p_)
     return 0;
 }
 
-void *zlink_discovery_new (void *ctx_)
-{
-    return zlink_discovery_new_typed (ctx_,
-                                      ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
-}
-
 void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
 {
     if (!ctx_ || !(static_cast<zlink::ctx_t *> (ctx_))->check_tag ()) {

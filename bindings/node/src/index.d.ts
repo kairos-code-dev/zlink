@@ -1,4 +1,6 @@
 export function version(): [number, number, number];
+export const SERVICE_TYPE_GATEWAY_RECEIVER: number;
+export const SERVICE_TYPE_SPOT_NODE: number;
 
 export class Context {
   close(): void;
@@ -39,7 +41,7 @@ export class Registry {
 }
 
 export class Discovery {
-  constructor(ctx: Context);
+  constructor(ctx: Context, serviceType: number);
   connectRegistry(pub: string): void;
   subscribe(service: string): void;
   unsubscribe(service: string): void;

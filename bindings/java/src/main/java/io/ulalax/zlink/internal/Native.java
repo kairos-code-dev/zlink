@@ -68,8 +68,8 @@ public final class Native {
     private static final MethodHandle MH_REG_DESTROY = downcall("zlink_registry_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_DISC_NEW = downcall("zlink_discovery_new",
-            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_DISC_NEW = downcall("zlink_discovery_new_typed",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_SHORT));
     private static final MethodHandle MH_DISC_CONNECT = downcall("zlink_discovery_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_SUB = downcall("zlink_discovery_subscribe",
@@ -407,11 +407,11 @@ public final class Native {
         }
     }
 
-    public static MemorySegment discoveryNew(MemorySegment ctx) {
+    public static MemorySegment discoveryNew(MemorySegment ctx, short serviceType) {
         try {
-            return (MemorySegment) MH_DISC_NEW.invokeExact(ctx);
+            return (MemorySegment) MH_DISC_NEW.invokeExact(ctx, serviceType);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_new failed", t);
+            throw new RuntimeException("zlink_discovery_new_typed failed", t);
         }
     }
 

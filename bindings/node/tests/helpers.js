@@ -82,6 +82,35 @@ async function sendWithRetry(socket, buf, flags, timeoutMs) {
   throw new Error('timeout');
 }
 
+async function gatewaySendWithRetry(gateway, service, parts, flags, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    try {
+      gateway.send(service, parts, flags);
+      return;
+    } catch (err) {
+      last = err;
+      await new Promise(r => setTimeout(r, 10));
+    }
+  }
+  if (last) throw last;
+  throw new Error('timeout');
+}
+
+async function waitUntil(fn, timeoutMs, intervalMs = 10) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      if (fn()) return true;
+    } catch (_) {
+      // keep polling while discovery/gateway state converges
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
 async function gatewayRecvWithTimeout(gateway, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let last;
@@ -119,6 +148,8 @@ module.exports = {
   tryTransport,
   recvWithTimeout,
   sendWithRetry,
+  gatewaySendWithRetry,
+  waitUntil,
   gatewayRecvWithTimeout,
   spotRecvWithTimeout,
   ZLINK_PAIR,

@@ -133,12 +133,14 @@ napi_value registry_destroy(napi_env env, napi_callback_info info)
 
 napi_value discovery_new(napi_env env, napi_callback_info info)
 {
-    napi_value argv[1];
-    size_t argc = 1;
+    napi_value argv[2];
+    size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *ctx = NULL;
     napi_get_value_external(env, argv[0], &ctx);
-    void *disc = zlink_discovery_new(ctx);
+    uint32_t service_type = 0;
+    napi_get_value_uint32(env, argv[1], &service_type);
+    void *disc = zlink_discovery_new_typed(ctx, (uint16_t) service_type);
     if (!disc)
         return throw_last_error(env, "discovery_new failed");
     napi_value ext;

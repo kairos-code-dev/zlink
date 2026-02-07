@@ -21,6 +21,7 @@ configure
 stamp-h1
 ## CMake
 cmake-build-*/
+build-*/
 build/
 build_*/
 ## Android

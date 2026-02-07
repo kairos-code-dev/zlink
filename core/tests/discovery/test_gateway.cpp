@@ -120,7 +120,7 @@ static void test_gateway_provider_setsockopt ()
     void *ctx = get_test_context ();
     TEST_ASSERT_NOT_NULL (ctx);
 
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     const int linger = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -344,7 +344,7 @@ void test_gateway_single_service_tcp ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -478,7 +478,7 @@ void test_gateway_send_rid_tcp ()
                     "inproc://reg-router-gateway-rid");
     msleep (100);
 
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,
@@ -592,7 +592,7 @@ void test_gateway_multi_service_tcp ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -768,7 +768,7 @@ void test_gateway_refresh_on_update ()
                     "inproc://reg-router-gateway-update");
     msleep (100);
 
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -911,7 +911,7 @@ void test_gateway_protocol_ws ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-ws"));
@@ -1028,7 +1028,7 @@ void test_gateway_protocol_tls ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-tls"));
@@ -1160,7 +1160,7 @@ void test_gateway_protocol_wss ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway-wss"));
@@ -1283,7 +1283,7 @@ void test_gateway_load_balancing ()
     msleep (100);
 
     // Setup discovery client
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     step_log ("connect discovery");
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1458,7 +1458,7 @@ void test_gateway_concurrent_send_and_updates ()
     msleep (100);
 
     step_log ("sync: setup discovery");
-    void *discovery = zlink_discovery_new (ctx);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery,

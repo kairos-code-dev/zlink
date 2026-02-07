@@ -12,6 +12,9 @@ class ReceiverInfo(ctypes.Structure):
         ("registered_at", ctypes.c_uint64),
     ]
 
+SERVICE_TYPE_GATEWAY_RECEIVER = 1
+SERVICE_TYPE_SPOT_NODE = 2
+
 
 class Registry:
     def __init__(self, ctx):
@@ -63,8 +66,8 @@ class Registry:
 
 
 class Discovery:
-    def __init__(self, ctx):
-        self._handle = lib().zlink_discovery_new(ctx._handle)
+    def __init__(self, ctx, service_type):
+        self._handle = lib().zlink_discovery_new_typed(ctx._handle, service_type)
         if not self._handle:
             _raise_last_error()
 
@@ -301,4 +304,3 @@ def _parts_to_bytes(parts_ptr, count):
         out.append(ctypes.string_at(data_ptr, size))
     lib().zlink_msgv_close(parts_ptr, count)
     return out
-

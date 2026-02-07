@@ -25,6 +25,8 @@ function loadNative() {
 }
 
 const native = loadNative();
+const SERVICE_TYPE_GATEWAY_RECEIVER = 1;
+const SERVICE_TYPE_SPOT_NODE = 2;
 
 function requireNative() {
   if (!native) {
@@ -138,7 +140,7 @@ class Registry {
 }
 
 class Discovery {
-  constructor(ctx) { this._native = requireNative().discoveryNew(ctx._native); }
+  constructor(ctx, serviceType) { this._native = requireNative().discoveryNew(ctx._native, serviceType); }
   connectRegistry(pub) { requireNative().discoveryConnectRegistry(this._native, pub); }
   subscribe(service) { requireNative().discoverySubscribe(this._native, service); }
   unsubscribe(service) { requireNative().discoveryUnsubscribe(this._native, service); }
@@ -249,6 +251,8 @@ function version() { return requireNative().version(); }
 
 module.exports = {
   version,
+  SERVICE_TYPE_GATEWAY_RECEIVER,
+  SERVICE_TYPE_SPOT_NODE,
   Context,
   Socket,
   MonitorSocket,

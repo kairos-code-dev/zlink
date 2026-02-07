@@ -3,6 +3,12 @@ using Zlink.Native;
 
 namespace Zlink;
 
+public enum DiscoveryServiceType : ushort
+{
+    GatewayReceiver = 1,
+    SpotNode = 2
+}
+
 public sealed class Registry : IDisposable
 {
     private IntPtr _handle;
@@ -109,9 +115,10 @@ public sealed class Discovery : IDisposable
 {
     private IntPtr _handle;
 
-    public Discovery(Context context)
+    public Discovery(Context context, DiscoveryServiceType serviceType)
     {
-        _handle = NativeMethods.zlink_discovery_new(context.Handle);
+        _handle = NativeMethods.zlink_discovery_new_typed(context.Handle,
+            (ushort)serviceType);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }

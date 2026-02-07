@@ -9,6 +9,7 @@ import java.net.ServerSocket;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 final class TestTransports {
     static final int ZLINK_SUBSCRIBE = 6;
@@ -90,6 +91,38 @@ final class TestTransports {
         if (last != null)
             throw last;
         throw new RuntimeException("timeout");
+    }
+
+    static void gatewaySendWithRetry(Gateway gw, String service, byte[] payload,
+      int flags, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        RuntimeException last = null;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                gw.send(service, new io.ulalax.zlink.Message[]{
+                    io.ulalax.zlink.Message.fromBytes(payload)}, flags);
+                return;
+            } catch (RuntimeException ex) {
+                last = ex;
+                sleep(10);
+            }
+        }
+        if (last != null)
+            throw last;
+        throw new RuntimeException("timeout");
+    }
+
+    static boolean waitUntil(BooleanSupplier check, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (check.getAsBoolean())
+                    return true;
+            } catch (RuntimeException ignored) {
+            }
+            sleep(10);
+        }
+        return false;
     }
 
     static Gateway.GatewayMessage gatewayReceiveWithTimeout(Gateway gw, int timeoutMs) {

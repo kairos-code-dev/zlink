@@ -635,7 +635,10 @@ class registry_t
 class discovery_t
 {
   public:
-    explicit discovery_t (context_t &ctx_) : _disc (zlink_discovery_new (ctx_.handle ())) {}
+    discovery_t (context_t &ctx_, uint16_t service_type_)
+        : _disc (zlink_discovery_new_typed (ctx_.handle (), service_type_))
+    {
+    }
     ~discovery_t () { destroy (); }
 
     discovery_t (discovery_t &&other) noexcept : _disc (other._disc) { other._disc = NULL; }

@@ -185,7 +185,8 @@ internal static class NativeMethods
     internal static extern int zlink_registry_destroy(ref IntPtr registry);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_discovery_new(IntPtr ctx);
+    internal static extern IntPtr zlink_discovery_new_typed(IntPtr ctx,
+        ushort serviceType);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_discovery_connect_registry(

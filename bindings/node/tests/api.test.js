@@ -12,7 +12,7 @@ try {
 test('construct/close service objects', { skip: !nativeOk }, () => {
   const ctx = new zlink.Context();
   const reg = new zlink.Registry(ctx);
-  const disc = new zlink.Discovery(ctx);
+  const disc = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY_RECEIVER);
   const gw = new zlink.Gateway(ctx, disc);
   const provider = new zlink.Receiver(ctx);
   const node = new zlink.SpotNode(ctx);

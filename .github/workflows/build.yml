@@ -400,15 +400,15 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $libDir = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib"
-          $libCandidate = Get-ChildItem -Path $libDir -Filter "libzlink-*.lib" -ErrorAction SilentlyContinue `
-            | Where-Object { $_.Name -notmatch "-gd-" } `
+          $artifactRoot = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}"
+          $libCandidate = Get-ChildItem -Path $artifactRoot -Filter "libzlink*.lib" -File -Recurse -ErrorAction SilentlyContinue `
+            | Where-Object { $_.Name -notmatch "-gd-" -and $_.Name -notmatch "-sgd-" } `
             | Sort-Object Name `
             | Select-Object -First 1
           if (-not $libCandidate) {
             Write-Host "Available files under artifact:"
-            Get-ChildItem "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}" -Recurse | ForEach-Object { $_.FullName }
-            throw "libzlink import library not found under $libDir"
+            Get-ChildItem $artifactRoot -Recurse | ForEach-Object { $_.FullName }
+            throw "libzlink import library not found under $artifactRoot"
           }
           $env:ZLINK_LIB_PATH = $libCandidate.FullName
           Write-Host "Using ZLINK_LIB_PATH=$env:ZLINK_LIB_PATH"

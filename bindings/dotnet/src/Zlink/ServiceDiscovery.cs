@@ -5,8 +5,8 @@ namespace Zlink;
 
 public enum DiscoveryServiceType : ushort
 {
-    GatewayReceiver = 1,
-    SpotNode = 2
+    Gateway = 1,
+    Spot = 2
 }
 
 public sealed class Registry : IDisposable

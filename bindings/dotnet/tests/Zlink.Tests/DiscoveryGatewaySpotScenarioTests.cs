@@ -22,27 +22,27 @@ public class DiscoveryGatewaySpotScenarioTests
                 registry.SetEndpoints(regPub, regRouter);
                 registry.Start();
 
-                using var discovery = new Discovery(ctx, DiscoveryServiceType.GatewayReceiver);
+                using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
                 discovery.ConnectRegistry(regPub);
                 discovery.Subscribe("svc");
 
-                using var provider = new Receiver(ctx);
+                using var receiver = new Receiver(ctx);
                 var serviceEp = TransportTestHelpers.EndpointFor(name, endpoint, "-svc");
-                provider.Bind(serviceEp);
-                using var providerRouter = provider.CreateRouterSocket();
+                receiver.Bind(serviceEp);
+                using var receiverRouter = receiver.CreateRouterSocket();
                 string advertise = serviceEp;
-                provider.ConnectRegistry(regRouter);
-                provider.Register("svc", advertise, 1);
+                receiver.ConnectRegistry(regRouter);
+                receiver.Register("svc", advertise, 1);
 
                 using var gateway = new Gateway(ctx, discovery);
                 gateway.Send("svc",
                     new[] { Message.FromBytes(Encoding.UTF8.GetBytes("hello")) });
 
-                var rid = TransportTestHelpers.ReceiveWithTimeout(providerRouter, 256, 2000);
+                var rid = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 256, 2000);
                 var payload = Array.Empty<byte>();
                 for (int i = 0; i < 3; i++)
                 {
-                    payload = TransportTestHelpers.ReceiveWithTimeout(providerRouter, 64, 2000);
+                    payload = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 64, 2000);
                     if (Encoding.UTF8.GetString(payload).Trim('\0') == "hello")
                         break;
                 }

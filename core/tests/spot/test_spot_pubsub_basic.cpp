@@ -761,7 +761,7 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
 
     void *discovery =
-      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_SPOT_NODE);
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_SPOT);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://spot-reg-pub-mmorpg"));
@@ -931,7 +931,7 @@ static void test_spot_discovery_auto_peer_connect ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
 
     void *discovery =
-      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_SPOT_NODE);
+      zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_SPOT);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://spot-reg-pub-auto"));

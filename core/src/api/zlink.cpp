@@ -559,8 +559,8 @@ void *zlink_discovery_new_typed (void *ctx_, uint16_t service_type_)
         errno = EFAULT;
         return NULL;
     }
-    if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER
-        && service_type_ != ZLINK_SERVICE_TYPE_SPOT_NODE) {
+    if (service_type_ != ZLINK_SERVICE_TYPE_GATEWAY
+        && service_type_ != ZLINK_SERVICE_TYPE_SPOT) {
         errno = EINVAL;
         return NULL;
     }

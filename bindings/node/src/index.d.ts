@@ -1,6 +1,6 @@
 export function version(): [number, number, number];
-export const SERVICE_TYPE_GATEWAY_RECEIVER: number;
-export const SERVICE_TYPE_SPOT_NODE: number;
+export const SERVICE_TYPE_GATEWAY: number;
+export const SERVICE_TYPE_SPOT: number;
 
 export class Context {
   close(): void;

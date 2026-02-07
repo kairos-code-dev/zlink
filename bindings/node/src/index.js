@@ -25,8 +25,8 @@ function loadNative() {
 }
 
 const native = loadNative();
-const SERVICE_TYPE_GATEWAY_RECEIVER = 1;
-const SERVICE_TYPE_SPOT_NODE = 2;
+const SERVICE_TYPE_GATEWAY = 1;
+const SERVICE_TYPE_SPOT = 2;
 
 function requireNative() {
   if (!native) {
@@ -251,8 +251,8 @@ function version() { return requireNative().version(); }
 
 module.exports = {
   version,
-  SERVICE_TYPE_GATEWAY_RECEIVER,
-  SERVICE_TYPE_SPOT_NODE,
+  SERVICE_TYPE_GATEWAY,
+  SERVICE_TYPE_SPOT,
   Context,
   Socket,
   MonitorSocket,

@@ -8,8 +8,8 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public final class Discovery implements AutoCloseable {
-    public static final short SERVICE_TYPE_GATEWAY_RECEIVER = 1;
-    public static final short SERVICE_TYPE_SPOT_NODE = 2;
+    public static final short SERVICE_TYPE_GATEWAY = 1;
+    public static final short SERVICE_TYPE_SPOT = 2;
 
     private MemorySegment handle;
 

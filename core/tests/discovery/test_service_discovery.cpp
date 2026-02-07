@@ -88,7 +88,7 @@ static void test_discovery_provider_registration ()
 
     // Create discovery and connect to registry
     step_log ("setup discovery");
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-basic"));
@@ -180,7 +180,7 @@ static void test_discovery_service_filtering ()
 
     // Create discovery
     step_log ("setup discovery");
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-filter"));
@@ -322,7 +322,7 @@ static void test_discovery_heartbeat_timeout ()
 
     // Create discovery
     step_log ("setup discovery");
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-hb"));
@@ -415,7 +415,7 @@ static void test_discovery_weight_update ()
 
     // Create discovery
     step_log ("setup discovery");
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-weight"));

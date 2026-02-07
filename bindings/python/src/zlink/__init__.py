@@ -9,8 +9,8 @@ from ._discovery import (
     Discovery,
     Gateway,
     Receiver,
-    SERVICE_TYPE_GATEWAY_RECEIVER,
-    SERVICE_TYPE_SPOT_NODE,
+    SERVICE_TYPE_GATEWAY,
+    SERVICE_TYPE_SPOT,
 )
 from ._spot import SpotNode, Spot
 
@@ -36,8 +36,8 @@ __all__ = [
     "Discovery",
     "Gateway",
     "Receiver",
-    "SERVICE_TYPE_GATEWAY_RECEIVER",
-    "SERVICE_TYPE_SPOT_NODE",
+    "SERVICE_TYPE_GATEWAY",
+    "SERVICE_TYPE_SPOT",
     "SpotNode",
     "Spot",
     "ZlinkError",

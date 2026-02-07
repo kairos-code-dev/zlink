@@ -26,19 +26,19 @@ class DiscoveryGatewaySpotScenarioTest(unittest.TestCase):
                 registry.set_endpoints(reg_pub, reg_router)
                 registry.start()
 
-                discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY_RECEIVER)
+                discovery = zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY)
                 discovery.connect_registry(reg_pub)
                 discovery.subscribe("svc")
 
-                provider = zlink.Receiver(ctx)
+                receiver = zlink.Receiver(ctx)
                 svc_ep = endpoint_for(name, endpoint, "-svc")
-                provider.bind(svc_ep)
-                router = provider.router_socket()
-                provider.connect_registry(reg_router)
-                provider.register("svc", svc_ep, 1)
+                receiver.bind(svc_ep)
+                router = receiver.router_socket()
+                receiver.connect_registry(reg_router)
+                receiver.register("svc", svc_ep, 1)
                 status = -1
                 for _ in range(20):
-                    status, _, _ = provider.register_result("svc")
+                    status, _, _ = receiver.register_result("svc")
                     if status == 0:
                         break
                     time.sleep(0.05)
@@ -80,7 +80,7 @@ class DiscoveryGatewaySpotScenarioTest(unittest.TestCase):
                 peer.close()
                 node.close()
                 router.close()
-                provider.close()
+                receiver.close()
                 gateway.close()
                 discovery.close()
                 registry.close()

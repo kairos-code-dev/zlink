@@ -131,7 +131,7 @@ void test_gateway_handover_provider_restart ()
                     "inproc://reg-router-ho1");
     msleep (100);
 
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery, "inproc://reg-pub-ho1"));
@@ -251,7 +251,7 @@ void test_provider_handover_gateway_reconnect ()
                     "inproc://reg-router-ho2");
     msleep (100);
 
-    void *discovery1 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery1 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery1);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery1, "inproc://reg-pub-ho2"));
@@ -311,7 +311,7 @@ void test_provider_handover_gateway_reconnect ()
 
     // 6. Discovery2 + Gateway2 with same routing id "GW-HO"
     step_log ("create discovery2 + gateway2");
-    void *discovery2 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery2 = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     TEST_ASSERT_NOT_NULL (discovery2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_discovery_connect_registry (discovery2, "inproc://reg-pub-ho2"));

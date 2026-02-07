@@ -21,21 +21,21 @@ int main()
         assert(registry.start() == 0);
         sleep_ms(50);
 
-        zlink::discovery_t discovery(ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+        zlink::discovery_t discovery(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
         assert(discovery.connect_registry(reg_pub.c_str()) == 0);
         assert(discovery.subscribe(service) == 0);
 
-        zlink::receiver_t provider(ctx);
-        std::string bind_ep = endpoint_for(tc, "provider");
-        if (provider.bind(bind_ep.c_str()) != 0)
+        zlink::receiver_t receiver(ctx);
+        std::string bind_ep = endpoint_for(tc, "receiver");
+        if (receiver.bind(bind_ep.c_str()) != 0)
             continue;
         std::string adv_ep = bind_ep;
         if (tc.name != "inproc") {
-            zlink::socket_t prov_router = zlink::socket_t::wrap(provider.router_handle());
-            adv_ep = bound_endpoint(prov_router);
+            zlink::socket_t recv_router = zlink::socket_t::wrap(receiver.router_handle());
+            adv_ep = bound_endpoint(recv_router);
         }
-        assert(provider.connect_registry(reg_router.c_str()) == 0);
-        assert(provider.register_service(service, adv_ep.c_str(), 1) == 0);
+        assert(receiver.connect_registry(reg_router.c_str()) == 0);
+        assert(receiver.register_service(service, adv_ep.c_str(), 1) == 0);
         sleep_ms(100);
 
         zlink::gateway_t gateway(ctx, discovery);
@@ -45,13 +45,13 @@ int main()
         std::memcpy(parts[0].data(), "hello", 5);
         assert(gateway.send(service, parts) == 0);
 
-        zlink::socket_t prov_router = zlink::socket_t::wrap(provider.router_handle());
+        zlink::socket_t recv_router = zlink::socket_t::wrap(receiver.router_handle());
         zlink::message_t rid;
         zlink::message_t payload;
-        assert(recv_msg_with_timeout(prov_router, rid, 2000) >= 0);
+        assert(recv_msg_with_timeout(recv_router, rid, 2000) >= 0);
         bool got = false;
         for (int i = 0; i < 3; ++i) {
-            assert(recv_msg_with_timeout(prov_router, payload, 2000) >= 0);
+            assert(recv_msg_with_timeout(recv_router, payload, 2000) >= 0);
             if (payload.size() == 5
                 && std::memcmp(payload.data(), "hello", 5) == 0) {
                 got = true;
@@ -60,9 +60,9 @@ int main()
         }
         assert(got);
 
-        assert(prov_router.send(rid, ZLINK_SNDMORE) >= 0);
+        assert(recv_router.send(rid, ZLINK_SNDMORE) >= 0);
         const char *reply = "world";
-        assert(prov_router.send(reply, 5) == 5);
+        assert(recv_router.send(reply, 5) == 5);
 
         zlink::msgv_t out;
         std::string svc_out;

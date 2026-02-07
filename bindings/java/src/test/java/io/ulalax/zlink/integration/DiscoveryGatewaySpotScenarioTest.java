@@ -22,7 +22,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                         registry.setEndpoints(regPub, regRouter);
                         registry.start();
 
-                        try (Discovery discovery = new Discovery(ctx, Discovery.SERVICE_TYPE_GATEWAY_RECEIVER)) {
+                        try (Discovery discovery = new Discovery(ctx, Discovery.SERVICE_TYPE_GATEWAY)) {
                             discovery.connectRegistry(regPub);
                             discovery.subscribe("svc");
 

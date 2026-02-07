@@ -24,19 +24,19 @@ test('discovery/gateway/spot: flow across transports', async () => {
       registry.setEndpoints(regPub, regRouter);
       registry.start();
 
-      const discovery = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY_RECEIVER);
+      const discovery = new zlink.Discovery(ctx, zlink.SERVICE_TYPE_GATEWAY);
       discovery.connectRegistry(regPub);
       discovery.subscribe('svc');
 
-      const provider = new zlink.Receiver(ctx);
+      const receiver = new zlink.Receiver(ctx);
       const serviceEp = await endpointFor(tc.name, tc.endpoint, '-svc');
-      provider.bind(serviceEp);
-      const providerRouter = provider.routerSocket();
-      provider.connectRegistry(regRouter);
-      provider.register('svc', serviceEp, 1);
+      receiver.bind(serviceEp);
+      const receiverRouter = receiver.routerSocket();
+      receiver.connectRegistry(regRouter);
+      receiver.register('svc', serviceEp, 1);
       let status = -1;
       for (let i = 0; i < 20; i += 1) {
-        const res = provider.registerResult('svc');
+        const res = receiver.registerResult('svc');
         status = res.status;
         if (status === 0) break;
         await new Promise(r => setTimeout(r, 50));
@@ -48,10 +48,10 @@ test('discovery/gateway/spot: flow across transports', async () => {
       assert.equal(await waitUntil(() => gateway.connectionCount('svc') > 0, 5000), true);
       await gatewaySendWithRetry(gateway, 'svc', [Buffer.from('hello')], 0, 5000);
 
-      const rid = await recvWithTimeout(providerRouter, 256, 2000);
+      const rid = await recvWithTimeout(receiverRouter, 256, 2000);
       let payload = null;
       for (let i = 0; i < 3; i += 1) {
-        payload = await recvWithTimeout(providerRouter, 256, 2000);
+        payload = await recvWithTimeout(receiverRouter, 256, 2000);
         if (payload.toString().trim() === 'hello') {
           break;
         }
@@ -82,8 +82,8 @@ test('discovery/gateway/spot: flow across transports', async () => {
       peer.close();
       node.close();
       gateway.close();
-      providerRouter.close();
-      provider.close();
+      receiverRouter.close();
+      receiver.close();
       discovery.close();
       registry.close();
     });

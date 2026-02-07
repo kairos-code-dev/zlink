@@ -176,7 +176,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY_RECEIVER);
+    void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
     if (!discovery) {
         zlink_registry_destroy(&registry);
         zlink_ctx_term(ctx);

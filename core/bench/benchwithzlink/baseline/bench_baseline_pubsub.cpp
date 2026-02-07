@@ -11,9 +11,6 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     void *sub = zlink_socket(ctx, ZLINK_SUB);
 
     const bool is_pgm = transport == "pgm" || transport == "epgm";
-    int hwm = is_pgm ? 1000 : 0;
-    set_sockopt_int(pub, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(sub, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
     zlink_setsockopt(sub, ZLINK_SUBSCRIBE, "", 0);
     int poll_timeout_ms = 0;
     if (is_pgm) {

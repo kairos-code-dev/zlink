@@ -152,11 +152,6 @@ void run_stream(const std::string& transport, size_t msg_size, int msg_count, co
     void *server = zlink_socket(ctx, ZLINK_STREAM);
     void *client = zlink_socket(ctx, ZLINK_STREAM);
 
-    int hwm = 0;
-    set_sockopt_int(server, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(server, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-    set_sockopt_int(client, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(client, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
     const int io_timeout_ms = 5000;
     set_sockopt_int(server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");

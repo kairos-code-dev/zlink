@@ -17,17 +17,17 @@ int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
 
     // Set up and bind XPUB socket
     void *pub_socket = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up and connect SUB socket
     void *sub_socket = test_context_socket (ZLINK_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
-
-    //set a hwm on publisher
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
     // (in this test there's 1 subscriber only)
@@ -85,15 +85,14 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
 
     // Set up bind socket
     void *pub_socket = test_context_socket (ZLINK_XPUB);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
     test_bind (pub_socket, endpoint_, pub_endpoint, sizeof pub_endpoint);
 
     // Set up connect socket
     void *sub_socket = test_context_socket (ZLINK_SUB);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
-
-    //set a hwm on publisher
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (pub_socket, ZLINK_SNDHWM, &send_hwm_, sizeof (send_hwm_)));
+      zlink_setsockopt (sub_socket, ZLINK_RCVHWM, &send_hwm_, sizeof (send_hwm_)));
     int wait = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (pub_socket, ZLINK_XPUB_NODROP, &wait, sizeof (wait)));
@@ -102,6 +101,7 @@ int test_blocking (int send_hwm_, int msg_cnt_, const char *endpoint_)
       sub_socket, ZLINK_RCVTIMEO, &timeout_ms, sizeof (timeout_ms)));
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (sub_socket, ZLINK_SUBSCRIBE, 0, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (sub_socket, pub_endpoint));
 
     // Wait before starting TX operations till 1 subscriber has subscribed
     // (in this test there's 1 subscriber only)

@@ -15,9 +15,7 @@
 #endif
 
 typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
-typedef int (*gateway_setsockopt_fn)(void *, int, const void *, size_t);
 typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
-typedef int (*provider_setsockopt_fn)(void *, int, int, const void *, size_t);
 typedef void *(*provider_router_fn)(void *);
 
 static const std::string &tls_ca_path() {
@@ -65,16 +63,6 @@ static bool configure_provider_tls(void *provider,
     const std::string &cert = tls_cert_path();
     const std::string &key = tls_key_path();
     return fn(provider, cert.c_str(), key.c_str()) == 0;
-}
-
-static void configure_gateway_hwm(void *gateway, int hwm) {
-    gateway_setsockopt_fn fn =
-      reinterpret_cast<gateway_setsockopt_fn>(
-        resolve_symbol("zlink_gateway_setsockopt"));
-    if (!fn)
-        return;
-    fn(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
-    fn(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 }
 
 static std::string bind_provider(void *provider, const std::string &transport,
@@ -278,9 +266,6 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         zlink_ctx_term(ctx);
         return;
     }
-
-    int hwm = 1000000;
-    configure_gateway_hwm(gateway, hwm);
 
     if (!wait_for_discovery(discovery, "svc", 8000)) {
         print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);

@@ -2,9 +2,9 @@
 
 ## 1. 개요
 
-Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 요청을 전송하고 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱, 자동 연결/해제, 요청-응답 매핑을 처리한다.
+Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다. 메시지 수신(recv)은 Receiver 측에서 ROUTER 소켓을 통해 처리한다.
 
-**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 내부적으로 mutex 보호와 백그라운드 워커 스레드를 통해 여러 스레드에서 안전하게 동시 호출할 수 있다.
+**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 send 전용으로 설계되어 경합이 적고, 내부 mutex 보호를 통해 여러 스레드에서 안전하게 동시 전송할 수 있다.
 
 ## 2. Receiver 설정
 
@@ -60,23 +60,23 @@ zlink_gateway_set_lb_strategy(gateway, "payment-service",
     ZLINK_GATEWAY_LB_ROUND_ROBIN);
 ```
 
-## 4. 메시지 송수신
+## 4. 메시지 전송
 
-### 4.1 기본 송수신
+### 4.1 기본 전송
 
 ```c
-/* 요청 */
+/* Gateway에서 Receiver로 요청 전송 */
 zlink_msg_t req;
 zlink_msg_init_data(&req, data, size, NULL, NULL);
 zlink_gateway_send(gateway, "payment-service", &req, 1, 0);
+```
 
-/* 응답 */
-zlink_msg_t *reply_parts = NULL;
-size_t reply_count = 0;
-char svc_name[256];
-zlink_gateway_recv(gateway, &reply_parts, &reply_count, 0, svc_name);
-/* 사용 후 정리 */
-zlink_msgv_close(reply_parts, reply_count);
+### 4.2 Receiver 측 수신/응답
+
+```c
+/* Receiver의 ROUTER 소켓에서 수신 및 응답 */
+void *router = zlink_receiver_router(receiver);
+/* [routing_id][msgId][payload...] 수신 후 응답 처리 */
 ```
 
 ## 5. 로드밸런싱
@@ -106,7 +106,7 @@ zlink_receiver_update_weight(receiver, "payment-service", 5);
 
 Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드에서 동시에 호출해도 안전하다.
 
-- `zlink_gateway_send()` / `zlink_gateway_recv()`
+- `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_setsockopt()`
@@ -124,6 +124,7 @@ void *send_worker(void *arg) {
     void *gw = arg;
     zlink_msg_t req;
     zlink_msg_init_data(&req, "request", 7, NULL, NULL);
+    /* 여러 스레드에서 동시에 send 호출 — 안전 */
     zlink_gateway_send(gw, "my-service", &req, 1, 0);
     return NULL;
 }
@@ -131,20 +132,17 @@ void *send_worker(void *arg) {
 /* 여러 스레드에서 동시 전송 */
 for (int i = 0; i < 4; i++)
     zlink_threadstart(&send_worker, gateway);
-
-/* 메인 스레드에서 응답 수신 */
-zlink_msg_t *reply = NULL;
-size_t count = 0;
-char svc[256];
-zlink_gateway_recv(gateway, &reply, &count, 0, svc);
-zlink_msgv_close(reply, count);
 ```
 
 ### 장점
 
-**1. 애플리케이션 아키텍처 단순화**
+**1. Send 전용 설계로 낮은 경합**
 
-일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의 메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가 직접 send/recv를 호출할 수 있다.
+Gateway는 send만 담당하고 recv는 Receiver 측에서 처리하므로, send/recv 혼합에 따른 복잡한 경합이 발생하지 않는다. 이 단순한 구조 덕분에 thread-safe 구현이 용이하고 lock 오버헤드도 최소화된다.
+
+**2. 애플리케이션 아키텍처 단순화**
+
+일반 소켓은 단일 스레드 소유 원칙을 지켜야 하므로, 멀티스레드 환경에서 별도의 메시지 큐나 프록시 패턴이 필요하다. Gateway는 이런 추가 구성 없이 여러 스레드가 직접 send를 호출할 수 있다.
 
 ```
 일반 소켓 (멀티스레드):
@@ -154,15 +152,15 @@ zlink_msgv_close(reply, count);
 
 Gateway (멀티스레드):
   Thread A ──┐
-  Thread B ──┼── Gateway (내부 mutex 보호)
+  Thread B ──┼── Gateway (내부 mutex 보호) ── send ──→ Receiver
   Thread C ──┘
 ```
 
-**2. Discovery 갱신이 API 호출을 블록하지 않음**
+**3. Discovery 갱신이 send를 블록하지 않음**
 
-서비스 풀 갱신(Receiver 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가 처리한다. send/recv 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
+서비스 풀 갱신(Receiver 추가/제거, 연결/재연결)은 전용 백그라운드 워커 스레드가 처리한다. send 호출 중에 Discovery 이벤트가 도착해도 사용자 API가 블록되지 않는다.
 
-**3. 동시 전송과 가중치 갱신이 안전**
+**4. 동시 전송과 가중치 갱신이 안전**
 
 여러 스레드가 동시에 메시지를 전송하면서, 동시에 Receiver가 `zlink_receiver_update_weight()`로 가중치를 갱신해도 데이터 경합 없이 안전하게 처리된다.
 
@@ -224,7 +222,6 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, discovery, routing_id)` | Gateway 생성 |
 | `zlink_gateway_send(...)` | 메시지 전송 (LB 적용) |
-| `zlink_gateway_recv(...)` | 응답 수신 |
 | `zlink_gateway_send_rid(...)` | 특정 Receiver로 전송 |
 | `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
 | `zlink_gateway_setsockopt(...)` | 소켓 옵션 설정 |

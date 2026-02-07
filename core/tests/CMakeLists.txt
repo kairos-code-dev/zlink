@@ -18,6 +18,7 @@ set(tests
   test_last_endpoint
   test_router_mandatory
   discovery/test_gateway
+  discovery/test_gateway_handover
   test_probe_router
   test_disconnect_inproc
   test_ctx_options
@@ -247,6 +248,7 @@ set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
 if(WIN32)
   set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 endif()
+set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

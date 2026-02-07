@@ -400,8 +400,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $libFile = "libzlink-v143-mt-${{ needs.read-versions.outputs.libzlink_lib_suffix }}.lib"
-          $env:ZLINK_LIB_PATH = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\$libFile"
+          $libDir = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib"
+          $libCandidate = Get-ChildItem -Path $libDir -Filter "libzlink-*.lib" -ErrorAction SilentlyContinue `
+            | Where-Object { $_.Name -notmatch "-gd-" } `
+            | Sort-Object Name `
+            | Select-Object -First 1
+          if (-not $libCandidate) {
+            Write-Host "Available files under artifact:"
+            Get-ChildItem "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}" -Recurse | ForEach-Object { $_.FullName }
+            throw "libzlink import library not found under $libDir"
+          }
+          $env:ZLINK_LIB_PATH = $libCandidate.FullName
+          Write-Host "Using ZLINK_LIB_PATH=$env:ZLINK_LIB_PATH"
           cd bindings/node
           npx node-gyp configure build
           Copy-Item "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" build\\Release -Force

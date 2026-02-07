@@ -11,7 +11,7 @@
 | **라이브러리 사용자** | [guide/01-overview.md](guide/01-overview.md) | zlink API로 메시징 애플리케이션 개발 |
 | **바인딩 사용자** | [bindings/overview.md](bindings/overview.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | **라이브러리 개발자** | [internals/architecture.md](internals/architecture.md) | 내부 아키텍처 및 구현 상세 |
-| **빌드/배포 담당자** | [build/build-guide.md](build/build-guide.md) | 빌드, 테스트, 패키징 |
+| **빌드/배포 담당자** | [building/build-guide.md](building/build-guide.md) | 빌드, 테스트, 패키징 |
 
 ---
 
@@ -70,15 +70,15 @@
 | [services-internals.md](internals/services-internals.md) | 서비스 계층 내부 설계 |
 | [design-decisions.md](internals/design-decisions.md) | 설계 결정 기록 |
 
-## 빌드 및 개발 (build/)
+## 빌드 및 개발 (building/)
 
 | 문서 | 설명 |
 |------|------|
-| [build-guide.md](build/build-guide.md) | 빌드 방법 (CMake, 플랫폼별) |
-| [cmake-options.md](build/cmake-options.md) | CMake 옵션 상세 |
-| [packaging.md](build/packaging.md) | 릴리즈 및 패키징 |
-| [testing.md](build/testing.md) | 테스트 전략 및 실행 |
-| [platforms.md](build/platforms.md) | 지원 플랫폼 및 컴파일러 |
+| [build-guide.md](building/build-guide.md) | 빌드 방법 (CMake, 플랫폼별) |
+| [cmake-options.md](building/cmake-options.md) | CMake 옵션 상세 |
+| [packaging.md](building/packaging.md) | 릴리즈 및 패키징 |
+| [testing.md](building/testing.md) | 테스트 전략 및 실행 |
+| [platforms.md](building/platforms.md) | 지원 플랫폼 및 컴파일러 |
 
 ## 참고 (plan/)
 

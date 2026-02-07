@@ -185,6 +185,9 @@ int gateway_t::init_router_socket ()
     if (allocate_router (_ctx, &_router_socket) != 0)
         return -1;
     ensure_gateway_routing_id (_router_socket, &_routing_id_override);
+    int hwm = 1000000;
+    _router_socket->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
+    _router_socket->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
     // Enable socket monitor to receive connection-ready events.
     if (!_monitor_socket) {
         void *monitor =

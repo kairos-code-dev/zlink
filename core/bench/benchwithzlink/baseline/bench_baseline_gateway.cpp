@@ -20,9 +20,6 @@ typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
 typedef int (*provider_setsockopt_fn)(void *, int, int, const void *, size_t);
 typedef void *(*provider_router_fn)(void *);
 
-static void configure_gateway_hwm(void *gateway, int hwm);
-static void configure_provider_hwm(void *provider, int hwm);
-
 static const std::string &tls_ca_path() {
     static std::string path =
       write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
@@ -78,18 +75,6 @@ static void configure_gateway_hwm(void *gateway, int hwm) {
         return;
     fn(gateway, ZLINK_SNDHWM, &hwm, sizeof(hwm));
     fn(gateway, ZLINK_RCVHWM, &hwm, sizeof(hwm));
-}
-
-static void configure_provider_hwm(void *provider, int hwm) {
-    provider_setsockopt_fn fn =
-      reinterpret_cast<provider_setsockopt_fn>(
-        resolve_symbol("zlink_provider_setsockopt"));
-    if (!fn)
-        return;
-    fn(provider, ZLINK_PROVIDER_SOCKET_ROUTER, ZLINK_SNDHWM, &hwm,
-       sizeof(hwm));
-    fn(provider, ZLINK_PROVIDER_SOCKET_ROUTER, ZLINK_RCVHWM, &hwm,
-       sizeof(hwm));
 }
 
 static std::string bind_provider(void *provider, const std::string &transport,
@@ -283,8 +268,6 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    int hwm = 1000000;
-    configure_provider_hwm(provider, hwm);
 
 
     void *gateway = zlink_gateway_new(ctx, discovery, NULL);
@@ -296,6 +279,7 @@ void run_gateway(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
+    int hwm = 1000000;
     configure_gateway_hwm(gateway, hwm);
 
     if (!wait_for_discovery(discovery, "svc", 8000)) {

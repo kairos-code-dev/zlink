@@ -36,6 +36,19 @@ class registry_t
     int destroy ();
 
   private:
+    struct service_key_t
+    {
+        uint16_t service_type;
+        std::string service_name;
+
+        bool operator< (const service_key_t &other_) const
+        {
+            if (service_type != other_.service_type)
+                return service_type < other_.service_type;
+            return service_name < other_.service_name;
+        }
+    };
+
     struct provider_entry_t
     {
         std::string endpoint;
@@ -53,7 +66,7 @@ class registry_t
         provider_map_t providers;
     };
 
-    typedef std::map<std::string, service_entry_t> service_map_t;
+    typedef std::map<service_key_t, service_entry_t> service_map_t;
 
     static void run (void *arg_);
     void loop ();

@@ -436,7 +436,12 @@ ZLINK_EXPORT int zlink_registry_start (void *registry);
 ZLINK_EXPORT int zlink_registry_destroy (void **registry_p);
 
 /* Discovery */
+/* Service registration type */
+#define ZLINK_SERVICE_TYPE_GATEWAY_PROVIDER 1
+#define ZLINK_SERVICE_TYPE_SPOT_NODE 2
+
 ZLINK_EXPORT void *zlink_discovery_new (void *ctx);
+ZLINK_EXPORT void *zlink_discovery_new_typed (void *ctx, uint16_t service_type);
 ZLINK_EXPORT int zlink_discovery_connect_registry (
   void *discovery, const char *registry_pub_endpoint);
 ZLINK_EXPORT int zlink_discovery_subscribe (void *discovery,

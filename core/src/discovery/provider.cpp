@@ -312,6 +312,10 @@ int provider_t::register_service (const char *service_name_,
 
     if (send_u16 (_dealer, discovery_protocol::msg_register, ZLINK_SNDMORE)
           != 0
+        || send_u16 (_dealer,
+                     discovery_protocol::service_type_gateway_provider,
+                     ZLINK_SNDMORE)
+             != 0
         || send_string (_dealer, _service_name, ZLINK_SNDMORE) != 0
         || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
         || send_u32 (_dealer, _weight, 0) != 0)
@@ -354,6 +358,10 @@ int provider_t::update_weight (const char *service_name_, uint32_t weight_)
     if (send_u16 (_dealer, discovery_protocol::msg_update_weight,
                   ZLINK_SNDMORE)
           != 0
+        || send_u16 (_dealer,
+                     discovery_protocol::service_type_gateway_provider,
+                     ZLINK_SNDMORE)
+             != 0
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
         || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
         || send_u32 (_dealer, value, 0) != 0)
@@ -384,6 +392,10 @@ int provider_t::unregister_service (const char *service_name_)
 
     if (send_u16 (_dealer, discovery_protocol::msg_unregister, ZLINK_SNDMORE)
           != 0
+        || send_u16 (_dealer,
+                     discovery_protocol::service_type_gateway_provider,
+                     ZLINK_SNDMORE)
+             != 0
         || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
         || send_string (_dealer, _advertise_endpoint, 0) != 0)
         return -1;
@@ -523,6 +535,9 @@ void provider_t::send_heartbeat ()
 
         if (dealer && !service.empty () && !advertise.empty ()) {
             send_u16 (dealer, discovery_protocol::msg_heartbeat,
+                      ZLINK_SNDMORE);
+            send_u16 (dealer,
+                      discovery_protocol::service_type_gateway_provider,
                       ZLINK_SNDMORE);
             send_string (dealer, service, ZLINK_SNDMORE);
             send_string (dealer, advertise, 0);

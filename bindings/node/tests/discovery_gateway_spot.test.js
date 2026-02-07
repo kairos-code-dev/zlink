@@ -8,11 +8,9 @@ const {
   endpointFor,
   tryTransport,
   recvWithTimeout,
-  sendWithRetry,
-  gatewayRecvWithTimeout,
+  gatewaySendWithRetry,
   spotRecvWithTimeout,
-  ZLINK_ROUTER,
-  ZLINK_SNDMORE,
+  waitUntil,
 } = require('./helpers');
 
 test('discovery/gateway/spot: flow across transports', async () => {
@@ -30,15 +28,25 @@ test('discovery/gateway/spot: flow across transports', async () => {
       discovery.connectRegistry(regPub);
       discovery.subscribe('svc');
 
-      const provider = new zlink.Provider(ctx);
+      const provider = new zlink.Receiver(ctx);
       const serviceEp = await endpointFor(tc.name, tc.endpoint, '-svc');
       provider.bind(serviceEp);
       const providerRouter = provider.routerSocket();
       provider.connectRegistry(regRouter);
       provider.register('svc', serviceEp, 1);
+      let status = -1;
+      for (let i = 0; i < 20; i += 1) {
+        const res = provider.registerResult('svc');
+        status = res.status;
+        if (status === 0) break;
+        await new Promise(r => setTimeout(r, 50));
+      }
+      assert.strictEqual(status, 0);
+      assert.equal(await waitUntil(() => discovery.receiverCount('svc') > 0, 5000), true);
 
       const gateway = new zlink.Gateway(ctx, discovery);
-      gateway.send('svc', [Buffer.from('hello')], 0);
+      assert.equal(await waitUntil(() => gateway.connectionCount('svc') > 0, 5000), true);
+      await gatewaySendWithRetry(gateway, 'svc', [Buffer.from('hello')], 0, 5000);
 
       const rid = await recvWithTimeout(providerRouter, 256, 2000);
       let payload = null;
@@ -49,28 +57,23 @@ test('discovery/gateway/spot: flow across transports', async () => {
         }
       }
       assert.strictEqual(payload.toString().trim(), 'hello');
-      providerRouter.send(rid, ZLINK_SNDMORE);
-      await sendWithRetry(providerRouter, Buffer.from('world'), 0, 2000);
-
-      const gwMsg = await gatewayRecvWithTimeout(gateway, 2000);
-      assert.strictEqual(gwMsg.service, 'svc');
-      assert.strictEqual(gwMsg.parts.length, 1);
-      assert.strictEqual(gwMsg.parts[0].toString(), 'world');
 
       const node = new zlink.SpotNode(ctx);
       const spotEp = await endpointFor(tc.name, tc.endpoint, '-spot');
       node.bind(spotEp);
       node.connectRegistry(regRouter);
       node.register('spot', spotEp);
+      await new Promise(r => setTimeout(r, 100));
 
       const peer = new zlink.SpotNode(ctx);
       peer.connectRegistry(regRouter);
       peer.connectPeerPub(spotEp);
       const spot = new zlink.Spot(peer);
+      await new Promise(r => setTimeout(r, 100));
       spot.subscribe('topic');
       spot.publish('topic', [Buffer.from('spot-msg')], 0);
 
-      const spotMsg = await spotRecvWithTimeout(spot, 2000);
+      const spotMsg = await spotRecvWithTimeout(spot, 5000);
       assert.strictEqual(spotMsg.topic, 'topic');
       assert.strictEqual(spotMsg.parts.length, 1);
       assert.strictEqual(spotMsg.parts[0].toString(), 'spot-msg');

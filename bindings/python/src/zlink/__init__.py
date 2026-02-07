@@ -4,7 +4,7 @@ from ._ffi import lib
 from ._core import Context, Socket, Message, ZlinkError
 from ._poller import Poller
 from ._monitor import MonitorSocket, MonitorEvent
-from ._discovery import Registry, Discovery, Gateway, Provider
+from ._discovery import Registry, Discovery, Gateway, Receiver
 from ._spot import SpotNode, Spot
 
 
@@ -28,7 +28,7 @@ __all__ = [
     "Registry",
     "Discovery",
     "Gateway",
-    "Provider",
+    "Receiver",
     "SpotNode",
     "Spot",
     "ZlinkError",

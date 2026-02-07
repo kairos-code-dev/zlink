@@ -3,7 +3,7 @@ from ._ffi import lib
 from ._core import _raise_last_error, ZlinkMsg, Message
 
 
-class ProviderInfo(ctypes.Structure):
+class ReceiverInfo(ctypes.Structure):
     _fields_ = [
         ("service_name", ctypes.c_char * 256),
         ("endpoint", ctypes.c_char * 256),
@@ -83,8 +83,8 @@ class Discovery:
         if rc != 0:
             _raise_last_error()
 
-    def provider_count(self, service):
-        rc = lib().zlink_discovery_provider_count(self._handle, service.encode())
+    def receiver_count(self, service):
+        rc = lib().zlink_discovery_receiver_count(self._handle, service.encode())
         if rc < 0:
             _raise_last_error()
         return rc
@@ -95,13 +95,13 @@ class Discovery:
             _raise_last_error()
         return rc != 0
 
-    def get_providers(self, service):
-        count = self.provider_count(service)
+    def get_receivers(self, service):
+        count = self.receiver_count(service)
         if count <= 0:
             return []
-        arr = (ProviderInfo * count)()
+        arr = (ReceiverInfo * count)()
         sz = ctypes.c_size_t(count)
-        rc = lib().zlink_discovery_get_providers(self._handle, service.encode(), ctypes.byref(arr), ctypes.byref(sz))
+        rc = lib().zlink_discovery_get_receivers(self._handle, service.encode(), ctypes.byref(arr), ctypes.byref(sz))
         if rc != 0:
             _raise_last_error()
         result = []
@@ -182,35 +182,35 @@ class Gateway:
             self._handle = None
 
 
-class Provider:
+class Receiver:
     def __init__(self, ctx, routing_id=None):
         rid = routing_id.encode() if routing_id else None
-        self._handle = lib().zlink_provider_new(ctx._handle, rid)
+        self._handle = lib().zlink_receiver_new(ctx._handle, rid)
         if not self._handle:
             _raise_last_error()
 
     def bind(self, endpoint):
-        rc = lib().zlink_provider_bind(self._handle, endpoint.encode())
+        rc = lib().zlink_receiver_bind(self._handle, endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
     def connect_registry(self, endpoint):
-        rc = lib().zlink_provider_connect_registry(self._handle, endpoint.encode())
+        rc = lib().zlink_receiver_connect_registry(self._handle, endpoint.encode())
         if rc != 0:
             _raise_last_error()
 
     def register(self, service, advertise_endpoint, weight=1):
-        rc = lib().zlink_provider_register(self._handle, service.encode(), advertise_endpoint.encode(), weight)
+        rc = lib().zlink_receiver_register(self._handle, service.encode(), advertise_endpoint.encode(), weight)
         if rc != 0:
             _raise_last_error()
 
     def update_weight(self, service, weight):
-        rc = lib().zlink_provider_update_weight(self._handle, service.encode(), weight)
+        rc = lib().zlink_receiver_update_weight(self._handle, service.encode(), weight)
         if rc != 0:
             _raise_last_error()
 
     def unregister(self, service):
-        rc = lib().zlink_provider_unregister(self._handle, service.encode())
+        rc = lib().zlink_receiver_unregister(self._handle, service.encode())
         if rc != 0:
             _raise_last_error()
 
@@ -218,24 +218,24 @@ class Provider:
         status = ctypes.c_int()
         endpoint = ctypes.create_string_buffer(256)
         error = ctypes.create_string_buffer(256)
-        rc = lib().zlink_provider_register_result(self._handle, service.encode(), ctypes.byref(status), endpoint, error)
+        rc = lib().zlink_receiver_register_result(self._handle, service.encode(), ctypes.byref(status), endpoint, error)
         if rc != 0:
             _raise_last_error()
         return status.value, endpoint.value.decode(), error.value.decode()
 
     def set_tls_server(self, cert, key):
-        rc = lib().zlink_provider_set_tls_server(self._handle, cert.encode(), key.encode())
+        rc = lib().zlink_receiver_set_tls_server(self._handle, cert.encode(), key.encode())
         if rc != 0:
             _raise_last_error()
 
     def set_sockopt(self, role, option, value: bytes):
         buf = ctypes.create_string_buffer(value)
-        rc = lib().zlink_provider_setsockopt(self._handle, role, option, buf, len(value))
+        rc = lib().zlink_receiver_setsockopt(self._handle, role, option, buf, len(value))
         if rc != 0:
             _raise_last_error()
 
     def router_socket(self):
-        handle = lib().zlink_provider_router(self._handle)
+        handle = lib().zlink_receiver_router(self._handle)
         if not handle:
             _raise_last_error()
         from ._core import Socket
@@ -244,7 +244,7 @@ class Provider:
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)
-            lib().zlink_provider_destroy(ctypes.byref(handle))
+            lib().zlink_receiver_destroy(ctypes.byref(handle))
             self._handle = None
 
 
@@ -301,3 +301,4 @@ def _parts_to_bytes(parts_ptr, count):
         out.append(ctypes.string_at(data_ptr, size))
     lib().zlink_msgv_close(parts_ptr, count)
     return out
+

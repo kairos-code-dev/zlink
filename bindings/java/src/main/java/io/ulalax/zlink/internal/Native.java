@@ -76,9 +76,9 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_UNSUB = downcall("zlink_discovery_unsubscribe",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_GET = downcall("zlink_discovery_get_providers",
+    private static final MethodHandle MH_DISC_GET = downcall("zlink_discovery_get_receivers",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_DISC_COUNT = downcall("zlink_discovery_provider_count",
+    private static final MethodHandle MH_DISC_COUNT = downcall("zlink_discovery_receiver_count",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_DISC_AVAIL = downcall("zlink_discovery_service_available",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -101,12 +101,12 @@ public final class Native {
     private static final MethodHandle MH_GATEWAY_DESTROY = downcall("zlink_gateway_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_PROVIDER_NEW = downcall("zlink_provider_new",
+    private static final MethodHandle MH_PROVIDER_NEW = downcall("zlink_receiver_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_SETSOCKOPT = downcall("zlink_gateway_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_PROVIDER_SETSOCKOPT = downcall("zlink_provider_setsockopt",
+    private static final MethodHandle MH_PROVIDER_SETSOCKOPT = downcall("zlink_receiver_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_REGISTRY_SETSOCKOPT = downcall("zlink_registry_setsockopt",
@@ -115,23 +115,23 @@ public final class Native {
     private static final MethodHandle MH_DISCOVERY_SETSOCKOPT = downcall("zlink_discovery_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_PROVIDER_BIND = downcall("zlink_provider_bind",
+    private static final MethodHandle MH_PROVIDER_BIND = downcall("zlink_receiver_bind",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_CONN = downcall("zlink_provider_connect_registry",
+    private static final MethodHandle MH_PROVIDER_CONN = downcall("zlink_receiver_connect_registry",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_REG = downcall("zlink_provider_register",
+    private static final MethodHandle MH_PROVIDER_REG = downcall("zlink_receiver_register",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_PROVIDER_UPD = downcall("zlink_provider_update_weight",
+    private static final MethodHandle MH_PROVIDER_UPD = downcall("zlink_receiver_update_weight",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_PROVIDER_UNREG = downcall("zlink_provider_unregister",
+    private static final MethodHandle MH_PROVIDER_UNREG = downcall("zlink_receiver_unregister",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_RESULT = downcall("zlink_provider_register_result",
+    private static final MethodHandle MH_PROVIDER_RESULT = downcall("zlink_receiver_register_result",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_TLS = downcall("zlink_provider_set_tls_server",
+    private static final MethodHandle MH_PROVIDER_TLS = downcall("zlink_receiver_set_tls_server",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_ROUTER = downcall("zlink_provider_router",
+    private static final MethodHandle MH_PROVIDER_ROUTER = downcall("zlink_receiver_router",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_DESTROY = downcall("zlink_provider_destroy",
+    private static final MethodHandle MH_PROVIDER_DESTROY = downcall("zlink_receiver_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_SPOT_NODE_NEW = downcall("zlink_spot_node_new",
@@ -443,7 +443,7 @@ public final class Native {
         try {
             return (int) MH_DISC_GET.invokeExact(disc, service, providers, count);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_get_providers failed", t);
+            throw new RuntimeException("zlink_discovery_get_receivers failed", t);
         }
     }
 
@@ -451,7 +451,7 @@ public final class Native {
         try {
             return (int) MH_DISC_COUNT.invokeExact(disc, service);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_discovery_provider_count failed", t);
+            throw new RuntimeException("zlink_discovery_receiver_count failed", t);
         }
     }
 
@@ -539,7 +539,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_PROVIDER_NEW.invokeExact(ctx, routingId);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_new failed", t);
+            throw new RuntimeException("zlink_receiver_new failed", t);
         }
     }
 
@@ -547,7 +547,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_BIND.invokeExact(p, ep);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_bind failed", t);
+            throw new RuntimeException("zlink_receiver_bind failed", t);
         }
     }
 
@@ -555,7 +555,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_CONN.invokeExact(p, ep);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_connect_registry failed", t);
+            throw new RuntimeException("zlink_receiver_connect_registry failed", t);
         }
     }
 
@@ -563,7 +563,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_REG.invokeExact(p, service, ep, weight);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_register failed", t);
+            throw new RuntimeException("zlink_receiver_register failed", t);
         }
     }
 
@@ -571,7 +571,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_UPD.invokeExact(p, service, weight);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_update_weight failed", t);
+            throw new RuntimeException("zlink_receiver_update_weight failed", t);
         }
     }
 
@@ -579,7 +579,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_UNREG.invokeExact(p, service);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_unregister failed", t);
+            throw new RuntimeException("zlink_receiver_unregister failed", t);
         }
     }
 
@@ -587,7 +587,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_RESULT.invokeExact(p, service, status, resolved, error);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_register_result failed", t);
+            throw new RuntimeException("zlink_receiver_register_result failed", t);
         }
     }
 
@@ -595,7 +595,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_TLS.invokeExact(p, cert, key);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_set_tls_server failed", t);
+            throw new RuntimeException("zlink_receiver_set_tls_server failed", t);
         }
     }
 
@@ -603,7 +603,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_PROVIDER_ROUTER.invokeExact(p);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_router failed", t);
+            throw new RuntimeException("zlink_receiver_router failed", t);
         }
     }
 
@@ -611,7 +611,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_DESTROY.invokeExact(pPtr);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_destroy failed", t);
+            throw new RuntimeException("zlink_receiver_destroy failed", t);
         }
     }
 
@@ -619,7 +619,7 @@ public final class Native {
         try {
             return (int) MH_PROVIDER_SETSOCKOPT.invokeExact(p, role, option, value, len);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_provider_setsockopt failed", t);
+            throw new RuntimeException("zlink_receiver_setsockopt failed", t);
         }
     }
 

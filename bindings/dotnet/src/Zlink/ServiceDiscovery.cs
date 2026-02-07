@@ -162,10 +162,10 @@ public sealed class Discovery : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public int ProviderCount(string serviceName)
+    public int ReceiverCount(string serviceName)
     {
         EnsureNotDisposed();
-        int count = NativeMethods.zlink_discovery_provider_count(_handle,
+        int count = NativeMethods.zlink_discovery_receiver_count(_handle,
             serviceName);
         if (count < 0)
             throw ZlinkException.FromLastError();
@@ -182,22 +182,22 @@ public sealed class Discovery : IDisposable
         return rc != 0;
     }
 
-    public ProviderInfoRecord[] GetProviders(string serviceName)
+    public ReceiverInfoRecord[] GetReceivers(string serviceName)
     {
         EnsureNotDisposed();
-        int count = ProviderCount(serviceName);
+        int count = ReceiverCount(serviceName);
         if (count == 0)
-            return Array.Empty<ProviderInfoRecord>();
+            return Array.Empty<ReceiverInfoRecord>();
         var providers = new ZlinkProviderInfo[count];
         nuint size = (nuint)providers.Length;
-        int rc = NativeMethods.zlink_discovery_get_providers(_handle,
+        int rc = NativeMethods.zlink_discovery_get_receivers(_handle,
             serviceName, providers, ref size);
         ZlinkException.ThrowIfError(rc);
         int actual = (int)size;
-        ProviderInfoRecord[] result = new ProviderInfoRecord[actual];
+        ReceiverInfoRecord[] result = new ReceiverInfoRecord[actual];
         for (int i = 0; i < actual; i++)
         {
-            result[i] = ProviderInfoRecord.FromNative(ref providers[i]);
+            result[i] = ReceiverInfoRecord.FromNative(ref providers[i]);
         }
         return result;
     }
@@ -223,9 +223,9 @@ public sealed class Discovery : IDisposable
     }
 }
 
-public readonly struct ProviderInfoRecord
+public readonly struct ReceiverInfoRecord
 {
-    public ProviderInfoRecord(string serviceName, string endpoint,
+    public ReceiverInfoRecord(string serviceName, string endpoint,
         byte[] routingId,
         uint weight, ulong registeredAt)
     {
@@ -242,12 +242,12 @@ public readonly struct ProviderInfoRecord
     public uint Weight { get; }
     public ulong RegisteredAt { get; }
 
-    internal static ProviderInfoRecord FromNative(ref ZlinkProviderInfo info)
+    internal static ReceiverInfoRecord FromNative(ref ZlinkProviderInfo info)
     {
         string service = NativeHelpers.ReadFixedString(ref info, true);
         string endpoint = NativeHelpers.ReadFixedString(ref info, false);
         byte[] routing = NativeHelpers.ReadRoutingId(ref info.RoutingId);
-        return new ProviderInfoRecord(service, endpoint, routing, info.Weight,
+        return new ReceiverInfoRecord(service, endpoint, routing, info.Weight,
             info.RegisteredAt);
     }
 }
@@ -397,20 +397,20 @@ public readonly struct GatewayMessage
     public Message[] Parts { get; }
 }
 
-public sealed class Provider : IDisposable
+public sealed class Receiver : IDisposable
 {
     private IntPtr _handle;
 
-    public Provider(Context context)
+    public Receiver(Context context)
     {
-        _handle = NativeMethods.zlink_provider_new(context.Handle, null);
+        _handle = NativeMethods.zlink_receiver_new(context.Handle, null);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
 
-    public Provider(Context context, string routingId)
+    public Receiver(Context context, string routingId)
     {
-        _handle = NativeMethods.zlink_provider_new(context.Handle, routingId);
+        _handle = NativeMethods.zlink_receiver_new(context.Handle, routingId);
         if (_handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
     }
@@ -418,14 +418,14 @@ public sealed class Provider : IDisposable
     public void Bind(string bindEndpoint)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_bind(_handle, bindEndpoint);
+        int rc = NativeMethods.zlink_receiver_bind(_handle, bindEndpoint);
         ZlinkException.ThrowIfError(rc);
     }
 
     public void ConnectRegistry(string registryEndpoint)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_connect_registry(_handle,
+        int rc = NativeMethods.zlink_receiver_connect_registry(_handle,
             registryEndpoint);
         ZlinkException.ThrowIfError(rc);
     }
@@ -434,7 +434,7 @@ public sealed class Provider : IDisposable
         uint weight)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_register(_handle, serviceName,
+        int rc = NativeMethods.zlink_receiver_register(_handle, serviceName,
             advertiseEndpoint, weight);
         ZlinkException.ThrowIfError(rc);
     }
@@ -442,7 +442,7 @@ public sealed class Provider : IDisposable
     public void UpdateWeight(string serviceName, uint weight)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_update_weight(_handle,
+        int rc = NativeMethods.zlink_receiver_update_weight(_handle,
             serviceName, weight);
         ZlinkException.ThrowIfError(rc);
     }
@@ -450,23 +450,23 @@ public sealed class Provider : IDisposable
     public void Unregister(string serviceName)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_unregister(_handle, serviceName);
+        int rc = NativeMethods.zlink_receiver_unregister(_handle, serviceName);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public ProviderRegisterResult RegisterResult(string serviceName)
+    public ReceiverRegisterResult RegisterResult(string serviceName)
     {
         EnsureNotDisposed();
         unsafe
         {
             byte* resolved = stackalloc byte[256];
             byte* error = stackalloc byte[256];
-            int rc = NativeMethods.zlink_provider_register_result(_handle,
+            int rc = NativeMethods.zlink_receiver_register_result(_handle,
                 serviceName, out int status, resolved, error);
             ZlinkException.ThrowIfError(rc);
             string resolvedEndpoint = NativeHelpers.ReadString(resolved, 256);
             string errorMessage = NativeHelpers.ReadString(error, 256);
-            return new ProviderRegisterResult(status, resolvedEndpoint,
+            return new ReceiverRegisterResult(status, resolvedEndpoint,
                 errorMessage);
         }
     }
@@ -474,7 +474,7 @@ public sealed class Provider : IDisposable
     public void SetTlsServer(string cert, string key)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_provider_set_tls_server(_handle, cert, key);
+        int rc = NativeMethods.zlink_receiver_set_tls_server(_handle, cert, key);
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -485,7 +485,7 @@ public sealed class Provider : IDisposable
             throw new ArgumentNullException(nameof(value));
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_provider_setsockopt(_handle, role,
+            int rc = NativeMethods.zlink_receiver_setsockopt(_handle, role,
                 option, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
@@ -495,7 +495,7 @@ public sealed class Provider : IDisposable
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_provider_setsockopt(_handle, role,
+        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, role,
             option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
@@ -503,7 +503,7 @@ public sealed class Provider : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_provider_router(_handle);
+        IntPtr handle = NativeMethods.zlink_receiver_router(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -513,12 +513,12 @@ public sealed class Provider : IDisposable
     {
         if (_handle == IntPtr.Zero)
             return;
-        NativeMethods.zlink_provider_destroy(ref _handle);
+        NativeMethods.zlink_receiver_destroy(ref _handle);
         _handle = IntPtr.Zero;
         GC.SuppressFinalize(this);
     }
 
-    ~Provider()
+    ~Receiver()
     {
         Dispose();
     }
@@ -526,13 +526,13 @@ public sealed class Provider : IDisposable
     private void EnsureNotDisposed()
     {
         if (_handle == IntPtr.Zero)
-            throw new ObjectDisposedException(nameof(Provider));
+            throw new ObjectDisposedException(nameof(Receiver));
     }
 }
 
-public readonly struct ProviderRegisterResult
+public readonly struct ReceiverRegisterResult
 {
-    public ProviderRegisterResult(int status, string resolvedEndpoint,
+    public ReceiverRegisterResult(int status, string resolvedEndpoint,
         string errorMessage)
     {
         Status = status;

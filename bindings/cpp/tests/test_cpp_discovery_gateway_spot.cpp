@@ -25,7 +25,7 @@ int main()
         assert(discovery.connect_registry(reg_pub.c_str()) == 0);
         assert(discovery.subscribe(service) == 0);
 
-        zlink::provider_t provider(ctx);
+        zlink::receiver_t provider(ctx);
         std::string bind_ep = endpoint_for(tc, "provider");
         if (provider.bind(bind_ep.c_str()) != 0)
             continue;

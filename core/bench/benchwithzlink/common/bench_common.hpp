@@ -52,13 +52,13 @@ static const int SETTLE_TIME_MS = 300;
 // --- Stopwatch ---
 class stopwatch_t {
 public:
-    void start() { _start = std::chrono::high_resolution_clock::now(); }
+    void start() { _start = std::chrono::steady_clock::now(); }
     double elapsed_ms() const {
-        auto end = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::steady_clock::now();
         return std::chrono::duration<double, std::milli>(end - _start).count();
     }
 private:
-    std::chrono::high_resolution_clock::time_point _start;
+    std::chrono::steady_clock::time_point _start;
 };
 
 inline void print_result(const std::string& lib_type,

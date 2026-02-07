@@ -202,7 +202,7 @@ napi_value discovery_provider_count(napi_env env, napi_callback_info info)
     void *disc = NULL;
     napi_get_value_external(env, argv[0], &disc);
     std::string service = get_string(env, argv[1]);
-    int rc = zlink_discovery_provider_count(disc, service.c_str());
+    int rc = zlink_discovery_receiver_count(disc, service.c_str());
     if (rc < 0)
         return throw_last_error(env, "discovery_provider_count failed");
     napi_value out;
@@ -234,15 +234,15 @@ napi_value discovery_get_providers(napi_env env, napi_callback_info info)
     void *disc = NULL;
     napi_get_value_external(env, argv[0], &disc);
     std::string service = get_string(env, argv[1]);
-    int count = zlink_discovery_provider_count(disc, service.c_str());
+    int count = zlink_discovery_receiver_count(disc, service.c_str());
     if (count <= 0) {
         napi_value arr;
         napi_create_array_with_length(env, 0, &arr);
         return arr;
     }
-    std::vector<zlink_provider_info_t> providers(count);
+    std::vector<zlink_receiver_info_t> providers(count);
     size_t n = count;
-    int rc = zlink_discovery_get_providers(disc, service.c_str(), providers.data(), &n);
+    int rc = zlink_discovery_get_receivers(disc, service.c_str(), providers.data(), &n);
     if (rc != 0)
         return throw_last_error(env, "discovery_get_providers failed");
     napi_value arr;
@@ -448,7 +448,7 @@ napi_value provider_new(napi_env env, napi_callback_info info)
             routing_id = routing_id_str.c_str();
         }
     }
-    void *p = zlink_provider_new(ctx, routing_id);
+    void *p = zlink_receiver_new(ctx, routing_id);
     if (!p)
         return throw_last_error(env, "provider_new failed");
     napi_value ext;
@@ -464,7 +464,7 @@ napi_value provider_bind(napi_env env, napi_callback_info info)
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
     std::string ep = get_string(env, argv[1]);
-    int rc = zlink_provider_bind(p, ep.c_str());
+    int rc = zlink_receiver_bind(p, ep.c_str());
     if (rc != 0)
         return throw_last_error(env, "provider_bind failed");
     napi_value ok;
@@ -480,7 +480,7 @@ napi_value provider_connect_registry(napi_env env, napi_callback_info info)
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
     std::string ep = get_string(env, argv[1]);
-    int rc = zlink_provider_connect_registry(p, ep.c_str());
+    int rc = zlink_receiver_connect_registry(p, ep.c_str());
     if (rc != 0)
         return throw_last_error(env, "provider_connect_registry failed");
     napi_value ok;
@@ -499,7 +499,7 @@ napi_value provider_register(napi_env env, napi_callback_info info)
     std::string ep = get_string(env, argv[2]);
     uint32_t weight;
     napi_get_value_uint32(env, argv[3], &weight);
-    int rc = zlink_provider_register(p, service.c_str(), ep.c_str(), weight);
+    int rc = zlink_receiver_register(p, service.c_str(), ep.c_str(), weight);
     if (rc != 0)
         return throw_last_error(env, "provider_register failed");
     napi_value ok;
@@ -517,7 +517,7 @@ napi_value provider_update_weight(napi_env env, napi_callback_info info)
     std::string service = get_string(env, argv[1]);
     uint32_t weight;
     napi_get_value_uint32(env, argv[2], &weight);
-    int rc = zlink_provider_update_weight(p, service.c_str(), weight);
+    int rc = zlink_receiver_update_weight(p, service.c_str(), weight);
     if (rc != 0)
         return throw_last_error(env, "provider_update_weight failed");
     napi_value ok;
@@ -533,7 +533,7 @@ napi_value provider_unregister(napi_env env, napi_callback_info info)
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
     std::string service = get_string(env, argv[1]);
-    int rc = zlink_provider_unregister(p, service.c_str());
+    int rc = zlink_receiver_unregister(p, service.c_str());
     if (rc != 0)
         return throw_last_error(env, "provider_unregister failed");
     napi_value ok;
@@ -552,7 +552,7 @@ napi_value provider_register_result(napi_env env, napi_callback_info info)
     int status = 0;
     char resolved[256] = {0};
     char error[256] = {0};
-    int rc = zlink_provider_register_result(p, service.c_str(), &status, resolved, error);
+    int rc = zlink_receiver_register_result(p, service.c_str(), &status, resolved, error);
     if (rc != 0)
         return throw_last_error(env, "provider_register_result failed");
     napi_value obj;
@@ -576,7 +576,7 @@ napi_value provider_set_tls_server(napi_env env, napi_callback_info info)
     napi_get_value_external(env, argv[0], &p);
     std::string cert = get_string(env, argv[1]);
     std::string key = get_string(env, argv[2]);
-    int rc = zlink_provider_set_tls_server(p, cert.c_str(), key.c_str());
+    int rc = zlink_receiver_set_tls_server(p, cert.c_str(), key.c_str());
     if (rc != 0)
         return throw_last_error(env, "provider_set_tls_server failed");
     napi_value ok;
@@ -591,7 +591,7 @@ napi_value provider_router(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
-    void *sock = zlink_provider_router(p);
+    void *sock = zlink_receiver_router(p);
     if (!sock)
         return throw_last_error(env, "provider_router failed");
     napi_value ext;
@@ -639,7 +639,7 @@ napi_value provider_setsockopt(napi_env env, napi_callback_info info)
         napi_throw_type_error(env, NULL, "option value must be Buffer");
         return NULL;
     }
-    int rc = zlink_provider_setsockopt(p, role, opt, data, len);
+    int rc = zlink_receiver_setsockopt(p, role, opt, data, len);
     if (rc != 0)
         return throw_last_error(env, "provider_setsockopt failed");
     napi_value ok;
@@ -705,7 +705,7 @@ napi_value provider_destroy(napi_env env, napi_callback_info info)
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
     void *tmp = p;
-    int rc = zlink_provider_destroy(&tmp);
+    int rc = zlink_receiver_destroy(&tmp);
     if (rc != 0)
         return throw_last_error(env, "provider_destroy failed");
     napi_value ok;

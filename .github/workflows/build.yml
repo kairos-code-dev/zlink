@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       libzlink_version: ${{ steps.versions.outputs.libzlink_version }}
+      libzlink_lib_suffix: ${{ steps.versions.outputs.libzlink_lib_suffix }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +37,9 @@ jobs:
       - name: Read versions from VERSION file
         id: versions
         run: |
+          LIBZLINK_VERSION_MAJOR=$(grep '^LIBZLINK_VERSION_MAJOR=' VERSION | cut -d'=' -f2)
+          LIBZLINK_VERSION_MINOR=$(grep '^LIBZLINK_VERSION_MINOR=' VERSION | cut -d'=' -f2)
+          LIBZLINK_VERSION_PATCH=$(grep '^LIBZLINK_VERSION_PATCH=' VERSION | cut -d'=' -f2)
           LIBZLINK_VERSION=$(grep '^LIBZLINK_VERSION=' VERSION | cut -d'=' -f2)
 
           # Use manual input if provided, otherwise use VERSION file
@@ -43,9 +47,13 @@ jobs:
             LIBZLINK_VERSION="${{ github.event.inputs.libzlink_version }}"
           fi
 
+          LIBZLINK_LIB_SUFFIX="${LIBZLINK_VERSION_MAJOR}_${LIBZLINK_VERSION_MINOR}_${LIBZLINK_VERSION_PATCH}"
+
           echo "libzlink_version=${LIBZLINK_VERSION}" >> $GITHUB_OUTPUT
+          echo "libzlink_lib_suffix=${LIBZLINK_LIB_SUFFIX}" >> $GITHUB_OUTPUT
 
           echo "Using libzlink version: ${LIBZLINK_VERSION}"
+          echo "Using windows lib suffix: ${LIBZLINK_LIB_SUFFIX}"
 
   build-windows:
     name: Build Windows x64
@@ -357,12 +365,10 @@ jobs:
             platform: win32
             arch: x64
             lib_artifact: libzlink-windows-x64
-            lib_file: libzlink-v143-mt-0_6_0.lib
           - runner: windows-2022
             platform: win32
             arch: arm64
             lib_artifact: libzlink-windows-arm64
-            lib_file: libzlink-v143-mt-0_6_0.lib
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -394,7 +400,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:ZLINK_LIB_PATH = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\${{ matrix.lib_file }}"
+          $libFile = "libzlink-v143-mt-${{ needs.read-versions.outputs.libzlink_lib_suffix }}.lib"
+          $env:ZLINK_LIB_PATH = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\lib\\$libFile"
           cd bindings/node
           npx node-gyp configure build
           Copy-Item "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" build\\Release -Force

@@ -10,11 +10,6 @@ void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_co
     void *s1 = zlink_socket(ctx, ZLINK_DEALER);
     void *s2 = zlink_socket(ctx, ZLINK_DEALER);
 
-    int hwm = 0;
-    set_sockopt_int(s1, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(s1, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-    set_sockopt_int(s2, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-    set_sockopt_int(s2, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
 
     if (!setup_tls_server(s1, transport) ||
         !setup_tls_client(s2, transport)) {

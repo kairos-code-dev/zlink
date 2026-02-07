@@ -19,11 +19,6 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
     set_sockopt_int(s_bind, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
     set_sockopt_int(s_conn, ZLINK_TCP_NODELAY, nodelay, "ZLINK_TCP_NODELAY");
 
-    int hwm = 0; 
-    set_sockopt_int(s_bind, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(s_bind, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-    set_sockopt_int(s_conn, ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-    set_sockopt_int(s_conn, ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
 
     if (!setup_tls_server(s_bind, transport) ||
         !setup_tls_client(s_conn, transport)) {

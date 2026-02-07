@@ -134,7 +134,7 @@ static int do_setsockopt_set (const void *const optval_,
     return sockopt_invalid ();
 }
 
-const int default_hwm = 1000;
+const int default_hwm = 300000;
 
 zlink::options_t::options_t () :
     sndhwm (default_hwm),

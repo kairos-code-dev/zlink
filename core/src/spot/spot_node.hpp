@@ -42,6 +42,10 @@ class spot_node_t
     int set_tls_client (const char *ca_cert_,
                         const char *hostname_,
                         int trust_system_);
+    int set_socket_option (int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
 
     socket_base_t *pub_socket () const { return _pub; }
     socket_base_t *sub_socket () const { return _sub; }
@@ -139,6 +143,15 @@ class spot_node_t
     std::string _tls_ca;
     std::string _tls_hostname;
     int _tls_trust_system;
+
+    struct socket_opt_t
+    {
+        int option;
+        std::vector<unsigned char> value;
+    };
+    std::vector<socket_opt_t> _pub_opts;
+    std::vector<socket_opt_t> _sub_opts;
+    std::vector<socket_opt_t> _dealer_opts;
 
     atomic_counter_t _stop;
     thread_t _worker;

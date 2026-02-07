@@ -284,6 +284,12 @@ int spot_node_t::bind (const char *endpoint_)
         _pub = _ctx->create_socket (ZLINK_PUB);
         if (!_pub)
             return -1;
+        for (size_t i = 0; i < _pub_opts.size (); ++i) {
+            if (!_pub_opts[i].value.empty ())
+                _pub->setsockopt (_pub_opts[i].option,
+                                  &_pub_opts[i].value[0],
+                                  _pub_opts[i].value.size ());
+        }
     }
     if (!_tls_cert.empty ()) {
         if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
@@ -628,6 +634,55 @@ int spot_node_t::set_tls_client (const char *ca_cert_,
     return 0;
 }
 
+int spot_node_t::set_socket_option (int socket_role_,
+                                    int option_,
+                                    const void *optval_,
+                                    size_t optvallen_)
+{
+    if (!optval_ || optvallen_ == 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    scoped_lock_t lock (_sync);
+    std::vector<socket_opt_t> *opts = NULL;
+    socket_base_t *existing = NULL;
+    switch (socket_role_) {
+        case ZLINK_SPOT_NODE_SOCKET_PUB:
+            opts = &_pub_opts;
+            existing = _pub;
+            break;
+        case ZLINK_SPOT_NODE_SOCKET_SUB:
+            opts = &_sub_opts;
+            break;
+        case ZLINK_SPOT_NODE_SOCKET_DEALER:
+            opts = &_dealer_opts;
+            break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+    for (size_t i = 0; i < opts->size (); ++i) {
+        if ((*opts)[i].option == option_) {
+            (*opts)[i].value.assign (
+              static_cast<const unsigned char *> (optval_),
+              static_cast<const unsigned char *> (optval_) + optvallen_);
+            if (existing)
+                existing->setsockopt (option_, optval_, optvallen_);
+            return 0;
+        }
+    }
+    socket_opt_t opt;
+    opt.option = option_;
+    opt.value.assign (static_cast<const unsigned char *> (optval_),
+                      static_cast<const unsigned char *> (optval_)
+                        + optvallen_);
+    opts->push_back (opt);
+    if (existing)
+        existing->setsockopt (option_, optval_, optvallen_);
+    return 0;
+}
+
 spot_t *spot_node_t::create_spot ()
 {
     spot_t *spot = new (std::nothrow) spot_t (this);
@@ -935,6 +990,12 @@ void spot_node_t::ensure_worker_sockets ()
                     return;
                 }
             }
+            for (size_t i = 0; i < _sub_opts.size (); ++i) {
+                if (!_sub_opts[i].value.empty ())
+                    _sub->setsockopt (_sub_opts[i].option,
+                                      &_sub_opts[i].value[0],
+                                      _sub_opts[i].value.size ());
+            }
             scoped_lock_t lock (_sync);
             _pending_subscribe.clear ();
             _pending_unsubscribe.clear ();
@@ -973,6 +1034,12 @@ void spot_node_t::ensure_worker_sockets ()
                     _dealer = NULL;
                     return;
                 }
+            }
+            for (size_t i = 0; i < _dealer_opts.size (); ++i) {
+                if (!_dealer_opts[i].value.empty ())
+                    _dealer->setsockopt (_dealer_opts[i].option,
+                                         &_dealer_opts[i].value[0],
+                                         _dealer_opts[i].value.size ());
             }
             _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
                                  _routing_id.size);

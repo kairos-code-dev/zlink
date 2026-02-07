@@ -1307,6 +1307,22 @@ void *zlink_spot_node_sub_socket (void *node_)
     return static_cast<void *> (node->sub_socket ());
 }
 
+int zlink_spot_node_setsockopt (void *node_,
+                                int socket_role_,
+                                int option_,
+                                const void *optval_,
+                                size_t optvallen_)
+{
+    if (!node_)
+        return -1;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return node->set_socket_option (socket_role_, option_, optval_, optvallen_);
+}
+
 void *zlink_spot_pub_socket (void *spot_)
 {
     if (!spot_)
@@ -1329,6 +1345,22 @@ void *zlink_spot_sub_socket (void *spot_)
         return NULL;
     }
     return static_cast<void *> (spot->sub_socket ());
+}
+
+int zlink_spot_setsockopt (void *spot_,
+                           int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_)
+{
+    if (!spot_)
+        return -1;
+    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
+    if (!spot->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return spot->set_socket_option (socket_role_, option_, optval_, optvallen_);
 }
 
 int zlink_bind (void *s_, const char *addr_)

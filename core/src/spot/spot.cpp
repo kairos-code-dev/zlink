@@ -301,6 +301,30 @@ int spot_t::recv (zlink_msg_t **parts_,
     return 0;
 }
 
+int spot_t::set_socket_option (int socket_role_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+    int node_role;
+    switch (socket_role_) {
+        case ZLINK_SPOT_SOCKET_PUB:
+            node_role = ZLINK_SPOT_NODE_SOCKET_PUB;
+            break;
+        case ZLINK_SPOT_SOCKET_SUB:
+            node_role = ZLINK_SPOT_NODE_SOCKET_SUB;
+            break;
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+    return _node->set_socket_option (node_role, option_, optval_, optvallen_);
+}
+
 socket_base_t *spot_t::pub_socket () const
 {
     return _node ? _node->pub_socket () : NULL;

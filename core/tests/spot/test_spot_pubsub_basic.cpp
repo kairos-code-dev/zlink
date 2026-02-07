@@ -672,6 +672,80 @@ static void test_spot_multi_publisher ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static void test_spot_node_setsockopt ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    /* Queue PUB SNDHWM before bind (socket does not exist yet) */
+    int sndhwm = 500;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                  ZLINK_SNDHWM, &sndhwm, sizeof (sndhwm)));
+
+    /* Queue SUB RCVHWM before the worker creates the socket */
+    int rcvhwm = 600;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                  ZLINK_RCVHWM, &rcvhwm, sizeof (rcvhwm)));
+
+    /* Invalid socket role returns -1 */
+    int dummy = 1;
+    int rc = zlink_spot_node_setsockopt (node, 99, ZLINK_SNDHWM, &dummy,
+                                         sizeof (dummy));
+    TEST_ASSERT_EQUAL_INT (-1, rc);
+
+    /* bind triggers PUB creation -> queued opts applied */
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_bind (node, "inproc://spot-sockopt"));
+
+    void *pub_sock = zlink_spot_node_pub_socket (node);
+    TEST_ASSERT_NOT_NULL (pub_sock);
+
+    int actual_sndhwm = 0;
+    size_t optlen = sizeof (actual_sndhwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (pub_sock, ZLINK_SNDHWM, &actual_sndhwm, &optlen));
+    TEST_ASSERT_EQUAL_INT (500, actual_sndhwm);
+
+    /* Set PUB option after socket exists -> applied immediately */
+    int sndhwm2 = 700;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                  ZLINK_SNDHWM, &sndhwm2, sizeof (sndhwm2)));
+    actual_sndhwm = 0;
+    optlen = sizeof (actual_sndhwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (pub_sock, ZLINK_SNDHWM, &actual_sndhwm, &optlen));
+    TEST_ASSERT_EQUAL_INT (700, actual_sndhwm);
+
+    /* spot_t setsockopt delegates to node */
+    void *spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (spot);
+
+    int spot_sndhwm = 800;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_setsockopt (spot, ZLINK_SPOT_SOCKET_PUB,
+                             ZLINK_SNDHWM, &spot_sndhwm,
+                             sizeof (spot_sndhwm)));
+    actual_sndhwm = 0;
+    optlen = sizeof (actual_sndhwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (pub_sock, ZLINK_SNDHWM, &actual_sndhwm, &optlen));
+    TEST_ASSERT_EQUAL_INT (800, actual_sndhwm);
+
+    /* DEALER role on spot is rejected */
+    rc = zlink_spot_setsockopt (spot, 99, ZLINK_SNDHWM, &dummy, sizeof (dummy));
+    TEST_ASSERT_EQUAL_INT (-1, rc);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 int main (int, char **)
 {
     setup_test_environment ();
@@ -689,6 +763,7 @@ int main (int, char **)
     RUN_TEST (test_spot_peer_wss);
     RUN_TEST (test_spot_unsubscribe);
     RUN_TEST (test_spot_multi_publisher);
+    RUN_TEST (test_spot_node_setsockopt);
     return UNITY_END ();
 }
 

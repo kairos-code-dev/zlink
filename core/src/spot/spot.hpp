@@ -46,6 +46,11 @@ class spot_t
     socket_base_t *pub_socket () const;
     socket_base_t *sub_socket () const;
 
+    int set_socket_option (int socket_role_,
+                           int option_,
+                           const void *optval_,
+                           size_t optvallen_);
+
     int destroy ();
 
   private:

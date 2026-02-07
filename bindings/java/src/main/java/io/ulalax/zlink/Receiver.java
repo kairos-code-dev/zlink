@@ -6,28 +6,28 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
-public final class Provider implements AutoCloseable {
+public class Receiver implements AutoCloseable {
     private MemorySegment handle;
 
-    public Provider(Context ctx) {
+    public Receiver(Context ctx) {
         this(ctx, null);
     }
 
-    public Provider(Context ctx, String routingId) {
+    public Receiver(Context ctx, String routingId) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rid = routingId == null ? MemorySegment.NULL
                 : NativeHelpers.toCString(arena, routingId);
             this.handle = Native.providerNew(ctx.handle(), rid);
         }
         if (handle == null || handle.address() == 0)
-            throw new RuntimeException("zlink_provider_new failed");
+            throw new RuntimeException("zlink_receiver_new failed");
     }
 
     public void bind(String endpoint) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.providerBind(handle, NativeHelpers.toCString(arena, endpoint));
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_bind failed");
+                throw new RuntimeException("zlink_receiver_bind failed");
         }
     }
 
@@ -35,7 +35,7 @@ public final class Provider implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.providerConnectRegistry(handle, NativeHelpers.toCString(arena, endpoint));
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_connect_registry failed");
+                throw new RuntimeException("zlink_receiver_connect_registry failed");
         }
     }
 
@@ -46,7 +46,7 @@ public final class Provider implements AutoCloseable {
                 NativeHelpers.toCString(arena, advertiseEndpoint),
                 weight);
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_register failed");
+                throw new RuntimeException("zlink_receiver_register failed");
         }
     }
 
@@ -55,7 +55,7 @@ public final class Provider implements AutoCloseable {
             int rc = Native.providerUpdateWeight(handle,
                 NativeHelpers.toCString(arena, serviceName), weight);
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_update_weight failed");
+                throw new RuntimeException("zlink_receiver_update_weight failed");
         }
     }
 
@@ -63,7 +63,7 @@ public final class Provider implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.providerUnregister(handle, NativeHelpers.toCString(arena, serviceName));
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_unregister failed");
+                throw new RuntimeException("zlink_receiver_unregister failed");
         }
     }
 
@@ -73,7 +73,7 @@ public final class Provider implements AutoCloseable {
             MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
             int rc = Native.providerSetSockOpt(handle, role, option, buf, value.length);
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_setsockopt failed");
+                throw new RuntimeException("zlink_receiver_setsockopt failed");
         }
     }
 
@@ -83,11 +83,11 @@ public final class Provider implements AutoCloseable {
             buf.set(ValueLayout.JAVA_INT, 0, value);
             int rc = Native.providerSetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_setsockopt failed");
+                throw new RuntimeException("zlink_receiver_setsockopt failed");
         }
     }
 
-    public ProviderResult registerResult(String serviceName) {
+    public ReceiverResult registerResult(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment status = arena.allocate(ValueLayout.JAVA_INT);
             MemorySegment resolved = arena.allocate(256);
@@ -95,11 +95,11 @@ public final class Provider implements AutoCloseable {
             int rc = Native.providerRegisterResult(handle, NativeHelpers.toCString(arena, serviceName),
                 status, resolved, error);
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_register_result failed");
+                throw new RuntimeException("zlink_receiver_register_result failed");
             int st = status.get(ValueLayout.JAVA_INT, 0);
             String resolvedEp = NativeHelpers.fromCString(resolved, 256);
             String errMsg = NativeHelpers.fromCString(error, 256);
-            return new ProviderResult(st, resolvedEp, errMsg);
+            return new ReceiverResult(st, resolvedEp, errMsg);
         }
     }
 
@@ -108,14 +108,14 @@ public final class Provider implements AutoCloseable {
             int rc = Native.providerSetTlsServer(handle, NativeHelpers.toCString(arena, cert),
                 NativeHelpers.toCString(arena, key));
             if (rc != 0)
-                throw new RuntimeException("zlink_provider_set_tls_server failed");
+                throw new RuntimeException("zlink_receiver_set_tls_server failed");
         }
     }
 
     public Socket routerSocket() {
         MemorySegment sock = Native.providerRouter(handle);
         if (sock == null || sock.address() == 0)
-            throw new RuntimeException("zlink_provider_router failed");
+            throw new RuntimeException("zlink_receiver_router failed");
         return Socket.adopt(sock, false);
     }
 
@@ -127,5 +127,5 @@ public final class Provider implements AutoCloseable {
         handle = MemorySegment.NULL;
     }
 
-    public record ProviderResult(int status, String resolvedEndpoint, String errorMessage) {}
+    public record ReceiverResult(int status, String resolvedEndpoint, String errorMessage) {}
 }

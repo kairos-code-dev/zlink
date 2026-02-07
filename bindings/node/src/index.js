@@ -142,9 +142,9 @@ class Discovery {
   connectRegistry(pub) { requireNative().discoveryConnectRegistry(this._native, pub); }
   subscribe(service) { requireNative().discoverySubscribe(this._native, service); }
   unsubscribe(service) { requireNative().discoveryUnsubscribe(this._native, service); }
-  providerCount(service) { return requireNative().discoveryProviderCount(this._native, service); }
+  receiverCount(service) { return requireNative().discoveryProviderCount(this._native, service); }
   serviceAvailable(service) { return requireNative().discoveryServiceAvailable(this._native, service); }
-  getProviders(service) { return requireNative().discoveryGetProviders(this._native, service); }
+  getReceivers(service) { return requireNative().discoveryGetProviders(this._native, service); }
   setSockOpt(role, option, value) {
     const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
     requireNative().discoverySetSockOpt(this._native, role, option, b);
@@ -168,7 +168,7 @@ class Gateway {
   close() { if (!this._native) return; requireNative().gatewayDestroy(this._native); this._native = null; }
 }
 
-class Provider {
+class Receiver {
   constructor(ctx, routingId = null) { this._native = requireNative().providerNew(ctx._native, routingId); }
   bind(endpoint) { requireNative().providerBind(this._native, endpoint); }
   connectRegistry(endpoint) { requireNative().providerConnectRegistry(this._native, endpoint); }
@@ -256,7 +256,7 @@ module.exports = {
   Registry,
   Discovery,
   Gateway,
-  Provider,
+  Receiver,
   SpotNode,
   Spot
 };

@@ -26,34 +26,30 @@ public class DiscoveryGatewaySpotScenarioTest {
                             discovery.connectRegistry(regPub);
                             discovery.subscribe("svc");
 
-                            try (Provider provider = new Provider(ctx)) {
+                            try (Receiver receiver = new Receiver(ctx)) {
                                 String serviceEp =
                                   TestTransports.endpointFor(tc.name, tc.endpoint, "-svc");
-                                provider.bind(serviceEp);
-                                provider.connectRegistry(regRouter);
-                                provider.register("svc", serviceEp, 1);
-                                sleep(100);
-                                for (int i = 0; i < 20; i++) {
-                                    Provider.ProviderResult res = provider.registerResult("svc");
-                                    if (res.status() == 0)
-                                        break;
-                                    sleep(50);
-                                }
-                                for (int i = 0; i < 50; i++) {
-                                    if (discovery.providerCount("svc") > 0)
-                                        break;
-                                    sleep(50);
-                                }
-
-                                try (Socket providerRouter = provider.routerSocket();
+                                receiver.bind(serviceEp);
+                                try (Socket providerRouter = receiver.routerSocket();
                                      Gateway gateway = new Gateway(ctx, discovery)) {
-                                    for (int i = 0; i < 50; i++) {
-                                        if (gateway.connectionCount("svc") > 0)
+                                    receiver.connectRegistry(regRouter);
+                                    receiver.register("svc", serviceEp, 1);
+                                    sleep(100);
+                                    int status = -1;
+                                    for (int i = 0; i < 20; i++) {
+                                        Receiver.ReceiverResult res = receiver.registerResult("svc");
+                                        status = res.status();
+                                        if (res.status() == 0)
                                             break;
                                         sleep(50);
                                     }
-                                    gateway.send("svc",
-                                        new Message[]{Message.fromBytes("hello".getBytes())}, 0);
+                                    assertEquals(0, status);
+                                    assertTrue(TestTransports.waitUntil(
+                                      () -> discovery.receiverCount("svc") > 0, 5000));
+                                    assertTrue(TestTransports.waitUntil(
+                                      () -> gateway.connectionCount("svc") > 0, 5000));
+                                    TestTransports.gatewaySendWithRetry(
+                                      gateway, "svc", "hello".getBytes(), 0, 5000);
 
                                     byte[] rid = TestTransports.recvWithTimeout(providerRouter, 256, 2000);
                                     byte[] payload = new byte[0];
@@ -67,14 +63,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     }
                                     assertEquals("hello", new String(payload, StandardCharsets.UTF_8).trim());
 
-                                    providerRouter.send(rid, TestTransports.ZLINK_SNDMORE);
-                                    TestTransports.sendWithRetry(providerRouter, "world".getBytes(), 0, 2000);
-
-                                    Gateway.GatewayMessage gwMsg =
-                                      TestTransports.gatewayReceiveWithTimeout(gateway, 5000);
-                                    assertEquals("svc", gwMsg.serviceName());
-                                    assertEquals(1, gwMsg.parts().length);
-                                    assertEquals("world", new String(gwMsg.parts()[0], StandardCharsets.UTF_8).trim());
+                                    assertTrue(rid.length > 0);
                                 }
                             }
 

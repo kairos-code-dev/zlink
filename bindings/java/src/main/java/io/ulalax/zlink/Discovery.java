@@ -65,11 +65,11 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    public int providerCount(String serviceName) {
+    public int receiverCount(String serviceName) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.discoveryProviderCount(handle, NativeHelpers.toCString(arena, serviceName));
             if (rc < 0)
-                throw new RuntimeException("zlink_discovery_provider_count failed");
+                throw new RuntimeException("zlink_discovery_receiver_count failed");
             return rc;
         }
     }
@@ -83,23 +83,23 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    public ProviderInfo[] getProviders(String serviceName) {
-        int count = providerCount(serviceName);
+    public ReceiverInfo[] getReceivers(String serviceName) {
+        int count = receiverCount(serviceName);
         if (count <= 0)
-            return new ProviderInfo[0];
+            return new ReceiverInfo[0];
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment arr = arena.allocate(NativeLayouts.PROVIDER_INFO_LAYOUT, count);
             MemorySegment cnt = arena.allocate(ValueLayout.JAVA_LONG);
             cnt.set(ValueLayout.JAVA_LONG, 0, count);
             int rc = Native.discoveryGetProviders(handle, NativeHelpers.toCString(arena, serviceName), arr, cnt);
             if (rc != 0)
-                throw new RuntimeException("zlink_discovery_get_providers failed");
+                throw new RuntimeException("zlink_discovery_get_receivers failed");
             long actual = cnt.get(ValueLayout.JAVA_LONG, 0);
-            ProviderInfo[] out = new ProviderInfo[(int) actual];
+            ReceiverInfo[] out = new ReceiverInfo[(int) actual];
             for (int i = 0; i < actual; i++) {
                 MemorySegment item = arr.asSlice((long) i * NativeLayouts.PROVIDER_INFO_LAYOUT.byteSize(),
                     NativeLayouts.PROVIDER_INFO_LAYOUT.byteSize());
-                out[i] = ProviderInfo.from(item);
+                out[i] = ReceiverInfo.from(item);
             }
             return out;
         }

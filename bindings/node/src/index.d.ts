@@ -43,9 +43,9 @@ export class Discovery {
   connectRegistry(pub: string): void;
   subscribe(service: string): void;
   unsubscribe(service: string): void;
-  providerCount(service: string): number;
+  receiverCount(service: string): number;
+  getReceivers(service: string): Array<{ serviceName: string; endpoint: string; weight: number; registeredAt: number }>;
   serviceAvailable(service: string): boolean;
-  getProviders(service: string): Array<{ serviceName: string; endpoint: string; weight: number; registeredAt: number }>;
   setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
@@ -61,7 +61,7 @@ export class Gateway {
   close(): void;
 }
 
-export class Provider {
+export class Receiver {
   constructor(ctx: Context, routingId?: string | null);
   bind(endpoint: string): void;
   connectRegistry(endpoint: string): void;

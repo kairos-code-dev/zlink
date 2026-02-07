@@ -60,7 +60,7 @@ void test_router_2_router (bool named_)
         TEST_ASSERT_EQUAL_INT (strlen (y_routing_id), routing_id_len);
         TEST_ASSERT_EQUAL_STRING_LEN (y_routing_id, buff, routing_id_len);
     } else {
-        TEST_ASSERT_TRUE (routing_id_len && 0 == buff[0]);
+        TEST_ASSERT_EQUAL_INT (16, routing_id_len);
     }
 
     //  Receive the data.

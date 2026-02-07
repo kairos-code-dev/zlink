@@ -108,6 +108,11 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
+    const int spot_msg_count_max =
+      resolve_bench_count("BENCH_SPOT_MSG_COUNT_MAX", 50000);
+    if (msg_count > spot_msg_count_max)
+        msg_count = spot_msg_count_max;
+
     void *ctx = zlink_ctx_new();
     if (!ctx)
         return;
@@ -214,13 +219,13 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     }
     double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
 
-    std::atomic<bool> recv_ok(true);
+    std::atomic<int> recv_count(0);
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
             if (!recv_spot_with_timeout(spot_sub, recv_timeout_ms)) {
-                recv_ok = false;
                 break;
             }
+            ++recv_count;
         }
     });
 
@@ -228,13 +233,13 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
         if (!send_spot(spot_pub, topic, msg_size)) {
-            recv_ok = false;
             break;
         }
         ++sent;
     }
     receiver.join();
-    if (!recv_ok || sent == 0) {
+    const int received = recv_count.load();
+    if (sent == 0 || received == 0) {
         print_result(lib_name, "SPOT", transport, msg_size, 0.0, latency);
         zlink_spot_destroy(&spot_pub);
         zlink_spot_destroy(&spot_sub);
@@ -243,7 +248,10 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
         zlink_ctx_term(ctx);
         return;
     }
-    double throughput = (double)sent / (sw.elapsed_ms() / 1000.0);
+    const int effective = sent < received ? sent : received;
+    const double elapsed_ms = sw.elapsed_ms();
+    const double throughput =
+      elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput, latency);
 

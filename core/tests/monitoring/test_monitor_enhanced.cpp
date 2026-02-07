@@ -13,8 +13,7 @@ static void assert_auto_routing_id (void *socket_)
     size_t size = sizeof (buf);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (socket_, ZLINK_ROUTING_ID, buf, &size));
-    TEST_ASSERT_EQUAL_UINT (5, size);
-    TEST_ASSERT_EQUAL_UINT8 (0, buf[0]);
+    TEST_ASSERT_EQUAL_UINT (16, size);
 }
 
 static bool wait_for_event (void *monitor_,

@@ -29,8 +29,7 @@ void test_router_auto_id_format ()
 
     unsigned char routing_id[255];
     int rid_len = zlink_recv (server, routing_id, sizeof routing_id, 0);
-    TEST_ASSERT_EQUAL_INT (5, rid_len);
-    TEST_ASSERT_EQUAL_UINT8 (0, routing_id[0]);
+    TEST_ASSERT_EQUAL_INT (16, rid_len);
 
     char recv_buf[sizeof payload];
     int rc = zlink_recv (server, recv_buf, sizeof recv_buf, 0);

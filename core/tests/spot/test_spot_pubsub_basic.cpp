@@ -693,8 +693,24 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                 zlink_msg_t *recv_parts = NULL;
                 size_t recv_count = 0;
                 char recv_topic[128];
-                TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (
-                  spots[dst_idx], &recv_parts, &recv_count, 0, recv_topic, NULL));
+                const int recv_wait_timeout_ms = 3000;
+                const int poll_step_ms = 10;
+                const int max_attempts = recv_wait_timeout_ms / poll_step_ms;
+                bool got_message = false;
+                for (int attempt = 0; attempt < max_attempts; ++attempt) {
+                    const int rc = zlink_spot_recv (spots[dst_idx], &recv_parts,
+                                                    &recv_count, ZLINK_DONTWAIT,
+                                                    recv_topic, NULL);
+                    if (rc == 0) {
+                        got_message = true;
+                        break;
+                    }
+                    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+                    msleep (poll_step_ms);
+                }
+                TEST_ASSERT_TRUE_MESSAGE (
+                  got_message,
+                  "Timed out waiting for zone-adjacency spot message");
                 received++;
 
                 TEST_ASSERT_EQUAL_INT (1, (int) recv_count);

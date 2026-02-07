@@ -253,15 +253,11 @@ void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
     }
 
     if (routing_id.size () == 0) {
-        unsigned char buf[5];
-        buf[0] = 0;
-        put_uint32 (buf + 1, _next_integral_routing_id++);
+        unsigned char buf[4];
+        put_uint32 (buf, _next_integral_routing_id++);
         if (_next_integral_routing_id == 0)
             _next_integral_routing_id = 1;
         routing_id.set (buf, sizeof buf);
-        memcpy (options.routing_id, routing_id.data (), routing_id.size ());
-        options.routing_id_size =
-          static_cast<unsigned char> (routing_id.size ());
     }
 
     pipe_->set_router_socket_routing_id (routing_id);

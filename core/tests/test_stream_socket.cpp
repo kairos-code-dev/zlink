@@ -9,7 +9,7 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
-static const size_t stream_routing_id_size = 5;
+static const size_t stream_routing_id_size = 4;
 
 static void recv_stream_event (void *socket_,
                                unsigned char expected_code_,

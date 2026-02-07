@@ -4,6 +4,10 @@
 #include "../testutil.hpp"
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
+#include <vector>
 
 void setUp ()
 {
@@ -672,6 +676,460 @@ static void test_spot_multi_publisher ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+static int zone_idx (int x_, int y_, int width_)
+{
+    return y_ * width_ + x_;
+}
+
+static bool zone_is_adjacent_or_self (int src_x_,
+                                      int src_y_,
+                                      int dst_x_,
+                                      int dst_y_)
+{
+    const int dx = src_x_ - dst_x_;
+    const int dy = src_y_ - dst_y_;
+    const int manhattan = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+    return manhattan <= 1;
+}
+
+static int env_int_or_default (const char *name_, int default_)
+{
+    const char *val = getenv (name_);
+    if (!val || !*val)
+        return default_;
+
+    const int parsed = atoi (val);
+    if (parsed <= 0)
+        return default_;
+    return parsed;
+}
+
+static bool wait_for_provider_count (void *discovery_,
+                                     const char *service_name_,
+                                     int expected_count_,
+                                     int timeout_ms_)
+{
+    const int sleep_ms_step = 25;
+    const int max_attempts = timeout_ms_ / sleep_ms_step;
+
+    for (int i = 0; i < max_attempts; ++i) {
+        const int count =
+          zlink_discovery_provider_count (discovery_, service_name_);
+        if (count == expected_count_)
+            return true;
+        msleep (sleep_ms_step);
+    }
+    return false;
+}
+
+static bool wait_for_spot_message (void *spot_,
+                                   const char *expected_topic_,
+                                   const char *expected_payload_,
+                                   size_t expected_payload_size_,
+                                   int timeout_ms_)
+{
+    const int sleep_ms_step = 10;
+    const int max_attempts = timeout_ms_ / sleep_ms_step;
+
+    for (int i = 0; i < max_attempts; ++i) {
+        zlink_msg_t *recv_parts = NULL;
+        size_t recv_count = 0;
+        char topic[256];
+        int rc = zlink_spot_recv (
+          spot_, &recv_parts, &recv_count, ZLINK_DONTWAIT, topic, NULL);
+        if (rc == 0) {
+            bool ok = recv_count == 1
+                      && strcmp (topic, expected_topic_) == 0
+                      && zlink_msg_size (&recv_parts[0]) == expected_payload_size_
+                      && memcmp (zlink_msg_data (&recv_parts[0]),
+                                 expected_payload_,
+                                 expected_payload_size_)
+                           == 0;
+            zlink_msgv_close (recv_parts, recv_count);
+            if (ok)
+                return true;
+            continue;
+        }
+        if (errno != EAGAIN)
+            return false;
+        msleep (sleep_ms_step);
+    }
+    return false;
+}
+
+static void test_spot_mmorpg_zone_adjacency_scale ()
+{
+    const int field_width = env_int_or_default ("ZLINK_SPOT_FIELD_WIDTH", 16);
+    const int field_height = env_int_or_default ("ZLINK_SPOT_FIELD_HEIGHT", 16);
+    const int zone_count = field_width * field_height;
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    std::vector<void *> spots (zone_count, static_cast<void *> (NULL));
+    std::vector<int> expected_counts (zone_count, 0);
+    std::vector<std::string> topics (zone_count);
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int idx = zone_idx (x, y, field_width);
+
+            spots[idx] = zlink_spot_new (node);
+            TEST_ASSERT_NOT_NULL (spots[idx]);
+
+            char topic_buf[64];
+            snprintf (topic_buf, sizeof (topic_buf), "field:%d:%d:state", x, y);
+            topics[idx] = topic_buf;
+        }
+    }
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int dst_idx = zone_idx (x, y, field_width);
+
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    if (ox != 0 && oy != 0)
+                        continue;
+
+                    const int src_x = x + ox;
+                    const int src_y = y + oy;
+
+                    if (src_x < 0 || src_x >= field_width || src_y < 0
+                        || src_y >= field_height)
+                        continue;
+
+                    const int src_idx = zone_idx (src_x, src_y, field_width);
+                    TEST_ASSERT_SUCCESS_ERRNO (
+                      zlink_spot_subscribe (spots[dst_idx], topics[src_idx].c_str ()));
+                    expected_counts[dst_idx]++;
+                }
+            }
+        }
+    }
+
+    msleep (1000);
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int src_idx = zone_idx (x, y, field_width);
+
+            zlink_msg_t part;
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, sizeof (int)));
+            memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
+
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_spot_publish (spots[src_idx], topics[src_idx].c_str (), &part, 1, 0));
+            if ((src_idx % 32) == 0)
+                msleep (1);
+        }
+    }
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int dst_idx = zone_idx (x, y, field_width);
+            std::vector<unsigned char> seen (zone_count, 0);
+            int received = 0;
+            while (received < expected_counts[dst_idx]) {
+                zlink_msg_t *recv_parts = NULL;
+                size_t recv_count = 0;
+                char recv_topic[128];
+                TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (
+                  spots[dst_idx], &recv_parts, &recv_count, 0, recv_topic, NULL));
+                received++;
+
+                TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
+                TEST_ASSERT_EQUAL_INT ((int) sizeof (int),
+                                       (int) zlink_msg_size (&recv_parts[0]));
+
+                int src_idx = -1;
+                memcpy (&src_idx, zlink_msg_data (&recv_parts[0]), sizeof (int));
+                TEST_ASSERT_TRUE (src_idx >= 0 && src_idx < zone_count);
+                TEST_ASSERT_FALSE (seen[src_idx] != 0);
+                seen[src_idx] = 1;
+
+                const int src_x = src_idx % field_width;
+                const int src_y = src_idx / field_width;
+                TEST_ASSERT_TRUE (
+                  zone_is_adjacent_or_self (src_x, src_y, x, y));
+                TEST_ASSERT_EQUAL_STRING (topics[src_idx].c_str (), recv_topic);
+
+                zlink_msgv_close (recv_parts, recv_count);
+            }
+
+            TEST_ASSERT_EQUAL_INT (expected_counts[dst_idx], received);
+        }
+    }
+
+    for (int i = 0; i < zone_count; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spots[i]));
+    }
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
+{
+    const int field_width = 100;
+    const int field_height = 100;
+    const int zone_count = field_width * field_height;
+    const int spot_node_count = 10;
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_endpoints (registry, "inproc://spot-reg-pub-mmorpg",
+                                    "inproc://spot-reg-router-mmorpg"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, "inproc://spot-reg-pub-mmorpg"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, "spot-field-mmorpg"));
+
+    std::vector<void *> nodes (spot_node_count, static_cast<void *> (NULL));
+    for (int i = 0; i < spot_node_count; ++i) {
+        nodes[i] = zlink_spot_node_new (ctx);
+        TEST_ASSERT_NOT_NULL (nodes[i]);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_bind (nodes[i], "tcp://127.0.0.1:*"));
+    }
+
+    for (int i = 0; i < spot_node_count; ++i) {
+        char endpoint[256] = {0};
+        size_t endpoint_len = sizeof (endpoint);
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (
+          zlink_spot_node_pub_socket (nodes[i]), ZLINK_LAST_ENDPOINT, endpoint,
+          &endpoint_len));
+
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_registry (
+          nodes[i], "inproc://spot-reg-router-mmorpg"));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_register (
+          nodes[i], "spot-field-mmorpg", endpoint));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_discovery (
+          nodes[i], discovery, "spot-field-mmorpg"));
+    }
+
+    TEST_ASSERT_TRUE (
+      wait_for_provider_count (discovery, "spot-field-mmorpg", spot_node_count, 5000));
+    msleep (1500);
+
+    std::vector<void *> spots (zone_count, static_cast<void *> (NULL));
+    std::vector<int> expected_counts (zone_count, 0);
+    std::vector<std::string> topics (zone_count);
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int idx = zone_idx (x, y, field_width);
+            const int owner_node = idx % spot_node_count;
+
+            spots[idx] = zlink_spot_new (nodes[owner_node]);
+            TEST_ASSERT_NOT_NULL (spots[idx]);
+
+            char topic_buf[64];
+            snprintf (topic_buf, sizeof (topic_buf), "field-mm:%d:%d:state", x, y);
+            topics[idx] = topic_buf;
+        }
+    }
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int dst_idx = zone_idx (x, y, field_width);
+
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    if (ox != 0 && oy != 0)
+                        continue;
+
+                    const int src_x = x + ox;
+                    const int src_y = y + oy;
+                    if (src_x < 0 || src_x >= field_width || src_y < 0
+                        || src_y >= field_height)
+                        continue;
+
+                    const int src_idx = zone_idx (src_x, src_y, field_width);
+                    TEST_ASSERT_SUCCESS_ERRNO (
+                      zlink_spot_subscribe (spots[dst_idx], topics[src_idx].c_str ()));
+                    expected_counts[dst_idx]++;
+                }
+            }
+        }
+    }
+
+    msleep (1500);
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int src_idx = zone_idx (x, y, field_width);
+            zlink_msg_t part;
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, sizeof (int)));
+            memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
+            TEST_ASSERT_SUCCESS_ERRNO (
+              zlink_spot_publish (spots[src_idx], topics[src_idx].c_str (), &part, 1, 0));
+            if ((src_idx % 64) == 0)
+                msleep (1);
+        }
+    }
+
+    for (int idx = 0; idx < zone_count; ++idx) {
+        void *sub_socket = zlink_spot_sub_socket (spots[idx]);
+        TEST_ASSERT_NOT_NULL (sub_socket);
+        int rcvtimeo = 5000;
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_setsockopt (sub_socket, ZLINK_RCVTIMEO, &rcvtimeo, sizeof (rcvtimeo)));
+    }
+
+    for (int y = 0; y < field_height; ++y) {
+        for (int x = 0; x < field_width; ++x) {
+            const int dst_idx = zone_idx (x, y, field_width);
+            std::vector<unsigned char> seen (zone_count, 0);
+            int received = 0;
+
+            while (received < expected_counts[dst_idx]) {
+                zlink_msg_t *recv_parts = NULL;
+                size_t recv_count = 0;
+                char recv_topic[128];
+                TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_recv (
+                  spots[dst_idx], &recv_parts, &recv_count, 0, recv_topic, NULL));
+
+                TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
+                TEST_ASSERT_EQUAL_INT ((int) sizeof (int),
+                                       (int) zlink_msg_size (&recv_parts[0]));
+
+                int src_idx = -1;
+                memcpy (&src_idx, zlink_msg_data (&recv_parts[0]), sizeof (int));
+                TEST_ASSERT_TRUE (src_idx >= 0 && src_idx < zone_count);
+                TEST_ASSERT_FALSE (seen[src_idx] != 0);
+                seen[src_idx] = 1;
+
+                const int src_x = src_idx % field_width;
+                const int src_y = src_idx / field_width;
+                TEST_ASSERT_TRUE (zone_is_adjacent_or_self (src_x, src_y, x, y));
+                TEST_ASSERT_EQUAL_STRING (topics[src_idx].c_str (), recv_topic);
+
+                zlink_msgv_close (recv_parts, recv_count);
+                received++;
+            }
+
+            TEST_ASSERT_EQUAL_INT (expected_counts[dst_idx], received);
+        }
+    }
+
+    for (int i = 0; i < zone_count; ++i)
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spots[i]));
+
+    for (int i = 0; i < spot_node_count; ++i) {
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_spot_node_unregister (nodes[i], "spot-field-mmorpg"));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&nodes[i]));
+    }
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_discovery_auto_peer_connect ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    void *registry = zlink_registry_new (ctx);
+    TEST_ASSERT_NOT_NULL (registry);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_registry_set_endpoints (registry, "inproc://spot-reg-pub-auto",
+                                    "inproc://spot-reg-router-auto"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_start (registry));
+
+    void *discovery = zlink_discovery_new (ctx);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_connect_registry (discovery, "inproc://spot-reg-pub-auto"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, "spot-field"));
+
+    void *node_a = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_a);
+    void *node_b = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, "tcp://127.0.0.1:*"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, "tcp://127.0.0.1:*"));
+
+    char ep_a[256] = {0};
+    size_t ep_a_len = sizeof (ep_a);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (zlink_spot_node_pub_socket (node_a), ZLINK_LAST_ENDPOINT,
+                        ep_a, &ep_a_len));
+
+    char ep_b[256] = {0};
+    size_t ep_b_len = sizeof (ep_b);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (zlink_spot_node_pub_socket (node_b), ZLINK_LAST_ENDPOINT,
+                        ep_b, &ep_b_len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_registry (node_a, "inproc://spot-reg-router-auto"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_connect_registry (node_b, "inproc://spot-reg-router-auto"));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_register (node_a, "spot-field", ep_a));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_register (node_b, "spot-field", ep_b));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_discovery (node_a, discovery, "spot-field"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_set_discovery (node_b, discovery, "spot-field"));
+
+    TEST_ASSERT_TRUE (wait_for_provider_count (discovery, "spot-field", 2, 4000));
+    msleep (800);
+
+    void *spot_a = zlink_spot_new (node_a);
+    TEST_ASSERT_NOT_NULL (spot_a);
+    void *spot_b = zlink_spot_new (node_b);
+    TEST_ASSERT_NOT_NULL (spot_b);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_a, "zone:auto:test"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_subscribe (spot_b, "zone:auto:test"));
+    msleep (100);
+
+    zlink_msg_t part_a;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part_a, 6));
+    memcpy (zlink_msg_data (&part_a), "from-a", 6);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_publish (spot_a, "zone:auto:test", &part_a, 1, 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (spot_b, "zone:auto:test", "from-a", 6, 3000));
+
+    zlink_msg_t part_b;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part_b, 6));
+    memcpy (zlink_msg_data (&part_b), "from-b", 6);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_publish (spot_b, "zone:auto:test", &part_b, 1, 0));
+    TEST_ASSERT_TRUE (
+      wait_for_spot_message (spot_a, "zone:auto:test", "from-b", 6, 3000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_unregister (node_a, "spot-field"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_unregister (node_b, "spot-field"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_a));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node_b));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 static void test_spot_node_setsockopt ()
 {
     void *ctx = zlink_ctx_new ();
@@ -763,7 +1221,9 @@ int main (int, char **)
     RUN_TEST (test_spot_peer_wss);
     RUN_TEST (test_spot_unsubscribe);
     RUN_TEST (test_spot_multi_publisher);
+    RUN_TEST (test_spot_mmorpg_zone_adjacency_scale);
+    RUN_TEST (test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery);
+    RUN_TEST (test_spot_discovery_auto_peer_connect);
     RUN_TEST (test_spot_node_setsockopt);
     return UNITY_END ();
 }
-

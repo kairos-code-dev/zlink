@@ -157,6 +157,10 @@ provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
     int hwm = 1000000;
         _router->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
         _router->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
+        // Allow a reconnecting gateway with the same routing id to take over.
+        int handover = 1;
+        _router->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
+                              sizeof (handover));
     }
 }
 

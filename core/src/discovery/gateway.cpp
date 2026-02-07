@@ -213,6 +213,10 @@ int gateway_t::init_router_socket ()
     // Avoid long linger during teardown.
     int linger = 0;
     _router_socket->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+    // Allow a new connection with the same routing id to take over.
+    int handover = 1;
+    _router_socket->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
+                                sizeof (handover));
     return 0;
 }
 

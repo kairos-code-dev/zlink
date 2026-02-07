@@ -2,7 +2,7 @@
 
 > **우선순위**: 0 (Foundation - 다른 기능의 선행 작업)
 > **상태**: Draft
-> **버전**: 1.1
+> **버전**: 1.2
 
 ## 목차
 1. [개요](#1-개요)
@@ -21,27 +21,27 @@
 
 현재 routing_id는 용도와 맥락에 따라 여러 형태로 혼용된다:
 - 자동 생성:
-  - ROUTER: 5바이트 `[0x00][uint32_t]` 형식
-  - STREAM: 4바이트 `uint32_t`
+  - 소켓 own routing_id: 5바이트 `[0x00][uint32_t]` 형식
+  - STREAM peer/client routing_id: 5바이트(현 구현), 연결 식별 용도
 - 사용자 설정: 가변 길이 문자열 (최대 255바이트, `ZLINK_ROUTING_ID`)
 - 연결 alias: 가변 길이 문자열 (`ZLINK_CONNECT_ROUTING_ID`)
 - 메시지 내부: 4바이트 (`uint32_t`, msg_t 내부 필드)
 
 ### 1.2 목표
 
-**호환성 미고려로 자동 생성 포맷을 5바이트로 통일**한다:
-- 자동 생성 값은 `uint32_t` 시퀀스 (0 제외)
-- 저장 포맷은 **모든 소켓에서 5B `[0x00][uint32]`**
-  - STREAM의 자동 생성 포맷도 4B -> 5B로 변경
+**호환성 미고려로 routing_id를 용도별로 분리**한다:
+- 소켓 own routing_id 자동 생성은 **16B UUID(binary)** 로 통일
+- STREAM peer/client routing_id는 **4B uint32**로 통일
 - `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID`는 가변 길이 문자열 유지
 - 핸드셰이크 포맷(길이+가변) 유지
 
-즉, **자동 생성 포맷만 5B로 통일**하고 문자열 alias는 그대로 둔다.
+즉, **소켓 own ID와 STREAM peer ID를 구분**하고, 각 경로에 맞는 크기를 사용한다.
 
 ### 1.3 STREAM 소켓 정책
 
-STREAM 소켓은 현재 4바이트 routing_id를 사용 중이나,
-본 계획에서는 **자동 생성 포맷을 5바이트로 통일**한다.
+STREAM 소켓은 두 종류의 ID를 구분한다:
+- 소켓 own routing_id: 16B UUID (모니터링/디버깅 식별)
+- 연결별 peer/client routing_id: 4B uint32 (데이터 경로 라우팅 식별)
 
 ---
 
@@ -51,10 +51,10 @@ STREAM 소켓은 현재 4바이트 routing_id를 사용 중이나,
 
 | 소켓 | 자동 생성 | 크기 | 저장 방식 |
 |------|----------|------|----------|
-| ROUTER | `[0x00][uint32]` | 5B | `blob_t` |
-| STREAM | `[uint32]` | 4B | `blob_t` |
-| DEALER | 없음 | - | - |
-| PUB/SUB | 없음 | - | - |
+| ROUTER own | UUID(binary) | 16B | `options.routing_id` |
+| STREAM own | UUID(binary) | 16B | `options.routing_id` |
+| STREAM peer/client | uint32 | 4B | `blob_t` |
+| DEALER/PUB/SUB own | UUID(binary) | 16B | `options.routing_id` |
 
 ### 2.2 현재 자료구조
 
@@ -90,7 +90,8 @@ zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, "alias", 5);
 
 | 항목 | 변경 후 |
 |------|---------|
-| 자동 생성 routing_id 포맷 | **모든 소켓에서 5B `[0x00][uint32]`** |
+| 소켓 own 자동 생성 routing_id 포맷 | **모든 소켓에서 16B UUID(binary)** |
+| STREAM peer/client routing_id 포맷 | **4B uint32** |
 | 사용자 설정 (`ZLINK_ROUTING_ID`) | 가변 길이 문자열 유지 |
 | 연결 alias (`ZLINK_CONNECT_ROUTING_ID`) | 가변 길이 문자열 유지 |
 | 핸드셰이크 포맷 | 길이+가변 유지 |
@@ -100,9 +101,8 @@ zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, "alias", 5);
 - `ZLINK_ROUTING_ID`는 **소켓 identity**로 사용한다.
 - `ZLINK_CONNECT_ROUTING_ID`는 **다음 connect에 적용되는 연결 alias**다.
 - 미설정 시 자동 생성:
-  - 모든 소켓에서 uint32 값을 생성
-  - 저장 포맷은 `[0x00][uint32]` 5바이트
-  - 0은 피하도록 통일 (필요 시 1부터 증가)
+  - 모든 소켓 own routing_id는 16B UUID(binary)
+  - STREAM peer/client routing_id는 4B uint32 (연결 식별)
 
 ### 3.3 문자열 alias 유지 이유
 
@@ -179,9 +179,9 @@ zlink_setsockopt(socket, ZLINK_CONNECT_ROUTING_ID, buf, size);
 | 파일 | 변경 내용 |
 |------|----------|
 | `include/zlink.h` | `zlink_routing_id_t` 선언 |
-| `src/core/options.hpp/cpp` | 모든 소켓 routing_id 자동 생성 로직 추가 |
-| `src/sockets/router.cpp` | 자동 생성 포맷 5B 유지 |
-| `src/sockets/stream.cpp` | 자동 생성 포맷 4B -> 5B 변경 |
+| `src/sockets/socket_base.cpp` | 모든 소켓 own routing_id 자동 생성(16B UUID) |
+| `src/core/options.hpp/cpp` | routing_id 옵션/기본값 경로 정리 |
+| `src/sockets/stream.cpp` | STREAM peer/client routing_id를 4B uint32로 고정 |
 | `tests/` | auto routing_id 관련 테스트 갱신 |
 | `doc/plan/01-enhanced-monitoring.md` | monitoring에서 routing_id_t 사용 |
 
@@ -192,8 +192,8 @@ Phase 1: type 추가
 └─ zlink_routing_id_t 정의
 
 Phase 2: 자동 생성 통일
-├─ 모든 소켓에서 uint32 시퀀스 생성
-└─ 저장 포맷은 5B로 통일
+├─ 모든 소켓 own routing_id를 16B UUID로 통일
+└─ STREAM peer/client routing_id는 4B uint32 유지/정리
 
 Phase 3: 테스트/문서 갱신
 ├─ routing_id 길이 기대값 수정
@@ -208,8 +208,9 @@ Phase 3: 테스트/문서 갱신
 
 - **기존 버전과의 호환성은 고려하지 않는다.**
 - `ZLINK_ROUTING_ID`, `ZLINK_CONNECT_ROUTING_ID` 문자열 사용은 **설계 상 필요하여 유지**한다.
-- **STREAM 자동 생성 routing_id 길이 변경(4B -> 5B)**
-  - 길이/내용을 직접 기대하는 코드나 테스트는 업데이트 필요
+- **소켓 own 자동 생성 routing_id 길이 변경(5B -> 16B UUID)**
+- **STREAM peer/client routing_id 길이 변경(5B -> 4B uint32)**
+  - 길이/내용을 직접 기대하는 코드/테스트는 업데이트 필요
 
 ---
 
@@ -223,8 +224,8 @@ Phase 3: 테스트/문서 갱신
 
 | 테스트 | 설명 |
 |--------|------|
-| `test_router_auto_id_format` | ROUTER 자동 생성 5B 형식 확인 |
-| `test_stream_routing_id_size` | STREAM routing_id 5B 확인 |
+| `test_router_auto_id_format` | ROUTER own 자동 생성 16B 확인 |
+| `test_stream_routing_id_size` | STREAM peer/client routing_id 4B 확인 |
 | `test_connect_rid_string_alias` | 문자열 alias 동작 확인 |
 
 ---
@@ -233,6 +234,7 @@ Phase 3: 테스트/문서 갱신
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 1.2 | 2026-02-07 | 정책 변경: own 자동 생성 16B UUID, STREAM peer/client 4B uint32 |
 | 1.1 | 2026-01-28 | 테스트를 기능별 폴더에 배치하는 규칙 추가 |
 | 0.1 | 2025-01-25 | 초안 작성 |
 | 0.2 | 2025-01-25 | HELLO 프레임 형식 수정 (`control_type` 필드 추가) |

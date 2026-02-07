@@ -2,7 +2,7 @@
 
 > **우선순위**: 1 (Core Feature)
 > **상태**: Draft
-> **버전**: 1.8
+> **버전**: 1.9
 > **의존성**: [00-routing-id-unification.md](00-routing-id-unification.md)
 
 ## 목차
@@ -62,13 +62,14 @@ HELLO body: [control_type][socket_type][routing_id_len][routing_id(0~255B)]
 ### 2.1 통일된 routing_id 정책
 
 **모든 소켓에서 routing_id를 보유하도록 확장**하되,
-**자동 생성 포맷은 5바이트로 통일**한다:
+**소켓 own ID와 STREAM peer ID를 구분**한다:
 
 | 항목 | 현재 | 변경 |
 |------|------|------|
 | `ZLINK_ROUTING_ID` 설정 | 모든 소켓 가능 | 유지 |
 | 미설정 시 자동 생성 | ROUTER/STREAM만 | **모든 소켓** |
-| 자동 생성 포맷 | ROUTER 5B, STREAM 4B | **모든 소켓 5B** |
+| 소켓 own 자동 생성 포맷 | ROUTER 5B, STREAM 5B(현재) | **모든 소켓 16B UUID(binary)** |
+| STREAM peer/client routing_id | 5B(현재) | **4B uint32** |
 | routing_id type | `void* + size` | **`zlink_routing_id_t`** |
 | `ZLINK_CONNECT_ROUTING_ID` | ROUTER/STREAM용 | **유지** |
 
@@ -81,7 +82,8 @@ HELLO body: [control_type][socket_type][routing_id_len][routing_id(0~255B)]
 ```
 1. 소켓 생성
    - routing_id 미설정 시 자동 생성
-   - 모든 소켓: [0x00][uint32] (5B)
+   - 모든 소켓 own routing_id: 16B UUID(binary)
+   - STREAM peer/client routing_id: 4B uint32
 
 2. 모니터 활성화
    - zlink_socket_monitor*(socket, endpoint, events)
@@ -524,7 +526,7 @@ zlink_close(mon_b);
 
 | 테스트 케이스 | 설명 |
 |--------------|------|
-| `test_auto_routing_id_generation` | 모든 소켓 타입에서 routing_id 자동 생성 확인 |
+| `test_auto_routing_id_generation` | 모든 소켓 타입에서 own routing_id 16B 자동 생성 확인 |
 | `test_bidirectional_id_exchange` | 핸드셰이크 후 양방향 ID 저장 확인 |
 | `test_connection_ready_event` | 핸드셰이크 완료 시 CONNECTION_READY 이벤트 발생 확인 |
 | `test_monitor_open_basic` | monitor_open이 모니터 소켓을 자동 생성/연결하는지 확인 |
@@ -539,6 +541,7 @@ zlink_close(mon_b);
 
 | 버전 | 날짜 | 변경 내용 |
 |------|------|----------|
+| 1.9 | 2026-02-07 | 정책 변경: own 자동 생성 16B UUID, STREAM peer/client 4B uint32 |
 | 0.1 | 2025-01-25 | 초안 작성 |
 | 0.2 | 2025-01-25 | 00번 스펙 반영: routing_id를 uint32_t로 변경 |
 | 0.3 | 2026-01-25 | routing_id_t 표준화 + 문자열 alias 유지 |

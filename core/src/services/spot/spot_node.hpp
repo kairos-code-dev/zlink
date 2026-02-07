@@ -6,7 +6,7 @@
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
 #include "core/thread.hpp"
-#include "discovery/discovery.hpp"
+#include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"

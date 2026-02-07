@@ -2,7 +2,7 @@
 
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
-#include "../../src/discovery/protocol.hpp"
+#include "../../src/services/discovery/discovery_protocol.hpp"
 #ifndef ZLINK_BUILD_TESTS
 #define ZLINK_BUILD_TESTS 1
 #endif

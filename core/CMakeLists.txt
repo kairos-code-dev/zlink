@@ -967,14 +967,14 @@ set(protocol-sources
     src/protocol/decoder_allocators.cpp)
 
 set(discovery-sources
-    src/discovery/registry.cpp
-    src/discovery/discovery.cpp
-    src/discovery/gateway.cpp
-    src/discovery/provider.cpp)
+    src/services/discovery/registry.cpp
+    src/services/discovery/discovery.cpp
+    src/services/gateway/gateway.cpp
+    src/services/gateway/receiver.cpp)
 
 set(spot-sources
-    src/spot/spot_node.cpp
-    src/spot/spot.cpp)
+    src/services/spot/spot_node.cpp
+    src/services/spot/spot.cpp)
 
 set(socket-sources
     src/sockets/socket_base.cpp
@@ -1056,10 +1056,13 @@ endif()
 include_directories(
     src
     src/api
+    src/services
+    src/services/common
+    src/services/discovery
+    src/services/gateway
+    src/services/spot
     src/core
     src/protocol
-    src/discovery
-    src/spot
     src/engine
     src/engine/asio
     src/transports/tcp

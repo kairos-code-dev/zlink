@@ -2,12 +2,12 @@
 
 #include "precompiled.hpp"
 
-#include "discovery/provider.hpp"
-#include "discovery/protocol.hpp"
+#include "services/gateway/receiver.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 
 #include "utils/err.hpp"
 #include "utils/random.hpp"
-#include "discovery/routing_id_utils.hpp"
+#include "services/gateway/routing_id_utils.hpp"
 
 #if defined ZLINK_HAVE_WINDOWS
 #include "utils/windows.hpp"

@@ -2,8 +2,8 @@
 
 #include "precompiled.hpp"
 
-#include "spot/spot.hpp"
-#include "spot/spot_node.hpp"
+#include "services/spot/spot.hpp"
+#include "services/spot/spot_node.hpp"
 
 #include "utils/err.hpp"
 

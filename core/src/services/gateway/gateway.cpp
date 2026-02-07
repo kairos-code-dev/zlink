@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#include "discovery/gateway.hpp"
+#include "services/gateway/gateway.hpp"
 
 #include "core/msg.hpp"
-#include "discovery/routing_id_utils.hpp"
+#include "services/gateway/routing_id_utils.hpp"
 
 #include <algorithm>
 #include <chrono>

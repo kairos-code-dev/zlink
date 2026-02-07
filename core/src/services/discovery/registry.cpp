@@ -2,8 +2,8 @@
 
 #include "precompiled.hpp"
 
-#include "discovery/registry.hpp"
-#include "discovery/protocol.hpp"
+#include "services/discovery/registry.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 
 #include "utils/err.hpp"
 #include "utils/random.hpp"

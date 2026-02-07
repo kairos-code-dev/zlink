@@ -2,10 +2,10 @@
 
 #include "precompiled.hpp"
 
-#include "spot/spot_node.hpp"
-#include "spot/spot.hpp"
+#include "services/spot/spot_node.hpp"
+#include "services/spot/spot.hpp"
 
-#include "discovery/protocol.hpp"
+#include "services/discovery/discovery_protocol.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
 #include "utils/err.hpp"

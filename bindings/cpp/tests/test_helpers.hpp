@@ -38,7 +38,7 @@ inline std::string bound_endpoint(zlink::socket_t &socket)
 {
     char buf[256];
     size_t size = sizeof(buf);
-    const int rc = socket.get(ZLINK_LAST_ENDPOINT, buf, &size);
+    const int rc = socket.get(zlink::socket_option::last_endpoint, buf, &size);
     assert(rc == 0);
     return std::string(buf, buf + size);
 }
@@ -58,7 +58,7 @@ inline int recv_with_timeout(zlink::socket_t &socket, void *buf, size_t len, int
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (true) {
-        const int rc = socket.recv(buf, len, ZLINK_DONTWAIT);
+        const int rc = socket.recv(buf, len, zlink::recv_flag::dontwait);
         if (rc >= 0)
             return rc;
         if (zlink_errno() != EAGAIN)
@@ -74,7 +74,7 @@ inline int recv_msg_with_timeout(zlink::socket_t &socket, zlink::message_t &msg,
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (true) {
-        const int rc = socket.recv(msg, ZLINK_DONTWAIT);
+        const int rc = socket.recv(msg, zlink::recv_flag::dontwait);
         if (rc >= 0)
             return rc;
         if (zlink_errno() != EAGAIN)

@@ -5,10 +5,10 @@
 int main ()
 {
     zlink::context_t ctx;
-    zlink::socket_t server (ctx, ZLINK_PAIR);
-    zlink::socket_t client (ctx, ZLINK_PAIR);
+    zlink::socket_t server (ctx, zlink::socket_type::pair);
+    zlink::socket_t client (ctx, zlink::socket_type::pair);
 
-    zlink::socket_t monitor_sock = server.monitor_open (ZLINK_EVENT_ALL);
+    zlink::socket_t monitor_sock = server.monitor_open (zlink::monitor_event::all);
     zlink::monitor_socket_t monitor (std::move (monitor_sock));
 
     const char *endpoint = "inproc://monitor-basic";

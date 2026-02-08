@@ -12,8 +12,8 @@ int main()
         if (!transport_supported(tc))
             continue;
 
-        zlink::socket_t pub(ctx, ZLINK_PUB);
-        zlink::socket_t sub(ctx, ZLINK_SUB);
+        zlink::socket_t pub(ctx, zlink::socket_type::pub);
+        zlink::socket_t sub(ctx, zlink::socket_type::sub);
 
         std::string endpoint = endpoint_for(tc, "pubsub");
         assert(pub.bind(endpoint) == 0);
@@ -22,7 +22,7 @@ int main()
         assert(sub.connect(endpoint) == 0);
 
         const char *topic = "topic";
-        assert(sub.set(ZLINK_SUBSCRIBE, topic, 5) == 0);
+        assert(sub.set(zlink::socket_option::subscribe, topic, 5) == 0);
         sleep_ms(50);
 
         const char *payload = "topic payload";

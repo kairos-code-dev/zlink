@@ -12,8 +12,8 @@ int main()
         if (!transport_supported(tc))
             continue;
 
-        zlink::socket_t router(ctx, ZLINK_ROUTER);
-        zlink::socket_t dealer(ctx, ZLINK_DEALER);
+        zlink::socket_t router(ctx, zlink::socket_type::router);
+        zlink::socket_t dealer(ctx, zlink::socket_type::dealer);
 
         std::string endpoint = endpoint_for(tc, "dealer-router");
         assert(router.bind(endpoint) == 0);
@@ -32,7 +32,7 @@ int main()
         assert(msg.size() == 5);
         assert(std::memcmp(msg.data(), "hello", 5) == 0);
 
-        assert(router.send(rid, ZLINK_SNDMORE) >= 0);
+        assert(router.send(rid, zlink::send_flag::sndmore) >= 0);
         const char *reply = "world";
         assert(router.send(reply, 5) == 5);
 

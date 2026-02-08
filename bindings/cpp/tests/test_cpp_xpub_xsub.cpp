@@ -10,11 +10,11 @@ int main()
         if (!transport_supported(tc))
             continue;
 
-        zlink::socket_t xpub(ctx, ZLINK_XPUB);
-        zlink::socket_t xsub(ctx, ZLINK_XSUB);
+        zlink::socket_t xpub(ctx, zlink::socket_type::xpub);
+        zlink::socket_t xsub(ctx, zlink::socket_type::xsub);
 
         int verbose = 1;
-        assert(xpub.set(ZLINK_XPUB_VERBOSE, verbose) == 0);
+        assert(xpub.set(zlink::socket_option::xpub_verbose, verbose) == 0);
 
         std::string endpoint = endpoint_for(tc, "xpub-xsub");
         assert(xpub.bind(endpoint) == 0);

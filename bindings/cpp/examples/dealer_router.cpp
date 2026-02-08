@@ -5,8 +5,8 @@
 int main()
 {
     zlink::context_t ctx;
-    zlink::socket_t router(ctx, ZLINK_ROUTER);
-    zlink::socket_t dealer(ctx, ZLINK_DEALER);
+    zlink::socket_t router(ctx, zlink::socket_type::router);
+    zlink::socket_t dealer(ctx, zlink::socket_type::dealer);
 
     const char *endpoint = "inproc://cpp-dealer-router";
     if (router.bind(endpoint) != 0)
@@ -29,7 +29,7 @@ int main()
         return 1;
 
     // Echo back
-    if (router.send(rid, ZLINK_SNDMORE) < 0)
+    if (router.send(rid, zlink::send_flag::sndmore) < 0)
         return 1;
     if (router.send(msg) < 0)
         return 1;

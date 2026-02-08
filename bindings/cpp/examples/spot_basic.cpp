@@ -21,7 +21,7 @@ int main()
 
     zlink::msgv_t recv_parts;
     std::string topic;
-    if (spot.recv(recv_parts, topic, 0) != 0)
+    if (spot.recv(recv_parts, topic) != 0)
         return 1;
 
     return 0;

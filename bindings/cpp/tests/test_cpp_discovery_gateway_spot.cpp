@@ -21,7 +21,7 @@ int main()
         assert(registry.start() == 0);
         sleep_ms(50);
 
-        zlink::discovery_t discovery(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+        zlink::discovery_t discovery(ctx, zlink::service_type::gateway);
         assert(discovery.connect_registry(reg_pub.c_str()) == 0);
         assert(discovery.subscribe(service) == 0);
 
@@ -60,20 +60,20 @@ int main()
         }
         assert(got);
 
-        assert(recv_router.send(rid, ZLINK_SNDMORE) >= 0);
+        assert(recv_router.send(rid, zlink::send_flag::sndmore) >= 0);
         const char *reply = "world";
         assert(recv_router.send(reply, 5) == 5);
 
         zlink::msgv_t out;
         std::string svc_out;
-        const int recv_rc = gateway.recv(out, svc_out, ZLINK_DONTWAIT);
+        const int recv_rc = gateway.recv(out, svc_out, zlink::recv_flag::dontwait);
         if (recv_rc != 0) {
             // retry with simple loop
             const auto deadline =
               std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
             while (recv_rc != 0 && std::chrono::steady_clock::now() < deadline) {
                 sleep_ms(5);
-                if (gateway.recv(out, svc_out, ZLINK_DONTWAIT) == 0)
+                if (gateway.recv(out, svc_out, zlink::recv_flag::dontwait) == 0)
                     break;
             }
         }
@@ -113,7 +113,7 @@ int main()
         std::string topic_out;
         const auto deadline =
           std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
-        while (spot.recv(spot_out, topic_out, ZLINK_DONTWAIT) != 0) {
+        while (spot.recv(spot_out, topic_out, zlink::recv_flag::dontwait) != 0) {
             if (std::chrono::steady_clock::now() >= deadline)
                 break;
             sleep_ms(5);

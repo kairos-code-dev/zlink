@@ -12,8 +12,8 @@ int main()
         if (!transport_supported(tc))
             continue;
 
-        zlink::socket_t server(ctx, ZLINK_PAIR);
-        zlink::socket_t client(ctx, ZLINK_PAIR);
+        zlink::socket_t server(ctx, zlink::socket_type::pair);
+        zlink::socket_t client(ctx, zlink::socket_type::pair);
 
         std::string endpoint = endpoint_for(tc, "pair");
         assert(server.bind(endpoint) == 0);

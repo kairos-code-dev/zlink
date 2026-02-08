@@ -12,8 +12,8 @@ int main()
         if (!transport_supported(tc))
             continue;
 
-        zlink::socket_t a(ctx, ZLINK_PAIR);
-        zlink::socket_t b(ctx, ZLINK_PAIR);
+        zlink::socket_t a(ctx, zlink::socket_type::pair);
+        zlink::socket_t b(ctx, zlink::socket_type::pair);
 
         std::string endpoint = endpoint_for(tc, "multipart");
         assert(a.bind(endpoint) == 0);
@@ -22,8 +22,8 @@ int main()
         assert(b.connect(endpoint) == 0);
         sleep_ms(50);
 
-        assert(b.send("a", 1, ZLINK_SNDMORE) == 1);
-        assert(b.send("b", 1, 0) == 1);
+        assert(b.send("a", 1, zlink::send_flag::sndmore) == 1);
+        assert(b.send("b", 1, zlink::send_flag::none) == 1);
 
         zlink::message_t part1;
         zlink::message_t part2;

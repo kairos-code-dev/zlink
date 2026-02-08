@@ -24,6 +24,230 @@ namespace zlink
 #define ZLINK_CPP_NODISCARD
 #endif
 
+// --- Enum types ---
+
+enum class socket_type : int
+{
+    pair = ZLINK_PAIR,
+    pub = ZLINK_PUB,
+    sub = ZLINK_SUB,
+    dealer = ZLINK_DEALER,
+    router = ZLINK_ROUTER,
+    xpub = ZLINK_XPUB,
+    xsub = ZLINK_XSUB,
+    stream = ZLINK_STREAM
+};
+
+enum class context_option : int
+{
+    io_threads = ZLINK_IO_THREADS,
+    max_sockets = ZLINK_MAX_SOCKETS,
+    socket_limit = ZLINK_SOCKET_LIMIT,
+    thread_priority = ZLINK_THREAD_PRIORITY,
+    thread_sched_policy = ZLINK_THREAD_SCHED_POLICY,
+    max_msgsz = ZLINK_MAX_MSGSZ,
+    msg_t_size = ZLINK_MSG_T_SIZE,
+    thread_affinity_cpu_add = ZLINK_THREAD_AFFINITY_CPU_ADD,
+    thread_affinity_cpu_remove = ZLINK_THREAD_AFFINITY_CPU_REMOVE,
+    thread_name_prefix = ZLINK_THREAD_NAME_PREFIX
+};
+
+enum class socket_option : int
+{
+    affinity = ZLINK_AFFINITY,
+    routing_id = ZLINK_ROUTING_ID,
+    subscribe = ZLINK_SUBSCRIBE,
+    unsubscribe = ZLINK_UNSUBSCRIBE,
+    rate = ZLINK_RATE,
+    recovery_ivl = ZLINK_RECOVERY_IVL,
+    sndbuf = ZLINK_SNDBUF,
+    rcvbuf = ZLINK_RCVBUF,
+    rcvmore = ZLINK_RCVMORE,
+    fd = ZLINK_FD,
+    events = ZLINK_EVENTS,
+    type = ZLINK_TYPE,
+    linger = ZLINK_LINGER,
+    reconnect_ivl = ZLINK_RECONNECT_IVL,
+    backlog = ZLINK_BACKLOG,
+    reconnect_ivl_max = ZLINK_RECONNECT_IVL_MAX,
+    maxmsgsize = ZLINK_MAXMSGSIZE,
+    sndhwm = ZLINK_SNDHWM,
+    rcvhwm = ZLINK_RCVHWM,
+    multicast_hops = ZLINK_MULTICAST_HOPS,
+    rcvtimeo = ZLINK_RCVTIMEO,
+    sndtimeo = ZLINK_SNDTIMEO,
+    last_endpoint = ZLINK_LAST_ENDPOINT,
+    router_mandatory = ZLINK_ROUTER_MANDATORY,
+    tcp_keepalive = ZLINK_TCP_KEEPALIVE,
+    tcp_keepalive_cnt = ZLINK_TCP_KEEPALIVE_CNT,
+    tcp_keepalive_idle = ZLINK_TCP_KEEPALIVE_IDLE,
+    tcp_keepalive_intvl = ZLINK_TCP_KEEPALIVE_INTVL,
+    immediate = ZLINK_IMMEDIATE,
+    xpub_verbose = ZLINK_XPUB_VERBOSE,
+    ipv6 = ZLINK_IPV6,
+    probe_router = ZLINK_PROBE_ROUTER,
+    conflate = ZLINK_CONFLATE,
+    router_handover = ZLINK_ROUTER_HANDOVER,
+    tos = ZLINK_TOS,
+    connect_routing_id = ZLINK_CONNECT_ROUTING_ID,
+    handshake_ivl = ZLINK_HANDSHAKE_IVL,
+    xpub_nodrop = ZLINK_XPUB_NODROP,
+    blocky = ZLINK_BLOCKY,
+    xpub_manual = ZLINK_XPUB_MANUAL,
+    xpub_welcome_msg = ZLINK_XPUB_WELCOME_MSG,
+    invert_matching = ZLINK_INVERT_MATCHING,
+    heartbeat_ivl = ZLINK_HEARTBEAT_IVL,
+    heartbeat_ttl = ZLINK_HEARTBEAT_TTL,
+    heartbeat_timeout = ZLINK_HEARTBEAT_TIMEOUT,
+    xpub_verboser = ZLINK_XPUB_VERBOSER,
+    connect_timeout = ZLINK_CONNECT_TIMEOUT,
+    tcp_maxrt = ZLINK_TCP_MAXRT,
+    multicast_maxtpdu = ZLINK_MULTICAST_MAXTPDU,
+    use_fd = ZLINK_USE_FD,
+    request_timeout = ZLINK_REQUEST_TIMEOUT,
+    request_correlate = ZLINK_REQUEST_CORRELATE,
+    bindtodevice = ZLINK_BINDTODEVICE,
+    tls_cert = ZLINK_TLS_CERT,
+    tls_key = ZLINK_TLS_KEY,
+    tls_ca = ZLINK_TLS_CA,
+    tls_verify = ZLINK_TLS_VERIFY,
+    tls_require_client_cert = ZLINK_TLS_REQUIRE_CLIENT_CERT,
+    tls_hostname = ZLINK_TLS_HOSTNAME,
+    tls_trust_system = ZLINK_TLS_TRUST_SYSTEM,
+    tls_password = ZLINK_TLS_PASSWORD,
+    xpub_manual_last_value = ZLINK_XPUB_MANUAL_LAST_VALUE,
+    only_first_subscribe = ZLINK_ONLY_FIRST_SUBSCRIBE,
+    topics_count = ZLINK_TOPICS_COUNT,
+    zmp_metadata = ZLINK_ZMP_METADATA
+};
+
+enum class send_flag : int
+{
+    none = 0,
+    dontwait = ZLINK_DONTWAIT,
+    sndmore = ZLINK_SNDMORE
+};
+
+inline send_flag operator| (send_flag a, send_flag b)
+{
+    return static_cast<send_flag> (static_cast<int> (a) | static_cast<int> (b));
+}
+
+enum class recv_flag : int
+{
+    none = 0,
+    dontwait = ZLINK_DONTWAIT
+};
+
+inline recv_flag operator| (recv_flag a, recv_flag b)
+{
+    return static_cast<recv_flag> (static_cast<int> (a) | static_cast<int> (b));
+}
+
+enum class monitor_event : int
+{
+    connected = ZLINK_EVENT_CONNECTED,
+    connect_delayed = ZLINK_EVENT_CONNECT_DELAYED,
+    connect_retried = ZLINK_EVENT_CONNECT_RETRIED,
+    listening = ZLINK_EVENT_LISTENING,
+    bind_failed = ZLINK_EVENT_BIND_FAILED,
+    accepted = ZLINK_EVENT_ACCEPTED,
+    accept_failed = ZLINK_EVENT_ACCEPT_FAILED,
+    closed = ZLINK_EVENT_CLOSED,
+    close_failed = ZLINK_EVENT_CLOSE_FAILED,
+    disconnected = ZLINK_EVENT_DISCONNECTED,
+    monitor_stopped = ZLINK_EVENT_MONITOR_STOPPED,
+    handshake_failed_no_detail = ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL,
+    connection_ready = ZLINK_EVENT_CONNECTION_READY,
+    handshake_failed_protocol = ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL,
+    handshake_failed_auth = ZLINK_EVENT_HANDSHAKE_FAILED_AUTH,
+    all = ZLINK_EVENT_ALL
+};
+
+inline monitor_event operator| (monitor_event a, monitor_event b)
+{
+    return static_cast<monitor_event> (static_cast<int> (a) | static_cast<int> (b));
+}
+
+enum class disconnect_reason : int
+{
+    unknown = ZLINK_DISCONNECT_UNKNOWN,
+    local = ZLINK_DISCONNECT_LOCAL,
+    remote = ZLINK_DISCONNECT_REMOTE,
+    handshake_failed = ZLINK_DISCONNECT_HANDSHAKE_FAILED,
+    transport_error = ZLINK_DISCONNECT_TRANSPORT_ERROR,
+    ctx_term = ZLINK_DISCONNECT_CTX_TERM
+};
+
+enum class poll_event : int
+{
+    pollin = ZLINK_POLLIN,
+    pollout = ZLINK_POLLOUT,
+    pollerr = ZLINK_POLLERR,
+    pollpri = ZLINK_POLLPRI
+};
+
+inline poll_event operator| (poll_event a, poll_event b)
+{
+    return static_cast<poll_event> (static_cast<int> (a) | static_cast<int> (b));
+}
+
+enum class service_type : int
+{
+    gateway = ZLINK_SERVICE_TYPE_GATEWAY,
+    spot = ZLINK_SERVICE_TYPE_SPOT
+};
+
+enum class gateway_lb_strategy : int
+{
+    round_robin = ZLINK_GATEWAY_LB_ROUND_ROBIN,
+    weighted = ZLINK_GATEWAY_LB_WEIGHTED
+};
+
+enum class spot_topic_mode : int
+{
+    queue = ZLINK_SPOT_TOPIC_QUEUE,
+    ringbuffer = ZLINK_SPOT_TOPIC_RINGBUFFER
+};
+
+enum class registry_socket_role : int
+{
+    pub = ZLINK_REGISTRY_SOCKET_PUB,
+    router = ZLINK_REGISTRY_SOCKET_ROUTER,
+    peer_sub = ZLINK_REGISTRY_SOCKET_PEER_SUB
+};
+
+enum class discovery_socket_role : int
+{
+    sub = ZLINK_DISCOVERY_SOCKET_SUB
+};
+
+enum class gateway_socket_role : int
+{
+    router = ZLINK_GATEWAY_SOCKET_ROUTER
+};
+
+enum class receiver_socket_role : int
+{
+    router = ZLINK_RECEIVER_SOCKET_ROUTER,
+    dealer = ZLINK_RECEIVER_SOCKET_DEALER
+};
+
+enum class spot_node_socket_role : int
+{
+    pub = ZLINK_SPOT_NODE_SOCKET_PUB,
+    sub = ZLINK_SPOT_NODE_SOCKET_SUB,
+    dealer = ZLINK_SPOT_NODE_SOCKET_DEALER
+};
+
+enum class spot_socket_role : int
+{
+    pub = ZLINK_SPOT_SOCKET_PUB,
+    sub = ZLINK_SPOT_SOCKET_SUB
+};
+
+// --- End enum types ---
+
 class error_t
 #if defined(ZLINK_CPP_EXCEPTIONS)
   : public std::exception
@@ -206,16 +430,16 @@ class context_t
 
     void *handle () noexcept { return _ctx; }
 
-    int set (int option_, int value_)
+    int set (context_option option_, int value_)
     {
-        return _ctx ? zlink_ctx_set (_ctx, option_, value_) : -1;
+        return _ctx ? zlink_ctx_set (_ctx, static_cast<int> (option_), value_) : -1;
     }
 
-    int get (int option_, int *value_) const
+    int get (context_option option_, int *value_) const
     {
         if (!_ctx || !value_)
             return -1;
-        *value_ = zlink_ctx_get (_ctx, option_);
+        *value_ = zlink_ctx_get (_ctx, static_cast<int> (option_));
         return 0;
     }
 
@@ -228,8 +452,8 @@ class socket_t
   public:
     socket_t () : _socket (NULL), _own (false) {}
 
-    socket_t (context_t &ctx_, int type_)
-        : _socket (zlink_socket (ctx_.handle (), type_)), _own (true)
+    socket_t (context_t &ctx_, socket_type type_)
+        : _socket (zlink_socket (ctx_.handle (), static_cast<int> (type_))), _own (true)
     {
     }
 
@@ -308,92 +532,92 @@ class socket_t
         return rc;
     }
 
-    int send (const void *buf_, size_t len_, int flags_ = 0)
+    int send (const void *buf_, size_t len_, send_flag flags_ = send_flag::none)
     {
-        return zlink_send (_socket, buf_, len_, flags_);
+        return zlink_send (_socket, buf_, len_, static_cast<int> (flags_));
     }
 
-    int send (const std::string &s_, int flags_ = 0)
+    int send (const std::string &s_, send_flag flags_ = send_flag::none)
     {
-        return zlink_send (_socket, s_.data (), s_.size (), flags_);
+        return zlink_send (_socket, s_.data (), s_.size (), static_cast<int> (flags_));
     }
 
-    int recv (void *buf_, size_t len_, int flags_ = 0)
+    int recv (void *buf_, size_t len_, recv_flag flags_ = recv_flag::none)
     {
-        return zlink_recv (_socket, buf_, len_, flags_);
+        return zlink_recv (_socket, buf_, len_, static_cast<int> (flags_));
     }
 
-    int send (message_t &msg_, int flags_ = 0)
+    int send (message_t &msg_, send_flag flags_ = send_flag::none)
     {
-        const int rc = zlink_msg_send (msg_.handle (), _socket, flags_);
+        const int rc = zlink_msg_send (msg_.handle (), _socket, static_cast<int> (flags_));
         if (rc >= 0)
             msg_.close ();
         return rc;
     }
 
-    int send_const (const void *buf_, size_t len_, int flags_ = 0)
+    int send_const (const void *buf_, size_t len_, send_flag flags_ = send_flag::none)
     {
-        return zlink_send_const (_socket, buf_, len_, flags_);
+        return zlink_send_const (_socket, buf_, len_, static_cast<int> (flags_));
     }
 
-    int recv (message_t &msg_, int flags_ = 0)
+    int recv (message_t &msg_, recv_flag flags_ = recv_flag::none)
     {
         if (!msg_.valid () && msg_.init () != 0)
             return -1;
-        return zlink_msg_recv (msg_.handle (), _socket, flags_);
+        return zlink_msg_recv (msg_.handle (), _socket, static_cast<int> (flags_));
     }
 
-    int set (int option_, const void *optval_, size_t optlen_)
+    int set (socket_option option_, const void *optval_, size_t optlen_)
     {
-        return zlink_setsockopt (_socket, option_, optval_, optlen_);
+        return zlink_setsockopt (_socket, static_cast<int> (option_), optval_, optlen_);
     }
 
-    int get (int option_, void *optval_, size_t *optlen_) const
+    int get (socket_option option_, void *optval_, size_t *optlen_) const
     {
-        return zlink_getsockopt (_socket, option_, optval_, optlen_);
+        return zlink_getsockopt (_socket, static_cast<int> (option_), optval_, optlen_);
     }
 
-    int set (int option_, int value_)
+    int set (socket_option option_, int value_)
     {
-        return zlink_setsockopt (_socket, option_, &value_, sizeof (value_));
+        return zlink_setsockopt (_socket, static_cast<int> (option_), &value_, sizeof (value_));
     }
 
-    int get (int option_, int *value_) const
+    int get (socket_option option_, int *value_) const
     {
         if (!value_)
             return -1;
         size_t len = sizeof (*value_);
-        return zlink_getsockopt (_socket, option_, value_, &len);
+        return zlink_getsockopt (_socket, static_cast<int> (option_), value_, &len);
     }
 
-    int set (int option_, const std::string &value_)
+    int set (socket_option option_, const std::string &value_)
     {
-        return zlink_setsockopt (_socket, option_, value_.data (), value_.size ());
+        return zlink_setsockopt (_socket, static_cast<int> (option_), value_.data (), value_.size ());
     }
 
-    int get (int option_, std::string &value_) const
+    int get (socket_option option_, std::string &value_) const
     {
         size_t len = 256;
         std::vector<char> buf (len);
-        if (zlink_getsockopt (_socket, option_, buf.data (), &len) != 0)
+        if (zlink_getsockopt (_socket, static_cast<int> (option_), buf.data (), &len) != 0)
             return -1;
         if (len > buf.size ()) {
             buf.resize (len);
-            if (zlink_getsockopt (_socket, option_, buf.data (), &len) != 0)
+            if (zlink_getsockopt (_socket, static_cast<int> (option_), buf.data (), &len) != 0)
                 return -1;
         }
         value_.assign (buf.data (), len);
         return 0;
     }
 
-    int monitor (const char *addr_, int events_)
+    int monitor (const char *addr_, monitor_event events_)
     {
-        return zlink_socket_monitor (_socket, addr_, events_);
+        return zlink_socket_monitor (_socket, addr_, static_cast<int> (events_));
     }
 
-    socket_t monitor_open (int events_)
+    socket_t monitor_open (monitor_event events_)
     {
-        void *m = zlink_socket_monitor_open (_socket, events_);
+        void *m = zlink_socket_monitor_open (_socket, static_cast<int> (events_));
         return socket_t::adopt (m);
     }
 
@@ -413,23 +637,23 @@ struct poll_event_t
 class poller_t
 {
   public:
-    int add (socket_t &socket_, short events_, void *user_ = NULL)
+    int add (socket_t &socket_, poll_event events_, void *user_ = NULL)
     {
         item_t item;
         item.socket = &socket_;
         item.fd = 0;
-        item.events = events_;
+        item.events = static_cast<short> (events_);
         item.user = user_;
         _items.push_back (item);
         return 0;
     }
 
-    int add (zlink_fd_t fd_, short events_, void *user_ = NULL)
+    int add (zlink_fd_t fd_, poll_event events_, void *user_ = NULL)
     {
         item_t item;
         item.socket = NULL;
         item.fd = fd_;
-        item.events = events_;
+        item.events = static_cast<short> (events_);
         item.user = user_;
         _items.push_back (item);
         return 0;
@@ -568,9 +792,9 @@ class monitor_socket_t
   public:
     explicit monitor_socket_t (socket_t &&sock_) : _sock (std::move (sock_)) {}
 
-    int recv (zlink_monitor_event_t &event_, int flags_ = 0)
+    int recv (zlink_monitor_event_t &event_, recv_flag flags_ = recv_flag::none)
     {
-        return zlink_monitor_recv (_sock.handle (), &event_, flags_);
+        return zlink_monitor_recv (_sock.handle (), &event_, static_cast<int> (flags_));
     }
 
   private:
@@ -611,9 +835,9 @@ class registry_t
     {
         return zlink_registry_set_broadcast_interval (_reg, ivl_ms_);
     }
-    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    int set_sockopt (registry_socket_role role_, socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_registry_setsockopt (_reg, role_, option_, value_, len_);
+        return zlink_registry_setsockopt (_reg, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
     }
     int start () { return zlink_registry_start (_reg); }
 
@@ -635,8 +859,8 @@ class registry_t
 class discovery_t
 {
   public:
-    discovery_t (context_t &ctx_, uint16_t service_type_)
-        : _disc (zlink_discovery_new_typed (ctx_.handle (), service_type_))
+    discovery_t (context_t &ctx_, service_type service_type_)
+        : _disc (zlink_discovery_new_typed (ctx_.handle (), static_cast<uint16_t> (service_type_)))
     {
     }
     ~discovery_t () { destroy (); }
@@ -660,9 +884,9 @@ class discovery_t
     int unsubscribe (const char *service_) { return zlink_discovery_unsubscribe (_disc, service_); }
     int receiver_count (const char *service_) { return zlink_discovery_receiver_count (_disc, service_); }
     int service_available (const char *service_) { return zlink_discovery_service_available (_disc, service_); }
-    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    int set_sockopt (discovery_socket_role role_, socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_discovery_setsockopt (_disc, role_, option_, value_, len_);
+        return zlink_discovery_setsockopt (_disc, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
     }
 
     int get_receivers (const char *service_, zlink_receiver_info_t *providers_, size_t *count_)
@@ -725,26 +949,26 @@ class gateway_t
         return zlink_gateway_send (_gw, service_, tmp.data (), tmp.size (), 0);
     }
 
-    int recv (msgv_t &out_, std::string &service_, int flags_ = 0)
+    int recv (msgv_t &out_, std::string &service_, recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
         char name[256];
-        const int rc = zlink_gateway_recv (_gw, &parts, &count, flags_, name);
+        const int rc = zlink_gateway_recv (_gw, &parts, &count, static_cast<int> (flags_), name);
         if (rc != 0)
             return rc;
         out_.adopt (parts, count);
         service_.assign (name);
         return 0;
     }
-    int set_sockopt (int option_, const void *value_, size_t len_)
+    int set_sockopt (socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_gateway_setsockopt (_gw, option_, value_, len_);
+        return zlink_gateway_setsockopt (_gw, static_cast<int> (option_), value_, len_);
     }
 
-    int set_lb_strategy (const char *service_, int strategy_)
+    int set_lb_strategy (const char *service_, gateway_lb_strategy strategy_)
     {
-        return zlink_gateway_set_lb_strategy (_gw, service_, strategy_);
+        return zlink_gateway_set_lb_strategy (_gw, service_, static_cast<int> (strategy_));
     }
 
     int set_tls_client (const char *ca_, const char *hostname_, int trust_)
@@ -801,9 +1025,9 @@ class receiver_t
     {
         return zlink_receiver_connect_registry (_prov, endpoint_);
     }
-    int set_sockopt (int role_, int option_, const void *value_, size_t len_)
+    int set_sockopt (receiver_socket_role role_, socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_receiver_setsockopt (_prov, role_, option_, value_, len_);
+        return zlink_receiver_setsockopt (_prov, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
     }
     int register_service (const char *service_, const char *advertise_, uint32_t weight_)
     {
@@ -935,9 +1159,9 @@ class spot_t
     spot_t (const spot_t &) = delete;
     spot_t &operator= (const spot_t &) = delete;
 
-    int topic_create (const char *topic_, int mode_)
+    int topic_create (const char *topic_, spot_topic_mode mode_)
     {
-        return zlink_spot_topic_create (_spot, topic_, mode_);
+        return zlink_spot_topic_create (_spot, topic_, static_cast<int> (mode_));
     }
     int topic_destroy (const char *topic_) { return zlink_spot_topic_destroy (_spot, topic_); }
 
@@ -964,14 +1188,14 @@ class spot_t
         return zlink_spot_unsubscribe (_spot, topic_or_pattern_);
     }
 
-    int recv (msgv_t &out_, std::string &topic_, int flags_ = 0)
+    int recv (msgv_t &out_, std::string &topic_, recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
         char topic_buf[256];
         size_t topic_len = sizeof (topic_buf);
         const int rc =
-          zlink_spot_recv (_spot, &parts, &count, flags_, topic_buf, &topic_len);
+          zlink_spot_recv (_spot, &parts, &count, static_cast<int> (flags_), topic_buf, &topic_len);
         if (rc != 0)
             return rc;
         out_.adopt (parts, count);

@@ -1,6 +1,7 @@
 package io.ulalax.zlink.integration;
 
 import io.ulalax.zlink.Context;
+import io.ulalax.zlink.SendFlag;
 import io.ulalax.zlink.Socket;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ public class MultipartScenarioTest {
                         sleep(50);
                         TestTransports.sendWithRetry(b, "a".getBytes(),
                             TestTransports.ZLINK_SNDMORE, 2000);
-                        TestTransports.sendWithRetry(b, "b".getBytes(), 0, 2000);
+                        TestTransports.sendWithRetry(b, "b".getBytes(), SendFlag.NONE, 2000);
                         byte[] p1 = TestTransports.recvWithTimeout(a, 16, 2000);
                         byte[] p2 = TestTransports.recvWithTimeout(a, 16, 2000);
                         assertEquals("a", new String(p1).trim());

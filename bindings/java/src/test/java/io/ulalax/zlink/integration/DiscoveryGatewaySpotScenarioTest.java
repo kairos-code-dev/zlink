@@ -22,7 +22,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                         registry.setEndpoints(regPub, regRouter);
                         registry.start();
 
-                        try (Discovery discovery = new Discovery(ctx, Discovery.SERVICE_TYPE_GATEWAY)) {
+                        try (Discovery discovery = new Discovery(ctx, ServiceType.GATEWAY)) {
                             discovery.connectRegistry(regPub);
                             discovery.subscribe("svc");
 
@@ -49,7 +49,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertTrue(TestTransports.waitUntil(
                                       () -> gateway.connectionCount("svc") > 0, 5000));
                                     TestTransports.gatewaySendWithRetry(
-                                      gateway, "svc", "hello".getBytes(), 0, 5000);
+                                      gateway, "svc", "hello".getBytes(), SendFlag.NONE, 5000);
 
                                     byte[] rid = TestTransports.recvWithTimeout(providerRouter, 256, 2000);
                                     byte[] payload = new byte[0];
@@ -82,7 +82,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     sleep(100);
                                     spot.subscribe("topic");
                                     spot.publish("topic",
-                                        new Message[]{Message.fromBytes("spot-msg".getBytes())}, 0);
+                                        new Message[]{Message.fromBytes("spot-msg".getBytes())}, SendFlag.NONE);
                                     Spot.SpotMessage spotMsg =
                                       TestTransports.spotReceiveWithTimeout(spot, 5000);
                                     assertEquals("topic", spotMsg.topicId());

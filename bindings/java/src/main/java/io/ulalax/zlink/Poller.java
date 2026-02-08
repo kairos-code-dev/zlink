@@ -11,8 +11,16 @@ public final class Poller {
         items.add(new PollItem(socket, 0, events));
     }
 
+    public void add(Socket socket, PollEventType... events) {
+        items.add(new PollItem(socket, 0, PollEventType.combine(events)));
+    }
+
     public void addFd(int fd, int events) {
         items.add(new PollItem(null, fd, events));
+    }
+
+    public void addFd(int fd, PollEventType... events) {
+        items.add(new PollItem(null, fd, PollEventType.combine(events)));
     }
 
     public List<PollEvent> poll(int timeoutMs) {

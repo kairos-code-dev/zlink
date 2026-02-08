@@ -8,13 +8,10 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 
 public final class Discovery implements AutoCloseable {
-    public static final short SERVICE_TYPE_GATEWAY = 1;
-    public static final short SERVICE_TYPE_SPOT = 2;
-
     private MemorySegment handle;
 
-    public Discovery(Context ctx, short serviceType) {
-        this.handle = Native.discoveryNew(ctx.handle(), serviceType);
+    public Discovery(Context ctx, ServiceType serviceType) {
+        this.handle = Native.discoveryNew(ctx.handle(), (short) serviceType.getValue());
         if (handle == null || handle.address() == 0)
             throw new RuntimeException("zlink_discovery_new_typed failed");
     }
@@ -48,21 +45,21 @@ public final class Discovery implements AutoCloseable {
         }
     }
 
-    public void setSockOpt(int role, int option, byte[] value) {
+    public void setSockOpt(DiscoverySocketRole role, SocketOption option, byte[] value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(value.length);
             MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
-            int rc = Native.discoverySetSockOpt(handle, role, option, buf, value.length);
+            int rc = Native.discoverySetSockOpt(handle, role.getValue(), option.getValue(), buf, value.length);
             if (rc != 0)
                 throw new RuntimeException("zlink_discovery_setsockopt failed");
         }
     }
 
-    public void setSockOpt(int role, int option, int value) {
+    public void setSockOpt(DiscoverySocketRole role, SocketOption option, int value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
             buf.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.discoverySetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.discoverySetSockOpt(handle, role.getValue(), option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
                 throw new RuntimeException("zlink_discovery_setsockopt failed");
         }

@@ -17,9 +17,9 @@ public final class Spot implements AutoCloseable {
             throw new RuntimeException("zlink_spot_new failed");
     }
 
-    public void topicCreate(String topicId, int mode) {
+    public void topicCreate(String topicId, SpotTopicMode mode) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotTopicCreate(handle, NativeHelpers.toCString(arena, topicId), mode);
+            int rc = Native.spotTopicCreate(handle, NativeHelpers.toCString(arena, topicId), mode.getValue());
             if (rc != 0)
                 throw new RuntimeException("zlink_spot_topic_create failed");
         }
@@ -33,7 +33,7 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public void publish(String topicId, Message[] parts, int flags) {
+    public void publish(String topicId, Message[] parts, SendFlag flags) {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
         try (Arena arena = Arena.ofConfined()) {
@@ -44,7 +44,7 @@ public final class Spot implements AutoCloseable {
                 NativeMsg.msgInit(dest);
                 NativeMsg.msgCopy(dest, parts[i].handle());
             }
-            int rc = Native.spotPublish(handle, NativeHelpers.toCString(arena, topicId), vec, parts.length, flags);
+            int rc = Native.spotPublish(handle, NativeHelpers.toCString(arena, topicId), vec, parts.length, flags.getValue());
             if (rc != 0) {
                 for (int i = 0; i < parts.length; i++) {
                     MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
@@ -80,14 +80,14 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public SpotMessage recv(int flags) {
+    public SpotMessage recv(ReceiveFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment topic = arena.allocate(256);
             MemorySegment topicLen = arena.allocate(ValueLayout.JAVA_LONG);
             topicLen.set(ValueLayout.JAVA_LONG, 0, 256);
-            int rc = Native.spotRecv(handle, partsPtr, count, flags, topic, topicLen);
+            int rc = Native.spotRecv(handle, partsPtr, count, flags.getValue(), topic, topicLen);
             if (rc != 0)
                 throw new RuntimeException("zlink_spot_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);

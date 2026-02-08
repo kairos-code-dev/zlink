@@ -25,7 +25,7 @@ public final class Gateway implements AutoCloseable {
             throw new RuntimeException("zlink_gateway_new failed");
     }
 
-    public void send(String serviceName, Message[] parts, int flags) {
+    public void send(String serviceName, Message[] parts, SendFlag flags) {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
         try (Arena arena = Arena.ofConfined()) {
@@ -36,7 +36,7 @@ public final class Gateway implements AutoCloseable {
                 NativeMsg.msgInit(dest);
                 NativeMsg.msgCopy(dest, parts[i].handle());
             }
-            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags);
+            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags.getValue());
             if (rc != 0) {
                 for (int i = 0; i < parts.length; i++) {
                     MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
@@ -48,12 +48,12 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public GatewayMessage recv(int flags) {
+    public GatewayMessage recv(ReceiveFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             MemorySegment service = arena.allocate(256);
-            int rc = Native.gatewayRecv(handle, partsPtr, count, flags, service);
+            int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
@@ -64,9 +64,9 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void setLoadBalancing(String serviceName, int strategy) {
+    public void setLoadBalancing(String serviceName, GatewayLbStrategy strategy) {
         try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.gatewaySetLbStrategy(handle, NativeHelpers.toCString(arena, serviceName), strategy);
+            int rc = Native.gatewaySetLbStrategy(handle, NativeHelpers.toCString(arena, serviceName), strategy.getValue());
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_set_lb_strategy failed");
         }
@@ -90,21 +90,21 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    public void setSockOpt(int option, byte[] value) {
+    public void setSockOpt(SocketOption option, byte[] value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(value.length);
             MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
-            int rc = Native.gatewaySetSockOpt(handle, option, buf, value.length);
+            int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf, value.length);
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_setsockopt failed");
         }
     }
 
-    public void setSockOpt(int option, int value) {
+    public void setSockOpt(SocketOption option, int value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
             buf.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.gatewaySetSockOpt(handle, option, buf, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_setsockopt failed");
         }

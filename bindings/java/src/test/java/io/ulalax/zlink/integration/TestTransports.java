@@ -1,9 +1,6 @@
 package io.ulalax.zlink.integration;
 
-import io.ulalax.zlink.Context;
-import io.ulalax.zlink.Gateway;
-import io.ulalax.zlink.Socket;
-import io.ulalax.zlink.Spot;
+import io.ulalax.zlink.*;
 
 import java.net.ServerSocket;
 import java.time.Instant;
@@ -12,18 +9,18 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 final class TestTransports {
-    static final int ZLINK_SUBSCRIBE = 6;
-    static final int ZLINK_XPUB_VERBOSE = 40;
-    static final int ZLINK_DONTWAIT = 1;
-    static final int ZLINK_SNDMORE = 2;
+    static final SocketOption ZLINK_SUBSCRIBE = SocketOption.SUBSCRIBE;
+    static final SocketOption ZLINK_XPUB_VERBOSE = SocketOption.XPUB_VERBOSE;
+    static final ReceiveFlag ZLINK_DONTWAIT = ReceiveFlag.DONTWAIT;
+    static final SendFlag ZLINK_SNDMORE = SendFlag.SNDMORE;
 
-    static final int ZLINK_PAIR = 0;
-    static final int ZLINK_PUB = 1;
-    static final int ZLINK_SUB = 2;
-    static final int ZLINK_DEALER = 5;
-    static final int ZLINK_ROUTER = 6;
-    static final int ZLINK_XPUB = 9;
-    static final int ZLINK_XSUB = 10;
+    static final SocketType ZLINK_PAIR = SocketType.PAIR;
+    static final SocketType ZLINK_PUB = SocketType.PUB;
+    static final SocketType ZLINK_SUB = SocketType.SUB;
+    static final SocketType ZLINK_DEALER = SocketType.DEALER;
+    static final SocketType ZLINK_ROUTER = SocketType.ROUTER;
+    static final SocketType ZLINK_XPUB = SocketType.XPUB;
+    static final SocketType ZLINK_XSUB = SocketType.XSUB;
 
     static class TransportCase {
         final String name;
@@ -76,7 +73,7 @@ final class TestTransports {
         throw new RuntimeException("timeout");
     }
 
-    static void sendWithRetry(Socket socket, byte[] data, int flags, int timeoutMs) {
+    static void sendWithRetry(Socket socket, byte[] data, SendFlag flags, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         RuntimeException last = null;
         while (System.currentTimeMillis() < deadline) {
@@ -94,7 +91,7 @@ final class TestTransports {
     }
 
     static void gatewaySendWithRetry(Gateway gw, String service, byte[] payload,
-      int flags, int timeoutMs) {
+      SendFlag flags, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         RuntimeException last = null;
         while (System.currentTimeMillis() < deadline) {

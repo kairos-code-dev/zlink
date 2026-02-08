@@ -1,6 +1,8 @@
 package io.ulalax.zlink.integration;
 
 import io.ulalax.zlink.Context;
+import io.ulalax.zlink.SendFlag;
+import io.ulalax.zlink.SocketOption;
 import io.ulalax.zlink.Socket;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +21,7 @@ public class PubSubScenarioTest {
                         sub.connect(ep);
                         sub.setSockOpt(TestTransports.ZLINK_SUBSCRIBE, "topic".getBytes());
                         sleep(50);
-                        TestTransports.sendWithRetry(pub, "topic payload".getBytes(), 0, 2000);
+                        TestTransports.sendWithRetry(pub, "topic payload".getBytes(), SendFlag.NONE, 2000);
                         byte[] buf = TestTransports.recvWithTimeout(sub, 64, 2000);
                         String out = new String(buf);
                         assertTrue(out.startsWith("topic"));

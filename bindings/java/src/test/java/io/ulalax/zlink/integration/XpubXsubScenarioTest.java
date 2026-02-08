@@ -1,6 +1,7 @@
 package io.ulalax.zlink.integration;
 
 import io.ulalax.zlink.Context;
+import io.ulalax.zlink.SendFlag;
 import io.ulalax.zlink.Socket;
 import org.junit.jupiter.api.Test;
 
@@ -19,7 +20,7 @@ public class XpubXsubScenarioTest {
                         xpub.bind(ep);
                         xsub.connect(ep);
                         byte[] sub = new byte[]{1, 't', 'o', 'p', 'i', 'c'};
-                        TestTransports.sendWithRetry(xsub, sub, 0, 2000);
+                        TestTransports.sendWithRetry(xsub, sub, SendFlag.NONE, 2000);
                         byte[] msg = TestTransports.recvWithTimeout(xpub, 64, 2000);
                         assertEquals(1, msg[0]);
                     }

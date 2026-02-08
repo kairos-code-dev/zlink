@@ -1,6 +1,7 @@
 package io.ulalax.zlink.integration;
 
 import io.ulalax.zlink.Context;
+import io.ulalax.zlink.SendFlag;
 import io.ulalax.zlink.Socket;
 import org.junit.jupiter.api.Test;
 
@@ -18,12 +19,12 @@ public class DealerRouterScenarioTest {
                         router.bind(ep);
                         dealer.connect(ep);
                         sleep(50);
-                        TestTransports.sendWithRetry(dealer, "hello".getBytes(), 0, 2000);
+                        TestTransports.sendWithRetry(dealer, "hello".getBytes(), SendFlag.NONE, 2000);
                         byte[] rid = TestTransports.recvWithTimeout(router, 256, 2000);
                         byte[] payload = TestTransports.recvWithTimeout(router, 256, 2000);
                         assertEquals("hello", new String(payload).trim());
                         router.send(rid, TestTransports.ZLINK_SNDMORE);
-                        TestTransports.sendWithRetry(router, "world".getBytes(), 0, 2000);
+                        TestTransports.sendWithRetry(router, "world".getBytes(), SendFlag.NONE, 2000);
                         byte[] resp = TestTransports.recvWithTimeout(dealer, 64, 2000);
                         assertEquals("world", new String(resp).trim());
                     }

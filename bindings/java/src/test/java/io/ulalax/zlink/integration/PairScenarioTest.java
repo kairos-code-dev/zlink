@@ -1,6 +1,7 @@
 package io.ulalax.zlink.integration;
 
 import io.ulalax.zlink.Context;
+import io.ulalax.zlink.SendFlag;
 import io.ulalax.zlink.Socket;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +19,7 @@ public class PairScenarioTest {
                         a.bind(ep);
                         b.connect(ep);
                         sleep(50);
-                        TestTransports.sendWithRetry(b, "ping".getBytes(), 0, 2000);
+                        TestTransports.sendWithRetry(b, "ping".getBytes(), SendFlag.NONE, 2000);
                         byte[] out = TestTransports.recvWithTimeout(a, 16, 2000);
                         assertEquals("ping", new String(out, 0, 4));
                     }

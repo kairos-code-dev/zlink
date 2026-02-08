@@ -67,21 +67,21 @@ public class Receiver implements AutoCloseable {
         }
     }
 
-    public void setSockOpt(int role, int option, byte[] value) {
+    public void setSockOpt(ReceiverSocketRole role, SocketOption option, byte[] value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(value.length);
             MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
-            int rc = Native.providerSetSockOpt(handle, role, option, buf, value.length);
+            int rc = Native.providerSetSockOpt(handle, role.getValue(), option.getValue(), buf, value.length);
             if (rc != 0)
                 throw new RuntimeException("zlink_receiver_setsockopt failed");
         }
     }
 
-    public void setSockOpt(int role, int option, int value) {
+    public void setSockOpt(ReceiverSocketRole role, SocketOption option, int value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
             buf.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.providerSetSockOpt(handle, role, option, buf, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.providerSetSockOpt(handle, role.getValue(), option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
             if (rc != 0)
                 throw new RuntimeException("zlink_receiver_setsockopt failed");
         }

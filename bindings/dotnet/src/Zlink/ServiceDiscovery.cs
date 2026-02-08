@@ -61,25 +61,25 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    public unsafe void SetSockOpt(RegistrySocketRole role, SocketOption option, byte[] value)
     {
         EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_registry_setsockopt(_handle, role,
-                option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
+                (int)option, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    public unsafe void SetSockOpt(int role, int option, int value)
+    public unsafe void SetSockOpt(RegistrySocketRole role, SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_registry_setsockopt(_handle, role,
-            option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -147,25 +147,25 @@ public sealed class Discovery : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    public unsafe void SetSockOpt(DiscoverySocketRole role, SocketOption option, byte[] value)
     {
         EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_discovery_setsockopt(_handle, role,
-                option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
+                (int)option, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    public unsafe void SetSockOpt(int role, int option, int value)
+    public unsafe void SetSockOpt(DiscoverySocketRole role, SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, role,
-            option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = NativeMethods.zlink_discovery_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -349,24 +349,24 @@ public sealed class Gateway : IDisposable
         return count;
     }
 
-    public unsafe void SetSockOpt(int option, byte[] value)
+    public unsafe void SetSockOpt(SocketOption option, byte[] value)
     {
         EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_gateway_setsockopt(_handle, option,
+            int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
                 (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    public unsafe void SetSockOpt(int option, int value)
+    public unsafe void SetSockOpt(SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, option,
+        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
             (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
@@ -485,25 +485,25 @@ public sealed class Receiver : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public unsafe void SetSockOpt(int role, int option, byte[] value)
+    public unsafe void SetSockOpt(ReceiverSocketRole role, SocketOption option, byte[] value)
     {
         EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         fixed (byte* ptr = value)
         {
-            int rc = NativeMethods.zlink_receiver_setsockopt(_handle, role,
-                option, (IntPtr)ptr, (nuint)value.Length);
+            int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
+                (int)option, (IntPtr)ptr, (nuint)value.Length);
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    public unsafe void SetSockOpt(int role, int option, int value)
+    public unsafe void SetSockOpt(ReceiverSocketRole role, SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;
-        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, role,
-            option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        int rc = NativeMethods.zlink_receiver_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
     }
 

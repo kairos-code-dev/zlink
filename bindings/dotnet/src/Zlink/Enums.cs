@@ -14,6 +14,89 @@ public enum SocketType
     Stream = 11
 }
 
+public enum ContextOption
+{
+    IoThreads = 1,
+    MaxSockets = 2,
+    SocketLimit = 3,
+    ThreadPriority = 3,
+    ThreadSchedPolicy = 4,
+    MaxMsgSz = 5,
+    MsgTSize = 6,
+    ThreadAffinityCpuAdd = 7,
+    ThreadAffinityCpuRemove = 8,
+    ThreadNamePrefix = 9
+}
+
+public enum SocketOption
+{
+    Affinity = 4,
+    RoutingId = 5,
+    Subscribe = 6,
+    Unsubscribe = 7,
+    Rate = 8,
+    RecoveryIvl = 9,
+    SndBuf = 11,
+    RcvBuf = 12,
+    RcvMore = 13,
+    Fd = 14,
+    Events = 15,
+    Type = 16,
+    Linger = 17,
+    ReconnectIvl = 18,
+    Backlog = 19,
+    ReconnectIvlMax = 21,
+    MaxMsgSize = 22,
+    SndHwm = 23,
+    RcvHwm = 24,
+    MulticastHops = 25,
+    RcvTimeo = 27,
+    SndTimeo = 28,
+    LastEndpoint = 32,
+    RouterMandatory = 33,
+    TcpKeepalive = 34,
+    TcpKeepaliveCnt = 35,
+    TcpKeepaliveIdle = 36,
+    TcpKeepaliveIntvl = 37,
+    Immediate = 39,
+    XPubVerbose = 40,
+    Ipv6 = 42,
+    ProbeRouter = 51,
+    Conflate = 54,
+    RouterHandover = 56,
+    Tos = 57,
+    ConnectRoutingId = 61,
+    HandshakeIvl = 66,
+    XPubNoDrop = 69,
+    Blocky = 70,
+    XPubManual = 71,
+    XPubWelcomeMsg = 72,
+    InvertMatching = 74,
+    HeartbeatIvl = 75,
+    HeartbeatTtl = 76,
+    HeartbeatTimeout = 77,
+    XPubVerboser = 78,
+    ConnectTimeout = 79,
+    TcpMaxRt = 80,
+    MulticastMaxTpdu = 84,
+    UseFd = 89,
+    RequestTimeout = 90,
+    RequestCorrelate = 91,
+    BindToDevice = 92,
+    TlsCert = 95,
+    TlsKey = 96,
+    TlsCa = 97,
+    TlsVerify = 98,
+    TlsRequireClientCert = 99,
+    TlsHostname = 100,
+    TlsTrustSystem = 101,
+    TlsPassword = 102,
+    XPubManualLastValue = 98,
+    OnlyFirstSubscribe = 108,
+    TopicsCount = 116,
+    ZmpMetadata = 117
+}
+
 [Flags]
 public enum SendFlags
 {
@@ -50,6 +133,16 @@ public enum SocketEvent
     All = 0xFFFF
 }
 
+public enum DisconnectReason
+{
+    Unknown = 0,
+    Local = 1,
+    Remote = 2,
+    HandshakeFailed = 3,
+    TransportError = 4,
+    CtxTerm = 5
+}
+
 [Flags]
 public enum PollEvents
 {
@@ -70,4 +163,40 @@ public enum GatewayLoadBalancing
 {
     RoundRobin = 0,
     Weighted = 1
+}
+
+public enum RegistrySocketRole
+{
+    Pub = 1,
+    Router = 2,
+    PeerSub = 3
+}
+
+public enum DiscoverySocketRole
+{
+    Sub = 1
+}
+
+public enum GatewaySocketRole
+{
+    Router = 1
+}
+
+public enum ReceiverSocketRole
+{
+    Router = 1,
+    Dealer = 2
+}
+
+public enum SpotNodeSocketRole
+{
+    Pub = 1,
+    Sub = 2,
+    Dealer = 3
+}
+
+public enum SpotSocketRole
+{
+    Pub = 1,
+    Sub = 2
 }

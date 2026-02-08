@@ -115,20 +115,20 @@ public sealed class Socket : IDisposable
         return msg;
     }
 
-    public void SetOption(int option, int value)
+    public void SetOption(SocketOption option, int value)
     {
         EnsureNotDisposed();
         unsafe
         {
             int tmp = value;
             IntPtr ptr = new IntPtr(&tmp);
-            int rc = NativeMethods.zlink_setsockopt(_handle, option, ptr,
+            int rc = NativeMethods.zlink_setsockopt(_handle, (int)option, ptr,
                 (nuint)sizeof(int));
             ZlinkException.ThrowIfError(rc);
         }
     }
 
-    public void SetOption(int option, byte[] value)
+    public void SetOption(SocketOption option, byte[] value)
     {
         EnsureNotDisposed();
         if (value == null)
@@ -137,14 +137,14 @@ public sealed class Socket : IDisposable
         {
             fixed (byte* ptr = value)
             {
-                int rc = NativeMethods.zlink_setsockopt(_handle, option,
+                int rc = NativeMethods.zlink_setsockopt(_handle, (int)option,
                     (IntPtr)ptr, (nuint)value.Length);
                 ZlinkException.ThrowIfError(rc);
             }
         }
     }
 
-    public void SetOption(int option, string value)
+    public void SetOption(SocketOption option, string value)
     {
         EnsureNotDisposed();
         if (value == null)
@@ -153,7 +153,7 @@ public sealed class Socket : IDisposable
         SetOption(option, buffer);
     }
 
-    public int GetOption(int option)
+    public int GetOption(SocketOption option)
     {
         EnsureNotDisposed();
         unsafe
@@ -161,14 +161,14 @@ public sealed class Socket : IDisposable
             int value = 0;
             nuint size = (nuint)sizeof(int);
             IntPtr ptr = new IntPtr(&value);
-            int rc = NativeMethods.zlink_getsockopt(_handle, option, ptr,
+            int rc = NativeMethods.zlink_getsockopt(_handle, (int)option, ptr,
                 ref size);
             ZlinkException.ThrowIfError(rc);
             return value;
         }
     }
 
-    public byte[] GetOptionBytes(int option, int initialSize = 256)
+    public byte[] GetOptionBytes(SocketOption option, int initialSize = 256)
     {
         EnsureNotDisposed();
         if (initialSize <= 0)
@@ -179,14 +179,14 @@ public sealed class Socket : IDisposable
             fixed (byte* ptr = buffer)
             {
                 nuint size = (nuint)buffer.Length;
-                int rc = NativeMethods.zlink_getsockopt(_handle, option,
+                int rc = NativeMethods.zlink_getsockopt(_handle, (int)option,
                     (IntPtr)ptr, ref size);
                 if (rc != 0 && size > (nuint)buffer.Length)
                 {
                     buffer = new byte[(int)size];
                     fixed (byte* ptr2 = buffer)
                     {
-                        rc = NativeMethods.zlink_getsockopt(_handle, option,
+                        rc = NativeMethods.zlink_getsockopt(_handle, (int)option,
                             (IntPtr)ptr2, ref size);
                     }
                 }
@@ -200,7 +200,7 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public string GetOptionString(int option, int initialSize = 256)
+    public string GetOptionString(SocketOption option, int initialSize = 256)
     {
         byte[] bytes = GetOptionBytes(option, initialSize);
         int len = Array.IndexOf(bytes, (byte)0);

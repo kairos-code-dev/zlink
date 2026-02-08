@@ -20,8 +20,8 @@ class VersionTests(unittest.TestCase):
             ctx = zlink.Context()
         except OSError:
             self.skipTest("zlink native library not found")
-        s1 = zlink.Socket(ctx, 0)
-        s2 = zlink.Socket(ctx, 0)
+        s1 = zlink.Socket(ctx, zlink.SocketType.PAIR)
+        s2 = zlink.Socket(ctx, zlink.SocketType.PAIR)
         endpoint = b"inproc://py-pair"
         s1.bind(endpoint.decode())
         s2.connect(endpoint.decode())

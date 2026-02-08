@@ -3,16 +3,37 @@ import ctypes
 from ._ffi import lib
 from ._core import Context, Socket, Message, ZlinkError
 from ._poller import Poller
-from ._monitor import MonitorSocket, MonitorEvent
+from ._monitor import MonitorSocket, MonitorEvent as _MonitorEventStruct
 from ._discovery import (
     Registry,
     Discovery,
     Gateway,
     Receiver,
-    SERVICE_TYPE_GATEWAY,
-    SERVICE_TYPE_SPOT,
 )
 from ._spot import SpotNode, Spot
+from ._enums import (
+    SocketType,
+    ContextOption,
+    SocketOption,
+    SendFlag,
+    ReceiveFlag,
+    MonitorEvent,
+    DisconnectReason,
+    PollEvent,
+    ServiceType,
+    GatewayLbStrategy,
+    SpotTopicMode,
+    RegistrySocketRole,
+    DiscoverySocketRole,
+    GatewaySocketRole,
+    ReceiverSocketRole,
+    SpotNodeSocketRole,
+    SpotSocketRole,
+)
+
+# Backward-compatible aliases
+SERVICE_TYPE_GATEWAY = ServiceType.GATEWAY
+SERVICE_TYPE_SPOT = ServiceType.SPOT
 
 
 def version():
@@ -31,7 +52,6 @@ __all__ = [
     "Message",
     "Poller",
     "MonitorSocket",
-    "MonitorEvent",
     "Registry",
     "Discovery",
     "Gateway",
@@ -41,4 +61,21 @@ __all__ = [
     "SpotNode",
     "Spot",
     "ZlinkError",
+    "SocketType",
+    "ContextOption",
+    "SocketOption",
+    "SendFlag",
+    "ReceiveFlag",
+    "MonitorEvent",
+    "DisconnectReason",
+    "PollEvent",
+    "ServiceType",
+    "GatewayLbStrategy",
+    "SpotTopicMode",
+    "RegistrySocketRole",
+    "DiscoverySocketRole",
+    "GatewaySocketRole",
+    "ReceiverSocketRole",
+    "SpotNodeSocketRole",
+    "SpotSocketRole",
 ]

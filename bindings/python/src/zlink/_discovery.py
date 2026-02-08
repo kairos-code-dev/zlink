@@ -12,10 +12,6 @@ class ReceiverInfo(ctypes.Structure):
         ("registered_at", ctypes.c_uint64),
     ]
 
-SERVICE_TYPE_GATEWAY = 1
-SERVICE_TYPE_SPOT = 2
-
-
 class Registry:
     def __init__(self, ctx):
         self._handle = lib().zlink_registry_new(ctx._handle)

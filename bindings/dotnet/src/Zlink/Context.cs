@@ -16,17 +16,17 @@ public sealed class Context : IDisposable
 
     internal IntPtr Handle => _handle;
 
-    public void SetOption(int option, int value)
+    public void SetOption(ContextOption option, int value)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_ctx_set(_handle, option, value);
+        int rc = NativeMethods.zlink_ctx_set(_handle, (int)option, value);
         ZlinkException.ThrowIfError(rc);
     }
 
-    public int GetOption(int option)
+    public int GetOption(ContextOption option)
     {
         EnsureNotDisposed();
-        int value = NativeMethods.zlink_ctx_get(_handle, option);
+        int value = NativeMethods.zlink_ctx_get(_handle, (int)option);
         if (value < 0)
             throw ZlinkException.FromLastError();
         return value;

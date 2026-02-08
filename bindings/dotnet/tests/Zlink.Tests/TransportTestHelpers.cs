@@ -8,8 +8,8 @@ namespace Zlink.Tests;
 
 internal static class TransportTestHelpers
 {
-    internal const int ZLINK_SUBSCRIBE = 6;
-    internal const int ZLINK_XPUB_VERBOSE = 40;
+    internal static readonly SocketOption ZLINK_SUBSCRIBE = SocketOption.Subscribe;
+    internal static readonly SocketOption ZLINK_XPUB_VERBOSE = SocketOption.XPubVerbose;
 
     internal static IEnumerable<(string name, string endpoint)> Transports(string prefix)
     {

@@ -55,7 +55,7 @@
             ]
         },
         {
-            "label": "bindings: java integration discovery (unstable)",
+            "label": "bindings: java integration discovery",
             "type": "shell",
             "command": ".\\gradlew.bat integrationTest --tests \"io.ulalax.zlink.integration.DiscoveryGatewaySpotScenarioTest\"",
             "options": {

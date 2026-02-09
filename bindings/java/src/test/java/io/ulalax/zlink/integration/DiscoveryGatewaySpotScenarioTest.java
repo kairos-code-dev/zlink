@@ -15,8 +15,6 @@ public class DiscoveryGatewaySpotScenarioTest {
         Context ctx = new Context();
         try {
             for (TestTransports.TransportCase tc : TestTransports.transports("discovery")) {
-                if ("inproc".equals(tc.name))
-                    continue;
                 TestTransports.tryTransport(tc.name, () -> {
                     String regPub = "inproc://reg-pub-" + UUID.randomUUID();
                     String regRouter = "inproc://reg-router-" + UUID.randomUUID();

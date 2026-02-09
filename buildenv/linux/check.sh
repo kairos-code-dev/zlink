@@ -165,7 +165,23 @@ echo -e "${BOLD}  Java Binding${NC}"
 echo -e "  -----------------------------------------------"
 check_cmd "java"        java        "$REQUIRED_JDK_VERSION"    "java --version"
 check_cmd "javac"       javac       "$REQUIRED_JDK_VERSION"    "javac --version"
-check_cmd "gradle"      gradle      "$REQUIRED_GRADLE_VERSION" "gradle --version"
+if [ -x "$PROJECT_ROOT/bindings/java/gradlew" ]; then
+    TOTAL=$((TOTAL + 1))
+    GRADLEW_VER_RAW="$("$PROJECT_ROOT/bindings/java/gradlew" --version 2>&1 || true)"
+    GRADLEW_VER="$(extract_version "$GRADLEW_VER_RAW")"
+    if [ -n "$GRADLEW_VER" ] && version_gte "$GRADLEW_VER" "$REQUIRED_GRADLE_VERSION"; then
+        printf "  ${GREEN}%-14s${NC}  %-20s  %s\n" "gradlew" "$GRADLEW_VER" ">= $REQUIRED_GRADLE_VERSION"
+        PASS=$((PASS + 1))
+    elif [ -n "$GRADLEW_VER" ]; then
+        printf "  ${RED}%-14s${NC}  %-20s  %s\n" "gradlew" "$GRADLEW_VER" "NEED >= $REQUIRED_GRADLE_VERSION"
+        FAIL=$((FAIL + 1))
+    else
+        printf "  ${RED}%-14s${NC}  %-20s\n" "gradlew" "NOT FOUND"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    check_cmd "gradle"      gradle      "$REQUIRED_GRADLE_VERSION" "gradle --version"
+fi
 echo ""
 
 # ---------------------------------------------------------------------------

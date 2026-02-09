@@ -380,6 +380,9 @@ function Test-VSCode {
 function Test-VSCodeExtensions {
     $result = @{ Recommended = @(); Installed = @(); Missing = @() }
     $extFile = Join-Path $RepoRoot ".vscode\extensions.json"
+    if (-not (Test-Path $extFile)) {
+        $extFile = Join-Path $ScriptDir "vscode\extensions.json"
+    }
     if (-not (Test-Path $extFile)) { return $result }
 
     $extJson = Get-Content $extFile -Raw | ConvertFrom-Json
@@ -679,6 +682,33 @@ function Export-EnvScript {
     Write-Host "  Generated: $EnvFile" -ForegroundColor Green
 }
 
+function Export-VSCodeSettings {
+    $vscodeDir   = Join-Path $RepoRoot ".vscode"
+    $templateDir = Join-Path $ScriptDir "vscode"
+
+    if (-not (Test-Path $templateDir)) {
+        Write-Host "  Template directory not found: $templateDir" -ForegroundColor Yellow
+        return
+    }
+
+    if (-not (Test-Path $vscodeDir)) {
+        New-Item -ItemType Directory -Path $vscodeDir | Out-Null
+    }
+
+    $files = @("settings.json", "extensions.json", "tasks.json")
+    foreach ($file in $files) {
+        $src = Join-Path $templateDir $file
+        $dst = Join-Path $vscodeDir $file
+        if (-not (Test-Path $src)) { continue }
+        if (-not (Test-Path $dst)) {
+            Copy-Item $src $dst
+            Write-Status "VSCode" "OK" "Created .vscode/$file"
+        } else {
+            Write-Status "VSCode" "OK" ".vscode/$file already exists (skipped)"
+        }
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -960,6 +990,13 @@ if ($hasCore) {
     Write-Host "  Run with -BuildCore to build the core library first." -ForegroundColor DarkGray
     Write-Host ""
 }
+
+# ===== VSCODE SETTINGS =====
+Write-Host "====================================" -ForegroundColor Cyan
+Write-Host "  VSCode Settings"                     -ForegroundColor Cyan
+Write-Host "====================================" -ForegroundColor Cyan
+Export-VSCodeSettings
+Write-Host ""
 
 # ===== GENERATE ENV SCRIPT =====
 Write-Host "====================================" -ForegroundColor Cyan

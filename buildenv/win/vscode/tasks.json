@@ -1,0 +1,115 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "core: configure (cmake)",
+            "type": "shell",
+            "command": "cmake -S . -B core/build/vscode-ninja -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DZLINK_BUILD_TESTS=ON -DZLINK_BUILD_CPP_BINDINGS=ON -DZLINK_CPP_BUILD_TESTS=ON",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "core: build (cmake)",
+            "type": "shell",
+            "command": "cmake --build core/build/vscode-ninja",
+            "dependsOn": "core: configure (cmake)",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "core: test (ctest)",
+            "type": "shell",
+            "command": "ctest --output-on-failure --test-dir core/build/vscode-ninja",
+            "dependsOn": "core: build (cmake)"
+        },
+        {
+            "label": "bindings: dotnet test",
+            "type": "shell",
+            "command": "dotnet test bindings/dotnet/tests/Zlink.Tests/Zlink.Tests.csproj",
+            "problemMatcher": [
+                "$msCompile"
+            ]
+        },
+        {
+            "label": "bindings: java test",
+            "type": "shell",
+            "command": ".\\gradlew.bat test",
+            "options": {
+                "cwd": "${workspaceFolder}/bindings/java"
+            },
+            "problemMatcher": [
+                "$javac"
+            ]
+        },
+        {
+            "label": "bindings: java integration test",
+            "type": "shell",
+            "command": ".\\gradlew.bat integrationTest --tests \"io.ulalax.zlink.integration.DealerRouterScenarioTest\" --tests \"io.ulalax.zlink.integration.MultipartScenarioTest\" --tests \"io.ulalax.zlink.integration.PairScenarioTest\" --tests \"io.ulalax.zlink.integration.PubSubScenarioTest\" --tests \"io.ulalax.zlink.integration.XpubXsubScenarioTest\"",
+            "options": {
+                "cwd": "${workspaceFolder}/bindings/java"
+            },
+            "problemMatcher": [
+                "$javac"
+            ]
+        },
+        {
+            "label": "bindings: java integration discovery (unstable)",
+            "type": "shell",
+            "command": ".\\gradlew.bat integrationTest --tests \"io.ulalax.zlink.integration.DiscoveryGatewaySpotScenarioTest\"",
+            "options": {
+                "cwd": "${workspaceFolder}/bindings/java"
+            },
+            "problemMatcher": [
+                "$javac"
+            ]
+        },
+        {
+            "label": "bindings: node test",
+            "type": "shell",
+            "command": "node --test tests/api.test.js tests/enums.test.js tests/version.test.js tests/dealer_router.test.js tests/pair.test.js tests/multipart.test.js tests/pubsub.test.js tests/xpub_xsub.test.js",
+            "options": {
+                "cwd": "${workspaceFolder}/bindings/node"
+            }
+        },
+        {
+            "label": "bindings: node integration discovery",
+            "type": "shell",
+            "command": "node tests/discovery_gateway_spot.runner.js",
+            "options": {
+                "cwd": "${workspaceFolder}/bindings/node"
+            }
+        },
+        {
+            "label": "bindings: python test",
+            "type": "shell",
+            "command": "python -m pytest bindings/python/tests/test_enums.py bindings/python/tests/test_version.py bindings/python/tests/integration/test_dealer_router.py bindings/python/tests/integration/test_multipart.py bindings/python/tests/integration/test_pair.py bindings/python/tests/integration/test_pubsub.py bindings/python/tests/integration/test_xpub_xsub.py",
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/bindings/python/src"
+                }
+            }
+        },
+        {
+            "label": "bindings: python integration discovery",
+            "type": "shell",
+            "command": "python bindings/python/tests/integration/run_discovery_gateway_spot.py",
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/bindings/python/src"
+                }
+            }
+        },
+        {
+            "label": "bindings: all test",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "bindings: dotnet test",
+                "bindings: java test",
+                "bindings: node test",
+                "bindings: python test"
+            ]
+        }
+    ]
+}

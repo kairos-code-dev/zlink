@@ -4,6 +4,7 @@
 #define __ZLINK_SPOT_SUB_HPP_INCLUDED__
 
 #include "core/msg.hpp"
+#include "utils/atomic_counter.hpp"
 #include "utils/condition_variable.hpp"
 #include "utils/macros.hpp"
 
@@ -28,6 +29,7 @@ class spot_sub_t
     int subscribe (const char *topic_);
     int subscribe_pattern (const char *pattern_);
     int unsubscribe (const char *topic_or_pattern_);
+    int set_handler (zlink_spot_sub_handler_fn handler_, void *userdata_);
 
     int recv (zlink_msg_t **parts_,
               size_t *part_count_,
@@ -51,10 +53,18 @@ class spot_sub_t
         std::vector<msg_t> parts;
     };
 
+    enum handler_state_t
+    {
+        handler_none = 0,
+        handler_active,
+        handler_clearing
+    };
+
     bool matches (const std::string &topic_) const;
     bool enqueue_message (const std::string &topic_,
                           const std::vector<msg_t> &payload_);
     bool dequeue_message (spot_message_t *out_);
+    bool callback_enabled () const;
 
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                         size_t *count_);
@@ -68,6 +78,12 @@ class spot_sub_t
     std::deque<spot_message_t> _queue;
     size_t _queue_hwm;
     condition_variable_t _cv;
+
+    zlink_spot_sub_handler_fn _handler;
+    void *_handler_userdata;
+    handler_state_t _handler_state;
+    atomic_counter_t _callback_inflight;
+    condition_variable_t _callback_cv;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_sub_t)
 };

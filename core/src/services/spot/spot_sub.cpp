@@ -48,7 +48,11 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
 spot_sub_t::spot_sub_t (spot_node_t *node_) :
     _node (node_),
     _tag (spot_sub_tag_value),
-    _queue_hwm (spot_queue_hwm_default)
+    _queue_hwm (spot_queue_hwm_default),
+    _handler (NULL),
+    _handler_userdata (NULL),
+    _handler_state (handler_none),
+    _callback_inflight (0)
 {
 }
 
@@ -87,6 +91,47 @@ int spot_sub_t::unsubscribe (const char *topic_or_pattern_)
         return -1;
     }
     return _node->unsubscribe (this, topic_or_pattern_);
+}
+
+int spot_sub_t::set_handler (zlink_spot_sub_handler_fn handler_,
+                             void *userdata_)
+{
+    if (!_node) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    bool wait_quiesce = false;
+    {
+        scoped_lock_t lock (_node->_sync);
+        if (handler_) {
+            _handler = handler_;
+            _handler_userdata = userdata_;
+            _handler_state = handler_active;
+            return 0;
+        }
+
+        _handler_state = handler_clearing;
+        _handler = NULL;
+        _handler_userdata = NULL;
+
+        if (_callback_inflight.get () == 0) {
+            _handler_state = handler_none;
+            _callback_cv.broadcast ();
+            return 0;
+        }
+
+        wait_quiesce = !_node->_worker.is_current_thread ();
+    }
+
+    if (!wait_quiesce)
+        return 0;
+
+    scoped_lock_t lock (_node->_sync);
+    while (_callback_inflight.get () > 0)
+        _callback_cv.wait (&_node->_sync, -1);
+    _handler_state = handler_none;
+    return 0;
 }
 
 bool spot_sub_t::matches (const std::string &topic_) const
@@ -132,6 +177,11 @@ bool spot_sub_t::dequeue_message (spot_message_t *out_)
     out_->parts.swap (front.parts);
     _queue.pop_front ();
     return true;
+}
+
+bool spot_sub_t::callback_enabled () const
+{
+    return _handler_state == handler_active && _handler != NULL;
 }
 
 zlink_msg_t *spot_sub_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
@@ -194,6 +244,10 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
     spot_message_t msg;
     {
         scoped_lock_t lock (_node->_sync);
+        if (_handler_state != handler_none) {
+            errno = EINVAL;
+            return -1;
+        }
         while (true) {
             if (dequeue_message (&msg))
                 break;
@@ -252,8 +306,19 @@ socket_base_t *spot_sub_t::sub_socket () const
 
 int spot_sub_t::destroy ()
 {
-    if (_node)
+    if (_node) {
+        if (set_handler (NULL, NULL) != 0)
+            return -1;
+
+        {
+            scoped_lock_t lock (_node->_sync);
+            if (_handler_state != handler_none) {
+                errno = EBUSY;
+                return -1;
+            }
+        }
         _node->remove_spot_sub (this);
+    }
     _node = NULL;
     return 0;
 }

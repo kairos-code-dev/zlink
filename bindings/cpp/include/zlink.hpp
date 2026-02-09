@@ -8,6 +8,8 @@
 #include <vector>
 #include <cstring>
 #include <chrono>
+#include <functional>
+#include <mutex>
 #include <utility>
 
 #if defined(ZLINK_CPP_EXCEPTIONS)
@@ -1142,6 +1144,9 @@ class spot_node_t
 class spot_t
 {
   public:
+    typedef std::function<void (const std::string &, const zlink_msg_t *, size_t)>
+      handler_fn;
+
     explicit spot_t (spot_node_t &node_)
         : _node (node_.handle ()),
           _pub (zlink_spot_pub_new (node_.handle ())),
@@ -1159,8 +1164,12 @@ class spot_t
     ~spot_t () { destroy (); }
 
     spot_t (spot_t &&other) noexcept
-        : _node (other._node), _pub (other._pub), _sub (other._sub)
+        : _node (NULL), _pub (NULL), _sub (NULL)
     {
+        other.set_handler (handler_fn ());
+        _node = other._node;
+        _pub = other._pub;
+        _sub = other._sub;
         other._node = NULL;
         other._pub = NULL;
         other._sub = NULL;
@@ -1169,7 +1178,9 @@ class spot_t
     {
         if (this == &other)
             return *this;
+        set_handler (handler_fn ());
         destroy ();
+        other.set_handler (handler_fn ());
         _node = other._node;
         _pub = other._pub;
         _sub = other._sub;
@@ -1226,6 +1237,24 @@ class spot_t
         return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_);
     }
 
+    int set_handler (handler_fn fn_)
+    {
+        const bool enable = static_cast<bool> (fn_);
+        {
+            std::lock_guard<std::mutex> lock (_handler_sync);
+            _handler_fn = std::move (fn_);
+        }
+        if (!_sub) {
+            if (enable) {
+                errno = EFAULT;
+                return -1;
+            }
+            return 0;
+        }
+        return zlink_spot_sub_set_handler (
+          _sub, enable ? &spot_t::handler_trampoline : NULL, this);
+    }
+
     int recv (msgv_t &out_, std::string &topic_, recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
@@ -1247,6 +1276,8 @@ class spot_t
     int destroy ()
     {
         int rc = 0;
+        if (_sub)
+            set_handler (handler_fn ());
         if (_pub) {
             void *tmp = _pub;
             _pub = NULL;
@@ -1266,9 +1297,35 @@ class spot_t
     void *handle () const { return _pub; }
 
   private:
+    static void handler_trampoline (const char *topic_,
+                                    size_t topic_len_,
+                                    const zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    void *userdata_) ZLINK_NOEXCEPT
+    {
+        spot_t *self = static_cast<spot_t *> (userdata_);
+        if (!self)
+            return;
+
+        handler_fn fn;
+        {
+            std::lock_guard<std::mutex> lock (self->_handler_sync);
+            fn = self->_handler_fn;
+        }
+        if (!fn)
+            return;
+        try {
+            fn (std::string (topic_, topic_len_), parts_, part_count_);
+        }
+        catch (...) {
+        }
+    }
+
     void *_node;
     void *_pub;
     void *_sub;
+    handler_fn _handler_fn;
+    std::mutex _handler_sync;
 };
 
 class atomic_counter_t

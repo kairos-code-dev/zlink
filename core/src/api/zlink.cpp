@@ -1249,12 +1249,13 @@ int zlink_spot_sub_destroy (void **sub_p_)
         return -1;
     }
     zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (*sub_p_);
-    *sub_p_ = NULL;
     if (!sub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    sub->destroy ();
+    if (sub->destroy () != 0)
+        return -1;
+    *sub_p_ = NULL;
     delete sub;
     return 0;
 }
@@ -1293,6 +1294,20 @@ int zlink_spot_sub_unsubscribe (void *sub_, const char *topic_id_or_pattern_)
         return -1;
     }
     return sub->unsubscribe (topic_id_or_pattern_);
+}
+
+int zlink_spot_sub_set_handler (void *sub_,
+                                zlink_spot_sub_handler_fn handler_,
+                                void *userdata_)
+{
+    if (!sub_)
+        return -1;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->set_handler (handler_, userdata_);
 }
 
 int zlink_spot_sub_recv (void *sub_,

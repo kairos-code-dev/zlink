@@ -68,12 +68,22 @@ class spot_node_t
   private:
     friend class spot_pub_t;
     friend class spot_sub_t;
+    struct handler_delivery_t;
 
     static void run (void *arg_);
     void loop ();
     void process_sub ();
+    bool process_handler_delivery ();
     void dispatch_local (const std::string &topic_,
                          const std::vector<msg_t> &payload_);
+    void enqueue_handler_delivery (const std::string &topic_,
+                                   const std::vector<msg_t> &payload_,
+                                   const std::vector<spot_sub_t *> &targets_);
+    bool pop_handler_delivery (handler_delivery_t *out_);
+    void invoke_pending_callbacks (
+      const std::string &topic_,
+      const std::vector<msg_t> &payload_,
+      const std::vector<spot_sub_t *> &targets_);
     void refresh_peers ();
     void send_heartbeat (uint64_t now_ms_);
     void ensure_worker_sockets ();
@@ -123,6 +133,13 @@ class spot_node_t
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
     std::map<std::string, size_t> _filter_refcount;
+    struct handler_delivery_t
+    {
+        std::string topic;
+        std::vector<msg_t> payload;
+        std::vector<spot_sub_t *> targets;
+    };
+    std::deque<handler_delivery_t> _pending_handler_delivery;
 
     std::string _tls_cert;
     std::string _tls_key;

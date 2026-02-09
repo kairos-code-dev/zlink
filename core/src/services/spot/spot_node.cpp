@@ -90,6 +90,39 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
     return true;
 }
 
+static void close_msgv (std::vector<zlink_msg_t> *parts_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < parts_->size (); ++i)
+        zlink_msg_close (&(*parts_)[i]);
+    parts_->clear ();
+}
+
+static bool copy_parts_to_msgv (const std::vector<msg_t> &src_,
+                                std::vector<zlink_msg_t> *out_)
+{
+    out_->clear ();
+    if (src_.empty ())
+        return true;
+
+    out_->resize (src_.size ());
+    for (size_t i = 0; i < src_.size (); ++i) {
+        msg_t *dst = reinterpret_cast<msg_t *> (&(*out_)[i]);
+        if (dst->init () != 0) {
+            close_msgv (out_);
+            return false;
+        }
+        msg_t &src = const_cast<msg_t &> (src_[i]);
+        if (dst->copy (src) != 0) {
+            close_msgv (out_);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static int send_frame (socket_base_t *socket_,
                        const void *data_,
                        size_t size_,
@@ -746,6 +779,19 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 
     scoped_lock_t lock (_sync);
     _subs.erase (sub_);
+    for (std::deque<handler_delivery_t>::iterator it =
+           _pending_handler_delivery.begin ();
+         it != _pending_handler_delivery.end ();) {
+        std::vector<spot_sub_t *> &targets = it->targets;
+        targets.erase (std::remove (targets.begin (), targets.end (), sub_),
+                       targets.end ());
+        if (targets.empty ()) {
+            close_parts (&it->payload);
+            it = _pending_handler_delivery.erase (it);
+        } else {
+            ++it;
+        }
+    }
 
     for (std::set<std::string>::const_iterator it = sub_->_topics.begin ();
          it != sub_->_topics.end (); ++it) {
@@ -912,13 +958,131 @@ int spot_node_t::publish (const char *topic_,
 void spot_node_t::dispatch_local (const std::string &topic_,
                                   const std::vector<msg_t> &payload_)
 {
+    std::vector<spot_sub_t *> handler_targets;
     for (std::set<spot_sub_t *>::iterator it = _subs.begin (); it != _subs.end ();
          ++it) {
         spot_sub_t *sub = *it;
         if (!sub->matches (topic_))
             continue;
-        sub->enqueue_message (topic_, payload_);
+        if (sub->callback_enabled ())
+            handler_targets.push_back (sub);
+        else
+            sub->enqueue_message (topic_, payload_);
     }
+    enqueue_handler_delivery (topic_, payload_, handler_targets);
+}
+
+void spot_node_t::enqueue_handler_delivery (
+  const std::string &topic_,
+  const std::vector<msg_t> &payload_,
+  const std::vector<spot_sub_t *> &targets_)
+{
+    if (targets_.empty ())
+        return;
+
+    handler_delivery_t delivery;
+    delivery.topic = topic_;
+    if (!copy_parts_from_vec (payload_, &delivery.payload))
+        return;
+    delivery.targets = targets_;
+    _pending_handler_delivery.push_back (handler_delivery_t ());
+    _pending_handler_delivery.back ().topic.swap (delivery.topic);
+    _pending_handler_delivery.back ().payload.swap (delivery.payload);
+    _pending_handler_delivery.back ().targets.swap (delivery.targets);
+}
+
+bool spot_node_t::pop_handler_delivery (handler_delivery_t *out_)
+{
+    if (!out_ || _pending_handler_delivery.empty ())
+        return false;
+
+    handler_delivery_t &front = _pending_handler_delivery.front ();
+    out_->topic.swap (front.topic);
+    out_->payload.swap (front.payload);
+    out_->targets.swap (front.targets);
+    _pending_handler_delivery.pop_front ();
+    return true;
+}
+
+void spot_node_t::invoke_pending_callbacks (
+  const std::string &topic_,
+  const std::vector<msg_t> &payload_,
+  const std::vector<spot_sub_t *> &targets_)
+{
+    struct pending_callback_t
+    {
+        spot_sub_t *sub;
+        zlink_spot_sub_handler_fn handler;
+        void *userdata;
+    };
+
+    std::vector<pending_callback_t> callbacks;
+    callbacks.reserve (targets_.size ());
+    {
+        scoped_lock_t lock (_sync);
+        for (size_t i = 0; i < targets_.size (); ++i) {
+            spot_sub_t *sub = targets_[i];
+            if (!sub || _subs.count (sub) == 0)
+                continue;
+            if (sub->_handler_state != spot_sub_t::handler_active
+                || !sub->_handler)
+                continue;
+            sub->_callback_inflight.add (1);
+            pending_callback_t cb;
+            cb.sub = sub;
+            cb.handler = sub->_handler;
+            cb.userdata = sub->_handler_userdata;
+            callbacks.push_back (cb);
+        }
+    }
+
+    if (callbacks.empty ())
+        return;
+
+    std::vector<zlink_msg_t> msgv;
+    if (!copy_parts_to_msgv (payload_, &msgv)) {
+        for (size_t i = 0; i < callbacks.size (); ++i) {
+            scoped_lock_t lock (_sync);
+            spot_sub_t *sub = callbacks[i].sub;
+            if (!sub->_callback_inflight.sub (1)
+                && sub->_handler_state == spot_sub_t::handler_clearing) {
+                sub->_handler_state = spot_sub_t::handler_none;
+                sub->_callback_cv.broadcast ();
+            }
+        }
+        return;
+    }
+
+    const zlink_msg_t *parts = msgv.empty () ? NULL : &msgv[0];
+    for (size_t i = 0; i < callbacks.size (); ++i) {
+        pending_callback_t cb = callbacks[i];
+        cb.handler (topic_.data (), topic_.size (), parts, msgv.size (),
+                    cb.userdata);
+
+        scoped_lock_t lock (_sync);
+        if (!cb.sub->_callback_inflight.sub (1)
+            && cb.sub->_handler_state == spot_sub_t::handler_clearing) {
+            cb.sub->_handler_state = spot_sub_t::handler_none;
+            cb.sub->_callback_cv.broadcast ();
+        }
+    }
+
+    close_msgv (&msgv);
+}
+
+bool spot_node_t::process_handler_delivery ()
+{
+    handler_delivery_t delivery;
+    {
+        scoped_lock_t lock (_sync);
+        if (!pop_handler_delivery (&delivery))
+            return false;
+    }
+
+    invoke_pending_callbacks (delivery.topic, delivery.payload,
+                              delivery.targets);
+    close_parts (&delivery.payload);
+    return true;
 }
 
 void spot_node_t::ensure_worker_sockets ()
@@ -1197,6 +1361,8 @@ void spot_node_t::loop ()
         flush_pending ();
 
         process_sub ();
+        while (process_handler_delivery ())
+            handled = true;
 
         const uint64_t now = clock.now_ms ();
         bool do_heartbeat = false;
@@ -1253,6 +1419,12 @@ int spot_node_t::destroy ()
             (*it)->_node = NULL;
         _pubs.clear ();
         _subs.clear ();
+        for (std::deque<handler_delivery_t>::iterator it =
+               _pending_handler_delivery.begin ();
+             it != _pending_handler_delivery.end (); ++it) {
+            close_parts (&it->payload);
+        }
+        _pending_handler_delivery.clear ();
         _filter_refcount.clear ();
         _peer_endpoints.clear ();
         _registry_endpoints.clear ();

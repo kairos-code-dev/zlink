@@ -1,4 +1,7 @@
 sources:
+  "0.9.0":
+    url: "https://github.com/ulala-x/zlink/archive/refs/tags/0.9.0.tar.gz"
+    sha256: "7f0560d41d201f457ef0158f7e446f2919d9550253afdac522d2202a047716df"
   "0.6.0":
     url: "https://github.com/ulala-x/zlink/archive/refs/tags/0.6.tar.gz"
     sha256: "b47939ff13079da894a4366c39a51742f2c27337c5235553f96de4c55f7db896"

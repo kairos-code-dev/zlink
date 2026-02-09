@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class LibraryLoader {
     private LibraryLoader() {}
@@ -38,10 +40,64 @@ public final class LibraryLoader {
             Path tmp = Files.createTempFile("zlink-", "-" + libFile);
             Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             tmp.toFile().deleteOnExit();
+            if ("windows".equals(os))
+                preloadWindowsDeps(tmp.getParent());
             System.load(tmp.toAbsolutePath().toString());
         } catch (IOException e) {
             throw new UnsatisfiedLinkError("failed to load zlink native resource: " + e.getMessage());
         }
+    }
+
+    private static void preloadWindowsDeps(Path localDir) {
+        String[] depNames = new String[] {
+                "libcrypto-3-x64.dll",
+                "libssl-3-x64.dll"
+        };
+        for (String dep : depNames) {
+            Path p = findWindowsDependency(localDir, dep);
+            if (p != null) {
+                try {
+                    System.load(p.toString());
+                } catch (UnsatisfiedLinkError ignored) {
+                }
+            }
+        }
+    }
+
+    private static Path findWindowsDependency(Path localDir, String fileName) {
+        List<Path> dirs = new ArrayList<>();
+        if (localDir != null)
+            dirs.add(localDir);
+        String opensslBin = System.getenv("ZLINK_OPENSSL_BIN");
+        if (opensslBin != null && !opensslBin.isEmpty())
+            dirs.add(Path.of(opensslBin));
+        String runtimeBin = System.getenv("ZLINK_WINDOWS_RUNTIME_BIN");
+        if (runtimeBin != null && !runtimeBin.isEmpty())
+            dirs.add(Path.of(runtimeBin));
+        Path userDir = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
+        dirs.add(userDir.resolve("../dotnet/runtimes/win-x64/native").normalize());
+        dirs.add(userDir.resolve("../node/prebuilds/win32-x64").normalize());
+        dirs.add(Path.of("C:\\Program Files\\OpenSSL-Win64\\bin"));
+        dirs.add(Path.of("C:\\Program Files\\Git\\mingw64\\bin"));
+        dirs.add(Path.of(
+                "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer\\Git\\mingw64\\bin"));
+        String envPath = System.getenv("PATH");
+        if (envPath != null && !envPath.isEmpty()) {
+            for (String entry : envPath.split(";")) {
+                if (!entry.isEmpty())
+                    dirs.add(Path.of(entry));
+            }
+        }
+
+        for (Path dir : dirs) {
+            try {
+                Path candidate = dir.resolve(fileName);
+                if (Files.exists(candidate))
+                    return candidate.toAbsolutePath();
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     private static String normalizeOs(String name) {

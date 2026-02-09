@@ -41,12 +41,7 @@ def endpoint_for(name, base_endpoint, suffix):
 
 
 def try_transport(name, fn):
-    try:
-        fn()
-    except Exception:
-        if name == "ws":
-            return
-        raise
+    fn()
 
 
 def recv_with_timeout(sock, size, timeout_ms):

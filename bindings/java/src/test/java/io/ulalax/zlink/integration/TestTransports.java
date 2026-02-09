@@ -48,13 +48,7 @@ final class TestTransports {
     }
 
     static void tryTransport(String name, Runnable action) {
-        try {
-            action.run();
-        } catch (RuntimeException ex) {
-            if ("ws".equals(name))
-                return;
-            throw ex;
-        }
+        action.run();
     }
 
     static byte[] recvWithTimeout(Socket socket, int size, int timeoutMs) {

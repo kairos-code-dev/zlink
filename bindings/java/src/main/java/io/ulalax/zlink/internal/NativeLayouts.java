@@ -6,7 +6,9 @@ import java.lang.foreign.ValueLayout;
 public final class NativeLayouts {
     private NativeLayouts() {}
 
-    public static final MemoryLayout MSG_LAYOUT = MemoryLayout.sequenceLayout(64, ValueLayout.JAVA_BYTE);
+    public static final MemoryLayout MSG_LAYOUT = MemoryLayout
+            .sequenceLayout(64, ValueLayout.JAVA_BYTE)
+            .withByteAlignment(ValueLayout.ADDRESS.byteAlignment());
 
     public static final MemoryLayout PROVIDER_INFO_LAYOUT = MemoryLayout.sequenceLayout(
             256 + 256 + 256 + 4 + 4 + 8, ValueLayout.JAVA_BYTE);

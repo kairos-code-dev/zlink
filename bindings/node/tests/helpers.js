@@ -43,12 +43,7 @@ async function endpointFor(name, baseEndpoint, suffix) {
 }
 
 async function tryTransport(name, fn) {
-  try {
-    await fn();
-  } catch (err) {
-    if (name === 'ws') return;
-    throw err;
-  }
+  await fn();
 }
 
 async function recvWithTimeout(socket, size, timeoutMs) {

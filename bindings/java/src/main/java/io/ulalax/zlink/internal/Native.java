@@ -400,8 +400,10 @@ public final class Native {
     }
 
     public static int registryDestroy(MemorySegment regPtr) {
-        try {
-            return (int) MH_REG_DESTROY.invokeExact(regPtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, regPtr);
+            return (int) MH_REG_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_registry_destroy failed", t);
         }
@@ -464,8 +466,10 @@ public final class Native {
     }
 
     public static int discoveryDestroy(MemorySegment discPtr) {
-        try {
-            return (int) MH_DISC_DESTROY.invokeExact(discPtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, discPtr);
+            return (int) MH_DISC_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_discovery_destroy failed", t);
         }
@@ -528,8 +532,10 @@ public final class Native {
     }
 
     public static int gatewayDestroy(MemorySegment gwPtr) {
-        try {
-            return (int) MH_GATEWAY_DESTROY.invokeExact(gwPtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, gwPtr);
+            return (int) MH_GATEWAY_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_gateway_destroy failed", t);
         }
@@ -608,8 +614,10 @@ public final class Native {
     }
 
     public static int providerDestroy(MemorySegment pPtr) {
-        try {
-            return (int) MH_PROVIDER_DESTROY.invokeExact(pPtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, pPtr);
+            return (int) MH_PROVIDER_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_receiver_destroy failed", t);
         }
@@ -648,8 +656,10 @@ public final class Native {
     }
 
     public static int spotNodeDestroy(MemorySegment nodePtr) {
-        try {
-            return (int) MH_SPOT_NODE_DESTROY.invokeExact(nodePtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, nodePtr);
+            return (int) MH_SPOT_NODE_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_destroy failed", t);
         }
@@ -752,8 +762,10 @@ public final class Native {
     }
 
     public static int spotDestroy(MemorySegment spotPtr) {
-        try {
-            return (int) MH_SPOT_DESTROY.invokeExact(spotPtr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
+            p.set(ValueLayout.ADDRESS, 0, spotPtr);
+            return (int) MH_SPOT_DESTROY.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_destroy failed", t);
         }

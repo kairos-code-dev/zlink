@@ -23,4 +23,18 @@ dependencies {
 test {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
+    filter {
+        excludeTestsMatching 'io.ulalax.zlink.integration.*'
+    }
+}
+
+tasks.register('integrationTest', Test) {
+    useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    shouldRunAfter test
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter {
+        includeTestsMatching 'io.ulalax.zlink.integration.*'
+    }
 }

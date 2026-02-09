@@ -1,0 +1,14 @@
+{
+    "include": [
+        "src",
+        "tests"
+    ],
+    "extraPaths": [
+        "src"
+    ],
+    "venvPath": ".",
+    "exclude": [
+        "**/__pycache__",
+        "src/zlink/native"
+    ]
+}

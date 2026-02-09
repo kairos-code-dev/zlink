@@ -10,8 +10,8 @@
       ],
       "include_dirs": [ "../../core/include" ],
       "variables": {
-        "zlink_root%": "<!(pwd)",
-        "zlink_lib%": "<!(python -c \"import os; print(os.environ.get('ZLINK_LIB_PATH',''))\")"
+        "zlink_root%": "<!(node -p \"process.cwd()\")",
+        "zlink_lib%": "<!(node -p \"process.env.ZLINK_LIB_PATH || ''\")"
       },
       "conditions": [
         [ "\"<(zlink_lib)\" != \"\"",

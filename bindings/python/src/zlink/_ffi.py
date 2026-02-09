@@ -13,6 +13,8 @@ class _Lib:
             path = _find_bundled_library()
         if not path:
             raise OSError("zlink native library not found")
+        if os.name == "nt":
+            _prepare_windows_runtime(path)
         self.lib = ctypes.CDLL(path)
         self._bind()
 
@@ -259,3 +261,48 @@ def _find_bundled_library():
     if candidate.exists():
         return str(candidate)
     return None
+
+
+def _prepare_windows_runtime(lib_path):
+    dep_names = ["libcrypto-3-x64.dll", "libssl-3-x64.dll"]
+    search_dirs = []
+
+    lib_dir = pathlib.Path(lib_path).resolve().parent
+    search_dirs.append(lib_dir)
+
+    for env_key in ("ZLINK_OPENSSL_BIN", "OPENSSL_BIN"):
+        v = os.environ.get(env_key)
+        if v:
+            search_dirs.append(pathlib.Path(v))
+
+    for entry in os.environ.get("PATH", "").split(";"):
+        if entry:
+            search_dirs.append(pathlib.Path(entry))
+
+    search_dirs.extend([
+        pathlib.Path(r"C:\Program Files\OpenSSL-Win64\bin"),
+        pathlib.Path(r"C:\Program Files\Git\mingw64\bin"),
+        pathlib.Path(
+            r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\mingw64\bin"
+        ),
+    ])
+
+    seen = set()
+    for d in search_dirs:
+        s = str(d)
+        if s in seen:
+            continue
+        seen.add(s)
+        if not d.exists():
+            continue
+        try:
+            os.add_dll_directory(s)
+        except (AttributeError, OSError):
+            pass
+        for dep in dep_names:
+            dep_path = d / dep
+            if dep_path.exists():
+                try:
+                    ctypes.CDLL(str(dep_path))
+                except OSError:
+                    pass

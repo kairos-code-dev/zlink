@@ -1,9 +1,22 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
+function prependPathEntries(entries) {
+  const existing = (process.env.PATH || '').split(';').filter(Boolean);
+  for (const entry of entries) {
+    if (!entry || !fs.existsSync(entry)) continue;
+    if (!existing.includes(entry)) {
+      existing.unshift(entry);
+    }
+  }
+  process.env.PATH = existing.join(';');
+}
+
 function loadNative() {
   try {
     if (process.platform === 'linux') {
-      const path = require('path');
       const addonDir = path.join(__dirname, '..', 'build', 'Release');
       const coreDir = path.join(__dirname, '..', '..', 'build_cpp', 'lib');
       const existing = process.env.LD_LIBRARY_PATH || '';
@@ -15,8 +28,18 @@ function loadNative() {
     return require('../build/Release/zlink.node');
   } catch (err) {
     try {
-      const path = require('path');
-      const prebuilt = path.join(__dirname, '..', 'prebuilds', `${process.platform}-${process.arch}`, 'zlink.node');
+      const prebuiltDir = path.join(__dirname, '..', 'prebuilds', `${process.platform}-${process.arch}`);
+      const prebuilt = path.join(prebuiltDir, 'zlink.node');
+      if (process.platform === 'win32') {
+        prependPathEntries([
+          prebuiltDir,
+          process.env.ZLINK_OPENSSL_BIN,
+          process.env.OPENSSL_BIN,
+          'C:\\Program Files\\OpenSSL-Win64\\bin',
+          'C:\\Program Files\\Git\\mingw64\\bin',
+          'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TeamFoundation\\Team Explorer\\Git\\mingw64\\bin'
+        ]);
+      }
       return require(prebuilt);
     } catch (err2) {
       return null;

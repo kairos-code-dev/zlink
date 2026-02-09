@@ -302,7 +302,8 @@ int spot_node_t::connect_registry (const char *registry_router_endpoint_)
     }
 
     scoped_lock_t lock (_sync);
-    if (_registry_endpoints.insert (registry_router_endpoint_).second)
+    if (_registry_endpoints.insert (registry_router_endpoint_).second
+        && _registered)
         _pending_registry_connect.push_back (registry_router_endpoint_);
     return 0;
 }
@@ -455,6 +456,12 @@ int spot_node_t::register_node (const char *service_name_,
     _service_name = service;
     _advertise_endpoint = advertise;
     _last_heartbeat_ms = 0;
+    _pending_registry_connect.clear ();
+    for (std::set<std::string>::const_iterator it =
+           _registry_endpoints.begin ();
+         it != _registry_endpoints.end (); ++it) {
+        _pending_registry_connect.push_back (*it);
+    }
     return 0;
 }
 
@@ -990,11 +997,13 @@ void spot_node_t::ensure_worker_sockets ()
             _dealer->setsockopt (ZLINK_ROUTING_ID, _routing_id.data,
                                  _routing_id.size);
             scoped_lock_t lock (_sync);
-            _pending_registry_connect.clear ();
-            for (std::set<std::string>::const_iterator it =
-                   _registry_endpoints.begin ();
-                 it != _registry_endpoints.end (); ++it) {
-                _pending_registry_connect.push_back (*it);
+            if (_registered) {
+                _pending_registry_connect.clear ();
+                for (std::set<std::string>::const_iterator it =
+                       _registry_endpoints.begin ();
+                     it != _registry_endpoints.end (); ++it) {
+                    _pending_registry_connect.push_back (*it);
+                }
             }
         }
     }

@@ -53,6 +53,6 @@ Recommended test flow:
 
 - `bindings: all test` for stable suites
 - `bindings: java integration test` for Java stable integration scenarios
-- `bindings: java integration discovery (unstable)` for Java discovery/spot scenario on Windows
+- `bindings: java integration discovery` for Java discovery/gateway/spot scenario
 - `bindings: node integration discovery` for Node discovery/gateway/spot scenario
 - `bindings: python integration discovery` for Python discovery/gateway/spot scenario

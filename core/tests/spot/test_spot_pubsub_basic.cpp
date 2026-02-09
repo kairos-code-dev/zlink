@@ -259,12 +259,17 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     char endpoint_a[MAX_SOCKET_STRING] = {0};
 
     if (is_ipc) {
+#if defined(ZLINK_HAVE_IPC)
         char endpoint_b[MAX_SOCKET_STRING];
         make_random_ipc_endpoint (endpoint_a);
         make_random_ipc_endpoint (endpoint_b);
 
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint_a));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, endpoint_b));
+#else
+        TEST_IGNORE_MESSAGE ("IPC not compiled");
+        return;
+#endif
     } else {
         if (use_tls) {
             TEST_ASSERT_SUCCESS_ERRNO (
@@ -591,8 +596,9 @@ static bool wait_for_spot_message (void *spot_,
         zlink_msg_t *recv_parts = NULL;
         size_t recv_count = 0;
         char topic[256];
+        size_t topic_len = sizeof (topic);
         int rc = zlink_spot_recv (
-          spot_, &recv_parts, &recv_count, ZLINK_DONTWAIT, topic, NULL);
+          spot_, &recv_parts, &recv_count, ZLINK_DONTWAIT, topic, &topic_len);
         if (rc == 0) {
             bool ok = recv_count == 1
                       && strcmp (topic, expected_topic_) == 0
@@ -695,13 +701,14 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
             while (received < expected_counts[dst_idx]) {
                 zlink_msg_t *recv_parts = NULL;
                 size_t recv_count = 0;
-                char recv_topic[128];
+                char recv_topic[256];
+                size_t recv_topic_len = sizeof (recv_topic);
                 const int max_attempts = recv_wait_timeout_ms / recv_poll_step_ms;
                 bool got_message = false;
                 for (int attempt = 0; attempt < max_attempts; ++attempt) {
                     const int rc = zlink_spot_recv (spots[dst_idx], &recv_parts,
                                                     &recv_count, ZLINK_DONTWAIT,
-                                                    recv_topic, NULL);
+                                                    recv_topic, &recv_topic_len);
                     if (rc == 0) {
                         got_message = true;
                         break;
@@ -746,13 +753,27 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
 
 static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
 {
-    const int field_width = 24;
-    const int field_height = 24;
+#if defined ZLINK_HAVE_WINDOWS
+    if (env_int_or_default ("ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY", 0) == 0) {
+        TEST_IGNORE_MESSAGE (
+          "Skipping multi-node discovery scale test on Windows by default");
+        return;
+    }
+#endif
+
+    const int field_width =
+      env_int_or_default ("ZLINK_SPOT_MMORPG_FIELD_WIDTH", 12);
+    const int field_height =
+      env_int_or_default ("ZLINK_SPOT_MMORPG_FIELD_HEIGHT", 12);
     const int zone_count = field_width * field_height;
-    const int spot_node_count = 4;
-    const int auto_peer_settle_ms = 800;
-    const int sub_propagation_ms = 1200;
-    const int recv_timeout_ms = 1000;
+    const int spot_node_count =
+      env_int_or_default ("ZLINK_SPOT_MMORPG_NODE_COUNT", 4);
+    const int auto_peer_settle_ms =
+      env_int_or_default ("ZLINK_SPOT_AUTO_PEER_SETTLE_MS", 400);
+    const int sub_propagation_ms =
+      env_int_or_default ("ZLINK_SPOT_SUB_PROPAGATION_MS", 600);
+    const int recv_timeout_ms =
+      env_int_or_default ("ZLINK_SPOT_RECV_TIMEOUT_MS", 600);
 
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);

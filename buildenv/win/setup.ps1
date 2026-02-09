@@ -251,7 +251,14 @@ function Test-NodeJS {
 }
 
 function Test-Python {
-    $result = @{ Found = $false; Version = ""; MinVersion = "3.9"; Exe = "" }
+    $result = @{
+        Found = $false
+        Version = ""
+        MinVersion = "3.9"
+        Exe = ""
+        Path = ""
+        ScriptsPath = ""
+    }
     $minVer = [version]"$($result.MinVersion).0"
 
     # Try python first, then python3
@@ -260,16 +267,19 @@ function Test-Python {
             # Skip Windows Store stub (AppInstallerPythonRedirector)
             $exePath = (Get-Command $cmd -ErrorAction SilentlyContinue).Source
             if ($exePath -and $exePath -like "*\WindowsApps\*") { continue }
+            if (-not $exePath -or -not (Test-Path $exePath)) { continue }
 
             $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            $out = & $cmd --version 2>&1 | Out-String
+            $out = & $exePath --version 2>&1 | Out-String
             $ErrorActionPreference = $oldPref
             if ($out -match "Python\s+(\d+\.\d+\.\d+)") {
                 $ver = [version]$matches[1]
                 if ($ver -ge $minVer) {
                     $result.Found   = $true
                     $result.Version = $matches[1]
-                    $result.Exe     = $cmd
+                    $result.Exe     = $exePath
+                    $result.Path    = Split-Path -Parent $exePath
+                    $result.ScriptsPath = Join-Path $result.Path "Scripts"
                     return $result
                 }
             }
@@ -278,15 +288,59 @@ function Test-Python {
 
     # Try py launcher
     try {
-        $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $out = py -3 --version 2>&1 | Out-String
-        $ErrorActionPreference = $oldPref
-        if ($out -match "Python\s+(\d+\.\d+\.\d+)") {
-            $ver = [version]$matches[1]
-            if ($ver -ge $minVer) {
-                $result.Found   = $true
-                $result.Version = $matches[1]
-                $result.Exe     = "py -3"
+        $pyLauncher = (Get-Command py -ErrorAction SilentlyContinue).Source
+        if ($pyLauncher -and (Test-Path $pyLauncher)) {
+            $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            $out = & $pyLauncher -3 --version 2>&1 | Out-String
+            $ErrorActionPreference = $oldPref
+            if ($out -match "Python\s+(\d+\.\d+\.\d+)") {
+                $ver = [version]$matches[1]
+                if ($ver -ge $minVer) {
+                    $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                    $exeFromLauncher = & $pyLauncher -3 -c "import sys; print(sys.executable)" 2>&1 | Out-String
+                    $ErrorActionPreference = $oldPref
+                    $exeFromLauncher = $exeFromLauncher.Trim()
+                    if ($exeFromLauncher -and (Test-Path $exeFromLauncher)) {
+                        $result.Found   = $true
+                        $result.Version = $matches[1]
+                        $result.Exe     = $exeFromLauncher
+                        $result.Path    = Split-Path -Parent $exeFromLauncher
+                        $result.ScriptsPath = Join-Path $result.Path "Scripts"
+                        return $result
+                    }
+                }
+            }
+        }
+    } catch {}
+
+    # Fallback: scan common install directories even when PATH is hijacked by WindowsApps.
+    try {
+        $candidateDirs = @()
+        $localPythonRoot = Join-Path $env:LocalAppData "Programs\Python"
+        if (Test-Path $localPythonRoot) {
+            $candidateDirs += Get-ChildItem (Join-Path $localPythonRoot "Python*") -Directory -ErrorAction SilentlyContinue
+        }
+        $candidateDirs += Get-ChildItem "C:\Program Files\Python*" -Directory -ErrorAction SilentlyContinue
+        $candidateDirs += Get-ChildItem "C:\Python*" -Directory -ErrorAction SilentlyContinue
+
+        $candidateDirs = $candidateDirs | Sort-Object FullName -Descending
+        foreach ($dir in $candidateDirs) {
+            $exePath = Join-Path $dir.FullName "python.exe"
+            if (-not (Test-Path $exePath)) { continue }
+
+            $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            $out = & $exePath --version 2>&1 | Out-String
+            $ErrorActionPreference = $oldPref
+            if ($out -match "Python\s+(\d+\.\d+\.\d+)") {
+                $ver = [version]$matches[1]
+                if ($ver -ge $minVer) {
+                    $result.Found   = $true
+                    $result.Version = $matches[1]
+                    $result.Exe     = $exePath
+                    $result.Path    = Split-Path -Parent $exePath
+                    $result.ScriptsPath = Join-Path $result.Path "Scripts"
+                    return $result
+                }
             }
         }
     } catch {}
@@ -666,6 +720,12 @@ function Export-EnvScript {
     $distDir = Join-Path $RepoRoot "core\dist\windows-x64"
     $lines += "# PATH (duplicates prevented)"
     $lines += "`$_pathsToAdd = @(`"$distDir`""
+    if ($script:EnvVars["PYTHON_DIR"]) {
+        $lines += "    , `"$($script:EnvVars["PYTHON_DIR"])`""
+    }
+    if ($script:EnvVars["PYTHON_SCRIPTS_DIR"]) {
+        $lines += "    , `"$($script:EnvVars["PYTHON_SCRIPTS_DIR"])`""
+    }
     if ($script:EnvVars["ZLINK_OPENSSL_BIN"]) {
         $lines += "    , `"$($script:EnvVars["ZLINK_OPENSSL_BIN"])`""
     }
@@ -842,6 +902,12 @@ if (($Bindings -contains "python") -or ($Bindings -contains "node")) {
     $pythonResult = Test-Python
     if ($pythonResult.Found) {
         Write-Status "Python" "OK" "v$($pythonResult.Version) ($($pythonResult.Exe))"
+        if ($pythonResult.Path) {
+            $script:EnvVars["PYTHON_DIR"] = $pythonResult.Path
+        }
+        if ($pythonResult.ScriptsPath -and (Test-Path $pythonResult.ScriptsPath)) {
+            $script:EnvVars["PYTHON_SCRIPTS_DIR"] = $pythonResult.ScriptsPath
+        }
     } elseif ($pythonResult.Version) {
         Write-Status "Python" "WRONG_VERSION" "v$($pythonResult.Version) (need >= $($pythonResult.MinVersion))"
     } else {
@@ -888,6 +954,12 @@ if ($Install) {
     if (($Bindings -contains "python") -or ($Bindings -contains "node")) {
         $pyCheck = Test-Python
         if ($pyCheck.Found) {
+            if ($pyCheck.Path) {
+                $script:EnvVars["PYTHON_DIR"] = $pyCheck.Path
+            }
+            if ($pyCheck.ScriptsPath -and (Test-Path $pyCheck.ScriptsPath)) {
+                $script:EnvVars["PYTHON_SCRIPTS_DIR"] = $pyCheck.ScriptsPath
+            }
             Install-PythonPackages -PythonExe $pyCheck.Exe
         }
     }
@@ -915,7 +987,17 @@ if ($Install) {
         if ($jdkResult.Found) { $script:EnvVars["JDK22_HOME"] = $jdkResult.Path }
     }
     if ($Bindings -contains "node")   { $nodeResult = Test-NodeJS; $nodegypResult = Test-NodeGyp }
-    if (($Bindings -contains "python") -or ($Bindings -contains "node")) { $pythonResult = Test-Python }
+    if (($Bindings -contains "python") -or ($Bindings -contains "node")) {
+        $pythonResult = Test-Python
+        if ($pythonResult.Found) {
+            if ($pythonResult.Path) {
+                $script:EnvVars["PYTHON_DIR"] = $pythonResult.Path
+            }
+            if ($pythonResult.ScriptsPath -and (Test-Path $pythonResult.ScriptsPath)) {
+                $script:EnvVars["PYTHON_SCRIPTS_DIR"] = $pythonResult.ScriptsPath
+            }
+        }
+    }
     Write-Host ""
 }
 

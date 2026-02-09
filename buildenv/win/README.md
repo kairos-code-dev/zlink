@@ -18,12 +18,18 @@ Windows에서 zlink 프로젝트의 전체 개발환경을 자동으로 구축�
 . .\buildenv\win\env.ps1
 ```
 
-## 스크립트 구성
+## 파일 구성
 
 | 파일 | 역할 |
 |------|------|
 | `setup.ps1` | 개발환경 감지/설치 (메인 스크립트) |
 | `env.ps1` | 환경변수 활성화 (setup.ps1이 자동 생성, gitignore 대상) |
+| `vscode/settings.json` | VSCode 설정 템플릿 (IntelliSense, CMake, Java, Python) |
+| `vscode/extensions.json` | VSCode 추천 확장 템플릿 |
+| `vscode/tasks.json` | VSCode 빌드/테스트 태스크 템플릿 |
+
+`setup.ps1` 실행 시 `vscode/` 템플릿을 프로젝트 루트의 `.vscode/`로 복사한다.
+이미 `.vscode/` 파일이 존재하면 덮어쓰지 않는다 (개발자 로컬 커스텀 보호).
 
 ## setup.ps1 매개변수
 
@@ -66,10 +72,14 @@ Windows에서 zlink 프로젝트의 전체 개발환경을 자동으로 구축�
 | Node.js | node-gyp | — |
 | Python | Python | 3.9 |
 
-### VSCode 확장
+### VSCode 설정 및 확장
 
-`.vscode/extensions.json`의 추천 확장을 자동 감지/설치한다.
-VSCode가 설치되어 있지 않으면 스킵한다.
+`setup.ps1` 실행 시 자동으로:
+1. `buildenv/win/vscode/` 템플릿을 `.vscode/`로 복사 (없는 파일만)
+2. VSCode 확장 감지 및 설치 (`-Install` 시)
+
+`.vscode/`는 gitignore 대상이므로 git에 포함되지 않는다.
+VSCode가 설치되어 있지 않으면 확장 설치는 스킵한다.
 
 ## 출력 예시
 
@@ -86,6 +96,7 @@ VSCode가 설치되어 있지 않으면 스킵한다.
 
 ## 참고 사항
 
-- **멱등성**: 이미 설치된 도구와 확장은 자동 스킵
+- **멱등성**: 이미 설치된 도구, 확장, `.vscode/` 파일은 자동 스킵
 - **winget 사용**: `-Install` 시 winget으로 도구 설치 (관리자 권한 불필요)
 - **env.ps1**: setup.ps1 실행 시 자동 생성되며, `PATH`와 환경변수를 설정
+- **.vscode/ 관리**: git에 포함하지 않고 `buildenv/win/vscode/` 템플릿에서 생성. 개발자가 로컬에서 수정한 설정은 덮어쓰지 않음

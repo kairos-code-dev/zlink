@@ -21,29 +21,23 @@ if(ZLINK_CPP_BUILD_TESTS)
     message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
   endif()
 
-  add_executable(test_cpp_pair tests/test_cpp_pair.cpp)
-  target_link_libraries(test_cpp_pair PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_pair COMMAND test_cpp_pair)
+  function(add_cpp_binding_test test_name source_file)
+    add_executable(${test_name} ${source_file})
+    target_link_libraries(${test_name} PRIVATE libzlink zlink-cpp)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    if(WIN32)
+      set_tests_properties(${test_name}
+        PROPERTIES
+          ENVIRONMENT "PATH=$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+    endif()
+  endfunction()
 
-  add_executable(test_cpp_pubsub tests/test_cpp_pubsub.cpp)
-  target_link_libraries(test_cpp_pubsub PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_pubsub COMMAND test_cpp_pubsub)
-
-  add_executable(test_cpp_dealer_router tests/test_cpp_dealer_router.cpp)
-  target_link_libraries(test_cpp_dealer_router PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_dealer_router COMMAND test_cpp_dealer_router)
-
-  add_executable(test_cpp_xpub_xsub tests/test_cpp_xpub_xsub.cpp)
-  target_link_libraries(test_cpp_xpub_xsub PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_xpub_xsub COMMAND test_cpp_xpub_xsub)
-
-  add_executable(test_cpp_multipart tests/test_cpp_multipart.cpp)
-  target_link_libraries(test_cpp_multipart PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_multipart COMMAND test_cpp_multipart)
-
-  add_executable(test_cpp_discovery tests/test_cpp_discovery_gateway_spot.cpp)
-  target_link_libraries(test_cpp_discovery PRIVATE libzlink zlink-cpp)
-  add_test(NAME test_cpp_discovery COMMAND test_cpp_discovery)
+  add_cpp_binding_test(test_cpp_pair tests/test_cpp_pair.cpp)
+  add_cpp_binding_test(test_cpp_pubsub tests/test_cpp_pubsub.cpp)
+  add_cpp_binding_test(test_cpp_dealer_router tests/test_cpp_dealer_router.cpp)
+  add_cpp_binding_test(test_cpp_xpub_xsub tests/test_cpp_xpub_xsub.cpp)
+  add_cpp_binding_test(test_cpp_multipart tests/test_cpp_multipart.cpp)
+  add_cpp_binding_test(test_cpp_discovery tests/test_cpp_discovery_gateway_spot.cpp)
 endif()
 
 if(ZLINK_CPP_BUILD_EXAMPLES)

@@ -140,17 +140,29 @@ Frame 3~N: Payload
 
 ## 7. SPOT 내부 구현
 
-### 7.1 처리 모델
-- 단일 직렬 처리 루프 (단일 스레드 내 순차 처리)
-- PUB/SUB 기반 mesh 구성
+### 7.1 구조
+- `spot_node_t` — 네트워크 제어 (PUB/SUB 소켓 소유, mesh 관리, worker 스레드)
+- `spot_pub_t` — 발행 핸들 (spot_node_t의 publish 위임, tag 기반 유효성 검증)
+- `spot_sub_t` — 구독/수신 핸들 (내부 큐, 패턴 매칭, 조건변수 기반 blocking recv)
 
-### 7.2 구독 집계
+### 7.2 동시성 모델
+- 발행: 호출자 스레드에서 직접 수행, `_pub_sync` mutex로 직렬화 (thread-safe)
+- 수신: worker 스레드가 SUB 소켓에서 수신 → spot_sub_t 내부 큐로 분배
+- 잠금 순서: `_sync` → `_pub_sync` (데드락 방지)
+- 비동기 큐 없이 직접 발행 (publish path에 메시지 버퍼링 없음)
+
+### 7.3 구독 집계
 - refcount 기반 SUB 필터 관리
 - 동일 토픽의 중복 구독 시 refcount 증가
+- spot_sub_t별 구독 셋 관리 (정확한 토픽 + 패턴 별도)
 
-### 7.3 전달 정책
-- 로컬 publish → 로컬 분배 + PUB 송출
-- 원격 수신 (SUB) → 로컬 분배만 (재발행 없음, 루프 방지)
+### 7.4 전달 정책
+- 로컬 publish (spot_pub) → 로컬 spot_sub 분배 + PUB 송출 (원격 전파)
+- 원격 수신 (SUB) → 로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
+
+### 7.5 Raw 소켓 정책
+- `spot_pub_t`: raw PUB socket 노출하지 않음 (thread-safety 우회 방지)
+- `spot_sub_t`: raw SUB socket 노출 (`zlink_spot_sub_socket()`, 진단/고급 용도)
 
 ### 7.4 Discovery 타입 분리
 - service_type 필드로 gateway_receiver/spot_node 분리

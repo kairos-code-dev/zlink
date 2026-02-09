@@ -113,12 +113,17 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     char endpoint_a[MAX_SOCKET_STRING] = {0};
 
     if (is_ipc) {
+#if defined(ZLINK_HAVE_IPC)
         char endpoint_b[MAX_SOCKET_STRING];
         make_random_ipc_endpoint (endpoint_a);
         make_random_ipc_endpoint (endpoint_b);
 
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, endpoint_a));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, endpoint_b));
+#else
+        TEST_IGNORE_MESSAGE ("IPC not compiled");
+        return;
+#endif
     } else {
         if (use_tls) {
             TEST_ASSERT_SUCCESS_ERRNO (
@@ -417,6 +422,12 @@ static bool wait_for_spot_message (void *spot_sub_,
 
 static void test_spot_mmorpg_zone_adjacency_scale ()
 {
+    if (env_int_or_default ("ZLINK_SPOT_RUN_MMORPG_SCALE", 0) == 0) {
+        TEST_IGNORE_MESSAGE (
+          "MMORPG scale test disabled (set ZLINK_SPOT_RUN_MMORPG_SCALE=1)");
+        return;
+    }
+
     const int field_width = env_int_or_default ("ZLINK_SPOT_FIELD_WIDTH", 16);
     const int field_height = env_int_or_default ("ZLINK_SPOT_FIELD_HEIGHT", 16);
     const int zone_count = field_width * field_height;
@@ -550,6 +561,13 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
 
 static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
 {
+    if (env_int_or_default ("ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY", 0) == 0) {
+        TEST_IGNORE_MESSAGE (
+          "Multi-node discovery scale test disabled "
+          "(set ZLINK_SPOT_RUN_MULTI_NODE_DISCOVERY=1)");
+        return;
+    }
+
     const int field_width = 24;
     const int field_height = 24;
     const int zone_count = field_width * field_height;

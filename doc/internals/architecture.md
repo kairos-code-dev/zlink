@@ -1050,8 +1050,9 @@ core/
 │   │   │   ├── receiver.cpp/hpp
 │   │   │   └── routing_id_utils.hpp
 │   │   └── spot/                    # SPOT 서비스
-│   │       ├── spot.cpp/hpp
-│   │       └── spot_node.cpp/hpp
+│   │       ├── spot_pub.cpp/hpp     # 발행 핸들 (thread-safe)
+│   │       ├── spot_sub.cpp/hpp     # 구독/수신 핸들
+│   │       └── spot_node.cpp/hpp    # 네트워크 제어 (PUB/SUB mesh)
 │   │
 │   └── utils/                       # 유틸리티
 │       ├── ypipe.hpp                # Lock-free 파이프

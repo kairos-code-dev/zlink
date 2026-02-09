@@ -164,42 +164,6 @@ bool spot_t::dequeue_message (spot_message_t *out_)
     return true;
 }
 
-bool spot_t::fetch_ring_message (spot_message_t *out_)
-{
-    if (!out_ || !_node)
-        return false;
-
-    for (std::map<std::string, uint64_t>::iterator it = _ring_cursors.begin ();
-         it != _ring_cursors.end (); ++it) {
-        const std::string &topic = it->first;
-        std::map<std::string, spot_node_t::topic_state_t>::iterator tit =
-          _node->_topics.find (topic);
-        if (tit == _node->_topics.end ())
-            continue;
-        if (tit->second.mode != ZLINK_SPOT_TOPIC_RINGBUFFER)
-            continue;
-
-        spot_node_t::ringbuffer_t &ring = tit->second.ring;
-        if (it->second < ring.start_seq)
-            it->second = ring.start_seq;
-        const uint64_t end_seq = ring.start_seq + ring.entries.size ();
-        if (it->second >= end_seq)
-            continue;
-
-        const size_t index = static_cast<size_t> (it->second - ring.start_seq);
-        std::vector<msg_t> parts;
-        if (!copy_parts_from_vec (ring.entries[index], &parts))
-            return false;
-
-        out_->topic = topic;
-        out_->parts.swap (parts);
-        it->second++;
-        return true;
-    }
-
-    return false;
-}
-
 zlink_msg_t *spot_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                           size_t *count_)
 {
@@ -262,8 +226,6 @@ int spot_t::recv (zlink_msg_t **parts_,
         scoped_lock_t lock (_node->_sync);
         while (true) {
             if (dequeue_message (&msg))
-                break;
-            if (fetch_ring_message (&msg))
                 break;
             if (flags_ == ZLINK_DONTWAIT) {
                 errno = EAGAIN;

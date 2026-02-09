@@ -230,25 +230,6 @@ std::string spot_node_t::resolve_advertise (const std::string &bind_endpoint_)
     return endpoint;
 }
 
-bool spot_node_t::topic_is_ringbuffer (const std::string &topic_) const
-{
-    std::map<std::string, topic_state_t>::const_iterator it =
-      _topics.find (topic_);
-    if (it == _topics.end ())
-        return false;
-    return it->second.mode == ZLINK_SPOT_TOPIC_RINGBUFFER;
-}
-
-void spot_node_t::ensure_ringbuffer_topic (const std::string &topic_)
-{
-    std::map<std::string, topic_state_t>::iterator it = _topics.find (topic_);
-    if (it != _topics.end ())
-        return;
-    topic_state_t state;
-    state.mode = ZLINK_SPOT_TOPIC_RINGBUFFER;
-    _topics.insert (std::make_pair (topic_, state));
-}
-
 void spot_node_t::add_filter (const std::string &filter_)
 {
     if (filter_.empty ())
@@ -728,7 +709,6 @@ void spot_node_t::remove_spot (spot_t *spot_)
 
     spot_->_topics.clear ();
     spot_->_patterns.clear ();
-    spot_->_ring_cursors.clear ();
     while (!spot_->_queue.empty ()) {
         spot_t::spot_message_t &msg = spot_->_queue.front ();
         close_parts (&msg.parts);
@@ -743,8 +723,7 @@ int spot_node_t::topic_create (const char *topic_, int mode_)
         errno = EINVAL;
         return -1;
     }
-    if (mode_ != ZLINK_SPOT_TOPIC_QUEUE
-        && mode_ != ZLINK_SPOT_TOPIC_RINGBUFFER) {
+    if (mode_ != ZLINK_SPOT_TOPIC_QUEUE) {
         errno = EINVAL;
         return -1;
     }
@@ -775,17 +754,7 @@ int spot_node_t::topic_destroy (const char *topic_)
         errno = ENOENT;
         return -1;
     }
-    for (std::deque<std::vector<msg_t> >::iterator rit =
-           it->second.ring.entries.begin ();
-         rit != it->second.ring.entries.end (); ++rit)
-        close_parts (&(*rit));
-    it->second.ring.entries.clear ();
     _topics.erase (it);
-
-    for (std::set<spot_t *>::iterator sit = _spots.begin ();
-         sit != _spots.end (); ++sit) {
-        (*sit)->_ring_cursors.erase (topic);
-    }
     return 0;
 }
 
@@ -806,14 +775,6 @@ int spot_node_t::subscribe (spot_t *spot_, const char *topic_)
         return 0;
 
     add_filter (topic);
-    if (topic_is_ringbuffer (topic)) {
-        std::map<std::string, topic_state_t>::iterator it = _topics.find (topic);
-        if (it != _topics.end ()) {
-            const uint64_t end_seq = it->second.ring.start_seq
-                                     + it->second.ring.entries.size ();
-            spot_->_ring_cursors[topic] = end_seq;
-        }
-    }
     return 0;
 }
 
@@ -865,7 +826,6 @@ int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
         errno = EINVAL;
         return -1;
     }
-    spot_->_ring_cursors.erase (topic);
     remove_filter (topic);
     return 0;
 }
@@ -940,40 +900,10 @@ int spot_node_t::publish (spot_t *spot_,
 void spot_node_t::dispatch_local (const std::string &topic_,
                                   const std::vector<msg_t> &payload_)
 {
-    const bool ringbuffer = topic_is_ringbuffer (topic_);
-
-    if (ringbuffer) {
-        ensure_ringbuffer_topic (topic_);
-        topic_state_t &state = _topics[topic_];
-        std::vector<msg_t> entry_parts;
-        if (copy_parts_from_vec (payload_, &entry_parts)) {
-            state.ring.entries.push_back (std::vector<msg_t> ());
-            state.ring.entries.back ().swap (entry_parts);
-            if (state.ring.entries.size () > state.ring.hwm) {
-                close_parts (&state.ring.entries.front ());
-                state.ring.entries.pop_front ();
-                state.ring.start_seq++;
-            }
-
-            for (std::set<spot_t *>::iterator sit = _spots.begin ();
-                 sit != _spots.end (); ++sit) {
-                std::map<std::string, uint64_t>::iterator cit =
-                  (*sit)->_ring_cursors.find (topic_);
-                if (cit != (*sit)->_ring_cursors.end ()) {
-                    if (cit->second < state.ring.start_seq)
-                        cit->second = state.ring.start_seq;
-                    (*sit)->_cv.broadcast ();
-                }
-            }
-        }
-    }
-
     for (std::set<spot_t *>::iterator it = _spots.begin (); it != _spots.end ();
          ++it) {
         spot_t *spot = *it;
         if (!spot->matches (topic_))
-            continue;
-        if (ringbuffer && spot->_ring_cursors.count (topic_))
             continue;
         spot->enqueue_message (topic_, payload_);
     }
@@ -1306,14 +1236,6 @@ int spot_node_t::destroy ()
 
     scoped_lock_t lock (_sync);
     _spots.clear ();
-    for (std::map<std::string, topic_state_t>::iterator it = _topics.begin ();
-         it != _topics.end (); ++it) {
-        for (std::deque<std::vector<msg_t> >::iterator rit =
-               it->second.ring.entries.begin ();
-             rit != it->second.ring.entries.end (); ++rit)
-            close_parts (&(*rit));
-        it->second.ring.entries.clear ();
-    }
     _topics.clear ();
     _filter_refcount.clear ();
     _peer_endpoints.clear ();

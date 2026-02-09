@@ -546,7 +546,6 @@ ZLINK_EXPORT int zlink_receiver_destroy (void **provider_p);
 /******************************************************************************/
 
 #define ZLINK_SPOT_TOPIC_QUEUE 0
-#define ZLINK_SPOT_TOPIC_RINGBUFFER 1
 
 /* SPOT Node */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);

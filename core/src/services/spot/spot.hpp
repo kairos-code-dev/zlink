@@ -9,7 +9,6 @@
 #include "utils/mutex.hpp"
 
 #include <deque>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -65,7 +64,6 @@ class spot_t
     bool enqueue_message (const std::string &topic_,
                           const std::vector<msg_t> &payload_);
     bool dequeue_message (spot_message_t *out_);
-    bool fetch_ring_message (spot_message_t *out_);
 
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                       size_t *count_);
@@ -75,7 +73,6 @@ class spot_t
     uint32_t _tag;
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
-    std::map<std::string, uint64_t> _ring_cursors;
 
     std::deque<spot_message_t> _queue;
     size_t _queue_hwm;

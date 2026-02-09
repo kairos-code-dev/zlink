@@ -68,18 +68,9 @@ class spot_node_t
 
   private:
     friend class spot_t;
-    struct ringbuffer_t
-    {
-        ringbuffer_t () : start_seq (1), hwm (100000) {}
-        uint64_t start_seq;
-        size_t hwm;
-        std::deque<std::vector<msg_t> > entries;
-    };
-
     struct topic_state_t
     {
         int mode;
-        ringbuffer_t ring;
     };
 
     static void run (void *arg_);
@@ -96,9 +87,6 @@ class spot_node_t
     static bool validate_pattern (const char *pattern_, std::string *prefix_);
     static bool validate_service_name (const std::string &name_);
     static std::string resolve_advertise (const std::string &bind_endpoint_);
-
-    bool topic_is_ringbuffer (const std::string &topic_) const;
-    void ensure_ringbuffer_topic (const std::string &topic_);
 
     void add_filter (const std::string &filter_);
     void remove_filter (const std::string &filter_);

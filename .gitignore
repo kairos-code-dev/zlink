@@ -24,6 +24,8 @@ cmake-build-*/
 build-*/
 build/
 build_*/
+/compile_commands.json
+/.cache/
 ## Android
 core/builds/android/prefix
 ## IntelliJ

@@ -87,6 +87,7 @@ cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_SHARED=ON \
     -DBUILD_STATIC=OFF \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
@@ -94,6 +95,11 @@ cmake "$LIBZLINK_SRC_ABS" \
     -DZLINK_CXX_STANDARD=17 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
+
+if [ -f "compile_commands.json" ]; then
+    ln -sfn "$BUILD_DIR/compile_commands.json" "$REPO_ROOT/compile_commands.json"
+    echo "Linked compile_commands.json -> $BUILD_DIR/compile_commands.json"
+fi
 
 # Step 3: Build libzlink
 echo ""

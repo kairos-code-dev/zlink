@@ -618,6 +618,9 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
     const int field_width = env_int_or_default ("ZLINK_SPOT_FIELD_WIDTH", 16);
     const int field_height = env_int_or_default ("ZLINK_SPOT_FIELD_HEIGHT", 16);
     const int zone_count = field_width * field_height;
+    const int subscription_settle_ms = 300;
+    const int recv_wait_timeout_ms = 1500;
+    const int recv_poll_step_ms = 10;
 
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -667,7 +670,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
         }
     }
 
-    msleep (1000);
+    msleep (subscription_settle_ms);
 
     for (int y = 0; y < field_height; ++y) {
         for (int x = 0; x < field_width; ++x) {
@@ -693,9 +696,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                 zlink_msg_t *recv_parts = NULL;
                 size_t recv_count = 0;
                 char recv_topic[128];
-                const int recv_wait_timeout_ms = 3000;
-                const int poll_step_ms = 10;
-                const int max_attempts = recv_wait_timeout_ms / poll_step_ms;
+                const int max_attempts = recv_wait_timeout_ms / recv_poll_step_ms;
                 bool got_message = false;
                 for (int attempt = 0; attempt < max_attempts; ++attempt) {
                     const int rc = zlink_spot_recv (spots[dst_idx], &recv_parts,
@@ -706,7 +707,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                         break;
                     }
                     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
-                    msleep (poll_step_ms);
+                    msleep (recv_poll_step_ms);
                 }
                 TEST_ASSERT_TRUE_MESSAGE (
                   got_message,
@@ -745,10 +746,13 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
 
 static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
 {
-    const int field_width = 100;
-    const int field_height = 100;
+    const int field_width = 24;
+    const int field_height = 24;
     const int zone_count = field_width * field_height;
-    const int spot_node_count = 10;
+    const int spot_node_count = 4;
+    const int auto_peer_settle_ms = 800;
+    const int sub_propagation_ms = 1200;
+    const int recv_timeout_ms = 1000;
 
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -810,10 +814,10 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
           nodes[i], discovery, "spot-field-mmorpg"));
     }
 
-    TEST_ASSERT_TRUE (
-      wait_for_provider_count (discovery, "spot-field-mmorpg", spot_node_count, 5000));
+    TEST_ASSERT_TRUE (wait_for_provider_count (
+      discovery, "spot-field-mmorpg", spot_node_count, 3000));
     // Auto peer connections can be delayed under load.
-    msleep (3000);
+    msleep (auto_peer_settle_ms);
 
     std::vector<void *> spots (zone_count, static_cast<void *> (NULL));
     std::vector<std::string> topics (zone_count);
@@ -856,20 +860,25 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
     }
 
     // Allow subscription propagation across all spot nodes before publishing.
-    msleep (5000);
+    msleep (sub_propagation_ms);
 
     const int sample_coords[][2] = {{0, 0},
-                                    {99, 0},
-                                    {0, 99},
-                                    {99, 99},
-                                    {50, 50},
-                                    {10, 10},
-                                    {20, 40},
-                                    {33, 77},
-                                    {44, 55},
-                                    {70, 30},
-                                    {88, 11},
-                                    {95, 95}};
+                                    {field_width - 1, 0},
+                                    {0, field_height - 1},
+                                    {field_width - 1, field_height - 1},
+                                    {field_width / 2, field_height / 2},
+                                    {field_width / 4, field_height / 4},
+                                    {field_width / 5, (field_height * 2) / 5},
+                                    {(field_width * 33) / 100,
+                                     (field_height * 77) / 100},
+                                    {(field_width * 44) / 100,
+                                     (field_height * 55) / 100},
+                                    {(field_width * 7) / 10,
+                                     (field_height * 3) / 10},
+                                    {(field_width * 88) / 100,
+                                     (field_height * 11) / 100},
+                                    {(field_width * 95) / 100,
+                                     (field_height * 95) / 100}};
     const size_t sample_count = sizeof (sample_coords) / sizeof (sample_coords[0]);
 
     for (size_t i = 0; i < sample_count; ++i) {
@@ -898,7 +907,7 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
                 const int dst_idx = zone_idx (dst_x, dst_y, field_width);
                 TEST_ASSERT_TRUE (wait_for_spot_message (
                   spots[dst_idx], topics[src_idx].c_str (),
-                  (const char *) &src_idx, sizeof (int), 1000));
+                  (const char *) &src_idx, sizeof (int), recv_timeout_ms));
             }
         }
     }

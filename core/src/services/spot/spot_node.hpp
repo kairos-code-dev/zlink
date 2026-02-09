@@ -8,7 +8,6 @@
 #include "core/thread.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
-#include "utils/condition_variable.hpp"
 #include "utils/mutex.hpp"
 
 #include <deque>
@@ -19,7 +18,8 @@
 
 namespace zlink
 {
-class spot_t;
+class spot_pub_t;
+class spot_sub_t;
 
 class spot_node_t
 {
@@ -50,28 +50,24 @@ class spot_node_t
     socket_base_t *pub_socket () const { return _pub; }
     socket_base_t *sub_socket () const { return _sub; }
 
-    spot_t *create_spot ();
-    void remove_spot (spot_t *spot_);
+    spot_pub_t *create_spot_pub ();
+    spot_sub_t *create_spot_sub ();
+    void remove_spot_pub (spot_pub_t *pub_);
+    void remove_spot_sub (spot_sub_t *sub_);
 
-    int publish (spot_t *spot_,
-                 const char *topic_,
+    int publish (const char *topic_,
                  zlink_msg_t *parts_,
                  size_t part_count_,
                  int flags_);
-    int subscribe (spot_t *spot_, const char *topic_);
-    int subscribe_pattern (spot_t *spot_, const char *pattern_);
-    int unsubscribe (spot_t *spot_, const char *topic_or_pattern_);
-    int topic_create (const char *topic_, int mode_);
-    int topic_destroy (const char *topic_);
+    int subscribe (spot_sub_t *sub_, const char *topic_);
+    int subscribe_pattern (spot_sub_t *sub_, const char *pattern_);
+    int unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_);
 
     int destroy ();
 
   private:
-    friend class spot_t;
-    struct topic_state_t
-    {
-        int mode;
-    };
+    friend class spot_pub_t;
+    friend class spot_sub_t;
 
     static void run (void *arg_);
     void loop ();
@@ -121,10 +117,12 @@ class spot_node_t
     std::string _discovery_service;
     uint64_t _next_discovery_refresh_ms;
 
+    // Serialize access to PUB socket for thread-safe publish.
+    mutex_t _pub_sync;
     mutex_t _sync;
-    std::set<spot_t *> _spots;
+    std::set<spot_pub_t *> _pubs;
+    std::set<spot_sub_t *> _subs;
     std::map<std::string, size_t> _filter_refcount;
-    std::map<std::string, topic_state_t> _topics;
 
     std::string _tls_cert;
     std::string _tls_key;

@@ -105,6 +105,28 @@ internal static class TransportTestHelpers
         throw new TimeoutException();
     }
 
+    internal static void SendWithRetry(Gateway gateway, string serviceName,
+        Message[] parts, SendFlags flags, int timeoutMs)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        ZlinkException? last = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                gateway.Send(serviceName, parts, flags);
+                return;
+            }
+            catch (ZlinkException ex)
+            {
+                last = ex;
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+        if (last != null) throw last;
+        throw new TimeoutException();
+    }
+
     internal static SpotMessage SpotReceiveWithTimeout(Spot spot, int timeoutMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);

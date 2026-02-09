@@ -1,0 +1,16 @@
+pyproject.toml
+src/zlink/__init__.py
+src/zlink/_core.py
+src/zlink/_discovery.py
+src/zlink/_enums.py
+src/zlink/_ffi.py
+src/zlink/_monitor.py
+src/zlink/_native.py
+src/zlink/_poller.py
+src/zlink/_spot.py
+src/zlink.egg-info/PKG-INFO
+src/zlink.egg-info/SOURCES.txt
+src/zlink.egg-info/dependency_links.txt
+src/zlink.egg-info/top_level.txt
+tests/test_enums.py
+tests/test_version.py

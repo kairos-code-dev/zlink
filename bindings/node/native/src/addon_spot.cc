@@ -212,6 +212,20 @@ napi_value spot_node_sub_socket(napi_env env, napi_callback_info info)
     return ext;
 }
 
+struct spot_handle_t
+{
+    void *node;
+    void *pub;
+    void *sub;
+};
+
+static spot_handle_t *get_spot_handle(napi_env env, napi_value val)
+{
+    void *raw = NULL;
+    napi_get_value_external(env, val, &raw);
+    return static_cast<spot_handle_t *> (raw);
+}
+
 napi_value spot_new(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -219,9 +233,26 @@ napi_value spot_new(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *node = NULL;
     napi_get_value_external(env, argv[0], &node);
-    void *spot = zlink_spot_new(node);
+
+    spot_handle_t *spot = static_cast<spot_handle_t *> (malloc (sizeof (spot_handle_t)));
     if (!spot)
         return throw_last_error(env, "spot_new failed");
+    spot->node = node;
+    spot->pub = zlink_spot_pub_new(node);
+    spot->sub = zlink_spot_sub_new(node);
+    if (!spot->pub || !spot->sub) {
+        if (spot->pub) {
+            void *tmp = spot->pub;
+            zlink_spot_pub_destroy(&tmp);
+        }
+        if (spot->sub) {
+            void *tmp = spot->sub;
+            zlink_spot_sub_destroy(&tmp);
+        }
+        free(spot);
+        return throw_last_error(env, "spot_new failed");
+    }
+
     napi_value ext;
     napi_create_external(env, spot, NULL, NULL, &ext);
     return ext;
@@ -232,10 +263,23 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *tmp = spot;
-    int rc = zlink_spot_destroy(&tmp);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
+    if (!spot)
+        return throw_last_error(env, "spot_destroy failed");
+    int rc = 0;
+    if (spot->pub) {
+        void *tmp = spot->pub;
+        spot->pub = NULL;
+        if (zlink_spot_pub_destroy(&tmp) != 0)
+            rc = -1;
+    }
+    if (spot->sub) {
+        void *tmp = spot->sub;
+        spot->sub = NULL;
+        if (zlink_spot_sub_destroy(&tmp) != 0)
+            rc = -1;
+    }
+    free(spot);
     if (rc != 0)
         return throw_last_error(env, "spot_destroy failed");
     napi_value ok;
@@ -248,13 +292,9 @@ napi_value spot_topic_create(napi_env env, napi_callback_info info)
     napi_value argv[3];
     size_t argc = 3;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    std::string topic = get_string(env, argv[1]);
     int32_t mode = 0;
     napi_get_value_int32(env, argv[2], &mode);
-    int rc = zlink_spot_topic_create(spot, topic.c_str(), mode);
-    if (rc != 0)
+    if (mode != 0 && mode != 1)
         return throw_last_error(env, "spot_topic_create failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
@@ -263,15 +303,6 @@ napi_value spot_topic_create(napi_env env, napi_callback_info info)
 
 napi_value spot_topic_destroy(napi_env env, napi_callback_info info)
 {
-    napi_value argv[2];
-    size_t argc = 2;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    std::string topic = get_string(env, argv[1]);
-    int rc = zlink_spot_topic_destroy(spot, topic.c_str());
-    if (rc != 0)
-        return throw_last_error(env, "spot_topic_destroy failed");
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -282,15 +313,14 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     napi_value argv[4];
     size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
     std::string topic = get_string(env, argv[1]);
     std::vector<zlink_msg_t> parts;
     if (!build_msg_vector(env, argv[2], &parts))
         return NULL;
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
-    int rc = zlink_spot_publish(spot, topic.c_str(), parts.data(), parts.size(), flags);
+    int rc = zlink_spot_pub_publish(spot ? spot->pub : NULL, topic.c_str(), parts.data(), parts.size(), flags);
     if (rc != 0)
         return throw_last_error(env, "spot_publish failed");
     napi_value ok;
@@ -303,10 +333,9 @@ napi_value spot_subscribe(napi_env env, napi_callback_info info)
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
     std::string topic = get_string(env, argv[1]);
-    int rc = zlink_spot_subscribe(spot, topic.c_str());
+    int rc = zlink_spot_sub_subscribe(spot ? spot->sub : NULL, topic.c_str());
     if (rc != 0)
         return throw_last_error(env, "spot_subscribe failed");
     napi_value ok;
@@ -319,10 +348,9 @@ napi_value spot_subscribe_pattern(napi_env env, napi_callback_info info)
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
     std::string pat = get_string(env, argv[1]);
-    int rc = zlink_spot_subscribe_pattern(spot, pat.c_str());
+    int rc = zlink_spot_sub_subscribe_pattern(spot ? spot->sub : NULL, pat.c_str());
     if (rc != 0)
         return throw_last_error(env, "spot_subscribe_pattern failed");
     napi_value ok;
@@ -335,10 +363,9 @@ napi_value spot_unsubscribe(napi_env env, napi_callback_info info)
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
     std::string topic = get_string(env, argv[1]);
-    int rc = zlink_spot_unsubscribe(spot, topic.c_str());
+    int rc = zlink_spot_sub_unsubscribe(spot ? spot->sub : NULL, topic.c_str());
     if (rc != 0)
         return throw_last_error(env, "spot_unsubscribe failed");
     napi_value ok;
@@ -351,15 +378,14 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     napi_value argv[2];
     size_t argc = 2;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
     int32_t flags = 0;
     napi_get_value_int32(env, argv[1], &flags);
     zlink_msg_t *parts = NULL;
     size_t count = 0;
     char topic[256] = {0};
     size_t topic_len = 256;
-    int rc = zlink_spot_recv(spot, &parts, &count, flags, topic, &topic_len);
+    int rc = zlink_spot_sub_recv(spot ? spot->sub : NULL, &parts, &count, flags, topic, &topic_len);
     if (rc != 0)
         return throw_last_error(env, "spot_recv failed");
     napi_value arr;
@@ -386,9 +412,8 @@ napi_value spot_pub_socket(napi_env env, napi_callback_info info)
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *sock = zlink_spot_pub_socket(spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
+    void *sock = (spot && spot->node) ? zlink_spot_node_pub_socket(spot->node) : NULL;
     if (!sock)
         return throw_last_error(env, "spot_pub_socket failed");
     napi_value ext;
@@ -401,9 +426,8 @@ napi_value spot_sub_socket(napi_env env, napi_callback_info info)
     napi_value argv[1];
     size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *spot = NULL;
-    napi_get_value_external(env, argv[0], &spot);
-    void *sock = zlink_spot_sub_socket(spot);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
+    void *sock = zlink_spot_sub_socket(spot ? spot->sub : NULL);
     if (!sock)
         return throw_last_error(env, "spot_sub_socket failed");
     napi_value ext;

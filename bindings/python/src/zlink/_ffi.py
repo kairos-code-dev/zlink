@@ -204,26 +204,25 @@ class _Lib:
         L.zlink_spot_node_sub_socket.argtypes = [ctypes.c_void_p]
         L.zlink_spot_node_sub_socket.restype = ctypes.c_void_p
 
-        L.zlink_spot_new.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_new.restype = ctypes.c_void_p
-        L.zlink_spot_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-        L.zlink_spot_destroy.restype = ctypes.c_int
-        L.zlink_spot_topic_create.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
-        L.zlink_spot_topic_create.restype = ctypes.c_int
-        L.zlink_spot_topic_destroy.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_topic_destroy.restype = ctypes.c_int
-        L.zlink_spot_publish.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_spot_publish.restype = ctypes.c_int
-        L.zlink_spot_subscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_subscribe.restype = ctypes.c_int
-        L.zlink_spot_subscribe_pattern.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_subscribe_pattern.restype = ctypes.c_int
-        L.zlink_spot_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        L.zlink_spot_unsubscribe.restype = ctypes.c_int
-        L.zlink_spot_recv.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t), ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)]
-        L.zlink_spot_recv.restype = ctypes.c_int
-        L.zlink_spot_pub_socket.argtypes = [ctypes.c_void_p]
-        L.zlink_spot_pub_socket.restype = ctypes.c_void_p
+        L.zlink_spot_pub_new.argtypes = [ctypes.c_void_p]
+        L.zlink_spot_pub_new.restype = ctypes.c_void_p
+        L.zlink_spot_pub_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        L.zlink_spot_pub_destroy.restype = ctypes.c_int
+        L.zlink_spot_pub_publish.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_spot_pub_publish.restype = ctypes.c_int
+
+        L.zlink_spot_sub_new.argtypes = [ctypes.c_void_p]
+        L.zlink_spot_sub_new.restype = ctypes.c_void_p
+        L.zlink_spot_sub_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        L.zlink_spot_sub_destroy.restype = ctypes.c_int
+        L.zlink_spot_sub_subscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        L.zlink_spot_sub_subscribe.restype = ctypes.c_int
+        L.zlink_spot_sub_subscribe_pattern.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        L.zlink_spot_sub_subscribe_pattern.restype = ctypes.c_int
+        L.zlink_spot_sub_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        L.zlink_spot_sub_unsubscribe.restype = ctypes.c_int
+        L.zlink_spot_sub_recv.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t), ctypes.c_int, ctypes.c_char_p, ctypes.POINTER(ctypes.c_size_t)]
+        L.zlink_spot_sub_recv.restype = ctypes.c_int
         L.zlink_spot_sub_socket.argtypes = [ctypes.c_void_p]
         L.zlink_spot_sub_socket.restype = ctypes.c_void_p
 

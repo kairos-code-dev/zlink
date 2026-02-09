@@ -9,7 +9,8 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 | 용어 | 설명 |
 |------|------|
 | **SPOT Node** | PUB/SUB Mesh 참여 에이전트 (노드별 1개) |
-| **SPOT Instance** | 토픽 발행/구독 핸들 (Node 내 여러 개) |
+| **SPOT Pub** | 토픽 발행 핸들 (기본 thread-safe) |
+| **SPOT Sub** | 토픽 구독/수신 핸들 |
 | **Topic** | 문자열 키 기반 메시지 채널 |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
 
@@ -79,36 +80,36 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node2:9000");
 zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 ```
 
-## 4. SPOT Instance 사용
+## 4. SPOT Pub/Sub 사용
 
-### 4.1 발행
+### 4.1 발행 (SPOT Pub)
 
 ```c
-void *spot = zlink_spot_new(node);
+void *pub = zlink_spot_pub_new(node);
 
 /* 발행 */
 zlink_msg_t msg;
 zlink_msg_init_data(&msg, "hello world", 11, NULL, NULL);
-zlink_spot_publish(spot, "chat:room1:message", &msg, 1, 0);
+zlink_spot_pub_publish(pub, "chat:room1:message", &msg, 1, 0);
 ```
 
-### 4.2 구독
+### 4.2 구독/수신 (SPOT Sub)
 
 ```c
-void *spot = zlink_spot_new(node);
+void *sub = zlink_spot_sub_new(node);
 
 /* 정확한 토픽 구독 */
-zlink_spot_subscribe(spot, "chat:room1:message");
+zlink_spot_sub_subscribe(sub, "chat:room1:message");
 
 /* 패턴 구독 (접두어 매칭) */
-zlink_spot_subscribe_pattern(spot, "chat:room1:*");
+zlink_spot_sub_subscribe_pattern(sub, "chat:room1:*");
 
 /* 수신 */
 zlink_msg_t *parts = NULL;
 size_t part_count = 0;
 char topic[256];
 size_t topic_len = 256;
-zlink_spot_recv(spot, &parts, &part_count, 0, topic, &topic_len);
+zlink_spot_sub_recv(sub, &parts, &part_count, 0, topic, &topic_len);
 
 printf("토픽: %.*s\n", (int)topic_len, topic);
 zlink_msgv_close(parts, part_count);
@@ -117,11 +118,20 @@ zlink_msgv_close(parts, part_count);
 ### 4.3 구독 해제
 
 ```c
-zlink_spot_unsubscribe(spot, "chat:room1:message");
-zlink_spot_unsubscribe(spot, "chat:room1:*");
+zlink_spot_sub_unsubscribe(sub, "chat:room1:message");
+zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```
 
-## 5. 토픽 모델
+### 4.4 Raw 소켓 노출 정책
+
+- `spot_pub`은 raw socket을 노출하지 않는다.
+- `spot_sub`은 raw SUB socket 노출 API를 제공한다.
+
+```c
+void *raw_sub = zlink_spot_sub_socket(sub);
+```
+
+## 5. 토픽 규칙
 
 ### 명명 규칙
 
@@ -132,21 +142,6 @@ zlink_spot_unsubscribe(spot, "chat:room1:*");
 - `metrics:zone1:cpu`
 - `game:world1:player_move`
 
-### 토픽 모드
-
-```c
-/* QUEUE 모드 (기본): per-spot 큐 */
-zlink_spot_topic_create(spot, "chat:room1", ZLINK_SPOT_TOPIC_QUEUE);
-
-/* RINGBUFFER 모드: 토픽 로그 append */
-zlink_spot_topic_create(spot, "metrics:cpu", ZLINK_SPOT_TOPIC_RINGBUFFER);
-```
-
-| 모드 | 설명 |
-|------|------|
-| QUEUE | SPOT Instance별 독립 큐 (기본) |
-| RINGBUFFER | 토픽 단위 링 버퍼, 최신 메시지 유지 |
-
 ### 패턴 구독 규칙
 
 - `*`는 한 개만 허용, 문자열 끝에만
@@ -155,14 +150,15 @@ zlink_spot_topic_create(spot, "metrics:cpu", ZLINK_SPOT_TOPIC_RINGBUFFER);
 
 ## 6. 전달 정책
 
-- 로컬 publish → 로컬 SPOT 분배 + PUB 송출 (원격 전파)
-- 원격 수신 (SUB) → 로컬 SPOT 분배만 (재발행 없음)
+- 로컬 publish (`spot_pub`) → 로컬 SPOT Sub 분배 + PUB 송출 (원격 전파)
+- 원격 수신 (SUB) → 로컬 SPOT Sub 분배만 (재발행 없음)
 - 재발행 없음으로 메시지 루프/중복 방지
 
 ## 7. 정리
 
 ```c
-zlink_spot_destroy(&spot);
+zlink_spot_pub_destroy(&pub);
+zlink_spot_sub_destroy(&sub);
 zlink_spot_node_destroy(&node);
 zlink_discovery_destroy(&discovery);
 ```

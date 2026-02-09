@@ -206,8 +206,8 @@ enum class gateway_lb_strategy : int
 
 enum class spot_topic_mode : int
 {
-    queue = ZLINK_SPOT_TOPIC_QUEUE,
-    ringbuffer = ZLINK_SPOT_TOPIC_RINGBUFFER
+    queue = 0,
+    ringbuffer = 1
 };
 
 enum class registry_socket_role : int
@@ -242,8 +242,8 @@ enum class spot_node_socket_role : int
 
 enum class spot_socket_role : int
 {
-    pub = ZLINK_SPOT_SOCKET_PUB,
-    sub = ZLINK_SPOT_SOCKET_SUB
+    pub = 1,
+    sub = 2
 };
 
 // --- End enum types ---
@@ -1142,17 +1142,40 @@ class spot_node_t
 class spot_t
 {
   public:
-    explicit spot_t (spot_node_t &node_) : _spot (zlink_spot_new (node_.handle ())) {}
+    explicit spot_t (spot_node_t &node_)
+        : _node (node_.handle ()),
+          _pub (zlink_spot_pub_new (node_.handle ())),
+          _sub (zlink_spot_sub_new (node_.handle ()))
+    {
+        if (_pub && _sub)
+            return;
+        if (_pub)
+            zlink_spot_pub_destroy (&_pub);
+        if (_sub)
+            zlink_spot_sub_destroy (&_sub);
+        _pub = NULL;
+        _sub = NULL;
+    }
     ~spot_t () { destroy (); }
 
-    spot_t (spot_t &&other) noexcept : _spot (other._spot) { other._spot = NULL; }
+    spot_t (spot_t &&other) noexcept
+        : _node (other._node), _pub (other._pub), _sub (other._sub)
+    {
+        other._node = NULL;
+        other._pub = NULL;
+        other._sub = NULL;
+    }
     spot_t &operator= (spot_t &&other) noexcept
     {
         if (this == &other)
             return *this;
         destroy ();
-        _spot = other._spot;
-        other._spot = NULL;
+        _node = other._node;
+        _pub = other._pub;
+        _sub = other._sub;
+        other._node = NULL;
+        other._pub = NULL;
+        other._sub = NULL;
         return *this;
     }
 
@@ -1161,9 +1184,24 @@ class spot_t
 
     int topic_create (const char *topic_, spot_topic_mode mode_)
     {
-        return zlink_spot_topic_create (_spot, topic_, static_cast<int> (mode_));
+        if (!_pub || !_sub || !topic_) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (mode_ != spot_topic_mode::queue && mode_ != spot_topic_mode::ringbuffer) {
+            errno = EINVAL;
+            return -1;
+        }
+        return 0;
     }
-    int topic_destroy (const char *topic_) { return zlink_spot_topic_destroy (_spot, topic_); }
+    int topic_destroy (const char *topic_)
+    {
+        if (!_pub || !_sub || !topic_) {
+            errno = EFAULT;
+            return -1;
+        }
+        return 0;
+    }
 
     int publish (const char *topic_, std::vector<message_t> &parts_)
     {
@@ -1175,17 +1213,17 @@ class spot_t
             if (parts_[i].move_to (&tmp[i]) != 0)
                 return -1;
         }
-        return zlink_spot_publish (_spot, topic_, tmp.data (), tmp.size (), 0);
+        return zlink_spot_pub_publish (_pub, topic_, tmp.data (), tmp.size (), 0);
     }
 
-    int subscribe (const char *topic_) { return zlink_spot_subscribe (_spot, topic_); }
+    int subscribe (const char *topic_) { return zlink_spot_sub_subscribe (_sub, topic_); }
     int subscribe_pattern (const char *pattern_)
     {
-        return zlink_spot_subscribe_pattern (_spot, pattern_);
+        return zlink_spot_sub_subscribe_pattern (_sub, pattern_);
     }
     int unsubscribe (const char *topic_or_pattern_)
     {
-        return zlink_spot_unsubscribe (_spot, topic_or_pattern_);
+        return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_);
     }
 
     int recv (msgv_t &out_, std::string &topic_, recv_flag flags_ = recv_flag::none)
@@ -1195,7 +1233,7 @@ class spot_t
         char topic_buf[256];
         size_t topic_len = sizeof (topic_buf);
         const int rc =
-          zlink_spot_recv (_spot, &parts, &count, static_cast<int> (flags_), topic_buf, &topic_len);
+          zlink_spot_sub_recv (_sub, &parts, &count, static_cast<int> (flags_), topic_buf, &topic_len);
         if (rc != 0)
             return rc;
         out_.adopt (parts, count);
@@ -1203,22 +1241,34 @@ class spot_t
         return 0;
     }
 
-    void *pub_handle () const { return zlink_spot_pub_socket (_spot); }
-    void *sub_handle () const { return zlink_spot_sub_socket (_spot); }
+    void *pub_handle () const { return _node ? zlink_spot_node_pub_socket (_node) : NULL; }
+    void *sub_handle () const { return zlink_spot_sub_socket (_sub); }
 
     int destroy ()
     {
-        if (!_spot)
-            return 0;
-        void *tmp = _spot;
-        _spot = NULL;
-        return zlink_spot_destroy (&tmp);
+        int rc = 0;
+        if (_pub) {
+            void *tmp = _pub;
+            _pub = NULL;
+            if (zlink_spot_pub_destroy (&tmp) != 0)
+                rc = -1;
+        }
+        if (_sub) {
+            void *tmp = _sub;
+            _sub = NULL;
+            if (zlink_spot_sub_destroy (&tmp) != 0)
+                rc = -1;
+        }
+        _node = NULL;
+        return rc;
     }
 
-    void *handle () const { return _spot; }
+    void *handle () const { return _pub; }
 
   private:
-    void *_spot;
+    void *_node;
+    void *_pub;
+    void *_sub;
 };
 
 class atomic_counter_t

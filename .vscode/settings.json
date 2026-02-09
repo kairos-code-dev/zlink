@@ -1,0 +1,24 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.buildDirectory": "${workspaceFolder}/core/build/vscode-ninja",
+    "cmake.generator": "Ninja",
+    "cmake.configureSettings": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/core/build/vscode-ninja/compile_commands.json",
+    "C_Cpp.default.intelliSenseMode": "windows-msvc-x64",
+    "C_Cpp.default.browse.path": [
+        "${workspaceFolder}/core/include",
+        "${workspaceFolder}/core/src",
+        "${workspaceFolder}/core/tests",
+        "${workspaceFolder}/core/unittests",
+        "${workspaceFolder}/core/external/boost",
+        "${workspaceFolder}/core/deps/vcpkg/installed/x64-windows-static/include"
+    ],
+    "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": false,
+    "files.associations": {
+        "*.ipp": "cpp",
+        "*.tpp": "cpp"
+    }
+}

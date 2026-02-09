@@ -598,12 +598,21 @@ ZLINK_EXPORT int zlink_spot_pub_setsockopt (void *pub,
                                             size_t optvallen);
 
 /* SPOT Sub */
+typedef void (*zlink_spot_sub_handler_fn) (const char *topic,
+                                           size_t topic_len,
+                                           const zlink_msg_t *parts,
+                                           size_t part_count,
+                                           void *userdata);
+
 ZLINK_EXPORT void *zlink_spot_sub_new (void *node);
 ZLINK_EXPORT int zlink_spot_sub_destroy (void **sub_p);
 ZLINK_EXPORT int zlink_spot_sub_subscribe (void *sub, const char *topic_id);
 ZLINK_EXPORT int zlink_spot_sub_subscribe_pattern (void *sub, const char *pattern);
 ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
                                              const char *topic_id_or_pattern);
+ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
+                                             zlink_spot_sub_handler_fn handler,
+                                             void *userdata);
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       zlink_msg_t **parts,
                                       size_t *part_count,

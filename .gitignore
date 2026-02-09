@@ -192,4 +192,4 @@ bindings/**/Makefile
 bindings/**/compile_commands.json
 
 ## buildenv (auto-generated)
-buildenv/env.ps1
+buildenv/win/env.ps1

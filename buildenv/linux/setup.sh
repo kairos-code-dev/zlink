@@ -323,10 +323,11 @@ echo ""
 if [ -x "$SCRIPT_DIR/check.sh" ]; then
     "$SCRIPT_DIR/check.sh"
 else
-    info "Run ./buildenv/check.sh to verify the environment."
+    info "Run ./buildenv/linux/check.sh to verify the environment."
 fi
 
 echo ""
 info "Next steps:"
 info "  1. Build core library : ./core/build.sh"
-info "  2. Verify environment : ./buildenv/check.sh"
+info "  2. Verify environment : ./buildenv/linux/check.sh"
+info "  3. VS Code settings  : ./buildenv/linux/setup-vscode.sh"

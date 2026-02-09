@@ -10,10 +10,10 @@ REQUIRED_GCC_VERSION="13"
 REQUIRED_NODE_VERSION="20"
 REQUIRED_PYTHON_VERSION="3.9"
 REQUIRED_JDK_VERSION="22"
-REQUIRED_GRADLE_VERSION="8.7"
+REQUIRED_GRADLE_VERSION="9.3.0"
 REQUIRED_DOTNET_VERSION="8.0"
 
-GRADLE_INSTALL_VERSION="8.7"
+GRADLE_INSTALL_VERSION="9.3.0"
 NODE_MAJOR_VERSION="20"
 
 # ---------------------------------------------------------------------------
@@ -103,4 +103,4 @@ _resolve_buildenv_dir() {
 }
 
 BUILDENV_DIR="$(_resolve_buildenv_dir)"
-PROJECT_ROOT="$(cd "$BUILDENV_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$BUILDENV_DIR/../.." && pwd)"

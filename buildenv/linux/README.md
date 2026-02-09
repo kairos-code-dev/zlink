@@ -6,10 +6,13 @@ WSL Ubuntu 24.04에서 zlink 프로젝트의 전체 개발환경을 자동으로
 
 ```bash
 # 전체 환경 설치 (Core + 모든 바인딩)
-./buildenv/setup.sh
+./buildenv/linux/setup.sh
 
 # 설치 후 확인
-./buildenv/check.sh
+./buildenv/linux/check.sh
+
+# VS Code 설정 생성
+./buildenv/linux/setup-vscode.sh
 ```
 
 ## 스크립트 구성
@@ -18,12 +21,13 @@ WSL Ubuntu 24.04에서 zlink 프로젝트의 전체 개발환경을 자동으로
 |------|------|
 | `setup.sh` | 개발환경 설치 (메인 스크립트) |
 | `check.sh` | 설치 상태 확인 (설치 없이 검증만) |
+| `setup-vscode.sh` | VS Code 워크스페이스 설정 생성 |
 | `_common.sh` | 공통 유틸리티 (직접 실행하지 않음) |
 
 ## setup.sh 사용법
 
 ```bash
-./buildenv/setup.sh [OPTIONS]
+./buildenv/linux/setup.sh [OPTIONS]
 ```
 
 ### 옵션
@@ -43,13 +47,13 @@ WSL Ubuntu 24.04에서 zlink 프로젝트의 전체 개발환경을 자동으로
 
 ```bash
 # Core + Node.js만 설치
-./buildenv/setup.sh --core --node
+./buildenv/linux/setup.sh --core --node
 
 # Python + Java만 설치
-./buildenv/setup.sh --python --java
+./buildenv/linux/setup.sh --python --java
 
 # 현재 상태 확인만
-./buildenv/setup.sh --check
+./buildenv/linux/setup.sh --check
 ```
 
 ## 설치 항목 상세
@@ -93,7 +97,10 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 | 패키지 | 용도 |
 |--------|------|
 | JDK 22 | Eclipse Adoptium Temurin |
-| Gradle 8.7 | 빌드 도구 (/opt/gradle에 설치) |
+| Gradle 9.3.0 | 빌드 도구 (/opt/gradle에 설치) |
+
+Java 바인딩은 `bindings/java/gradlew`(Wrapper)를 우선 사용한다.
+예: `cd bindings/java && ./gradlew test`
 
 ### .NET (`--dotnet`)
 
@@ -101,10 +108,33 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 |--------|------|
 | dotnet-sdk-8.0 | .NET 8.0 SDK (Ubuntu 네이티브 패키지) |
 
+## setup-vscode.sh 사용법
+
+설치된 도구 경로를 자동 탐지하여 `.vscode/` 설정 파일 4개를 생성한다.
+
+```bash
+./buildenv/linux/setup-vscode.sh [OPTIONS]
+```
+
+### 옵션
+
+| 옵션 | 설명 |
+|------|------|
+| (없음) | 설정 파일 생성 (기존 파일 있으면 확인) |
+| `--force` | 기존 파일 덮어쓰기 |
+| `--dry-run` | 파일 생성 없이 내용만 출력 |
+
+### 생성 파일
+
+- `.vscode/settings.json` — CMake, C++ IntelliSense, Java, Python 설정
+- `.vscode/c_cpp_properties.json` — C/C++ IntelliSense 상세 설정
+- `.vscode/extensions.json` — 추천 확장 목록
+- `.vscode/tasks.json` — 바인딩별 테스트 태스크
+
 ## check.sh 사용법
 
 ```bash
-./buildenv/check.sh
+./buildenv/linux/check.sh
 ```
 
 28개 항목의 설치 여부와 버전 충족 여부를 테이블 형식으로 출력한다.

@@ -1,30 +1,37 @@
-# buildenv — zlink 개발환경 설정
+# buildenv/linux — zlink Linux 개발환경 설정
 
-WSL Ubuntu 24.04에서 zlink 프로젝트의 전체 개발환경을 자동으로 구축하는 스크립트 모음.
+WSL Ubuntu 24.04에서 zlink 프로젝트의 개발환경을 자동으로 구축하는 스크립트 모음.
+
+두 단계로 나뉜다:
+
+1. **개발환경 설치** (`setup.sh`) — 컴파일러, 런타임, SDK 등 시스템 도구 설치 (sudo 필요)
+2. **IDE 설정** (`setup-vscode.sh`) — 설치된 도구 경로를 탐지하여 VS Code 설정 파일 생성 (sudo 불필요)
 
 ## 빠른 시작
 
 ```bash
-# 전체 환경 설치 (Core + 모든 바인딩)
+# 1. 개발환경 설치 (sudo 필요)
 ./buildenv/linux/setup.sh
 
-# 설치 후 확인
+# 2. 설치 확인
 ./buildenv/linux/check.sh
 
-# VS Code 설정 생성
+# 3. VS Code 설정 생성 (sudo 불필요)
 ./buildenv/linux/setup-vscode.sh
 ```
 
 ## 스크립트 구성
 
-| 파일 | 역할 |
-|------|------|
-| `setup.sh` | 개발환경 설치 (메인 스크립트) |
-| `check.sh` | 설치 상태 확인 (설치 없이 검증만) |
-| `setup-vscode.sh` | VS Code 워크스페이스 설정 생성 |
-| `_common.sh` | 공통 유틸리티 (직접 실행하지 않음) |
+| 파일 | 역할 | sudo |
+|------|------|------|
+| `setup.sh` | 개발환경 설치 (컴파일러, 런타임, SDK) | 필요 |
+| `setup-vscode.sh` | VS Code 설정 생성 (IntelliSense, 태스크) | 불필요 |
+| `check.sh` | 설치 상태 확인 (설치 없이 검증만) | 불필요 |
+| `_common.sh` | 공통 유틸리티 (직접 실행하지 않음) | — |
 
-## setup.sh 사용법
+## setup.sh — 개발환경 설치
+
+시스템 도구와 언어별 SDK를 설치한다. sudo 권한이 필요하다.
 
 ```bash
 ./buildenv/linux/setup.sh [OPTIONS]
@@ -56,14 +63,14 @@ WSL Ubuntu 24.04에서 zlink 프로젝트의 전체 개발환경을 자동으로
 ./buildenv/linux/setup.sh --check
 ```
 
-## 설치 항목 상세
+### 설치 항목 상세
 
-### 시스템 기본 도구 (항상 설치)
+#### 시스템 기본 도구 (항상 설치)
 
 build-essential, cmake, pkg-config, git, curl, wget, unzip,
 autoconf, automake, libtool, lsb-release, ninja-build, ccache
 
-### Core C/C++ (`--core`)
+#### Core C/C++ (`--core`)
 
 | 패키지 | 용도 |
 |--------|------|
@@ -76,7 +83,7 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 | valgrind | 메모리 분석 |
 | doxygen | API 문서 생성 |
 
-### Node.js (`--node`)
+#### Node.js (`--node`)
 
 | 패키지 | 용도 |
 |--------|------|
@@ -84,7 +91,7 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 | node-gyp | 네이티브 애드온 빌드 |
 | python-is-python3 | binding.gyp 호환 |
 
-### Python (`--python`)
+#### Python (`--python`)
 
 | 패키지 | 용도 |
 |--------|------|
@@ -92,7 +99,7 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 | python3-pip, python3-venv | 패키지 관리 |
 | setuptools >= 68, wheel | 빌드 도구 |
 
-### Java (`--java`)
+#### Java (`--java`)
 
 | 패키지 | 용도 |
 |--------|------|
@@ -102,15 +109,18 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 Java 바인딩은 `bindings/java/gradlew`(Wrapper)를 우선 사용한다.
 예: `cd bindings/java && ./gradlew test`
 
-### .NET (`--dotnet`)
+#### .NET (`--dotnet`)
 
 | 패키지 | 용도 |
 |--------|------|
 | dotnet-sdk-8.0 | .NET 8.0 SDK (Ubuntu 네이티브 패키지) |
 
-## setup-vscode.sh 사용법
+## setup-vscode.sh — VS Code 설정 생성
 
-설치된 도구 경로를 자동 탐지하여 `.vscode/` 설정 파일 4개를 생성한다.
+`setup.sh`로 설치된 도구의 경로를 자동 탐지하여 `.vscode/` 설정 파일을 생성한다.
+sudo 불필요. 도구 재설치나 경로 변경 시 다시 실행하면 된다.
+
+`.vscode/`는 `.gitignore`에 포함되어 있으므로 각 개발자가 자신의 환경에서 실행한다.
 
 ```bash
 ./buildenv/linux/setup-vscode.sh [OPTIONS]
@@ -126,12 +136,23 @@ Java 바인딩은 `bindings/java/gradlew`(Wrapper)를 우선 사용한다.
 
 ### 생성 파일
 
-- `.vscode/settings.json` — CMake, C++ IntelliSense, Java, Python 설정
-- `.vscode/c_cpp_properties.json` — C/C++ IntelliSense 상세 설정
-- `.vscode/extensions.json` — 추천 확장 목록
-- `.vscode/tasks.json` — 바인딩별 테스트 태스크
+| 파일 | 내용 |
+|------|------|
+| `.vscode/settings.json` | CMake, C++ IntelliSense, Java, Python 설정 |
+| `.vscode/c_cpp_properties.json` | C/C++ IntelliSense 상세 설정 |
+| `.vscode/extensions.json` | 추천 확장 목록 |
+| `.vscode/tasks.json` | 바인딩별 테스트 태스크 |
 
-## check.sh 사용법
+### 탐지 항목
+
+| 도구 | 탐지 방법 | 미설치 시 |
+|------|----------|----------|
+| g++ | `command -v g++` | fallback 경로 사용 |
+| Java JDK | `readlink -f $(which java)` | Java 설정 생략 |
+| Gradle | `bindings/java/gradlew` 우선 | 시스템 gradle 사용 |
+| .NET SDK | `readlink -f $(which dotnet)` | .NET 설정 생략 |
+
+## check.sh — 설치 확인
 
 ```bash
 ./buildenv/linux/check.sh
@@ -159,6 +180,5 @@ Java 바인딩은 `bindings/java/gradlew`(Wrapper)를 우선 사용한다.
 ## 참고 사항
 
 - **멱등성**: 이미 설치된 패키지와 충분한 버전의 도구는 자동 스킵
-- **sudo 필요**: 시스템 패키지 설치를 위해 sudo 권한 필요
 - **대상 플랫폼**: WSL Ubuntu 24.04 (다른 배포판은 수동 조정 필요)
 - **버전 상수**: `_common.sh` 상단에서 모든 요구 버전을 관리

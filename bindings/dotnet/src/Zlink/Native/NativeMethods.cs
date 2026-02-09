@@ -357,44 +357,39 @@ internal static class NativeMethods
     internal static extern IntPtr zlink_spot_node_sub_socket(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_new(IntPtr node);
+    internal static extern IntPtr zlink_spot_pub_new(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_destroy(ref IntPtr spot);
+    internal static extern int zlink_spot_pub_destroy(ref IntPtr pub);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_topic_create(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId, int mode);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_topic_destroy(IntPtr spot,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_publish(IntPtr spot,
+    internal static extern int zlink_spot_pub_publish(IntPtr pub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
         [In] ZlinkMsg[] parts, nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_subscribe(IntPtr spot,
+    internal static extern IntPtr zlink_spot_sub_new(IntPtr node);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_sub_destroy(ref IntPtr sub);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_spot_sub_subscribe(IntPtr sub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_subscribe_pattern(IntPtr spot,
+    internal static extern int zlink_spot_sub_subscribe_pattern(IntPtr sub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string pattern);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_spot_unsubscribe(IntPtr spot,
+    internal static extern int zlink_spot_sub_unsubscribe(IntPtr sub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicIdOrPattern);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static unsafe extern int zlink_spot_recv(IntPtr spot,
+    internal static unsafe extern int zlink_spot_sub_recv(IntPtr sub,
         out IntPtr parts, out nuint partCount, int flags, byte* topicId,
         ref nuint topicIdLen);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_pub_socket(IntPtr spot);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_sub_socket(IntPtr spot);
+    internal static extern IntPtr zlink_spot_sub_socket(IntPtr sub);
 }

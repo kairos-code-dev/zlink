@@ -55,7 +55,7 @@ set(tests
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
-  spot/test_spot_pubsub_basic)
+  spot/test_spot_pubsub_scenario)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -245,7 +245,8 @@ set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
 set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
-set_tests_properties(test_spot_pubsub_basic PROPERTIES TIMEOUT 300)
+set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
+set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
 if(WIN32)
   set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 endif()
@@ -260,6 +261,7 @@ set(UNREGISTERED_TEST_ALLOWLIST
     test_connect_fuzzer
     test_connect_null_fuzzer
     test_socket_options_fuzzer
+    test_spot_pubsub_basic
     test_use_fd
     test_z85_decode_fuzzer)
 

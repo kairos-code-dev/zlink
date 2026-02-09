@@ -3,7 +3,8 @@
 #include "precompiled.hpp"
 
 #include "services/spot/spot_node.hpp"
-#include "services/spot/spot.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_sub.hpp"
 
 #include "services/discovery/discovery_protocol.hpp"
 #include "sockets/socket_base.hpp"
@@ -261,28 +262,31 @@ int spot_node_t::bind (const char *endpoint_)
         return -1;
     }
 
-    if (!_pub) {
-        _pub = _ctx->create_socket (ZLINK_PUB);
-        if (!_pub)
-            return -1;
-        for (size_t i = 0; i < _pub_opts.size (); ++i) {
-            if (!_pub_opts[i].value.empty ())
-                _pub->setsockopt (_pub_opts[i].option,
-                                  &_pub_opts[i].value[0],
-                                  _pub_opts[i].value.size ());
+    int rc = -1;
+    {
+        scoped_lock_t pub_lock (_pub_sync);
+        if (!_pub) {
+            _pub = _ctx->create_socket (ZLINK_PUB);
+            if (!_pub)
+                return -1;
+            for (size_t i = 0; i < _pub_opts.size (); ++i) {
+                if (!_pub_opts[i].value.empty ())
+                    _pub->setsockopt (_pub_opts[i].option,
+                                      &_pub_opts[i].value[0],
+                                      _pub_opts[i].value.size ());
+            }
         }
+        if (!_tls_cert.empty ()) {
+            if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
+                                  _tls_cert.size ())
+                  != 0
+                || _pub->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
+                                     _tls_key.size ())
+                     != 0)
+                return -1;
+        }
+        rc = _pub->bind (endpoint_);
     }
-    if (!_tls_cert.empty ()) {
-        if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
-                              _tls_cert.size ())
-              != 0
-            || _pub->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
-                                 _tls_key.size ())
-                 != 0)
-            return -1;
-    }
-
-    int rc = _pub->bind (endpoint_);
     if (rc == 0) {
         scoped_lock_t lock (_sync);
         _bind_endpoints.push_back (endpoint_);
@@ -568,13 +572,15 @@ int spot_node_t::set_tls_server (const char *cert_, const char *key_)
     _tls_cert = cert_;
     _tls_key = key_;
 
+    scoped_lock_t pub_lock (_pub_sync);
     if (_pub) {
-        if (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
-                              _tls_cert.size ())
-              != 0
-            || _pub->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
-                                 _tls_key.size ())
-                 != 0)
+        if (_pub
+            && (_pub->setsockopt (ZLINK_TLS_CERT, _tls_cert.data (),
+                                  _tls_cert.size ())
+                  != 0
+                || _pub->setsockopt (ZLINK_TLS_KEY, _tls_key.data (),
+                                     _tls_key.size ())
+                     != 0))
             return -1;
     }
     return 0;
@@ -646,9 +652,11 @@ int spot_node_t::set_socket_option (int socket_role_,
             break;
         case ZLINK_SPOT_NODE_SOCKET_SUB:
             opts = &_sub_opts;
+            existing = _sub;
             break;
         case ZLINK_SPOT_NODE_SOCKET_DEALER:
             opts = &_dealer_opts;
+            existing = _dealer;
             break;
         default:
             errno = EINVAL;
@@ -659,8 +667,15 @@ int spot_node_t::set_socket_option (int socket_role_,
             (*opts)[i].value.assign (
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
-            if (existing)
-                existing->setsockopt (option_, optval_, optvallen_);
+            if (existing) {
+                if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_PUB) {
+                    scoped_lock_t pub_lock (_pub_sync);
+                    if (_pub)
+                        _pub->setsockopt (option_, optval_, optvallen_);
+                } else {
+                    existing->setsockopt (option_, optval_, optvallen_);
+                }
+            }
             return 0;
         }
     }
@@ -670,97 +685,84 @@ int spot_node_t::set_socket_option (int socket_role_,
                       static_cast<const unsigned char *> (optval_)
                         + optvallen_);
     opts->push_back (opt);
-    if (existing)
-        existing->setsockopt (option_, optval_, optvallen_);
+    if (existing) {
+        if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_PUB) {
+            scoped_lock_t pub_lock (_pub_sync);
+            if (_pub)
+                _pub->setsockopt (option_, optval_, optvallen_);
+        } else {
+            existing->setsockopt (option_, optval_, optvallen_);
+        }
+    }
     return 0;
 }
 
-spot_t *spot_node_t::create_spot ()
+spot_pub_t *spot_node_t::create_spot_pub ()
 {
-    spot_t *spot = new (std::nothrow) spot_t (this);
-    if (!spot) {
+    spot_pub_t *pub = new (std::nothrow) spot_pub_t (this);
+    if (!pub) {
         errno = ENOMEM;
         return NULL;
     }
 
     scoped_lock_t lock (_sync);
-    _spots.insert (spot);
-    return spot;
+    _pubs.insert (pub);
+    return pub;
 }
 
-void spot_node_t::remove_spot (spot_t *spot_)
+spot_sub_t *spot_node_t::create_spot_sub ()
 {
-    if (!spot_)
+    spot_sub_t *sub = new (std::nothrow) spot_sub_t (this);
+    if (!sub) {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    scoped_lock_t lock (_sync);
+    _subs.insert (sub);
+    return sub;
+}
+
+void spot_node_t::remove_spot_pub (spot_pub_t *pub_)
+{
+    if (!pub_)
         return;
 
     scoped_lock_t lock (_sync);
-    _spots.erase (spot_);
+    _pubs.erase (pub_);
+}
 
-    for (std::set<std::string>::const_iterator it = spot_->_topics.begin ();
-         it != spot_->_topics.end (); ++it) {
+void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
+{
+    if (!sub_)
+        return;
+
+    scoped_lock_t lock (_sync);
+    _subs.erase (sub_);
+
+    for (std::set<std::string>::const_iterator it = sub_->_topics.begin ();
+         it != sub_->_topics.end (); ++it) {
         remove_filter (*it);
     }
 
     for (std::set<std::string>::const_iterator it =
-           spot_->_patterns.begin ();
-         it != spot_->_patterns.end (); ++it) {
+           sub_->_patterns.begin ();
+         it != sub_->_patterns.end (); ++it) {
         remove_filter (*it);
     }
 
-    spot_->_topics.clear ();
-    spot_->_patterns.clear ();
-    while (!spot_->_queue.empty ()) {
-        spot_t::spot_message_t &msg = spot_->_queue.front ();
+    sub_->_topics.clear ();
+    sub_->_patterns.clear ();
+    while (!sub_->_queue.empty ()) {
+        spot_sub_t::spot_message_t &msg = sub_->_queue.front ();
         close_parts (&msg.parts);
-        spot_->_queue.pop_front ();
+        sub_->_queue.pop_front ();
     }
 }
 
-int spot_node_t::topic_create (const char *topic_, int mode_)
+int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
 {
-    std::string topic;
-    if (!validate_topic (topic_, &topic)) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (mode_ != ZLINK_SPOT_TOPIC_QUEUE) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    scoped_lock_t lock (_sync);
-    if (_topics.find (topic) != _topics.end ()) {
-        errno = EEXIST;
-        return -1;
-    }
-
-    topic_state_t state;
-    state.mode = mode_;
-    _topics.insert (std::make_pair (topic, state));
-    return 0;
-}
-
-int spot_node_t::topic_destroy (const char *topic_)
-{
-    std::string topic;
-    if (!validate_topic (topic_, &topic)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    scoped_lock_t lock (_sync);
-    std::map<std::string, topic_state_t>::iterator it = _topics.find (topic);
-    if (it == _topics.end ()) {
-        errno = ENOENT;
-        return -1;
-    }
-    _topics.erase (it);
-    return 0;
-}
-
-int spot_node_t::subscribe (spot_t *spot_, const char *topic_)
-{
-    if (!spot_) {
+    if (!sub_) {
         errno = EINVAL;
         return -1;
     }
@@ -771,16 +773,16 @@ int spot_node_t::subscribe (spot_t *spot_, const char *topic_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!spot_->_topics.insert (topic).second)
+    if (!sub_->_topics.insert (topic).second)
         return 0;
 
     add_filter (topic);
     return 0;
 }
 
-int spot_node_t::subscribe_pattern (spot_t *spot_, const char *pattern_)
+int spot_node_t::subscribe_pattern (spot_sub_t *sub_, const char *pattern_)
 {
-    if (!spot_) {
+    if (!sub_) {
         errno = EINVAL;
         return -1;
     }
@@ -791,15 +793,15 @@ int spot_node_t::subscribe_pattern (spot_t *spot_, const char *pattern_)
     }
 
     scoped_lock_t lock (_sync);
-    if (!spot_->_patterns.insert (prefix).second)
+    if (!sub_->_patterns.insert (prefix).second)
         return 0;
     add_filter (prefix);
     return 0;
 }
 
-int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
+int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
 {
-    if (!spot_ || !topic_or_pattern_) {
+    if (!sub_ || !topic_or_pattern_) {
         errno = EINVAL;
         return -1;
     }
@@ -807,7 +809,7 @@ int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
     std::string prefix;
     if (validate_pattern (topic_or_pattern_, &prefix)) {
         scoped_lock_t lock (_sync);
-        if (spot_->_patterns.erase (prefix) == 0) {
+        if (sub_->_patterns.erase (prefix) == 0) {
             errno = EINVAL;
             return -1;
         }
@@ -822,7 +824,7 @@ int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
     }
 
     scoped_lock_t lock (_sync);
-    if (spot_->_topics.erase (topic) == 0) {
+    if (sub_->_topics.erase (topic) == 0) {
         errno = EINVAL;
         return -1;
     }
@@ -830,16 +832,11 @@ int spot_node_t::unsubscribe (spot_t *spot_, const char *topic_or_pattern_)
     return 0;
 }
 
-int spot_node_t::publish (spot_t *spot_,
-                          const char *topic_,
+int spot_node_t::publish (const char *topic_,
                           zlink_msg_t *parts_,
                           size_t part_count_,
                           int flags_)
 {
-    if (!spot_) {
-        errno = EINVAL;
-        return -1;
-    }
     std::string topic;
     if (!validate_topic (topic_, &topic)) {
         errno = EINVAL;
@@ -863,7 +860,15 @@ int spot_node_t::publish (spot_t *spot_,
         dispatch_local (topic, payload);
     }
 
-    if (_pub) {
+    {
+        scoped_lock_t pub_lock (_pub_sync);
+        if (!_pub) {
+            close_parts (&payload);
+            for (size_t i = 0; i < part_count_; ++i)
+                zlink_msg_close (&parts_[i]);
+            return 0;
+        }
+
         msg_t topic_frame;
         if (topic_frame.init_size (topic.size ()) != 0) {
             close_parts (&payload);
@@ -900,12 +905,12 @@ int spot_node_t::publish (spot_t *spot_,
 void spot_node_t::dispatch_local (const std::string &topic_,
                                   const std::vector<msg_t> &payload_)
 {
-    for (std::set<spot_t *>::iterator it = _spots.begin (); it != _spots.end ();
+    for (std::set<spot_sub_t *>::iterator it = _subs.begin (); it != _subs.end ();
          ++it) {
-        spot_t *spot = *it;
-        if (!spot->matches (topic_))
+        spot_sub_t *sub = *it;
+        if (!sub->matches (topic_))
             continue;
-        spot->enqueue_message (topic_, payload_);
+        sub->enqueue_message (topic_, payload_);
     }
 }
 
@@ -1219,28 +1224,40 @@ int spot_node_t::destroy ()
     if (_worker.get_started ())
         _worker.stop ();
 
-    if (_dealer) {
-        _dealer->close ();
+    socket_base_t *dealer = NULL;
+    socket_base_t *pub = NULL;
+    socket_base_t *sub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        dealer = _dealer;
         _dealer = NULL;
-    }
-
-    if (_pub) {
-        _pub->close ();
+        pub = _pub;
         _pub = NULL;
-    }
-
-    if (_sub) {
-        _sub->close ();
+        sub = _sub;
         _sub = NULL;
+
+        for (std::set<spot_pub_t *>::iterator it = _pubs.begin ();
+             it != _pubs.end (); ++it)
+            (*it)->_node = NULL;
+        for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
+             it != _subs.end (); ++it)
+            (*it)->_node = NULL;
+        _pubs.clear ();
+        _subs.clear ();
+        _filter_refcount.clear ();
+        _peer_endpoints.clear ();
+        _registry_endpoints.clear ();
+        _bind_endpoints.clear ();
     }
 
-    scoped_lock_t lock (_sync);
-    _spots.clear ();
-    _topics.clear ();
-    _filter_refcount.clear ();
-    _peer_endpoints.clear ();
-    _registry_endpoints.clear ();
-    _bind_endpoints.clear ();
+    if (dealer)
+        dealer->close ();
+    if (pub) {
+        scoped_lock_t pub_lock (_pub_sync);
+        pub->close ();
+    }
+    if (sub)
+        sub->close ();
     return 0;
 }
 }

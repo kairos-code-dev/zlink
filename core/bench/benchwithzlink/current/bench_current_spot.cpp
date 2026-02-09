@@ -66,15 +66,15 @@ static std::string bind_spot_node(void *node, const std::string &transport, int 
     return std::string();
 }
 
-static bool send_spot(void *spot, const std::string &topic, size_t msg_size) {
+static bool send_spot(void *spot_pub, const std::string &topic, size_t msg_size) {
     zlink_msg_t msg;
     zlink_msg_init_size(&msg, msg_size);
     if (msg_size > 0)
         memset(zlink_msg_data(&msg), 'a', msg_size);
-    return zlink_spot_publish(spot, topic.c_str(), &msg, 1, 0) == 0;
+    return zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0;
 }
 
-static bool recv_spot_with_timeout(void *spot, int timeout_ms) {
+static bool recv_spot_with_timeout(void *spot_sub, int timeout_ms) {
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (true) {
@@ -83,7 +83,7 @@ static bool recv_spot_with_timeout(void *spot, int timeout_ms) {
         char topic_out[256];
         size_t topic_len = 0;
         const int rc =
-          zlink_spot_recv(spot, &parts, &count, ZLINK_DONTWAIT, topic_out, &topic_len);
+          zlink_spot_sub_recv(spot_sub, &parts, &count, ZLINK_DONTWAIT, topic_out, &topic_len);
         if (rc == 0) {
             if (parts)
                 zlink_msgv_close(parts, count);
@@ -161,13 +161,13 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
         return;
     }
 
-    void *spot_pub = zlink_spot_new(node_pub);
-    void *spot_sub = zlink_spot_new(node_sub);
+    void *spot_pub = zlink_spot_pub_new(node_pub);
+    void *spot_sub = zlink_spot_sub_new(node_sub);
     if (!spot_pub || !spot_sub) {
         if (spot_pub)
-            zlink_spot_destroy(&spot_pub);
+            zlink_spot_pub_destroy(&spot_pub);
         if (spot_sub)
-            zlink_spot_destroy(&spot_sub);
+            zlink_spot_sub_destroy(&spot_sub);
         zlink_spot_node_destroy(&node_pub);
         zlink_spot_node_destroy(&node_sub);
         zlink_ctx_term(ctx);
@@ -175,7 +175,7 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     }
 
     const std::string topic = "bench";
-    zlink_spot_subscribe(spot_sub, topic.c_str());
+    zlink_spot_sub_subscribe(spot_sub, topic.c_str());
     settle();
 
     const int recv_timeout_ms = 5000;
@@ -190,8 +190,8 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     }
     if (!ok) {
         print_result(lib_name, "SPOT", transport, msg_size, 0.0, 0.0);
-        zlink_spot_destroy(&spot_pub);
-        zlink_spot_destroy(&spot_sub);
+        zlink_spot_pub_destroy(&spot_pub);
+        zlink_spot_sub_destroy(&spot_sub);
         zlink_spot_node_destroy(&node_pub);
         zlink_spot_node_destroy(&node_sub);
         zlink_ctx_term(ctx);
@@ -210,8 +210,8 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     }
     if (!ok) {
         print_result(lib_name, "SPOT", transport, msg_size, 0.0, 0.0);
-        zlink_spot_destroy(&spot_pub);
-        zlink_spot_destroy(&spot_sub);
+        zlink_spot_pub_destroy(&spot_pub);
+        zlink_spot_sub_destroy(&spot_sub);
         zlink_spot_node_destroy(&node_pub);
         zlink_spot_node_destroy(&node_sub);
         zlink_ctx_term(ctx);
@@ -241,8 +241,8 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
     const int received = recv_count.load();
     if (sent == 0 || received == 0) {
         print_result(lib_name, "SPOT", transport, msg_size, 0.0, latency);
-        zlink_spot_destroy(&spot_pub);
-        zlink_spot_destroy(&spot_sub);
+        zlink_spot_pub_destroy(&spot_pub);
+        zlink_spot_sub_destroy(&spot_sub);
         zlink_spot_node_destroy(&node_pub);
         zlink_spot_node_destroy(&node_sub);
         zlink_ctx_term(ctx);
@@ -255,8 +255,8 @@ void run_spot(const std::string &transport, size_t msg_size, int msg_count,
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput, latency);
 
-    zlink_spot_destroy(&spot_pub);
-    zlink_spot_destroy(&spot_sub);
+    zlink_spot_pub_destroy(&spot_pub);
+    zlink_spot_sub_destroy(&spot_sub);
     zlink_spot_node_destroy(&node_pub);
     zlink_spot_node_destroy(&node_sub);
     zlink_ctx_term(ctx);

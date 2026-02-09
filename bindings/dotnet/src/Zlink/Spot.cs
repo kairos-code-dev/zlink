@@ -129,30 +129,40 @@ public sealed class SpotNode : IDisposable
 
 public sealed class Spot : IDisposable
 {
-    private IntPtr _handle;
+    private readonly IntPtr _nodeHandle;
+    private IntPtr _pubHandle;
+    private IntPtr _subHandle;
 
     public Spot(SpotNode node)
     {
         if (node == null)
             throw new ArgumentNullException(nameof(node));
-        _handle = NativeMethods.zlink_spot_new(node.Handle);
-        if (_handle == IntPtr.Zero)
+        _nodeHandle = node.Handle;
+        _pubHandle = NativeMethods.zlink_spot_pub_new(_nodeHandle);
+        _subHandle = NativeMethods.zlink_spot_sub_new(_nodeHandle);
+        if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
+        {
+            if (_pubHandle != IntPtr.Zero)
+                NativeMethods.zlink_spot_pub_destroy(ref _pubHandle);
+            if (_subHandle != IntPtr.Zero)
+                NativeMethods.zlink_spot_sub_destroy(ref _subHandle);
             throw ZlinkException.FromLastError();
+        }
     }
 
     public void TopicCreate(string topicId, SpotTopicMode mode)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_topic_create(_handle, topicId,
-            (int)mode);
-        ZlinkException.ThrowIfError(rc);
+        if (string.IsNullOrEmpty(topicId))
+            throw new ArgumentException("Topic ID must not be empty.", nameof(topicId));
+        _ = mode;
     }
 
     public void TopicDestroy(string topicId)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_topic_destroy(_handle, topicId);
-        ZlinkException.ThrowIfError(rc);
+        if (string.IsNullOrEmpty(topicId))
+            throw new ArgumentException("Topic ID must not be empty.", nameof(topicId));
     }
 
     public void Publish(string topicId, Message[] parts,
@@ -170,7 +180,7 @@ public sealed class Spot : IDisposable
             parts[i].CopyTo(ref tmp[i]);
             built++;
         }
-        int rc = NativeMethods.zlink_spot_publish(_handle, topicId, tmp,
+        int rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicId, tmp,
             (nuint)tmp.Length, (int)flags);
         if (rc < 0)
         {
@@ -185,21 +195,21 @@ public sealed class Spot : IDisposable
     public void Subscribe(string topicId)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_subscribe(_handle, topicId);
+        int rc = NativeMethods.zlink_spot_sub_subscribe(_subHandle, topicId);
         ZlinkException.ThrowIfError(rc);
     }
 
     public void SubscribePattern(string pattern)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_subscribe_pattern(_handle, pattern);
+        int rc = NativeMethods.zlink_spot_sub_subscribe_pattern(_subHandle, pattern);
         ZlinkException.ThrowIfError(rc);
     }
 
     public void Unsubscribe(string topicIdOrPattern)
     {
         EnsureNotDisposed();
-        int rc = NativeMethods.zlink_spot_unsubscribe(_handle,
+        int rc = NativeMethods.zlink_spot_sub_unsubscribe(_subHandle,
             topicIdOrPattern);
         ZlinkException.ThrowIfError(rc);
     }
@@ -211,7 +221,7 @@ public sealed class Spot : IDisposable
         {
             byte* topicBuf = stackalloc byte[256];
             nuint topicLen = 256;
-            int rc = NativeMethods.zlink_spot_recv(_handle, out var parts,
+            int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
                 out var count, (int)flags, topicBuf, ref topicLen);
             if (rc != 0)
                 throw ZlinkException.FromLastError();
@@ -224,7 +234,7 @@ public sealed class Spot : IDisposable
     public Socket CreatePubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_pub_socket(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket(_nodeHandle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -233,7 +243,7 @@ public sealed class Spot : IDisposable
     public Socket CreateSubSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_sub_socket(_handle);
+        IntPtr handle = NativeMethods.zlink_spot_sub_socket(_subHandle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
@@ -241,10 +251,16 @@ public sealed class Spot : IDisposable
 
     public void Dispose()
     {
-        if (_handle == IntPtr.Zero)
-            return;
-        NativeMethods.zlink_spot_destroy(ref _handle);
-        _handle = IntPtr.Zero;
+        if (_pubHandle != IntPtr.Zero)
+        {
+            NativeMethods.zlink_spot_pub_destroy(ref _pubHandle);
+            _pubHandle = IntPtr.Zero;
+        }
+        if (_subHandle != IntPtr.Zero)
+        {
+            NativeMethods.zlink_spot_sub_destroy(ref _subHandle);
+            _subHandle = IntPtr.Zero;
+        }
         GC.SuppressFinalize(this);
     }
 
@@ -255,7 +271,7 @@ public sealed class Spot : IDisposable
 
     private void EnsureNotDisposed()
     {
-        if (_handle == IntPtr.Zero)
+        if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Spot));
     }
 }

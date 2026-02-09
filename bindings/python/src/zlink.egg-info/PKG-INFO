@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: zlink
+Version: 0.7.4
+Summary: Zlink Python bindings
+Requires-Python: >=3.9

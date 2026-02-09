@@ -64,39 +64,47 @@ class SpotNode:
 
 class Spot:
     def __init__(self, node):
-        self._handle = lib().zlink_spot_new(node._handle)
-        if not self._handle:
+        self._node_handle = node._handle
+        self._pub_handle = lib().zlink_spot_pub_new(node._handle)
+        self._sub_handle = lib().zlink_spot_sub_new(node._handle)
+        if not self._pub_handle or not self._sub_handle:
+            if self._pub_handle:
+                h = ctypes.c_void_p(self._pub_handle)
+                lib().zlink_spot_pub_destroy(ctypes.byref(h))
+            if self._sub_handle:
+                h = ctypes.c_void_p(self._sub_handle)
+                lib().zlink_spot_sub_destroy(ctypes.byref(h))
+            self._pub_handle = None
+            self._sub_handle = None
             _raise_last_error()
 
     def topic_create(self, topic_id, mode=0):
-        rc = lib().zlink_spot_topic_create(self._handle, topic_id.encode(), mode)
-        if rc != 0:
-            _raise_last_error()
+        if mode not in (0, 1):
+            raise ValueError("unsupported topic mode")
 
     def topic_destroy(self, topic_id):
-        rc = lib().zlink_spot_topic_destroy(self._handle, topic_id.encode())
-        if rc != 0:
-            _raise_last_error()
+        if not topic_id:
+            raise ValueError("topic_id is required")
 
     def publish(self, topic_id, parts, flags=0):
         arr, built = _build_msg_array(parts)
-        rc = lib().zlink_spot_publish(self._handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
+        rc = lib().zlink_spot_pub_publish(self._pub_handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
         if rc != 0:
             _close_msg_array(arr, built)
             _raise_last_error()
 
     def subscribe(self, topic_id):
-        rc = lib().zlink_spot_subscribe(self._handle, topic_id.encode())
+        rc = lib().zlink_spot_sub_subscribe(self._sub_handle, topic_id.encode())
         if rc != 0:
             _raise_last_error()
 
     def subscribe_pattern(self, pattern):
-        rc = lib().zlink_spot_subscribe_pattern(self._handle, pattern.encode())
+        rc = lib().zlink_spot_sub_subscribe_pattern(self._sub_handle, pattern.encode())
         if rc != 0:
             _raise_last_error()
 
     def unsubscribe(self, topic_id_or_pattern):
-        rc = lib().zlink_spot_unsubscribe(self._handle, topic_id_or_pattern.encode())
+        rc = lib().zlink_spot_sub_unsubscribe(self._sub_handle, topic_id_or_pattern.encode())
         if rc != 0:
             _raise_last_error()
 
@@ -105,7 +113,7 @@ class Spot:
         count = ctypes.c_size_t()
         topic_buf = ctypes.create_string_buffer(256)
         topic_len = ctypes.c_size_t(256)
-        rc = lib().zlink_spot_recv(self._handle, ctypes.byref(parts), ctypes.byref(count), flags, topic_buf, ctypes.byref(topic_len))
+        rc = lib().zlink_spot_sub_recv(self._sub_handle, ctypes.byref(parts), ctypes.byref(count), flags, topic_buf, ctypes.byref(topic_len))
         if rc != 0:
             _raise_last_error()
         topic = topic_buf.value.decode()
@@ -113,7 +121,11 @@ class Spot:
         return topic, messages
 
     def close(self):
-        if self._handle:
-            handle = ctypes.c_void_p(self._handle)
-            lib().zlink_spot_destroy(ctypes.byref(handle))
-            self._handle = None
+        if self._pub_handle:
+            handle = ctypes.c_void_p(self._pub_handle)
+            lib().zlink_spot_pub_destroy(ctypes.byref(handle))
+            self._pub_handle = None
+        if self._sub_handle:
+            handle = ctypes.c_void_p(self._sub_handle)
+            lib().zlink_spot_sub_destroy(ctypes.byref(handle))
+            self._sub_handle = None

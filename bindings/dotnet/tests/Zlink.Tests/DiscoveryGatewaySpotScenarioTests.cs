@@ -33,10 +33,34 @@ public class DiscoveryGatewaySpotScenarioTests
                 string advertise = serviceEp;
                 receiver.ConnectRegistry(regRouter);
                 receiver.Register("svc", advertise, 1);
+                int status = -1;
+                for (int i = 0; i < 20; i++)
+                {
+                    status = receiver.RegisterResult("svc").Status;
+                    if (status == 0)
+                        break;
+                    System.Threading.Thread.Sleep(50);
+                }
+                Assert.Equal(0, status);
+                var discoverDeadline = DateTime.UtcNow.AddMilliseconds(5000);
+                while (DateTime.UtcNow < discoverDeadline &&
+                       discovery.ReceiverCount("svc") <= 0)
+                {
+                    System.Threading.Thread.Sleep(10);
+                }
+                Assert.True(discovery.ReceiverCount("svc") > 0);
 
                 using var gateway = new Gateway(ctx, discovery);
-                gateway.Send("svc",
-                    new[] { Message.FromBytes(Encoding.UTF8.GetBytes("hello")) });
+                var connDeadline = DateTime.UtcNow.AddMilliseconds(5000);
+                while (DateTime.UtcNow < connDeadline &&
+                       gateway.ConnectionCount("svc") <= 0)
+                {
+                    System.Threading.Thread.Sleep(10);
+                }
+                Assert.True(gateway.ConnectionCount("svc") > 0);
+                TransportTestHelpers.SendWithRetry(gateway, "svc",
+                    new[] { Message.FromBytes(Encoding.UTF8.GetBytes("hello")) },
+                    SendFlags.None, 5000);
 
                 var rid = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 256, 2000);
                 var payload = Array.Empty<byte>();
@@ -56,11 +80,13 @@ public class DiscoveryGatewaySpotScenarioTests
                 string spotAdvertise = spotEp;
                 node.ConnectRegistry(regRouter);
                 node.Register("spot", spotAdvertise);
+                System.Threading.Thread.Sleep(100);
 
                 using var peerNode = new SpotNode(ctx);
                 peerNode.ConnectRegistry(regRouter);
                 peerNode.ConnectPeerPub(spotAdvertise);
                 using var spot = new Spot(peerNode);
+                System.Threading.Thread.Sleep(100);
                 spot.Subscribe("topic");
 
                 spot.Publish("topic",

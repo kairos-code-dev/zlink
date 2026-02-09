@@ -974,7 +974,8 @@ set(discovery-sources
 
 set(spot-sources
     src/services/spot/spot_node.cpp
-    src/services/spot/spot.cpp)
+    src/services/spot/spot_pub.cpp
+    src/services/spot/spot_sub.cpp)
 
 set(socket-sources
     src/sockets/socket_base.cpp

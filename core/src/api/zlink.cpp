@@ -46,7 +46,8 @@ struct iovec
 #include "services/gateway/gateway.hpp"
 #include "services/gateway/receiver.hpp"
 #include "services/spot/spot_node.hpp"
-#include "services/spot/spot.hpp"
+#include "services/spot/spot_pub.hpp"
+#include "services/spot/spot_sub.hpp"
 #include "utils/stdint.hpp"
 #include "utils/config.hpp"
 #include "utils/likely.hpp"
@@ -1163,7 +1164,7 @@ int zlink_spot_node_set_tls_client (void *node_,
     return node->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_spot_new (void *node_)
+void *zlink_spot_pub_new (void *node_)
 {
     if (!node_)
         return NULL;
@@ -1172,121 +1173,144 @@ void *zlink_spot_new (void *node_)
         errno = EFAULT;
         return NULL;
     }
-    zlink::spot_t *spot = node->create_spot ();
-    if (!spot)
+    zlink::spot_pub_t *pub = node->create_spot_pub ();
+    if (!pub)
         return NULL;
-    return static_cast<void *> (spot);
+    return static_cast<void *> (pub);
 }
 
-int zlink_spot_destroy (void **spot_p_)
+int zlink_spot_pub_destroy (void **pub_p_)
 {
-    if (!spot_p_ || !*spot_p_) {
+    if (!pub_p_ || !*pub_p_) {
         errno = EFAULT;
         return -1;
     }
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (*spot_p_);
-    *spot_p_ = NULL;
-    if (!spot->check_tag ()) {
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (*pub_p_);
+    *pub_p_ = NULL;
+    if (!pub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    spot->destroy ();
-    delete spot;
+    pub->destroy ();
+    delete pub;
     return 0;
 }
 
-int zlink_spot_topic_create (void *spot_, const char *topic_id_, int mode_)
+int zlink_spot_pub_publish (void *pub_,
+                            const char *topic_id_,
+                            zlink_msg_t *parts_,
+                            size_t part_count_,
+                            int flags_)
 {
-    if (!spot_)
+    if (!pub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->topic_create (topic_id_, mode_);
+    return pub->publish (topic_id_, parts_, part_count_, flags_);
 }
 
-int zlink_spot_topic_destroy (void *spot_, const char *topic_id_)
+int zlink_spot_pub_setsockopt (void *pub_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
 {
-    if (!spot_)
+    if (!pub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->topic_destroy (topic_id_);
+    return pub->set_socket_option (option_, optval_, optvallen_);
 }
 
-int zlink_spot_publish (void *spot_,
-                      const char *topic_id_,
-                      zlink_msg_t *parts_,
-                      size_t part_count_,
-                      int flags_)
+void *zlink_spot_sub_new (void *node_)
 {
-    if (!spot_)
-        return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
         errno = EFAULT;
-        return -1;
+        return NULL;
     }
-    return spot->publish (topic_id_, parts_, part_count_, flags_);
+    zlink::spot_sub_t *sub = node->create_spot_sub ();
+    if (!sub)
+        return NULL;
+    return static_cast<void *> (sub);
 }
 
-int zlink_spot_subscribe (void *spot_, const char *topic_id_)
+int zlink_spot_sub_destroy (void **sub_p_)
 {
-    if (!spot_)
-        return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    if (!sub_p_ || !*sub_p_) {
         errno = EFAULT;
         return -1;
     }
-    return spot->subscribe (topic_id_);
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (*sub_p_);
+    *sub_p_ = NULL;
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    sub->destroy ();
+    delete sub;
+    return 0;
 }
 
-int zlink_spot_subscribe_pattern (void *spot_, const char *pattern_)
+int zlink_spot_sub_subscribe (void *sub_, const char *topic_id_)
 {
-    if (!spot_)
+    if (!sub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->subscribe_pattern (pattern_);
+    return sub->subscribe (topic_id_);
 }
 
-int zlink_spot_unsubscribe (void *spot_, const char *topic_id_or_pattern_)
+int zlink_spot_sub_subscribe_pattern (void *sub_, const char *pattern_)
 {
-    if (!spot_)
+    if (!sub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->unsubscribe (topic_id_or_pattern_);
+    return sub->subscribe_pattern (pattern_);
 }
 
-int zlink_spot_recv (void *spot_,
-                   zlink_msg_t **parts_,
-                   size_t *part_count_,
-                   int flags_,
-                   char *topic_id_out_,
-                   size_t *topic_id_len_)
+int zlink_spot_sub_unsubscribe (void *sub_, const char *topic_id_or_pattern_)
 {
-    if (!spot_)
+    if (!sub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->recv (parts_, part_count_, flags_, topic_id_out_,
-                       topic_id_len_);
+    return sub->unsubscribe (topic_id_or_pattern_);
+}
+
+int zlink_spot_sub_recv (void *sub_,
+                         zlink_msg_t **parts_,
+                         size_t *part_count_,
+                         int flags_,
+                         char *topic_id_out_,
+                         size_t *topic_id_len_)
+{
+    if (!sub_)
+        return -1;
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    return sub->recv (parts_, part_count_, flags_, topic_id_out_,
+                      topic_id_len_);
 }
 
 void *zlink_spot_node_pub_socket (void *node_)
@@ -1329,44 +1353,31 @@ int zlink_spot_node_setsockopt (void *node_,
     return node->set_socket_option (socket_role_, option_, optval_, optvallen_);
 }
 
-void *zlink_spot_pub_socket (void *spot_)
+void *zlink_spot_sub_socket (void *sub_)
 {
-    if (!spot_)
+    if (!sub_)
         return NULL;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    return static_cast<void *> (spot->pub_socket ());
+    return static_cast<void *> (sub->sub_socket ());
 }
 
-void *zlink_spot_sub_socket (void *spot_)
+int zlink_spot_sub_setsockopt (void *sub_,
+                               int option_,
+                               const void *optval_,
+                               size_t optvallen_)
 {
-    if (!spot_)
-        return NULL;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (spot->sub_socket ());
-}
-
-int zlink_spot_setsockopt (void *spot_,
-                           int socket_role_,
-                           int option_,
-                           const void *optval_,
-                           size_t optvallen_)
-{
-    if (!spot_)
+    if (!sub_)
         return -1;
-    zlink::spot_t *spot = static_cast<zlink::spot_t *> (spot_);
-    if (!spot->check_tag ()) {
+    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
+    if (!sub->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return spot->set_socket_option (socket_role_, option_, optval_, optvallen_);
+    return sub->set_socket_option (option_, optval_, optvallen_);
 }
 
 int zlink_bind (void *s_, const char *addr_)

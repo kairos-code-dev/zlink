@@ -161,27 +161,25 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_SUB = downcall("zlink_spot_node_sub_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_SPOT_NEW = downcall("zlink_spot_new",
+    private static final MethodHandle MH_SPOT_PUB_NEW = downcall("zlink_spot_pub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_DESTROY = downcall("zlink_spot_destroy",
+    private static final MethodHandle MH_SPOT_PUB_DESTROY = downcall("zlink_spot_pub_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_TOPIC_CREATE = downcall("zlink_spot_topic_create",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_TOPIC_DESTROY = downcall("zlink_spot_topic_destroy",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_PUBLISH = downcall("zlink_spot_publish",
+    private static final MethodHandle MH_SPOT_PUB_PUBLISH = downcall("zlink_spot_pub_publish",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_SPOT_SUB = downcall("zlink_spot_subscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_PATTERN = downcall("zlink_spot_subscribe_pattern",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_UNSUB = downcall("zlink_spot_unsubscribe",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_RECV = downcall("zlink_spot_recv",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_PUB = downcall("zlink_spot_pub_socket",
+    private static final MethodHandle MH_SPOT_SUB_NEW = downcall("zlink_spot_sub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SPOT_SUB_S = downcall("zlink_spot_sub_socket",
+    private static final MethodHandle MH_SPOT_SUB_DESTROY = downcall("zlink_spot_sub_destroy",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE = downcall("zlink_spot_sub_subscribe",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_SUBSCRIBE_PATTERN = downcall("zlink_spot_sub_subscribe_pattern",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_UNSUBSCRIBE = downcall("zlink_spot_sub_unsubscribe",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_RECV = downcall("zlink_spot_sub_recv",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_SUB_SOCKET = downcall("zlink_spot_sub_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     private Native() {}
@@ -753,91 +751,85 @@ public final class Native {
         }
     }
 
-    public static MemorySegment spotNew(MemorySegment node) {
+    public static MemorySegment spotPubNew(MemorySegment node) {
         try {
-            return (MemorySegment) MH_SPOT_NEW.invokeExact(node);
+            return (MemorySegment) MH_SPOT_PUB_NEW.invokeExact(node);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_new failed", t);
+            throw new RuntimeException("zlink_spot_pub_new failed", t);
         }
     }
 
-    public static int spotDestroy(MemorySegment spotPtr) {
+    public static int spotPubDestroy(MemorySegment pubPtr) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment p = arena.allocate(ValueLayout.ADDRESS);
-            p.set(ValueLayout.ADDRESS, 0, spotPtr);
-            return (int) MH_SPOT_DESTROY.invokeExact(p);
+            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
+            holder.set(ValueLayout.ADDRESS, 0, pubPtr);
+            return (int) MH_SPOT_PUB_DESTROY.invokeExact(holder);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_destroy failed", t);
+            throw new RuntimeException("zlink_spot_pub_destroy failed", t);
         }
     }
 
-    public static int spotTopicCreate(MemorySegment spot, MemorySegment topic, int mode) {
+    public static int spotPubPublish(MemorySegment pub, MemorySegment topic, MemorySegment parts, long count, int flags) {
         try {
-            return (int) MH_SPOT_TOPIC_CREATE.invokeExact(spot, topic, mode);
+            return (int) MH_SPOT_PUB_PUBLISH.invokeExact(pub, topic, parts, count, flags);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_topic_create failed", t);
+            throw new RuntimeException("zlink_spot_pub_publish failed", t);
         }
     }
 
-    public static int spotTopicDestroy(MemorySegment spot, MemorySegment topic) {
+    public static MemorySegment spotSubNew(MemorySegment node) {
         try {
-            return (int) MH_SPOT_TOPIC_DESTROY.invokeExact(spot, topic);
+            return (MemorySegment) MH_SPOT_SUB_NEW.invokeExact(node);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_topic_destroy failed", t);
+            throw new RuntimeException("zlink_spot_sub_new failed", t);
         }
     }
 
-    public static int spotPublish(MemorySegment spot, MemorySegment topic, MemorySegment parts, long count, int flags) {
-        try {
-            return (int) MH_SPOT_PUBLISH.invokeExact(spot, topic, parts, count, flags);
+    public static int spotSubDestroy(MemorySegment subPtr) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment holder = arena.allocate(ValueLayout.ADDRESS);
+            holder.set(ValueLayout.ADDRESS, 0, subPtr);
+            return (int) MH_SPOT_SUB_DESTROY.invokeExact(holder);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_publish failed", t);
+            throw new RuntimeException("zlink_spot_sub_destroy failed", t);
         }
     }
 
-    public static int spotSubscribe(MemorySegment spot, MemorySegment topic) {
+    public static int spotSubSubscribe(MemorySegment sub, MemorySegment topic) {
         try {
-            return (int) MH_SPOT_SUB.invokeExact(spot, topic);
+            return (int) MH_SPOT_SUB_SUBSCRIBE.invokeExact(sub, topic);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_subscribe failed", t);
+            throw new RuntimeException("zlink_spot_sub_subscribe failed", t);
         }
     }
 
-    public static int spotSubscribePattern(MemorySegment spot, MemorySegment pattern) {
+    public static int spotSubSubscribePattern(MemorySegment sub, MemorySegment pattern) {
         try {
-            return (int) MH_SPOT_SUB_PATTERN.invokeExact(spot, pattern);
+            return (int) MH_SPOT_SUB_SUBSCRIBE_PATTERN.invokeExact(sub, pattern);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_subscribe_pattern failed", t);
+            throw new RuntimeException("zlink_spot_sub_subscribe_pattern failed", t);
         }
     }
 
-    public static int spotUnsubscribe(MemorySegment spot, MemorySegment topic) {
+    public static int spotSubUnsubscribe(MemorySegment sub, MemorySegment topic) {
         try {
-            return (int) MH_SPOT_UNSUB.invokeExact(spot, topic);
+            return (int) MH_SPOT_SUB_UNSUBSCRIBE.invokeExact(sub, topic);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_unsubscribe failed", t);
+            throw new RuntimeException("zlink_spot_sub_unsubscribe failed", t);
         }
     }
 
-    public static int spotRecv(MemorySegment spot, MemorySegment partsPtr, MemorySegment count, int flags, MemorySegment topicOut, MemorySegment topicLen) {
+    public static int spotSubRecv(MemorySegment sub, MemorySegment partsPtr, MemorySegment count, int flags, MemorySegment topicOut, MemorySegment topicLen) {
         try {
-            return (int) MH_SPOT_RECV.invokeExact(spot, partsPtr, count, flags, topicOut, topicLen);
+            return (int) MH_SPOT_SUB_RECV.invokeExact(sub, partsPtr, count, flags, topicOut, topicLen);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_recv failed", t);
+            throw new RuntimeException("zlink_spot_sub_recv failed", t);
         }
     }
 
-    public static MemorySegment spotPubSocket(MemorySegment spot) {
+    public static MemorySegment spotSubSocket(MemorySegment sub) {
         try {
-            return (MemorySegment) MH_SPOT_PUB.invokeExact(spot);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_spot_pub_socket failed", t);
-        }
-    }
-
-    public static MemorySegment spotSubSocket(MemorySegment spot) {
-        try {
-            return (MemorySegment) MH_SPOT_SUB_S.invokeExact(spot);
+            return (MemorySegment) MH_SPOT_SUB_SOCKET.invokeExact(sub);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_sub_socket failed", t);
         }

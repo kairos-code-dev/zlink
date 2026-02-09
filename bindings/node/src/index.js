@@ -377,6 +377,9 @@ function version() { return requireNative().version(); }
 
 module.exports = {
   version,
+  // Backward-compatible constant aliases
+  SERVICE_TYPE_GATEWAY: ServiceType.GATEWAY,
+  SERVICE_TYPE_SPOT: ServiceType.SPOT,
   SocketType,
   ContextOption,
   SocketOption,

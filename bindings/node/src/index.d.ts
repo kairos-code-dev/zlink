@@ -87,6 +87,10 @@ export declare const ServiceType: {
   readonly GATEWAY: 1; readonly SPOT: 2;
 };
 
+// Backward-compatible aliases
+export declare const SERVICE_TYPE_GATEWAY: 1;
+export declare const SERVICE_TYPE_SPOT: 2;
+
 export declare const GatewayLbStrategy: {
   readonly ROUND_ROBIN: 0; readonly WEIGHTED: 1;
 };

@@ -453,6 +453,9 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
                     //  Ignore peers with duplicate ID
                     return false;
 
+                //  Handover is two-phase: keep map consistency first, then terminate.
+                //  We cannot immediately erase+kill the old pipe without first moving
+                //  its key, otherwise a concurrent lookup can observe stale identity.
                 //  We will allow the new connection to take over this
                 //  routing id. Temporarily assign a new routing id to the
                 //  existing pipe so we can terminate it asynchronously.
@@ -480,6 +483,7 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         if (!_handover)
             return false;
 
+        //  Same duplicate-ID handover path for non-handshake-based identity setup.
         unsigned char buf[5];
         buf[0] = 0;
         put_uint32 (buf + 1, _next_integral_routing_id++);

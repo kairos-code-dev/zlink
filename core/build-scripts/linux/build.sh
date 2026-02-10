@@ -82,6 +82,13 @@ if [ "$RUN_TESTS" = "ON" ]; then
     BUILD_TESTS_FLAG="ON"
 fi
 
+# Unit tests in core/unittests are wired when BUILD_STATIC is enabled.
+# Keep default packaging build shared-only, but include static lib for test runs.
+BUILD_STATIC_FLAG="OFF"
+if [ "$RUN_TESTS" = "ON" ]; then
+    BUILD_STATIC_FLAG="ON"
+fi
+
 # Configure build
 cmake "$LIBZLINK_SRC_ABS" \
     $CMAKE_ARCH_FLAGS \
@@ -89,7 +96,7 @@ cmake "$LIBZLINK_SRC_ABS" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DBUILD_SHARED=ON \
-    -DBUILD_STATIC=OFF \
+    -DBUILD_STATIC="$BUILD_STATIC_FLAG" \
     -DBUILD_TESTS="$BUILD_TESTS_FLAG" \
     -DBUILD_BENCHMARKS=OFF \
     -DZLINK_CXX_STANDARD=17 \
@@ -148,11 +155,12 @@ if [ "$RUN_TESTS" = "ON" ]; then
 
     # Run tests with ctest
     # Note: Some tests may be skipped based on platform capabilities
-    ctest --output-on-failure -j$(nproc) || {
+    TEST_DIR="$BUILD_DIR/core"
+    ctest --output-on-failure --test-dir "$TEST_DIR" -j$(nproc) || {
         echo ""
         echo "Some tests failed. Checking results..."
         # Allow some tests to fail (TIPC, fuzzer tests may not work in all environments)
-        FAILED_TESTS=$(ctest --rerun-failed --output-on-failure 2>&1 | grep -c "Failed" || true)
+        FAILED_TESTS=$(ctest --rerun-failed --output-on-failure --test-dir "$TEST_DIR" 2>&1 | grep -c "Failed" || true)
         if [ "$FAILED_TESTS" -gt 20 ]; then
             echo "Too many test failures ($FAILED_TESTS). Build may be broken."
             exit 1

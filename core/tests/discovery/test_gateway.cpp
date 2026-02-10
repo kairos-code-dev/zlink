@@ -1591,7 +1591,6 @@ int main (void)
     RUN_TEST (test_gateway_protocol_tls);
     RUN_TEST (test_gateway_protocol_wss);
     RUN_TEST (test_gateway_provider_setsockopt);
-    // TODO: Fix load balancing test - currently hangs
-    // RUN_TEST (test_gateway_load_balancing);
+    RUN_TEST (test_gateway_load_balancing);
     return UNITY_END ();
 }

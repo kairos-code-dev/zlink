@@ -181,5 +181,7 @@ void zlink::own_t::check_term_acks ()
 
 void zlink::own_t::process_destroy ()
 {
+    //  own_t instances are heap-owned by the command/termination graph.
+    //  Destruction happens only after all termination acks are observed.
     delete this;
 }

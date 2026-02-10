@@ -164,7 +164,8 @@ int zlink::ctx_t::terminate ()
     }
     _slot_sync.unlock ();
 
-    //  Deallocate the resources.
+    //  Context is API-created on heap; shutdown path owns final deletion once
+    //  reaper confirms all sockets are gone.
     delete this;
 
     return 0;

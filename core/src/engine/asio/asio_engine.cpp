@@ -382,6 +382,9 @@ void zlink::asio_engine_t::terminate ()
         _io_context->poll ();
     }
 
+    //  Engine lifetime is controlled by session/IO ownership, not by stack scope.
+    //  At this point callbacks were drained (or marked no-op), so self-destruction
+    //  is the final ownership handoff for this engine instance.
     delete this;
 }
 
@@ -1418,10 +1421,13 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
     }
 
     if (_io_context) {
+        //  If we are on (or racing with) the io_context thread, posting deletion
+        //  avoids destroying the engine in the middle of an in-flight handler.
         boost::asio::post (*_io_context, [this] () { delete this; });
         return;
     }
 
+    //  Fallback path when io_context is unavailable.
     delete this;
 }
 

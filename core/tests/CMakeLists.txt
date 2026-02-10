@@ -245,11 +245,9 @@ set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
 set_tests_properties(test_issue_566 PROPERTIES TIMEOUT 30)
 set_tests_properties(test_transport_matrix PROPERTIES TIMEOUT 30)
+set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
-if(WIN32)
-  set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
-endif()
 set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
 
 # Check whether all tests in the current folder are present

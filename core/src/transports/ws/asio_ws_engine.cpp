@@ -1451,9 +1451,10 @@ void zlink::asio_ws_engine_t::terminate ()
     _plugged = false;
     _session = NULL;
 
-    //  Run pending async handlers until they complete
-    //  The close() above will cause pending reads/writes to fail with
-    //  operation_aborted or eof, and our handlers check _terminating flag
+    //  Run pending async handlers until they complete.
+    //  close() above forces pending reads/writes to finish quickly
+    //  (operation_aborted/eof), and handlers are guarded by _terminating.
+    //  We bound poll iterations to avoid spinning forever on unexpected sources.
     if (_io_context) {
         //  Run until no more pending handlers
         int max_iterations = 100;
@@ -1468,6 +1469,7 @@ void zlink::asio_ws_engine_t::terminate ()
         }
     }
 
+    //  Ownership of the engine is internal; terminate() is the last release point.
     WS_ENGINE_DBG ("terminate: done, deleting this");
     delete this;
 }

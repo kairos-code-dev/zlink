@@ -397,7 +397,8 @@ void zlink::pipe_t::process_pipe_term_ack ()
 
     LIBZLINK_DELETE (_in_pipe);
 
-    //  Deallocate the pipe object
+    //  Pipe objects are always heap-allocated and reference-counted by protocol
+    //  state transitions, so termination ack is the canonical final release.
     delete this;
 }
 

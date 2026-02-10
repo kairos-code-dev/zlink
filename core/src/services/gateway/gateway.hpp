@@ -100,6 +100,7 @@ class gateway_t : public discovery_observer_t
     std::string _last_service_name;
     service_pool_t *_last_pool;
     std::map<std::string, std::string> _endpoint_to_service;
+    std::map<std::string, std::string> _routing_id_to_service;
     std::set<std::string> _ready_endpoints;
     std::set<std::string> _down_endpoints;
     std::map<std::string, uint64_t> _down_until_ms;

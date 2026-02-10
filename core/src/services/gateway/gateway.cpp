@@ -74,6 +74,13 @@ static int monitor_event_mask ()
            | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
 }
+
+static std::string routing_id_key (const zlink_routing_id_t &rid_)
+{
+    if (rid_.size == 0)
+        return std::string ();
+    return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
+}
 }
 
 gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
@@ -337,8 +344,18 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         _endpoint_to_service.erase (pool_->endpoints[i]);
     }
+    for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
+        const std::string key = routing_id_key (pool_->routing_ids[i]);
+        if (!key.empty ())
+            _routing_id_to_service.erase (key);
+    }
     pool_->endpoints.swap (next_endpoints);
     pool_->routing_ids.swap (next_routing_ids);
+    for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
+        const std::string key = routing_id_key (pool_->routing_ids[i]);
+        if (!key.empty ())
+            _routing_id_to_service[key] = pool_->service_name;
+    }
     // Track endpoint->service for monitor event routing.
     for (std::map<std::string, zlink_routing_id_t>::const_iterator it =
            routing_map.begin ();
@@ -501,24 +518,11 @@ int gateway_t::recv (zlink_msg_t **parts_,
 
     std::string service_name;
     if (rid.size > 0) {
-        for (std::map<std::string, service_pool_t>::const_iterator it =
-               _pools.begin ();
-             it != _pools.end (); ++it) {
-            const service_pool_t &pool = it->second;
-            for (size_t i = 0; i < pool.routing_ids.size (); ++i) {
-                const zlink_routing_id_t &candidate = pool.routing_ids[i];
-                if (candidate.size != rid.size)
-                    continue;
-                if (candidate.size == 0)
-                    continue;
-                if (memcmp (candidate.data, rid.data, candidate.size) == 0) {
-                    service_name = pool.service_name;
-                    break;
-                }
-            }
-            if (!service_name.empty ())
-                break;
-        }
+        const std::string key = routing_id_key (rid);
+        std::map<std::string, std::string>::const_iterator it =
+          _routing_id_to_service.find (key);
+        if (it != _routing_id_to_service.end ())
+            service_name = it->second;
     }
 
     if (service_name_out_) {
@@ -728,6 +732,7 @@ int gateway_t::destroy ()
     _last_service_name.clear ();
     _last_pool = NULL;
     _endpoint_to_service.clear ();
+    _routing_id_to_service.clear ();
     _ready_endpoints.clear ();
     _down_endpoints.clear ();
     _down_until_ms.clear ();

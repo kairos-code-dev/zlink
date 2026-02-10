@@ -157,28 +157,71 @@ function Test-CMake {
 }
 
 function Test-Ninja {
-    $result = @{ Found = $false; Version = "" }
+    $result = @{ Found = $false; Version = ""; Exe = "ninja" }
     try {
-        $out = ninja --version 2>$null
-        if ($out -match "(\d+\.\d+)") {
-            $result.Found   = $true
-            $result.Version = $out.Trim()
+        $cmd = Get-Command ninja -ErrorAction SilentlyContinue
+        $ninjaExe = if ($cmd) { $cmd.Source } else { $null }
+        if ($ninjaExe -and (Test-Path $ninjaExe)) {
+            $out = & $ninjaExe --version 2>$null
+            if ($out -match "(\d+\.\d+)") {
+                $result.Found   = $true
+                $result.Version = $out.Trim()
+                $result.Exe     = $ninjaExe
+                return $result
+            }
         }
     } catch {}
+
+    # Fallback: VS bundled Ninja
+    $vsNinjaPaths = @(
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe",
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
+    )
+    foreach ($ninjaExe in $vsNinjaPaths) {
+        if (-not (Test-Path $ninjaExe)) { continue }
+        try {
+            $out = & $ninjaExe --version 2>$null
+            if ($out -match "(\d+\.\d+)") {
+                $result.Found   = $true
+                $result.Version = $out.Trim()
+                $result.Exe     = $ninjaExe
+                return $result
+            }
+        } catch {}
+    }
     return $result
 }
 
 function Test-DotNetSDK {
-    $result = @{ Found = $false; Version = ""; MinVersion = "8.0" }
+    $result = @{ Found = $false; Version = ""; MinVersion = "8.0"; Exe = "dotnet" }
+    $dotnetCandidates = @()
     try {
-        $out = dotnet --version 2>$null
-        if ($out -match "^(\d+\.\d+)") {
-            $result.Version = $out.Trim()
-            if ([version]$matches[1] -ge [version]$result.MinVersion) {
-                $result.Found = $true
-            }
+        $cmd = Get-Command dotnet -ErrorAction SilentlyContinue
+        if ($cmd -and $cmd.Source -and (Test-Path $cmd.Source)) {
+            $dotnetCandidates += $cmd.Source
         }
     } catch {}
+
+    $dotnetCandidates += "C:\Program Files\dotnet\dotnet.exe"
+    $dotnetCandidates += "C:\Program Files (x86)\dotnet\dotnet.exe"
+    $dotnetCandidates = $dotnetCandidates | Select-Object -Unique
+
+    foreach ($dotnetExe in $dotnetCandidates) {
+        if (-not (Test-Path $dotnetExe)) { continue }
+        try {
+            $out = & $dotnetExe --version 2>$null
+            if ($out -match "(\d+\.\d+\.\d+)") {
+                $result.Version = $matches[1]
+                $result.Exe = $dotnetExe
+                if ([version]$matches[1] -ge [version]"$($result.MinVersion).0") {
+                    $result.Found = $true
+                    return $result
+                }
+            }
+        } catch {}
+    }
     return $result
 }
 
@@ -382,7 +425,7 @@ function Test-OpenSSLDlls {
         if (-not $dir) { continue }
         $dll = Join-Path $dir $dllName
         if (Test-Path $dll) {
-            $result.Found = $true
+            $result.Found   = $true
             $result.Path  = $dir
             return $result
         }
@@ -466,6 +509,23 @@ function Test-WingetAvailable {
     }
 }
 
+function Test-WingetPackageInstalled {
+    param([string]$PackageId)
+
+    if (-not (Test-WingetAvailable)) { return $false }
+
+    try {
+        $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        $out = winget list --id $PackageId -e --accept-source-agreements 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldPref
+        if ($exitCode -ne 0) { return $false }
+        return ($out -match [regex]::Escape($PackageId))
+    } catch {
+        return $false
+    }
+}
+
 function Invoke-WingetInstall {
     param([string]$PackageId, [string]$DisplayName)
 
@@ -474,12 +534,21 @@ function Invoke-WingetInstall {
         return $false
     }
 
+    if (Test-WingetPackageInstalled -PackageId $PackageId) {
+        Write-Host "  $DisplayName is already installed." -ForegroundColor Green
+        return $true
+    }
+
     Write-Host "  Installing $DisplayName ($PackageId) via winget..." -ForegroundColor Cyan
-    winget install $PackageId --accept-package-agreements --accept-source-agreements
+    winget install --id $PackageId -e --accept-package-agreements --accept-source-agreements
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  $DisplayName installed successfully." -ForegroundColor Green
         return $true
     } else {
+        if (Test-WingetPackageInstalled -PackageId $PackageId) {
+            Write-Host "  $DisplayName is already installed." -ForegroundColor Green
+            return $true
+        }
         Write-Host "  Failed to install $DisplayName. Please install manually." -ForegroundColor Yellow
         return $false
     }
@@ -553,8 +622,11 @@ function Install-NodeGyp {
 function Install-PythonPackages {
     param([string]$PythonExe = "python")
     Write-Host "  Installing Python packages (setuptools, wheel, pytest)..." -ForegroundColor Cyan
-    & $PythonExe -m pip install setuptools wheel pytest 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+    $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    & $PythonExe -m pip install --disable-pip-version-check --no-warn-script-location setuptools wheel pytest 2>&1 | Out-Null
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldPref
+    if ($exitCode -eq 0) {
         Write-Host "  Python packages installed." -ForegroundColor Green
     } else {
         Write-Host "  Failed to install Python packages." -ForegroundColor Yellow
@@ -627,13 +699,21 @@ function Setup-JavaBinding {
 }
 
 function Setup-NodeBinding {
-    param([string]$LibPath)
+    param(
+        [string]$LibPath,
+        [string]$PythonExe = ""
+    )
     Write-Host ""
     Write-Host "  Setting up Node.js binding..." -ForegroundColor Cyan
 
     if ($LibPath) {
-        $env:ZLINK_LIB_PATH = $LibPath
-        Write-Host "  ZLINK_LIB_PATH = $LibPath" -ForegroundColor DarkGray
+        $nodeLibPath = $LibPath -replace '\\', '/'
+        $env:ZLINK_LIB_PATH = $nodeLibPath
+        Write-Host "  ZLINK_LIB_PATH = $nodeLibPath" -ForegroundColor DarkGray
+    }
+    if ($PythonExe -and (Test-Path $PythonExe)) {
+        $env:PYTHON = $PythonExe
+        Write-Host "  PYTHON = $PythonExe" -ForegroundColor DarkGray
     }
 
     $bindingDir = Join-Path $RepoRoot "bindings\node"
@@ -732,6 +812,12 @@ function Export-EnvScript {
     if ($script:EnvVars["CMAKE_DIR"]) {
         $lines += "    , `"$($script:EnvVars["CMAKE_DIR"])`""
     }
+    if ($script:EnvVars["DOTNET_DIR"]) {
+        $lines += "    , `"$($script:EnvVars["DOTNET_DIR"])`""
+    }
+    if ($script:EnvVars["NINJA_DIR"]) {
+        $lines += "    , `"$($script:EnvVars["NINJA_DIR"])`""
+    }
     $lines += ") | Where-Object { `$_ -and (`$env:PATH -split ';') -notcontains `$_ }"
     $lines += "if (`$_pathsToAdd) { `$env:PATH = (`$_pathsToAdd -join ';') + ';' + `$env:PATH }"
     $lines += ""
@@ -808,7 +894,12 @@ if ($cmakeResult.Found) {
 
 $ninjaResult = Test-Ninja
 if ($ninjaResult.Found) {
-    Write-Status "Ninja" "OK" "v$($ninjaResult.Version)"
+    $ninjaDetail = "v$($ninjaResult.Version)"
+    if ($ninjaResult.Exe -and $ninjaResult.Exe -ne "ninja") {
+        $ninjaDetail += " (VS bundled)"
+        $script:EnvVars["NINJA_DIR"] = Split-Path $ninjaResult.Exe
+    }
+    Write-Status "Ninja" "OK" $ninjaDetail
 } else {
     Write-Status "Ninja" "OPTIONAL" "Not found (optional, used by VS Code tasks)"
 }
@@ -852,7 +943,12 @@ if ($Bindings -contains "dotnet") {
     Write-Host "  ------------" -ForegroundColor DarkGray
     $dotnetResult = Test-DotNetSDK
     if ($dotnetResult.Found) {
-        Write-Status ".NET SDK" "OK" "v$($dotnetResult.Version) (>= $($dotnetResult.MinVersion))"
+        $dotnetDetail = "v$($dotnetResult.Version) (>= $($dotnetResult.MinVersion))"
+        if ($dotnetResult.Exe -and $dotnetResult.Exe -ne "dotnet") {
+            $dotnetDetail += " (custom path)"
+            $script:EnvVars["DOTNET_DIR"] = Split-Path $dotnetResult.Exe
+        }
+        Write-Status ".NET SDK" "OK" $dotnetDetail
     } elseif ($dotnetResult.Version) {
         Write-Status ".NET SDK" "WRONG_VERSION" "v$($dotnetResult.Version) (need >= $($dotnetResult.MinVersion))"
     } else {
@@ -980,8 +1076,19 @@ if ($Install) {
     $cmakeResult    = Test-CMake
     $ninjaResult    = Test-Ninja
     $opensslResult  = Test-OpenSSLDlls
+    if ($cmakeResult.Found -and $cmakeResult.Exe -and $cmakeResult.Exe -ne "cmake") {
+        $script:EnvVars["CMAKE_DIR"] = Split-Path $cmakeResult.Exe
+    }
+    if ($ninjaResult.Found -and $ninjaResult.Exe -and $ninjaResult.Exe -ne "ninja") {
+        $script:EnvVars["NINJA_DIR"] = Split-Path $ninjaResult.Exe
+    }
     if ($opensslResult.Found) { $script:EnvVars["ZLINK_OPENSSL_BIN"] = $opensslResult.Path }
-    if ($Bindings -contains "dotnet") { $dotnetResult = Test-DotNetSDK }
+    if ($Bindings -contains "dotnet") {
+        $dotnetResult = Test-DotNetSDK
+        if ($dotnetResult.Found -and $dotnetResult.Exe -and $dotnetResult.Exe -ne "dotnet") {
+            $script:EnvVars["DOTNET_DIR"] = Split-Path $dotnetResult.Exe
+        }
+    }
     if ($Bindings -contains "java") {
         $jdkResult = Test-JDK22
         if ($jdkResult.Found) { $script:EnvVars["JDK22_HOME"] = $jdkResult.Path }
@@ -1032,12 +1139,27 @@ $hasCore = $coreBuildResult.Found
 
 if ($hasCore) {
     # Set environment variables before binding setup
+    if ($script:EnvVars["DOTNET_DIR"] -and (($env:PATH -split ';') -notcontains $script:EnvVars["DOTNET_DIR"])) {
+        $env:PATH = "$($script:EnvVars["DOTNET_DIR"]);$env:PATH"
+    }
+    if ($script:EnvVars["NINJA_DIR"] -and (($env:PATH -split ';') -notcontains $script:EnvVars["NINJA_DIR"])) {
+        $env:PATH = "$($script:EnvVars["NINJA_DIR"]);$env:PATH"
+    }
+    if ($script:EnvVars["PYTHON_DIR"] -and (($env:PATH -split ';') -notcontains $script:EnvVars["PYTHON_DIR"])) {
+        $env:PATH = "$($script:EnvVars["PYTHON_DIR"]);$env:PATH"
+    }
+    if ($script:EnvVars["PYTHON_SCRIPTS_DIR"] -and (($env:PATH -split ';') -notcontains $script:EnvVars["PYTHON_SCRIPTS_DIR"])) {
+        $env:PATH = "$($script:EnvVars["PYTHON_SCRIPTS_DIR"]);$env:PATH"
+    }
     if ($script:EnvVars["JDK22_HOME"]) {
         $env:JDK22_HOME = $script:EnvVars["JDK22_HOME"]
         $env:JAVA_HOME  = $script:EnvVars["JDK22_HOME"]
     }
     if ($script:EnvVars["ZLINK_OPENSSL_BIN"]) {
         $env:ZLINK_OPENSSL_BIN = $script:EnvVars["ZLINK_OPENSSL_BIN"]
+    }
+    if ($pythonResult.Found -and $pythonResult.Exe) {
+        $env:PYTHON = $pythonResult.Exe
     }
     $env:ZLINK_LIBRARY_PATH = $coreBuildResult.DllPath
 
@@ -1053,7 +1175,7 @@ if ($hasCore) {
     }
     if (($Bindings -contains "node") -and $nodeResult.Found) {
         if ($vsResult.HasVCTools -and $pythonResult.Found) {
-            Setup-NodeBinding -LibPath $coreBuildResult.LibPath
+            Setup-NodeBinding -LibPath $coreBuildResult.LibPath -PythonExe $pythonResult.Exe
         } else {
             Write-Host ""
             Write-Host "  Skipping Node.js native addon build (requires VS 2022 + Python)." -ForegroundColor DarkGray

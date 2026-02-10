@@ -112,19 +112,22 @@ def derive_current_lib_dir(build_dir):
     return os.path.abspath(os.path.join(build_root, "lib"))
 
 if IS_WINDOWS:
-    BUILD_DIR = os.path.join("core", "build", "windows-x64", "bin", "Release")
-    BASELINE_LIB_DIR = os.path.abspath(
-        os.path.join(
-            "core",
-            "bench",
-            "benchwithzlink",
-            "baseline",
-            "zlink_dist",
-            "windows-x64",
-            "bin",
-        )
+    BUILD_DIR = os.path.join(
+        ROOT_DIR, "core", "build", "windows-x64", "bin", "Release"
     )
-    CURRENT_LIB_DIR = os.path.abspath(os.path.join("core", "build", "windows-x64", "bin", "Release"))
+    BASELINE_LIB_DIR = os.path.join(
+        ROOT_DIR,
+        "core",
+        "bench",
+        "benchwithzlink",
+        "baseline",
+        "zlink_dist",
+        "windows-x64",
+        "bin",
+    )
+    CURRENT_LIB_DIR = os.path.join(
+        ROOT_DIR, "core", "build", "windows-x64", "bin", "Release"
+    )
 else:
     BUILD_DIR, BASELINE_LIB_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
 
@@ -252,13 +255,13 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                 print(f"{i+1} ", end="", flush=True)
                 results = run_single_test(binary_name, lib_name, tr, sz, pattern_name)
                 if results is None:
+                    failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "timeout"))
-                    print("FAILED (timeout)")
-                    sys.exit(1)
+                    continue
                 if not results:
+                    failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "no_data"))
-                    print("FAILED (no_data)")
-                    sys.exit(1)
+                    continue
                 for r in results:
                     m = r['metric']
                     if m not in metrics_raw:

@@ -1,0 +1,9 @@
+{
+  "PAIR": {},
+  "PUBSUB": {},
+  "DEALER_DEALER": {},
+  "DEALER_ROUTER": {},
+  "ROUTER_ROUTER": {},
+  "ROUTER_ROUTER_POLL": {},
+  "STREAM": {}
+}

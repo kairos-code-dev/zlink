@@ -214,7 +214,7 @@ if ($ReuseBuild) {
 
     Write-Host "Configuring CMake..."
 
-    # Set vcpkg paths for OpenSSL and Boost dependencies
+    # Set dependency paths (OpenSSL via vcpkg; Boost headers via vcpkg or bundled)
     $VcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
     $CoreVcpkgRoot = Join-Path $RootDir "core\deps\vcpkg"
     $LegacyVcpkgRoot = Join-Path $RootDir "deps\vcpkg"
@@ -229,6 +229,21 @@ if ($ReuseBuild) {
     }
     $VcpkgInstalled = Join-Path $VcpkgRoot "installed\x64-windows-static"
     $VcpkgInclude = Join-Path $VcpkgInstalled "include"
+    $BundledBoost = Join-Path $RootDir "core\external\boost"
+
+    $BoostIncludeDir = $null
+    if ((Test-Path (Join-Path $VcpkgInclude "boost\asio.hpp")) -and
+        (Test-Path (Join-Path $VcpkgInclude "boost\beast.hpp"))) {
+        $BoostIncludeDir = $VcpkgInclude
+    } elseif ((Test-Path (Join-Path $BundledBoost "boost\asio.hpp")) -and
+              (Test-Path (Join-Path $BundledBoost "boost\beast.hpp"))) {
+        $BoostIncludeDir = $BundledBoost
+    }
+
+    if (-not $BoostIncludeDir) {
+        Write-Error "Error: Boost headers not found. Checked $VcpkgInclude and $BundledBoost."
+        exit 1
+    }
 
     $CMakeArgs = @(
         "-S", "$RootDir",
@@ -237,11 +252,11 @@ if ($ReuseBuild) {
         "-A", "$CMakeArch",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_PREFIX_PATH=$VcpkgInstalled",
-        "-DZLINK_BOOST_INCLUDE_DIR=$VcpkgInclude",
         "-DBUILD_BENCHMARKS=ON",
         "-DBUILD_TESTS=OFF",
         "-DZLINK_CXX_STANDARD=17"
     )
+    $CMakeArgs += "-DZLINK_BOOST_INCLUDE_DIR=$BoostIncludeDir"
 
     if ($CurrentOnly) {
         $CMakeArgs += "-DZLINK_BUILD_BENCH_ZMQ=OFF"
@@ -264,27 +279,51 @@ if ($ReuseBuild) {
 }
 
 # Find Python
-$PythonCmd = $null
-$PythonCommands = @("py -3", "python", "python3")
-foreach ($cmd in $PythonCommands) {
-    $cmdParts = $cmd -split ' '
-    try {
-        $output = & $cmdParts[0] $cmdParts[1..($cmdParts.Length-1)] --version 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $PythonCmd = $cmd
-            break
-        }
-    } catch {
-        continue
+function Resolve-PythonExecutable {
+    if ($env:PYTHON -and (Test-Path $env:PYTHON)) {
+        return $env:PYTHON
     }
+
+    foreach ($name in @("python", "python3")) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if (-not $cmd -or -not $cmd.Source -or -not (Test-Path $cmd.Source)) {
+            continue
+        }
+        if ($cmd.Source -like "*\WindowsApps\*") {
+            continue
+        }
+        try {
+            & $cmd.Source --version *> $null
+            if ($LASTEXITCODE -eq 0) {
+                return $cmd.Source
+            }
+        } catch {
+            continue
+        }
+    }
+
+    $pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyLauncher -and $pyLauncher.Source -and (Test-Path $pyLauncher.Source)) {
+        try {
+            $resolved = & $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null
+            $resolved = ($resolved | Select-Object -First 1).Trim()
+            if ($resolved -and (Test-Path $resolved)) {
+                return $resolved
+            }
+        } catch {
+        }
+    }
+
+    return $null
 }
 
-if (-not $PythonCmd) {
+$PythonExe = Resolve-PythonExecutable
+if (-not $PythonExe) {
     Write-Error "Python not found. Install Python 3 or ensure it is on PATH."
     exit 1
 }
 
-Write-Host "Using Python: $PythonCmd"
+Write-Host "Using Python: $PythonExe"
 
 # Build run command
 $RunScript = Join-Path $ScriptDir "run_comparison.py"
@@ -317,7 +356,8 @@ if ($CurrentOnly) {
     if ($WithBaselineFlag) {
         $RunArgs += "--refresh-libzlink"
     } else {
-        $CacheFile = Join-Path $RootDir "core\bench\benchwithzlink" "baseline_cache_windows-x64.json"
+        $CacheDir = Join-Path $RootDir "core\bench\benchwithzlink"
+        $CacheFile = Join-Path $CacheDir "baseline_cache_windows-x64.json"
         if (-not (Test-Path $CacheFile)) {
             Write-Error "Baseline cache not found: $CacheFile"
             Write-Error "Run with -WithBaseline once to generate the baseline."
@@ -345,8 +385,7 @@ if ($OutputFile -and $OutputFile -ne "") {
         Set-Item -Path "env:$key" -Value $RunEnv[$key]
     }
 
-    $PythonCmdParts = $PythonCmd -split ' '
-    & $PythonCmdParts[0] $PythonCmdParts[1..($PythonCmdParts.Length-1)] $RunScript @RunArgs | Tee-Object -FilePath $OutputFile
+    & $PythonExe $RunScript @RunArgs | Tee-Object -FilePath $OutputFile
 
     # Clean up environment variables
     foreach ($key in $RunEnv.Keys) {
@@ -358,8 +397,7 @@ if ($OutputFile -and $OutputFile -ne "") {
         Set-Item -Path "env:$key" -Value $RunEnv[$key]
     }
 
-    $PythonCmdParts = $PythonCmd -split ' '
-    & $PythonCmdParts[0] $PythonCmdParts[1..($PythonCmdParts.Length-1)] $RunScript @RunArgs
+    & $PythonExe $RunScript @RunArgs
 
     # Clean up environment variables
     foreach ($key in $RunEnv.Keys) {

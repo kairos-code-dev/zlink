@@ -23,15 +23,25 @@
         "${workspaceFolder}/core/deps/vcpkg/installed/x64-windows-static/include"
     ],
     "C_Cpp.default.browse.limitSymbolsToIncludedHeaders": false,
+    "dotnetAcquisitionExtension.sharedExistingDotnetPath": "C:\\Program Files\\dotnet\\dotnet.exe",
+    "dotnetAcquisitionExtension.existingDotnetPath": [
+        "C:\\Program Files\\dotnet\\dotnet.exe"
+    ],
+    "omnisharp.dotnetPath": "C:\\Program Files\\dotnet\\dotnet.exe",
+    "terminal.integrated.env.windows": {
+        "DOTNET_ROOT": "C:\\Program Files\\dotnet",
+        "JAVA_HOME": "C:\\Program Files\\Eclipse Adoptium\\jdk-22.0.2.9-hotspot",
+        "PATH": "C:\\Program Files\\dotnet;C:\\Program Files\\Eclipse Adoptium\\jdk-22.0.2.9-hotspot\\bin;${env:PATH}"
+    },
     "java.configuration.runtimes": [
         {
             "name": "JavaSE-22",
-            "path": "${env:JDK22_HOME}",
+            "path": "C:\\Program Files\\Eclipse Adoptium\\jdk-22.0.2.9-hotspot",
             "default": true
         }
     ],
-    "java.jdt.ls.java.home": "${env:JDK22_HOME}",
-    "java.import.gradle.java.home": "${env:JDK22_HOME}",
+    "java.jdt.ls.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-22.0.2.9-hotspot",
+    "java.import.gradle.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-22.0.2.9-hotspot",
     "java.import.exclusions": [
         "**/bindings/java/src/main/resources/native/**"
     ],

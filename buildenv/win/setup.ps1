@@ -657,11 +657,35 @@ function Install-VSCodeExtensions {
 # Binding setup functions
 # ---------------------------------------------------------------------------
 
+function Ensure-DotNetCmdShim {
+    param([string]$DotNetExe = "C:\\Program Files\\dotnet\\dotnet.exe")
+
+    # Some VSCode extension hosts start with a reduced PATH but still include %APPDATA%\npm.
+    # Creating a small shim there ensures `dotnet --info` works even when DOTNET_ROOT isn't on PATH.
+    try {
+        if (-not (Test-Path $DotNetExe)) { return }
+        $shimDir = Join-Path $env:APPDATA "npm"
+        if (-not (Test-Path $shimDir)) {
+            New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+        }
+        $shimPath = Join-Path $shimDir "dotnet.cmd"
+        $content = "@echo off`r`n`"$DotNetExe`" %*`r`n"
+        if ((Test-Path $shimPath) -and ((Get-Content $shimPath -Raw) -eq $content)) {
+            return
+        }
+        Set-Content -Path $shimPath -Value $content -Encoding ASCII
+        Write-Host "  Created dotnet shim: $shimPath" -ForegroundColor DarkGray
+    } catch {
+        # Non-fatal: tooling may still work via explicit dotnet path.
+    }
+}
+
 function Setup-DotNetBinding {
     Write-Host ""
     Write-Host "  Setting up .NET binding..." -ForegroundColor Cyan
     $csproj = Join-Path $RepoRoot "bindings\dotnet\src\Zlink\Zlink.csproj"
     if (Test-Path $csproj) {
+        Ensure-DotNetCmdShim
         $oldPref = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         dotnet restore $csproj 2>&1 | Out-Null
         $exitCode = $LASTEXITCODE

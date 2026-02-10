@@ -542,11 +542,8 @@ ZLINK_EXPORT void *zlink_receiver_router (void *provider);
 ZLINK_EXPORT int zlink_receiver_destroy (void **provider_p);
 
 /******************************************************************************/
-/*  SPOT Topic PUB/SUB API                                                    */
+/*  SPOT PUB/SUB API                                                          */
 /******************************************************************************/
-
-#define ZLINK_SPOT_TOPIC_QUEUE 0
-#define ZLINK_SPOT_TOPIC_RINGBUFFER 1
 
 /* SPOT Node */
 ZLINK_EXPORT void *zlink_spot_node_new (void *ctx);
@@ -587,40 +584,37 @@ ZLINK_EXPORT int zlink_spot_node_setsockopt (void *node,
                                              const void *optval,
                                              size_t optvallen);
 
-/* SPOT Instance */
-ZLINK_EXPORT void *zlink_spot_new (void *node);
-ZLINK_EXPORT int zlink_spot_destroy (void **spot_p);
-ZLINK_EXPORT int zlink_spot_topic_create (void *spot,
-                                      const char *topic_id,
-                                      int mode);
-ZLINK_EXPORT int zlink_spot_topic_destroy (void *spot, const char *topic_id);
-ZLINK_EXPORT int zlink_spot_publish (void *spot,
-                                 const char *topic_id,
-                                 zlink_msg_t *parts,
-                                 size_t part_count,
-                                 int flags);
-ZLINK_EXPORT int zlink_spot_subscribe (void *spot, const char *topic_id);
-ZLINK_EXPORT int zlink_spot_subscribe_pattern (void *spot, const char *pattern);
-ZLINK_EXPORT int zlink_spot_unsubscribe (void *spot,
-                                     const char *topic_id_or_pattern);
-ZLINK_EXPORT int zlink_spot_recv (void *spot,
-                              zlink_msg_t **parts,
-                              size_t *part_count,
-                              int flags,
-                              char *topic_id_out,
-                              size_t *topic_id_len);
-ZLINK_EXPORT void *zlink_spot_pub_socket (void *spot);
-ZLINK_EXPORT void *zlink_spot_sub_socket (void *spot);
+/* SPOT Pub (default thread-safe) */
+ZLINK_EXPORT void *zlink_spot_pub_new (void *node);
+ZLINK_EXPORT int zlink_spot_pub_destroy (void **pub_p);
+ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
+                                         const char *topic_id,
+                                         zlink_msg_t *parts,
+                                         size_t part_count,
+                                         int flags);
+ZLINK_EXPORT int zlink_spot_pub_setsockopt (void *pub,
+                                            int option,
+                                            const void *optval,
+                                            size_t optvallen);
 
-/* Spot socket roles */
-#define ZLINK_SPOT_SOCKET_PUB 1
-#define ZLINK_SPOT_SOCKET_SUB 2
-
-ZLINK_EXPORT int zlink_spot_setsockopt (void *spot,
-                                        int socket_role,
-                                        int option,
-                                        const void *optval,
-                                        size_t optvallen);
+/* SPOT Sub */
+ZLINK_EXPORT void *zlink_spot_sub_new (void *node);
+ZLINK_EXPORT int zlink_spot_sub_destroy (void **sub_p);
+ZLINK_EXPORT int zlink_spot_sub_subscribe (void *sub, const char *topic_id);
+ZLINK_EXPORT int zlink_spot_sub_subscribe_pattern (void *sub, const char *pattern);
+ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
+                                             const char *topic_id_or_pattern);
+ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
+                                      zlink_msg_t **parts,
+                                      size_t *part_count,
+                                      int flags,
+                                      char *topic_id_out,
+                                      size_t *topic_id_len);
+ZLINK_EXPORT int zlink_spot_sub_setsockopt (void *sub,
+                                            int option,
+                                            const void *optval,
+                                            size_t optvallen);
+ZLINK_EXPORT void *zlink_spot_sub_socket (void *sub);
 
 #if defined _WIN32
 #if defined _WIN64

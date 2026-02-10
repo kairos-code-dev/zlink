@@ -148,14 +148,55 @@ if (-not $BuildDir.StartsWith($RootDir)) {
     exit 1
 }
 
+$WithLibzmqFlag = -not $SkipLibzmq
+if ($WithLibzmq) {
+    $WithLibzmqFlag = $true
+}
+
 # Build or reuse
+function Resolve-BenchmarkBinDir {
+    param(
+        [string]$BuildRoot
+    )
+
+    $Candidates = @(
+        (Join-Path $BuildRoot "bin\Release"),
+        (Join-Path $BuildRoot "bin\Debug"),
+        (Join-Path $BuildRoot "bin"),
+        $BuildRoot
+    )
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path (Join-Path $Candidate "comp_zlink_pair.exe")) {
+            return $Candidate
+        }
+    }
+    return $Candidates[0]
+}
+
+$NeedConfigureBuild = -not $ReuseBuild
 if ($ReuseBuild) {
     Write-Host "Reusing build directory: $BuildDir"
     if (-not (Test-Path $BuildDir)) {
         Write-Error "Error: build directory $BuildDir does not exist"
         exit 1
     }
-} else {
+
+    $BenchBinDir = Resolve-BenchmarkBinDir -BuildRoot $BuildDir
+    if (-not (Test-Path (Join-Path $BenchBinDir "comp_zlink_pair.exe"))) {
+        Write-Error "Error: zlink benchmark binaries not found in reused build: $BenchBinDir"
+        Write-Error "Run without -ReuseBuild to configure/build benchmark targets."
+        exit 1
+    }
+
+    if (-not $ZlinkOnly -and $WithLibzmqFlag -and -not (Test-Path (Join-Path $BenchBinDir "comp_std_zmq_pair.exe"))) {
+        Write-Warning "libzmq benchmark binaries not found in reused build: $BenchBinDir"
+        Write-Warning "Reconfiguring build to include libzmq targets."
+        $NeedConfigureBuild = $true
+    }
+}
+
+if ($NeedConfigureBuild) {
     Write-Host "Cleaning build directory: $BuildDir"
     if (Test-Path $BuildDir) {
         Remove-Item -Recurse -Force $BuildDir
@@ -302,11 +343,6 @@ if ($PinCpu) {
 if ($ZlinkOnly) {
     $RunArgs += "--zlink-only"
 } else {
-    $WithLibzmqFlag = -not $SkipLibzmq
-    if ($WithLibzmq) {
-        $WithLibzmqFlag = $true
-    }
-
     if ($WithLibzmqFlag) {
         $RunArgs += "--refresh-libzmq"
     } else {

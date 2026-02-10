@@ -66,11 +66,12 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
         target_compile_features(${name} PRIVATE cxx_std_11)
 
         if(WIN32)
-            # Copy the baseline libzlink.dll to the executable directory
+            # Copy all baseline runtime DLLs to the executable directory.
+            # The baseline package may include multiple runtime DLLs.
             add_custom_command(TARGET ${name} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${BASELINE_ZLINK_DLL}"
-                "$<TARGET_FILE_DIR:${name}>/libzlink_baseline.dll"
+                "$<TARGET_FILE_DIR:${name}>"
             )
         else()
             set_target_properties(${name} PROPERTIES

@@ -166,11 +166,19 @@ if (-not $BuildDir.StartsWith($RootDir)) {
     exit 1
 }
 
+$WithBaselineFlag = $false
+if (-not $CurrentOnly) {
+    $WithBaselineFlag = $WithBaseline -or $WithLibzlink
+    if ($SkipLibzlink) {
+        $WithBaselineFlag = $false
+    }
+}
+
 # Check baseline library exists when baseline run is requested
 $BaselineRoot = Join-Path $ScriptDir "baseline\zlink_dist\windows-x64"
 $BaselineLibDir = Join-Path $BaselineRoot "lib"
 $BaselineBinDir = Join-Path $BaselineRoot "bin"
-if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzlink)) {
+if ($WithBaselineFlag) {
     if (-not (Test-Path $BaselineRoot)) {
         Write-Error "Error: baseline directory not found: $BaselineRoot"
         Write-Error "Please create core\bench\benchwithzlink\\baseline\\zlink_dist\\windows-x64 and copy previous zlink library there."
@@ -190,13 +198,49 @@ if (-not $CurrentOnly -and ($WithBaseline -or $WithLibzlink)) {
 }
 
 # Build or reuse
+function Resolve-BenchmarkBinDir {
+    param(
+        [string]$BuildRoot
+    )
+
+    $Candidates = @(
+        (Join-Path $BuildRoot "bin\Release"),
+        (Join-Path $BuildRoot "bin\Debug"),
+        (Join-Path $BuildRoot "bin"),
+        $BuildRoot
+    )
+
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path (Join-Path $Candidate "comp_current_pair.exe")) {
+            return $Candidate
+        }
+    }
+    return $Candidates[0]
+}
+
+$NeedConfigureBuild = -not $ReuseBuild
 if ($ReuseBuild) {
     Write-Host "Reusing build directory: $BuildDir"
     if (-not (Test-Path $BuildDir)) {
         Write-Error "Error: build directory $BuildDir does not exist"
         exit 1
     }
-} else {
+
+    $BenchBinDir = Resolve-BenchmarkBinDir -BuildRoot $BuildDir
+    if (-not (Test-Path (Join-Path $BenchBinDir "comp_current_pair.exe"))) {
+        Write-Error "Error: current benchmark binaries not found in reused build: $BenchBinDir"
+        Write-Error "Run without -ReuseBuild to configure/build benchmark targets."
+        exit 1
+    }
+
+    if ($WithBaselineFlag -and -not (Test-Path (Join-Path $BenchBinDir "comp_baseline_pair.exe"))) {
+        Write-Warning "Baseline benchmark binaries not found in reused build: $BenchBinDir"
+        Write-Warning "Reconfiguring build to include baseline targets."
+        $NeedConfigureBuild = $true
+    }
+}
+
+if ($NeedConfigureBuild) {
     Write-Host "Cleaning build directory: $BuildDir"
     if (Test-Path $BuildDir) {
         Remove-Item -Recurse -Force $BuildDir
@@ -348,11 +392,6 @@ if ($PinCpu) {
 if ($CurrentOnly) {
     $RunArgs += "--current-only"
 } else {
-    $WithBaselineFlag = $WithBaseline -or $WithLibzlink
-    if ($SkipLibzlink) {
-        $WithBaselineFlag = $false
-    }
-
     if ($WithBaselineFlag) {
         $RunArgs += "--refresh-libzlink"
     } else {

@@ -187,6 +187,10 @@ def run_single_test(binary_name, lib_name, transport, size):
     """Runs a single binary for one specific config."""
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
+    timeout_sec = 60
+    # STREAM on large payloads can exceed the default timeout on Windows.
+    if "stream" in binary_name and size >= 262144:
+        timeout_sec = 180
     try:
         # Args: [lib_name] [transport] [size]
         # Default: do not pin CPU. Enable with BENCH_TASKSET=1 on Linux.
@@ -196,7 +200,9 @@ def run_single_test(binary_name, lib_name, transport, size):
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
         else:
             cmd = [binary_path, lib_name, transport, str(size)]
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(
+            cmd, env=env, capture_output=True, text=True, timeout=timeout_sec
+        )
         if result.returncode != 0:
             return []
         
@@ -369,6 +375,37 @@ def main():
             f"Supported patterns: {', '.join(supported)}",
             file=sys.stderr,
         )
+        sys.exit(1)
+
+    missing_zlink = []
+    missing_std = []
+    for std_bin, zlk_bin, p_name in comparisons:
+        if p_req != "ALL" and p_name != p_req:
+            continue
+        zlink_path = os.path.join(BUILD_DIR, zlk_bin + EXE_SUFFIX)
+        if not os.path.exists(zlink_path):
+            missing_zlink.append(p_name)
+        if not zlink_only:
+            std_path = os.path.join(BUILD_DIR, std_bin + EXE_SUFFIX)
+            if not os.path.exists(std_path):
+                missing_std.append(p_name)
+
+    if missing_zlink:
+        print(
+            "Error: zlink benchmark binaries are missing for patterns: "
+            + ", ".join(missing_zlink),
+            file=sys.stderr,
+        )
+        print("Re-run without -ReuseBuild to configure/build benchmark targets.", file=sys.stderr)
+        sys.exit(1)
+
+    if missing_std:
+        print(
+            "Error: libzmq benchmark binaries are missing for patterns: "
+            + ", ".join(missing_std),
+            file=sys.stderr,
+        )
+        print("Re-run with -WithLibzmq and without -ReuseBuild to build libzmq targets.", file=sys.stderr)
         sys.exit(1)
 
     all_failures = []

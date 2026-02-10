@@ -405,6 +405,37 @@ def main():
             print("Error: --pattern requires at least one value.", file=sys.stderr)
             sys.exit(1)
 
+    missing_current = []
+    missing_baseline = []
+    for baseline_bin, current_bin, p_name in comparisons:
+        if requested is not None and p_name not in requested:
+            continue
+        current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
+        if not os.path.exists(current_path):
+            missing_current.append(p_name)
+        if not current_only:
+            baseline_path = os.path.join(BUILD_DIR, baseline_bin + EXE_SUFFIX)
+            if not os.path.exists(baseline_path):
+                missing_baseline.append(p_name)
+
+    if missing_current:
+        print(
+            "Error: current benchmark binaries are missing for patterns: "
+            + ", ".join(missing_current),
+            file=sys.stderr,
+        )
+        print("Re-run without -ReuseBuild to configure/build benchmark targets.", file=sys.stderr)
+        sys.exit(1)
+
+    if missing_baseline:
+        print(
+            "Error: baseline benchmark binaries are missing for patterns: "
+            + ", ".join(missing_baseline),
+            file=sys.stderr,
+        )
+        print("Re-run with -WithBaseline and without -ReuseBuild to build baseline targets.", file=sys.stderr)
+        sys.exit(1)
+
     for baseline_bin, current_bin, p_name in comparisons:
         if requested is not None and p_name not in requested:
             continue

@@ -44,14 +44,14 @@ function(add_std_zmq_bench name source)
     target_compile_features(${name} PRIVATE cxx_std_11)
     
     if(WIN32)
-        # Copy the standard libzmq.dll to the executable directory (using the auto-detected path)
+        # Copy all runtime DLLs to the executable directory.
         add_custom_command(TARGET ${name} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${STD_LIBZMQ_DLL}"
-            "$<TARGET_FILE_DIR:${name}>/libzmq.dll"
+            "$<TARGET_FILE_DIR:${name}>"
         )
     else()
-        set_target_properties(${name} PROPERTIES 
+        set_target_properties(${name} PROPERTIES
             BUILD_RPATH "${STD_LIBZMQ_ROOT}/lib"
             INSTALL_RPATH "${STD_LIBZMQ_ROOT}/lib"
         )

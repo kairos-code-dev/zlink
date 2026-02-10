@@ -1,0 +1,381 @@
+name: Release Bindings (Language-specific)
+
+on:
+  push:
+    tags:
+      - 'node/v*'
+      - 'python/v*'
+      - 'java/v*'
+      - 'dotnet/v*'
+      - 'cpp/v*'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target binding: node|python|java|dotnet|cpp|all'
+        required: true
+        default: 'node'
+        type: string
+      version:
+        description: 'Binding version to release (e.g. 0.9.1). Required for workflow_dispatch.'
+        required: false
+        type: string
+      core_version:
+        description: 'Optional core release version to validate (e.g. 0.9.0 -> core/v0.9.0)'
+        required: false
+        type: string
+      create_release:
+        description: 'Create GitHub release for selected binding'
+        required: true
+        default: false
+        type: boolean
+      publish_registry:
+        description: 'Publish to external registry (npm/PyPI/NuGet/Maven)'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  resolve:
+    name: Resolve Target/Version
+    runs-on: ubuntu-22.04
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      version: ${{ steps.resolve.outputs.version }}
+      create_release: ${{ steps.resolve.outputs.create_release }}
+      publish_registry: ${{ steps.resolve.outputs.publish_registry }}
+      core_tag: ${{ steps.resolve.outputs.core_tag }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            TARGET="${TAG_NAME%%/*}"
+            VERSION="${TAG_NAME#*/v}"
+            CREATE_RELEASE="true"
+            PUBLISH_REGISTRY="true"
+          else
+            TARGET="${{ github.event.inputs.target }}"
+            VERSION="${{ github.event.inputs.version }}"
+            CREATE_RELEASE="${{ github.event.inputs.create_release }}"
+            PUBLISH_REGISTRY="${{ github.event.inputs.publish_registry }}"
+          fi
+
+          case "${TARGET}" in
+            node|python|java|dotnet|cpp|all) ;;
+            *)
+              echo "Unsupported target: ${TARGET}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${VERSION}" ]; then
+            echo "version input is required for workflow_dispatch" >&2
+            exit 1
+          fi
+
+          if [ "${TARGET}" = "all" ] && [ "${CREATE_RELEASE}" = "true" ]; then
+            echo "'all' target with create_release=true is not allowed. Release each language separately." >&2
+            exit 1
+          fi
+          if [ "${TARGET}" = "all" ] && [ "${PUBLISH_REGISTRY}" = "true" ]; then
+            echo "'all' target with publish_registry=true is not allowed. Publish each language separately." >&2
+            exit 1
+          fi
+
+          CORE_TAG=""
+          if [ -n "${{ github.event.inputs.core_version }}" ]; then
+            CORE_TAG="core/v${{ github.event.inputs.core_version }}"
+          fi
+
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "create_release=${CREATE_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "publish_registry=${PUBLISH_REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "core_tag=${CORE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate Core Release Tag (optional)
+        if: steps.resolve.outputs.core_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api_url="https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.resolve.outputs.core_tag }}"
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${api_url}")
+          if [ "${status}" != "200" ]; then
+            echo "Core release tag not found: ${{ steps.resolve.outputs.core_tag }}" >&2
+            exit 1
+          fi
+
+  release-node:
+    name: Release Node Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'node' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate version
+        shell: bash
+        run: |
+          file_version=$(node -p "require('./bindings/node/package.json').version")
+          if [ "${file_version}" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "Version mismatch: package.json=${file_version}, requested=${{ needs.resolve.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          cd bindings/node
+          npm ci
+          npm test
+
+      - name: Package
+        run: |
+          mkdir -p dist/node
+          cd bindings/node
+          npm pack --pack-destination ../../dist/node
+
+      - name: Publish to npm
+        if: needs.resolve.outputs.publish_registry == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "NPM_TOKEN secret is required for npm publish" >&2
+            exit 1
+          fi
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          cd bindings/node
+          npm publish --access public
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-node-${{ needs.resolve.outputs.version }}
+          path: dist/node/*.tgz
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: node/v${{ needs.resolve.outputs.version }}
+          name: node binding v${{ needs.resolve.outputs.version }}
+          files: dist/node/*.tgz
+
+  release-python:
+    name: Release Python Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'python' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate version
+        shell: bash
+        run: |
+          file_version=$(sed -n 's/^version = "\(.*\)"/\1/p' bindings/python/pyproject.toml | head -n1)
+          if [ "${file_version}" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "Version mismatch: pyproject.toml=${file_version}, requested=${{ needs.resolve.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build pytest twine
+          cd bindings/python
+          python -m pytest -q tests/test_version.py tests/test_enums.py
+          python -m build
+
+      - name: Publish to PyPI
+        if: needs.resolve.outputs.publish_registry == 'true'
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "${PYPI_API_TOKEN}" ]; then
+            echo "PYPI_API_TOKEN secret is required for PyPI publish" >&2
+            exit 1
+          fi
+          cd bindings/python
+          python -m twine upload \
+            --non-interactive \
+            -u __token__ \
+            -p "${PYPI_API_TOKEN}" \
+            dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-python-${{ needs.resolve.outputs.version }}
+          path: |
+            bindings/python/dist/*.whl
+            bindings/python/dist/*.tar.gz
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: python/v${{ needs.resolve.outputs.version }}
+          name: python binding v${{ needs.resolve.outputs.version }}
+          files: |
+            bindings/python/dist/*.whl
+            bindings/python/dist/*.tar.gz
+
+  release-java:
+    name: Release Java Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'java' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+
+      - name: Validate version
+        shell: bash
+        run: |
+          file_version=$(sed -n "s/^version = '\(.*\)'/\1/p" bindings/java/build.gradle | head -n1)
+          if [ "${file_version}" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "Version mismatch: build.gradle=${file_version}, requested=${{ needs.resolve.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build and test
+        run: |
+          cd bindings/java
+          chmod +x gradlew
+          ./gradlew test jar
+
+      - name: Publish to Maven repository
+        if: needs.resolve.outputs.publish_registry == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd bindings/java
+          ./gradlew publish
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-java-${{ needs.resolve.outputs.version }}
+          path: bindings/java/build/libs/*.jar
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: java/v${{ needs.resolve.outputs.version }}
+          name: java binding v${{ needs.resolve.outputs.version }}
+          files: bindings/java/build/libs/*.jar
+
+  release-dotnet:
+    name: Release .NET Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'dotnet' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Validate version
+        shell: bash
+        run: |
+          file_version=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' bindings/dotnet/src/Zlink/Zlink.csproj | head -n1)
+          if [ "${file_version}" != "${{ needs.resolve.outputs.version }}" ]; then
+            echo "Version mismatch: Zlink.csproj=${file_version}, requested=${{ needs.resolve.outputs.version }}" >&2
+            exit 1
+          fi
+
+      - name: Build and pack
+        run: |
+          dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release
+          dotnet pack bindings/dotnet/src/Zlink/Zlink.csproj -c Release -o dist/dotnet
+
+      - name: Publish to NuGet
+        if: needs.resolve.outputs.publish_registry == 'true'
+        env:
+          NUGET_SOURCE_URL: ${{ secrets.NUGET_SOURCE_URL }}
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "${NUGET_SOURCE_URL}" ] || [ -z "${NUGET_API_KEY}" ]; then
+            echo "NUGET_SOURCE_URL and NUGET_API_KEY are required for NuGet publish" >&2
+            exit 1
+          fi
+          dotnet nuget push dist/dotnet/*.nupkg \
+            --source "${NUGET_SOURCE_URL}" \
+            --api-key "${NUGET_API_KEY}" \
+            --skip-duplicate
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-dotnet-${{ needs.resolve.outputs.version }}
+          path: dist/dotnet/*.nupkg
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dotnet/v${{ needs.resolve.outputs.version }}
+          name: dotnet binding v${{ needs.resolve.outputs.version }}
+          files: dist/dotnet/*.nupkg
+
+  release-cpp:
+    name: Release C++ Binding
+    runs-on: ubuntu-22.04
+    needs: resolve
+    if: needs.resolve.outputs.target == 'cpp' || needs.resolve.outputs.target == 'all'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libssl-dev
+
+      - name: Build and test
+        run: |
+          cmake -B build_cpp_release \
+            -DZLINK_BUILD_CPP_BINDINGS=ON \
+            -DZLINK_CPP_BUILD_TESTS=ON \
+            -DZLINK_CPP_BUILD_EXAMPLES=OFF \
+            -DZLINK_BUILD_TESTS=OFF
+          cmake --build build_cpp_release --parallel
+          ctest --test-dir build_cpp_release --output-on-failure -R test_cpp_
+
+      - name: Package
+        run: |
+          mkdir -p dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/include
+          cp -r bindings/cpp/include/* dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/include/
+          cp bindings/cpp/examples/README.md dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/
+          tar -C dist/cpp -czf dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}.tar.gz zlink-cpp-${{ needs.resolve.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binding-cpp-${{ needs.resolve.outputs.version }}
+          path: dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}.tar.gz
+
+      - name: Create GitHub Release
+        if: needs.resolve.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cpp/v${{ needs.resolve.outputs.version }}
+          name: cpp binding v${{ needs.resolve.outputs.version }}
+          files: dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}.tar.gz

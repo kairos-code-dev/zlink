@@ -1,8 +1,9 @@
 plugins {
     id 'java'
+    id 'maven-publish'
 }
 
-group = 'io.ulalax'
+group = 'dev.kairoscode'
 version = '0.9.0'
 description = 'zlink Java bindings — high-performance async messaging library'
 
@@ -37,5 +38,41 @@ tasks.register('integrationTest', Test) {
     classpath = sourceSets.test.runtimeClasspath
     filter {
         includeTestsMatching 'io.ulalax.zlink.integration.*'
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            groupId = project.group
+            artifactId = 'zlink'
+            version = project.version
+        }
+    }
+    repositories {
+        maven {
+            name = 'releaseRepo'
+            def repoUrl = System.getenv('MAVEN_REPOSITORY_URL')
+            if (repoUrl == null || repoUrl.trim().isEmpty()) {
+                def ghRepo = System.getenv('GITHUB_REPOSITORY')  // owner/repo
+                if (ghRepo != null && !ghRepo.trim().isEmpty()) {
+                    repoUrl = "https://maven.pkg.github.com/${ghRepo}"
+                } else {
+                    repoUrl = "${buildDir}/repo"
+                }
+            }
+            url = uri(repoUrl)
+            credentials {
+                def u = System.getenv('MAVEN_REPOSITORY_USERNAME')
+                def p = System.getenv('MAVEN_REPOSITORY_PASSWORD')
+                if ((u == null || u.trim().isEmpty()) && (p == null || p.trim().isEmpty())) {
+                    u = System.getenv('GITHUB_ACTOR')
+                    p = System.getenv('GITHUB_TOKEN')
+                }
+                username = u
+                password = p
+            }
+        }
     }
 }

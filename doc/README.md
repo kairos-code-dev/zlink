@@ -77,6 +77,7 @@
 | [build-guide.md](building/build-guide.md) | 빌드 방법 (CMake, 플랫폼별) |
 | [cmake-options.md](building/cmake-options.md) | CMake 옵션 상세 |
 | [packaging.md](building/packaging.md) | 릴리즈 및 패키징 |
+| [release-accounts.md](building/release-accounts.md) | 공식 배포 계정/시크릿 |
 | [testing.md](building/testing.md) | 테스트 전략 및 실행 |
 | [platforms.md](building/platforms.md) | 지원 플랫폼 및 컴파일러 |
 

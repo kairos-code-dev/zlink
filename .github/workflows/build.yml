@@ -1,4 +1,4 @@
-name: Build libzlink Native Libraries
+name: Build libzlink Core Libraries
 
 on:
   push:
@@ -6,13 +6,10 @@ on:
       - main
       - develop
     tags:
-      - '*.*'
-      - 'v*'
+      - 'core/v*'
   pull_request:
     branches:
       - main
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       libzlink_version:
@@ -327,126 +324,6 @@ jobs:
           path: core/dist/macos-arm64/
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
-  build-node-prebuilds:
-    name: Build Node Prebuilds (${{ matrix.platform }}-${{ matrix.arch }})
-    needs:
-      - build-windows
-      - build-windows-arm64
-      - build-linux
-      - build-linux-arm64
-      - build-macos-intel
-      - build-macos-arm64
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            platform: linux
-            arch: x64
-            lib_artifact: libzlink-linux-x64
-            lib_file: libzlink.so
-          - runner: ubuntu-22.04-arm
-            platform: linux
-            arch: arm64
-            lib_artifact: libzlink-linux-arm64
-            lib_file: libzlink.so
-          - runner: macos-14
-            platform: darwin
-            arch: x64
-            lib_artifact: libzlink-macos-x64
-            lib_file: libzlink.dylib
-          - runner: macos-15
-            platform: darwin
-            arch: arm64
-            lib_artifact: libzlink-macos-arm64
-            lib_file: libzlink.dylib
-          - runner: windows-2022
-            platform: win32
-            arch: x64
-            lib_artifact: libzlink-windows-x64
-          - runner: windows-2022
-            platform: win32
-            arch: arm64
-            lib_artifact: libzlink-windows-arm64
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Download libzlink artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.lib_artifact }}
-          path: artifacts/${{ matrix.lib_artifact }}
-
-      - name: Build Node addon (unix)
-        if: runner.os != 'Windows'
-        run: |
-          export ZLINK_LIB_PATH="${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/${{ matrix.lib_file }}"
-          cd bindings/node
-          npx node-gyp configure build
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            cp -f "${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/"libzlink.so* build/Release/ || true
-          else
-            cp -f "${GITHUB_WORKSPACE}/artifacts/${{ matrix.lib_artifact }}/${{ matrix.lib_file }}" build/Release/ || true
-          fi
-
-      - name: Build Node addon (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $artifactRoot = "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}"
-          $libCandidate = Get-ChildItem -Path $artifactRoot -Filter "libzlink*.lib" -File -Recurse -ErrorAction SilentlyContinue `
-            | Where-Object { $_.Name -notmatch "-gd-" -and $_.Name -notmatch "-sgd-" } `
-            | Sort-Object Name `
-            | Select-Object -First 1
-          if (-not $libCandidate) {
-            Write-Host "Available files under artifact:"
-            Get-ChildItem $artifactRoot -Recurse | ForEach-Object { $_.FullName }
-            throw "libzlink import library not found under $artifactRoot"
-          }
-          $env:ZLINK_LIB_PATH = $libCandidate.FullName
-          Write-Host "Using ZLINK_LIB_PATH=$env:ZLINK_LIB_PATH"
-          cd bindings/node
-          if ("${{ matrix.arch }}" -eq "arm64") {
-            npx node-gyp configure --arch=arm64
-            npx node-gyp build --arch=arm64
-          } else {
-            npx node-gyp configure build
-          }
-          Copy-Item "$env:GITHUB_WORKSPACE\\artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" build\\Release -Force
-
-      - name: Stage prebuilds (unix)
-        if: runner.os != 'Windows'
-        run: |
-          STAGE="node-prebuilds/${{ matrix.platform }}-${{ matrix.arch }}"
-          mkdir -p "${STAGE}"
-          cp -f bindings/node/build/Release/zlink.node "${STAGE}/zlink.node"
-          cp -f "artifacts/${{ matrix.lib_artifact }}/${{ matrix.lib_file }}" "${STAGE}/"
-
-      - name: Stage prebuilds (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $stage = "node-prebuilds\\${{ matrix.platform }}-${{ matrix.arch }}"
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item bindings\\node\\build\\Release\\zlink.node "$stage\\zlink.node" -Force
-          Copy-Item "artifacts\\${{ matrix.lib_artifact }}\\bin\\*.dll" $stage -Force
-          $ucrt = "artifacts\\${{ matrix.lib_artifact }}\\ucrtbase.dll"
-          if (Test-Path $ucrt) { Copy-Item $ucrt $stage -Force }
-
-      - name: Upload Node prebuild
-        uses: actions/upload-artifact@v4
-        with:
-          name: zlink-node-${{ matrix.platform }}-${{ matrix.arch }}
-          path: node-prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
-
   verify:
     name: Verify Build Artifacts
     runs-on: ubuntu-22.04
@@ -458,7 +335,6 @@ jobs:
       - build-linux-arm64
       - build-macos-intel
       - build-macos-arm64
-      - build-node-prebuilds
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -516,7 +392,7 @@ jobs:
     needs:
       - read-versions
       - verify
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/core/v')
     permissions:
       contents: write
     steps:
@@ -547,27 +423,12 @@ jobs:
           tar -czf libzlink-linux-arm64.tar.gz libzlink-linux-arm64/
           tar -czf libzlink-macos-x64.tar.gz libzlink-macos-x64/
           tar -czf libzlink-macos-arm64.tar.gz libzlink-macos-arm64/
-          zip -r zlink-node-linux-x64.zip zlink-node-linux-x64/
-          zip -r zlink-node-linux-arm64.zip zlink-node-linux-arm64/
-          zip -r zlink-node-macos-x64.zip zlink-node-darwin-x64/
-          zip -r zlink-node-macos-arm64.zip zlink-node-darwin-arm64/
-          zip -r zlink-node-windows-x64.zip zlink-node-win32-x64/
-          zip -r zlink-node-windows-arm64.zip zlink-node-win32-arm64/
-          tar -czf zlink-node-linux-x64.tar.gz zlink-node-linux-x64/
-          tar -czf zlink-node-linux-arm64.tar.gz zlink-node-linux-arm64/
-          tar -czf zlink-node-macos-x64.tar.gz zlink-node-darwin-x64/
-          tar -czf zlink-node-macos-arm64.tar.gz zlink-node-darwin-arm64/
-          tar -czf zlink-node-windows-x64.tar.gz zlink-node-win32-x64/
-          tar -czf zlink-node-windows-arm64.tar.gz zlink-node-win32-arm64/
           ls -lh *.zip
 
       - name: Create source tarball
         run: |
           VERSION="${{ needs.read-versions.outputs.libzlink_version }}"
           TAG_NAME="${GITHUB_REF_NAME}"
-          if [ -n "${{ github.event.release.tag_name }}" ]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
-          fi
           TAR_NAME="zlink-${VERSION}-source.tar.gz"
           git archive --format=tar.gz --output "${TAR_NAME}" "${TAG_NAME}"
           ls -lh "${TAR_NAME}"
@@ -623,24 +484,12 @@ jobs:
             artifacts/libzlink-linux-arm64.zip
             artifacts/libzlink-macos-x64.zip
             artifacts/libzlink-macos-arm64.zip
-            artifacts/zlink-node-linux-x64.zip
-            artifacts/zlink-node-linux-arm64.zip
-            artifacts/zlink-node-macos-x64.zip
-            artifacts/zlink-node-macos-arm64.zip
-            artifacts/zlink-node-windows-x64.zip
-            artifacts/zlink-node-windows-arm64.zip
             artifacts/libzlink-windows-x64.tar.gz
             artifacts/libzlink-windows-arm64.tar.gz
             artifacts/libzlink-linux-x64.tar.gz
             artifacts/libzlink-linux-arm64.tar.gz
             artifacts/libzlink-macos-x64.tar.gz
             artifacts/libzlink-macos-arm64.tar.gz
-            artifacts/zlink-node-linux-x64.tar.gz
-            artifacts/zlink-node-linux-arm64.tar.gz
-            artifacts/zlink-node-macos-x64.tar.gz
-            artifacts/zlink-node-macos-arm64.tar.gz
-            artifacts/zlink-node-windows-x64.tar.gz
-            artifacts/zlink-node-windows-arm64.tar.gz
             artifacts/checksums/checksums.txt
             zlink-${{ needs.read-versions.outputs.libzlink_version }}-source.tar.gz
           draft: false

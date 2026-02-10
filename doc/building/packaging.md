@@ -1,33 +1,53 @@
-# 패키징 및 릴리즈 (vcpkg / Conan / Tarball)
+# 패키징 및 릴리즈 (Core / Bindings 분리)
 
 ## 1. 목표
 
-- GitHub Release tarball을 **단일 소스**로 사용
-- vcpkg + Conan 모두 제공
-- `cmake --install` 산출물 + tarball을 릴리즈 자산으로 제공
+- Core(`libzlink`)와 바인딩(Node/Python/Java/.NET/C++)을 **별도 프로세스**로 릴리즈한다.
+- Core 릴리즈 완료 후, 바인딩은 언어별 수정/검증을 거쳐 **개별 태그**로 배포한다.
+- Conan + vcpkg(overlay port)를 함께 유지한다.
 
-## 2. 버전 규칙
+## 2. 태그 규칙
 
-- 버전은 `VERSION` 파일을 기준으로 한다.
-- 태그는 `vX.Y.Z` 또는 `X.Y.Z` 형식을 허용하되, **릴리즈 워크플로우는 tag 기준**으로 동작한다.
-- 패키지 버전(Conan/vcpkg)도 `VERSION`과 일치해야 한다.
+- Core: `core/vX.Y.Z`
+- Node: `node/vA.B.C`
+- Python: `python/vA.B.C`
+- Java: `java/vA.B.C`
+- .NET: `dotnet/vA.B.C`
+- C++ binding: `cpp/vA.B.C`
 
-## 3. GitHub Actions 릴리즈 자산
+Core 버전(`VERSION`)과 바인딩 버전은 독립적으로 관리한다.
 
-릴리즈 태그 푸시 시 아래 자산을 생성/업로드한다.
+## 3. GitHub Actions
 
-- 플랫폼별 zip/tar.gz 아카이브
-  - Windows x64/ARM64
-  - Linux x64/ARM64
-  - macOS x64/ARM64
-- 소스 tarball: `zlink-<VERSION>-source.tar.gz`
-- 체크섬: `checksums.txt`
+### Core 릴리즈
 
-워크플로우: `.github/workflows/build.yml`
+- 워크플로우: `.github/workflows/build.yml`
+- 트리거: `core/v*` 태그, `workflow_dispatch`
+- 산출물:
+  - 플랫폼별 core native archive
+  - source tarball
+  - checksums
+- Conan 배포 워크플로우: `.github/workflows/core-conan-release.yml`
+
+### 바인딩 릴리즈
+
+- 워크플로우: `.github/workflows/bindings-release.yml`
+- 트리거:
+  - 언어별 태그(`node/v*`, `python/v*`, `java/v*`, `dotnet/v*`, `cpp/v*`)
+  - `workflow_dispatch` (target/version 지정)
+- 동작:
+  - 언어별 버전 파일 검증
+  - 언어별 테스트/패키징
+  - 필요 시 GitHub Release 생성
+  - 필요 시 npm/PyPI/NuGet/Maven publish
+
+필요 계정/시크릿: `doc/building/release-accounts.md`
 
 ## 4. Conan
 
-GitHub Release tarball에서 소스를 가져온다.
+Core 소스 tarball 기준으로 관리한다.
+
+공식 배포(ConanCenter)는 레시피 PR 기반이며, 사내 remote 업로드는 선택 사항이다.
 
 ### 관련 파일
 
@@ -39,14 +59,14 @@ GitHub Release tarball에서 소스를 가져온다.
 
 ### 업데이트 절차
 
-1. 릴리즈 태그 생성 및 GitHub Release 확인
-2. tarball URL/sha256 확보
+1. `core/vX.Y.Z` 태그 릴리즈
+2. tarball URL/sha256 확인
 3. `conandata.yml` 업데이트
-4. `conan create . --version <VERSION>` 실행
+4. `conan create . --version X.Y.Z` 실행
 
 ## 5. vcpkg (overlay port)
 
-오버레이 포트로 제공한다.
+공식 배포(vcpkg ports)는 PR 기반이며, overlay port는 개발/검증용으로 유지한다.
 
 ### 관련 파일
 
@@ -58,21 +78,26 @@ GitHub Release tarball에서 소스를 가져온다.
 
 ### 업데이트 절차
 
-1. 릴리즈 태그 생성 및 GitHub Release 확인
-2. tarball URL/sha512 확보
-3. `portfile.cmake`의 `REF`/`SHA512` 업데이트
-4. `vcpkg.json`의 `version-string` 업데이트
+1. `core/vX.Y.Z` 태그 릴리즈
+2. `vcpkg/ports/zlink/vcpkg.json`의 `version-string` 업데이트
+3. overlay 설치 검증:
 
-## 6. CMake install / pkg-config
+```bash
+vcpkg install zlink --overlay-ports=./vcpkg/ports
+```
 
-- `cmake --install` 결과물을 릴리즈 자산으로 배포
-- 패키지에는 `include/`, `lib/`, `lib/pkgconfig` 포함
+## 6. 바인딩 릴리즈 운영 예시
 
-## 7. 릴리즈 체크리스트
+1. Core `core/v0.10.0` 릴리즈
+2. Node 바인딩 수정/검증
+3. `node/v1.3.0` 태그로 Node만 배포
+4. Python은 준비 후 `python/v0.10.2`로 별도 배포
 
-- [ ] `VERSION` 갱신
-- [ ] 태그 생성 (예: `v0.6.0`)
-- [ ] GitHub Release 확인
-- [ ] Conan `conandata.yml` 업데이트
-- [ ] vcpkg 포트 업데이트
-- [ ] 릴리즈 자산/체크섬 확인
+## 7. 체크리스트
+
+- [ ] Core `VERSION` 갱신
+- [ ] Core 태그(`core/vX.Y.Z`) 릴리즈
+- [ ] Conan metadata 갱신
+- [ ] vcpkg overlay 버전 갱신
+- [ ] 바인딩별 버전 파일 갱신
+- [ ] 바인딩별 태그로 개별 릴리즈

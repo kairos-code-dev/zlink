@@ -210,10 +210,10 @@ if [ "$INSTALL_PYTHON" = true ]; then
         python3-dev
 
     # Install build tools in user scope
-    info "Installing Python build tools (setuptools, wheel)..."
-    python3 -m pip install --user --upgrade "setuptools>=68" wheel 2>/dev/null \
-        || python3 -m pip install --break-system-packages --user --upgrade "setuptools>=68" wheel 2>/dev/null \
-        || warn "pip install failed — try manually: pip install 'setuptools>=68' wheel"
+    info "Installing Python test/build tools (setuptools, wheel, pytest)..."
+    python3 -m pip install --user --upgrade "setuptools>=68" wheel pytest 2>/dev/null \
+        || python3 -m pip install --break-system-packages --user --upgrade "setuptools>=68" wheel pytest 2>/dev/null \
+        || warn "pip install failed — try manually: pip install 'setuptools>=68' wheel pytest"
 
     success "Python binding environment ready"
 fi

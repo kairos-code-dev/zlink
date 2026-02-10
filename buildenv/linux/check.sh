@@ -140,6 +140,7 @@ echo -e "${BOLD}  Python Binding${NC}"
 echo -e "  -----------------------------------------------"
 check_cmd "python3"     python3     "$REQUIRED_PYTHON_VERSION" "python3 --version"
 check_cmd "pip3"        pip3        "0"                        "pip3 --version"
+check_cmd "pytest"      pytest      "0"                        "pytest --version"
 check_pkg "python3-venv" python3-venv
 check_pkg "python3-dev" python3-dev
 

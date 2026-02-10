@@ -97,7 +97,7 @@ autoconf, automake, libtool, lsb-release, ninja-build, ccache
 |--------|------|
 | python3, python3-dev | 런타임 + 헤더 |
 | python3-pip, python3-venv | 패키지 관리 |
-| setuptools >= 68, wheel | 빌드 도구 |
+| setuptools >= 68, wheel, pytest | 빌드/테스트 도구 |
 
 #### Java (`--java`)
 

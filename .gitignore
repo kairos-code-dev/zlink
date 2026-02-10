@@ -32,6 +32,8 @@ core/builds/android/prefix
 .idea/
 ## Visual Code
 .vscode/
+## Local assistant settings
+.claude/
 ## other results-like folders
 bin/
 lib/

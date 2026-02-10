@@ -2,12 +2,12 @@ param(
     [string]$Pattern = "ALL",
     [string]$BuildDir = "",
     [string]$OutputFile = "",
-    [int]$Runs = 3,
+    [int]$Runs = 1,
     [switch]$SkipLibzmq,
     [switch]$WithLibzmq,
     [switch]$ZlinkOnly,
     [switch]$ReuseBuild,
-    [switch]$Result,
+    [switch]$Result = $true,
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [string]$IoThreads = "",
@@ -33,7 +33,7 @@ Options:
   -Result             Write results under core\bench\benchwithzmq\results\YYYYMMDD/.
   -ResultsDir PATH    Override results root directory.
   -ResultsTag NAME    Optional tag appended to the results filename.
-  -Runs N             Iterations per configuration (default: 3).
+  -Runs N             Iterations per configuration (default: 1).
   -ZlinkOnly          Run only zlink benchmarks (no libzmq baseline).
   -ReuseBuild         Reuse existing build dir without re-running CMake.
   -IoThreads N        Set BENCH_IO_THREADS for the benchmark run.

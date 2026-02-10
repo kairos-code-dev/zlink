@@ -2,14 +2,14 @@ param(
     [string]$Pattern = "ALL",
     [string]$BuildDir = "",
     [string]$OutputFile = "",
-    [int]$Runs = 3,
+    [int]$Runs = 1,
     [switch]$WithBaseline,
     [switch]$WithLibzlink,
     [switch]$SkipLibzlink,
     [switch]$CurrentOnly,
     [switch]$ReuseBuild,
     [Alias("Baseline", "SaveResults")]
-    [switch]$Result,
+    [switch]$Result = $true,
     [Alias("BaselineDir")]
     [string]$ResultsDir = "",
     [Alias("BaselineTag")]
@@ -45,7 +45,7 @@ Options:
   -Result              Write results under core\bench\benchwithzlink\results\YYYYMMDD\.
   -ResultsDir PATH     Override results root directory.
   -ResultsTag NAME     Optional tag appended to the results filename.
-  -Runs N              Iterations per configuration (default: 3).
+  -Runs N              Iterations per configuration (default: 1).
   -CurrentOnly         Run only current zlink benchmarks (no baseline).
   -ReuseBuild          Reuse existing build dir without re-running CMake.
   -IoThreads N         Set BENCH_IO_THREADS for the benchmark run.

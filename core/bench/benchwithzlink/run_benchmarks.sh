@@ -44,14 +44,14 @@ fi
 PATTERN="ALL"
 WITH_BASELINE=0
 OUTPUT_FILE=""
-RUNS=3
+RUNS=1
 REUSE_BUILD=0
 ZLINK_ONLY=0
 PIN_CPU=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
-RESULTS=0
+RESULTS=1
 RESULTS_DIR=""
 RESULTS_TAG=""
 
@@ -77,7 +77,7 @@ Options:
   --result              Write results under core/bench/benchwithzlink/results/YYYYMMDD/.
   --results-dir PATH    Override results root directory.
   --results-tag NAME    Optional tag appended to the results filename.
-  --runs N              Iterations per configuration (default: 3).
+  --runs N              Iterations per configuration (default: 1).
   --zlink-only          Run only current zlink benchmarks (no baseline).
   --reuse-build         Reuse existing build dir without re-running CMake.
   --pin-cpu             Pin CPU core during benchmarks (Linux taskset).

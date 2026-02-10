@@ -37,6 +37,10 @@ bin/
 lib/
 !core/bench/benchwithzlink/baseline/zlink_dist/**/lib/
 !core/bench/benchwithzlink/baseline/zlink_dist/**/lib/libzlink*
+!core/bench/benchwithzmq/libzmq/libzmq_dist/**/lib/
+!core/bench/benchwithzmq/libzmq/libzmq_dist/**/lib/libzmq*
+!core/bench/benchwithzmq/libzmq/libzmq_dist/**/bin/
+!core/bench/benchwithzmq/libzmq/libzmq_dist/**/bin/libzmq*
 obj/
 ## Doxygen
 doxygen/

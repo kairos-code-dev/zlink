@@ -13,6 +13,7 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 | **SPOT Sub** | 토픽 구독/수신 핸들 |
 | **Topic** | 문자열 키 기반 메시지 채널 |
 | **Pattern** | 접두어 + `*` 와일드카드 구독 |
+| **Handler** | 메시지 수신 시 자동 호출되는 콜백 함수 |
 
 ## 2. 아키텍처
 
@@ -130,6 +131,32 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ```c
 void *raw_sub = zlink_spot_sub_socket(sub);
 ```
+
+### 4.5 콜백 핸들러 (Handler)
+
+`recv()` 대신 콜백 함수를 등록하면 메시지 도착 시 자동으로 호출된다.
+
+```c
+/* 콜백 함수 정의 */
+void on_message(const char *topic, size_t topic_len,
+                const zlink_msg_t *parts, size_t part_count,
+                void *userdata)
+{
+    printf("토픽: %.*s, 파트: %zu\n", (int)topic_len, topic, part_count);
+}
+
+/* 핸들러 등록 */
+zlink_spot_sub_set_handler(sub, on_message, NULL);
+
+/* 핸들러 해제 (inflight 콜백 완료 대기 후 반환) */
+zlink_spot_sub_set_handler(sub, NULL, NULL);
+```
+
+**제약 사항:**
+
+- handler가 활성 상태이면 `recv()` 호출 시 `EINVAL` 반환 (상호 배타)
+- `NULL` 전달로 핸들러를 해제하면, 진행 중인 콜백이 모두 완료된 후 반환
+- 콜백은 spot_node 워커 스레드에서 호출된다
 
 ## 5. 토픽 규칙
 

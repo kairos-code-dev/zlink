@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
 #include "addon_api.h"
 
 napi_value spot_node_new(napi_env env, napi_callback_info info)

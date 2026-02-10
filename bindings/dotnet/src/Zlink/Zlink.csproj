@@ -4,8 +4,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Version>0.9.0</Version>
     <AssemblyName>Zlink</AssemblyName>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Authors>ulalax</Authors>
+    <Description>zlink .NET bindings — high-performance async messaging library</Description>
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/ulala-x/zlink</RepositoryUrl>
   </PropertyGroup>
   <ItemGroup>
     <None Include="..\..\runtimes\**\*.*">

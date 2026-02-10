@@ -3,7 +3,8 @@ plugins {
 }
 
 group = 'io.ulalax'
-version = '0.7.4'
+version = '0.9.0'
+description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
     toolchain {

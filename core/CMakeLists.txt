@@ -8,7 +8,7 @@ if(POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif()
 
-project(zlink VERSION 0.1.4 LANGUAGES C CXX)
+project(zlink VERSION 0.9.0 LANGUAGES C CXX)
 
 include(CheckIncludeFiles)
 include(CheckCCompilerFlag)

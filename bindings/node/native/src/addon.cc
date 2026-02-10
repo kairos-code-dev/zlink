@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
 #include "addon_api.h"
 
 static napi_value init(napi_env env, napi_value exports)

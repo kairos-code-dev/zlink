@@ -1,7 +1,7 @@
 # SPOT PUB/SUB 분리 및 Lock 기반 Thread-safe PUB 설계
 
 > **우선순위**: High
-> **상태**: Draft
+> **상태**: 구현 완료 (v0.8.0)
 > **버전**: 1.0
 > **의존성**:
 > - [SPOT 토픽 PUB/SUB 가이드](../guide/07-3-spot.md)

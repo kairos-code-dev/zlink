@@ -1,7 +1,7 @@
 # Registry/Discovery 타입 분리 및 SPOT 군 분리 계획
 
 > **우선순위**: High
-> **상태**: Draft
+> **상태**: 설계 중 (미구현)
 > **버전**: 1.0
 > **의존성**:
 > - [Service Discovery 가이드](../guide/07-1-discovery.md)

@@ -13,6 +13,7 @@
 | 서비스 디스커버리 | Registry 클러스터 기반, 클라이언트 사이드 로드밸런싱 | [guide/07-1](../guide/07-1-discovery.md) |
 | Gateway | Discovery 기반 위치투명 요청/응답 | [guide/07-2](../guide/07-2-gateway.md) |
 | SPOT 토픽 PUB/SUB | 토픽 기반 발행/구독, 패턴 구독, 위치 투명성 | [guide/07-3](../guide/07-3-spot.md) |
+| SPOT 콜백 핸들러 | spot_sub 콜백 기반 메시지 수신 (v0.9.0) | [guide/07-3](../guide/07-3-spot.md) |
 
 ## 향후 계획
 

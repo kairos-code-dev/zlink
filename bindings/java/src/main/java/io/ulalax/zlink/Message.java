@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
 package io.ulalax.zlink;
 
 import io.ulalax.zlink.internal.NativeMsg;

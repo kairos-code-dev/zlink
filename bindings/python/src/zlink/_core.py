@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+
 import ctypes
 from ._ffi import lib
 

@@ -53,7 +53,7 @@ SPOT은 위치 투명한 토픽 기반 발행/구독 시스템이다. Discovery 
 ```c
 void *ctx = zlink_ctx_new();
 void *node = zlink_spot_node_new(ctx);
-void *discovery = zlink_discovery_new(ctx);
+void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_SPOT);
 
 /* Registry 연결 */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");

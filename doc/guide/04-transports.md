@@ -249,7 +249,7 @@ zlink_connect(socket, "tls://server:5555");
 
 | 제약 | 설명 |
 |------|------|
-| ws/wss/tls → STREAM만 | ws, wss, tls transport는 STREAM 소켓만 지원 |
+| ws/wss → STREAM만 | ws, wss transport는 STREAM 소켓만 지원. tls는 모든 소켓 타입 사용 가능 |
 | inproc bind 우선 | inproc는 bind가 connect보다 먼저 호출 필요 |
 | ipc 플랫폼 | ipc는 Unix/Linux/macOS만 지원 (Windows 미지원) |
 | 동일 context | inproc는 동일 context 내에서만 사용 |

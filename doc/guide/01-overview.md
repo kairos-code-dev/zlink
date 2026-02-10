@@ -8,7 +8,7 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | | libzmq | zlink |
 |---|--------|-------|
-| **Socket Types** | 17종 (draft 포함) | **7종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
+| **Socket Types** | 17종 (draft 포함) | **8종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
 | **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
 | **암호화** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
 | **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |

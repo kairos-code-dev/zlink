@@ -2,9 +2,9 @@
 
 ## 1. 개요
 
-Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다. 메시지 수신(recv)은 Receiver 측에서 ROUTER 소켓을 통해 처리한다.
+Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하고, Receiver로부터 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다.
 
-**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 send 전용으로 설계되어 경합이 적고, 내부 mutex 보호를 통해 여러 스레드에서 안전하게 동시 전송할 수 있다.
+**Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 내부 mutex 보호를 통해 여러 스레드에서 안전하게 동시 사용할 수 있다.
 
 ## 2. Receiver 설정
 
@@ -49,7 +49,7 @@ zlink_receiver_destroy(&receiver);
 ## 3. Gateway 설정
 
 ```c
-void *discovery = zlink_discovery_new(ctx);
+void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");
 zlink_discovery_subscribe(discovery, "payment-service");
 
@@ -71,7 +71,21 @@ zlink_msg_init_data(&req, data, size, NULL, NULL);
 zlink_gateway_send(gateway, "payment-service", &req, 1, 0);
 ```
 
-### 4.2 Receiver 측 수신/응답
+### 4.2 응답 수신 (Gateway)
+
+```c
+/* Gateway에서 Receiver 응답 수신 */
+zlink_msg_t *parts = NULL;
+size_t part_count = 0;
+char service_name[256];
+int rc = zlink_gateway_recv(gateway, &parts, &part_count, 0, service_name);
+if (rc != -1) {
+    /* parts[0..part_count-1] 처리 */
+    zlink_msgv_close(parts, part_count);
+}
+```
+
+### 4.3 Receiver 측 수신/응답
 
 ```c
 /* Receiver의 ROUTER 소켓에서 수신 및 응답 */
@@ -108,6 +122,7 @@ Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드�
 
 - `zlink_gateway_send()`
 - `zlink_gateway_send_rid()`
+- `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_setsockopt()`
 - `zlink_gateway_set_tls_client()`
@@ -138,7 +153,7 @@ for (int i = 0; i < 4; i++)
 
 **1. Send 전용 설계로 낮은 경합**
 
-Gateway는 send만 담당하고 recv는 Receiver 측에서 처리하므로, send/recv 혼합에 따른 복잡한 경합이 발생하지 않는다. 이 단순한 구조 덕분에 thread-safe 구현이 용이하고 lock 오버헤드도 최소화된다.
+Gateway의 send/recv는 내부 mutex로 보호되어 thread-safe하며, lock 오버헤드를 최소화하도록 설계되어 있다.
 
 **2. 애플리케이션 아키텍처 단순화**
 
@@ -190,7 +205,7 @@ zlink_receiver_connect_registry(receiver, "tcp://127.0.0.1:5551");
 zlink_receiver_register(receiver, "echo-service", NULL, 1);
 
 /* === Client === */
-void *discovery = zlink_discovery_new(ctx);
+void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 zlink_discovery_connect_registry(discovery, "tcp://127.0.0.1:5550");
 zlink_discovery_subscribe(discovery, "echo-service");
 
@@ -222,6 +237,7 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, discovery, routing_id)` | Gateway 생성 |
 | `zlink_gateway_send(...)` | 메시지 전송 (LB 적용) |
+| `zlink_gateway_recv(...)` | 메시지 수신 (Receiver 응답) |
 | `zlink_gateway_send_rid(...)` | 특정 Receiver로 전송 |
 | `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
 | `zlink_gateway_setsockopt(...)` | 소켓 옵션 설정 |

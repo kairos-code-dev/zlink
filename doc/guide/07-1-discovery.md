@@ -68,7 +68,8 @@ zlink_ctx_term(ctx);
 ## 3. Discovery 사용
 
 ```c
-void *discovery = zlink_discovery_new(ctx);
+/* service_type: ZLINK_SERVICE_TYPE_GATEWAY 또는 ZLINK_SERVICE_TYPE_SPOT */
+void *discovery = zlink_discovery_new_typed(ctx, ZLINK_SERVICE_TYPE_GATEWAY);
 
 /* Registry 연결 (여러 개 가능) */
 zlink_discovery_connect_registry(discovery, "tcp://registry1:5550");

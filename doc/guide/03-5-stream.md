@@ -292,7 +292,7 @@ assert(rc == 4);  /* 항상 4바이트 */
 
 ### Transport 제한
 
-STREAM 소켓만 ws, wss, tls transport를 지원한다. 다른 소켓 타입에서는 이 transport를 사용할 수 없다.
+STREAM 소켓만 ws, wss transport를 지원한다. 다른 소켓 타입에서는 ws, wss를 사용할 수 없다. tls transport는 모든 소켓 타입에서 사용 가능하다.
 
 | Transport | STREAM | 다른 소켓 |
 |-----------|:------:|:---------:|
@@ -301,7 +301,7 @@ STREAM 소켓만 ws, wss, tls transport를 지원한다. 다른 소켓 타입에
 | inproc | - | O |
 | ws | O | - |
 | wss | O | - |
-| tls | O | - |
+| tls | O | O |
 
 ### LINGER 설정
 

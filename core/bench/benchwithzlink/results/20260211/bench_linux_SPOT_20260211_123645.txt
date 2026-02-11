@@ -1,0 +1,2 @@
+Error: Binaries not found at /home/hep7/project/ulalax/zlink/core/build/linux-x64.
+Please build the project first or pass --build-dir.

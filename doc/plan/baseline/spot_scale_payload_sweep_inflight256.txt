@@ -1,0 +1,115 @@
+SPOT_SCALE_RESULT,width=100,height=100,zones=10000,inflight=256,payload_bytes=64,subscriptions=49600,published=10000,expected_deliveries=49600,publish_ms=2678.732,receive_ms=6.209,total_ms=2684.941,throughput_delivery_per_sec=18473.405,throughput_publish_per_sec=3724.477,throughput_publish_per_spot_per_sec=0.372,throughput_delivery_per_spot_per_sec=1.847,cpu_user_ms=2633.120,cpu_sys_ms=48.434,cpu_total_ms=2681.554,cpu_usage_pct=99.874,rss_begin_kb=33440.000,rss_end_kb=40640.000,rss_delta_kb=7200.000,peak_rss_kb=40640.000
+SPOT_SCALE_SUMMARY
+  grid               : 100 x 100 (10000 zones)
+  inflight           : 256
+  payload bytes      : 64
+  subscriptions      : 49600
+  published          : 10000
+  expected deliveries: 49600
+  publish ms         : 2678.732
+  receive ms         : 6.209
+  total ms           : 2684.941
+  throughput delivery/s   : 18473.405
+  throughput publish/s    : 3724.477
+  throughput publish/s/spot: 0.372
+  throughput delivery/s/spot: 1.847
+  cpu user ms        : 2633.120
+  cpu sys ms         : 48.434
+  cpu total ms       : 2681.554
+  cpu usage %        : 99.874
+  rss begin kb       : 33440.000
+  rss end kb         : 40640.000
+  rss delta kb       : 7200.000
+  peak rss kb        : 40640.000
+SPOT_SCALE_RESULT,width=100,height=100,zones=10000,inflight=256,payload_bytes=512,subscriptions=49600,published=10000,expected_deliveries=49600,publish_ms=3134.756,receive_ms=6.152,total_ms=3140.908,throughput_delivery_per_sec=15791.614,throughput_publish_per_sec=3183.793,throughput_publish_per_spot_per_sec=0.318,throughput_delivery_per_spot_per_sec=1.579,cpu_user_ms=3089.906,cpu_sys_ms=46.042,cpu_total_ms=3135.948,cpu_usage_pct=99.842,rss_begin_kb=33920.000,rss_end_kb=45440.000,rss_delta_kb=11520.000,peak_rss_kb=45440.000
+SPOT_SCALE_SUMMARY
+  grid               : 100 x 100 (10000 zones)
+  inflight           : 256
+  payload bytes      : 512
+  subscriptions      : 49600
+  published          : 10000
+  expected deliveries: 49600
+  publish ms         : 3134.756
+  receive ms         : 6.152
+  total ms           : 3140.908
+  throughput delivery/s   : 15791.614
+  throughput publish/s    : 3183.793
+  throughput publish/s/spot: 0.318
+  throughput delivery/s/spot: 1.579
+  cpu user ms        : 3089.906
+  cpu sys ms         : 46.042
+  cpu total ms       : 3135.948
+  cpu usage %        : 99.842
+  rss begin kb       : 33920.000
+  rss end kb         : 45440.000
+  rss delta kb       : 11520.000
+  peak rss kb        : 45440.000
+SPOT_SCALE_RESULT,width=100,height=100,zones=10000,inflight=256,payload_bytes=1024,subscriptions=49600,published=10000,expected_deliveries=49600,publish_ms=2842.177,receive_ms=6.473,total_ms=2848.650,throughput_delivery_per_sec=17411.756,throughput_publish_per_sec=3510.435,throughput_publish_per_spot_per_sec=0.351,throughput_delivery_per_spot_per_sec=1.741,cpu_user_ms=2751.777,cpu_sys_ms=89.069,cpu_total_ms=2840.846,cpu_usage_pct=99.726,rss_begin_kb=33280.000,rss_end_kb=49920.000,rss_delta_kb=16640.000,peak_rss_kb=49920.000
+SPOT_SCALE_SUMMARY
+  grid               : 100 x 100 (10000 zones)
+  inflight           : 256
+  payload bytes      : 1024
+  subscriptions      : 49600
+  published          : 10000
+  expected deliveries: 49600
+  publish ms         : 2842.177
+  receive ms         : 6.473
+  total ms           : 2848.650
+  throughput delivery/s   : 17411.756
+  throughput publish/s    : 3510.435
+  throughput publish/s/spot: 0.351
+  throughput delivery/s/spot: 1.741
+  cpu user ms        : 2751.777
+  cpu sys ms         : 89.069
+  cpu total ms       : 2840.846
+  cpu usage %        : 99.726
+  rss begin kb       : 33280.000
+  rss end kb         : 49920.000
+  rss delta kb       : 16640.000
+  peak rss kb        : 49920.000
+SPOT_SCALE_RESULT,width=100,height=100,zones=10000,inflight=256,payload_bytes=65536,subscriptions=49600,published=10000,expected_deliveries=49600,publish_ms=3761.104,receive_ms=8.022,total_ms=3769.127,throughput_delivery_per_sec=13159.547,throughput_publish_per_sec=2653.135,throughput_publish_per_spot_per_sec=0.265,throughput_delivery_per_spot_per_sec=1.316,cpu_user_ms=3362.424,cpu_sys_ms=413.575,cpu_total_ms=3775.999,cpu_usage_pct=100.182,rss_begin_kb=33600.000,rss_end_kb=680320.000,rss_delta_kb=646720.000,peak_rss_kb=680320.000
+SPOT_SCALE_SUMMARY
+  grid               : 100 x 100 (10000 zones)
+  inflight           : 256
+  payload bytes      : 65536
+  subscriptions      : 49600
+  published          : 10000
+  expected deliveries: 49600
+  publish ms         : 3761.104
+  receive ms         : 8.022
+  total ms           : 3769.127
+  throughput delivery/s   : 13159.547
+  throughput publish/s    : 2653.135
+  throughput publish/s/spot: 0.265
+  throughput delivery/s/spot: 1.316
+  cpu user ms        : 3362.424
+  cpu sys ms         : 413.575
+  cpu total ms       : 3775.999
+  cpu usage %        : 100.182
+  rss begin kb       : 33600.000
+  rss end kb         : 680320.000
+  rss delta kb       : 646720.000
+  peak rss kb        : 680320.000
+SPOT_SCALE_RESULT,width=100,height=100,zones=10000,inflight=256,payload_bytes=131072,subscriptions=49600,published=10000,expected_deliveries=49600,publish_ms=3635.114,receive_ms=8.129,total_ms=3643.243,throughput_delivery_per_sec=13614.244,throughput_publish_per_sec=2744.807,throughput_publish_per_spot_per_sec=0.274,throughput_delivery_per_spot_per_sec=1.361,cpu_user_ms=2853.400,cpu_sys_ms=796.327,cpu_total_ms=3649.727,cpu_usage_pct=100.178,rss_begin_kb=33280.000,rss_end_kb=1320160.000,rss_delta_kb=1286880.000,peak_rss_kb=1320160.000
+SPOT_SCALE_SUMMARY
+  grid               : 100 x 100 (10000 zones)
+  inflight           : 256
+  payload bytes      : 131072
+  subscriptions      : 49600
+  published          : 10000
+  expected deliveries: 49600
+  publish ms         : 3635.114
+  receive ms         : 8.129
+  total ms           : 3643.243
+  throughput delivery/s   : 13614.244
+  throughput publish/s    : 2744.807
+  throughput publish/s/spot: 0.274
+  throughput delivery/s/spot: 1.361
+  cpu user ms        : 2853.400
+  cpu sys ms         : 796.327
+  cpu total ms       : 3649.727
+  cpu usage %        : 100.178
+  rss begin kb       : 33280.000
+  rss end kb         : 1320160.000
+  rss delta kb       : 1286880.000
+  peak rss kb        : 1320160.000

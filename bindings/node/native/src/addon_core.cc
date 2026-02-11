@@ -36,23 +36,30 @@ bool build_msg_vector(napi_env env, napi_value arr,
     for (uint32_t i = 0; i < len; i++) {
         napi_value val;
         if (napi_get_element(env, arr, i, &val) != napi_ok) {
+            for (size_t j = 0; j < built; j++)
+                zlink_msg_close(&(*out)[j]);
             napi_throw_type_error(env, NULL, "parts element read failed");
             return false;
         }
         bool is_buf = false;
         if (napi_is_buffer(env, val, &is_buf) != napi_ok || !is_buf) {
+            for (size_t j = 0; j < built; j++)
+                zlink_msg_close(&(*out)[j]);
             napi_throw_type_error(env, NULL, "parts must be Buffers");
             return false;
         }
         void *data = NULL;
         size_t sz = 0;
         if (napi_get_buffer_info(env, val, &data, &sz) != napi_ok) {
+            for (size_t j = 0; j < built; j++)
+                zlink_msg_close(&(*out)[j]);
             napi_throw_type_error(env, NULL, "buffer info failed");
             return false;
         }
         if (zlink_msg_init_size(&(*out)[i], sz) != 0) {
             for (size_t j = 0; j < built; j++)
                 zlink_msg_close(&(*out)[j]);
+            throw_last_error(env, "msg_init_size failed");
             return false;
         }
         if (sz > 0 && data)

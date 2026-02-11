@@ -3,6 +3,7 @@
 import ctypes
 import ctypes.util
 import os
+import pathlib
 import sys
 
 _lib = None
@@ -60,6 +61,8 @@ def _load_lib():
         return _lib
 
     path = os.environ.get("ZLINK_LIBRARY_PATH")
+    if not path:
+        path = _find_dev_library()
     if not path:
         found = ctypes.util.find_library("zlink")
         if found:
@@ -553,6 +556,22 @@ def _load_lib():
     _lib.zlink_spot_sub_socket.restype = ctypes.c_void_p
 
     return _lib
+
+
+def _find_dev_library():
+    base = pathlib.Path(__file__).resolve()
+    repo = base.parents[4]
+    if os.name == "nt":
+        candidate = repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll"
+    else:
+        uname = os.uname().sysname.lower()
+        if "darwin" in uname or "mac" in uname:
+            candidate = repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib"
+        else:
+            candidate = repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so"
+    if candidate.exists():
+        return str(candidate)
+    return None
 
 
 def lib():

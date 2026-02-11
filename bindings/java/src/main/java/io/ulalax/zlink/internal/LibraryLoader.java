@@ -20,6 +20,13 @@ public final class LibraryLoader {
             System.load(p.toString());
             return SymbolLookup.loaderLookup();
         }
+        String os = normalizeOs(System.getProperty("os.name"));
+        String libFile = libraryFileName(os);
+        Path devLib = findDevLibrary(os, libFile);
+        if (devLib != null) {
+            System.load(devLib.toString());
+            return SymbolLookup.loaderLookup();
+        }
         try {
             System.loadLibrary("zlink");
             return SymbolLookup.loaderLookup();
@@ -126,5 +133,25 @@ public final class LibraryLoader {
         if ("darwin".equals(os))
             return "libzlink.dylib";
         return "libzlink.so";
+    }
+
+    private static Path findDevLibrary(String os, String libFile) {
+        String buildDir = "linux-x64";
+        if ("windows".equals(os))
+            buildDir = "windows-x64";
+        else if ("darwin".equals(os))
+            buildDir = "darwin-x64";
+
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath();
+        Path[] roots = new Path[] {cwd, cwd.getParent(), cwd.getParent() != null ? cwd.getParent().getParent() : null};
+        for (Path root : roots) {
+            if (root == null)
+                continue;
+            Path candidate = root.resolve("core").resolve("build")
+                .resolve(buildDir).resolve("lib").resolve(libFile).normalize();
+            if (Files.exists(candidate))
+                return candidate;
+        }
+        return null;
     }
 }

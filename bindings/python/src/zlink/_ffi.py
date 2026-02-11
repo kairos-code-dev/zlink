@@ -10,6 +10,8 @@ class _Lib:
     def __init__(self):
         path = os.environ.get("ZLINK_LIBRARY_PATH")
         if not path:
+            path = _find_dev_library()
+        if not path:
             path = ctypes.util.find_library("zlink")
         if not path:
             path = _find_bundled_library()
@@ -259,6 +261,22 @@ def _find_bundled_library():
             os_dir = "linux-aarch64" if os.uname().machine in ("arm64", "aarch64") else "linux-x86_64"
             name = "libzlink.so"
     candidate = base / "native" / os_dir / name
+    if candidate.exists():
+        return str(candidate)
+    return None
+
+
+def _find_dev_library():
+    base = pathlib.Path(__file__).resolve()
+    repo = base.parents[4]
+    if os.name == "nt":
+        candidate = repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll"
+    else:
+        uname = os.uname().sysname.lower()
+        if "darwin" in uname or "mac" in uname:
+            candidate = repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib"
+        else:
+            candidate = repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so"
     if candidate.exists():
         return str(candidate)
     return None

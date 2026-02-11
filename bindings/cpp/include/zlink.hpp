@@ -435,7 +435,10 @@ class context_t
     {
         if (!_ctx || !value_)
             return -1;
-        *value_ = zlink_ctx_get (_ctx, static_cast<int> (option_));
+        const int rc = zlink_ctx_get (_ctx, static_cast<int> (option_));
+        if (rc < 0)
+            return -1;
+        *value_ = rc;
         return 0;
     }
 

@@ -21,10 +21,30 @@ function loadNative() {
     if (process.platform === 'linux') {
       const addonDir = path.join(__dirname, '..', 'build', 'Release');
       const coreDir = path.join(__dirname, '..', '..', 'build_cpp', 'lib');
+      const coreAltDir = path.join(__dirname, '..', '..', '..', 'core', 'build', 'linux-x64', 'lib');
+      const addonLib = path.join(addonDir, 'libzlink.so.5');
+      const coreLib = path.join(coreDir, 'libzlink.so.5');
+      const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
+      if (!fs.existsSync(addonLib)) {
+        let sourceLib = null;
+        if (fs.existsSync(coreLib)) {
+          sourceLib = coreLib;
+        } else if (fs.existsSync(coreAltLib)) {
+          sourceLib = coreAltLib;
+        }
+        if (sourceLib) {
+          try {
+            fs.symlinkSync(sourceLib, addonLib);
+          } catch (e) {
+            if (e && e.code !== 'EEXIST') throw e;
+          }
+        }
+      }
       const existing = process.env.LD_LIBRARY_PATH || '';
       const entries = existing.split(':').filter(Boolean);
       if (!entries.includes(addonDir)) entries.unshift(addonDir);
       if (!entries.includes(coreDir)) entries.unshift(coreDir);
+      if (!entries.includes(coreAltDir)) entries.unshift(coreAltDir);
       process.env.LD_LIBRARY_PATH = entries.join(':');
     }
     return require('../build/Release/zlink.node');

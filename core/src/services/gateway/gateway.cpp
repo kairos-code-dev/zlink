@@ -81,6 +81,15 @@ static std::string routing_id_key (const zlink_routing_id_t &rid_)
         return std::string ();
     return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
 }
+
+static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
+{
+    if (!parts_)
+        return;
+    for (size_t i = 0; i < parts_->size (); ++i)
+        zlink_msg_close (&(*parts_)[i]);
+    parts_->clear ();
+}
 }
 
 gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
@@ -285,19 +294,27 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
     // 2) Build routing_id map by endpoint for this service.
     std::vector<std::string> next_endpoints;
     std::vector<zlink_routing_id_t> next_routing_ids;
-    std::map<std::string, zlink_routing_id_t> routing_map;
+    std::vector<uint32_t> next_weights;
+    struct provider_route_t
+    {
+        zlink_routing_id_t rid;
+        uint32_t weight;
+    };
+    std::map<std::string, provider_route_t> routing_map;
 
     for (size_t i = 0; i < providers.size (); ++i) {
         const provider_info_t &entry = providers[i];
-        routing_map[entry.endpoint] = entry.routing_id;
+        provider_route_t route = {entry.routing_id, entry.weight};
+        routing_map[entry.endpoint] = route;
     }
 
     // 3) Connect and keep only peers that are actually ready (POLLOUT).
-    for (std::map<std::string, zlink_routing_id_t>::const_iterator it =
+    for (std::map<std::string, provider_route_t>::const_iterator it =
            routing_map.begin ();
          it != routing_map.end (); ++it) {
         const std::string &endpoint = it->first;
-        const zlink_routing_id_t &rid = it->second;
+        const zlink_routing_id_t &rid = it->second.rid;
+        const uint32_t weight = it->second.weight == 0 ? 1 : it->second.weight;
         if (rid.size == 0)
             continue;
         // Only attempt a new connect if not already connected.
@@ -323,12 +340,14 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
                 _ready_endpoints.insert (endpoint);
                 next_endpoints.push_back (endpoint);
                 next_routing_ids.push_back (rid);
+                next_weights.push_back (weight);
             }
             // Not ready yet: do not add to pool, but also do not term.
             continue;
         }
         next_endpoints.push_back (endpoint);
         next_routing_ids.push_back (rid);
+        next_weights.push_back (weight);
     }
 
     // 4) Disconnect endpoints that disappeared from discovery only.
@@ -351,13 +370,14 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
     }
     pool_->endpoints.swap (next_endpoints);
     pool_->routing_ids.swap (next_routing_ids);
+    pool_->weights.swap (next_weights);
     for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
         const std::string key = routing_id_key (pool_->routing_ids[i]);
         if (!key.empty ())
             _routing_id_to_service[key] = pool_->service_name;
     }
     // Track endpoint->service for monitor event routing.
-    for (std::map<std::string, zlink_routing_id_t>::const_iterator it =
+    for (std::map<std::string, provider_route_t>::const_iterator it =
            routing_map.begin ();
          it != routing_map.end (); ++it) {
         _endpoint_to_service[it->first] = pool_->service_name;
@@ -373,7 +393,28 @@ bool gateway_t::select_provider (service_pool_t *pool_, size_t *index_out_)
 {
     if (!pool_ || pool_->routing_ids.empty () || !index_out_)
         return false;
-    // Round-robin only (minimal policy).
+
+    if (pool_->lb_strategy == ZLINK_GATEWAY_LB_WEIGHTED
+        && !pool_->weights.empty ()
+        && pool_->weights.size () == pool_->routing_ids.size ()) {
+        size_t total_weight = 0;
+        for (size_t i = 0; i < pool_->weights.size (); ++i)
+            total_weight += pool_->weights[i] == 0 ? 1 : pool_->weights[i];
+
+        if (total_weight > 0) {
+            size_t slot = pool_->rr_index % total_weight;
+            pool_->rr_index++;
+            for (size_t i = 0; i < pool_->weights.size (); ++i) {
+                const size_t weight = pool_->weights[i] == 0 ? 1 : pool_->weights[i];
+                if (slot < weight) {
+                    *index_out_ = i;
+                    return true;
+                }
+                slot -= weight;
+            }
+        }
+    }
+
     const size_t index = pool_->rr_index % pool_->routing_ids.size ();
     pool_->rr_index++;
     *index_out_ = index;
@@ -421,7 +462,8 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
 
     const zlink_routing_id_t &rid = pool_->routing_ids[provider_index_];
     zlink_msg_t rid_msg;
-    zlink_msg_init_size (&rid_msg, rid.size);
+    if (zlink_msg_init_size (&rid_msg, rid.size) != 0)
+        return -1;
     if (rid.size > 0)
         memcpy (zlink_msg_data (&rid_msg), rid.data, rid.size);
     int send_flags =
@@ -482,6 +524,11 @@ int gateway_t::recv (zlink_msg_t **parts_,
                      int flags_,
                      char *service_name_out_)
 {
+    if (!parts_ || !part_count_) {
+        errno = EINVAL;
+        return -1;
+    }
+
     if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
         errno = ENOTSUP;
         return -1;
@@ -535,10 +582,8 @@ int gateway_t::recv (zlink_msg_t **parts_,
     zlink_msg_close (&msg);
 
     if (!more) {
-        if (parts_)
-            *parts_ = NULL;
-        if (part_count_)
-            *part_count_ = 0;
+        *parts_ = NULL;
+        *part_count_ = 0;
         return 0;
     }
 
@@ -552,8 +597,7 @@ int gateway_t::recv (zlink_msg_t **parts_,
         const int prc = zlink_msg_recv (&part, _router_socket, flags_);
         if (prc != 0) {
             zlink_msg_close (&part);
-            for (size_t i = 0; i < tmp_parts.size (); ++i)
-                zlink_msg_close (&tmp_parts[i]);
+            close_msg_parts (&tmp_parts);
             return -1;
         }
         tmp_parts.push_back (part);
@@ -565,8 +609,7 @@ int gateway_t::recv (zlink_msg_t **parts_,
     zlink_msg_t *out =
       static_cast<zlink_msg_t *> (malloc (sizeof (zlink_msg_t) * out_count));
     if (!out) {
-        for (size_t i = 0; i < tmp_parts.size (); ++i)
-            zlink_msg_close (&tmp_parts[i]);
+        close_msg_parts (&tmp_parts);
         errno = ENOMEM;
         return -1;
     }
@@ -577,17 +620,14 @@ int gateway_t::recv (zlink_msg_t **parts_,
             for (size_t j = 0; j <= i && j < out_count; ++j)
                 zlink_msg_close (&out[j]);
             free (out);
-            for (size_t j = i; j < tmp_parts.size (); ++j)
-                zlink_msg_close (&tmp_parts[j]);
+            close_msg_parts (&tmp_parts);
             errno = EFAULT;
             return -1;
         }
     }
 
-    if (parts_)
-        *parts_ = out;
-    if (part_count_)
-        *part_count_ = out_count;
+    *parts_ = out;
+    *part_count_ = out_count;
     return 0;
 }
 

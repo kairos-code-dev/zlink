@@ -150,12 +150,11 @@ void zlink::pgm_receiver_t::in_event ()
         has_rx_timer = false;
     }
 
-    //  Drain as much socket input as possible in one activation.
-    //  This minimizes wakeups and improves throughput, but under sustained load
-    //  it can monopolize the shared I/O thread (see TODO below).
-    //  TODO: This loop can effectively block other engines in the same I/O
-    //  thread in the case of high load.
-    while (true) {
+    //  Drain in bounded batches per activation to avoid monopolizing a shared
+    //  I/O thread under sustained load.
+    const int max_batches_per_activation = 128;
+    int batches = 0;
+    while (batches++ < max_batches_per_activation) {
         //  Get new batch of data.
         //  Note the workaround made not to break strict-aliasing rules.
         insize = 0;

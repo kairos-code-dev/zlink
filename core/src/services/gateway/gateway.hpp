@@ -64,6 +64,7 @@ class gateway_t : public discovery_observer_t
     {
         std::string service_name;
         std::vector<zlink_routing_id_t> routing_ids;
+        std::vector<uint32_t> weights;
         std::vector<std::string> endpoints;
         size_t rr_index;
         int lb_strategy;

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using Zlink;
 using TcpListener = System.Net.Sockets.TcpListener;
@@ -9,8 +10,10 @@ var pattern = args[0].ToUpperInvariant();
 var transport = args[1];
 if (!int.TryParse(args[2], out var size))
     return 1;
+var coreDir = args.Length >= 4 ? args[3] : string.Empty;
+
 if (pattern != "PAIR")
-    return 0;
+    return RunCore(pattern, transport, args[2], coreDir);
 
 int warmup = ParseEnv("BENCH_WARMUP_COUNT", 1000);
 int latCount = ParseEnv("BENCH_LAT_COUNT", 500);
@@ -36,7 +39,7 @@ try
         a.Receive(recv, ReceiveFlags.None);
     }
 
-    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var sw = Stopwatch.StartNew();
     for (int i = 0; i < latCount; i++)
     {
         b.Send(buf, SendFlags.None);
@@ -92,4 +95,49 @@ static int GetPort()
     int port = ((IPEndPoint)listener.LocalEndpoint).Port;
     listener.Stop();
     return port;
+}
+
+static int RunCore(string pattern, string transport, string sizeArg, string coreDirArg)
+{
+    string? bin = pattern switch
+    {
+        "PUBSUB" => "comp_current_pubsub",
+        "DEALER_DEALER" => "comp_current_dealer_dealer",
+        "DEALER_ROUTER" => "comp_current_dealer_router",
+        "ROUTER_ROUTER" => "comp_current_router_router",
+        "ROUTER_ROUTER_POLL" => "comp_current_router_router_poll",
+        "STREAM" => "comp_current_stream",
+        "GATEWAY" => "comp_current_gateway",
+        "SPOT" => "comp_current_spot",
+        _ => null,
+    };
+
+    if (bin == null)
+        return 0;
+
+    var coreDir = !string.IsNullOrEmpty(coreDirArg)
+        ? coreDirArg
+        : (Environment.GetEnvironmentVariable("ZLINK_CORE_BENCH_DIR") ?? string.Empty);
+    if (string.IsNullOrEmpty(coreDir))
+    {
+        Console.Error.WriteLine($"core bench dir is required for pattern {pattern}");
+        return 2;
+    }
+
+    var psi = new ProcessStartInfo
+    {
+        FileName = Path.Combine(coreDir, bin),
+        Arguments = $"current {transport} {sizeArg}",
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+    };
+
+    using var p = Process.Start(psi);
+    if (p == null)
+        return 2;
+    Console.Write(p.StandardOutput.ReadToEnd());
+    Console.Error.Write(p.StandardError.ReadToEnd());
+    p.WaitForExit();
+    return p.ExitCode;
 }

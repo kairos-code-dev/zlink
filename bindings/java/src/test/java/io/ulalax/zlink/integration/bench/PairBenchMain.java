@@ -6,9 +6,26 @@ import io.ulalax.zlink.SendFlag;
 import io.ulalax.zlink.Socket;
 import io.ulalax.zlink.SocketType;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class PairBenchMain {
+    private static final Map<String, String> CORE_BIN = new HashMap<>();
+
+    static {
+        CORE_BIN.put("PUBSUB", "comp_current_pubsub");
+        CORE_BIN.put("DEALER_DEALER", "comp_current_dealer_dealer");
+        CORE_BIN.put("DEALER_ROUTER", "comp_current_dealer_router");
+        CORE_BIN.put("ROUTER_ROUTER", "comp_current_router_router");
+        CORE_BIN.put("ROUTER_ROUTER_POLL", "comp_current_router_router_poll");
+        CORE_BIN.put("STREAM", "comp_current_stream");
+        CORE_BIN.put("GATEWAY", "comp_current_gateway");
+        CORE_BIN.put("SPOT", "comp_current_spot");
+    }
+
     public static void main(String[] args) {
         if (args.length < 3) {
             System.exit(1);
@@ -16,8 +33,10 @@ public final class PairBenchMain {
         String pattern = args[0].toUpperCase();
         String transport = args[1];
         int size = Integer.parseInt(args[2]);
+        String coreDir = args.length >= 4 ? args[3] : "";
+
         if (!"PAIR".equals(pattern)) {
-            System.exit(0);
+            System.exit(runCore(pattern, transport, args[2], coreDir));
         }
 
         int warmup = parseEnv("BENCH_WARMUP_COUNT", 1000);
@@ -70,6 +89,46 @@ public final class PairBenchMain {
             try { a.close(); } catch (Exception ignored) {}
             try { b.close(); } catch (Exception ignored) {}
             try { ctx.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    private static int runCore(String pattern, String transport, String sizeArg, String coreDirArg) {
+        String bin = CORE_BIN.get(pattern);
+        if (bin == null) {
+            return 0;
+        }
+
+        String coreDir = coreDirArg;
+        if (coreDir == null || coreDir.isEmpty()) {
+            coreDir = System.getenv("ZLINK_CORE_BENCH_DIR");
+            if (coreDir == null) coreDir = "";
+        }
+        if (coreDir.isEmpty()) {
+            System.err.println("core bench dir is required for pattern " + pattern);
+            return 2;
+        }
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(coreDir + "/" + bin, "current", transport, sizeArg);
+            Process p = pb.start();
+
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    System.out.println(line);
+                }
+            }
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getErrorStream()))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    System.err.println(line);
+                }
+            }
+
+            p.waitFor();
+            return p.exitValue();
+        } catch (Exception e) {
+            return 2;
         }
     }
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import socket
+import subprocess
 import sys
 import time
 
@@ -9,7 +10,17 @@ sys.path.insert(0, os.path.join(ROOT, "bindings/python/src"))
 import zlink  # noqa: E402
 
 ZLINK_PAIR = 0
-ZLINK_DONTWAIT = 1
+
+CORE_BIN = {
+    "PUBSUB": "comp_current_pubsub",
+    "DEALER_DEALER": "comp_current_dealer_dealer",
+    "DEALER_ROUTER": "comp_current_dealer_router",
+    "ROUTER_ROUTER": "comp_current_router_router",
+    "ROUTER_ROUTER_POLL": "comp_current_router_router_poll",
+    "STREAM": "comp_current_stream",
+    "GATEWAY": "comp_current_gateway",
+    "SPOT": "comp_current_spot",
+}
 
 
 def get_port():
@@ -33,15 +44,29 @@ def resolve_msg_count(size: int) -> int:
     return 200000 if size <= 1024 else 20000
 
 
-def main() -> int:
-    if len(sys.argv) < 4:
-        return 1
-    pattern = sys.argv[1].upper()
-    transport = sys.argv[2]
-    size = int(sys.argv[3])
-    if pattern != "PAIR":
+def run_core(pattern: str, transport: str, size_arg: str, core_dir_arg: str) -> int:
+    bin_name = CORE_BIN.get(pattern)
+    if not bin_name:
         return 0
 
+    core_dir = core_dir_arg or os.environ.get("ZLINK_CORE_BENCH_DIR", "")
+    if not core_dir:
+        print(f"core bench dir is required for pattern {pattern}", file=sys.stderr)
+        return 2
+
+    proc = subprocess.run(
+        [os.path.join(core_dir, bin_name), "current", transport, size_arg],
+        capture_output=True,
+        text=True,
+    )
+    if proc.stdout:
+        print(proc.stdout, end="")
+    if proc.stderr:
+        print(proc.stderr, end="", file=sys.stderr)
+    return proc.returncode
+
+
+def run_pair(transport: str, size: int) -> int:
     warmup = int(os.environ.get("BENCH_WARMUP_COUNT", "1000"))
     lat_count = int(os.environ.get("BENCH_LAT_COUNT", "500"))
     msg_count = resolve_msg_count(size)
@@ -88,6 +113,19 @@ def main() -> int:
             ctx.close()
         except Exception:
             pass
+
+
+def main() -> int:
+    if len(sys.argv) < 4:
+        return 1
+    pattern = sys.argv[1].upper()
+    transport = sys.argv[2]
+    size_arg = sys.argv[3]
+    core_dir = sys.argv[4] if len(sys.argv) >= 5 else ""
+
+    if pattern == "PAIR":
+        return run_pair(transport, int(size_arg))
+    return run_core(pattern, transport, size_arg, core_dir)
 
 
 if __name__ == "__main__":

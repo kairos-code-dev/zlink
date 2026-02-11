@@ -363,9 +363,7 @@ def main():
         binding_env_vars = binding_env(binding, env_base)
 
         def run_binding(tr, sz):
-            cmd = bind_cmd_prefix + [pattern, tr, str(sz)]
-            if binding == "cpp":
-                cmd.append(core_build)
+            cmd = bind_cmd_prefix + [pattern, tr, str(sz), core_build]
             if not IS_WINDOWS and env_base.get("BENCH_TASKSET") == "1":
                 cmd = ["taskset", "-c", "1"] + cmd
             parsed = run_and_parse(cmd, binding_env_vars)

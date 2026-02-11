@@ -216,8 +216,6 @@ export class SpotNode {
 
 export class Spot {
   constructor(node: SpotNode);
-  topicCreate(topic: string, mode: number): void;
-  topicDestroy(topic: string): void;
   publish(topic: string, parts: Buffer[], flags?: number): void;
   subscribe(topic: string): void;
   subscribePattern(pattern: string): void;

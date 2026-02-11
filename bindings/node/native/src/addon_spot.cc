@@ -289,27 +289,6 @@ napi_value spot_destroy(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_topic_create(napi_env env, napi_callback_info info)
-{
-    napi_value argv[3];
-    size_t argc = 3;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    int32_t mode = 0;
-    napi_get_value_int32(env, argv[2], &mode);
-    if (mode != 0 && mode != 1)
-        return throw_last_error(env, "spot_topic_create failed");
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
-napi_value spot_topic_destroy(napi_env env, napi_callback_info info)
-{
-    napi_value ok;
-    napi_get_undefined(env, &ok);
-    return ok;
-}
-
 napi_value spot_publish(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];

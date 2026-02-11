@@ -85,8 +85,6 @@ napi_value spot_node_sub_socket(napi_env env, napi_callback_info info);
 
 napi_value spot_new(napi_env env, napi_callback_info info);
 napi_value spot_destroy(napi_env env, napi_callback_info info);
-napi_value spot_topic_create(napi_env env, napi_callback_info info);
-napi_value spot_topic_destroy(napi_env env, napi_callback_info info);
 napi_value spot_publish(napi_env env, napi_callback_info info);
 napi_value spot_subscribe(napi_env env, napi_callback_info info);
 napi_value spot_subscribe_pattern(napi_env env, napi_callback_info info);

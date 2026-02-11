@@ -152,21 +152,6 @@ public sealed class Spot : IDisposable
         }
     }
 
-    public void TopicCreate(string topicId, SpotTopicMode mode)
-    {
-        EnsureNotDisposed();
-        if (string.IsNullOrEmpty(topicId))
-            throw new ArgumentException("Topic ID must not be empty.", nameof(topicId));
-        _ = mode;
-    }
-
-    public void TopicDestroy(string topicId)
-    {
-        EnsureNotDisposed();
-        if (string.IsNullOrEmpty(topicId))
-            throw new ArgumentException("Topic ID must not be empty.", nameof(topicId));
-    }
-
     public void Publish(string topicId, Message[] parts,
         SendFlags flags = SendFlags.None)
     {

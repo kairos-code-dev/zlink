@@ -515,16 +515,6 @@ def _load_lib():
     _lib.zlink_spot_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.zlink_spot_destroy.restype = ctypes.c_int
 
-    _lib.zlink_spot_topic_create.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-        ctypes.c_int,
-    ]
-    _lib.zlink_spot_topic_create.restype = ctypes.c_int
-
-    _lib.zlink_spot_topic_destroy.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-    _lib.zlink_spot_topic_destroy.restype = ctypes.c_int
-
     _lib.zlink_spot_publish.argtypes = [
         ctypes.c_void_p,
         ctypes.c_char_p,

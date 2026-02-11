@@ -80,14 +80,6 @@ class Spot:
             self._sub_handle = None
             _raise_last_error()
 
-    def topic_create(self, topic_id, mode=0):
-        if mode not in (0, 1):
-            raise ValueError("unsupported topic mode")
-
-    def topic_destroy(self, topic_id):
-        if not topic_id:
-            raise ValueError("topic_id is required")
-
     def publish(self, topic_id, parts, flags=0):
         arr, built = _build_msg_array(parts)
         rc = lib().zlink_spot_pub_publish(self._pub_handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)

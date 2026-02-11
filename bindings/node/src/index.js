@@ -351,8 +351,6 @@ class SpotNode {
 
 class Spot {
   constructor(node) { this._native = requireNative().spotNew(node._native); }
-  topicCreate(topic, mode) { requireNative().spotTopicCreate(this._native, topic, mode); }
-  topicDestroy(topic) { requireNative().spotTopicDestroy(this._native, topic); }
   publish(topic, parts, flags = 0) { requireNative().spotPublish(this._native, topic, parts, flags); }
   subscribe(topic) { requireNative().spotSubscribe(this._native, topic); }
   subscribePattern(pattern) { requireNative().spotSubscribePattern(this._native, pattern); }

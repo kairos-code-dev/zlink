@@ -25,18 +25,6 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public void topicCreate(String topicId, SpotTopicMode mode) {
-        if (topicId == null || topicId.isEmpty())
-            throw new IllegalArgumentException("topicId required");
-        if (mode == null)
-            throw new IllegalArgumentException("mode required");
-    }
-
-    public void topicDestroy(String topicId) {
-        if (topicId == null || topicId.isEmpty())
-            throw new IllegalArgumentException("topicId required");
-    }
-
     public void publish(String topicId, Message[] parts, SendFlag flags) {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");

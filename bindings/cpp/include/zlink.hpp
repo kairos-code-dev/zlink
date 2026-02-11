@@ -1193,27 +1193,6 @@ class spot_t
     spot_t (const spot_t &) = delete;
     spot_t &operator= (const spot_t &) = delete;
 
-    int topic_create (const char *topic_, spot_topic_mode mode_)
-    {
-        if (!_pub || !_sub || !topic_) {
-            errno = EFAULT;
-            return -1;
-        }
-        if (mode_ != spot_topic_mode::queue && mode_ != spot_topic_mode::ringbuffer) {
-            errno = EINVAL;
-            return -1;
-        }
-        return 0;
-    }
-    int topic_destroy (const char *topic_)
-    {
-        if (!_pub || !_sub || !topic_) {
-            errno = EFAULT;
-            return -1;
-        }
-        return 0;
-    }
-
     int publish (const char *topic_, std::vector<message_t> &parts_)
     {
         if (parts_.empty ())

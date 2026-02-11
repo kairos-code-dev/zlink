@@ -74,8 +74,6 @@ static napi_value init(napi_env env, napi_value exports)
 
         {"spotNew", 0, spot_new, 0, 0, 0, napi_default, 0},
         {"spotDestroy", 0, spot_destroy, 0, 0, 0, napi_default, 0},
-        {"spotTopicCreate", 0, spot_topic_create, 0, 0, 0, napi_default, 0},
-        {"spotTopicDestroy", 0, spot_topic_destroy, 0, 0, 0, napi_default, 0},
         {"spotPublish", 0, spot_publish, 0, 0, 0, napi_default, 0},
         {"spotSubscribe", 0, spot_subscribe, 0, 0, 0, napi_default, 0},
         {"spotSubscribePattern", 0, spot_subscribe_pattern, 0, 0, 0, napi_default, 0},

@@ -555,7 +555,7 @@ function Invoke-WingetInstall {
 }
 
 function Install-VisualStudio {
-    $setupScript = Join-Path $RepoRoot "core\build-scripts\windows\setup-vs2022.ps1"
+    $setupScript = Join-Path $RepoRoot "core\builds\windows\setup-vs2022.ps1"
     if (Test-Path $setupScript) {
         $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
             [Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -1139,7 +1139,7 @@ if ($BuildCore -and -not $NoBuildCore) {
     Write-Host "====================================" -ForegroundColor Cyan
     Write-Host ""
 
-    $buildScript = Join-Path $RepoRoot "core\build-scripts\windows\build.ps1"
+    $buildScript = Join-Path $RepoRoot "core\builds\windows\build.ps1"
     if (Test-Path $buildScript) {
         Write-Host "  Delegating to: $buildScript" -ForegroundColor DarkGray
         & $buildScript -Architecture x64 -RunTests OFF
@@ -1247,7 +1247,7 @@ if (-not $coreBuildResult.Found) {
     Write-Host "  2. Build core library:" -ForegroundColor DarkGray
     Write-Host "     .\buildenv\win\setup.ps1 -BuildCore" -ForegroundColor White
     Write-Host "     # or manually:" -ForegroundColor DarkGray
-    Write-Host "     .\core\build-scripts\windows\build.ps1 -Architecture x64" -ForegroundColor White
+    Write-Host "     .\core\builds\windows\build.ps1 -Architecture x64" -ForegroundColor White
     Write-Host ""
 }
 Write-Host "  Run tests:" -ForegroundColor DarkGray

@@ -207,8 +207,8 @@ jobs:
 
       - name: Build libzlink
         run: |
-          chmod +x ./core/build-scripts/linux/build.sh
-          ./core/build-scripts/linux/build.sh \
+          chmod +x ./core/builds/linux/build.sh
+          ./core/builds/linux/build.sh \
             x64 \
             "ON"
 
@@ -239,8 +239,8 @@ jobs:
 
       - name: Build libzlink
         run: |
-          chmod +x ./core/build-scripts/linux/build.sh
-          ./core/build-scripts/linux/build.sh \
+          chmod +x ./core/builds/linux/build.sh
+          ./core/builds/linux/build.sh \
             arm64 \
             "ON"
 
@@ -269,8 +269,8 @@ jobs:
           export OPENSSL_ROOT_DIR="$VCPKG_ROOT/installed/x64-osx"
           echo "Using OpenSSL from $OPENSSL_ROOT_DIR"
           
-          chmod +x ./core/build-scripts/macos/build.sh
-          ./core/build-scripts/macos/build.sh \
+          chmod +x ./core/builds/macos/build.sh
+          ./core/builds/macos/build.sh \
             x86_64 \
             "ON" \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-osx -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR"
@@ -312,8 +312,8 @@ jobs:
           export LDFLAGS="-L$OPENSSL_ROOT_DIR/lib"
           export CPPFLAGS="-I$OPENSSL_ROOT_DIR/include"
           export PKG_CONFIG_PATH="$OPENSSL_ROOT_DIR/lib/pkgconfig"
-          chmod +x ./core/build-scripts/macos/build.sh
-          ./core/build-scripts/macos/build.sh \
+          chmod +x ./core/builds/macos/build.sh
+          ./core/builds/macos/build.sh \
             arm64 \
             "ON"
 
@@ -452,7 +452,7 @@ jobs:
 
             ### Removed Features
             - CURVE encryption (use TLS instead)
-            - REQ/REP, PUSH/PULL, STREAM socket types
+            - REQ/REP, PUSH/PULL socket types
             - TIPC, VMCI, PGM, NORM, UDP protocols
             - Draft API socket types
 

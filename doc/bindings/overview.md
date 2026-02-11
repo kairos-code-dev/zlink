@@ -11,8 +11,8 @@ zlink는 C API를 기반으로 5개 언어 바인딩을 제공한다. 모든 바
 | C++ | C++11 | Header-only RAII | 코어와 동일 프로세스 |
 | Java | Java 22+ | FFM API (no JNI) | JVM 기반 서비스 |
 | .NET | .NET 8+ | LibraryImport | C#/F# 서비스 |
-| Node.js | Node 18+ | N-API, prebuilds | 웹 서버/도구 |
-| Python | Python 3.8+ | ctypes/CFFI | 스크립팅/프로토타이핑 |
+| Node.js | Node 20+ | N-API, prebuilds | 웹 서버/도구 |
+| Python | Python 3.9+ | ctypes/CFFI | 스크립팅/프로토타이핑 |
 
 ## 3. 공통 API 매핑
 

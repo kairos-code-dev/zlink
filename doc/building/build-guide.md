@@ -11,29 +11,29 @@
 ### 2.1 Linux
 
 ```bash
-./core/build-scripts/linux/build.sh x64 ON
+./core/builds/linux/build.sh x64 ON
 ```
 
 ARM64:
 ```bash
-./core/build-scripts/linux/build.sh arm64 ON
+./core/builds/linux/build.sh arm64 ON
 ```
 
 ### 2.2 macOS
 
 ```bash
-./core/build-scripts/macos/build.sh arm64 ON
+./core/builds/macos/build.sh arm64 ON
 ```
 
 x64:
 ```bash
-./core/build-scripts/macos/build.sh x64 ON
+./core/builds/macos/build.sh x64 ON
 ```
 
 ### 2.3 Windows (PowerShell)
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
+.\core\builds\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
 ## 3. CMake 직접 빌드

@@ -1108,9 +1108,7 @@ endif()
 set(public_headers include/zlink.h include/zlink_utils.h)
 
 set(readme-docs
-    ${CMAKE_SOURCE_DIR}/AUTHORS
-    ${CMAKE_SOURCE_DIR}/LICENSE
-    ${CMAKE_SOURCE_DIR}/NEWS)
+    ${CMAKE_SOURCE_DIR}/LICENSE)
 
 # -----------------------------------------------------------------------------
 # optional modules

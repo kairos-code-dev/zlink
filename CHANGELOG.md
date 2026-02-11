@@ -31,16 +31,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Changed default IO thread count to 2 (`ZLINK_IO_THREADS_DFLT`).
 
 **Build Scripts**
-- Updated 4 CI/CD scripts to use CMake instead of autotools:
+- Updated CI/CD scripts to use CMake instead of autotools:
   - core/ci_build.sh - Main CI build script
-  - core/builds/cmake/ci_build.sh - CMake-specific builds
-  - core/builds/coverage/ci_build.sh - Code coverage testing
-  - core/builds/valgrind/ci_build.sh - Memory testing
-- Documented 4 scripts that retain autotools for dependency builds:
-  - core/builds/abi-compliance-checker/ci_build.sh - Upstream libzlink ABI checks
-  - core/builds/fuzz/ci_build.sh - OSS-Fuzz integration
-  - core/builds/android/build.sh - Android NDK dependency builder
-  - core/builds/android/android_build_helper.sh - Generic autotools helper
+  - core/builds/ci/cmake/ci_build.sh - CMake-specific builds
+  - core/builds/ci/valgrind/ci_build.sh - Memory testing
 
 ### Migration Guide
 
@@ -61,7 +55,7 @@ cmake --build build
 cmake --install build
 ```
 
-All platforms (Windows, Linux, macOS) now use CMake exclusively. See core/build-scripts/ directory for platform-specific build scripts, or refer to CLAUDE.md for detailed build instructions.
+All platforms (Windows, Linux, macOS) now use CMake exclusively. See core/builds/ directory for platform-specific build scripts.
 
 ## [0.3.0] - 2026-01-15
 

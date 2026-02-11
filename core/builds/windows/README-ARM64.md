@@ -25,25 +25,25 @@ This document explains how to build ARM64 binaries of libzlink on Windows x64 ma
 ### Building x64 (default)
 
 ```powershell
-.\core\build-scripts\windows\build.ps1
+.\core\builds\windows\build.ps1
 ```
 
 Or explicitly:
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 -Architecture x64
+.\core\builds\windows\build.ps1 -Architecture x64
 ```
 
 ### Building ARM64 (cross-compilation)
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 -Architecture arm64
+.\core\builds\windows\build.ps1 -Architecture arm64
 ```
 
 ### Full Example with All Parameters
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 `
+.\core\builds\windows\build.ps1 `
     -Architecture arm64 `
     -LibzlinkVersion "4.3.5" `
     -BuildType Release `
@@ -137,8 +137,8 @@ For automated builds, you can build both architectures in parallel:
 ```powershell
 # Build both architectures
 $jobs = @(
-    { .\core\build-scripts\windows\build.ps1 -Architecture x64 },
-    { .\core\build-scripts\windows\build.ps1 -Architecture arm64 }
+    { .\core\builds\windows\build.ps1 -Architecture x64 },
+    { .\core\builds\windows\build.ps1 -Architecture arm64 }
 )
 
 $jobs | ForEach-Object { Start-Job -ScriptBlock $_ }
@@ -159,13 +159,13 @@ Get-Job | Wait-Job | Receive-Job
 ### Debug Build for ARM64
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 -Architecture arm64 -BuildType Debug
+.\core\builds\windows\build.ps1 -Architecture arm64 -BuildType Debug
 ```
 
 ### Specific Versions
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 `
+.\core\builds\windows\build.ps1 `
     -Architecture arm64 `
     -LibzlinkVersion "4.3.6"
 ```
@@ -173,7 +173,7 @@ Get-Job | Wait-Job | Receive-Job
 ### Custom Output Location
 
 ```powershell
-.\core\build-scripts\windows\build.ps1 `
+.\core\builds\windows\build.ps1 `
     -Architecture arm64 `
     -OutputDir "my-custom-output"
 ```

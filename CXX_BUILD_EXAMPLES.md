@@ -69,32 +69,32 @@ cmake -B build -DZLINK_CXX_STANDARD=17 -DCMAKE_BUILD_TYPE=Release
 #### Linux
 
 ```bash
-# Modify core/build-scripts/linux/build.sh to add:
+# Modify core/builds/linux/build.sh to add:
 # cmake -B "$BUILD_DIR" \
 #   -DZLINK_CXX_STANDARD=17 \
 #   -DCMAKE_BUILD_TYPE=Release \
 #   ...
 
-./core/build-scripts/linux/build.sh x64 ON
+./core/builds/linux/build.sh x64 ON
 ```
 
 #### macOS
 
 ```bash
-# Modify core/build-scripts/macos/build.sh similarly
-./core/build-scripts/macos/build.sh arm64 ON
+# Modify core/builds/macos/build.sh similarly
+./core/builds/macos/build.sh arm64 ON
 ```
 
 #### Windows
 
 ```powershell
-# Modify core/build-scripts/windows/build.ps1 to add:
+# Modify core/builds/windows/build.ps1 to add:
 # cmake -B "$buildDir" `
 #   -DZLINK_CXX_STANDARD=17 `
 #   -G "Visual Studio 17 2022" `
 #   ...
 
-.\core\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
+.\core\builds\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
 ## Compiler Requirements

@@ -25,5 +25,5 @@ if [ $BUILD_TYPE = "default" ]; then
         ctest --output-on-failure
     ) || exit 1
 else
-    cd "${CORE_ROOT}/builds/${BUILD_TYPE}" && ./ci_build.sh
+    cd "${CORE_ROOT}/builds/ci/${BUILD_TYPE}" && ./ci_build.sh
 fi

@@ -155,7 +155,7 @@ benchmark_result.txt
 /test_*
 !/test_*.cpp
 tmp/
-!core/build-scripts/
+!core/builds/
 
 # bindings (language wrappers)
 ## Node.js

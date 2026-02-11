@@ -4,7 +4,7 @@
 
 - **ctypes/CFFI** 기반 네이티브 호출
 - wheel 배포 지원
-- Python 3.8+
+- Python 3.9+
 
 ## 2. 설치
 

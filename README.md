@@ -125,13 +125,13 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 ```bash
 # Linux
-./core/build-scripts/linux/build.sh x64 ON
+./core/builds/linux/build.sh x64 ON
 
 # macOS
-./core/build-scripts/macos/build.sh arm64 ON
+./core/builds/macos/build.sh arm64 ON
 
 # Windows (PowerShell)
-.\core\build-scripts\windows\build.ps1 -Architecture x64 -RunTests "ON"
+.\core\builds\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
 ### CMake 직접 빌드

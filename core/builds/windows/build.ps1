@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Resolve repo root from this script's location (core/build-scripts/windows)
+# Resolve repo root from this script's location (core/builds/windows)
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\\..\\..")).Path
 

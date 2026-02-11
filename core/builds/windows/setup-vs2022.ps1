@@ -138,7 +138,7 @@ if ($InstallProcess.ExitCode -eq 0) {
             Write-Host "  $VS2022_PATH"
             Write-Host ""
             Write-Host "You can now run the build script:"
-            Write-Host "  .\core\build-scripts\windows\build.ps1 -Architecture x64 -RunTests ON"
+            Write-Host "  .\core\builds\windows\build.ps1 -Architecture x64 -RunTests ON"
             Write-Host ""
         } else {
             Write-Warning "Installation completed but VS path verification failed."
@@ -157,7 +157,7 @@ if ($InstallProcess.ExitCode -eq 0) {
     Write-Host "Please:"
     Write-Host "  1. Restart your computer"
     Write-Host "  2. Run the build script:"
-    Write-Host "     .\core\build-scripts\windows\build.ps1 -Architecture x64 -RunTests ON"
+    Write-Host "     .\core\builds\windows\build.ps1 -Architecture x64 -RunTests ON"
     Write-Host ""
     Write-Host "=========================================="
     exit 3010

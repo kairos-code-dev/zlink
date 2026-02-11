@@ -31,7 +31,7 @@ tests/
 ├── monitoring/
 │   └── test_monitor_enhanced.cpp
 ├── discovery/
-│   └── test_registry_basic.cpp
+│   └── test_service_discovery.cpp
 └── spot/
     └── test_spot_pubsub_basic.cpp
 ```

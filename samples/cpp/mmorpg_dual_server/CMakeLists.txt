@@ -65,10 +65,6 @@ set(COMMON_SOURCES
   common/raw_framing.cpp
   common/ids.cpp)
 
-# --- Workaround: ZLINK_NOEXCEPT is internal macro used in zlink.hpp ---
-# Define it for external consumers until the binding header is fixed
-add_compile_definitions(ZLINK_NOEXCEPT=noexcept)
-
 # --- Workaround: Symbol collision between zlink.hpp wrapper classes and libzlink internals ---
 # The C++ binding header (zlink.hpp) defines wrapper classes like zlink::discovery_t,
 # zlink::gateway_t, etc. in the same namespace as the internal library classes.

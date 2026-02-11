@@ -1274,7 +1274,7 @@ class spot_t
                                     size_t topic_len_,
                                     const zlink_msg_t *parts_,
                                     size_t part_count_,
-                                    void *userdata_) ZLINK_NOEXCEPT
+                                    void *userdata_) noexcept
     {
         spot_t *self = static_cast<spot_t *> (userdata_);
         if (!self)

@@ -104,16 +104,16 @@ zlink is composed of five clearly separated layers:
 Built on top of the core socket layer, zlink provides a **high-level service layer** for production distributed systems:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Application                           │
-│         Gateway (req/rep)  ·  SPOT (pub/sub)             │
-├─────────────────────────────────────────────────────────┤
-│                  Discovery (service lookup)               │
-├─────────────────────────────────────────────────────────┤
-│                  Registry (service registry)              │
-├─────────────────────────────────────────────────────────┤
-│              zlink Core (7 sockets + 6 transports)       │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│                      Application                      │
+│          Gateway (req/rep) · SPOT (pub/sub)           │
+├───────────────────────────────────────────────────────┤
+│              Discovery (service lookup)               │
+├───────────────────────────────────────────────────────┤
+│              Registry (service registry)              │
+├───────────────────────────────────────────────────────┤
+│         zlink Core (7 sockets + 6 transports)         │
+└───────────────────────────────────────────────────────┘
 ```
 
 | Service | Description | Guide |

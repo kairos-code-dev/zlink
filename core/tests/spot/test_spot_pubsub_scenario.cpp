@@ -9,6 +9,15 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include <chrono>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <windows.h>
+#else
+#include <sys/resource.h>
+#include <sys/stat.h>
+#endif
 
 static int create_spot_pub_sub (void *node, void **pub_p, void **sub_p)
 {
@@ -623,6 +632,206 @@ static int env_int_or_default (const char *name_, int default_)
     return parsed;
 }
 
+struct process_cpu_times_t
+{
+    double user_ms;
+    double sys_ms;
+    double rss_kb;
+    double peak_rss_kb;
+    bool valid;
+
+    process_cpu_times_t () :
+        user_ms (0),
+        sys_ms (0),
+        rss_kb (-1),
+        peak_rss_kb (-1),
+        valid (false)
+    {
+    }
+};
+
+static process_cpu_times_t read_process_cpu_times ()
+{
+    process_cpu_times_t out;
+
+#if defined(_WIN32)
+    FILETIME create_time;
+    FILETIME exit_time;
+    FILETIME kernel_time;
+    FILETIME user_time;
+    if (!GetProcessTimes (GetCurrentProcess (), &create_time, &exit_time,
+                          &kernel_time, &user_time))
+        return out;
+
+    ULARGE_INTEGER u;
+    ULARGE_INTEGER k;
+    u.LowPart = user_time.dwLowDateTime;
+    u.HighPart = user_time.dwHighDateTime;
+    k.LowPart = kernel_time.dwLowDateTime;
+    k.HighPart = kernel_time.dwHighDateTime;
+
+    // FILETIME is 100ns units.
+    out.user_ms = static_cast<double> (u.QuadPart) / 10000.0;
+    out.sys_ms = static_cast<double> (k.QuadPart) / 10000.0;
+    out.valid = true;
+#else
+    struct rusage usage;
+    if (getrusage (RUSAGE_SELF, &usage) != 0)
+        return out;
+
+    out.user_ms = usage.ru_utime.tv_sec * 1000.0
+                  + usage.ru_utime.tv_usec / 1000.0;
+    out.sys_ms = usage.ru_stime.tv_sec * 1000.0
+                 + usage.ru_stime.tv_usec / 1000.0;
+
+#if defined(__APPLE__)
+    out.peak_rss_kb = usage.ru_maxrss / 1024.0;
+#else
+    // Linux ru_maxrss is already in kilobytes.
+    out.peak_rss_kb = usage.ru_maxrss;
+#endif
+
+#if defined(__linux__)
+    FILE *fp = fopen ("/proc/self/statm", "r");
+    if (fp) {
+        long total_pages = 0;
+        long resident_pages = 0;
+        if (fscanf (fp, "%ld %ld", &total_pages, &resident_pages) == 2) {
+            const long page_size = sysconf (_SC_PAGESIZE);
+            if (page_size > 0)
+                out.rss_kb = resident_pages * (page_size / 1024.0);
+        }
+        fclose (fp);
+    }
+#endif
+
+    out.valid = true;
+#endif
+
+    return out;
+}
+
+static const char *scale_result_path ()
+{
+    const char *path = getenv ("ZLINK_SPOT_SCALE_RESULT_FILE");
+    if (path && *path)
+        return path;
+    return "tmp/spot_scale_result.txt";
+}
+
+static FILE *open_scale_result_file_append ()
+{
+    const char *path = scale_result_path ();
+    if (!path || !*path)
+        return NULL;
+
+#if defined(_WIN32)
+    _mkdir ("tmp");
+#else
+    mkdir ("tmp", 0755);
+#endif
+    return fopen (path, "a");
+}
+
+static void emit_scale_result_line (const char *line_)
+{
+    if (!line_)
+        return;
+
+    printf ("%s\n", line_);
+
+    FILE *fp = open_scale_result_file_append ();
+    if (!fp)
+        return;
+
+    fprintf (fp, "%s\n", line_);
+    fclose (fp);
+}
+
+static void emit_scale_result_pretty (int width_,
+                                      int height_,
+                                      int zone_count_,
+                                      int inflight_,
+                                      int payload_size_,
+                                      int subscriptions_,
+                                      int published_,
+                                      int expected_deliveries_,
+                                      double publish_ms_,
+                                      double receive_ms_,
+                                      double total_ms_,
+                                      double throughput_delivery_per_sec_,
+                                      double throughput_publish_per_sec_,
+                                      double throughput_publish_per_spot_per_sec_,
+                                      double throughput_delivery_per_spot_per_sec_,
+                                      double cpu_user_ms_,
+                                      double cpu_sys_ms_,
+                                      double cpu_total_ms_,
+                                      double cpu_usage_pct_,
+                                      double rss_begin_kb_,
+                                      double rss_end_kb_,
+                                      double rss_delta_kb_,
+                                      double peak_rss_kb_)
+{
+    FILE *fp = open_scale_result_file_append ();
+
+    printf ("SPOT_SCALE_SUMMARY\n");
+    printf ("  grid               : %d x %d (%d zones)\n", width_, height_,
+            zone_count_);
+    printf ("  inflight           : %d\n", inflight_);
+    printf ("  payload bytes      : %d\n", payload_size_);
+    printf ("  subscriptions      : %d\n", subscriptions_);
+    printf ("  published          : %d\n", published_);
+    printf ("  expected deliveries: %d\n", expected_deliveries_);
+    printf ("  publish ms         : %.3f\n", publish_ms_);
+    printf ("  receive ms         : %.3f\n", receive_ms_);
+    printf ("  total ms           : %.3f\n", total_ms_);
+    printf ("  throughput delivery/s   : %.3f\n", throughput_delivery_per_sec_);
+    printf ("  throughput publish/s    : %.3f\n", throughput_publish_per_sec_);
+    printf ("  throughput publish/s/spot: %.3f\n",
+            throughput_publish_per_spot_per_sec_);
+    printf ("  throughput delivery/s/spot: %.3f\n",
+            throughput_delivery_per_spot_per_sec_);
+    printf ("  cpu user ms        : %.3f\n", cpu_user_ms_);
+    printf ("  cpu sys ms         : %.3f\n", cpu_sys_ms_);
+    printf ("  cpu total ms       : %.3f\n", cpu_total_ms_);
+    printf ("  cpu usage %%        : %.3f\n", cpu_usage_pct_);
+    printf ("  rss begin kb       : %.3f\n", rss_begin_kb_);
+    printf ("  rss end kb         : %.3f\n", rss_end_kb_);
+    printf ("  rss delta kb       : %.3f\n", rss_delta_kb_);
+    printf ("  peak rss kb        : %.3f\n", peak_rss_kb_);
+
+    if (fp) {
+        fprintf (fp, "SPOT_SCALE_SUMMARY\n");
+        fprintf (fp, "  grid               : %d x %d (%d zones)\n", width_,
+                 height_, zone_count_);
+        fprintf (fp, "  inflight           : %d\n", inflight_);
+        fprintf (fp, "  payload bytes      : %d\n", payload_size_);
+        fprintf (fp, "  subscriptions      : %d\n", subscriptions_);
+        fprintf (fp, "  published          : %d\n", published_);
+        fprintf (fp, "  expected deliveries: %d\n", expected_deliveries_);
+        fprintf (fp, "  publish ms         : %.3f\n", publish_ms_);
+        fprintf (fp, "  receive ms         : %.3f\n", receive_ms_);
+        fprintf (fp, "  total ms           : %.3f\n", total_ms_);
+        fprintf (fp, "  throughput delivery/s   : %.3f\n",
+                 throughput_delivery_per_sec_);
+        fprintf (fp, "  throughput publish/s    : %.3f\n",
+                 throughput_publish_per_sec_);
+        fprintf (fp, "  throughput publish/s/spot: %.3f\n",
+                 throughput_publish_per_spot_per_sec_);
+        fprintf (fp, "  throughput delivery/s/spot: %.3f\n",
+                 throughput_delivery_per_spot_per_sec_);
+        fprintf (fp, "  cpu user ms        : %.3f\n", cpu_user_ms_);
+        fprintf (fp, "  cpu sys ms         : %.3f\n", cpu_sys_ms_);
+        fprintf (fp, "  cpu total ms       : %.3f\n", cpu_total_ms_);
+        fprintf (fp, "  cpu usage %%        : %.3f\n", cpu_usage_pct_);
+        fprintf (fp, "  rss begin kb       : %.3f\n", rss_begin_kb_);
+        fprintf (fp, "  rss end kb         : %.3f\n", rss_end_kb_);
+        fprintf (fp, "  rss delta kb       : %.3f\n", rss_delta_kb_);
+        fprintf (fp, "  peak rss kb        : %.3f\n", peak_rss_kb_);
+        fclose (fp);
+    }
+}
+
 static bool wait_for_provider_count (void *discovery_,
                                      const char *service_name_,
                                      int expected_count_,
@@ -687,9 +896,14 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
     const int field_width = env_int_or_default ("ZLINK_SPOT_FIELD_WIDTH", 16);
     const int field_height = env_int_or_default ("ZLINK_SPOT_FIELD_HEIGHT", 16);
     const int zone_count = field_width * field_height;
+    const int inflight = env_int_or_default ("ZLINK_SPOT_INFLIGHT", zone_count);
+    int payload_size = env_int_or_default ("ZLINK_SPOT_PAYLOAD_SIZE", 4);
+    if (payload_size < (int) sizeof (int))
+        payload_size = (int) sizeof (int);
     const int subscription_settle_ms = 300;
     const int recv_wait_timeout_ms = 1500;
     const int recv_poll_step_ms = 10;
+    int total_expected_messages = 0;
 
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
@@ -735,6 +949,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                     TEST_ASSERT_SUCCESS_ERRNO (
                       zlink_spot_sub_subscribe (spot_subs[dst_idx], topics[src_idx].c_str ()));
                     expected_counts[dst_idx]++;
+                    total_expected_messages++;
                 }
             }
         }
@@ -742,20 +957,29 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
 
     msleep (subscription_settle_ms);
 
+    const process_cpu_times_t cpu_begin = read_process_cpu_times ();
+    const std::chrono::steady_clock::time_point phase_begin =
+      std::chrono::steady_clock::now ();
+    const std::chrono::steady_clock::time_point pub_begin = phase_begin;
+
     for (int y = 0; y < field_height; ++y) {
         for (int x = 0; x < field_width; ++x) {
             const int src_idx = zone_idx (x, y, field_width);
 
             zlink_msg_t part;
-            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, sizeof (int)));
+            TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, payload_size));
+            memset (zlink_msg_data (&part), 0, payload_size);
             memcpy (zlink_msg_data (&part), &src_idx, sizeof (int));
 
             TEST_ASSERT_SUCCESS_ERRNO (
               zlink_spot_pub_publish (spot_pubs[src_idx], topics[src_idx].c_str (), &part, 1, 0));
-            if ((src_idx % 32) == 0)
+            if (((src_idx + 1) % inflight) == 0)
                 msleep (1);
         }
     }
+
+    const std::chrono::steady_clock::time_point pub_end =
+      std::chrono::steady_clock::now ();
 
     for (int y = 0; y < field_height; ++y) {
         for (int x = 0; x < field_width; ++x) {
@@ -785,7 +1009,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                 received++;
 
                 TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
-                TEST_ASSERT_EQUAL_INT ((int) sizeof (int),
+                TEST_ASSERT_EQUAL_INT (payload_size,
                                        (int) zlink_msg_size (&recv_parts[0]));
 
                 int src_idx = -1;
@@ -806,6 +1030,74 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
             TEST_ASSERT_EQUAL_INT (expected_counts[dst_idx], received);
         }
     }
+
+    const std::chrono::steady_clock::time_point phase_end =
+      std::chrono::steady_clock::now ();
+    const process_cpu_times_t cpu_end = read_process_cpu_times ();
+
+    const double publish_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli> > (
+                                pub_end - pub_begin)
+                                .count ();
+    const double total_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli> > (
+                              phase_end - phase_begin)
+                              .count ();
+    const double receive_ms = total_ms - publish_ms;
+    const double throughput_delivery_per_sec =
+      total_ms > 0 ? (total_expected_messages * 1000.0) / total_ms : 0.0;
+    const double throughput_publish_per_sec =
+      total_ms > 0 ? (zone_count * 1000.0) / total_ms : 0.0;
+    const double throughput_publish_per_spot_per_sec =
+      zone_count > 0 ? throughput_publish_per_sec / zone_count : 0.0;
+    const double throughput_delivery_per_spot_per_sec =
+      zone_count > 0 ? throughput_delivery_per_sec / zone_count : 0.0;
+
+    double cpu_user_ms = -1;
+    double cpu_sys_ms = -1;
+    double cpu_total_ms = -1;
+    double cpu_usage_pct = -1;
+    double rss_begin_kb = -1;
+    double rss_end_kb = -1;
+    double rss_delta_kb = -1;
+    double peak_rss_kb = -1;
+    if (cpu_begin.valid && cpu_end.valid) {
+        cpu_user_ms = cpu_end.user_ms - cpu_begin.user_ms;
+        cpu_sys_ms = cpu_end.sys_ms - cpu_begin.sys_ms;
+        cpu_total_ms = cpu_user_ms + cpu_sys_ms;
+        if (total_ms > 0)
+            cpu_usage_pct = (cpu_total_ms / total_ms) * 100.0;
+
+        rss_begin_kb = cpu_begin.rss_kb;
+        rss_end_kb = cpu_end.rss_kb;
+        if (rss_begin_kb >= 0 && rss_end_kb >= 0)
+            rss_delta_kb = rss_end_kb - rss_begin_kb;
+        peak_rss_kb = cpu_end.peak_rss_kb;
+    }
+
+    char metrics_line[1024];
+    snprintf (
+      metrics_line, sizeof (metrics_line),
+      "SPOT_SCALE_RESULT,width=%d,height=%d,zones=%d,inflight=%d,payload_bytes=%d,subscriptions=%d,"
+      "published=%d,expected_deliveries=%d,publish_ms=%.3f,receive_ms=%.3f,"
+      "total_ms=%.3f,throughput_delivery_per_sec=%.3f,throughput_publish_per_sec=%.3f,"
+      "throughput_publish_per_spot_per_sec=%.3f,throughput_delivery_per_spot_per_sec=%.3f,"
+      "cpu_user_ms=%.3f,cpu_sys_ms=%.3f,cpu_total_ms=%.3f,cpu_usage_pct=%.3f,"
+      "rss_begin_kb=%.3f,rss_end_kb=%.3f,rss_delta_kb=%.3f,peak_rss_kb=%.3f",
+      field_width, field_height, zone_count, inflight, payload_size,
+      total_expected_messages, zone_count, total_expected_messages, publish_ms,
+      receive_ms, total_ms, throughput_delivery_per_sec,
+      throughput_publish_per_sec, throughput_publish_per_spot_per_sec,
+      throughput_delivery_per_spot_per_sec,
+      cpu_user_ms, cpu_sys_ms, cpu_total_ms, cpu_usage_pct, rss_begin_kb,
+      rss_end_kb, rss_delta_kb, peak_rss_kb);
+    emit_scale_result_line (metrics_line);
+    emit_scale_result_pretty (
+      field_width, field_height, zone_count, inflight, payload_size,
+      total_expected_messages, zone_count, total_expected_messages, publish_ms,
+      receive_ms, total_ms, throughput_delivery_per_sec,
+      throughput_publish_per_sec, throughput_publish_per_spot_per_sec,
+      throughput_delivery_per_spot_per_sec,
+      cpu_user_ms, cpu_sys_ms, cpu_total_ms, cpu_usage_pct, rss_begin_kb,
+      rss_end_kb, rss_delta_kb, peak_rss_kb);
 
     for (int i = 0; i < zone_count; ++i) {
         TEST_ASSERT_SUCCESS_ERRNO (

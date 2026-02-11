@@ -75,6 +75,8 @@ static bool send_spot(void *spot_pub, const std::string &topic, size_t msg_size)
 }
 
 static bool recv_spot_with_timeout(void *spot_sub, int timeout_ms) {
+    const int poll_sleep_us =
+      resolve_bench_count("BENCH_SPOT_POLL_SLEEP_US", 0);
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (true) {
@@ -93,7 +95,12 @@ static bool recv_spot_with_timeout(void *spot_sub, int timeout_ms) {
             return false;
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (poll_sleep_us > 0) {
+            std::this_thread::sleep_for(
+              std::chrono::microseconds(poll_sleep_us));
+        } else {
+            std::this_thread::yield();
+        }
     }
 }
 

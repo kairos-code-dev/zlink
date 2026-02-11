@@ -133,6 +133,7 @@ sudo 불필요. 도구 재설치나 경로 변경 시 다시 실행하면 된다
 | (없음) | 설정 파일 생성 (기존 파일 있으면 확인) |
 | `--force` | 기존 파일 덮어쓰기 |
 | `--dry-run` | 파일 생성 없이 내용만 출력 |
+| `--skip-extensions` | VS Code 추천 확장 자동 설치 생략 |
 
 ### 생성 파일
 
@@ -142,6 +143,9 @@ sudo 불필요. 도구 재설치나 경로 변경 시 다시 실행하면 된다
 | `.vscode/c_cpp_properties.json` | C/C++ IntelliSense 상세 설정 |
 | `.vscode/extensions.json` | 추천 확장 목록 |
 | `.vscode/tasks.json` | 바인딩별 테스트 태스크 |
+
+설정 파일 생성 후 `code`(또는 `code-insiders`) CLI가 있으면
+`.vscode/extensions.json`의 추천 확장을 자동 설치한다.
 
 ### 탐지 항목
 

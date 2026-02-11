@@ -7,6 +7,7 @@
 # Options:
 #   --force     Overwrite existing .vscode/ files without prompting
 #   --dry-run   Print generated config to stdout without writing files
+#   --skip-extensions  Skip VS Code extension installation
 #   --help      Show this help message
 #
 
@@ -24,6 +25,8 @@ source "$SCRIPT_DIR/_common.sh"
 # ---------------------------------------------------------------------------
 FORCE_OVERWRITE=false
 DRY_RUN=false
+INSTALL_EXTENSIONS=true
+VSCODE_CLI=""
 
 show_help() {
     sed -n '2,/^$/s/^# \?//p' "$0"
@@ -34,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --force)   FORCE_OVERWRITE=true ;;
         --dry-run) DRY_RUN=true ;;
+        --skip-extensions) INSTALL_EXTENSIONS=false ;;
         --help|-h) show_help ;;
         *)         error "Unknown option: $1"; show_help ;;
     esac
@@ -128,6 +132,23 @@ detect_vcpkg_triplet() {
         aarch64) VCPKG_TRIPLET="arm64-linux" ;;
         *)       VCPKG_TRIPLET="x64-linux" ;;
     esac
+}
+
+detect_vscode_cli() {
+    if command -v code &>/dev/null; then
+        VSCODE_CLI="code"
+        success "VS Code CLI: $(command -v code)"
+        return
+    fi
+
+    if command -v code-insiders &>/dev/null; then
+        VSCODE_CLI="code-insiders"
+        success "VS Code CLI: $(command -v code-insiders)"
+        return
+    fi
+
+    VSCODE_CLI=""
+    warn "VS Code CLI not found (code/code-insiders) — extension install will be skipped"
 }
 
 # ---------------------------------------------------------------------------
@@ -394,6 +415,54 @@ EOF
     write_json "$outfile" "$content"
 }
 
+install_recommended_extensions() {
+    if [ "$DRY_RUN" = true ]; then
+        info "Dry-run mode: skipping extension installation"
+        return
+    fi
+
+    if [ "$INSTALL_EXTENSIONS" = false ]; then
+        info "Skipping extension installation (--skip-extensions)"
+        return
+    fi
+
+    if [ -z "$VSCODE_CLI" ]; then
+        return
+    fi
+
+    local ext_file="$VSCODE_DIR/extensions.json"
+    if [ ! -f "$ext_file" ]; then
+        warn "extensions.json not found: $ext_file"
+        return
+    fi
+
+    header "Installing VS Code Extensions"
+
+    local ext
+    mapfile -t extensions < <(
+        python3 -c "import json,sys; data=json.load(open(sys.argv[1])); print('\n'.join(data.get('recommendations', [])))" \
+            "$ext_file" 2>/dev/null || true
+    )
+
+    if [ ${#extensions[@]} -eq 0 ]; then
+        warn "No extension recommendations found in $ext_file"
+        return
+    fi
+
+    for ext in "${extensions[@]}"; do
+        if "$VSCODE_CLI" --list-extensions 2>/dev/null | grep -Fxq "$ext"; then
+            info "Already installed: $ext"
+            continue
+        fi
+
+        if "$VSCODE_CLI" --install-extension "$ext" >/dev/null 2>&1; then
+            success "Installed: $ext"
+        else
+            warn "Failed to install: $ext"
+        fi
+    done
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -414,6 +483,7 @@ main() {
     detect_java_home
     detect_gradle_home
     detect_dotnet_root
+    detect_vscode_cli
 
     # --- Check for existing files ---
     if [ -d "$VSCODE_DIR" ] && [ "$FORCE_OVERWRITE" = false ] && [ "$DRY_RUN" = false ]; then
@@ -444,6 +514,7 @@ main() {
     generate_c_cpp_properties_json
     generate_extensions_json
     generate_tasks_json
+    install_recommended_extensions
 
     # --- Summary ---
     if [ "$DRY_RUN" = false ]; then

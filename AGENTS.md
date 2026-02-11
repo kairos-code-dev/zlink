@@ -42,12 +42,9 @@
 - Report vulnerabilities via `SECURITY.md`.
 - `VERSION` controls libzlink feature/version knobs; keep changes deliberate and documented.
 
-## Communication
-- Address the user as "팀장님".
-
 ## Agent Instructions
 - `AGENTS.md` is the single source of truth for repo guidelines.
 - If any agent-specific files are added in the future, they must reference `AGENTS.md` and instruct contributors to update `AGENTS.md` when guidelines change.
 
 ## External References
-- libzlink reference source: `/home/ulalax/project/ulalax/libzlink-ref`
+- Upstream reference project: `https://github.com/zeromq/libzmq`

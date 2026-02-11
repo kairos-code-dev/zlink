@@ -202,7 +202,7 @@ vcpkg install openssl:x64-windows
 | [사용자 가이드](doc/guide/01-overview.md) | zlink API 가이드 (12편) |
 | [바인딩 가이드](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | [내부 아키텍처](doc/internals/architecture.md) | 시스템 아키텍처 및 내부 구현 |
-| [빌드 가이드](doc/build/build-guide.md) | 빌드, 테스트, 패키징 |
+| [빌드 가이드](doc/building/build-guide.md) | 빌드, 테스트, 패키징 |
 | [Feature Roadmap](doc/plan/feature-roadmap.md) | 기능 로드맵과 의존성 그래프 |
 
 ---
@@ -210,5 +210,8 @@ vcpkg install openssl:x64-windows
 ## 라이선스
 
 [Mozilla Public License 2.0](LICENSE)
+
+서드파티 구성요소 및 바이너리 재배포 관련 고지는
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
 
 [libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

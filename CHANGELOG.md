@@ -120,23 +120,9 @@ cmake -B build -DWITH_TLS=ON
 
 Internal C++ defines (`ZLINK_HAVE_ASIO_SSL`, `ZLINK_HAVE_ASIO_WS`) remain unchanged for compatibility.
 
-### Migration Details
-
-This migration was completed in 5 phases:
-- **Phase 1:** Transport Layer cleanup (session_base.cpp, socket_base.cpp)
-- **Phase 2:** I/O Thread Layer cleanup (io_thread.hpp, io_thread.cpp)
-- **Phase 3:** Build system cleanup (CMakeLists.txt, poller.hpp)
-- **Phase 4:** Documentation updates
-- **Phase 5:** Final validation and performance testing
-
-For detailed migration documentation, see `docs/team/20260115_asio-only/`
-
 ### Technical Details
 
-- Total conditional compilation blocks removed: 10
-- Total phase references removed: 20
 - Test coverage: 61/61 tests passing (100%)
-- Binary size: Unchanged (5.9 MB)
 - Supported platforms: Windows, Linux, macOS (x64 and ARM64)
 
 ## [0.2.0] - 2026-01-13
@@ -198,7 +184,7 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
 - **From STREAM sockets**: Migrate to WebSocket (`ws://`, `wss://`)
 - **From removed protocols**: Migrate to `tcp://`, `ipc://`, or WebSocket
 
-## [0.1.3] - 2024-XX-XX
+## [0.1.3]
 
 ### Removed
 - **Socket Types**:
@@ -208,7 +194,7 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
   - `ZLINK_EVENT_PIPES_STATS` event
   - `zlink_socket_monitor_pipes_stats()` function
 
-## [0.1.2] - 2024-XX-XX
+## [0.1.2]
 
 ### Removed
 - **Draft API**: Completely removed all draft socket types and options
@@ -216,7 +202,7 @@ For detailed migration documentation, see `docs/team/20260115_asio-only/`
   - WebSocket transport (was draft feature, re-added in v0.2.0 as stable)
   - Draft socket options: `ZLINK_RECONNECT_STOP`, `ZLINK_ZAP_ENFORCE_DOMAIN`, etc.
 
-## [0.1.1] - 2024-XX-XX
+## [0.1.1]
 
 ### Added
 - Initial release based on libzlink 4.3.5
@@ -295,7 +281,7 @@ All versions support the following platforms:
 
 ---
 
-[0.2.0]: https://github.com/ulalax/zlink/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/ulalax/zlink/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/ulalax/zlink/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/ulalax/zlink/releases/tag/v0.1.1
+[0.2.0]: https://github.com/kairos-code-dev/zlink/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/kairos-code-dev/zlink/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/kairos-code-dev/zlink/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/kairos-code-dev/zlink/releases/tag/v0.1.1

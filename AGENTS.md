@@ -9,8 +9,7 @@
 - `core/builds/`: build helpers, templates, and CI tooling (CMake modules, platform helpers).
 - `core/external/`: bundled third-party sources (Boost, Unity, etc.).
 - `core/tools/`: dev/build helper scripts.
-- `core/packaging/`: packaging metadata (conan, debian, nuget, obs, etc.).
-- `core/m4/`: autotools macro definitions.
+- `core/packaging/`: packaging metadata (conan, debian, nuget, redhat).
 - `core/bench/benchwithzlink/` and `core/perf/`: benchmarks and comparison tooling.
 - `core/dist/`: packaged build outputs by platform.
 - `bindings/`: language wrappers (C++, Java, C#, Node.js).
@@ -21,7 +20,6 @@
 - `./core/build-scripts/linux/build.sh x64 ON`: Linux build with tests (macOS and Windows have equivalent scripts).
 - `cmake -B build -DZLINK_BUILD_TESTS=ON`: configure; `cmake --build build` to compile.
 - `ctest --output-on-failure`: run tests from a build dir (e.g., `core/build/linux-x64`).
-- Autotools fallback: `./core/autogen.sh`, `./configure`, `make`, `make check` (do not use `-j` with `make check`).
 - Optional flags: `-DBUILD_BENCHMARKS=ON`, `-DZLINK_CXX_STANDARD=17` (see `CXX_BUILD_EXAMPLES.md`).
 
 ## Coding Style and Naming Conventions

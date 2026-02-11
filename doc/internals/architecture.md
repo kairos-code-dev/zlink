@@ -30,7 +30,7 @@ While maintaining compatibility with libzmq's patterns and API, it applies the f
 
 - **Boost.Asio-based I/O**: Uses Asio's unified asynchronous I/O instead of platform-specific pollers (epoll/kqueue/IOCP)
 - **Native WebSocket/TLS support**: Built-in support for `ws://`, `wss://`, `tls://` protocols at the library level
-- **Custom protocol stack**: Uses the lightweight **ZMP v2.0** protocol instead of ZMTP
+- **Custom protocol stack**: Uses the lightweight **ZMP v1.0** protocol instead of ZMTP
 
 ### 1.2 Design Principles
 
@@ -113,7 +113,7 @@ Each layer has a single responsibility, and layers closer to the bottom are clos
 │                          PROTOCOL LAYER                                 │
 │                                                                         │
 │   ┌───────────────────────────┐    ┌───────────────────────────┐       │
-│   │    ZMP v2.0 Protocol      │    │     RAW Protocol          │       │
+│   │    ZMP v1.0 Protocol      │    │     RAW Protocol          │       │
 │   │    src/protocol/zmp_*     │    │     src/protocol/raw_*    │       │
 │   │    - 8-byte fixed header  │    │     - 4-byte length prefix│       │
 │   │    - Handshake support    │    │     - No handshake        │       │
@@ -303,7 +303,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 
 | Engine                | Protocol  | Transports               | Features                           |
 |-----------------------|-----------|--------------------------|-------------------------------------|
-| `asio_zmp_engine_t`   | ZMP v2.0  | TCP, TLS, IPC, WS, WSS  | Handshake + 8-byte fixed header    |
+| `asio_zmp_engine_t`   | ZMP v1.0  | TCP, TLS, IPC, WS, WSS  | Handshake + 8-byte fixed header    |
 | `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS  | 4-byte length prefix, STREAM only  |
 
 > WS/WSS also use `asio_zmp_engine_t` or `asio_raw_engine_t`;
@@ -388,7 +388,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
           └─────────────────────┘
 ```
 
-### 5.4 ZMP v2.0 Frame Structure
+### 5.4 ZMP v1.0 Frame Structure
 
 ```
  Byte:   0         1         2         3         4    5    6    7
@@ -1000,7 +1000,7 @@ core/
 │   │       └── asio_error_handler.hpp    # Error handling
 │   │
 │   ├── protocol/                    # Protocol encoding/decoding
-│   │   ├── zmp_protocol.hpp         # ZMP v2.0 constant definitions
+│   │   ├── zmp_protocol.hpp         # ZMP v1.0 constant definitions
 │   │   ├── zmp_encoder.cpp/hpp      # ZMP encoder
 │   │   ├── zmp_decoder.cpp/hpp      # ZMP decoder
 │   │   ├── zmp_metadata.hpp         # ZMP metadata
@@ -1091,7 +1091,7 @@ core/
 
 ### A. Related Documents
 
-- [ZMP v2.0 Protocol Details](protocol-zmp.md)
+- [ZMP v1.0 Protocol Details](protocol-zmp.md)
 - [RAW Protocol Details](protocol-raw.md)
 - [STREAM Socket WS/WSS Optimization](stream-socket.md)
 - [Threading and Concurrency Model](threading-model.md)

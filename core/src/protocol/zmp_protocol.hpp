@@ -9,7 +9,7 @@
 namespace zlink
 {
 const unsigned char zmp_magic = 0x5a;
-const unsigned char zmp_version = 0x02;
+const unsigned char zmp_version = 0x01;
 
 const size_t zmp_header_size = 8;
 const uint64_t zmp_max_body_size = 0xffffffffULL;

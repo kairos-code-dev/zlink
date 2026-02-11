@@ -68,7 +68,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 │  라우팅 전략: lb_t(Round-robin) · fq_t · dist_t       │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v2.0 Protocol (8B 고정 헤더)   │
+│  asio_zmp_engine — ZMP v1.0 Protocol (8B 고정 헤더)   │
 │  Proactor 패턴 · Speculative I/O · Backpressure       │
 ├──────────────────────────────────────────────────────┤
 │  Transport Layer                                      │
@@ -88,7 +88,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 | **Zero-Copy** | 메시지 복사 최소화 — VSM(33B 이하)은 inline 저장, 대용량은 참조 카운팅 |
 | **Lock-Free** | Thread 간 통신에 YPipe(CAS 기반 FIFO) 사용, mutex 없음 |
 | **True Async** | Proactor 패턴 기반 비동기 I/O + Speculative I/O 최적화 |
-| **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 — 자체 ZMP v2.0 프로토콜 사용 |
+| **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 — 자체 ZMP v1.0 프로토콜 사용 |
 
 ### Thread 모델
 

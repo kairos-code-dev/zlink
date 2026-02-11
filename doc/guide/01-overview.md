@@ -28,7 +28,7 @@ zlink is a modern messaging library based on [libzmq](https://github.com/zeromq/
 │  Routing: lb_t(Round-robin) · fq_t · dist_t           │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v2.0 Protocol (8B fixed hdr)  │
+│  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed hdr)  │
 │  Proactor pattern · Speculative I/O · Backpressure    │
 ├──────────────────────────────────────────────────────┤
 │  Transport Layer                                      │

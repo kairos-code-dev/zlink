@@ -1,6 +1,6 @@
 [English](protocol-zmp.md) | [한국어](protocol-zmp.ko.md)
 
-# ZMP v2.0 Protocol Details
+# ZMP v1.0 Protocol Details
 
 ## 1. Design Philosophy
 - ZMTP-incompatible (optimized exclusively for zlink)

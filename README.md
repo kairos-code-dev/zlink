@@ -68,7 +68,7 @@ zlink is composed of five clearly separated layers:
 │  Routing strategies: lb_t(Round-robin) · fq_t · dist_t │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v2.0 Protocol (8B fixed header)│
+│  asio_zmp_engine — ZMP v1.0 Protocol (8B fixed header)│
 │  Proactor pattern · Speculative I/O · Backpressure    │
 ├──────────────────────────────────────────────────────┤
 │  Transport Layer                                      │
@@ -88,7 +88,7 @@ zlink is composed of five clearly separated layers:
 | **Zero-Copy** | Minimizes message copying — VSM (33B or less) stored inline, larger messages use reference counting |
 | **Lock-Free** | Inter-thread communication via YPipe (CAS-based FIFO), no mutexes |
 | **True Async** | Proactor pattern-based async I/O with Speculative I/O optimization |
-| **Protocol Agnostic** | Clean separation of Transport and Protocol — uses the custom ZMP v2.0 protocol |
+| **Protocol Agnostic** | Clean separation of Transport and Protocol — uses the custom ZMP v1.0 protocol |
 
 ### Threading Model
 

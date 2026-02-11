@@ -30,7 +30,7 @@ zlink는 libzmq를 기반으로 한 고성능 메시징 라이브러리입니다
 
 - **Boost.Asio 기반 I/O**: 플랫폼별 폴러(epoll/kqueue/IOCP) 대신 Asio의 통합 비동기 I/O 사용
 - **WebSocket/TLS 네이티브 지원**: `ws://`, `wss://`, `tls://` 프로토콜을 라이브러리 수준에서 내장
-- **자체 프로토콜 스택**: ZMTP 대신 경량화된 **ZMP v2.0** 프로토콜 사용
+- **자체 프로토콜 스택**: ZMTP 대신 경량화된 **ZMP v1.0** 프로토콜 사용
 
 ### 1.2 설계 원칙
 
@@ -112,7 +112,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다.
 │                          PROTOCOL LAYER                                 │
 │                                                                         │
 │   ┌───────────────────────────┐    ┌───────────────────────────┐       │
-│   │    ZMP v2.0 Protocol      │    │     RAW Protocol          │       │
+│   │    ZMP v1.0 Protocol      │    │     RAW Protocol          │       │
 │   │    src/protocol/zmp_*     │    │     src/protocol/raw_*    │       │
 │   │    - 8바이트 고정 헤더     │    │     - 4바이트 길이 접두사  │       │
 │   │    - 핸드셰이크 지원       │    │     - 핸드셰이크 없음      │       │
@@ -300,7 +300,7 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
 
 | 엔진                  | 프로토콜  | 트랜스포트              | 특징                            |
 |-----------------------|-----------|------------------------|---------------------------------|
-| `asio_zmp_engine_t`   | ZMP v2.0  | TCP, TLS, IPC, WS, WSS | 핸드셰이크 + 8바이트 고정 헤더  |
+| `asio_zmp_engine_t`   | ZMP v1.0  | TCP, TLS, IPC, WS, WSS | 핸드셰이크 + 8바이트 고정 헤더  |
 | `asio_raw_engine_t`   | RAW       | TCP, TLS, IPC, WS, WSS | 4바이트 길이 접두사, STREAM 전용|
 
 > WS/WSS도 `asio_zmp_engine_t` 또는 `asio_raw_engine_t`를 사용하며,
@@ -383,7 +383,7 @@ Engine Layer는 Boost.Asio 기반의 비동기 I/O 처리를 담당합니다.
           └─────────────────────┘
 ```
 
-### 5.4 ZMP v2.0 프레임 구조
+### 5.4 ZMP v1.0 프레임 구조
 
 ```
  Byte:   0         1         2         3         4    5    6    7
@@ -995,7 +995,7 @@ core/
 │   │       └── asio_error_handler.hpp    # 에러 핸들링
 │   │
 │   ├── protocol/                    # 프로토콜 인코딩/디코딩
-│   │   ├── zmp_protocol.hpp         # ZMP v2.0 상수 정의
+│   │   ├── zmp_protocol.hpp         # ZMP v1.0 상수 정의
 │   │   ├── zmp_encoder.cpp/hpp      # ZMP 인코더
 │   │   ├── zmp_decoder.cpp/hpp      # ZMP 디코더
 │   │   ├── zmp_metadata.hpp         # ZMP 메타데이터
@@ -1086,7 +1086,7 @@ core/
 
 ### A. 관련 문서
 
-- [ZMP v2.0 프로토콜 상세](protocol-zmp.ko.md)
+- [ZMP v1.0 프로토콜 상세](protocol-zmp.ko.md)
 - [RAW 프로토콜 상세](protocol-raw.ko.md)
 - [STREAM 소켓 WS/WSS 최적화](stream-socket.ko.md)
 - [스레딩 및 동시성 모델](threading-model.ko.md)

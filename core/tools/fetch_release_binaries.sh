@@ -44,9 +44,9 @@ copy_windows_dll() {
   dst="$2"
   dll=""
   if [ -d "$pkg_dir/bin" ]; then
-    dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'libzlink-*.dll' | head -n 1 || true)"
+    dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'zlink.dll' | head -n 1 || true)"
     if [ -z "$dll" ]; then
-      dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'zlink.dll' | head -n 1 || true)"
+      dll="$(find "$pkg_dir/bin" -maxdepth 1 -type f -name 'libzlink-*.dll' | head -n 1 || true)"
     fi
   fi
   if [ -n "$dll" ] && [ -f "$dll" ]; then

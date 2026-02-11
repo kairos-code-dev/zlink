@@ -66,7 +66,7 @@ Before running:
   1. Copy previous zlink library to core/bench/benchwithzlink/baseline/zlink_dist/<platform>-<arch>/
      - Linux: libzlink.so
      - macOS: libzlink.dylib
-     - Windows: libzlink.dll + libzlink.lib
+     - Windows: zlink.dll + zlink.lib
 
 Options:
   -h, --help            Show this help.

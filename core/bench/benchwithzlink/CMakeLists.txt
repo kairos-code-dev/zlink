@@ -8,7 +8,7 @@
 # 1. Copy previous zlink library to core/bench/benchwithzlink/baseline/zlink_dist/<platform>-<arch>/
 #    - Linux: libzlink.so
 #    - macOS: libzlink.dylib
-#    - Windows: libzlink.dll + libzlink.lib
+#    - Windows: zlink.dll + zlink.lib
 # 2. Build with: cmake -B build -DBUILD_BENCHMARKS=ON && cmake --build build
 # 3. Run: ./core/bench/benchwithzlink/run_benchmarks.sh ALL
 

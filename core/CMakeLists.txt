@@ -1224,8 +1224,7 @@ if(MSVC)
   # Suppress linker warnings caused by #ifdef omission of file content.
   set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_STATIC_LINKER_FLAGS} /ignore:4221")
   set(PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
-  set(PDB_NAME
-      "lib${ZLINK_OUTPUT_BASENAME}${MSVC_TOOLSET}-mt-gd-${ZLINK_VERSION_MAJOR}_${ZLINK_VERSION_MINOR}_${ZLINK_VERSION_PATCH}")
+  set(PDB_NAME "${ZLINK_OUTPUT_BASENAME}")
   function(enable_vs_guideline_checker target)
     set_target_properties(
       ${target} PROPERTIES VS_GLOBAL_EnableCppCoreCheck true VS_GLOBAL_CodeAnalysisRuleSet CppCoreCheckRules.ruleset
@@ -1252,14 +1251,9 @@ if(MSVC)
     set_target_properties(
       libzlink
       PROPERTIES PUBLIC_HEADER "${public_headers}"
-                 RELEASE_POSTFIX "${MSVC_TOOLSET}-mt-${ZLINK_VERSION_MAJOR}_${ZLINK_VERSION_MINOR}_${ZLINK_VERSION_PATCH}"
-                 RELWITHDEBINFO_POSTFIX
-                 "${MSVC_TOOLSET}-mt-${ZLINK_VERSION_MAJOR}_${ZLINK_VERSION_MINOR}_${ZLINK_VERSION_PATCH}"
-                 MINSIZEREL_POSTFIX "${MSVC_TOOLSET}-mt-${ZLINK_VERSION_MAJOR}_${ZLINK_VERSION_MINOR}_${ZLINK_VERSION_PATCH}"
-                 DEBUG_POSTFIX "${MSVC_TOOLSET}-mt-gd-${ZLINK_VERSION_MAJOR}_${ZLINK_VERSION_MINOR}_${ZLINK_VERSION_PATCH}"
                  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
                  COMPILE_DEFINITIONS "DLL_EXPORT"
-                 OUTPUT_NAME "lib${ZLINK_OUTPUT_BASENAME}")
+                 OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}")
     if(ZLINK_HAVE_WINDOWS_UWP)
       set_target_properties(libzlink PROPERTIES LINK_FLAGS_DEBUG "/OPT:NOICF /OPT:NOREF")
     endif()

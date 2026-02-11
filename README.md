@@ -223,6 +223,7 @@ Throughput comparison with libzmq on 64-byte messages over TCP:
 | Document | Description |
 |----------|-------------|
 | [Documentation Index](doc/README.md) | Full table of contents and reader-specific paths |
+| [API Reference](doc/api/README.md) | Function-level C API reference |
 | [User Guide](doc/guide/01-overview.md) | zlink API guide (12 chapters) |
 | [Bindings Guide](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python bindings |
 | [Internal Architecture](doc/internals/architecture.md) | System architecture and internals |

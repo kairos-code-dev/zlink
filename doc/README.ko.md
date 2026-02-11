@@ -49,6 +49,24 @@
 | [09-message-api.ko.md](guide/09-message-api.ko.md) | 메시지 API 상세 |
 | [10-performance.ko.md](guide/10-performance.ko.md) | 성능 특성 및 튜닝 가이드 |
 
+## API 레퍼런스 (api/)
+
+| 문서 | 설명 |
+|------|------|
+| [README.ko.md](api/README.ko.md) | API 레퍼런스 인덱스 |
+| [errors.ko.md](api/errors.ko.md) | 에러 처리 및 버전 |
+| [context.ko.md](api/context.ko.md) | Context API |
+| [message.ko.md](api/message.ko.md) | Message API |
+| [socket.ko.md](api/socket.ko.md) | Socket API |
+| [monitoring.ko.md](api/monitoring.ko.md) | 모니터링 및 피어 정보 |
+| [registry.ko.md](api/registry.ko.md) | Registry API |
+| [discovery.ko.md](api/discovery.ko.md) | Discovery API |
+| [gateway.ko.md](api/gateway.ko.md) | Gateway API |
+| [receiver.ko.md](api/receiver.ko.md) | Receiver API |
+| [spot.ko.md](api/spot.ko.md) | SPOT PUB/SUB API |
+| [polling.ko.md](api/polling.ko.md) | Polling 및 Proxy |
+| [utilities.ko.md](api/utilities.ko.md) | 유틸리티 (타이머, 스레드 등) |
+
 ## 바인딩 가이드 (bindings/)
 
 | 문서 | 설명 |

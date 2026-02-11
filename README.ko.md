@@ -223,6 +223,7 @@ libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 | 문서 | 설명 |
 |------|------|
 | [문서 네비게이션](doc/README.ko.md) | 전체 문서 목차 및 독자별 경로 |
+| [API 레퍼런스](doc/api/README.ko.md) | 함수 수준 C API 레퍼런스 |
 | [사용자 가이드](doc/guide/01-overview.ko.md) | zlink API 가이드 (12편) |
 | [바인딩 가이드](doc/bindings/overview.ko.md) | C++/Java/.NET/Node.js/Python 바인딩 |
 | [내부 아키텍처](doc/internals/architecture.ko.md) | 시스템 아키텍처 및 내부 구현 |

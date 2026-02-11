@@ -130,7 +130,7 @@ jobs:
         shell: cmd
         run: |
           echo === zlink.dll dependencies ===
-          dumpbin /DEPENDENTS core\dist\windows-x64\zlink.dll
+          dumpbin /DEPENDENTS core\dist\windows-x64\bin\zlink.dll
           echo.
           echo === Files in dist ===
           dir /s core\dist\windows-x64\

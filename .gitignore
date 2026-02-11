@@ -201,6 +201,14 @@ bindings/**/CMakeCache.txt
 bindings/**/cmake_install.cmake
 bindings/**/Makefile
 bindings/**/compile_commands.json
+!bindings/java/gradle/wrapper/gradle-wrapper.jar
 
 ## buildenv (auto-generated)
 buildenv/win/env.ps1
+
+# Local test environments
+.venv-bindings/
+
+# Local benchmark outputs
+core/bench/benchwithzlink/results/
+core/bench/benchwithzmq/results/

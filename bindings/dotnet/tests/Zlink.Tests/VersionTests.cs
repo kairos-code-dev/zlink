@@ -10,8 +10,8 @@ public class VersionTests
         if (!NativeTests.IsNativeAvailable())
             return;
         var (major, minor, patch) = ZlinkVersion.Get();
-        Assert.Equal(0, major);
-        Assert.Equal(7, minor);
+        Assert.Equal(1, major);
+        Assert.Equal(0, minor);
         Assert.Equal(0, patch);
     }
 }

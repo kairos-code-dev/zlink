@@ -128,6 +128,8 @@ if [ -n "$SO_FILE" ]; then
     TARGET_SO="$REPO_ROOT/$OUTPUT_DIR/libzlink.so"
     cp "$SO_FILE" "$TARGET_SO"
     echo "Copied: $SO_FILE -> $TARGET_SO"
+    ln -sfn "libzlink.so" "$REPO_ROOT/$OUTPUT_DIR/libzlink.so.5"
+    echo "Linked: $REPO_ROOT/$OUTPUT_DIR/libzlink.so.5 -> libzlink.so"
 else
     echo "Error: libzlink.so not found!"
     exit 1

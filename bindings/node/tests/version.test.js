@@ -17,8 +17,8 @@ try {
 
 test('version matches core', { skip: !nativeOk }, () => {
   const v = zlink.version();
-  assert.equal(v[0], 0);
-  assert.equal(v[1], 7);
+  assert.equal(v[0], 1);
+  assert.equal(v[1], 0);
   assert.equal(v[2], 0);
 });
 

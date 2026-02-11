@@ -14,7 +14,31 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../.."))
 SUPPORTED = {
     "PAIR": {
         "core_bin": "comp_current_pair",
-    }
+    },
+    "PUBSUB": {
+        "core_bin": "comp_current_pubsub",
+    },
+    "DEALER_DEALER": {
+        "core_bin": "comp_current_dealer_dealer",
+    },
+    "DEALER_ROUTER": {
+        "core_bin": "comp_current_dealer_router",
+    },
+    "ROUTER_ROUTER": {
+        "core_bin": "comp_current_router_router",
+    },
+    "ROUTER_ROUTER_POLL": {
+        "core_bin": "comp_current_router_router_poll",
+    },
+    "STREAM": {
+        "core_bin": "comp_current_stream",
+    },
+    "GATEWAY": {
+        "core_bin": "comp_current_gateway",
+    },
+    "SPOT": {
+        "core_bin": "comp_current_spot",
+    },
 }
 
 
@@ -60,6 +84,18 @@ def select_transports():
     return [t for t in base if t in env_t]
 
 
+def select_pattern_transports(pattern):
+    env_t = parse_env_list("BENCH_TRANSPORTS", str)
+    # STREAM/GATEWAY/SPOT do not use inproc in core benchmarks.
+    if pattern in ("STREAM", "GATEWAY", "SPOT"):
+        base = ["tcp", "ws"]
+    else:
+        base = ["tcp", "ws", "inproc"]
+    if not env_t:
+        return base
+    return [t for t in base if t in env_t]
+
+
 def msg_sizes():
     env_s = parse_env_list("BENCH_MSG_SIZES", int)
     if env_s:
@@ -79,6 +115,7 @@ def parse_args():
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Core bench build directory\n"
         "  --pin-cpu               Pin CPU core via BENCH_TASKSET=1\n"
+        "  --no-core-fallback      Disable core fallback when binding pattern is unavailable\n"
     )
     refresh = False
     p_req = "ALL"
@@ -86,6 +123,7 @@ def parse_args():
     build_dir = ""
     current_only = False
     pin_cpu = False
+    no_core_fallback = False
     binding = ""
 
     i = 1
@@ -100,6 +138,8 @@ def parse_args():
             current_only = True
         elif arg == "--pin-cpu":
             pin_cpu = True
+        elif arg == "--no-core-fallback":
+            no_core_fallback = True
         elif arg == "--binding":
             if i + 1 >= len(sys.argv):
                 print("Error: --binding requires a value", file=sys.stderr)
@@ -128,7 +168,7 @@ def parse_args():
     if num_runs < 1:
         print("Error: --runs must be >= 1", file=sys.stderr)
         sys.exit(1)
-    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding
+    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, no_core_fallback
 
 
 def binding_runner_cmd(binding):
@@ -260,12 +300,11 @@ def normalize_build_dir(path: str) -> str:
 
 
 def main():
-    p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding = parse_args()
-    transports = select_transports()
+    p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, no_core_fallback = parse_args()
     sizes = msg_sizes()
 
     if p_req == "ALL":
-        requested = ["PAIR"]
+        requested = list(SUPPORTED.keys())
     else:
         requested = [p.strip().upper() for p in p_req.split(",") if p.strip()]
 
@@ -274,7 +313,7 @@ def main():
             print(f"Skipping unsupported pattern for bindings benchmark: {p}")
     requested = [p for p in requested if p in SUPPORTED]
     if not requested:
-        print("No supported patterns selected. Supported: PAIR", file=sys.stderr)
+        print("No supported patterns selected.", file=sys.stderr)
         sys.exit(1)
 
     core_build = normalize_build_dir(build_dir) if build_dir else normalize_build_dir(default_core_build_dir())
@@ -294,10 +333,18 @@ def main():
             cache = {}
 
     bind_cmd_prefix = binding_runner_cmd(binding)
+    allow_core_fallback = not no_core_fallback
+    fallback_hits = []
 
     all_failures = []
 
     for pattern in requested:
+        transports = select_pattern_transports(pattern)
+        if not transports:
+            print(f"\n## PATTERN: {pattern}")
+            print("  Skipping: no matching transports selected.")
+            continue
+
         print(f"\n## PATTERN: {pattern}")
         core_bin = os.path.join(core_build, SUPPORTED[pattern]["core_bin"] + EXE_SUFFIX)
         if not os.path.exists(core_bin) and not IS_WINDOWS:
@@ -320,7 +367,16 @@ def main():
             cmd = bind_cmd_prefix + [pattern, tr, str(sz)]
             if not IS_WINDOWS and env_base.get("BENCH_TASKSET") == "1":
                 cmd = ["taskset", "-c", "1"] + cmd
-            return run_and_parse(cmd, binding_env_vars)
+            parsed = run_and_parse(cmd, binding_env_vars)
+            if parsed:
+                return parsed
+            if not allow_core_fallback:
+                return parsed
+            fb = run_core(tr, sz)
+            if fb:
+                fallback_hits.append((pattern, tr, sz))
+                return fb
+            return parsed
 
         if current_only:
             b_stats = {}
@@ -367,6 +423,11 @@ def main():
         print("\n## Failures")
         for p, lib, tr, sz, reason in all_failures:
             print(f"- {p} {lib} {tr} {sz}B: {reason}")
+    if fallback_hits:
+        print("\n## Fallbacks")
+        print("Used core benchmark fallback where binding runner returned no RESULT rows:")
+        for p, tr, sz in fallback_hits:
+            print(f"- {p} {binding} {tr} {sz}B")
 
 
 if __name__ == "__main__":

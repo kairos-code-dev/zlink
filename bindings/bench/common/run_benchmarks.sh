@@ -56,7 +56,7 @@ usage() {
 Usage: bindings/${BINDING}/benchwithzlink/run_benchmarks.sh [options]
 
 Compare cached zlink(core current) vs ${BINDING} binding benchmark results.
-Note: PATTERN=ALL currently runs implemented binding patterns (PAIR).
+Note: PATTERN=ALL runs all core benchwithzlink patterns.
 
 Options:
   -h, --help            Show this help.

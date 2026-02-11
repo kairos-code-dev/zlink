@@ -934,10 +934,29 @@ int spot_node_t::publish (const char *topic_,
     }
 
     std::vector<msg_t> payload;
-    if (!copy_parts_from_msgv (parts_, part_count_, &payload))
-        return -1;
-
+    bool needs_local_dispatch = false;
     {
+        scoped_lock_t lock (_sync);
+        std::map<std::string, std::set<spot_sub_t *> >::const_iterator exact =
+          _topic_index.find (topic);
+        if (exact != _topic_index.end () && !exact->second.empty ())
+            needs_local_dispatch = true;
+        if (!needs_local_dispatch) {
+            for (std::set<spot_sub_t *>::const_iterator it =
+                   _pattern_subs.begin ();
+                 it != _pattern_subs.end (); ++it) {
+                if ((*it)->matches (topic)) {
+                    needs_local_dispatch = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (needs_local_dispatch) {
+        if (!copy_parts_from_msgv (parts_, part_count_, &payload))
+            return -1;
+
         scoped_lock_t lock (_sync);
         dispatch_local (topic, payload);
     }

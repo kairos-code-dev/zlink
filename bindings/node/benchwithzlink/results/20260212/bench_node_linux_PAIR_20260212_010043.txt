@@ -1,0 +1,88 @@
+
+## PATTERN: PAIR
+  > Benchmarking zlink(core current) for reference...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+  > Benchmarking binding (node)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5896.83 Kmsg/s | 1497.05 Kmsg/s |  -74.61% |
+| 64B | Latency    |       30.18 us |       35.85 us |  -18.80% |
+| 256B | Throughput | 2792.31 Kmsg/s |  924.61 Kmsg/s |  -66.89% |
+| 256B | Latency    |       30.10 us |       54.92 us |  -82.45% |
+| 1024B | Throughput | 1102.89 Kmsg/s |  526.29 Kmsg/s |  -52.28% |
+| 1024B | Latency    |       35.10 us |       82.40 us | -134.76% |
+| 65536B | Throughput |   68.25 Kmsg/s |   33.31 Kmsg/s |  -51.19% |
+| 65536B | Latency    |       44.76 us |      160.11 us | -257.71% |
+| 131072B | Throughput |   48.64 Kmsg/s |   18.56 Kmsg/s |  -61.84% |
+| 131072B | Latency    |       58.02 us |      193.09 us | -232.80% |
+| 262144B | Throughput |   25.37 Kmsg/s |    9.55 Kmsg/s |  -62.34% |
+| 262144B | Latency    |      131.58 us |      250.40 us |  -90.30% |
+
+### Transport: ws
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6496.33 Kmsg/s | 1587.67 Kmsg/s |  -75.56% |
+| 64B | Latency    |       34.88 us |       38.14 us |   -9.34% |
+| 256B | Throughput | 3675.63 Kmsg/s | 1139.25 Kmsg/s |  -69.01% |
+| 256B | Latency    |       32.02 us |       31.54 us |   +1.50% |
+| 1024B | Throughput | 1387.86 Kmsg/s |  656.40 Kmsg/s |  -52.70% |
+| 1024B | Latency    |       37.32 us |       48.71 us |  -30.53% |
+| 65536B | Throughput |   47.59 Kmsg/s |   33.05 Kmsg/s |  -30.55% |
+| 65536B | Latency    |      147.53 us |       76.01 us |  +48.48% |
+| 131072B | Throughput |   24.91 Kmsg/s |   15.45 Kmsg/s |  -37.99% |
+| 131072B | Latency    |      135.27 us |      119.67 us |  +11.53% |
+| 262144B | Throughput |   15.02 Kmsg/s |    7.07 Kmsg/s |  -52.92% |
+| 262144B | Latency    |      162.56 us |      120.74 us |  +25.73% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6323.93 Kmsg/s | 1372.26 Kmsg/s |  -78.30% |
+| 64B | Latency    |        0.07 us |        0.83 us | -1090.00% |
+| 256B | Throughput | 5562.03 Kmsg/s | 1042.05 Kmsg/s |  -81.26% |
+| 256B | Latency    |        0.07 us |        1.02 us | -1353.34% |
+| 1024B | Throughput | 2294.21 Kmsg/s |  904.48 Kmsg/s |  -60.58% |
+| 1024B | Latency    |        0.09 us |        1.21 us | -1246.02% |
+| 65536B | Throughput |  168.27 Kmsg/s |   21.51 Kmsg/s |  -87.22% |
+| 65536B | Latency    |        1.92 us |        6.07 us | -216.36% |
+| 131072B | Throughput |   84.64 Kmsg/s |   14.40 Kmsg/s |  -82.99% |
+| 131072B | Latency    |        3.41 us |        9.04 us | -165.06% |
+| 262144B | Throughput |   49.60 Kmsg/s |    5.91 Kmsg/s |  -88.08% |
+| 262144B | Latency    |        6.67 us |       17.22 us | -158.22% |

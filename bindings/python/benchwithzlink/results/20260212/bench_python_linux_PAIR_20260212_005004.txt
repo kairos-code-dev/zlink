@@ -1,0 +1,10 @@
+
+## PATTERN: PAIR
+  > Benchmarking binding (python)...
+    Testing inproc | 64B: 1 Done
+
+### Transport: inproc
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 64B | Throughput |    814.18 Kmsg/s |
+| 64B | Latency    |          1.20 us |

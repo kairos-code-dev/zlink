@@ -1,0 +1,12 @@
+
+## PATTERN: PAIR
+  > Benchmarking zlink(core current) for reference...
+    Testing inproc | 64B: 1 Done
+  > Benchmarking binding (cpp)...
+    Testing inproc | 64B: 1 Done
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5701.72 Kmsg/s | 9423.53 Kmsg/s |  +65.28% |
+| 64B | Latency    |        0.07 us |        0.06 us |  +10.00% |

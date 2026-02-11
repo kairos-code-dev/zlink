@@ -1,0 +1,10 @@
+
+## PATTERN: PAIR
+  > Benchmarking binding (dotnet)...
+    Testing inproc | 64B: 1 Done
+
+### Transport: inproc
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 64B | Throughput |   7268.95 Kmsg/s |
+| 64B | Latency    |          0.10 us |

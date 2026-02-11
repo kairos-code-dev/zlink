@@ -32,7 +32,7 @@ Note: PATTERN=ALL includes STREAM by default.
 
 Before running:
   1. Copy previous version library to core\bench\benchwithzlink\baseline\zlink_dist\<platform>-<arch>\
-     - Windows: libzlink.dll + libzlink.lib
+     - Windows: zlink.dll + zlink.lib
 
 IMPORTANT: Use PowerShell parameter syntax with '-', not bash '--' syntax.
 
@@ -188,11 +188,11 @@ if ($WithBaselineFlag) {
         Write-Error "Error: baseline bin/lib directories not found under $BaselineRoot"
         exit 1
     }
-    $BaselineDllFiles = Get-ChildItem -Path $BaselineBinDir -Filter "libzlink*.dll" -ErrorAction SilentlyContinue
-    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "libzlink*.lib" -ErrorAction SilentlyContinue
+    $BaselineDllFiles = Get-ChildItem -Path $BaselineBinDir -Filter "zlink*.dll" -ErrorAction SilentlyContinue
+    $BaselineLibFiles = Get-ChildItem -Path $BaselineLibDir -Filter "zlink*.lib" -ErrorAction SilentlyContinue
     if (-not $BaselineDllFiles -or -not $BaselineLibFiles) {
-        Write-Error "Error: No baseline libzlink dll/lib found in $BaselineRoot"
-        Write-Error "Please copy previous zlink library (libzlink.dll + libzlink.lib) there."
+        Write-Error "Error: No baseline zlink dll/lib found in $BaselineRoot"
+        Write-Error "Please copy previous zlink library (zlink.dll + zlink.lib) there."
         exit 1
     }
 }

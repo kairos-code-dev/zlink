@@ -189,8 +189,8 @@ try {
         Copy-Item $SOURCE_DLL $TARGET_DLL_VERSIONED
         Write-Host "Copied: $SOURCE_DLL -> $TARGET_DLL_VERSIONED"
 
-        # Also copy as libzlink.dll for convenience
-        $TARGET_DLL = Join-Path $OutputDir "libzlink.dll"
+        # Also copy as stable runtime name
+        $TARGET_DLL = Join-Path $OutputDir "zlink.dll"
         Copy-Item $SOURCE_DLL $TARGET_DLL
         Write-Host "Copied: $SOURCE_DLL -> $TARGET_DLL"
 
@@ -277,7 +277,7 @@ try {
         Copy-Item (Join-Path $RepoRoot "core\\include\\zlink_utils.h") $IncludeDir
         Write-Host "Copied: zlink.h, zlink_utils.h -> $IncludeDir"
     } else {
-        throw "libzlink.dll not found!"
+        throw "zlink.dll not found!"
     }
 
     # Step 5: Run tests (if enabled)
@@ -343,7 +343,7 @@ try {
 # Step 6: Verify build
 Write-Host ""
 Write-Host "Step 6: Verifying build..."
-$FINAL_DLL = "$OutputDir\libzlink.dll"
+$FINAL_DLL = "$OutputDir\zlink.dll"
 
 if (Test-Path $FINAL_DLL) {
     $FileSize = (Get-Item $FINAL_DLL).Length

@@ -66,8 +66,8 @@ Or explicitly:
 
 After a successful build, you'll find these files in the output directory:
 
-- `libzlink.dll` - Main Zlink library (ARM64 or x64)
-- `libzlink.lib` - Import library for linking
+- `zlink.dll` - Main Zlink library (ARM64 or x64)
+- `zlink.lib` - Import library for linking
 - `msvcp140.dll` - VC++ runtime (matching architecture)
 - `vcruntime140.dll` - VC++ runtime (matching architecture)
 - `vcruntime140_1.dll` - VC++ runtime (matching architecture, if available)
@@ -111,12 +111,12 @@ libzlink-native/
 │       └── zlink-4.3.5/
 └── core/dist/
     ├── windows-x64/         # x64 output binaries
-    │   ├── libzlink.dll
-    │   ├── libzlink.lib
+    │   ├── zlink.dll
+    │   ├── zlink.lib
     │   └── *.dll (runtime)
     └── windows-arm64/       # ARM64 output binaries
-        ├── libzlink.dll
-        ├── libzlink.lib
+        ├── zlink.dll
+        ├── zlink.lib
         └── *.dll (runtime)
 ```
 

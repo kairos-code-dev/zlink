@@ -129,8 +129,8 @@ jobs:
       - name: Check DLL dependencies
         shell: cmd
         run: |
-          echo === libzlink.dll dependencies ===
-          dumpbin /DEPENDENTS core\dist\windows-x64\libzlink.dll
+          echo === zlink.dll dependencies ===
+          dumpbin /DEPENDENTS core\dist\windows-x64\bin\zlink.dll
           echo.
           echo === Files in dist ===
           dir /s core\dist\windows-x64\

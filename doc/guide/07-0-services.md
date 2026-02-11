@@ -25,6 +25,16 @@ zlink의 서비스 계층은 7종 소켓(PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER
 - **Discovery**는 Registry를 구독하여 서비스 목록을 로컬 캐시로 유지한다.
 - **Gateway**와 **SPOT**은 Discovery를 통해 대상을 자동 발견하고 연결한다.
 
+## 서비스 명칭
+
+| 서비스 | 명칭 의미 | 한줄 설명 |
+|--------|-----------|-----------|
+| **Registry** | 서비스 등록소 | 서비스 엔트리를 등록·관리하는 중앙 저장소 |
+| **Discovery** | 서비스 발견 | Registry를 구독하여 서비스 목록을 로컬 캐시로 유지 |
+| **Gateway** | 서비스 게이트웨이 | 서비스에 대한 접근점 + 클라이언트 사이드 로드밸런서. API Gateway(인증, rate limiting 등)와는 다른 개념 |
+| **Receiver** | 서비스 수신자 | Gateway로부터 요청을 받아 처리하는 백엔드 |
+| **SPOT** | 위치(spot) 투명 pub/sub | 객체 단위의 위치투명한 토픽 기반 발행/구독 메시 |
+
 ## 3. 서비스 구성 요소
 
 ### 3.1 Service Discovery — 기반 인프라

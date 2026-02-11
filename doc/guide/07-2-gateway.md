@@ -4,6 +4,8 @@
 
 Gateway는 Discovery 기반으로 서비스 Receiver에 위치투명하게 메시지를 전송하고, Receiver로부터 응답을 수신하는 클라이언트 컴포넌트이다. 로드밸런싱과 자동 연결/해제를 처리한다.
 
+> **명칭에 대하여**: Gateway는 특정 서비스에 대한 접근점(entry point)이자 클라이언트 사이드 로드밸런서다. API Gateway(Kong, AWS API Gateway 등)처럼 인증·rate limiting·프로토콜 변환을 포함하는 개념이 아니라, 서비스 접근 + 로드밸런싱에 집중하는 경량 게이트웨이를 의미한다.
+
 **Gateway는 thread-safe하다.** 일반 zlink 소켓(PAIR, DEALER, ROUTER 등)은 단일 스레드에서만 사용해야 하지만, Gateway는 내부 mutex 보호를 통해 여러 스레드에서 안전하게 동시 사용할 수 있다.
 
 ## 2. Receiver 설정

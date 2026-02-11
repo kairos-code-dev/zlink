@@ -15,8 +15,8 @@ Release:       1%{?dist}
 Summary:       The Zlink messaging library
 Group:         Development/Libraries/C and C++
 License:       MPL-2.0
-URL:           http://www.zlink.org/
-Source:        http://download.zlink.org/%{name}-%{version}.tar.gz
+URL:           https://github.com/kairos-code-dev/zlink
+Source:        https://github.com/kairos-code-dev/zlink/archive/v%{version}.tar.gz
 Prefix:        %{_prefix}
 Buildroot:     %{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires:  autoconf automake libtool glib2-devel libbsd-devel
@@ -65,12 +65,10 @@ Requires:      libstdc++
 %define _unpackaged_files_terminate_build 0
 
 %description
-The 0MQ lightweight messaging kernel is a library which extends the
-standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. 0MQ sockets provide an
-abstraction of asynchronous message queues, multiple messaging
-patterns, message filtering (subscriptions), seamless access to
-multiple transport protocols and more.
+zlink is a modern messaging library that provides asynchronous message
+queues, multiple messaging patterns, message filtering (subscriptions),
+and seamless access to multiple transport protocols including TCP, IPC,
+inproc, WebSocket, and TLS.
 
 %package -n %{lib_name}
 Summary:   Shared Library for Zlink
@@ -78,12 +76,10 @@ Group:     Productivity/Networking/Web/Servers
 Conflicts: zlink
 
 %description -n %{lib_name}
-The 0MQ lightweight messaging kernel is a library which extends the
-standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. 0MQ sockets provide an
-abstraction of asynchronous message queues, multiple messaging
-patterns, message filtering (subscriptions), seamless access to
-multiple transport protocols and more.
+zlink is a modern messaging library that provides asynchronous message
+queues, multiple messaging patterns, message filtering (subscriptions),
+and seamless access to multiple transport protocols including TCP, IPC,
+inproc, WebSocket, and TLS.
 
 This package contains the Zlink shared library.
 
@@ -113,12 +109,10 @@ Requires:  gnutls-devel
 %endif
 
 %description devel
-The 0MQ lightweight messaging kernel is a library which extends the
-standard socket interfaces with features traditionally provided by
-specialised messaging middleware products. 0MQ sockets provide an
-abstraction of asynchronous message queues, multiple messaging
-patterns, message filtering (subscriptions), seamless access to
-multiple transport protocols and more.
+zlink is a modern messaging library that provides asynchronous message
+queues, multiple messaging patterns, message filtering (subscriptions),
+and seamless access to multiple transport protocols including TCP, IPC,
+inproc, WebSocket, and TLS.
 
 This package contains Zlink related development libraries and header files.
 
@@ -166,7 +160,7 @@ autoreconf -fi
 %defattr(-,root,root,-)
 
 # docs in the main package
-%doc AUTHORS LICENSE NEWS
+%doc LICENSE CHANGELOG.md
 
 # libraries
 %{_libdir}/libzlink.so.*
@@ -187,38 +181,7 @@ autoreconf -fi
 %{_mandir}/man7/zlink_*
 
 %changelog
-* Fri Oct 4 2019 Luca Boccassi <luca.boccassi@gmail.com>
-- Add macro for optional TLS dependency
-
-* Wed Sep 11 2019 Luca Boccassi <luca.boccassi@gmail.com>
-- Add macro for optional NSS dependency
-
-* Sat Aug 19 2017 Luca Boccassi <luca.boccassi@gmail.com>
-- Fix parsing and usage of conditionals for sodium/pgm/krb5 so that they work
-  in OBS
-- Do not ship libzlink.la anymore, it's not needed and causes overlinking
-
-* Sun Nov 06 2016 Luca Boccassi <luca.boccassi@gmail.com>
-- Add libzlink-tool to package curve_keygen in /usr/bin
-
-* Sun Jul 31 2016 Luca Boccassi <luca.boccassi@gmail.com>
-- Follow RPM standards and rename zlink to libzlink5
-
-* Sat Oct 25 2014 Phillip Mienk <mienkphi@gmail.com>
-- Add --with/--without libgssapi_krb5 support following J.T.Conklin's pattern
-
-* Sat Oct 18 2014 J.T. Conklin <jtc@acorntoolworks.com>
-- Add --with/--without pgm support
-- Add --with/--without libsodium support
-
-* Tue Jun 10 2014 Tristian Celestin <tristian.celestin@outlook.com> 4.0.4
-- Updated packaged files
-
-* Mon Nov 26 2012 Justin Cook <jhcook@gmail.com> 3.2.2
-- Update packaged files
-
-* Fri Apr 8 2011 Mikko Koppanen <mikko@kuut.io> 3.0.0-1
-- Update dependencies and packaged files
-
-* Sat Apr 10 2010 Mikko Koppanen <mkoppanen@php.net> 2.0.7-1
-- Initial packaging
+* Tue Feb 11 2026 zlink maintainers <ulalax@kairoscode.dev>
+- Fork from libzmq and rebrand as zlink
+- Switch to CMake-only build system
+- Add TLS/WSS transport support via Boost.Asio

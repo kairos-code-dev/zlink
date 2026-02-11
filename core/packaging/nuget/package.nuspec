@@ -9,18 +9,18 @@
         <id>libzlink-vc142</id>
         <version>4.2.3.0</version>
         <title>libzlink-vc142</title>
-        <authors>libzlink contributors</authors>
-        <owners>Eric Voskuil</owners>
-        <licenseUrl>https://raw.github.com/zlink/libzlink/master/LICENSE</licenseUrl>
-        <projectUrl>https://github.com/zlink/libzlink</projectUrl>
+        <authors>zlink contributors</authors>
+        <owners>zlink contributors</owners>
+        <licenseUrl>https://raw.github.com/kairos-code-dev/zlink/main/LICENSE</licenseUrl>
+        <projectUrl>https://github.com/kairos-code-dev/zlink</projectUrl>
         <iconUrl>https://avatars1.githubusercontent.com/u/109777?s=32</iconUrl>
         <requireLicenseAcceptance>true</requireLicenseAcceptance>
         <developmentDependency>false</developmentDependency>
-        <description>The 0MQ lightweight messaging kernel is a library which extends the standard socket interfaces with features traditionally provided by specialised messaging middleware products. 0MQ sockets provide an abstraction of asynchronous message queues, multiple messaging patterns, message filtering (subscriptions), seamless access to multiple transport protocols and more.</description>
-        <summary>The 0MQ lightweight messaging kernel, packaged for specific Visual Studio compiler.</summary>
-        <releaseNotes>https://raw.github.com/zlink/libzlink/master/NEWS</releaseNotes>
+        <description>zlink is a modern messaging library that provides asynchronous message queues, multiple messaging patterns, message filtering (subscriptions), and seamless access to multiple transport protocols including TCP, IPC, inproc, WebSocket, and TLS.</description>
+        <summary>zlink messaging library, packaged for specific Visual Studio compiler.</summary>
+        <releaseNotes>https://raw.github.com/kairos-code-dev/zlink/main/CHANGELOG.md</releaseNotes>
         <copyright>MPL-2.0</copyright>
-        <tags>native, libzlink, zlink, 0MQ, messaging, sockets, C++</tags>
+        <tags>native, libzlink, zlink, messaging, sockets, C++</tags>
         <dependencies>
         </dependencies>
     </metadata>

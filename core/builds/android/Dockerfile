@@ -29,35 +29,23 @@ RUN		apt-get install -y -q \
 			unzip \
 			wget
 
-# Create user ZLINK, and run Android build with it.
+# Create user zlink, and run Android build with it.
 # This ensures that nothing weird is performed with
 # ROOT privileges.
 RUN		useradd -d /home/zlink -m -s /bin/bash zlink
 USER		zlink
 WORKDIR		/home/zlink
 
-# Install android NDK (up to NDK 22):
-# ENV		NDK_VERSION=android-ndk-r18  # Build failed to detect NDK tools (bug).
-# ENV		NDK_VERSION=android-ndk-r19  # Build passed
-# ENV		NDK_VERSION=android-ndk-r20  # Build passed
-# ENV		NDK_VERSION=android-ndk-r21  # Build passed
-# ENV		NDK_VERSION=android-ndk-r22  # Build passed
-
-# RUN		wget -q -O ndk_archive.zip http://dl.google.com/android/repository/${NDK_VERSION}-linux-x86_64.zip
-
 # Install android NDK (from NDK 23):
-# ENV		NDK_VERSION=android-ndk-r23  # Build passed
-# ENV		NDK_VERSION=android-ndk-r24  # Build passed
 ENV		NDK_VERSION=android-ndk-r25
 
 RUN		wget -q -O ndk_archive.zip http://dl.google.com/android/repository/${NDK_VERSION}-linux.zip
 
 RUN		unzip -q ndk_archive.zip
 
-# Clone and build LIBZLINK
+# Clone and build zlink
 ENV		ANDROID_NDK_ROOT=/home/zlink/${NDK_VERSION}
 
-RUN		git clone --quiet --depth 1 https://github.com/zlink/libzlink.git
+RUN		git clone --quiet --depth 1 https://github.com/kairos-code-dev/zlink.git
 
-RUN		libzlink/core/builds/android/ci_build.sh
-
+RUN		zlink/core/builds/android/ci_build.sh

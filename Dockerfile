@@ -1,25 +1,23 @@
 FROM debian:buster-slim AS builder
-LABEL maintainer="Zlink Project <zlink@imatix.com>"
+LABEL maintainer="zlink Project <ulalax@kairoscode.dev>"
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
     && apt-get install -qq --yes --no-install-recommends \
-        autoconf \
-        automake \
         build-essential \
+        cmake \
         git \
-        libtool \
+        libssl-dev \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
-WORKDIR /opt/libzlink
+WORKDIR /opt/zlink
 COPY . .
-RUN ./core/autogen.sh \
-    && ./configure --prefix=/usr/local \
-    && make \
-    && make check \
-    && make install
+RUN cmake -S . -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON \
+    && cmake --build core/build/local \
+    && ctest --test-dir core/build/local --output-on-failure \
+    && cmake --install core/build/local --prefix /usr/local
 
 FROM debian:buster-slim
-LABEL maintainer="Zlink Project <zlink@imatix.com>"
+LABEL maintainer="zlink Project <ulalax@kairoscode.dev>"
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
     && apt-get install -qq --yes --no-install-recommends \

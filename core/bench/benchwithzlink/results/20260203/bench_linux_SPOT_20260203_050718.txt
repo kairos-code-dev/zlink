@@ -1,4 +1,0 @@
-
-## PATTERN: SPOT
-  > Benchmarking current for SPOT...
-    Testing tcp | 64B: 1 FAILED (timeout)

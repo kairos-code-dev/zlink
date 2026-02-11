@@ -1,2 +1,0 @@
-Error: Binaries not found at $REPO_ROOT/core/build/linux-x64.
-Please build the project first or pass --build-dir.

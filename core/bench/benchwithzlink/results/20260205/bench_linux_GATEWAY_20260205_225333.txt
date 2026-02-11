@@ -1,4 +1,0 @@
-
-## PATTERN: GATEWAY
-  > Benchmarking current for GATEWAY...
-    Testing ws | 64B: 1 2 FAILED (timeout)

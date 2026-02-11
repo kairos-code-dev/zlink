@@ -1,5 +1,0 @@
-
-## PATTERN: PUBSUB
-  [baseline] Using cached baseline.
-  > Benchmarking current for PUBSUB...
-    Testing pgm | 64B: 1 FAILED (no_data)

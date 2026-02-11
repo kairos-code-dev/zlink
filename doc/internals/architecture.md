@@ -11,13 +11,14 @@ and it comprehensively covers the system's layer structure, core components, dat
 ## Table of Contents
 
 1. [Overview and Design Philosophy](#1-overview-and-design-philosophy)
-2. [5-Layer Architecture](#2-5-layer-architecture)
-3. [Component Relationships](#3-component-relationships)
-4. [Socket Logic Layer Details](#4-socket-logic-layer-details)
-5. [Engine Layer Details](#5-engine-layer-details)
-6. [Core Components](#6-core-components)
-7. [Data Flow](#7-data-flow)
-8. [Source Tree Structure](#8-source-tree-structure)
+2. [From Reactor to Proactor — I/O Model Migration](#2-from-reactor-to-proactor--io-model-migration)
+3. [5-Layer Architecture](#3-5-layer-architecture)
+4. [Component Relationships](#4-component-relationships)
+5. [Socket Logic Layer Details](#5-socket-logic-layer-details)
+6. [Engine Layer Details](#6-engine-layer-details)
+7. [Core Components](#7-core-components)
+8. [Data Flow](#8-data-flow)
+9. [Source Tree Structure](#9-source-tree-structure)
 
 ---
 
@@ -71,7 +72,197 @@ While maintaining compatibility with libzmq's patterns and API, it applies the f
 
 ---
 
-## 2. 5-Layer Architecture
+## 2. From Reactor to Proactor — I/O Model Migration
+
+The most fundamental architectural change in zlink is the I/O model transition.
+libzmq's **Reactor pattern** has been replaced with a Boost.Asio-based **Proactor pattern**.
+
+### 2.1 Reactor Pattern (libzmq)
+
+libzmq uses a classic **Reactor pattern**.
+A central poller (`poller_t`) monitors fd readiness (readable/writable state)
+and invokes engine handlers when fds become ready.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    libzmq Reactor Model                           │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              poller_t (Central Event Loop)                │   │
+│   │                                                          │   │
+│   │   epoll_wait() / kqueue() / select() / IOCP              │   │
+│   │              │                                           │   │
+│   │              v                                           │   │
+│   │   ┌──────────────────────┐                               │   │
+│   │   │  fd ready (readable) │──→ engine->in_event()        │   │
+│   │   │  fd ready (writable) │──→ engine->out_event()       │   │
+│   │   │  fd error            │──→ engine->in_event()        │   │
+│   │   └──────────────────────┘                               │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   Flow: register fd → wait for readiness → notify → read/write  │
+│   Key: poller says "ready to read", then engine calls read()     │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Key characteristics:**
+- Platform-specific poller implementations required (epoll, kqueue, devpoll, pollset, select, IOCP)
+- Engines perform synchronous `read()`/`write()` inside `in_event()`/`out_event()` callbacks
+- Each I/O thread owns one `poller_t` instance and runs an event loop
+- Adding new transports requires conforming to the fd-based interface
+
+### 2.2 Proactor Pattern (zlink)
+
+zlink uses the Boost.Asio **Proactor pattern**.
+Engines request asynchronous I/O operations from the OS, and the OS invokes completion callbacks when done.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    zlink Proactor Model                           │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              asio_engine_t (Async Engine)                 │   │
+│   │                                                          │   │
+│   │   (1) async_read_some(buffer, handler)                   │   │
+│   │       │  Delegate read to OS                             │   │
+│   │       └──→ [OS kernel performs I/O] ──→ on_read_complete()│  │
+│   │                                                          │   │
+│   │   (2) async_write_some(buffer, handler)                  │   │
+│   │       │  Delegate write to OS                            │   │
+│   │       └──→ [OS kernel performs I/O] ──→ on_write_complete()│ │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              io_context (Boost.Asio)                      │   │
+│   │                                                          │   │
+│   │   io_context::run()                                      │   │
+│   │   - Dispatches completion handlers for finished ops      │   │
+│   │   - One io_context per I/O thread, single-threaded       │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   Flow: request async op → OS completes I/O → completion call   │
+│   Key: engine never performs I/O directly, only handles results  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Key characteristics:**
+- Boost.Asio abstracts platform differences (epoll/kqueue/IOCP unified)
+- Engines request via `async_read_some()`/`async_write_some()`, handle results in completion callbacks
+- Each I/O thread owns an independent `io_context` — no contention between threads
+- Transport abstraction (`i_asio_transport`) enables TCP/TLS/WS/WSS through a uniform interface
+
+### 2.3 Reactor vs. Proactor Comparison
+
+```
+┌──────────────────┬──────────────────────────┬──────────────────────────────┐
+│     Aspect        │   libzmq (Reactor)       │   zlink (Proactor)           │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  I/O Model        │ Readiness-based          │ Completion-based             │
+│                   │ "ready to read" → read() │ "read done" → callback       │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Main Loop        │ poller_t::loop()          │ io_context::run()            │
+│                   │ (custom event loop)       │ (Boost.Asio event loop)      │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  I/O Threads      │ poller_t per thread       │ io_context per thread        │
+│                   │ + fd_table management     │ + independent execution       │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Engine Callbacks │ in_event() / out_event() │ on_read_complete()           │
+│                   │                          │ on_write_complete()          │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Protocol         │ ZMTP 3.x                 │ ZMP v1.0 (8B fixed header)  │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Transport        │ Direct fd management     │ i_asio_transport abstraction │
+│  Extension Cost   │ Must fit fd-based API    │ Implement interface only      │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Platform Pollers │ 6 implementations        │ Delegated to Boost.Asio      │
+│                   │ (epoll,kqueue,IOCP,etc)  │ (single codebase)            │
+├──────────────────┼──────────────────────────┼──────────────────────────────┤
+│  Optimizations    │ Reactor event batching   │ Speculative I/O              │
+│                   │                          │ Gather Write                 │
+│                   │                          │ Backpressure (pending buf)   │
+└──────────────────┴──────────────────────────┴──────────────────────────────┘
+```
+
+### 2.4 Migration Strategy
+
+The port from libzmq to zlink used **selective per-layer replacement**, not a full rewrite.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Per-Layer: Preserved / Replaced / Added            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ■ Preserved (kept from libzmq as-is)                               │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  Socket Logic Layer                                           │ │
+│  │  - socket_base_t, pair_t, dealer_t, router_t, pub_t, sub_t   │ │
+│  │  - Routing strategies: lb_t, fq_t, dist_t                    │ │
+│  │  - Subscription management: mtrie_t, radix_tree_t             │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Inter-Thread Infrastructure                                  │ │
+│  │  - YPipe (Lock-free queue, CAS-based)                         │ │
+│  │  - pipe_t (Bidirectional message pipe)                        │ │
+│  │  - mailbox_t + signaler_t (Inter-thread command delivery)     │ │
+│  │  - command_t (20 internal command types)                      │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Message System                                               │ │
+│  │  - msg_t (64-byte fixed, VSM/LMSG/CMSG/ZCLMSG)              │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ■ Replaced (libzmq implementation swapped for new)                │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  poller_t (epoll/kqueue/select)  →  asio_poller_t            │ │
+│  │  - Minimal reactor wrapper for mailbox monitoring             │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  zmtp_engine_t (ZMTP 3.x)  →  asio_engine_t (Proactor)      │ │
+│  │  - Core I/O engine completely redesigned for completion-based │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Direct fd management  →  i_asio_transport interface         │ │
+│  │  - TCP/IPC wrapped with Boost.Asio sockets                   │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  ZMTP 3.x  →  ZMP v1.0                                       │ │
+│  │  - Simplified to 8-byte fixed header, HELLO/READY handshake  │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+│  ■ Added (new in zlink)                                            │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │  Speculative I/O                                              │ │
+│  │  - Synchronous attempt before async → eliminates callback     │ │
+│  │    overhead on fast path                                      │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Backpressure (pending_buffers)                               │ │
+│  │  - Buffers received data up to 10MB when HWM reached         │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Gather Write                                                 │ │
+│  │  - Scatter/gather I/O sends header+payload in single syscall │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Native WS/WSS/TLS Transports                                │ │
+│  │  - Beast WebSocket + OpenSSL unified via i_asio_transport    │ │
+│  ├───────────────────────────────────────────────────────────────┤ │
+│  │  Service Layer (Registry, Discovery, Gateway, Receiver, SPOT)│ │
+│  │  - Higher-level service abstractions not present in libzmq   │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Why wasn't the Reactor completely removed?**
+
+`asio_poller_t` remains as a minimal Reactor-compatible wrapper for monitoring mailbox fds.
+The existing libzmq `io_object_t` infrastructure receives mailbox events through poller callbacks,
+so this path is wrapped with Asio's `async_wait()` to maintain compatibility.
+The actual data I/O path (`asio_engine_t`) operates as a pure Proactor pattern.
+
+---
+
+## 3. 5-Layer Architecture
 
 zlink is composed of 5 clearly separated layers.
 Each layer has a single responsibility, and layers closer to the bottom are closer to the physical network.
@@ -140,7 +331,7 @@ Each layer has a single responsibility, and layers closer to the bottom are clos
 
 ---
 
-## 3. Component Relationships
+## 4. Component Relationships
 
 The diagram below shows the ownership relationships and interactions between zlink internal objects.
 
@@ -193,9 +384,9 @@ The diagram below shows the ownership relationships and interactions between zli
 
 ---
 
-## 4. Socket Logic Layer Details
+## 5. Socket Logic Layer Details
 
-### 4.1 Class Hierarchy
+### 5.1 Class Hierarchy
 
 ```
 socket_base_t (base class)
@@ -215,7 +406,7 @@ socket_base_t (base class)
 - Option management (`setsockopt`, `getsockopt`)
 - Polling support (`has_in`, `has_out`)
 
-### 4.2 Routing Strategy Classes
+### 5.2 Routing Strategy Classes
 
 Strategy classes for message distribution and collection are separated by socket type:
 
@@ -257,7 +448,7 @@ Strategy classes for message distribution and collection are separated by socket
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.3 Routing Strategy Mapping by Socket
+### 5.3 Routing Strategy Mapping by Socket
 
 | Socket  | Tx                    | Rx                   | Notes                            |
 |---------|-----------------------|----------------------|----------------------------------|
@@ -270,7 +461,7 @@ Strategy classes for message distribution and collection are separated by socket
 | XSUB    | Sends sub messages    | `fq_t` (Fair Queue)  | Filtering + subscription sending |
 | STREAM  | ID-based direct route | `fq_t` (Fair Queue)  | Uses RAW protocol                |
 
-### 4.4 Subscription Data Structures
+### 5.4 Subscription Data Structures
 
 Trie-based data structures used for topic matching in PUB/SUB patterns:
 
@@ -295,9 +486,9 @@ Trie-based data structures used for topic matching in PUB/SUB patterns:
 
 ---
 
-## 5. Engine Layer Details
+## 6. Engine Layer Details
 
-### 5.1 Engine Type Comparison
+### 6.1 Engine Type Comparison
 
 The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 
@@ -309,7 +500,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 > WS/WSS also use `asio_zmp_engine_t` or `asio_raw_engine_t`;
 > WebSocket framing is handled by `ws_transport_t`/`wss_transport_t`.
 
-### 5.2 Proactor Pattern Structure
+### 6.2 Proactor Pattern Structure
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -358,7 +549,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.3 Engine State Machine
+### 6.3 Engine State Machine
 
 ```
           ┌─────────────────────┐
@@ -388,20 +579,20 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
           └─────────────────────┘
 ```
 
-### 5.4 ZMP v1.0 Frame Structure
+### 6.4 ZMP v1.0 Frame Structure
 
 ```
  Byte:   0         1         2         3         4    5    6    7
       ┌─────────┬─────────┬─────────┬─────────┬─────────────────────┐
       │  MAGIC  │ VERSION │  FLAGS  │RESERVED │   PAYLOAD SIZE      │
-      │  (0x5A) │  (0x02) │         │ (0x00)  │   (32-bit BE)       │
+      │  (0x5A) │  (0x01) │         │ (0x00)  │   (32-bit BE)       │
       └─────────┴─────────┴─────────┴─────────┴─────────────────────┘
 ```
 
 | Field        | Offset | Size | Description               |
 |-------------|--------|------|---------------------------|
 | MAGIC       | 0      | 1    | Magic number `0x5A` ('Z') |
-| VERSION     | 1      | 1    | Protocol version `0x02`   |
+| VERSION     | 1      | 1    | Protocol version `0x01`   |
 | FLAGS       | 2      | 1    | Frame flags               |
 | RESERVED    | 3      | 1    | Reserved (0x00)           |
 | PAYLOAD SIZE| 4-7    | 4    | Payload size (Big Endian) |
@@ -416,7 +607,7 @@ The Engine Layer handles asynchronous I/O processing based on Boost.Asio.
 | 3    | SUBSCRIBE | Subscription request   |
 | 4    | CANCEL    | Subscription cancel    |
 
-### 5.5 RAW Protocol Frame Structure
+### 6.5 RAW Protocol Frame Structure
 
 A simple protocol for STREAM sockets and external client integration.
 
@@ -431,7 +622,7 @@ A simple protocol for STREAM sockets and external client integration.
 - Simple implementation: `read(4)` -> `read(length)`
 - Easy integration with external clients
 
-### 5.6 ZMP Handshake Sequence
+### 6.6 ZMP Handshake Sequence
 
 ```
     Client                              Server
@@ -453,7 +644,7 @@ A simple protocol for STREAM sockets and external client integration.
 - **HELLO**: Socket type (1B) + Identity length (1B) + Identity value (0-255B)
 - **READY**: Socket-Type property (always), Identity property (DEALER/ROUTER only)
 
-### 5.7 Protocol-Transport-Engine Mapping
+### 6.7 Protocol-Transport-Engine Mapping
 
 The engine is automatically selected based on the socket type:
 
@@ -481,7 +672,7 @@ The engine is automatically selected based on the socket type:
 | `wss://`  | `asio_ws_connecter_t`   | `wss_transport_t`  | `asio_raw_engine_t` | `asio_zmp_engine_t` | SSL+WS / SSL+WS+ZMP|
 | `ipc://`  | `asio_ipc_connecter_t`  | `ipc_transport_t`  | `asio_raw_engine_t` | `asio_zmp_engine_t` | (none) / ZMP        |
 
-### 5.8 Handshake Stage Comparison
+### 6.8 Handshake Stage Comparison
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -527,7 +718,7 @@ The engine is automatically selected based on the socket type:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.9 Transport Characteristics Comparison
+### 6.9 Transport Characteristics Comparison
 
 | Transport | Handshake  | Encryption | Speculative Write | Gather Write | Use Case                      |
 |-----------|:----------:|:----------:|:-----------------:|:------------:|-------------------------------|
@@ -539,9 +730,9 @@ The engine is automatically selected based on the socket type:
 
 ---
 
-## 6. Core Components
+## 7. Core Components
 
-### 6.1 msg_t - Message Container
+### 7.1 msg_t - Message Container
 
 A 64-byte fixed-size structure that holds all message data.
 It is designed to handle small messages without `malloc` calls.
@@ -606,7 +797,7 @@ It is designed to handle small messages without `malloc` calls.
 | `type_cmsg`   | 104  | Constant Message (const data reference)         |
 | `type_zclmsg` | 105  | Zero-copy Large Message (direct user buffer)    |
 
-### 6.2 pipe_t - Lock-Free Message Queue
+### 7.2 pipe_t - Lock-Free Message Queue
 
 A bidirectional pipe for passing messages between threads.
 It exchanges `msg_t` instances lock-free between the Application thread and the I/O thread.
@@ -663,7 +854,7 @@ It exchanges `msg_t` instances lock-free between the Application thread and the 
                     └───────────┘     (on reconnect)
 ```
 
-### 6.3 ctx_t - Context
+### 7.3 ctx_t - Context
 
 The top-level object that manages global state.
 
@@ -699,7 +890,7 @@ ctx_t internal structure:
 └──────────────────────────────────────────────────────────┘
 ```
 
-### 6.4 session_base_t - Session
+### 7.4 session_base_t - Session
 
 Acts as a bridge between the socket and the engine.
 
@@ -726,7 +917,7 @@ Acts as a bridge between the socket and the engine.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 6.5 Threading Model
+### 7.5 Threading Model
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -789,9 +980,9 @@ Application Thread              I/O Thread
 
 ---
 
-## 7. Data Flow
+## 8. Data Flow
 
-### 7.1 Message Send (Outbound / Tx)
+### 8.1 Message Send (Outbound / Tx)
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -843,7 +1034,7 @@ Application Thread              I/O Thread
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.2 Message Receive (Inbound / Rx)
+### 8.2 Message Receive (Inbound / Rx)
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -897,7 +1088,7 @@ Application Thread              I/O Thread
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.3 Connection Establishment Flow
+### 8.3 Connection Establishment Flow
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -944,7 +1135,7 @@ Application Thread              I/O Thread
 
 ---
 
-## 8. Source Tree Structure
+## 9. Source Tree Structure
 
 ```
 core/

@@ -7,6 +7,8 @@
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
+[User Guide](doc/guide/01-overview.md) · [API Reference](doc/api/README.md) · [Bindings](doc/bindings/overview.md) · [Internals](doc/internals/architecture.md) · [Build](doc/building/build-guide.md)
+
 ---
 
 ## Why zlink?

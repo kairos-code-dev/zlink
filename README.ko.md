@@ -7,6 +7,8 @@
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
+[사용자 가이드](doc/guide/01-overview.ko.md) · [API 레퍼런스](doc/api/README.ko.md) · [바인딩](doc/bindings/overview.ko.md) · [내부 구조](doc/internals/architecture.ko.md) · [빌드](doc/building/build-guide.ko.md)
+
 ---
 
 ## 왜 zlink인가?

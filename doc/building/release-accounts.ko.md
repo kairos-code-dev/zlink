@@ -1,3 +1,5 @@
+[English](release-accounts.md) | [한국어](release-accounts.ko.md)
+
 # 공식 배포 계정/시크릿 체크리스트
 
 이 문서는 공식 배포에 필요한 계정과 GitHub Actions Secrets를 정리한다.

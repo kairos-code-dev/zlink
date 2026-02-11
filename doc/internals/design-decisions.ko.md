@@ -1,3 +1,5 @@
+[English](design-decisions.md) | [한국어](design-decisions.ko.md)
+
 # 설계 결정 기록
 
 이 문서는 zlink 주요 설계 결정의 근거와 대안 검토 내용을 기록한다.

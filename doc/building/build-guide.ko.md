@@ -1,3 +1,5 @@
+[English](build-guide.md) | [한국어](build-guide.ko.md)
+
 # 빌드 가이드
 
 ## 1. 요구 사항
@@ -77,4 +79,4 @@ vcpkg install openssl:x64-windows
 
 ## 7. CMake 옵션
 
-상세 옵션은 [cmake-options.md](cmake-options.md)를 참고.
+상세 옵션은 [cmake-options.ko.md](cmake-options.ko.md)를 참고.

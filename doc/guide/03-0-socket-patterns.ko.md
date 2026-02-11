@@ -1,3 +1,5 @@
+[English](03-0-socket-patterns.md) | [한국어](03-0-socket-patterns.ko.md)
+
 # 소켓 패턴 개요 및 선택 가이드
 
 ## 1. 개요
@@ -44,7 +46,7 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 | **Fan-out** (`dist_t`) | 모든 구독자에게 복제 전송 | PUB/XPUB |
 | **ID 라우팅** | routing_id 프레임으로 특정 피어 지정 | ROUTER/STREAM |
 
-> 라우팅 전략의 내부 구현 상세는 [architecture.md](../internals/architecture.md)를 참고.
+> 라우팅 전략의 내부 구현 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ## 5. 패턴 선택 가이드
 
@@ -83,11 +85,11 @@ zlink는 8종의 소켓 타입을 제공한다. 각 소켓은 고유한 메시�
 
 | 문서 | 소켓 | 설명 |
 |------|------|------|
-| [03-1-pair.md](03-1-pair.md) | PAIR | 1:1 양방향 독점 연결 |
-| [03-2-pubsub.md](03-2-pubsub.md) | PUB/SUB/XPUB/XSUB | 발행-구독 패밀리 |
-| [03-3-dealer.md](03-3-dealer.md) | DEALER | 비동기 요청, Round-robin |
-| [03-4-router.md](03-4-router.md) | ROUTER | ID 기반 라우팅 |
-| [03-5-stream.md](03-5-stream.md) | STREAM | 외부 클라이언트 RAW 통신 |
+| [03-1-pair.ko.md](03-1-pair.ko.md) | PAIR | 1:1 양방향 독점 연결 |
+| [03-2-pubsub.ko.md](03-2-pubsub.ko.md) | PUB/SUB/XPUB/XSUB | 발행-구독 패밀리 |
+| [03-3-dealer.ko.md](03-3-dealer.ko.md) | DEALER | 비동기 요청, Round-robin |
+| [03-4-router.ko.md](03-4-router.ko.md) | ROUTER | ID 기반 라우팅 |
+| [03-5-stream.ko.md](03-5-stream.ko.md) | STREAM | 외부 클라이언트 RAW 통신 |
 
 ## 7. 기본 사용 흐름
 

@@ -1,3 +1,5 @@
+[English](packaging.md) | [한국어](packaging.ko.md)
+
 # 패키징 및 릴리즈 (Core / Bindings 분리)
 
 ## 1. 목표
@@ -41,7 +43,7 @@ Core 버전(`VERSION`)과 바인딩 버전은 독립적으로 관리한다.
   - 필요 시 GitHub Release 생성
   - 필요 시 npm/PyPI/NuGet/Maven publish
 
-필요 계정/시크릿: `doc/building/release-accounts.md`
+필요 계정/시크릿: `doc/building/release-accounts.ko.md`
 
 ## 4. Conan
 

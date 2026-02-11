@@ -1,3 +1,5 @@
+[English](cmake-options.md) | [한국어](cmake-options.ko.md)
+
 # CMake 옵션 상세
 
 ## 1. 기본 옵션

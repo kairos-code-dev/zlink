@@ -1,3 +1,5 @@
+[English](05-tls-security.md) | [한국어](05-tls-security.ko.md)
+
 # TLS/SSL 설정 및 보안 가이드
 
 ## 1. 개요

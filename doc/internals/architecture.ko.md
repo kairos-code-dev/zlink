@@ -1,3 +1,5 @@
+[English](architecture.md) | [한국어](architecture.ko.md)
+
 # zlink 시스템 아키텍처 - 내부 개발자 참조 문서
 
 이 문서는 **zlink** 라이브러리의 내부 아키텍처를 상세히 기술합니다.
@@ -1084,11 +1086,11 @@ core/
 
 ### A. 관련 문서
 
-- [ZMP v2.0 프로토콜 상세](protocol-zmp.md)
-- [RAW 프로토콜 상세](protocol-raw.md)
-- [STREAM 소켓 WS/WSS 최적화](stream-socket.md)
-- [스레딩 및 동시성 모델](threading-model.md)
-- [성능 특성 및 튜닝 가이드](../guide/10-performance.md)
+- [ZMP v2.0 프로토콜 상세](protocol-zmp.ko.md)
+- [RAW 프로토콜 상세](protocol-raw.ko.md)
+- [STREAM 소켓 WS/WSS 최적화](stream-socket.ko.md)
+- [스레딩 및 동시성 모델](threading-model.ko.md)
+- [성능 특성 및 튜닝 가이드](../guide/10-performance.ko.md)
 
 ### B. 핵심 인터페이스 요약
 

@@ -1,3 +1,5 @@
+[English](testing.md) | [한국어](testing.ko.md)
+
 # 테스트 전략 및 실행
 
 ## 1. 테스트 프레임워크

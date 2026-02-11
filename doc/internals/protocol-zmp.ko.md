@@ -1,3 +1,5 @@
+[English](protocol-zmp.md) | [한국어](protocol-zmp.ko.md)
+
 # ZMP v2.0 프로토콜 상세
 
 ## 1. 설계 철학

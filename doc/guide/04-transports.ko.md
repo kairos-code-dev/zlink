@@ -1,3 +1,5 @@
+[English](04-transports.md) | [한국어](04-transports.ko.md)
+
 # Transport 가이드
 
 ## 1. Transport 종류
@@ -86,7 +88,7 @@ if (rc == -1) {
 - **Speculative write** — 동기 쓰기 먼저 시도 후 실패 시 비동기 전환
 - **Gather write** — 헤더와 바디를 한번에 전송 (시스템콜 감소)
 
-> Speculative write 등 내부 최적화 상세는 [architecture.md](../internals/architecture.md)를 참고.
+> Speculative write 등 내부 최적화 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ## 3. IPC
 
@@ -243,7 +245,7 @@ zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", 0);
 zlink_connect(socket, "tls://server:5555");
 ```
 
-상세 TLS 설정은 [TLS 보안 가이드](05-tls-security.md)를 참고.
+상세 TLS 설정은 [TLS 보안 가이드](05-tls-security.ko.md)를 참고.
 
 ## 8. Transport 제약사항
 
@@ -319,4 +321,4 @@ zlink_getsockopt(socket, ZLINK_LAST_ENDPOINT, endpoint, &len);
 printf("바인드된 엔드포인트: %s\n", endpoint);
 ```
 
-성능 비교는 [성능 가이드](10-performance.md)를 참고.
+성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.

@@ -1,3 +1,5 @@
+[English](stream-socket.md) | [한국어](stream-socket.ko.md)
+
 # STREAM 소켓 WS/WSS 최적화
 
 ## 1. 개요

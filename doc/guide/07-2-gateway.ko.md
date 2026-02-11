@@ -1,3 +1,5 @@
+[English](07-2-gateway.md) | [한국어](07-2-gateway.ko.md)
+
 # Gateway 서비스 (위치투명 요청/응답)
 
 ## 1. 개요

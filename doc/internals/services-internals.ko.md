@@ -1,3 +1,5 @@
+[English](services-internals.md) | [한국어](services-internals.ko.md)
+
 # 서비스 계층 내부 설계
 
 ## 1. 개요
@@ -167,4 +169,4 @@ Frame 3~N: Payload
 ### 7.4 Discovery 타입 분리
 - service_type 필드로 gateway_receiver/spot_node 분리
   - `ZLINK_SERVICE_TYPE_GATEWAY` (1), `ZLINK_SERVICE_TYPE_SPOT` (2)
-- 상세: [plan/type-segmentation.md](../plan/type-segmentation.md)
+- 상세: [plan/type-segmentation.md](../plan/type-segmentation.ko.md)

@@ -1,3 +1,5 @@
+[English](VSCODE_BINDINGS_SETUP.md) | [한국어](VSCODE_BINDINGS_SETUP.ko.md)
+
 # VS Code Bindings Setup
 
 This workspace is configured so language-level code browsing works for:

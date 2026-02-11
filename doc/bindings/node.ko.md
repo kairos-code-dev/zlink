@@ -1,3 +1,5 @@
+[English](node.md) | [한국어](node.ko.md)
+
 # Node.js 바인딩
 
 ## 1. 개요

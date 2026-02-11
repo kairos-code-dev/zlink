@@ -1,3 +1,5 @@
+[English](cpp.md) | [한국어](cpp.ko.md)
+
 # C++ 바인딩
 
 ## 1. 개요

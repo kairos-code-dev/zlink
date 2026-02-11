@@ -1,3 +1,5 @@
+[English](dotnet.md) | [한국어](dotnet.ko.md)
+
 # .NET 바인딩
 
 ## 1. 개요

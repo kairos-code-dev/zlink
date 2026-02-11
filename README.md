@@ -1,58 +1,60 @@
+[English](README.md) | [한국어](README.ko.md)
+
 # zlink
 
-> [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 메시징 라이브러리 — 핵심 패턴에 집중하고, Boost.Asio 기반 I/O와 개발 친화적 API를 제공합니다.
+> A modern messaging library built on [libzmq](https://github.com/zeromq/libzmq) v4.3.5 — focused on the essential patterns, with Boost.Asio-powered I/O and a developer-friendly API.
 
 [![Build](https://github.com/ulala-x/zlink/actions/workflows/build.yml/badge.svg)](https://github.com/ulala-x/zlink/actions/workflows/build.yml)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](LICENSE)
 
 ---
 
-## 왜 zlink인가?
+## Why zlink?
 
-libzmq는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니다 — 레거시 프로토콜, 거의 사용되지 않는 소켓 타입, 그리고 과거 시대에 설계된 I/O 엔진.
+libzmq is powerful, but it carries decades of accumulated complexity — legacy protocols, rarely used socket types, and an I/O engine designed for a different era.
 
-**zlink는 libzmq의 핵심만 남기고 현대적으로 재구축합니다:**
+**zlink strips libzmq down to its core and rebuilds it for the modern world:**
 
 | | libzmq | zlink |
 |---|--------|-------|
-| **Socket Types** | 17종 (draft 포함) | **7종** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
-| **I/O Engine** | 자체 poll/epoll/kqueue | **Boost.Asio** (번들, 외부 의존성 없음) |
-| **암호화** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
-| **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
-| **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
+| **Socket Types** | 17 (incl. draft) | **7** — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM |
+| **I/O Engine** | Custom poll/epoll/kqueue | **Boost.Asio** (bundled, no external dependencies) |
+| **Encryption** | CURVE (libsodium) | **TLS** (OpenSSL) — `tls://`, `wss://` |
+| **Transport** | 10+ (PGM, TIPC, VMCI, etc.) | **6** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
+| **Dependencies** | libsodium, libbsd, etc. | **OpenSSL only** |
 
 ---
 
-## 주요 특징
+## Key Features
 
-### 간소화된 Core
+### Streamlined Core
 
-REQ/REP, PUSH/PULL, 모든 draft socket을 제거했습니다. 남은 7종의 socket type — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM — 으로 실전 메시징 패턴의 대부분을 커버하면서, 복잡성에 의한 실수를 줄입니다. STREAM 소켓은 외부 클라이언트와의 RAW 통신을 위해 tcp, tls, ws, wss transport를 지원합니다.
+REQ/REP, PUSH/PULL, and all draft sockets have been removed. The remaining 7 socket types — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM — cover the vast majority of real-world messaging patterns while reducing mistakes caused by unnecessary complexity. The STREAM socket supports tcp, tls, ws, and wss transports for raw communication with external clients.
 
-### Boost.Asio 기반 I/O Engine
+### Boost.Asio-Based I/O Engine
 
-전체 I/O 계층을 **Boost.Asio**로 재작성했습니다 (header만 번들 — 외부 Boost 의존성 없음). 검증된 비동기 기반 위에 TLS와 WebSocket transport를 네이티브로 통합할 수 있습니다.
+The entire I/O layer has been rewritten with **Boost.Asio** (header-only bundle — no external Boost dependency). TLS and WebSocket transports are natively integrated on top of a proven asynchronous foundation.
 
-### 네이티브 TLS & WebSocket
+### Native TLS & WebSocket
 
-외부 프록시 없이 암호화된 transport를 직접 지원합니다:
+Encrypted transports are supported directly, with no external proxy required:
 
 ```c
-// TLS 서버
+// TLS server
 zlink_setsockopt(socket, ZLINK_TLS_CERT, "/path/to/cert.pem", ...);
 zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", ...);
 zlink_bind(socket, "tls://*:5555");
 
-// TLS 클라이언트
+// TLS client
 zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", ...);
 zlink_connect(socket, "tls://server.example.com:5555");
 ```
 
 ---
 
-## 아키텍처
+## Architecture
 
-zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
+zlink is composed of five clearly separated layers:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -61,67 +63,67 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 ├──────────────────────────────────────────────────────┤
 │  Socket Logic Layer                                   │
 │  PAIR · PUB/SUB · XPUB/XSUB · DEALER/ROUTER · STREAM  │
-│  라우팅 전략: lb_t(Round-robin) · fq_t · dist_t       │
+│  Routing strategies: lb_t(Round-robin) · fq_t · dist_t │
 ├──────────────────────────────────────────────────────┤
 │  Engine Layer (Boost.Asio)                            │
-│  asio_zmp_engine — ZMP v2.0 Protocol (8B 고정 헤더)   │
-│  Proactor 패턴 · Speculative I/O · Backpressure       │
+│  asio_zmp_engine — ZMP v2.0 Protocol (8B fixed header)│
+│  Proactor pattern · Speculative I/O · Backpressure    │
 ├──────────────────────────────────────────────────────┤
 │  Transport Layer                                      │
-│  tcp · ipc · inproc · ws — 평문                       │
-│  tls · wss             — OpenSSL 암호화               │
+│  tcp · ipc · inproc · ws — plaintext                  │
+│  tls · wss             — OpenSSL encrypted            │
 ├──────────────────────────────────────────────────────┤
 │  Core Infrastructure                                  │
-│  msg_t(64B 고정) · pipe_t(Lock-free YPipe)            │
+│  msg_t(64B fixed) · pipe_t(Lock-free YPipe)           │
 │  ctx_t(I/O Thread Pool) · session_base_t(Bridge)      │
 └──────────────────────────────────────────────────────┘
 ```
 
-### 핵심 설계
+### Core Design
 
-| 설계 원칙 | 설명 |
-|-----------|------|
-| **Zero-Copy** | 메시지 복사 최소화 — VSM(33B 이하)은 inline 저장, 대용량은 참조 카운팅 |
-| **Lock-Free** | Thread 간 통신에 YPipe(CAS 기반 FIFO) 사용, mutex 없음 |
-| **True Async** | Proactor 패턴 기반 비동기 I/O + Speculative I/O 최적화 |
-| **Protocol Agnostic** | Transport와 Protocol의 명확한 분리 — 자체 ZMP v2.0 프로토콜 사용 |
+| Design Principle | Description |
+|------------------|-------------|
+| **Zero-Copy** | Minimizes message copying — VSM (33B or less) stored inline, larger messages use reference counting |
+| **Lock-Free** | Inter-thread communication via YPipe (CAS-based FIFO), no mutexes |
+| **True Async** | Proactor pattern-based async I/O with Speculative I/O optimization |
+| **Protocol Agnostic** | Clean separation of Transport and Protocol — uses the custom ZMP v2.0 protocol |
 
-### Thread 모델
+### Threading Model
 
-- **Application Thread**: `zlink_send()`/`zlink_recv()` 호출
-- **I/O Thread**: Boost.Asio `io_context` 기반 비동기 네트워크 처리
-- **Reaper Thread**: 종료된 소켓/세션의 자원 정리
-- Thread 간 통신은 Lock-free YPipe + Mailbox 시스템으로 처리
+- **Application Thread**: Calls `zlink_send()`/`zlink_recv()`
+- **I/O Thread**: Async network processing based on Boost.Asio `io_context`
+- **Reaper Thread**: Cleans up resources from terminated sockets/sessions
+- Inter-thread communication is handled through the Lock-free YPipe + Mailbox system
 
-> 상세한 내부 아키텍처는 [Architecture Document](doc/internals/architecture.md)를 참고하세요.
-
----
-
-## 개발 편의 기능
-
-간소화된 core를 넘어, 실전 분산 시스템을 위한 **고수준 메시징 스택**을 구축합니다:
-
-| 기능 | 설명 | 가이드 |
-|------|------|:------:|
-| **Routing ID 통합** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
-| **모니터링 강화** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](doc/guide/06-monitoring.md) |
-| **Service Discovery** | Registry 클러스터, Client-side Load Balancing, Health Monitoring | [Discovery](doc/guide/07-1-discovery.md) |
-| **Gateway** | Discovery 기반 위치투명 요청/응답, 로드밸런싱 | [Gateway](doc/guide/07-2-gateway.md) |
-| **SPOT Topic PUB/SUB** | 위치 투명한 토픽 메시징, Discovery 기반 자동 Mesh | [SPOT](doc/guide/07-3-spot.md) |
-
-> 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.md)을 참고하세요.
+> For a detailed look at the internal architecture, see the [Architecture Document](doc/internals/architecture.md).
 
 ---
 
-## 시작하기
+## Developer Convenience Features
 
-### 요구 사항
+Beyond the streamlined core, zlink builds a **high-level messaging stack** for production distributed systems:
+
+| Feature | Description | Guide |
+|---------|-------------|:-----:|
+| **Routing ID Integration** | `zlink_routing_id_t` standard type, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
+| **Enhanced Monitoring** | Routing-ID-based event identification, polling-style monitor API | [Monitoring](doc/guide/06-monitoring.md) |
+| **Service Discovery** | Registry cluster, client-side load balancing, health monitoring | [Discovery](doc/guide/07-1-discovery.md) |
+| **Gateway** | Location-transparent request/response via Discovery, load balancing | [Gateway](doc/guide/07-2-gateway.md) |
+| **SPOT Topic PUB/SUB** | Location-transparent topic messaging, Discovery-based automatic mesh | [SPOT](doc/guide/07-3-spot.md) |
+
+> For the full feature roadmap and dependency graph, see the [Feature Roadmap](doc/plan/feature-roadmap.md).
+
+---
+
+## Getting Started
+
+### Requirements
 
 - **CMake** 3.10+
-- **C++17** 컴파일러 (GCC 7+, Clang 5+, MSVC 2017+)
-- **OpenSSL** (TLS/WSS 지원)
+- **C++17** compiler (GCC 7+, Clang 5+, MSVC 2017+)
+- **OpenSSL** (for TLS/WSS support)
 
-### 빌드
+### Build
 
 ```bash
 # Linux
@@ -134,7 +136,7 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 .\core\builds\windows\build.ps1 -Architecture x64 -RunTests "ON"
 ```
 
-### CMake 직접 빌드
+### Direct CMake Build
 
 ```bash
 cmake -S . -B core/build/local -DWITH_TLS=ON -DBUILD_TESTS=ON
@@ -142,18 +144,18 @@ cmake --build core/build/local
 ctest --test-dir core/build/local --output-on-failure
 ```
 
-### CMake 옵션
+### CMake Options
 
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `WITH_TLS` | `ON` | OpenSSL을 통한 TLS/WSS 활성화 |
-| `BUILD_TESTS` | `ON` | 테스트 빌드 |
-| `BUILD_BENCHMARKS` | `OFF` | 벤치마크 빌드 |
-| `BUILD_SHARED` | `ON` | Shared Library 빌드 |
-| `BUILD_STATIC` | `ON` | Static Library 빌드 |
-| `ZLINK_CXX_STANDARD` | `17` | C++ 표준 (11, 14, 17, 20, 23) |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `WITH_TLS` | `ON` | Enable TLS/WSS via OpenSSL |
+| `BUILD_TESTS` | `ON` | Build tests |
+| `BUILD_BENCHMARKS` | `OFF` | Build benchmarks |
+| `BUILD_SHARED` | `ON` | Build shared library |
+| `BUILD_STATIC` | `ON` | Build static library |
+| `ZLINK_CXX_STANDARD` | `17` | C++ standard (11, 14, 17, 20, 23) |
 
-### OpenSSL 설치
+### Installing OpenSSL
 
 ```bash
 # Ubuntu/Debian
@@ -168,50 +170,64 @@ vcpkg install openssl:x64-windows
 
 ---
 
-## 지원 플랫폼
+## Supported Platforms
 
-| 플랫폼 | Architecture | 상태 |
-|--------|:------------:|:----:|
+| Platform | Architecture | Status |
+|----------|:------------:|:------:|
 | Linux | x64, ARM64 | Stable |
 | macOS | x64, ARM64 | Stable |
 | Windows | x64, ARM64 | Stable |
 
 ---
 
-## 성능
+## Performance
 
-모든 transport에서 소형 메시지(64B) 기준 **4~6 M msg/s** 처리량을 달성하며, 전 패턴에서 **deadlock 없음**이 확인되었습니다.
+Across all transports, zlink achieves **4--6 M msg/s** throughput for small messages (64B), with **zero deadlocks** confirmed across every pattern.
 
-| 패턴 | TCP | IPC | inproc |
-|------|-----|-----|--------|
-| DEALER↔DEALER | 6.03 M/s | 5.96 M/s | 5.96 M/s |
-| PAIR | 5.78 M/s | 5.65 M/s | 6.09 M/s |
-| PUB/SUB | 5.76 M/s | 5.70 M/s | 5.71 M/s |
-| DEALER↔ROUTER | 5.40 M/s | 5.55 M/s | 5.40 M/s |
-| ROUTER↔ROUTER | 5.03 M/s | 5.12 M/s | 4.71 M/s |
+### Throughput vs. libzmq (64B, TCP)
 
-> 표준 libzmq 대비 ~99% 처리량 동등성. 상세 분석은 [성능 가이드](doc/guide/10-performance.md)를 참고하세요.
+| Pattern | libzmq | zlink | Diff |
+|---------|-------:|------:|-----:|
+| DEALER↔DEALER | 5,936 Kmsg/s | 6,168 Kmsg/s | **+3.9%** |
+| PAIR | 6,195 Kmsg/s | 5,878 Kmsg/s | -5.1% |
+| PUB/SUB | 5,654 Kmsg/s | 5,756 Kmsg/s | **+1.8%** |
+| DEALER↔ROUTER | 5,609 Kmsg/s | 5,634 Kmsg/s | +0.4% |
+| ROUTER↔ROUTER | 5,161 Kmsg/s | 5,250 Kmsg/s | **+1.7%** |
+| ROUTER↔ROUTER (poll) | 4,405 Kmsg/s | 5,249 Kmsg/s | **+19.2%** |
+| STREAM | 1,786 Kmsg/s | 5,216 Kmsg/s | **+192%** |
+
+### Full Transport Throughput (64B, Kmsg/s)
+
+| Pattern | tcp | tls | ws | wss | inproc | ipc |
+|---------|----:|----:|---:|----:|-------:|----:|
+| PAIR | 6,069 | 5,171 | 6,729 | 4,645 | 5,684 | 5,694 |
+| PUB/SUB | 5,495 | 5,337 | 6,326 | 4,951 | 6,140 | 5,580 |
+| DEALER↔DEALER | 6,134 | 5,255 | 6,578 | 4,663 | 6,137 | 5,988 |
+| DEALER↔ROUTER | 5,184 | 4,873 | 5,890 | 4,267 | 5,500 | 5,415 |
+| ROUTER↔ROUTER | 5,619 | 4,819 | 3,467 | 4,362 | 4,265 | 5,220 |
+
+> For detailed analysis, see the [Performance Report](doc/report/benchmark-2026-02-11.md) and the [Performance Guide](doc/guide/10-performance.md).
 
 ---
 
-## 문서
+## Documentation
 
-| 문서 | 설명 |
-|------|------|
-| [문서 네비게이션](doc/README.md) | 전체 문서 목차 및 독자별 경로 |
-| [사용자 가이드](doc/guide/01-overview.md) | zlink API 가이드 (12편) |
-| [바인딩 가이드](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python 바인딩 |
-| [내부 아키텍처](doc/internals/architecture.md) | 시스템 아키텍처 및 내부 구현 |
-| [빌드 가이드](doc/building/build-guide.md) | 빌드, 테스트, 패키징 |
-| [Feature Roadmap](doc/plan/feature-roadmap.md) | 기능 로드맵과 의존성 그래프 |
+| Document | Description |
+|----------|-------------|
+| [Documentation Index](doc/README.md) | Full table of contents and reader-specific paths |
+| [User Guide](doc/guide/01-overview.md) | zlink API guide (12 chapters) |
+| [Bindings Guide](doc/bindings/overview.md) | C++/Java/.NET/Node.js/Python bindings |
+| [Internal Architecture](doc/internals/architecture.md) | System architecture and internals |
+| [Build Guide](doc/building/build-guide.md) | Building, testing, and packaging |
+| [Feature Roadmap](doc/plan/feature-roadmap.md) | Feature roadmap and dependency graph |
 
 ---
 
-## 라이선스
+## License
 
 [Mozilla Public License 2.0](LICENSE)
 
-서드파티 구성요소 및 바이너리 재배포 관련 고지는
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)를 참고하세요.
+For third-party component notices and binary redistribution information,
+see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-[libzmq](https://github.com/zeromq/libzmq) 기반 — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.
+Built on [libzmq](https://github.com/zeromq/libzmq) — Copyright (c) 2007-2024 Contributors as noted in the AUTHORS file.

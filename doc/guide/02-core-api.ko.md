@@ -1,3 +1,5 @@
+[English](02-core-api.md) | [한국어](02-core-api.ko.md)
+
 # Core C API 상세 가이드
 
 ## 1. Context API

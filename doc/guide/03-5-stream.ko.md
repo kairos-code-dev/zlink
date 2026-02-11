@@ -1,3 +1,5 @@
+[English](03-5-stream.md) | [한국어](03-5-stream.ko.md)
+
 # STREAM 소켓
 
 ## 1. 개요
@@ -312,4 +314,4 @@ int linger = 0;
 zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
 ```
 
-> STREAM 소켓의 내부 구현 최적화(WS/WSS copy elimination 등)는 [STREAM 소켓 최적화](../internals/stream-socket.md)를 참고.
+> STREAM 소켓의 내부 구현 최적화(WS/WSS copy elimination 등)는 [STREAM 소켓 최적화](../internals/stream-socket.ko.md)를 참고.

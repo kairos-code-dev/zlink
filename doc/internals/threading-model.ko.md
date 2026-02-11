@@ -1,3 +1,5 @@
+[English](threading-model.md) | [한국어](threading-model.ko.md)
+
 # 스레딩 및 동시성 모델
 
 ## 1. 스레드 구조

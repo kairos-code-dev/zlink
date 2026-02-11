@@ -1,3 +1,5 @@
+[English](07-1-discovery.md) | [한국어](07-1-discovery.ko.md)
+
 # Service Discovery 기반 인프라
 
 ## 1. 개요
@@ -138,5 +140,5 @@ Receiver                    Registry
 
 ## 6. 다음 단계
 
-- [Gateway 서비스](07-2-gateway.md) — Discovery 기반 위치투명 요청/응답
-- [SPOT PUB/SUB](07-3-spot.md) — Discovery 기반 위치투명 발행/구독
+- [Gateway 서비스](07-2-gateway.ko.md) — Discovery 기반 위치투명 요청/응답
+- [SPOT PUB/SUB](07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독

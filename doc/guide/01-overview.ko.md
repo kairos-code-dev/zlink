@@ -1,3 +1,5 @@
+[English](01-overview.md) | [한국어](01-overview.ko.md)
+
 # zlink 개요 및 시작하기
 
 ## 1. zlink이란?
@@ -119,7 +121,7 @@ int main(void) {
 
 ## 7. 다음 단계
 
-- [Core API 상세](02-core-api.md)
-- [소켓 패턴별 사용법](03-0-socket-patterns.md)
-- [Transport 가이드](04-transports.md)
-- [TLS 보안 설정](05-tls-security.md)
+- [Core API 상세](02-core-api.ko.md)
+- [소켓 패턴별 사용법](03-0-socket-patterns.ko.md)
+- [Transport 가이드](04-transports.ko.md)
+- [TLS 보안 설정](05-tls-security.ko.md)

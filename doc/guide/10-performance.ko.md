@@ -1,3 +1,5 @@
+[English](10-performance.md) | [한국어](10-performance.ko.md)
+
 # 성능 특성 및 튜닝 가이드
 
 ## 1. 벤치마크 결과
@@ -30,7 +32,7 @@
 | tcp | 1416 MB/s | 1493 MB/s | 105% |
 | ws | 540 MB/s | 696 MB/s | 129% |
 
-> WS/WSS 내부 최적화 상세(Copy elimination, Gather write)는 [STREAM 소켓 최적화](../internals/stream-socket.md)를 참고.
+> WS/WSS 내부 최적화 상세(Copy elimination, Gather write)는 [STREAM 소켓 최적화](../internals/stream-socket.ko.md)를 참고.
 
 ## 3. 메시지 크기별 처리량 가이드라인
 
@@ -241,4 +243,4 @@ printf("RTT: %.1f us\n", rtt_us);
 - [ ] Slow Subscriber 감지 (PUB/SUB 환경)
 - [ ] HWM 도달 빈도 관찰
 
-> Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.md)를 참고.
+> Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.

@@ -1,3 +1,5 @@
+[English](08-routing-id.md) | [한국어](08-routing-id.ko.md)
+
 # Routing ID 개념 및 사용법
 
 ## 1. 개요

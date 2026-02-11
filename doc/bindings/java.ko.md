@@ -1,3 +1,5 @@
+[English](java.md) | [한국어](java.ko.md)
+
 # Java 바인딩
 
 ## 1. 개요

@@ -1,3 +1,5 @@
+[English](07-3-spot.md) | [한국어](07-3-spot.ko.md)
+
 # SPOT 토픽 PUB/SUB (위치투명 발행/구독)
 
 ## 1. 개요

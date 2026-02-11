@@ -1,3 +1,5 @@
+[English](03-4-router.md) | [한국어](03-4-router.ko.md)
+
 # ROUTER 소켓
 
 ## 1. 개요
@@ -264,4 +266,4 @@ zlink_send(router, data, data_size, 0);
 zlink_send(router, identity, id_size, 0);  /* SNDMORE 없음! */
 ```
 
-> routing_id의 상세 개념은 [08-routing-id.md](08-routing-id.md)를 참고.
+> routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.

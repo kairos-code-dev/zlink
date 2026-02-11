@@ -1,3 +1,5 @@
+[English](09-message-api.md) | [한국어](09-message-api.ko.md)
+
 # 메시지 API 상세
 
 ## 1. 개요
@@ -13,7 +15,7 @@ zlink 메시지는 `zlink_msg_t` 구조체로 표현되며, 64바이트 고정 �
 | CMSG (Constant Message) | 상수 데이터 | 외부 포인터 참조 (복사 없음) | `zlink_send_const()` |
 | ZCLMSG (Zero-copy Large) | zero-copy | 외부 버퍼 + 해제 콜백 | `zlink_msg_init_data()` |
 
-> 내부 메모리 레이아웃(VSM/LMSG 구조체 상세)은 [architecture.md](../internals/architecture.md)를 참고.
+> 내부 메모리 레이아웃(VSM/LMSG 구조체 상세)은 [architecture.md](../internals/architecture.ko.md)를 참고.
 
 ## 3. 메시지 생명주기
 

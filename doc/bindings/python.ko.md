@@ -1,3 +1,5 @@
+[English](python.md) | [한국어](python.ko.md)
+
 # Python 바인딩
 
 ## 1. 개요

@@ -212,3 +212,4 @@ buildenv/win/env.ps1
 # Local benchmark outputs
 core/bench/benchwithzlink/results/
 core/bench/benchwithzmq/results/
+bindings/*/benchwithzlink/results/

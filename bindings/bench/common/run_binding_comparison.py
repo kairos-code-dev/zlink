@@ -115,7 +115,7 @@ def parse_args():
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Core bench build directory\n"
         "  --pin-cpu               Pin CPU core via BENCH_TASKSET=1\n"
-        "  --no-core-fallback      Disable core fallback when binding pattern is unavailable\n"
+        "  --allow-core-fallback   Allow core fallback when binding result rows are missing\n"
     )
     refresh = False
     p_req = "ALL"
@@ -123,7 +123,7 @@ def parse_args():
     build_dir = ""
     current_only = False
     pin_cpu = False
-    no_core_fallback = False
+    allow_core_fallback = False
     binding = ""
 
     i = 1
@@ -138,8 +138,8 @@ def parse_args():
             current_only = True
         elif arg == "--pin-cpu":
             pin_cpu = True
-        elif arg == "--no-core-fallback":
-            no_core_fallback = True
+        elif arg == "--allow-core-fallback":
+            allow_core_fallback = True
         elif arg == "--binding":
             if i + 1 >= len(sys.argv):
                 print("Error: --binding requires a value", file=sys.stderr)
@@ -168,7 +168,7 @@ def parse_args():
     if num_runs < 1:
         print("Error: --runs must be >= 1", file=sys.stderr)
         sys.exit(1)
-    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, no_core_fallback
+    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, allow_core_fallback
 
 
 def binding_runner_cmd(binding):
@@ -300,7 +300,7 @@ def normalize_build_dir(path: str) -> str:
 
 
 def main():
-    p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, no_core_fallback = parse_args()
+    p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, allow_core_fallback = parse_args()
     sizes = msg_sizes()
 
     if p_req == "ALL":
@@ -333,7 +333,6 @@ def main():
             cache = {}
 
     bind_cmd_prefix = binding_runner_cmd(binding)
-    allow_core_fallback = not no_core_fallback
     fallback_hits = []
 
     all_failures = []
@@ -365,6 +364,8 @@ def main():
 
         def run_binding(tr, sz):
             cmd = bind_cmd_prefix + [pattern, tr, str(sz)]
+            if binding == "cpp":
+                cmd.append(core_build)
             if not IS_WINDOWS and env_base.get("BENCH_TASKSET") == "1":
                 cmd = ["taskset", "-c", "1"] + cmd
             parsed = run_and_parse(cmd, binding_env_vars)
@@ -423,6 +424,7 @@ def main():
         print("\n## Failures")
         for p, lib, tr, sz, reason in all_failures:
             print(f"- {p} {lib} {tr} {sz}B: {reason}")
+        sys.exit(2)
     if fallback_hits:
         print("\n## Fallbacks")
         print("Used core benchmark fallback where binding runner returned no RESULT rows:")

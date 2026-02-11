@@ -44,6 +44,7 @@ RUNS=1
 REUSE_BUILD=0
 ZLINK_ONLY=0
 PIN_CPU=0
+ALLOW_CORE_FALLBACK=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
@@ -71,6 +72,7 @@ Options:
   --zlink-only          Run only ${BINDING} binding benchmarks (no zlink compare).
   --reuse-build         Reuse existing core build dir without re-running CMake.
   --pin-cpu             Pin CPU core during benchmarks (Linux taskset).
+  --allow-core-fallback Allow core fallback if binding runner returns no RESULT rows.
   --io-threads N        Set BENCH_IO_THREADS for the benchmark run.
   --msg-sizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N              Convenience alias for --msg-sizes N.
@@ -94,6 +96,7 @@ while [[ $# -gt 0 ]]; do
     --runs) RUNS="${2:-}"; shift ;;
     --zlink-only) ZLINK_ONLY=1 ;;
     --pin-cpu) PIN_CPU=1 ;;
+    --allow-core-fallback) ALLOW_CORE_FALLBACK=1 ;;
     --io-threads) BENCH_IO_THREADS="${2:-}"; shift ;;
     --msg-sizes) BENCH_MSG_SIZES="${2:-}"; shift ;;
     --size) BENCH_MSG_SIZES="${2:-}"; shift ;;
@@ -190,6 +193,7 @@ RUN_ENV=()
 [[ -n "${BENCH_MSG_SIZES}" ]] && RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")
 [[ -n "${BENCH_TRANSPORTS}" ]] && RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
 [[ "${PIN_CPU}" -eq 1 ]] && RUN_CMD+=(--pin-cpu)
+[[ "${ALLOW_CORE_FALLBACK}" -eq 1 ]] && RUN_CMD+=(--allow-core-fallback)
 
 if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
   RUN_CMD+=(--zlink-only)

@@ -1,0 +1,92 @@
+
+## PATTERN: SPOT
+  [baseline] Using cached baseline.
+  > Benchmarking current for SPOT...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing tls | 64B: 1 Done
+    Testing tls | 256B: 1 Done
+    Testing tls | 1024B: 1 Done
+    Testing tls | 65536B: 1 Done
+    Testing tls | 131072B: 1 Done
+    Testing tls | 262144B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+    Testing wss | 64B: 1 Done
+    Testing wss | 256B: 1 Done
+    Testing wss | 1024B: 1 Done
+    Testing wss | 65536B: 1 Done
+    Testing wss | 131072B: 1 Done
+    Testing wss | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   2180.89 Kmsg/s |   2029.72 Kmsg/s |   -6.93% |
+| 64B    | Latency    |       5114.06 us |       1086.76 us |  +78.75% |
+| 256B   | Throughput |   1241.96 Kmsg/s |   1465.87 Kmsg/s |  +18.03% |
+| 256B   | Latency    |       5113.84 us |       1085.00 us |  +78.78% |
+| 1024B  | Throughput |    692.49 Kmsg/s |    855.43 Kmsg/s |  +23.53% |
+| 1024B  | Latency    |       5115.10 us |       1085.83 us |  +78.77% |
+| 65536B | Throughput |     54.18 Kmsg/s |     58.79 Kmsg/s |   +8.51% |
+| 65536B | Latency    |       5115.35 us |       1083.41 us |  +78.82% |
+| 131072B | Throughput |     31.39 Kmsg/s |     37.68 Kmsg/s |  +20.02% |
+| 131072B | Latency    |       5114.71 us |       1091.49 us |  +78.66% |
+| 262144B | Throughput |     16.82 Kmsg/s |     21.97 Kmsg/s |  +30.61% |
+| 262144B | Latency    |       5128.23 us |       1083.87 us |  +78.86% |
+
+### Transport: tls
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   1887.52 Kmsg/s |   2044.98 Kmsg/s |   +8.34% |
+| 64B    | Latency    |       5116.30 us |       1082.15 us |  +78.85% |
+| 256B   | Throughput |   1297.56 Kmsg/s |   1385.57 Kmsg/s |   +6.78% |
+| 256B   | Latency    |       5112.75 us |       1082.77 us |  +78.82% |
+| 1024B  | Throughput |    545.32 Kmsg/s |    604.54 Kmsg/s |  +10.86% |
+| 1024B  | Latency    |       5113.24 us |       1086.87 us |  +78.74% |
+| 65536B | Throughput |     19.26 Kmsg/s |     24.01 Kmsg/s |  +24.65% |
+| 65536B | Latency    |       5130.07 us |       1086.25 us |  +78.83% |
+| 131072B | Throughput |     11.01 Kmsg/s |     12.51 Kmsg/s |  +13.64% |
+| 131072B | Latency    |       5113.74 us |       1085.01 us |  +78.78% |
+| 262144B | Throughput |      5.57 Kmsg/s |      6.30 Kmsg/s |  +13.02% |
+| 262144B | Latency    |       5119.51 us |       1084.79 us |  +78.81% |
+
+### Transport: ws
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   1926.90 Kmsg/s |   1945.71 Kmsg/s |   +0.98% |
+| 64B    | Latency    |       5126.38 us |       1084.93 us |  +78.84% |
+| 256B   | Throughput |   1523.71 Kmsg/s |   1773.16 Kmsg/s |  +16.37% |
+| 256B   | Latency    |       5109.63 us |       1083.81 us |  +78.79% |
+| 1024B  | Throughput |    783.56 Kmsg/s |    999.74 Kmsg/s |  +27.59% |
+| 1024B  | Latency    |       5104.41 us |       1088.98 us |  +78.67% |
+| 65536B | Throughput |     43.54 Kmsg/s |     52.36 Kmsg/s |  +20.28% |
+| 65536B | Latency    |       5110.36 us |       1086.05 us |  +78.75% |
+| 131072B | Throughput |     23.93 Kmsg/s |     29.38 Kmsg/s |  +22.78% |
+| 131072B | Latency    |       5113.79 us |       1109.79 us |  +78.30% |
+| 262144B | Throughput |     13.41 Kmsg/s |     17.88 Kmsg/s |  +33.36% |
+| 262144B | Latency    |       5118.24 us |       1083.76 us |  +78.83% |
+
+### Transport: wss
+| Size   | Metric     |         baseline |          current |  Diff (%) |
+|--------|------------|------------------|------------------|-----------|
+| 64B    | Throughput |   2054.44 Kmsg/s |   2035.79 Kmsg/s |   -0.91% |
+| 64B    | Latency    |       5113.35 us |       1083.81 us |  +78.80% |
+| 256B   | Throughput |   1357.09 Kmsg/s |   1465.65 Kmsg/s |   +8.00% |
+| 256B   | Latency    |       5106.67 us |       1083.26 us |  +78.79% |
+| 1024B  | Throughput |    474.99 Kmsg/s |    654.26 Kmsg/s |  +37.74% |
+| 1024B  | Latency    |       5111.25 us |       1084.95 us |  +78.77% |
+| 65536B | Throughput |     17.89 Kmsg/s |     20.19 Kmsg/s |  +12.90% |
+| 65536B | Latency    |       5119.91 us |       1102.27 us |  +78.47% |
+| 131072B | Throughput |      8.40 Kmsg/s |     10.29 Kmsg/s |  +22.46% |
+| 131072B | Latency    |       5123.93 us |       1088.13 us |  +78.76% |
+| 262144B | Throughput |      4.79 Kmsg/s |      5.51 Kmsg/s |  +15.01% |
+| 262144B | Latency    |       5132.09 us |       1080.80 us |  +78.94% |

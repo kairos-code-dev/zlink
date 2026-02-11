@@ -142,3 +142,6 @@ Receiver                    Registry
 
 - [Gateway 서비스](07-2-gateway.ko.md) — Discovery 기반 위치투명 요청/응답
 - [SPOT PUB/SUB](07-3-spot.ko.md) — Discovery 기반 위치투명 발행/구독
+
+---
+[← 서비스 개요](07-0-services.ko.md) | [Gateway →](07-2-gateway.ko.md)

@@ -264,3 +264,6 @@ zlink_ctx_term(ctx);
 | `zlink_receiver_setsockopt(...)` | 소켓 옵션 설정 |
 | `zlink_receiver_router(...)` | ROUTER 소켓 획득 |
 | `zlink_receiver_destroy(...)` | 종료 |
+
+---
+[← Discovery](07-1-discovery.ko.md) | [SPOT →](07-3-spot.ko.md)

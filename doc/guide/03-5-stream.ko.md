@@ -315,3 +315,6 @@ zlink_setsockopt(stream, ZLINK_LINGER, &linger, sizeof(linger));
 ```
 
 > STREAM 소켓의 내부 구현 최적화(WS/WSS copy elimination 등)는 [STREAM 소켓 최적화](../internals/stream-socket.ko.md)를 참고.
+
+---
+[← ROUTER](03-4-router.ko.md) | [Transport →](04-transports.ko.md)

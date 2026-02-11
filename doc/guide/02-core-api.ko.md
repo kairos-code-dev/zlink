@@ -212,3 +212,6 @@ int main(void) {
     return 0;
 }
 ```
+
+---
+[← 개요](01-overview.ko.md) | [소켓 패턴 →](03-0-socket-patterns.ko.md)

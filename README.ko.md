@@ -99,19 +99,39 @@ zlink는 5개의 명확히 분리된 계층으로 구성됩니다:
 
 ---
 
-## 개발 편의 기능
+## 서비스
 
-간소화된 core를 넘어, 실전 분산 시스템을 위한 **고수준 메시징 스택**을 구축합니다:
+코어 소켓 계층 위에 구축된, 실전 분산 시스템을 위한 **고수준 서비스 계층**을 제공합니다:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Application                           │
+│         Gateway (요청/응답)  ·  SPOT (발행/구독)          │
+├─────────────────────────────────────────────────────────┤
+│                  Discovery (서비스 발견)                   │
+├─────────────────────────────────────────────────────────┤
+│                  Registry (서비스 등록소)                  │
+├─────────────────────────────────────────────────────────┤
+│              zlink Core (7종 소켓 + 6종 Transport)        │
+└─────────────────────────────────────────────────────────┘
+```
+
+| 서비스 | 설명 | 가이드 |
+|--------|------|:------:|
+| **Discovery** | Registry 클러스터 HA, Heartbeat 기반 생존 확인, Client-side 서비스 캐시 | [Discovery](doc/guide/07-1-discovery.ko.md) |
+| **Gateway** | Discovery 기반 위치투명 요청/응답, 자동 로드밸런싱, Thread-safe 전송 | [Gateway](doc/guide/07-2-gateway.ko.md) |
+| **SPOT** | 위치투명 토픽 PUB/SUB, Discovery 기반 자동 Mesh 구성 | [SPOT](doc/guide/07-3-spot.ko.md) |
+
+> 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.ko.md)을 참고하세요.
+
+---
+
+## 부가 기능
 
 | 기능 | 설명 | 가이드 |
 |------|------|:------:|
-| **Routing ID 통합** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.ko.md) |
-| **모니터링 강화** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](doc/guide/06-monitoring.ko.md) |
-| **Service Discovery** | Registry 클러스터, Client-side Load Balancing, Health Monitoring | [Discovery](doc/guide/07-1-discovery.ko.md) |
-| **Gateway** | Discovery 기반 위치투명 요청/응답, 로드밸런싱 | [Gateway](doc/guide/07-2-gateway.ko.md) |
-| **SPOT Topic PUB/SUB** | 위치 투명한 토픽 메시징, Discovery 기반 자동 Mesh | [SPOT](doc/guide/07-3-spot.ko.md) |
-
-> 전체 기능 로드맵과 의존성 그래프는 [Feature Roadmap](doc/plan/feature-roadmap.ko.md)을 참고하세요.
+| **Routing ID** | `zlink_routing_id_t` 표준 타입, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.ko.md) |
+| **모니터링** | Routing-ID 기반 이벤트 식별, Polling 방식 모니터 API | [Monitoring](doc/guide/06-monitoring.ko.md) |
 
 ---
 
@@ -182,9 +202,7 @@ vcpkg install openssl:x64-windows
 
 ## 성능
 
-모든 transport에서 소형 메시지(64B) 기준 **4~6 M msg/s** 처리량을 달성하며, 전 패턴에서 **deadlock 없음**이 확인되었습니다.
-
-### libzmq 대비 처리량 (64B, TCP)
+libzmq 대비 64바이트 메시지 TCP 처리량 비교:
 
 | 패턴 | libzmq | zlink | 차이 |
 |------|-------:|------:|-----:|
@@ -195,16 +213,6 @@ vcpkg install openssl:x64-windows
 | ROUTER↔ROUTER | 5,161 Kmsg/s | 5,250 Kmsg/s | **+1.7%** |
 | ROUTER↔ROUTER (poll) | 4,405 Kmsg/s | 5,249 Kmsg/s | **+19.2%** |
 | STREAM | 1,786 Kmsg/s | 5,216 Kmsg/s | **+192%** |
-
-### 전체 Transport 처리량 (64B, Kmsg/s)
-
-| 패턴 | tcp | tls | ws | wss | inproc | ipc |
-|------|----:|----:|---:|----:|-------:|----:|
-| PAIR | 6,069 | 5,171 | 6,729 | 4,645 | 5,684 | 5,694 |
-| PUB/SUB | 5,495 | 5,337 | 6,326 | 4,951 | 6,140 | 5,580 |
-| DEALER↔DEALER | 6,134 | 5,255 | 6,578 | 4,663 | 6,137 | 5,988 |
-| DEALER↔ROUTER | 5,184 | 4,873 | 5,890 | 4,267 | 5,500 | 5,415 |
-| ROUTER↔ROUTER | 5,619 | 4,819 | 3,467 | 4,362 | 4,265 | 5,220 |
 
 > 상세 분석은 [성능 리포트](doc/report/benchmark-2026-02-11.ko.md) 및 [성능 가이드](doc/guide/10-performance.ko.md)를 참고하세요.
 

@@ -99,19 +99,39 @@ zlink is composed of five clearly separated layers:
 
 ---
 
-## Developer Convenience Features
+## Services
 
-Beyond the streamlined core, zlink builds a **high-level messaging stack** for production distributed systems:
+Built on top of the core socket layer, zlink provides a **high-level service layer** for production distributed systems:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Application                           │
+│         Gateway (req/rep)  ·  SPOT (pub/sub)             │
+├─────────────────────────────────────────────────────────┤
+│                  Discovery (service lookup)               │
+├─────────────────────────────────────────────────────────┤
+│                  Registry (service registry)              │
+├─────────────────────────────────────────────────────────┤
+│              zlink Core (7 sockets + 6 transports)       │
+└─────────────────────────────────────────────────────────┘
+```
+
+| Service | Description | Guide |
+|---------|-------------|:-----:|
+| **Discovery** | Registry cluster with HA, heartbeat-based health check, client-side service cache | [Discovery](doc/guide/07-1-discovery.md) |
+| **Gateway** | Location-transparent request/response with automatic load balancing, thread-safe send | [Gateway](doc/guide/07-2-gateway.md) |
+| **SPOT** | Location-transparent topic PUB/SUB with Discovery-based automatic mesh | [SPOT](doc/guide/07-3-spot.md) |
+
+> For the full feature roadmap and dependency graph, see the [Feature Roadmap](doc/plan/feature-roadmap.md).
+
+---
+
+## Additional Features
 
 | Feature | Description | Guide |
 |---------|-------------|:-----:|
-| **Routing ID Integration** | `zlink_routing_id_t` standard type, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
-| **Enhanced Monitoring** | Routing-ID-based event identification, polling-style monitor API | [Monitoring](doc/guide/06-monitoring.md) |
-| **Service Discovery** | Registry cluster, client-side load balancing, health monitoring | [Discovery](doc/guide/07-1-discovery.md) |
-| **Gateway** | Location-transparent request/response via Discovery, load balancing | [Gateway](doc/guide/07-2-gateway.md) |
-| **SPOT Topic PUB/SUB** | Location-transparent topic messaging, Discovery-based automatic mesh | [SPOT](doc/guide/07-3-spot.md) |
-
-> For the full feature roadmap and dependency graph, see the [Feature Roadmap](doc/plan/feature-roadmap.md).
+| **Routing ID** | `zlink_routing_id_t` standard type, own 16B UUID / peer 4B uint32 | [Routing ID](doc/guide/08-routing-id.md) |
+| **Monitoring** | Routing-ID-based event identification, polling-style monitor API | [Monitoring](doc/guide/06-monitoring.md) |
 
 ---
 
@@ -182,9 +202,7 @@ vcpkg install openssl:x64-windows
 
 ## Performance
 
-Across all transports, zlink achieves **4--6 M msg/s** throughput for small messages (64B), with **zero deadlocks** confirmed across every pattern.
-
-### Throughput vs. libzmq (64B, TCP)
+Throughput comparison with libzmq on 64-byte messages over TCP:
 
 | Pattern | libzmq | zlink | Diff |
 |---------|-------:|------:|-----:|
@@ -195,16 +213,6 @@ Across all transports, zlink achieves **4--6 M msg/s** throughput for small mess
 | ROUTER↔ROUTER | 5,161 Kmsg/s | 5,250 Kmsg/s | **+1.7%** |
 | ROUTER↔ROUTER (poll) | 4,405 Kmsg/s | 5,249 Kmsg/s | **+19.2%** |
 | STREAM | 1,786 Kmsg/s | 5,216 Kmsg/s | **+192%** |
-
-### Full Transport Throughput (64B, Kmsg/s)
-
-| Pattern | tcp | tls | ws | wss | inproc | ipc |
-|---------|----:|----:|---:|----:|-------:|----:|
-| PAIR | 6,069 | 5,171 | 6,729 | 4,645 | 5,684 | 5,694 |
-| PUB/SUB | 5,495 | 5,337 | 6,326 | 4,951 | 6,140 | 5,580 |
-| DEALER↔DEALER | 6,134 | 5,255 | 6,578 | 4,663 | 6,137 | 5,988 |
-| DEALER↔ROUTER | 5,184 | 4,873 | 5,890 | 4,267 | 5,500 | 5,415 |
-| ROUTER↔ROUTER | 5,619 | 4,819 | 3,467 | 4,362 | 4,265 | 5,220 |
 
 > For detailed analysis, see the [Performance Report](doc/report/benchmark-2026-02-11.md) and the [Performance Guide](doc/guide/10-performance.md).
 

@@ -97,3 +97,6 @@ Discovery 기반으로 PUB/SUB Mesh를 자동 구성하여 클러스터 전체�
 - **Gateway**는 DEALER/ROUTER 패턴으로 요청/응답을 처리한다.
 - **SPOT**은 PUB/SUB 패턴으로 토픽 메시지를 전파한다.
 - Gateway와 SPOT은 독립적으로 동작하며, 동일한 Registry 클러스터를 공유할 수 있다.
+
+---
+[← 모니터링](06-monitoring.ko.md) | [Discovery →](07-1-discovery.ko.md)

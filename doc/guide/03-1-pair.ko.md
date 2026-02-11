@@ -222,3 +222,6 @@ zlink_bind(socket, "ipc:///very/long/path/.../endpoint.ipc");
 int linger = 0;
 zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
 ```
+
+---
+[← 소켓 패턴](03-0-socket-patterns.ko.md) | [PUB/SUB →](03-2-pubsub.ko.md)

@@ -244,3 +244,6 @@ printf("RTT: %.1f us\n", rtt_us);
 - [ ] HWM 도달 빈도 관찰
 
 > Speculative I/O, Gather Write 등 내부 최적화 메커니즘의 상세는 [architecture.md](../internals/architecture.ko.md)를 참고.
+
+---
+[← Message API](09-message-api.ko.md)

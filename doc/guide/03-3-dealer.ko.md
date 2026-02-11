@@ -257,3 +257,6 @@ if (rc == -1 && errno == EAGAIN) {
 zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "D1", 2);
 zlink_connect(dealer, endpoint);  /* D1으로 식별 */
 ```
+
+---
+[← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)

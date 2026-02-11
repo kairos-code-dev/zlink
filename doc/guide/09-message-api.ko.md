@@ -365,3 +365,6 @@ zlink_msg_t msg;
 zlink_msg_init_data(&msg, large_buf, large_size, my_free, NULL);
 zlink_msg_send(&msg, socket, 0);
 ```
+
+---
+[← Routing ID](08-routing-id.ko.md) | [성능 →](10-performance.ko.md)

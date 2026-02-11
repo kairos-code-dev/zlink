@@ -120,3 +120,6 @@ zlink_ctx_term(ctx);
 ```
 
 > 소켓 옵션은 반드시 `zlink_bind()`/`zlink_connect()` **이전에** 설정해야 한다.
+
+---
+[← Core API](02-core-api.ko.md) | [PAIR →](03-1-pair.ko.md)

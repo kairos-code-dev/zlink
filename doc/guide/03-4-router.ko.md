@@ -267,3 +267,6 @@ zlink_send(router, identity, id_size, 0);  /* SNDMORE 없음! */
 ```
 
 > routing_id의 상세 개념은 [08-routing-id.ko.md](08-routing-id.ko.md)를 참고.
+
+---
+[← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)

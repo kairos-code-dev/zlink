@@ -125,3 +125,6 @@ int main(void) {
 - [소켓 패턴별 사용법](03-0-socket-patterns.ko.md)
 - [Transport 가이드](04-transports.ko.md)
 - [TLS 보안 설정](05-tls-security.ko.md)
+
+---
+[Core API →](02-core-api.ko.md)

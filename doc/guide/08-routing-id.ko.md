@@ -284,3 +284,6 @@ if (rid_size == 2 && memcmp(rid, "D1", 2) == 0) {
     /* D1 클라이언트의 메시지 */
 }
 ```
+
+---
+[← SPOT](07-3-spot.ko.md) | [Message API →](09-message-api.ko.md)

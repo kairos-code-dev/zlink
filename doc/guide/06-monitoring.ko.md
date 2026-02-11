@@ -353,3 +353,6 @@ zlink_close(mon);
 ```
 
 반드시 두 단계를 모두 수행해야 한다. `zlink_close(mon)`만 호출하면 내부 리소스가 정리되지 않을 수 있다.
+
+---
+[← TLS 보안](05-tls-security.ko.md) | [서비스 개요 →](07-0-services.ko.md)

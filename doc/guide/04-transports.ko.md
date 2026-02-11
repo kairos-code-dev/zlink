@@ -322,3 +322,6 @@ printf("바인드된 엔드포인트: %s\n", endpoint);
 ```
 
 성능 비교는 [성능 가이드](10-performance.ko.md)를 참고.
+
+---
+[← STREAM](03-5-stream.ko.md) | [TLS 보안 →](05-tls-security.ko.md)

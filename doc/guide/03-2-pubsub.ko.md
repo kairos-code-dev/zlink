@@ -446,3 +446,6 @@ MANUAL 모드에서 구독 프레임을 수신한 후 `ZLINK_SUBSCRIBE`를 호�
 여러 SUB가 같은 토픽을 구독하면, 모든 SUB가 해제될 때까지 XPUB의 구독이 유지된다.
 
 > 참고: `core/tests/test_xpub_manual.cpp` — `test_missing_subscriptions()`: 두 구독자를 순차 처리하여 누락 방지
+
+---
+[← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)

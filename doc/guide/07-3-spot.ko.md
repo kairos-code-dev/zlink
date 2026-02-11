@@ -193,3 +193,6 @@ zlink_spot_sub_destroy(&sub);
 zlink_spot_node_destroy(&node);
 zlink_discovery_destroy(&discovery);
 ```
+
+---
+[← Gateway](07-2-gateway.ko.md) | [Routing ID →](08-routing-id.ko.md)

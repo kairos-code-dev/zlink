@@ -151,11 +151,6 @@ class GatewayLbStrategy(IntEnum):
     WEIGHTED = 1
 
 
-class SpotTopicMode(IntEnum):
-    QUEUE = 0
-    RINGBUFFER = 1
-
-
 class RegistrySocketRole(IntEnum):
     PUB = 1
     ROUTER = 2

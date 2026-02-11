@@ -206,12 +206,6 @@ enum class gateway_lb_strategy : int
     weighted = ZLINK_GATEWAY_LB_WEIGHTED
 };
 
-enum class spot_topic_mode : int
-{
-    queue = 0,
-    ringbuffer = 1
-};
-
 enum class registry_socket_role : int
 {
     pub = ZLINK_REGISTRY_SOCKET_PUB,

@@ -60,10 +60,6 @@ int main()
     assert(static_cast<int>(zlink::gateway_lb_strategy::round_robin) == ZLINK_GATEWAY_LB_ROUND_ROBIN);
     assert(static_cast<int>(zlink::gateway_lb_strategy::weighted) == ZLINK_GATEWAY_LB_WEIGHTED);
 
-    // spot_topic_mode values
-    assert(static_cast<int>(zlink::spot_topic_mode::queue) == ZLINK_SPOT_TOPIC_QUEUE);
-    assert(static_cast<int>(zlink::spot_topic_mode::ringbuffer) == ZLINK_SPOT_TOPIC_RINGBUFFER);
-
     // socket role values
     assert(static_cast<int>(zlink::registry_socket_role::pub) == ZLINK_REGISTRY_SOCKET_PUB);
     assert(static_cast<int>(zlink::registry_socket_role::router) == ZLINK_REGISTRY_SOCKET_ROUTER);

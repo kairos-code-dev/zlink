@@ -69,11 +69,6 @@ test('GatewayLbStrategy values match C defines', () => {
   assert.strictEqual(zlink.GatewayLbStrategy.WEIGHTED, 1);
 });
 
-test('SpotTopicMode values match C defines', () => {
-  assert.strictEqual(zlink.SpotTopicMode.QUEUE, 0);
-  assert.strictEqual(zlink.SpotTopicMode.RINGBUFFER, 1);
-});
-
 test('socket role values match C defines', () => {
   assert.strictEqual(zlink.RegistrySocketRole.PUB, 1);
   assert.strictEqual(zlink.RegistrySocketRole.ROUTER, 2);
@@ -97,7 +92,6 @@ test('constant objects are frozen', () => {
   assert.ok(Object.isFrozen(zlink.PollEvent));
   assert.ok(Object.isFrozen(zlink.ServiceType));
   assert.ok(Object.isFrozen(zlink.GatewayLbStrategy));
-  assert.ok(Object.isFrozen(zlink.SpotTopicMode));
   assert.ok(Object.isFrozen(zlink.RegistrySocketRole));
   assert.ok(Object.isFrozen(zlink.DisconnectReason));
   assert.ok(Object.isFrozen(zlink.ContextOption));

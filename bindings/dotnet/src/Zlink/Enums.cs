@@ -155,12 +155,6 @@ public enum PollEvents
     PollPri = 8
 }
 
-public enum SpotTopicMode
-{
-    Queue = 0,
-    RingBuffer = 1
-}
-
 public enum GatewayLoadBalancing
 {
     RoundRobin = 0,

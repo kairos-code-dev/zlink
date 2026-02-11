@@ -63,10 +63,6 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.GatewayLbStrategy.ROUND_ROBIN), 0)
         self.assertEqual(int(zlink.GatewayLbStrategy.WEIGHTED), 1)
 
-    def test_spot_topic_mode_values(self):
-        self.assertEqual(int(zlink.SpotTopicMode.QUEUE), 0)
-        self.assertEqual(int(zlink.SpotTopicMode.RINGBUFFER), 1)
-
     def test_registry_socket_role_values(self):
         self.assertEqual(int(zlink.RegistrySocketRole.PUB), 1)
         self.assertEqual(int(zlink.RegistrySocketRole.ROUTER), 2)

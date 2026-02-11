@@ -81,12 +81,6 @@ public class EnumTest {
     }
 
     @Test
-    public void spotTopicModeValues() {
-        assertEquals(0, SpotTopicMode.QUEUE.getValue());
-        assertEquals(1, SpotTopicMode.RINGBUFFER.getValue());
-    }
-
-    @Test
     public void socketRoleValues() {
         assertEquals(1, RegistrySocketRole.PUB.getValue());
         assertEquals(2, RegistrySocketRole.ROUTER.getValue());

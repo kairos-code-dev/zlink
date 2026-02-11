@@ -92,13 +92,6 @@ public class EnumTests
     }
 
     [Fact]
-    public void SpotTopicMode_Values_Match_C_Defines()
-    {
-        Assert.Equal(0, (int)SpotTopicMode.Queue);
-        Assert.Equal(1, (int)SpotTopicMode.RingBuffer);
-    }
-
-    [Fact]
     public void SocketRole_Values_Match_C_Defines()
     {
         Assert.Equal(1, (int)RegistrySocketRole.Pub);

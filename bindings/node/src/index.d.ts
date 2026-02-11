@@ -95,10 +95,6 @@ export declare const GatewayLbStrategy: {
   readonly ROUND_ROBIN: 0; readonly WEIGHTED: 1;
 };
 
-export declare const SpotTopicMode: {
-  readonly QUEUE: 0; readonly RINGBUFFER: 1;
-};
-
 export declare const RegistrySocketRole: {
   readonly PUB: 1; readonly ROUTER: 2; readonly PEER_SUB: 3;
 };

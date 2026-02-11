@@ -128,10 +128,6 @@ const GatewayLbStrategy = Object.freeze({
   ROUND_ROBIN: 0, WEIGHTED: 1
 });
 
-const SpotTopicMode = Object.freeze({
-  QUEUE: 0, RINGBUFFER: 1
-});
-
 const RegistrySocketRole = Object.freeze({
   PUB: 1, ROUTER: 2, PEER_SUB: 3
 });
@@ -390,7 +386,6 @@ module.exports = {
   PollEvent,
   ServiceType,
   GatewayLbStrategy,
-  SpotTopicMode,
   RegistrySocketRole,
   DiscoverySocketRole,
   GatewaySocketRole,

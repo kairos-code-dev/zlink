@@ -90,6 +90,16 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
     return true;
 }
 
+static void release_shared_message (spot_shared_message_t *shared_)
+{
+    if (!shared_)
+        return;
+    if (shared_->refs.sub (1))
+        return;
+    close_parts (&shared_->parts);
+    delete shared_;
+}
+
 static void close_msgv (std::vector<zlink_msg_t> *parts_)
 {
     if (!parts_)
@@ -795,6 +805,13 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 
     for (std::set<std::string>::const_iterator it = sub_->_topics.begin ();
          it != sub_->_topics.end (); ++it) {
+        std::map<std::string, std::set<spot_sub_t *> >::iterator idx =
+          _topic_index.find (*it);
+        if (idx != _topic_index.end ()) {
+            idx->second.erase (sub_);
+            if (idx->second.empty ())
+                _topic_index.erase (idx);
+        }
         remove_filter (*it);
     }
 
@@ -803,12 +820,13 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
          it != sub_->_patterns.end (); ++it) {
         remove_filter (*it);
     }
+    _pattern_subs.erase (sub_);
 
     sub_->_topics.clear ();
     sub_->_patterns.clear ();
     while (!sub_->_queue.empty ()) {
-        spot_sub_t::spot_message_t &msg = sub_->_queue.front ();
-        close_parts (&msg.parts);
+        spot_sub_t::queue_entry_t &entry = sub_->_queue.front ();
+        release_shared_message (entry.shared);
         sub_->_queue.pop_front ();
     }
 }
@@ -828,6 +846,7 @@ int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
     scoped_lock_t lock (_sync);
     if (!sub_->_topics.insert (topic).second)
         return 0;
+    _topic_index[topic].insert (sub_);
 
     add_filter (topic);
     return 0;
@@ -848,6 +867,7 @@ int spot_node_t::subscribe_pattern (spot_sub_t *sub_, const char *pattern_)
     scoped_lock_t lock (_sync);
     if (!sub_->_patterns.insert (prefix).second)
         return 0;
+    _pattern_subs.insert (sub_);
     add_filter (prefix);
     return 0;
 }
@@ -866,6 +886,8 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
             errno = EINVAL;
             return -1;
         }
+        if (sub_->_patterns.empty ())
+            _pattern_subs.erase (sub_);
         remove_filter (prefix);
         return 0;
     }
@@ -880,6 +902,13 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
     if (sub_->_topics.erase (topic) == 0) {
         errno = EINVAL;
         return -1;
+    }
+    std::map<std::string, std::set<spot_sub_t *> >::iterator idx =
+      _topic_index.find (topic);
+    if (idx != _topic_index.end ()) {
+        idx->second.erase (sub_);
+        if (idx->second.empty ())
+            _topic_index.erase (idx);
     }
     remove_filter (topic);
     return 0;
@@ -959,16 +988,45 @@ void spot_node_t::dispatch_local (const std::string &topic_,
                                   const std::vector<msg_t> &payload_)
 {
     std::vector<spot_sub_t *> handler_targets;
-    for (std::set<spot_sub_t *>::iterator it = _subs.begin (); it != _subs.end ();
-         ++it) {
+    std::set<spot_sub_t *> matched;
+    spot_shared_message_t *shared = NULL;
+
+    std::map<std::string, std::set<spot_sub_t *> >::iterator exact =
+      _topic_index.find (topic_);
+    if (exact != _topic_index.end ())
+        matched.insert (exact->second.begin (), exact->second.end ());
+
+    for (std::set<spot_sub_t *>::iterator it = _pattern_subs.begin ();
+         it != _pattern_subs.end (); ++it) {
         spot_sub_t *sub = *it;
+        if (matched.count (sub))
+            continue;
         if (!sub->matches (topic_))
             continue;
+        matched.insert (sub);
+    }
+
+    for (std::set<spot_sub_t *>::iterator it = matched.begin ();
+         it != matched.end (); ++it) {
+        spot_sub_t *sub = *it;
         if (sub->callback_enabled ())
             handler_targets.push_back (sub);
-        else
-            sub->enqueue_message (topic_, payload_);
+        else {
+            if (!shared) {
+                shared = new (std::nothrow) spot_shared_message_t ();
+                if (!shared)
+                    break;
+                shared->topic = topic_;
+                if (!copy_parts_from_vec (payload_, &shared->parts)) {
+                    delete shared;
+                    shared = NULL;
+                    break;
+                }
+            }
+            sub->enqueue_shared_message (shared);
+        }
     }
+    release_shared_message (shared);
     enqueue_handler_delivery (topic_, payload_, handler_targets);
 }
 
@@ -1426,6 +1484,8 @@ int spot_node_t::destroy ()
         }
         _pending_handler_delivery.clear ();
         _filter_refcount.clear ();
+        _topic_index.clear ();
+        _pattern_subs.clear ();
         _peer_endpoints.clear ();
         _registry_endpoints.clear ();
         _bind_endpoints.clear ();

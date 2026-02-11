@@ -45,6 +45,22 @@ static bool copy_parts_from_vec (const std::vector<msg_t> &src_,
     return true;
 }
 
+static void retain_shared_message (spot_shared_message_t *shared_)
+{
+    if (shared_)
+        shared_->refs.add (1);
+}
+
+static void release_shared_message (spot_shared_message_t *shared_)
+{
+    if (!shared_)
+        return;
+    if (shared_->refs.sub (1))
+        return;
+    close_parts_local (&shared_->parts);
+    delete shared_;
+}
+
 spot_sub_t::spot_sub_t (spot_node_t *node_) :
     _node (node_),
     _tag (spot_sub_tag_value),
@@ -58,6 +74,11 @@ spot_sub_t::spot_sub_t (spot_node_t *node_) :
 
 spot_sub_t::~spot_sub_t ()
 {
+    while (!_queue.empty ()) {
+        queue_entry_t &entry = _queue.front ();
+        release_shared_message (entry.shared);
+        _queue.pop_front ();
+    }
     _tag = 0xdeadbeef;
 }
 
@@ -151,30 +172,45 @@ bool spot_sub_t::matches (const std::string &topic_) const
 bool spot_sub_t::enqueue_message (const std::string &topic_,
                                   const std::vector<msg_t> &payload_)
 {
+    spot_shared_message_t *shared =
+      new (std::nothrow) spot_shared_message_t ();
+    if (!shared) {
+        errno = ENOMEM;
+        return false;
+    }
+    shared->topic = topic_;
+    if (!copy_parts_from_vec (payload_, &shared->parts)) {
+        delete shared;
+        return false;
+    }
+    const bool ok = enqueue_shared_message (shared);
+    release_shared_message (shared);
+    return ok;
+}
+
+bool spot_sub_t::enqueue_shared_message (spot_shared_message_t *shared_)
+{
+    if (!shared_)
+        return false;
     if (_queue.size () >= _queue_hwm)
         return false;
-
-    std::vector<msg_t> parts;
-    if (!copy_parts_from_vec (payload_, &parts))
-        return false;
-
-    _queue.push_back (spot_message_t ());
-    spot_message_t &msg = _queue.back ();
-    msg.topic = topic_;
-    msg.parts.swap (parts);
+    _queue.push_back (queue_entry_t ());
+    queue_entry_t &entry = _queue.back ();
+    retain_shared_message (shared_);
+    entry.shared = shared_;
     _cv.broadcast ();
     return true;
 }
 
-bool spot_sub_t::dequeue_message (spot_message_t *out_)
+bool spot_sub_t::dequeue_message (spot_shared_message_t **out_)
 {
     if (!out_)
         return false;
     if (_queue.empty ())
         return false;
-    spot_message_t &front = _queue.front ();
-    out_->topic = front.topic;
-    out_->parts.swap (front.parts);
+    queue_entry_t &front = _queue.front ();
+    *out_ = front.shared;
+    front.shared = NULL;
     _queue.pop_front ();
     return true;
 }
@@ -217,6 +253,46 @@ zlink_msg_t *spot_sub_t::alloc_msgv_from_parts (std::vector<msg_t> *parts_,
     return out;
 }
 
+zlink_msg_t *spot_sub_t::alloc_msgv_from_parts_ref (
+  const std::vector<msg_t> &parts_,
+  size_t *count_)
+{
+    if (count_)
+        *count_ = 0;
+    if (parts_.empty ())
+        return NULL;
+
+    const size_t count = parts_.size ();
+    zlink_msg_t *out =
+      static_cast<zlink_msg_t *> (malloc (count * sizeof (zlink_msg_t)));
+    if (!out) {
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        msg_t *dst = reinterpret_cast<msg_t *> (&out[i]);
+        if (dst->init () != 0) {
+            for (size_t j = 0; j < i; ++j)
+                zlink_msg_close (&out[j]);
+            free (out);
+            return NULL;
+        }
+
+        msg_t &src = const_cast<msg_t &> (parts_[i]);
+        if (dst->copy (src) != 0) {
+            zlink_msg_close (&out[i]);
+            for (size_t j = 0; j < i; ++j)
+                zlink_msg_close (&out[j]);
+            free (out);
+            return NULL;
+        }
+    }
+    if (count_)
+        *count_ = count;
+    return out;
+}
+
 void spot_sub_t::close_parts (std::vector<msg_t> *parts_)
 {
     if (!parts_)
@@ -241,7 +317,7 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
         return -1;
     }
 
-    spot_message_t msg;
+    spot_shared_message_t *shared = NULL;
     {
         scoped_lock_t lock (_node->_sync);
         if (_handler_state != handler_none) {
@@ -249,7 +325,7 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
             return -1;
         }
         while (true) {
-            if (dequeue_message (&msg))
+            if (dequeue_message (&shared))
                 break;
             if (flags_ == ZLINK_DONTWAIT) {
                 errno = EAGAIN;
@@ -261,20 +337,21 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
 
     if (topic_out_) {
         memset (topic_out_, 0, 256);
-        strncpy (topic_out_, msg.topic.c_str (), 255);
+        strncpy (topic_out_, shared->topic.c_str (), 255);
     }
     if (topic_len_)
-        *topic_len_ = msg.topic.size ();
+        *topic_len_ = shared->topic.size ();
 
     zlink_msg_t *out_parts = NULL;
     size_t out_count = 0;
-    if (!msg.parts.empty ()) {
-        out_parts = alloc_msgv_from_parts (&msg.parts, &out_count);
+    if (!shared->parts.empty ()) {
+        out_parts = alloc_msgv_from_parts_ref (shared->parts, &out_count);
         if (!out_parts) {
             if (parts_)
                 *parts_ = NULL;
             if (part_count_)
                 *part_count_ = 0;
+            release_shared_message (shared);
             return -1;
         }
     }
@@ -283,6 +360,7 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
         *parts_ = out_parts;
     if (part_count_)
         *part_count_ = out_count;
+    release_shared_message (shared);
 
     return 0;
 }

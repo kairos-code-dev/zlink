@@ -133,6 +133,8 @@ class spot_node_t
     std::set<spot_pub_t *> _pubs;
     std::set<spot_sub_t *> _subs;
     std::map<std::string, size_t> _filter_refcount;
+    std::map<std::string, std::set<spot_sub_t *> > _topic_index;
+    std::set<spot_sub_t *> _pattern_subs;
     struct handler_delivery_t
     {
         std::string topic;

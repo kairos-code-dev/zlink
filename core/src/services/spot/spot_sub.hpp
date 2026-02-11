@@ -18,6 +18,15 @@ namespace zlink
 class spot_node_t;
 class socket_base_t;
 
+struct spot_shared_message_t
+{
+    std::string topic;
+    std::vector<msg_t> parts;
+    atomic_counter_t refs;
+
+    spot_shared_message_t () : refs (1) {}
+};
+
 class spot_sub_t
 {
   public:
@@ -47,10 +56,10 @@ class spot_sub_t
 
   private:
     friend class spot_node_t;
-    struct spot_message_t
+    struct queue_entry_t
     {
-        std::string topic;
-        std::vector<msg_t> parts;
+        spot_shared_message_t *shared;
+        queue_entry_t () : shared (NULL) {}
     };
 
     enum handler_state_t
@@ -63,11 +72,14 @@ class spot_sub_t
     bool matches (const std::string &topic_) const;
     bool enqueue_message (const std::string &topic_,
                           const std::vector<msg_t> &payload_);
-    bool dequeue_message (spot_message_t *out_);
+    bool enqueue_shared_message (spot_shared_message_t *shared_);
+    bool dequeue_message (spot_shared_message_t **out_);
     bool callback_enabled () const;
 
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
                                         size_t *count_);
+    zlink_msg_t *alloc_msgv_from_parts_ref (const std::vector<msg_t> &parts_,
+                                            size_t *count_);
     void close_parts (std::vector<msg_t> *parts_);
 
     spot_node_t *_node;
@@ -75,7 +87,7 @@ class spot_sub_t
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
 
-    std::deque<spot_message_t> _queue;
+    std::deque<queue_entry_t> _queue;
     size_t _queue_hwm;
     condition_variable_t _cv;
 

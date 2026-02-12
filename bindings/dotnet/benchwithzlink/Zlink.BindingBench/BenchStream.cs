@@ -36,17 +36,17 @@ internal static partial class BenchRunner
             var buf = new byte[size];
             Array.Fill(buf, (byte)'a');
             int cap = Math.Max(256, size);
-            var recvId = new byte[256];
+            var recvIdScratch = new byte[256];
             var recvPayload = new byte[cap];
-            var ackId = new byte[256];
+            var ackIdScratch = new byte[256];
             var ackPayload = new byte[cap];
 
             for (int i = 0; i < warmup; i++)
             {
                 StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
                     buf.AsSpan());
-                StreamRecv(server, recvId.AsSpan(), recvPayload.AsSpan(),
-                    out _, out _);
+                StreamRecvPayload(server, recvIdScratch.AsSpan(),
+                    recvPayload.AsSpan());
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -54,12 +54,12 @@ internal static partial class BenchRunner
             {
                 StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
                     buf.AsSpan());
-                StreamRecv(server, recvId.AsSpan(), recvPayload.AsSpan(),
-                    out _, out int payloadLen);
+                int payloadLen = StreamRecvPayload(server,
+                    recvIdScratch.AsSpan(), recvPayload.AsSpan());
                 StreamSend(server, serverClientId.AsSpan(0, serverClientIdLen),
                     recvPayload.AsSpan(0, payloadLen));
-                StreamRecv(client, ackId.AsSpan(), ackPayload.AsSpan(), out _,
-                    out _);
+                StreamRecvPayload(client, ackIdScratch.AsSpan(),
+                    ackPayload.AsSpan());
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
@@ -67,38 +67,36 @@ internal static partial class BenchRunner
             int recvCount = 0;
             var recvThread = new Thread(() =>
             {
-                var thrId = new byte[256];
+                var thrIdScratch = new byte[256];
                 var thrPayload = new byte[cap];
-                for (int i = 0; i < msgCount; i++)
+                try
                 {
-                    try
+                    for (int i = 0; i < msgCount; i++)
                     {
-                        StreamRecv(server, thrId.AsSpan(), thrPayload.AsSpan(),
-                            out _, out _);
+                        StreamRecvPayload(server, thrIdScratch.AsSpan(),
+                            thrPayload.AsSpan());
+                        recvCount++;
                     }
-                    catch
-                    {
-                        break;
-                    }
-                    recvCount++;
+                }
+                catch
+                {
                 }
             });
 
             recvThread.Start();
             int sent = 0;
             sw.Restart();
-            for (int i = 0; i < msgCount; i++)
+            try
             {
-                try
+                for (int i = 0; i < msgCount; i++)
                 {
                     StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
                         buf.AsSpan());
+                    sent++;
                 }
-                catch
-                {
-                    break;
-                }
-                sent++;
+            }
+            catch
+            {
             }
             recvThread.Join();
             sw.Stop();

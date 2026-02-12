@@ -181,6 +181,19 @@ internal static partial class BenchRunner
             payloadLength = payloadBuffer.Length;
     }
 
+    internal static int StreamRecvPayload(Zlink.Socket socket,
+        Span<byte> idBuffer, Span<byte> payloadBuffer)
+    {
+        ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
+
+        int payloadLen = ReceiveRetry(socket, payloadBuffer, ReceiveFlags.None);
+        if (payloadLen < 0)
+            return 0;
+        if (payloadLen > payloadBuffer.Length)
+            return payloadBuffer.Length;
+        return payloadLen;
+    }
+
     internal static void PrintResult(string pattern, string transport, int size, double thr, double latUs)
     {
         Console.WriteLine($"RESULT,current,{pattern},{transport},{size},throughput,{thr}");

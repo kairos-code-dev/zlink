@@ -231,9 +231,22 @@ enum class receiver_socket_role : int
 
 enum class spot_node_socket_role : int
 {
+    node = ZLINK_SPOT_NODE_SOCKET_NODE,
     pub = ZLINK_SPOT_NODE_SOCKET_PUB,
     sub = ZLINK_SPOT_NODE_SOCKET_SUB,
     dealer = ZLINK_SPOT_NODE_SOCKET_DEALER
+};
+
+enum class spot_node_pub_mode : int
+{
+    sync = ZLINK_SPOT_NODE_PUB_MODE_SYNC,
+    async = ZLINK_SPOT_NODE_PUB_MODE_ASYNC
+};
+
+enum class spot_node_pub_queue_full_policy : int
+{
+    eagain = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN,
+    drop = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP
 };
 
 enum class spot_socket_role : int

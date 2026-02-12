@@ -920,11 +920,31 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              int trust_system);
 
 /* Spot Node socket roles */
+#define ZLINK_SPOT_NODE_SOCKET_NODE 0
 #define ZLINK_SPOT_NODE_SOCKET_PUB 1
 #define ZLINK_SPOT_NODE_SOCKET_SUB 2
 #define ZLINK_SPOT_NODE_SOCKET_DEALER 3
 
-/** @brief Set a socket option on an internal SPOT node socket. */
+/* Spot Node options (socket_role=ZLINK_SPOT_NODE_SOCKET_NODE) */
+#define ZLINK_SPOT_NODE_OPT_PUB_MODE 1
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM 2
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY 3
+
+/* Spot publish modes */
+#define ZLINK_SPOT_NODE_PUB_MODE_SYNC 0
+#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
+
+/* Spot async pub queue full policy */
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP 1
+
+/**
+ * @brief Set an option on SPOT node internals.
+ *
+ * Use `ZLINK_SPOT_NODE_SOCKET_NODE` for node-level options
+ * (`ZLINK_SPOT_NODE_OPT_*`) and `ZLINK_SPOT_NODE_SOCKET_*` for
+ * underlying socket options.
+ */
 ZLINK_EXPORT int zlink_spot_node_setsockopt (void *node,
                                              int socket_role,
                                              int option,
@@ -942,7 +962,12 @@ ZLINK_EXPORT int zlink_spot_pub_destroy (void **pub_p);
 /**
  * @brief Publish a multipart message under a topic.
  *
- * Thread-safe: concurrent calls are serialized internally via mutex.
+ * Thread-safe:
+ * - SYNC mode (default): concurrent calls are serialized internally.
+ * - ASYNC mode: calls enqueue into an internal queue and return on enqueue.
+ *
+ * ASYNC mode can return EAGAIN when the queue is full and the queue-full
+ * policy is ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN.
  *
  * @param topic_id    Topic identifier string.
  * @param parts       Multipart message array.
@@ -1003,6 +1028,7 @@ ZLINK_EXPORT int zlink_spot_sub_unsubscribe (void *sub,
  * When a handler is set, messages are delivered via the callback
  * and zlink_spot_sub_recv() must not be used concurrently.
  * Pass NULL to clear the handler and revert to recv()-based consumption.
+ * Returns EBUSY if recv() is currently in progress on the same subscriber.
  *
  * @param handler   Callback function, or NULL to clear.
  * @param userdata  User-provided context pointer passed to the callback.
@@ -1018,6 +1044,8 @@ ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
  * @param flags              0 or ZLINK_DONTWAIT.
  * @param[out] topic_id_out  Topic string buffer.
  * @param[in,out] topic_id_len  On input, buffer size; on output, actual length.
+ *
+ * Concurrent calls on the same subscriber are rejected with EBUSY.
  */
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       zlink_msg_t **parts,

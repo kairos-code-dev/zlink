@@ -68,9 +68,16 @@ int main()
     assert(static_cast<int>(zlink::gateway_socket_role::router) == ZLINK_GATEWAY_SOCKET_ROUTER);
     assert(static_cast<int>(zlink::receiver_socket_role::router) == ZLINK_RECEIVER_SOCKET_ROUTER);
     assert(static_cast<int>(zlink::receiver_socket_role::dealer) == ZLINK_RECEIVER_SOCKET_DEALER);
+    assert(static_cast<int>(zlink::spot_node_socket_role::node) == ZLINK_SPOT_NODE_SOCKET_NODE);
     assert(static_cast<int>(zlink::spot_node_socket_role::pub) == ZLINK_SPOT_NODE_SOCKET_PUB);
     assert(static_cast<int>(zlink::spot_node_socket_role::sub) == ZLINK_SPOT_NODE_SOCKET_SUB);
     assert(static_cast<int>(zlink::spot_node_socket_role::dealer) == ZLINK_SPOT_NODE_SOCKET_DEALER);
+    assert(static_cast<int>(zlink::spot_node_pub_mode::sync) == ZLINK_SPOT_NODE_PUB_MODE_SYNC);
+    assert(static_cast<int>(zlink::spot_node_pub_mode::async) == ZLINK_SPOT_NODE_PUB_MODE_ASYNC);
+    assert(static_cast<int>(zlink::spot_node_pub_queue_full_policy::eagain) ==
+           ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN);
+    assert(static_cast<int>(zlink::spot_node_pub_queue_full_policy::drop) ==
+           ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP);
     assert(static_cast<int>(zlink::spot_socket_role::pub) == ZLINK_SPOT_SOCKET_PUB);
     assert(static_cast<int>(zlink::spot_socket_role::sub) == ZLINK_SPOT_SOCKET_SUB);
 

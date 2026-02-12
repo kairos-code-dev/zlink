@@ -66,11 +66,13 @@ class spot_node_t
     friend class spot_pub_t;
     friend class spot_sub_t;
     struct handler_delivery_t;
+    struct async_publish_t;
 
     static void run (void *arg_);
     void loop ();
     void process_sub ();
     bool process_handler_delivery ();
+    bool process_async_publish ();
     void dispatch_local (const std::string &topic_,
                          const std::vector<msg_t> &payload_);
     void enqueue_handler_delivery (const std::string &topic_,
@@ -90,6 +92,7 @@ class spot_node_t
     static bool validate_pattern (const char *pattern_, std::string *prefix_);
     static bool validate_service_name (const std::string &name_);
     static std::string resolve_advertise (const std::string &bind_endpoint_);
+    void remove_spot_sub_locked (spot_sub_t *sub_);
 
     void add_filter (const std::string &filter_);
     void remove_filter (const std::string &filter_);
@@ -138,7 +141,17 @@ class spot_node_t
         std::vector<msg_t> payload;
         std::vector<spot_sub_t *> targets;
     };
+    struct async_publish_t
+    {
+        std::string topic;
+        std::vector<msg_t> payload;
+    };
     std::deque<handler_delivery_t> _pending_handler_delivery;
+    mutex_t _pub_queue_sync;
+    std::deque<async_publish_t> _pending_pub;
+    size_t _pub_queue_hwm;
+    atomic_counter_t _pub_mode;
+    atomic_counter_t _pub_queue_full_policy;
 
     std::string _tls_cert;
     std::string _tls_key;

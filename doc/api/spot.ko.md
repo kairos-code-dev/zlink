@@ -23,16 +23,35 @@ typedef void (*zlink_spot_sub_handler_fn)(const char *topic,
 ## 상수
 
 ```c
+#define ZLINK_SPOT_NODE_SOCKET_NODE   0
 #define ZLINK_SPOT_NODE_SOCKET_PUB    1
 #define ZLINK_SPOT_NODE_SOCKET_SUB    2
 #define ZLINK_SPOT_NODE_SOCKET_DEALER 3
+
+#define ZLINK_SPOT_NODE_OPT_PUB_MODE              1
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM         2
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY 3
+
+#define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
+#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
+
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP   1
 ```
 
 | 상수 | 값 | 설명 |
 |------|-----|------|
+| `ZLINK_SPOT_NODE_SOCKET_NODE` | 0 | `zlink_spot_node_setsockopt`를 통한 노드 레벨 옵션 |
 | `ZLINK_SPOT_NODE_SOCKET_PUB` | 1 | 구독자 및 피어에 메시지를 게시하는 데 사용되는 PUB 소켓 |
 | `ZLINK_SPOT_NODE_SOCKET_SUB` | 2 | 피어 노드로부터 메시지를 수신하는 데 사용되는 SUB 소켓 |
 | `ZLINK_SPOT_NODE_SOCKET_DEALER` | 3 | Registry와의 통신에 사용되는 DEALER 소켓 |
+| `ZLINK_SPOT_NODE_OPT_PUB_MODE` | 1 | publish 모드 옵션(SYNC/ASYNC) |
+| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM` | 2 | async publish 큐 high-water mark |
+| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY` | 3 | async 큐 포화 시 정책(`EAGAIN`/drop) |
+| `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | 호출자 스레드에서 즉시 publish(기본값) |
+| `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | worker 스레드가 처리하도록 enqueue |
+| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | async 큐 포화 시 `EAGAIN` 반환(기본값) |
+| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP` | 1 | async 큐 포화 시 최신 메시지 drop 후 성공 반환 |
 
 ## SPOT 노드
 
@@ -276,7 +295,7 @@ CA 인증서 파일 경로를 지정합니다. `hostname` 매개변수는 인증
 
 ### zlink_spot_node_setsockopt
 
-내부 SPOT 노드 소켓의 소켓 옵션을 설정합니다.
+SPOT 노드 내부 옵션을 설정합니다.
 
 ```c
 int zlink_spot_node_setsockopt(void *node,
@@ -286,9 +305,19 @@ int zlink_spot_node_setsockopt(void *node,
                                size_t optvallen);
 ```
 
-`socket_role`로 식별되는 노드 내부 소켓 중 하나에 저수준 소켓 옵션을
-적용합니다. `ZLINK_SPOT_NODE_SOCKET_*` 상수를 사용하여 대상 소켓을
-선택합니다.
+다음 두 범주를 설정할 수 있습니다.
+
+- 노드 레벨 옵션:
+  `socket_role = ZLINK_SPOT_NODE_SOCKET_NODE`,
+  `ZLINK_SPOT_NODE_OPT_*` 사용
+- 내부 소켓 저수준 옵션:
+  `ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER` 대상
+
+async publish 모드 관련 옵션:
+
+- `ZLINK_SPOT_NODE_OPT_PUB_MODE`: `SYNC`(기본) 또는 `ASYNC`
+- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM`: 큐 깊이 제한(0보다 커야 함)
+- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY`: `EAGAIN`(기본) 또는 drop
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
@@ -363,9 +392,13 @@ int zlink_spot_pub_publish(void *pub,
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
-**스레드 안전성:** 스레드 안전함. 여러 스레드에서의 동시 호출은 뮤텍스를 통해
-내부적으로 직렬화됩니다. 이를 통해 여러 publisher 또는 애플리케이션 스레드가
-외부 잠금 없이 동일한 노드에서 게시할 수 있습니다.
+**스레드 안전성:** 스레드 안전.
+
+- `SYNC` 모드(기본): 동시 호출은 내부에서 직렬화됩니다.
+- `ASYNC` 모드: 동시 호출은 내부 큐에 enqueue 되며, 큐에 수락되면 반환합니다.
+
+`ASYNC` 모드에서 큐 포화 정책이
+`ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`인 경우 `EAGAIN`이 반환될 수 있습니다.
 
 **참고:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
 
@@ -525,6 +558,9 @@ int zlink_spot_sub_set_handler(void *sub,
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
+**에러:**
+- `EBUSY` -- 동일 subscriber에서 `zlink_spot_sub_recv`가 진행 중입니다.
+
 **스레드 안전성:** 스레드 안전하지 않음.
 
 **참고:** `zlink_spot_sub_recv`
@@ -555,6 +591,7 @@ int zlink_spot_sub_recv(void *sub,
 
 **에러:**
 - `EAGAIN` -- `ZLINK_DONTWAIT`가 설정되었으며 사용 가능한 메시지가 없습니다.
+- `EBUSY` -- 동일한 subscriber에 대해 다른 스레드가 이미 `zlink_spot_sub_recv`를 호출 중입니다.
 
 **스레드 안전성:** 스레드 안전하지 않음.
 

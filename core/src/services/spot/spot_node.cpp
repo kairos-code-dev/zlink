@@ -26,6 +26,7 @@ namespace zlink
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const uint32_t default_heartbeat_ms = 5000;
 static const uint64_t discovery_refresh_ms = 500;
+static const size_t spot_pub_queue_hwm_default = 1024;
 
 static void sleep_ms (int ms_)
 {
@@ -185,6 +186,9 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _last_heartbeat_ms (0),
     _discovery (NULL),
     _next_discovery_refresh_ms (0),
+    _pub_queue_hwm (spot_pub_queue_hwm_default),
+    _pub_mode (ZLINK_SPOT_NODE_PUB_MODE_SYNC),
+    _pub_queue_full_policy (ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN),
     _tls_trust_system (0),
     _stop (0)
 {
@@ -692,6 +696,47 @@ int spot_node_t::set_socket_option (int socket_role_,
         return -1;
     }
 
+    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_NODE) {
+        if (optvallen_ != sizeof (int)) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        int value = 0;
+        memcpy (&value, optval_, sizeof (value));
+        switch (option_) {
+            case ZLINK_SPOT_NODE_OPT_PUB_MODE:
+                if (value != ZLINK_SPOT_NODE_PUB_MODE_SYNC
+                    && value != ZLINK_SPOT_NODE_PUB_MODE_ASYNC) {
+                    errno = EINVAL;
+                    return -1;
+                }
+                _pub_mode.set (value);
+                return 0;
+            case ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM:
+                if (value <= 0) {
+                    errno = EINVAL;
+                    return -1;
+                }
+                {
+                    scoped_lock_t queue_lock (_pub_queue_sync);
+                    _pub_queue_hwm = static_cast<size_t> (value);
+                }
+                return 0;
+            case ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY:
+                if (value != ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN
+                    && value != ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP) {
+                    errno = EINVAL;
+                    return -1;
+                }
+                _pub_queue_full_policy.set (value);
+                return 0;
+            default:
+                errno = EINVAL;
+                return -1;
+        }
+    }
+
     scoped_lock_t lock (_sync);
     std::vector<socket_opt_t> *opts = NULL;
     socket_base_t *existing = NULL;
@@ -788,7 +833,16 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
         return;
 
     scoped_lock_t lock (_sync);
-    _subs.erase (sub_);
+    remove_spot_sub_locked (sub_);
+}
+
+void spot_node_t::remove_spot_sub_locked (spot_sub_t *sub_)
+{
+    if (!sub_)
+        return;
+
+    if (_subs.erase (sub_) == 0)
+        return;
     for (std::deque<handler_delivery_t>::iterator it =
            _pending_handler_delivery.begin ();
          it != _pending_handler_delivery.end ();) {
@@ -824,11 +878,7 @@ void spot_node_t::remove_spot_sub (spot_sub_t *sub_)
 
     sub_->_topics.clear ();
     sub_->_patterns.clear ();
-    while (!sub_->_queue.empty ()) {
-        spot_sub_t::queue_entry_t &entry = sub_->_queue.front ();
-        release_shared_message (entry.shared);
-        sub_->_queue.pop_front ();
-    }
+    sub_->clear_queue ();
 }
 
 int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
@@ -844,6 +894,10 @@ int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
     }
 
     scoped_lock_t lock (_sync);
+    if (_subs.count (sub_) == 0) {
+        errno = EFAULT;
+        return -1;
+    }
     if (!sub_->_topics.insert (topic).second)
         return 0;
     _topic_index[topic].insert (sub_);
@@ -865,6 +919,10 @@ int spot_node_t::subscribe_pattern (spot_sub_t *sub_, const char *pattern_)
     }
 
     scoped_lock_t lock (_sync);
+    if (_subs.count (sub_) == 0) {
+        errno = EFAULT;
+        return -1;
+    }
     if (!sub_->_patterns.insert (prefix).second)
         return 0;
     _pattern_subs.insert (sub_);
@@ -882,6 +940,10 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
     std::string prefix;
     if (validate_pattern (topic_or_pattern_, &prefix)) {
         scoped_lock_t lock (_sync);
+        if (_subs.count (sub_) == 0) {
+            errno = EFAULT;
+            return -1;
+        }
         if (sub_->_patterns.erase (prefix) == 0) {
             errno = EINVAL;
             return -1;
@@ -899,6 +961,10 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
     }
 
     scoped_lock_t lock (_sync);
+    if (_subs.count (sub_) == 0) {
+        errno = EFAULT;
+        return -1;
+    }
     if (sub_->_topics.erase (topic) == 0) {
         errno = EINVAL;
         return -1;
@@ -931,6 +997,40 @@ int spot_node_t::publish (const char *topic_,
     if (flags_ != 0) {
         errno = ENOTSUP;
         return -1;
+    }
+
+    if (_pub_mode.get () == ZLINK_SPOT_NODE_PUB_MODE_ASYNC) {
+        async_publish_t pending;
+        pending.topic = topic;
+        if (!copy_parts_from_msgv (parts_, part_count_, &pending.payload))
+            return -1;
+
+        bool accepted = false;
+        bool dropped = false;
+        {
+            scoped_lock_t queue_lock (_pub_queue_sync);
+            if (_pending_pub.size () >= _pub_queue_hwm) {
+                if (_pub_queue_full_policy.get ()
+                    == ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP) {
+                    dropped = true;
+                } else {
+                    errno = EAGAIN;
+                }
+            } else {
+                _pending_pub.push_back (async_publish_t ());
+                _pending_pub.back ().topic.swap (pending.topic);
+                _pending_pub.back ().payload.swap (pending.payload);
+                accepted = true;
+            }
+        }
+
+        close_parts (&pending.payload);
+        if (!accepted && !dropped)
+            return -1;
+
+        for (size_t i = 0; i < part_count_; ++i)
+            zlink_msg_close (&parts_[i]);
+        return 0;
     }
 
     std::vector<msg_t> payload;
@@ -1159,6 +1259,53 @@ bool spot_node_t::process_handler_delivery ()
     invoke_pending_callbacks (delivery.topic, delivery.payload,
                               delivery.targets);
     close_parts (&delivery.payload);
+    return true;
+}
+
+bool spot_node_t::process_async_publish ()
+{
+    async_publish_t pending;
+    {
+        scoped_lock_t queue_lock (_pub_queue_sync);
+        if (_pending_pub.empty ())
+            return false;
+        pending.topic.swap (_pending_pub.front ().topic);
+        pending.payload.swap (_pending_pub.front ().payload);
+        _pending_pub.pop_front ();
+    }
+
+    {
+        scoped_lock_t lock (_sync);
+        dispatch_local (pending.topic, pending.payload);
+    }
+
+    {
+        scoped_lock_t pub_lock (_pub_sync);
+        if (_pub) {
+            msg_t topic_frame;
+            if (topic_frame.init_size (pending.topic.size ()) == 0) {
+                if (!pending.topic.empty ()) {
+                    memcpy (topic_frame.data (), pending.topic.data (),
+                            pending.topic.size ());
+                }
+
+                int flags = !pending.payload.empty () ? ZLINK_SNDMORE : 0;
+                if (_pub->send (&topic_frame, flags) == 0) {
+                    for (size_t i = 0; i < pending.payload.size (); ++i) {
+                        msg_t &part = pending.payload[i];
+                        flags = (i + 1 < pending.payload.size ())
+                                  ? ZLINK_SNDMORE
+                                  : 0;
+                        if (_pub->send (&part, flags) != 0)
+                            break;
+                    }
+                }
+                topic_frame.close ();
+            }
+        }
+    }
+
+    close_parts (&pending.payload);
     return true;
 }
 
@@ -1440,6 +1587,10 @@ void spot_node_t::loop ()
         process_sub ();
         while (process_handler_delivery ())
             handled = true;
+        while (process_async_publish ())
+            handled = true;
+        while (process_handler_delivery ())
+            handled = true;
 
         const uint64_t now = clock.now_ms ();
         bool do_heartbeat = false;
@@ -1479,6 +1630,7 @@ int spot_node_t::destroy ()
     socket_base_t *dealer = NULL;
     socket_base_t *pub = NULL;
     socket_base_t *sub = NULL;
+    std::deque<async_publish_t> pending_pub;
     {
         scoped_lock_t lock (_sync);
         dealer = _dealer;
@@ -1509,6 +1661,10 @@ int spot_node_t::destroy ()
         _registry_endpoints.clear ();
         _bind_endpoints.clear ();
     }
+    {
+        scoped_lock_t queue_lock (_pub_queue_sync);
+        pending_pub.swap (_pending_pub);
+    }
 
     if (dealer)
         dealer->close ();
@@ -1518,6 +1674,9 @@ int spot_node_t::destroy ()
     }
     if (sub)
         sub->close ();
+    for (std::deque<async_publish_t>::iterator it = pending_pub.begin ();
+         it != pending_pub.end (); ++it)
+        close_parts (&it->payload);
     return 0;
 }
 }

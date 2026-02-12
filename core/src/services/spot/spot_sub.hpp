@@ -71,6 +71,7 @@ class spot_sub_t
                           const std::vector<msg_t> &payload_);
     bool enqueue_shared_message (spot_shared_message_t *shared_);
     bool dequeue_message (spot_shared_message_t **out_);
+    void clear_queue ();
     bool callback_enabled () const;
 
     zlink_msg_t *alloc_msgv_from_parts (std::vector<msg_t> *parts_,
@@ -84,15 +85,17 @@ class spot_sub_t
     std::set<std::string> _topics;
     std::set<std::string> _patterns;
 
+    mutex_t _queue_sync;
     std::deque<queue_entry_t> _queue;
     size_t _queue_hwm;
-    condition_variable_t _cv;
+    condition_variable_t _queue_cv;
 
     zlink_spot_sub_handler_fn _handler;
     void *_handler_userdata;
     handler_state_t _handler_state;
     atomic_counter_t _callback_inflight;
     condition_variable_t _callback_cv;
+    atomic_counter_t _recv_in_progress;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_sub_t)
 };

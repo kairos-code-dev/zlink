@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <thread>
 
 #if defined(_WIN32)
 #include <direct.h>
@@ -614,6 +615,444 @@ static void test_spot_sub_handler_clear_inside_callback ()
     msleep (100);
     TEST_ASSERT_EQUAL_INT (1, probe.calls.load ());
 
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+struct blocking_recv_probe_t
+{
+    void *sub;
+    const char *expected_topic;
+    const char *expected_payload;
+    size_t expected_payload_size;
+    std::atomic<int> entered;
+    std::atomic<int> done;
+    std::atomic<int> rc;
+    std::atomic<int> err;
+    std::atomic<int> topic_ok;
+    std::atomic<int> payload_ok;
+};
+
+static void spot_sub_blocking_recv_worker (blocking_recv_probe_t *probe_)
+{
+    if (!probe_)
+        return;
+
+    probe_->entered.store (1);
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256];
+    const int rc = zlink_spot_sub_recv (probe_->sub, &recv_parts, &recv_count,
+                                        0, topic, NULL);
+    probe_->rc.store (rc);
+    if (rc == 0) {
+        if (probe_->expected_topic
+            && strcmp (topic, probe_->expected_topic) == 0)
+            probe_->topic_ok.store (1);
+        if (probe_->expected_payload
+            && recv_count == 1
+            && zlink_msg_size (&recv_parts[0]) == probe_->expected_payload_size
+            && memcmp (zlink_msg_data (&recv_parts[0]), probe_->expected_payload,
+                       probe_->expected_payload_size)
+                 == 0)
+            probe_->payload_ok.store (1);
+        zlink_msgv_close (recv_parts, recv_count);
+        probe_->err.store (0);
+    } else {
+        probe_->err.store (zlink_errno ());
+    }
+    probe_->done.store (1);
+}
+
+static void test_spot_sub_recv_concurrent_ebusy ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *pub = NULL;
+    void *sub = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "recv:busy:test"));
+
+    blocking_recv_probe_t probe;
+    probe.sub = sub;
+    probe.expected_topic = "recv:busy:test";
+    probe.expected_payload = "pong";
+    probe.expected_payload_size = 4;
+    probe.entered.store (0);
+    probe.done.store (0);
+    probe.rc.store (-999);
+    probe.err.store (0);
+    probe.topic_ok.store (0);
+    probe.payload_ok.store (0);
+
+    std::thread recv_thread (spot_sub_blocking_recv_worker, &probe);
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.entered, 1, 1000));
+
+    bool got_ebusy = false;
+    for (int i = 0; i < 200; ++i) {
+        zlink_msg_t *recv_parts = NULL;
+        size_t recv_count = 0;
+        char topic[256];
+        const int rc = zlink_spot_sub_recv (sub, &recv_parts, &recv_count,
+                                            ZLINK_DONTWAIT, topic, NULL);
+        if (rc == -1) {
+            const int err = zlink_errno ();
+            if (err == EBUSY) {
+                got_ebusy = true;
+                break;
+            }
+            if (err == EAGAIN) {
+                msleep (5);
+                continue;
+            }
+        } else if (rc == 0) {
+            zlink_msgv_close (recv_parts, recv_count);
+        }
+        TEST_FAIL_MESSAGE ("unexpected result while checking concurrent recv");
+    }
+    TEST_ASSERT_TRUE_MESSAGE (got_ebusy,
+                              "Expected EBUSY from concurrent zlink_spot_sub_recv");
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "pong", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "recv:busy:test", &part, 1, 0));
+
+    recv_thread.join ();
+    TEST_ASSERT_EQUAL_INT (1, probe.done.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.rc.load ());
+    TEST_ASSERT_EQUAL_INT (0, probe.err.load ());
+    TEST_ASSERT_EQUAL_INT (1, probe.topic_ok.load ());
+    TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_sub_set_handler_while_recv_ebusy ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    void *pub = NULL;
+    void *sub = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_sub_subscribe (sub, "recv:sethandler:test"));
+
+    blocking_recv_probe_t probe;
+    probe.sub = sub;
+    probe.expected_topic = "recv:sethandler:test";
+    probe.expected_payload = "pong";
+    probe.expected_payload_size = 4;
+    probe.entered.store (0);
+    probe.done.store (0);
+    probe.rc.store (-999);
+    probe.err.store (0);
+    probe.topic_ok.store (0);
+    probe.payload_ok.store (0);
+
+    std::thread recv_thread (spot_sub_blocking_recv_worker, &probe);
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&probe.entered, 1, 1000));
+
+    callback_probe_t cb_probe;
+    cb_probe.sub = sub;
+    cb_probe.calls.store (0);
+    cb_probe.payload_ok.store (0);
+    cb_probe.topic_ok.store (0);
+    cb_probe.clear_inside_rc.store (-1);
+    cb_probe.clear_inside_done.store (0);
+
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_sub_set_handler (sub, spot_sub_probe_handler, &cb_probe));
+    TEST_ASSERT_EQUAL_INT (EBUSY, zlink_errno ());
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "pong", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "recv:sethandler:test", &part, 1, 0));
+
+    recv_thread.join ();
+    TEST_ASSERT_EQUAL_INT (0, probe.rc.load ());
+    TEST_ASSERT_EQUAL_INT (1, probe.topic_ok.load ());
+    TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_sub_set_handler (sub, spot_sub_probe_handler, &cb_probe));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_handler (sub, NULL, NULL));
+
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_pub_async_mode_local_delivery ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int pub_mode = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &pub_mode,
+                                  sizeof (pub_mode)));
+
+    void *pub = NULL;
+    void *sub = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:test"));
+
+    zlink_msg_t part;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&part, 4));
+    memcpy (zlink_msg_data (&part), "pong", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:test", &part, 1, 0));
+
+    zlink_msg_t *recv_parts = NULL;
+    size_t recv_count = 0;
+    char topic[256] = {0};
+    bool got = false;
+    for (int i = 0; i < 200; ++i) {
+        const int rc = zlink_spot_sub_recv (sub, &recv_parts, &recv_count,
+                                            ZLINK_DONTWAIT, topic, NULL);
+        if (rc == 0) {
+            got = true;
+            break;
+        }
+        TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+        msleep (5);
+    }
+
+    TEST_ASSERT_TRUE_MESSAGE (got, "async publish message was not delivered");
+    TEST_ASSERT_EQUAL_STRING ("pub:async:test", topic);
+    TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
+    TEST_ASSERT_EQUAL_INT (4, (int) zlink_msg_size (&recv_parts[0]));
+    TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&recv_parts[0]), 4);
+    zlink_msgv_close (recv_parts, recv_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_pub_async_setsockopt_validation ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int value = 7;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                      ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
+                                      sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+
+    value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
+                                  sizeof (value)));
+    value = ZLINK_SPOT_NODE_PUB_MODE_SYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
+                                  sizeof (value)));
+
+    value = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                      ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM,
+                                      &value, sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    value = 8;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
+                                  sizeof (value)));
+
+    value = 3;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_node_setsockopt (
+            node, ZLINK_SPOT_NODE_SOCKET_NODE,
+            ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value,
+            sizeof (value)));
+    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
+    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (
+        node, ZLINK_SPOT_NODE_SOCKET_NODE,
+        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+struct async_handler_gate_t
+{
+    std::atomic<int> entered;
+    std::atomic<int> release;
+    std::atomic<int> calls;
+};
+
+static void spot_sub_async_gate_handler (const char *topic_,
+                                         size_t topic_len_,
+                                         const zlink_msg_t *parts_,
+                                         size_t part_count_,
+                                         void *userdata_)
+{
+    (void) topic_;
+    (void) topic_len_;
+    (void) parts_;
+    (void) part_count_;
+
+    async_handler_gate_t *gate =
+      static_cast<async_handler_gate_t *> (userdata_);
+    if (!gate)
+        return;
+
+    gate->entered.store (1);
+    while (gate->release.load () == 0)
+        msleep (1);
+    gate->calls.fetch_add (1);
+}
+
+static void test_spot_pub_async_queue_full_eagain ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
+                                  sizeof (value)));
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
+                                  sizeof (value)));
+    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (
+        node, ZLINK_SPOT_NODE_SOCKET_NODE,
+        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
+
+    void *pub = NULL;
+    void *sub = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:hwm"));
+
+    async_handler_gate_t gate;
+    gate.entered.store (0);
+    gate.release.store (0);
+    gate.calls.store (0);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_sub_set_handler (sub, spot_sub_async_gate_handler, &gate));
+
+    zlink_msg_t first;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&first, 4));
+    memcpy (zlink_msg_data (&first), "one1", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:hwm", &first, 1, 0));
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&gate.entered, 1, 1000));
+
+    zlink_msg_t second;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&second, 4));
+    memcpy (zlink_msg_data (&second), "two2", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:hwm", &second, 1, 0));
+
+    zlink_msg_t third;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&third, 4));
+    memcpy (zlink_msg_data (&third), "tri3", 4);
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_spot_pub_publish (pub, "pub:async:hwm", &third, 1, 0));
+    TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
+    zlink_msg_close (&third);
+
+    gate.release.store (1);
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&gate.calls, 1, 1000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_handler (sub, NULL, NULL));
+    TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
+static void test_spot_pub_async_queue_full_drop ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = zlink_spot_node_new (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+
+    int value = ZLINK_SPOT_NODE_PUB_MODE_ASYNC;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_MODE, &value,
+                                  sizeof (value)));
+    value = 1;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (node, ZLINK_SPOT_NODE_SOCKET_NODE,
+                                  ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM, &value,
+                                  sizeof (value)));
+    value = ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_node_setsockopt (
+        node, ZLINK_SPOT_NODE_SOCKET_NODE,
+        ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY, &value, sizeof (value)));
+
+    void *pub = NULL;
+    void *sub = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (create_spot_pub_sub (node, &pub, &sub));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_subscribe (sub, "pub:async:drop"));
+
+    async_handler_gate_t gate;
+    gate.entered.store (0);
+    gate.release.store (0);
+    gate.calls.store (0);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_sub_set_handler (sub, spot_sub_async_gate_handler, &gate));
+
+    zlink_msg_t first;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&first, 4));
+    memcpy (zlink_msg_data (&first), "one1", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:drop", &first, 1, 0));
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&gate.entered, 1, 1000));
+
+    zlink_msg_t second;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&second, 4));
+    memcpy (zlink_msg_data (&second), "two2", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:drop", &second, 1, 0));
+
+    zlink_msg_t third;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&third, 4));
+    memcpy (zlink_msg_data (&third), "tri3", 4);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_pub_publish (pub, "pub:async:drop", &third, 1, 0));
+
+    gate.release.store (1);
+    TEST_ASSERT_TRUE (wait_until_counter_at_least (&gate.calls, 1, 1000));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_sub_set_handler (sub, NULL, NULL));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
@@ -1326,6 +1765,12 @@ int main (int, char **)
     RUN_TEST (test_spot_sub_handler_recv_conflict);
     RUN_TEST (test_spot_sub_handler_clear_barrier);
     RUN_TEST (test_spot_sub_handler_clear_inside_callback);
+    RUN_TEST (test_spot_sub_recv_concurrent_ebusy);
+    RUN_TEST (test_spot_sub_set_handler_while_recv_ebusy);
+    RUN_TEST (test_spot_pub_async_mode_local_delivery);
+    RUN_TEST (test_spot_pub_async_setsockopt_validation);
+    RUN_TEST (test_spot_pub_async_queue_full_eagain);
+    RUN_TEST (test_spot_pub_async_queue_full_drop);
     RUN_TEST (test_spot_mmorpg_zone_adjacency_scale);
     RUN_TEST (test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery);
     return UNITY_END ();

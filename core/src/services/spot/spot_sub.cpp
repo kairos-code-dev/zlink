@@ -68,17 +68,14 @@ spot_sub_t::spot_sub_t (spot_node_t *node_) :
     _handler (NULL),
     _handler_userdata (NULL),
     _handler_state (handler_none),
-    _callback_inflight (0)
+    _callback_inflight (0),
+    _recv_in_progress (0)
 {
 }
 
 spot_sub_t::~spot_sub_t ()
 {
-    while (!_queue.empty ()) {
-        queue_entry_t &entry = _queue.front ();
-        release_shared_message (entry.shared);
-        _queue.pop_front ();
-    }
+    clear_queue ();
     _tag = 0xdeadbeef;
 }
 
@@ -125,7 +122,15 @@ int spot_sub_t::set_handler (zlink_spot_sub_handler_fn handler_,
     bool wait_quiesce = false;
     {
         scoped_lock_t lock (_node->_sync);
+        if (_node->_subs.count (this) == 0) {
+            errno = EFAULT;
+            return -1;
+        }
         if (handler_) {
+            if (_recv_in_progress.get () > 0) {
+                errno = EBUSY;
+                return -1;
+            }
             _handler = handler_;
             _handler_userdata = userdata_;
             _handler_state = handler_active;
@@ -192,13 +197,15 @@ bool spot_sub_t::enqueue_shared_message (spot_shared_message_t *shared_)
 {
     if (!shared_)
         return false;
+
+    scoped_lock_t lock (_queue_sync);
     if (_queue.size () >= _queue_hwm)
         return false;
     _queue.push_back (queue_entry_t ());
     queue_entry_t &entry = _queue.back ();
     retain_shared_message (shared_);
     entry.shared = shared_;
-    _cv.broadcast ();
+    _queue_cv.broadcast ();
     return true;
 }
 
@@ -213,6 +220,17 @@ bool spot_sub_t::dequeue_message (spot_shared_message_t **out_)
     front.shared = NULL;
     _queue.pop_front ();
     return true;
+}
+
+void spot_sub_t::clear_queue ()
+{
+    scoped_lock_t lock (_queue_sync);
+    while (!_queue.empty ()) {
+        queue_entry_t &entry = _queue.front ();
+        release_shared_message (entry.shared);
+        _queue.pop_front ();
+    }
+    _queue_cv.broadcast ();
 }
 
 bool spot_sub_t::callback_enabled () const
@@ -317,13 +335,58 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
         return -1;
     }
 
+    struct recv_scope_t
+    {
+        explicit recv_scope_t (atomic_counter_t &counter_) :
+            counter (counter_),
+            active (false)
+        {
+        }
+
+        ~recv_scope_t ()
+        {
+            if (active)
+                counter.sub (1);
+        }
+
+        bool try_enter ()
+        {
+            if (counter.add (1) != 0) {
+                counter.sub (1);
+                return false;
+            }
+            active = true;
+            return true;
+        }
+
+        atomic_counter_t &counter;
+        bool active;
+
+      private:
+        ZLINK_NON_COPYABLE_NOR_MOVABLE (recv_scope_t)
+    };
+
+    recv_scope_t recv_scope (_recv_in_progress);
+    if (!recv_scope.try_enter ()) {
+        errno = EBUSY;
+        return -1;
+    }
+
     spot_shared_message_t *shared = NULL;
     {
         scoped_lock_t lock (_node->_sync);
+        if (_node->_subs.count (this) == 0) {
+            errno = EFAULT;
+            return -1;
+        }
         if (_handler_state != handler_none) {
             errno = EINVAL;
             return -1;
         }
+    }
+
+    {
+        scoped_lock_t lock (_queue_sync);
         while (true) {
             if (dequeue_message (&shared))
                 break;
@@ -331,7 +394,7 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
                 errno = EAGAIN;
                 return -1;
             }
-            _cv.wait (&_node->_sync, -1);
+            _queue_cv.wait (&_queue_sync, -1);
         }
     }
 
@@ -379,20 +442,29 @@ int spot_sub_t::set_socket_option (int option_,
 
 int spot_sub_t::destroy ()
 {
-    if (_node) {
+    spot_node_t *node = _node;
+    if (node) {
         if (set_handler (NULL, NULL) != 0)
             return -1;
 
         {
-            scoped_lock_t lock (_node->_sync);
+            scoped_lock_t lock (node->_sync);
+            if (node->_subs.count (this) == 0) {
+                _node = NULL;
+                return 0;
+            }
             if (_handler_state != handler_none) {
                 errno = EBUSY;
                 return -1;
             }
+            if (_recv_in_progress.get () > 0) {
+                errno = EBUSY;
+                return -1;
+            }
+            node->remove_spot_sub_locked (this);
+            _node = NULL;
         }
-        _node->remove_spot_sub (this);
     }
-    _node = NULL;
     return 0;
 }
 }

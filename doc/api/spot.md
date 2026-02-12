@@ -24,16 +24,35 @@ automatically through this callback instead of `zlink_spot_sub_recv`.
 ## Constants
 
 ```c
+#define ZLINK_SPOT_NODE_SOCKET_NODE   0
 #define ZLINK_SPOT_NODE_SOCKET_PUB    1
 #define ZLINK_SPOT_NODE_SOCKET_SUB    2
 #define ZLINK_SPOT_NODE_SOCKET_DEALER 3
+
+#define ZLINK_SPOT_NODE_OPT_PUB_MODE              1
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM         2
+#define ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY 3
+
+#define ZLINK_SPOT_NODE_PUB_MODE_SYNC  0
+#define ZLINK_SPOT_NODE_PUB_MODE_ASYNC 1
+
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN 0
+#define ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP   1
 ```
 
 | Constant | Value | Description |
 |----------|-------|-------------|
+| `ZLINK_SPOT_NODE_SOCKET_NODE` | 0 | Node-level options via `zlink_spot_node_setsockopt` |
 | `ZLINK_SPOT_NODE_SOCKET_PUB` | 1 | PUB socket used for publishing messages to subscribers and peers |
 | `ZLINK_SPOT_NODE_SOCKET_SUB` | 2 | SUB socket used for receiving messages from peer nodes |
 | `ZLINK_SPOT_NODE_SOCKET_DEALER` | 3 | DEALER socket used for communication with the Registry |
+| `ZLINK_SPOT_NODE_OPT_PUB_MODE` | 1 | Publish mode option (SYNC/ASYNC) |
+| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM` | 2 | Async publish queue high-water mark |
+| `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY` | 3 | Async queue-full policy (`EAGAIN`/drop) |
+| `ZLINK_SPOT_NODE_PUB_MODE_SYNC` | 0 | Publish in caller thread (default) |
+| `ZLINK_SPOT_NODE_PUB_MODE_ASYNC` | 1 | Enqueue publish for worker-thread dispatch |
+| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN` | 0 | Return `EAGAIN` when async queue is full (default) |
+| `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP` | 1 | Drop newest message and still return success |
 
 ## SPOT Node
 
@@ -284,7 +303,7 @@ parameter sets the expected server name for certificate verification. If
 
 ### zlink_spot_node_setsockopt
 
-Set a socket option on an internal SPOT node socket.
+Set a SPOT node internal option.
 
 ```c
 int zlink_spot_node_setsockopt(void *node,
@@ -294,9 +313,18 @@ int zlink_spot_node_setsockopt(void *node,
                                size_t optvallen);
 ```
 
-Applies a low-level socket option to one of the Node's internal sockets
-identified by `socket_role`. Use the `ZLINK_SPOT_NODE_SOCKET_*` constants
-to select the target socket.
+Applies either:
+
+- A node-level option (`socket_role = ZLINK_SPOT_NODE_SOCKET_NODE`) using
+  `ZLINK_SPOT_NODE_OPT_*`, or
+- A low-level socket option to one of the internal sockets
+  (`ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER`).
+
+For async publish mode:
+
+- `ZLINK_SPOT_NODE_OPT_PUB_MODE`: `SYNC` (default) or `ASYNC`.
+- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM`: queue depth limit (> 0).
+- `ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY`: `EAGAIN` (default) or drop.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -372,9 +400,14 @@ message parts is transferred.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
-**Thread safety:** Thread-safe. Concurrent calls from multiple threads are
-serialized internally via a mutex. This allows multiple publishers or
-application threads to publish on the same Node without external locking.
+**Thread safety:** Thread-safe.
+
+- `SYNC` mode (default): concurrent calls are serialized internally.
+- `ASYNC` mode: concurrent calls enqueue into an internal queue and return
+  once accepted by the queue.
+
+`ASYNC` mode may return `EAGAIN` when the queue is full and full-policy is
+`ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`.
 
 **See also:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
 
@@ -539,6 +572,9 @@ invocation.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
+**Errors:**
+- `EBUSY` -- `zlink_spot_sub_recv` is currently in progress on the same subscriber.
+
 **Thread safety:** Not thread-safe.
 
 **See also:** `zlink_spot_sub_recv`
@@ -569,6 +605,7 @@ the actual topic length. Must not be called when a handler is active.
 
 **Errors:**
 - `EAGAIN` -- `ZLINK_DONTWAIT` was set and no message is available.
+- `EBUSY` -- another thread is already calling `zlink_spot_sub_recv` on the same subscriber.
 
 **Thread safety:** Not thread-safe.
 

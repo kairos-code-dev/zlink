@@ -12,6 +12,7 @@ final class BenchGateway {
         int warmup = BenchUtil.parseEnv("BENCH_WARMUP_COUNT", 200);
         int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 200);
         int msgCount = BenchUtil.resolveMsgCount(size);
+        boolean useConst = BenchUtil.parseEnv("BENCH_USE_CONST", 0) == 1;
 
         Context ctx = new Context();
         Registry registry = null;
@@ -71,17 +72,26 @@ final class BenchGateway {
             MemorySegment payloadSegment = payloadArena.allocate(size);
             MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
             Message[] sendParts = new Message[1];
-
             for (int i = 0; i < warmup; i++) {
-                gatewaySendMove(gateway, preparedService, payloadSegment, sendParts,
-                  sendContext);
+                if (useConst) {
+                    gateway.sendConst(preparedService, payloadSegment,
+                      SendFlag.NONE, sendContext);
+                } else {
+                    gatewaySendMove(gateway, preparedService, payloadSegment,
+                      sendParts, sendContext);
+                }
                 recvGatewayPayloadBlocking(router, dataCap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                gatewaySendMove(gateway, preparedService, payloadSegment, sendParts,
-                  sendContext);
+                if (useConst) {
+                    gateway.sendConst(preparedService, payloadSegment,
+                      SendFlag.NONE, sendContext);
+                } else {
+                    gatewaySendMove(gateway, preparedService, payloadSegment,
+                      sendParts, sendContext);
+                }
                 recvGatewayPayloadBlocking(router, dataCap);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
@@ -104,12 +114,12 @@ final class BenchGateway {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    try (Message msg = Message.fromNativeData(payloadSegment)) {
-                        sendParts[0] = msg;
-                        gateway.sendMove(preparedService, sendParts, SendFlag.NONE,
-                          sendContext);
-                    } finally {
-                        sendParts[0] = null;
+                    if (useConst) {
+                        gateway.sendConst(preparedService, payloadSegment,
+                          SendFlag.NONE, sendContext);
+                    } else {
+                        gatewaySendMove(gateway, preparedService, payloadSegment,
+                          sendParts, sendContext);
                     }
                     sent++;
                 } catch (Exception e) {
@@ -182,19 +192,6 @@ final class BenchGateway {
         }
     }
 
-    private static void gatewaySendMove(Gateway gateway,
-                                        Gateway.PreparedService service,
-                                        MemorySegment payload,
-                                        Message[] sendParts,
-                                        Gateway.SendContext sendContext) {
-        try (Message msg = Message.fromNativeData(payload)) {
-            sendParts[0] = msg;
-            gateway.sendMove(service, sendParts, SendFlag.NONE, sendContext);
-        } finally {
-            sendParts[0] = null;
-        }
-    }
-
     private static boolean waitRegisterReady(Receiver receiver,
                                              String service,
                                              int timeoutMs) {
@@ -211,6 +208,19 @@ final class BenchGateway {
             BenchUtil.sleep(20);
         }
         return status == 0;
+    }
+
+    private static void gatewaySendMove(Gateway gateway,
+                                        Gateway.PreparedService service,
+                                        MemorySegment payload,
+                                        Message[] sendParts,
+                                        Gateway.SendContext sendContext) {
+        try (Message msg = Message.fromNativeData(payload)) {
+            sendParts[0] = msg;
+            gateway.sendMove(service, sendParts, SendFlag.NONE, sendContext);
+        } finally {
+            sendParts[0] = null;
+        }
     }
 
     private static void recvGatewayPayloadBlocking(Socket router,

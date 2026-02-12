@@ -56,10 +56,42 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public void publishConst(String topicId, MemorySegment payload,
+                             SendFlag flags) {
+        publishConst(topicId, payload, 0, payload.byteSize(), flags);
+    }
+
+    public void publishConst(String topicId, MemorySegment payload, long offset,
+                             long length, SendFlag flags) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment topic = NativeHelpers.toCString(arena, topicId);
+            publishConstInternal(arena, topic, payload, offset, length, flags);
+        }
+    }
+
     public void publishMove(PreparedTopic topic, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topic, "topic");
         try (Arena arena = Arena.ofConfined()) {
             publishInternal(arena, topic.cString(), parts, flags, true);
+        }
+    }
+
+    public void publishConst(PreparedTopic topic, MemorySegment payload,
+                             SendFlag flags) {
+        publishConst(topic, payload, 0, payload.byteSize(), flags);
+    }
+
+    public void publishConst(PreparedTopic topic, MemorySegment payload,
+                             long offset, long length, SendFlag flags) {
+        Objects.requireNonNull(topic, "topic");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        try (Arena arena = Arena.ofConfined()) {
+            publishConstInternal(arena, topic.cString(), payload, offset,
+                length, flags);
         }
     }
 
@@ -68,6 +100,22 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(topic, "topic");
         Objects.requireNonNull(context, "context");
         publishInternal(context, topic.cString(), parts, flags, true);
+    }
+
+    public void publishConst(PreparedTopic topic, MemorySegment payload,
+                             SendFlag flags, PublishContext context) {
+        publishConst(topic, payload, 0, payload.byteSize(), flags, context);
+    }
+
+    public void publishConst(PreparedTopic topic, MemorySegment payload,
+                             long offset, long length, SendFlag flags,
+                             PublishContext context) {
+        Objects.requireNonNull(topic, "topic");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(context, "context");
+        validatePayloadRange(payload, offset, length);
+        publishConstInternal(context, topic.cString(), payload, offset, length,
+            flags);
     }
 
     public void subscribe(String topicId) {
@@ -455,6 +503,52 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    private void publishConstInternal(Arena arena,
+                                      MemorySegment topicId,
+                                      MemorySegment payload,
+                                      long offset,
+                                      long length,
+                                      SendFlag flags) {
+        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, 1);
+        publishConstInternal(vec, topicId, payload, offset, length, flags);
+    }
+
+    private void publishConstInternal(PublishContext context,
+                                      MemorySegment topicId,
+                                      MemorySegment payload,
+                                      long offset,
+                                      long length,
+                                      SendFlag flags) {
+        MemorySegment vec = context.ensureVector(1);
+        publishConstInternal(vec, topicId, payload, offset, length, flags);
+    }
+
+    private void publishConstInternal(MemorySegment vec,
+                                      MemorySegment topicId,
+                                      MemorySegment payload,
+                                      long offset,
+                                      long length,
+                                      SendFlag flags) {
+        int initialized = 0;
+        try {
+            MemorySegment dest = vec.asSlice(0, MSG_SIZE);
+            MemorySegment slice = length == 0 ? MemorySegment.NULL
+                : payload.asSlice(offset, length);
+            int rc = NativeMsg.msgInitData(dest, slice, length,
+                MemorySegment.NULL, MemorySegment.NULL);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init_data failed");
+            initialized = 1;
+            rc = Native.spotPubPublish(pubHandle, topicId, vec, 1,
+                flags.getValue());
+            if (rc != 0)
+                throw new RuntimeException("zlink_spot_pub_publish failed");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
     private static void closeMsgVector(MemorySegment vec, int count) {
         for (int i = 0; i < count; i++) {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
@@ -496,5 +590,16 @@ public final class Spot implements AutoCloseable {
             context.topicLength().get(ValueLayout.JAVA_LONG, 0));
         context.setTopicIdLength(topicLen);
         return topicLen;
+    }
+
+    private static void validatePayloadRange(MemorySegment payload,
+                                             long offset,
+                                             long length) {
+        if (!payload.isNative())
+            throw new IllegalArgumentException(
+                "publishConst requires a native MemorySegment");
+        long total = payload.byteSize();
+        if (offset < 0 || length < 0 || offset > total - length)
+            throw new IndexOutOfBoundsException("payload range out of bounds");
     }
 }

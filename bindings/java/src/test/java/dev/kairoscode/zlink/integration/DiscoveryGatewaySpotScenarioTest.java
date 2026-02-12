@@ -3,6 +3,8 @@ package dev.kairoscode.zlink.integration;
 import dev.kairoscode.zlink.*;
 import org.junit.jupiter.api.Test;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -92,31 +94,66 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertTrue(ridMove.length > 0);
 
                                     try (Gateway.SendContext sendContext =
-                                           gateway.createSendContext();
-                                         Message moveMsg = Message.fromBytes(
-                                           "hello-move-ctx".getBytes(
-                                             StandardCharsets.UTF_8))) {
-                                        gateway.sendMove(preparedSvc,
-                                          new Message[]{moveMsg}, SendFlag.NONE,
-                                          sendContext);
-                                    }
-                                    byte[] ridMoveCtx =
-                                      TestTransports.recvWithTimeout(providerRouter, 256, 2000);
-                                    byte[] moveCtxPayload = new byte[0];
-                                    for (int i = 0; i < 3; i++) {
-                                        moveCtxPayload =
-                                          TestTransports.recvWithTimeout(providerRouter, 256, 2000);
-                                        if (moveCtxPayload.length == 0)
-                                            continue;
-                                        if ("hello-move-ctx".equals(
+                                           gateway.createSendContext()) {
+                                        try (Message moveMsg = Message.fromBytes(
+                                          "hello-move-ctx".getBytes(
+                                            StandardCharsets.UTF_8))) {
+                                            gateway.sendMove(preparedSvc,
+                                              new Message[]{moveMsg},
+                                              SendFlag.NONE, sendContext);
+                                        }
+                                        byte[] ridMoveCtx =
+                                          TestTransports.recvWithTimeout(
+                                            providerRouter, 256, 2000);
+                                        byte[] moveCtxPayload = new byte[0];
+                                        for (int i = 0; i < 3; i++) {
+                                            moveCtxPayload =
+                                              TestTransports.recvWithTimeout(
+                                                providerRouter, 256, 2000);
+                                            if (moveCtxPayload.length == 0)
+                                                continue;
+                                            if ("hello-move-ctx".equals(
+                                              new String(moveCtxPayload,
+                                                StandardCharsets.UTF_8).trim())) {
+                                                break;
+                                            }
+                                        }
+                                        assertEquals("hello-move-ctx",
                                           new String(moveCtxPayload,
-                                            StandardCharsets.UTF_8).trim())) {
-                                            break;
+                                            StandardCharsets.UTF_8).trim());
+                                        assertTrue(ridMoveCtx.length > 0);
+
+                                        try (Arena arena = Arena.ofShared()) {
+                                            MemorySegment constPayload =
+                                              arena.allocateFrom(
+                                                "hello-const-ctx",
+                                                StandardCharsets.UTF_8);
+                                            gateway.sendConst(preparedSvc,
+                                              constPayload, 0,
+                                              "hello-const-ctx".length(),
+                                              SendFlag.NONE, sendContext);
+                                            byte[] ridConstCtx =
+                                              TestTransports.recvWithTimeout(
+                                                providerRouter, 256, 2000);
+                                            byte[] constCtxPayload = new byte[0];
+                                            for (int i = 0; i < 3; i++) {
+                                                constCtxPayload =
+                                                  TestTransports.recvWithTimeout(
+                                                    providerRouter, 256, 2000);
+                                                if (constCtxPayload.length == 0)
+                                                    continue;
+                                                if ("hello-const-ctx".equals(
+                                                  new String(constCtxPayload,
+                                                    StandardCharsets.UTF_8).trim())) {
+                                                    break;
+                                                }
+                                            }
+                                            assertEquals("hello-const-ctx",
+                                              new String(constCtxPayload,
+                                                StandardCharsets.UTF_8).trim());
+                                            assertTrue(ridConstCtx.length > 0);
                                         }
                                     }
-                                    assertEquals("hello-move-ctx",
-                                      new String(moveCtxPayload, StandardCharsets.UTF_8).trim());
-                                    assertTrue(ridMoveCtx.length > 0);
                                     }
                                 }
                             }
@@ -177,6 +214,26 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         assertEquals("spot-move-ctx",
                                           new String(spotMoveCtxMsg.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
+                                    }
+
+                                    try (Arena arena = Arena.ofShared()) {
+                                        MemorySegment constPayload = arena.allocateFrom(
+                                          "spot-const-ctx", StandardCharsets.UTF_8);
+                                        spot.publishConst(preparedTopic, constPayload, 0,
+                                          "spot-const-ctx".length(), SendFlag.NONE,
+                                          publishContext);
+                                        try (Spot.SpotMessages spotConstCtxMsg =
+                                               TestTransports.spotReceiveMessagesWithTimeout(
+                                                 spot, 5000)) {
+                                            assertEquals("topic",
+                                              spotConstCtxMsg.topicId());
+                                            assertEquals(1,
+                                              spotConstCtxMsg.parts().length);
+                                            assertEquals("spot-const-ctx",
+                                              new String(
+                                                spotConstCtxMsg.parts()[0].data(),
+                                                StandardCharsets.UTF_8).trim());
+                                        }
                                     }
 
                                     try (Spot.RecvContext recvContext =

@@ -60,6 +60,22 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    public void sendConst(String serviceName, MemorySegment payload,
+                          SendFlag flags) {
+        sendConst(serviceName, payload, 0, payload.byteSize(), flags);
+    }
+
+    public void sendConst(String serviceName, MemorySegment payload, long offset,
+                          long length, SendFlag flags) {
+        Objects.requireNonNull(serviceName, "serviceName");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment service = NativeHelpers.toCString(arena, serviceName);
+            sendConstInternal(arena, service, payload, offset, length, flags);
+        }
+    }
+
     public void sendMove(PreparedService service, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(service, "service");
         try (Arena arena = Arena.ofConfined()) {
@@ -72,6 +88,38 @@ public final class Gateway implements AutoCloseable {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(context, "context");
         sendInternal(context, service.cString(), parts, flags, true);
+    }
+
+    public void sendConst(PreparedService service, MemorySegment payload,
+                          SendFlag flags) {
+        sendConst(service, payload, 0, payload.byteSize(), flags);
+    }
+
+    public void sendConst(PreparedService service, MemorySegment payload,
+                          long offset, long length, SendFlag flags) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(payload, "payload");
+        validatePayloadRange(payload, offset, length);
+        try (Arena arena = Arena.ofConfined()) {
+            sendConstInternal(arena, service.cString(), payload, offset, length,
+                flags);
+        }
+    }
+
+    public void sendConst(PreparedService service, MemorySegment payload,
+                          SendFlag flags, SendContext context) {
+        sendConst(service, payload, 0, payload.byteSize(), flags, context);
+    }
+
+    public void sendConst(PreparedService service, MemorySegment payload,
+                          long offset, long length, SendFlag flags,
+                          SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(context, "context");
+        validatePayloadRange(payload, offset, length);
+        sendConstInternal(context, service.cString(), payload, offset, length,
+            flags);
     }
 
     public GatewayMessage recv(ReceiveFlag flags) {
@@ -467,6 +515,52 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    private void sendConstInternal(Arena arena,
+                                   MemorySegment serviceName,
+                                   MemorySegment payload,
+                                   long offset,
+                                   long length,
+                                   SendFlag flags) {
+        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, 1);
+        sendConstInternal(vec, serviceName, payload, offset, length, flags);
+    }
+
+    private void sendConstInternal(SendContext context,
+                                   MemorySegment serviceName,
+                                   MemorySegment payload,
+                                   long offset,
+                                   long length,
+                                   SendFlag flags) {
+        MemorySegment vec = context.ensureVector(1);
+        sendConstInternal(vec, serviceName, payload, offset, length, flags);
+    }
+
+    private void sendConstInternal(MemorySegment vec,
+                                   MemorySegment serviceName,
+                                   MemorySegment payload,
+                                   long offset,
+                                   long length,
+                                   SendFlag flags) {
+        int initialized = 0;
+        try {
+            MemorySegment dest = vec.asSlice(0, MSG_SIZE);
+            MemorySegment slice = length == 0 ? MemorySegment.NULL
+                : payload.asSlice(offset, length);
+            int rc = NativeMsg.msgInitData(dest, slice, length,
+                MemorySegment.NULL, MemorySegment.NULL);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init_data failed");
+            initialized = 1;
+            rc = Native.gatewaySend(handle, serviceName, vec, 1,
+                flags.getValue());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_send failed");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
     private static void closeMsgVector(MemorySegment vec, int count) {
         for (int i = 0; i < count; i++) {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
@@ -492,6 +586,17 @@ public final class Gateway implements AutoCloseable {
             SERVICE_NAME_CAPACITY);
         context.setServiceNameLength(serviceLen);
         return serviceLen;
+    }
+
+    private static void validatePayloadRange(MemorySegment payload,
+                                             long offset,
+                                             long length) {
+        if (!payload.isNative())
+            throw new IllegalArgumentException(
+                "sendConst requires a native MemorySegment");
+        long total = payload.byteSize();
+        if (offset < 0 || length < 0 || offset > total - length)
+            throw new IndexOutOfBoundsException("payload range out of bounds");
     }
 
 }

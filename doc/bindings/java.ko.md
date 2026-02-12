@@ -62,6 +62,7 @@ try (var ctx = new Context();
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
   - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (send vector 재사용)
+  - `Gateway.sendConst(..., MemorySegment nativePayload, ...)` (단일 프레임 zero-copy 경로)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Gateway.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawMessage`)
   - `Gateway.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawBorrowed`, 래퍼 재사용)
@@ -69,6 +70,7 @@ try (var ctx = new Context();
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
   - `Spot.createPublishContext()` + `publish/publishMove(PreparedTopic, ..., PublishContext)` (publish vector 재사용)
+  - `Spot.publishConst(..., MemorySegment nativePayload, ...)` (단일 프레임 zero-copy 경로)
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
   - `Spot.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Spot.SpotRawMessage`)
   - `Spot.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Spot.SpotRawBorrowed`, 래퍼 재사용)
@@ -76,6 +78,7 @@ try (var ctx = new Context();
   - `recvRaw`는 `RecvContext` 내부 `Message[]`를 재사용하므로 반환된 part를 직접 close하면 안 됩니다
   - `recvRawBorrowed`는 래퍼 객체도 재사용하므로 다음 recv 전에 값을 소비해야 합니다
   - `sendMove/publishMove`는 메시지 소유권을 이동시키므로 이동된 `Message`는 재사용하면 안 됩니다
+  - `sendConst/publishConst`는 native payload 메모리가 네이티브 전송 완료 시점까지 유효해야 합니다
 
 ## 5. 빌드
 

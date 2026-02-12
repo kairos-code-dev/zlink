@@ -12,6 +12,7 @@ final class BenchSpot {
         int warmup = BenchUtil.parseEnv("BENCH_WARMUP_COUNT", 200);
         int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 200);
         int msgCount = BenchUtil.resolveMsgCount(size);
+        boolean useConst = BenchUtil.parseEnv("BENCH_USE_CONST", 0) == 1;
         int maxSpot = BenchUtil.parseEnv("BENCH_SPOT_MSG_COUNT_MAX", 50000);
         if (msgCount > maxSpot) {
             msgCount = maxSpot;
@@ -48,26 +49,25 @@ final class BenchSpot {
             MemorySegment payloadSegment = payloadArena.allocate(size);
             MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
             Message[] sendParts = new Message[1];
-
             for (int i = 0; i < warmup; i++) {
-                try (Message msg = Message.fromNativeData(payloadSegment)) {
-                    sendParts[0] = msg;
-                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+                if (useConst) {
+                    spotPub.publishConst(preparedTopic, payloadSegment,
+                      SendFlag.NONE, publishContext);
+                } else {
+                    publishMove(spotPub, preparedTopic, payloadSegment, sendParts,
                       publishContext);
-                } finally {
-                    sendParts[0] = null;
                 }
                 BenchUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                try (Message msg = Message.fromNativeData(payloadSegment)) {
-                    sendParts[0] = msg;
-                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+                if (useConst) {
+                    spotPub.publishConst(preparedTopic, payloadSegment,
+                      SendFlag.NONE, publishContext);
+                } else {
+                    publishMove(spotPub, preparedTopic, payloadSegment, sendParts,
                       publishContext);
-                } finally {
-                    sendParts[0] = null;
                 }
                 BenchUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
@@ -95,12 +95,12 @@ final class BenchSpot {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    try (Message msg = Message.fromNativeData(payloadSegment)) {
-                        sendParts[0] = msg;
-                        spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
-                          publishContext);
-                    } finally {
-                        sendParts[0] = null;
+                    if (useConst) {
+                        spotPub.publishConst(preparedTopic, payloadSegment,
+                          SendFlag.NONE, publishContext);
+                    } else {
+                        publishMove(spotPub, preparedTopic, payloadSegment,
+                          sendParts, publishContext);
                     }
                     sent++;
                 } catch (Exception e) {
@@ -168,6 +168,20 @@ final class BenchSpot {
                 ctx.close();
             } catch (Exception ignored) {
             }
+        }
+    }
+
+    private static void publishMove(Spot spotPub,
+                                    Spot.PreparedTopic preparedTopic,
+                                    MemorySegment payloadSegment,
+                                    Message[] sendParts,
+                                    Spot.PublishContext publishContext) {
+        try (Message msg = Message.fromNativeData(payloadSegment)) {
+            sendParts[0] = msg;
+            spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+              publishContext);
+        } finally {
+            sendParts[0] = null;
         }
     }
 }

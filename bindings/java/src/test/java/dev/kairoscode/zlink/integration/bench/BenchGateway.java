@@ -1,6 +1,8 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 
 final class BenchGateway {
     private BenchGateway() {
@@ -17,6 +19,7 @@ final class BenchGateway {
         Receiver receiver = null;
         Socket router = null;
         Gateway gateway = null;
+        Arena payloadArena = null;
         try {
             String suffix = System.currentTimeMillis() + "-" + System.nanoTime();
             String regPub = "inproc://gw-pub-" + suffix;
@@ -55,16 +58,22 @@ final class BenchGateway {
                 payload[i] = 'a';
             }
             int dataCap = Math.max(256, size);
+            payloadArena = Arena.ofShared();
+            MemorySegment payloadSegment = payloadArena.allocate(size);
+            MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
+            Message[] sendParts = new Message[1];
 
             for (int i = 0; i < warmup; i++) {
-                BenchUtil.gatewaySendWithRetry(gateway, service, payload, 5000);
+                gatewaySendMoveWithRetry(gateway, service, payloadSegment, sendParts,
+                  5000);
                 BenchUtil.recvWithTimeout(router, 256, 5000);
                 BenchUtil.recvWithTimeout(router, dataCap, 5000);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                BenchUtil.gatewaySendWithRetry(gateway, service, payload, 5000);
+                gatewaySendMoveWithRetry(gateway, service, payloadSegment, sendParts,
+                  5000);
                 BenchUtil.recvWithTimeout(router, 256, 5000);
                 BenchUtil.recvWithTimeout(router, dataCap, 5000);
             }
@@ -89,7 +98,12 @@ final class BenchGateway {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    gateway.send(service, new Message[]{Message.fromBytes(payload)}, SendFlag.NONE);
+                    try (Message msg = Message.fromNativeData(payloadSegment)) {
+                        sendParts[0] = msg;
+                        gateway.sendMove(service, sendParts, SendFlag.NONE);
+                    } finally {
+                        sendParts[0] = null;
+                    }
                     sent++;
                 } catch (Exception e) {
                     break;
@@ -135,9 +149,36 @@ final class BenchGateway {
             } catch (Exception ignored) {
             }
             try {
+                if (payloadArena != null) {
+                    payloadArena.close();
+                }
+            } catch (Exception ignored) {
+            }
+            try {
                 ctx.close();
             } catch (Exception ignored) {
             }
         }
+    }
+
+    private static void gatewaySendMoveWithRetry(Gateway gateway, String service,
+                                                 MemorySegment payload,
+                                                 Message[] sendParts,
+                                                 int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                try (Message msg = Message.fromNativeData(payload)) {
+                    sendParts[0] = msg;
+                    gateway.sendMove(service, sendParts, SendFlag.NONE);
+                } finally {
+                    sendParts[0] = null;
+                }
+                return;
+            } catch (Exception ignored) {
+                BenchUtil.sleep(10);
+            }
+        }
+        throw new RuntimeException("timeout");
     }
 }

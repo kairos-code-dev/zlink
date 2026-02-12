@@ -1,6 +1,8 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 
 final class BenchSpot {
     private BenchSpot() {
@@ -20,6 +22,7 @@ final class BenchSpot {
         SpotNode nodeSub = null;
         Spot spotPub = null;
         Spot spotSub = null;
+        Arena payloadArena = null;
         try {
             nodePub = new SpotNode(ctx);
             nodeSub = new SpotNode(ctx);
@@ -35,16 +38,34 @@ final class BenchSpot {
             for (int i = 0; i < size; i++) {
                 payload[i] = 'a';
             }
+            payloadArena = Arena.ofShared();
+            MemorySegment payloadSegment = payloadArena.allocate(size);
+            MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
+            Message[] sendParts = new Message[1];
 
             for (int i = 0; i < warmup; i++) {
-                spotPub.publish("bench", new Message[]{Message.fromBytes(payload)}, SendFlag.NONE);
-                BenchUtil.spotRecvWithTimeout(spotSub, 5000);
+                try (Message msg = Message.fromNativeData(payloadSegment)) {
+                    sendParts[0] = msg;
+                    spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                } finally {
+                    sendParts[0] = null;
+                }
+                try (Spot.SpotMessages ignored =
+                       BenchUtil.spotRecvMessagesWithTimeout(spotSub, 5000)) {
+                }
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                spotPub.publish("bench", new Message[]{Message.fromBytes(payload)}, SendFlag.NONE);
-                BenchUtil.spotRecvWithTimeout(spotSub, 5000);
+                try (Message msg = Message.fromNativeData(payloadSegment)) {
+                    sendParts[0] = msg;
+                    spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                } finally {
+                    sendParts[0] = null;
+                }
+                try (Spot.SpotMessages ignored =
+                       BenchUtil.spotRecvMessagesWithTimeout(spotSub, 5000)) {
+                }
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
 
@@ -54,7 +75,9 @@ final class BenchSpot {
             Thread recvThread = new Thread(() -> {
                 for (int i = 0; i < fMsgCount; i++) {
                     try {
-                        BenchUtil.spotRecvWithTimeout(fSpotSub, 5000);
+                        try (Spot.SpotMessages ignored =
+                               BenchUtil.spotRecvMessagesWithTimeout(fSpotSub, 5000)) {
+                        }
                         recvCount[0]++;
                     } catch (Exception e) {
                         break;
@@ -67,7 +90,12 @@ final class BenchSpot {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    spotPub.publish("bench", new Message[]{Message.fromBytes(payload)}, SendFlag.NONE);
+                    try (Message msg = Message.fromNativeData(payloadSegment)) {
+                        sendParts[0] = msg;
+                        spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                    } finally {
+                        sendParts[0] = null;
+                    }
                     sent++;
                 } catch (Exception e) {
                     break;
@@ -103,6 +131,12 @@ final class BenchSpot {
             try {
                 if (nodePub != null) {
                     nodePub.close();
+                }
+            } catch (Exception ignored) {
+            }
+            try {
+                if (payloadArena != null) {
+                    payloadArena.close();
                 }
             } catch (Exception ignored) {
             }

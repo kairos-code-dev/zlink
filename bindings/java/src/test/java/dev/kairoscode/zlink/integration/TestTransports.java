@@ -148,6 +148,23 @@ final class TestTransports {
         throw new RuntimeException("timeout");
     }
 
+    static Spot.SpotMessages spotReceiveMessagesWithTimeout(
+      Spot spot, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        RuntimeException last = null;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return spot.recvMessages(ZLINK_DONTWAIT);
+            } catch (RuntimeException ex) {
+                last = ex;
+                sleep(10);
+            }
+        }
+        if (last != null)
+            throw last;
+        throw new RuntimeException("timeout");
+    }
+
     private static void sleep(int ms) {
         try {
             Thread.sleep(ms);

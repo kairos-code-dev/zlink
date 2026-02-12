@@ -58,6 +58,11 @@ try (var ctx = new Context();
   - `MemorySegment dataSegment()`
   - `ByteBuffer dataBuffer()`
   - `copyTo(byte[]/ByteBuffer)`
+- Gateway/SPOT 저복사 경로
+  - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
+  - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
+  - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
+  - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
 
 ## 5. 빌드
 

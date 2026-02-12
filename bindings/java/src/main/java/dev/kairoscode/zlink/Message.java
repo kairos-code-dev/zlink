@@ -2,6 +2,7 @@
 
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.internal.NativeLayouts;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -208,6 +209,65 @@ public final class Message implements AutoCloseable {
             return false;
         copyTo(destination);
         return true;
+    }
+
+    void copyTo(MemorySegment destination) {
+        int rc = NativeMsg.msgCopy(destination, msg);
+        if (rc != 0)
+            throw new RuntimeException("zlink_msg_copy failed");
+    }
+
+    void moveTo(MemorySegment destination) {
+        int rc = NativeMsg.msgMove(destination, msg);
+        if (rc != 0)
+            throw new RuntimeException("zlink_msg_move failed");
+        valid = false;
+        zeroCopyAnchor = null;
+    }
+
+    static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
+        if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
+            return new Message[0];
+        if (count > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("msg vector too large: " + count);
+        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
+        if (count > Long.MAX_VALUE / msgSize)
+            throw new IllegalArgumentException("msg vector too large: " + count);
+        Message[] out = new Message[(int) count];
+        int built = 0;
+        boolean success = false;
+        try {
+            MemorySegment parts = MemorySegment.ofAddress(partsAddr.address()).reinterpret(msgSize * count);
+            for (int i = 0; i < count; i++) {
+                MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
+                Message msg = new Message(true);
+                int rc = NativeMsg.msgInit(msg.msg);
+                if (rc != 0) {
+                    msg.arena.close();
+                    throw new RuntimeException("zlink_msg_init failed");
+                }
+                msg.valid = true;
+                rc = NativeMsg.msgMove(msg.msg, src);
+                if (rc != 0) {
+                    NativeMsg.msgClose(msg.msg);
+                    msg.valid = false;
+                    msg.arena.close();
+                    throw new RuntimeException("zlink_msg_move failed");
+                }
+                out[i] = msg;
+                built++;
+            }
+            success = true;
+            return out;
+        } finally {
+            NativeMsg.msgvClose(partsAddr, count);
+            if (!success) {
+                for (int i = 0; i < built; i++) {
+                    if (out[i] != null)
+                        out[i].close();
+                }
+            }
+        }
     }
 
     MemorySegment handle() {

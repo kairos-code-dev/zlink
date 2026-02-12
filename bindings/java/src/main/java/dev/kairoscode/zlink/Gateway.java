@@ -12,6 +12,8 @@ import java.lang.foreign.ValueLayout;
 
 public final class Gateway implements AutoCloseable {
     private MemorySegment handle;
+    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
+    private static final int SERVICE_NAME_CAPACITY = 256;
 
     public Gateway(Context ctx, Discovery discovery) {
         this(ctx, discovery, null);
@@ -28,41 +30,42 @@ public final class Gateway implements AutoCloseable {
     }
 
     public void send(String serviceName, Message[] parts, SendFlag flags) {
-        if (parts == null || parts.length == 0)
-            throw new IllegalArgumentException("parts required");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
-            for (int i = 0; i < parts.length; i++) {
-                MemorySegment dest = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
-                    NativeLayouts.MSG_LAYOUT.byteSize());
-                NativeMsg.msgInit(dest);
-                NativeMsg.msgCopy(dest, parts[i].handle());
-            }
-            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags.getValue());
-            if (rc != 0) {
-                for (int i = 0; i < parts.length; i++) {
-                    MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
-                        NativeLayouts.MSG_LAYOUT.byteSize());
-                    NativeMsg.msgClose(msg);
-                }
-                throw new RuntimeException("zlink_gateway_send failed");
-            }
-        }
+        sendInternal(serviceName, parts, flags, false);
+    }
+
+    public void sendMove(String serviceName, Message[] parts, SendFlag flags) {
+        sendInternal(serviceName, parts, flags, true);
     }
 
     public GatewayMessage recv(ReceiveFlag flags) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment service = arena.allocate(256);
+            MemorySegment service = arena.allocate(SERVICE_NAME_CAPACITY);
             int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_recv failed");
             long partCount = count.get(ValueLayout.JAVA_LONG, 0);
             MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
             byte[][] data = NativeMsg.readMsgVector(partsAddr, partCount);
-            String serviceName = NativeHelpers.fromCString(service, 256);
+            String serviceName = NativeHelpers.fromCString(service, SERVICE_NAME_CAPACITY);
             return new GatewayMessage(serviceName, data);
+        }
+    }
+
+    public GatewayMessages recvMessages(ReceiveFlag flags) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment service = arena.allocate(SERVICE_NAME_CAPACITY);
+            int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_recv failed");
+            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
+            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+            String serviceName = NativeHelpers.fromCString(service, SERVICE_NAME_CAPACITY);
+            return new GatewayMessages(serviceName, parts);
         }
     }
 
@@ -121,4 +124,71 @@ public final class Gateway implements AutoCloseable {
     }
 
     public record GatewayMessage(String serviceName, byte[][] parts) {}
+
+    public static final class GatewayMessages implements AutoCloseable {
+        private final String serviceName;
+        private final Message[] parts;
+
+        GatewayMessages(String serviceName, Message[] parts) {
+            this.serviceName = serviceName == null ? "" : serviceName;
+            this.parts = parts == null ? new Message[0] : parts;
+        }
+
+        public String serviceName() {
+            return serviceName;
+        }
+
+        public Message[] parts() {
+            return parts;
+        }
+
+        @Override
+        public void close() {
+            for (Message part : parts) {
+                if (part != null)
+                    part.close();
+            }
+        }
+    }
+
+    private void sendInternal(String serviceName, Message[] parts, SendFlag flags,
+                              boolean move) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
+            int initialized = 0;
+            try {
+                for (int i = 0; i < parts.length; i++) {
+                    Message part = parts[i];
+                    if (part == null)
+                        throw new IllegalArgumentException("parts[" + i + "] is null");
+                    MemorySegment dest = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+                    int rc = NativeMsg.msgInit(dest);
+                    if (rc != 0)
+                        throw new RuntimeException("zlink_msg_init failed");
+                    initialized++;
+                    if (move)
+                        part.moveTo(dest);
+                    else
+                        part.copyTo(dest);
+                }
+                int rc = Native.gatewaySend(handle,
+                    NativeHelpers.toCString(arena, serviceName), vec, parts.length,
+                    flags.getValue());
+                if (rc != 0)
+                    throw new RuntimeException("zlink_gateway_send failed");
+            } catch (RuntimeException ex) {
+                closeMsgVector(vec, initialized);
+                throw ex;
+            }
+        }
+    }
+
+    private static void closeMsgVector(MemorySegment vec, int count) {
+        for (int i = 0; i < count; i++) {
+            MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+            NativeMsg.msgClose(msg);
+        }
+    }
 }

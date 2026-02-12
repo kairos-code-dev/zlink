@@ -71,12 +71,15 @@ final class BenchUtil {
 
     static void gatewaySendWithRetry(Gateway gateway, String service, byte[] payload, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                gateway.send(service, new Message[]{Message.fromBytes(payload)}, SendFlag.NONE);
-                return;
-            } catch (Exception ignored) {
-                sleep(10);
+        try (Message msg = Message.fromBytes(payload)) {
+            Message[] parts = new Message[]{msg};
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    gateway.send(service, parts, SendFlag.NONE);
+                    return;
+                } catch (Exception ignored) {
+                    sleep(10);
+                }
             }
         }
         throw new RuntimeException("timeout");
@@ -87,6 +90,18 @@ final class BenchUtil {
         while (System.currentTimeMillis() < deadline) {
             try {
                 return spot.recv(ReceiveFlag.DONTWAIT);
+            } catch (Exception ignored) {
+                sleep(10);
+            }
+        }
+        throw new RuntimeException("timeout");
+    }
+
+    static Spot.SpotMessages spotRecvMessagesWithTimeout(Spot spot, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return spot.recvMessages(ReceiveFlag.DONTWAIT);
             } catch (Exception ignored) {
                 sleep(10);
             }

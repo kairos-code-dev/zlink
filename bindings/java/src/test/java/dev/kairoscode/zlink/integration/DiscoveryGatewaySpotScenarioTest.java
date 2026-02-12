@@ -64,6 +64,29 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertEquals("hello", new String(payload, StandardCharsets.UTF_8).trim());
 
                                     assertTrue(rid.length > 0);
+
+                                    try (Message moveMsg = Message.fromBytes(
+                                      "hello-move".getBytes(StandardCharsets.UTF_8))) {
+                                        gateway.sendMove("svc",
+                                          new Message[]{moveMsg}, SendFlag.NONE);
+                                    }
+
+                                    byte[] ridMove =
+                                      TestTransports.recvWithTimeout(providerRouter, 256, 2000);
+                                    byte[] movePayload = new byte[0];
+                                    for (int i = 0; i < 3; i++) {
+                                        movePayload =
+                                          TestTransports.recvWithTimeout(providerRouter, 256, 2000);
+                                        if (movePayload.length == 0)
+                                            continue;
+                                        if ("hello-move".equals(new String(movePayload,
+                                          StandardCharsets.UTF_8).trim())) {
+                                            break;
+                                        }
+                                    }
+                                    assertEquals("hello-move",
+                                      new String(movePayload, StandardCharsets.UTF_8).trim());
+                                    assertTrue(ridMove.length > 0);
                                 }
                             }
 
@@ -89,6 +112,21 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertTrue(spotMsg.parts().length == 1);
                                     assertEquals("spot-msg",
                                       new String(spotMsg.parts()[0], StandardCharsets.UTF_8).trim());
+
+                                    try (Message moveMsg = Message.fromBytes(
+                                      "spot-move".getBytes(StandardCharsets.UTF_8))) {
+                                        spot.publishMove("topic",
+                                          new Message[]{moveMsg}, SendFlag.NONE);
+                                    }
+                                    try (Spot.SpotMessages spotMoveMsg =
+                                           TestTransports.spotReceiveMessagesWithTimeout(
+                                             spot, 5000)) {
+                                        assertEquals("topic", spotMoveMsg.topicId());
+                                        assertEquals(1, spotMoveMsg.parts().length);
+                                        assertEquals("spot-move",
+                                          new String(spotMoveMsg.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
+                                    }
                                 }
                             }
                         }

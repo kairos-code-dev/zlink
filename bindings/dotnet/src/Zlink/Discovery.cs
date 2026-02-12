@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
 using Zlink.Native;
 
 namespace Zlink;
@@ -101,18 +102,27 @@ public sealed class Discovery : IDisposable
         int count = ReceiverCount(serviceName);
         if (count == 0)
             return Array.Empty<ReceiverInfoRecord>();
-        var providers = new ZlinkProviderInfo[count];
-        nuint size = (nuint)providers.Length;
-        int rc = NativeMethods.zlink_discovery_get_receivers(_handle,
-            serviceName, providers, ref size);
-        ZlinkException.ThrowIfError(rc);
-        int actual = (int)size;
-        ReceiverInfoRecord[] result = new ReceiverInfoRecord[actual];
-        for (int i = 0; i < actual; i++)
+        ZlinkProviderInfo[] providers = ArrayPool<ZlinkProviderInfo>.Shared
+            .Rent(count);
+        try
         {
-            result[i] = ReceiverInfoRecord.FromNative(ref providers[i]);
+            nuint size = (nuint)count;
+            int rc = NativeMethods.zlink_discovery_get_receivers(_handle,
+                serviceName, providers, ref size);
+            ZlinkException.ThrowIfError(rc);
+
+            int actual = (int)size;
+            ReceiverInfoRecord[] result = new ReceiverInfoRecord[actual];
+            for (int i = 0; i < actual; i++)
+            {
+                result[i] = ReceiverInfoRecord.FromNative(ref providers[i]);
+            }
+            return result;
         }
-        return result;
+        finally
+        {
+            ArrayPool<ZlinkProviderInfo>.Shared.Return(providers);
+        }
     }
 
     public void Dispose()

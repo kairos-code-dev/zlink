@@ -10,6 +10,9 @@ namespace Zlink;
 public sealed class Poller
 {
     private readonly List<PollItem> _items = new();
+    private ZlinkPollItemUnix[] _unixPollItems = Array.Empty<ZlinkPollItemUnix>();
+    private ZlinkPollItemWindows[] _windowsPollItems =
+        Array.Empty<ZlinkPollItemWindows>();
 
     public void Add(Socket socket, PollEvents events, object? tag = null)
     {
@@ -58,7 +61,8 @@ public sealed class Poller
 
     private int WaitUnix(List<PollEvent> events, int timeoutMs)
     {
-        var pollItems = new ZlinkPollItemUnix[_items.Count];
+        EnsureUnixCapacity(_items.Count);
+        var pollItems = _unixPollItems;
         for (int i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
@@ -71,12 +75,12 @@ public sealed class Poller
             };
         }
 
-        int rc = NativeMethods.zlink_poll_unix(pollItems, pollItems.Length,
+        int rc = NativeMethods.zlink_poll_unix(pollItems, _items.Count,
             timeoutMs);
         if (rc <= 0)
             return rc;
 
-        for (int i = 0; i < pollItems.Length; i++)
+        for (int i = 0; i < _items.Count; i++)
         {
             if (pollItems[i].Revents == 0)
                 continue;
@@ -89,7 +93,8 @@ public sealed class Poller
 
     private int WaitWindows(List<PollEvent> events, int timeoutMs)
     {
-        var pollItems = new ZlinkPollItemWindows[_items.Count];
+        EnsureWindowsCapacity(_items.Count);
+        var pollItems = _windowsPollItems;
         for (int i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
@@ -102,12 +107,12 @@ public sealed class Poller
             };
         }
 
-        int rc = NativeMethods.zlink_poll_windows(pollItems, pollItems.Length,
+        int rc = NativeMethods.zlink_poll_windows(pollItems, _items.Count,
             timeoutMs);
         if (rc <= 0)
             return rc;
 
-        for (int i = 0; i < pollItems.Length; i++)
+        for (int i = 0; i < _items.Count; i++)
         {
             if (pollItems[i].Revents == 0)
                 continue;
@@ -116,6 +121,18 @@ public sealed class Poller
                 (PollEvents)pollItems[i].Revents));
         }
         return events.Count;
+    }
+
+    private void EnsureUnixCapacity(int count)
+    {
+        if (_unixPollItems.Length < count)
+            _unixPollItems = new ZlinkPollItemUnix[count];
+    }
+
+    private void EnsureWindowsCapacity(int count)
+    {
+        if (_windowsPollItems.Length < count)
+            _windowsPollItems = new ZlinkPollItemWindows[count];
     }
 
     private sealed class PollItem

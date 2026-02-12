@@ -195,6 +195,59 @@ public sealed class Message : IDisposable
             throw ZlinkException.FromLastError();
     }
 
+    internal static unsafe void InitFromSpan(ReadOnlySpan<byte> data,
+        ref ZlinkMsg dest)
+    {
+        int rc = NativeMethods.zlink_msg_init_size(ref dest, (nuint)data.Length);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            if (data.Length == 0)
+                return;
+
+            IntPtr ptr = NativeMethods.zlink_msg_data(ref dest);
+            if (ptr == IntPtr.Zero)
+                throw new InvalidOperationException("Message data is null.");
+
+            fixed (byte* src = data)
+            {
+                new ReadOnlySpan<byte>(src, data.Length)
+                    .CopyTo(new Span<byte>((void*)ptr, data.Length));
+            }
+        }
+        catch
+        {
+            NativeMethods.zlink_msg_close(ref dest);
+            throw;
+        }
+    }
+
+    internal static unsafe int CopySinglePartPayload(IntPtr parts, nuint count,
+        Span<byte> destination)
+    {
+        if (parts == IntPtr.Zero || count == 0)
+            return 0;
+        if (count != 1)
+            throw new InvalidOperationException(
+                "Expected a single-part message.");
+
+        ZlinkMsg* msgv = (ZlinkMsg*)parts;
+        int payloadSize = (int)NativeMethods.zlink_msg_size(ref msgv[0]);
+        if (payloadSize <= 0)
+            return 0;
+
+        IntPtr payloadPtr = NativeMethods.zlink_msg_data(ref msgv[0]);
+        if (payloadPtr == IntPtr.Zero)
+            return 0;
+
+        int toCopy = payloadSize;
+        if (toCopy > destination.Length)
+            toCopy = destination.Length;
+        new ReadOnlySpan<byte>((void*)payloadPtr, toCopy).CopyTo(destination);
+        return payloadSize;
+    }
+
     internal static Message[] FromNativeVector(IntPtr parts, nuint count)
     {
         if (parts == IntPtr.Zero || count == 0)

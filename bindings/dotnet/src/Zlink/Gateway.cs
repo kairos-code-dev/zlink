@@ -2,6 +2,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Text;
 using Zlink.Native;
 
 namespace Zlink;
@@ -10,6 +12,8 @@ public sealed class Gateway : IDisposable
 {
     private const int StackSendPartLimit = 8;
     private IntPtr _handle;
+    private readonly ConcurrentDictionary<string, byte[]> _serviceNameUtf8Cache =
+        new(StringComparer.Ordinal);
 
     public Gateway(Context context, Discovery discovery)
     {
@@ -40,6 +44,13 @@ public sealed class Gateway : IDisposable
     {
         SendCore(serviceName, default, useRoutingId: false, parts, flags,
             moveParts: false);
+    }
+
+    public unsafe void Send(string serviceName, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        SendSinglePayloadCore(serviceName, default, useRoutingId: false, payload,
+            flags);
     }
 
     public void SendMove(string serviceName, Message[] parts,
@@ -75,6 +86,14 @@ public sealed class Gateway : IDisposable
             moveParts: false);
     }
 
+    public unsafe void SendToRoutingId(string serviceName,
+        ReadOnlySpan<byte> routingId, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        SendSinglePayloadCore(serviceName, routingId, useRoutingId: true, payload,
+            flags);
+    }
+
     public void SendMoveToRoutingId(string serviceName, byte[] routingId,
         Message[] parts, SendFlags flags = SendFlags.None)
     {
@@ -103,6 +122,8 @@ public sealed class Gateway : IDisposable
             throw new ArgumentNullException(nameof(serviceName));
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
+
+        byte[] serviceNameUtf8 = GetServiceNameUtf8(serviceName);
         ZlinkRoutingId nativeRoutingId = default;
         if (useRoutingId)
             nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
@@ -130,16 +151,17 @@ public sealed class Gateway : IDisposable
             }
 
             fixed (ZlinkMsg* ptr = nativeParts)
+            fixed (byte* serviceNamePtr = serviceNameUtf8)
             {
                 if (useRoutingId)
                 {
                     rc = NativeMethods.zlink_gateway_send_rid(_handle,
-                        serviceName, &nativeRoutingId, ptr,
+                        serviceNamePtr, &nativeRoutingId, ptr,
                         (nuint)nativeParts.Length, (int)flags);
                 }
                 else
                 {
-                    rc = NativeMethods.zlink_gateway_send(_handle, serviceName,
+                    rc = NativeMethods.zlink_gateway_send(_handle, serviceNamePtr,
                         ptr, (nuint)nativeParts.Length, (int)flags);
                 }
             }
@@ -157,6 +179,54 @@ public sealed class Gateway : IDisposable
 
         if (rc < 0)
             CloseNativeParts(nativeParts, built);
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SendSinglePayloadCore(string serviceName,
+        ReadOnlySpan<byte> routingId, bool useRoutingId,
+        ReadOnlySpan<byte> payload, SendFlags flags)
+    {
+        EnsureNotDisposed();
+        if (serviceName == null)
+            throw new ArgumentNullException(nameof(serviceName));
+
+        byte[] serviceNameUtf8 = GetServiceNameUtf8(serviceName);
+
+        ZlinkRoutingId nativeRoutingId = default;
+        if (useRoutingId)
+            nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
+
+        ZlinkMsg part = default;
+        int rc = 0;
+        bool built = false;
+        try
+        {
+            Message.InitFromSpan(payload, ref part);
+            built = true;
+            fixed (byte* serviceNamePtr = serviceNameUtf8)
+            {
+                if (useRoutingId)
+                {
+                    rc = NativeMethods.zlink_gateway_send_rid(_handle,
+                        serviceNamePtr, &nativeRoutingId, &part, (nuint)1,
+                        (int)flags);
+                }
+                else
+                {
+                    rc = NativeMethods.zlink_gateway_send(_handle, serviceNamePtr,
+                        &part, (nuint)1, (int)flags);
+                }
+            }
+        }
+        catch
+        {
+            if (built)
+                NativeMethods.zlink_msg_close(ref part);
+            throw;
+        }
+
+        if (rc < 0 && built)
+            NativeMethods.zlink_msg_close(ref part);
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -179,6 +249,62 @@ public sealed class Gateway : IDisposable
             string service = NativeHelpers.ReadString(nameBuf, 256);
             Message[] messages = Message.FromNativeVector(parts, count);
             return new GatewayMessage(service, messages);
+        }
+    }
+
+    public unsafe int ReceiveSinglePayload(Span<byte> payloadBuffer,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        byte* nameBuf = stackalloc byte[256];
+        int rc = NativeMethods.zlink_gateway_recv(_handle, out var parts,
+            out var count, (int)flags, nameBuf);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_msgv_close(parts, count);
+        }
+    }
+
+    public bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
+        out int payloadSize, ReceiveFlags flags = ReceiveFlags.DontWait)
+    {
+        return TryReceiveSinglePayload(payloadBuffer, out payloadSize, out _,
+            flags);
+    }
+
+    public unsafe bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
+        out int payloadSize, out int errno,
+        ReceiveFlags flags = ReceiveFlags.DontWait)
+    {
+        EnsureNotDisposed();
+        byte* nameBuf = stackalloc byte[256];
+        int rc = NativeMethods.zlink_gateway_recv(_handle, out var parts,
+            out var count, (int)flags, nameBuf);
+        if (rc != 0)
+        {
+            payloadSize = 0;
+            errno = NativeMethods.zlink_errno();
+            return false;
+        }
+
+        try
+        {
+            payloadSize = Message.CopySinglePartPayload(parts, count,
+                payloadBuffer);
+            errno = 0;
+            return true;
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_msgv_close(parts, count);
         }
     }
 
@@ -254,6 +380,18 @@ public sealed class Gateway : IDisposable
     {
         if (_handle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Gateway));
+    }
+
+    private byte[] GetServiceNameUtf8(string serviceName)
+    {
+        return _serviceNameUtf8Cache.GetOrAdd(serviceName, static key =>
+        {
+            int byteCount = Encoding.UTF8.GetByteCount(key);
+            byte[] bytes = new byte[byteCount + 1];
+            Encoding.UTF8.GetBytes(key, bytes.AsSpan(0, byteCount));
+            bytes[byteCount] = 0;
+            return bytes;
+        });
     }
 }
 

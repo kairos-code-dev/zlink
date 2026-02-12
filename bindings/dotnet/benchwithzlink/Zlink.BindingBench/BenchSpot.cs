@@ -29,20 +29,19 @@ internal static partial class BenchRunner
 
             var payload = new byte[size];
             Array.Fill(payload, (byte)'a');
-            using var payloadMessage = Message.FromBytes(payload.AsSpan());
-            var payloadParts = new[] { payloadMessage };
+            var recvPayload = new byte[Math.Max(256, size)];
 
             for (int i = 0; i < warmup; i++)
             {
-                spotPub.Publish("bench", payloadParts, SendFlags.None);
-                SpotReceiveWithTimeout(spotSub, 5000);
+                spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
+                SpotReceivePayloadWithTimeout(spotSub, recvPayload.AsSpan(), 5000);
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                spotPub.Publish("bench", payloadParts, SendFlags.None);
-                SpotReceiveWithTimeout(spotSub, 5000);
+                spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
+                SpotReceivePayloadWithTimeout(spotSub, recvPayload.AsSpan(), 5000);
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / latCount;
@@ -54,7 +53,8 @@ internal static partial class BenchRunner
                 {
                     try
                     {
-                        SpotReceiveWithTimeout(spotSub, 5000);
+                        SpotReceivePayloadWithTimeout(spotSub,
+                            recvPayload.AsSpan(), 5000);
                         recvCount++;
                     }
                     catch
@@ -71,7 +71,7 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    spotPub.Publish("bench", payloadParts, SendFlags.None);
+                    spotPub.Publish("bench", payload.AsSpan(), SendFlags.None);
                 }
                 catch
                 {

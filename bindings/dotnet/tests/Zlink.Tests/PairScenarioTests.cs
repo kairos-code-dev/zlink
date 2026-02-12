@@ -53,4 +53,38 @@ public class PairScenarioTests
         Assert.Equal(payload.Length, received);
         Assert.Equal(payload.ToArray(), recv.Slice(0, received).ToArray());
     }
+
+    [Fact]
+    public void PairTrySendTryReceive()
+    {
+        if (!NativeTests.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var a = new Socket(ctx, SocketType.Pair);
+        using var b = new Socket(ctx, SocketType.Pair);
+        string endpoint = $"inproc://pair-try-{Guid.NewGuid()}";
+        a.Bind(endpoint);
+        b.Connect(endpoint);
+        Thread.Sleep(50);
+
+        ReadOnlySpan<byte> payload = "try-path"u8;
+        Assert.True(b.TrySend(payload, out int sent, SendFlags.None));
+        Assert.Equal(payload.Length, sent);
+
+        Span<byte> recv = stackalloc byte[32];
+        var deadline = DateTime.UtcNow.AddMilliseconds(2000);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (a.TryReceive(recv, out int received, ReceiveFlags.DontWait))
+            {
+                Assert.Equal(payload.Length, received);
+                Assert.Equal(payload.ToArray(), recv.Slice(0, received).ToArray());
+                return;
+            }
+            Thread.Sleep(1);
+        }
+
+        throw new TimeoutException("TryReceive timed out.");
+    }
 }

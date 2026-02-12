@@ -69,15 +69,12 @@ internal static partial class BenchRunner
 
             var payload = new byte[size];
             Array.Fill(payload, (byte)'a');
-            using var payloadMessage = Message.FromBytes(payload.AsSpan());
-            var payloadParts = new[] { payloadMessage };
             var rid = new byte[256];
             var data = new byte[Math.Max(256, size)];
 
             for (int i = 0; i < warmup; i++)
             {
-                gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
-                    payloadParts.AsSpan(), SendFlags.None);
+                gateway.Send(service, payload.AsSpan(), SendFlags.None);
                 GatewayReceiveProviderMessage(router, rid.AsSpan(),
                     data.AsSpan());
             }
@@ -85,8 +82,7 @@ internal static partial class BenchRunner
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
-                    payloadParts.AsSpan(), SendFlags.None);
+                gateway.Send(service, payload.AsSpan(), SendFlags.None);
                 GatewayReceiveProviderMessage(router, rid.AsSpan(),
                     data.AsSpan());
             }
@@ -118,8 +114,7 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
-                        payloadParts.AsSpan(), SendFlags.None);
+                    gateway.Send(service, payload.AsSpan(), SendFlags.None);
                 }
                 catch
                 {

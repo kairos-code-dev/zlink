@@ -8,20 +8,21 @@ using TcpListener = System.Net.Sockets.TcpListener;
 internal static partial class BenchRunner
 {
     private const int ErrnoEintr = 4;
+    private const int ErrnoEagain = 11;
 
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
         while (true)
         {
-            try
+            if (socket.TryReceive(buffer, out int bytesReceived, out int errno,
+                flags))
             {
-                return socket.Receive(buffer, flags);
+                return bytesReceived;
             }
-            catch (ZlinkException ex) when (ex.Errno == ErrnoEintr)
-            {
+            if (errno == ErrnoEintr)
                 continue;
-            }
+            throw ZlinkException.FromLastError();
         }
     }
 
@@ -38,14 +39,11 @@ internal static partial class BenchRunner
     {
         while (true)
         {
-            try
-            {
-                return socket.Send(buffer, flags);
-            }
-            catch (ZlinkException ex) when (ex.Errno == ErrnoEintr)
-            {
+            if (socket.TrySend(buffer, out int bytesSent, out int errno, flags))
+                return bytesSent;
+            if (errno == ErrnoEintr)
                 continue;
-            }
+            throw ZlinkException.FromLastError();
         }
     }
 
@@ -106,19 +104,21 @@ internal static partial class BenchRunner
         }
     }
 
-    internal static SpotMessage SpotReceiveWithTimeout(Spot spot, int timeoutMs)
+    internal static int SpotReceivePayloadWithTimeout(Spot spot,
+        Span<byte> payloadBuffer, int timeoutMs)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            try
+            if (spot.TryReceiveSinglePayload(payloadBuffer, out int payloadLen,
+                out int errno, ReceiveFlags.DontWait))
             {
-                return spot.Receive(ReceiveFlags.DontWait);
+                return payloadLen;
             }
-            catch
-            {
+            if (errno == ErrnoEagain || errno == ErrnoEintr)
                 Thread.Sleep(1);
-            }
+            else
+                throw ZlinkException.FromLastError();
         }
         throw new TimeoutException();
     }

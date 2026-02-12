@@ -196,6 +196,35 @@ public sealed class Spot : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public unsafe void Publish(string topicId, ReadOnlySpan<byte> payload,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        if (topicId == null)
+            throw new ArgumentNullException(nameof(topicId));
+
+        ZlinkMsg part = default;
+        int rc = 0;
+        bool built = false;
+        try
+        {
+            Message.InitFromSpan(payload, ref part);
+            built = true;
+            rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicId, &part,
+                (nuint)1, (int)flags);
+        }
+        catch
+        {
+            if (built)
+                NativeMethods.zlink_msg_close(ref part);
+            throw;
+        }
+
+        if (rc < 0 && built)
+            NativeMethods.zlink_msg_close(ref part);
+        ZlinkException.ThrowIfError(rc);
+    }
+
     public void Subscribe(string topicId)
     {
         EnsureNotDisposed();
@@ -232,6 +261,64 @@ public sealed class Spot : IDisposable
             string topic = NativeHelpers.ReadString(topicBuf, (int)topicLen);
             Message[] messages = Message.FromNativeVector(parts, count);
             return new SpotMessage(topic, messages);
+        }
+    }
+
+    public unsafe int ReceiveSinglePayload(Span<byte> payloadBuffer,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        byte* topicBuf = stackalloc byte[256];
+        nuint topicLen = 256;
+        int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
+            out var count, (int)flags, topicBuf, ref topicLen);
+        if (rc != 0)
+            throw ZlinkException.FromLastError();
+        try
+        {
+            return Message.CopySinglePartPayload(parts, count, payloadBuffer);
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_msgv_close(parts, count);
+        }
+    }
+
+    public bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
+        out int payloadSize, ReceiveFlags flags = ReceiveFlags.DontWait)
+    {
+        return TryReceiveSinglePayload(payloadBuffer, out payloadSize, out _,
+            flags);
+    }
+
+    public unsafe bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
+        out int payloadSize, out int errno,
+        ReceiveFlags flags = ReceiveFlags.DontWait)
+    {
+        EnsureNotDisposed();
+        byte* topicBuf = stackalloc byte[256];
+        nuint topicLen = 256;
+        int rc = NativeMethods.zlink_spot_sub_recv(_subHandle, out var parts,
+            out var count, (int)flags, topicBuf, ref topicLen);
+        if (rc != 0)
+        {
+            payloadSize = 0;
+            errno = NativeMethods.zlink_errno();
+            return false;
+        }
+
+        try
+        {
+            payloadSize = Message.CopySinglePartPayload(parts, count,
+                payloadBuffer);
+            errno = 0;
+            return true;
+        }
+        finally
+        {
+            if (parts != IntPtr.Zero && count > 0)
+                NativeMethods.zlink_msgv_close(parts, count);
         }
     }
 

@@ -73,10 +73,9 @@ public class DiscoveryGatewaySpotScenarioTests
                 }
                 Assert.NotEmpty(targetRoutingId);
 
-                using var helloPart = Message.FromBytes("hello"u8);
-                Message[] helloParts = { helloPart };
+                byte[] helloPayload = Encoding.UTF8.GetBytes("hello");
                 TransportTestHelpers.SendWithRetryToRoutingId(gateway, "svc",
-                    targetRoutingId.AsSpan(), helloParts.AsSpan(),
+                    targetRoutingId.AsSpan(), helloPayload.AsSpan(),
                     SendFlags.None, 5000);
 
                 var rid = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 256, 2000);
@@ -113,6 +112,14 @@ public class DiscoveryGatewaySpotScenarioTests
                 Assert.Single(spotMsg.Parts);
                 Assert.Equal("spot-msg",
                     Encoding.UTF8.GetString(spotMsg.Parts[0].ToArray()));
+
+                byte[] fastPayload = Encoding.UTF8.GetBytes("spot-fast");
+                spot.Publish("topic", fastPayload.AsSpan(), SendFlags.None);
+                Span<byte> fastRecv = stackalloc byte[64];
+                int fastLen = spot.ReceiveSinglePayload(fastRecv,
+                    ReceiveFlags.None);
+                Assert.Equal("spot-fast",
+                    Encoding.UTF8.GetString(fastRecv.Slice(0, fastLen)));
             });
         }
     }

@@ -52,6 +52,14 @@ public final class Gateway implements AutoCloseable {
         sendInternal(context, service.cString(), parts, flags, false);
     }
 
+    public void send(PreparedService service, Message part, SendFlag flags,
+                     SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(context, "context");
+        sendSingleInternal(context, service.cString(), part, flags, false);
+    }
+
     public void sendMove(String serviceName, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         try (Arena arena = Arena.ofConfined()) {
@@ -88,6 +96,14 @@ public final class Gateway implements AutoCloseable {
         Objects.requireNonNull(service, "service");
         Objects.requireNonNull(context, "context");
         sendInternal(context, service.cString(), parts, flags, true);
+    }
+
+    public void sendMove(PreparedService service, Message part,
+                         SendFlag flags, SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(context, "context");
+        sendSingleInternal(context, service.cString(), part, flags, true);
     }
 
     public void sendConst(PreparedService service, MemorySegment payload,
@@ -489,6 +505,10 @@ public final class Gateway implements AutoCloseable {
                               boolean move) {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
+        if (parts.length == 1) {
+            sendSingleInternal(vec, serviceName, parts[0], flags, move);
+            return;
+        }
         int initialized = 0;
         try {
             for (int i = 0; i < parts.length; i++) {
@@ -506,6 +526,42 @@ public final class Gateway implements AutoCloseable {
                     part.copyTo(dest);
             }
             int rc = Native.gatewaySend(handle, serviceName, vec, parts.length,
+                flags.getValue());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_send failed");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
+    }
+
+    private void sendSingleInternal(SendContext context,
+                                    MemorySegment serviceName,
+                                    Message part,
+                                    SendFlag flags,
+                                    boolean move) {
+        MemorySegment vec = context.ensureVector(1);
+        sendSingleInternal(vec, serviceName, part, flags, move);
+    }
+
+    private void sendSingleInternal(MemorySegment vec,
+                                    MemorySegment serviceName,
+                                    Message part,
+                                    SendFlag flags,
+                                    boolean move) {
+        if (part == null)
+            throw new IllegalArgumentException("part is null");
+        int initialized = 0;
+        try {
+            int rc = NativeMsg.msgInit(vec);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init failed");
+            initialized = 1;
+            if (move)
+                part.moveTo(vec);
+            else
+                part.copyTo(vec);
+            rc = Native.gatewaySend(handle, serviceName, vec, 1,
                 flags.getValue());
             if (rc != 0)
                 throw new RuntimeException("zlink_gateway_send failed");
@@ -543,10 +599,9 @@ public final class Gateway implements AutoCloseable {
                                    SendFlag flags) {
         int initialized = 0;
         try {
-            MemorySegment dest = vec.asSlice(0, MSG_SIZE);
             MemorySegment slice = length == 0 ? MemorySegment.NULL
                 : payload.asSlice(offset, length);
-            int rc = NativeMsg.msgInitData(dest, slice, length,
+            int rc = NativeMsg.msgInitData(vec, slice, length,
                 MemorySegment.NULL, MemorySegment.NULL);
             if (rc != 0)
                 throw new RuntimeException("zlink_msg_init_data failed");

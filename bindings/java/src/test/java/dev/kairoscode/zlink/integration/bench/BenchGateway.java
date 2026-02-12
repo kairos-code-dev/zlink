@@ -12,7 +12,10 @@ final class BenchGateway {
         int warmup = BenchUtil.parseEnv("BENCH_WARMUP_COUNT", 200);
         int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 200);
         int msgCount = BenchUtil.resolveMsgCount(size);
-        boolean useConst = BenchUtil.parseEnv("BENCH_USE_CONST", 0) == 1;
+        // Gateway default uses const single-part path; override via env.
+        int globalConst = BenchUtil.parseEnv("BENCH_USE_CONST", 1);
+        boolean useConst = BenchUtil.parseEnv("BENCH_GATEWAY_USE_CONST",
+          globalConst) == 1;
 
         Context ctx = new Context();
         Registry registry = null;
@@ -71,16 +74,18 @@ final class BenchGateway {
             payloadArena = Arena.ofShared();
             MemorySegment payloadSegment = payloadArena.allocate(size);
             MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
-            Message[] sendParts = new Message[1];
+            MemorySegment ridSegment = payloadArena.allocate(256);
+            MemorySegment payloadRecvSegment = payloadArena.allocate(dataCap);
             for (int i = 0; i < warmup; i++) {
                 if (useConst) {
                     gateway.sendConst(preparedService, payloadSegment,
                       SendFlag.NONE, sendContext);
                 } else {
                     gatewaySendMove(gateway, preparedService, payloadSegment,
-                      sendParts, sendContext);
+                      sendContext);
                 }
-                recvGatewayPayloadBlocking(router, dataCap);
+                recvGatewayPayloadBlocking(router, ridSegment,
+                  payloadRecvSegment, dataCap);
             }
 
             long t0 = System.nanoTime();
@@ -90,9 +95,10 @@ final class BenchGateway {
                       SendFlag.NONE, sendContext);
                 } else {
                     gatewaySendMove(gateway, preparedService, payloadSegment,
-                      sendParts, sendContext);
+                      sendContext);
                 }
-                recvGatewayPayloadBlocking(router, dataCap);
+                recvGatewayPayloadBlocking(router, ridSegment,
+                  payloadRecvSegment, dataCap);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
 
@@ -101,7 +107,8 @@ final class BenchGateway {
             Thread recvThread = new Thread(() -> {
                 for (int i = 0; i < msgCount; i++) {
                     try {
-                        recvGatewayPayloadWithTimeout(fRouter, dataCap, 5000);
+                        recvGatewayPayloadWithTimeout(fRouter, ridSegment,
+                          payloadRecvSegment, dataCap, 5000);
                         recvCount[0]++;
                     } catch (Exception e) {
                         break;
@@ -119,7 +126,7 @@ final class BenchGateway {
                           SendFlag.NONE, sendContext);
                     } else {
                         gatewaySendMove(gateway, preparedService, payloadSegment,
-                          sendParts, sendContext);
+                          sendContext);
                     }
                     sent++;
                 } catch (Exception e) {
@@ -213,34 +220,36 @@ final class BenchGateway {
     private static void gatewaySendMove(Gateway gateway,
                                         Gateway.PreparedService service,
                                         MemorySegment payload,
-                                        Message[] sendParts,
                                         Gateway.SendContext sendContext) {
         try (Message msg = Message.fromNativeData(payload)) {
-            sendParts[0] = msg;
-            gateway.sendMove(service, sendParts, SendFlag.NONE, sendContext);
-        } finally {
-            sendParts[0] = null;
+            gateway.sendMove(service, msg, SendFlag.NONE, sendContext);
         }
     }
 
     private static void recvGatewayPayloadBlocking(Socket router,
+                                                   MemorySegment ridBuffer,
+                                                   MemorySegment payloadBuffer,
                                                    int dataCap) {
-        BenchUtil.recvBlocking(router, 256);
+        BenchUtil.recvBlocking(router, ridBuffer, 256);
         for (int i = 0; i < 3; i++) {
-            byte[] payload = BenchUtil.recvBlocking(router, dataCap);
-            if (payload.length > 0)
+            int payloadLen = BenchUtil.recvBlocking(router, payloadBuffer,
+              dataCap);
+            if (payloadLen > 0)
                 return;
         }
         throw new RuntimeException("gateway payload frame is empty");
     }
 
     private static void recvGatewayPayloadWithTimeout(Socket router,
+                                                      MemorySegment ridBuffer,
+                                                      MemorySegment payloadBuffer,
                                                       int dataCap,
                                                       int timeoutMs) {
-        BenchUtil.recvWithTimeout(router, 256, timeoutMs);
+        BenchUtil.recvWithTimeout(router, ridBuffer, 256, timeoutMs);
         for (int i = 0; i < 3; i++) {
-            byte[] payload = BenchUtil.recvWithTimeout(router, dataCap, timeoutMs);
-            if (payload.length > 0)
+            int payloadLen = BenchUtil.recvWithTimeout(router, payloadBuffer,
+              dataCap, timeoutMs);
+            if (payloadLen > 0)
                 return;
         }
         throw new RuntimeException("gateway payload frame is empty");

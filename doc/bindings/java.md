@@ -62,6 +62,7 @@ try (var ctx = new Context();
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
   - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (reused send vector)
+  - `Gateway.send/sendMove(PreparedService, Message part, SendFlag, SendContext)` (single-part fast path)
   - `Gateway.sendConst(..., MemorySegment nativePayload, ...)` (single-frame zero-copy path)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Gateway.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawMessage`)
@@ -70,6 +71,7 @@ try (var ctx = new Context();
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
   - `Spot.createPublishContext()` + `publish/publishMove(PreparedTopic, ..., PublishContext)` (reused publish vector)
+  - `Spot.publish/publishMove(PreparedTopic, Message part, SendFlag, PublishContext)` (single-part fast path)
   - `Spot.publishConst(..., MemorySegment nativePayload, ...)` (single-frame zero-copy path)
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
   - `Spot.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Spot.SpotRawMessage`)

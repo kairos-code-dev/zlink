@@ -2,6 +2,7 @@ package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
 
+import java.lang.foreign.MemorySegment;
 import java.net.ServerSocket;
 import java.util.concurrent.locks.LockSupport;
 
@@ -31,10 +32,37 @@ final class BenchUtil {
         socket.send(payload, SendFlag.NONE);
     }
 
+    static void streamSend(Socket socket,
+                           MemorySegment rid,
+                           int ridLen,
+                           MemorySegment payload,
+                           int payloadLen) {
+        socket.send(rid, 0, ridLen, SendFlag.SNDMORE);
+        socket.send(payload, 0, payloadLen, SendFlag.NONE);
+    }
+
+    static void streamSendConst(Socket socket,
+                                MemorySegment rid,
+                                int ridLen,
+                                MemorySegment payload,
+                                int payloadLen) {
+        socket.sendConst(rid, 0, ridLen, SendFlag.SNDMORE);
+        socket.sendConst(payload, 0, payloadLen, SendFlag.NONE);
+    }
+
     static StreamFrame streamRecv(Socket socket, int cap) {
         byte[] rid = socket.recv(256, ReceiveFlag.NONE);
         byte[] payload = socket.recv(cap, ReceiveFlag.NONE);
         return new StreamFrame(rid, payload);
+    }
+
+    static int streamRecv(Socket socket,
+                          MemorySegment rid,
+                          int ridCap,
+                          MemorySegment payload,
+                          int payloadCap) {
+        socket.recv(rid, 0, ridCap, ReceiveFlag.NONE);
+        return socket.recv(payload, 0, payloadCap, ReceiveFlag.NONE);
     }
 
     static void printResult(String pattern, String transport, int size, double thr, double latUs) {
@@ -70,8 +98,25 @@ final class BenchUtil {
         throw new RuntimeException("timeout");
     }
 
+    static int recvWithTimeout(Socket socket, MemorySegment dst, int size,
+                               int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return socket.recv(dst, 0, size, ReceiveFlag.DONTWAIT);
+            } catch (Exception ignored) {
+                LockSupport.parkNanos(100_000L);
+            }
+        }
+        throw new RuntimeException("timeout");
+    }
+
     static byte[] recvBlocking(Socket socket, int size) {
         return socket.recv(size, ReceiveFlag.NONE);
+    }
+
+    static int recvBlocking(Socket socket, MemorySegment dst, int size) {
+        return socket.recv(dst, 0, size, ReceiveFlag.NONE);
     }
 
     static void gatewaySendWithRetry(Gateway gateway, String service, byte[] payload, int timeoutMs) {

@@ -98,8 +98,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         try (Message moveMsg = Message.fromBytes(
                                           "hello-move-ctx".getBytes(
                                             StandardCharsets.UTF_8))) {
-                                            gateway.sendMove(preparedSvc,
-                                              new Message[]{moveMsg},
+                                            gateway.sendMove(preparedSvc, moveMsg,
                                               SendFlag.NONE, sendContext);
                                         }
                                         byte[] ridMoveCtx =
@@ -202,9 +201,8 @@ public class DiscoveryGatewaySpotScenarioTest {
 
                                     try (Message moveCtxMsg = Message.fromBytes(
                                       "spot-move-ctx".getBytes(StandardCharsets.UTF_8))) {
-                                        spot.publishMove(preparedTopic,
-                                          new Message[]{moveCtxMsg}, SendFlag.NONE,
-                                          publishContext);
+                                        spot.publishMove(preparedTopic, moveCtxMsg,
+                                          SendFlag.NONE, publishContext);
                                     }
                                     try (Spot.SpotMessages spotMoveCtxMsg =
                                            TestTransports.spotReceiveMessagesWithTimeout(

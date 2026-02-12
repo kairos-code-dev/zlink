@@ -1,6 +1,8 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 
 final class BenchStream {
     private BenchStream() {
@@ -15,6 +17,7 @@ final class BenchStream {
         Context ctx = new Context();
         Socket server = new Socket(ctx, SocketType.STREAM);
         Socket client = new Socket(ctx, SocketType.STREAM);
+        Arena ioArena = null;
 
         try {
             String endpoint = BenchUtil.endpointFor(transport, "stream");
@@ -25,41 +28,64 @@ final class BenchStream {
             server.bind(endpoint);
             client.connect(endpoint);
             BenchUtil.sleep(300);
+            ioArena = Arena.ofShared();
 
             byte[] serverClientId = BenchUtil.streamExpectConnectEvent(server);
             byte[] clientServerId = BenchUtil.streamExpectConnectEvent(client);
+            MemorySegment serverClientIdSeg = ioArena.allocate(serverClientId.length);
+            MemorySegment.copy(MemorySegment.ofArray(serverClientId), 0,
+              serverClientIdSeg, 0, serverClientId.length);
+            MemorySegment clientServerIdSeg = ioArena.allocate(clientServerId.length);
+            MemorySegment.copy(MemorySegment.ofArray(clientServerId), 0,
+              clientServerIdSeg, 0, clientServerId.length);
 
             byte[] buf = new byte[size];
             for (int i = 0; i < size; i++) {
                 buf[i] = 'a';
             }
+            MemorySegment payloadSeg = ioArena.allocate(size);
+            MemorySegment.copy(MemorySegment.ofArray(buf), 0, payloadSeg, 0, size);
 
             int cap = Math.max(256, size);
+            MemorySegment recvRidSeg = ioArena.allocate(256);
+            MemorySegment recvPayloadSeg = ioArena.allocate(cap);
 
             for (int i = 0; i < warmup; i++) {
-                BenchUtil.streamSend(client, clientServerId, buf);
-                BenchUtil.streamRecv(server, cap);
+                BenchUtil.streamSendConst(client, clientServerIdSeg,
+                  clientServerId.length,
+                  payloadSeg, size);
+                BenchUtil.streamRecv(server, recvRidSeg, 256, recvPayloadSeg, cap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                BenchUtil.streamSend(client, clientServerId, buf);
-                BenchUtil.StreamFrame rx = BenchUtil.streamRecv(server, cap);
-                BenchUtil.streamSend(server, serverClientId, rx.payload());
-                BenchUtil.streamRecv(client, cap);
+                BenchUtil.streamSendConst(client, clientServerIdSeg,
+                  clientServerId.length,
+                  payloadSeg, size);
+                int rxLen = BenchUtil.streamRecv(server, recvRidSeg, 256,
+                  recvPayloadSeg, cap);
+                BenchUtil.streamSendConst(server, serverClientIdSeg,
+                  serverClientId.length,
+                  recvPayloadSeg, rxLen);
+                BenchUtil.streamRecv(client, recvRidSeg, 256, recvPayloadSeg, cap);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / (latCount * 2.0);
 
             final int[] recvCount = {0};
             final Socket fServer = server;
             Thread receiver = new Thread(() -> {
-                for (int i = 0; i < msgCount; i++) {
-                    try {
-                        BenchUtil.streamRecv(fServer, cap);
-                    } catch (Exception e) {
-                        break;
+                try (Arena threadArena = Arena.ofConfined()) {
+                    MemorySegment threadRidSeg = threadArena.allocate(256);
+                    MemorySegment threadPayloadSeg = threadArena.allocate(cap);
+                    for (int i = 0; i < msgCount; i++) {
+                        try {
+                            BenchUtil.streamRecv(fServer, threadRidSeg, 256,
+                              threadPayloadSeg, cap);
+                        } catch (Exception e) {
+                            break;
+                        }
+                        recvCount[0]++;
                     }
-                    recvCount[0]++;
                 }
             });
 
@@ -68,7 +94,8 @@ final class BenchStream {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    BenchUtil.streamSend(client, clientServerId, buf);
+                    BenchUtil.streamSendConst(client, clientServerIdSeg,
+                      clientServerId.length, payloadSeg, size);
                 } catch (Exception e) {
                     break;
                 }
@@ -84,6 +111,12 @@ final class BenchStream {
         } catch (Exception e) {
             return 2;
         } finally {
+            try {
+                if (ioArena != null) {
+                    ioArena.close();
+                }
+            } catch (Exception ignored) {
+            }
             try {
                 server.close();
             } catch (Exception ignored) {

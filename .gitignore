@@ -213,3 +213,7 @@ buildenv/win/env.ps1
 core/bench/benchwithzlink/results/
 core/bench/benchwithzmq/results/
 bindings/*/benchwithzlink/results/
+core/tests/scenario/router_router/result/
+core/tests/scenario/router_router/zlink/result/
+core/tests/scenario/router_router/zmq/result/
+core/tests/scenario/router_router/zlink-connect/result/

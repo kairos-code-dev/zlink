@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import atexit
 import ctypes
 import os
 import platform
@@ -13,6 +14,37 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.insert(0, os.path.join(ROOT, "bindings/python/src"))
 import zlink  # noqa: E402
 from zlink._ffi import lib as ffi_lib  # noqa: E402
+
+_IPC_PATHS = set()
+
+
+def _register_ipc_endpoint(endpoint: str) -> None:
+    prefix = "ipc://"
+    if not endpoint.startswith(prefix):
+        return
+    path = endpoint[len(prefix):]
+    if not path.startswith("/"):
+        return
+    _IPC_PATHS.add(path)
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _cleanup_ipc_endpoints() -> None:
+    for path in list(_IPC_PATHS):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_ipc_endpoints)
 
 
 def _python_native_dir() -> str:
@@ -119,6 +151,10 @@ def get_port() -> int:
 def endpoint_for(transport: str, name: str) -> str:
     if transport == "inproc":
         return f"inproc://bench-{name}-{int(time.time() * 1000)}"
+    if transport == "ipc":
+        endpoint = f"ipc:///tmp/zlink-bench-{name}-{get_port()}.sock"
+        _register_ipc_endpoint(endpoint)
+        return endpoint
     return f"{transport}://127.0.0.1:{get_port()}"
 
 

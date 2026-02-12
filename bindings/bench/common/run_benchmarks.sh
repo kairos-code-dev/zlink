@@ -35,11 +35,26 @@ case "$(uname -m)" in
   *) ARCH="$(uname -m)" ;;
 esac
 
-if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
-else
-  BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
-fi
+default_build_dir() {
+  local platform_dir
+  local fallback_dir
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    platform_dir="${ROOT_DIR}/core/build/windows-x64"
+  else
+    platform_dir="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
+  fi
+  fallback_dir="${ROOT_DIR}/core/build"
+
+  if [[ -d "${platform_dir}" ]]; then
+    echo "${platform_dir}"
+  elif [[ -d "${fallback_dir}" ]]; then
+    echo "${fallback_dir}"
+  else
+    echo "${platform_dir}"
+  fi
+}
+
+BUILD_DIR="$(default_build_dir)"
 
 PATTERN="ALL"
 WITH_BASELINE=0
@@ -195,6 +210,14 @@ if [[ "${RESULTS}" -eq 1 ]]; then
 fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
+
+if [[ "${REUSE_BUILD}" -eq 1 && ! -d "${BUILD_DIR}" ]]; then
+  FALLBACK_BUILD_DIR="$(realpath -m "${ROOT_DIR}/core/build")"
+  if [[ -d "${FALLBACK_BUILD_DIR}" ]]; then
+    echo "Info: build dir not found (${BUILD_DIR}), using ${FALLBACK_BUILD_DIR}" >&2
+    BUILD_DIR="${FALLBACK_BUILD_DIR}"
+  fi
+fi
 
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then
   echo "Preparing core benchmark binaries in ${BUILD_DIR}"

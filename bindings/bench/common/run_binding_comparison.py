@@ -284,9 +284,14 @@ def format_thr(v):
 
 def default_core_build_dir():
     p, a = platform_arch_tag()
+    build_root = os.path.join(ROOT_DIR, "core", "build")
     if p == "windows":
-        return os.path.join(ROOT_DIR, "core", "build", "windows-x64", "bin", "Release")
-    return os.path.join(ROOT_DIR, "core", "build", f"{p}-{a}", "bin")
+        preferred = os.path.join(build_root, "windows-x64")
+    else:
+        preferred = os.path.join(build_root, f"{p}-{a}")
+    if os.path.isdir(preferred):
+        return preferred
+    return build_root
 
 
 def normalize_build_dir(path: str) -> str:

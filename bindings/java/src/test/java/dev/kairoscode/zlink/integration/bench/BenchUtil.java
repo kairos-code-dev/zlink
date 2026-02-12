@@ -4,9 +4,14 @@ import dev.kairoscode.zlink.*;
 
 import java.lang.foreign.MemorySegment;
 import java.net.ServerSocket;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.locks.LockSupport;
 
 final class BenchUtil {
+    private static final Set<String> IPC_PATHS = new HashSet<>();
+    private static boolean ipcCleanupHooked = false;
+
     private BenchUtil() {
     }
 
@@ -212,7 +217,42 @@ final class BenchUtil {
         if ("inproc".equals(transport)) {
             return "inproc://bench-" + name + "-" + System.currentTimeMillis();
         }
+        if ("ipc".equals(transport)) {
+            String endpoint = "ipc:///tmp/zlink-bench-" + name + "-" + getPort() + ".sock";
+            registerIpcEndpoint(endpoint);
+            return endpoint;
+        }
         return transport + "://127.0.0.1:" + getPort();
+    }
+
+    private static synchronized void registerIpcEndpoint(String endpoint) {
+        final String prefix = "ipc://";
+        if (!endpoint.startsWith(prefix)) {
+            return;
+        }
+        String path = endpoint.substring(prefix.length());
+        if (path.isEmpty() || path.charAt(0) != '/') {
+            return;
+        }
+        IPC_PATHS.add(path);
+        tryDeleteIpcPath(path);
+        if (!ipcCleanupHooked) {
+            Runtime.getRuntime().addShutdownHook(new Thread(BenchUtil::cleanupIpcPaths));
+            ipcCleanupHooked = true;
+        }
+    }
+
+    private static synchronized void cleanupIpcPaths() {
+        for (String path : IPC_PATHS) {
+            tryDeleteIpcPath(path);
+        }
+    }
+
+    private static void tryDeleteIpcPath(String path) {
+        try {
+            java.nio.file.Files.deleteIfExists(java.nio.file.Path.of(path));
+        } catch (Exception ignored) {
+        }
     }
 
     private static int getPort() {

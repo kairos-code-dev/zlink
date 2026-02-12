@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <set>
 #include <vector>
 
 #include "pattern_dispatch.hpp"
@@ -32,6 +33,40 @@ static int get_port()
     int port = ntohs(addr.sin_port);
     ::close(s);
     return port;
+}
+
+static std::set<std::string> &ipc_paths()
+{
+    static std::set<std::string> paths;
+    return paths;
+}
+
+static void cleanup_ipc_paths()
+{
+    for (std::set<std::string>::const_iterator it = ipc_paths().begin();
+         it != ipc_paths().end();
+         ++it) {
+        ::unlink(it->c_str());
+    }
+}
+
+static void register_ipc_endpoint(const std::string &endpoint)
+{
+    const std::string prefix = "ipc://";
+    if (endpoint.compare(0, prefix.size(), prefix) != 0)
+        return;
+    const std::string path = endpoint.substr(prefix.size());
+    if (path.empty() || path[0] != '/')
+        return;
+
+    static bool cleanup_registered = false;
+    if (!cleanup_registered) {
+        std::atexit(cleanup_ipc_paths);
+        cleanup_registered = true;
+    }
+
+    ipc_paths().insert(path);
+    ::unlink(path.c_str());
 }
 
 int env_int(const char *name, int def)
@@ -59,6 +94,12 @@ std::string endpoint_for(const std::string &transport, const std::string &name)
                  std::chrono::duration_cast<std::chrono::milliseconds>(
                    std::chrono::steady_clock::now().time_since_epoch())
                    .count());
+    }
+    if (transport == "ipc") {
+        const std::string endpoint = "ipc:///tmp/zlink-bench-" + name + "-"
+                                     + std::to_string(get_port()) + ".sock";
+        register_ipc_endpoint(endpoint);
+        return endpoint;
     }
     int port = get_port();
     return transport + "://127.0.0.1:" + std::to_string(port);

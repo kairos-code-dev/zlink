@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Threading;
 using Zlink;
@@ -9,6 +10,9 @@ internal static partial class BenchRunner
 {
     private const int ErrnoEintr = 4;
     private const int ErrnoEagain = 11;
+    private static readonly object IpcLock = new();
+    private static readonly HashSet<string> IpcPaths = new();
+    private static bool IpcCleanupHooked;
 
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
@@ -218,7 +222,57 @@ internal static partial class BenchRunner
     {
         if (transport == "inproc")
             return $"inproc://bench-{name}-{Guid.NewGuid()}";
+        if (transport == "ipc")
+        {
+            string endpoint = $"ipc:///tmp/zlink-bench-{name}-{GetPort()}.sock";
+            RegisterIpcEndpoint(endpoint);
+            return endpoint;
+        }
         return $"{transport}://127.0.0.1:{GetPort()}";
+    }
+
+    private static void RegisterIpcEndpoint(string endpoint)
+    {
+        const string prefix = "ipc://";
+        if (!endpoint.StartsWith(prefix, StringComparison.Ordinal))
+            return;
+        string path = endpoint.Substring(prefix.Length);
+        if (path.Length == 0 || path[0] != '/')
+            return;
+
+        lock (IpcLock)
+        {
+            IpcPaths.Add(path);
+            TryDeleteFile(path);
+            if (!IpcCleanupHooked)
+            {
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => CleanupIpcFiles();
+                IpcCleanupHooked = true;
+            }
+        }
+    }
+
+    private static void CleanupIpcFiles()
+    {
+        List<string> snapshot;
+        lock (IpcLock)
+            snapshot = new List<string>(IpcPaths);
+
+        foreach (var path in snapshot)
+            TryDeleteFile(path);
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // Ignore best-effort cleanup errors during benchmark runs.
+        }
     }
 
     private static int GetPort()

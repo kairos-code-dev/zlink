@@ -1,7 +1,11 @@
 'use strict';
 
+const fs = require('fs');
 const net = require('net');
 const zlink = require('../src/index');
+
+const ipcPaths = new Set();
+let ipcCleanupHooked = false;
 
 function getPort() {
   return new Promise((resolve, reject) => {
@@ -14,9 +18,45 @@ function getPort() {
   });
 }
 
+function registerIpcEndpoint(endpoint) {
+  const prefix = 'ipc://';
+  if (!endpoint.startsWith(prefix)) return;
+  const path = endpoint.slice(prefix.length);
+  if (!path.startsWith('/')) return;
+
+  ipcPaths.add(path);
+  try {
+    fs.unlinkSync(path);
+  } catch (err) {
+    if (!err || err.code !== 'ENOENT') {
+      // ignore cleanup failures during bench setup/teardown
+    }
+  }
+
+  if (ipcCleanupHooked) return;
+  ipcCleanupHooked = true;
+  process.on('exit', () => {
+    for (const ipcPath of ipcPaths) {
+      try {
+        fs.unlinkSync(ipcPath);
+      } catch (err) {
+        if (!err || err.code !== 'ENOENT') {
+          // ignore cleanup failures during process exit
+        }
+      }
+    }
+  });
+}
+
 async function endpointFor(transport, name) {
   if (transport === 'inproc') {
     return `inproc://bench-${name}-${Date.now()}`;
+  }
+  if (transport === 'ipc') {
+    const port = await getPort();
+    const endpoint = `ipc:///tmp/zlink-bench-${name}-${port}.sock`;
+    registerIpcEndpoint(endpoint);
+    return endpoint;
   }
   const port = await getPort();
   return `${transport}://127.0.0.1:${port}`;

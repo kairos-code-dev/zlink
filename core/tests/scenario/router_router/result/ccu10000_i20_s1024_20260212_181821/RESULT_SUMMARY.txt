@@ -1,2 +1,0 @@
-result_dir=core/tests/scenario/router_router/result/ccu10000_i20_s1024_20260212_181821
-overall_rc=2

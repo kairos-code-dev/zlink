@@ -1,2 +1,0 @@
-[lz-02 run 01] rc=0 req=131907 reply=131907 play_hu=0 api_hu=0 disc=0 retried=0 tps=13183
-[lz-03 run 01] rc=2 req=151904 reply=151904 play_hu=47 api_hu=0 disc=0 retried=0 tps=15189

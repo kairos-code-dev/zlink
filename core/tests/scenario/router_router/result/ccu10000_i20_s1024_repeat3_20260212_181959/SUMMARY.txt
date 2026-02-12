@@ -1,8 +1,0 @@
-[lz-02 run 1] rc=0 req=182596 reply=182596 play_host_unreachable=0 disconnected=0 retried=0 throughput=18256
-[lz-03 run 1] rc=0 req=173587 reply=173587 play_host_unreachable=0 disconnected=0 retried=0 throughput=17357
-[lz-02 run 2] rc=0 req=179451 reply=179451 play_host_unreachable=0 disconnected=0 retried=0 throughput=17943
-[lz-03 run 2] rc=0 req=177168 reply=177168 play_host_unreachable=0 disconnected=0 retried=0 throughput=17715
-[lz-02 run 3] rc=0 req=194985 reply=194985 play_host_unreachable=0 disconnected=0 retried=0 throughput=19496
-[lz-03 run 3] rc=2 req=193705 reply=193705 play_host_unreachable=1 disconnected=0 retried=0 throughput=19369
-
-Result directory: core/tests/scenario/router_router/result/ccu10000_i20_s1024_repeat3_20260212_181959

@@ -25,22 +25,36 @@
 ## 3. 기본 예제
 
 ```java
-try (var ctx = new Context()) {
-    try (var server = ctx.createSocket(SocketType.PAIR)) {
-        server.bind("tcp://*:5555");
+try (var ctx = new Context();
+     var server = new Socket(ctx, SocketType.PAIR);
+     var client = new Socket(ctx, SocketType.PAIR)) {
+    server.bind("tcp://*:5555");
+    client.connect("tcp://127.0.0.1:5555");
 
-        try (var client = ctx.createSocket(SocketType.PAIR)) {
-            client.connect("tcp://127.0.0.1:5555");
-            client.send("Hello".getBytes());
-
-            byte[] reply = server.recv();
-            System.out.println(new String(reply));
-        }
-    }
+    client.send("Hello".getBytes(), SendFlag.NONE);
+    byte[] reply = server.recv(256, ReceiveFlag.NONE);
+    System.out.println(new String(reply));
 }
 ```
 
-## 4. 빌드
+## 4. 성능 API
+
+- span 인터페이스
+  - `ByteSpan.of(byte[] / ByteBuffer / MemorySegment)`
+  - `send(ByteSpan span, SendFlag flags)`
+  - `recv(ByteSpan span, ReceiveFlag flags)`
+- span 스타일 배열 경로 (임시 슬라이스 할당 최소화)
+  - `send(byte[] data, int offset, int length, SendFlag flags)`
+  - `recv(byte[] data, int offset, int length, ReceiveFlag flags)`
+- `ByteBuffer` 직접 경로
+  - `send(ByteBuffer buffer, SendFlag flags)`
+  - `recv(ByteBuffer buffer, ReceiveFlag flags)`
+- 메시지 zero-copy 뷰
+  - `MemorySegment dataSegment()`
+  - `ByteBuffer dataBuffer()`
+  - `copyTo(byte[]/ByteBuffer)`
+
+## 5. 빌드
 
 ```groovy
 // build.gradle
@@ -49,6 +63,6 @@ dependencies {
 }
 ```
 
-## 5. 네이티브 라이브러리 로드
+## 6. 네이티브 라이브러리 로드
 
 `src/main/resources/native/` 디렉토리에서 플랫폼별 자동 로드.

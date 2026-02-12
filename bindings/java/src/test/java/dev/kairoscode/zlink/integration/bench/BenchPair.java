@@ -29,21 +29,23 @@ final class BenchPair {
             BenchUtil.sleep(300);
 
             byte[] buf = new byte[size];
+            byte[] recvA = new byte[size];
+            byte[] recvB = new byte[size];
             for (int i = 0; i < size; i++) {
                 buf[i] = 'a';
             }
 
             for (int i = 0; i < warmup; i++) {
                 b.send(buf, SendFlag.NONE);
-                a.recv(size, ReceiveFlag.NONE);
+                a.recv(recvA, ReceiveFlag.NONE);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
                 b.send(buf, SendFlag.NONE);
-                byte[] x = a.recv(size, ReceiveFlag.NONE);
-                a.send(x, SendFlag.NONE);
-                b.recv(size, ReceiveFlag.NONE);
+                int n = a.recv(recvA, ReceiveFlag.NONE);
+                a.send(recvA, 0, n, SendFlag.NONE);
+                b.recv(recvB, ReceiveFlag.NONE);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / (latCount * 2.0);
 
@@ -52,7 +54,7 @@ final class BenchPair {
             Thread receiver = new Thread(() -> {
                 try {
                     for (int i = 0; i < msgCount; i++) {
-                        a.recv(size, ReceiveFlag.NONE);
+                        a.recv(recvA, ReceiveFlag.NONE);
                     }
                     recvDone.set(true);
                 } catch (Exception e) {

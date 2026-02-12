@@ -8,10 +8,19 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
+    private static final int DEFAULT_IO_BUFFER_SIZE = 8192;
+
     private MemorySegment handle;
     private final boolean own;
+    private final Arena ioArena = Arena.ofShared();
+    private MemorySegment sendScratch = MemorySegment.NULL;
+    private int sendScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
+    private MemorySegment recvScratch = MemorySegment.NULL;
+    private int recvScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
 
     public Socket(Context ctx, SocketType type) {
         this.handle = Native.socket(ctx.handle(), type.getValue());
@@ -50,13 +59,42 @@ public final class Socket implements AutoCloseable {
     }
 
     public void setSockOpt(SocketOption option, byte[] value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(value.length);
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
-            int rc = Native.setSockOpt(handle, option.getValue(), buf, value.length);
+        setSockOpt(option, value, 0, value.length);
+    }
+
+    public void setSockOpt(SocketOption option, byte[] value, int offset, int length) {
+        Objects.requireNonNull(value, "value");
+        validateRange(value.length, offset, length, "value");
+        MemorySegment buf = length == 0 ? MemorySegment.NULL : ensureSendScratch(length);
+        if (length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0, length);
+        }
+        int rc = Native.setSockOpt(handle, option.getValue(), buf, length);
+        if (rc != 0)
+            throw new RuntimeException("zlink_setsockopt failed");
+    }
+
+    public void setSockOpt(SocketOption option, ByteBuffer value) {
+        Objects.requireNonNull(value, "value");
+        int length = value.remaining();
+        if (length == 0) {
+            int rc = Native.setSockOpt(handle, option.getValue(), MemorySegment.NULL, 0);
             if (rc != 0)
                 throw new RuntimeException("zlink_setsockopt failed");
+            return;
         }
+        ByteBuffer src = value.slice();
+        MemorySegment seg;
+        if (src.isDirect()) {
+            seg = MemorySegment.ofBuffer(src);
+        } else {
+            seg = ensureSendScratch(length);
+            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, seg, 0, length);
+        }
+        int rc = Native.setSockOpt(handle, option.getValue(), seg, length);
+        if (rc != 0)
+            throw new RuntimeException("zlink_setsockopt failed");
+        value.position(value.position() + length);
     }
 
     public void setSockOpt(SocketOption option, int value) {
@@ -104,16 +142,69 @@ public final class Socket implements AutoCloseable {
     }
 
     public int send(byte[] data, SendFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(data.length);
-            if (data.length > 0) {
-                MemorySegment.copy(MemorySegment.ofArray(data), 0, buf, 0, data.length);
-            }
-            int rc = Native.send(handle, buf, data.length, flags.getValue());
-            if (rc < 0)
-                throw new RuntimeException("zlink_send failed");
-            return rc;
+        return send(data, 0, data.length, flags);
+    }
+
+    public int send(byte[] data, int offset, int length, SendFlag flags) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.length, offset, length, "data");
+        MemorySegment seg = length == 0 ? MemorySegment.NULL : ensureSendScratch(length);
+        if (length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0, length);
         }
+        int rc = Native.send(handle, seg, length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_send failed");
+        return rc;
+    }
+
+    public int send(ByteBuffer buffer, SendFlag flags) {
+        Objects.requireNonNull(buffer, "buffer");
+        int length = buffer.remaining();
+        if (length == 0)
+            return 0;
+        ByteBuffer src = buffer.slice();
+        MemorySegment seg;
+        if (src.isDirect()) {
+            seg = MemorySegment.ofBuffer(src);
+        } else {
+            seg = ensureSendScratch(length);
+            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, seg, 0, length);
+        }
+        int rc = Native.send(handle, seg, length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_send failed");
+        buffer.position(buffer.position() + rc);
+        return rc;
+    }
+
+    public int send(ByteSpan span, SendFlag flags) {
+        Objects.requireNonNull(span, "span");
+        return send(span.segment(), 0, span.length(), flags);
+    }
+
+    public int send(MemorySegment segment, SendFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        return send(segment, 0, segment.byteSize(), flags);
+    }
+
+    public int send(MemorySegment segment, long offset, long length, SendFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        validateRange(segment.byteSize(), offset, length, "segment");
+        MemorySegment slice;
+        if (length == 0) {
+            slice = MemorySegment.NULL;
+        } else if (segment.isNative()) {
+            slice = segment.asSlice(offset, length);
+        } else {
+            int intLength = toIntLength(length);
+            slice = ensureSendScratch(intLength);
+            MemorySegment.copy(segment, offset, slice, 0, length);
+        }
+        int rc = Native.send(handle, slice, length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_send failed");
+        return rc;
     }
 
     public int send(ByteBuf buf, SendFlag flags) {
@@ -121,28 +212,101 @@ public final class Socket implements AutoCloseable {
         if (len <= 0)
             return 0;
         ByteBuffer nio = buf.nioBuffer();
-        if (nio.remaining() < len) {
+        if (nio.remaining() != len) {
             nio = nio.duplicate();
             nio.limit(nio.position() + len);
         }
-        MemorySegment seg = MemorySegment.ofBuffer(nio);
-        int rc = Native.send(handle, seg, len, flags.getValue());
-        if (rc < 0)
-            throw new RuntimeException("zlink_send failed");
-        buf.advanceReader(len);
+        int rc = send(nio, flags);
+        if (rc > 0)
+            buf.advanceReader(rc);
         return rc;
     }
 
     public byte[] recv(int size, ReceiveFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(size);
-            int rc = Native.recv(handle, buf, size, flags.getValue());
-            if (rc < 0)
-                throw new RuntimeException("zlink_recv failed");
-            byte[] data = new byte[rc];
-            MemorySegment.copy(buf, 0, MemorySegment.ofArray(data), 0, rc);
-            return data;
+        if (size < 0)
+            throw new IllegalArgumentException("size must be >= 0");
+        byte[] out = new byte[size];
+        int rc = recv(out, 0, size, flags);
+        if (rc == out.length)
+            return out;
+        return Arrays.copyOf(out, rc);
+    }
+
+    public int recv(byte[] data, ReceiveFlag flags) {
+        Objects.requireNonNull(data, "data");
+        return recv(data, 0, data.length, flags);
+    }
+
+    public int recv(byte[] data, int offset, int length, ReceiveFlag flags) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.length, offset, length, "data");
+        if (length == 0)
+            return 0;
+        MemorySegment seg = ensureRecvScratch(length);
+        int rc = Native.recv(handle, seg, length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_recv failed");
+        if (rc > 0) {
+            MemorySegment.copy(seg, 0, MemorySegment.ofArray(data), offset, rc);
         }
+        return rc;
+    }
+
+    public int recv(ByteBuffer buffer, ReceiveFlag flags) {
+        Objects.requireNonNull(buffer, "buffer");
+        int writable = buffer.remaining();
+        if (writable <= 0)
+            return 0;
+        ByteBuffer dst = buffer.slice();
+        int rc;
+        if (dst.isDirect()) {
+            rc = Native.recv(handle, MemorySegment.ofBuffer(dst), writable, flags.getValue());
+        } else {
+            MemorySegment seg = ensureRecvScratch(writable);
+            rc = Native.recv(handle, seg, writable, flags.getValue());
+            if (rc > 0) {
+                ByteBuffer copyDst = buffer.duplicate();
+                copyDst.limit(copyDst.position() + rc);
+                MemorySegment.copy(seg, 0, MemorySegment.ofBuffer(copyDst), 0, rc);
+            }
+        }
+        if (rc < 0)
+            throw new RuntimeException("zlink_recv failed");
+        buffer.position(buffer.position() + rc);
+        return rc;
+    }
+
+    public int recv(ByteSpan span, ReceiveFlag flags) {
+        Objects.requireNonNull(span, "span");
+        return recv(span.segment(), 0, span.length(), flags);
+    }
+
+    public int recv(MemorySegment segment, ReceiveFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        return recv(segment, 0, segment.byteSize(), flags);
+    }
+
+    public int recv(MemorySegment segment, long offset, long length, ReceiveFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        validateRange(segment.byteSize(), offset, length, "segment");
+        if (length == 0)
+            return 0;
+        MemorySegment slice;
+        int rc;
+        if (segment.isNative()) {
+            slice = segment.asSlice(offset, length);
+            rc = Native.recv(handle, slice, length, flags.getValue());
+        } else {
+            int intLength = toIntLength(length);
+            slice = ensureRecvScratch(intLength);
+            rc = Native.recv(handle, slice, length, flags.getValue());
+            if (rc > 0) {
+                MemorySegment.copy(slice, 0, segment, offset, rc);
+            }
+        }
+        if (rc < 0)
+            throw new RuntimeException("zlink_recv failed");
+        return rc;
     }
 
     public int recv(ByteBuf buf, ReceiveFlag flags) {
@@ -153,10 +317,7 @@ public final class Socket implements AutoCloseable {
         ByteBuffer dup = nio.duplicate();
         dup.position(buf.writerIndex());
         dup.limit(buf.writerIndex() + writable);
-        MemorySegment seg = MemorySegment.ofBuffer(dup);
-        int rc = Native.recv(handle, seg, writable, flags.getValue());
-        if (rc < 0)
-            throw new RuntimeException("zlink_recv failed");
+        int rc = recv(dup, flags);
         if (rc > 0)
             buf.advanceWriter(rc);
         return rc;
@@ -167,10 +328,49 @@ public final class Socket implements AutoCloseable {
     }
 
     public void close() {
-        if (handle == null || handle.address() == 0)
-            return;
-        if (own)
-            Native.close(handle);
-        handle = MemorySegment.NULL;
+        if (handle != null && handle.address() != 0) {
+            if (own)
+                Native.close(handle);
+            handle = MemorySegment.NULL;
+        }
+        if (ioArena.scope().isAlive())
+            ioArena.close();
+    }
+
+    private static void validateRange(int total, int offset, int length, String name) {
+        if (offset < 0 || length < 0 || offset > total - length)
+            throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private static void validateRange(long total, long offset, long length, String name) {
+        if (offset < 0 || length < 0 || offset > total - length)
+            throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private MemorySegment ensureSendScratch(int length) {
+        if (length <= 0)
+            return MemorySegment.NULL;
+        if (sendScratch.address() == 0 || sendScratchCapacity < length) {
+            sendScratch = ioArena.allocate(length);
+            sendScratchCapacity = length;
+        }
+        return sendScratch.asSlice(0, length);
+    }
+
+    private MemorySegment ensureRecvScratch(int length) {
+        if (length <= 0)
+            return MemorySegment.NULL;
+        if (recvScratch.address() == 0 || recvScratchCapacity < length) {
+            recvScratch = ioArena.allocate(length);
+            recvScratchCapacity = length;
+        }
+        return recvScratch.asSlice(0, length);
+    }
+
+    private static int toIntLength(long length) {
+        if (length > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("length too large: " + length);
+        }
+        return (int) length;
     }
 }

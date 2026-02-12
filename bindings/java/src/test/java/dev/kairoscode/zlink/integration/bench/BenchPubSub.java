@@ -24,13 +24,14 @@ final class BenchPubSub {
             BenchUtil.sleep(300);
 
             byte[] buf = new byte[size];
+            byte[] recvBuf = new byte[size];
             for (int i = 0; i < size; i++) {
                 buf[i] = 'a';
             }
 
             for (int i = 0; i < warmup; i++) {
                 pub.send(buf, SendFlag.NONE);
-                sub.recv(size, ReceiveFlag.NONE);
+                sub.recv(recvBuf, ReceiveFlag.NONE);
             }
 
             AtomicBoolean recvDone = new AtomicBoolean(false);
@@ -38,7 +39,7 @@ final class BenchPubSub {
             Thread receiver = new Thread(() -> {
                 try {
                     for (int i = 0; i < msgCount; i++) {
-                        sub.recv(size, ReceiveFlag.NONE);
+                        sub.recv(recvBuf, ReceiveFlag.NONE);
                     }
                     recvDone.set(true);
                 } catch (Exception e) {

@@ -25,22 +25,36 @@
 ## 3. Basic Example
 
 ```java
-try (var ctx = new Context()) {
-    try (var server = ctx.createSocket(SocketType.PAIR)) {
-        server.bind("tcp://*:5555");
+try (var ctx = new Context();
+     var server = new Socket(ctx, SocketType.PAIR);
+     var client = new Socket(ctx, SocketType.PAIR)) {
+    server.bind("tcp://*:5555");
+    client.connect("tcp://127.0.0.1:5555");
 
-        try (var client = ctx.createSocket(SocketType.PAIR)) {
-            client.connect("tcp://127.0.0.1:5555");
-            client.send("Hello".getBytes());
-
-            byte[] reply = server.recv();
-            System.out.println(new String(reply));
-        }
-    }
+    client.send("Hello".getBytes(), SendFlag.NONE);
+    byte[] reply = server.recv(256, ReceiveFlag.NONE);
+    System.out.println(new String(reply));
 }
 ```
 
-## 4. Build
+## 4. Performance APIs
+
+- Span interface
+  - `ByteSpan.of(byte[] / ByteBuffer / MemorySegment)`
+  - `send(ByteSpan span, SendFlag flags)`
+  - `recv(ByteSpan span, ReceiveFlag flags)`
+- Span-style array path (no temporary slice allocation)
+  - `send(byte[] data, int offset, int length, SendFlag flags)`
+  - `recv(byte[] data, int offset, int length, ReceiveFlag flags)`
+- Direct `ByteBuffer` path
+  - `send(ByteBuffer buffer, SendFlag flags)`
+  - `recv(ByteBuffer buffer, ReceiveFlag flags)`
+- Zero-copy message view
+  - `MemorySegment dataSegment()`
+  - `ByteBuffer dataBuffer()`
+  - `copyTo(byte[]/ByteBuffer)`
+
+## 5. Build
 
 ```groovy
 // build.gradle
@@ -49,6 +63,6 @@ dependencies {
 }
 ```
 
-## 5. Native Library Loading
+## 6. Native Library Loading
 
 Platform-specific libraries are automatically loaded from the `src/main/resources/native/` directory.

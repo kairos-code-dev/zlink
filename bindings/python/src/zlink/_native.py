@@ -506,6 +506,15 @@ def _load_lib():
     ]
     _lib.zlink_spot_node_set_tls_client.restype = ctypes.c_int
 
+    _lib.zlink_spot_node_setsockopt.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+    ]
+    _lib.zlink_spot_node_setsockopt.restype = ctypes.c_int
+
     _lib.zlink_spot_new.argtypes = [ctypes.c_void_p]
     _lib.zlink_spot_new.restype = ctypes.c_void_p
 

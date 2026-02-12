@@ -114,6 +114,33 @@ public enum ReceiveFlags
     DontWait = 1
 }
 
+public enum ErrorCode
+{
+    Efsm = 156384763,
+    EnoCompatProto = 156384764,
+    Eterm = 156384765,
+    EmThread = 156384766
+}
+
+public enum ProtocolError
+{
+    ZmpUnspecified = 0x10000000,
+    ZmpUnexpectedCommand = 0x10000001,
+    ZmpInvalidSequence = 0x10000002,
+    ZmpKeyExchange = 0x10000003,
+    ZmpMalformedCommandUnspecified = 0x10000011,
+    ZmpMalformedCommandMessage = 0x10000012,
+    ZmpMalformedCommandHello = 0x10000013,
+    ZmpMalformedCommandInitiate = 0x10000014,
+    ZmpMalformedCommandError = 0x10000015,
+    ZmpMalformedCommandReady = 0x10000016,
+    ZmpMalformedCommandWelcome = 0x10000017,
+    ZmpInvalidMetadata = 0x10000018,
+    ZmpCryptographic = 0x11000001,
+    ZmpMechanismMismatch = 0x11000002,
+    WsUnspecified = 0x30000000
+}
+
 [Flags]
 public enum SocketEvent
 {
@@ -186,9 +213,29 @@ public enum ReceiverSocketRole
 
 public enum SpotNodeSocketRole
 {
+    Node = 0,
     Pub = 1,
     Sub = 2,
     Dealer = 3
+}
+
+public enum SpotNodeOption
+{
+    PubMode = 1,
+    PubQueueHwm = 2,
+    PubQueueFullPolicy = 3
+}
+
+public enum SpotNodePubMode
+{
+    Sync = 0,
+    Async = 1
+}
+
+public enum SpotNodePubQueueFullPolicy
+{
+    Eagain = 0,
+    Drop = 1
 }
 
 public enum SpotSocketRole

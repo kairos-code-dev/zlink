@@ -1,0 +1,12 @@
+[lz-02 run 01] rc=0 req=93845 reply=93845 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=9383
+[lz-03 run 01] rc=2 req=85543 reply=85543 play_hu=1 api_hu=0 disc=0 retried=0 conn_ready=8 tps=8550
+[lz-02 run 02] rc=0 req=65467 reply=65467 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=6546
+[lz-03 run 02] rc=0 req=97562 reply=97562 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=9755
+[lz-02 run 03] rc=0 req=84754 reply=84754 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=8467
+[lz-03 run 03] rc=0 req=70044 reply=70044 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=8 tps=7004
+[lz-02 run 04] rc=0 req=101405 reply=101405 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=10140
+[lz-03 run 04] rc=2 req=101081 reply=101081 play_hu=1 api_hu=0 disc=0 retried=0 conn_ready=8 tps=10107
+[lz-02 run 05] rc=0 req=80946 reply=80946 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=8094
+[lz-03 run 05] rc=2 req=79777 reply=79777 play_hu=1 api_hu=0 disc=0 retried=0 conn_ready=8 tps=7972
+[lz-02 run 06] rc=0 req=100990 reply=100990 play_hu=0 api_hu=0 disc=0 retried=0 conn_ready=4 tps=10098
+[lz-03 run 06] rc=2 req=72702 reply=72702 play_hu=1 api_hu=0 disc=0 retried=0 conn_ready=8 tps=7265

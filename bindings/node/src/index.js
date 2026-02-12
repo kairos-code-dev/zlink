@@ -117,6 +117,31 @@ const ReceiveFlag = Object.freeze({
   NONE: 0, DONTWAIT: 1
 });
 
+const ErrorCode = Object.freeze({
+  EFSM: 156384763,
+  ENOCOMPATPROTO: 156384764,
+  ETERM: 156384765,
+  EMTHREAD: 156384766
+});
+
+const ProtocolError = Object.freeze({
+  ZMP_UNSPECIFIED: 0x10000000,
+  ZMP_UNEXPECTED_COMMAND: 0x10000001,
+  ZMP_INVALID_SEQUENCE: 0x10000002,
+  ZMP_KEY_EXCHANGE: 0x10000003,
+  ZMP_MALFORMED_COMMAND_UNSPECIFIED: 0x10000011,
+  ZMP_MALFORMED_COMMAND_MESSAGE: 0x10000012,
+  ZMP_MALFORMED_COMMAND_HELLO: 0x10000013,
+  ZMP_MALFORMED_COMMAND_INITIATE: 0x10000014,
+  ZMP_MALFORMED_COMMAND_ERROR: 0x10000015,
+  ZMP_MALFORMED_COMMAND_READY: 0x10000016,
+  ZMP_MALFORMED_COMMAND_WELCOME: 0x10000017,
+  ZMP_INVALID_METADATA: 0x10000018,
+  ZMP_CRYPTOGRAPHIC: 0x11000001,
+  ZMP_MECHANISM_MISMATCH: 0x11000002,
+  WS_UNSPECIFIED: 0x30000000
+});
+
 const MonitorEvent = Object.freeze({
   CONNECTED: 0x0001, CONNECT_DELAYED: 0x0002,
   CONNECT_RETRIED: 0x0004, LISTENING: 0x0008,
@@ -165,7 +190,19 @@ const ReceiverSocketRole = Object.freeze({
 });
 
 const SpotNodeSocketRole = Object.freeze({
-  PUB: 1, SUB: 2, DEALER: 3
+  NODE: 0, PUB: 1, SUB: 2, DEALER: 3
+});
+
+const SpotNodeOption = Object.freeze({
+  PUB_MODE: 1, PUB_QUEUE_HWM: 2, PUB_QUEUE_FULL_POLICY: 3
+});
+
+const SpotNodePubMode = Object.freeze({
+  SYNC: 0, ASYNC: 1
+});
+
+const SpotNodePubQueueFullPolicy = Object.freeze({
+  EAGAIN: 0, DROP: 1
 });
 
 const SpotSocketRole = Object.freeze({
@@ -395,6 +432,10 @@ class SpotNode {
   setDiscovery(discovery, service) { requireNative().spotNodeSetDiscovery(this._native, discovery._native, service); }
   setTlsServer(cert, key) { requireNative().spotNodeSetTlsServer(this._native, cert, key); }
   setTlsClient(ca, host, trust) { requireNative().spotNodeSetTlsClient(this._native, ca, host, trust); }
+  setSockOpt(role, option, value) {
+    const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
+    requireNative().spotNodeSetSockOpt(this._native, role, option, b);
+  }
   close() { if (!this._native) return; requireNative().spotNodeDestroy(this._native); this._native = null; }
 }
 
@@ -425,6 +466,8 @@ module.exports = {
   SocketOption,
   SendFlag,
   ReceiveFlag,
+  ErrorCode,
+  ProtocolError,
   MonitorEvent,
   DisconnectReason,
   PollEvent,
@@ -435,6 +478,9 @@ module.exports = {
   GatewaySocketRole,
   ReceiverSocketRole,
   SpotNodeSocketRole,
+  SpotNodeOption,
+  SpotNodePubMode,
+  SpotNodePubQueueFullPolicy,
   SpotSocketRole,
   Context,
   Socket,

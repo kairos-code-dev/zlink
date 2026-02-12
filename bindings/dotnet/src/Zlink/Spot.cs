@@ -91,6 +91,46 @@ public sealed class SpotNode : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public void SetSockOpt(SpotNodeSocketRole role, SocketOption option,
+        byte[] value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+        SetSockOpt(role, option, value.AsSpan());
+    }
+
+    public unsafe void SetSockOpt(SpotNodeSocketRole role, SocketOption option,
+        ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
+                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    public unsafe void SetSockOpt(SpotNodeSocketRole role, SocketOption option,
+        int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    public unsafe void SetSockOpt(SpotNodeOption option, int value)
+    {
+        EnsureNotDisposed();
+        int tmp = value;
+        int rc = NativeMethods.zlink_spot_node_setsockopt(_handle,
+            (int)SpotNodeSocketRole.Node, (int)option, (IntPtr)(&tmp),
+            (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)

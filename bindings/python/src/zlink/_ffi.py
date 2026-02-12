@@ -203,6 +203,8 @@ class _Lib:
         L.zlink_spot_node_set_tls_server.restype = ctypes.c_int
         L.zlink_spot_node_set_tls_client.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
         L.zlink_spot_node_set_tls_client.restype = ctypes.c_int
+        L.zlink_spot_node_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
+        L.zlink_spot_node_setsockopt.restype = ctypes.c_int
 
         L.zlink_spot_pub_new.argtypes = [ctypes.c_void_p]
         L.zlink_spot_pub_new.restype = ctypes.c_void_p

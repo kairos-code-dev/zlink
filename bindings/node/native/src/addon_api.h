@@ -88,6 +88,7 @@ napi_value spot_node_unregister(napi_env env, napi_callback_info info);
 napi_value spot_node_set_discovery(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_server(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info);
+napi_value spot_node_setsockopt(napi_env env, napi_callback_info info);
 
 napi_value spot_new(napi_env env, napi_callback_info info);
 napi_value spot_destroy(napi_env env, napi_callback_info info);

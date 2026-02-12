@@ -37,6 +37,22 @@ int main()
     assert(static_cast<int>(zlink::recv_flag::none) == 0);
     assert(static_cast<int>(zlink::recv_flag::dontwait) == ZLINK_DONTWAIT);
 
+    // error_code values
+    assert(static_cast<int>(zlink::error_code::efsm) == EFSM);
+    assert(static_cast<int>(zlink::error_code::enocompatproto) == ENOCOMPATPROTO);
+    assert(static_cast<int>(zlink::error_code::eterm) == ETERM);
+    assert(static_cast<int>(zlink::error_code::emthread) == EMTHREAD);
+
+    // protocol_error values
+    assert(static_cast<int>(zlink::protocol_error::zmp_unspecified) ==
+           ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED);
+    assert(static_cast<int>(zlink::protocol_error::zmp_malformed_command_welcome) ==
+           ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME);
+    assert(static_cast<int>(zlink::protocol_error::zmp_mechanism_mismatch) ==
+           ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH);
+    assert(static_cast<int>(zlink::protocol_error::ws_unspecified) ==
+           ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED);
+
     // monitor_event values
     assert(static_cast<int>(zlink::monitor_event::connected) == ZLINK_EVENT_CONNECTED);
     assert(static_cast<int>(zlink::monitor_event::disconnected) == ZLINK_EVENT_DISCONNECTED);
@@ -72,14 +88,19 @@ int main()
     assert(static_cast<int>(zlink::spot_node_socket_role::pub) == ZLINK_SPOT_NODE_SOCKET_PUB);
     assert(static_cast<int>(zlink::spot_node_socket_role::sub) == ZLINK_SPOT_NODE_SOCKET_SUB);
     assert(static_cast<int>(zlink::spot_node_socket_role::dealer) == ZLINK_SPOT_NODE_SOCKET_DEALER);
+    assert(static_cast<int>(zlink::spot_node_option::pub_mode) == ZLINK_SPOT_NODE_OPT_PUB_MODE);
+    assert(static_cast<int>(zlink::spot_node_option::pub_queue_hwm) ==
+           ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM);
+    assert(static_cast<int>(zlink::spot_node_option::pub_queue_full_policy) ==
+           ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY);
     assert(static_cast<int>(zlink::spot_node_pub_mode::sync) == ZLINK_SPOT_NODE_PUB_MODE_SYNC);
     assert(static_cast<int>(zlink::spot_node_pub_mode::async) == ZLINK_SPOT_NODE_PUB_MODE_ASYNC);
     assert(static_cast<int>(zlink::spot_node_pub_queue_full_policy::eagain) ==
            ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN);
     assert(static_cast<int>(zlink::spot_node_pub_queue_full_policy::drop) ==
            ZLINK_SPOT_NODE_PUB_QUEUE_FULL_DROP);
-    assert(static_cast<int>(zlink::spot_socket_role::pub) == ZLINK_SPOT_SOCKET_PUB);
-    assert(static_cast<int>(zlink::spot_socket_role::sub) == ZLINK_SPOT_SOCKET_SUB);
+    assert(static_cast<int>(zlink::spot_socket_role::pub) == 1);
+    assert(static_cast<int>(zlink::spot_socket_role::sub) == 2);
 
     // flag OR operators
     {

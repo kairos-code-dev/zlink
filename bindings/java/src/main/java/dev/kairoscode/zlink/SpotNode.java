@@ -6,6 +6,7 @@ import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public final class SpotNode implements AutoCloseable {
     private MemorySegment handle;
@@ -96,6 +97,39 @@ public final class SpotNode implements AutoCloseable {
                 NativeHelpers.toCString(arena, hostname), trustSystem);
             if (rc != 0)
                 throw new RuntimeException("zlink_spot_node_set_tls_client failed");
+        }
+    }
+
+    public void setSockOpt(SpotNodeSocketRole role, SocketOption option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.spotNodeSetSockOpt(handle, role.getValue(),
+                option.getValue(), buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_spot_node_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(SpotNodeSocketRole role, SocketOption option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.spotNodeSetSockOpt(handle, role.getValue(),
+                option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_spot_node_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(SpotNodeOption option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.spotNodeSetSockOpt(handle, SpotNodeSocketRole.NODE.getValue(),
+                option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_spot_node_setsockopt failed");
         }
     }
 

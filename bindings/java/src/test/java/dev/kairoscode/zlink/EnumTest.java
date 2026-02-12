@@ -69,6 +69,22 @@ public class EnumTest {
     }
 
     @Test
+    public void errorCodeValues() {
+        assertEquals(156384763, ErrorCode.EFSM.getValue());
+        assertEquals(156384764, ErrorCode.ENOCOMPATPROTO.getValue());
+        assertEquals(156384765, ErrorCode.ETERM.getValue());
+        assertEquals(156384766, ErrorCode.EMTHREAD.getValue());
+    }
+
+    @Test
+    public void protocolErrorValues() {
+        assertEquals(0x10000000, ProtocolError.ZMP_UNSPECIFIED.getValue());
+        assertEquals(0x10000017, ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME.getValue());
+        assertEquals(0x11000002, ProtocolError.ZMP_MECHANISM_MISMATCH.getValue());
+        assertEquals(0x30000000, ProtocolError.WS_UNSPECIFIED.getValue());
+    }
+
+    @Test
     public void serviceTypeValues() {
         assertEquals(1, ServiceType.GATEWAY.getValue());
         assertEquals(2, ServiceType.SPOT.getValue());
@@ -89,9 +105,17 @@ public class EnumTest {
         assertEquals(1, GatewaySocketRole.ROUTER.getValue());
         assertEquals(1, ReceiverSocketRole.ROUTER.getValue());
         assertEquals(2, ReceiverSocketRole.DEALER.getValue());
+        assertEquals(0, SpotNodeSocketRole.NODE.getValue());
         assertEquals(1, SpotNodeSocketRole.PUB.getValue());
         assertEquals(2, SpotNodeSocketRole.SUB.getValue());
         assertEquals(3, SpotNodeSocketRole.DEALER.getValue());
+        assertEquals(1, SpotNodeOption.PUB_MODE.getValue());
+        assertEquals(2, SpotNodeOption.PUB_QUEUE_HWM.getValue());
+        assertEquals(3, SpotNodeOption.PUB_QUEUE_FULL_POLICY.getValue());
+        assertEquals(0, SpotNodePubMode.SYNC.getValue());
+        assertEquals(1, SpotNodePubMode.ASYNC.getValue());
+        assertEquals(0, SpotNodePubQueueFullPolicy.EAGAIN.getValue());
+        assertEquals(1, SpotNodePubQueueFullPolicy.DROP.getValue());
         assertEquals(1, SpotSocketRole.PUB.getValue());
         assertEquals(2, SpotSocketRole.SUB.getValue());
     }

@@ -55,6 +55,20 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.PollEvent.POLLERR), 4)
         self.assertEqual(int(zlink.PollEvent.POLLPRI), 8)
 
+    def test_error_code_values(self):
+        self.assertEqual(int(zlink.ErrorCode.EFSM), 156384763)
+        self.assertEqual(int(zlink.ErrorCode.ENOCOMPATPROTO), 156384764)
+        self.assertEqual(int(zlink.ErrorCode.ETERM), 156384765)
+        self.assertEqual(int(zlink.ErrorCode.EMTHREAD), 156384766)
+
+    def test_protocol_error_values(self):
+        self.assertEqual(int(zlink.ProtocolError.ZMP_UNSPECIFIED), 0x10000000)
+        self.assertEqual(
+            int(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME), 0x10000017
+        )
+        self.assertEqual(int(zlink.ProtocolError.ZMP_MECHANISM_MISMATCH), 0x11000002)
+        self.assertEqual(int(zlink.ProtocolError.WS_UNSPECIFIED), 0x30000000)
+
     def test_service_type_values(self):
         self.assertEqual(int(zlink.ServiceType.GATEWAY), 1)
         self.assertEqual(int(zlink.ServiceType.SPOT), 2)
@@ -79,9 +93,23 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ReceiverSocketRole.DEALER), 2)
 
     def test_spot_node_socket_role_values(self):
+        self.assertEqual(int(zlink.SpotNodeSocketRole.NODE), 0)
         self.assertEqual(int(zlink.SpotNodeSocketRole.PUB), 1)
         self.assertEqual(int(zlink.SpotNodeSocketRole.SUB), 2)
         self.assertEqual(int(zlink.SpotNodeSocketRole.DEALER), 3)
+
+    def test_spot_node_option_values(self):
+        self.assertEqual(int(zlink.SpotNodeOption.PUB_MODE), 1)
+        self.assertEqual(int(zlink.SpotNodeOption.PUB_QUEUE_HWM), 2)
+        self.assertEqual(int(zlink.SpotNodeOption.PUB_QUEUE_FULL_POLICY), 3)
+
+    def test_spot_node_pub_mode_values(self):
+        self.assertEqual(int(zlink.SpotNodePubMode.SYNC), 0)
+        self.assertEqual(int(zlink.SpotNodePubMode.ASYNC), 1)
+
+    def test_spot_node_pub_queue_full_policy_values(self):
+        self.assertEqual(int(zlink.SpotNodePubQueueFullPolicy.EAGAIN), 0)
+        self.assertEqual(int(zlink.SpotNodePubQueueFullPolicy.DROP), 1)
 
     def test_spot_socket_role_values(self):
         self.assertEqual(int(zlink.SpotSocketRole.PUB), 1)

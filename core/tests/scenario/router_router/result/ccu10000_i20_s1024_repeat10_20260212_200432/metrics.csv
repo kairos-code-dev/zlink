@@ -1,0 +1,3 @@
+scenario,run,rc,req_sent,api_recv,reply_recv,play_host_unreachable,api_host_unreachable,play_other,api_other,disconnected,connect_retried,connection_ready,throughput
+lz-02,1,0,131907,131907,131907,0,0,0,0,0,0,4,13183
+lz-03,1,2,151904,151904,151904,47,0,0,0,0,0,8,15189

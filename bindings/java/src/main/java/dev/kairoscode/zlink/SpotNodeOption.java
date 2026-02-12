@@ -2,10 +2,12 @@
 
 package dev.kairoscode.zlink;
 
-public enum SpotNodeSocketRole {
-    NODE(0), PUB(1), SUB(2), DEALER(3);
+public enum SpotNodeOption {
+    PUB_MODE(1),
+    PUB_QUEUE_HWM(2),
+    PUB_QUEUE_FULL_POLICY(3);
 
     private final int value;
-    SpotNodeSocketRole(int v) { this.value = v; }
+    SpotNodeOption(int v) { this.value = v; }
     public int getValue() { return value; }
 }

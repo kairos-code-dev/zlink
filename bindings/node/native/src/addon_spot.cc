@@ -184,6 +184,31 @@ napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_setsockopt(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    int32_t role = 0;
+    napi_get_value_int32(env, argv[1], &role);
+    int32_t opt = 0;
+    napi_get_value_int32(env, argv[2], &opt);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "option value must be Buffer");
+        return NULL;
+    }
+    int rc = zlink_spot_node_setsockopt(node, role, opt, data, len);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_setsockopt failed");
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
 struct spot_handle_t
 {
     void *node;

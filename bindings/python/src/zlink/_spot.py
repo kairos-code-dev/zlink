@@ -67,6 +67,39 @@ class SpotNode:
         if rc != 0:
             _raise_last_error()
 
+    def set_sockopt(self, role, option, value):
+        if isinstance(value, int):
+            ivalue = ctypes.c_int(value)
+            rc = lib().zlink_spot_node_setsockopt(
+                self._handle,
+                int(role),
+                int(option),
+                ctypes.byref(ivalue),
+                ctypes.sizeof(ivalue),
+            )
+            if rc != 0:
+                _raise_last_error()
+            return
+
+        if isinstance(value, str):
+            raw = value.encode()
+        else:
+            raw = bytes(value)
+        buf = ctypes.create_string_buffer(raw)
+        rc = lib().zlink_spot_node_setsockopt(
+            self._handle,
+            int(role),
+            int(option),
+            buf,
+            len(raw),
+        )
+        if rc != 0:
+            _raise_last_error()
+
+    def set_option(self, option, value: int):
+        # Node-level options use socket role 0 (ZLINK_SPOT_NODE_SOCKET_NODE).
+        self.set_sockopt(0, option, int(value))
+
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)

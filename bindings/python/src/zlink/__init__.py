@@ -19,6 +19,8 @@ from ._enums import (
     SocketOption,
     SendFlag,
     ReceiveFlag,
+    ErrorCode,
+    ProtocolError,
     MonitorEvent,
     DisconnectReason,
     PollEvent,
@@ -29,6 +31,9 @@ from ._enums import (
     GatewaySocketRole,
     ReceiverSocketRole,
     SpotNodeSocketRole,
+    SpotNodeOption,
+    SpotNodePubMode,
+    SpotNodePubQueueFullPolicy,
     SpotSocketRole,
 )
 
@@ -67,6 +72,8 @@ __all__ = [
     "SocketOption",
     "SendFlag",
     "ReceiveFlag",
+    "ErrorCode",
+    "ProtocolError",
     "MonitorEvent",
     "DisconnectReason",
     "PollEvent",
@@ -77,5 +84,8 @@ __all__ = [
     "GatewaySocketRole",
     "ReceiverSocketRole",
     "SpotNodeSocketRole",
+    "SpotNodeOption",
+    "SpotNodePubMode",
+    "SpotNodePubQueueFullPolicy",
     "SpotSocketRole",
 ]

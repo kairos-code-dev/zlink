@@ -55,7 +55,8 @@ set(tests
   routing-id/test_connect_rid_string_alias
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
-  spot/test_spot_pubsub_scenario)
+  spot/test_spot_pubsub_scenario
+  scenario/router_router/test_scenario_router_router)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -240,6 +241,11 @@ foreach(test_source ${tests})
   endif()
 endforeach()
 
+target_sources(
+  test_scenario_router_router
+  PRIVATE scenario/router_router/router_router_scenario_core.cpp
+          scenario/router_router/router_router_scenario_output.cpp)
+
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
@@ -249,6 +255,8 @@ set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
 set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
+set_tests_properties(test_scenario_router_router PROPERTIES TIMEOUT 180)
+set_tests_properties(test_scenario_router_router PROPERTIES LABELS "scenario;router_router")
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

@@ -77,6 +77,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNodeSetDiscovery", 0, spot_node_set_discovery, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsServer", 0, spot_node_set_tls_server, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsClient", 0, spot_node_set_tls_client, 0, 0, 0, napi_default, 0},
+        {"spotNodeSetSockOpt", 0, spot_node_setsockopt, 0, 0, 0, napi_default, 0},
 
         {"spotNew", 0, spot_new, 0, 0, 0, napi_default, 0},
         {"spotDestroy", 0, spot_destroy, 0, 0, 0, napi_default, 0},

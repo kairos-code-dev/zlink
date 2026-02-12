@@ -78,6 +78,24 @@ public class EnumTests
     }
 
     [Fact]
+    public void ErrorCode_Values_Match_C_Defines()
+    {
+        Assert.Equal(156384763, (int)ErrorCode.Efsm);
+        Assert.Equal(156384764, (int)ErrorCode.EnoCompatProto);
+        Assert.Equal(156384765, (int)ErrorCode.Eterm);
+        Assert.Equal(156384766, (int)ErrorCode.EmThread);
+    }
+
+    [Fact]
+    public void ProtocolError_Values_Match_C_Defines()
+    {
+        Assert.Equal(0x10000000, (int)ProtocolError.ZmpUnspecified);
+        Assert.Equal(0x10000017, (int)ProtocolError.ZmpMalformedCommandWelcome);
+        Assert.Equal(0x11000002, (int)ProtocolError.ZmpMechanismMismatch);
+        Assert.Equal(0x30000000, (int)ProtocolError.WsUnspecified);
+    }
+
+    [Fact]
     public void ServiceType_Values_Match_C_Defines()
     {
         Assert.Equal(1, (int)DiscoveryServiceType.Gateway);
@@ -101,9 +119,17 @@ public class EnumTests
         Assert.Equal(1, (int)GatewaySocketRole.Router);
         Assert.Equal(1, (int)ReceiverSocketRole.Router);
         Assert.Equal(2, (int)ReceiverSocketRole.Dealer);
+        Assert.Equal(0, (int)SpotNodeSocketRole.Node);
         Assert.Equal(1, (int)SpotNodeSocketRole.Pub);
         Assert.Equal(2, (int)SpotNodeSocketRole.Sub);
         Assert.Equal(3, (int)SpotNodeSocketRole.Dealer);
+        Assert.Equal(1, (int)SpotNodeOption.PubMode);
+        Assert.Equal(2, (int)SpotNodeOption.PubQueueHwm);
+        Assert.Equal(3, (int)SpotNodeOption.PubQueueFullPolicy);
+        Assert.Equal(0, (int)SpotNodePubMode.Sync);
+        Assert.Equal(1, (int)SpotNodePubMode.Async);
+        Assert.Equal(0, (int)SpotNodePubQueueFullPolicy.Eagain);
+        Assert.Equal(1, (int)SpotNodePubQueueFullPolicy.Drop);
         Assert.Equal(1, (int)SpotSocketRole.Pub);
         Assert.Equal(2, (int)SpotSocketRole.Sub);
     }

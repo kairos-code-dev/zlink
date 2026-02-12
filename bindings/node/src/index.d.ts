@@ -58,6 +58,31 @@ export declare const ReceiveFlag: {
   readonly NONE: 0; readonly DONTWAIT: 1;
 };
 
+export declare const ErrorCode: {
+  readonly EFSM: 156384763;
+  readonly ENOCOMPATPROTO: 156384764;
+  readonly ETERM: 156384765;
+  readonly EMTHREAD: 156384766;
+};
+
+export declare const ProtocolError: {
+  readonly ZMP_UNSPECIFIED: 0x10000000;
+  readonly ZMP_UNEXPECTED_COMMAND: 0x10000001;
+  readonly ZMP_INVALID_SEQUENCE: 0x10000002;
+  readonly ZMP_KEY_EXCHANGE: 0x10000003;
+  readonly ZMP_MALFORMED_COMMAND_UNSPECIFIED: 0x10000011;
+  readonly ZMP_MALFORMED_COMMAND_MESSAGE: 0x10000012;
+  readonly ZMP_MALFORMED_COMMAND_HELLO: 0x10000013;
+  readonly ZMP_MALFORMED_COMMAND_INITIATE: 0x10000014;
+  readonly ZMP_MALFORMED_COMMAND_ERROR: 0x10000015;
+  readonly ZMP_MALFORMED_COMMAND_READY: 0x10000016;
+  readonly ZMP_MALFORMED_COMMAND_WELCOME: 0x10000017;
+  readonly ZMP_INVALID_METADATA: 0x10000018;
+  readonly ZMP_CRYPTOGRAPHIC: 0x11000001;
+  readonly ZMP_MECHANISM_MISMATCH: 0x11000002;
+  readonly WS_UNSPECIFIED: 0x30000000;
+};
+
 export declare const MonitorEvent: {
   readonly CONNECTED: 0x0001; readonly CONNECT_DELAYED: 0x0002;
   readonly CONNECT_RETRIED: 0x0004; readonly LISTENING: 0x0008;
@@ -112,7 +137,20 @@ export declare const ReceiverSocketRole: {
 };
 
 export declare const SpotNodeSocketRole: {
-  readonly PUB: 1; readonly SUB: 2; readonly DEALER: 3;
+  readonly NODE: 0; readonly PUB: 1; readonly SUB: 2; readonly DEALER: 3;
+};
+
+export declare const SpotNodeOption: {
+  readonly PUB_MODE: 1; readonly PUB_QUEUE_HWM: 2;
+  readonly PUB_QUEUE_FULL_POLICY: 3;
+};
+
+export declare const SpotNodePubMode: {
+  readonly SYNC: 0; readonly ASYNC: 1;
+};
+
+export declare const SpotNodePubQueueFullPolicy: {
+  readonly EAGAIN: 0; readonly DROP: 1;
 };
 
 export declare const SpotSocketRole: {
@@ -228,6 +266,7 @@ export class SpotNode {
   setDiscovery(discovery: Discovery, service: string): void;
   setTlsServer(cert: string, key: string): void;
   setTlsClient(ca: string, host: string, trust: number): void;
+  setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
 

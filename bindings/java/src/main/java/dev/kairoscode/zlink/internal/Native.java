@@ -158,6 +158,9 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_NODE_TLS_CLI = downcall("zlink_spot_node_set_tls_client",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_NODE_SETSOCKOPT = downcall("zlink_spot_node_setsockopt",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
 
     private static final MethodHandle MH_SPOT_PUB_NEW = downcall("zlink_spot_pub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -736,6 +739,14 @@ public final class Native {
             return (int) MH_SPOT_NODE_TLS_CLI.invokeExact(node, ca, host, trust);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_node_set_tls_client failed", t);
+        }
+    }
+
+    public static int spotNodeSetSockOpt(MemorySegment node, int role, int option, MemorySegment value, long len) {
+        try {
+            return (int) MH_SPOT_NODE_SETSOCKOPT.invokeExact(node, role, option, value, len);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_setsockopt failed", t);
         }
     }
 

@@ -59,6 +59,20 @@ test('PollEvent values match C defines', () => {
   assert.strictEqual(zlink.PollEvent.POLLPRI, 8);
 });
 
+test('ErrorCode values match C defines', () => {
+  assert.strictEqual(zlink.ErrorCode.EFSM, 156384763);
+  assert.strictEqual(zlink.ErrorCode.ENOCOMPATPROTO, 156384764);
+  assert.strictEqual(zlink.ErrorCode.ETERM, 156384765);
+  assert.strictEqual(zlink.ErrorCode.EMTHREAD, 156384766);
+});
+
+test('ProtocolError values match C defines', () => {
+  assert.strictEqual(zlink.ProtocolError.ZMP_UNSPECIFIED, 0x10000000);
+  assert.strictEqual(zlink.ProtocolError.ZMP_MALFORMED_COMMAND_WELCOME, 0x10000017);
+  assert.strictEqual(zlink.ProtocolError.ZMP_MECHANISM_MISMATCH, 0x11000002);
+  assert.strictEqual(zlink.ProtocolError.WS_UNSPECIFIED, 0x30000000);
+});
+
 test('ServiceType values match C defines', () => {
   assert.strictEqual(zlink.ServiceType.GATEWAY, 1);
   assert.strictEqual(zlink.ServiceType.SPOT, 2);
@@ -77,9 +91,17 @@ test('socket role values match C defines', () => {
   assert.strictEqual(zlink.GatewaySocketRole.ROUTER, 1);
   assert.strictEqual(zlink.ReceiverSocketRole.ROUTER, 1);
   assert.strictEqual(zlink.ReceiverSocketRole.DEALER, 2);
+  assert.strictEqual(zlink.SpotNodeSocketRole.NODE, 0);
   assert.strictEqual(zlink.SpotNodeSocketRole.PUB, 1);
   assert.strictEqual(zlink.SpotNodeSocketRole.SUB, 2);
   assert.strictEqual(zlink.SpotNodeSocketRole.DEALER, 3);
+  assert.strictEqual(zlink.SpotNodeOption.PUB_MODE, 1);
+  assert.strictEqual(zlink.SpotNodeOption.PUB_QUEUE_HWM, 2);
+  assert.strictEqual(zlink.SpotNodeOption.PUB_QUEUE_FULL_POLICY, 3);
+  assert.strictEqual(zlink.SpotNodePubMode.SYNC, 0);
+  assert.strictEqual(zlink.SpotNodePubMode.ASYNC, 1);
+  assert.strictEqual(zlink.SpotNodePubQueueFullPolicy.EAGAIN, 0);
+  assert.strictEqual(zlink.SpotNodePubQueueFullPolicy.DROP, 1);
   assert.strictEqual(zlink.SpotSocketRole.PUB, 1);
   assert.strictEqual(zlink.SpotSocketRole.SUB, 2);
 });
@@ -96,10 +118,15 @@ test('constant objects are frozen', () => {
   assert.ok(Object.isFrozen(zlink.DisconnectReason));
   assert.ok(Object.isFrozen(zlink.ContextOption));
   assert.ok(Object.isFrozen(zlink.ReceiveFlag));
+  assert.ok(Object.isFrozen(zlink.ErrorCode));
+  assert.ok(Object.isFrozen(zlink.ProtocolError));
   assert.ok(Object.isFrozen(zlink.DiscoverySocketRole));
   assert.ok(Object.isFrozen(zlink.GatewaySocketRole));
   assert.ok(Object.isFrozen(zlink.ReceiverSocketRole));
   assert.ok(Object.isFrozen(zlink.SpotNodeSocketRole));
+  assert.ok(Object.isFrozen(zlink.SpotNodeOption));
+  assert.ok(Object.isFrozen(zlink.SpotNodePubMode));
+  assert.ok(Object.isFrozen(zlink.SpotNodePubQueueFullPolicy));
   assert.ok(Object.isFrozen(zlink.SpotSocketRole));
 });
 

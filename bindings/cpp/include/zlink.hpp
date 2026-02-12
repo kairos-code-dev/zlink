@@ -141,6 +141,40 @@ enum class recv_flag : int
     dontwait = ZLINK_DONTWAIT
 };
 
+enum class error_code : int
+{
+    efsm = EFSM,
+    enocompatproto = ENOCOMPATPROTO,
+    eterm = ETERM,
+    emthread = EMTHREAD
+};
+
+enum class protocol_error : int
+{
+    zmp_unspecified = ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED,
+    zmp_unexpected_command = ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND,
+    zmp_invalid_sequence = ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE,
+    zmp_key_exchange = ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE,
+    zmp_malformed_command_unspecified =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED,
+    zmp_malformed_command_message =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE,
+    zmp_malformed_command_hello =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO,
+    zmp_malformed_command_initiate =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE,
+    zmp_malformed_command_error =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR,
+    zmp_malformed_command_ready =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY,
+    zmp_malformed_command_welcome =
+      ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME,
+    zmp_invalid_metadata = ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA,
+    zmp_cryptographic = ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC,
+    zmp_mechanism_mismatch = ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH,
+    ws_unspecified = ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED
+};
+
 inline recv_flag operator| (recv_flag a, recv_flag b)
 {
     return static_cast<recv_flag> (static_cast<int> (a) | static_cast<int> (b));
@@ -235,6 +269,13 @@ enum class spot_node_socket_role : int
     pub = ZLINK_SPOT_NODE_SOCKET_PUB,
     sub = ZLINK_SPOT_NODE_SOCKET_SUB,
     dealer = ZLINK_SPOT_NODE_SOCKET_DEALER
+};
+
+enum class spot_node_option : int
+{
+    pub_mode = ZLINK_SPOT_NODE_OPT_PUB_MODE,
+    pub_queue_hwm = ZLINK_SPOT_NODE_OPT_PUB_QUEUE_HWM,
+    pub_queue_full_policy = ZLINK_SPOT_NODE_OPT_PUB_QUEUE_FULL_POLICY
 };
 
 enum class spot_node_pub_mode : int
@@ -1131,6 +1172,27 @@ class spot_node_t
     int set_tls_client (const char *ca_, const char *hostname_, int trust_)
     {
         return zlink_spot_node_set_tls_client (_node, ca_, hostname_, trust_);
+    }
+    int set_sockopt (spot_node_socket_role role_,
+                     socket_option option_,
+                     const void *value_,
+                     size_t len_)
+    {
+        return zlink_spot_node_setsockopt (_node, static_cast<int> (role_),
+                                           static_cast<int> (option_), value_,
+                                           len_);
+    }
+    int set_sockopt (spot_node_socket_role role_,
+                     socket_option option_,
+                     int value_)
+    {
+        return set_sockopt (role_, option_, &value_, sizeof (value_));
+    }
+    int set_sockopt (spot_node_option option_, int value_)
+    {
+        return zlink_spot_node_setsockopt (
+          _node, static_cast<int> (spot_node_socket_role::node),
+          static_cast<int> (option_), &value_, sizeof (value_));
     }
 
     int destroy ()

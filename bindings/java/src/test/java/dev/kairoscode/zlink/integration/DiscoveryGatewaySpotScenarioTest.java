@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration;
 import dev.kairoscode.zlink.*;
 import org.junit.jupiter.api.Test;
 
+import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -130,6 +131,41 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         assertEquals(1, spotMoveMsg.parts().length);
                                         assertEquals("spot-move",
                                           new String(spotMoveMsg.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
+                                    }
+
+                                    try (Spot.RecvContext recvContext =
+                                           spot.createRecvContext()) {
+                                        try (Message rawMsg = Message.fromBytes(
+                                          "spot-raw-1".getBytes(StandardCharsets.UTF_8))) {
+                                            spot.publishMove(preparedTopic,
+                                              new Message[]{rawMsg}, SendFlag.NONE);
+                                        }
+                                        Spot.SpotRawMessage rawMessage1 =
+                                          TestTransports.spotReceiveRawWithTimeout(
+                                            spot, recvContext, 5000);
+                                        assertEquals("topic",
+                                          new String(rawMessage1.topicId().toArray(
+                                            ValueLayout.JAVA_BYTE),
+                                            StandardCharsets.UTF_8));
+                                        assertEquals(1, rawMessage1.parts().length);
+                                        assertEquals("spot-raw-1",
+                                          new String(rawMessage1.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
+                                        Message reusedPart = rawMessage1.parts()[0];
+
+                                        try (Message rawMsg = Message.fromBytes(
+                                          "spot-raw-2".getBytes(StandardCharsets.UTF_8))) {
+                                            spot.publishMove(preparedTopic,
+                                              new Message[]{rawMsg}, SendFlag.NONE);
+                                        }
+                                        Spot.SpotRawMessage rawMessage2 =
+                                          TestTransports.spotReceiveRawWithTimeout(
+                                            spot, recvContext, 5000);
+                                        assertEquals(1, rawMessage2.parts().length);
+                                        assertTrue(reusedPart == rawMessage2.parts()[0]);
+                                        assertEquals("spot-raw-2",
+                                          new String(rawMessage2.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
                                     }
                                     }

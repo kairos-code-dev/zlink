@@ -111,7 +111,8 @@ public final class Gateway implements AutoCloseable {
         Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
             context.reusableParts());
         context.setReusableParts(reusable);
-        int serviceLen = cStringLength(context.serviceName(), SERVICE_NAME_CAPACITY);
+        int serviceLen = NativeHelpers.cStringLength(context.serviceName(),
+            SERVICE_NAME_CAPACITY);
         MemorySegment serviceRaw = context.serviceName().asSlice(0, serviceLen);
         return new GatewayRawMessage(serviceRaw, reusable);
     }
@@ -342,13 +343,4 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    private static int cStringLength(MemorySegment cString, int maxLen) {
-        int len = 0;
-        while (len < maxLen) {
-            if (cString.get(ValueLayout.JAVA_BYTE, len) == 0)
-                break;
-            len++;
-        }
-        return len;
-    }
 }

@@ -132,6 +132,23 @@ final class TestTransports {
         throw new RuntimeException("timeout");
     }
 
+    static Gateway.GatewayRawMessage gatewayReceiveRawWithTimeout(
+      Gateway gw, Gateway.RecvContext context, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        RuntimeException last = null;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return gw.recvRaw(ZLINK_DONTWAIT, context);
+            } catch (RuntimeException ex) {
+                last = ex;
+                sleep(10);
+            }
+        }
+        if (last != null)
+            throw last;
+        throw new RuntimeException("timeout");
+    }
+
     static Spot.SpotMessage spotReceiveWithTimeout(Spot spot, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         RuntimeException last = null;
@@ -155,6 +172,23 @@ final class TestTransports {
         while (System.currentTimeMillis() < deadline) {
             try {
                 return spot.recvMessages(ZLINK_DONTWAIT);
+            } catch (RuntimeException ex) {
+                last = ex;
+                sleep(10);
+            }
+        }
+        if (last != null)
+            throw last;
+        throw new RuntimeException("timeout");
+    }
+
+    static Spot.SpotRawMessage spotReceiveRawWithTimeout(
+      Spot spot, Spot.RecvContext context, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        RuntimeException last = null;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return spot.recvRaw(ZLINK_DONTWAIT, context);
             } catch (RuntimeException ex) {
                 last = ex;
                 sleep(10);

@@ -62,9 +62,12 @@ try (var ctx = new Context();
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
+  - `Gateway.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawMessage`)
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
+  - `Spot.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Spot.SpotRawMessage`)
+  - `recvRaw`는 `RecvContext` 내부 `Message[]`를 재사용하므로 반환된 part를 직접 close하면 안 됩니다
   - `sendMove/publishMove`는 메시지 소유권을 이동시키므로 이동된 `Message`는 재사용하면 안 됩니다
 
 ## 5. 빌드

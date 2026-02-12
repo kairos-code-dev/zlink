@@ -23,6 +23,7 @@ final class BenchSpot {
         Spot spotPub = null;
         Spot spotSub = null;
         Spot.PreparedTopic preparedTopic = null;
+        Spot.RecvContext recvContext = null;
         Arena payloadArena = null;
         try {
             nodePub = new SpotNode(ctx);
@@ -34,6 +35,7 @@ final class BenchSpot {
             spotSub = new Spot(nodeSub);
             preparedTopic = spotPub.prepareTopic("bench");
             spotSub.subscribe(preparedTopic);
+            recvContext = spotSub.createRecvContext();
             BenchUtil.sleep(300);
 
             byte[] payload = new byte[size];
@@ -52,9 +54,7 @@ final class BenchSpot {
                 } finally {
                     sendParts[0] = null;
                 }
-                try (Spot.SpotMessages ignored = BenchUtil.spotRecvMessagesBlocking(
-                  spotSub)) {
-                }
+                BenchUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
 
             long t0 = System.nanoTime();
@@ -65,9 +65,7 @@ final class BenchSpot {
                 } finally {
                     sendParts[0] = null;
                 }
-                try (Spot.SpotMessages ignored = BenchUtil.spotRecvMessagesBlocking(
-                  spotSub)) {
-                }
+                BenchUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
 
@@ -75,14 +73,15 @@ final class BenchSpot {
             final Spot fSpotSub = spotSub;
             final int fMsgCount = msgCount;
             Thread recvThread = new Thread(() -> {
-                for (int i = 0; i < fMsgCount; i++) {
-                    try {
-                        try (Spot.SpotMessages ignored =
-                               BenchUtil.spotRecvMessagesWithTimeout(fSpotSub, 5000)) {
+                try (Spot.RecvContext threadRecvContext = fSpotSub.createRecvContext()) {
+                    for (int i = 0; i < fMsgCount; i++) {
+                        try {
+                            BenchUtil.spotRecvRawWithTimeout(
+                              fSpotSub, threadRecvContext, 5000);
+                            recvCount[0]++;
+                        } catch (Exception e) {
+                            break;
                         }
-                        recvCount[0]++;
-                    } catch (Exception e) {
-                        break;
                     }
                 }
             });
@@ -112,6 +111,12 @@ final class BenchSpot {
         } catch (Exception e) {
             return 2;
         } finally {
+            try {
+                if (recvContext != null) {
+                    recvContext.close();
+                }
+            } catch (Exception ignored) {
+            }
             try {
                 if (preparedTopic != null) {
                     preparedTopic.close();

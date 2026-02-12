@@ -8,7 +8,6 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
@@ -267,14 +266,14 @@ public final class Socket implements AutoCloseable {
             throw new IllegalArgumentException("size must be >= 0");
         if (size == 0)
             return new byte[0];
-        byte[] out = new byte[size];
-        int rc = Native.recv(handle, MemorySegment.ofArray(out), size,
-            flags.getValue());
+        MemorySegment seg = ensureRecvScratch(size);
+        int rc = Native.recv(handle, seg, size, flags.getValue());
         if (rc < 0)
             throw new RuntimeException("zlink_recv failed");
-        if (rc == out.length)
-            return out;
-        return Arrays.copyOf(out, rc);
+        byte[] out = new byte[rc];
+        if (rc > 0)
+            MemorySegment.copy(seg, 0, MemorySegment.ofArray(out), 0, rc);
+        return out;
     }
 
     public int recv(byte[] data, ReceiveFlag flags) {

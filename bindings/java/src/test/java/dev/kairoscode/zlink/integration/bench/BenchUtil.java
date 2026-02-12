@@ -118,6 +118,24 @@ final class BenchUtil {
         return spot.recvMessages(ReceiveFlag.NONE);
     }
 
+    static Spot.SpotRawMessage spotRecvRawWithTimeout(
+      Spot spot, Spot.RecvContext context, int timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                return spot.recvRaw(ReceiveFlag.DONTWAIT, context);
+            } catch (Exception ignored) {
+                LockSupport.parkNanos(100_000L);
+            }
+        }
+        throw new RuntimeException("timeout");
+    }
+
+    static Spot.SpotRawMessage spotRecvRawBlocking(
+      Spot spot, Spot.RecvContext context) {
+        return spot.recvRaw(ReceiveFlag.NONE, context);
+    }
+
     static int parseEnv(String name, int def) {
         String v = System.getenv(name);
         if (v == null || v.isEmpty()) {

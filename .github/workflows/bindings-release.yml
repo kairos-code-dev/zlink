@@ -140,6 +140,8 @@ jobs:
         run: |
           cd bindings/node
           npm ci
+          cp prebuilds/linux-x64/libzlink.so build/Release/libzlink.so
+          cp prebuilds/linux-x64/libzlink.so.5 build/Release/libzlink.so.5
           npm test
 
       - name: Package

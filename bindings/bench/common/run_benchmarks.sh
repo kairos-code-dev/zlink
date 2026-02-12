@@ -10,6 +10,8 @@ if [[ "${BENCH_PRESERVE_TOOLCHAIN_ENV:-0}" != "1" ]]; then
   unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
 fi
 SUPPORTED_BINDINGS=(python node dotnet java cpp)
+DEFAULT_BINDINGS=(node dotnet java cpp)
+ALL_BINDINGS=("${DEFAULT_BINDINGS[@]}")
 
 IS_WINDOWS=0
 PLATFORM="linux"
@@ -53,7 +55,7 @@ BENCH_TRANSPORTS=""
 RESULTS=1
 RESULTS_DIR=""
 RESULTS_TAG=""
-BINDINGS_CSV="${BINDING:-ALL}"
+BINDINGS_CSV="${BINDING:-DEFAULT}"
 
 usage() {
   cat <<USAGE
@@ -61,11 +63,13 @@ Usage: bindings/bench/common/run_benchmarks.sh [options]
 
 Compare cached zlink(core current) vs selected binding benchmark results.
 Note: PATTERN=ALL runs all core benchwithzlink patterns.
-Default bindings: all (${SUPPORTED_BINDINGS[*]}).
+Default bindings: ${DEFAULT_BINDINGS[*]} (python excluded by default).
+ALL also maps to: ${ALL_BINDINGS[*]}.
 
 Options:
   -h, --help            Show this help.
-  --bindings LIST       Comma-separated bindings (default: all).
+  --bindings LIST       Comma-separated bindings (default: ${DEFAULT_BINDINGS[*]}).
+                       ALL maps to ${ALL_BINDINGS[*]}.
   --binding NAME        Convenience alias for --bindings NAME.
   --with-baseline       Refresh zlink(core) cache.
   --skip-libzlink       Do not refresh zlink(core) cache; use existing cache only (default).
@@ -131,8 +135,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 declare -a SELECTED_BINDINGS=()
-if [[ -z "${BINDINGS_CSV}" || "${BINDINGS_CSV^^}" == "ALL" ]]; then
-  SELECTED_BINDINGS=("${SUPPORTED_BINDINGS[@]}")
+if [[ -z "${BINDINGS_CSV}" || "${BINDINGS_CSV^^}" == "DEFAULT" ]]; then
+  SELECTED_BINDINGS=("${DEFAULT_BINDINGS[@]}")
+elif [[ "${BINDINGS_CSV^^}" == "ALL" ]]; then
+  SELECTED_BINDINGS=("${ALL_BINDINGS[@]}")
 else
   IFS=',' read -r -a _requested <<< "${BINDINGS_CSV}"
   for b in "${_requested[@]}"; do

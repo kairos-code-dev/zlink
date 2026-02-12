@@ -142,24 +142,18 @@ public final class Spot implements AutoCloseable {
     public SpotRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        context.topicLength().set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-        int rc = Native.spotSubRecv(subHandle,
-            context.partsPtr(),
-            context.partCount(),
-            flags.getValue(),
-            context.topicId(),
-            context.topicLength());
-        if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_recv failed");
-        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
-        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
-        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
-            context.reusableParts());
-        context.setReusableParts(reusable);
-        int topicLen = normalizeTopicLength(context.topicId(), TOPIC_CAPACITY,
-            context.topicLength().get(ValueLayout.JAVA_LONG, 0));
-        MemorySegment topicRaw = context.topicId().asSlice(0, topicLen);
-        return new SpotRawMessage(topicRaw, reusable);
+        MemorySegment topicRaw = recvRawIntoContext(flags, context);
+        return new SpotRawMessage(topicRaw, context.reusableParts());
+    }
+
+    public SpotRawBorrowed recvRawBorrowed(ReceiveFlag flags,
+                                           RecvContext context) {
+        Objects.requireNonNull(context, "context");
+        context.ensureOpen();
+        MemorySegment topicRaw = recvRawIntoContext(flags, context);
+        SpotRawBorrowed out = context.borrowedRaw();
+        out.update(topicRaw, context.reusableParts());
+        return out;
     }
 
     @Override
@@ -177,6 +171,27 @@ public final class Spot implements AutoCloseable {
     public record SpotMessage(String topicId, byte[][] parts) {}
 
     public record SpotRawMessage(MemorySegment topicId, Message[] parts) {}
+
+    public static final class SpotRawBorrowed {
+        private MemorySegment topicId = MemorySegment.NULL;
+        private Message[] parts = new Message[0];
+
+        private SpotRawBorrowed() {
+        }
+
+        public MemorySegment topicId() {
+            return topicId;
+        }
+
+        public Message[] parts() {
+            return parts;
+        }
+
+        void update(MemorySegment topicId, Message[] parts) {
+            this.topicId = topicId == null ? MemorySegment.NULL : topicId;
+            this.parts = parts == null ? new Message[0] : parts;
+        }
+    }
 
     public static final class PreparedTopic implements AutoCloseable {
         private final String topicId;
@@ -238,6 +253,7 @@ public final class Spot implements AutoCloseable {
         private final MemorySegment topicId;
         private final MemorySegment topicLength;
         private Message[] reusableParts;
+        private final SpotRawBorrowed borrowedRaw;
 
         RecvContext() {
             this.arena = Arena.ofShared();
@@ -246,6 +262,7 @@ public final class Spot implements AutoCloseable {
             this.topicId = arena.allocate(TOPIC_CAPACITY);
             this.topicLength = arena.allocate(ValueLayout.JAVA_LONG);
             this.reusableParts = new Message[0];
+            this.borrowedRaw = new SpotRawBorrowed();
         }
 
         void ensureOpen() {
@@ -283,10 +300,16 @@ public final class Spot implements AutoCloseable {
             reusableParts = parts == null ? new Message[0] : parts;
         }
 
+        SpotRawBorrowed borrowedRaw() {
+            ensureOpen();
+            return borrowedRaw;
+        }
+
         @Override
         public void close() {
             Message.closeAll(reusableParts);
             reusableParts = new Message[0];
+            borrowedRaw.update(MemorySegment.NULL, reusableParts);
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
@@ -346,5 +369,26 @@ public final class Spot implements AutoCloseable {
         if (topicLen > 0 && topic.get(ValueLayout.JAVA_BYTE, topicLen - 1) == 0)
             topicLen--;
         return topicLen;
+    }
+
+    private MemorySegment recvRawIntoContext(ReceiveFlag flags,
+                                             RecvContext context) {
+        context.topicLength().set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+        int rc = Native.spotSubRecv(subHandle,
+            context.partsPtr(),
+            context.partCount(),
+            flags.getValue(),
+            context.topicId(),
+            context.topicLength());
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_sub_recv failed");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
+            context.reusableParts());
+        context.setReusableParts(reusable);
+        int topicLen = normalizeTopicLength(context.topicId(), TOPIC_CAPACITY,
+            context.topicLength().get(ValueLayout.JAVA_LONG, 0));
+        return context.topicId().asSlice(0, topicLen);
     }
 }

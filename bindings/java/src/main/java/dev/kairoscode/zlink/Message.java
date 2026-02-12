@@ -279,8 +279,6 @@ public final class Message implements AutoCloseable {
                 if (msg == null || !msg.isReusable()) {
                     msg = new Message();
                     out[i] = msg;
-                } else {
-                    msg.resetForReuse();
                 }
                 int rc = NativeMsg.msgMove(msg.msg, src);
                 if (rc != 0) {

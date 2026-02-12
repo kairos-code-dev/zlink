@@ -167,6 +167,37 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         assertEquals("spot-raw-2",
                                           new String(rawMessage2.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
+
+                                        try (Message rawMsg = Message.fromBytes(
+                                          "spot-borrowed-1".getBytes(
+                                            StandardCharsets.UTF_8))) {
+                                            spot.publishMove(preparedTopic,
+                                              new Message[]{rawMsg}, SendFlag.NONE);
+                                        }
+                                        Spot.SpotRawBorrowed borrowed1 =
+                                          spot.recvRawBorrowed(ReceiveFlag.NONE,
+                                            recvContext);
+                                        assertEquals("topic",
+                                          new String(borrowed1.topicId().toArray(
+                                            ValueLayout.JAVA_BYTE),
+                                            StandardCharsets.UTF_8));
+                                        assertEquals("spot-borrowed-1",
+                                          new String(borrowed1.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
+
+                                        try (Message rawMsg = Message.fromBytes(
+                                          "spot-borrowed-2".getBytes(
+                                            StandardCharsets.UTF_8))) {
+                                            spot.publishMove(preparedTopic,
+                                              new Message[]{rawMsg}, SendFlag.NONE);
+                                        }
+                                        Spot.SpotRawBorrowed borrowed2 =
+                                          spot.recvRawBorrowed(ReceiveFlag.NONE,
+                                            recvContext);
+                                        assertTrue(borrowed1 == borrowed2);
+                                        assertEquals("spot-borrowed-2",
+                                          new String(borrowed2.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
                                     }
                                     }
                                 }

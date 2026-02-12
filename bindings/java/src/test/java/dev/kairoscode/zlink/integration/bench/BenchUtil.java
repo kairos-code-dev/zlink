@@ -118,12 +118,12 @@ final class BenchUtil {
         return spot.recvMessages(ReceiveFlag.NONE);
     }
 
-    static Spot.SpotRawMessage spotRecvRawWithTimeout(
+    static Spot.SpotRawBorrowed spotRecvRawWithTimeout(
       Spot spot, Spot.RecvContext context, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             try {
-                return spot.recvRaw(ReceiveFlag.DONTWAIT, context);
+                return spot.recvRawBorrowed(ReceiveFlag.DONTWAIT, context);
             } catch (Exception ignored) {
                 LockSupport.parkNanos(100_000L);
             }
@@ -131,9 +131,9 @@ final class BenchUtil {
         throw new RuntimeException("timeout");
     }
 
-    static Spot.SpotRawMessage spotRecvRawBlocking(
+    static Spot.SpotRawBorrowed spotRecvRawBlocking(
       Spot spot, Spot.RecvContext context) {
-        return spot.recvRaw(ReceiveFlag.NONE, context);
+        return spot.recvRawBorrowed(ReceiveFlag.NONE, context);
     }
 
     static int parseEnv(String name, int def) {

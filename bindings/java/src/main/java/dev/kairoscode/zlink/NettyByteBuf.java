@@ -4,40 +4,50 @@ package dev.kairoscode.zlink;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 
 final class NettyByteBuf implements ByteBuf {
+    private static final ClassValue<HandleSet> HANDLE_CACHE = new ClassValue<>() {
+        @Override
+        protected HandleSet computeValue(Class<?> type) {
+            try {
+                MethodHandles.Lookup lookup = MethodHandles.lookup();
+                return new HandleSet(
+                    asHandle(lookup, type.getMethod("readableBytes"),
+                        MethodType.methodType(int.class, Object.class)),
+                    asHandle(lookup, type.getMethod("writableBytes"),
+                        MethodType.methodType(int.class, Object.class)),
+                    asHandle(lookup, type.getMethod("readerIndex"),
+                        MethodType.methodType(int.class, Object.class)),
+                    asHandle(lookup, type.getMethod("writerIndex"),
+                        MethodType.methodType(int.class, Object.class)),
+                    asHandle(lookup, type.getMethod("readerIndex", int.class),
+                        MethodType.methodType(void.class, Object.class, int.class)),
+                    asHandle(lookup, type.getMethod("writerIndex", int.class),
+                        MethodType.methodType(void.class, Object.class, int.class)),
+                    asHandle(lookup, type.getMethod("nioBuffer"),
+                        MethodType.methodType(ByteBuffer.class, Object.class))
+                );
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalArgumentException("Invalid Netty ByteBuf", e);
+            }
+        }
+    };
+
     private final Object delegate;
-    private final MethodHandle readableBytes;
-    private final MethodHandle writableBytes;
-    private final MethodHandle readerIndex;
-    private final MethodHandle writerIndex;
-    private final MethodHandle readerIndexSet;
-    private final MethodHandle writerIndexSet;
-    private final MethodHandle nioBuffer;
+    private final HandleSet handles;
 
     NettyByteBuf(Object delegate) {
         this.delegate = delegate;
-        try {
-            Class<?> cls = delegate.getClass();
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
-            readableBytes = bind(lookup, cls.getMethod("readableBytes"));
-            writableBytes = bind(lookup, cls.getMethod("writableBytes"));
-            readerIndex = bind(lookup, cls.getMethod("readerIndex"));
-            writerIndex = bind(lookup, cls.getMethod("writerIndex"));
-            readerIndexSet = bind(lookup, cls.getMethod("readerIndex", int.class));
-            writerIndexSet = bind(lookup, cls.getMethod("writerIndex", int.class));
-            nioBuffer = bind(lookup, cls.getMethod("nioBuffer"));
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalArgumentException("Invalid Netty ByteBuf", e);
-        }
+        this.handles = HANDLE_CACHE.get(delegate.getClass());
     }
 
     @Override
     public ByteBuffer nioBuffer() {
         try {
-            return (ByteBuffer) nioBuffer.invokeExact();
+            return (ByteBuffer) handles.nioBuffer.invokeExact(delegate);
         } catch (Throwable e) {
             throw new IllegalStateException("nioBuffer failed", e);
         }
@@ -46,7 +56,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public int readableBytes() {
         try {
-            return (int) readableBytes.invokeExact();
+            return (int) handles.readableBytes.invokeExact(delegate);
         } catch (Throwable e) {
             throw new IllegalStateException("readableBytes failed", e);
         }
@@ -55,7 +65,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public int writableBytes() {
         try {
-            return (int) writableBytes.invokeExact();
+            return (int) handles.writableBytes.invokeExact(delegate);
         } catch (Throwable e) {
             throw new IllegalStateException("writableBytes failed", e);
         }
@@ -64,7 +74,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public int readerIndex() {
         try {
-            return (int) readerIndex.invokeExact();
+            return (int) handles.readerIndex.invokeExact(delegate);
         } catch (Throwable e) {
             throw new IllegalStateException("readerIndex failed", e);
         }
@@ -73,7 +83,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public int writerIndex() {
         try {
-            return (int) writerIndex.invokeExact();
+            return (int) handles.writerIndex.invokeExact(delegate);
         } catch (Throwable e) {
             throw new IllegalStateException("writerIndex failed", e);
         }
@@ -82,7 +92,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public void setReaderIndex(int index) {
         try {
-            readerIndexSet.invoke(index);
+            handles.readerIndexSet.invokeExact(delegate, index);
         } catch (Throwable e) {
             throw new IllegalStateException("readerIndex set failed", e);
         }
@@ -91,7 +101,7 @@ final class NettyByteBuf implements ByteBuf {
     @Override
     public void setWriterIndex(int index) {
         try {
-            writerIndexSet.invoke(index);
+            handles.writerIndexSet.invokeExact(delegate, index);
         } catch (Throwable e) {
             throw new IllegalStateException("writerIndex set failed", e);
         }
@@ -107,8 +117,19 @@ final class NettyByteBuf implements ByteBuf {
         setWriterIndex(writerIndex() + bytes);
     }
 
-    private MethodHandle bind(MethodHandles.Lookup lookup, Method method)
+    private static MethodHandle asHandle(MethodHandles.Lookup lookup,
+                                         Method method,
+                                         MethodType type)
       throws IllegalAccessException {
-        return lookup.unreflect(method).bindTo(delegate);
+        return lookup.unreflect(method).asType(type);
+    }
+
+    private record HandleSet(MethodHandle readableBytes,
+                             MethodHandle writableBytes,
+                             MethodHandle readerIndex,
+                             MethodHandle writerIndex,
+                             MethodHandle readerIndexSet,
+                             MethodHandle writerIndexSet,
+                             MethodHandle nioBuffer) {
     }
 }

@@ -99,22 +99,18 @@ public final class Gateway implements AutoCloseable {
     public GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        int rc = Native.gatewayRecv(handle,
-            context.partsPtr(),
-            context.partCount(),
-            flags.getValue(),
-            context.serviceName());
-        if (rc != 0)
-            throw new RuntimeException("zlink_gateway_recv failed");
-        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
-        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
-        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
-            context.reusableParts());
-        context.setReusableParts(reusable);
-        int serviceLen = NativeHelpers.cStringLength(context.serviceName(),
-            SERVICE_NAME_CAPACITY);
-        MemorySegment serviceRaw = context.serviceName().asSlice(0, serviceLen);
-        return new GatewayRawMessage(serviceRaw, reusable);
+        MemorySegment serviceRaw = recvRawIntoContext(flags, context);
+        return new GatewayRawMessage(serviceRaw, context.reusableParts());
+    }
+
+    public GatewayRawBorrowed recvRawBorrowed(ReceiveFlag flags,
+                                              RecvContext context) {
+        Objects.requireNonNull(context, "context");
+        context.ensureOpen();
+        MemorySegment serviceRaw = recvRawIntoContext(flags, context);
+        GatewayRawBorrowed out = context.borrowedRaw();
+        out.update(serviceRaw, context.reusableParts());
+        return out;
     }
 
     public void setLoadBalancing(String serviceName, GatewayLbStrategy strategy) {
@@ -194,6 +190,27 @@ public final class Gateway implements AutoCloseable {
 
     public record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
 
+    public static final class GatewayRawBorrowed {
+        private MemorySegment serviceName = MemorySegment.NULL;
+        private Message[] parts = new Message[0];
+
+        private GatewayRawBorrowed() {
+        }
+
+        public MemorySegment serviceName() {
+            return serviceName;
+        }
+
+        public Message[] parts() {
+            return parts;
+        }
+
+        void update(MemorySegment serviceName, Message[] parts) {
+            this.serviceName = serviceName == null ? MemorySegment.NULL : serviceName;
+            this.parts = parts == null ? new Message[0] : parts;
+        }
+    }
+
     public static final class PreparedService implements AutoCloseable {
         private final String serviceName;
         private Arena arena;
@@ -253,6 +270,7 @@ public final class Gateway implements AutoCloseable {
         private final MemorySegment partCount;
         private final MemorySegment serviceName;
         private Message[] reusableParts;
+        private final GatewayRawBorrowed borrowedRaw;
 
         RecvContext() {
             this.arena = Arena.ofShared();
@@ -260,6 +278,7 @@ public final class Gateway implements AutoCloseable {
             this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
             this.serviceName = arena.allocate(SERVICE_NAME_CAPACITY);
             this.reusableParts = new Message[0];
+            this.borrowedRaw = new GatewayRawBorrowed();
         }
 
         void ensureOpen() {
@@ -292,10 +311,16 @@ public final class Gateway implements AutoCloseable {
             reusableParts = parts == null ? new Message[0] : parts;
         }
 
+        GatewayRawBorrowed borrowedRaw() {
+            ensureOpen();
+            return borrowedRaw;
+        }
+
         @Override
         public void close() {
             Message.closeAll(reusableParts);
             reusableParts = new Message[0];
+            borrowedRaw.update(MemorySegment.NULL, reusableParts);
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
@@ -341,6 +366,25 @@ public final class Gateway implements AutoCloseable {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
             NativeMsg.msgClose(msg);
         }
+    }
+
+    private MemorySegment recvRawIntoContext(ReceiveFlag flags,
+                                             RecvContext context) {
+        int rc = Native.gatewayRecv(handle,
+            context.partsPtr(),
+            context.partCount(),
+            flags.getValue(),
+            context.serviceName());
+        if (rc != 0)
+            throw new RuntimeException("zlink_gateway_recv failed");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
+            context.reusableParts());
+        context.setReusableParts(reusable);
+        int serviceLen = NativeHelpers.cStringLength(context.serviceName(),
+            SERVICE_NAME_CAPACITY);
+        return context.serviceName().asSlice(0, serviceLen);
     }
 
 }

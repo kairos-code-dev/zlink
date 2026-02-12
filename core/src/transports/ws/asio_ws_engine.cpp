@@ -575,6 +575,24 @@ void zlink::asio_ws_engine_t::on_read_complete (
             _session->engine_ready ();
         }
 
+        if (_options.recv_routing_id && _session) {
+            msg_t routing_id;
+            const int rc = routing_id.init_size (_peer_routing_id_size);
+            errno_assert (rc == 0);
+            if (_peer_routing_id_size > 0)
+                memcpy (routing_id.data (), _peer_routing_id,
+                        _peer_routing_id_size);
+            routing_id.set_flags (msg_t::routing_id);
+            const int push_rc = _session->push_msg (&routing_id);
+            if (push_rc == 0) {
+                _session->flush ();
+            } else {
+                //  Align with zmp engine behavior: session pipe can be gone
+                //  during shutdown races.
+                errno_assert (errno == EAGAIN);
+            }
+        }
+
         //  Notify socket about successful handshake
         if (_socket) {
             _socket->event_connection_ready (_endpoint_uri_pair,
@@ -585,19 +603,6 @@ void zlink::asio_ws_engine_t::on_read_complete (
         //  Trigger output to start sending any pending messages
         if (!_output_stopped && !_write_pending) {
             start_async_write ();
-        }
-
-        if (_options.recv_routing_id) {
-            msg_t routing_id;
-            const int rc = routing_id.init_size (_peer_routing_id_size);
-            errno_assert (rc == 0);
-            if (_peer_routing_id_size > 0)
-                memcpy (routing_id.data (), _peer_routing_id,
-                        _peer_routing_id_size);
-            routing_id.set_flags (msg_t::routing_id);
-            const int push_rc = _session->push_msg (&routing_id);
-            errno_assert (push_rc == 0);
-            _session->flush ();
         }
     } else {
         //  Normal operation: process received data
@@ -1389,6 +1394,17 @@ void zlink::asio_ws_engine_t::error (error_reason_t reason_)
 {
     WS_ENGINE_DBG ("error: reason=%d", reason_);
 
+    if (_terminating)
+        return;
+
+    const bool handshaked = !_handshaking;
+
+    // protocol errors have been signaled at the point where they occurred
+    if (reason_ != protocol_error && _handshaking && _socket) {
+        const int err = errno;
+        _socket->event_handshake_failed_no_detail (_endpoint_uri_pair, err);
+    }
+
     if (reason_ == timeout_error) {
         if (_handshaking)
             set_last_error (zmp_error_handshake_timeout, NULL);
@@ -1410,9 +1426,31 @@ void zlink::asio_ws_engine_t::error (error_reason_t reason_)
 
     _io_error = true;
 
-    if (_session) {
-        _session->engine_error (false, reason_);
+    uint64_t disconnect_reason = ZLINK_DISCONNECT_UNKNOWN;
+    if (_socket && _socket->is_ctx_terminated ()) {
+        disconnect_reason = ZLINK_DISCONNECT_CTX_TERM;
+    } else if (_handshaking || reason_ == protocol_error) {
+        disconnect_reason = ZLINK_DISCONNECT_HANDSHAKE_FAILED;
+    } else if (reason_ == timeout_error || reason_ == connection_error) {
+        disconnect_reason = ZLINK_DISCONNECT_TRANSPORT_ERROR;
     }
+
+    const blob_t *routing_id = _session ? &_session->peer_routing_id () : NULL;
+    const unsigned char *routing_id_data =
+      routing_id ? routing_id->data () : NULL;
+    const size_t routing_id_size = routing_id ? routing_id->size () : 0;
+
+    if (_socket) {
+        _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
+                                     routing_id_data, routing_id_size);
+    }
+
+    if (_session) {
+        _session->flush ();
+        _session->engine_error (handshaked, reason_);
+    }
+
+    terminate ();
 }
 
 void zlink::asio_ws_engine_t::terminate ()

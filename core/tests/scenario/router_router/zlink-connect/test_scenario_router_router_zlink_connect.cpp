@@ -28,7 +28,7 @@ struct Config
     int api_port;
     int sender_threads;
     int hwm;
-    int warmup_mode; // 0 legacy, 1 stable
+    int warmup_mode; // 0 legacy, 1 stable, 2 none
 };
 
 struct Counters
@@ -59,16 +59,28 @@ struct Counters
 
 struct EventCounters
 {
+    std::atomic<long> connected;
     std::atomic<long> connection_ready;
+    std::atomic<long> connect_delayed;
+    std::atomic<long> connect_delayed_zero;
+    std::atomic<long> connect_delayed_nonzero;
     std::atomic<long> connect_retried;
     std::atomic<long> disconnected;
     std::atomic<long> handshake_failed;
+    std::atomic<long long> first_connected_ms;
+    std::atomic<long long> first_connection_ready_ms;
 
     EventCounters ()
-        : connection_ready (0),
+        : connected (0),
+          connection_ready (0),
+          connect_delayed (0),
+          connect_delayed_zero (0),
+          connect_delayed_nonzero (0),
           connect_retried (0),
           disconnected (0),
-          handshake_failed (0)
+          handshake_failed (0),
+          first_connected_ms (-1),
+          first_connection_ready_ms (-1)
     {
     }
 };
@@ -76,6 +88,7 @@ struct EventCounters
 struct Result
 {
     bool ready;
+    double ready_wait_ms;
     long req_sent;
     long api_recv;
     long reply_recv;
@@ -85,10 +98,17 @@ struct Result
     long api_would_block;
     long api_host_unreachable;
     long api_other;
+    long event_connected;
     long event_connection_ready;
+    long event_connect_delayed;
+    long event_connect_delayed_zero;
+    long event_connect_delayed_nonzero;
     long event_connect_retried;
     long event_disconnected;
     long event_handshake_failed;
+    long long first_connected_ms;
+    long long first_connection_ready_ms;
+    long long connect_to_ready_ms;
     double elapsed_sec;
     double throughput_msg_s;
 };
@@ -99,6 +119,12 @@ void yield_for_ms (int ms)
       std::chrono::steady_clock::now () + std::chrono::milliseconds (ms);
     while (std::chrono::steady_clock::now () < until)
         std::this_thread::yield ();
+}
+
+void set_first_timestamp (std::atomic<long long> &slot, long long value)
+{
+    long long expected = -1;
+    slot.compare_exchange_strong (expected, value, std::memory_order_relaxed);
 }
 
 std::string endpoint (int port)
@@ -308,7 +334,9 @@ struct MonitorSocket
 
 bool attach_monitor (void *socket, std::vector<MonitorSocket> &mons)
 {
-    const int events = ZLINK_EVENT_CONNECTED | ZLINK_EVENT_CONNECT_RETRIED
+    const int events =
+      ZLINK_EVENT_CONNECTED | ZLINK_EVENT_CONNECTION_READY
+      | ZLINK_EVENT_CONNECT_DELAYED | ZLINK_EVENT_CONNECT_RETRIED
                        | ZLINK_EVENT_DISCONNECTED | ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                        | ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
                        | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
@@ -336,16 +364,38 @@ void close_monitors (std::vector<MonitorSocket> &mons)
     mons.clear ();
 }
 
-void collect_monitor_once (void *monitor, EventCounters &events)
+void collect_monitor_once (void *monitor,
+                          EventCounters &events,
+                          const std::chrono::steady_clock::time_point &round_begin)
 {
     for (;;) {
         zlink_monitor_event_t ev;
         if (zlink_monitor_recv (monitor, &ev, ZLINK_DONTWAIT) != 0)
             break;
 
+        const long long elapsed_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            std::chrono::steady_clock::now () - round_begin)
+            .count ();
+
         switch (ev.event) {
             case ZLINK_EVENT_CONNECTED:
+                events.connected.fetch_add (1, std::memory_order_relaxed);
+                set_first_timestamp (events.first_connected_ms, elapsed_ms);
+                break;
+            case ZLINK_EVENT_CONNECTION_READY:
                 events.connection_ready.fetch_add (1, std::memory_order_relaxed);
+                set_first_timestamp (events.first_connection_ready_ms,
+                                     elapsed_ms);
+                break;
+            case ZLINK_EVENT_CONNECT_DELAYED:
+                events.connect_delayed.fetch_add (1, std::memory_order_relaxed);
+                if (ev.value == 0)
+                    events.connect_delayed_zero.fetch_add (
+                      1, std::memory_order_relaxed);
+                else
+                    events.connect_delayed_nonzero.fetch_add (
+                      1, std::memory_order_relaxed);
                 break;
             case ZLINK_EVENT_CONNECT_RETRIED:
                 events.connect_retried.fetch_add (1, std::memory_order_relaxed);
@@ -382,6 +432,9 @@ void wake_receivers (void *play_client, void *api_client)
 bool run_round (const Config &cfg, Result &out)
 {
     memset (&out, 0, sizeof (out));
+    out.first_connected_ms = -1;
+    out.first_connection_ready_ms = -1;
+    out.connect_to_ready_ms = -1;
 
     void *ctx = zlink_ctx_new ();
     void *play_server = NULL;
@@ -406,6 +459,7 @@ bool run_round (const Config &cfg, Result &out)
 
     const size_t qcap = static_cast<size_t> (std::max (64, cfg.inflight * 4));
     SendQueue queue (qcap);
+    const auto round_begin = std::chrono::steady_clock::now ();
 
     bool ok = false;
     const char *fail_reason = "unknown";
@@ -474,11 +528,11 @@ bool run_round (const Config &cfg, Result &out)
                    || sender_running.load (std::memory_order_acquire)
                    || producer_running.load (std::memory_order_acquire)) {
                 for (size_t i = 0; i < mons.size (); ++i)
-                    collect_monitor_once (mons[i].monitor, ev);
+                    collect_monitor_once (mons[i].monitor, ev, round_begin);
                 yield_for_ms (2);
             }
             for (size_t i = 0; i < mons.size (); ++i)
-                collect_monitor_once (mons[i].monitor, ev);
+                collect_monitor_once (mons[i].monitor, ev, round_begin);
         });
 
         api_thread = std::thread ([&]() {
@@ -597,7 +651,10 @@ bool run_round (const Config &cfg, Result &out)
         });
 
         bool ready = false;
-        if (cfg.warmup_mode == 0) {
+        const auto ready_wait_begin = std::chrono::steady_clock::now ();
+        if (cfg.warmup_mode == 2) {
+            ready = true;
+        } else if (cfg.warmup_mode == 0) {
             for (int i = 0; i < 300 && !ready; ++i) {
                 const long outstanding =
                   c.req_sent.load (std::memory_order_relaxed)
@@ -647,6 +704,10 @@ bool run_round (const Config &cfg, Result &out)
             fail_reason = "warmup not ready";
             break;
         }
+        out.ready_wait_ms =
+          std::chrono::duration_cast<std::chrono::duration<double, std::milli> > (
+            std::chrono::steady_clock::now () - ready_wait_begin)
+            .count ();
 
         const long base_req = c.req_sent.load (std::memory_order_relaxed);
         const long base_api = c.api_recv.load (std::memory_order_relaxed);
@@ -771,12 +832,27 @@ bool run_round (const Config &cfg, Result &out)
     if (monitor_thread.joinable ())
         monitor_thread.join ();
 
+    out.event_connected = ev.connected.load (std::memory_order_relaxed);
     out.event_connection_ready =
       ev.connection_ready.load (std::memory_order_relaxed);
+    out.event_connect_delayed =
+      ev.connect_delayed.load (std::memory_order_relaxed);
+    out.event_connect_delayed_zero =
+      ev.connect_delayed_zero.load (std::memory_order_relaxed);
+    out.event_connect_delayed_nonzero =
+      ev.connect_delayed_nonzero.load (std::memory_order_relaxed);
     out.event_connect_retried = ev.connect_retried.load (std::memory_order_relaxed);
     out.event_disconnected = ev.disconnected.load (std::memory_order_relaxed);
     out.event_handshake_failed =
       ev.handshake_failed.load (std::memory_order_relaxed);
+    out.first_connected_ms = ev.first_connected_ms.load (std::memory_order_relaxed);
+    out.first_connection_ready_ms =
+      ev.first_connection_ready_ms.load (std::memory_order_relaxed);
+    if (out.first_connected_ms >= 0 && out.first_connection_ready_ms >= 0
+        && out.first_connection_ready_ms >= out.first_connected_ms) {
+        out.connect_to_ready_ms =
+          out.first_connection_ready_ms - out.first_connected_ms;
+    }
 
     close_monitors (mons);
 
@@ -822,7 +898,8 @@ void print_result (const char *name, const Config &cfg, const Result &r)
     printf ("[%s] size=%zu duration=%ds ccu=%d inflight=%d self=%d senders=%d hwm=%d warmup=%s\n",
             name, cfg.size, cfg.duration_sec, cfg.ccu, cfg.inflight,
             cfg.self_connect ? 1 : 0, cfg.sender_threads, cfg.hwm,
-            cfg.warmup_mode == 0 ? "legacy" : "stable");
+            cfg.warmup_mode == 0 ? "legacy"
+                                 : (cfg.warmup_mode == 2 ? "none" : "stable"));
     printf ("  ready=%d req_sent=%ld api_recv=%ld reply_recv=%ld outstanding=%ld\n",
             r.ready ? 1 : 0, r.req_sent, r.api_recv, r.reply_recv, outstanding);
     printf ("  play_send_err: would_block=%ld host_unreachable=%ld other=%ld\n",
@@ -830,11 +907,23 @@ void print_result (const char *name, const Config &cfg, const Result &r)
     printf ("  api_send_err : would_block=%ld host_unreachable=%ld other=%ld\n",
             r.api_would_block, r.api_host_unreachable, r.api_other);
     printf (
-      "  monitor      : connection_ready=%ld connect_retried=%ld disconnected=%ld handshake_failed=%ld\n",
-      r.event_connection_ready, r.event_connect_retried, r.event_disconnected,
-      r.event_handshake_failed);
+      "  monitor      : connected=%ld connection_ready=%ld connect_delayed=%ld(zero=%ld nonzero=%ld) connect_retried=%ld disconnected=%ld handshake_failed=%ld\n",
+      r.event_connected, r.event_connection_ready, r.event_connect_delayed,
+      r.event_connect_delayed_zero, r.event_connect_delayed_nonzero,
+      r.event_connect_retried, r.event_disconnected, r.event_handshake_failed);
+    printf (
+      "  timing       : ready_wait_ms=%.2f first_connected_ms=%lld first_connection_ready_ms=%lld connect_to_ready_ms=%lld\n",
+      r.ready_wait_ms, r.first_connected_ms, r.first_connection_ready_ms,
+      r.connect_to_ready_ms);
     printf ("  throughput   : %.0f msg/s (elapsed %.2fs)\n", r.throughput_msg_s,
             r.elapsed_sec);
+    printf (
+      "METRIC ready_wait_ms=%.2f first_connected_ms=%lld first_connection_ready_ms=%lld connect_to_ready_ms=%lld connected=%ld connection_ready=%ld connect_delayed=%ld connect_delayed_zero=%ld connect_delayed_nonzero=%ld connect_retried=%ld disconnected=%ld handshake_failed=%ld throughput_msg_s=%.0f\n",
+      r.ready_wait_ms, r.first_connected_ms, r.first_connection_ready_ms,
+      r.connect_to_ready_ms, r.event_connected, r.event_connection_ready,
+      r.event_connect_delayed, r.event_connect_delayed_zero,
+      r.event_connect_delayed_nonzero, r.event_connect_retried,
+      r.event_disconnected, r.event_handshake_failed, r.throughput_msg_s);
 }
 
 } // namespace
@@ -851,7 +940,9 @@ int main (int argc, char **argv)
     cfg.api_port = arg_int (argc, argv, "--api-port", 16201);
     cfg.sender_threads = arg_int (argc, argv, "--senders", 1);
     cfg.hwm = arg_int (argc, argv, "--hwm", 1000000);
-    cfg.warmup_mode = arg_has (argc, argv, "--warmup-legacy") ? 0 : 1;
+    cfg.warmup_mode = arg_has (argc, argv, "--warmup-none")
+                        ? 2
+                        : (arg_has (argc, argv, "--warmup-legacy") ? 0 : 1);
 
     Result r;
     const bool ok = run_round (cfg, r);

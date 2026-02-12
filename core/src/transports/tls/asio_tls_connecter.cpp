@@ -29,6 +29,7 @@
 #endif
 
 #include <limits>
+#include <cerrno>
 
 // Debug logging for ASIO TLS connecter - set to 1 to enable
 #define ASIO_TLS_CONNECTER_DEBUG 0
@@ -69,6 +70,21 @@ std::string extract_tls_hostname (const std::string &address)
         return std::string ();
 
     return host;
+}
+
+int connect_delayed_errno_value ()
+{
+#ifdef ZLINK_HAVE_WINDOWS
+#ifdef WSAEWOULDBLOCK
+    return WSAEWOULDBLOCK;
+#elif defined(WSAEINPROGRESS)
+    return WSAEINPROGRESS;
+#else
+    return EINPROGRESS;
+#endif
+#else
+    return EINPROGRESS;
+#endif
 }
 }
 
@@ -284,7 +300,8 @@ void zlink::asio_tls_connecter_t::start_connecting ()
     add_connect_timer ();
 
     _socket_ptr->event_connect_delayed (
-      make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
+      make_unconnected_connect_endpoint_pair (_endpoint_str),
+      connect_delayed_errno_value ());
 }
 
 void zlink::asio_tls_connecter_t::on_tcp_connect (

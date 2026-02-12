@@ -127,6 +127,21 @@ zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 
     return adjusted;
 }
+
+int connect_delayed_errno_value ()
+{
+#ifdef ZLINK_HAVE_WINDOWS
+#ifdef WSAEWOULDBLOCK
+    return WSAEWOULDBLOCK;
+#elif defined(WSAEINPROGRESS)
+    return WSAEINPROGRESS;
+#else
+    return EINPROGRESS;
+#endif
+#else
+    return EINPROGRESS;
+#endif
+}
 }
 
 zlink::asio_ws_connecter_t::asio_ws_connecter_t (io_thread_t *io_thread_,
@@ -353,7 +368,8 @@ void zlink::asio_ws_connecter_t::start_connecting ()
     add_connect_timer ();
 
     _socket_ptr->event_connect_delayed (
-      make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
+      make_unconnected_connect_endpoint_pair (_endpoint_str),
+      connect_delayed_errno_value ());
 }
 
 void zlink::asio_ws_connecter_t::on_connect (const boost::system::error_code &ec)

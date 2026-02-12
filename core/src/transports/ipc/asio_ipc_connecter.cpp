@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include <limits>
+#include <cerrno>
 #include <memory>
 
 //  Debug logging for ASIO IPC connecter - set to 1 to enable
@@ -47,6 +48,21 @@ make_ipc_endpoint (const zlink::ipc_address_t &addr_)
     memcpy (endpoint.data (), addr_.addr (), addr_.addrlen ());
     endpoint.resize (addr_.addrlen ());
     return endpoint;
+}
+
+int connect_delayed_errno_value ()
+{
+#ifdef ZLINK_HAVE_WINDOWS
+#ifdef WSAEWOULDBLOCK
+    return WSAEWOULDBLOCK;
+#elif defined(WSAEINPROGRESS)
+    return WSAEINPROGRESS;
+#else
+    return EINPROGRESS;
+#endif
+#else
+    return EINPROGRESS;
+#endif
 }
 }
 
@@ -184,7 +200,8 @@ void zlink::asio_ipc_connecter_t::start_connecting ()
     add_connect_timer ();
 
     _socket_ptr->event_connect_delayed (
-      make_unconnected_connect_endpoint_pair (_endpoint_str), 0);
+      make_unconnected_connect_endpoint_pair (_endpoint_str),
+      connect_delayed_errno_value ());
 }
 
 void zlink::asio_ipc_connecter_t::on_connect (

@@ -24,6 +24,38 @@ LD_LIBRARY_PATH=core/build/lib core/build/bin/test_scenario_router_router_zlink_
 core/tests/scenario/router_router/zlink-connect/run_zlink_connect_scenarios.sh
 ```
 
+Warmup mode options:
+
+- default: stable warmup
+- `--warmup-legacy`: legacy warmup loop
+- `--warmup-none`: start benchmark traffic immediately without ready gate
+
 Logs are written to:
 
 `core/tests/scenario/router_router/zlink-connect/result/<timestamp>/`
+
+## Output Metrics
+
+The runner prints standard summary lines and one machine-readable line:
+
+```text
+METRIC ready_wait_ms=... first_connected_ms=... first_connection_ready_ms=... connect_to_ready_ms=... ...
+```
+
+Event counters collected from monitor:
+
+- `connected`: `ZLINK_EVENT_CONNECTED`
+- `connection_ready`: `ZLINK_EVENT_CONNECTION_READY`
+- `connect_delayed`: `ZLINK_EVENT_CONNECT_DELAYED`
+- `connect_delayed_zero`: delayed events with `value == 0`
+- `connect_delayed_nonzero`: delayed events with `value != 0`
+- `connect_retried`: `ZLINK_EVENT_CONNECT_RETRIED`
+- `disconnected`: `ZLINK_EVENT_DISCONNECTED`
+- `handshake_failed`: handshake failure events (`NO_DETAIL/PROTOCOL/AUTH`)
+
+Timing fields:
+
+- `ready_wait_ms`: warmup start to ready condition
+- `first_connected_ms`: first `CONNECTED` event offset from run start
+- `first_connection_ready_ms`: first `CONNECTION_READY` event offset from run start
+- `connect_to_ready_ms`: `first_connection_ready_ms - first_connected_ms` (or `-1` if unavailable)

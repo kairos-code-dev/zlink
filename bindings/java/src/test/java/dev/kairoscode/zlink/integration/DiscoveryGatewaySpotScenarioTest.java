@@ -90,6 +90,33 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertEquals("hello-move",
                                       new String(movePayload, StandardCharsets.UTF_8).trim());
                                     assertTrue(ridMove.length > 0);
+
+                                    try (Gateway.SendContext sendContext =
+                                           gateway.createSendContext();
+                                         Message moveMsg = Message.fromBytes(
+                                           "hello-move-ctx".getBytes(
+                                             StandardCharsets.UTF_8))) {
+                                        gateway.sendMove(preparedSvc,
+                                          new Message[]{moveMsg}, SendFlag.NONE,
+                                          sendContext);
+                                    }
+                                    byte[] ridMoveCtx =
+                                      TestTransports.recvWithTimeout(providerRouter, 256, 2000);
+                                    byte[] moveCtxPayload = new byte[0];
+                                    for (int i = 0; i < 3; i++) {
+                                        moveCtxPayload =
+                                          TestTransports.recvWithTimeout(providerRouter, 256, 2000);
+                                        if (moveCtxPayload.length == 0)
+                                            continue;
+                                        if ("hello-move-ctx".equals(
+                                          new String(moveCtxPayload,
+                                            StandardCharsets.UTF_8).trim())) {
+                                            break;
+                                        }
+                                    }
+                                    assertEquals("hello-move-ctx",
+                                      new String(moveCtxPayload, StandardCharsets.UTF_8).trim());
+                                    assertTrue(ridMoveCtx.length > 0);
                                     }
                                 }
                             }
@@ -108,7 +135,9 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     peerNode.connectPeerPub(spotEp);
                                     sleep(100);
                                     try (Spot.PreparedTopic preparedTopic =
-                                           spot.prepareTopic("topic")) {
+                                           spot.prepareTopic("topic");
+                                         Spot.PublishContext publishContext =
+                                           spot.createPublishContext()) {
                                         spot.subscribe(preparedTopic);
                                         spot.publish(preparedTopic,
                                             new Message[]{Message.fromBytes("spot-msg".getBytes())}, SendFlag.NONE);
@@ -131,6 +160,22 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         assertEquals(1, spotMoveMsg.parts().length);
                                         assertEquals("spot-move",
                                           new String(spotMoveMsg.parts()[0].data(),
+                                            StandardCharsets.UTF_8).trim());
+                                    }
+
+                                    try (Message moveCtxMsg = Message.fromBytes(
+                                      "spot-move-ctx".getBytes(StandardCharsets.UTF_8))) {
+                                        spot.publishMove(preparedTopic,
+                                          new Message[]{moveCtxMsg}, SendFlag.NONE,
+                                          publishContext);
+                                    }
+                                    try (Spot.SpotMessages spotMoveCtxMsg =
+                                           TestTransports.spotReceiveMessagesWithTimeout(
+                                             spot, 5000)) {
+                                        assertEquals("topic", spotMoveCtxMsg.topicId());
+                                        assertEquals(1, spotMoveCtxMsg.parts().length);
+                                        assertEquals("spot-move-ctx",
+                                          new String(spotMoveCtxMsg.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
                                     }
 
@@ -181,9 +226,18 @@ public class DiscoveryGatewaySpotScenarioTest {
                                           new String(borrowed1.topicId().toArray(
                                             ValueLayout.JAVA_BYTE),
                                             StandardCharsets.UTF_8));
+                                        assertEquals(5, borrowed1.topicIdLength());
+                                        assertTrue(borrowed1.topicIdBuffer().address() != 0);
+                                        assertEquals("topic",
+                                          new String(borrowed1.topicIdBuffer().asSlice(
+                                            0, borrowed1.topicIdLength()).toArray(
+                                            ValueLayout.JAVA_BYTE),
+                                            StandardCharsets.UTF_8));
                                         assertEquals("spot-borrowed-1",
                                           new String(borrowed1.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
+                                        long borrowedTopicAddr =
+                                          borrowed1.topicIdBuffer().address();
 
                                         try (Message rawMsg = Message.fromBytes(
                                           "spot-borrowed-2".getBytes(
@@ -195,6 +249,9 @@ public class DiscoveryGatewaySpotScenarioTest {
                                           spot.recvRawBorrowed(ReceiveFlag.NONE,
                                             recvContext);
                                         assertTrue(borrowed1 == borrowed2);
+                                        assertEquals(5, borrowed2.topicIdLength());
+                                        assertTrue(borrowed2.topicIdBuffer().address()
+                                          == borrowedTopicAddr);
                                         assertEquals("spot-borrowed-2",
                                           new String(borrowed2.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());

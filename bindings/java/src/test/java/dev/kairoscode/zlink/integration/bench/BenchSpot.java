@@ -23,6 +23,7 @@ final class BenchSpot {
         Spot spotPub = null;
         Spot spotSub = null;
         Spot.PreparedTopic preparedTopic = null;
+        Spot.PublishContext publishContext = null;
         Spot.RecvContext recvContext = null;
         Arena payloadArena = null;
         try {
@@ -34,6 +35,7 @@ final class BenchSpot {
             spotPub = new Spot(nodePub);
             spotSub = new Spot(nodeSub);
             preparedTopic = spotPub.prepareTopic("bench");
+            publishContext = spotPub.createPublishContext();
             spotSub.subscribe(preparedTopic);
             recvContext = spotSub.createRecvContext();
             BenchUtil.sleep(300);
@@ -50,7 +52,8 @@ final class BenchSpot {
             for (int i = 0; i < warmup; i++) {
                 try (Message msg = Message.fromNativeData(payloadSegment)) {
                     sendParts[0] = msg;
-                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
+                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+                      publishContext);
                 } finally {
                     sendParts[0] = null;
                 }
@@ -61,7 +64,8 @@ final class BenchSpot {
             for (int i = 0; i < latCount; i++) {
                 try (Message msg = Message.fromNativeData(payloadSegment)) {
                     sendParts[0] = msg;
-                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
+                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+                      publishContext);
                 } finally {
                     sendParts[0] = null;
                 }
@@ -93,7 +97,8 @@ final class BenchSpot {
                 try {
                     try (Message msg = Message.fromNativeData(payloadSegment)) {
                         sendParts[0] = msg;
-                        spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
+                        spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE,
+                          publishContext);
                     } finally {
                         sendParts[0] = null;
                     }
@@ -111,6 +116,12 @@ final class BenchSpot {
         } catch (Exception e) {
             return 2;
         } finally {
+            try {
+                if (publishContext != null) {
+                    publishContext.close();
+                }
+            } catch (Exception ignored) {
+            }
             try {
                 if (recvContext != null) {
                     recvContext.close();

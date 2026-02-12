@@ -41,6 +41,13 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public void publish(PreparedTopic topic, Message[] parts, SendFlag flags,
+                        PublishContext context) {
+        Objects.requireNonNull(topic, "topic");
+        Objects.requireNonNull(context, "context");
+        publishInternal(context, topic.cString(), parts, flags, false);
+    }
+
     public void publishMove(String topicId, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topicId, "topicId");
         try (Arena arena = Arena.ofConfined()) {
@@ -54,6 +61,13 @@ public final class Spot implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             publishInternal(arena, topic.cString(), parts, flags, true);
         }
+    }
+
+    public void publishMove(PreparedTopic topic, Message[] parts,
+                            SendFlag flags, PublishContext context) {
+        Objects.requireNonNull(topic, "topic");
+        Objects.requireNonNull(context, "context");
+        publishInternal(context, topic.cString(), parts, flags, true);
     }
 
     public void subscribe(String topicId) {
@@ -96,6 +110,10 @@ public final class Spot implements AutoCloseable {
 
     public PreparedTopic prepareTopic(String topicId) {
         return new PreparedTopic(topicId);
+    }
+
+    public PublishContext createPublishContext() {
+        return new PublishContext();
     }
 
     public SpotMessage recv(ReceiveFlag flags) {
@@ -142,7 +160,8 @@ public final class Spot implements AutoCloseable {
     public SpotRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        MemorySegment topicRaw = recvRawIntoContext(flags, context);
+        int topicLen = recvRawIntoContext(flags, context);
+        MemorySegment topicRaw = context.topicId().asSlice(0, topicLen);
         return new SpotRawMessage(topicRaw, context.reusableParts());
     }
 
@@ -150,9 +169,10 @@ public final class Spot implements AutoCloseable {
                                            RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        MemorySegment topicRaw = recvRawIntoContext(flags, context);
+        recvRawIntoContext(flags, context);
         SpotRawBorrowed out = context.borrowedRaw();
-        out.update(topicRaw, context.reusableParts());
+        out.update(context.topicId(), context.topicIdLength(),
+            context.reusableParts());
         return out;
     }
 
@@ -173,22 +193,36 @@ public final class Spot implements AutoCloseable {
     public record SpotRawMessage(MemorySegment topicId, Message[] parts) {}
 
     public static final class SpotRawBorrowed {
-        private MemorySegment topicId = MemorySegment.NULL;
+        private MemorySegment topicIdBuffer = MemorySegment.NULL;
+        private int topicIdLength = 0;
         private Message[] parts = new Message[0];
 
         private SpotRawBorrowed() {
         }
 
         public MemorySegment topicId() {
-            return topicId;
+            if (topicIdBuffer.address() == 0 || topicIdLength <= 0)
+                return MemorySegment.NULL;
+            return topicIdBuffer.asSlice(0, topicIdLength);
+        }
+
+        public MemorySegment topicIdBuffer() {
+            return topicIdBuffer;
+        }
+
+        public int topicIdLength() {
+            return topicIdLength;
         }
 
         public Message[] parts() {
             return parts;
         }
 
-        void update(MemorySegment topicId, Message[] parts) {
-            this.topicId = topicId == null ? MemorySegment.NULL : topicId;
+        void update(MemorySegment topicIdBuffer, int topicIdLength,
+                    Message[] parts) {
+            this.topicIdBuffer = topicIdBuffer == null ? MemorySegment.NULL
+                : topicIdBuffer;
+            this.topicIdLength = Math.max(topicIdLength, 0);
             this.parts = parts == null ? new Message[0] : parts;
         }
     }
@@ -223,6 +257,43 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public static final class PublishContext implements AutoCloseable {
+        private Arena arena;
+        private MemorySegment vec;
+        private int vecCapacity;
+
+        PublishContext() {
+            this.arena = Arena.ofConfined();
+            this.vec = MemorySegment.NULL;
+            this.vecCapacity = 0;
+        }
+
+        void ensureOpen() {
+            if (arena == null || !arena.scope().isAlive())
+                throw new IllegalStateException("publish context is closed");
+        }
+
+        MemorySegment ensureVector(int requiredParts) {
+            ensureOpen();
+            if (requiredParts <= 0)
+                throw new IllegalArgumentException("parts required");
+            if (vecCapacity < requiredParts) {
+                vec = arena.allocate(NativeLayouts.MSG_LAYOUT, requiredParts);
+                vecCapacity = requiredParts;
+            }
+            return vec;
+        }
+
+        @Override
+        public void close() {
+            if (arena != null && arena.scope().isAlive())
+                arena.close();
+            arena = null;
+            vec = MemorySegment.NULL;
+            vecCapacity = 0;
+        }
+    }
+
     public static final class SpotMessages implements AutoCloseable {
         private final String topicId;
         private final Message[] parts;
@@ -252,6 +323,7 @@ public final class Spot implements AutoCloseable {
         private final MemorySegment partCount;
         private final MemorySegment topicId;
         private final MemorySegment topicLength;
+        private int topicIdLength;
         private Message[] reusableParts;
         private final SpotRawBorrowed borrowedRaw;
 
@@ -261,6 +333,7 @@ public final class Spot implements AutoCloseable {
             this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
             this.topicId = arena.allocate(TOPIC_CAPACITY);
             this.topicLength = arena.allocate(ValueLayout.JAVA_LONG);
+            this.topicIdLength = 0;
             this.reusableParts = new Message[0];
             this.borrowedRaw = new SpotRawBorrowed();
         }
@@ -290,9 +363,19 @@ public final class Spot implements AutoCloseable {
             return topicLength;
         }
 
+        int topicIdLength() {
+            ensureOpen();
+            return topicIdLength;
+        }
+
         Message[] reusableParts() {
             ensureOpen();
             return reusableParts;
+        }
+
+        void setTopicIdLength(int length) {
+            ensureOpen();
+            topicIdLength = Math.max(length, 0);
         }
 
         void setReusableParts(Message[] parts) {
@@ -309,7 +392,8 @@ public final class Spot implements AutoCloseable {
         public void close() {
             Message.closeAll(reusableParts);
             reusableParts = new Message[0];
-            borrowedRaw.update(MemorySegment.NULL, reusableParts);
+            topicIdLength = 0;
+            borrowedRaw.update(MemorySegment.NULL, 0, reusableParts);
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
@@ -324,6 +408,27 @@ public final class Spot implements AutoCloseable {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
         MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
+        publishInternal(vec, topicId, parts, flags, move);
+    }
+
+    private void publishInternal(PublishContext context,
+                                 MemorySegment topicId,
+                                 Message[] parts,
+                                 SendFlag flags,
+                                 boolean move) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
+        MemorySegment vec = context.ensureVector(parts.length);
+        publishInternal(vec, topicId, parts, flags, move);
+    }
+
+    private void publishInternal(MemorySegment vec,
+                                 MemorySegment topicId,
+                                 Message[] parts,
+                                 SendFlag flags,
+                                 boolean move) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
         int initialized = 0;
         try {
             for (int i = 0; i < parts.length; i++) {
@@ -371,8 +476,8 @@ public final class Spot implements AutoCloseable {
         return topicLen;
     }
 
-    private MemorySegment recvRawIntoContext(ReceiveFlag flags,
-                                             RecvContext context) {
+    private int recvRawIntoContext(ReceiveFlag flags,
+                                   RecvContext context) {
         context.topicLength().set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
         int rc = Native.spotSubRecv(subHandle,
             context.partsPtr(),
@@ -389,6 +494,7 @@ public final class Spot implements AutoCloseable {
         context.setReusableParts(reusable);
         int topicLen = normalizeTopicLength(context.topicId(), TOPIC_CAPACITY,
             context.topicLength().get(ValueLayout.JAVA_LONG, 0));
-        return context.topicId().asSlice(0, topicLen);
+        context.setTopicIdLength(topicLen);
+        return topicLen;
     }
 }

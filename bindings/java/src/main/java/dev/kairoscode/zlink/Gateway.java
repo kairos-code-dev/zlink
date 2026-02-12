@@ -45,6 +45,13 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    public void send(PreparedService service, Message[] parts, SendFlag flags,
+                     SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(context, "context");
+        sendInternal(context, service.cString(), parts, flags, false);
+    }
+
     public void sendMove(String serviceName, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(serviceName, "serviceName");
         try (Arena arena = Arena.ofConfined()) {
@@ -58,6 +65,13 @@ public final class Gateway implements AutoCloseable {
         try (Arena arena = Arena.ofConfined()) {
             sendInternal(arena, service.cString(), parts, flags, true);
         }
+    }
+
+    public void sendMove(PreparedService service, Message[] parts,
+                         SendFlag flags, SendContext context) {
+        Objects.requireNonNull(service, "service");
+        Objects.requireNonNull(context, "context");
+        sendInternal(context, service.cString(), parts, flags, true);
     }
 
     public GatewayMessage recv(ReceiveFlag flags) {
@@ -99,7 +113,8 @@ public final class Gateway implements AutoCloseable {
     public GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        MemorySegment serviceRaw = recvRawIntoContext(flags, context);
+        int serviceLen = recvRawIntoContext(flags, context);
+        MemorySegment serviceRaw = context.serviceName().asSlice(0, serviceLen);
         return new GatewayRawMessage(serviceRaw, context.reusableParts());
     }
 
@@ -107,9 +122,10 @@ public final class Gateway implements AutoCloseable {
                                               RecvContext context) {
         Objects.requireNonNull(context, "context");
         context.ensureOpen();
-        MemorySegment serviceRaw = recvRawIntoContext(flags, context);
+        recvRawIntoContext(flags, context);
         GatewayRawBorrowed out = context.borrowedRaw();
-        out.update(serviceRaw, context.reusableParts());
+        out.update(context.serviceName(), context.serviceNameLength(),
+            context.reusableParts());
         return out;
     }
 
@@ -158,6 +174,10 @@ public final class Gateway implements AutoCloseable {
         return new PreparedService(serviceName);
     }
 
+    public SendContext createSendContext() {
+        return new SendContext();
+    }
+
     public void setSockOpt(SocketOption option, byte[] value) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment buf = arena.allocate(value.length);
@@ -191,22 +211,37 @@ public final class Gateway implements AutoCloseable {
     public record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
 
     public static final class GatewayRawBorrowed {
-        private MemorySegment serviceName = MemorySegment.NULL;
+        private MemorySegment serviceNameBuffer = MemorySegment.NULL;
+        private int serviceNameLength = 0;
         private Message[] parts = new Message[0];
 
         private GatewayRawBorrowed() {
         }
 
         public MemorySegment serviceName() {
-            return serviceName;
+            if (serviceNameBuffer.address() == 0 || serviceNameLength <= 0)
+                return MemorySegment.NULL;
+            return serviceNameBuffer.asSlice(0, serviceNameLength);
+        }
+
+        public MemorySegment serviceNameBuffer() {
+            return serviceNameBuffer;
+        }
+
+        public int serviceNameLength() {
+            return serviceNameLength;
         }
 
         public Message[] parts() {
             return parts;
         }
 
-        void update(MemorySegment serviceName, Message[] parts) {
-            this.serviceName = serviceName == null ? MemorySegment.NULL : serviceName;
+        void update(MemorySegment serviceNameBuffer,
+                    int serviceNameLength,
+                    Message[] parts) {
+            this.serviceNameBuffer = serviceNameBuffer == null
+                ? MemorySegment.NULL : serviceNameBuffer;
+            this.serviceNameLength = Math.max(serviceNameLength, 0);
             this.parts = parts == null ? new Message[0] : parts;
         }
     }
@@ -241,6 +276,43 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    public static final class SendContext implements AutoCloseable {
+        private Arena arena;
+        private MemorySegment vec;
+        private int vecCapacity;
+
+        SendContext() {
+            this.arena = Arena.ofConfined();
+            this.vec = MemorySegment.NULL;
+            this.vecCapacity = 0;
+        }
+
+        void ensureOpen() {
+            if (arena == null || !arena.scope().isAlive())
+                throw new IllegalStateException("send context is closed");
+        }
+
+        MemorySegment ensureVector(int requiredParts) {
+            ensureOpen();
+            if (requiredParts <= 0)
+                throw new IllegalArgumentException("parts required");
+            if (vecCapacity < requiredParts) {
+                vec = arena.allocate(NativeLayouts.MSG_LAYOUT, requiredParts);
+                vecCapacity = requiredParts;
+            }
+            return vec;
+        }
+
+        @Override
+        public void close() {
+            if (arena != null && arena.scope().isAlive())
+                arena.close();
+            arena = null;
+            vec = MemorySegment.NULL;
+            vecCapacity = 0;
+        }
+    }
+
     public static final class GatewayMessages implements AutoCloseable {
         private final String serviceName;
         private final Message[] parts;
@@ -269,6 +341,7 @@ public final class Gateway implements AutoCloseable {
         private final MemorySegment partsPtr;
         private final MemorySegment partCount;
         private final MemorySegment serviceName;
+        private int serviceNameLength;
         private Message[] reusableParts;
         private final GatewayRawBorrowed borrowedRaw;
 
@@ -277,6 +350,7 @@ public final class Gateway implements AutoCloseable {
             this.partsPtr = arena.allocate(ValueLayout.ADDRESS);
             this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
             this.serviceName = arena.allocate(SERVICE_NAME_CAPACITY);
+            this.serviceNameLength = 0;
             this.reusableParts = new Message[0];
             this.borrowedRaw = new GatewayRawBorrowed();
         }
@@ -301,9 +375,19 @@ public final class Gateway implements AutoCloseable {
             return serviceName;
         }
 
+        int serviceNameLength() {
+            ensureOpen();
+            return serviceNameLength;
+        }
+
         Message[] reusableParts() {
             ensureOpen();
             return reusableParts;
+        }
+
+        void setServiceNameLength(int length) {
+            ensureOpen();
+            serviceNameLength = Math.max(length, 0);
         }
 
         void setReusableParts(Message[] parts) {
@@ -320,7 +404,8 @@ public final class Gateway implements AutoCloseable {
         public void close() {
             Message.closeAll(reusableParts);
             reusableParts = new Message[0];
-            borrowedRaw.update(MemorySegment.NULL, reusableParts);
+            serviceNameLength = 0;
+            borrowedRaw.update(MemorySegment.NULL, 0, reusableParts);
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
@@ -335,6 +420,27 @@ public final class Gateway implements AutoCloseable {
         if (parts == null || parts.length == 0)
             throw new IllegalArgumentException("parts required");
         MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
+        sendInternal(vec, serviceName, parts, flags, move);
+    }
+
+    private void sendInternal(SendContext context,
+                              MemorySegment serviceName,
+                              Message[] parts,
+                              SendFlag flags,
+                              boolean move) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
+        MemorySegment vec = context.ensureVector(parts.length);
+        sendInternal(vec, serviceName, parts, flags, move);
+    }
+
+    private void sendInternal(MemorySegment vec,
+                              MemorySegment serviceName,
+                              Message[] parts,
+                              SendFlag flags,
+                              boolean move) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
         int initialized = 0;
         try {
             for (int i = 0; i < parts.length; i++) {
@@ -368,8 +474,8 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
-    private MemorySegment recvRawIntoContext(ReceiveFlag flags,
-                                             RecvContext context) {
+    private int recvRawIntoContext(ReceiveFlag flags,
+                                   RecvContext context) {
         int rc = Native.gatewayRecv(handle,
             context.partsPtr(),
             context.partCount(),
@@ -384,7 +490,8 @@ public final class Gateway implements AutoCloseable {
         context.setReusableParts(reusable);
         int serviceLen = NativeHelpers.cStringLength(context.serviceName(),
             SERVICE_NAME_CAPACITY);
-        return context.serviceName().asSlice(0, serviceLen);
+        context.setServiceNameLength(serviceLen);
+        return serviceLen;
     }
 
 }

@@ -61,14 +61,18 @@ try (var ctx = new Context();
 - Gateway/SPOT low-copy path
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
+  - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (reused send vector)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Gateway.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawMessage`)
   - `Gateway.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Gateway.GatewayRawBorrowed`, reused object)
+  - `Gateway.GatewayRawBorrowed.serviceNameBuffer()` + `serviceNameLength()` (slice-free ID access)
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
+  - `Spot.createPublishContext()` + `publish/publishMove(PreparedTopic, ..., PublishContext)` (reused publish vector)
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
   - `Spot.createRecvContext()` + `recvRaw(ReceiveFlag, RecvContext)` (`Spot.SpotRawMessage`)
   - `Spot.createRecvContext()` + `recvRawBorrowed(ReceiveFlag, RecvContext)` (`Spot.SpotRawBorrowed`, reused object)
+  - `Spot.SpotRawBorrowed.topicIdBuffer()` + `topicIdLength()` (slice-free ID access)
   - `recvRaw` reuses internal `Message[]` instances in the `RecvContext`; do not close returned parts directly
   - `recvRawBorrowed` also reuses the wrapper object itself; consume values before the next recv call
   - `sendMove/publishMove` transfer message ownership (do not reuse moved `Message` instances)

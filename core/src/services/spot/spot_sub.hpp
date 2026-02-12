@@ -16,7 +16,6 @@
 namespace zlink
 {
 class spot_node_t;
-class socket_base_t;
 
 struct spot_shared_message_t
 {
@@ -45,8 +44,6 @@ class spot_sub_t
               int flags_,
               char *topic_out_,
               size_t *topic_len_);
-
-    socket_base_t *sub_socket () const;
 
     int set_socket_option (int option_,
                            const void *optval_,

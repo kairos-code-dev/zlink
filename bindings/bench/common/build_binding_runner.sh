@@ -26,7 +26,17 @@ case "$BINDING" in
     mkdir -p "$ROOT_DIR/bindings/cpp/benchwithzlink/build"
     c++ -O3 -std=c++17 \
       -I"$ROOT_DIR/core/include" \
+      -I"$ROOT_DIR/bindings/cpp/include" \
       "$ROOT_DIR/bindings/cpp/benchwithzlink/pair_bench.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_pair.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_pubsub.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_dealer_dealer.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_dealer_router.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_router_router.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_router_router_poll.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_stream.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_gateway.cpp" \
+      "$ROOT_DIR/bindings/cpp/benchwithzlink/bench_pattern_spot.cpp" \
       -L"$ROOT_DIR/bindings/cpp/native/linux-x86_64" -lzlink \
       -Wl,-rpath,"$ROOT_DIR/bindings/cpp/native/linux-x86_64" \
       -o "$ROOT_DIR/bindings/cpp/benchwithzlink/build/pair_bench" >/dev/null

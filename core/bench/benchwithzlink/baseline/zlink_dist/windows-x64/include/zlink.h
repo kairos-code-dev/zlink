@@ -570,8 +570,6 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              const char *ca_cert,
                                              const char *hostname,
                                              int trust_system);
-ZLINK_EXPORT void *zlink_spot_node_pub_socket (void *node);
-ZLINK_EXPORT void *zlink_spot_node_sub_socket (void *node);
 
 /* Spot Node socket roles */
 #define ZLINK_SPOT_NODE_SOCKET_PUB 1
@@ -614,7 +612,6 @@ ZLINK_EXPORT int zlink_spot_sub_setsockopt (void *sub,
                                             int option,
                                             const void *optval,
                                             size_t optvallen);
-ZLINK_EXPORT void *zlink_spot_sub_socket (void *sub);
 
 #if defined _WIN32
 #if defined _WIN64

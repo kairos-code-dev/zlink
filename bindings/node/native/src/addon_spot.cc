@@ -184,36 +184,6 @@ napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info)
     return ok;
 }
 
-napi_value spot_node_pub_socket(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    napi_get_value_external(env, argv[0], &node);
-    void *sock = zlink_spot_node_pub_socket(node);
-    if (!sock)
-        return throw_last_error(env, "spot_node_pub_socket failed");
-    napi_value ext;
-    napi_create_external(env, sock, NULL, NULL, &ext);
-    return ext;
-}
-
-napi_value spot_node_sub_socket(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *node = NULL;
-    napi_get_value_external(env, argv[0], &node);
-    void *sock = zlink_spot_node_sub_socket(node);
-    if (!sock)
-        return throw_last_error(env, "spot_node_sub_socket failed");
-    napi_value ext;
-    napi_create_external(env, sock, NULL, NULL, &ext);
-    return ext;
-}
-
 struct spot_handle_t
 {
     void *node;
@@ -386,32 +356,4 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "topic", t);
     napi_set_named_property(env, obj, "parts", arr);
     return obj;
-}
-
-napi_value spot_pub_socket(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    spot_handle_t *spot = get_spot_handle(env, argv[0]);
-    void *sock = (spot && spot->node) ? zlink_spot_node_pub_socket(spot->node) : NULL;
-    if (!sock)
-        return throw_last_error(env, "spot_pub_socket failed");
-    napi_value ext;
-    napi_create_external(env, sock, NULL, NULL, &ext);
-    return ext;
-}
-
-napi_value spot_sub_socket(napi_env env, napi_callback_info info)
-{
-    napi_value argv[1];
-    size_t argc = 1;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    spot_handle_t *spot = get_spot_handle(env, argv[0]);
-    void *sock = zlink_spot_sub_socket(spot ? spot->sub : NULL);
-    if (!sock)
-        return throw_last_error(env, "spot_sub_socket failed");
-    napi_value ext;
-    napi_create_external(env, sock, NULL, NULL, &ext);
-    return ext;
 }

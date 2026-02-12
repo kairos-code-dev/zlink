@@ -89,10 +89,6 @@ int main()
         if (node.bind(spot_ep.c_str()) != 0)
             continue;
         std::string spot_adv = spot_ep;
-        if (tc.name != "inproc") {
-            zlink::socket_t pub = zlink::socket_t::wrap(node.pub_handle());
-            spot_adv = bound_endpoint(pub);
-        }
         assert(node.connect_registry(reg_router.c_str()) == 0);
         assert(node.register_service("spot", spot_adv.c_str()) == 0);
 

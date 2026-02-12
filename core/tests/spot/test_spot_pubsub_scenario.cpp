@@ -59,6 +59,24 @@ void tearDown ()
 {
 }
 
+static int bind_spot_node_with_port_seed (void *node_,
+                                          const char *prefix_,
+                                          int *port_seed_,
+                                          char *endpoint_out_)
+{
+    if (!node_ || !prefix_ || !port_seed_ || !endpoint_out_) {
+        errno = EINVAL;
+        return -1;
+    }
+    for (int i = 0; i < 256; ++i) {
+        const int port = test_port ((*port_seed_)++);
+        snprintf (endpoint_out_, MAX_SOCKET_STRING, "%s%d", prefix_, port);
+        if (zlink_spot_node_bind (node_, endpoint_out_) == 0)
+            return 0;
+    }
+    return -1;
+}
+
 enum peer_transport_t
 {
     peer_transport_ipc = 0,
@@ -76,7 +94,7 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
 
     const char *topic = NULL;
     const char *payload = NULL;
-    const char *bind_endpoint = NULL;
+    const char *bind_prefix = NULL;
 
     switch (transport_) {
         case peer_transport_ipc:
@@ -86,22 +104,22 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
         case peer_transport_tcp:
             topic = "tcp:test";
             payload = "tcp-msg";
-            bind_endpoint = "tcp://127.0.0.1:*";
+            bind_prefix = "tcp://127.0.0.1:";
             break;
         case peer_transport_ws:
             topic = "ws:test";
             payload = "ws-msg";
-            bind_endpoint = "ws://127.0.0.1:*";
+            bind_prefix = "ws://127.0.0.1:";
             break;
         case peer_transport_tls:
             topic = "tls:test";
             payload = "tls-msg";
-            bind_endpoint = "tls://localhost:*";
+            bind_prefix = "tls://localhost:";
             break;
         case peer_transport_wss:
             topic = "wss:test";
             payload = "wss-msg";
-            bind_endpoint = "wss://localhost:*";
+            bind_prefix = "wss://localhost:";
             break;
         default:
             TEST_FAIL_MESSAGE ("Unknown peer transport");
@@ -121,10 +139,11 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_NOT_NULL (node_b);
 
     char endpoint_a[MAX_SOCKET_STRING] = {0};
+    char endpoint_b[MAX_SOCKET_STRING] = {0};
+    int port_seed = 29000;
 
     if (is_ipc) {
 #if defined(ZLINK_HAVE_IPC)
-        char endpoint_b[MAX_SOCKET_STRING];
         make_random_ipc_endpoint (endpoint_a);
         make_random_ipc_endpoint (endpoint_b);
 
@@ -141,13 +160,8 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
                                               files.server_key.c_str ()));
         }
 
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_a, bind_endpoint));
-
-        size_t endpoint_len = sizeof (endpoint_a);
-        void *pub_socket_a = zlink_spot_node_pub_socket (node_a);
-        TEST_ASSERT_NOT_NULL (pub_socket_a);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (
-          pub_socket_a, ZLINK_LAST_ENDPOINT, endpoint_a, &endpoint_len));
+        TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+          node_a, bind_prefix, &port_seed, endpoint_a));
 
         if (use_tls) {
             TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_tls_client (
@@ -157,7 +171,8 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
                                               files.server_key.c_str ()));
         }
 
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_bind (node_b, bind_endpoint));
+        TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+          node_b, bind_prefix, &port_seed, endpoint_b));
     }
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer_pub (node_b, endpoint_a));
@@ -1143,6 +1158,8 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
       zlink_discovery_subscribe (discovery, "spot-field-mmorpg"));
 
     std::vector<void *> nodes (spot_node_count, static_cast<void *> (NULL));
+    std::vector<std::string> node_endpoints (spot_node_count);
+    int port_seed = 33000;
     for (int i = 0; i < spot_node_count; ++i) {
         nodes[i] = zlink_spot_node_new (ctx);
         TEST_ASSERT_NOT_NULL (nodes[i]);
@@ -1165,21 +1182,17 @@ static void test_spot_mmorpg_zone_adjacency_scale_multi_node_discovery ()
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_setsockopt (
           nodes[i], ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_LINGER, &linger,
           sizeof (linger)));
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_node_bind (nodes[i], "tcp://127.0.0.1:*"));
+        char endpoint[256] = {0};
+        TEST_ASSERT_SUCCESS_ERRNO (bind_spot_node_with_port_seed (
+          nodes[i], "tcp://127.0.0.1:", &port_seed, endpoint));
+        node_endpoints[i] = endpoint;
     }
 
     for (int i = 0; i < spot_node_count; ++i) {
-        char endpoint[256] = {0};
-        size_t endpoint_len = sizeof (endpoint);
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_getsockopt (
-          zlink_spot_node_pub_socket (nodes[i]), ZLINK_LAST_ENDPOINT, endpoint,
-          &endpoint_len));
-
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_registry (
           nodes[i], "inproc://spot-reg-router-mmorpg"));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_register (
-          nodes[i], "spot-field-mmorpg", endpoint));
+          nodes[i], "spot-field-mmorpg", node_endpoints[i].c_str ()));
         TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_discovery (
           nodes[i], discovery, "spot-field-mmorpg"));
     }

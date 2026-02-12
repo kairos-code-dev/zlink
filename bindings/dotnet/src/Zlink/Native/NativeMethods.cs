@@ -351,12 +351,6 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string hostname, int trustSystem);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_pub_socket(IntPtr node);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_node_sub_socket(IntPtr node);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_pub_new(IntPtr node);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -390,6 +384,4 @@ internal static class NativeMethods
         out IntPtr parts, out nuint partCount, int flags, byte* topicId,
         ref nuint topicIdLen);
 
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_spot_sub_socket(IntPtr sub);
 }

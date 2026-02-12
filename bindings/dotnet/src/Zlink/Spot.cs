@@ -90,24 +90,6 @@ public sealed class SpotNode : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public Socket CreatePubSocket()
-    {
-        EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
-    }
-
-    public Socket CreateSubSocket()
-    {
-        EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_sub_socket(_handle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
-    }
-
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -131,7 +113,6 @@ public sealed class SpotNode : IDisposable
 
 public sealed class Spot : IDisposable
 {
-    private readonly IntPtr _nodeHandle;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
 
@@ -139,9 +120,8 @@ public sealed class Spot : IDisposable
     {
         if (node == null)
             throw new ArgumentNullException(nameof(node));
-        _nodeHandle = node.Handle;
-        _pubHandle = NativeMethods.zlink_spot_pub_new(_nodeHandle);
-        _subHandle = NativeMethods.zlink_spot_sub_new(_nodeHandle);
+        _pubHandle = NativeMethods.zlink_spot_pub_new(node.Handle);
+        _subHandle = NativeMethods.zlink_spot_sub_new(node.Handle);
         if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
         {
             if (_pubHandle != IntPtr.Zero)
@@ -216,24 +196,6 @@ public sealed class Spot : IDisposable
             Message[] messages = Message.FromNativeVector(parts, count);
             return new SpotMessage(topic, messages);
         }
-    }
-
-    public Socket CreatePubSocket()
-    {
-        EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket(_nodeHandle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
-    }
-
-    public Socket CreateSubSocket()
-    {
-        EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_spot_sub_socket(_subHandle);
-        if (handle == IntPtr.Zero)
-            throw ZlinkException.FromLastError();
-        return Socket.Adopt(handle, false);
     }
 
     public void Dispose()

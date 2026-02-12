@@ -164,7 +164,7 @@ Frame 3~N: Payload
 
 ### 7.5 Raw 소켓 정책
 - `spot_pub_t`: raw PUB socket 노출하지 않음 (thread-safety 우회 방지)
-- `spot_sub_t`: raw SUB socket 노출 (`zlink_spot_sub_socket()`, 진단/고급 용도)
+- `spot_sub_t`: raw SUB socket 노출하지 않음; callback/recv API로만 소비
 
 ### 7.4 Discovery 타입 분리
 - service_type 필드로 gateway_receiver/spot_node 분리

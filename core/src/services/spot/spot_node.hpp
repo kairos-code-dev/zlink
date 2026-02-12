@@ -47,9 +47,6 @@ class spot_node_t
                            const void *optval_,
                            size_t optvallen_);
 
-    socket_base_t *pub_socket () const { return _pub; }
-    socket_base_t *sub_socket () const { return _sub; }
-
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();
     void remove_spot_pub (spot_pub_t *pub_);

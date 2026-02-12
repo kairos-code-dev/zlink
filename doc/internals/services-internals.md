@@ -164,7 +164,7 @@ Frame 3~N: Payload
 
 ### 7.5 Raw Socket Policy
 - `spot_pub_t`: Does not expose raw PUB socket (prevents thread-safety bypass)
-- `spot_sub_t`: Exposes raw SUB socket (`zlink_spot_sub_socket()`, for diagnostics/advanced use)
+- `spot_sub_t`: Does not expose raw SUB socket; consumption is via callback/recv API only
 
 ### 7.4 Discovery Type Segmentation
 - Separates gateway_receiver/spot_node via service_type field

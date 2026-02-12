@@ -130,11 +130,8 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ### 4.4 Raw Socket Exposure Policy
 
 - `spot_pub` does not expose the raw socket.
-- `spot_sub` provides an API to expose the raw SUB socket.
-
-```c
-void *raw_sub = zlink_spot_sub_socket(sub);
-```
+- `spot_sub` does not expose the raw socket.
+- Use `recv()` or callback handler APIs instead of raw socket polling.
 
 ### 4.5 Callback Handler
 

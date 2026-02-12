@@ -377,11 +377,6 @@ int spot_sub_t::set_socket_option (int option_,
                                      optval_, optvallen_);
 }
 
-socket_base_t *spot_sub_t::sub_socket () const
-{
-    return _node ? _node->sub_socket () : NULL;
-}
-
 int spot_sub_t::destroy ()
 {
     if (_node) {

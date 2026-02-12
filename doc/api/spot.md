@@ -282,46 +282,6 @@ parameter sets the expected server name for certificate verification. If
 
 ---
 
-### zlink_spot_node_pub_socket
-
-Return the internal PUB socket handle.
-
-```c
-void *zlink_spot_node_pub_socket(void *node);
-```
-
-Returns the raw PUB socket handle used internally by the Node. This is
-intended for diagnostics and advanced use cases. The caller must not close
-or modify the socket.
-
-**Returns:** The PUB socket handle, or `NULL` if the Node is invalid.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_spot_node_sub_socket`
-
----
-
-### zlink_spot_node_sub_socket
-
-Return the internal SUB socket handle.
-
-```c
-void *zlink_spot_node_sub_socket(void *node);
-```
-
-Returns the raw SUB socket handle used internally by the Node. This is
-intended for diagnostics and advanced use cases. The caller must not close
-or modify the socket.
-
-**Returns:** The SUB socket handle, or `NULL` if the Node is invalid.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_spot_node_pub_socket`
-
----
-
 ### zlink_spot_node_setsockopt
 
 Set a socket option on an internal SPOT node socket.
@@ -640,20 +600,9 @@ Applies a low-level socket option to the Subscriber's underlying socket.
 
 ---
 
-### zlink_spot_sub_socket
+### Raw Socket Exposure
 
-Return the raw SUB socket handle.
-
-```c
-void *zlink_spot_sub_socket(void *sub);
-```
-
-Returns the raw SUB socket handle used internally by the Subscriber. This
-is intended for advanced use cases such as integrating with a custom poll
-loop. The caller must not close or modify the socket.
-
-**Returns:** The SUB socket handle, or `NULL` if the Subscriber is invalid.
-
-**Thread safety:** Safe to call from any thread.
-
-**See also:** `zlink_spot_sub_new`
+SPOT internal sockets are intentionally not exposed. Use:
+- `zlink_spot_pub_publish` for publishing
+- `zlink_spot_sub_set_handler` for callback-driven consumption
+- `zlink_spot_sub_recv` for polling-style consumption from the SPOT subscriber queue

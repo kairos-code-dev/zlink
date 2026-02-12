@@ -6,6 +6,16 @@ from ._core import _raise_last_error, Message, ZlinkMsg
 from ._discovery import _parts_to_bytes, _build_msg_array, _close_msg_array
 
 
+_SPOT_SUB_HANDLER = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+    ctypes.POINTER(ZlinkMsg),
+    ctypes.c_size_t,
+    ctypes.c_void_p,
+)
+
+
 class SpotNode:
     def __init__(self, ctx):
         self._handle = lib().zlink_spot_node_new(ctx._handle)
@@ -66,9 +76,10 @@ class SpotNode:
 
 class Spot:
     def __init__(self, node):
-        self._node_handle = node._handle
         self._pub_handle = lib().zlink_spot_pub_new(node._handle)
         self._sub_handle = lib().zlink_spot_sub_new(node._handle)
+        self._handler_py = None
+        self._handler_cb = None
         if not self._pub_handle or not self._sub_handle:
             if self._pub_handle:
                 h = ctypes.c_void_p(self._pub_handle)
@@ -102,6 +113,38 @@ class Spot:
         if rc != 0:
             _raise_last_error()
 
+    def set_handler(self, handler):
+        if handler is None:
+            rc = lib().zlink_spot_sub_set_handler(self._sub_handle, None, None)
+            if rc != 0:
+                _raise_last_error()
+            self._handler_py = None
+            self._handler_cb = None
+            return
+
+        def _callback(topic_ptr, topic_len, parts_ptr, part_count, _userdata):
+            try:
+                topic_bytes = ctypes.string_at(topic_ptr, topic_len) if topic_ptr else b""
+                topic = topic_bytes.decode("utf-8", errors="replace")
+                messages = []
+                if parts_ptr and part_count:
+                    for i in range(part_count):
+                        msg = parts_ptr[i]
+                        size = lib().zlink_msg_size(ctypes.byref(msg))
+                        ptr = lib().zlink_msg_data(ctypes.byref(msg))
+                        messages.append(ctypes.string_at(ptr, size) if ptr and size else b"")
+                handler(topic, messages)
+            except Exception:
+                # Native callback path must not raise into C.
+                return
+
+        cb = _SPOT_SUB_HANDLER(_callback)
+        rc = lib().zlink_spot_sub_set_handler(self._sub_handle, cb, None)
+        if rc != 0:
+            _raise_last_error()
+        self._handler_py = handler
+        self._handler_cb = cb
+
     def recv(self, flags=0):
         parts = ctypes.c_void_p()
         count = ctypes.c_size_t()
@@ -115,6 +158,11 @@ class Spot:
         return topic, messages
 
     def close(self):
+        if self._sub_handle and self._handler_cb is not None:
+            try:
+                self.set_handler(None)
+            except Exception:
+                pass
         if self._pub_handle:
             handle = ctypes.c_void_p(self._pub_handle)
             lib().zlink_spot_pub_destroy(ctypes.byref(handle))

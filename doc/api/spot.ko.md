@@ -274,44 +274,6 @@ CA 인증서 파일 경로를 지정합니다. `hostname` 매개변수는 인증
 
 ---
 
-### zlink_spot_node_pub_socket
-
-내부 PUB 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_spot_node_pub_socket(void *node);
-```
-
-노드가 내부적으로 사용하는 원시 PUB 소켓 핸들을 반환합니다. 이는 진단 및
-고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나 수정해서는 안 됩니다.
-
-**반환값:** PUB 소켓 핸들, 노드가 유효하지 않으면 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_spot_node_sub_socket`
-
----
-
-### zlink_spot_node_sub_socket
-
-내부 SUB 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_spot_node_sub_socket(void *node);
-```
-
-노드가 내부적으로 사용하는 원시 SUB 소켓 핸들을 반환합니다. 이는 진단 및
-고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나 수정해서는 안 됩니다.
-
-**반환값:** SUB 소켓 핸들, 노드가 유효하지 않으면 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_spot_node_pub_socket`
-
----
-
 ### zlink_spot_node_setsockopt
 
 내부 SPOT 노드 소켓의 소켓 옵션을 설정합니다.
@@ -624,20 +586,9 @@ Subscriber의 기본 소켓에 저수준 소켓 옵션을 적용합니다.
 
 ---
 
-### zlink_spot_sub_socket
+### Raw 소켓 노출
 
-원시 SUB 소켓 핸들을 반환합니다.
-
-```c
-void *zlink_spot_sub_socket(void *sub);
-```
-
-Subscriber가 내부적으로 사용하는 원시 SUB 소켓 핸들을 반환합니다. 이는
-커스텀 poll 루프와의 통합과 같은 고급 사용 사례를 위한 것입니다. 호출자는
-소켓을 닫거나 수정해서는 안 됩니다.
-
-**반환값:** SUB 소켓 핸들, Subscriber가 유효하지 않으면 `NULL`.
-
-**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
-
-**참고:** `zlink_spot_sub_new`
+SPOT 내부 소켓은 의도적으로 노출하지 않습니다. 다음 API를 사용하세요.
+- 발행: `zlink_spot_pub_publish`
+- 콜백 기반 수신: `zlink_spot_sub_set_handler`
+- 폴링 기반 수신: `zlink_spot_sub_recv` (SPOT subscriber 내부 큐에서 소비)

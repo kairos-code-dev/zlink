@@ -1328,30 +1328,6 @@ int zlink_spot_sub_recv (void *sub_,
                       topic_id_len_);
 }
 
-void *zlink_spot_node_pub_socket (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (node->pub_socket ());
-}
-
-void *zlink_spot_node_sub_socket (void *node_)
-{
-    if (!node_)
-        return NULL;
-    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
-    if (!node->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (node->sub_socket ());
-}
-
 int zlink_spot_node_setsockopt (void *node_,
                                 int socket_role_,
                                 int option_,
@@ -1366,18 +1342,6 @@ int zlink_spot_node_setsockopt (void *node_,
         return -1;
     }
     return node->set_socket_option (socket_role_, option_, optval_, optvallen_);
-}
-
-void *zlink_spot_sub_socket (void *sub_)
-{
-    if (!sub_)
-        return NULL;
-    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
-    if (!sub->check_tag ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-    return static_cast<void *> (sub->sub_socket ());
 }
 
 int zlink_spot_sub_setsockopt (void *sub_,

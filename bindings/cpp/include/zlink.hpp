@@ -1120,9 +1120,6 @@ class spot_node_t
         return zlink_spot_node_set_tls_client (_node, ca_, hostname_, trust_);
     }
 
-    void *pub_handle () const { return zlink_spot_node_pub_socket (_node); }
-    void *sub_handle () const { return zlink_spot_node_sub_socket (_node); }
-
     int destroy ()
     {
         if (!_node)
@@ -1245,9 +1242,6 @@ class spot_t
         topic_.assign (topic_buf);
         return 0;
     }
-
-    void *pub_handle () const { return _node ? zlink_spot_node_pub_socket (_node) : NULL; }
-    void *sub_handle () const { return zlink_spot_sub_socket (_sub); }
 
     int destroy ()
     {

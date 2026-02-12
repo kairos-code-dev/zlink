@@ -26,7 +26,7 @@ test {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     filter {
-        excludeTestsMatching 'io.ulalax.zlink.integration.*'
+        excludeTestsMatching 'dev.kairoscode.zlink.integration.*'
     }
 }
 
@@ -37,7 +37,7 @@ tasks.register('integrationTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     filter {
-        includeTestsMatching 'io.ulalax.zlink.integration.*'
+        includeTestsMatching 'dev.kairoscode.zlink.integration.*'
     }
 }
 

@@ -86,11 +86,11 @@ def select_transports():
 
 def select_pattern_transports(pattern):
     env_t = parse_env_list("BENCH_TRANSPORTS", str)
-    # STREAM/GATEWAY/SPOT do not use inproc in core benchmarks.
+    # Keep pattern transport matrix aligned with core/current benchmarks.
     if pattern in ("STREAM", "GATEWAY", "SPOT"):
         base = ["tcp", "ws"]
     else:
-        base = ["tcp", "ws", "inproc"]
+        base = ["tcp", "inproc", "ipc"]
     if not env_t:
         return base
     return [t for t in base if t in env_t]
@@ -109,9 +109,7 @@ def parse_args():
         "Options:\n"
         "  --binding NAME          binding name (python|node|dotnet|java|cpp)\n"
         "  --refresh-baseline      Refresh zlink(core) cache\n"
-        "  --refresh-libzlink      Alias for --refresh-baseline\n"
-        "  --current-only          Run only binding benchmarks\n"
-        "  --zlink-only            Alias for --current-only\n"
+        "  --bindings-only         Run only binding benchmarks\n"
         "  --runs N                Iterations per configuration (default: 3)\n"
         "  --build-dir PATH        Core bench build directory\n"
         "  --pin-cpu               Pin CPU core via BENCH_TASKSET=1\n"
@@ -121,7 +119,7 @@ def parse_args():
     p_req = "ALL"
     num_runs = 3
     build_dir = ""
-    current_only = False
+    bindings_only = False
     pin_cpu = False
     allow_core_fallback = False
     binding = ""
@@ -132,10 +130,10 @@ def parse_args():
         if arg in ("-h", "--help"):
             print(usage)
             sys.exit(0)
-        if arg in ("--refresh-baseline", "--refresh-libzlink"):
+        if arg == "--refresh-baseline":
             refresh = True
-        elif arg in ("--current-only", "--zlink-only"):
-            current_only = True
+        elif arg == "--bindings-only":
+            bindings_only = True
         elif arg == "--pin-cpu":
             pin_cpu = True
         elif arg == "--allow-core-fallback":
@@ -160,6 +158,9 @@ def parse_args():
             i += 1
         elif not arg.startswith("--") and p_req == "ALL":
             p_req = arg.upper()
+        elif arg.startswith("--"):
+            print(f"Error: unknown option: {arg}", file=sys.stderr)
+            sys.exit(1)
         i += 1
 
     if not binding:
@@ -168,15 +169,18 @@ def parse_args():
     if num_runs < 1:
         print("Error: --runs must be >= 1", file=sys.stderr)
         sys.exit(1)
-    return p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, allow_core_fallback
+    return p_req, refresh, num_runs, build_dir, bindings_only, pin_cpu, binding, allow_core_fallback
 
 
-def binding_runner_cmd(binding):
+def binding_runner_cmd(binding, pattern):
+    p = pattern.lower()
     if binding == "python":
         py = "python3" if shutil_which("python3") else "python"
-        return [py, os.path.join(ROOT_DIR, "bindings/python/benchwithzlink/pair_bench.py")]
+        runner = os.path.join(ROOT_DIR, f"bindings/python/benchwithzlink/pattern_{p}.py")
+        return [py, runner]
     if binding == "node":
-        return ["node", os.path.join(ROOT_DIR, "bindings/node/benchwithzlink/pair_bench.js")]
+        runner = os.path.join(ROOT_DIR, f"bindings/node/benchwithzlink/pattern_{p}.js")
+        return ["node", runner]
     if binding == "dotnet":
         dll = os.path.join(
             ROOT_DIR,
@@ -189,7 +193,7 @@ def binding_runner_cmd(binding):
             os.path.join(ROOT_DIR, "bindings/java/build/classes/java/test"),
             os.path.join(ROOT_DIR, "bindings/java/build/resources/main"),
         ])
-        return ["java", "-cp", cp, "io.ulalax.zlink.integration.bench.PairBenchMain"]
+        return ["java", "-cp", cp, "dev.kairoscode.zlink.integration.bench.PairBenchMain"]
     if binding == "cpp":
         return [os.path.join(ROOT_DIR, "bindings/cpp/benchwithzlink/build/pair_bench")]
     raise ValueError(f"Unsupported binding: {binding}")
@@ -300,7 +304,7 @@ def normalize_build_dir(path: str) -> str:
 
 
 def main():
-    p_req, refresh, num_runs, build_dir, current_only, pin_cpu, binding, allow_core_fallback = parse_args()
+    p_req, refresh, num_runs, build_dir, bindings_only, pin_cpu, binding, allow_core_fallback = parse_args()
     sizes = msg_sizes()
 
     if p_req == "ALL":
@@ -323,16 +327,22 @@ def main():
         env_base["BENCH_TASKSET"] = "1"
 
     platform_tag, arch_tag = platform_arch_tag()
-    cache_file = os.path.join(ROOT_DIR, "bindings", binding, "benchwithzlink", f"zlink_cache_{platform_tag}-{arch_tag}.json")
+    cache_file = os.path.join(
+        ROOT_DIR, "bindings", "bench", "common", f"zlink_cache_{platform_tag}-{arch_tag}.json"
+    )
+    legacy_cache_file = os.path.join(
+        ROOT_DIR, "bindings", binding, "benchwithzlink", f"zlink_cache_{platform_tag}-{arch_tag}.json"
+    )
     cache = {}
-    if not current_only and os.path.exists(cache_file):
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                cache = json.load(f)
-        except Exception:
-            cache = {}
+    if not bindings_only:
+        load_target = cache_file if os.path.exists(cache_file) else legacy_cache_file
+        if os.path.exists(load_target):
+            try:
+                with open(load_target, "r", encoding="utf-8") as f:
+                    cache = json.load(f)
+            except Exception:
+                cache = {}
 
-    bind_cmd_prefix = binding_runner_cmd(binding)
     fallback_hits = []
 
     all_failures = []
@@ -353,6 +363,8 @@ def main():
         if not os.path.exists(core_bin):
             print(f"Error: core benchmark binary not found: {core_bin}", file=sys.stderr)
             sys.exit(1)
+
+        bind_cmd_prefix = binding_runner_cmd(binding, pattern)
 
         def run_core(tr, sz):
             cmd = [core_bin, "current", tr, str(sz)]
@@ -377,7 +389,7 @@ def main():
                 return fb
             return parsed
 
-        if current_only:
+        if bindings_only:
             b_stats = {}
         else:
             if refresh or pattern not in cache:
@@ -398,7 +410,7 @@ def main():
 
         for tr in transports:
             print(f"\n### Transport: {tr}")
-            if current_only:
+            if bindings_only:
                 print("| Size   | Metric     |          current |")
                 print("|--------|------------|------------------|")
             else:
@@ -407,7 +419,7 @@ def main():
             for sz in sizes:
                 ct = c_stats.get(f"{tr}|{sz}|throughput", 0)
                 cl = c_stats.get(f"{tr}|{sz}|latency", 0)
-                if current_only:
+                if bindings_only:
                     print(f"| {sz}B | Throughput | {format_thr(ct):>16} |")
                     print(f"| {sz}B | Latency    | {f'{cl:8.2f} us':>16} |")
                 else:

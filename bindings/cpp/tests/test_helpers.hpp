@@ -48,8 +48,10 @@ inline std::string endpoint_for(const transport_case_t &tc, const std::string &s
     if (tc.name == "inproc") {
         return unique_inproc(tc.inproc_base, suffix);
     }
+    static int port_seed = 36000;
+    const int port = ++port_seed;
     std::ostringstream os;
-    os << tc.name << "://127.0.0.1:*";
+    os << tc.name << "://127.0.0.1:" << port;
     return os.str();
 }
 

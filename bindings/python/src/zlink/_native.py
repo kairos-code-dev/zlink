@@ -506,12 +506,6 @@ def _load_lib():
     ]
     _lib.zlink_spot_node_set_tls_client.restype = ctypes.c_int
 
-    _lib.zlink_spot_node_pub_socket.argtypes = [ctypes.c_void_p]
-    _lib.zlink_spot_node_pub_socket.restype = ctypes.c_void_p
-
-    _lib.zlink_spot_node_sub_socket.argtypes = [ctypes.c_void_p]
-    _lib.zlink_spot_node_sub_socket.restype = ctypes.c_void_p
-
     _lib.zlink_spot_new.argtypes = [ctypes.c_void_p]
     _lib.zlink_spot_new.restype = ctypes.c_void_p
 
@@ -539,6 +533,13 @@ def _load_lib():
     _lib.zlink_spot_unsubscribe.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
     _lib.zlink_spot_unsubscribe.restype = ctypes.c_int
 
+    _lib.zlink_spot_sub_set_handler.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    _lib.zlink_spot_sub_set_handler.restype = ctypes.c_int
+
     _lib.zlink_spot_recv.argtypes = [
         ctypes.c_void_p,
         ctypes.POINTER(ctypes.POINTER(ZlinkMsg)),
@@ -548,12 +549,6 @@ def _load_lib():
         ctypes.POINTER(ctypes.c_size_t),
     ]
     _lib.zlink_spot_recv.restype = ctypes.c_int
-
-    _lib.zlink_spot_pub_socket.argtypes = [ctypes.c_void_p]
-    _lib.zlink_spot_pub_socket.restype = ctypes.c_void_p
-
-    _lib.zlink_spot_sub_socket.argtypes = [ctypes.c_void_p]
-    _lib.zlink_spot_sub_socket.restype = ctypes.c_void_p
 
     return _lib
 

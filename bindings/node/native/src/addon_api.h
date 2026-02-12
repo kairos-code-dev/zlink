@@ -80,8 +80,6 @@ napi_value spot_node_unregister(napi_env env, napi_callback_info info);
 napi_value spot_node_set_discovery(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_server(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info);
-napi_value spot_node_pub_socket(napi_env env, napi_callback_info info);
-napi_value spot_node_sub_socket(napi_env env, napi_callback_info info);
 
 napi_value spot_new(napi_env env, napi_callback_info info);
 napi_value spot_destroy(napi_env env, napi_callback_info info);
@@ -90,8 +88,6 @@ napi_value spot_subscribe(napi_env env, napi_callback_info info);
 napi_value spot_subscribe_pattern(napi_env env, napi_callback_info info);
 napi_value spot_unsubscribe(napi_env env, napi_callback_info info);
 napi_value spot_recv(napi_env env, napi_callback_info info);
-napi_value spot_pub_socket(napi_env env, napi_callback_info info);
-napi_value spot_sub_socket(napi_env env, napi_callback_info info);
 
 napi_value monitor_open(napi_env env, napi_callback_info info);
 napi_value monitor_recv(napi_env env, napi_callback_info info);

@@ -69,8 +69,6 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNodeSetDiscovery", 0, spot_node_set_discovery, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsServer", 0, spot_node_set_tls_server, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsClient", 0, spot_node_set_tls_client, 0, 0, 0, napi_default, 0},
-        {"spotNodePubSocket", 0, spot_node_pub_socket, 0, 0, 0, napi_default, 0},
-        {"spotNodeSubSocket", 0, spot_node_sub_socket, 0, 0, 0, napi_default, 0},
 
         {"spotNew", 0, spot_new, 0, 0, 0, napi_default, 0},
         {"spotDestroy", 0, spot_destroy, 0, 0, 0, napi_default, 0},
@@ -79,8 +77,6 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotSubscribePattern", 0, spot_subscribe_pattern, 0, 0, 0, napi_default, 0},
         {"spotUnsubscribe", 0, spot_unsubscribe, 0, 0, 0, napi_default, 0},
         {"spotRecv", 0, spot_recv, 0, 0, 0, napi_default, 0},
-        {"spotPubSocket", 0, spot_pub_socket, 0, 0, 0, napi_default, 0},
-        {"spotSubSocket", 0, spot_sub_socket, 0, 0, 0, napi_default, 0},
 
         {"monitorOpen", 0, monitor_open, 0, 0, 0, napi_default, 0},
         {"monitorRecv", 0, monitor_recv, 0, 0, 0, napi_default, 0},

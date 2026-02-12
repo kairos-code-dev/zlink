@@ -130,11 +130,8 @@ zlink_spot_sub_unsubscribe(sub, "chat:room1:*");
 ### 4.4 Raw 소켓 노출 정책
 
 - `spot_pub`은 raw socket을 노출하지 않는다.
-- `spot_sub`은 raw SUB socket 노출 API를 제공한다.
-
-```c
-void *raw_sub = zlink_spot_sub_socket(sub);
-```
+- `spot_sub`도 raw socket을 노출하지 않는다.
+- raw socket poll 대신 `recv()` 또는 callback handler API를 사용한다.
 
 ### 4.5 콜백 핸들러 (Handler)
 

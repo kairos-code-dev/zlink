@@ -1,0 +1,124 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package dev.kairoscode.zlink;
+
+import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeHelpers;
+import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.internal.NativeMsg;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
+public final class Gateway implements AutoCloseable {
+    private MemorySegment handle;
+
+    public Gateway(Context ctx, Discovery discovery) {
+        this(ctx, discovery, null);
+    }
+
+    public Gateway(Context ctx, Discovery discovery, String routingId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = routingId == null ? MemorySegment.NULL
+                : NativeHelpers.toCString(arena, routingId);
+            this.handle = Native.gatewayNew(ctx.handle(), discovery.handle(), rid);
+        }
+        if (handle == null || handle.address() == 0)
+            throw new RuntimeException("zlink_gateway_new failed");
+    }
+
+    public void send(String serviceName, Message[] parts, SendFlag flags) {
+        if (parts == null || parts.length == 0)
+            throw new IllegalArgumentException("parts required");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
+            for (int i = 0; i < parts.length; i++) {
+                MemorySegment dest = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
+                    NativeLayouts.MSG_LAYOUT.byteSize());
+                NativeMsg.msgInit(dest);
+                NativeMsg.msgCopy(dest, parts[i].handle());
+            }
+            int rc = Native.gatewaySend(handle, NativeHelpers.toCString(arena, serviceName), vec, parts.length, flags.getValue());
+            if (rc != 0) {
+                for (int i = 0; i < parts.length; i++) {
+                    MemorySegment msg = vec.asSlice((long) i * NativeLayouts.MSG_LAYOUT.byteSize(),
+                        NativeLayouts.MSG_LAYOUT.byteSize());
+                    NativeMsg.msgClose(msg);
+                }
+                throw new RuntimeException("zlink_gateway_send failed");
+            }
+        }
+    }
+
+    public GatewayMessage recv(ReceiveFlag flags) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment service = arena.allocate(256);
+            int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_recv failed");
+            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
+            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
+            byte[][] data = NativeMsg.readMsgVector(partsAddr, partCount);
+            String serviceName = NativeHelpers.fromCString(service, 256);
+            return new GatewayMessage(serviceName, data);
+        }
+    }
+
+    public void setLoadBalancing(String serviceName, GatewayLbStrategy strategy) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.gatewaySetLbStrategy(handle, NativeHelpers.toCString(arena, serviceName), strategy.getValue());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_set_lb_strategy failed");
+        }
+    }
+
+    public void setTlsClient(String caCert, String hostname, int trustSystem) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.gatewaySetTlsClient(handle, NativeHelpers.toCString(arena, caCert),
+                NativeHelpers.toCString(arena, hostname), trustSystem);
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_set_tls_client failed");
+        }
+    }
+
+    public int connectionCount(String serviceName) {
+        try (Arena arena = Arena.ofConfined()) {
+            int rc = Native.gatewayConnectionCount(handle, NativeHelpers.toCString(arena, serviceName));
+            if (rc < 0)
+                throw new RuntimeException("zlink_gateway_connection_count failed");
+            return rc;
+        }
+    }
+
+    public void setSockOpt(SocketOption option, byte[] value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(value.length);
+            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0, value.length);
+            int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf, value.length);
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_setsockopt failed");
+        }
+    }
+
+    public void setSockOpt(SocketOption option, int value) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            buf.set(ValueLayout.JAVA_INT, 0, value);
+            int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_setsockopt failed");
+        }
+    }
+
+    @Override
+    public void close() {
+        if (handle == null || handle.address() == 0)
+            return;
+        Native.gatewayDestroy(handle);
+        handle = MemorySegment.NULL;
+    }
+
+    public record GatewayMessage(String serviceName, byte[][] parts) {}
+}

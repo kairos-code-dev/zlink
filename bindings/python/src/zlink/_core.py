@@ -21,6 +21,40 @@ def _raise_last_error():
     raise ZlinkError(err, message)
 
 
+def _as_bytes_view(data):
+    if isinstance(data, bytes):
+        return memoryview(data)
+    try:
+        view = memoryview(data)
+    except TypeError as exc:
+        raise TypeError("data must support the buffer protocol") from exc
+    if view.ndim != 1 or view.format != "B":
+        try:
+            view = view.cast("B")
+        except TypeError:
+            view = memoryview(bytes(view))
+    if not view.c_contiguous:
+        view = memoryview(bytes(view))
+    return view
+
+
+def _send_buffer(data):
+    if isinstance(data, bytes):
+        size = len(data)
+        if size == 0:
+            return None, 0, None
+        return data, size, None
+    view = _as_bytes_view(data)
+    size = view.nbytes
+    if size == 0:
+        return None, 0, None
+    if view.readonly:
+        # bytes are accepted directly for c_void_p parameters.
+        raw = view.tobytes()
+        return raw, size, None
+    return (ctypes.c_char * size).from_buffer(view), size, view
+
+
 class Context:
     def __init__(self):
         self._handle = lib().zlink_ctx_new()
@@ -84,10 +118,20 @@ class Socket:
             _raise_last_error()
 
     def send(self, data: bytes, flags: int = 0):
-        buf = ctypes.create_string_buffer(data)
-        rc = lib().zlink_send(self._handle, buf, len(data), flags)
+        buf, size, keepalive = _send_buffer(data)
+        rc = lib().zlink_send(self._handle, buf, size, flags)
         if rc < 0:
             _raise_last_error()
+        # Keep the backing object alive until native call returns.
+        _ = keepalive
+        return rc
+
+    def send_const(self, data: bytes, flags: int = 0):
+        buf, size, keepalive = _send_buffer(data)
+        rc = lib().zlink_send_const(self._handle, buf, size, flags)
+        if rc < 0:
+            _raise_last_error()
+        _ = keepalive
         return rc
 
     def recv(self, size: int, flags: int = 0) -> bytes:
@@ -96,6 +140,19 @@ class Socket:
         if rc < 0:
             _raise_last_error()
         return buf.raw[:rc]
+
+    def recv_into(self, buffer, flags: int = 0):
+        view = _as_bytes_view(buffer)
+        if view.readonly:
+            raise TypeError("buffer must be writable")
+        size = view.nbytes
+        if size <= 0:
+            raise ValueError("buffer must not be empty")
+        buf = (ctypes.c_char * size).from_buffer(view)
+        rc = lib().zlink_recv(self._handle, buf, size, flags)
+        if rc < 0:
+            _raise_last_error()
+        return rc
 
     def setsockopt(self, option: int, value: bytes):
         buf = ctypes.create_string_buffer(value)

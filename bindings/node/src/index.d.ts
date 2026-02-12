@@ -205,8 +205,6 @@ export class SpotNode {
   setDiscovery(discovery: Discovery, service: string): void;
   setTlsServer(cert: string, key: string): void;
   setTlsClient(ca: string, host: string, trust: number): void;
-  pubSocket(): Socket;
-  subSocket(): Socket;
   close(): void;
 }
 
@@ -217,7 +215,5 @@ export class Spot {
   subscribePattern(pattern: string): void;
   unsubscribe(topicOrPattern: string): void;
   recv(flags?: number): { topic: string; parts: Buffer[] };
-  pubSocket(): Socket;
-  subSocket(): Socket;
   close(): void;
 }

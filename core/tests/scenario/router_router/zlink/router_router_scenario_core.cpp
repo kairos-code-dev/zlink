@@ -9,9 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
-#include <deque>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -40,6 +38,16 @@ std::string make_endpoint (int port)
     char endpoint[64];
     snprintf (endpoint, sizeof endpoint, "tcp://127.0.0.1:%d", port);
     return std::string (endpoint);
+}
+
+bool connect_with_rid (void *socket, const std::string &endpoint, const char *rid)
+{
+    if (!socket || !rid)
+        return false;
+    if (zlink_setsockopt (socket, ZLINK_CONNECT_ROUTING_ID, rid, strlen (rid))
+        != 0)
+        return false;
+    return zlink_connect (socket, endpoint.c_str ()) == 0;
 }
 
 void close_socket (void *&socket)
@@ -71,6 +79,7 @@ bool configure_router (void *socket, const char *rid)
 
     return set_int_opt (socket, ZLINK_ROUTER_HANDOVER, one)
            && set_int_opt (socket, ZLINK_ROUTER_MANDATORY, one)
+           && set_int_opt (socket, ZLINK_PROBE_ROUTER, one)
            && set_int_opt (socket, ZLINK_IMMEDIATE, zero)
            && set_int_opt (socket, ZLINK_SNDHWM, hwm)
            && set_int_opt (socket, ZLINK_RCVHWM, hwm)
@@ -157,6 +166,63 @@ int recv_3 (void *socket,
     return 0;
 }
 
+bool frame_equals (const std::vector<char> &buf, int len, const char *text)
+{
+    const size_t n = strlen (text);
+    return len == static_cast<int> (n) && n > 0 && memcmp (&buf[0], text, n) == 0;
+}
+
+bool is_shutdown_header (const std::vector<char> &buf, int len)
+{
+    static const char kPrefix[] = "msg=shutdown";
+    const size_t prefix_len = sizeof (kPrefix) - 1;
+    return len >= static_cast<int> (prefix_len)
+           && memcmp (&buf[0], kPrefix, prefix_len) == 0;
+}
+
+int recv_router_msg (void *socket,
+                     std::vector<char> &f0,
+                     std::vector<char> &f1,
+                     std::vector<char> &f2,
+                     int flags,
+                     bool *is_probe,
+                     int *l0,
+                     int *l1,
+                     int *l2)
+{
+    *is_probe = false;
+    *l0 = zlink_recv (socket, &f0[0], f0.size (), flags);
+    if (*l0 < 0)
+        return zlink_errno ();
+
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0
+        || !more)
+        return EPROTO;
+
+    *l1 = zlink_recv (socket, &f1[0], f1.size (), flags);
+    if (*l1 < 0)
+        return zlink_errno ();
+
+    more = 0;
+    more_size = sizeof (more);
+    if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0)
+        return EPROTO;
+
+    if (!more) {
+        *l2 = 0;
+        *is_probe = (*l1 == 0);
+        return *is_probe ? 0 : EPROTO;
+    }
+
+    *l2 = zlink_recv (socket, &f2[0], f2.size (), flags);
+    if (*l2 < 0)
+        return zlink_errno ();
+
+    return 0;
+}
+
 struct MonitorHandle
 {
     void *socket;
@@ -182,8 +248,11 @@ struct EventCounters
 class MonitorCollector
 {
   public:
-    explicit MonitorCollector (const std::vector<void *> &sockets)
-        : _sockets (sockets), _running (false)
+    MonitorCollector (const std::vector<void *> &sockets,
+                      const std::vector<std::atomic<long> *> &ready_by_socket)
+        : _sockets (sockets),
+          _ready_by_socket (ready_by_socket),
+          _running (false)
     {
     }
 
@@ -214,6 +283,11 @@ class MonitorCollector
                         case ZLINK_EVENT_CONNECTION_READY:
                             _events.connection_ready.fetch_add (
                               1, std::memory_order_relaxed);
+                            if (i < _ready_by_socket.size ()
+                                && _ready_by_socket[i] != NULL) {
+                                _ready_by_socket[i]->fetch_add (
+                                  1, std::memory_order_relaxed);
+                            }
                             break;
                         case ZLINK_EVENT_CONNECT_RETRIED:
                             _events.connect_retried.fetch_add (
@@ -239,6 +313,7 @@ class MonitorCollector
     }
 
     std::vector<void *> _sockets;
+    std::vector<std::atomic<long> *> _ready_by_socket;
     EventCounters _events;
     std::atomic<bool> _running;
     std::thread _thread;
@@ -273,37 +348,6 @@ void close_monitors (std::vector<MonitorHandle> &handles)
         handles[i].monitor = NULL;
     }
     handles.clear ();
-}
-
-bool wait_route_ready (void *sender,
-                       void *receiver,
-                       const char *target_rid,
-                       int timeout_ms)
-{
-    std::vector<char> f0 (256);
-    std::vector<char> f1 (512);
-    std::vector<char> f2 (1024);
-
-    const char hdr[] = "msg=warmup";
-    const char payload[] = "ping";
-
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (timeout_ms);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        const int send_err =
-          send_3 (sender, target_rid, strlen (target_rid), hdr, strlen (hdr),
-                  payload, strlen (payload), ZLINK_DONTWAIT);
-        if (send_err == 0) {
-            int l0 = 0, l1 = 0, l2 = 0;
-            const int recv_err =
-              recv_3 (receiver, f0, f1, f2, ZLINK_DONTWAIT, &l0, &l1, &l2);
-            if (recv_err == 0)
-                return true;
-        }
-        yield_for_ms (10);
-    }
-    return false;
 }
 
 void wake_blocking_receivers (void *play_client, void *api_client)
@@ -379,61 +423,73 @@ RuntimeSnapshot delta (const RuntimeSnapshot &a, const RuntimeSnapshot &b)
 struct SendJob
 {
     int sid;
-    bool warmup;
 };
 
-class SendJobQueue
+class SendJobQueueSpsc
 {
   public:
-    explicit SendJobQueue (size_t capacity)
-        : _capacity (capacity > 0 ? capacity : 1), _stopped (false)
+    explicit SendJobQueueSpsc (size_t capacity)
+        : _capacity (capacity > 2 ? capacity : 2),
+          _buffer (_capacity),
+          _head (0),
+          _tail (0),
+          _stopped (false)
     {
     }
 
     bool try_push (const SendJob &job, const std::atomic<bool> &running)
     {
-        std::lock_guard<std::mutex> lock (_mutex);
-        if (_stopped || !running.load (std::memory_order_acquire))
+        if (_stopped.load (std::memory_order_acquire)
+            || !running.load (std::memory_order_acquire))
             return false;
-        if (_queue.size () >= _capacity)
+
+        const size_t tail = _tail.load (std::memory_order_relaxed);
+        const size_t next = (tail + 1) % _capacity;
+        if (next == _head.load (std::memory_order_acquire))
             return false;
-        _queue.push_back (job);
+
+        _buffer[tail] = job;
+        _tail.store (next, std::memory_order_release);
         return true;
     }
 
     bool try_pop (SendJob &job)
     {
-        std::lock_guard<std::mutex> lock (_mutex);
-        if (_queue.empty ())
+        const size_t head = _head.load (std::memory_order_relaxed);
+        if (head == _tail.load (std::memory_order_acquire))
             return false;
-        job = _queue.front ();
-        _queue.pop_front ();
+
+        job = _buffer[head];
+        _head.store ((head + 1) % _capacity, std::memory_order_release);
         return true;
     }
 
     size_t size () const
     {
-        std::lock_guard<std::mutex> lock (_mutex);
-        return _queue.size ();
+        const size_t head = _head.load (std::memory_order_acquire);
+        const size_t tail = _tail.load (std::memory_order_acquire);
+        if (tail >= head)
+            return tail - head;
+        return (_capacity - head) + tail;
     }
 
     bool empty () const
     {
-        std::lock_guard<std::mutex> lock (_mutex);
-        return _queue.empty ();
+        return _head.load (std::memory_order_acquire)
+               == _tail.load (std::memory_order_acquire);
     }
 
     void stop ()
     {
-        std::lock_guard<std::mutex> lock (_mutex);
-        _stopped = true;
+        _stopped.store (true, std::memory_order_release);
     }
 
   private:
     const size_t _capacity;
-    mutable std::mutex _mutex;
-    std::deque<SendJob> _queue;
-    bool _stopped;
+    std::vector<SendJob> _buffer;
+    std::atomic<size_t> _head;
+    std::atomic<size_t> _tail;
+    std::atomic<bool> _stopped;
 };
 
 } // namespace
@@ -474,30 +530,57 @@ Lz01SizeResult run_lz01_size (size_t size, int iterations, int port)
         if (!configure_router (r1, kR1Rid) || !configure_router (r2, kR2Rid))
             break;
 
-        if (zlink_bind (r1, make_endpoint (port).c_str ()) != 0)
+        if (!attach_monitor (r1, monitors) || !attach_monitor (r2, monitors))
             break;
-        if (zlink_connect (r2, make_endpoint (port).c_str ()) != 0)
-            break;
-
-        attach_monitor (r1, monitors);
-        attach_monitor (r2, monitors);
 
         std::vector<void *> monitor_sockets;
-        for (size_t i = 0; i < monitors.size (); ++i)
-            monitor_sockets.push_back (monitors[i].monitor);
+        monitor_sockets.push_back (monitors[0].monitor);
+        monitor_sockets.push_back (monitors[1].monitor);
 
-        collector.reset (new MonitorCollector (monitor_sockets));
+        std::vector<std::atomic<long> *> ready_by_socket;
+        ready_by_socket.push_back (NULL);
+        ready_by_socket.push_back (NULL);
+
+        collector.reset (new MonitorCollector (monitor_sockets, ready_by_socket));
         collector->start ();
         collector_started = true;
 
-        r.route_ready = wait_route_ready (r2, r1, kR1Rid, 3000);
-        if (!r.route_ready)
+        const std::string endpoint = make_endpoint (port);
+        if (zlink_bind (r1, endpoint.c_str ()) != 0)
+            break;
+        if (!connect_with_rid (r2, endpoint, kR1Rid))
             break;
 
         std::vector<char> payload (size, 'p');
         std::vector<char> f0 (256);
         std::vector<char> f1 (512);
         std::vector<char> f2 (std::max<size_t> (size + 64, 65536 + 64));
+
+        const auto ready_deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (3);
+        while (std::chrono::steady_clock::now () < ready_deadline) {
+            bool is_probe = false;
+            int l0 = 0, l1 = 0, l2 = 0;
+            const int recv_err =
+              recv_router_msg (r1, f0, f1, f2, ZLINK_DONTWAIT, &is_probe, &l0,
+                               &l1, &l2);
+            if (recv_err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                || recv_err == EWOULDBLOCK
+#endif
+            ) {
+                std::this_thread::yield ();
+                continue;
+            }
+            if (recv_err != 0)
+                continue;
+            if (is_probe && frame_equals (f0, l0, kR2Rid)) {
+                r.route_ready = true;
+                break;
+            }
+        }
+        if (!r.route_ready)
+            break;
 
         const char hdr[] = "msg=LZ01";
         const auto begin = std::chrono::steady_clock::now ();
@@ -522,13 +605,21 @@ Lz01SizeResult run_lz01_size (size_t size, int iterations, int port)
             }
             ++r.sent;
 
-            int l0 = 0, l1 = 0, l2 = 0;
-            const int recv_err = recv_3 (r1, f0, f1, f2, 0, &l0, &l1, &l2);
-            if (recv_err != 0) {
-                ++r.recv_err;
-                continue;
+            for (;;) {
+                bool is_probe = false;
+                int l0 = 0, l1 = 0, l2 = 0;
+                const int recv_err =
+                  recv_router_msg (r1, f0, f1, f2, 0, &is_probe, &l0, &l1, &l2);
+                if (recv_err != 0) {
+                    ++r.recv_err;
+                    break;
+                }
+                if (is_probe)
+                    continue;
+
+                ++r.recv;
+                break;
             }
-            ++r.recv;
         }
 
         const auto end = std::chrono::steady_clock::now ();
@@ -570,9 +661,14 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
 
     RuntimeCounters counters;
     std::atomic<bool> worker_running (false);
-    std::atomic<bool> producer_running (false);
     std::atomic<bool> sender_running (false);
     std::atomic<long> seq (0);
+
+    // Probe counters from server-side recv sockets.
+    std::atomic<long> play_probe_from_api (0);
+    std::atomic<long> play_probe_from_play (0);
+    std::atomic<long> api_probe_from_play (0);
+    std::atomic<long> api_probe_from_api (0);
 
     void *ctx = zlink_ctx_new ();
     void *play_server = NULL;
@@ -587,7 +683,6 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
     std::thread api_thread;
     std::thread play_thread;
     std::thread sender_thread;
-    std::vector<std::thread> producers;
 
     bool ok = false;
     bool benchmark_started = false;
@@ -599,8 +694,8 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
     std::string api_endpoint;
 
     const size_t queue_capacity =
-      static_cast<size_t> (std::max (64, cfg.inflight * 4));
-    SendJobQueue send_queue (queue_capacity);
+      static_cast<size_t> (std::max (64, cfg.inflight * 4) + 1);
+    SendJobQueueSpsc send_queue (queue_capacity);
 
     do {
         if (!ctx)
@@ -617,6 +712,28 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
             || !configure_router (api_client, kApiRid))
             break;
 
+        if (!attach_monitor (play_server, monitors)
+            || !attach_monitor (play_client, monitors)
+            || !attach_monitor (api_server, monitors)
+            || !attach_monitor (api_client, monitors))
+            break;
+
+        std::vector<void *> monitor_sockets;
+        monitor_sockets.push_back (monitors[0].monitor); // play_server
+        monitor_sockets.push_back (monitors[1].monitor); // play_client
+        monitor_sockets.push_back (monitors[2].monitor); // api_server
+        monitor_sockets.push_back (monitors[3].monitor); // api_client
+
+        std::vector<std::atomic<long> *> ready_by_socket;
+        ready_by_socket.push_back (NULL);
+        ready_by_socket.push_back (NULL);
+        ready_by_socket.push_back (NULL);
+        ready_by_socket.push_back (NULL);
+
+        collector.reset (new MonitorCollector (monitor_sockets, ready_by_socket));
+        collector->start ();
+        collector_started = true;
+
         play_endpoint = make_endpoint (cfg.play_port);
         api_endpoint = make_endpoint (cfg.api_port);
 
@@ -624,13 +741,13 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
             || zlink_bind (api_server, api_endpoint.c_str ()) != 0)
             break;
 
-        if (zlink_connect (play_client, api_endpoint.c_str ()) != 0
-            || zlink_connect (api_client, play_endpoint.c_str ()) != 0)
+        if (!connect_with_rid (play_client, api_endpoint, kApiRid)
+            || !connect_with_rid (api_client, play_endpoint, kPlayRid))
             break;
 
         if (cfg.self_connect) {
-            if (zlink_connect (play_client, play_endpoint.c_str ()) != 0
-                || zlink_connect (api_client, api_endpoint.c_str ()) != 0)
+            if (!connect_with_rid (play_client, play_endpoint, kPlayRid)
+                || !connect_with_rid (api_client, api_endpoint, kApiRid))
                 break;
         }
 
@@ -641,58 +758,60 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
         zlink_setsockopt (
           api_server, ZLINK_RCVTIMEO, &rcvtimeo_infinite, sizeof (rcvtimeo_infinite));
 
-        attach_monitor (play_server, monitors);
-        attach_monitor (play_client, monitors);
-        attach_monitor (api_server, monitors);
-        attach_monitor (api_client, monitors);
-
-        std::vector<void *> monitor_sockets;
-        for (size_t i = 0; i < monitors.size (); ++i)
-            monitor_sockets.push_back (monitors[i].monitor);
-        collector.reset (new MonitorCollector (monitor_sockets));
-        collector->start ();
-        collector_started = true;
-
         worker_running.store (true, std::memory_order_release);
-        producer_running.store (true, std::memory_order_release);
-        sender_running.store (true, std::memory_order_release);
-
         api_thread = std::thread ([&]() {
             std::vector<char> f0 (256);
             std::vector<char> f1 (1024);
             std::vector<char> f2 (std::max<size_t> (cfg.size + 64, 65536 + 64));
             const char reply_header[] = "msg=SSEchoReply;from=api-1";
 
+            auto handle_probe = [&](int rid_len) {
+                if (frame_equals (f0, rid_len, kPlayRid))
+                    api_probe_from_play.fetch_add (1, std::memory_order_relaxed);
+                else if (frame_equals (f0, rid_len, kApiRid))
+                    api_probe_from_api.fetch_add (1, std::memory_order_relaxed);
+            };
+
+            auto handle_one = [&](int rid_len,
+                                  int header_len,
+                                  int payload_len,
+                                  bool is_probe) {
+                if (is_probe) {
+                    handle_probe (rid_len);
+                    return;
+                }
+                if (is_shutdown_header (f1, header_len))
+                    return;
+
+                counters.api_recv.fetch_add (1, std::memory_order_relaxed);
+                const int send_err =
+                  send_3 (api_client, kPlayRid, strlen (kPlayRid), reply_header,
+                          strlen (reply_header), &f2[0], payload_len, 0);
+                if (send_err != 0)
+                    record_send_error (counters.api_send_err, send_err);
+            };
+
             while (worker_running.load (std::memory_order_acquire)) {
+                bool is_probe = false;
                 int l0 = 0, l1 = 0, l2 = 0;
-                const int recv_err =
-                  recv_3 (api_server, f0, f1, f2, 0, &l0, &l1, &l2);
+                const int recv_err = recv_router_msg (
+                  api_server, f0, f1, f2, 0, &is_probe, &l0, &l1, &l2);
                 if (recv_err != 0) {
                     if (!worker_running.load (std::memory_order_acquire))
                         break;
-                    std::this_thread::yield ();
                     continue;
                 }
                 if (!worker_running.load (std::memory_order_acquire))
                     break;
 
-                auto handle_one = [&](int payload_len) {
-                    counters.api_recv.fetch_add (1, std::memory_order_relaxed);
-                    const int send_err =
-                      send_3 (api_client, kPlayRid, strlen (kPlayRid),
-                              reply_header, strlen (reply_header), &f2[0],
-                              payload_len, 0);
-                    if (send_err != 0)
-                        record_send_error (counters.api_send_err, send_err);
-                };
+                handle_one (l0, l1, l2, is_probe);
 
-                handle_one (l2);
-
-                // non-blocking async drain for burst batch.
                 for (;;) {
+                    is_probe = false;
                     l0 = l1 = l2 = 0;
-                    const int drain_err = recv_3 (
-                      api_server, f0, f1, f2, ZLINK_DONTWAIT, &l0, &l1, &l2);
+                    const int drain_err = recv_router_msg (
+                      api_server, f0, f1, f2, ZLINK_DONTWAIT, &is_probe, &l0, &l1,
+                      &l2);
                     if (drain_err == EAGAIN
 #if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
                         || drain_err == EWOULDBLOCK
@@ -700,12 +819,11 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
                     ) {
                         break;
                     }
-                    if (drain_err != 0) {
+                    if (drain_err != 0
+                        || !worker_running.load (std::memory_order_acquire)) {
                         break;
                     }
-                    if (!worker_running.load (std::memory_order_acquire))
-                        break;
-                    handle_one (l2);
+                    handle_one (l0, l1, l2, is_probe);
                 }
             }
         });
@@ -715,26 +833,45 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
             std::vector<char> f1 (1024);
             std::vector<char> f2 (std::max<size_t> (cfg.size + 64, 65536 + 64));
 
+            auto handle_probe = [&](int rid_len) {
+                if (frame_equals (f0, rid_len, kApiRid))
+                    play_probe_from_api.fetch_add (1, std::memory_order_relaxed);
+                else if (frame_equals (f0, rid_len, kPlayRid))
+                    play_probe_from_play.fetch_add (1, std::memory_order_relaxed);
+            };
+
+            auto handle_one = [&](int rid_len, int header_len, bool is_probe) {
+                if (is_probe) {
+                    handle_probe (rid_len);
+                    return;
+                }
+                if (is_shutdown_header (f1, header_len))
+                    return;
+
+                counters.reply_recv.fetch_add (1, std::memory_order_relaxed);
+            };
+
             while (worker_running.load (std::memory_order_acquire)) {
+                bool is_probe = false;
                 int l0 = 0, l1 = 0, l2 = 0;
-                const int recv_err =
-                  recv_3 (play_server, f0, f1, f2, 0, &l0, &l1, &l2);
+                const int recv_err = recv_router_msg (
+                  play_server, f0, f1, f2, 0, &is_probe, &l0, &l1, &l2);
                 if (recv_err != 0) {
                     if (!worker_running.load (std::memory_order_acquire))
                         break;
-                    std::this_thread::yield ();
                     continue;
                 }
                 if (!worker_running.load (std::memory_order_acquire))
                     break;
 
-                counters.reply_recv.fetch_add (1, std::memory_order_relaxed);
+                handle_one (l0, l1, is_probe);
 
-                // non-blocking async drain for burst batch.
                 for (;;) {
+                    is_probe = false;
                     l0 = l1 = l2 = 0;
-                    const int drain_err = recv_3 (
-                      play_server, f0, f1, f2, ZLINK_DONTWAIT, &l0, &l1, &l2);
+                    const int drain_err = recv_router_msg (
+                      play_server, f0, f1, f2, ZLINK_DONTWAIT, &is_probe, &l0,
+                      &l1, &l2);
                     if (drain_err == EAGAIN
 #if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
                         || drain_err == EWOULDBLOCK
@@ -742,21 +879,38 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
                     ) {
                         break;
                     }
-                    if (drain_err != 0) {
+                    if (drain_err != 0
+                        || !worker_running.load (std::memory_order_acquire)) {
                         break;
                     }
-                    if (!worker_running.load (std::memory_order_acquire))
-                        break;
-                    counters.reply_recv.fetch_add (1, std::memory_order_relaxed);
+                    handle_one (l0, l1, is_probe);
                 }
             }
         });
 
+        const auto ready_deadline =
+          std::chrono::steady_clock::now () + std::chrono::seconds (5);
+        while (std::chrono::steady_clock::now () < ready_deadline) {
+            const bool ready =
+              play_probe_from_api.load (std::memory_order_relaxed) >= 1
+              && api_probe_from_play.load (std::memory_order_relaxed) >= 1
+              && (!cfg.self_connect
+                  || (play_probe_from_play.load (std::memory_order_relaxed) >= 1
+                      && api_probe_from_api.load (std::memory_order_relaxed)
+                           >= 1));
+            if (ready) {
+                out.ready = true;
+                break;
+            }
+            std::this_thread::yield ();
+        }
+
+        if (!out.ready)
+            break;
+
+        sender_running.store (true, std::memory_order_release);
         sender_thread = std::thread ([&]() {
             std::vector<char> payload (cfg.size, 'a');
-            std::vector<char> warmup_payload (64, 'w');
-            const char warmup_header[] =
-              "msg=SSEchoRequest;from=play-1;stage=warmup";
             auto next_reconnect =
               std::chrono::steady_clock::now ()
               + std::chrono::milliseconds (std::max (1, cfg.reconnect_interval_ms));
@@ -767,7 +921,7 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
                     && std::chrono::steady_clock::now () >= next_reconnect) {
                     zlink_disconnect (play_client, api_endpoint.c_str ());
                     yield_for_ms (std::max (1, cfg.reconnect_down_ms));
-                    zlink_connect (play_client, api_endpoint.c_str ());
+                    connect_with_rid (play_client, api_endpoint, kApiRid);
                     counters.reconnect_cycles.fetch_add (
                       1, std::memory_order_relaxed);
                     next_reconnect += std::chrono::milliseconds (
@@ -781,69 +935,19 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
                 }
 
                 char req_header[192];
-                const char *header = warmup_header;
-                size_t header_len = strlen (warmup_header);
-                const char *msg_payload = &warmup_payload[0];
-                size_t payload_len = warmup_payload.size ();
-
-                if (!job.warmup) {
-                    snprintf (
-                      req_header, sizeof req_header,
-                      "msg=SSEchoRequest;from=play-1;stage=single:BenchmarkStage:%d",
-                      job.sid);
-                    header = req_header;
-                    header_len = strlen (req_header);
-                    msg_payload = &payload[0];
-                    payload_len = payload.size ();
-                }
+                snprintf (req_header, sizeof req_header,
+                          "msg=SSEchoRequest;from=play-1;stage=single:BenchmarkStage:%d",
+                          job.sid);
 
                 const int send_err =
-                  send_3 (play_client, kApiRid, strlen (kApiRid), header,
-                          header_len, msg_payload, payload_len, 0);
-                if (send_err == 0) {
+                  send_3 (play_client, kApiRid, strlen (kApiRid), req_header,
+                          strlen (req_header), &payload[0], payload.size (), 0);
+                if (send_err == 0)
                     counters.req_sent.fetch_add (1, std::memory_order_relaxed);
-                } else {
+                else
                     record_send_error (counters.play_send_err, send_err);
-                }
             }
         });
-
-        for (int i = 0; i < 300 && !out.ready; ++i) {
-            const long warmup_outstanding =
-              counters.req_sent.load (std::memory_order_relaxed)
-              - counters.reply_recv.load (std::memory_order_relaxed)
-              + static_cast<long> (send_queue.size ());
-            if (warmup_outstanding > 0) {
-                std::this_thread::yield ();
-                continue;
-            }
-
-            SendJob warmup_job;
-            warmup_job.sid = 0;
-            warmup_job.warmup = true;
-            if (!send_queue.try_push (warmup_job, sender_running))
-                break;
-
-            for (int j = 0; j < 50; ++j) {
-                if (counters.reply_recv.load (std::memory_order_relaxed) > 0) {
-                    out.ready = true;
-                    break;
-                }
-                std::this_thread::yield ();
-            }
-        }
-
-        const auto warmup_drain_deadline =
-          std::chrono::steady_clock::now () + std::chrono::milliseconds (200);
-        while (std::chrono::steady_clock::now () < warmup_drain_deadline) {
-            const long warmup_outstanding =
-              counters.req_sent.load (std::memory_order_relaxed)
-              - counters.reply_recv.load (std::memory_order_relaxed)
-              + static_cast<long> (send_queue.size ());
-            if (warmup_outstanding <= 0)
-                break;
-            std::this_thread::yield ();
-        }
 
         base = snapshot (counters);
         bench_begin = std::chrono::steady_clock::now ();
@@ -851,46 +955,32 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
           bench_begin + std::chrono::seconds (std::max (1, cfg.duration_sec));
         benchmark_started = true;
 
-        for (int t = 0; t < std::max (1, cfg.sender_threads); ++t) {
-            producers.push_back (std::thread ([&, t]() {
-                while (producer_running.load (std::memory_order_acquire)) {
-                    if (std::chrono::steady_clock::now () >= bench_end)
-                        break;
+        const int producer_slots = std::max (1, cfg.sender_threads);
+        while (std::chrono::steady_clock::now () < bench_end) {
+            bool produced = false;
+            for (int i = 0; i < producer_slots; ++i) {
+                const long outstanding =
+                  counters.req_sent.load (std::memory_order_relaxed)
+                  - counters.reply_recv.load (std::memory_order_relaxed);
+                const long queued = static_cast<long> (send_queue.size ());
+                if (outstanding + queued >= cfg.inflight)
+                    break;
 
-                    const long outstanding =
-                      counters.req_sent.load (std::memory_order_relaxed)
-                      - counters.reply_recv.load (std::memory_order_relaxed);
-                    const long queued = static_cast<long> (send_queue.size ());
-                    if (outstanding + queued >= cfg.inflight) {
-                        std::this_thread::yield ();
-                        continue;
-                    }
+                const long n = seq.fetch_add (1, std::memory_order_relaxed);
+                const int sid =
+                  (cfg.ccu > 0) ? static_cast<int> (n % cfg.ccu) + 1 : 1;
 
-                    const long n = seq.fetch_add (1, std::memory_order_relaxed);
-                    const int sid =
-                      (cfg.ccu > 0) ? static_cast<int> (n % cfg.ccu) + 1 : 1;
-
-                    SendJob job;
-                    job.sid = sid;
-                    job.warmup = false;
-                    if (!send_queue.try_push (job, producer_running)) {
-                        std::this_thread::yield ();
-                    }
-                }
-            }));
-        }
-
-        while (std::chrono::steady_clock::now () < bench_end)
-            std::this_thread::yield ();
-
-        producer_running.store (false, std::memory_order_release);
-        send_queue.stop ();
-        for (size_t i = 0; i < producers.size (); ++i) {
-            if (producers[i].joinable ())
-                producers[i].join ();
+                SendJob job;
+                job.sid = sid;
+                if (send_queue.try_push (job, sender_running))
+                    produced = true;
+            }
+            if (!produced)
+                std::this_thread::yield ();
         }
 
         sender_running.store (false, std::memory_order_release);
+        send_queue.stop ();
         if (sender_thread.joinable ())
             sender_thread.join ();
 
@@ -900,7 +990,7 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
             const long outstanding =
               counters.req_sent.load (std::memory_order_relaxed)
               - counters.reply_recv.load (std::memory_order_relaxed);
-            if (outstanding <= 0)
+            if (outstanding <= 0 && send_queue.empty ())
                 break;
             std::this_thread::yield ();
         }
@@ -918,24 +1008,17 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
 
         RuntimeSnapshot finish = snapshot (counters);
         out.counters = delta (finish, base);
-        if (out.counters.reply_recv > 0)
-            out.ready = true;
         if (out.elapsed_sec > 0.0)
             out.throughput_msg_s = out.counters.reply_recv / out.elapsed_sec;
 
         ok = true;
     } while (false);
 
-    producer_running.store (false, std::memory_order_release);
     sender_running.store (false, std::memory_order_release);
     worker_running.store (false, std::memory_order_release);
     wake_blocking_receivers (play_client, api_client);
     send_queue.stop ();
 
-    for (size_t i = 0; i < producers.size (); ++i) {
-        if (producers[i].joinable ())
-            producers[i].join ();
-    }
     if (sender_thread.joinable ())
         sender_thread.join ();
     if (api_thread.joinable ())
@@ -966,8 +1049,6 @@ bool run_ss_round (const SsConfig &cfg, SsResult &out)
     if (!ok && benchmark_started) {
         RuntimeSnapshot finish = snapshot (counters);
         out.counters = delta (finish, base);
-        if (out.counters.reply_recv > 0)
-            out.ready = true;
         if (out.elapsed_sec <= 0.0) {
             out.elapsed_sec = static_cast<double> (cfg.duration_sec);
             if (out.elapsed_sec <= 0.0)

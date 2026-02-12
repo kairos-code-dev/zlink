@@ -56,7 +56,7 @@ set(tests
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
-  scenario/router_router/test_scenario_router_router)
+  scenario/router_router/zlink/test_scenario_router_router)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -243,8 +243,8 @@ endforeach()
 
 target_sources(
   test_scenario_router_router
-  PRIVATE scenario/router_router/router_router_scenario_core.cpp
-          scenario/router_router/router_router_scenario_output.cpp)
+  PRIVATE scenario/router_router/zlink/router_router_scenario_core.cpp
+          scenario/router_router/zlink/router_router_scenario_output.cpp)
 
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)

@@ -1,26 +1,23 @@
-# Router-Router Scenario Runner
+# Router-Router Scenarios
 
-`test_scenario_router_router` reproduces LZ-01..LZ-05 style checks directly on C `zlink`.
+Folder split:
 
-## Build
+- `core/tests/scenario/router_router/zlink/`: C zlink scenario runner (LZ-01..LZ-05).
+- `core/tests/scenario/router_router/zmq/`: libzmq-native comparison runner.
+
+## zlink Build
 
 ```bash
 cmake -S core -B core/build -DZLINK_BUILD_TESTS=ON
 cmake --build core/build --target test_scenario_router_router -j"$(nproc)"
 ```
 
-## Quick Run
+## zlink Quick Run
 
 ```bash
-core/tests/scenario/router_router/run_lz_scenarios.sh
+core/tests/scenario/router_router/zlink/run_lz_scenarios.sh
 ```
 
-Logs are written under
-`core/tests/scenario/router_router/result/<timestamp>/`.
+Logs are written under:
 
-## Direct Commands
-
-```bash
-core/build/bin/test_scenario_router_router --scenario lz-02 --self-connect 0 --size 64 --ccu 50 --inflight 10 --duration 10
-core/build/bin/test_scenario_router_router --scenario lz-03 --self-connect 1 --size 64 --ccu 50 --inflight 10 --duration 10
-```
+`core/tests/scenario/router_router/zlink/result/<timestamp>/`

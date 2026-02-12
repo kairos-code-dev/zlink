@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
 using Zlink.Native;
 
 namespace Zlink;
 
 public sealed class Gateway : IDisposable
 {
+    private const int StackSendPartLimit = 8;
     private IntPtr _handle;
 
     public Gateway(Context context, Discovery discovery)
@@ -28,27 +30,64 @@ public sealed class Gateway : IDisposable
     public void Send(string serviceName, Message[] parts,
         SendFlags flags = SendFlags.None)
     {
-        EnsureNotDisposed();
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
+        Send(serviceName, parts.AsSpan(), flags);
+    }
+
+    public unsafe void Send(string serviceName, ReadOnlySpan<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        if (serviceName == null)
+            throw new ArgumentNullException(nameof(serviceName));
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
-        var tmp = new ZlinkMsg[parts.Length];
+
+        ZlinkMsg[]? rented = null;
+        Span<ZlinkMsg> nativeParts = parts.Length <= StackSendPartLimit
+            ? stackalloc ZlinkMsg[StackSendPartLimit]
+            : (rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length));
+        nativeParts = nativeParts.Slice(0, parts.Length);
+
         int built = 0;
-        for (int i = 0; i < parts.Length; i++)
+        int rc = 0;
+        bool sendCompleted = false;
+        try
         {
-            parts[i].CopyTo(ref tmp[i]);
-            built++;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i] == null)
+                    throw new ArgumentException(
+                        "Parts must not contain null messages.", nameof(parts));
+                parts[i].CopyTo(ref nativeParts[i]);
+                built++;
+            }
+
+            fixed (ZlinkMsg* ptr = nativeParts)
+            {
+                rc = NativeMethods.zlink_gateway_send(_handle, serviceName, ptr,
+                    (nuint)nativeParts.Length, (int)flags);
+            }
+            sendCompleted = true;
         }
-        int rc = NativeMethods.zlink_gateway_send(_handle, serviceName, tmp,
-            (nuint)tmp.Length, (int)flags);
-        if (rc < 0)
+        catch
         {
             for (int i = 0; i < built; i++)
-            {
-                NativeMethods.zlink_msg_close(ref tmp[i]);
-            }
+                NativeMethods.zlink_msg_close(ref nativeParts[i]);
+            throw;
         }
+        finally
+        {
+            if (sendCompleted && rc < 0)
+            {
+                for (int i = 0; i < built; i++)
+                    NativeMethods.zlink_msg_close(ref nativeParts[i]);
+            }
+            if (rented != null)
+                ArrayPool<ZlinkMsg>.Shared.Return(rented);
+        }
+
         ZlinkException.ThrowIfError(rc);
     }
 

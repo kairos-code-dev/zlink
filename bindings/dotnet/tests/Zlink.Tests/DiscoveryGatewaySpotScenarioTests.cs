@@ -58,8 +58,10 @@ public class DiscoveryGatewaySpotScenarioTests
                     System.Threading.Thread.Sleep(10);
                 }
                 Assert.True(gateway.ConnectionCount("svc") > 0);
+                using var helloPart = Message.FromBytes("hello"u8);
+                Message[] helloParts = { helloPart };
                 TransportTestHelpers.SendWithRetry(gateway, "svc",
-                    new[] { Message.FromBytes(Encoding.UTF8.GetBytes("hello")) },
+                    helloParts.AsSpan(),
                     SendFlags.None, 5000);
 
                 var rid = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 256, 2000);

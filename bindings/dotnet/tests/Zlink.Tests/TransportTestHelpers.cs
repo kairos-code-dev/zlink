@@ -108,6 +108,14 @@ internal static class TransportTestHelpers
     internal static void SendWithRetry(Gateway gateway, string serviceName,
         Message[] parts, SendFlags flags, int timeoutMs)
     {
+        if (parts == null)
+            throw new ArgumentNullException(nameof(parts));
+        SendWithRetry(gateway, serviceName, parts.AsSpan(), flags, timeoutMs);
+    }
+
+    internal static void SendWithRetry(Gateway gateway, string serviceName,
+        ReadOnlySpan<Message> parts, SendFlags flags, int timeoutMs)
+    {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         ZlinkException? last = null;
         while (DateTime.UtcNow < deadline)

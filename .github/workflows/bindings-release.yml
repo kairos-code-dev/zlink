@@ -135,6 +135,8 @@ jobs:
           fi
 
       - name: Build and test
+        env:
+          ZLINK_LIB_PATH: ${{ github.workspace }}/bindings/node/prebuilds/linux-x64/libzlink.so
         run: |
           cd bindings/node
           npm ci
@@ -198,6 +200,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install build pytest twine
           cd bindings/python
+          pip install -e .
           python -m pytest -q tests/test_version.py tests/test_enums.py
           python -m build
 
@@ -307,7 +310,8 @@ jobs:
       - name: Build and pack
         run: |
           dotnet build bindings/dotnet/src/Zlink/Zlink.csproj -c Release
-          dotnet pack bindings/dotnet/src/Zlink/Zlink.csproj -c Release -o dist/dotnet
+          mkdir -p dist/dotnet
+          dotnet pack bindings/dotnet/src/Zlink/Zlink.csproj -c Release -p:PackageOutputPath="${{ github.workspace }}/dist/dotnet"
 
       - name: Publish to NuGet
         if: needs.resolve.outputs.publish_registry == 'true'

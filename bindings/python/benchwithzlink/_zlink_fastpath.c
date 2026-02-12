@@ -55,6 +55,122 @@ static PyObject *py_send_many_const(PyObject *self, PyObject *args)
     return PyLong_FromLong(count);
 }
 
+static PyObject *py_gateway_send_many_const(PyObject *self, PyObject *args)
+{
+    PyObject *gateway_obj = NULL;
+    const char *service = NULL;
+    Py_buffer payload = {0};
+    int flags = 0;
+    int count = 0;
+    void *gateway = NULL;
+
+    if (!PyArg_ParseTuple(
+          args, "Osy*ii", &gateway_obj, &service, &payload, &flags, &count))
+        return NULL;
+
+    if (!parse_socket_handle(gateway_obj, &gateway)) {
+        PyBuffer_Release(&payload);
+        return NULL;
+    }
+    if (count <= 0) {
+        PyBuffer_Release(&payload);
+        PyErr_SetString(PyExc_ValueError, "count must be > 0");
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        zlink_msg_t part;
+        if (zlink_msg_init_data(&part, payload.buf, (size_t)payload.len, NULL, NULL) != 0) {
+            PyBuffer_Release(&payload);
+            set_zlink_error("gateway_send_many_const init_data failed");
+            return NULL;
+        }
+        if (zlink_gateway_send(gateway, service, &part, 1, flags) != 0) {
+            zlink_msg_close(&part);
+            PyBuffer_Release(&payload);
+            set_zlink_error("gateway_send_many_const failed");
+            return NULL;
+        }
+    }
+
+    PyBuffer_Release(&payload);
+    return PyLong_FromLong(count);
+}
+
+static PyObject *py_spot_publish_many_const(PyObject *self, PyObject *args)
+{
+    PyObject *pub_obj = NULL;
+    const char *topic = NULL;
+    Py_buffer payload = {0};
+    int flags = 0;
+    int count = 0;
+    void *pub = NULL;
+
+    if (!PyArg_ParseTuple(
+          args, "Osy*ii", &pub_obj, &topic, &payload, &flags, &count))
+        return NULL;
+
+    if (!parse_socket_handle(pub_obj, &pub)) {
+        PyBuffer_Release(&payload);
+        return NULL;
+    }
+    if (count <= 0) {
+        PyBuffer_Release(&payload);
+        PyErr_SetString(PyExc_ValueError, "count must be > 0");
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        zlink_msg_t part;
+        if (zlink_msg_init_data(&part, payload.buf, (size_t)payload.len, NULL, NULL) != 0) {
+            PyBuffer_Release(&payload);
+            set_zlink_error("spot_publish_many_const init_data failed");
+            return NULL;
+        }
+        if (zlink_spot_pub_publish(pub, topic, &part, 1, flags) != 0) {
+            zlink_msg_close(&part);
+            PyBuffer_Release(&payload);
+            set_zlink_error("spot_publish_many_const failed");
+            return NULL;
+        }
+    }
+
+    PyBuffer_Release(&payload);
+    return PyLong_FromLong(count);
+}
+
+static PyObject *py_spot_recv_many(PyObject *self, PyObject *args)
+{
+    PyObject *sub_obj = NULL;
+    int flags = 0;
+    int count = 0;
+    void *sub = NULL;
+
+    if (!PyArg_ParseTuple(args, "Oii", &sub_obj, &flags, &count))
+        return NULL;
+
+    if (!parse_socket_handle(sub_obj, &sub))
+        return NULL;
+    if (count <= 0) {
+        PyErr_SetString(PyExc_ValueError, "count must be > 0");
+        return NULL;
+    }
+
+    for (int i = 0; i < count; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256] = {0};
+        size_t topic_len = sizeof(topic);
+        if (zlink_spot_sub_recv(sub, &parts, &part_count, flags, topic, &topic_len) != 0) {
+            set_zlink_error("spot_recv_many failed");
+            return NULL;
+        }
+        zlink_msgv_close(parts, part_count);
+    }
+
+    return PyLong_FromLong(count);
+}
+
 static PyObject *py_recv_many_into(PyObject *self, PyObject *args)
 {
     PyObject *sock_obj = NULL;
@@ -266,6 +382,18 @@ static PyObject *py_recv_pair_drain_into(PyObject *self, PyObject *args)
 
 static PyMethodDef fastpath_methods[] = {
     {"send_many_const", py_send_many_const, METH_VARARGS, "Send the same payload many times."},
+    {"gateway_send_many_const",
+     py_gateway_send_many_const,
+     METH_VARARGS,
+     "Send gateway [payload] many times with a fixed service name."},
+    {"spot_publish_many_const",
+     py_spot_publish_many_const,
+     METH_VARARGS,
+     "Publish spot [payload] many times with a fixed topic."},
+    {"spot_recv_many",
+     py_spot_recv_many,
+     METH_VARARGS,
+     "Receive spot messages many times and release native parts."},
     {"recv_many_into", py_recv_many_into, METH_VARARGS, "Receive into the same buffer many times."},
     {"send_routed_many_const",
      py_send_routed_many_const,

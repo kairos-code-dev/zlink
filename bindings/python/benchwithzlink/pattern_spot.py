@@ -5,6 +5,8 @@ import sys
 
 from bench_common import (
     endpoint_for,
+    make_cext_spot_publish_many_const,
+    make_cext_spot_recv_many,
     parse_env,
     parse_pattern_args,
     print_result,
@@ -46,6 +48,8 @@ def run(transport: str, size: int) -> int:
         payload = b"a" * size
         payload_msg = zlink.Message.from_bytes(payload)
         parts = [payload_msg]
+        publish_many = make_cext_spot_publish_many_const(spot_pub, "bench", payload)
+        recv_many = make_cext_spot_recv_many(spot_sub)
 
         for _ in range(warmup):
             spot_pub.publish("bench", parts, send_none)
@@ -58,28 +62,31 @@ def run(transport: str, size: int) -> int:
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / lat_count
 
         recv_count = 0
-
-        def receiver() -> None:
-            nonlocal recv_count
-            for _ in range(msg_count):
-                try:
-                    spot_recv_with_timeout(spot_sub, 5000)
-                except Exception:
-                    break
-                recv_count += 1
-
-        receiver_thread = threading.Thread(target=receiver)
-        receiver_thread.start()
-
         sent = 0
         start = time.perf_counter()
-        for _ in range(msg_count):
-            try:
-                spot_pub.publish("bench", parts, send_none)
-            except Exception:
-                break
-            sent += 1
-        receiver_thread.join()
+        if publish_many is not None and recv_many is not None:
+            sent = publish_many(msg_count, send_none)
+            recv_count = recv_many(sent, int(zlink.ReceiveFlag.NONE))
+        else:
+            def receiver() -> None:
+                nonlocal recv_count
+                for _ in range(msg_count):
+                    try:
+                        spot_recv_with_timeout(spot_sub, 5000)
+                    except Exception:
+                        break
+                    recv_count += 1
+
+            receiver_thread = threading.Thread(target=receiver)
+            receiver_thread.start()
+
+            for _ in range(msg_count):
+                try:
+                    spot_pub.publish("bench", parts, send_none)
+                except Exception:
+                    break
+                sent += 1
+            receiver_thread.join()
 
         elapsed = time.perf_counter() - start
         effective = min(sent, recv_count)

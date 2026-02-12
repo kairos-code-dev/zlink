@@ -262,6 +262,51 @@ def make_cext_recv_pair_drain_into(sock, first_buffer, second_buffer):
     return recv_pair_drain
 
 
+def make_cext_gateway_send_many_const(gateway, service: str, payload: bytes):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(gateway._handle)
+    service_name = str(service)
+    body = bytes(payload)
+
+    def send_many(count: int, flags: int) -> int:
+        return int(
+            FASTPATH_CEXT.gateway_send_many_const(
+                handle, service_name, body, int(flags), int(count)
+            )
+        )
+
+    return send_many
+
+
+def make_cext_spot_publish_many_const(spot, topic: str, payload: bytes):
+    if FASTPATH_CEXT is None:
+        return None
+    pub_handle = int(spot._pub_handle)
+    topic_name = str(topic)
+    body = bytes(payload)
+
+    def publish_many(count: int, flags: int) -> int:
+        return int(
+            FASTPATH_CEXT.spot_publish_many_const(
+                pub_handle, topic_name, body, int(flags), int(count)
+            )
+        )
+
+    return publish_many
+
+
+def make_cext_spot_recv_many(spot):
+    if FASTPATH_CEXT is None:
+        return None
+    sub_handle = int(spot._sub_handle)
+
+    def recv_many(count: int, flags: int) -> int:
+        return int(FASTPATH_CEXT.spot_recv_many(sub_handle, int(flags), int(count)))
+
+    return recv_many
+
+
 class SocketWaiter:
     def __init__(self, sock) -> None:
         self._poller = zlink.Poller()

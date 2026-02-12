@@ -7,6 +7,8 @@ from bench_common import (
     SocketWaiter,
     endpoint_for,
     gateway_send_with_retry,
+    make_cext_gateway_send_many_const,
+    make_cext_recv_pair_many_into,
     make_raw_recv_into,
     parse_env,
     parse_pattern_args,
@@ -72,6 +74,8 @@ def run(transport: str, size: int) -> int:
         recv_none = int(zlink.ReceiveFlag.NONE)
         recv_router_rid = make_raw_recv_into(router, rid_buf)
         recv_router_data = make_raw_recv_into(router, data_buf)
+        send_gateway_many = make_cext_gateway_send_many_const(gateway, service, payload)
+        recv_router_pair_many = make_cext_recv_pair_many_into(router, rid_buf, data_buf)
 
         def recv_pair(waiter_obj: SocketWaiter) -> None:
             if not waiter_obj.wait(5000):
@@ -92,29 +96,32 @@ def run(transport: str, size: int) -> int:
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / lat_count
 
         recv_count = 0
-
-        def receiver() -> None:
-            nonlocal recv_count
-            recv_waiter = SocketWaiter(router)
-            for _ in range(msg_count):
-                try:
-                    recv_pair(recv_waiter)
-                except Exception:
-                    break
-                recv_count += 1
-
-        receiver_thread = threading.Thread(target=receiver)
-        receiver_thread.start()
-
         sent = 0
         start = time.perf_counter()
-        for _ in range(msg_count):
-            try:
-                gateway.send(service, parts, send_none)
-            except Exception:
-                break
-            sent += 1
-        receiver_thread.join()
+        if send_gateway_many is not None and recv_router_pair_many is not None:
+            sent = send_gateway_many(msg_count, send_none)
+            recv_count = recv_router_pair_many(sent, recv_none)
+        else:
+            def receiver() -> None:
+                nonlocal recv_count
+                recv_waiter = SocketWaiter(router)
+                for _ in range(msg_count):
+                    try:
+                        recv_pair(recv_waiter)
+                    except Exception:
+                        break
+                    recv_count += 1
+
+            receiver_thread = threading.Thread(target=receiver)
+            receiver_thread.start()
+
+            for _ in range(msg_count):
+                try:
+                    gateway.send(service, parts, send_none)
+                except Exception:
+                    break
+                sent += 1
+            receiver_thread.join()
 
         elapsed = time.perf_counter() - start
         effective = min(sent, recv_count)

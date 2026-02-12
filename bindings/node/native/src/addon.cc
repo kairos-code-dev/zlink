@@ -46,6 +46,7 @@ static napi_value init(napi_env env, napi_value exports)
 
         {"gatewayNew", 0, gateway_new, 0, 0, 0, napi_default, 0},
         {"gatewaySend", 0, gateway_send, 0, 0, 0, napi_default, 0},
+        {"gatewaySendManyConst", 0, gateway_send_many_const, 0, 0, 0, napi_default, 0},
         {"gatewayRecv", 0, gateway_recv, 0, 0, 0, napi_default, 0},
         {"gatewaySetLbStrategy", 0, gateway_set_lb, 0, 0, 0, napi_default, 0},
         {"gatewaySetTlsClient", 0, gateway_set_tls, 0, 0, 0, napi_default, 0},
@@ -80,10 +81,12 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNew", 0, spot_new, 0, 0, 0, napi_default, 0},
         {"spotDestroy", 0, spot_destroy, 0, 0, 0, napi_default, 0},
         {"spotPublish", 0, spot_publish, 0, 0, 0, napi_default, 0},
+        {"spotPublishManyConst", 0, spot_publish_many_const, 0, 0, 0, napi_default, 0},
         {"spotSubscribe", 0, spot_subscribe, 0, 0, 0, napi_default, 0},
         {"spotSubscribePattern", 0, spot_subscribe_pattern, 0, 0, 0, napi_default, 0},
         {"spotUnsubscribe", 0, spot_unsubscribe, 0, 0, 0, napi_default, 0},
         {"spotRecv", 0, spot_recv, 0, 0, 0, napi_default, 0},
+        {"spotRecvMany", 0, spot_recv_many, 0, 0, 0, napi_default, 0},
 
         {"monitorOpen", 0, monitor_open, 0, 0, 0, napi_default, 0},
         {"monitorRecv", 0, monitor_recv, 0, 0, 0, napi_default, 0},

@@ -530,32 +530,47 @@ async function runGateway(transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / latCount;
 
     let recvCount = 0;
-    const receiverLoop = (async () => {
+    let sent = 0;
+    t0 = process.hrtime.bigint();
+    if (typeof gateway.sendManyConst === 'function') {
+      try {
+        sent = gateway.sendManyConst(service, payload, msgCount, zlink.SendFlag.NONE);
+      } catch (_) {
+        sent = 0;
+      }
+      if (sent > 0) {
+        try {
+          recvCount = router.recvPairManyInto(ridBuf, dataBuf, sent, zlink.ReceiveFlag.NONE);
+        } catch (_) {
+          recvCount = 0;
+        }
+      }
+    } else {
+      const receiverLoop = (async () => {
+        for (let i = 0; i < msgCount; i++) {
+          try {
+            await recvIntoWithTimeout(router, ridBuf, 5000);
+            await recvIntoWithTimeout(router, dataBuf, 5000);
+          } catch (_) {
+            break;
+          }
+          recvCount += 1;
+        }
+      })();
+
       for (let i = 0; i < msgCount; i++) {
         try {
-          await recvIntoWithTimeout(router, ridBuf, 5000);
-          await recvIntoWithTimeout(router, dataBuf, 5000);
+          gateway.send(service, parts, zlink.SendFlag.NONE);
         } catch (_) {
           break;
         }
-        recvCount += 1;
+        sent += 1;
+        if ((i & 1023) === 0) {
+          await Promise.resolve();
+        }
       }
-    })();
-
-    let sent = 0;
-    t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      try {
-        gateway.send(service, parts, zlink.SendFlag.NONE);
-      } catch (_) {
-        break;
-      }
-      sent += 1;
-      if ((i & 1023) === 0) {
-        await Promise.resolve();
-      }
+      await receiverLoop;
     }
-    await receiverLoop;
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = (sent > 0 && recvCount > 0) ? (Math.min(sent, recvCount) / elapsedSec) : 0.0;
     printResult('GATEWAY', transport, size, thr, latUs);
@@ -608,31 +623,46 @@ async function runSpot(transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / latCount;
 
     let recvCount = 0;
-    const receiverLoop = (async () => {
+    let sent = 0;
+    t0 = process.hrtime.bigint();
+    if (typeof spotPub.publishManyConst === 'function' && typeof spotSub.recvMany === 'function') {
+      try {
+        sent = spotPub.publishManyConst('bench', payload, msgCount, zlink.SendFlag.NONE);
+      } catch (_) {
+        sent = 0;
+      }
+      if (sent > 0) {
+        try {
+          recvCount = spotSub.recvMany(sent, zlink.ReceiveFlag.NONE);
+        } catch (_) {
+          recvCount = 0;
+        }
+      }
+    } else {
+      const receiverLoop = (async () => {
+        for (let i = 0; i < msgCount; i++) {
+          try {
+            await spotRecvWithTimeout(spotSub, 5000);
+          } catch (_) {
+            break;
+          }
+          recvCount += 1;
+        }
+      })();
+
       for (let i = 0; i < msgCount; i++) {
         try {
-          await spotRecvWithTimeout(spotSub, 5000);
+          spotPub.publish('bench', parts, zlink.SendFlag.NONE);
         } catch (_) {
           break;
         }
-        recvCount += 1;
+        sent += 1;
+        if ((i & 1023) === 0) {
+          await Promise.resolve();
+        }
       }
-    })();
-
-    let sent = 0;
-    t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      try {
-        spotPub.publish('bench', parts, zlink.SendFlag.NONE);
-      } catch (_) {
-        break;
-      }
-      sent += 1;
-      if ((i & 1023) === 0) {
-        await Promise.resolve();
-      }
+      await receiverLoop;
     }
-    await receiverLoop;
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = (sent > 0 && recvCount > 0) ? (Math.min(sent, recvCount) / elapsedSec) : 0.0;
     printResult('SPOT', transport, size, thr, latUs);

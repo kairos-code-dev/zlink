@@ -346,6 +346,10 @@ class Gateway {
     this._native = requireNative().gatewayNew(ctx._native, discovery._native, routingId);
   }
   send(service, parts, flags = 0) { requireNative().gatewaySend(this._native, service, parts, flags); }
+  sendManyConst(service, payload, count, flags = 0) {
+    const b = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+    return requireNative().gatewaySendManyConst(this._native, service, b, flags, count);
+  }
   recv(flags = 0) { return requireNative().gatewayRecv(this._native, flags); }
   setLoadBalancing(service, strategy) { requireNative().gatewaySetLbStrategy(this._native, service, strategy); }
   setTlsClient(ca, host, trust) { requireNative().gatewaySetTlsClient(this._native, ca, host, trust); }
@@ -397,10 +401,15 @@ class SpotNode {
 class Spot {
   constructor(node) { this._native = requireNative().spotNew(node._native); }
   publish(topic, parts, flags = 0) { requireNative().spotPublish(this._native, topic, parts, flags); }
+  publishManyConst(topic, payload, count, flags = 0) {
+    const b = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+    return requireNative().spotPublishManyConst(this._native, topic, b, flags, count);
+  }
   subscribe(topic) { requireNative().spotSubscribe(this._native, topic); }
   subscribePattern(pattern) { requireNative().spotSubscribePattern(this._native, pattern); }
   unsubscribe(topicOrPattern) { requireNative().spotUnsubscribe(this._native, topicOrPattern); }
   recv(flags = 0) { return requireNative().spotRecv(this._native, flags); }
+  recvMany(count, flags = 0) { return requireNative().spotRecvMany(this._native, flags, count); }
   close() { if (!this._native) return; requireNative().spotDestroy(this._native); this._native = null; }
 }
 

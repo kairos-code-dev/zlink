@@ -279,6 +279,44 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_publish_many_const(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
+    std::string topic = get_string(env, argv[1]);
+    void *payload = NULL;
+    size_t payload_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &payload, &payload_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "payload buffer invalid");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[4], &count);
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "count must be > 0");
+        return NULL;
+    }
+
+    for (int32_t i = 0; i < count; ++i) {
+        zlink_msg_t part;
+        if (zlink_msg_init_data(&part, payload, payload_len, NULL, NULL) != 0)
+            return throw_last_error(env, "spot_publish_many_const init_data failed");
+        int rc = zlink_spot_pub_publish(spot ? spot->pub : NULL, topic.c_str(), &part, 1, flags);
+        if (rc != 0) {
+            zlink_msg_close(&part);
+            return throw_last_error(env, "spot_publish_many_const failed");
+        }
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
+    return out;
+}
+
 napi_value spot_subscribe(napi_env env, napi_callback_info info)
 {
     napi_value argv[2];
@@ -356,4 +394,36 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "topic", t);
     napi_set_named_property(env, obj, "parts", arr);
     return obj;
+}
+
+napi_value spot_recv_many(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    spot_handle_t *spot = get_spot_handle(env, argv[0]);
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[1], &flags);
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[2], &count);
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "count must be > 0");
+        return NULL;
+    }
+
+    for (int32_t i = 0; i < count; ++i) {
+        zlink_msg_t *parts = NULL;
+        size_t part_count = 0;
+        char topic[256] = {0};
+        size_t topic_len = sizeof(topic);
+        int rc = zlink_spot_sub_recv(spot ? spot->sub : NULL, &parts, &part_count, flags,
+                                     topic, &topic_len);
+        if (rc != 0)
+            return throw_last_error(env, "spot_recv_many failed");
+        zlink_msgv_close(parts, part_count);
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
+    return out;
 }

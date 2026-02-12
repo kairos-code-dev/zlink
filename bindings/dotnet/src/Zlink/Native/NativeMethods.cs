@@ -249,6 +249,18 @@ internal static class NativeMethods
         ZlinkMsg* parts, nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_gateway_send_rid(IntPtr gateway,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
+        [In] ref ZlinkRoutingId routingId, [In] ZlinkMsg[] parts,
+        nuint partCount, int flags);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_gateway_send_rid",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_gateway_send_rid(IntPtr gateway,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
+        ZlinkRoutingId* routingId, ZlinkMsg* parts, nuint partCount, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static unsafe extern int zlink_gateway_recv(IntPtr gateway,
         out IntPtr parts, out nuint partCount, int flags, byte* serviceName);
 
@@ -381,6 +393,12 @@ internal static class NativeMethods
     internal static extern int zlink_spot_pub_publish(IntPtr pub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
         [In] ZlinkMsg[] parts, nuint partCount, int flags);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_pub_publish",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_spot_pub_publish(IntPtr pub,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
+        ZlinkMsg* parts, nuint partCount, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_sub_new(IntPtr node);

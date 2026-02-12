@@ -46,6 +46,25 @@ internal static partial class BenchRunner
                 return 2;
             if (!WaitUntil(() => gateway.ConnectionCount(service) > 0, 5000))
                 return 2;
+            byte[] targetRoutingId = Array.Empty<byte>();
+            if (!WaitUntil(() =>
+                {
+                    try
+                    {
+                        var receivers = discovery.GetReceivers(service);
+                        if (receivers.Length == 0)
+                            return false;
+                        if (receivers[0].RoutingId.Length == 0)
+                            return false;
+                        targetRoutingId = receivers[0].RoutingId;
+                        return true;
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                }, 5000))
+                return 2;
             Thread.Sleep(300);
 
             var payload = new byte[size];
@@ -57,7 +76,8 @@ internal static partial class BenchRunner
 
             for (int i = 0; i < warmup; i++)
             {
-                gateway.Send(service, payloadParts, SendFlags.None);
+                gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
+                    payloadParts.AsSpan(), SendFlags.None);
                 GatewayReceiveProviderMessage(router, rid.AsSpan(),
                     data.AsSpan());
             }
@@ -65,7 +85,8 @@ internal static partial class BenchRunner
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                gateway.Send(service, payloadParts, SendFlags.None);
+                gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
+                    payloadParts.AsSpan(), SendFlags.None);
                 GatewayReceiveProviderMessage(router, rid.AsSpan(),
                     data.AsSpan());
             }
@@ -97,7 +118,8 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    gateway.Send(service, payloadParts, SendFlags.None);
+                    gateway.SendToRoutingId(service, targetRoutingId.AsSpan(),
+                        payloadParts.AsSpan(), SendFlags.None);
                 }
                 catch
                 {

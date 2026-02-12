@@ -58,10 +58,25 @@ public class DiscoveryGatewaySpotScenarioTests
                     System.Threading.Thread.Sleep(10);
                 }
                 Assert.True(gateway.ConnectionCount("svc") > 0);
+
+                byte[] targetRoutingId = Array.Empty<byte>();
+                var ridDeadline = DateTime.UtcNow.AddMilliseconds(5000);
+                while (DateTime.UtcNow < ridDeadline)
+                {
+                    var receivers = discovery.GetReceivers("svc");
+                    if (receivers.Length > 0 && receivers[0].RoutingId.Length > 0)
+                    {
+                        targetRoutingId = receivers[0].RoutingId;
+                        break;
+                    }
+                    System.Threading.Thread.Sleep(10);
+                }
+                Assert.NotEmpty(targetRoutingId);
+
                 using var helloPart = Message.FromBytes("hello"u8);
                 Message[] helloParts = { helloPart };
-                TransportTestHelpers.SendWithRetry(gateway, "svc",
-                    helloParts.AsSpan(),
+                TransportTestHelpers.SendWithRetryToRoutingId(gateway, "svc",
+                    targetRoutingId.AsSpan(), helloParts.AsSpan(),
                     SendFlags.None, 5000);
 
                 var rid = TransportTestHelpers.ReceiveWithTimeout(receiverRouter, 256, 2000);

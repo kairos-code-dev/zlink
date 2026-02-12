@@ -225,7 +225,32 @@ public final class Message implements AutoCloseable {
         zeroCopyAnchor = null;
     }
 
+    void resetForReuse() {
+        if (!arena.scope().isAlive())
+            throw new IllegalStateException("message is closed");
+        if (valid) {
+            int rc = NativeMsg.msgClose(msg);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_close failed");
+            valid = false;
+        }
+        int rc = NativeMsg.msgInit(msg);
+        if (rc != 0)
+            throw new RuntimeException("zlink_msg_init failed");
+        valid = true;
+        zeroCopyAnchor = null;
+    }
+
+    boolean isReusable() {
+        return arena.scope().isAlive();
+    }
+
     static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
+        return fromMsgVector(partsAddr, count, null);
+    }
+
+    static Message[] fromMsgVector(MemorySegment partsAddr, long count,
+                                   Message[] reusable) {
         if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
             return new Message[0];
         if (count > Integer.MAX_VALUE)
@@ -233,28 +258,36 @@ public final class Message implements AutoCloseable {
         long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
         if (count > Long.MAX_VALUE / msgSize)
             throw new IllegalArgumentException("msg vector too large: " + count);
-        Message[] out = new Message[(int) count];
+        int outSize = (int) count;
+        Message[] out;
+        if (reusable == null || reusable.length != outSize) {
+            out = new Message[outSize];
+            if (reusable != null) {
+                System.arraycopy(reusable, 0, out, 0, Math.min(reusable.length,
+                    out.length));
+            }
+        } else {
+            out = reusable;
+        }
         int built = 0;
         boolean success = false;
         try {
             MemorySegment parts = MemorySegment.ofAddress(partsAddr.address()).reinterpret(msgSize * count);
             for (int i = 0; i < count; i++) {
                 MemorySegment src = parts.asSlice((long) i * msgSize, msgSize);
-                Message msg = new Message(true);
-                int rc = NativeMsg.msgInit(msg.msg);
-                if (rc != 0) {
-                    msg.arena.close();
-                    throw new RuntimeException("zlink_msg_init failed");
+                Message msg = out[i];
+                if (msg == null || !msg.isReusable()) {
+                    msg = new Message();
+                    out[i] = msg;
+                } else {
+                    msg.resetForReuse();
                 }
-                msg.valid = true;
-                rc = NativeMsg.msgMove(msg.msg, src);
+                int rc = NativeMsg.msgMove(msg.msg, src);
                 if (rc != 0) {
-                    NativeMsg.msgClose(msg.msg);
-                    msg.valid = false;
-                    msg.arena.close();
                     throw new RuntimeException("zlink_msg_move failed");
                 }
-                out[i] = msg;
+                msg.valid = true;
+                msg.zeroCopyAnchor = null;
                 built++;
             }
             success = true;
@@ -263,8 +296,25 @@ public final class Message implements AutoCloseable {
             NativeMsg.msgvClose(partsAddr, count);
             if (!success) {
                 for (int i = 0; i < built; i++) {
-                    if (out[i] != null)
-                        out[i].close();
+                    if (out[i] != null && out[i].isReusable()) {
+                        try {
+                            out[i].resetForReuse();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static void closeAll(Message[] parts) {
+        if (parts == null)
+            return;
+        for (Message part : parts) {
+            if (part != null && part.isReusable()) {
+                try {
+                    part.close();
+                } catch (RuntimeException ignored) {
                 }
             }
         }

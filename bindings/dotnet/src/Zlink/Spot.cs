@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
 using Zlink.Native;
 
 namespace Zlink;
@@ -113,6 +114,7 @@ public sealed class SpotNode : IDisposable
 
 public sealed class Spot : IDisposable
 {
+    private const int StackPublishPartLimit = 8;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
 
@@ -135,26 +137,61 @@ public sealed class Spot : IDisposable
     public void Publish(string topicId, Message[] parts,
         SendFlags flags = SendFlags.None)
     {
-        EnsureNotDisposed();
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
+        Publish(topicId, parts.AsSpan(), flags);
+    }
+
+    public unsafe void Publish(string topicId, ReadOnlySpan<Message> parts,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        if (topicId == null)
+            throw new ArgumentNullException(nameof(topicId));
         if (parts.Length == 0)
             throw new ArgumentException("Parts must not be empty.", nameof(parts));
-        var tmp = new ZlinkMsg[parts.Length];
+
+        ZlinkMsg[]? rented = null;
+        Span<ZlinkMsg> nativeParts = parts.Length <= StackPublishPartLimit
+            ? stackalloc ZlinkMsg[StackPublishPartLimit]
+            : (rented = ArrayPool<ZlinkMsg>.Shared.Rent(parts.Length));
+        nativeParts = nativeParts.Slice(0, parts.Length);
+
         int built = 0;
-        for (int i = 0; i < parts.Length; i++)
+        int rc = 0;
+        try
         {
-            parts[i].CopyTo(ref tmp[i]);
-            built++;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i] == null)
+                    throw new ArgumentException(
+                        "Parts must not contain null messages.", nameof(parts));
+                parts[i].CopyTo(ref nativeParts[i]);
+                built++;
+            }
+
+            fixed (ZlinkMsg* ptr = nativeParts)
+            {
+                rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicId,
+                    ptr, (nuint)nativeParts.Length, (int)flags);
+            }
         }
-        int rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicId, tmp,
-            (nuint)tmp.Length, (int)flags);
+        catch
+        {
+            for (int i = 0; i < built; i++)
+                NativeMethods.zlink_msg_close(ref nativeParts[i]);
+            throw;
+        }
+        finally
+        {
+            if (rented != null)
+                ArrayPool<ZlinkMsg>.Shared.Return(rented);
+        }
+
         if (rc < 0)
         {
             for (int i = 0; i < built; i++)
-            {
-                NativeMethods.zlink_msg_close(ref tmp[i]);
-            }
+                NativeMethods.zlink_msg_close(ref nativeParts[i]);
         }
         ZlinkException.ThrowIfError(rc);
     }

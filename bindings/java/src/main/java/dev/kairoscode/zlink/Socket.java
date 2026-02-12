@@ -265,8 +265,13 @@ public final class Socket implements AutoCloseable {
     public byte[] recv(int size, ReceiveFlag flags) {
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
+        if (size == 0)
+            return new byte[0];
         byte[] out = new byte[size];
-        int rc = recv(out, 0, size, flags);
+        int rc = Native.recv(handle, MemorySegment.ofArray(out), size,
+            flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_recv failed");
         if (rc == out.length)
             return out;
         return Arrays.copyOf(out, rc);

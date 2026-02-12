@@ -82,6 +82,14 @@ static std::string routing_id_key (const zlink_routing_id_t &rid_)
     return std::string (reinterpret_cast<const char *> (rid_.data), rid_.size);
 }
 
+static bool routing_id_equals (const zlink_routing_id_t &a_,
+                               const zlink_routing_id_t &b_)
+{
+    if (a_.size != b_.size || a_.size == 0)
+        return false;
+    return memcmp (a_.data, b_.data, a_.size) == 0;
+}
+
 static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
 {
     if (!parts_)
@@ -427,13 +435,17 @@ bool gateway_t::find_provider_index (service_pool_t *pool_,
 {
     if (!pool_ || !rid_ || !index_out_)
         return false;
+
+    if (pool_->routing_ids.size () == 1) {
+        if (routing_id_equals (pool_->routing_ids[0], *rid_)) {
+            *index_out_ = 0;
+            return true;
+        }
+        return false;
+    }
+
     for (size_t i = 0; i < pool_->routing_ids.size (); ++i) {
-        const zlink_routing_id_t &candidate = pool_->routing_ids[i];
-        if (candidate.size != rid_->size)
-            continue;
-        if (candidate.size == 0)
-            continue;
-        if (memcmp (candidate.data, rid_->data, candidate.size) == 0) {
+        if (routing_id_equals (pool_->routing_ids[i], *rid_)) {
             *index_out_ = i;
             return true;
         }
@@ -507,6 +519,11 @@ int gateway_t::send (const char *service_name_,
     if (!pool) {
         errno = ENOMEM;
         return -1;
+    }
+
+    // Fast-path for the common single-provider case.
+    if (pool->routing_ids.size () == 1) {
+        return send_request_frames (pool, 0, parts_, part_count_, flags_);
     }
 
     size_t provider_index = 0;

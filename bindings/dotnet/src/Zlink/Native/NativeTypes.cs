@@ -82,6 +82,19 @@ internal static class NativeHelpers
         return data;
     }
 
+    public static unsafe ZlinkRoutingId WriteRoutingId(ReadOnlySpan<byte> routingId)
+    {
+        if (routingId.Length <= 0 || routingId.Length > 255)
+            throw new ArgumentOutOfRangeException(nameof(routingId),
+                "routingId length must be between 1 and 255 bytes.");
+
+        ZlinkRoutingId rid = default;
+        rid.Size = (byte)routingId.Length;
+        for (int i = 0; i < routingId.Length; i++)
+            rid.Data[i] = routingId[i];
+        return rid;
+    }
+
     public static unsafe string ReadFixedString(ref ZlinkProviderInfo info, bool service)
     {
         if (service)

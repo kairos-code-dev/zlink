@@ -92,6 +92,30 @@ public final class Gateway implements AutoCloseable {
         }
     }
 
+    public RecvContext createRecvContext() {
+        return new RecvContext();
+    }
+
+    public GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
+        Objects.requireNonNull(context, "context");
+        context.ensureOpen();
+        int rc = Native.gatewayRecv(handle,
+            context.partsPtr(),
+            context.partCount(),
+            flags.getValue(),
+            context.serviceName());
+        if (rc != 0)
+            throw new RuntimeException("zlink_gateway_recv failed");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
+            context.reusableParts());
+        context.setReusableParts(reusable);
+        int serviceLen = cStringLength(context.serviceName(), SERVICE_NAME_CAPACITY);
+        MemorySegment serviceRaw = context.serviceName().asSlice(0, serviceLen);
+        return new GatewayRawMessage(serviceRaw, reusable);
+    }
+
     public void setLoadBalancing(String serviceName, GatewayLbStrategy strategy) {
         try (Arena arena = Arena.ofConfined()) {
             int rc = Native.gatewaySetLbStrategy(handle, NativeHelpers.toCString(arena, serviceName), strategy.getValue());
@@ -167,6 +191,8 @@ public final class Gateway implements AutoCloseable {
 
     public record GatewayMessage(String serviceName, byte[][] parts) {}
 
+    public record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
+
     public static final class PreparedService implements AutoCloseable {
         private final String serviceName;
         private Arena arena;
@@ -216,10 +242,62 @@ public final class Gateway implements AutoCloseable {
 
         @Override
         public void close() {
-            for (Message part : parts) {
-                if (part != null)
-                    part.close();
-            }
+            Message.closeAll(parts);
+        }
+    }
+
+    public static final class RecvContext implements AutoCloseable {
+        private Arena arena;
+        private final MemorySegment partsPtr;
+        private final MemorySegment partCount;
+        private final MemorySegment serviceName;
+        private Message[] reusableParts;
+
+        RecvContext() {
+            this.arena = Arena.ofShared();
+            this.partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
+            this.serviceName = arena.allocate(SERVICE_NAME_CAPACITY);
+            this.reusableParts = new Message[0];
+        }
+
+        void ensureOpen() {
+            if (arena == null || !arena.scope().isAlive())
+                throw new IllegalStateException("recv context is closed");
+        }
+
+        MemorySegment partsPtr() {
+            ensureOpen();
+            return partsPtr;
+        }
+
+        MemorySegment partCount() {
+            ensureOpen();
+            return partCount;
+        }
+
+        MemorySegment serviceName() {
+            ensureOpen();
+            return serviceName;
+        }
+
+        Message[] reusableParts() {
+            ensureOpen();
+            return reusableParts;
+        }
+
+        void setReusableParts(Message[] parts) {
+            ensureOpen();
+            reusableParts = parts == null ? new Message[0] : parts;
+        }
+
+        @Override
+        public void close() {
+            Message.closeAll(reusableParts);
+            reusableParts = new Message[0];
+            if (arena != null && arena.scope().isAlive())
+                arena.close();
+            arena = null;
         }
     }
 
@@ -262,5 +340,15 @@ public final class Gateway implements AutoCloseable {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
             NativeMsg.msgClose(msg);
         }
+    }
+
+    private static int cStringLength(MemorySegment cString, int maxLen) {
+        int len = 0;
+        while (len < maxLen) {
+            if (cString.get(ValueLayout.JAVA_BYTE, len) == 0)
+                break;
+            len++;
+        }
+        return len;
     }
 }

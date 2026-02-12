@@ -135,6 +135,33 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public RecvContext createRecvContext() {
+        return new RecvContext();
+    }
+
+    public SpotRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
+        Objects.requireNonNull(context, "context");
+        context.ensureOpen();
+        context.topicLength().set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+        int rc = Native.spotSubRecv(subHandle,
+            context.partsPtr(),
+            context.partCount(),
+            flags.getValue(),
+            context.topicId(),
+            context.topicLength());
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_sub_recv failed");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
+            context.reusableParts());
+        context.setReusableParts(reusable);
+        int topicLen = normalizeTopicLength(context.topicId(), TOPIC_CAPACITY,
+            context.topicLength().get(ValueLayout.JAVA_LONG, 0));
+        MemorySegment topicRaw = context.topicId().asSlice(0, topicLen);
+        return new SpotRawMessage(topicRaw, reusable);
+    }
+
     @Override
     public void close() {
         if (pubHandle != null && pubHandle.address() != 0) {
@@ -148,6 +175,8 @@ public final class Spot implements AutoCloseable {
     }
 
     public record SpotMessage(String topicId, byte[][] parts) {}
+
+    public record SpotRawMessage(MemorySegment topicId, Message[] parts) {}
 
     public static final class PreparedTopic implements AutoCloseable {
         private final String topicId;
@@ -198,10 +227,69 @@ public final class Spot implements AutoCloseable {
 
         @Override
         public void close() {
-            for (Message part : parts) {
-                if (part != null)
-                    part.close();
-            }
+            Message.closeAll(parts);
+        }
+    }
+
+    public static final class RecvContext implements AutoCloseable {
+        private Arena arena;
+        private final MemorySegment partsPtr;
+        private final MemorySegment partCount;
+        private final MemorySegment topicId;
+        private final MemorySegment topicLength;
+        private Message[] reusableParts;
+
+        RecvContext() {
+            this.arena = Arena.ofShared();
+            this.partsPtr = arena.allocate(ValueLayout.ADDRESS);
+            this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
+            this.topicId = arena.allocate(TOPIC_CAPACITY);
+            this.topicLength = arena.allocate(ValueLayout.JAVA_LONG);
+            this.reusableParts = new Message[0];
+        }
+
+        void ensureOpen() {
+            if (arena == null || !arena.scope().isAlive())
+                throw new IllegalStateException("recv context is closed");
+        }
+
+        MemorySegment partsPtr() {
+            ensureOpen();
+            return partsPtr;
+        }
+
+        MemorySegment partCount() {
+            ensureOpen();
+            return partCount;
+        }
+
+        MemorySegment topicId() {
+            ensureOpen();
+            return topicId;
+        }
+
+        MemorySegment topicLength() {
+            ensureOpen();
+            return topicLength;
+        }
+
+        Message[] reusableParts() {
+            ensureOpen();
+            return reusableParts;
+        }
+
+        void setReusableParts(Message[] parts) {
+            ensureOpen();
+            reusableParts = parts == null ? new Message[0] : parts;
+        }
+
+        @Override
+        public void close() {
+            Message.closeAll(reusableParts);
+            reusableParts = new Message[0];
+            if (arena != null && arena.scope().isAlive())
+                arena.close();
+            arena = null;
         }
     }
 
@@ -244,5 +332,19 @@ public final class Spot implements AutoCloseable {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
             NativeMsg.msgClose(msg);
         }
+    }
+
+    private static int normalizeTopicLength(MemorySegment topic,
+                                            int capacity,
+                                            long reportedLength) {
+        long len = reportedLength;
+        if (len < 0)
+            len = 0;
+        if (len > capacity)
+            len = capacity;
+        int topicLen = (int) len;
+        if (topicLen > 0 && topic.get(ValueLayout.JAVA_BYTE, topicLen - 1) == 0)
+            topicLen--;
+        return topicLen;
     }
 }

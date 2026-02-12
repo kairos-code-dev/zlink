@@ -25,4 +25,29 @@ public class ServiceDiscoveryTests
         {
         }
     }
+
+    [Fact]
+    public void GatewaySendMoveConsumesMessageOwnership()
+    {
+        if (!NativeTests.IsNativeAvailable())
+            return;
+        try
+        {
+            using var ctx = new Context();
+            using var registry = new Registry(ctx);
+            using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+            using var gateway = new Gateway(ctx, discovery);
+            using var msg = Message.FromBytes(new byte[] { 1, 2, 3 });
+
+            Assert.ThrowsAny<Exception>(() =>
+                gateway.SendMove("svc", new[] { msg }, SendFlags.None));
+            Assert.Throws<ObjectDisposedException>(() =>
+            {
+                _ = msg.Size;
+            });
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
+    }
 }

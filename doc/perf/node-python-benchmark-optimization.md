@@ -43,6 +43,8 @@
 | ROUTER_ROUTER | 3883.17 | 567.90 | 4882.99 |
 | ROUTER_ROUTER_POLL | 3797.81 | 560.16 | 5158.80 |
 | STREAM | 2432.78 | 492.58 | 5257.34 |
+| GATEWAY | 1172.84 | 64.65 | 57.90 |
+| SPOT | 612.81 | 90.31 | 71.56 |
 
 ## 3) Python fastpath on/off 개선율
 
@@ -57,6 +59,8 @@
 | ROUTER_ROUTER | 567.90 | 4882.99 | +759.8% |
 | ROUTER_ROUTER_POLL | 560.16 | 5158.80 | +821.0% |
 | STREAM | 492.58 | 5257.34 | +967.3% |
+| GATEWAY | 64.65 | 57.90 | -10.4% |
+| SPOT | 90.31 | 71.56 | -20.8% |
 
 ## 4) ROUTER_ROUTER_POLL 전후 핵심 수치
 
@@ -82,7 +86,31 @@ BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
   python3 bindings/python/benchwithzlink/pattern_router_router_poll.py tcp 64
 ```
 
-## 6) 검증
+Gateway/Spot 추가 측정:
+
+```bash
+# Node
+BENCH_MSG_COUNT=200000 node bindings/node/benchwithzlink/pattern_gateway.js tcp 64
+BENCH_MSG_COUNT=200000 node bindings/node/benchwithzlink/pattern_spot.js tcp 64
+
+# Python fastpath on (기본)
+BENCH_MSG_COUNT=200000 python3 bindings/python/benchwithzlink/pattern_gateway.py tcp 64
+BENCH_MSG_COUNT=200000 python3 bindings/python/benchwithzlink/pattern_spot.py tcp 64
+
+# Python fastpath off
+BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
+  python3 bindings/python/benchwithzlink/pattern_gateway.py tcp 64
+BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
+  python3 bindings/python/benchwithzlink/pattern_spot.py tcp 64
+```
+
+## 6) 해석 노트
+
+- 이번 fastpath 개선은 메시지 송수신 hot path(PAIR/PUBSUB/DEALER/ROUTER/STREAM)에 집중되어 있습니다.
+- `GATEWAY`, `SPOT`은 Discovery/Registry/Service 경로와 고수준 객체 오버헤드 비중이 커서 현재 fastpath 영향이 작습니다.
+- 현재 측정에서는 `GATEWAY`, `SPOT`의 Python fastpath on 값이 off 대비 각각 `-10.4%`, `-20.8%`였습니다.
+
+## 7) 검증
 
 - Node: `npm test` (`bindings/node`) 통과
 - Python: `PYTHONPATH=bindings/python/src python3 -m pytest -q bindings/python/tests` 통과

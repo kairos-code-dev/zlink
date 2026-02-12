@@ -1,13 +1,16 @@
 'use strict';
 
-const { runFromArgs } = require('./pair_bench');
+const { parsePatternArgs, runPairLike, zlink } = require('./pair_bench');
 
 async function main() {
-  let args = ['PAIR', ...process.argv.slice(2)];
-  if (args.length >= 4 && String(args[1]).toUpperCase() === 'PAIR') {
-    args = ['PAIR', ...args.slice(2)];
+  const parsed = parsePatternArgs('PAIR', process.argv.slice(2));
+  if (!parsed) {
+    process.exit(1);
+    return;
   }
-  process.exit(await runFromArgs(args));
+  const { transport, size } = parsed;
+  process.exit(await runPairLike('PAIR', zlink.SocketType.PAIR,
+    zlink.SocketType.PAIR, transport, size));
 }
 
 main().catch(() => process.exit(2));

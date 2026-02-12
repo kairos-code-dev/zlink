@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using Zlink;
@@ -37,80 +36,6 @@ internal static partial class BenchRunner
             {
                 continue;
             }
-        }
-    }
-
-    internal static int RunPairLike(string outPattern, SocketType aType, SocketType bType, string transport, int size)
-    {
-        int warmup = ParseEnv("BENCH_WARMUP_COUNT", 1000);
-        int latCount = ParseEnv("BENCH_LAT_COUNT", 500);
-        int msgCount = ResolveMsgCount(size);
-
-        using var ctx = new Context();
-        using var a = new Zlink.Socket(ctx, aType);
-        using var b = new Zlink.Socket(ctx, bType);
-
-        try
-        {
-            string ep = EndpointFor(transport, outPattern.ToLowerInvariant());
-            a.Bind(ep);
-            b.Connect(ep);
-            Thread.Sleep(300);
-
-            var buf = new byte[size];
-            Array.Fill(buf, (byte)'a');
-            var recv = new byte[Math.Max(256, size)];
-
-            for (int i = 0; i < warmup; i++)
-            {
-                b.Send(buf, SendFlags.None);
-                a.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
-            }
-
-            var sw = Stopwatch.StartNew();
-            for (int i = 0; i < latCount; i++)
-            {
-                b.Send(buf, SendFlags.None);
-                int n = a.Receive(recv, ReceiveFlags.None);
-                a.Send(recv.AsSpan(0, n).ToArray(), SendFlags.None);
-                b.Receive(recv, ReceiveFlags.None);
-            }
-            sw.Stop();
-            double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
-
-            var recvDone = new ManualResetEventSlim(false);
-            Exception? recvError = null;
-            var th = new Thread(() =>
-            {
-                try
-                {
-                    for (int i = 0; i < msgCount; i++)
-                        a.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
-                    recvDone.Set();
-                }
-                catch (Exception ex)
-                {
-                    recvError = ex;
-                }
-            });
-
-            th.Start();
-            sw.Restart();
-            for (int i = 0; i < msgCount; i++)
-                b.Send(buf, SendFlags.None);
-            th.Join();
-            sw.Stop();
-
-            if (recvError != null || !recvDone.IsSet)
-                return 2;
-
-            double thr = msgCount / sw.Elapsed.TotalSeconds;
-            PrintResult(outPattern, transport, size, thr, latUs);
-            return 0;
-        }
-        catch
-        {
-            return 2;
         }
     }
 

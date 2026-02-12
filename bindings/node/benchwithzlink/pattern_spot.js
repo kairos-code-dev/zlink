@@ -1,13 +1,15 @@
 'use strict';
 
-const { runFromArgs } = require('./pair_bench');
+const { parsePatternArgs, runSpot } = require('./pair_bench');
 
 async function main() {
-  let args = ['SPOT', ...process.argv.slice(2)];
-  if (args.length >= 4 && String(args[1]).toUpperCase() === 'SPOT') {
-    args = ['SPOT', ...args.slice(2)];
+  const parsed = parsePatternArgs('SPOT', process.argv.slice(2));
+  if (!parsed) {
+    process.exit(1);
+    return;
   }
-  process.exit(await runFromArgs(args));
+  const { transport, size } = parsed;
+  process.exit(await runSpot(transport, size));
 }
 
 main().catch(() => process.exit(2));

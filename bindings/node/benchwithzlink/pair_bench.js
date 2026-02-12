@@ -649,12 +649,38 @@ async function runPattern(pattern, transport, size) {
   return 2;
 }
 
+function parsePatternArgs(expectedPattern, argv) {
+  if (!argv || argv.length < 2) return null;
+  const expected = String(expectedPattern).toUpperCase();
+  let args = argv.slice();
+  if (args.length >= 3 && String(args[0]).toUpperCase() === expected) {
+    args = args.slice(1);
+  }
+  if (args.length < 2) return null;
+  const transport = String(args[0]);
+  const size = parseInt(args[1], 10);
+  if (!Number.isFinite(size) || size <= 0) return null;
+  return { transport, size };
+}
+
 async function runFromArgs(argv) {
   if (!argv || argv.length < 3) return 1;
   return runPattern(argv[0], argv[1], parseInt(argv[2], 10));
 }
 
-module.exports = { runPattern, runFromArgs };
+module.exports = {
+  parsePatternArgs,
+  runPairLike,
+  runPubSub,
+  runDealerRouter,
+  runRouterRouter,
+  runStream,
+  runGateway,
+  runSpot,
+  runPattern,
+  runFromArgs,
+  zlink,
+};
 
 if (require.main === module) {
   runFromArgs(process.argv.slice(2))

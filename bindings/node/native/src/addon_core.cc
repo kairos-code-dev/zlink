@@ -468,6 +468,78 @@ napi_value socket_recv_pair_many_into(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value socket_recv_pair_drain_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    void *first_data = NULL;
+    size_t first_len = 0;
+    if (napi_get_buffer_info(env, argv[1], &first_data, &first_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvPairDrainInto first buffer invalid");
+        return NULL;
+    }
+    if (first_len == 0) {
+        napi_throw_range_error(env, NULL, "recvPairDrainInto first buffer must not be empty");
+        return NULL;
+    }
+
+    void *second_data = NULL;
+    size_t second_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &second_data, &second_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvPairDrainInto second buffer invalid");
+        return NULL;
+    }
+    if (second_len == 0) {
+        napi_throw_range_error(env, NULL, "recvPairDrainInto second buffer must not be empty");
+        return NULL;
+    }
+
+    int32_t max_count = 0;
+    napi_get_value_int32(env, argv[3], &max_count);
+    if (max_count <= 0) {
+        napi_throw_range_error(env, NULL, "recvPairDrainInto maxCount must be > 0");
+        return NULL;
+    }
+
+    int drained = 0;
+    for (int32_t i = 0; i < max_count; ++i) {
+        int rc = zlink_recv(sock, first_data, first_len, ZLINK_DONTWAIT);
+        if (rc < 0) {
+            int err = zlink_errno();
+            if (err == EAGAIN
+#ifdef EWOULDBLOCK
+                || err == EWOULDBLOCK
+#endif
+            ) {
+                break;
+            }
+            return throw_last_error(env, "recvPairDrainInto first frame failed");
+        }
+        rc = zlink_recv(sock, second_data, second_len, ZLINK_DONTWAIT);
+        if (rc < 0) {
+            int err = zlink_errno();
+            if (err == EAGAIN
+#ifdef EWOULDBLOCK
+                || err == EWOULDBLOCK
+#endif
+            ) {
+                napi_throw_error(env, NULL, "recvPairDrainInto incomplete multipart frame");
+                return NULL;
+            }
+            return throw_last_error(env, "recvPairDrainInto second frame failed");
+        }
+        drained++;
+    }
+
+    napi_value out;
+    napi_create_int32(env, drained, &out);
+    return out;
+}
+
 napi_value socket_setopt(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];

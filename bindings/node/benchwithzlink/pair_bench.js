@@ -326,25 +326,23 @@ async function runRouterRouter(transport, size, usePoll) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
+    router2.sendRoutedMany(
+      routingId1,
+      routingId1.length,
+      buf,
+      buf.length,
+      msgCount,
+      zlink.SendFlag.NONE
+    );
     if (usePoll) {
-      for (let i = 0; i < msgCount; i++) {
-        router2.send(routingId1, zlink.SendFlag.SNDMORE);
-        router2.send(buf, zlink.SendFlag.NONE);
-      }
-      for (let i = 0; i < msgCount; i++) {
+      let received = 0;
+      while (received < msgCount) {
         if (!waitForInput(router1, 2000, poller1)) return 2;
-        router1.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
-        router1.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+        const drained = router1.recvPairDrainInto(ridBuf, dataBuf, msgCount - received);
+        if (drained <= 0) continue;
+        received += drained;
       }
     } else {
-      router2.sendRoutedMany(
-        routingId1,
-        routingId1.length,
-        buf,
-        buf.length,
-        msgCount,
-        zlink.SendFlag.NONE
-      );
       router1.recvPairManyInto(ridBuf, dataBuf, msgCount, zlink.ReceiveFlag.NONE);
     }
 

@@ -20,6 +20,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"socketRecvInto", 0, socket_recv_into, 0, 0, 0, napi_default, 0},
         {"socketRecvManyInto", 0, socket_recv_many_into, 0, 0, 0, napi_default, 0},
         {"socketRecvPairManyInto", 0, socket_recv_pair_many_into, 0, 0, 0, napi_default, 0},
+        {"socketRecvPairDrainInto", 0, socket_recv_pair_drain_into, 0, 0, 0, napi_default, 0},
         {"socketSetOpt", 0, socket_setopt, 0, 0, 0, napi_default, 0},
         {"socketGetOpt", 0, socket_getopt, 0, 0, 0, napi_default, 0},
 

@@ -6,6 +6,7 @@ from bench_common import (
     SocketWaiter,
     endpoint_for,
     int_sockopt,
+    make_cext_recv_pair_drain_into,
     make_cext_recv_pair_many_into,
     make_cext_send_routed_many_const,
     make_raw_recv_into,
@@ -58,6 +59,7 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         router2_recv_data = make_raw_recv_into(router2, data_buf)
         router2_send_pair_many = make_cext_send_routed_many_const(router2, rid1, buf)
         router1_recv_pair_many = make_cext_recv_pair_many_into(router1, id_buf, data_buf)
+        router1_recv_pair_drain = make_cext_recv_pair_drain_into(router1, id_buf, data_buf)
 
         router1.setsockopt(int(zlink.SocketOption.ROUTING_ID), b"ROUTER1")
         router2.setsockopt(int(zlink.SocketOption.ROUTING_ID), b"ROUTER2")
@@ -128,14 +130,35 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
 
         start = time.perf_counter()
         if use_poll:
-            for _ in range(msg_count):
-                router2_send_rid(send_more)
-                router2_send_buf(send_none)
-            for _ in range(msg_count):
+            if router2_send_pair_many is not None:
+                router2_send_pair_many(msg_count, send_none)
+            else:
+                for _ in range(msg_count):
+                    router2_send_rid(send_more)
+                    router2_send_buf(send_none)
+
+            received = 0
+            while received < msg_count:
                 if not wait_for_input(router1, 2000, waiter1):
                     return 2
-                router1_recv_id(recv_none)
-                router1_recv_data(recv_none)
+                if router1_recv_pair_drain is not None:
+                    drained = router1_recv_pair_drain(msg_count - received)
+                    if drained <= 0:
+                        continue
+                    received += drained
+                    continue
+
+                drained = 0
+                while received < msg_count:
+                    try:
+                        router1_recv_id(recv_dontwait)
+                        router1_recv_data(recv_dontwait)
+                    except Exception:
+                        break
+                    received += 1
+                    drained += 1
+                if drained <= 0:
+                    continue
         elif router2_send_pair_many is not None and router1_recv_pair_many is not None:
             router2_send_pair_many(msg_count, send_none)
             router1_recv_pair_many(msg_count, recv_none)

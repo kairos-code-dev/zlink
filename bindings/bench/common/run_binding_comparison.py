@@ -208,6 +208,7 @@ def binding_env(binding, env):
             out["ZLINK_LIBRARY_PATH"] = os.path.join(
                 ROOT_DIR, f"bindings/python/src/zlink/native/linux-{arch}/libzlink.so"
             )
+            out.setdefault("BENCH_PY_FASTPATH_CEXT", "1")
         elif binding == "dotnet":
             native_dir = os.path.join(ROOT_DIR, f"bindings/dotnet/runtimes/linux-{a_tag}/native")
             out["ZLINK_LIBRARY_PATH"] = os.path.join(native_dir, "libzlink.so")
@@ -373,6 +374,10 @@ def main():
             return run_and_parse(cmd, env_base)
 
         binding_env_vars = binding_env(binding, env_base)
+        if binding == "python":
+            req = str(binding_env_vars.get("BENCH_PY_FASTPATH_CEXT", "1")).strip().lower()
+            mode = "off" if req in ("0", "false", "off", "no") else "on"
+            print(f"  [python] bench fastpath mode: {mode}")
 
         def run_binding(tr, sz):
             cmd = bind_cmd_prefix + [pattern, tr, str(sz), core_build]

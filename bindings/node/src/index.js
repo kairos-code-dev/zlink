@@ -251,6 +251,12 @@ class Socket {
     return requireNative().socketRecvPairManyInto(this._native, first, second, count, flags);
   }
 
+  recvPairDrainInto(firstBuffer, secondBuffer, maxCount) {
+    const first = Buffer.isBuffer(firstBuffer) ? firstBuffer : Buffer.from(firstBuffer);
+    const second = Buffer.isBuffer(secondBuffer) ? secondBuffer : Buffer.from(secondBuffer);
+    return requireNative().socketRecvPairDrainInto(this._native, first, second, maxCount);
+  }
+
   setSockOpt(option, value) {
     const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
     requireNative().socketSetOpt(this._native, option, b);

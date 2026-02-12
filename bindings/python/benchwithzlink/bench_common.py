@@ -4,6 +4,7 @@ import os
 import platform
 import socket
 import struct
+import subprocess
 import sys
 import time
 from typing import Callable, Optional, Sequence, Tuple
@@ -57,12 +58,54 @@ def _preload_native_for_fastpath() -> None:
 
 
 FASTPATH_CEXT = None
-if os.environ.get("BENCH_PY_FASTPATH_CEXT") == "1":
+
+
+def _env_enabled(name: str, default: str = "1") -> bool:
+    req = os.environ.get(name, default).strip().lower()
+    return req not in ("0", "false", "off", "no")
+
+
+def _build_fastpath_extension() -> bool:
+    setup_py = os.path.join(os.path.dirname(__file__), "setup_fastpath.py")
+    if not os.path.exists(setup_py):
+        return False
     try:
-        _preload_native_for_fastpath()
-        import _zlink_fastpath as FASTPATH_CEXT  # type: ignore
+        subprocess.run(
+            [sys.executable, setup_py, "build_ext", "--inplace"],
+            cwd=os.path.dirname(__file__),
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except Exception:
+        return False
+    return True
+
+
+def _load_fastpath_extension():
+    _preload_native_for_fastpath()
+    import _zlink_fastpath as cext  # type: ignore
+    return cext
+
+
+_fastpath_on = _env_enabled("BENCH_PY_FASTPATH_CEXT", "1")
+_fastpath_build_on = _env_enabled("BENCH_PY_FASTPATH_BUILD", "1")
+if _fastpath_on:
+    load_exc = None
+    try:
+        FASTPATH_CEXT = _load_fastpath_extension()
+    except Exception as exc:
+        load_exc = exc
         FASTPATH_CEXT = None
+        if _fastpath_build_on and _build_fastpath_extension():
+            try:
+                FASTPATH_CEXT = _load_fastpath_extension()
+                load_exc = None
+            except Exception as exc2:
+                load_exc = exc2
+                FASTPATH_CEXT = None
+    if FASTPATH_CEXT is None and os.environ.get("BENCH_PY_FASTPATH_REQUIRE", "0") == "1":
+        raise RuntimeError(f"BENCH_PY_FASTPATH_REQUIRE=1 but C-extension load failed: {load_exc}")
 
 
 def get_port() -> int:
@@ -202,6 +245,21 @@ def make_cext_recv_pair_many_into(sock, first_buffer, second_buffer):
         )
 
     return recv_pair_many
+
+
+def make_cext_recv_pair_drain_into(sock, first_buffer, second_buffer):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(sock._handle)
+
+    def recv_pair_drain(max_count: int) -> int:
+        return int(
+            FASTPATH_CEXT.recv_pair_drain_into(
+                handle, first_buffer, second_buffer, int(max_count)
+            )
+        )
+
+    return recv_pair_drain
 
 
 class SocketWaiter:

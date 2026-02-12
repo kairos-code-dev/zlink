@@ -1,5 +1,6 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <errno.h>
 #include <stdint.h>
 
 #include <zlink.h>
@@ -192,6 +193,77 @@ static PyObject *py_recv_pair_many_into(PyObject *self, PyObject *args)
     return PyLong_FromLong(count);
 }
 
+static PyObject *py_recv_pair_drain_into(PyObject *self, PyObject *args)
+{
+    PyObject *sock_obj = NULL;
+    PyObject *first_obj = NULL;
+    PyObject *second_obj = NULL;
+    Py_buffer first = {0};
+    Py_buffer second = {0};
+    int max_count = 0;
+    void *sock = NULL;
+
+    if (!PyArg_ParseTuple(args, "OOOi", &sock_obj, &first_obj, &second_obj, &max_count))
+        return NULL;
+
+    if (!parse_socket_handle(sock_obj, &sock))
+        return NULL;
+    if (max_count <= 0) {
+        PyErr_SetString(PyExc_ValueError, "max_count must be > 0");
+        return NULL;
+    }
+    if (PyObject_GetBuffer(first_obj, &first, PyBUF_WRITABLE | PyBUF_C_CONTIGUOUS) != 0)
+        return NULL;
+    if (PyObject_GetBuffer(second_obj, &second, PyBUF_WRITABLE | PyBUF_C_CONTIGUOUS) != 0) {
+        PyBuffer_Release(&first);
+        return NULL;
+    }
+    if (first.len <= 0 || second.len <= 0) {
+        PyBuffer_Release(&first);
+        PyBuffer_Release(&second);
+        PyErr_SetString(PyExc_ValueError, "buffers must not be empty");
+        return NULL;
+    }
+
+    int drained = 0;
+    for (int i = 0; i < max_count; ++i) {
+        if (zlink_recv(sock, first.buf, (size_t)first.len, ZLINK_DONTWAIT) < 0) {
+            const int err = zlink_errno();
+            if (err == EAGAIN
+#ifdef EWOULDBLOCK
+                || err == EWOULDBLOCK
+#endif
+            ) {
+                break;
+            }
+            PyBuffer_Release(&first);
+            PyBuffer_Release(&second);
+            set_zlink_error("recv_pair_drain_into first frame failed");
+            return NULL;
+        }
+        if (zlink_recv(sock, second.buf, (size_t)second.len, ZLINK_DONTWAIT) < 0) {
+            const int err = zlink_errno();
+            PyBuffer_Release(&first);
+            PyBuffer_Release(&second);
+            if (err == EAGAIN
+#ifdef EWOULDBLOCK
+                || err == EWOULDBLOCK
+#endif
+            ) {
+                PyErr_SetString(PyExc_RuntimeError, "recv_pair_drain_into incomplete multipart frame");
+                return NULL;
+            }
+            set_zlink_error("recv_pair_drain_into second frame failed");
+            return NULL;
+        }
+        drained++;
+    }
+
+    PyBuffer_Release(&first);
+    PyBuffer_Release(&second);
+    return PyLong_FromLong(drained);
+}
+
 static PyMethodDef fastpath_methods[] = {
     {"send_many_const", py_send_many_const, METH_VARARGS, "Send the same payload many times."},
     {"recv_many_into", py_recv_many_into, METH_VARARGS, "Receive into the same buffer many times."},
@@ -203,6 +275,10 @@ static PyMethodDef fastpath_methods[] = {
      py_recv_pair_many_into,
      METH_VARARGS,
      "Receive two-frame multipart many times into fixed buffers."},
+    {"recv_pair_drain_into",
+     py_recv_pair_drain_into,
+     METH_VARARGS,
+     "Drain available two-frame multipart messages using DONTWAIT."},
     {NULL, NULL, 0, NULL},
 };
 

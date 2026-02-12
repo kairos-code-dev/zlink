@@ -9,6 +9,18 @@ case "$BINDING" in
     command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 || {
       echo "python is required" >&2; exit 1;
     }
+    py_exec="python3"
+    command -v "${py_exec}" >/dev/null 2>&1 || py_exec="python"
+    fastpath_req="$(printf '%s' "${BENCH_PY_FASTPATH_CEXT:-1}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${fastpath_req}" != "0" && "${fastpath_req}" != "false" && "${fastpath_req}" != "off" && "${fastpath_req}" != "no" ]]; then
+      if ! (cd "$ROOT_DIR/bindings/python/benchwithzlink" && "${py_exec}" setup_fastpath.py build_ext --inplace >/dev/null 2>&1); then
+        if [[ "${BENCH_PY_FASTPATH_REQUIRE:-0}" == "1" ]]; then
+          echo "Python fastpath build failed and BENCH_PY_FASTPATH_REQUIRE=1" >&2
+          exit 1
+        fi
+        echo "Warning: Python fastpath C-extension build failed; falling back to ctypes path." >&2
+      fi
+    fi
     ;;
   node)
     command -v node >/dev/null 2>&1 || { echo "node is required" >&2; exit 1; }

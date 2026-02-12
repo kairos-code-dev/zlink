@@ -147,6 +147,11 @@ export class Socket {
     count: number,
     flags?: number
   ): number;
+  recvPairDrainInto(
+    firstBuffer: Buffer | Uint8Array,
+    secondBuffer: Buffer | Uint8Array,
+    maxCount: number
+  ): number;
   setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   getSockOpt(option: number): Buffer;
   monitorOpen(events: number): MonitorSocket;

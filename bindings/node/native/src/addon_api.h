@@ -31,6 +31,7 @@ napi_value socket_recv(napi_env env, napi_callback_info info);
 napi_value socket_recv_into(napi_env env, napi_callback_info info);
 napi_value socket_recv_many_into(napi_env env, napi_callback_info info);
 napi_value socket_recv_pair_many_into(napi_env env, napi_callback_info info);
+napi_value socket_recv_pair_drain_into(napi_env env, napi_callback_info info);
 napi_value socket_setopt(napi_env env, napi_callback_info info);
 napi_value socket_getopt(napi_env env, napi_callback_info info);
 

@@ -72,3 +72,18 @@ cd bindings/python && python -m pytest tests/
 ```
 
 unittest 프레임워크 사용.
+
+## 8. 벤치마크 Fast Path
+
+`bindings/python/benchwithzlink`는 선택적으로 C-extension fast path(`_zlink_fastpath`)를 사용합니다.
+
+- 기본값: 벤치마크에서 활성화 (`BENCH_PY_FASTPATH_CEXT=1`)
+- 비활성화: `BENCH_PY_FASTPATH_CEXT=0`
+- 로드/빌드 실패 시 즉시 실패: `BENCH_PY_FASTPATH_REQUIRE=1`
+
+수동 빌드:
+
+```bash
+cd bindings/python/benchwithzlink
+python3 setup_fastpath.py build_ext --inplace
+```

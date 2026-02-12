@@ -50,8 +50,8 @@ final class BenchSpot {
                 } finally {
                     sendParts[0] = null;
                 }
-                try (Spot.SpotMessages ignored =
-                       BenchUtil.spotRecvMessagesWithTimeout(spotSub, 5000)) {
+                try (Spot.SpotMessages ignored = BenchUtil.spotRecvMessagesBlocking(
+                  spotSub)) {
                 }
             }
 
@@ -63,8 +63,8 @@ final class BenchSpot {
                 } finally {
                     sendParts[0] = null;
                 }
-                try (Spot.SpotMessages ignored =
-                       BenchUtil.spotRecvMessagesWithTimeout(spotSub, 5000)) {
+                try (Spot.SpotMessages ignored = BenchUtil.spotRecvMessagesBlocking(
+                  spotSub)) {
                 }
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;

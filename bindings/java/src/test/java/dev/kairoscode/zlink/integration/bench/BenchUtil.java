@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration.bench;
 import dev.kairoscode.zlink.*;
 
 import java.net.ServerSocket;
+import java.util.concurrent.locks.LockSupport;
 
 final class BenchUtil {
     private BenchUtil() {
@@ -63,10 +64,14 @@ final class BenchUtil {
             try {
                 return socket.recv(size, ReceiveFlag.DONTWAIT);
             } catch (Exception ignored) {
-                sleep(10);
+                LockSupport.parkNanos(100_000L);
             }
         }
         throw new RuntimeException("timeout");
+    }
+
+    static byte[] recvBlocking(Socket socket, int size) {
+        return socket.recv(size, ReceiveFlag.NONE);
     }
 
     static void gatewaySendWithRetry(Gateway gateway, String service, byte[] payload, int timeoutMs) {
@@ -91,7 +96,7 @@ final class BenchUtil {
             try {
                 return spot.recv(ReceiveFlag.DONTWAIT);
             } catch (Exception ignored) {
-                sleep(10);
+                LockSupport.parkNanos(100_000L);
             }
         }
         throw new RuntimeException("timeout");
@@ -103,10 +108,14 @@ final class BenchUtil {
             try {
                 return spot.recvMessages(ReceiveFlag.DONTWAIT);
             } catch (Exception ignored) {
-                sleep(10);
+                LockSupport.parkNanos(100_000L);
             }
         }
         throw new RuntimeException("timeout");
+    }
+
+    static Spot.SpotMessages spotRecvMessagesBlocking(Spot spot) {
+        return spot.recvMessages(ReceiveFlag.NONE);
     }
 
     static int parseEnv(String name, int def) {

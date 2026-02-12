@@ -64,18 +64,16 @@ final class BenchGateway {
             Message[] sendParts = new Message[1];
 
             for (int i = 0; i < warmup; i++) {
-                gatewaySendMoveWithRetry(gateway, service, payloadSegment, sendParts,
-                  5000);
-                BenchUtil.recvWithTimeout(router, 256, 5000);
-                BenchUtil.recvWithTimeout(router, dataCap, 5000);
+                gatewaySendMove(gateway, service, payloadSegment, sendParts);
+                BenchUtil.recvBlocking(router, 256);
+                BenchUtil.recvBlocking(router, dataCap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                gatewaySendMoveWithRetry(gateway, service, payloadSegment, sendParts,
-                  5000);
-                BenchUtil.recvWithTimeout(router, 256, 5000);
-                BenchUtil.recvWithTimeout(router, dataCap, 5000);
+                gatewaySendMove(gateway, service, payloadSegment, sendParts);
+                BenchUtil.recvBlocking(router, 256);
+                BenchUtil.recvBlocking(router, dataCap);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
 
@@ -161,24 +159,14 @@ final class BenchGateway {
         }
     }
 
-    private static void gatewaySendMoveWithRetry(Gateway gateway, String service,
-                                                 MemorySegment payload,
-                                                 Message[] sendParts,
-                                                 int timeoutMs) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                try (Message msg = Message.fromNativeData(payload)) {
-                    sendParts[0] = msg;
-                    gateway.sendMove(service, sendParts, SendFlag.NONE);
-                } finally {
-                    sendParts[0] = null;
-                }
-                return;
-            } catch (Exception ignored) {
-                BenchUtil.sleep(10);
-            }
+    private static void gatewaySendMove(Gateway gateway, String service,
+                                        MemorySegment payload,
+                                        Message[] sendParts) {
+        try (Message msg = Message.fromNativeData(payload)) {
+            sendParts[0] = msg;
+            gateway.sendMove(service, sendParts, SendFlag.NONE);
+        } finally {
+            sendParts[0] = null;
         }
-        throw new RuntimeException("timeout");
     }
 }

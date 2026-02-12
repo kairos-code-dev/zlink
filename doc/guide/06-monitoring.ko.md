@@ -77,23 +77,192 @@ if (rc == -1 && errno == EAGAIN) {
 
 ## 4. 이벤트 타입
 
-| 이벤트 | 값 | 의미 | 발생 시점 | routing_id |
-|--------|-----|------|-----------|:----------:|
-| `CONNECTED` | — | TCP 연결 완료 | connect 직후 | 없음 |
-| `ACCEPTED` | — | accept 완료 | 리스너 accept 직후 | 없음 |
-| `CONNECTION_READY` | — | **연결 완료** | 핸드셰이크 성공 | 가능 |
-| `DISCONNECTED` | reason | 세션 종료 | 어떤 단계든 | 가능 |
-| `CONNECT_DELAYED` | — | 연결 지연 | 첫 시도 실패 | 없음 |
-| `CONNECT_RETRIED` | — | 연결 재시도 | 재연결 시도 | 없음 |
-| `LISTENING` | — | 리스너 활성화 | bind 성공 | 없음 |
-| `BIND_FAILED` | errno | bind 실패 | bind 오류 | 없음 |
-| `CLOSED` | — | 소켓 닫힘 | close 직후 | 없음 |
-| `MONITOR_STOPPED` | — | 모니터 중지 | monitor(NULL) 호출 | 없음 |
-| `HANDSHAKE_FAILED_NO_DETAIL` | errno | 핸드셰이크 실패 | READY 이전 | 없음 |
-| `HANDSHAKE_FAILED_PROTOCOL` | — | 프로토콜 오류 | ZMP 핸드셰이크 | 없음 |
-| `HANDSHAKE_FAILED_AUTH` | — | 인증 실패 | TLS 핸드셰이크 | 없음 |
+### 요약
+
+| 이벤트 | 값 | `value` 필드 | `routing_id` | 발생 측 |
+|--------|-----|-------------|:------------:|:-------:|
+| `CONNECTED` | `0x0001` | fd | 없음 | 클라이언트 |
+| `CONNECT_DELAYED` | `0x0002` | errno | 없음 | 클라이언트 |
+| `CONNECT_RETRIED` | `0x0004` | — | 없음 | 클라이언트 |
+| `LISTENING` | `0x0008` | fd | 없음 | 서버 |
+| `BIND_FAILED` | `0x0010` | errno | 없음 | 서버 |
+| `ACCEPTED` | `0x0020` | fd | 없음 | 서버 |
+| `ACCEPT_FAILED` | `0x0040` | errno | 없음 | 서버 |
+| `CLOSED` | `0x0080` | — | 없음 | 양쪽 |
+| `CLOSE_FAILED` | `0x0100` | errno | 없음 | 양쪽 |
+| `DISCONNECTED` | `0x0200` | reason 코드 | 가능 | 양쪽 |
+| `MONITOR_STOPPED` | `0x0400` | — | 없음 | 양쪽 |
+| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | errno | 없음 | 양쪽 |
+| `CONNECTION_READY` | `0x1000` | — | 가능 | 양쪽 |
+| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | 프로토콜 에러 코드 | 없음 | 양쪽 |
+| `HANDSHAKE_FAILED_AUTH` | `0x4000` | — | 없음 | 양쪽 |
 
 > 참고: `core/tests/testutil_monitoring.cpp` — `get_zlinkEventName()` 이벤트 이름 매핑
+
+### 4.1 연결 생명주기 이벤트
+
+#### CONNECTED (`0x0001`)
+
+TCP 연결이 성립되었을 때 **클라이언트 측**에서 발생한다. 이 시점에서는 전송 계층 연결만 완료된 상태이며, zlink 핸드셰이크는 아직 수행되지 않았다.
+
+- **`value`**: 새 연결의 파일 디스크립터.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **`local_addr`**: 로컬 TCP 엔드포인트 (예: `tcp://192.168.1.10:54321`).
+- **`remote_addr`**: 원격 TCP 엔드포인트 (예: `tcp://192.168.1.20:5555`).
+- **다음 이벤트**: 성공 시 `CONNECTION_READY`, 실패 시 `HANDSHAKE_FAILED_*` 또는 `DISCONNECTED`.
+
+#### ACCEPTED (`0x0020`)
+
+리스닝 소켓이 수신 TCP 연결을 accept했을 때 **서버 측**에서 발생한다. `CONNECTED`와 마찬가지로 zlink 핸드셰이크는 아직 수행되지 않은 상태이다.
+
+- **`value`**: accept된 연결의 파일 디스크립터.
+- **`routing_id`**: 사용 불가 (비어 있음). ID는 핸드셰이크 완료 후 할당된다.
+- **`local_addr`**: 리스닝 엔드포인트 주소.
+- **`remote_addr`**: 원격 피어 주소.
+- **다음 이벤트**: 성공 시 `CONNECTION_READY`, 실패 시 `HANDSHAKE_FAILED_*` 또는 `DISCONNECTED`.
+
+#### CONNECTION_READY (`0x1000`)
+
+zlink 핸드셰이크가 성공적으로 완료되어 데이터 전송이 가능한 상태가 되었을 때 발생한다. 애플리케이션 수준의 연결 추적에 가장 중요한 이벤트이다.
+
+- **`value`**: 사용되지 않음.
+- **`routing_id`**: ROUTER 소켓의 경우 사용 가능 — 피어에 할당된 라우팅 ID를 포함한다.
+- **`local_addr`**: 로컬 엔드포인트 주소.
+- **`remote_addr`**: 원격 엔드포인트 주소.
+- **일반적 용도**: 피어 등록, 메시지 전송 시작, `zlink_socket_peer_info()`를 통한 피어 정보 조회.
+
+#### DISCONNECTED (`0x0200`)
+
+수립된 세션이 종료될 때 발생한다. 연결 생명주기의 어느 단계에서든 발생할 수 있다.
+
+- **`value`**: `ZLINK_DISCONNECT_*` reason 코드 ([6장](#6-disconnected-reason-코드) 참조).
+- **`routing_id`**: 핸드셰이크가 완료된 경우 (즉, 이 피어에 대해 `CONNECTION_READY`가 이전에 발생한 경우) 사용 가능.
+- **`local_addr`**: 로컬 엔드포인트 주소.
+- **`remote_addr`**: 원격 엔드포인트 주소.
+- **일반적 용도**: 재연결 로직 트리거, 피어 상태 업데이트, 해제 사유 로깅.
+
+#### CLOSED (`0x0080`)
+
+`zlink_close()` 또는 `zlink_disconnect()`를 통해 연결이 정상적으로 닫힐 때 발생한다.
+
+- **`value`**: 사용되지 않음.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **참고**: `DISCONNECTED`와 달리, 예기치 않은 세션 종료가 아닌 의도적인 로컬 close 작업을 나타낸다.
+
+#### CLOSE_FAILED (`0x0100`)
+
+연결 close 작업이 실패했을 때 발생한다.
+
+- **`value`**: 실패를 설명하는 `errno` 값.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **참고**: 실제로는 드물게 발생한다. 리소스 정리 중 내부 오류를 나타낼 수 있다.
+
+### 4.2 클라이언트 측 연결 이벤트
+
+#### CONNECT_DELAYED (`0x0002`)
+
+동기 connect 시도가 즉시 완료되지 못하고 비동기 재시도가 예약되었을 때 **클라이언트 측**에서 발생한다.
+
+- **`value`**: 초기 connect 시도의 `errno` (일반적으로 `EINPROGRESS`).
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **`remote_addr`**: 대상 엔드포인트 주소.
+- **다음 이벤트**: 연결 성공 시 `CONNECTED`, 이후 재시도 시 `CONNECT_RETRIED`.
+
+#### CONNECT_RETRIED (`0x0004`)
+
+비동기 재연결 시도가 진행 중일 때 **클라이언트 측**에서 발생한다. 이전의 `CONNECT_DELAYED` 또는 `DISCONNECTED` 이벤트 이후에 발생한다.
+
+- **`value`**: 사용되지 않음.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **`remote_addr`**: 대상 엔드포인트 주소.
+- **일반적 순서**: `DISCONNECTED` → `CONNECT_DELAYED` → `CONNECT_RETRIED` → `CONNECTED` → `CONNECTION_READY`.
+
+### 4.3 바인드 측 이벤트
+
+#### LISTENING (`0x0008`)
+
+`zlink_bind()`가 성공하여 소켓이 수신 연결을 대기 중일 때 **서버 측**에서 발생한다.
+
+- **`value`**: 리스닝 소켓의 파일 디스크립터.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **`local_addr`**: 바인드된 엔드포인트 주소 (예: `tcp://0.0.0.0:5555`).
+
+#### BIND_FAILED (`0x0010`)
+
+`zlink_bind()`가 실패했을 때 **서버 측**에서 발생한다.
+
+- **`value`**: 실패를 설명하는 `errno` 값 (예: `EADDRINUSE`).
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **`local_addr`**: 바인드 실패한 주소.
+- **일반적 원인**: 포트 사용 중, 권한 부족, 잘못된 주소.
+
+#### ACCEPT_FAILED (`0x0040`)
+
+수신 연결 accept가 실패했을 때 **서버 측**에서 발생한다.
+
+- **`value`**: 실패를 설명하는 `errno` 값.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **일반적 원인**: 파일 디스크립터 한도 초과 (`EMFILE`), 리소스 부족.
+
+### 4.4 핸드셰이크 실패 이벤트
+
+TCP 연결이 성립된 후 zlink 프로토콜 핸드셰이크가 실패할 때 발생하는 이벤트들이다.
+
+#### HANDSHAKE_FAILED_NO_DETAIL (`0x0800`)
+
+프로토콜별 정보 없이 발생하는 일반적인 핸드셰이크 실패.
+
+- **`value`**: 실패 시점의 `errno` 값.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **일반적 원인**: 핸드셰이크 중 연결 리셋, 예기치 않은 소켓 종료, 타임아웃.
+
+#### HANDSHAKE_FAILED_PROTOCOL (`0x2000`)
+
+ZMP 또는 WebSocket 프로토콜 오류로 핸드셰이크가 실패. `value` 필드에 구체적인 프로토콜 에러 코드가 포함된다.
+
+- **`value`**: `ZLINK_PROTOCOL_ERROR_*` 코드 (아래 [프로토콜 에러 코드](#프로토콜-에러-코드) 참조).
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **일반적 원인**: 버전 불일치, 잘못된 커맨드, 유효하지 않은 메타데이터, 암호화 오류.
+
+#### HANDSHAKE_FAILED_AUTH (`0x4000`)
+
+인증 또는 보안 메커니즘 실패로 핸드셰이크가 실패.
+
+- **`value`**: 사용되지 않음.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **일반적 원인**: TLS 인증서 검증 실패, 보안 메커니즘 불일치, 유효하지 않은 자격 증명.
+
+### 4.5 모니터 제어 이벤트
+
+#### MONITOR_STOPPED (`0x0400`)
+
+`zlink_socket_monitor(socket, NULL, 0)` 호출로 모니터가 중지될 때 발생한다. 이 이벤트 이후에는 더 이상 이벤트가 발생하지 않는다.
+
+- **`value`**: 사용되지 않음.
+- **`routing_id`**: 사용 불가 (비어 있음).
+- **참고**: 모니터가 마지막으로 발생시키는 이벤트이다. 수신 후 `zlink_close()`로 모니터 핸들을 닫아야 한다.
+
+### 프로토콜 에러 코드
+
+`HANDSHAKE_FAILED_PROTOCOL` 발생 시 `value` 필드에 다음 코드 중 하나가 포함된다:
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | 불특정 ZMP 프로토콜 오류. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | 핸드셰이크 중 예기치 않은 ZMP 커맨드 수신. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | ZMP 커맨드가 잘못된 순서로 도착. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | ZMP 핸드셰이크의 키 교환 단계 실패. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | 잘못된 형식의 ZMP 커맨드 (불특정). |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | 잘못된 형식의 ZMP MESSAGE 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | 잘못된 형식의 ZMP HELLO 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | 잘못된 형식의 ZMP INITIATE 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | 잘못된 형식의 ZMP ERROR 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | 잘못된 형식의 ZMP READY 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | 잘못된 형식의 ZMP WELCOME 커맨드. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | ZMP 핸드셰이크의 유효하지 않은 메타데이터. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | ZMP 핸드셰이크 중 암호화 검증 실패. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | 클라이언트와 서버의 보안 메커니즘 불일치. |
+| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | 불특정 WebSocket 프로토콜 오류. |
 
 ## 5. 이벤트 흐름 다이어그램
 

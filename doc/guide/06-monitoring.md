@@ -77,23 +77,192 @@ if (rc == -1 && errno == EAGAIN) {
 
 ## 4. Event Types
 
-| Event | Value | Meaning | When It Occurs | routing_id |
-|-------|-------|---------|----------------|:----------:|
-| `CONNECTED` | -- | TCP connection established | Immediately after connect | None |
-| `ACCEPTED` | -- | Accept completed | Immediately after listener accept | None |
-| `CONNECTION_READY` | -- | **Connection ready** | Handshake succeeded | Possible |
-| `DISCONNECTED` | reason | Session terminated | At any stage | Possible |
-| `CONNECT_DELAYED` | -- | Connection delayed | First attempt failed | None |
-| `CONNECT_RETRIED` | -- | Connection retried | Reconnection attempt | None |
-| `LISTENING` | -- | Listener active | Bind succeeded | None |
-| `BIND_FAILED` | errno | Bind failed | Bind error | None |
-| `CLOSED` | -- | Socket closed | Immediately after close | None |
-| `MONITOR_STOPPED` | -- | Monitor stopped | monitor(NULL) called | None |
-| `HANDSHAKE_FAILED_NO_DETAIL` | errno | Handshake failed | Before READY | None |
-| `HANDSHAKE_FAILED_PROTOCOL` | -- | Protocol error | ZMP handshake | None |
-| `HANDSHAKE_FAILED_AUTH` | -- | Authentication failed | TLS handshake | None |
+### Summary
+
+| Event | Value | `value` Field | `routing_id` | Side |
+|-------|-------|---------------|:------------:|:----:|
+| `CONNECTED` | `0x0001` | fd | None | Client |
+| `CONNECT_DELAYED` | `0x0002` | errno | None | Client |
+| `CONNECT_RETRIED` | `0x0004` | -- | None | Client |
+| `LISTENING` | `0x0008` | fd | None | Server |
+| `BIND_FAILED` | `0x0010` | errno | None | Server |
+| `ACCEPTED` | `0x0020` | fd | None | Server |
+| `ACCEPT_FAILED` | `0x0040` | errno | None | Server |
+| `CLOSED` | `0x0080` | -- | None | Both |
+| `CLOSE_FAILED` | `0x0100` | errno | None | Both |
+| `DISCONNECTED` | `0x0200` | reason code | Possible | Both |
+| `MONITOR_STOPPED` | `0x0400` | -- | None | Both |
+| `HANDSHAKE_FAILED_NO_DETAIL` | `0x0800` | errno | None | Both |
+| `CONNECTION_READY` | `0x1000` | -- | Possible | Both |
+| `HANDSHAKE_FAILED_PROTOCOL` | `0x2000` | protocol error code | None | Both |
+| `HANDSHAKE_FAILED_AUTH` | `0x4000` | -- | None | Both |
 
 > Reference: `core/tests/testutil_monitoring.cpp` -- `get_zlinkEventName()` event name mapping
+
+### 4.1 Connection Lifecycle Events
+
+#### CONNECTED (`0x0001`)
+
+Fired on the **client side** when the TCP connection to a remote peer is established. At this point only the transport-layer connection is complete — the zlink handshake has not yet occurred.
+
+- **`value`**: The file descriptor of the new connection.
+- **`routing_id`**: Not available (empty).
+- **`local_addr`**: The local TCP endpoint (e.g. `tcp://192.168.1.10:54321`).
+- **`remote_addr`**: The remote TCP endpoint (e.g. `tcp://192.168.1.20:5555`).
+- **Next event**: `CONNECTION_READY` on success, or `HANDSHAKE_FAILED_*` / `DISCONNECTED` on failure.
+
+#### ACCEPTED (`0x0020`)
+
+Fired on the **server side** when an incoming TCP connection is accepted by a listening socket. Similar to `CONNECTED`, the zlink handshake has not yet occurred.
+
+- **`value`**: The file descriptor of the accepted connection.
+- **`routing_id`**: Not available (empty). The identity is assigned after the handshake.
+- **`local_addr`**: The listening endpoint address.
+- **`remote_addr`**: The remote peer's address.
+- **Next event**: `CONNECTION_READY` on success, or `HANDSHAKE_FAILED_*` / `DISCONNECTED` on failure.
+
+#### CONNECTION_READY (`0x1000`)
+
+Fired when the zlink handshake completes successfully and the connection is ready for data transfer. This is the most important event for application-level connection tracking.
+
+- **`value`**: Not used.
+- **`routing_id`**: Available for ROUTER sockets — contains the peer's assigned routing identity.
+- **`local_addr`**: The local endpoint address.
+- **`remote_addr`**: The remote endpoint address.
+- **Typical usage**: Trigger peer registration, start sending messages, or query peer info via `zlink_socket_peer_info()`.
+
+#### DISCONNECTED (`0x0200`)
+
+Fired when an established session terminates. Can occur at any stage of the connection lifecycle.
+
+- **`value`**: A `ZLINK_DISCONNECT_*` reason code (see [Section 6](#6-disconnected-reason-codes)).
+- **`routing_id`**: Available if the handshake had completed (i.e. `CONNECTION_READY` was previously fired for this peer).
+- **`local_addr`**: The local endpoint address.
+- **`remote_addr`**: The remote endpoint address.
+- **Typical usage**: Trigger reconnection logic, update peer state, or log the disconnection reason.
+
+#### CLOSED (`0x0080`)
+
+Fired when a connection is closed normally via `zlink_close()` or `zlink_disconnect()`.
+
+- **`value`**: Not used.
+- **`routing_id`**: Not available (empty).
+- **Note**: Unlike `DISCONNECTED`, this event signals an intentional local close operation rather than an unexpected session termination.
+
+#### CLOSE_FAILED (`0x0100`)
+
+Fired when a connection close operation fails.
+
+- **`value`**: The `errno` value describing the failure.
+- **`routing_id`**: Not available (empty).
+- **Note**: Rare in practice. May indicate an internal error during resource cleanup.
+
+### 4.2 Connect-Side Events
+
+#### CONNECT_DELAYED (`0x0002`)
+
+Fired on the **client side** when a synchronous connect attempt cannot complete immediately and an asynchronous retry has been scheduled.
+
+- **`value`**: The `errno` from the initial connect attempt (typically `EINPROGRESS`).
+- **`routing_id`**: Not available (empty).
+- **`remote_addr`**: The target endpoint address.
+- **Next event**: `CONNECTED` when the connection eventually succeeds, or `CONNECT_RETRIED` for subsequent attempts.
+
+#### CONNECT_RETRIED (`0x0004`)
+
+Fired on the **client side** when an asynchronous reconnection attempt is in progress. Occurs after a prior `CONNECT_DELAYED` or `DISCONNECTED` event.
+
+- **`value`**: Not used.
+- **`routing_id`**: Not available (empty).
+- **`remote_addr`**: The target endpoint address.
+- **Typical sequence**: `DISCONNECTED` → `CONNECT_DELAYED` → `CONNECT_RETRIED` → `CONNECTED` → `CONNECTION_READY`.
+
+### 4.3 Bind-Side Events
+
+#### LISTENING (`0x0008`)
+
+Fired on the **server side** when `zlink_bind()` succeeds and the socket is actively listening for incoming connections.
+
+- **`value`**: The file descriptor of the listening socket.
+- **`routing_id`**: Not available (empty).
+- **`local_addr`**: The bound endpoint address (e.g. `tcp://0.0.0.0:5555`).
+
+#### BIND_FAILED (`0x0010`)
+
+Fired on the **server side** when `zlink_bind()` fails.
+
+- **`value`**: The `errno` value describing the failure (e.g. `EADDRINUSE`).
+- **`routing_id`**: Not available (empty).
+- **`local_addr`**: The address that failed to bind.
+- **Typical causes**: Port already in use, permission denied, invalid address.
+
+#### ACCEPT_FAILED (`0x0040`)
+
+Fired on the **server side** when accepting an incoming connection fails.
+
+- **`value`**: The `errno` value describing the failure.
+- **`routing_id`**: Not available (empty).
+- **Typical causes**: File descriptor limit reached (`EMFILE`), resource exhaustion.
+
+### 4.4 Handshake Failure Events
+
+These events fire when the zlink protocol handshake fails after a TCP connection has been established.
+
+#### HANDSHAKE_FAILED_NO_DETAIL (`0x0800`)
+
+A generic handshake failure with no protocol-specific information.
+
+- **`value`**: The `errno` value at the time of failure.
+- **`routing_id`**: Not available (empty).
+- **Typical causes**: Connection reset during handshake, unexpected socket closure, timeout.
+
+#### HANDSHAKE_FAILED_PROTOCOL (`0x2000`)
+
+The handshake failed due to a ZMP or WebSocket protocol error. The `value` field carries a specific protocol error code.
+
+- **`value`**: A `ZLINK_PROTOCOL_ERROR_*` code (see [Protocol Error Codes](#protocol-error-codes) below).
+- **`routing_id`**: Not available (empty).
+- **Typical causes**: Version mismatch, malformed commands, invalid metadata, cryptographic errors.
+
+#### HANDSHAKE_FAILED_AUTH (`0x4000`)
+
+The handshake failed due to authentication or security mechanism failure.
+
+- **`value`**: Not used.
+- **`routing_id`**: Not available (empty).
+- **Typical causes**: TLS certificate validation failure, security mechanism mismatch, invalid credentials.
+
+### 4.5 Monitor Control Events
+
+#### MONITOR_STOPPED (`0x0400`)
+
+Fired when the monitor is stopped by calling `zlink_socket_monitor(socket, NULL, 0)`. After this event, the monitor will produce no more events.
+
+- **`value`**: Not used.
+- **`routing_id`**: Not available (empty).
+- **Note**: This is the last event the monitor will ever emit. After receiving it, close the monitor handle with `zlink_close()`.
+
+### Protocol Error Codes
+
+When `HANDSHAKE_FAILED_PROTOCOL` fires, the `value` field contains one of these codes:
+
+| Constant | Value | Description |
+|---|---|---|
+| `ZLINK_PROTOCOL_ERROR_ZMP_UNSPECIFIED` | `0x10000000` | Unspecified ZMP protocol error. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_UNEXPECTED_COMMAND` | `0x10000001` | Unexpected ZMP command received during handshake. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_SEQUENCE` | `0x10000002` | ZMP commands arrived in an invalid order. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_KEY_EXCHANGE` | `0x10000003` | Key exchange step of ZMP handshake failed. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_UNSPECIFIED` | `0x10000011` | A ZMP command was malformed (unspecified). |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_MESSAGE` | `0x10000012` | Malformed ZMP MESSAGE command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO` | `0x10000013` | Malformed ZMP HELLO command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_INITIATE` | `0x10000014` | Malformed ZMP INITIATE command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_ERROR` | `0x10000015` | Malformed ZMP ERROR command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_READY` | `0x10000016` | Malformed ZMP READY command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_WELCOME` | `0x10000017` | Malformed ZMP WELCOME command. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_INVALID_METADATA` | `0x10000018` | Invalid metadata in ZMP handshake. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_CRYPTOGRAPHIC` | `0x11000001` | Cryptographic verification failed during ZMP handshake. |
+| `ZLINK_PROTOCOL_ERROR_ZMP_MECHANISM_MISMATCH` | `0x11000002` | Client and server security mechanisms do not match. |
+| `ZLINK_PROTOCOL_ERROR_WS_UNSPECIFIED` | `0x30000000` | Unspecified WebSocket protocol error. |
 
 ## 5. Event Flow Diagrams
 

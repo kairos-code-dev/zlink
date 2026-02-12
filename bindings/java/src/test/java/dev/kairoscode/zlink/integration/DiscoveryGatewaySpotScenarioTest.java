@@ -46,8 +46,10 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertEquals(0, status);
                                     assertTrue(TestTransports.waitUntil(
                                       () -> discovery.receiverCount("svc") > 0, 5000));
-                                    assertTrue(TestTransports.waitUntil(
-                                      () -> gateway.connectionCount("svc") > 0, 5000));
+                                    try (Gateway.PreparedService preparedSvc =
+                                           gateway.prepareService("svc")) {
+                                        assertTrue(TestTransports.waitUntil(
+                                          () -> gateway.connectionCount(preparedSvc) > 0, 5000));
                                     TestTransports.gatewaySendWithRetry(
                                       gateway, "svc", "hello".getBytes(), SendFlag.NONE, 5000);
 
@@ -67,7 +69,7 @@ public class DiscoveryGatewaySpotScenarioTest {
 
                                     try (Message moveMsg = Message.fromBytes(
                                       "hello-move".getBytes(StandardCharsets.UTF_8))) {
-                                        gateway.sendMove("svc",
+                                        gateway.sendMove(preparedSvc,
                                           new Message[]{moveMsg}, SendFlag.NONE);
                                     }
 
@@ -87,6 +89,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     assertEquals("hello-move",
                                       new String(movePayload, StandardCharsets.UTF_8).trim());
                                     assertTrue(ridMove.length > 0);
+                                    }
                                 }
                             }
 
@@ -103,9 +106,11 @@ public class DiscoveryGatewaySpotScenarioTest {
                                     peerNode.connectRegistry(regRouter);
                                     peerNode.connectPeerPub(spotEp);
                                     sleep(100);
-                                    spot.subscribe("topic");
-                                    spot.publish("topic",
-                                        new Message[]{Message.fromBytes("spot-msg".getBytes())}, SendFlag.NONE);
+                                    try (Spot.PreparedTopic preparedTopic =
+                                           spot.prepareTopic("topic")) {
+                                        spot.subscribe(preparedTopic);
+                                        spot.publish(preparedTopic,
+                                            new Message[]{Message.fromBytes("spot-msg".getBytes())}, SendFlag.NONE);
                                     Spot.SpotMessage spotMsg =
                                       TestTransports.spotReceiveWithTimeout(spot, 5000);
                                     assertEquals("topic", spotMsg.topicId());
@@ -115,7 +120,7 @@ public class DiscoveryGatewaySpotScenarioTest {
 
                                     try (Message moveMsg = Message.fromBytes(
                                       "spot-move".getBytes(StandardCharsets.UTF_8))) {
-                                        spot.publishMove("topic",
+                                        spot.publishMove(preparedTopic,
                                           new Message[]{moveMsg}, SendFlag.NONE);
                                     }
                                     try (Spot.SpotMessages spotMoveMsg =
@@ -126,6 +131,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                         assertEquals("spot-move",
                                           new String(spotMoveMsg.parts()[0].data(),
                                             StandardCharsets.UTF_8).trim());
+                                    }
                                     }
                                 }
                             }

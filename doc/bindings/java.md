@@ -60,8 +60,10 @@ try (var ctx = new Context();
   - `copyTo(byte[]/ByteBuffer)`
 - Gateway/SPOT low-copy path
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
+  - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
+  - `Spot.prepareTopic(String topic)` + `publish/publishMove(PreparedTopic, ...)`
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
   - `sendMove/publishMove` transfer message ownership (do not reuse moved `Message` instances)
 

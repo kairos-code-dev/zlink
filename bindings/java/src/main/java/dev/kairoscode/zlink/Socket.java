@@ -16,7 +16,8 @@ public final class Socket implements AutoCloseable {
 
     private MemorySegment handle;
     private final boolean own;
-    private final Arena ioArena = Arena.ofShared();
+    private Arena sendScratchArena = Arena.ofShared();
+    private Arena recvScratchArena = Arena.ofShared();
     private MemorySegment sendScratch = MemorySegment.NULL;
     private int sendScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
     private MemorySegment recvScratch = MemorySegment.NULL;
@@ -372,8 +373,12 @@ public final class Socket implements AutoCloseable {
                 Native.close(handle);
             handle = MemorySegment.NULL;
         }
-        if (ioArena.scope().isAlive())
-            ioArena.close();
+        closeArena(sendScratchArena);
+        closeArena(recvScratchArena);
+        sendScratchArena = null;
+        recvScratchArena = null;
+        sendScratch = MemorySegment.NULL;
+        recvScratch = MemorySegment.NULL;
     }
 
     private static void validateRange(int total, int offset, int length, String name) {
@@ -390,7 +395,9 @@ public final class Socket implements AutoCloseable {
         if (length <= 0)
             return MemorySegment.NULL;
         if (sendScratch.address() == 0 || sendScratchCapacity < length) {
-            sendScratch = ioArena.allocate(length);
+            closeArena(sendScratchArena);
+            sendScratchArena = Arena.ofShared();
+            sendScratch = sendScratchArena.allocate(length);
             sendScratchCapacity = length;
         }
         return sendScratch.asSlice(0, length);
@@ -400,10 +407,17 @@ public final class Socket implements AutoCloseable {
         if (length <= 0)
             return MemorySegment.NULL;
         if (recvScratch.address() == 0 || recvScratchCapacity < length) {
-            recvScratch = ioArena.allocate(length);
+            closeArena(recvScratchArena);
+            recvScratchArena = Arena.ofShared();
+            recvScratch = recvScratchArena.allocate(length);
             recvScratchCapacity = length;
         }
         return recvScratch.asSlice(0, length);
+    }
+
+    private static void closeArena(Arena arena) {
+        if (arena != null && arena.scope().isAlive())
+            arena.close();
     }
 
     private static int toIntLength(long length) {

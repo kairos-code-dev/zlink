@@ -19,6 +19,7 @@ final class BenchGateway {
         Receiver receiver = null;
         Socket router = null;
         Gateway gateway = null;
+        Gateway.PreparedService preparedService = null;
         Arena payloadArena = null;
         try {
             String suffix = System.currentTimeMillis() + "-" + System.nanoTime();
@@ -43,12 +44,15 @@ final class BenchGateway {
             router = receiver.routerSocket();
 
             gateway = new Gateway(ctx, discovery);
+            preparedService = gateway.prepareService(service);
             final Discovery fDiscovery = discovery;
             final Gateway fGateway = gateway;
             if (!BenchUtil.waitUntil(() -> fDiscovery.receiverCount(service) > 0, 5000)) {
                 return 2;
             }
-            if (!BenchUtil.waitUntil(() -> fGateway.connectionCount(service) > 0, 5000)) {
+            final Gateway.PreparedService fPreparedService = preparedService;
+            if (!BenchUtil.waitUntil(() -> fGateway.connectionCount(fPreparedService) > 0,
+              5000)) {
                 return 2;
             }
             BenchUtil.sleep(300);
@@ -64,14 +68,14 @@ final class BenchGateway {
             Message[] sendParts = new Message[1];
 
             for (int i = 0; i < warmup; i++) {
-                gatewaySendMove(gateway, service, payloadSegment, sendParts);
+                gatewaySendMove(gateway, preparedService, payloadSegment, sendParts);
                 BenchUtil.recvBlocking(router, 256);
                 BenchUtil.recvBlocking(router, dataCap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                gatewaySendMove(gateway, service, payloadSegment, sendParts);
+                gatewaySendMove(gateway, preparedService, payloadSegment, sendParts);
                 BenchUtil.recvBlocking(router, 256);
                 BenchUtil.recvBlocking(router, dataCap);
             }
@@ -98,7 +102,7 @@ final class BenchGateway {
                 try {
                     try (Message msg = Message.fromNativeData(payloadSegment)) {
                         sendParts[0] = msg;
-                        gateway.sendMove(service, sendParts, SendFlag.NONE);
+                        gateway.sendMove(preparedService, sendParts, SendFlag.NONE);
                     } finally {
                         sendParts[0] = null;
                     }
@@ -116,6 +120,12 @@ final class BenchGateway {
         } catch (Exception e) {
             return 2;
         } finally {
+            try {
+                if (preparedService != null) {
+                    preparedService.close();
+                }
+            } catch (Exception ignored) {
+            }
             try {
                 if (gateway != null) {
                     gateway.close();
@@ -159,7 +169,8 @@ final class BenchGateway {
         }
     }
 
-    private static void gatewaySendMove(Gateway gateway, String service,
+    private static void gatewaySendMove(Gateway gateway,
+                                        Gateway.PreparedService service,
                                         MemorySegment payload,
                                         Message[] sendParts) {
         try (Message msg = Message.fromNativeData(payload)) {

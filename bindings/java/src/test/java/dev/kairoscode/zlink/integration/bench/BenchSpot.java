@@ -22,6 +22,7 @@ final class BenchSpot {
         SpotNode nodeSub = null;
         Spot spotPub = null;
         Spot spotSub = null;
+        Spot.PreparedTopic preparedTopic = null;
         Arena payloadArena = null;
         try {
             nodePub = new SpotNode(ctx);
@@ -31,7 +32,8 @@ final class BenchSpot {
             nodeSub.connectPeerPub(endpoint);
             spotPub = new Spot(nodePub);
             spotSub = new Spot(nodeSub);
-            spotSub.subscribe("bench");
+            preparedTopic = spotPub.prepareTopic("bench");
+            spotSub.subscribe(preparedTopic);
             BenchUtil.sleep(300);
 
             byte[] payload = new byte[size];
@@ -46,7 +48,7 @@ final class BenchSpot {
             for (int i = 0; i < warmup; i++) {
                 try (Message msg = Message.fromNativeData(payloadSegment)) {
                     sendParts[0] = msg;
-                    spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
                 } finally {
                     sendParts[0] = null;
                 }
@@ -59,7 +61,7 @@ final class BenchSpot {
             for (int i = 0; i < latCount; i++) {
                 try (Message msg = Message.fromNativeData(payloadSegment)) {
                     sendParts[0] = msg;
-                    spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                    spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
                 } finally {
                     sendParts[0] = null;
                 }
@@ -92,7 +94,7 @@ final class BenchSpot {
                 try {
                     try (Message msg = Message.fromNativeData(payloadSegment)) {
                         sendParts[0] = msg;
-                        spotPub.publishMove("bench", sendParts, SendFlag.NONE);
+                        spotPub.publishMove(preparedTopic, sendParts, SendFlag.NONE);
                     } finally {
                         sendParts[0] = null;
                     }
@@ -110,6 +112,12 @@ final class BenchSpot {
         } catch (Exception e) {
             return 2;
         } finally {
+            try {
+                if (preparedTopic != null) {
+                    preparedTopic.close();
+                }
+            } catch (Exception ignored) {
+            }
             try {
                 if (spotSub != null) {
                     spotSub.close();

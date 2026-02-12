@@ -7,10 +7,10 @@ from bench_common import (
     SocketWaiter,
     endpoint_for,
     gateway_send_with_retry,
+    make_raw_recv_into,
     parse_env,
     parse_pattern_args,
     print_result,
-    recv_into_with_timeout,
     resolve_msg_count,
     settle,
     wait_until,
@@ -69,17 +69,26 @@ def run(transport: str, size: int) -> int:
         rid_buf = bytearray(256)
         data_buf = bytearray(max(256, size))
         waiter = SocketWaiter(router)
+        recv_none = int(zlink.ReceiveFlag.NONE)
+        recv_router_rid = make_raw_recv_into(router, rid_buf)
+        recv_router_data = make_raw_recv_into(router, data_buf)
+
+        def recv_pair(waiter_obj: SocketWaiter) -> None:
+            if not waiter_obj.wait(5000):
+                raise RuntimeError("timeout")
+            recv_router_rid(recv_none)
+            if not waiter_obj.wait(5000):
+                raise RuntimeError("timeout")
+            recv_router_data(recv_none)
 
         for _ in range(warmup):
             gateway_send_with_retry(gateway, service, parts, send_none, 5000)
-            recv_into_with_timeout(router, rid_buf, 5000, waiter)
-            recv_into_with_timeout(router, data_buf, 5000, waiter)
+            recv_pair(waiter)
 
         start = time.perf_counter()
         for _ in range(lat_count):
             gateway_send_with_retry(gateway, service, parts, send_none, 5000)
-            recv_into_with_timeout(router, rid_buf, 5000, waiter)
-            recv_into_with_timeout(router, data_buf, 5000, waiter)
+            recv_pair(waiter)
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / lat_count
 
         recv_count = 0
@@ -89,8 +98,7 @@ def run(transport: str, size: int) -> int:
             recv_waiter = SocketWaiter(router)
             for _ in range(msg_count):
                 try:
-                    recv_into_with_timeout(router, rid_buf, 5000, recv_waiter)
-                    recv_into_with_timeout(router, data_buf, 5000, recv_waiter)
+                    recv_pair(recv_waiter)
                 except Exception:
                     break
                 recv_count += 1

@@ -5,13 +5,15 @@ import sys
 from bench_common import (
     endpoint_for,
     int_sockopt,
+    make_cext_recv_pair_many_into,
+    make_cext_send_routed_many_const,
+    make_raw_recv_into,
     parse_env,
     parse_pattern_args,
     print_result,
     resolve_msg_count,
     settle,
     stream_expect_connect_event,
-    stream_recv_into,
     stream_send,
     zlink,
 )
@@ -41,31 +43,45 @@ def run(transport: str, size: int) -> int:
         server_client_id = stream_expect_connect_event(server)
         client_server_id = stream_expect_connect_event(client)
 
-        buf = bytearray(b"a" * size)
+        buf = b"a" * size
         recv_cap = max(256, size)
         server_rid = bytearray(256)
         server_data = bytearray(recv_cap)
         client_rid = bytearray(256)
         client_data = bytearray(recv_cap)
         server_data_view = memoryview(server_data)
+        server_recv_rid = make_raw_recv_into(server, server_rid)
+        server_recv_data = make_raw_recv_into(server, server_data)
+        client_recv_rid = make_raw_recv_into(client, client_rid)
+        client_recv_data = make_raw_recv_into(client, client_data)
+        client_send_many = make_cext_send_routed_many_const(client, client_server_id, buf)
+        server_recv_pair_many = make_cext_recv_pair_many_into(server, server_rid, server_data)
 
         for _ in range(warmup):
             stream_send(client, client_server_id, buf)
-            stream_recv_into(server, server_rid, server_data)
+            server_recv_rid(int(zlink.ReceiveFlag.NONE))
+            server_recv_data(int(zlink.ReceiveFlag.NONE))
 
         start = time.perf_counter()
         for _ in range(lat_count):
             stream_send(client, client_server_id, buf)
-            _, received_len = stream_recv_into(server, server_rid, server_data)
+            server_recv_rid(int(zlink.ReceiveFlag.NONE))
+            received_len = server_recv_data(int(zlink.ReceiveFlag.NONE))
             stream_send(server, server_client_id, server_data_view[:received_len])
-            stream_recv_into(client, client_rid, client_data)
+            client_recv_rid(int(zlink.ReceiveFlag.NONE))
+            client_recv_data(int(zlink.ReceiveFlag.NONE))
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / (lat_count * 2)
 
         start = time.perf_counter()
-        for _ in range(msg_count):
-            stream_send(client, client_server_id, buf)
-        for _ in range(msg_count):
-            stream_recv_into(server, server_rid, server_data)
+        if client_send_many is not None and server_recv_pair_many is not None:
+            client_send_many(msg_count, int(zlink.SendFlag.NONE))
+            server_recv_pair_many(msg_count, int(zlink.ReceiveFlag.NONE))
+        else:
+            for _ in range(msg_count):
+                stream_send(client, client_server_id, buf)
+            for _ in range(msg_count):
+                server_recv_rid(int(zlink.ReceiveFlag.NONE))
+                server_recv_data(int(zlink.ReceiveFlag.NONE))
 
         throughput = msg_count / (time.perf_counter() - start)
         print_result("STREAM", transport, size, throughput, lat_us)

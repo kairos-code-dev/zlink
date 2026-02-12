@@ -203,6 +203,127 @@ napi_value socket_send(napi_env env, napi_callback_info info)
     return out;
 }
 
+napi_value socket_send_from(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t cap = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendFrom buffer invalid");
+        return NULL;
+    }
+    int32_t len = 0;
+    napi_get_value_int32(env, argv[2], &len);
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    if (len < 0 || static_cast<size_t>(len) > cap) {
+        napi_throw_range_error(env, NULL, "sendFrom length out of range");
+        return NULL;
+    }
+    int rc = zlink_send(sock, data, static_cast<size_t>(len), flags);
+    if (rc < 0)
+        return throw_last_error(env, "sendFrom failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_send_many(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendMany buffer invalid");
+        return NULL;
+    }
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[2], &count);
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "sendMany count must be > 0");
+        return NULL;
+    }
+
+    for (int32_t i = 0; i < count; ++i) {
+        int rc = zlink_send(sock, data, len, flags);
+        if (rc < 0)
+            return throw_last_error(env, "sendMany failed");
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
+    return out;
+}
+
+napi_value socket_send_routed_many(napi_env env, napi_callback_info info)
+{
+    napi_value argv[7];
+    size_t argc = 7;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    void *rid_data = NULL;
+    size_t rid_cap = 0;
+    if (napi_get_buffer_info(env, argv[1], &rid_data, &rid_cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendRoutedMany routingId buffer invalid");
+        return NULL;
+    }
+    int32_t rid_len = 0;
+    napi_get_value_int32(env, argv[2], &rid_len);
+    if (rid_len < 0 || static_cast<size_t>(rid_len) > rid_cap) {
+        napi_throw_range_error(env, NULL, "sendRoutedMany routingId length out of range");
+        return NULL;
+    }
+
+    void *payload_data = NULL;
+    size_t payload_cap = 0;
+    if (napi_get_buffer_info(env, argv[3], &payload_data, &payload_cap) != napi_ok) {
+        napi_throw_type_error(env, NULL, "sendRoutedMany payload buffer invalid");
+        return NULL;
+    }
+    int32_t payload_len = 0;
+    napi_get_value_int32(env, argv[4], &payload_len);
+    if (payload_len < 0 || static_cast<size_t>(payload_len) > payload_cap) {
+        napi_throw_range_error(env, NULL, "sendRoutedMany payload length out of range");
+        return NULL;
+    }
+
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[5], &count);
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "sendRoutedMany count must be > 0");
+        return NULL;
+    }
+
+    int32_t payload_flags = 0;
+    napi_get_value_int32(env, argv[6], &payload_flags);
+    int rid_flags = ZLINK_SNDMORE | (payload_flags & ZLINK_DONTWAIT);
+
+    for (int32_t i = 0; i < count; ++i) {
+        int rc = zlink_send(sock, rid_data, static_cast<size_t>(rid_len), rid_flags);
+        if (rc < 0)
+            return throw_last_error(env, "sendRoutedMany routingId send failed");
+        rc = zlink_send(sock, payload_data, static_cast<size_t>(payload_len), payload_flags);
+        if (rc < 0)
+            return throw_last_error(env, "sendRoutedMany payload send failed");
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
+    return out;
+}
+
 napi_value socket_recv(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
@@ -226,6 +347,124 @@ napi_value socket_recv(napi_env env, napi_callback_info info)
         return buffer;
     napi_value out;
     napi_create_buffer_copy(env, rc, buf, NULL, &out);
+    return out;
+}
+
+napi_value socket_recv_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvInto buffer invalid");
+        return NULL;
+    }
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[2], &flags);
+    if (len == 0) {
+        napi_throw_range_error(env, NULL, "recvInto buffer must not be empty");
+        return NULL;
+    }
+    int rc = zlink_recv(sock, data, len, flags);
+    if (rc < 0)
+        return throw_last_error(env, "recvInto failed");
+    napi_value out;
+    napi_create_int32(env, rc, &out);
+    return out;
+}
+
+napi_value socket_recv_many_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    void *data = NULL;
+    size_t len = 0;
+    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvManyInto buffer invalid");
+        return NULL;
+    }
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[2], &count);
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[3], &flags);
+    if (len == 0) {
+        napi_throw_range_error(env, NULL, "recvManyInto buffer must not be empty");
+        return NULL;
+    }
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "recvManyInto count must be > 0");
+        return NULL;
+    }
+
+    for (int32_t i = 0; i < count; ++i) {
+        int rc = zlink_recv(sock, data, len, flags);
+        if (rc < 0)
+            return throw_last_error(env, "recvManyInto failed");
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
+    return out;
+}
+
+napi_value socket_recv_pair_many_into(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    void *first_data = NULL;
+    size_t first_len = 0;
+    if (napi_get_buffer_info(env, argv[1], &first_data, &first_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvPairManyInto first buffer invalid");
+        return NULL;
+    }
+    if (first_len == 0) {
+        napi_throw_range_error(env, NULL, "recvPairManyInto first buffer must not be empty");
+        return NULL;
+    }
+
+    void *second_data = NULL;
+    size_t second_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &second_data, &second_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "recvPairManyInto second buffer invalid");
+        return NULL;
+    }
+    if (second_len == 0) {
+        napi_throw_range_error(env, NULL, "recvPairManyInto second buffer must not be empty");
+        return NULL;
+    }
+
+    int32_t count = 0;
+    napi_get_value_int32(env, argv[3], &count);
+    if (count <= 0) {
+        napi_throw_range_error(env, NULL, "recvPairManyInto count must be > 0");
+        return NULL;
+    }
+
+    int32_t flags = 0;
+    napi_get_value_int32(env, argv[4], &flags);
+
+    for (int32_t i = 0; i < count; ++i) {
+        int rc = zlink_recv(sock, first_data, first_len, flags);
+        if (rc < 0)
+            return throw_last_error(env, "recvPairManyInto first frame failed");
+        rc = zlink_recv(sock, second_data, second_len, flags);
+        if (rc < 0)
+            return throw_last_error(env, "recvPairManyInto second frame failed");
+    }
+
+    napi_value out;
+    napi_create_int32(env, count, &out);
     return out;
 }
 

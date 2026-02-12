@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import ctypes
 import os
+import platform
 import socket
 import struct
 import sys
@@ -9,6 +11,58 @@ from typing import Callable, Optional, Sequence, Tuple
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.insert(0, os.path.join(ROOT, "bindings/python/src"))
 import zlink  # noqa: E402
+from zlink._ffi import lib as ffi_lib  # noqa: E402
+
+
+def _python_native_dir() -> str:
+    sys_name = platform.system().lower()
+    machine = platform.machine().lower()
+    py_native_root = os.path.join(ROOT, "bindings", "python", "src", "zlink", "native")
+    if "windows" in sys_name:
+        arch = "x86_64" if machine in ("x86_64", "amd64") else "aarch64"
+        return os.path.join(py_native_root, f"windows-{arch}")
+    if "darwin" in sys_name:
+        arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
+        return os.path.join(py_native_root, f"darwin-{arch}")
+    arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
+    return os.path.join(py_native_root, f"linux-{arch}")
+
+
+def _preload_native_for_fastpath() -> None:
+    native_dir = _python_native_dir()
+    candidates = []
+    if os.name == "nt":
+        dll = os.path.join(native_dir, "zlink.dll")
+        if os.path.exists(dll):
+            if hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(native_dir)  # type: ignore[attr-defined]
+            ctypes.CDLL(dll)
+        return
+    if platform.system().lower() == "darwin":
+        candidates.append(os.path.join(native_dir, "libzlink.dylib"))
+    candidates.extend(
+        [
+            os.path.join(native_dir, "libzlink.so.5"),
+            os.path.join(native_dir, "libzlink.so"),
+        ]
+    )
+    for candidate in candidates:
+        if not os.path.exists(candidate):
+            continue
+        try:
+            ctypes.CDLL(candidate, mode=getattr(ctypes, "RTLD_GLOBAL", 0))
+            return
+        except OSError:
+            continue
+
+
+FASTPATH_CEXT = None
+if os.environ.get("BENCH_PY_FASTPATH_CEXT") == "1":
+    try:
+        _preload_native_for_fastpath()
+        import _zlink_fastpath as FASTPATH_CEXT  # type: ignore
+    except Exception:
+        FASTPATH_CEXT = None
 
 
 def get_port() -> int:
@@ -56,6 +110,100 @@ def print_result(pattern: str, transport: str, size: int, throughput: float, lat
     print(f"RESULT,current,{pattern},{transport},{size},latency,{latency_us}")
 
 
+def make_raw_send_const(sock, payload: bytes):
+    native = ffi_lib()
+    send_const = native.zlink_send_const
+    handle = sock._handle
+    size = len(payload)
+    storage = ctypes.create_string_buffer(payload)
+
+    def send(flags: int) -> int:
+        rc = send_const(handle, storage, size, int(flags))
+        if rc < 0:
+            raise RuntimeError("send_const failed")
+        return rc
+
+    return send
+
+
+def make_raw_recv_into(sock, buffer):
+    native = ffi_lib()
+    recv = native.zlink_recv
+    handle = sock._handle
+    view = memoryview(buffer)
+    if view.readonly:
+        raise TypeError("buffer must be writable")
+    if view.ndim != 1 or view.format != "B":
+        view = view.cast("B")
+    size = view.nbytes
+    if size <= 0:
+        raise ValueError("buffer must not be empty")
+    storage = (ctypes.c_char * size).from_buffer(view)
+
+    def recv_into(flags: int) -> int:
+        rc = recv(handle, storage, size, int(flags))
+        if rc < 0:
+            raise RuntimeError("recv failed")
+        return rc
+
+    return recv_into
+
+
+def make_cext_send_many_const(sock, payload: bytes):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(sock._handle)
+    const_payload = bytes(payload)
+
+    def send_many(count: int, flags: int) -> int:
+        return int(FASTPATH_CEXT.send_many_const(handle, const_payload, int(flags), int(count)))
+
+    return send_many
+
+
+def make_cext_recv_many_into(sock, buffer):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(sock._handle)
+
+    def recv_many(count: int, flags: int) -> int:
+        return int(FASTPATH_CEXT.recv_many_into(handle, buffer, int(flags), int(count)))
+
+    return recv_many
+
+
+def make_cext_send_routed_many_const(sock, routing_id: bytes, payload: bytes):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(sock._handle)
+    rid = bytes(routing_id)
+    body = bytes(payload)
+
+    def send_routed_many(count: int, payload_flags: int) -> int:
+        return int(
+            FASTPATH_CEXT.send_routed_many_const(
+                handle, rid, body, int(payload_flags), int(count)
+            )
+        )
+
+    return send_routed_many
+
+
+def make_cext_recv_pair_many_into(sock, first_buffer, second_buffer):
+    if FASTPATH_CEXT is None:
+        return None
+    handle = int(sock._handle)
+
+    def recv_pair_many(count: int, flags: int) -> int:
+        return int(
+            FASTPATH_CEXT.recv_pair_many_into(
+                handle, first_buffer, second_buffer, int(flags), int(count)
+            )
+        )
+
+    return recv_pair_many
+
+
 class SocketWaiter:
     def __init__(self, sock) -> None:
         self._poller = zlink.Poller()
@@ -90,8 +238,16 @@ def stream_expect_connect_event(sock) -> bytes:
 
 
 def stream_send(sock, rid: bytes, payload: bytes) -> None:
-    sock.send(rid, int(zlink.SendFlag.SNDMORE))
-    sock.send(payload, int(zlink.SendFlag.NONE))
+    send_more = int(zlink.SendFlag.SNDMORE)
+    send_none = int(zlink.SendFlag.NONE)
+    if isinstance(rid, bytes):
+        sock.send_const(rid, send_more)
+    else:
+        sock.send(rid, send_more)
+    if isinstance(payload, bytes):
+        sock.send_const(payload, send_none)
+    else:
+        sock.send(payload, send_none)
 
 
 def stream_recv(sock, max_size: int):

@@ -128,7 +128,25 @@ export class Socket {
   bind(endpoint: string): void;
   connect(endpoint: string): void;
   send(buf: Buffer | Uint8Array | string, flags?: number): number;
+  sendFrom(buffer: Buffer | Uint8Array, length: number, flags?: number): number;
+  sendMany(buf: Buffer | Uint8Array | string, count: number, flags?: number): number;
+  sendRoutedMany(
+    routingIdBuffer: Buffer | Uint8Array,
+    routingIdLength: number,
+    payloadBuffer: Buffer | Uint8Array,
+    payloadLength: number,
+    count: number,
+    payloadFlags?: number
+  ): number;
   recv(size: number, flags?: number): Buffer;
+  recvInto(buffer: Buffer | Uint8Array, flags?: number): number;
+  recvManyInto(buffer: Buffer | Uint8Array, count: number, flags?: number): number;
+  recvPairManyInto(
+    firstBuffer: Buffer | Uint8Array,
+    secondBuffer: Buffer | Uint8Array,
+    count: number,
+    flags?: number
+  ): number;
   setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   getSockOpt(option: number): Buffer;
   monitorOpen(events: number): MonitorSocket;

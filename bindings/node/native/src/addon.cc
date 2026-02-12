@@ -13,7 +13,13 @@ static napi_value init(napi_env env, napi_value exports)
         {"socketBind", 0, socket_bind, 0, 0, 0, napi_default, 0},
         {"socketConnect", 0, socket_connect, 0, 0, 0, napi_default, 0},
         {"socketSend", 0, socket_send, 0, 0, 0, napi_default, 0},
+        {"socketSendFrom", 0, socket_send_from, 0, 0, 0, napi_default, 0},
+        {"socketSendMany", 0, socket_send_many, 0, 0, 0, napi_default, 0},
+        {"socketSendRoutedMany", 0, socket_send_routed_many, 0, 0, 0, napi_default, 0},
         {"socketRecv", 0, socket_recv, 0, 0, 0, napi_default, 0},
+        {"socketRecvInto", 0, socket_recv_into, 0, 0, 0, napi_default, 0},
+        {"socketRecvManyInto", 0, socket_recv_many_into, 0, 0, 0, napi_default, 0},
+        {"socketRecvPairManyInto", 0, socket_recv_pair_many_into, 0, 0, 0, napi_default, 0},
         {"socketSetOpt", 0, socket_setopt, 0, 0, 0, napi_default, 0},
         {"socketGetOpt", 0, socket_getopt, 0, 0, 0, napi_default, 0},
 

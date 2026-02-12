@@ -56,19 +56,23 @@ function printResult(pattern, transport, size, thr, latUs) {
   console.log(`RESULT,current,${pattern},${transport},${size},latency,${latUs}`);
 }
 
-function waitForInput(socket, timeoutMs) {
-  const poller = new zlink.Poller();
-  poller.addSocket(socket, zlink.PollEvent.POLLIN);
-  const evs = poller.poll(timeoutMs);
-  return evs.length > 0;
+function waitForInput(socket, timeoutMs, poller = null) {
+  const p = poller || new zlink.Poller();
+  if (!poller) {
+    p.addSocket(socket, zlink.PollEvent.POLLIN);
+  }
+  const evs = p.poll(timeoutMs);
+  return evs.some((ev) => (ev & zlink.PollEvent.POLLIN) !== 0);
 }
 
 function streamExpectConnectEvent(socket) {
+  const rid = Buffer.alloc(256);
+  const payload = Buffer.alloc(16);
   for (let i = 0; i < 64; i++) {
-    const rid = socket.recv(256, zlink.ReceiveFlag.NONE);
-    const payload = socket.recv(16, zlink.ReceiveFlag.NONE);
-    if (payload.length === 1 && payload[0] === 0x01) {
-      return rid;
+    const ridLen = socket.recvInto(rid, zlink.ReceiveFlag.NONE);
+    const payloadLen = socket.recvInto(payload, zlink.ReceiveFlag.NONE);
+    if (payloadLen === 1 && payload[0] === 0x01) {
+      return rid.subarray(0, ridLen);
     }
   }
   throw new Error('invalid STREAM connect event');
@@ -79,10 +83,10 @@ function streamSend(socket, rid, payload) {
   socket.send(payload, zlink.SendFlag.NONE);
 }
 
-function streamRecv(socket, cap) {
-  const rid = socket.recv(256, zlink.ReceiveFlag.NONE);
-  const data = socket.recv(cap, zlink.ReceiveFlag.NONE);
-  return { rid, data };
+function streamRecvInto(socket, ridBuffer, dataBuffer) {
+  const ridLen = socket.recvInto(ridBuffer, zlink.ReceiveFlag.NONE);
+  const dataLen = socket.recvInto(dataBuffer, zlink.ReceiveFlag.NONE);
+  return { ridLen, dataLen };
 }
 
 async function runPairLike(pattern, typeA, typeB, transport, size) {
@@ -101,28 +105,26 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
     await settle();
 
     const buf = Buffer.alloc(size, 'a');
+    const recvA = Buffer.alloc(Math.max(1, size));
+    const recvB = Buffer.alloc(Math.max(1, size));
 
     for (let i = 0; i < warmup; i++) {
       b.send(buf, zlink.SendFlag.NONE);
-      a.recv(size, zlink.ReceiveFlag.NONE);
+      a.recvInto(recvA, zlink.ReceiveFlag.NONE);
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
       b.send(buf, zlink.SendFlag.NONE);
-      const x = a.recv(size, zlink.ReceiveFlag.NONE);
-      a.send(x, zlink.SendFlag.NONE);
-      b.recv(size, zlink.ReceiveFlag.NONE);
+      const n = a.recvInto(recvA, zlink.ReceiveFlag.NONE);
+      a.send(recvA.subarray(0, n), zlink.SendFlag.NONE);
+      b.recvInto(recvB, zlink.ReceiveFlag.NONE);
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      b.send(buf, zlink.SendFlag.NONE);
-    }
-    for (let i = 0; i < msgCount; i++) {
-      a.recv(size, zlink.ReceiveFlag.NONE);
-    }
+    b.sendMany(buf, msgCount, zlink.SendFlag.NONE);
+    a.recvManyInto(recvA, msgCount, zlink.ReceiveFlag.NONE);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
 
@@ -153,18 +155,15 @@ async function runPubSub(transport, size) {
     await settle();
 
     const buf = Buffer.alloc(size, 'a');
+    const recvBuf = Buffer.alloc(Math.max(1, size));
     for (let i = 0; i < warmup; i++) {
       pub.send(buf, zlink.SendFlag.NONE);
-      sub.recv(size, zlink.ReceiveFlag.NONE);
+      sub.recvInto(recvBuf, zlink.ReceiveFlag.NONE);
     }
 
     const t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      pub.send(buf, zlink.SendFlag.NONE);
-    }
-    for (let i = 0; i < msgCount; i++) {
-      sub.recv(size, zlink.ReceiveFlag.NONE);
-    }
+    pub.sendMany(buf, msgCount, zlink.SendFlag.NONE);
+    sub.recvManyInto(recvBuf, msgCount, zlink.ReceiveFlag.NONE);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
     const latUs = (elapsedSec * 1e6) / msgCount;
@@ -197,35 +196,32 @@ async function runDealerRouter(transport, size) {
     await settle();
 
     const buf = Buffer.alloc(size, 'a');
+    const ridBuf = Buffer.alloc(256);
+    const dataBuf = Buffer.alloc(Math.max(1, size));
 
     for (let i = 0; i < warmup; i++) {
       dealer.send(buf, zlink.SendFlag.NONE);
-      const rid = router.recv(256, zlink.ReceiveFlag.NONE);
-      router.recv(size, zlink.ReceiveFlag.NONE);
-      router.send(rid, zlink.SendFlag.SNDMORE);
+      const ridLen = router.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+      router.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+      router.sendFrom(ridBuf, ridLen, zlink.SendFlag.SNDMORE);
       router.send(buf, zlink.SendFlag.NONE);
-      dealer.recv(size, zlink.ReceiveFlag.NONE);
+      dealer.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
       dealer.send(buf, zlink.SendFlag.NONE);
-      const rid = router.recv(256, zlink.ReceiveFlag.NONE);
-      router.recv(size, zlink.ReceiveFlag.NONE);
-      router.send(rid, zlink.SendFlag.SNDMORE);
+      const ridLen = router.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+      router.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+      router.sendFrom(ridBuf, ridLen, zlink.SendFlag.SNDMORE);
       router.send(buf, zlink.SendFlag.NONE);
-      dealer.recv(size, zlink.ReceiveFlag.NONE);
+      dealer.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      dealer.send(buf, zlink.SendFlag.NONE);
-    }
-    for (let i = 0; i < msgCount; i++) {
-      router.recv(256, zlink.ReceiveFlag.NONE);
-      router.recv(size, zlink.ReceiveFlag.NONE);
-    }
+    dealer.sendMany(buf, msgCount, zlink.SendFlag.NONE);
+    router.recvPairManyInto(ridBuf, dataBuf, msgCount, zlink.ReceiveFlag.NONE);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
 
@@ -249,33 +245,50 @@ async function runRouterRouter(transport, size, usePoll) {
   const router2 = new zlink.Socket(ctx, zlink.SocketType.ROUTER);
 
   try {
+    const routingId1 = Buffer.from('ROUTER1');
+    const routingId2 = Buffer.from('ROUTER2');
+    const ping = Buffer.from('PING');
+    const pong = Buffer.from('PONG');
+    const ridBuf = Buffer.alloc(256);
+    const ctrlBuf = Buffer.alloc(16);
+    const dataBuf = Buffer.alloc(Math.max(1, size));
+    let poller1 = null;
+    let poller2 = null;
+
     const ep = await endpointFor(transport, 'router-router');
-    router1.setSockOpt(zlink.SocketOption.ROUTING_ID, Buffer.from('ROUTER1'));
-    router2.setSockOpt(zlink.SocketOption.ROUTING_ID, Buffer.from('ROUTER2'));
+    router1.setSockOpt(zlink.SocketOption.ROUTING_ID, routingId1);
+    router2.setSockOpt(zlink.SocketOption.ROUTING_ID, routingId2);
     router1.setSockOpt(zlink.SocketOption.ROUTER_MANDATORY, intSockOpt(1));
     router2.setSockOpt(zlink.SocketOption.ROUTER_MANDATORY, intSockOpt(1));
     router1.bind(ep);
     router2.connect(ep);
     await settle();
 
+    if (usePoll) {
+      poller1 = new zlink.Poller();
+      poller1.addSocket(router1, zlink.PollEvent.POLLIN);
+      poller2 = new zlink.Poller();
+      poller2.addSocket(router2, zlink.PollEvent.POLLIN);
+    }
+
     let connected = false;
     for (let i = 0; i < 100; i++) {
       try {
-        router2.send(Buffer.from('ROUTER1'), zlink.SendFlag.SNDMORE | zlink.SendFlag.DONTWAIT);
-        router2.send(Buffer.from('PING'), zlink.SendFlag.DONTWAIT);
+        router2.send(routingId1, zlink.SendFlag.SNDMORE | zlink.SendFlag.DONTWAIT);
+        router2.send(ping, zlink.SendFlag.DONTWAIT);
       } catch (_) {
         await sleep(10);
         continue;
       }
 
-      if (usePoll && !waitForInput(router1, 0)) {
+      if (usePoll && !waitForInput(router1, 0, poller1)) {
         await sleep(10);
         continue;
       }
 
       try {
-        router1.recv(256, zlink.ReceiveFlag.DONTWAIT);
-        router1.recv(16, zlink.ReceiveFlag.DONTWAIT);
+        router1.recvInto(ridBuf, zlink.ReceiveFlag.DONTWAIT);
+        router1.recvInto(ctrlBuf, zlink.ReceiveFlag.DONTWAIT);
         connected = true;
         break;
       } catch (_) {
@@ -285,42 +298,54 @@ async function runRouterRouter(transport, size, usePoll) {
 
     if (!connected) return 2;
 
-    router1.send(Buffer.from('ROUTER2'), zlink.SendFlag.SNDMORE);
-    router1.send(Buffer.from('PONG'), zlink.SendFlag.NONE);
-    if (usePoll && !waitForInput(router2, 2000)) return 2;
-    router2.recv(256, zlink.ReceiveFlag.NONE);
-    router2.recv(16, zlink.ReceiveFlag.NONE);
+    router1.send(routingId2, zlink.SendFlag.SNDMORE);
+    router1.send(pong, zlink.SendFlag.NONE);
+    if (usePoll && !waitForInput(router2, 2000, poller2)) return 2;
+    router2.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+    router2.recvInto(ctrlBuf, zlink.ReceiveFlag.NONE);
 
     const buf = Buffer.alloc(size, 'a');
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
-      router2.send(Buffer.from('ROUTER1'), zlink.SendFlag.SNDMORE);
+      router2.send(routingId1, zlink.SendFlag.SNDMORE);
       router2.send(buf, zlink.SendFlag.NONE);
 
-      if (usePoll && !waitForInput(router1, 2000)) return 2;
-      const rid = router1.recv(256, zlink.ReceiveFlag.NONE);
-      router1.recv(size, zlink.ReceiveFlag.NONE);
+      if (usePoll && !waitForInput(router1, 2000, poller1)) return 2;
+      const ridLen = router1.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+      router1.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
 
-      router1.send(rid, zlink.SendFlag.SNDMORE);
+      router1.sendFrom(ridBuf, ridLen, zlink.SendFlag.SNDMORE);
       router1.send(buf, zlink.SendFlag.NONE);
 
-      if (usePoll && !waitForInput(router2, 2000)) return 2;
-      router2.recv(256, zlink.ReceiveFlag.NONE);
-      router2.recv(size, zlink.ReceiveFlag.NONE);
+      if (usePoll && !waitForInput(router2, 2000, poller2)) return 2;
+      router2.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+      router2.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
     }
 
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    for (let i = 0; i < msgCount; i++) {
-      router2.send(Buffer.from('ROUTER1'), zlink.SendFlag.SNDMORE);
-      router2.send(buf, zlink.SendFlag.NONE);
-    }
-    for (let i = 0; i < msgCount; i++) {
-      if (usePoll && !waitForInput(router1, 2000)) return 2;
-      router1.recv(256, zlink.ReceiveFlag.NONE);
-      router1.recv(size, zlink.ReceiveFlag.NONE);
+    if (usePoll) {
+      for (let i = 0; i < msgCount; i++) {
+        router2.send(routingId1, zlink.SendFlag.SNDMORE);
+        router2.send(buf, zlink.SendFlag.NONE);
+      }
+      for (let i = 0; i < msgCount; i++) {
+        if (!waitForInput(router1, 2000, poller1)) return 2;
+        router1.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+        router1.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+      }
+    } else {
+      router2.sendRoutedMany(
+        routingId1,
+        routingId1.length,
+        buf,
+        buf.length,
+        msgCount,
+        zlink.SendFlag.NONE
+      );
+      router1.recvPairManyInto(ridBuf, dataBuf, msgCount, zlink.ReceiveFlag.NONE);
     }
 
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
@@ -362,18 +387,22 @@ async function runStream(transport, size) {
 
     const buf = Buffer.alloc(size, 'a');
     const cap = Math.max(256, size);
+    const serverRid = Buffer.alloc(256);
+    const serverData = Buffer.alloc(cap);
+    const clientRid = Buffer.alloc(256);
+    const clientData = Buffer.alloc(cap);
 
     for (let i = 0; i < warmup; i++) {
       streamSend(client, clientServerId, buf);
-      streamRecv(server, cap);
+      streamRecvInto(server, serverRid, serverData);
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
       streamSend(client, clientServerId, buf);
-      const rx = streamRecv(server, cap);
-      streamSend(server, serverClientId, rx.data);
-      streamRecv(client, cap);
+      const { dataLen } = streamRecvInto(server, serverRid, serverData);
+      streamSend(server, serverClientId, serverData.subarray(0, dataLen));
+      streamRecvInto(client, clientRid, clientData);
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
@@ -382,7 +411,7 @@ async function runStream(transport, size) {
       streamSend(client, clientServerId, buf);
     }
     for (let i = 0; i < msgCount; i++) {
-      streamRecv(server, cap);
+      streamRecvInto(server, serverRid, serverData);
     }
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
@@ -410,11 +439,11 @@ async function waitUntil(fn, timeoutMs, intervalMs = 10) {
   return false;
 }
 
-async function recvWithTimeout(socket, size, timeoutMs) {
+async function recvIntoWithTimeout(socket, buffer, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      return socket.recv(size, zlink.ReceiveFlag.DONTWAIT);
+      return socket.recvInto(buffer, zlink.ReceiveFlag.DONTWAIT);
     } catch (_) {
       await sleep(10);
     }
@@ -485,17 +514,20 @@ async function runGateway(transport, size) {
     await settle();
 
     const payload = Buffer.alloc(size, 'a');
+    const parts = [payload];
+    const ridBuf = Buffer.alloc(256);
+    const dataBuf = Buffer.alloc(Math.max(256, size));
     for (let i = 0; i < warmup; i++) {
-      await gatewaySendWithRetry(gateway, service, [payload], zlink.SendFlag.NONE, 5000);
-      await recvWithTimeout(router, 256, 5000);
-      await recvWithTimeout(router, Math.max(256, size), 5000);
+      await gatewaySendWithRetry(gateway, service, parts, zlink.SendFlag.NONE, 5000);
+      await recvIntoWithTimeout(router, ridBuf, 5000);
+      await recvIntoWithTimeout(router, dataBuf, 5000);
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
-      await gatewaySendWithRetry(gateway, service, [payload], zlink.SendFlag.NONE, 5000);
-      await recvWithTimeout(router, 256, 5000);
-      await recvWithTimeout(router, Math.max(256, size), 5000);
+      await gatewaySendWithRetry(gateway, service, parts, zlink.SendFlag.NONE, 5000);
+      await recvIntoWithTimeout(router, ridBuf, 5000);
+      await recvIntoWithTimeout(router, dataBuf, 5000);
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / latCount;
 
@@ -503,8 +535,8 @@ async function runGateway(transport, size) {
     const receiverLoop = (async () => {
       for (let i = 0; i < msgCount; i++) {
         try {
-          await recvWithTimeout(router, 256, 5000);
-          await recvWithTimeout(router, Math.max(256, size), 5000);
+          await recvIntoWithTimeout(router, ridBuf, 5000);
+          await recvIntoWithTimeout(router, dataBuf, 5000);
         } catch (_) {
           break;
         }
@@ -516,7 +548,7 @@ async function runGateway(transport, size) {
     t0 = process.hrtime.bigint();
     for (let i = 0; i < msgCount; i++) {
       try {
-        gateway.send(service, [payload], zlink.SendFlag.NONE);
+        gateway.send(service, parts, zlink.SendFlag.NONE);
       } catch (_) {
         break;
       }
@@ -564,14 +596,15 @@ async function runSpot(transport, size) {
     await settle();
 
     const payload = Buffer.alloc(size, 'a');
+    const parts = [payload];
     for (let i = 0; i < warmup; i++) {
-      spotPub.publish('bench', [payload], zlink.SendFlag.NONE);
+      spotPub.publish('bench', parts, zlink.SendFlag.NONE);
       await spotRecvWithTimeout(spotSub, 5000);
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
-      spotPub.publish('bench', [payload], zlink.SendFlag.NONE);
+      spotPub.publish('bench', parts, zlink.SendFlag.NONE);
       await spotRecvWithTimeout(spotSub, 5000);
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / latCount;
@@ -592,7 +625,7 @@ async function runSpot(transport, size) {
     t0 = process.hrtime.bigint();
     for (let i = 0; i < msgCount; i++) {
       try {
-        spotPub.publish('bench', [payload], zlink.SendFlag.NONE);
+        spotPub.publish('bench', parts, zlink.SendFlag.NONE);
       } catch (_) {
         break;
       }

@@ -3,7 +3,11 @@ import time
 import sys
 
 from bench_common import (
+    make_cext_recv_many_into,
+    make_cext_send_many_const,
     endpoint_for,
+    make_raw_recv_into,
+    make_raw_send_const,
     parse_env,
     parse_pattern_args,
     print_result,
@@ -30,18 +34,26 @@ def run(transport: str, size: int) -> int:
 
         send_none = int(zlink.SendFlag.NONE)
         recv_none = int(zlink.ReceiveFlag.NONE)
-        buf = bytearray(b"a" * size)
+        buf = b"a" * size
         recv_buf = bytearray(max(1, size))
+        send_pub = make_raw_send_const(pub, buf)
+        recv_sub = make_raw_recv_into(sub, recv_buf)
+        send_pub_many = make_cext_send_many_const(pub, buf)
+        recv_sub_many = make_cext_recv_many_into(sub, recv_buf)
 
         for _ in range(warmup):
-            pub.send(buf, send_none)
-            sub.recv_into(recv_buf, recv_none)
+            send_pub(send_none)
+            recv_sub(recv_none)
 
         start = time.perf_counter()
-        for _ in range(msg_count):
-            pub.send(buf, send_none)
-        for _ in range(msg_count):
-            sub.recv_into(recv_buf, recv_none)
+        if send_pub_many is not None and recv_sub_many is not None:
+            send_pub_many(msg_count, send_none)
+            recv_sub_many(msg_count, recv_none)
+        else:
+            for _ in range(msg_count):
+                send_pub(send_none)
+            for _ in range(msg_count):
+                recv_sub(recv_none)
 
         elapsed = time.perf_counter() - start
         throughput = msg_count / elapsed

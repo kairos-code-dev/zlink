@@ -210,8 +210,45 @@ class Socket {
     return requireNative().socketSend(this._native, b, flags);
   }
 
+  sendFrom(buffer, length, flags = 0) {
+    const b = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    return requireNative().socketSendFrom(this._native, b, length, flags);
+  }
+
+  sendMany(buf, count, flags = 0) {
+    const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+    return requireNative().socketSendMany(this._native, b, count, flags);
+  }
+
+  sendRoutedMany(routingIdBuffer, routingIdLength, payloadBuffer, payloadLength,
+    count, payloadFlags = 0) {
+    const rid = Buffer.isBuffer(routingIdBuffer)
+      ? routingIdBuffer : Buffer.from(routingIdBuffer);
+    const payload = Buffer.isBuffer(payloadBuffer)
+      ? payloadBuffer : Buffer.from(payloadBuffer);
+    return requireNative().socketSendRoutedMany(
+      this._native, rid, routingIdLength, payload, payloadLength, count, payloadFlags
+    );
+  }
+
   recv(size, flags = 0) {
     return requireNative().socketRecv(this._native, size, flags);
+  }
+
+  recvInto(buffer, flags = 0) {
+    const b = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    return requireNative().socketRecvInto(this._native, b, flags);
+  }
+
+  recvManyInto(buffer, count, flags = 0) {
+    const b = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    return requireNative().socketRecvManyInto(this._native, b, count, flags);
+  }
+
+  recvPairManyInto(firstBuffer, secondBuffer, count, flags = 0) {
+    const first = Buffer.isBuffer(firstBuffer) ? firstBuffer : Buffer.from(firstBuffer);
+    const second = Buffer.isBuffer(secondBuffer) ? secondBuffer : Buffer.from(secondBuffer);
+    return requireNative().socketRecvPairManyInto(this._native, first, second, count, flags);
   }
 
   setSockOpt(option, value) {

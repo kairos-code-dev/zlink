@@ -63,6 +63,7 @@ try (var ctx = new Context();
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
+  - `sendMove/publishMove` transfer message ownership (do not reuse moved `Message` instances)
 
 ## 5. Build
 

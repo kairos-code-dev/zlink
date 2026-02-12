@@ -63,6 +63,7 @@ try (var ctx = new Context();
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
   - `Spot.publishMove(String topic, Message[] parts, SendFlag flags)`
   - `Spot.recvMessages(ReceiveFlag flags)` (`Spot.SpotMessages`, `AutoCloseable`)
+  - `sendMove/publishMove`는 메시지 소유권을 이동시키므로 이동된 `Message`는 재사용하면 안 됩니다
 
 ## 5. 빌드
 

@@ -61,6 +61,44 @@ private:
     std::chrono::steady_clock::time_point _start;
 };
 
+class ctx_guard_t {
+public:
+    ctx_guard_t() : _ctx(zlink_ctx_new()) {}
+    ~ctx_guard_t() {
+        if (_ctx)
+            zlink_ctx_term(_ctx);
+    }
+
+    void *get() const { return _ctx; }
+    bool valid() const { return _ctx != NULL; }
+
+private:
+    ctx_guard_t(const ctx_guard_t &);
+    ctx_guard_t &operator=(const ctx_guard_t &);
+
+    void *_ctx;
+};
+
+class socket_guard_t {
+public:
+    socket_guard_t() : _socket(NULL) {}
+    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    ~socket_guard_t() {
+        if (_socket)
+            zlink_close(_socket);
+    }
+
+    void *get() const { return _socket; }
+    bool valid() const { return _socket != NULL; }
+    operator void *() const { return _socket; }
+
+private:
+    socket_guard_t(const socket_guard_t &);
+    socket_guard_t &operator=(const socket_guard_t &);
+
+    void *_socket;
+};
+
 inline void print_result(const std::string& lib_type,
                          const std::string& pattern,
                          const std::string& transport,
@@ -76,24 +114,6 @@ inline void print_result(const std::string& lib_type,
 inline bool bench_debug_enabled() {
     static const bool enabled = std::getenv("BENCH_DEBUG") != nullptr;
     return enabled;
-}
-
-inline int bench_trace_limit() {
-    static const int limit = []() {
-        if (!bench_debug_enabled())
-            return 0;
-        const char *env = std::getenv("BENCH_TRACE_LIMIT");
-        if (!env)
-            return 20;
-        const int val = std::atoi(env);
-        return val > 0 ? val : 0;
-    }();
-    return limit;
-}
-
-inline int bench_trace_next_id() {
-    static int trace_id = 0;
-    return ++trace_id;
 }
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
@@ -122,64 +142,6 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
         set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
     }
-}
-
-inline int bench_send(void *socket_, const void *buf_, size_t len_, int flags_,
-                      const char *tag_) {
-    int trace_id = 0;
-    const int limit = bench_trace_limit();
-    if (limit > 0) {
-        trace_id = bench_trace_next_id();
-        if (trace_id <= limit) {
-            std::cerr << "send start #" << trace_id << " (" << tag_
-                      << ", len=" << len_ << ")" << std::endl;
-        }
-    }
-    const int rc = zlink_send(socket_, buf_, len_, flags_);
-    if (rc == -1 && bench_debug_enabled()) {
-        std::cerr << "send failed (" << tag_ << "): "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
-    if (limit > 0 && trace_id > 0 && trace_id <= limit) {
-        std::cerr << "send done #" << trace_id << " rc=" << rc << std::endl;
-    }
-    return rc;
-}
-
-inline int bench_send_fast(void *socket_, const void *buf_, size_t len_,
-                           int flags_, const char *tag_) {
-    if (!bench_debug_enabled())
-        return zlink_send(socket_, buf_, len_, flags_);
-    return bench_send(socket_, buf_, len_, flags_, tag_);
-}
-
-inline int bench_recv(void *socket_, void *buf_, size_t len_, int flags_,
-                      const char *tag_) {
-    int trace_id = 0;
-    const int limit = bench_trace_limit();
-    if (limit > 0) {
-        trace_id = bench_trace_next_id();
-        if (trace_id <= limit) {
-            std::cerr << "recv start #" << trace_id << " (" << tag_
-                      << ", len=" << len_ << ")" << std::endl;
-        }
-    }
-    const int rc = zlink_recv(socket_, buf_, len_, flags_);
-    if (rc == -1 && bench_debug_enabled()) {
-        std::cerr << "recv failed (" << tag_ << "): "
-                  << zlink_strerror(zlink_errno()) << std::endl;
-    }
-    if (limit > 0 && trace_id > 0 && trace_id <= limit) {
-        std::cerr << "recv done #" << trace_id << " rc=" << rc << std::endl;
-    }
-    return rc;
-}
-
-inline int bench_recv_fast(void *socket_, void *buf_, size_t len_,
-                           int flags_, const char *tag_) {
-    if (!bench_debug_enabled())
-        return zlink_recv(socket_, buf_, len_, flags_);
-    return bench_recv(socket_, buf_, len_, flags_, tag_);
 }
 
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {
@@ -455,6 +417,53 @@ inline bool connect_checked(void *socket_, const std::string& endpoint) {
     return true;
 }
 
+inline bool setup_connected_pair(void *bind_socket_,
+                                 void *connect_socket_,
+                                 const std::string &transport_,
+                                 const std::string &id_) {
+    if (!setup_tls_server(bind_socket_, transport_)
+        || !setup_tls_client(connect_socket_, transport_))
+        return false;
+
+    std::string endpoint =
+      bind_and_resolve_endpoint(bind_socket_, transport_, id_);
+    if (endpoint.empty())
+        return false;
+    if (!connect_checked(connect_socket_, endpoint))
+        return false;
+
+    settle();
+    return true;
+}
+
+template <typename StepFn>
+inline void repeat_n(int count_, StepFn step_) {
+    for (int i = 0; i < count_; ++i)
+        step_();
+}
+
+template <typename RoundTripFn>
+inline double measure_roundtrip_latency_us(int roundtrip_count_,
+                                           RoundTripFn roundtrip_) {
+    stopwatch_t sw;
+    sw.start();
+    repeat_n(roundtrip_count_, roundtrip_);
+    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
+}
+
+template <typename SendOneFn, typename RecvOneFn>
+inline double measure_throughput_msgs_per_sec(int msg_count_,
+                                              SendOneFn send_one_,
+                                              RecvOneFn recv_one_) {
+    std::thread receiver([&]() { repeat_n(msg_count_, recv_one_); });
+    stopwatch_t sw;
+    sw.start();
+    repeat_n(msg_count_, send_one_);
+    receiver.join();
+    const double elapsed_ms = sw.elapsed_ms();
+    return elapsed_ms > 0 ? (double)msg_count_ / (elapsed_ms / 1000.0) : 0.0;
+}
+
 inline int resolve_msg_count(size_t size) {
     int count = (size <= 1024) ? 200000 : 20000;
     if (const char *env = std::getenv("BENCH_MSG_COUNT")) {
@@ -474,6 +483,18 @@ inline int resolve_bench_count(const char *env_name, int default_value) {
             return static_cast<int>(override);
     }
     return default_value;
+}
+
+template <typename RunFn>
+inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+    if (argc_ < 4)
+        return 1;
+    std::string lib_name = argv_[1];
+    std::string transport = argv_[2];
+    size_t size = std::stoul(argv_[3]);
+    int count = resolve_msg_count(size);
+    run_(transport, size, count, lib_name);
+    return 0;
 }
 
 #endif

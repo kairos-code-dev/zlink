@@ -1,92 +1,54 @@
 #include "../common/bench_common.hpp"
 #include <zlink.h>
-#include <thread>
 #include <vector>
 #include <cstring>
 
 void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
-    if (!transport_available(transport)) return;
-    void *ctx = zlink_ctx_new();
-    void *s1 = zlink_socket(ctx, ZLINK_DEALER);
-    void *s2 = zlink_socket(ctx, ZLINK_DEALER);
-
-
-    if (!setup_tls_server(s1, transport) ||
-        !setup_tls_client(s2, transport)) {
-        zlink_close(s1);
-        zlink_close(s2);
-        zlink_ctx_term(ctx);
+    if (!transport_available(transport))
         return;
-    }
 
-    std::string endpoint = bind_and_resolve_endpoint(s1, transport, lib_name + "_dealer_dealer");
-    if (endpoint.empty()) {
-        zlink_close(s1);
-        zlink_close(s2);
-        zlink_ctx_term(ctx);
+    ctx_guard_t ctx;
+    if (!ctx.valid())
         return;
-    }
-    if (!connect_checked(s2, endpoint)) {
-        zlink_close(s1);
-        zlink_close(s2);
-        zlink_ctx_term(ctx);
+
+    socket_guard_t s1(ctx.get(), ZLINK_DEALER);
+    socket_guard_t s2(ctx.get(), ZLINK_DEALER);
+    if (!s1.valid() || !s2.valid())
         return;
-    }
-    apply_debug_timeouts(s1, transport);
-    apply_debug_timeouts(s2, transport);
-    settle();
+
+    if (!setup_connected_pair(s1.get(), s2.get(), transport,
+                              lib_name + "_dealer_dealer"))
+        return;
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
-    stopwatch_t sw;
 
-    // Warmup
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
-    for (int i = 0; i < warmup_count; ++i) {
-        bench_send_fast(s2, buffer.data(), msg_size, 0, "warmup send");
-        bench_recv_fast(s1, recv_buf.data(), msg_size, 0, "warmup recv");
-    }
-
-    // Latency
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
-    sw.start();
-    for (int i = 0; i < lat_count; ++i) {
-        bench_send_fast(s2, buffer.data(), msg_size, 0, "lat send");
-        bench_recv_fast(s1, recv_buf.data(), msg_size, 0, "lat recv");
-        bench_send_fast(s1, recv_buf.data(), msg_size, 0,
-                        "lat send back");
-        bench_recv_fast(s2, recv_buf.data(), msg_size, 0,
-                        "lat recv back");
-    }
-    double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
-
-    // Throughput
-    std::thread receiver([&]() {
-        for (int i = 0; i < msg_count; ++i) {
-            bench_recv_fast(s1, recv_buf.data(), msg_size, 0, "thr recv");
-        }
+    repeat_n(warmup_count, [&]() {
+        zlink_send(s2.get(), buffer.data(), msg_size, 0);
+        zlink_recv(s1.get(), recv_buf.data(), msg_size, 0);
     });
 
-    sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        bench_send_fast(s2, buffer.data(), msg_size, 0, "thr send");
-    }
-    receiver.join();
-    double throughput = (double)msg_count / (sw.elapsed_ms() / 1000.0);
+    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
+    const double latency = measure_roundtrip_latency_us(lat_count, [&]() {
+        zlink_send(s2.get(), buffer.data(), msg_size, 0);
+        zlink_recv(s1.get(), recv_buf.data(), msg_size, 0);
+        zlink_send(s1.get(), recv_buf.data(), msg_size, 0);
+        zlink_recv(s2.get(), recv_buf.data(), msg_size, 0);
+    });
+
+    const double throughput = measure_throughput_msgs_per_sec(
+      msg_count,
+      [&]() {
+          zlink_send(s2.get(), buffer.data(), msg_size, 0);
+      },
+      [&]() {
+          zlink_recv(s1.get(), recv_buf.data(), msg_size, 0);
+      });
 
     print_result(lib_name, "DEALER_DEALER", transport, msg_size, throughput, latency);
-
-    zlink_close(s1);
-    zlink_close(s2);
-    zlink_ctx_term(ctx);
 }
 
 int main(int argc, char** argv) {
-    if (argc < 4) return 1;
-    std::string lib_name = argv[1];
-    std::string transport = argv[2];
-    size_t size = std::stoul(argv[3]);
-    int count = resolve_msg_count(size);
-    run_dealer_dealer(transport, size, count, lib_name);
-    return 0;
+    return run_standard_bench_main(argc, argv, run_dealer_dealer);
 }

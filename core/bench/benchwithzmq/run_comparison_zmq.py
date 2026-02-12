@@ -87,23 +87,32 @@ def main():
         return
 
     comparisons = [
-        ("comp_std_zmq_pair", "PAIR"),
-        ("comp_std_zmq_pubsub", "PUBSUB"),
-        ("comp_std_zmq_dealer_dealer", "DEALER_DEALER"),
-        ("comp_std_zmq_dealer_router", "DEALER_ROUTER"),
-        ("comp_std_zmq_router_router", "ROUTER_ROUTER"),
-        ("comp_std_zmq_router_router_poll", "ROUTER_ROUTER_POLL"),
+        ("comp_std_zmq_pair", "comp_zlink_pair", "PAIR"),
+        ("comp_std_zmq_pubsub", "comp_zlink_pubsub", "PUBSUB"),
+        ("comp_std_zmq_dealer_dealer", "comp_zlink_dealer_dealer", "DEALER_DEALER"),
+        ("comp_std_zmq_dealer_router", "comp_zlink_dealer_router", "DEALER_ROUTER"),
+        ("comp_std_zmq_router_router", "comp_zlink_router_router", "ROUTER_ROUTER"),
+        (
+            "comp_std_zmq_router_router_poll",
+            "comp_zlink_router_router_poll",
+            "ROUTER_ROUTER_POLL",
+        ),
+        ("comp_std_zmq_stream", "comp_zlink_stream", "STREAM"),
     ]
 
     all_failures = []
-    for std_bin, p_name in comparisons:
+    for std_bin, zlink_bin, p_name in comparisons:
         if p_req != "ALL" and p_name != p_req:
             continue
 
         print(f"\n## PATTERN: {p_name}")
-        a_stats, failures = rc.collect_data(std_bin, "libzmq", p_name, num_runs)
+        a_stats, failures = rc.collect_data(
+            std_bin, "libzmq", p_name, num_runs, rc.TRANSPORTS
+        )
         all_failures.extend(failures)
-        b_stats, failures = rc.collect_data(std_bin, "libzmq", p_name, num_runs)
+        b_stats, failures = rc.collect_data(
+            zlink_bin, "zlink", p_name, num_runs, rc.TRANSPORTS
+        )
         all_failures.extend(failures)
 
         size_w = 6
@@ -113,7 +122,7 @@ def main():
         for tr in rc.TRANSPORTS:
             print(f"\n### Transport: {tr}")
             print(
-                f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'libzmq A':>{val_w}} | {'libzmq B':>{val_w}} | {'Diff (%)':>{diff_w}} | {'Delta':>{val_w}} |"
+                f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'libzmq':>{val_w}} | {'zlink':>{val_w}} | {'Diff (%)':>{diff_w}} | {'Delta':>{val_w}} |"
             )
             print(
                 f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|{'-' * (val_w + 2)}|"

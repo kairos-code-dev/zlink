@@ -312,6 +312,11 @@ bool zlink::asio_zmp_engine_t::handshake ()
             memcpy (routing_id.data (), _peer_routing_id, _peer_routing_id_size);
         routing_id.set_flags (msg_t::routing_id);
         const int push_rc = session ()->push_msg (&routing_id);
+        if (push_rc == -1 && errno == EAGAIN) {
+            // Align with libzmq behavior: during shutdown races the session
+            // pipe can disappear before routing-id is forwarded.
+            return false;
+        }
         errno_assert (push_rc == 0);
         session ()->flush ();
     }

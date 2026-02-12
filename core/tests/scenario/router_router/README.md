@@ -3,6 +3,7 @@
 Folder split:
 
 - `core/tests/scenario/router_router/zlink/`: C zlink scenario runner (LZ-01..LZ-05).
+- `core/tests/scenario/router_router/zlink-connect/`: zlink runner with the same core flow as the `zmq` comparison bench.
 - `core/tests/scenario/router_router/zmq/`: libzmq-native comparison runner.
 
 ## zlink Build

@@ -56,7 +56,8 @@ set(tests
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
-  scenario/router_router/zlink/test_scenario_router_router)
+  scenario/router_router/zlink/test_scenario_router_router
+  scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -257,6 +258,8 @@ set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scen
 set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
 set_tests_properties(test_scenario_router_router PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router PROPERTIES LABELS "scenario;router_router")
+set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
+set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

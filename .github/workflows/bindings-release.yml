@@ -135,11 +135,9 @@ jobs:
           fi
 
       - name: Build and test
-        env:
-          ZLINK_LIB_PATH: ${{ github.workspace }}/bindings/node/prebuilds/linux-x64/libzlink.so
         run: |
           cd bindings/node
-          npm ci
+          npm ci --ignore-scripts
           npm test
 
       - name: Package

@@ -43,6 +43,9 @@ try (var ctx = new Context();
   - `ByteSpan.of(byte[] / ByteBuffer / MemorySegment)`
   - `send(ByteSpan span, SendFlag flags)`
   - `recv(ByteSpan span, ReceiveFlag flags)`
+- Const send path (native memory only)
+  - `sendConst(ByteBuffer direct, SendFlag flags)`
+  - `sendConst(MemorySegment native, SendFlag flags)`
 - Span-style array path (no temporary slice allocation)
   - `send(byte[] data, int offset, int length, SendFlag flags)`
   - `recv(byte[] data, int offset, int length, ReceiveFlag flags)`
@@ -50,6 +53,8 @@ try (var ctx = new Context();
   - `send(ByteBuffer buffer, SendFlag flags)`
   - `recv(ByteBuffer buffer, ReceiveFlag flags)`
 - Zero-copy message view
+  - `Message.fromNativeData(MemorySegment data[, offset, length])`
+  - `Message.fromDirectByteBuffer(ByteBuffer direct)`
   - `MemorySegment dataSegment()`
   - `ByteBuffer dataBuffer()`
   - `copyTo(byte[]/ByteBuffer)`

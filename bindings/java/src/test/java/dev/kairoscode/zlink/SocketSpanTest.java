@@ -11,6 +11,7 @@ import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class SocketSpanTest {
     @Test
@@ -63,6 +64,40 @@ public class SocketSpanTest {
             byte[] out = new byte[11];
             recv.get(out);
             assertArrayEquals("buffer-data".getBytes(StandardCharsets.UTF_8), out);
+        }
+    }
+
+    @Test
+    public void pairSendConstWithDirectBuffer() {
+        assumeNative();
+        try (Context ctx = new Context();
+             Socket a = new Socket(ctx, SocketType.PAIR);
+             Socket b = new Socket(ctx, SocketType.PAIR)) {
+            String endpoint = "inproc://java-send-const-" + System.nanoTime();
+            a.bind(endpoint);
+            b.connect(endpoint);
+
+            ByteBuffer send = ByteBuffer.allocateDirect(32);
+            send.put("const-frame".getBytes(StandardCharsets.UTF_8));
+            send.flip();
+
+            int sent = b.sendConst(send, SendFlag.NONE);
+            assertEquals(11, sent);
+            assertEquals(11, send.position());
+
+            byte[] out = a.recv(32, ReceiveFlag.NONE);
+            assertArrayEquals("const-frame".getBytes(StandardCharsets.UTF_8), out);
+        }
+    }
+
+    @Test
+    public void sendConstRejectsHeapBuffer() {
+        assumeNative();
+        try (Context ctx = new Context();
+             Socket socket = new Socket(ctx, SocketType.PAIR)) {
+            ByteBuffer heap = ByteBuffer.wrap("heap".getBytes(StandardCharsets.UTF_8));
+            assertThrows(IllegalArgumentException.class,
+                () -> socket.sendConst(heap, SendFlag.NONE));
         }
     }
 

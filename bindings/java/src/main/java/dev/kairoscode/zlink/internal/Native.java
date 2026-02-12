@@ -36,6 +36,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SEND = downcall("zlink_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SEND_CONST = downcall("zlink_send_const",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_setsockopt",
@@ -247,6 +249,14 @@ public final class Native {
             return (int) MH_SEND.invokeExact(socket, buf, len, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_send failed", t);
+        }
+    }
+
+    public static int sendConst(MemorySegment socket, MemorySegment buf, long len, int flags) {
+        try {
+            return (int) MH_SEND_CONST.invokeExact(socket, buf, len, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_send_const failed", t);
         }
     }
 

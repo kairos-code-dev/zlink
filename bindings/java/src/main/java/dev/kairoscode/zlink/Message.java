@@ -12,22 +12,32 @@ public final class Message implements AutoCloseable {
     private final Arena arena;
     private final MemorySegment msg;
     private boolean valid;
+    private Object zeroCopyAnchor;
 
-    public Message() {
+    private Message(boolean raw) {
         this.arena = Arena.ofConfined();
         this.msg = arena.allocate(64);
+        this.valid = false;
+        this.zeroCopyAnchor = null;
+    }
+
+    public Message() {
+        this(true);
         int rc = NativeMsg.msgInit(msg);
-        if (rc != 0)
+        if (rc != 0) {
+            arena.close();
             throw new RuntimeException("zlink_msg_init failed");
+        }
         valid = true;
     }
 
     public Message(int size) {
-        this.arena = Arena.ofConfined();
-        this.msg = arena.allocate(64);
+        this(true);
         int rc = NativeMsg.msgInitSize(msg, size);
-        if (rc != 0)
+        if (rc != 0) {
+            arena.close();
             throw new RuntimeException("zlink_msg_init_size failed");
+        }
         valid = true;
     }
 
@@ -77,16 +87,56 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
+    public static Message fromNativeData(MemorySegment data) {
+        Objects.requireNonNull(data, "data");
+        return fromNativeData(data, 0, data.byteSize());
+    }
+
+    public static Message fromNativeData(MemorySegment data, long offset, long length) {
+        Objects.requireNonNull(data, "data");
+        validateRange(data.byteSize(), offset, length, "data");
+        if (length > 0 && !data.isNative())
+            throw new IllegalArgumentException("fromNativeData requires a native MemorySegment");
+        Message msg = new Message(true);
+        MemorySegment slice = length == 0 ? MemorySegment.NULL : data.asSlice(offset, length);
+        int rc = NativeMsg.msgInitData(msg.msg, slice, length, MemorySegment.NULL, MemorySegment.NULL);
+        if (rc != 0) {
+            msg.arena.close();
+            throw new RuntimeException("zlink_msg_init_data failed");
+        }
+        msg.valid = true;
+        msg.zeroCopyAnchor = data;
+        return msg;
+    }
+
+    public static Message fromDirectByteBuffer(ByteBuffer data) {
+        Objects.requireNonNull(data, "data");
+        if (!data.isDirect())
+            throw new IllegalArgumentException("fromDirectByteBuffer requires a direct ByteBuffer");
+        int length = data.remaining();
+        Message msg = new Message(true);
+        MemorySegment seg = length == 0 ? MemorySegment.NULL : MemorySegment.ofBuffer(data.slice());
+        int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL, MemorySegment.NULL);
+        if (rc != 0) {
+            msg.arena.close();
+            throw new RuntimeException("zlink_msg_init_data failed");
+        }
+        msg.valid = true;
+        msg.zeroCopyAnchor = data;
+        data.position(data.position() + length);
+        return msg;
+    }
+
     public void send(Socket socket, int flags) {
         int rc = NativeMsg.msgSend(msg, socket.handle(), flags);
-        if (rc != 0)
+        if (rc < 0)
             throw new RuntimeException("zlink_msg_send failed");
         valid = false;
     }
 
     public void recv(Socket socket, int flags) {
         int rc = NativeMsg.msgRecv(msg, socket.handle(), flags);
-        if (rc != 0)
+        if (rc < 0)
             throw new RuntimeException("zlink_msg_recv failed");
         valid = true;
     }

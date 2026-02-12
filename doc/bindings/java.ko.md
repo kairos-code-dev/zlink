@@ -43,6 +43,9 @@ try (var ctx = new Context();
   - `ByteSpan.of(byte[] / ByteBuffer / MemorySegment)`
   - `send(ByteSpan span, SendFlag flags)`
   - `recv(ByteSpan span, ReceiveFlag flags)`
+- const send 경로 (native 메모리 전용)
+  - `sendConst(ByteBuffer direct, SendFlag flags)`
+  - `sendConst(MemorySegment native, SendFlag flags)`
 - span 스타일 배열 경로 (임시 슬라이스 할당 최소화)
   - `send(byte[] data, int offset, int length, SendFlag flags)`
   - `recv(byte[] data, int offset, int length, ReceiveFlag flags)`
@@ -50,6 +53,8 @@ try (var ctx = new Context();
   - `send(ByteBuffer buffer, SendFlag flags)`
   - `recv(ByteBuffer buffer, ReceiveFlag flags)`
 - 메시지 zero-copy 뷰
+  - `Message.fromNativeData(MemorySegment data[, offset, length])`
+  - `Message.fromDirectByteBuffer(ByteBuffer direct)`
   - `MemorySegment dataSegment()`
   - `ByteBuffer dataBuffer()`
   - `copyTo(byte[]/ByteBuffer)`

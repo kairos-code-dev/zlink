@@ -183,6 +183,45 @@ public final class Socket implements AutoCloseable {
         return send(span.segment(), 0, span.length(), flags);
     }
 
+    public int sendConst(ByteSpan span, SendFlag flags) {
+        Objects.requireNonNull(span, "span");
+        return sendConst(span.segment(), 0, span.length(), flags);
+    }
+
+    public int sendConst(ByteBuffer buffer, SendFlag flags) {
+        Objects.requireNonNull(buffer, "buffer");
+        if (!buffer.isDirect())
+            throw new IllegalArgumentException("sendConst requires a direct ByteBuffer");
+        int length = buffer.remaining();
+        if (length == 0)
+            return 0;
+        ByteBuffer src = buffer.slice();
+        int rc = Native.sendConst(handle, MemorySegment.ofBuffer(src), length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_send_const failed");
+        buffer.position(buffer.position() + rc);
+        return rc;
+    }
+
+    public int sendConst(MemorySegment segment, SendFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        return sendConst(segment, 0, segment.byteSize(), flags);
+    }
+
+    public int sendConst(MemorySegment segment, long offset, long length, SendFlag flags) {
+        Objects.requireNonNull(segment, "segment");
+        validateRange(segment.byteSize(), offset, length, "segment");
+        if (length == 0)
+            return 0;
+        if (!segment.isNative())
+            throw new IllegalArgumentException("sendConst requires a native MemorySegment");
+        MemorySegment slice = segment.asSlice(offset, length);
+        int rc = Native.sendConst(handle, slice, length, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_send_const failed");
+        return rc;
+    }
+
     public int send(MemorySegment segment, SendFlag flags) {
         Objects.requireNonNull(segment, "segment");
         return send(segment, 0, segment.byteSize(), flags);

@@ -61,6 +61,38 @@ public class MessageSpanTest {
         }
     }
 
+    @Test
+    public void messageFromNativeDataIsZeroCopySource() {
+        assumeNative();
+        try (Context ctx = new Context();
+             Socket a = new Socket(ctx, SocketType.PAIR);
+             Socket b = new Socket(ctx, SocketType.PAIR);
+             Arena arena = Arena.ofShared()) {
+            String endpoint = "inproc://java-msg-native-" + System.nanoTime();
+            a.bind(endpoint);
+            b.connect(endpoint);
+
+            MemorySegment data = arena.allocate(4);
+            MemorySegment.copy(MemorySegment.ofArray("ping".getBytes(StandardCharsets.UTF_8)),
+                0, data, 0, 4);
+            try (Message msg = Message.fromNativeData(data, 0, 4)) {
+                MemorySegment.copy(MemorySegment.ofArray("pong".getBytes(StandardCharsets.UTF_8)),
+                    0, data, 0, 4);
+                msg.send(b, SendFlag.NONE.getValue());
+            }
+
+            byte[] out = a.recv(8, ReceiveFlag.NONE);
+            assertArrayEquals("pong".getBytes(StandardCharsets.UTF_8), out);
+        }
+    }
+
+    @Test
+    public void messageFromDirectByteBufferRejectsHeap() {
+        assumeNative();
+        ByteBuffer heap = ByteBuffer.wrap("heap".getBytes(StandardCharsets.UTF_8));
+        assertThrows(IllegalArgumentException.class, () -> Message.fromDirectByteBuffer(heap));
+    }
+
     private static void assumeNative() {
         try {
             ZlinkVersion.get();

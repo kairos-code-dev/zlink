@@ -16,7 +16,7 @@ internal static partial class BenchRunner
         try
         {
             string ep = EndpointFor(transport, "pubsub");
-            sub.SetOption(SocketOption.Subscribe, Array.Empty<byte>());
+            sub.SetOption(SocketOption.Subscribe, ReadOnlySpan<byte>.Empty);
             pub.Bind(ep);
             sub.Connect(ep);
             Thread.Sleep(300);
@@ -27,8 +27,8 @@ internal static partial class BenchRunner
 
             for (int i = 0; i < warmup; i++)
             {
-                pub.Send(buf, SendFlags.None);
-                sub.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                pub.Send(buf.AsSpan(), SendFlags.None);
+                sub.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
             }
 
             var recvDone = new ManualResetEventSlim(false);
@@ -38,7 +38,7 @@ internal static partial class BenchRunner
                 try
                 {
                     for (int i = 0; i < msgCount; i++)
-                        sub.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                        sub.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
                     recvDone.Set();
                 }
                 catch (Exception ex)
@@ -50,7 +50,7 @@ internal static partial class BenchRunner
             th.Start();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < msgCount; i++)
-                pub.Send(buf, SendFlags.None);
+                pub.Send(buf.AsSpan(), SendFlags.None);
             th.Join();
             sw.Stop();
 

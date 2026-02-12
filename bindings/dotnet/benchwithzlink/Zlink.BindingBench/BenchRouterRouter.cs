@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using System.Threading;
 using Zlink;
 
@@ -23,8 +22,12 @@ internal static partial class BenchRunner
         try
         {
             string ep = EndpointFor(transport, "router-router");
-            router1.SetOption(SocketOption.RoutingId, Encoding.UTF8.GetBytes("ROUTER1"));
-            router2.SetOption(SocketOption.RoutingId, Encoding.UTF8.GetBytes("ROUTER2"));
+            ReadOnlySpan<byte> router1Id = "ROUTER1"u8;
+            ReadOnlySpan<byte> router2Id = "ROUTER2"u8;
+            ReadOnlySpan<byte> ping = "PING"u8;
+            ReadOnlySpan<byte> pong = "PONG"u8;
+            router1.SetOption(SocketOption.RoutingId, router1Id);
+            router2.SetOption(SocketOption.RoutingId, router2Id);
             router1.SetOption(SocketOption.RouterMandatory, 1);
             router2.SetOption(SocketOption.RouterMandatory, 1);
             router1.Bind(ep);
@@ -38,8 +41,8 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    router2.Send(Encoding.UTF8.GetBytes("ROUTER1"), SendFlags.SendMore | SendFlags.DontWait);
-                    router2.Send(Encoding.UTF8.GetBytes("PING"), SendFlags.DontWait);
+                    router2.Send(router1Id, SendFlags.SendMore | SendFlags.DontWait);
+                    router2.Send(ping, SendFlags.DontWait);
                 }
                 catch
                 {
@@ -55,8 +58,8 @@ internal static partial class BenchRunner
 
                 try
                 {
-                    router1.Receive(id, ReceiveFlags.DontWait);
-                    router1.Receive(data, ReceiveFlags.DontWait);
+                    router1.Receive(id.AsSpan(), ReceiveFlags.DontWait);
+                    router1.Receive(data.AsSpan(), ReceiveFlags.DontWait);
                     connected = true;
                     break;
                 }
@@ -69,13 +72,13 @@ internal static partial class BenchRunner
             if (!connected)
                 return 2;
 
-            router1.Send(Encoding.UTF8.GetBytes("ROUTER2"), SendFlags.SendMore);
-            router1.Send(Encoding.UTF8.GetBytes("PONG"), SendFlags.None);
+            router1.Send(router2Id, SendFlags.SendMore);
+            router1.Send(pong, SendFlags.None);
 
             if (usePoll && !WaitForInput(router2, 2000))
                 return 2;
-            router2.Receive(id, ReceiveFlags.None);
-            router2.Receive(data, ReceiveFlags.None);
+            router2.Receive(id.AsSpan(), ReceiveFlags.None);
+            router2.Receive(data.AsSpan(), ReceiveFlags.None);
 
             var buf = new byte[size];
             Array.Fill(buf, (byte)'a');
@@ -83,21 +86,21 @@ internal static partial class BenchRunner
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                router2.Send(Encoding.UTF8.GetBytes("ROUTER1"), SendFlags.SendMore);
-                router2.Send(buf, SendFlags.None);
+                router2.Send(router1Id, SendFlags.SendMore);
+                router2.Send(buf.AsSpan(), SendFlags.None);
 
                 if (usePoll && !WaitForInput(router1, 2000))
                     return 2;
-                int idLen = router1.Receive(id, ReceiveFlags.None);
-                router1.Receive(data.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                int idLen = router1.Receive(id.AsSpan(), ReceiveFlags.None);
+                router1.Receive(data.AsSpan(0, size), ReceiveFlags.None);
 
-                router1.Send(id.AsSpan(0, idLen).ToArray(), SendFlags.SendMore);
-                router1.Send(buf, SendFlags.None);
+                router1.Send(id.AsSpan(0, idLen), SendFlags.SendMore);
+                router1.Send(buf.AsSpan(), SendFlags.None);
 
                 if (usePoll && !WaitForInput(router2, 2000))
                     return 2;
-                router2.Receive(id, ReceiveFlags.None);
-                router2.Receive(data.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                router2.Receive(id.AsSpan(), ReceiveFlags.None);
+                router2.Receive(data.AsSpan(0, size), ReceiveFlags.None);
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
@@ -112,8 +115,8 @@ internal static partial class BenchRunner
                     {
                         if (usePoll && !WaitForInput(router1, 2000))
                             throw new TimeoutException("poll timeout");
-                        router1.Receive(id, ReceiveFlags.None);
-                        router1.Receive(data.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                        router1.Receive(id.AsSpan(), ReceiveFlags.None);
+                        router1.Receive(data.AsSpan(0, size), ReceiveFlags.None);
                     }
                     recvDone.Set();
                 }
@@ -127,8 +130,8 @@ internal static partial class BenchRunner
             sw.Restart();
             for (int i = 0; i < msgCount; i++)
             {
-                router2.Send(Encoding.UTF8.GetBytes("ROUTER1"), SendFlags.SendMore);
-                router2.Send(buf, SendFlags.None);
+                router2.Send(router1Id, SendFlags.SendMore);
+                router2.Send(buf.AsSpan(), SendFlags.None);
             }
             receiver.Join();
             sw.Stop();

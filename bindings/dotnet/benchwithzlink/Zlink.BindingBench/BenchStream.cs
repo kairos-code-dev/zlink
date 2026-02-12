@@ -26,26 +26,40 @@ internal static partial class BenchRunner
             client.Connect(ep);
             Thread.Sleep(300);
 
-            var serverClientId = StreamExpectConnectEvent(server);
-            var clientServerId = StreamExpectConnectEvent(client);
+            var serverClientId = new byte[256];
+            int serverClientIdLen = StreamExpectConnectEvent(server,
+                serverClientId.AsSpan());
+            var clientServerId = new byte[256];
+            int clientServerIdLen = StreamExpectConnectEvent(client,
+                clientServerId.AsSpan());
 
             var buf = new byte[size];
             Array.Fill(buf, (byte)'a');
             int cap = Math.Max(256, size);
+            var recvId = new byte[256];
+            var recvPayload = new byte[cap];
+            var ackId = new byte[256];
+            var ackPayload = new byte[cap];
 
             for (int i = 0; i < warmup; i++)
             {
-                StreamSend(client, clientServerId, buf);
-                StreamRecv(server, cap);
+                StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
+                    buf.AsSpan());
+                StreamRecv(server, recvId.AsSpan(), recvPayload.AsSpan(),
+                    out _, out _);
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                StreamSend(client, clientServerId, buf);
-                var rx = StreamRecv(server, cap);
-                StreamSend(server, serverClientId, rx.Payload);
-                StreamRecv(client, cap);
+                StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
+                    buf.AsSpan());
+                StreamRecv(server, recvId.AsSpan(), recvPayload.AsSpan(),
+                    out _, out int payloadLen);
+                StreamSend(server, serverClientId.AsSpan(0, serverClientIdLen),
+                    recvPayload.AsSpan(0, payloadLen));
+                StreamRecv(client, ackId.AsSpan(), ackPayload.AsSpan(), out _,
+                    out _);
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
@@ -53,11 +67,14 @@ internal static partial class BenchRunner
             int recvCount = 0;
             var recvThread = new Thread(() =>
             {
+                var thrId = new byte[256];
+                var thrPayload = new byte[cap];
                 for (int i = 0; i < msgCount; i++)
                 {
                     try
                     {
-                        StreamRecv(server, cap);
+                        StreamRecv(server, thrId.AsSpan(), thrPayload.AsSpan(),
+                            out _, out _);
                     }
                     catch
                     {
@@ -74,7 +91,8 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    StreamSend(client, clientServerId, buf);
+                    StreamSend(client, clientServerId.AsSpan(0, clientServerIdLen),
+                        buf.AsSpan());
                 }
                 catch
                 {

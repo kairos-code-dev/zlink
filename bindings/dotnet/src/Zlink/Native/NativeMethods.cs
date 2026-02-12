@@ -63,12 +63,27 @@ internal static class NativeMethods
     internal static extern int zlink_send(IntPtr socket, byte[] buffer,
         nuint len, int flags);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_send",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_send(IntPtr socket, byte* buffer,
+        nuint len, int flags);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_send_const(IntPtr socket, byte[] buffer,
         nuint len, int flags);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_send_const",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_send_const(IntPtr socket,
+        byte* buffer, nuint len, int flags);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_recv(IntPtr socket, byte[] buffer,
+        nuint len, int flags);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_recv",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_recv(IntPtr socket, byte* buffer,
         nuint len, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]

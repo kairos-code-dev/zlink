@@ -34,19 +34,19 @@ internal static partial class BenchRunner
 
             for (int i = 0; i < warmup; i++)
             {
-                SendRetry(b, buf, SendFlags.None);
-                ReceiveRetry(a, recv, ReceiveFlags.None);
+                SendRetry(b, buf.AsSpan(), SendFlags.None);
+                ReceiveRetry(a, recv.AsSpan(), ReceiveFlags.None);
             }
 
             var sw = Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                SendRetry(b, buf, SendFlags.None);
-                int n = ReceiveRetry(a, recv, ReceiveFlags.None);
+                SendRetry(b, buf.AsSpan(), SendFlags.None);
+                int n = ReceiveRetry(a, recv.AsSpan(), ReceiveFlags.None);
                 if (n != size)
                     return 2;
-                SendRetry(a, recv, SendFlags.None);
-                ReceiveRetry(b, recv, ReceiveFlags.None);
+                SendRetry(a, recv.AsSpan(0, n), SendFlags.None);
+                ReceiveRetry(b, recv.AsSpan(), ReceiveFlags.None);
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
@@ -59,7 +59,7 @@ internal static partial class BenchRunner
                 try
                 {
                     for (int i = 0; i < msgCount; i++)
-                        ReceiveRetry(a, recvThr, ReceiveFlags.None);
+                        ReceiveRetry(a, recvThr.AsSpan(), ReceiveFlags.None);
                     recvDone.Set();
                 }
                 catch (Exception ex)
@@ -71,7 +71,7 @@ internal static partial class BenchRunner
             th.Start();
             sw.Restart();
             for (int i = 0; i < msgCount; i++)
-                SendRetry(b, buf, SendFlags.None);
+                SendRetry(b, buf.AsSpan(), SendFlags.None);
             th.Join();
             sw.Stop();
 

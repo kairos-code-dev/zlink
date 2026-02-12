@@ -74,6 +74,8 @@ Options:
   --with-baseline       Refresh zlink(core) cache.
   --skip-libzlink       Do not refresh zlink(core) cache; use existing cache only (default).
   --pattern NAME        Benchmark pattern (e.g., PAIR).
+  --patterns NAME       Alias of --pattern.
+  --petterns NAME       Typo-compatible alias of --pattern.
   --build-dir PATH      Core benchmark build directory (default: core/build/<platform>-<arch>).
   --output PATH         Tee results to a file.
   --result              Write results under bindings/<binding>/benchwithzlink/results/YYYYMMDD/.
@@ -100,7 +102,7 @@ while [[ $# -gt 0 ]]; do
     --with-baseline) WITH_BASELINE=1 ;;
     --skip-libzlink) WITH_BASELINE=0 ;;
     --with-libzlink) WITH_BASELINE=1 ;;
-    --pattern) PATTERN="${2:-}"; shift ;;
+    --pattern|--patterns|--petterns) PATTERN="${2:-}"; shift ;;
     --reuse-build) REUSE_BUILD=1 ;;
     --no-reuse-build) REUSE_BUILD=0 ;;
     --build-dir) BUILD_DIR="${2:-}"; shift ;;

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
-using System.Runtime.InteropServices;
+using System.Buffers;
+using System.Text;
 using Zlink.Native;
 
 namespace Zlink;
@@ -64,33 +65,63 @@ public sealed class Socket : IDisposable
 
     public int Send(byte[] buffer, SendFlags flags = SendFlags.None)
     {
-        EnsureNotDisposed();
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
-        int rc = NativeMethods.zlink_send(_handle, buffer, (nuint)buffer.Length,
-            (int)flags);
+        return Send(buffer.AsSpan(), flags);
+    }
+
+    public unsafe int Send(ReadOnlySpan<byte> buffer,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc;
+        fixed (byte* ptr = buffer)
+        {
+            rc = NativeMethods.zlink_send(_handle, ptr, (nuint)buffer.Length,
+                (int)flags);
+        }
         ZlinkException.ThrowIfError(rc);
         return rc;
     }
 
     public int SendConst(byte[] buffer, SendFlags flags = SendFlags.None)
     {
-        EnsureNotDisposed();
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
-        int rc = NativeMethods.zlink_send_const(_handle, buffer,
-            (nuint)buffer.Length, (int)flags);
+        return SendConst(buffer.AsSpan(), flags);
+    }
+
+    public unsafe int SendConst(ReadOnlySpan<byte> buffer,
+        SendFlags flags = SendFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc;
+        fixed (byte* ptr = buffer)
+        {
+            rc = NativeMethods.zlink_send_const(_handle, ptr,
+                (nuint)buffer.Length, (int)flags);
+        }
         ZlinkException.ThrowIfError(rc);
         return rc;
     }
 
     public int Receive(byte[] buffer, ReceiveFlags flags = ReceiveFlags.None)
     {
-        EnsureNotDisposed();
         if (buffer == null)
             throw new ArgumentNullException(nameof(buffer));
-        int rc = NativeMethods.zlink_recv(_handle, buffer, (nuint)buffer.Length,
-            (int)flags);
+        return Receive(buffer.AsSpan(), flags);
+    }
+
+    public unsafe int Receive(Span<byte> buffer,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        EnsureNotDisposed();
+        int rc;
+        fixed (byte* ptr = buffer)
+        {
+            rc = NativeMethods.zlink_recv(_handle, ptr, (nuint)buffer.Length,
+                (int)flags);
+        }
         ZlinkException.ThrowIfError(rc);
         return rc;
     }
@@ -132,17 +163,19 @@ public sealed class Socket : IDisposable
 
     public void SetOption(SocketOption option, byte[] value)
     {
-        EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-        unsafe
+        SetOption(option, value.AsSpan());
+    }
+
+    public unsafe void SetOption(SocketOption option, ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
+        fixed (byte* ptr = value)
         {
-            fixed (byte* ptr = value)
-            {
-                int rc = NativeMethods.zlink_setsockopt(_handle, (int)option,
-                    (IntPtr)ptr, (nuint)value.Length);
-                ZlinkException.ThrowIfError(rc);
-            }
+            int rc = NativeMethods.zlink_setsockopt(_handle, (int)option,
+                (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
         }
     }
 
@@ -151,8 +184,26 @@ public sealed class Socket : IDisposable
         EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-        byte[] buffer = System.Text.Encoding.UTF8.GetBytes(value);
-        SetOption(option, buffer);
+
+        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+        if (maxByteCount <= 512)
+        {
+            Span<byte> buffer = stackalloc byte[maxByteCount];
+            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
+            SetOption(option, buffer.Slice(0, byteCount));
+            return;
+        }
+
+        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+        try
+        {
+            int byteCount = Encoding.UTF8.GetBytes(value, rented);
+            SetOption(option, rented.AsSpan(0, byteCount));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     public int GetOption(SocketOption option)

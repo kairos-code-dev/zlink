@@ -39,6 +39,7 @@ internal static partial class BenchRunner
             receiver.ConnectRegistry(regRouter);
             receiver.Register(service, providerEp, 1);
             router = receiver.CreateRouterSocket();
+            router.SetOption(SocketOption.RcvTimeo, 5000);
 
             gateway = new Gateway(ctx, discovery);
             if (!WaitUntil(() => discovery.ReceiverCount(service) > 0, 5000))
@@ -49,22 +50,24 @@ internal static partial class BenchRunner
 
             var payload = new byte[size];
             Array.Fill(payload, (byte)'a');
+            using var payloadMessage = Message.FromBytes(payload.AsSpan());
+            var payloadParts = new[] { payloadMessage };
             var rid = new byte[256];
             var data = new byte[Math.Max(256, size)];
 
             for (int i = 0; i < warmup; i++)
             {
-                GatewaySendWithRetry(gateway, service, payload, 5000);
-                ReceiveWithTimeout(router, rid, 5000);
-                ReceiveWithTimeout(router, data, 5000);
+                gateway.Send(service, payloadParts, SendFlags.None);
+                GatewayReceiveProviderMessage(router, rid.AsSpan(),
+                    data.AsSpan());
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                GatewaySendWithRetry(gateway, service, payload, 5000);
-                ReceiveWithTimeout(router, rid, 5000);
-                ReceiveWithTimeout(router, data, 5000);
+                gateway.Send(service, payloadParts, SendFlags.None);
+                GatewayReceiveProviderMessage(router, rid.AsSpan(),
+                    data.AsSpan());
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / latCount;
@@ -76,8 +79,8 @@ internal static partial class BenchRunner
                 {
                     try
                     {
-                        ReceiveWithTimeout(router, rid, 5000);
-                        ReceiveWithTimeout(router, data, 5000);
+                        GatewayReceiveProviderMessage(router, rid.AsSpan(),
+                            data.AsSpan());
                         recvCount++;
                     }
                     catch
@@ -94,7 +97,7 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    gateway.Send(service, new[] { Message.FromBytes(payload) }, SendFlags.None);
+                    gateway.Send(service, payloadParts, SendFlags.None);
                 }
                 catch
                 {

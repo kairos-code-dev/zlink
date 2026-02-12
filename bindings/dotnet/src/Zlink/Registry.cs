@@ -57,11 +57,17 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public unsafe void SetSockOpt(RegistrySocketRole role, SocketOption option, byte[] value)
+    public void SetSockOpt(RegistrySocketRole role, SocketOption option, byte[] value)
     {
-        EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
+        SetSockOpt(role, option, value.AsSpan());
+    }
+
+    public unsafe void SetSockOpt(RegistrySocketRole role, SocketOption option,
+        ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
         fixed (byte* ptr = value)
         {
             int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,

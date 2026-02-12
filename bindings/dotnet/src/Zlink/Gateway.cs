@@ -95,11 +95,16 @@ public sealed class Gateway : IDisposable
         return count;
     }
 
-    public unsafe void SetSockOpt(SocketOption option, byte[] value)
+    public void SetSockOpt(SocketOption option, byte[] value)
     {
-        EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
+        SetSockOpt(option, value.AsSpan());
+    }
+
+    public unsafe void SetSockOpt(SocketOption option, ReadOnlySpan<byte> value)
+    {
+        EnsureNotDisposed();
         fixed (byte* ptr = value)
         {
             int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,

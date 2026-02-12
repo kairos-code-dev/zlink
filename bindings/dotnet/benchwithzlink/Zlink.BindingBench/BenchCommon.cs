@@ -9,7 +9,8 @@ internal static partial class BenchRunner
 {
     private const int ErrnoEintr = 4;
 
-    internal static int ReceiveRetry(Zlink.Socket socket, byte[] buffer, ReceiveFlags flags = ReceiveFlags.None)
+    internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
+        ReceiveFlags flags = ReceiveFlags.None)
     {
         while (true)
         {
@@ -24,7 +25,16 @@ internal static partial class BenchRunner
         }
     }
 
-    internal static int SendRetry(Zlink.Socket socket, byte[] buffer, SendFlags flags = SendFlags.None)
+    internal static int ReceiveRetry(Zlink.Socket socket, byte[] buffer,
+        ReceiveFlags flags = ReceiveFlags.None)
+    {
+        if (buffer == null)
+            throw new ArgumentNullException(nameof(buffer));
+        return ReceiveRetry(socket, buffer.AsSpan(), flags);
+    }
+
+    internal static int SendRetry(Zlink.Socket socket, ReadOnlySpan<byte> buffer,
+        SendFlags flags = SendFlags.None)
     {
         while (true)
         {
@@ -37,6 +47,14 @@ internal static partial class BenchRunner
                 continue;
             }
         }
+    }
+
+    internal static int SendRetry(Zlink.Socket socket, byte[] buffer,
+        SendFlags flags = SendFlags.None)
+    {
+        if (buffer == null)
+            throw new ArgumentNullException(nameof(buffer));
+        return SendRetry(socket, buffer.AsSpan(), flags);
     }
 
     internal static bool WaitForInput(Zlink.Socket socket, int timeoutMs)
@@ -65,39 +83,27 @@ internal static partial class BenchRunner
         return false;
     }
 
-    internal static int ReceiveWithTimeout(Zlink.Socket socket, byte[] buffer, int timeoutMs)
+    internal static void GatewayReceiveProviderMessage(Zlink.Socket router,
+        Span<byte> routingIdBuffer, Span<byte> payloadBuffer)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                return socket.Receive(buffer, ReceiveFlags.DontWait);
-            }
-            catch
-            {
-                Thread.Sleep(1);
-            }
-        }
-        throw new TimeoutException();
-    }
+        int idLen = ReceiveRetry(router, routingIdBuffer, ReceiveFlags.None);
+        if (idLen <= 0 || router.GetOption(SocketOption.RcvMore) == 0)
+            throw new InvalidOperationException(
+                "Gateway provider message missing routing frame.");
 
-    internal static void GatewaySendWithRetry(Gateway gateway, string service, byte[] payload, int timeoutMs)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        int payloadLen = ReceiveRetry(router, payloadBuffer, ReceiveFlags.None);
+        if (payloadLen < 0)
+            throw new InvalidOperationException(
+                "Gateway provider message payload receive failed.");
+
+        // Gateway benchmark sends 1 payload frame, but drain extras to keep
+        // the stream aligned if additional parts ever appear.
+        if (router.GetOption(SocketOption.RcvMore) != 0)
         {
-            try
-            {
-                gateway.Send(service, new[] { Message.FromBytes(payload) }, SendFlags.None);
-                return;
-            }
-            catch
-            {
-                Thread.Sleep(1);
-            }
+            Span<byte> discard = stackalloc byte[256];
+            while (router.GetOption(SocketOption.RcvMore) != 0)
+                ReceiveRetry(router, discard, ReceiveFlags.None);
         }
-        throw new TimeoutException();
     }
 
     internal static SpotMessage SpotReceiveWithTimeout(Spot spot, int timeoutMs)
@@ -117,52 +123,62 @@ internal static partial class BenchRunner
         throw new TimeoutException();
     }
 
-    internal static byte[] StreamExpectConnectEvent(Zlink.Socket socket)
+    internal static int StreamExpectConnectEvent(Zlink.Socket socket,
+        Span<byte> idBuffer)
     {
         // STREAM can emit non-connect notifications first; keep consuming
         // event pairs until a connect notification (0x01) arrives.
+        Span<byte> payload = stackalloc byte[16];
         for (int attempt = 0; attempt < 64; attempt++)
         {
-            var id = new byte[256];
-            int idLen = ReceiveRetry(socket, id, ReceiveFlags.None);
-            var payload = new byte[16];
+            int idLen = ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
             int pLen = ReceiveRetry(socket, payload, ReceiveFlags.None);
             if (pLen == 1 && payload[0] == 0x01)
             {
                 int safeLen = idLen;
                 if (safeLen < 0)
                     safeLen = 0;
-                if (safeLen > id.Length)
-                    safeLen = id.Length;
-                return id.AsSpan(0, safeLen).ToArray();
+                if (safeLen > idBuffer.Length)
+                    safeLen = idBuffer.Length;
+                return safeLen;
             }
         }
         throw new InvalidOperationException("STREAM connect event not observed");
     }
 
-    internal static void StreamSend(Zlink.Socket socket, byte[] id, byte[] payload)
+    internal static void StreamSend(Zlink.Socket socket, ReadOnlySpan<byte> id,
+        ReadOnlySpan<byte> payload)
     {
         SendRetry(socket, id, SendFlags.SendMore);
         SendRetry(socket, payload, SendFlags.None);
     }
 
-    internal static (byte[] Id, byte[] Payload) StreamRecv(Zlink.Socket socket, int cap)
+    internal static void StreamSend(Zlink.Socket socket, byte[] id, byte[] payload)
     {
-        var id = new byte[256];
-        int idLen = ReceiveRetry(socket, id, ReceiveFlags.None);
-        var payload = new byte[cap];
-        int n = ReceiveRetry(socket, payload, ReceiveFlags.None);
-        int safeIdLen = idLen;
-        if (safeIdLen < 0)
-            safeIdLen = 0;
-        if (safeIdLen > id.Length)
-            safeIdLen = id.Length;
-        int safeN = n;
-        if (safeN < 0)
-            safeN = 0;
-        if (safeN > payload.Length)
-            safeN = payload.Length;
-        return (id.AsSpan(0, safeIdLen).ToArray(), payload.AsSpan(0, safeN).ToArray());
+        if (id == null)
+            throw new ArgumentNullException(nameof(id));
+        if (payload == null)
+            throw new ArgumentNullException(nameof(payload));
+        StreamSend(socket, id.AsSpan(), payload.AsSpan());
+    }
+
+    internal static void StreamRecv(Zlink.Socket socket, Span<byte> idBuffer,
+        Span<byte> payloadBuffer, out int idLength, out int payloadLength)
+    {
+        int idLen = ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
+        int n = ReceiveRetry(socket, payloadBuffer, ReceiveFlags.None);
+
+        idLength = idLen;
+        if (idLength < 0)
+            idLength = 0;
+        if (idLength > idBuffer.Length)
+            idLength = idBuffer.Length;
+
+        payloadLength = n;
+        if (payloadLength < 0)
+            payloadLength = 0;
+        if (payloadLength > payloadBuffer.Length)
+            payloadLength = payloadBuffer.Length;
     }
 
     internal static void PrintResult(string pattern, string transport, int size, double thr, double latUs)

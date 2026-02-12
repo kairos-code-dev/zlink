@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using System.Threading;
 using Zlink;
 
@@ -18,7 +17,7 @@ internal static partial class BenchRunner
         try
         {
             string ep = EndpointFor(transport, "dealer-router");
-            dealer.SetOption(SocketOption.RoutingId, Encoding.UTF8.GetBytes("CLIENT"));
+            dealer.SetOption(SocketOption.RoutingId, "CLIENT"u8);
             router.Bind(ep);
             dealer.Connect(ep);
             Thread.Sleep(300);
@@ -30,23 +29,23 @@ internal static partial class BenchRunner
 
             for (int i = 0; i < warmup; i++)
             {
-                dealer.Send(buf, SendFlags.None);
-                int ridLen = router.Receive(rid, ReceiveFlags.None);
-                router.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
-                router.Send(rid.AsSpan(0, ridLen).ToArray(), SendFlags.SendMore);
-                router.Send(buf, SendFlags.None);
-                dealer.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                dealer.Send(buf.AsSpan(), SendFlags.None);
+                int ridLen = router.Receive(rid.AsSpan(), ReceiveFlags.None);
+                router.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
+                router.Send(rid.AsSpan(0, ridLen), SendFlags.SendMore);
+                router.Send(buf.AsSpan(), SendFlags.None);
+                dealer.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                dealer.Send(buf, SendFlags.None);
-                int ridLen = router.Receive(rid, ReceiveFlags.None);
-                router.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
-                router.Send(rid.AsSpan(0, ridLen).ToArray(), SendFlags.SendMore);
-                router.Send(buf, SendFlags.None);
-                dealer.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                dealer.Send(buf.AsSpan(), SendFlags.None);
+                int ridLen = router.Receive(rid.AsSpan(), ReceiveFlags.None);
+                router.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
+                router.Send(rid.AsSpan(0, ridLen), SendFlags.SendMore);
+                router.Send(buf.AsSpan(), SendFlags.None);
+                dealer.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
             }
             sw.Stop();
             double latUs = (sw.Elapsed.TotalMilliseconds * 1000.0) / (latCount * 2);
@@ -59,8 +58,8 @@ internal static partial class BenchRunner
                 {
                     for (int i = 0; i < msgCount; i++)
                     {
-                        router.Receive(rid, ReceiveFlags.None);
-                        router.Receive(recv.AsSpan(0, size).ToArray(), ReceiveFlags.None);
+                        router.Receive(rid.AsSpan(), ReceiveFlags.None);
+                        router.Receive(recv.AsSpan(0, size), ReceiveFlags.None);
                     }
                     recvDone.Set();
                 }
@@ -73,7 +72,7 @@ internal static partial class BenchRunner
             th.Start();
             sw.Restart();
             for (int i = 0; i < msgCount; i++)
-                dealer.Send(buf, SendFlags.None);
+                dealer.Send(buf.AsSpan(), SendFlags.None);
             th.Join();
             sw.Stop();
 

@@ -29,17 +29,19 @@ internal static partial class BenchRunner
 
             var payload = new byte[size];
             Array.Fill(payload, (byte)'a');
+            using var payloadMessage = Message.FromBytes(payload.AsSpan());
+            var payloadParts = new[] { payloadMessage };
 
             for (int i = 0; i < warmup; i++)
             {
-                spotPub.Publish("bench", new[] { Message.FromBytes(payload) }, SendFlags.None);
+                spotPub.Publish("bench", payloadParts, SendFlags.None);
                 SpotReceiveWithTimeout(spotSub, 5000);
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < latCount; i++)
             {
-                spotPub.Publish("bench", new[] { Message.FromBytes(payload) }, SendFlags.None);
+                spotPub.Publish("bench", payloadParts, SendFlags.None);
                 SpotReceiveWithTimeout(spotSub, 5000);
             }
             sw.Stop();
@@ -69,7 +71,7 @@ internal static partial class BenchRunner
             {
                 try
                 {
-                    spotPub.Publish("bench", new[] { Message.FromBytes(payload) }, SendFlags.None);
+                    spotPub.Publish("bench", payloadParts, SendFlags.None);
                 }
                 catch
                 {

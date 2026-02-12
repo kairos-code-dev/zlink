@@ -26,6 +26,19 @@ public sealed class Message : IDisposable
         _valid = true;
     }
 
+    public Message(ReadOnlySpan<byte> data) : this(data.Length)
+    {
+        if (data.Length == 0)
+            return;
+        unsafe
+        {
+            IntPtr dest = NativeMethods.zlink_msg_data(ref _msg);
+            if (dest == IntPtr.Zero)
+                throw new InvalidOperationException("Message data is null.");
+            data.CopyTo(new Span<byte>((void*)dest, data.Length));
+        }
+    }
+
     private Message(bool init)
     {
         if (init)
@@ -52,28 +65,64 @@ public sealed class Message : IDisposable
 
     public byte[] ToArray()
     {
+        return AsReadOnlySpan().ToArray();
+    }
+
+    public unsafe ReadOnlySpan<byte> AsReadOnlySpan()
+    {
         EnsureValid();
         nuint size = NativeMethods.zlink_msg_size(ref _msg);
         if (size == 0)
-            return Array.Empty<byte>();
+            return ReadOnlySpan<byte>.Empty;
         IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
         if (data == IntPtr.Zero)
-            return Array.Empty<byte>();
-        byte[] buffer = new byte[(int)size];
-        Marshal.Copy(data, buffer, 0, buffer.Length);
-        return buffer;
+            return ReadOnlySpan<byte>.Empty;
+        return new ReadOnlySpan<byte>((void*)data, (int)size);
+    }
+
+    public int CopyTo(Span<byte> destination)
+    {
+        if (!TryCopyTo(destination, out int bytesWritten))
+            throw new ArgumentException("Destination buffer is too small.",
+                nameof(destination));
+        return bytesWritten;
+    }
+
+    public unsafe bool TryCopyTo(Span<byte> destination, out int bytesWritten)
+    {
+        EnsureValid();
+        nuint size = NativeMethods.zlink_msg_size(ref _msg);
+        if (size == 0)
+        {
+            bytesWritten = 0;
+            return true;
+        }
+        if (size > (nuint)destination.Length)
+        {
+            bytesWritten = 0;
+            return false;
+        }
+        IntPtr data = NativeMethods.zlink_msg_data(ref _msg);
+        if (data == IntPtr.Zero)
+        {
+            bytesWritten = 0;
+            return true;
+        }
+        new ReadOnlySpan<byte>((void*)data, (int)size).CopyTo(destination);
+        bytesWritten = (int)size;
+        return true;
     }
 
     public static Message FromBytes(byte[] data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
-        var msg = new Message(data.Length);
-        if (data.Length == 0)
-            return msg;
-        IntPtr dest = NativeMethods.zlink_msg_data(ref msg._msg);
-        Marshal.Copy(data, 0, dest, data.Length);
-        return msg;
+        return FromBytes(data.AsSpan());
+    }
+
+    public static Message FromBytes(ReadOnlySpan<byte> data)
+    {
+        return new Message(data);
     }
 
     public int GetProperty(int property)

@@ -49,6 +49,7 @@ set(tests
   test_pubsub_filter_xpub
   test_router_multiple_dealers
   test_stream_socket
+  test_stream_fastpath
   test_transport_matrix
   routing-id/test_router_auto_id_format
   routing-id/test_stream_routing_id_size

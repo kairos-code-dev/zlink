@@ -10,7 +10,7 @@ The STREAM socket is a socket for **RAW communication with external clients** (w
 - No ZMP handshake -- communicates directly with external clients
 - Identifies clients using a 4-byte uint32 routing_id
 - Supports tcp, tls, ws, wss transports
-- Detects connect/disconnect via empty payload events
+- Detects connect/disconnect via 1-byte payload events (`0x01`/`0x00`)
 
 **Valid socket combinations:** STREAM ↔ External client (incompatible with zlink internal sockets)
 

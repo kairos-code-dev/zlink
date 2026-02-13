@@ -8,7 +8,6 @@
 
 #include "sockets/socket_base.hpp"
 #include "sockets/fq.hpp"
-#include "utils/blob.hpp"
 #include "utils/stdint.hpp"
 
 namespace zlink
@@ -19,9 +18,7 @@ class pipe_t;
 class stream_t ZLINK_FINAL : public routing_socket_base_t
 {
   public:
-    stream_t (zlink::ctx_t *parent_,
-              uint32_t tid_,
-              int sid_);
+    stream_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~stream_t () ZLINK_OVERRIDE;
 
     void xattach_pipe (zlink::pipe_t *pipe_,
@@ -39,12 +36,12 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
   private:
     struct stream_event_t
     {
-        blob_t routing_id;
+        uint32_t routing_id_value;
         unsigned char code;
     };
 
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
-    void queue_event (const blob_t &routing_id_, unsigned char code_);
+    void queue_event (uint32_t routing_id_value_, unsigned char code_);
     bool prefetch_event ();
 
     fq_t _fq;

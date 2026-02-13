@@ -6,6 +6,9 @@
 #include "engine/asio/asio_raw_engine.hpp"
 #include "protocol/raw_encoder.hpp"
 #include "protocol/raw_decoder.hpp"
+#include "protocol/stream_fast_encoder.hpp"
+#include "protocol/stream_fast_decoder.hpp"
+#include "protocol/stream_fast_protocol.hpp"
 #include "utils/err.hpp"
 #include "protocol/wire.hpp"
 #include "sockets/socket_base.hpp"
@@ -59,13 +62,23 @@ void zlink::asio_raw_engine_t::init_raw_engine ()
 void zlink::asio_raw_engine_t::plug_internal ()
 {
     if (_encoder == NULL) {
-        _encoder = new (std::nothrow) raw_encoder_t (_options.out_batch_size);
+        if (_options.type == ZLINK_STREAM) {
+            _encoder =
+              new (std::nothrow) stream_fast_encoder_t (_options.out_batch_size);
+        } else {
+            _encoder = new (std::nothrow) raw_encoder_t (_options.out_batch_size);
+        }
         alloc_assert (_encoder);
     }
 
     if (_decoder == NULL) {
-        _decoder = new (std::nothrow)
-          raw_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+        if (_options.type == ZLINK_STREAM) {
+            _decoder = new (std::nothrow)
+              stream_fast_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+        } else {
+            _decoder = new (std::nothrow)
+              raw_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+        }
         alloc_assert (_decoder);
         _input_in_decoder_buffer = false;
     }
@@ -91,6 +104,23 @@ bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
                                                   size_t buffer_size_,
                                                   size_t &header_size_)
 {
+    if (_options.type == ZLINK_STREAM) {
+        if (buffer_size_
+            < (4 + stream_fast_protocol::header_size))
+            return false;
+
+        put_uint32 (
+          buffer_,
+          static_cast<uint32_t> (msg_.size () + stream_fast_protocol::header_size));
+        buffer_[4] = stream_fast_protocol::version;
+        buffer_[5] = stream_fast_protocol::type_data;
+        buffer_[6] = stream_fast_protocol::magic0;
+        buffer_[7] = stream_fast_protocol::magic1;
+        put_uint32 (buffer_ + 8, msg_.get_routing_id ());
+        header_size_ = 12;
+        return true;
+    }
+
     if (buffer_size_ < 4)
         return false;
 

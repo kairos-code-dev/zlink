@@ -5,12 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/core/build"
 BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
-CPPSERVER_RUNNER="${SCRIPT_DIR}/../cppserver/run_stream_scenarios.sh"
-
-# Backend mode:
-# - cppserver: run zlink scenario IDs on top of CppServer backend (CS fastpath)
-# - native: run in-repo zlink stream scenario binary
-ZLINK_STREAM_BACKEND="${ZLINK_STREAM_BACKEND:-cppserver}"
 
 TRANSPORT="${TRANSPORT:-tcp}"
 CCU="${CCU:-10000}"
@@ -42,11 +36,6 @@ LOG_FILE="${LOG_FILE:-${RESULT_ROOT}/scenario.log}"
 mkdir -p "$(dirname "${METRICS_CSV}")"
 mkdir -p "$(dirname "${LOG_FILE}")"
 
-if [[ "${ZLINK_STREAM_BACKEND}" == "cppserver" ]]; then
-  export STACK_LABEL="zlink"
-  exec "${CPPSERVER_RUNNER}"
-fi
-
 if [[ ! -x "${BIN}" ]]; then
   cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DZLINK_BUILD_TESTS=ON >/dev/null
   cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)"
@@ -70,9 +59,12 @@ run_case() {
     echo "scenario=${scenario} transport=${transport} ccu=${CCU} size=${SIZE} inflight=${INFLIGHT} port=${port}"
   } | tee -a "${LOG_FILE}"
 
-  if ! "${BIN}" \
+  if [[ "${scenario}" == "s1" || "${scenario}" == "s2" ]]; then
+    local server_pid=""
+    "${BIN}" \
       --scenario "${scenario}" \
-      --scenario-id "${resolved_scenario_id}" \
+      --scenario-id "${resolved_scenario_id}-server" \
+      --role "server" \
       --transport "${transport}" \
       --port "${port}" \
       --ccu "${CCU}" \
@@ -90,9 +82,65 @@ run_case() {
       --sndbuf "${SNDBUF}" \
       --rcvbuf "${RCVBUF}" \
       --io-threads "${IO_THREADS}" \
-      --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
-      --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
-    overall_rc=1
+      --latency-sample-rate "${LATENCY_SAMPLE_RATE}" "$@" >>"${LOG_FILE}" 2>&1 &
+    server_pid=$!
+    sleep 1
+
+    if ! "${BIN}" \
+        --scenario "${scenario}" \
+        --scenario-id "${resolved_scenario_id}" \
+        --role "client" \
+        --transport "${transport}" \
+        --port "${port}" \
+        --ccu "${CCU}" \
+        --size "${SIZE}" \
+        --inflight "${INFLIGHT}" \
+        --warmup "${WARMUP}" \
+        --measure "${MEASURE}" \
+        --drain-timeout "${DRAIN_TIMEOUT}" \
+        --connect-concurrency "${CONNECT_CONCURRENCY}" \
+        --connect-timeout "${CONNECT_TIMEOUT}" \
+        --connect-retries "${CONNECT_RETRIES}" \
+        --connect-retry-delay-ms "${CONNECT_RETRY_DELAY_MS}" \
+        --backlog "${BACKLOG}" \
+        --hwm "${HWM}" \
+        --sndbuf "${SNDBUF}" \
+        --rcvbuf "${RCVBUF}" \
+        --io-threads "${IO_THREADS}" \
+        --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
+        --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
+      overall_rc=1
+    fi
+
+    if [[ -n "${server_pid}" ]] && kill -0 "${server_pid}" 2>/dev/null; then
+      kill "${server_pid}" >/dev/null 2>&1 || true
+      wait "${server_pid}" >/dev/null 2>&1 || true
+    fi
+  else
+    if ! "${BIN}" \
+        --scenario "${scenario}" \
+        --scenario-id "${resolved_scenario_id}" \
+        --transport "${transport}" \
+        --port "${port}" \
+        --ccu "${CCU}" \
+        --size "${SIZE}" \
+        --inflight "${INFLIGHT}" \
+        --warmup "${WARMUP}" \
+        --measure "${MEASURE}" \
+        --drain-timeout "${DRAIN_TIMEOUT}" \
+        --connect-concurrency "${CONNECT_CONCURRENCY}" \
+        --connect-timeout "${CONNECT_TIMEOUT}" \
+        --connect-retries "${CONNECT_RETRIES}" \
+        --connect-retry-delay-ms "${CONNECT_RETRY_DELAY_MS}" \
+        --backlog "${BACKLOG}" \
+        --hwm "${HWM}" \
+        --sndbuf "${SNDBUF}" \
+        --rcvbuf "${RCVBUF}" \
+        --io-threads "${IO_THREADS}" \
+        --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
+        --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
+      overall_rc=1
+    fi
   fi
 }
 

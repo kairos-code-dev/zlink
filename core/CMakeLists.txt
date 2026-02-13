@@ -963,6 +963,8 @@ set(protocol-sources
     src/protocol/zmp_encoder.cpp
     src/protocol/raw_decoder.cpp
     src/protocol/raw_encoder.cpp
+    src/protocol/stream_fast_decoder.cpp
+    src/protocol/stream_fast_encoder.cpp
     src/protocol/metadata.cpp
     src/protocol/decoder_allocators.cpp)
 

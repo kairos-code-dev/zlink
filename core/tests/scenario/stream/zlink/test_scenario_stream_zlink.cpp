@@ -8,13 +8,13 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <csignal>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -53,6 +53,7 @@ struct Config
     int io_threads;
     int send_batch;
     int latency_sample_rate;
+    std::string role;
     std::string scenario_id_override;
     std::string metrics_csv;
     std::string summary_json;
@@ -80,6 +81,7 @@ struct Config
           io_threads (1),
           send_batch (1),
           latency_sample_rate (1),
+          role ("both"),
           scenario_id_override ("")
     {
     }
@@ -218,6 +220,13 @@ std::string errors_to_string (const std::map<int, long> &errors)
     return out;
 }
 
+std::atomic<bool> g_server_stop_requested (false);
+
+void handle_server_stop_signal (int)
+{
+    g_server_stop_requested.store (true, std::memory_order_release);
+}
+
 double percentile (std::vector<double> samples, double p)
 {
     if (samples.empty ())
@@ -306,10 +315,9 @@ class BenchmarkState
             _shards[i]->sent_measure.store (0, std::memory_order_relaxed);
             _shards[i]->recv_measure.store (0, std::memory_order_relaxed);
             _shards[i]->gating_violation.store (0, std::memory_order_relaxed);
+            std::lock_guard<std::mutex> guard (_shards[i]->latency_lock);
+            _shards[i]->latencies_us.clear ();
         }
-
-        std::lock_guard<std::mutex> guard (_lat_lock);
-        _latencies_us.clear ();
     }
 
     void on_sent (int phase, size_t shard)
@@ -338,8 +346,8 @@ class BenchmarkState
 
         const uint64_t now = now_ns ();
         const uint64_t delta = now >= sent_ns ? now - sent_ns : 0;
-        std::lock_guard<std::mutex> guard (_lat_lock);
-        _latencies_us.push_back (static_cast<double> (delta) / 1000.0);
+        std::lock_guard<std::mutex> guard (s.latency_lock);
+        s.latencies_us.push_back (static_cast<double> (delta) / 1000.0);
     }
 
     void drop_pending (int n, size_t shard)
@@ -384,9 +392,13 @@ class BenchmarkState
 
     std::vector<double> latency_snapshot () const
     {
-        std::lock_guard<std::mutex> guard (
-          const_cast<std::mutex &> (_lat_lock));
-        return _latencies_us;
+        std::vector<double> out;
+        for (size_t i = 0; i < _shards.size (); ++i) {
+            std::lock_guard<std::mutex> guard (_shards[i]->latency_lock);
+            out.insert (out.end (), _shards[i]->latencies_us.begin (),
+                        _shards[i]->latencies_us.end ());
+        }
+        return out;
     }
 
   private:
@@ -396,6 +408,8 @@ class BenchmarkState
         std::atomic<long> sent_measure;
         std::atomic<long> recv_measure;
         std::atomic<long> gating_violation;
+        std::vector<double> latencies_us;
+        mutable std::mutex latency_lock;
 
         ShardCounters ()
             : pending_total (0),
@@ -416,9 +430,6 @@ class BenchmarkState
     std::atomic<bool> _send_enabled;
     std::atomic<bool> _measure_enabled;
     std::vector<std::shared_ptr<ShardCounters> > _shards;
-
-    mutable std::mutex _lat_lock;
-    std::vector<double> _latencies_us;
 };
 
 class ServerSession : public std::enable_shared_from_this<ServerSession>
@@ -437,10 +448,10 @@ class ServerSession : public std::enable_shared_from_this<ServerSession>
           _packet_size (packet_size),
           _send_limit (1 * 1024 * 1024)
     {
-        const size_t read_cap = std::max<size_t> (4096, _packet_size * 2);
+        const size_t read_cap = std::max<size_t> (64 * 1024, _packet_size * 64);
         _read_buffer.resize (read_cap);
-        _send_main.reserve (64 * 1024);
-        _send_flush.reserve (64 * 1024);
+        _send_main.reserve (256 * 1024);
+        _send_flush.reserve (256 * 1024);
     }
 
     void start () { do_read (); }
@@ -749,7 +760,6 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
           _send_flush_offset (0),
           _body_size (static_cast<size_t> (std::max (9, cfg.size))),
           _packet_size (4 + _body_size),
-          _recv_bytes_pending (0),
           _latency_enabled (cfg.latency_sample_rate > 0),
           _sample_rate (std::max (1, cfg.latency_sample_rate)),
           _sample_seq (0)
@@ -757,9 +767,11 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
         _packet_template.resize (_packet_size, 0x33);
         write_u32_be (&_packet_template[0], static_cast<uint32_t> (_body_size));
 
-        _read_buffer.resize (std::max<size_t> (4096, _packet_size * 2));
+        _read_buffer.resize (std::max<size_t> (64 * 1024, _packet_size * 64));
         const size_t reserve_size = std::max<size_t> (
-          64 * 1024, _packet_size * static_cast<size_t> (std::max (16, _cfg.inflight * 2)));
+          256 * 1024,
+          _packet_size
+            * static_cast<size_t> (std::max (64, _cfg.inflight * 4)));
         _send_main.reserve (reserve_size);
         _send_flush.reserve (reserve_size);
     }
@@ -835,13 +847,7 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
               }
 
               if (n > 0) {
-                  self->_recv_bytes_pending += n;
-                  const size_t packets =
-                    self->_recv_bytes_pending / self->_packet_size;
-                  self->_recv_bytes_pending -= packets * self->_packet_size;
-
-                  for (size_t i = 0; i < packets; ++i)
-                      self->on_packet_received ();
+                  self->consume_received (&self->_read_buffer[0], n);
 
                   if (self->_state.send_enabled ())
                       self->fill_send_window ();
@@ -851,15 +857,47 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
           });
     }
 
-    void on_packet_received ()
+    void consume_received (const unsigned char *data_, size_t size_)
     {
-        int phase = _latency_enabled ? 0 : _state.current_phase ();
-        uint64_t sent_ns = 0;
-        if (_latency_enabled && !_sent_meta.empty ()) {
-            phase = _sent_meta.front ().phase;
-            sent_ns = _sent_meta.front ().sent_ns;
-            _sent_meta.pop_front ();
+        if (size_ == 0)
+            return;
+
+        const unsigned char *cursor = data_;
+        size_t remaining = size_;
+
+        if (!_recv_partial.empty ()) {
+            const size_t need = _packet_size - _recv_partial.size ();
+            const size_t take = std::min (need, remaining);
+            _recv_partial.insert (_recv_partial.end (), cursor, cursor + take);
+            cursor += take;
+            remaining -= take;
+
+            if (_recv_partial.size () == _packet_size) {
+                on_packet_received (&_recv_partial[0]);
+                _recv_partial.clear ();
+            }
         }
+
+        while (remaining >= _packet_size) {
+            on_packet_received (cursor);
+            cursor += _packet_size;
+            remaining -= _packet_size;
+        }
+
+        if (remaining > 0)
+            _recv_partial.insert (_recv_partial.end (), cursor, cursor + remaining);
+    }
+
+    void on_packet_received (const unsigned char *packet_)
+    {
+        int phase = _state.current_phase ();
+        uint64_t sent_ns = 0;
+        if (_packet_size >= (4 + 9)) {
+            phase = packet_[4];
+            sent_ns = read_u64_le (packet_ + 5);
+        }
+        if (!_latency_enabled)
+            sent_ns = 0;
 
         if (_pending > 0)
             _pending -= 1;
@@ -880,10 +918,10 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
         _send_main.resize (offset + _packet_size);
 
         memcpy (&_send_main[offset], &_packet_template[0], _packet_size);
+        _send_main[offset + 4] = static_cast<unsigned char> (phase);
+        write_u64_le (&_send_main[offset + 5], sent_ns);
 
         _state.on_sent (phase, _shard_id);
-        if (_latency_enabled)
-            _sent_meta.push_back (SentMeta (phase, sent_ns));
         _pending += 1;
         return true;
     }
@@ -958,23 +996,15 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
 
         _state.drop_pending (_pending, _shard_id);
         _pending = 0;
-        _sent_meta.clear ();
         _send_main.clear ();
         _send_flush.clear ();
         _send_flush_offset = 0;
-        _recv_bytes_pending = 0;
+        _recv_partial.clear ();
 
         boost::system::error_code ignored;
         _socket.shutdown (tcp::socket::shutdown_both, ignored);
         _socket.close (ignored);
     }
-
-    struct SentMeta
-    {
-        SentMeta (int p, uint64_t ns) : phase (p), sent_ns (ns) {}
-        int phase;
-        uint64_t sent_ns;
-    };
 
     tcp::socket _socket;
     BenchmarkState &_state;
@@ -992,14 +1022,13 @@ class ClientSession : public std::enable_shared_from_this<ClientSession>
 
     size_t _body_size;
     size_t _packet_size;
-    size_t _recv_bytes_pending;
     bool _latency_enabled;
     int _sample_rate;
     unsigned _sample_seq;
-    std::deque<SentMeta> _sent_meta;
 
     std::vector<unsigned char> _packet_template;
     std::vector<unsigned char> _read_buffer;
+    std::vector<unsigned char> _recv_partial;
     std::vector<unsigned char> _send_main;
     std::vector<unsigned char> _send_flush;
 };
@@ -1086,17 +1115,18 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
     fill_common_row (row, cfg);
 
     ErrorBag errors;
-    const int io_threads = std::max (1, cfg.io_threads);
-    const int io_shards = io_threads;
-    BenchmarkState state (cfg, io_shards);
+    const int server_io_shards = std::max (1, cfg.io_threads);
+    const int client_io_shards =
+      std::max (1, std::min (server_io_shards, server_io_shards / 4));
+    BenchmarkState state (cfg, client_io_shards);
 
     boost::asio::io_context server_accept_io;
     std::vector<std::shared_ptr<boost::asio::io_context> > server_session_ios;
     std::vector<std::shared_ptr<io_work_guard_t> >
       server_session_work;
-    server_session_ios.reserve (static_cast<size_t> (io_shards));
-    server_session_work.reserve (static_cast<size_t> (io_shards));
-    for (int i = 0; i < io_shards; ++i) {
+    server_session_ios.reserve (static_cast<size_t> (server_io_shards));
+    server_session_work.reserve (static_cast<size_t> (server_io_shards));
+    for (int i = 0; i < server_io_shards; ++i) {
         std::shared_ptr<boost::asio::io_context> io (
           new boost::asio::io_context ());
         server_session_work.push_back (
@@ -1107,9 +1137,9 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
 
     std::vector<std::shared_ptr<boost::asio::io_context> > client_ios;
     std::vector<std::shared_ptr<io_work_guard_t> > client_work;
-    client_ios.reserve (static_cast<size_t> (io_shards));
-    client_work.reserve (static_cast<size_t> (io_shards));
-    for (int i = 0; i < io_shards; ++i) {
+    client_ios.reserve (static_cast<size_t> (client_io_shards));
+    client_work.reserve (static_cast<size_t> (client_io_shards));
+    for (int i = 0; i < client_io_shards; ++i) {
         std::shared_ptr<boost::asio::io_context> io (
           new boost::asio::io_context ());
         client_work.push_back (
@@ -1129,8 +1159,8 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
     std::thread server_accept_worker (
       [&]() { server_accept_io.run (); });
     std::vector<std::thread> server_session_workers;
-    server_session_workers.reserve (static_cast<size_t> (io_shards));
-    for (int i = 0; i < io_shards; ++i) {
+    server_session_workers.reserve (static_cast<size_t> (server_io_shards));
+    for (int i = 0; i < server_io_shards; ++i) {
         std::shared_ptr<boost::asio::io_context> io =
           server_session_ios[static_cast<size_t> (i)];
         server_session_workers.push_back (
@@ -1159,8 +1189,8 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
             return;
 
         boost::asio::io_context &session_io =
-          *client_ios[static_cast<size_t> (idx % io_shards)];
-        const size_t shard_id = static_cast<size_t> (idx % io_shards);
+          *client_ios[static_cast<size_t> (idx % client_io_shards)];
+        const size_t shard_id = static_cast<size_t> (idx % client_io_shards);
         std::shared_ptr<ClientSession> session (
           new ClientSession (session_io, state, cfg, errors, shard_id));
         sessions[idx] = session;
@@ -1177,7 +1207,7 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
             if (started.load (std::memory_order_relaxed) < cfg.ccu) {
                 const int post_idx = started.load (std::memory_order_relaxed);
                 boost::asio::io_context &post_io =
-                  *client_ios[static_cast<size_t> (post_idx % io_shards)];
+                  *client_ios[static_cast<size_t> (post_idx % client_io_shards)];
                 boost::asio::post (post_io, launch_one);
             }
 
@@ -1189,12 +1219,13 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
     const int concurrency =
       std::max (1, std::min (cfg.connect_concurrency, cfg.ccu));
     for (int i = 0; i < concurrency; ++i)
-        boost::asio::post (*client_ios[static_cast<size_t> (i % io_shards)],
+        boost::asio::post (
+                           *client_ios[static_cast<size_t> (i % client_io_shards)],
                            launch_one);
 
     std::vector<std::thread> client_workers;
-    client_workers.reserve (static_cast<size_t> (io_shards));
-    for (int i = 0; i < io_shards; ++i) {
+    client_workers.reserve (static_cast<size_t> (client_io_shards));
+    for (int i = 0; i < client_io_shards; ++i) {
         std::shared_ptr<boost::asio::io_context> io = client_ios[static_cast<size_t> (i)];
         client_workers.push_back (std::thread ([io] () { io->run (); }));
     }
@@ -1307,6 +1338,257 @@ bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
     if (server_accept_worker.joinable ())
         server_accept_worker.join ();
 
+    row.pass_fail = ok ? "PASS" : "FAIL";
+    merge_errors (row.errors_by_errno, errors);
+    return ok;
+}
+
+bool run_client_only (const Config &cfg, ResultRow &row, bool with_send)
+{
+    fill_common_row (row, cfg);
+
+    ErrorBag errors;
+    const int client_io_shards = std::max (1, cfg.io_threads);
+    BenchmarkState state (cfg, client_io_shards);
+
+    std::vector<std::shared_ptr<boost::asio::io_context> > client_ios;
+    std::vector<std::shared_ptr<io_work_guard_t> > client_work;
+    client_ios.reserve (static_cast<size_t> (client_io_shards));
+    client_work.reserve (static_cast<size_t> (client_io_shards));
+    for (int i = 0; i < client_io_shards; ++i) {
+        std::shared_ptr<boost::asio::io_context> io (
+          new boost::asio::io_context ());
+        client_work.push_back (
+          std::shared_ptr<io_work_guard_t> (
+            new io_work_guard_t (io->get_executor ())));
+        client_ios.push_back (io);
+    }
+
+    std::vector<std::shared_ptr<ClientSession> > sessions (cfg.ccu);
+
+    std::atomic<int> started (0);
+    std::atomic<int> completed (0);
+    std::atomic<long> connected (0);
+    std::atomic<long> failed (0);
+
+    std::mutex wait_lock;
+    std::condition_variable wait_cv;
+
+    const boost::asio::ip::address addr =
+      boost::asio::ip::make_address (cfg.bind_host);
+    const tcp::endpoint endpoint (addr,
+                                  static_cast<unsigned short> (cfg.port));
+
+    std::function<void()> launch_one;
+    launch_one = [&]() {
+        const int idx = started.fetch_add (1, std::memory_order_relaxed);
+        if (idx >= cfg.ccu)
+            return;
+
+        boost::asio::io_context &session_io =
+          *client_ios[static_cast<size_t> (idx % client_io_shards)];
+        const size_t shard_id = static_cast<size_t> (idx % client_io_shards);
+        std::shared_ptr<ClientSession> session (
+          new ClientSession (session_io, state, cfg, errors, shard_id));
+        sessions[idx] = session;
+
+        session->start_connect (endpoint, [&, session] (bool ok) {
+            if (ok)
+                connected.fetch_add (1, std::memory_order_relaxed);
+            else
+                failed.fetch_add (1, std::memory_order_relaxed);
+
+            const int done =
+              completed.fetch_add (1, std::memory_order_relaxed) + 1;
+
+            if (started.load (std::memory_order_relaxed) < cfg.ccu) {
+                const int post_idx = started.load (std::memory_order_relaxed);
+                boost::asio::io_context &post_io =
+                  *client_ios[static_cast<size_t> (post_idx % client_io_shards)];
+                boost::asio::post (post_io, launch_one);
+            }
+
+            if (done >= cfg.ccu)
+                wait_cv.notify_one ();
+        });
+    };
+
+    const int concurrency =
+      std::max (1, std::min (cfg.connect_concurrency, cfg.ccu));
+    for (int i = 0; i < concurrency; ++i)
+        boost::asio::post (
+          *client_ios[static_cast<size_t> (i % client_io_shards)], launch_one);
+
+    std::vector<std::thread> client_workers;
+    client_workers.reserve (static_cast<size_t> (client_io_shards));
+    for (int i = 0; i < client_io_shards; ++i) {
+        std::shared_ptr<boost::asio::io_context> io =
+          client_ios[static_cast<size_t> (i)];
+        client_workers.push_back (std::thread ([io] () { io->run (); }));
+    }
+
+    const auto connect_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (std::max (5, cfg.connect_timeout_sec));
+
+    {
+        std::unique_lock<std::mutex> lock (wait_lock);
+        wait_cv.wait_until (lock, connect_deadline, [&]() {
+            return completed.load (std::memory_order_relaxed) >= cfg.ccu;
+        });
+    }
+
+    row.connect_success = connected.load (std::memory_order_relaxed);
+    row.connect_fail = failed.load (std::memory_order_relaxed);
+    row.connect_timeout = cfg.ccu - completed.load (std::memory_order_relaxed);
+
+    bool ok = row.connect_success == cfg.ccu && row.connect_fail == 0
+              && row.connect_timeout == 0;
+
+    if (with_send && ok) {
+        const bool markerless_phase = cfg.latency_sample_rate == 0;
+        auto wait_for_drain = [&](long &timeout_flag) {
+            const auto deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::seconds (std::max (1, cfg.drain_timeout_sec));
+            while (state.pending_total () > 0
+                   && std::chrono::steady_clock::now () < deadline) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            }
+            if (state.pending_total () > 0)
+                timeout_flag = 1;
+        };
+
+        state.set_phase (true, false);
+        for (size_t i = 0; i < sessions.size (); ++i)
+            if (sessions[i])
+                sessions[i]->kick_send ();
+
+        if (cfg.warmup_sec > 0)
+            std::this_thread::sleep_for (
+              std::chrono::seconds (cfg.warmup_sec));
+
+        if (markerless_phase) {
+            long warmup_drain_timeout = 0;
+            state.set_phase (false, false);
+            wait_for_drain (warmup_drain_timeout);
+            if (warmup_drain_timeout > 0)
+                row.drain_timeout_count = 1;
+        }
+
+        state.reset_measure_metrics ();
+        state.set_phase (true, true);
+        for (size_t i = 0; i < sessions.size (); ++i)
+            if (sessions[i])
+                sessions[i]->kick_send ();
+
+        std::this_thread::sleep_for (
+          std::chrono::seconds (std::max (1, cfg.measure_sec)));
+
+        state.set_phase (false, markerless_phase);
+        wait_for_drain (row.drain_timeout_count);
+        if (markerless_phase)
+            state.set_phase (false, false);
+
+        row.sent = state.sent_measure ();
+        row.recv = state.recv_measure ();
+        row.incomplete_ratio =
+          row.sent > 0 ? static_cast<double> (row.sent - row.recv) / row.sent
+                       : 0.0;
+        row.throughput = cfg.measure_sec > 0
+                           ? static_cast<double> (row.recv) / cfg.measure_sec
+                           : 0.0;
+        row.gating_violation = state.gating_violation ();
+
+        const std::vector<double> lats = state.latency_snapshot ();
+        row.p50 = percentile (lats, 0.50);
+        row.p95 = percentile (lats, 0.95);
+        row.p99 = percentile (lats, 0.99);
+
+        ok = ok && row.recv > 0 && row.incomplete_ratio <= 0.01
+             && row.drain_timeout_count == 0 && row.gating_violation == 0;
+    }
+
+    for (size_t i = 0; i < sessions.size (); ++i) {
+        if (sessions[i])
+            sessions[i]->shutdown ();
+    }
+
+    client_work.clear ();
+    for (size_t i = 0; i < client_ios.size (); ++i)
+        client_ios[i]->stop ();
+
+    for (size_t i = 0; i < client_workers.size (); ++i) {
+        if (client_workers[i].joinable ())
+            client_workers[i].join ();
+    }
+
+    row.pass_fail = ok ? "PASS" : "FAIL";
+    merge_errors (row.errors_by_errno, errors);
+    return ok;
+}
+
+bool run_server_only (const Config &cfg, ResultRow &row, bool with_send)
+{
+    fill_common_row (row, cfg);
+
+    ErrorBag errors;
+    const int server_io_shards = std::max (1, cfg.io_threads);
+
+    boost::asio::io_context server_accept_io;
+    std::vector<std::shared_ptr<boost::asio::io_context> > server_session_ios;
+    std::vector<std::shared_ptr<io_work_guard_t> > server_session_work;
+    server_session_ios.reserve (static_cast<size_t> (server_io_shards));
+    server_session_work.reserve (static_cast<size_t> (server_io_shards));
+    for (int i = 0; i < server_io_shards; ++i) {
+        std::shared_ptr<boost::asio::io_context> io (
+          new boost::asio::io_context ());
+        server_session_work.push_back (
+          std::shared_ptr<io_work_guard_t> (
+            new io_work_guard_t (io->get_executor ())));
+        server_session_ios.push_back (io);
+    }
+
+    EchoServer server (
+      server_accept_io, server_session_ios, cfg, with_send, errors);
+    if (!server.start ()) {
+        row.pass_fail = "FAIL";
+        merge_errors (row.errors_by_errno, errors);
+        return false;
+    }
+
+    std::thread server_accept_worker (
+      [&]() { server_accept_io.run (); });
+    std::vector<std::thread> server_session_workers;
+    server_session_workers.reserve (static_cast<size_t> (server_io_shards));
+    for (int i = 0; i < server_io_shards; ++i) {
+        std::shared_ptr<boost::asio::io_context> io =
+          server_session_ios[static_cast<size_t> (i)];
+        server_session_workers.push_back (
+          std::thread ([io] () { io->run (); }));
+    }
+
+    g_server_stop_requested.store (false, std::memory_order_release);
+    std::signal (SIGINT, handle_server_stop_signal);
+    std::signal (SIGTERM, handle_server_stop_signal);
+
+    while (!g_server_stop_requested.load (std::memory_order_acquire))
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+
+    server.stop ();
+    server_session_work.clear ();
+    for (size_t i = 0; i < server_session_ios.size (); ++i)
+        server_session_ios[i]->stop ();
+    server_accept_io.stop ();
+
+    for (size_t i = 0; i < server_session_workers.size (); ++i) {
+        if (server_session_workers[i].joinable ())
+            server_session_workers[i].join ();
+    }
+    if (server_accept_worker.joinable ())
+        server_accept_worker.join ();
+
+    const bool ok = errors.by_errno.empty ();
     row.pass_fail = ok ? "PASS" : "FAIL";
     merge_errors (row.errors_by_errno, errors);
     return ok;
@@ -1429,6 +1711,7 @@ void print_usage (const char *prog)
     printf ("  --io-threads N                  (default 1)\n");
     printf ("  --send-batch N                  (default 1)\n");
     printf ("  --latency-sample-rate N         (default 1, 0=disable latency)\n");
+    printf ("  --role both|server|client       (default both)\n");
     printf ("  --scenario-id ID                override scenario_id output\n");
     printf ("  --metrics-csv PATH              append row to csv\n");
     printf ("  --summary-json PATH             write row json\n");
@@ -1471,6 +1754,7 @@ int main (int argc, char **argv)
     cfg.send_batch = arg_int (argc, argv, "--send-batch", cfg.send_batch);
     cfg.latency_sample_rate = arg_int (argc, argv, "--latency-sample-rate",
                                        cfg.latency_sample_rate);
+    cfg.role = arg_str (argc, argv, "--role", cfg.role.c_str ());
     cfg.scenario_id_override = arg_str (argc, argv, "--scenario-id", "");
     cfg.metrics_csv = arg_str (argc, argv, "--metrics-csv", "");
     cfg.summary_json = arg_str (argc, argv, "--summary-json", "");
@@ -1495,6 +1779,13 @@ int main (int argc, char **argv)
     cfg.latency_sample_rate = std::max (0, cfg.latency_sample_rate);
     cfg.no_delay = cfg.no_delay != 0 ? 1 : 0;
 
+    const bool role_ok =
+      cfg.role == "both" || cfg.role == "server" || cfg.role == "client";
+    if (!role_ok) {
+        print_usage (argv[0]);
+        return 2;
+    }
+
     ResultRow row;
     fill_common_row (row, cfg);
 
@@ -1510,12 +1801,30 @@ int main (int argc, char **argv)
     }
 
     bool ok = false;
-    if (cfg.scenario == "s0")
+    if (cfg.scenario == "s0") {
+        if (cfg.role != "both") {
+            row.pass_fail = "FAIL";
+            print_row (row);
+            append_csv (cfg.metrics_csv, row);
+            write_summary_json (cfg.summary_json, row);
+            return 2;
+        }
         ok = run_s0 (cfg, row);
-    else if (cfg.scenario == "s1")
-        ok = run_s1_or_s2 (cfg, row, false);
-    else
-        ok = run_s1_or_s2 (cfg, row, true);
+    } else if (cfg.scenario == "s1") {
+        if (cfg.role == "server")
+            ok = run_server_only (cfg, row, false);
+        else if (cfg.role == "client")
+            ok = run_client_only (cfg, row, false);
+        else
+            ok = run_s1_or_s2 (cfg, row, false);
+    } else {
+        if (cfg.role == "server")
+            ok = run_server_only (cfg, row, true);
+        else if (cfg.role == "client")
+            ok = run_client_only (cfg, row, true);
+        else
+            ok = run_s1_or_s2 (cfg, row, true);
+    }
 
     print_row (row);
     append_csv (cfg.metrics_csv, row);

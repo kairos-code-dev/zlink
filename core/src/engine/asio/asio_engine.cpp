@@ -113,6 +113,16 @@ const bool asio_single_write_on =
 const size_t asio_gather_threshold =
   parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 
+// STREAM sockets are latency/throughput sensitive on small frames.
+// Enable gather-write by default for STREAM so we can send
+// `len+header` and body with one transport operation without copying
+// body into encoder batch buffers.
+const bool asio_stream_gather_on =
+  !env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_GATHER");
+
+const size_t asio_stream_gather_threshold =
+  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1);
+
 }
 
 zlink::asio_engine_t::asio_engine_t (
@@ -563,7 +573,11 @@ void zlink::asio_engine_t::start_async_write ()
 
 bool zlink::asio_engine_t::prepare_gather_output ()
 {
-    if (!asio_gather_write_on)
+    const bool stream_mode = _options.type == ZLINK_STREAM;
+    const bool gather_enabled =
+      asio_gather_write_on || (stream_mode && asio_stream_gather_on);
+
+    if (!gather_enabled)
         return false;
     if (!_transport || !_transport->supports_gather_write ())
         return false;
@@ -589,7 +603,9 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     }
 
     const size_t body_size = _tx_msg.size ();
-    if (body_size < asio_gather_threshold) {
+    const size_t threshold =
+      stream_mode ? asio_stream_gather_threshold : asio_gather_threshold;
+    if (body_size < threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }

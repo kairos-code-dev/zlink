@@ -100,6 +100,19 @@ int zlink::asio_tcp_listener_t::set_local_address (const char *addr_)
         return -1;
     }
 
+#ifdef SO_REUSEPORT
+    typedef boost::asio::detail::socket_option::boolean<SOL_SOCKET,
+                                                         SO_REUSEPORT>
+      reuse_port_t;
+    _acceptor.set_option (reuse_port_t (true), ec);
+    if (ec) {
+        LISTENER_DBG ("Failed to set reuse_port: %s", ec.message ().c_str ());
+        //  Non-fatal: keep compatibility with kernels where SO_REUSEPORT
+        //  is blocked or unsupported for this socket type.
+        ec.clear ();
+    }
+#endif
+
     //  For IPv6, set IPV6_V6ONLY option based on ipv6 setting
     if (_address.family () == AF_INET6) {
         _acceptor.set_option (boost::asio::ip::v6_only (!options.ipv6), ec);
@@ -373,6 +386,10 @@ void zlink::asio_tcp_listener_t::close ()
 int zlink::asio_tcp_listener_t::tune_socket (fd_t fd_) const
 {
     int rc = tune_tcp_socket (fd_);
+    if (options.sndbuf >= 0)
+        rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
+    if (options.rcvbuf >= 0)
+        rc = rc | set_tcp_receive_buffer (fd_, options.rcvbuf);
     rc = rc
          | tune_tcp_keepalives (fd_, options.tcp_keepalive,
                                 options.tcp_keepalive_cnt,

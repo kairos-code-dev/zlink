@@ -5,6 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/core/build"
 BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
+CPPSERVER_RUNNER="${SCRIPT_DIR}/../cppserver/run_stream_scenarios.sh"
+
+# Backend mode:
+# - cppserver: reuse CppServer upstream source/binaries as the ASIO reference
+# - native: run in-repo boost::asio scenario binary
+ASIO_BACKEND="${ASIO_BACKEND:-cppserver}"
 
 TRANSPORT="${TRANSPORT:-tcp}"
 CCU="${CCU:-10000}"
@@ -34,6 +40,11 @@ LOG_FILE="${LOG_FILE:-${RESULT_ROOT}/scenario.log}"
 
 mkdir -p "$(dirname "${METRICS_CSV}")"
 mkdir -p "$(dirname "${LOG_FILE}")"
+
+if [[ "${ASIO_BACKEND}" == "cppserver" ]]; then
+  # Reuse the exact cppserver benchmark path while preserving ASIO scenario IDs.
+  exec "${CPPSERVER_RUNNER}"
+fi
 
 if [[ ! -x "${BIN}" ]]; then
   cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DZLINK_BUILD_TESTS=ON >/dev/null

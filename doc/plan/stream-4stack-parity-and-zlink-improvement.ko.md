@@ -258,8 +258,112 @@ S2 throughput (msg/s):
   - `net-zlink-s2`는 기준선 대비 대폭 개선됐지만 `asio/dotnet/cppserver` 대비 throughput 격차는 여전히 존재한다.
 - tail latency:
   - `net-zlink-s2`의 `p95/p99`는 여전히 높은 편이라, burst 상황에서의 지연 분포 검증이 추가로 필요하다.
+
+## 10. 같은 ASIO인데 성능이 크게 오른 이유 (원인 정리)
+
+### 10.1 먼저 확인된 사실 (2026-02-13)
+
+- 비교 대상:
+  - 기준선: `core/tests/scenario/stream/result/perf5_final_20260213_152949`
+  - 개선 측정: `core/tests/scenario/stream/result/perf5_asio_cppserver_apply_20260213_191018`
+- 고정 파라미터(`ccu=10000`, `size=1024`, `inflight=30`, `io_threads=32` 등)는 동일하다.
+- `asio-s2` 결과:
+  - throughput: `1,993,289.70 -> 4,024,915.70 msg/s` (`+101.92%`, `x2.02`)
+  - `drain_timeout=0`, `gating_violation=0`는 전/후 모두 유지
+- 로그에서 실행 경로가 바뀐 증거:
+  - 기준선 로그: `===== asio asio-s2 =====`
+  - 개선 로그: `===== cppserver asio-s2 =====`
+
+### 10.2 가장 큰 변화: ASIO runner의 기본 백엔드가 native -> cppserver로 전환
+
+핵심 변경 파일:
+
+- `core/tests/scenario/stream/asio/run_stream_scenarios.sh`
+
+변경 포인트:
+
+- `ASIO_BACKEND="${ASIO_BACKEND:-cppserver}"`로 기본값이 `cppserver`
+- `if [[ "${ASIO_BACKEND}" == "cppserver" ]]; then exec "${CPPSERVER_RUNNER}"; fi`
+- 즉 `asio-*` 시나리오 ID를 유지한 채, 실제 실행은 `cppserver` 러너 경로를 탔다.
+
+결론:
+
+- "같은 Asio"라는 공통점은 맞지만, **실제 벤치 구현체/실행 경로가 native Asio benchmark 코드에서 CppServer 경로로 바뀐 것**이 성능 상승의 1차 원인이다.
+
+### 10.3 코드 구조 차이로 본 성능 상승 요인
+
+`cppserver` 경로가 가지는 유리한 점:
+
+- 서버 실행 모델:
+  - `core/tests/scenario/stream/cppserver/upstream/performance/tcp_echo_server.cpp`
+  - `Service(threads)` 기반 멀티스레드 서비스 사용, `SetupReuseAddress(true)`, `SetupReusePort(true)` 적용
+- 세션 송수신 경로 최적화:
+  - `core/tests/scenario/stream/cppserver/upstream/source/server/asio/tcp_session.cpp`
+  - `SendAsync -> TrySend`로 메인/플러시 버퍼 스왑 방식 사용
+  - `_send_buffer_main.reserve(option_send_buffer_size())` 등 사전 reserve
+  - `make_alloc_handler(...)` 사용으로 async handler 할당 비용 감소 경로 보유
+
+기존 native `asio` benchmark 코드의 제약:
+
+- 파일: `core/tests/scenario/stream/asio/test_scenario_stream_asio.cpp`
+- `send_batch` 파라미터는 파싱/정규화만 되고 실제 전송 루프에서 사용되지 않는다.
+- latency 샘플링이 켜져 있으면(현재 16), 샘플 대상이 아닌 패킷도 `SentMeta` 큐 push/pop 경로를 탄다.
+- 서버/클라이언트 벤치를 단일 프로세스에서 함께 돌리는 구조라(accept/session/client io_context + 워커), 고부하에서 스케줄링/메모리 경쟁이 커지기 쉽다.
+
+추가로, `cppserver` 러너는 클라이언트를 `core/tests/scenario/stream/cppserver/client_runner/Program.cs`(.NET)로 구동한다. 즉 서버뿐 아니라 클라이언트 구현도 native Asio 경로와 다르다.
+
+### 10.4 왜 `asio-s2`가 `cppserver-s2`에 거의 붙었는가
+
+같은 실행에서:
+
+- `asio-s2`: `4,024,915.70 msg/s`
+- `cppserver-s2`: `3,987,838.30 msg/s`
+- 차이: `+37,077.40 msg/s` (`+0.93%`)
+
+해석:
+
+- 이번 측정에서 `asio`는 이름만 `asio-*`일 뿐, 실제로는 `cppserver` 경로를 재사용했기 때문에 수치가 거의 수렴했다.
+
+### 10.5 zlink stream socket 적용 시 실무 포인트
+
+이번 결과가 보여주는 점:
+
+- 성능은 "Asio를 쓴다" 자체보다, **Asio 위에서 어떤 구조(큐/버퍼/handler/스레드 모델)로 구현했는지**에 좌우된다.
+- `zlink`에 적용할 때도 라이브러리 선택보다 아래 구조를 우선 이식해야 한다.
+  - 송신 main/flush 이중 버퍼 + partial write 이어쓰기
+  - async handler 할당 최소화(allocator/재사용 전략)
+  - 소켓 옵션(`reuse_port`, `sndbuf/rcvbuf`, `no_delay`) + 스레드 모델 정렬
+  - 벤치 하네스 영향(동일 프로세스 혼합 경쟁) 분리
+
+### 10.6 재현 방법 (A/B)
+
+native Asio 경로:
+
+```bash
+ASIO_BACKEND=native \
+TIMESTAMP=perf5_asio_native_$(date +%Y%m%d_%H%M%S) \
+CCU=10000 INFLIGHT=30 WARMUP=3 MEASURE=10 DRAIN_TIMEOUT=10 \
+CONNECT_CONCURRENCY=256 BACKLOG=32768 HWM=1000000 IO_THREADS=32 LATENCY_SAMPLE_RATE=16 \
+RUN_DOTNET=1 RUN_CPPSERVER=1 RUN_NET_ZLINK=1 \
+./core/tests/scenario/stream/run_stream_compare.sh
+```
+
+cppserver 재사용 경로(현재 기본):
+
+```bash
+ASIO_BACKEND=cppserver \
+TIMESTAMP=perf5_asio_cppserver_$(date +%Y%m%d_%H%M%S) \
+CCU=10000 INFLIGHT=30 WARMUP=3 MEASURE=10 DRAIN_TIMEOUT=10 \
+CONNECT_CONCURRENCY=256 BACKLOG=32768 HWM=1000000 IO_THREADS=32 LATENCY_SAMPLE_RATE=16 \
+RUN_DOTNET=1 RUN_CPPSERVER=1 RUN_NET_ZLINK=1 \
+./core/tests/scenario/stream/run_stream_compare.sh
+```
+
+### 10.7 추가 리스크 / 후속 과제 (ASIO 관점)
+
 - 스케일 민감도:
-  - 이번 최적화는 `ccu=10000`, `inflight=30`에 맞춘 결과이므로 다른 CCU/메시지 크기/인플라이트 조합에서 재검증이 필요하다.
-- 후속 개선 후보:
-  - shard loop에서 poll 기반 wakeup(`Poller`) 적용으로 idle 루프 비용 추가 절감
-  - latency 샘플 수집 경량화/lock 경합 완화
+  - 이번 결과는 `ccu=10000`, `inflight=30` 고정점이므로, 다른 CCU/메시지 크기/인플라이트 조합 재검증이 필요하다.
+- native `asio` 경로 개선 후보:
+  - `send_batch` 실제 반영(현재 파싱만 수행)
+  - latency 샘플 메타 큐(`SentMeta`) 비용 경량화
+  - 단일 프로세스 혼합 실행(서버+클라이언트) 경쟁 완화

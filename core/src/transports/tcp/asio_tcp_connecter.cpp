@@ -412,12 +412,17 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
 bool zlink::asio_tcp_connecter_t::tune_socket (fd_t fd_)
 {
-    const int rc = tune_tcp_socket (fd_)
-                   | tune_tcp_keepalives (fd_, options.tcp_keepalive,
-                                          options.tcp_keepalive_cnt,
-                                          options.tcp_keepalive_idle,
-                                          options.tcp_keepalive_intvl)
-                   | tune_tcp_maxrt (fd_, options.tcp_maxrt);
+    int rc = tune_tcp_socket (fd_);
+    if (options.sndbuf >= 0)
+        rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
+    if (options.rcvbuf >= 0)
+        rc = rc | set_tcp_receive_buffer (fd_, options.rcvbuf);
+    rc = rc
+         | tune_tcp_keepalives (fd_, options.tcp_keepalive,
+                                options.tcp_keepalive_cnt,
+                                options.tcp_keepalive_idle,
+                                options.tcp_keepalive_intvl)
+         | tune_tcp_maxrt (fd_, options.tcp_maxrt);
     return rc == 0;
 }
 

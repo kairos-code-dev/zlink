@@ -12,8 +12,19 @@ repo="${ZLINK_RELEASE_REPO:-}"
 
 if [ -z "$repo" ]; then
   origin_url="$(git -C "$(dirname "$0")/../.." remote get-url origin 2>/dev/null || true)"
-  if [[ "$origin_url" =~ github\.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
-    repo="${BASH_REMATCH[1]}"
+  if [ -n "$origin_url" ]; then
+    repo_path="$origin_url"
+    repo_path="${repo_path#*://}"
+    repo_path="${repo_path#*@}"
+    if [[ "$repo_path" == *:* ]]; then
+      repo_path="${repo_path#*:}"
+    else
+      repo_path="${repo_path#*/}"
+    fi
+    repo_path="${repo_path%.git}"
+    if [[ "$repo_path" =~ ^[^/]+/[^/]+$ ]]; then
+      repo="$repo_path"
+    fi
   fi
 fi
 
@@ -96,6 +107,8 @@ copy_windows_dll libzlink-windows-arm64 "$repo_root/bindings/dotnet/runtimes/win
 # Node (libzlink only; zlink.node comes from node prebuilds job)
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/node/prebuilds/linux-x64/libzlink.so"
 copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/node/prebuilds/linux-arm64/libzlink.so"
+copy libzlink-linux-x64/libzlink.so.5 "$repo_root/bindings/node/prebuilds/linux-x64/libzlink.so.5"
+copy libzlink-linux-arm64/libzlink.so.5 "$repo_root/bindings/node/prebuilds/linux-arm64/libzlink.so.5"
 copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/node/prebuilds/darwin-x64/libzlink.dylib"
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/node/prebuilds/darwin-arm64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/node/prebuilds/win32-x64/zlink.dll"
@@ -111,6 +124,7 @@ copy zlink-node-win32-arm64/zlink.node "$repo_root/bindings/node/prebuilds/win32
 # C++ bindings
 copy libzlink-linux-x64/libzlink.so "$repo_root/bindings/cpp/native/linux-x86_64/libzlink.so"
 copy libzlink-linux-arm64/libzlink.so "$repo_root/bindings/cpp/native/linux-aarch64/libzlink.so"
+copy libzlink-linux-arm64/libzlink.so.5 "$repo_root/bindings/cpp/native/linux-aarch64/libzlink.so.5"
 copy libzlink-macos-x64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-x86_64/libzlink.dylib"
 copy libzlink-macos-arm64/libzlink.dylib "$repo_root/bindings/cpp/native/darwin-aarch64/libzlink.dylib"
 copy_windows_dll libzlink-windows-x64 "$repo_root/bindings/cpp/native/windows-x86_64/zlink.dll"

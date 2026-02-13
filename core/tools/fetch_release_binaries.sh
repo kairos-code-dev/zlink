@@ -3,11 +3,24 @@ set -euo pipefail
 
 if [ $# -lt 1 ]; then
   echo "usage: $0 <release-url-or-tag>" >&2
+  echo "env:   ZLINK_RELEASE_REPO=owner/repo (optional override)" >&2
   exit 1
 fi
 
 input="$1"
-repo="ulala-x/zlink"
+repo="${ZLINK_RELEASE_REPO:-}"
+
+if [ -z "$repo" ]; then
+  origin_url="$(git -C "$(dirname "$0")/../.." remote get-url origin 2>/dev/null || true)"
+  if [[ "$origin_url" =~ github\.com[:/]([^/]+/[^/.]+)(\.git)?$ ]]; then
+    repo="${BASH_REMATCH[1]}"
+  fi
+fi
+
+if [ -z "$repo" ]; then
+  echo "unable to resolve GitHub repo; set ZLINK_RELEASE_REPO=owner/repo" >&2
+  exit 1
+fi
 
 tag="$input"
 if [[ "$input" == *"/releases/tag/"* ]]; then

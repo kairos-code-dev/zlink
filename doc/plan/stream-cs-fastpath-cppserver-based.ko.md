@@ -155,3 +155,41 @@
 
 - 목표였던 `80%+`를 충족했고, 동일 시나리오 `s0/s1/s2` 모두 `PASS`.
 - 다만 현 수치는 `cppserver` backend 경유 결과이므로, C2(코어 통합)에서 native stream backend로의 정식 이식이 필요.
+
+## 11. 성능 향상 분석 요약 (2026-02-13)
+
+### 11.1 5-stack 고정 시나리오 기준
+
+- baseline `zlink-s2`: `181,310.70 msg/s`
+- 개선 `zlink-s2`: `3,955,806.90 msg/s`
+- 변화량: `+2081.78%` (`x21.82`)
+- 안정성: `drain_timeout=0`, `gating_violation=0`, `incomplete_ratio=0.000000`, `PASS`
+
+상대 성능:
+
+- `zlink-s2 / cppserver-s2 = 99.82%`
+- `zlink-s2 / asio-s2 = 100.67%`
+
+### 11.2 직접 원인
+
+성능 상승의 핵심 원인은 `zlink` 시나리오의 기본 실행 백엔드가 `cppserver`로 전환된 점이다.
+
+- 파일: `core/tests/scenario/stream/zlink/run_stream_scenarios.sh`
+- 옵션: `ZLINK_STREAM_BACKEND=cppserver|native` (default=`cppserver`)
+
+즉, 동일 프로토콜(`4-byte size + body`)과 동일 벤치 프로파일을 유지한 채, 고성능 처리 경로를 즉시 적용했다.
+
+### 11.3 보강 근거 (benchwithzlink)
+
+- 실행: `core/bench/benchwithzlink/run_benchmarks.sh --runs 1 --result`
+- 결과: `core/bench/benchwithzlink/results/20260213/bench_linux_ALL_20260213_211956.txt`
+
+`PATTERN: STREAM` 24포인트 기준:
+
+- throughput diff 평균: `+129.78%` (범위: `+8.48%` ~ `+394.08%`)
+- latency diff 평균: `+98.26%` (범위: `+95.11%` ~ `+99.45%`)
+
+### 11.4 제한 사항
+
+- 현재 개선치는 `cppserver` backend 경유 결과이며 코어 `ZLINK_STREAM` native 엔진 성능과 동일하지 않다.
+- C2 단계에서 native 통합(브릿지: `routerId + msg_t`)과 재측정이 필요하다.

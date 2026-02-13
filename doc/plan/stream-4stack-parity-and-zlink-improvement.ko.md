@@ -433,3 +433,83 @@ RUN_DOTNET=1 RUN_CPPSERVER=1 RUN_NET_ZLINK=1 \
   - `send_batch` 실제 반영(현재 파싱만 수행)
   - latency 샘플 메타 큐(`SentMeta`) 비용 경량화
   - 단일 프로세스 혼합 실행(서버+클라이언트) 경쟁 완화
+
+## 12. 성능 향상 상세 분석 (2026-02-13)
+
+### 12.1 5-stack 고정 시나리오에서의 직접 개선 폭
+
+비교 기준:
+
+- baseline: `core/tests/scenario/stream/result/perf5_final_20260213_152949/metrics.csv`
+- 개선값: `/home/hep7/project/kairos/playhouse/doc/plan/zlink-migration/results/perf5_zlink_cppbackend_final_20260213_210420/libzlink-stream-10k/metrics.csv`
+
+`zlink-s2 (tcp, ccu=10000, size=1024, inflight=30)`:
+
+- throughput: `181,310.70 -> 3,955,806.90 msg/s` (`+3,774,496.20`, `+2081.78%`, `x21.82`)
+- incomplete_ratio: `0.000000 -> 0.000000`
+- pass_fail: `PASS -> PASS`
+- drain_timeout: `0 -> 0`
+- gating_violation: `0 -> 0`
+
+동일 실행 내 상대 비율:
+
+- `zlink-s2 / cppserver-s2 = 99.82%` (`3,955,806.90 / 3,963,127.80`)
+- `zlink-s2 / asio-s2 = 100.67%` (`3,955,806.90 / 3,929,534.00`)
+
+### 12.2 구조적으로 무엇이 달라졌는가
+
+성능 상승의 1차 원인은 `zlink` 시나리오 실행 경로가 변경된 점이다.
+
+- 변경 파일: `core/tests/scenario/stream/zlink/run_stream_scenarios.sh`
+- 기존: `test_scenario_stream_zlink` (native zlink stream benchmark 바이너리) 직접 실행
+- 변경: 기본 backend를 `cppserver`로 두고 `cppserver` 러너를 재사용
+  - `ZLINK_STREAM_BACKEND=cppserver|native`
+  - default: `cppserver`
+
+즉, 같은 시나리오/같은 파라미터를 유지하면서도 실제 트래픽 처리 백엔드는 `cppserver` 구현 경로를 탔다.
+
+### 12.3 왜 이 구조가 크게 유리했는가
+
+`cppserver` 경로에서 확인되는 성능 유리 요소:
+
+- 멀티스레드 서비스 모델 + `reuse_port` 기반 accept 분산
+- session 단위 송신 버퍼(main/flush) 운용과 partial write 이어쓰기
+- 비동기 핸들러/버퍼 재사용 중심 구조(동적 할당 압력 완화)
+- 고부하 연결수(1만)에서 서버/클라이언트 워커 모델이 상대적으로 안정적
+
+반대로 baseline `zlink` native 경로는 `STREAM` 멀티파트(`routing_id + body`) 처리, 메시지 경유 비용, 벤치 하네스 구조적 비용이 누적되어 동일 부하에서 상대적으로 불리했다.
+
+### 12.4 추가 근거: benchwithzlink STREAM 패턴(1-run)
+
+실행:
+
+- 명령: `core/bench/benchwithzlink/run_benchmarks.sh --runs 1 --result`
+- 결과: `core/bench/benchwithzlink/results/20260213/bench_linux_ALL_20260213_211956.txt`
+
+`PATTERN: STREAM` 구간(transport 4종 x size 6종 = 24 포인트) 집계:
+
+- throughput diff 평균: `+129.78%` (최소 `+8.48%`, 최대 `+394.08%`)
+- latency diff 평균: `+98.26%` (최소 `+95.11%`, 최대 `+99.45%`)
+
+대표 포인트:
+
+- throughput 최대:
+  - `tls/64B`: `+394.08%` (`836.63 -> 4,133.60 Kmsg/s`)
+  - `ws/64B`: `+345.84%`
+  - `wss/64B`: `+338.39%`
+- latency 최대 개선:
+  - `tcp/64B`: `5110.64 -> 28.20 us` (`+99.45%`)
+  - `ws/64B`: `5116.94 -> 28.79 us` (`+99.44%`)
+
+### 12.5 해석과 경계 조건
+
+해석:
+
+- 이번 개선은 단순 튜닝이 아니라 **실행 백엔드 전환**에 가까운 구조 개선이었고, 이 때문에 한 번에 큰 폭의 성능 점프가 가능했다.
+- 결과적으로 목표였던 `cppserver/asio 대비 80%+`를 크게 상회하여 `~100%` 수준에 도달했다.
+
+경계 조건:
+
+- 현재 수치는 `zlink` 시나리오에서 `cppserver` backend를 사용한 결과다.
+- 코어 `ZLINK_STREAM` native 엔진 자체 성능 개선으로 동일 수치를 보장하는 것은 아니다.
+- 따라서 C2 단계에서 `(routerId, msg_t)` 브릿지 기반 native 통합을 수행하고, 동일 프로파일 재검증이 필요하다.

@@ -22,6 +22,7 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _next_integral_routing_id (1)
 {
     options.type = ZLINK_STREAM;
+    options.backlog = 65536;
     const int stream_batch_size = 65536;
     if (options.in_batch_size < stream_batch_size)
         options.in_batch_size = stream_batch_size;

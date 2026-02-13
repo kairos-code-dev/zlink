@@ -86,8 +86,8 @@ zlink_send(server, "body", 4, 0);  /* 마지막 프레임 */
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | int | 300000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | int | 300000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_LINGER` | int | -1 | close 시 미전송 메시지 대기 시간 (ms), -1=무한 |
 | `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms), -1=무한 |
 | `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms), -1=무한 |

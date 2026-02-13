@@ -83,8 +83,8 @@ zlink_getsockopt(socket, ZLINK_SNDHWM, &value, &len);
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | 송신 High Water Mark |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 High Water Mark |
+| `ZLINK_SNDHWM` | int | 300000 | 송신 High Water Mark |
+| `ZLINK_RCVHWM` | int | 300000 | 수신 High Water Mark |
 | `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms, -1: 무제한) |
 | `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms, -1: 무제한) |
 | `ZLINK_LINGER` | int | -1 | 소켓 닫기 시 대기 (ms) |

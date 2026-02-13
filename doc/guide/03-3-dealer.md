@@ -79,8 +79,8 @@ zlink_send(dealer, "body", 4, 0);
 |------|------|--------|------|
 | `ZLINK_ROUTING_ID` | binary | Auto (UUID) | ID for identification by ROUTER |
 | `ZLINK_PROBE_ROUTER` | int | 0 | Send empty message on connect (connection notification) |
-| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
+| `ZLINK_SNDHWM` | int | 300000 | Maximum number of messages in the send queue |
+| `ZLINK_RCVHWM` | int | 300000 | Maximum number of messages in the receive queue |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms) |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms) |

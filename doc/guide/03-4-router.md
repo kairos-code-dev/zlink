@@ -101,8 +101,8 @@ zlink_msg_close(&data);
 | `ZLINK_ROUTER_MANDATORY` | int | 0 | Return EHOSTUNREACH error for undeliverable messages |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | Replace existing connection on routing_id conflict |
 | `ZLINK_ROUTING_ID` | binary | Auto (UUID) | The ROUTER's own routing_id |
-| `ZLINK_SNDHWM` | int | 1000 | Send HWM |
-| `ZLINK_RCVHWM` | int | 1000 | Receive HWM |
+| `ZLINK_SNDHWM` | int | 300000 | Send HWM |
+| `ZLINK_RCVHWM` | int | 300000 | Receive HWM |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 
 ### ROUTER_MANDATORY

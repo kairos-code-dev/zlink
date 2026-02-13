@@ -101,8 +101,8 @@ zlink_msg_close(&data);
 | `ZLINK_ROUTER_MANDATORY` | int | 0 | 미도달 메시지 시 EHOSTUNREACH 에러 반환 |
 | `ZLINK_ROUTER_HANDOVER` | int | 0 | routing_id 충돌 시 기존 연결 대체 |
 | `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER 자신의 routing_id |
-| `ZLINK_SNDHWM` | int | 1000 | 송신 HWM |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 HWM |
+| `ZLINK_SNDHWM` | int | 300000 | 송신 HWM |
+| `ZLINK_RCVHWM` | int | 300000 | 수신 HWM |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 
 ### ROUTER_MANDATORY

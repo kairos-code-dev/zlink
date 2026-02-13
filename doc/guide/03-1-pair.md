@@ -86,8 +86,8 @@ zlink_send(server, "body", 4, 0);  /* last frame */
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | Maximum number of messages in the send queue |
-| `ZLINK_RCVHWM` | int | 1000 | Maximum number of messages in the receive queue |
+| `ZLINK_SNDHWM` | int | 300000 | Maximum number of messages in the send queue |
+| `ZLINK_RCVHWM` | int | 300000 | Maximum number of messages in the receive queue |
 | `ZLINK_LINGER` | int | -1 | Wait time for unsent messages on close (ms), -1=infinite |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms), -1=infinite |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms), -1=infinite |

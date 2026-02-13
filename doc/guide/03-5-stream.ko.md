@@ -109,8 +109,8 @@ zlink_send(stream, "response", 8, 0);
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
 | `ZLINK_MAXMSGSIZE` | int64 | -1 | 최대 메시지 크기 (초과 시 연결 끊김) |
-| `ZLINK_SNDHWM` | int | 1000 | 송신 HWM |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 HWM |
+| `ZLINK_SNDHWM` | int | 300000 | 송신 HWM |
+| `ZLINK_RCVHWM` | int | 300000 | 수신 HWM |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_TLS_CERT` | string | — | TLS/WSS 서버 인증서 경로 |
 | `ZLINK_TLS_KEY` | string | — | TLS/WSS 서버 개인키 경로 |

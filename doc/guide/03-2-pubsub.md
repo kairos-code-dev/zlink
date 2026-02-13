@@ -137,8 +137,8 @@ zlink_recv(sub, payload, sizeof(payload), 0); /* "sunny" */
 
 | Option | Type | Default | Description |
 |------|------|--------|------|
-| `ZLINK_SNDHWM` | int | 1000 | Send HWM (PUB) |
-| `ZLINK_RCVHWM` | int | 1000 | Receive HWM (SUB) |
+| `ZLINK_SNDHWM` | int | 300000 | Send HWM (PUB) |
+| `ZLINK_RCVHWM` | int | 300000 | Receive HWM (SUB) |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 
 ## 6. PUB/SUB Usage Patterns

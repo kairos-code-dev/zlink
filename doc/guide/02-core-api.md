@@ -83,8 +83,8 @@ Key options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ZLINK_SNDHWM` | int | 1000 | Send High Water Mark |
-| `ZLINK_RCVHWM` | int | 1000 | Receive High Water Mark |
+| `ZLINK_SNDHWM` | int | 300000 | Send High Water Mark |
+| `ZLINK_RCVHWM` | int | 300000 | Receive High Water Mark |
 | `ZLINK_SNDTIMEO` | int | -1 | Send timeout (ms, -1: unlimited) |
 | `ZLINK_RCVTIMEO` | int | -1 | Receive timeout (ms, -1: unlimited) |
 | `ZLINK_LINGER` | int | -1 | Wait time on socket close (ms) |

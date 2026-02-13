@@ -114,17 +114,18 @@ zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
 
 | Setting | Default | Description |
 |------|--------|------|
-| `ZLINK_SNDHWM` | 1000 | Maximum messages in the send queue |
-| `ZLINK_RCVHWM` | 1000 | Maximum messages in the receive queue |
+| `ZLINK_SNDHWM` | 300000 | Maximum messages in the send queue |
+| `ZLINK_RCVHWM` | 300000 | Maximum messages in the receive queue |
 
 ### Memory vs Throughput Trade-off
 
 | HWM Value | Memory Usage | Throughput | Message Loss |
 |--------|-----------|--------|:----------:|
 | 100 | Low | Low (frequent blocking) | PUB: frequent drops |
-| 1000 (default) | Moderate | Moderate | Balanced |
-| 10000 | High | High (absorbs bursts) | PUB: fewer drops |
-| 100000 | Very high | Maximum | Watch memory usage |
+| 1000 | Low | Low | Balanced |
+| 10000 | Moderate | Moderate (absorbs bursts) | PUB: fewer drops |
+| 100000 | High | High | Watch memory usage |
+| 300000 (default) | Very high | Maximum | Watch memory usage |
 
 ### HWM Behavior by Socket Type
 
@@ -151,8 +152,8 @@ Example: HWM=10000, message=1KB, connections=100
 | `ZLINK_LINGER` | -1 (infinite) | Testing: 0, Production: 1000~5000ms |
 | `ZLINK_SNDTIMEO` | -1 (infinite) | Set according to response time requirements |
 | `ZLINK_RCVTIMEO` | -1 (infinite) | Set when used in polling loops |
-| `ZLINK_SNDHWM` | 1000 | Adjust to match throughput |
-| `ZLINK_RCVHWM` | 1000 | Adjust to match throughput |
+| `ZLINK_SNDHWM` | 300000 | Adjust to match throughput |
+| `ZLINK_RCVHWM` | 300000 | Adjust to match throughput |
 | `ZLINK_MAXMSGSIZE` | -1 (unlimited) | Set for security on STREAM sockets |
 
 ### LINGER Setting

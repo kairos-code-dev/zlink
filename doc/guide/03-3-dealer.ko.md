@@ -79,8 +79,8 @@ zlink_send(dealer, "body", 4, 0);
 |------|------|--------|------|
 | `ZLINK_ROUTING_ID` | binary | 자동(UUID) | ROUTER에서 식별할 ID |
 | `ZLINK_PROBE_ROUTER` | int | 0 | 연결 시 빈 메시지 전송 (연결 알림) |
-| `ZLINK_SNDHWM` | int | 1000 | 송신 큐 최대 메시지 수 |
-| `ZLINK_RCVHWM` | int | 1000 | 수신 큐 최대 메시지 수 |
+| `ZLINK_SNDHWM` | int | 300000 | 송신 큐 최대 메시지 수 |
+| `ZLINK_RCVHWM` | int | 300000 | 수신 큐 최대 메시지 수 |
 | `ZLINK_LINGER` | int | -1 | close 시 대기 시간 (ms) |
 | `ZLINK_SNDTIMEO` | int | -1 | 송신 타임아웃 (ms) |
 | `ZLINK_RCVTIMEO` | int | -1 | 수신 타임아웃 (ms) |

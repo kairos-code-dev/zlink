@@ -109,8 +109,8 @@ zlink_send(stream, "response", 8, 0);
 | Option | Type | Default | Description |
 |------|------|--------|------|
 | `ZLINK_MAXMSGSIZE` | int64 | -1 | Maximum message size (connection dropped if exceeded) |
-| `ZLINK_SNDHWM` | int | 1000 | Send HWM |
-| `ZLINK_RCVHWM` | int | 1000 | Receive HWM |
+| `ZLINK_SNDHWM` | int | 300000 | Send HWM |
+| `ZLINK_RCVHWM` | int | 300000 | Receive HWM |
 | `ZLINK_LINGER` | int | -1 | Wait time on close (ms) |
 | `ZLINK_TLS_CERT` | string | -- | TLS/WSS server certificate path |
 | `ZLINK_TLS_KEY` | string | -- | TLS/WSS server private key path |

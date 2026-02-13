@@ -195,12 +195,40 @@ internal sealed class ClientConn
     public required byte[] PeerRoutingId { get; init; }
 }
 
+internal sealed class TrafficConnState
+{
+    public TrafficConnState(ClientConn conn, int payloadSize)
+    {
+        Conn = conn;
+        SendPayload = new byte[Math.Max(9, payloadSize)];
+        SendPayload.AsSpan(9).Fill(0x33);
+        RecvPayload = new byte[Math.Max(SendPayload.Length, 256)];
+    }
+
+    public ClientConn Conn { get; }
+    public int Pending { get; set; }
+    public bool SendPayloadPending { get; set; }
+    public int SendPhasePending { get; set; }
+    public bool RecvPayloadPending { get; set; }
+    public byte[] SendPayload { get; }
+    public byte[] RecvRid { get; } = new byte[256];
+    public byte[] RecvPayload { get; }
+}
+
 internal sealed class ConnectResult
 {
     public required List<ClientConn> Clients { get; init; }
     public required long Success { get; init; }
     public required long Fail { get; init; }
     public required long Timeout { get; init; }
+}
+
+internal enum IoTryResult
+{
+    Success,
+    WouldBlock,
+    Error,
+    Cancelled
 }
 
 internal static class TimeUtil
@@ -530,11 +558,12 @@ internal static class Program
         var runCts = new CancellationTokenSource();
         var runToken = runCts.Token;
         var startGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var trafficTasks = new List<Task>(clients.Count);
-        foreach (var client in clients)
+        var workerCount = ResolveTrafficWorkerCount(cfg, clients.Count);
+        var shards = BuildTrafficShards(clients, workerCount);
+        var trafficTasks = new List<Task>(shards.Count);
+        foreach (var shard in shards)
         {
-            trafficTasks.Add(RunClientTrafficAsync(client, cfg, state, errors, startGate.Task, runToken));
+            trafficTasks.Add(RunTrafficShardAsync(shard, cfg, state, errors, startGate.Task, runToken));
         }
 
         state.SetPhase(sendEnabled: true, measureEnabled: false);
@@ -579,18 +608,6 @@ internal static class Program
              && row.GatingViolation == 0;
 
         runCts.Cancel();
-        foreach (var client in clients)
-        {
-            try
-            {
-                client.Socket.Dispose();
-            }
-            catch
-            {
-                // no-op
-            }
-        }
-
         try
         {
             await Task.WhenAll(trafficTasks).ConfigureAwait(false);
@@ -683,20 +700,44 @@ internal static class Program
         };
     }
 
-    private static async Task RunClientTrafficAsync(
-        ClientConn conn,
+    private static int ResolveTrafficWorkerCount(Config cfg, int clientCount)
+    {
+        if (clientCount <= 1)
+        {
+            return 1;
+        }
+
+        var configured = Math.Max(1, cfg.IoThreads);
+        var cpuCap = Math.Max(1, Environment.ProcessorCount * 2);
+        return Math.Max(1, Math.Min(clientCount, Math.Min(configured, cpuCap)));
+    }
+
+    private static List<List<ClientConn>> BuildTrafficShards(List<ClientConn> clients, int workerCount)
+    {
+        var count = Math.Max(1, Math.Min(workerCount, clients.Count));
+        var shards = new List<List<ClientConn>>(count);
+        for (var i = 0; i < count; i++)
+        {
+            shards.Add(new List<ClientConn>());
+        }
+
+        for (var i = 0; i < clients.Count; i++)
+        {
+            shards[i % count].Add(clients[i]);
+        }
+
+        return shards;
+    }
+
+    private static async Task RunTrafficShardAsync(
+        List<ClientConn> shardClients,
         Config cfg,
         BenchmarkState state,
         ErrorBag errors,
         Task startGate,
         CancellationToken token)
     {
-        var pending = 0;
-        var payload = new byte[Math.Max(9, cfg.Size)];
-        payload.AsSpan(9).Fill(0x33);
-
-        var recvRid = new byte[256];
-        var recvPayload = new byte[Math.Max(payload.Length, 256)];
+        var connStates = shardClients.Select(client => new TrafficConnState(client, cfg.Size)).ToList();
 
         try
         {
@@ -704,58 +745,87 @@ internal static class Program
 
             while (!token.IsCancellationRequested)
             {
-                while (pending < cfg.Inflight && state.SendEnabled)
-                {
-                    var phase = state.CurrentPhase;
-                    payload[0] = (byte)phase;
-                    BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(1, 8), TimeUtil.NowNs());
+                var madeProgress = false;
+                var sendEnabled = state.SendEnabled;
 
-                    if (!TrySendPartWithRetry(conn.Socket, conn.PeerRoutingId, SendFlags.SendMore, 1000, token, errors)
-                        || !TrySendPartWithRetry(conn.Socket, payload, SendFlags.None, 1000, token, errors))
-                    {
-                        throw new Exception("stream send failed");
-                    }
-
-                    state.OnSent(phase);
-                    pending += 1;
-                }
-
-                if (pending == 0 && !state.SendEnabled)
-                {
-                    break;
-                }
-
-                if (!TryReceivePartWithRetry(conn.Socket, recvRid, 1000, token, errors, out var recvRidLen)
-                    || !TryReceivePartWithRetry(conn.Socket, recvPayload, 1000, token, errors, out var recvLen)
-                    || recvRidLen <= 0)
+                foreach (var connState in connStates)
                 {
                     if (token.IsCancellationRequested)
                     {
                         break;
                     }
 
-                    continue;
+                    if (connState.SendPayloadPending)
+                    {
+                        var pendingSendRc = TrySendPendingPayload(connState, state, token, errors, out var progressed);
+                        if (progressed)
+                        {
+                            madeProgress = true;
+                        }
+
+                        if (pendingSendRc == IoTryResult.Error)
+                        {
+                            return;
+                        }
+                    }
+
+                    var sendBurst = 0;
+                    while (sendEnabled
+                           && !connState.SendPayloadPending
+                           && connState.Pending < cfg.Inflight
+                           && sendBurst < 4)
+                    {
+                        var newSendRc = TrySendNewPayload(connState, state, token, errors, out var progressed);
+                        if (progressed)
+                        {
+                            madeProgress = true;
+                        }
+
+                        if (newSendRc == IoTryResult.Error || newSendRc == IoTryResult.Cancelled)
+                        {
+                            return;
+                        }
+
+                        if (newSendRc != IoTryResult.Success)
+                        {
+                            break;
+                        }
+
+                        sendBurst += 1;
+                    }
+
+                    var recvBurst = 0;
+                    while ((connState.Pending > 0 || connState.RecvPayloadPending) && recvBurst < 8)
+                    {
+                        var recvRc = TryReceiveEcho(connState, state, token, errors, out var progressed);
+                        if (progressed)
+                        {
+                            madeProgress = true;
+                        }
+
+                        if (recvRc == IoTryResult.Error)
+                        {
+                            return;
+                        }
+
+                        if (recvRc != IoTryResult.Success)
+                        {
+                            break;
+                        }
+
+                        recvBurst += 1;
+                    }
                 }
 
-                if (recvLen == 1 && (recvPayload[0] == 0x01 || recvPayload[0] == 0x00))
+                if (!state.SendEnabled && connStates.All(conn => conn.Pending == 0 && !conn.SendPayloadPending && !conn.RecvPayloadPending))
                 {
-                    continue;
+                    break;
                 }
 
-                if (pending > 0)
+                if (!madeProgress)
                 {
-                    pending -= 1;
+                    Thread.Sleep(0);
                 }
-
-                var phaseRecv = 0;
-                ulong sentNs = 0;
-                if (recvLen >= 9)
-                {
-                    phaseRecv = recvPayload[0];
-                    sentNs = BinaryPrimitives.ReadUInt64LittleEndian(recvPayload.AsSpan(1, 8));
-                }
-
-                state.OnRecv(phaseRecv, sentNs);
             }
         }
         catch (Exception ex)
@@ -767,16 +837,133 @@ internal static class Program
         }
         finally
         {
-            state.DropPending(pending);
-            try
+            var remainingPending = 0;
+            foreach (var connState in connStates)
             {
-                conn.Socket.Dispose();
+                remainingPending += connState.Pending;
+                try
+                {
+                    connState.Conn.Socket.Dispose();
+                }
+                catch
+                {
+                    // no-op
+                }
             }
-            catch
-            {
-                // no-op
-            }
+
+            state.DropPending(remainingPending);
         }
+    }
+
+    private static IoTryResult TrySendNewPayload(
+        TrafficConnState connState,
+        BenchmarkState state,
+        CancellationToken token,
+        ErrorBag errors,
+        out bool progressed)
+    {
+        progressed = false;
+
+        var phase = state.CurrentPhase;
+        connState.SendPayload[0] = (byte)phase;
+        BinaryPrimitives.WriteUInt64LittleEndian(connState.SendPayload.AsSpan(1, 8), TimeUtil.NowNs());
+
+        var ridRc = TrySendPartNonBlocking(connState.Conn.Socket, connState.Conn.PeerRoutingId, SendFlags.SendMore, token, errors);
+        if (ridRc != IoTryResult.Success)
+        {
+            return ridRc;
+        }
+
+        connState.SendPayloadPending = true;
+        connState.SendPhasePending = phase;
+        progressed = true;
+
+        var payloadRc = TrySendPendingPayload(connState, state, token, errors, out var payloadProgressed);
+        progressed = progressed || payloadProgressed;
+        return payloadRc;
+    }
+
+    private static IoTryResult TrySendPendingPayload(
+        TrafficConnState connState,
+        BenchmarkState state,
+        CancellationToken token,
+        ErrorBag errors,
+        out bool progressed)
+    {
+        progressed = false;
+        if (!connState.SendPayloadPending)
+        {
+            return IoTryResult.WouldBlock;
+        }
+
+        var payloadRc = TrySendPartNonBlocking(connState.Conn.Socket, connState.SendPayload, SendFlags.None, token, errors);
+        if (payloadRc != IoTryResult.Success)
+        {
+            return payloadRc;
+        }
+
+        connState.SendPayloadPending = false;
+        connState.Pending += 1;
+        state.OnSent(connState.SendPhasePending);
+        progressed = true;
+        return IoTryResult.Success;
+    }
+
+    private static IoTryResult TryReceiveEcho(
+        TrafficConnState connState,
+        BenchmarkState state,
+        CancellationToken token,
+        ErrorBag errors,
+        out bool progressed)
+    {
+        progressed = false;
+
+        if (!connState.RecvPayloadPending)
+        {
+            var ridRc = TryReceivePartNonBlocking(connState.Conn.Socket, connState.RecvRid, token, errors, out var ridLen);
+            if (ridRc != IoTryResult.Success)
+            {
+                return ridRc;
+            }
+
+            if (ridLen <= 0)
+            {
+                return IoTryResult.WouldBlock;
+            }
+
+            connState.RecvPayloadPending = true;
+            progressed = true;
+        }
+
+        var payloadRc = TryReceivePartNonBlocking(connState.Conn.Socket, connState.RecvPayload, token, errors, out var payloadLen);
+        if (payloadRc != IoTryResult.Success)
+        {
+            return payloadRc;
+        }
+
+        connState.RecvPayloadPending = false;
+        progressed = true;
+
+        if (payloadLen == 1 && (connState.RecvPayload[0] == 0x01 || connState.RecvPayload[0] == 0x00))
+        {
+            return IoTryResult.Success;
+        }
+
+        if (connState.Pending > 0)
+        {
+            connState.Pending -= 1;
+        }
+
+        var phaseRecv = 0;
+        ulong sentNs = 0;
+        if (payloadLen >= 9)
+        {
+            phaseRecv = connState.RecvPayload[0];
+            sentNs = BinaryPrimitives.ReadUInt64LittleEndian(connState.RecvPayload.AsSpan(1, 8));
+        }
+
+        state.OnRecv(phaseRecv, sentNs);
+        return IoTryResult.Success;
     }
 
     private static bool TryWaitStreamConnectEvent(Socket socket, int timeoutMs, CancellationToken token, ErrorBag errors, out byte[] peerRoutingId)
@@ -807,6 +994,49 @@ internal static class Program
         }
 
         return false;
+    }
+
+    internal static IoTryResult TrySendPartNonBlocking(Socket socket, ReadOnlySpan<byte> data, SendFlags flags, CancellationToken token, ErrorBag errors)
+    {
+        if (token.IsCancellationRequested)
+        {
+            return IoTryResult.Cancelled;
+        }
+
+        if (socket.TrySend(data, out _, out var errno, flags | SendFlags.DontWait))
+        {
+            return IoTryResult.Success;
+        }
+
+        if (errno == ErrnoEagain || errno == ErrnoEintr)
+        {
+            return IoTryResult.WouldBlock;
+        }
+
+        errors.RecordErrno(errno);
+        return IoTryResult.Error;
+    }
+
+    internal static IoTryResult TryReceivePartNonBlocking(Socket socket, Span<byte> data, CancellationToken token, ErrorBag errors, out int bytes)
+    {
+        bytes = 0;
+        if (token.IsCancellationRequested)
+        {
+            return IoTryResult.Cancelled;
+        }
+
+        if (socket.TryReceive(data, out bytes, out var errno, ReceiveFlags.DontWait))
+        {
+            return IoTryResult.Success;
+        }
+
+        if (errno == ErrnoEagain || errno == ErrnoEintr)
+        {
+            return IoTryResult.WouldBlock;
+        }
+
+        errors.RecordErrno(errno);
+        return IoTryResult.Error;
     }
 
     internal static bool TrySendPartWithRetry(Socket socket, ReadOnlySpan<byte> data, SendFlags flags, int timeoutMs, CancellationToken token, ErrorBag errors)
@@ -1130,7 +1360,10 @@ internal static class Program
     private static void TuneThreadPool(Config cfg)
     {
         ThreadPool.GetMinThreads(out var worker, out var io);
-        var desiredWorker = Math.Max(worker, Math.Max(cfg.ConnectConcurrency, cfg.IoThreads * 128));
+        var connectFloor = Math.Max(64, cfg.ConnectConcurrency);
+        var trafficFloor = Math.Max(Environment.ProcessorCount * 4, cfg.IoThreads * 8);
+        var desiredWorker = Math.Max(worker, Math.Max(connectFloor, trafficFloor));
+        desiredWorker = Math.Min(desiredWorker, 1024);
         ThreadPool.SetMinThreads(desiredWorker, io);
     }
 }

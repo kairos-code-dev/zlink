@@ -12,5 +12,6 @@ src/zlink.egg-info/PKG-INFO
 src/zlink.egg-info/SOURCES.txt
 src/zlink.egg-info/dependency_links.txt
 src/zlink.egg-info/top_level.txt
+tests/test_bench_fastpath.py
 tests/test_enums.py
 tests/test_version.py

@@ -344,11 +344,21 @@ public final class Gateway implements AutoCloseable {
         private Arena arena;
         private MemorySegment vec;
         private int vecCapacity;
+        private MemorySegment constTemplate;
+        private boolean constTemplateInitialized;
+        private MemorySegment constPayload;
+        private long constOffset;
+        private long constLength;
 
         SendContext() {
             this.arena = Arena.ofConfined();
             this.vec = MemorySegment.NULL;
             this.vecCapacity = 0;
+            this.constTemplate = MemorySegment.NULL;
+            this.constTemplateInitialized = false;
+            this.constPayload = MemorySegment.NULL;
+            this.constOffset = -1;
+            this.constLength = -1;
         }
 
         void ensureOpen() {
@@ -367,13 +377,54 @@ public final class Gateway implements AutoCloseable {
             return vec;
         }
 
+        MemorySegment ensureConstTemplate(MemorySegment payload,
+                                          long offset,
+                                          long length) {
+            ensureOpen();
+            if (constTemplate.address() == 0) {
+                constTemplate = arena.allocate(NativeLayouts.MSG_LAYOUT);
+            }
+
+            if (constTemplateInitialized
+                && constPayload == payload
+                && constOffset == offset
+                && constLength == length) {
+                return constTemplate;
+            }
+
+            if (constTemplateInitialized) {
+                NativeMsg.msgClose(constTemplate);
+                constTemplateInitialized = false;
+            }
+
+            MemorySegment slice = length == 0 ? MemorySegment.NULL
+                : payload.asSlice(offset, length);
+            int rc = NativeMsg.msgInitData(constTemplate, slice, length,
+                MemorySegment.NULL, MemorySegment.NULL);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init_data failed");
+            constTemplateInitialized = true;
+            constPayload = payload;
+            constOffset = offset;
+            constLength = length;
+            return constTemplate;
+        }
+
         @Override
         public void close() {
+            if (constTemplateInitialized) {
+                NativeMsg.msgClose(constTemplate);
+                constTemplateInitialized = false;
+            }
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
             vec = MemorySegment.NULL;
             vecCapacity = 0;
+            constTemplate = MemorySegment.NULL;
+            constPayload = MemorySegment.NULL;
+            constOffset = -1;
+            constLength = -1;
         }
     }
 
@@ -588,7 +639,25 @@ public final class Gateway implements AutoCloseable {
                                    long length,
                                    SendFlag flags) {
         MemorySegment vec = context.ensureVector(1);
-        sendConstInternal(vec, serviceName, payload, offset, length, flags);
+        int initialized = 0;
+        try {
+            MemorySegment template = context.ensureConstTemplate(payload, offset,
+                length);
+            int rc = NativeMsg.msgInit(vec);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_init failed");
+            rc = NativeMsg.msgCopy(vec, template);
+            if (rc != 0)
+                throw new RuntimeException("zlink_msg_copy failed");
+            initialized = 1;
+            rc = Native.gatewaySend(handle, serviceName, vec, 1,
+                flags.getValue());
+            if (rc != 0)
+                throw new RuntimeException("zlink_gateway_send failed");
+        } catch (RuntimeException ex) {
+            closeMsgVector(vec, initialized);
+            throw ex;
+        }
     }
 
     private void sendConstInternal(MemorySegment vec,

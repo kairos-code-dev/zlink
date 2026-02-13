@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration.bench;
 import dev.kairoscode.zlink.*;
 
 import java.lang.foreign.MemorySegment;
+import java.util.IdentityHashMap;
 import java.net.ServerSocket;
 import java.util.HashSet;
 import java.util.Set;
@@ -11,14 +12,26 @@ import java.util.concurrent.locks.LockSupport;
 final class BenchUtil {
     private static final Set<String> IPC_PATHS = new HashSet<>();
     private static boolean ipcCleanupHooked = false;
+    private static final ThreadLocal<IdentityHashMap<Socket, Poller>> POLLER_CACHE =
+      ThreadLocal.withInitial(IdentityHashMap::new);
 
     private BenchUtil() {
     }
 
     static boolean waitForInput(Socket socket, int timeoutMs) {
-        Poller poller = new Poller();
-        poller.add(socket, PollEventType.POLLIN);
-        return !poller.poll(timeoutMs).isEmpty();
+        IdentityHashMap<Socket, Poller> cache = POLLER_CACHE.get();
+        Poller poller = cache.get(socket);
+        if (poller == null) {
+            poller = new Poller();
+            poller.add(socket, PollEventType.POLLIN);
+            cache.put(socket, poller);
+        }
+        try {
+            return poller.pollAny(timeoutMs);
+        } catch (RuntimeException ex) {
+            cache.remove(socket);
+            throw ex;
+        }
     }
 
     static byte[] streamExpectConnectEvent(Socket socket) {
@@ -194,6 +207,22 @@ final class BenchUtil {
         try {
             int p = Integer.parseInt(v);
             return p > 0 ? p : def;
+        } catch (Exception ignored) {
+            return def;
+        }
+    }
+
+    static int parseEnvFlag(String name, int def) {
+        String v = System.getenv(name);
+        if (v == null || v.isEmpty()) {
+            return def;
+        }
+        try {
+            int p = Integer.parseInt(v);
+            if (p == 0 || p == 1) {
+                return p;
+            }
+            return def;
         } catch (Exception ignored) {
             return def;
         }

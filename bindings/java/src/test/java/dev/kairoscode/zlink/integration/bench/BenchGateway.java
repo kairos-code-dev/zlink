@@ -9,12 +9,12 @@ final class BenchGateway {
     }
 
     static int run(String transport, int size) {
-        int warmup = BenchUtil.parseEnv("BENCH_WARMUP_COUNT", 200);
-        int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 200);
+        int warmup = BenchUtil.parseEnv("BENCH_WARMUP_COUNT", 1000);
+        int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 500);
         int msgCount = BenchUtil.resolveMsgCount(size);
         // Gateway default uses const single-part path; override via env.
-        int globalConst = BenchUtil.parseEnv("BENCH_USE_CONST", 1);
-        boolean useConst = BenchUtil.parseEnv("BENCH_GATEWAY_USE_CONST",
+        int globalConst = BenchUtil.parseEnvFlag("BENCH_USE_CONST", 1);
+        boolean useConst = BenchUtil.parseEnvFlag("BENCH_GATEWAY_USE_CONST",
           globalConst) == 1;
 
         Context ctx = new Context();

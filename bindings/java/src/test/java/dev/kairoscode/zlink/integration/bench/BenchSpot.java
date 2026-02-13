@@ -13,8 +13,8 @@ final class BenchSpot {
         int latCount = BenchUtil.parseEnv("BENCH_LAT_COUNT", 200);
         int msgCount = BenchUtil.resolveMsgCount(size);
         // Spot default uses const single-part path; override via env.
-        int globalConst = BenchUtil.parseEnv("BENCH_USE_CONST", 1);
-        boolean useConst = BenchUtil.parseEnv("BENCH_SPOT_USE_CONST",
+        int globalConst = BenchUtil.parseEnvFlag("BENCH_USE_CONST", 1);
+        boolean useConst = BenchUtil.parseEnvFlag("BENCH_SPOT_USE_CONST",
           globalConst) == 1;
         int maxSpot = BenchUtil.parseEnv("BENCH_SPOT_MSG_COUNT_MAX", 50000);
         if (msgCount > maxSpot) {

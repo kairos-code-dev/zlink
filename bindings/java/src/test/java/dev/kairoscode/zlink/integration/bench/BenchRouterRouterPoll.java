@@ -16,11 +16,15 @@ final class BenchRouterRouterPoll {
         Context ctx = new Context();
         Socket router1 = new Socket(ctx, SocketType.ROUTER);
         Socket router2 = new Socket(ctx, SocketType.ROUTER);
+        final byte[] router1Id = "ROUTER1".getBytes(StandardCharsets.UTF_8);
+        final byte[] router2Id = "ROUTER2".getBytes(StandardCharsets.UTF_8);
+        final byte[] ping = "PING".getBytes(StandardCharsets.UTF_8);
+        final byte[] pong = "PONG".getBytes(StandardCharsets.UTF_8);
 
         try {
             String endpoint = BenchUtil.endpointFor(transport, "router-router-poll");
-            router1.setSockOpt(SocketOption.ROUTING_ID, "ROUTER1".getBytes(StandardCharsets.UTF_8));
-            router2.setSockOpt(SocketOption.ROUTING_ID, "ROUTER2".getBytes(StandardCharsets.UTF_8));
+            router1.setSockOpt(SocketOption.ROUTING_ID, router1Id);
+            router2.setSockOpt(SocketOption.ROUTING_ID, router2Id);
             router1.setSockOpt(SocketOption.ROUTER_MANDATORY, 1);
             router2.setSockOpt(SocketOption.ROUTER_MANDATORY, 1);
             router1.bind(endpoint);
@@ -30,8 +34,8 @@ final class BenchRouterRouterPoll {
             boolean connected = false;
             for (int i = 0; i < 100; i++) {
                 try {
-                    router2.send("ROUTER1".getBytes(StandardCharsets.UTF_8), SendFlag.SNDMORE);
-                    router2.send("PING".getBytes(StandardCharsets.UTF_8), SendFlag.DONTWAIT);
+                    router2.send(router1Id, SendFlag.SNDMORE);
+                    router2.send(ping, SendFlag.DONTWAIT);
                 } catch (Exception e) {
                     Thread.sleep(10);
                     continue;
@@ -56,8 +60,8 @@ final class BenchRouterRouterPoll {
                 return 2;
             }
 
-            router1.send("ROUTER2".getBytes(StandardCharsets.UTF_8), SendFlag.SNDMORE);
-            router1.send("PONG".getBytes(StandardCharsets.UTF_8), SendFlag.NONE);
+            router1.send(router2Id, SendFlag.SNDMORE);
+            router1.send(pong, SendFlag.NONE);
             if (!BenchUtil.waitForInput(router2, 2000)) {
                 return 2;
             }
@@ -71,7 +75,7 @@ final class BenchRouterRouterPoll {
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                router2.send("ROUTER1".getBytes(StandardCharsets.UTF_8), SendFlag.SNDMORE);
+                router2.send(router1Id, SendFlag.SNDMORE);
                 router2.send(buf, SendFlag.NONE);
 
                 if (!BenchUtil.waitForInput(router1, 2000)) {
@@ -112,7 +116,7 @@ final class BenchRouterRouterPoll {
             receiver.start();
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
-                router2.send("ROUTER1".getBytes(StandardCharsets.UTF_8), SendFlag.SNDMORE);
+                router2.send(router1Id, SendFlag.SNDMORE);
                 router2.send(buf, SendFlag.NONE);
             }
             receiver.join();

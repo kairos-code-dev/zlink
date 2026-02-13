@@ -332,9 +332,7 @@ public final class Native {
                 arr.set(ValueLayout.JAVA_SHORT, base + 12, (short) it.events);
                 arr.set(ValueLayout.JAVA_SHORT, base + 14, (short) 0);
             }
-            int rc = (int) MH_POLL.invokeExact(arr, items.size(), (long) timeoutMs);
-            if (rc < 0)
-                throw new RuntimeException("zlink_poll failed");
+            int rc = pollRaw(arr, items.size(), timeoutMs);
             List<Poller.PollEvent> out = new ArrayList<>();
             for (int i = 0; i < items.size(); i++) {
                 long base = i * itemSize;
@@ -343,6 +341,19 @@ public final class Native {
                     out.add(new Poller.PollEvent(items.get(i).socket, revents));
             }
             return out;
+        } catch (Throwable t) {
+            throw new RuntimeException("poll failed", t);
+        }
+    }
+
+    public static int pollRaw(MemorySegment items, int count, int timeoutMs) {
+        if (items == null || items.address() == 0 || count <= 0)
+            return 0;
+        try {
+            int rc = (int) MH_POLL.invokeExact(items, count, (long) timeoutMs);
+            if (rc < 0)
+                throw new RuntimeException("zlink_poll failed");
+            return rc;
         } catch (Throwable t) {
             throw new RuntimeException("poll failed", t);
         }

@@ -1,0 +1,14 @@
+result/
+
+dotnet/bin/
+dotnet/obj/
+
+net-zlink/bin/
+net-zlink/obj/
+
+cppserver/result/
+cppserver/client_runner/bin/
+cppserver/client_runner/obj/
+cppserver/upstream/
+cppserver/.upstream-ready
+

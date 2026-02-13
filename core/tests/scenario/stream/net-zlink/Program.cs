@@ -1,0 +1,1136 @@
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
+using Zlink;
+
+internal sealed class Config
+{
+    public string Scenario { get; set; } = "s0";
+    public string Transport { get; set; } = "tcp";
+    public string BindHost { get; set; } = "127.0.0.1";
+    public int Port { get; set; } = 27510;
+    public int Ccu { get; set; } = 10000;
+    public int Size { get; set; } = 1024;
+    public int Inflight { get; set; } = 30;
+    public int WarmupSec { get; set; } = 3;
+    public int MeasureSec { get; set; } = 10;
+    public int DrainTimeoutSec { get; set; } = 10;
+    public int ConnectConcurrency { get; set; } = 256;
+    public int ConnectTimeoutSec { get; set; } = 10;
+    public int Backlog { get; set; } = 32768;
+    public int Hwm { get; set; } = 1000000;
+    public int Sndbuf { get; set; } = 256 * 1024;
+    public int Rcvbuf { get; set; } = 256 * 1024;
+    public int IoThreads { get; set; } = 1;
+    public int LatencySampleRate { get; set; } = 1;
+    public string ScenarioIdOverride { get; set; } = "";
+    public string MetricsCsv { get; set; } = "";
+    public string SummaryJson { get; set; } = "";
+}
+
+internal sealed class ResultRow
+{
+    public string ScenarioId { get; set; } = "";
+    public string Transport { get; set; } = "";
+    public int Ccu { get; set; }
+    public int Inflight { get; set; }
+    public int Size { get; set; }
+    public long ConnectSuccess { get; set; }
+    public long ConnectFail { get; set; }
+    public long ConnectTimeout { get; set; }
+    public long Sent { get; set; }
+    public long Recv { get; set; }
+    public double IncompleteRatio { get; set; }
+    public double Throughput { get; set; }
+    public double P50 { get; set; }
+    public double P95 { get; set; }
+    public double P99 { get; set; }
+    public Dictionary<int, long> ErrorsByErrno { get; set; } = new();
+    public string PassFail { get; set; } = "FAIL";
+    public long DrainTimeoutCount { get; set; }
+    public long GatingViolation { get; set; }
+}
+
+internal sealed class ErrorBag
+{
+    private readonly ConcurrentDictionary<int, long> _byErrno = new();
+
+    public void RecordErrno(int err)
+    {
+        if (err <= 0)
+        {
+            return;
+        }
+
+        _byErrno.AddOrUpdate(err, 1, (_, old) => old + 1);
+    }
+
+    public void RecordException(Exception ex)
+    {
+        if (ex is ZlinkException ze)
+        {
+            RecordErrno(ze.Errno);
+        }
+    }
+
+    public Dictionary<int, long> SnapshotSorted()
+    {
+        var sorted = new SortedDictionary<int, long>();
+        foreach (var kv in _byErrno)
+        {
+            sorted[kv.Key] = kv.Value;
+        }
+
+        return new Dictionary<int, long>(sorted);
+    }
+}
+
+internal sealed class BenchmarkState
+{
+    private readonly Config _cfg;
+    private readonly object _latLock = new();
+    private readonly List<double> _latenciesUs = new();
+
+    private volatile bool _sendEnabled;
+    private volatile bool _measureEnabled;
+    private long _pendingTotal;
+    private long _sentMeasure;
+    private long _recvMeasure;
+    private long _gatingViolation;
+
+    public BenchmarkState(Config cfg)
+    {
+        _cfg = cfg;
+    }
+
+    public void SetPhase(bool sendEnabled, bool measureEnabled)
+    {
+        _sendEnabled = sendEnabled;
+        _measureEnabled = measureEnabled;
+    }
+
+    public bool SendEnabled => _sendEnabled;
+
+    public int CurrentPhase => _measureEnabled ? 1 : 0;
+
+    public void ResetMeasureMetrics()
+    {
+        Interlocked.Exchange(ref _sentMeasure, 0);
+        Interlocked.Exchange(ref _recvMeasure, 0);
+        Interlocked.Exchange(ref _gatingViolation, 0);
+
+        lock (_latLock)
+        {
+            _latenciesUs.Clear();
+        }
+    }
+
+    public void OnSent(int phase)
+    {
+        if (phase == 1)
+        {
+            Interlocked.Increment(ref _sentMeasure);
+        }
+
+        Interlocked.Increment(ref _pendingTotal);
+    }
+
+    public void OnRecv(int phase, ulong sentNs)
+    {
+        var before = Interlocked.Decrement(ref _pendingTotal) + 1;
+        if (before <= 0)
+        {
+            Interlocked.Increment(ref _gatingViolation);
+        }
+
+        if (phase != 1)
+        {
+            return;
+        }
+
+        var recvIdx = Interlocked.Increment(ref _recvMeasure);
+        var sampleRate = Math.Max(1, _cfg.LatencySampleRate);
+        if (sampleRate > 1 && (recvIdx % sampleRate) != 0)
+        {
+            return;
+        }
+
+        var now = TimeUtil.NowNs();
+        var delta = now >= sentNs ? now - sentNs : 0;
+        lock (_latLock)
+        {
+            _latenciesUs.Add(delta / 1000.0);
+        }
+    }
+
+    public void DropPending(int n)
+    {
+        if (n <= 0)
+        {
+            return;
+        }
+
+        Interlocked.Add(ref _pendingTotal, -n);
+    }
+
+    public long PendingTotal => Interlocked.Read(ref _pendingTotal);
+    public long SentMeasure => Interlocked.Read(ref _sentMeasure);
+    public long RecvMeasure => Interlocked.Read(ref _recvMeasure);
+    public long GatingViolation => Interlocked.Read(ref _gatingViolation);
+
+    public List<double> LatencySnapshot()
+    {
+        lock (_latLock)
+        {
+            return new List<double>(_latenciesUs);
+        }
+    }
+}
+
+internal sealed class ClientConn
+{
+    public required Socket Socket { get; init; }
+    public required byte[] PeerRoutingId { get; init; }
+}
+
+internal sealed class ConnectResult
+{
+    public required List<ClientConn> Clients { get; init; }
+    public required long Success { get; init; }
+    public required long Fail { get; init; }
+    public required long Timeout { get; init; }
+}
+
+internal static class TimeUtil
+{
+    private static readonly double NsPerTick = 1_000_000_000.0 / Stopwatch.Frequency;
+
+    public static ulong NowNs()
+    {
+        return (ulong)(Stopwatch.GetTimestamp() * NsPerTick);
+    }
+}
+
+internal sealed class StreamEchoServer : IDisposable
+{
+    private readonly Config _cfg;
+    private readonly bool _echoEnabled;
+    private readonly ErrorBag _errors;
+
+    private readonly CancellationTokenSource _cts = new();
+    private Thread? _thread;
+    private Context? _context;
+    private Socket? _socket;
+
+    public StreamEchoServer(Config cfg, bool echoEnabled, ErrorBag errors)
+    {
+        _cfg = cfg;
+        _echoEnabled = echoEnabled;
+        _errors = errors;
+    }
+
+    public bool Start()
+    {
+        try
+        {
+            _context = new Context();
+            _context.SetOption(ContextOption.IoThreads, Math.Max(1, _cfg.IoThreads));
+            _context.SetOption(ContextOption.MaxSockets, Math.Max(1024, _cfg.Ccu + 512));
+
+            _socket = new Socket(_context, SocketType.Stream);
+            Program.ConfigureStreamSocket(_socket, _cfg, forBind: true);
+            _socket.Bind(Program.MakeEndpoint(_cfg));
+
+            _thread = new Thread(Run)
+            {
+                IsBackground = true,
+                Name = "stream-net-zlink-server"
+            };
+            _thread.Start();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _errors.RecordException(ex);
+            return false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        if (_thread is not null && _thread.IsAlive)
+        {
+            _thread.Join(TimeSpan.FromSeconds(2));
+        }
+
+        try
+        {
+            _socket?.Dispose();
+        }
+        catch
+        {
+            // no-op
+        }
+
+        try
+        {
+            _context?.Dispose();
+        }
+        catch
+        {
+            // no-op
+        }
+
+        _cts.Dispose();
+    }
+
+    private void Run()
+    {
+        if (_socket is null)
+        {
+            return;
+        }
+
+        var idBuf = new byte[256];
+        var payloadBuf = new byte[Math.Max(1024, _cfg.Size + 64)];
+
+        while (!_cts.IsCancellationRequested)
+        {
+            if (!Program.TryReceivePartWithRetry(_socket, idBuf, timeoutMs: 10, _cts.Token, _errors, out var idLen))
+            {
+                continue;
+            }
+
+            if (!Program.TryReceivePartWithRetry(_socket, payloadBuf, timeoutMs: 10, _cts.Token, _errors, out var payloadLen))
+            {
+                continue;
+            }
+
+            if (payloadLen <= 0 || idLen <= 0)
+            {
+                continue;
+            }
+
+            if (payloadLen == 1 && (payloadBuf[0] == 0x01 || payloadBuf[0] == 0x00))
+            {
+                continue;
+            }
+
+            if (!_echoEnabled)
+            {
+                continue;
+            }
+
+            if (!Program.TrySendPartWithRetry(_socket, idBuf.AsSpan(0, idLen), SendFlags.SendMore, timeoutMs: 50, _cts.Token, _errors))
+            {
+                continue;
+            }
+
+            Program.TrySendPartWithRetry(_socket, payloadBuf.AsSpan(0, payloadLen), SendFlags.None, timeoutMs: 50, _cts.Token, _errors);
+        }
+    }
+}
+
+internal static class Program
+{
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    internal const int ErrnoEintr = 4;
+    internal const int ErrnoEagain = 11;
+
+    public static async Task<int> Main(string[] args)
+    {
+        var cfg = ParseConfig(args);
+
+        if (args.Contains("--help") || (cfg.Scenario is not ("s0" or "s1" or "s2")))
+        {
+            PrintUsage();
+            return cfg.Scenario is "s0" or "s1" or "s2" ? 0 : 2;
+        }
+
+        cfg.Ccu = Math.Max(1, cfg.Ccu);
+        cfg.Size = Math.Max(16, cfg.Size);
+        cfg.Inflight = Math.Max(1, cfg.Inflight);
+        cfg.ConnectConcurrency = Math.Max(1, cfg.ConnectConcurrency);
+        cfg.ConnectTimeoutSec = Math.Max(1, cfg.ConnectTimeoutSec);
+        cfg.IoThreads = Math.Max(1, cfg.IoThreads);
+        cfg.LatencySampleRate = Math.Max(1, cfg.LatencySampleRate);
+
+        TuneThreadPool(cfg);
+
+        var row = new ResultRow();
+        FillCommonRow(row, cfg);
+
+        if (cfg.Transport != "tcp")
+        {
+            row.PassFail = "SKIP";
+            PrintRow(row);
+            AppendCsv(cfg.MetricsCsv, row);
+            WriteSummaryJson(cfg.SummaryJson, row);
+            Console.Error.WriteLine($"[stream-net-zlink] transport '{cfg.Transport}' skipped (tcp only)");
+            return 0;
+        }
+
+        var ok = false;
+        if (cfg.Scenario == "s0")
+        {
+            ok = await RunS0Async(cfg, row).ConfigureAwait(false);
+        }
+        else if (cfg.Scenario == "s1")
+        {
+            ok = await RunS1OrS2Async(cfg, row, withSend: false).ConfigureAwait(false);
+        }
+        else
+        {
+            ok = await RunS1OrS2Async(cfg, row, withSend: true).ConfigureAwait(false);
+        }
+
+        PrintRow(row);
+        AppendCsv(cfg.MetricsCsv, row);
+        WriteSummaryJson(cfg.SummaryJson, row);
+        return ok ? 0 : 2;
+    }
+
+    private static Task<bool> RunS0Async(Config cfg, ResultRow row)
+    {
+        FillCommonRow(row, cfg);
+
+        var errors = new ErrorBag();
+        using var server = new StreamEchoServer(cfg, echoEnabled: true, errors);
+        if (!server.Start())
+        {
+            row.PassFail = "FAIL";
+            row.ErrorsByErrno = errors.SnapshotSorted();
+            return Task.FromResult(false);
+        }
+
+        using var context = new Context();
+        context.SetOption(ContextOption.IoThreads, Math.Max(1, cfg.IoThreads));
+        context.SetOption(ContextOption.MaxSockets, Math.Max(1024, cfg.Ccu + 512));
+
+        Socket? client = null;
+        try
+        {
+            client = new Socket(context, SocketType.Stream);
+            ConfigureStreamSocket(client, cfg, forBind: false);
+            client.Connect(MakeEndpoint(cfg));
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(cfg.ConnectTimeoutSec));
+            if (!TryWaitStreamConnectEvent(client, cfg.ConnectTimeoutSec * 1000, cts.Token, errors, out var serverRid))
+            {
+                row.ConnectFail = 1;
+                row.PassFail = "FAIL";
+                row.ErrorsByErrno = errors.SnapshotSorted();
+                return Task.FromResult(false);
+            }
+
+            var payload = new byte[Math.Max(9, cfg.Size)];
+            payload[0] = 1;
+            BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(1, 8), TimeUtil.NowNs());
+            payload.AsSpan(9).Fill(0x44);
+
+            if (!TrySendPartWithRetry(client, serverRid, SendFlags.SendMore, 1000, cts.Token, errors)
+                || !TrySendPartWithRetry(client, payload, SendFlags.None, 1000, cts.Token, errors))
+            {
+                row.ConnectFail = 1;
+                row.PassFail = "FAIL";
+                row.ErrorsByErrno = errors.SnapshotSorted();
+                return Task.FromResult(false);
+            }
+
+            var recvRid = new byte[256];
+            var recvPayload = new byte[Math.Max(payload.Length, 256)];
+            if (!TryReceivePartWithRetry(client, recvRid, 1000, cts.Token, errors, out var recvRidLen)
+                || !TryReceivePartWithRetry(client, recvPayload, 1000, cts.Token, errors, out var recvLen)
+                || recvRidLen <= 0)
+            {
+                row.ConnectFail = 1;
+                row.PassFail = "FAIL";
+                row.ErrorsByErrno = errors.SnapshotSorted();
+                return Task.FromResult(false);
+            }
+
+            var ok = recvLen == payload.Length && recvPayload[0] == 1;
+            row.ConnectSuccess = ok ? 1 : 0;
+            row.ConnectFail = ok ? 0 : 1;
+            row.Sent = ok ? 1 : 0;
+            row.Recv = ok ? 1 : 0;
+            row.PassFail = ok ? "PASS" : "FAIL";
+            row.ErrorsByErrno = errors.SnapshotSorted();
+            return Task.FromResult(ok);
+        }
+        catch (Exception ex)
+        {
+            errors.RecordException(ex);
+            row.PassFail = "FAIL";
+            row.ErrorsByErrno = errors.SnapshotSorted();
+            return Task.FromResult(false);
+        }
+        finally
+        {
+            try
+            {
+                client?.Dispose();
+            }
+            catch
+            {
+                // no-op
+            }
+        }
+    }
+
+    private static async Task<bool> RunS1OrS2Async(Config cfg, ResultRow row, bool withSend)
+    {
+        FillCommonRow(row, cfg);
+
+        var errors = new ErrorBag();
+        var state = new BenchmarkState(cfg);
+
+        using var server = new StreamEchoServer(cfg, withSend, errors);
+        if (!server.Start())
+        {
+            row.PassFail = "FAIL";
+            row.ErrorsByErrno = errors.SnapshotSorted();
+            return false;
+        }
+
+        using var context = new Context();
+        context.SetOption(ContextOption.IoThreads, Math.Max(1, cfg.IoThreads));
+        context.SetOption(ContextOption.MaxSockets, Math.Max(1024, cfg.Ccu + 512));
+
+        var connectResult = await ConnectClientsAsync(cfg, context, errors).ConfigureAwait(false);
+        var clients = connectResult.Clients;
+        row.ConnectSuccess = connectResult.Success;
+        row.ConnectFail = connectResult.Fail;
+        row.ConnectTimeout = connectResult.Timeout;
+
+        var ok = row.ConnectSuccess == cfg.Ccu && row.ConnectFail == 0 && row.ConnectTimeout == 0;
+        if (!withSend || !ok)
+        {
+            foreach (var client in clients)
+            {
+                try
+                {
+                    client.Socket.Dispose();
+                }
+                catch
+                {
+                    // no-op
+                }
+            }
+
+            row.PassFail = ok ? "PASS" : "FAIL";
+            row.ErrorsByErrno = errors.SnapshotSorted();
+            return ok;
+        }
+
+        var runCts = new CancellationTokenSource();
+        var runToken = runCts.Token;
+        var startGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var trafficTasks = new List<Task>(clients.Count);
+        foreach (var client in clients)
+        {
+            trafficTasks.Add(RunClientTrafficAsync(client, cfg, state, errors, startGate.Task, runToken));
+        }
+
+        state.SetPhase(sendEnabled: true, measureEnabled: false);
+        startGate.TrySetResult();
+
+        if (cfg.WarmupSec > 0)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(cfg.WarmupSec)).ConfigureAwait(false);
+        }
+
+        state.ResetMeasureMetrics();
+        state.SetPhase(sendEnabled: true, measureEnabled: true);
+        await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, cfg.MeasureSec))).ConfigureAwait(false);
+        state.SetPhase(sendEnabled: false, measureEnabled: false);
+
+        var drainDeadline = DateTime.UtcNow.AddSeconds(Math.Max(1, cfg.DrainTimeoutSec));
+        while (state.PendingTotal > 0 && DateTime.UtcNow < drainDeadline)
+        {
+            await Task.Delay(5).ConfigureAwait(false);
+        }
+
+        if (state.PendingTotal > 0)
+        {
+            row.DrainTimeoutCount = 1;
+        }
+
+        row.Sent = state.SentMeasure;
+        row.Recv = state.RecvMeasure;
+        row.IncompleteRatio = row.Sent > 0 ? (double)(row.Sent - row.Recv) / row.Sent : 0.0;
+        row.Throughput = cfg.MeasureSec > 0 ? (double)row.Recv / cfg.MeasureSec : 0.0;
+        row.GatingViolation = state.GatingViolation;
+
+        var lats = state.LatencySnapshot();
+        row.P50 = Percentile(lats, 0.50);
+        row.P95 = Percentile(lats, 0.95);
+        row.P99 = Percentile(lats, 0.99);
+
+        ok = ok
+             && row.Recv > 0
+             && row.IncompleteRatio <= 0.01
+             && row.DrainTimeoutCount == 0
+             && row.GatingViolation == 0;
+
+        runCts.Cancel();
+        foreach (var client in clients)
+        {
+            try
+            {
+                client.Socket.Dispose();
+            }
+            catch
+            {
+                // no-op
+            }
+        }
+
+        try
+        {
+            await Task.WhenAll(trafficTasks).ConfigureAwait(false);
+        }
+        catch
+        {
+            // no-op
+        }
+
+        row.PassFail = ok ? "PASS" : "FAIL";
+        row.ErrorsByErrno = errors.SnapshotSorted();
+        return ok;
+    }
+
+    private static async Task<ConnectResult> ConnectClientsAsync(Config cfg, Context context, ErrorBag errors)
+    {
+        var success = 0L;
+        var fail = 0L;
+        var timeout = 0L;
+        var sockets = new ConcurrentBag<ClientConn>();
+
+        var endpoint = MakeEndpoint(cfg);
+
+        using var sem = new SemaphoreSlim(Math.Max(1, Math.Min(cfg.ConnectConcurrency, cfg.Ccu)));
+        var tasks = new List<Task>(cfg.Ccu);
+
+        for (var i = 0; i < cfg.Ccu; i++)
+        {
+            await sem.WaitAsync().ConfigureAwait(false);
+            tasks.Add(Task.Run(() =>
+            {
+                Socket? socket = null;
+                try
+                {
+                    socket = new Socket(context, SocketType.Stream);
+                    ConfigureStreamSocket(socket, cfg, forBind: false);
+                    socket.Connect(endpoint);
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(1, cfg.ConnectTimeoutSec)));
+                    if (!TryWaitStreamConnectEvent(socket, cfg.ConnectTimeoutSec * 1000, cts.Token, errors, out var serverRid))
+                    {
+                        Interlocked.Increment(ref timeout);
+                        socket.Dispose();
+                        socket = null;
+                    }
+                    else
+                    {
+                        sockets.Add(new ClientConn
+                        {
+                            Socket = socket,
+                            PeerRoutingId = serverRid
+                        });
+
+                        Interlocked.Increment(ref success);
+                        socket = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref fail);
+                    errors.RecordException(ex);
+                }
+                finally
+                {
+                    if (socket is not null)
+                    {
+                        try
+                        {
+                            socket.Dispose();
+                        }
+                        catch
+                        {
+                            // no-op
+                        }
+                    }
+
+                    sem.Release();
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        return new ConnectResult
+        {
+            Clients = sockets.ToList(),
+            Success = success,
+            Fail = fail,
+            Timeout = timeout
+        };
+    }
+
+    private static async Task RunClientTrafficAsync(
+        ClientConn conn,
+        Config cfg,
+        BenchmarkState state,
+        ErrorBag errors,
+        Task startGate,
+        CancellationToken token)
+    {
+        var pending = 0;
+        var payload = new byte[Math.Max(9, cfg.Size)];
+        payload.AsSpan(9).Fill(0x33);
+
+        var recvRid = new byte[256];
+        var recvPayload = new byte[Math.Max(payload.Length, 256)];
+
+        try
+        {
+            await startGate.ConfigureAwait(false);
+
+            while (!token.IsCancellationRequested)
+            {
+                while (pending < cfg.Inflight && state.SendEnabled)
+                {
+                    var phase = state.CurrentPhase;
+                    payload[0] = (byte)phase;
+                    BinaryPrimitives.WriteUInt64LittleEndian(payload.AsSpan(1, 8), TimeUtil.NowNs());
+
+                    if (!TrySendPartWithRetry(conn.Socket, conn.PeerRoutingId, SendFlags.SendMore, 1000, token, errors)
+                        || !TrySendPartWithRetry(conn.Socket, payload, SendFlags.None, 1000, token, errors))
+                    {
+                        throw new Exception("stream send failed");
+                    }
+
+                    state.OnSent(phase);
+                    pending += 1;
+                }
+
+                if (pending == 0 && !state.SendEnabled)
+                {
+                    break;
+                }
+
+                if (!TryReceivePartWithRetry(conn.Socket, recvRid, 1000, token, errors, out var recvRidLen)
+                    || !TryReceivePartWithRetry(conn.Socket, recvPayload, 1000, token, errors, out var recvLen)
+                    || recvRidLen <= 0)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (recvLen == 1 && (recvPayload[0] == 0x01 || recvPayload[0] == 0x00))
+                {
+                    continue;
+                }
+
+                if (pending > 0)
+                {
+                    pending -= 1;
+                }
+
+                var phaseRecv = 0;
+                ulong sentNs = 0;
+                if (recvLen >= 9)
+                {
+                    phaseRecv = recvPayload[0];
+                    sentNs = BinaryPrimitives.ReadUInt64LittleEndian(recvPayload.AsSpan(1, 8));
+                }
+
+                state.OnRecv(phaseRecv, sentNs);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!token.IsCancellationRequested)
+            {
+                errors.RecordException(ex);
+            }
+        }
+        finally
+        {
+            state.DropPending(pending);
+            try
+            {
+                conn.Socket.Dispose();
+            }
+            catch
+            {
+                // no-op
+            }
+        }
+    }
+
+    private static bool TryWaitStreamConnectEvent(Socket socket, int timeoutMs, CancellationToken token, ErrorBag errors, out byte[] peerRoutingId)
+    {
+        peerRoutingId = Array.Empty<byte>();
+
+        var idBuf = new byte[256];
+        var payload = new byte[16];
+
+        var sw = Stopwatch.StartNew();
+        while (!token.IsCancellationRequested && sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (!TryReceivePartWithRetry(socket, idBuf, timeoutMs: 10, token, errors, out var idLen))
+            {
+                continue;
+            }
+
+            if (!TryReceivePartWithRetry(socket, payload, timeoutMs: 10, token, errors, out var payloadLen))
+            {
+                continue;
+            }
+
+            if (payloadLen == 1 && payload[0] == 0x01 && idLen > 0)
+            {
+                peerRoutingId = idBuf.AsSpan(0, idLen).ToArray();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal static bool TrySendPartWithRetry(Socket socket, ReadOnlySpan<byte> data, SendFlags flags, int timeoutMs, CancellationToken token, ErrorBag errors)
+    {
+        var sw = Stopwatch.StartNew();
+        var spin = 0;
+
+        while (!token.IsCancellationRequested && sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (socket.TrySend(data, out _, out var errno, flags))
+            {
+                return true;
+            }
+
+            if (errno == ErrnoEagain || errno == ErrnoEintr)
+            {
+                spin++;
+                if ((spin % 64) == 0)
+                {
+                    Thread.Sleep(0);
+                }
+
+                continue;
+            }
+
+            errors.RecordErrno(errno);
+            return false;
+        }
+
+        return false;
+    }
+
+    internal static bool TryReceivePartWithRetry(Socket socket, Span<byte> data, int timeoutMs, CancellationToken token, ErrorBag errors, out int bytes)
+    {
+        bytes = 0;
+        var sw = Stopwatch.StartNew();
+        var spin = 0;
+
+        while (!token.IsCancellationRequested && sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (socket.TryReceive(data, out bytes, out var errno, ReceiveFlags.DontWait))
+            {
+                return true;
+            }
+
+            if (errno == ErrnoEagain || errno == ErrnoEintr)
+            {
+                spin++;
+                if ((spin % 64) == 0)
+                {
+                    Thread.Sleep(0);
+                }
+
+                continue;
+            }
+
+            errors.RecordErrno(errno);
+            return false;
+        }
+
+        return false;
+    }
+
+    private static void FillCommonRow(ResultRow row, Config cfg)
+    {
+        row.ScenarioId = string.IsNullOrWhiteSpace(cfg.ScenarioIdOverride) ? cfg.Scenario : cfg.ScenarioIdOverride;
+        row.Transport = cfg.Transport;
+        row.Ccu = cfg.Ccu;
+        row.Inflight = cfg.Inflight;
+        row.Size = cfg.Size;
+    }
+
+    internal static string MakeEndpoint(Config cfg)
+    {
+        return $"{cfg.Transport}://{cfg.BindHost}:{cfg.Port}";
+    }
+
+    internal static void ConfigureStreamSocket(Socket socket, Config cfg, bool forBind)
+    {
+        socket.SetOption(SocketOption.SndBuf, Math.Max(4096, cfg.Sndbuf));
+        socket.SetOption(SocketOption.RcvBuf, Math.Max(4096, cfg.Rcvbuf));
+        socket.SetOption(SocketOption.SndHwm, Math.Max(1000, cfg.Hwm));
+        socket.SetOption(SocketOption.RcvHwm, Math.Max(1000, cfg.Hwm));
+        socket.SetOption(SocketOption.SndTimeo, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
+        socket.SetOption(SocketOption.RcvTimeo, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
+        socket.SetOption(SocketOption.ConnectTimeout, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
+        if (forBind)
+        {
+            socket.SetOption(SocketOption.Backlog, Math.Max(32, cfg.Backlog));
+        }
+    }
+
+    private static void PrintRow(ResultRow row)
+    {
+        Console.WriteLine(
+            "RESULT scenario={0} transport={1} ccu={2} size={3} inflight={4} connect_success={5} connect_fail={6} connect_timeout={7} sent={8} recv={9} incomplete_ratio={10:F6} throughput={11:F2} p50_us={12:F2} p95_us={13:F2} p99_us={14:F2} drain_timeout={15} gating_violation={16} pass_fail={17}",
+            row.ScenarioId,
+            row.Transport,
+            row.Ccu,
+            row.Size,
+            row.Inflight,
+            row.ConnectSuccess,
+            row.ConnectFail,
+            row.ConnectTimeout,
+            row.Sent,
+            row.Recv,
+            row.IncompleteRatio,
+            row.Throughput,
+            row.P50,
+            row.P95,
+            row.P99,
+            row.DrainTimeoutCount,
+            row.GatingViolation,
+            row.PassFail);
+
+        Console.WriteLine(
+            "METRIC scenario_id={0} transport={1} ccu={2} inflight={3} size={4} connect_success={5} connect_fail={6} connect_timeout={7} sent={8} recv={9} incomplete_ratio={10:F6} throughput={11:F2} p50={12:F2} p95={13:F2} p99={14:F2} errors_by_errno={15} pass_fail={16}",
+            row.ScenarioId,
+            row.Transport,
+            row.Ccu,
+            row.Inflight,
+            row.Size,
+            row.ConnectSuccess,
+            row.ConnectFail,
+            row.ConnectTimeout,
+            row.Sent,
+            row.Recv,
+            row.IncompleteRatio,
+            row.Throughput,
+            row.P50,
+            row.P95,
+            row.P99,
+            ErrorsToString(row.ErrorsByErrno),
+            row.PassFail);
+    }
+
+    private static void AppendCsv(string path, ResultRow row)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var exists = File.Exists(path);
+        using var fs = new FileStream(path, exists ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.Read);
+        using var sw = new StreamWriter(fs);
+
+        if (!exists)
+        {
+            sw.WriteLine("scenario_id,transport,ccu,inflight,size,connect_success,connect_fail,connect_timeout,sent,recv,incomplete_ratio,throughput,p50,p95,p99,errors_by_errno,pass_fail");
+        }
+
+        sw.WriteLine(
+            "{0},{1},{2},{3},{4},{5},{6},{7},{8},{9},{10:F6},{11:F2},{12:F2},{13:F2},{14:F2},\"{15}\",{16}",
+            row.ScenarioId,
+            row.Transport,
+            row.Ccu,
+            row.Inflight,
+            row.Size,
+            row.ConnectSuccess,
+            row.ConnectFail,
+            row.ConnectTimeout,
+            row.Sent,
+            row.Recv,
+            row.IncompleteRatio,
+            row.Throughput,
+            row.P50,
+            row.P95,
+            row.P99,
+            ErrorsToString(row.ErrorsByErrno),
+            row.PassFail);
+    }
+
+    private static void WriteSummaryJson(string path, ResultRow row)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var summary = new
+        {
+            scenario_id = row.ScenarioId,
+            transport = row.Transport,
+            ccu = row.Ccu,
+            inflight = row.Inflight,
+            size = row.Size,
+            connect_success = row.ConnectSuccess,
+            connect_fail = row.ConnectFail,
+            connect_timeout = row.ConnectTimeout,
+            sent = row.Sent,
+            recv = row.Recv,
+            incomplete_ratio = row.IncompleteRatio,
+            throughput = row.Throughput,
+            p50 = row.P50,
+            p95 = row.P95,
+            p99 = row.P99,
+            errors_by_errno = ErrorsToString(row.ErrorsByErrno),
+            pass_fail = row.PassFail
+        };
+
+        File.WriteAllText(path, JsonSerializer.Serialize(summary, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static double Percentile(List<double> samples, double p)
+    {
+        if (samples.Count == 0)
+        {
+            return 0.0;
+        }
+
+        samples.Sort();
+        var idx = (int)Math.Max(0.0, Math.Ceiling(samples.Count * p) - 1.0);
+        idx = Math.Min(idx, samples.Count - 1);
+        return samples[idx];
+    }
+
+    private static string ErrorsToString(Dictionary<int, long> errors)
+    {
+        if (errors.Count == 0)
+        {
+            return "";
+        }
+
+        var sorted = errors.OrderBy(kv => kv.Key);
+        return string.Join(";", sorted.Select(kv => $"{kv.Key}:{kv.Value}"));
+    }
+
+    private static void PrintUsage()
+    {
+        Console.WriteLine("Usage: StreamZlinkScenario --scenario s0|s1|s2 [options]");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --transport tcp                  (net-zlink runner currently tcp only)");
+        Console.WriteLine("  --port N                         (default 27510)");
+        Console.WriteLine("  --ccu N                          (default 10000)");
+        Console.WriteLine("  --size N                         (default 1024)");
+        Console.WriteLine("  --inflight N                     (per-connection, default 30)");
+        Console.WriteLine("  --warmup N                       (default 3 sec)");
+        Console.WriteLine("  --measure N                      (default 10 sec)");
+        Console.WriteLine("  --drain-timeout N                (default 10 sec)");
+        Console.WriteLine("  --connect-concurrency N          (default 256)");
+        Console.WriteLine("  --connect-timeout N              (default 10 sec)");
+        Console.WriteLine("  --backlog N                      (default 32768)");
+        Console.WriteLine("  --hwm N                          (default 1000000)");
+        Console.WriteLine("  --sndbuf N                       (default 262144)");
+        Console.WriteLine("  --rcvbuf N                       (default 262144)");
+        Console.WriteLine("  --io-threads N                   (default 1)");
+        Console.WriteLine("  --latency-sample-rate N          (default 1)");
+        Console.WriteLine("  --scenario-id ID                 override scenario_id output");
+        Console.WriteLine("  --metrics-csv PATH               append row to csv");
+        Console.WriteLine("  --summary-json PATH              write row json");
+    }
+
+    private static Config ParseConfig(string[] args)
+    {
+        return new Config
+        {
+            Scenario = ArgStr(args, "--scenario", "s0"),
+            Transport = ArgStr(args, "--transport", "tcp"),
+            BindHost = ArgStr(args, "--bind-host", "127.0.0.1"),
+            Port = ArgInt(args, "--port", 27510),
+            Ccu = ArgInt(args, "--ccu", 10000),
+            Size = ArgInt(args, "--size", 1024),
+            Inflight = ArgInt(args, "--inflight", 30),
+            WarmupSec = ArgInt(args, "--warmup", 3),
+            MeasureSec = ArgInt(args, "--measure", 10),
+            DrainTimeoutSec = ArgInt(args, "--drain-timeout", 10),
+            ConnectConcurrency = ArgInt(args, "--connect-concurrency", 256),
+            ConnectTimeoutSec = ArgInt(args, "--connect-timeout", 10),
+            Backlog = ArgInt(args, "--backlog", 32768),
+            Hwm = ArgInt(args, "--hwm", 1000000),
+            Sndbuf = ArgInt(args, "--sndbuf", 256 * 1024),
+            Rcvbuf = ArgInt(args, "--rcvbuf", 256 * 1024),
+            IoThreads = ArgInt(args, "--io-threads", 1),
+            LatencySampleRate = ArgInt(args, "--latency-sample-rate", 1),
+            ScenarioIdOverride = ArgStr(args, "--scenario-id", ""),
+            MetricsCsv = ArgStr(args, "--metrics-csv", ""),
+            SummaryJson = ArgStr(args, "--summary-json", "")
+        };
+    }
+
+    private static string ArgStr(string[] args, string key, string fallback)
+    {
+        for (var i = 0; i + 1 < args.Length; i++)
+        {
+            if (args[i] == key)
+            {
+                return args[i + 1];
+            }
+        }
+
+        return fallback;
+    }
+
+    private static int ArgInt(string[] args, string key, int fallback)
+    {
+        var value = fallback;
+        for (var i = 0; i + 1 < args.Length; i++)
+        {
+            if (args[i] == key && int.TryParse(args[i + 1], NumberStyles.Integer, Inv, out var parsed))
+            {
+                value = parsed;
+            }
+        }
+
+        return value;
+    }
+
+    private static void TuneThreadPool(Config cfg)
+    {
+        ThreadPool.GetMinThreads(out var worker, out var io);
+        var desiredWorker = Math.Max(worker, Math.Max(cfg.ConnectConcurrency, cfg.IoThreads * 128));
+        ThreadPool.SetMinThreads(desiredWorker, io);
+    }
+}

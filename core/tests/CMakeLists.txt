@@ -57,7 +57,9 @@ set(tests
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
   scenario/router_router/zlink/test_scenario_router_router
-  scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect)
+  scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
+  scenario/stream/zlink/test_scenario_stream_zlink
+  scenario/stream/asio/test_scenario_stream_asio)
 
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
@@ -260,6 +262,10 @@ set_tests_properties(test_scenario_router_router PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router PROPERTIES LABELS "scenario;router_router")
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
+set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)

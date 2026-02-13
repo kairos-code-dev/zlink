@@ -4,6 +4,7 @@
 #define __ZLINK_STREAM_HPP_INCLUDED__
 
 #include <deque>
+#include <map>
 
 #include "sockets/socket_base.hpp"
 #include "sockets/fq.hpp"
@@ -50,13 +51,14 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     bool _prefetched;
     bool _routing_id_sent;
-    msg_t _prefetched_routing_id;
+    uint32_t _prefetched_routing_id_value;
     msg_t _prefetched_msg;
 
     zlink::pipe_t *_current_out;
     bool _more_out;
 
     uint32_t _next_integral_routing_id;
+    std::map<uint32_t, zlink::pipe_t *> _out_by_id;
 
     std::deque<stream_event_t> _pending_events;
 

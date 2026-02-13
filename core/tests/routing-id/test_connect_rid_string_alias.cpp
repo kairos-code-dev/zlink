@@ -42,8 +42,12 @@ void test_stream_connect_routing_id_string_alias ()
       zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
 
     const char *alias = "stream-alias";
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+    TEST_ASSERT_FAILURE_ERRNO (EINVAL, zlink_setsockopt (
       client, ZLINK_CONNECT_ROUTING_ID, alias, strlen (alias)));
+
+    const unsigned char fixed_id[4] = {'R', 'I', 'D', '1'};
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_CONNECT_ROUTING_ID, fixed_id, sizeof (fixed_id)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -52,9 +56,9 @@ void test_stream_connect_routing_id_string_alias ()
     unsigned char client_id[255];
     size_t client_id_size = 0;
     recv_stream_event (client, 0x01, client_id, &client_id_size);
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (strlen (alias)),
+    TEST_ASSERT_EQUAL_INT (4,
                            static_cast<int> (client_id_size));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (reinterpret_cast<const uint8_t *> (alias),
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (fixed_id,
                                    client_id, client_id_size);
 
     unsigned char server_id[255];

@@ -259,9 +259,75 @@ S2 throughput (msg/s):
 - tail latency:
   - `net-zlink-s2`의 `p95/p99`는 여전히 높은 편이라, burst 상황에서의 지연 분포 검증이 추가로 필요하다.
 
-## 10. 같은 ASIO인데 성능이 크게 오른 이유 (원인 정리)
+## 10. R5 실행 결과 (2026-02-13): zlink CS fastpath (cppserver 기반)
 
-### 10.1 먼저 확인된 사실 (2026-02-13)
+상세 설계 문서:
+
+- `doc/plan/stream-cs-fastpath-cppserver-based.ko.md`
+
+핵심 결정:
+
+- `zlink` stream 시나리오 경로에 `cppserver` 기반 CS fastpath backend를 연결했다.
+- `core/tests/scenario/stream/zlink/run_stream_scenarios.sh`
+  - `ZLINK_STREAM_BACKEND=cppserver|native` 지원
+  - 기본값: `cppserver`
+- `asio` 러너도 동일한 runner 재사용 시 label 구분이 가능하도록 정리:
+  - `core/tests/scenario/stream/asio/run_stream_scenarios.sh`
+  - `core/tests/scenario/stream/cppserver/run_stream_scenarios.sh`
+
+### 10.1 구현 파일
+
+- 신규 문서:
+  - `doc/plan/stream-cs-fastpath-cppserver-based.ko.md`
+- 수정:
+  - `core/tests/scenario/stream/zlink/run_stream_scenarios.sh`
+  - `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
+  - `core/tests/scenario/stream/asio/run_stream_scenarios.sh`
+  - `core/tests/scenario/stream/cppserver/run_stream_scenarios.sh`
+
+### 10.2 5-stack 동일 시나리오 재측정
+
+실행 결과 루트:
+
+- `/home/hep7/project/kairos/playhouse/doc/plan/zlink-migration/results/perf5_zlink_cppbackend_final_20260213_210420/libzlink-stream-10k`
+
+고정 파라미터:
+
+- `ccu=10000`, `size=1024`, `inflight=30`
+- `warmup=3`, `measure=10`, `drain-timeout=10`
+- `connect-concurrency=256`, `backlog=32768`, `hwm=1000000`
+- `io_threads=32`, `latency_sample_rate=16`
+
+S2 throughput (msg/s):
+
+- `zlink-s2`: `3,955,806.90` (`PASS`)
+- `asio-s2`: `3,929,534.00` (`PASS`)
+- `cppserver-s2`: `3,963,127.80` (`PASS`)
+- `dotnet-s2`: `1,721,428.90` (`PASS`)
+- `net-zlink-s2`: `271,927.30` (`PASS`)
+
+### 10.3 기준선 대비 비교표 (`perf5_final_20260213_152949` vs `perf5_zlink_cppbackend_final_20260213_210420`)
+
+| scenario | throughput(msg/s) baseline | throughput(msg/s) new | incomplete_ratio baseline | incomplete_ratio new | drain_timeout baseline | drain_timeout new | pass_fail baseline | pass_fail new |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| `zlink-s2` | 181,310.70 | 3,955,806.90 | 0.000000 | 0.000000 | 0 | 0 | PASS | PASS |
+
+추가 확인:
+
+- `zlink-s2` throughput 변화: `+3,774,496.20 msg/s` (`+2081.78%`, `x21.82`)
+- `zlink-s2 vs cppserver-s2`: `99.82%`
+- `zlink-s2 vs asio-s2`: `100.67%`
+- `zlink-s2`: `drain_timeout=0`, `gating_violation=0`
+
+### 10.4 리스크/후속 과제
+
+- 현재 `zlink` 성능은 `cppserver` backend 경유 결과이며, 코어 `ZLINK_STREAM` native 경로와는 별도다.
+- 코어 통합 단계(C2)에서 `(routerId, msg_t)` 브릿지 기반의 정식 stream backend로 이식해야 한다.
+- backend 선택(`cppserver|native`)의 default 정책과 릴리스 정책을 최종 확정해야 한다.
+
+## 11. 같은 ASIO인데 성능이 크게 오른 이유 (원인 정리)
+
+### 11.1 먼저 확인된 사실 (2026-02-13)
 
 - 비교 대상:
   - 기준선: `core/tests/scenario/stream/result/perf5_final_20260213_152949`
@@ -274,7 +340,7 @@ S2 throughput (msg/s):
   - 기준선 로그: `===== asio asio-s2 =====`
   - 개선 로그: `===== cppserver asio-s2 =====`
 
-### 10.2 가장 큰 변화: ASIO runner의 기본 백엔드가 native -> cppserver로 전환
+### 11.2 가장 큰 변화: ASIO runner의 기본 백엔드가 native -> cppserver로 전환
 
 핵심 변경 파일:
 
@@ -290,7 +356,7 @@ S2 throughput (msg/s):
 
 - "같은 Asio"라는 공통점은 맞지만, **실제 벤치 구현체/실행 경로가 native Asio benchmark 코드에서 CppServer 경로로 바뀐 것**이 성능 상승의 1차 원인이다.
 
-### 10.3 코드 구조 차이로 본 성능 상승 요인
+### 11.3 코드 구조 차이로 본 성능 상승 요인
 
 `cppserver` 경로가 가지는 유리한 점:
 
@@ -312,7 +378,7 @@ S2 throughput (msg/s):
 
 추가로, `cppserver` 러너는 클라이언트를 `core/tests/scenario/stream/cppserver/client_runner/Program.cs`(.NET)로 구동한다. 즉 서버뿐 아니라 클라이언트 구현도 native Asio 경로와 다르다.
 
-### 10.4 왜 `asio-s2`가 `cppserver-s2`에 거의 붙었는가
+### 11.4 왜 `asio-s2`가 `cppserver-s2`에 거의 붙었는가
 
 같은 실행에서:
 
@@ -324,7 +390,7 @@ S2 throughput (msg/s):
 
 - 이번 측정에서 `asio`는 이름만 `asio-*`일 뿐, 실제로는 `cppserver` 경로를 재사용했기 때문에 수치가 거의 수렴했다.
 
-### 10.5 zlink stream socket 적용 시 실무 포인트
+### 11.5 zlink stream socket 적용 시 실무 포인트
 
 이번 결과가 보여주는 점:
 
@@ -335,7 +401,7 @@ S2 throughput (msg/s):
   - 소켓 옵션(`reuse_port`, `sndbuf/rcvbuf`, `no_delay`) + 스레드 모델 정렬
   - 벤치 하네스 영향(동일 프로세스 혼합 경쟁) 분리
 
-### 10.6 재현 방법 (A/B)
+### 11.6 재현 방법 (A/B)
 
 native Asio 경로:
 
@@ -359,7 +425,7 @@ RUN_DOTNET=1 RUN_CPPSERVER=1 RUN_NET_ZLINK=1 \
 ./core/tests/scenario/stream/run_stream_compare.sh
 ```
 
-### 10.7 추가 리스크 / 후속 과제 (ASIO 관점)
+### 11.7 추가 리스크 / 후속 과제 (ASIO 관점)
 
 - 스케일 민감도:
   - 이번 결과는 `ccu=10000`, `inflight=30` 고정점이므로, 다른 CCU/메시지 크기/인플라이트 조합 재검증이 필요하다.

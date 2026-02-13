@@ -43,6 +43,7 @@ mkdir -p "$(dirname "${LOG_FILE}")"
 
 if [[ "${ASIO_BACKEND}" == "cppserver" ]]; then
   # Reuse the exact cppserver benchmark path while preserving ASIO scenario IDs.
+  export STACK_LABEL="asio"
   exec "${CPPSERVER_RUNNER}"
 fi
 

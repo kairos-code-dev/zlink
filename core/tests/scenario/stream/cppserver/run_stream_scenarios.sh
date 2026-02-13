@@ -27,6 +27,7 @@ IO_THREADS="${IO_THREADS:-32}"
 LATENCY_SAMPLE_RATE="${LATENCY_SAMPLE_RATE:-1}"
 BASE_PORT="${BASE_PORT:-27410}"
 SCENARIO_PREFIX="${SCENARIO_PREFIX:-}"
+STACK_LABEL="${STACK_LABEL:-cppserver}"
 
 RESULT_ROOT="${SCRIPT_DIR}/../result"
 METRICS_CSV="${METRICS_CSV:-${RESULT_ROOT}/metrics.csv}"
@@ -133,7 +134,7 @@ run_case() {
 
   {
     echo
-    echo "===== cppserver ${resolved_scenario_id} ====="
+    echo "===== ${STACK_LABEL} ${resolved_scenario_id} ====="
     echo "scenario=${scenario} transport=${transport} ccu=${CCU} size=${SIZE} inflight=${INFLIGHT} port=${port}"
   } | tee -a "${LOG_FILE}"
 

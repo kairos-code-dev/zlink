@@ -6,7 +6,6 @@
 #include "transports/tls/asio_tls_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
-#include "engine/asio/asio_stream_engine.hpp"
 #include "transports/tls/ssl_transport.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "core/io_thread.hpp"
@@ -500,18 +499,16 @@ void zlink::asio_tls_connecter_t::create_engine (fd_t fd_,
     if (!_tls_hostname.empty ())
         transport->set_hostname (_tls_hostname);
 
-    i_engine *engine = NULL;
     if (options.type == ZLINK_STREAM) {
-        engine = new (std::nothrow) asio_stream_engine_t (
-          fd_, options, endpoint_pair,
-          std::unique_ptr<i_asio_transport> (transport.release ()),
-          std::move (_ssl_context));
-    } else {
-        engine = new (std::nothrow) asio_zmp_engine_t (
-          fd_, options, endpoint_pair,
-          std::unique_ptr<i_asio_transport> (transport.release ()),
-          std::move (_ssl_context));
+        close ();
+        terminate ();
+        return;
     }
+
+    i_engine *engine = new (std::nothrow) asio_zmp_engine_t (
+      fd_, options, endpoint_pair,
+      std::unique_ptr<i_asio_transport> (transport.release ()),
+      std::move (_ssl_context));
     alloc_assert (engine);
 
     //  Attach the engine to the session

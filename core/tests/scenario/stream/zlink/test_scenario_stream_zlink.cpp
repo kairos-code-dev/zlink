@@ -22,6 +22,17 @@
 #include <thread>
 #include <vector>
 
+#if defined(ZLINK_HAVE_WINDOWS)
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 namespace {
 
 static const size_t kRoutingIdMaxSize = 256;
@@ -152,6 +163,7 @@ struct ServerCounters
 struct ClientConn
 {
     void *socket;
+    int fd;
     unsigned char routing_id[kRoutingIdMaxSize];
     size_t routing_id_size;
     int pending;
@@ -162,6 +174,7 @@ struct ClientConn
 
     ClientConn () :
         socket (NULL),
+        fd (-1),
         routing_id_size (0),
         pending (0),
         shard (0),
@@ -277,35 +290,7 @@ bool is_transport_supported (const std::string &transport, std::string &reason)
 {
     if (transport == "tcp")
         return true;
-
-    if (transport == "tls") {
-#if defined ZLINK_HAVE_TLS
-        return true;
-#else
-        reason = "tls not enabled";
-        return false;
-#endif
-    }
-
-    if (transport == "ws") {
-#if defined ZLINK_HAVE_WS
-        return true;
-#else
-        reason = "ws not enabled";
-        return false;
-#endif
-    }
-
-    if (transport == "wss") {
-#if defined ZLINK_HAVE_WSS
-        return true;
-#else
-        reason = "wss not enabled";
-        return false;
-#endif
-    }
-
-    reason = "unknown transport";
+    reason = "raw-client stream scenario supports tcp only";
     return false;
 }
 
@@ -395,6 +380,176 @@ bool configure_tls_socket (void *socket,
     }
 
     return true;
+}
+
+int set_fd_nonblocking (int fd)
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    LIBZLINK_UNUSED (fd);
+    return 0;
+#else
+    const int flags = fcntl (fd, F_GETFL, 0);
+    if (flags < 0)
+        return errno;
+    if (fcntl (fd, F_SETFL, flags | O_NONBLOCK) != 0)
+        return errno;
+    return 0;
+#endif
+}
+
+int create_tcp_client_fd (const Config &cfg, int port)
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    LIBZLINK_UNUSED (cfg);
+    LIBZLINK_UNUSED (port);
+    errno = EOPNOTSUPP;
+    return -1;
+#else
+    const int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0)
+        return -1;
+
+    if (cfg.sndbuf > 0) {
+        const int v = cfg.sndbuf;
+        setsockopt (fd, SOL_SOCKET, SO_SNDBUF, &v, sizeof (v));
+    }
+    if (cfg.rcvbuf > 0) {
+        const int v = cfg.rcvbuf;
+        setsockopt (fd, SOL_SOCKET, SO_RCVBUF, &v, sizeof (v));
+    }
+
+    sockaddr_in addr;
+    memset (&addr, 0, sizeof (addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons (static_cast<uint16_t> (port));
+    if (inet_pton (AF_INET, cfg.bind_host.c_str (), &addr.sin_addr) != 1) {
+        close (fd);
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (connect (fd, reinterpret_cast<const sockaddr *> (&addr), sizeof (addr))
+        != 0) {
+        const int err = errno;
+        close (fd);
+        errno = err;
+        return -1;
+    }
+
+    const int nodelay = 1;
+    setsockopt (fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof (nodelay));
+
+    const int rc = set_fd_nonblocking (fd);
+    if (rc != 0) {
+        close (fd);
+        errno = rc;
+        return -1;
+    }
+
+    return fd;
+#endif
+}
+
+int raw_send_all (int fd, const unsigned char *buf, size_t len)
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    LIBZLINK_UNUSED (fd);
+    LIBZLINK_UNUSED (buf);
+    LIBZLINK_UNUSED (len);
+    return EOPNOTSUPP;
+#else
+    size_t offset = 0;
+    int spin = 0;
+    while (offset < len) {
+        int flags = MSG_DONTWAIT;
+#if defined(MSG_NOSIGNAL)
+        flags |= MSG_NOSIGNAL;
+#endif
+        const ssize_t n =
+          send (fd, buf + offset, len - offset, flags);
+        if (n > 0) {
+            offset += static_cast<size_t> (n);
+            continue;
+        }
+        if (n == 0)
+            return ECONNRESET;
+
+        const int err = errno;
+        if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+    return 0;
+#endif
+}
+
+int raw_recv_all (int fd,
+                  unsigned char *buf,
+                  size_t len,
+                  int timeout_ms)
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    LIBZLINK_UNUSED (fd);
+    LIBZLINK_UNUSED (buf);
+    LIBZLINK_UNUSED (len);
+    LIBZLINK_UNUSED (timeout_ms);
+    return EOPNOTSUPP;
+#else
+    size_t offset = 0;
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (1, timeout_ms));
+
+    while (offset < len) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            return ETIMEDOUT;
+
+        const long remain_ms = static_cast<long> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ());
+        const int wait_ms = static_cast<int> (std::max<long> (1, remain_ms));
+
+        struct pollfd pfd;
+        memset (&pfd, 0, sizeof (pfd));
+        pfd.fd = fd;
+        pfd.events = POLLIN;
+
+        const int prc = poll (&pfd, 1, wait_ms);
+        if (prc < 0) {
+            if (errno == EINTR)
+                continue;
+            return errno;
+        }
+
+        if (prc == 0)
+            continue;
+
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
+            return ECONNRESET;
+
+        if ((pfd.revents & POLLIN) == 0)
+            continue;
+
+        const ssize_t n = recv (fd, buf + offset, len - offset, MSG_DONTWAIT);
+        if (n > 0) {
+            offset += static_cast<size_t> (n);
+            continue;
+        }
+
+        if (n == 0)
+            return ECONNRESET;
+
+        const int err = errno;
+        if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+            continue;
+        return err;
+    }
+
+    return 0;
+#endif
 }
 
 int send_stream_msg (void *socket,
@@ -949,7 +1104,7 @@ RecvStatus recv_stream_msg_payload_ref (void *socket,
     return recv_ok;
 }
 
-void close_socket (void *&socket)
+void close_zlink_socket (void *&socket)
 {
     if (!socket)
         return;
@@ -959,8 +1114,15 @@ void close_socket (void *&socket)
 
 void cleanup_clients (std::vector<ClientConn> &clients)
 {
-    for (size_t i = 0; i < clients.size (); ++i)
-        close_socket (clients[i].socket);
+    for (size_t i = 0; i < clients.size (); ++i) {
+        if (clients[i].fd >= 0) {
+#if !defined(ZLINK_HAVE_WINDOWS)
+            close (clients[i].fd);
+#endif
+            clients[i].fd = -1;
+        }
+        close_zlink_socket (clients[i].socket);
+    }
 }
 
 void server_loop (void *server_socket,
@@ -1071,42 +1233,54 @@ bool consume_stream_payload (ClientConn &conn,
     if (chunk_len == 0)
         return true;
 
+    conn.recv_partial.insert (conn.recv_partial.end (), chunk, chunk + chunk_len);
+
     const size_t expected_packet_size = 4U + expected_body_size;
-    if (expected_packet_size == 0 || (chunk_len % expected_packet_size) != 0)
+    if (expected_packet_size <= 4)
         return false;
 
-    if (read_u32_be (chunk) != expected_body_size)
-        return false;
+    size_t offset = 0;
+    while (conn.recv_partial.size () - offset >= 4) {
+        const unsigned char *frame = &conn.recv_partial[offset];
+        const uint32_t body_size = read_u32_be (frame);
+        if (body_size != expected_body_size)
+            return false;
 
-    const unsigned char phase = chunk[4];
-    const long packet_count = static_cast<long> (chunk_len / expected_packet_size);
+        if (conn.recv_partial.size () - offset < expected_packet_size)
+            break;
 
-    if (measure_mode && phase != 1)
-        return true;
+        const unsigned char phase = frame[4];
+        if (!measure_mode || phase == 1) {
+            if (conn.pending > 0) {
+                --conn.pending;
+                if (pending_total > 0)
+                    --pending_total;
+            } else {
+                ++gating_violation;
+            }
 
-    if (conn.pending >= packet_count) {
-        conn.pending -= static_cast<int> (packet_count);
-        pending_total -= packet_count;
-    } else {
-        const long deficit = packet_count - conn.pending;
-        pending_total -= conn.pending;
-        conn.pending = 0;
-        gating_violation += deficit;
-    }
-
-    if (phase == 1) {
-        recv_measure += packet_count;
-        if (latency_sample_rate > 0
-            && (latency_sample_rate == 1
-                || (recv_measure % latency_sample_rate) == 0)) {
-            const uint64_t sent_ns = read_u64_le (chunk + 5);
-            if (sent_ns > 0) {
-                const uint64_t now = now_ns ();
-                const uint64_t delta_ns = now > sent_ns ? now - sent_ns : 0;
-                latencies_us.push_back (static_cast<double> (delta_ns) / 1000.0);
+            if (phase == 1) {
+                ++recv_measure;
+                if (latency_sample_rate > 0
+                    && (latency_sample_rate == 1
+                        || (recv_measure % latency_sample_rate) == 0)) {
+                    const uint64_t sent_ns = read_u64_le (frame + 5);
+                    if (sent_ns > 0) {
+                        const uint64_t now = now_ns ();
+                        const uint64_t delta_ns = now > sent_ns ? now - sent_ns : 0;
+                        latencies_us.push_back (
+                          static_cast<double> (delta_ns) / 1000.0);
+                    }
+                }
             }
         }
+
+        offset += expected_packet_size;
     }
+
+    if (offset > 0)
+        conn.recv_partial.erase (conn.recv_partial.begin (),
+                                 conn.recv_partial.begin () + offset);
 
     return true;
 }
@@ -1150,79 +1324,6 @@ WaitStatus wait_for_connect_event (void *socket,
     }
 
     return wait_timeout;
-}
-
-void connect_worker (void *ctx,
-                     const Config &cfg,
-                     const std::string &endpoint,
-                     const TlsGuard &tls,
-                     std::vector<ClientConn> &clients,
-                     std::atomic<int> &next_index,
-                     std::atomic<long> &connect_success,
-                     std::atomic<long> &connect_fail,
-                     std::atomic<long> &connect_timeout,
-                     ErrorBag &errors)
-{
-    for (;;) {
-        const int idx = next_index.fetch_add (1, std::memory_order_relaxed);
-        if (idx >= cfg.ccu)
-            return;
-
-        bool done = false;
-        for (int attempt = 1; attempt <= cfg.connect_retries && !done; ++attempt) {
-            void *socket = zlink_socket (ctx, ZLINK_STREAM);
-            if (!socket) {
-                record_error (errors, zlink_errno ());
-                break;
-            }
-
-            if (!configure_stream_socket (socket, cfg, false, errors)
-                || !configure_tls_socket (socket, false, tls, errors)) {
-                close_socket (socket);
-                break;
-            }
-
-            if (zlink_connect (socket, endpoint.c_str ()) != 0) {
-                record_error (errors, zlink_errno ());
-                close_socket (socket);
-
-                if (attempt < cfg.connect_retries
-                    && cfg.connect_retry_delay_ms > 0) {
-                    std::this_thread::sleep_for (
-                      std::chrono::milliseconds (cfg.connect_retry_delay_ms));
-                }
-                continue;
-            }
-
-            unsigned char rid[kRoutingIdMaxSize];
-            size_t rid_size = 0;
-            const WaitStatus ws =
-              wait_for_connect_event (socket, rid, &rid_size,
-                                      cfg.connect_timeout_sec * 1000, errors);
-            if (ws == wait_ok) {
-                clients[idx].socket = socket;
-                clients[idx].routing_id_size = rid_size;
-                memcpy (clients[idx].routing_id, rid, rid_size);
-                clients[idx].connected = true;
-                connect_success.fetch_add (1, std::memory_order_relaxed);
-                done = true;
-                break;
-            }
-
-            close_socket (socket);
-            if (ws == wait_timeout)
-                connect_timeout.fetch_add (1, std::memory_order_relaxed);
-
-            if (attempt < cfg.connect_retries
-                && cfg.connect_retry_delay_ms > 0) {
-                std::this_thread::sleep_for (
-                  std::chrono::milliseconds (cfg.connect_retry_delay_ms));
-            }
-        }
-
-        if (!done)
-            connect_fail.fetch_add (1, std::memory_order_relaxed);
-    }
 }
 
 double percentile (std::vector<double> samples, double p)
@@ -1301,21 +1402,19 @@ bool run_s0 (const Config &cfg, ResultRow &row)
     zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, max_sockets);
 
     void *server = zlink_socket (ctx, ZLINK_STREAM);
-    void *client = zlink_socket (ctx, ZLINK_STREAM);
+    int client_fd = -1;
     bool ok = false;
     const char *fail_stage = "none";
 
     do {
-        if (!server || !client) {
+        if (!server) {
             record_error (errors, zlink_errno ());
             fail_stage = "socket-create";
             break;
         }
 
         if (!configure_stream_socket (server, cfg, true, errors)
-            || !configure_stream_socket (client, cfg, false, errors)
-            || !configure_tls_socket (server, true, tls, errors)
-            || !configure_tls_socket (client, false, tls, errors)) {
+            || !configure_tls_socket (server, true, tls, errors)) {
             fail_stage = "socket-config";
             break;
         }
@@ -1327,41 +1426,39 @@ bool run_s0 (const Config &cfg, ResultRow &row)
             break;
         }
 
-        if (zlink_connect (client, endpoint.c_str ()) != 0) {
-            record_error (errors, zlink_errno ());
+        client_fd = create_tcp_client_fd (cfg, cfg.port);
+        if (client_fd < 0) {
+            record_error (errors, errno);
             fail_stage = "connect";
             break;
         }
 
         unsigned char srv_rid[kRoutingIdMaxSize];
-        unsigned char cli_rid[kRoutingIdMaxSize];
         size_t srv_rid_size = 0;
-        size_t cli_rid_size = 0;
 
         if (wait_for_connect_event (server, srv_rid, &srv_rid_size, 5000, errors)
             != wait_ok) {
             fail_stage = "wait-server-connect";
             break;
         }
-        if (wait_for_connect_event (client, cli_rid, &cli_rid_size, 5000, errors)
-            != wait_ok) {
-            fail_stage = "wait-client-connect";
-            break;
-        }
 
-        std::vector<unsigned char> payload (std::max (cfg.size, 16), 0x5A);
-        payload[0] = 2;
-        write_u64_le (&payload[1], now_ns ());
+        const size_t body_size = static_cast<size_t> (std::max (cfg.size, 9));
+        const size_t packet_size = 4U + body_size;
+        std::vector<unsigned char> body (body_size, 0x5A);
+        body[0] = 2;
+        write_u64_le (&body[1], now_ns ());
+        std::vector<unsigned char> wire (packet_size, 0x5A);
+        write_u32_be (&wire[0], static_cast<uint32_t> (body_size));
+        memcpy (&wire[4], &body[0], body_size);
 
-        if (send_stream_msg (client, cli_rid, cli_rid_size, &payload[0],
-                             payload.size ())
-            != 0) {
-            record_error (errors, zlink_errno ());
+        const int src = raw_send_all (client_fd, &wire[0], wire.size ());
+        if (src != 0) {
+            record_error (errors, src);
             fail_stage = "client-send";
             break;
         }
 
-        std::vector<unsigned char> recv_buf (payload.size () + 32);
+        std::vector<unsigned char> recv_buf (body.size () + 32);
         unsigned char recv_rid[kRoutingIdMaxSize];
         size_t recv_rid_size = 0;
         int recv_len = 0;
@@ -1387,29 +1484,38 @@ bool run_s0 (const Config &cfg, ResultRow &row)
             break;
         }
 
-        st = recv_stream_msg (client, recv_rid, sizeof (recv_rid),
-                              &recv_rid_size, recv_buf, &recv_len, 0, &err);
-        if (st != recv_ok || recv_len <= 1
-            || (recv_len == 1
-                && (recv_buf[0] == kConnectCode
-                    || recv_buf[0] == kDisconnectCode))) {
-            record_error (errors, err == 0 ? EPROTO : err);
+        unsigned char hdr[4];
+        int rrc = raw_recv_all (client_fd, hdr, sizeof (hdr), 5000);
+        if (rrc != 0) {
+            record_error (errors, rrc);
             fail_stage = "client-recv";
             break;
         }
 
-        close_socket (client);
-
-        if (wait_for_connect_event (server, recv_rid, &recv_rid_size, 5000, errors)
-            == wait_ok) {
-            // no-op: connect event is acceptable if queued
+        const size_t recv_body_size = read_u32_be (hdr);
+        if (recv_body_size == 0 || recv_body_size > (32 * 1024 * 1024)) {
+            record_error (errors, EPROTO);
+            fail_stage = "client-validate";
+            break;
+        }
+        std::vector<unsigned char> client_payload (recv_body_size, 0);
+        rrc =
+          raw_recv_all (client_fd, &client_payload[0], client_payload.size (),
+                        5000);
+        if (rrc != 0) {
+            record_error (errors, rrc);
+            fail_stage = "client-recv-body";
+            break;
         }
 
         ok = true;
     } while (false);
 
-    close_socket (client);
-    close_socket (server);
+#if !defined(ZLINK_HAVE_WINDOWS)
+    if (client_fd >= 0)
+        close (client_fd);
+#endif
+    close_zlink_socket (server);
     zlink_ctx_term (ctx);
 
     row.connect_success = ok ? 1 : 0;
@@ -1475,42 +1581,6 @@ bool run_connect_phase (const Config &cfg,
         server_contexts[static_cast<size_t> (i)] = ctx;
     }
 
-    std::vector<void *> client_contexts (static_cast<size_t> (worker_count), NULL);
-    const int client_io_threads =
-      std::max (1, cfg.io_threads / std::max (1, worker_count));
-    const int client_sockets_per_ctx =
-      std::max (2048, (cfg.ccu / std::max (1, worker_count)) * 2 + 128);
-
-    for (int i = 0; i < worker_count; ++i) {
-        void *ctx = zlink_ctx_new ();
-        if (!ctx) {
-            record_error (errors, zlink_errno ());
-            for (size_t j = 0; j < client_contexts.size (); ++j) {
-                if (client_contexts[j])
-                    zlink_ctx_term (client_contexts[j]);
-            }
-            for (size_t k = 0; k < server_contexts.size (); ++k) {
-                if (server_contexts[k])
-                    zlink_ctx_term (server_contexts[k]);
-            }
-            cleanup_tls_guard (tls);
-            return false;
-        }
-
-        zlink_ctx_set (ctx, ZLINK_IO_THREADS, client_io_threads);
-        zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, client_sockets_per_ctx);
-        client_contexts[static_cast<size_t> (i)] = ctx;
-    }
-
-    auto terminate_client_contexts = [&]() {
-        for (size_t i = 0; i < client_contexts.size (); ++i) {
-            if (client_contexts[i]) {
-                zlink_ctx_term (client_contexts[i]);
-                client_contexts[i] = NULL;
-            }
-        }
-    };
-
     auto terminate_server_contexts = [&]() {
         for (size_t i = 0; i < server_contexts.size (); ++i) {
             if (server_contexts[i]) {
@@ -1547,7 +1617,7 @@ bool run_connect_phase (const Config &cfg,
     auto cleanup_servers = [&]() {
         stop_servers ();
         for (size_t i = 0; i < servers.size (); ++i) {
-            close_socket (servers[i]->socket);
+            close_zlink_socket (servers[i]->socket);
             delete servers[i];
         }
         servers.clear ();
@@ -1563,7 +1633,6 @@ bool run_connect_phase (const Config &cfg,
         if (!state) {
             record_error (errors, ENOMEM);
             cleanup_servers ();
-            terminate_client_contexts ();
             terminate_server_contexts ();
             cleanup_tls_guard (tls);
             return false;
@@ -1576,7 +1645,6 @@ bool run_connect_phase (const Config &cfg,
             record_error (errors, zlink_errno ());
             delete state;
             cleanup_servers ();
-            terminate_client_contexts ();
             terminate_server_contexts ();
             cleanup_tls_guard (tls);
             return false;
@@ -1584,10 +1652,9 @@ bool run_connect_phase (const Config &cfg,
 
         if (!configure_stream_socket (state->socket, cfg, true, errors)
             || !configure_tls_socket (state->socket, true, tls, errors)) {
-            close_socket (state->socket);
+            close_zlink_socket (state->socket);
             delete state;
             cleanup_servers ();
-            terminate_client_contexts ();
             terminate_server_contexts ();
             cleanup_tls_guard (tls);
             return false;
@@ -1598,10 +1665,9 @@ bool run_connect_phase (const Config &cfg,
         state->endpoint = make_endpoint (shard_cfg);
         if (zlink_bind (state->socket, state->endpoint.c_str ()) != 0) {
             record_error (errors, zlink_errno ());
-            close_socket (state->socket);
+            close_zlink_socket (state->socket);
             delete state;
             cleanup_servers ();
-            terminate_client_contexts ();
             terminate_server_contexts ();
             cleanup_tls_guard (tls);
             return false;
@@ -1621,27 +1687,16 @@ bool run_connect_phase (const Config &cfg,
     long connect_timeout = 0;
     for (int idx = 0; idx < cfg.ccu; ++idx) {
         const int worker_slot = idx % worker_count;
+        const int shard = idx % server_shards;
         bool done = false;
+        bool saw_timeout = false;
         for (int attempt = 1; attempt <= cfg.connect_retries && !done; ++attempt) {
-            void *socket =
-              zlink_socket (client_contexts[static_cast<size_t> (worker_slot)],
-                            ZLINK_STREAM);
-            if (!socket) {
-                record_error (errors, zlink_errno ());
-                break;
-            }
-
-            if (!configure_stream_socket (socket, cfg, false, errors)
-                || !configure_tls_socket (socket, false, tls, errors)) {
-                close_socket (socket);
-                break;
-            }
-
-            const int shard = idx % server_shards;
-            if (zlink_connect (socket, servers[static_cast<size_t> (shard)]->endpoint.c_str ())
-                != 0) {
-                record_error (errors, zlink_errno ());
-                close_socket (socket);
+            const int fd = create_tcp_client_fd (cfg, cfg.port + shard);
+            if (fd < 0) {
+                const int err = errno;
+                if (err == ETIMEDOUT)
+                    saw_timeout = true;
+                record_error (errors, err);
                 if (attempt < cfg.connect_retries
                     && cfg.connect_retry_delay_ms > 0) {
                     std::this_thread::sleep_for (
@@ -1650,36 +1705,21 @@ bool run_connect_phase (const Config &cfg,
                 continue;
             }
 
-            unsigned char rid[kRoutingIdMaxSize];
-            size_t rid_size = 0;
-            const WaitStatus ws = wait_for_connect_event (
-              socket, rid, &rid_size, cfg.connect_timeout_sec * 1000, errors);
-            if (ws == wait_ok) {
-                clients[static_cast<size_t> (idx)].socket = socket;
-                clients[static_cast<size_t> (idx)].routing_id_size = rid_size;
-                memcpy (clients[static_cast<size_t> (idx)].routing_id, rid,
-                        rid_size);
-                clients[static_cast<size_t> (idx)].shard = shard;
-                clients[static_cast<size_t> (idx)].worker_slot = worker_slot;
-                clients[static_cast<size_t> (idx)].connected = true;
-                ++connect_success;
-                done = true;
-                break;
-            }
-
-            close_socket (socket);
-            if (ws == wait_timeout)
-                ++connect_timeout;
-
-            if (attempt < cfg.connect_retries
-                && cfg.connect_retry_delay_ms > 0) {
-                std::this_thread::sleep_for (
-                  std::chrono::milliseconds (cfg.connect_retry_delay_ms));
-            }
+            clients[static_cast<size_t> (idx)].fd = fd;
+            clients[static_cast<size_t> (idx)].shard = shard;
+            clients[static_cast<size_t> (idx)].worker_slot = worker_slot;
+            clients[static_cast<size_t> (idx)].connected = true;
+            ++connect_success;
+            done = true;
+            break;
         }
 
-        if (!done)
-            ++connect_fail;
+        if (!done) {
+            if (saw_timeout)
+                ++connect_timeout;
+            else
+                ++connect_fail;
+        }
     }
 
     row.connect_success = connect_success;
@@ -1710,7 +1750,6 @@ bool run_connect_phase (const Config &cfg,
     if (row.connect_success < cfg.ccu) {
         cleanup_clients (clients);
         cleanup_servers ();
-        terminate_client_contexts ();
         terminate_server_contexts ();
         cleanup_tls_guard (tls);
         return false;
@@ -1719,7 +1758,6 @@ bool run_connect_phase (const Config &cfg,
     if (!echo_enabled) {
         cleanup_clients (clients);
         cleanup_servers ();
-        terminate_client_contexts ();
         terminate_server_contexts ();
         cleanup_tls_guard (tls);
         return true;
@@ -1731,7 +1769,7 @@ bool run_connect_phase (const Config &cfg,
     std::vector<std::vector<ClientConn *> > worker_clients (
       static_cast<size_t> (worker_count));
     for (size_t i = 0; i < clients.size (); ++i) {
-        if (!clients[i].connected || !clients[i].socket)
+        if (!clients[i].connected || clients[i].fd < 0)
             continue;
         const int slot = clients[i].worker_slot;
         const int worker_id =
@@ -1768,7 +1806,6 @@ bool run_connect_phase (const Config &cfg,
     if (active_worker_ids.empty ()) {
         cleanup_clients (clients);
         cleanup_servers ();
-        terminate_client_contexts ();
         terminate_server_contexts ();
         cleanup_tls_guard (tls);
         return false;
@@ -1790,11 +1827,11 @@ bool run_connect_phase (const Config &cfg,
             WorkerResult &out =
               worker_results[static_cast<size_t> (worker_id)];
 
-            std::vector<zlink_pollitem_t> poll_items (worker_active.size ());
+            std::vector<struct pollfd> poll_items (worker_active.size ());
             for (size_t i = 0; i < worker_active.size (); ++i) {
-                poll_items[i].socket = worker_active[i]->socket;
-                poll_items[i].fd = 0;
-                poll_items[i].events = ZLINK_POLLIN;
+                memset (&poll_items[i], 0, sizeof (poll_items[i]));
+                poll_items[i].fd = worker_active[i]->fd;
+                poll_items[i].events = POLLIN;
                 poll_items[i].revents = 0;
             }
 
@@ -1804,6 +1841,10 @@ bool run_connect_phase (const Config &cfg,
               packet_size * static_cast<size_t> (max_batch), 0x11);
             std::vector<unsigned char> send_payload_sample (
               packet_size * static_cast<size_t> (max_batch), 0x11);
+            std::vector<unsigned char> recv_chunk (
+              std::max<size_t> (packet_size * static_cast<size_t> (max_batch) * 4,
+                                packet_size * 4),
+              0);
             for (int i = 0; i < max_batch; ++i) {
                 unsigned char *packet =
                   &send_payload_phase0[static_cast<size_t> (i) * packet_size];
@@ -1858,7 +1899,6 @@ bool run_connect_phase (const Config &cfg,
                         const int batch = std::min (window, max_batch);
 
                         const unsigned char *send_buf = NULL;
-                        bool send_buf_const = true;
                         if (phase == 1 && cfg.latency_sample_rate > 0) {
                             ++sent_measure_batches;
                             const bool sample_batch =
@@ -1871,30 +1911,24 @@ bool run_connect_phase (const Config &cfg,
                                         packet_size * static_cast<size_t> (batch));
                                 write_u64_le (&send_payload_sample[5], now_ns ());
                                 send_buf = &send_payload_sample[0];
-                                send_buf_const = false;
                             } else {
                                 send_buf = &send_payload_phase1[0];
-                                send_buf_const = true;
                             }
                         } else {
                             send_buf = &send_payload_phase0[0];
-                            send_buf_const = true;
                         }
 
-                        const int src = send_buf_const
-                                          ? send_stream_msg_const (
-                                              c->socket, c->routing_id,
-                                              c->routing_id_size, send_buf,
-                                              packet_size
-                                                * static_cast<size_t> (batch))
-                                          : send_stream_msg (
-                                              c->socket, c->routing_id,
-                                              c->routing_id_size, send_buf,
-                                              packet_size
-                                                * static_cast<size_t> (batch));
+                        const int src = raw_send_all (
+                          c->fd, send_buf,
+                          packet_size * static_cast<size_t> (batch));
                         if (src != 0) {
-                            if (src != EAGAIN)
+                            if (src != EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                                && src != EWOULDBLOCK
+#endif
+                                && src != EINTR) {
                                 record_error (errors, src);
+                            }
                             if (!send_ready_mark[idx]) {
                                 send_ready.push_back (idx);
                                 send_ready_mark[idx] = 1;
@@ -1914,11 +1948,15 @@ bool run_connect_phase (const Config &cfg,
                     }
                 }
 
-                const int prc =
-                  zlink_poll (poll_items.empty () ? NULL : &poll_items[0],
-                              poll_items.size (), poll_timeout);
+#if defined(ZLINK_HAVE_WINDOWS)
+                LIBZLINK_UNUSED (poll_timeout);
+                return;
+#else
+                const int prc = poll (poll_items.empty () ? NULL : &poll_items[0],
+                                      poll_items.size (), poll_timeout);
                 if (prc < 0) {
-                    record_error (errors, zlink_errno ());
+                    if (errno != EINTR)
+                        record_error (errors, errno);
                     return;
                 }
 
@@ -1926,48 +1964,55 @@ bool run_connect_phase (const Config &cfg,
                     return;
 
                 for (size_t i = 0; i < poll_items.size (); ++i) {
-                    if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+                    if (poll_items[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                        record_error (errors, ECONNRESET);
+                        continue;
+                    }
+                    if ((poll_items[i].revents & POLLIN) == 0)
                         continue;
                     for (;;) {
-                        int err = 0;
-                        unsigned char rid[kRoutingIdMaxSize];
-                        size_t rid_size = 0;
-                        zlink_msg_t payload_msg;
-                        const RecvStatus st = recv_stream_msg_payload_ref (
-                          worker_active[i]->socket, rid, sizeof (rid), &rid_size,
-                          &payload_msg, ZLINK_DONTWAIT, &err);
-                        if (st == recv_would_block)
-                            break;
-                        if (st == recv_error || st == recv_proto_error) {
-                            record_error (errors, err == 0 ? EPROTO : err);
+                        const ssize_t n = recv (worker_active[i]->fd, &recv_chunk[0],
+                                                recv_chunk.size (), MSG_DONTWAIT);
+                        if (n > 0) {
+                            const int pending_before = worker_active[i]->pending;
+                            if (!consume_stream_payload (
+                                  *worker_active[i], &recv_chunk[0],
+                                  static_cast<size_t> (n), body_size, measure_mode,
+                                  cfg.latency_sample_rate, pending_total,
+                                  recv_measure, gating_violation, latencies_us)) {
+                                record_error (errors, EPROTO);
+                                break;
+                            }
+
+                            if (pending_before != worker_active[i]->pending
+                                && worker_active[i]->pending < cfg.inflight
+                                && !send_ready_mark[i]) {
+                                send_ready.push_back (i);
+                                send_ready_mark[i] = 1;
+                            }
+                            continue;
+                        }
+
+                        if (n == 0) {
+                            record_error (errors, ECONNRESET);
                             break;
                         }
 
-                        const unsigned char *payload_data =
-                          static_cast<const unsigned char *> (
-                            zlink_msg_data (&payload_msg));
-                        const size_t payload_len = zlink_msg_size (&payload_msg);
-                        const int pending_before = worker_active[i]->pending;
-                        if (!consume_stream_payload (
-                              *worker_active[i], payload_data, payload_len,
-                              body_size,
-                              measure_mode, cfg.latency_sample_rate,
-                              pending_total, recv_measure, gating_violation,
-                              latencies_us)) {
-                            zlink_msg_close (&payload_msg);
-                            record_error (errors, EPROTO);
+                        const int err = errno;
+                        if (err == EINTR)
+                            continue;
+                        if (err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                            || err == EWOULDBLOCK
+#endif
+                        ) {
                             break;
                         }
-                        zlink_msg_close (&payload_msg);
-
-                        if (pending_before != worker_active[i]->pending
-                            && worker_active[i]->pending < cfg.inflight
-                            && !send_ready_mark[i]) {
-                            send_ready.push_back (i);
-                            send_ready_mark[i] = 1;
-                        }
+                        record_error (errors, err);
+                        break;
                     }
                 }
+#endif
             };
 
             auto drain_pending = [&](int timeout_sec, bool measure_mode) -> bool {
@@ -1996,8 +2041,10 @@ bool run_connect_phase (const Config &cfg,
             if (!drain_pending (cfg.drain_timeout_sec, false))
                 out.drain_timeout_count = 1;
 
-            for (size_t i = 0; i < worker_active.size (); ++i)
+            for (size_t i = 0; i < worker_active.size (); ++i) {
                 worker_active[i]->pending = 0;
+                worker_active[i]->recv_partial.clear ();
+            }
             pending_total = 0;
             sent_measure = 0;
             recv_measure = 0;
@@ -2064,7 +2111,6 @@ bool run_connect_phase (const Config &cfg,
 
     cleanup_clients (clients);
     cleanup_servers ();
-    terminate_client_contexts ();
     terminate_server_contexts ();
     cleanup_tls_guard (tls);
 
@@ -2217,7 +2263,7 @@ void print_usage (const char *prog)
 {
     printf ("Usage: %s --scenario s0|s1|s2 [options]\n", prog);
     printf ("Options:\n");
-    printf ("  --transport tcp|tls|ws|wss   (default tcp)\n");
+    printf ("  --transport tcp               (default tcp)\n");
     printf ("  --port N                      (default 27110)\n");
     printf ("  --ccu N                       (default 10000)\n");
     printf ("  --size N                      (default 1024)\n");

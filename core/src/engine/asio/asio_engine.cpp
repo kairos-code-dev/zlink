@@ -123,7 +123,7 @@ const bool asio_stream_gather_on =
 // Keep gather enabled for STREAM, but only above a practical payload size.
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
 const size_t asio_stream_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 1);
+  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 2048);
 
 }
 
@@ -543,7 +543,9 @@ void zlink::asio_engine_t::start_async_write ()
     }
 
     //  Try a synchronous write first when supported (libzlink-like path).
-    if (_transport->supports_speculative_write ()) {
+    const bool use_speculative_write =
+      _options.type == ZLINK_STREAM || _transport->supports_speculative_write ();
+    if (use_speculative_write) {
         const std::size_t bytes =
           _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
                                   _outsize);
@@ -992,7 +994,9 @@ void zlink::asio_engine_t::speculative_write ()
         return;
     }
 
-    if (!_transport->supports_speculative_write ()) {
+    const bool use_speculative_write =
+      _options.type == ZLINK_STREAM || _transport->supports_speculative_write ();
+    if (!use_speculative_write) {
         ENGINE_DBG ("speculative_write: transport prefers async");
         start_async_write ();
         return;

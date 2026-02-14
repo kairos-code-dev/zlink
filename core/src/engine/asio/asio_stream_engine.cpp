@@ -425,8 +425,6 @@ bool zlink::asio_stream_engine_t::push_one_frame (const unsigned char *data_,
         return false;
     }
 
-    _session->flush ();
-
     rc = msg.close ();
     errno_assert (rc == 0);
     return true;

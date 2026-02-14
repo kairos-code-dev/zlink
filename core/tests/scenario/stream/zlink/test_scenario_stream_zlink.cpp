@@ -459,7 +459,6 @@ int raw_send_all (int fd, const unsigned char *buf, size_t len)
     return EOPNOTSUPP;
 #else
     size_t offset = 0;
-    int spin = 0;
     while (offset < len) {
         int flags = MSG_DONTWAIT;
 #if defined(MSG_NOSIGNAL)
@@ -477,9 +476,20 @@ int raw_send_all (int fd, const unsigned char *buf, size_t len)
         const int err = errno;
         if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR)
             return err;
-        ++spin;
-        if ((spin % 64) == 0)
-            std::this_thread::yield ();
+        if (err == EINTR)
+            continue;
+
+        struct pollfd pfd;
+        memset (&pfd, 0, sizeof (pfd));
+        pfd.fd = fd;
+        pfd.events = POLLOUT;
+
+        const int prc = poll (&pfd, 1, 1);
+        if (prc < 0) {
+            if (errno == EINTR)
+                continue;
+            return errno;
+        }
     }
     return 0;
 #endif
@@ -1233,21 +1243,14 @@ bool consume_stream_payload (ClientConn &conn,
     if (chunk_len == 0)
         return true;
 
-    conn.recv_partial.insert (conn.recv_partial.end (), chunk, chunk + chunk_len);
-
     const size_t expected_packet_size = 4U + expected_body_size;
     if (expected_packet_size <= 4)
         return false;
 
-    size_t offset = 0;
-    while (conn.recv_partial.size () - offset >= 4) {
-        const unsigned char *frame = &conn.recv_partial[offset];
+    const auto process_frame = [&](const unsigned char *frame) -> bool {
         const uint32_t body_size = read_u32_be (frame);
         if (body_size != expected_body_size)
             return false;
-
-        if (conn.recv_partial.size () - offset < expected_packet_size)
-            break;
 
         const unsigned char phase = frame[4];
         if (!measure_mode || phase == 1) {
@@ -1274,13 +1277,34 @@ bool consume_stream_payload (ClientConn &conn,
                 }
             }
         }
+        return true;
+    };
 
+    size_t offset = 0;
+
+    if (!conn.recv_partial.empty ()) {
+        const size_t missing = expected_packet_size - conn.recv_partial.size ();
+        const size_t to_copy = std::min (missing, chunk_len);
+        conn.recv_partial.insert (conn.recv_partial.end (), chunk, chunk + to_copy);
+        offset += to_copy;
+
+        if (conn.recv_partial.size () < expected_packet_size)
+            return true;
+
+        if (!process_frame (&conn.recv_partial[0]))
+            return false;
+        conn.recv_partial.clear ();
+    }
+
+    while (offset + expected_packet_size <= chunk_len) {
+        if (!process_frame (chunk + offset))
+            return false;
         offset += expected_packet_size;
     }
 
-    if (offset > 0)
-        conn.recv_partial.erase (conn.recv_partial.begin (),
-                                 conn.recv_partial.begin () + offset);
+    if (offset < chunk_len) {
+        conn.recv_partial.assign (chunk + offset, chunk + chunk_len);
+    }
 
     return true;
 }
@@ -1547,13 +1571,13 @@ bool run_connect_phase (const Config &cfg,
 
     const int io_hint = std::max (1, cfg.io_threads);
     const int auto_server_shards =
-      io_hint >= 24 ? 6 : (io_hint >= 12 ? 4 : (io_hint >= 6 ? 2 : 1));
+      io_hint >= 24 ? 8 : (io_hint >= 12 ? 4 : (io_hint >= 6 ? 2 : 1));
     const int requested_server_shards =
       cfg.server_shards > 0 ? cfg.server_shards : auto_server_shards;
     const int server_shards = std::max (1, requested_server_shards);
 
     const int auto_workers =
-      io_hint >= 24 ? 4 : (io_hint >= 12 ? 3 : (io_hint >= 6 ? 2 : 1));
+      io_hint >= 24 ? 2 : (io_hint >= 12 ? 3 : (io_hint >= 6 ? 2 : 1));
     const int requested_workers =
       cfg.client_workers > 0 ? cfg.client_workers : auto_workers;
     const int worker_count = std::max (1, std::min (requested_workers, cfg.ccu));
@@ -1813,7 +1837,17 @@ bool run_connect_phase (const Config &cfg,
 
     const size_t body_size = static_cast<size_t> (std::max (cfg.size, 9));
     const size_t packet_size = 4U + body_size;
-    const int max_batch = std::max (1, std::min (cfg.send_batch, 64));
+    const int sndbuf_budget =
+      cfg.sndbuf > 0 ? std::max (1, cfg.sndbuf) : (256 * 1024);
+    const bool large_packet =
+      packet_size >= static_cast<size_t> (std::max (1, sndbuf_budget / 4));
+    const int batch_cap = large_packet
+                            ? 1
+                            : std::max (
+                                1,
+                                (sndbuf_budget * 2) / static_cast<int> (packet_size));
+    const int max_batch =
+      std::max (1, std::min (cfg.send_batch, std::min (64, batch_cap)));
     std::atomic<int> workers_ready (0);
     std::atomic<bool> workers_start (false);
     std::vector<std::thread> worker_threads;

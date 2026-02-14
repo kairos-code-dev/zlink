@@ -8,7 +8,6 @@
 #include "protocol/raw_decoder.hpp"
 #include "protocol/stream_fast_encoder.hpp"
 #include "protocol/stream_fast_decoder.hpp"
-#include "protocol/stream_fast_protocol.hpp"
 #include "utils/err.hpp"
 #include "protocol/wire.hpp"
 #include "sockets/socket_base.hpp"
@@ -104,23 +103,6 @@ bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
                                                   size_t buffer_size_,
                                                   size_t &header_size_)
 {
-    if (_options.type == ZLINK_STREAM) {
-        if (buffer_size_
-            < (4 + stream_fast_protocol::header_size))
-            return false;
-
-        put_uint32 (
-          buffer_,
-          static_cast<uint32_t> (msg_.size () + stream_fast_protocol::header_size));
-        buffer_[4] = stream_fast_protocol::version;
-        buffer_[5] = stream_fast_protocol::type_data;
-        buffer_[6] = stream_fast_protocol::magic0;
-        buffer_[7] = stream_fast_protocol::magic1;
-        put_uint32 (buffer_ + 8, msg_.get_routing_id ());
-        header_size_ = 12;
-        return true;
-    }
-
     if (buffer_size_ < 4)
         return false;
 

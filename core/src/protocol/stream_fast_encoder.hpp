@@ -18,7 +18,7 @@ class stream_fast_encoder_t ZLINK_FINAL
     void header_ready ();
     void body_ready ();
 
-    unsigned char _tmp_buf[12];
+    unsigned char _tmp_buf[4];
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_fast_encoder_t)
 };

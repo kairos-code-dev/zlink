@@ -21,8 +21,11 @@ BACKLOG="${BACKLOG:-32768}"
 HWM="${HWM:-1000000}"
 SNDBUF="${SNDBUF:-262144}"
 RCVBUF="${RCVBUF:-262144}"
-IO_THREADS="${IO_THREADS:-1}"
-LATENCY_SAMPLE_RATE="${LATENCY_SAMPLE_RATE:-1}"
+IO_THREADS="${IO_THREADS:-32}"
+SERVER_SHARDS="${SERVER_SHARDS:-0}"
+CLIENT_WORKERS="${CLIENT_WORKERS:-0}"
+SEND_BATCH="${SEND_BATCH:-30}"
+LATENCY_SAMPLE_RATE="${LATENCY_SAMPLE_RATE:-16}"
 BASE_PORT="${BASE_PORT:-27110}"
 SCENARIO_PREFIX="${SCENARIO_PREFIX:-}"
 
@@ -59,12 +62,9 @@ run_case() {
     echo "scenario=${scenario} transport=${transport} ccu=${CCU} size=${SIZE} inflight=${INFLIGHT} port=${port}"
   } | tee -a "${LOG_FILE}"
 
-  if [[ "${scenario}" == "s1" || "${scenario}" == "s2" ]]; then
-    local server_pid=""
-    "${BIN}" \
+  if ! "${BIN}" \
       --scenario "${scenario}" \
-      --scenario-id "${resolved_scenario_id}-server" \
-      --role "server" \
+      --scenario-id "${resolved_scenario_id}" \
       --transport "${transport}" \
       --port "${port}" \
       --ccu "${CCU}" \
@@ -82,65 +82,12 @@ run_case() {
       --sndbuf "${SNDBUF}" \
       --rcvbuf "${RCVBUF}" \
       --io-threads "${IO_THREADS}" \
-      --latency-sample-rate "${LATENCY_SAMPLE_RATE}" "$@" >>"${LOG_FILE}" 2>&1 &
-    server_pid=$!
-    sleep 1
-
-    if ! "${BIN}" \
-        --scenario "${scenario}" \
-        --scenario-id "${resolved_scenario_id}" \
-        --role "client" \
-        --transport "${transport}" \
-        --port "${port}" \
-        --ccu "${CCU}" \
-        --size "${SIZE}" \
-        --inflight "${INFLIGHT}" \
-        --warmup "${WARMUP}" \
-        --measure "${MEASURE}" \
-        --drain-timeout "${DRAIN_TIMEOUT}" \
-        --connect-concurrency "${CONNECT_CONCURRENCY}" \
-        --connect-timeout "${CONNECT_TIMEOUT}" \
-        --connect-retries "${CONNECT_RETRIES}" \
-        --connect-retry-delay-ms "${CONNECT_RETRY_DELAY_MS}" \
-        --backlog "${BACKLOG}" \
-        --hwm "${HWM}" \
-        --sndbuf "${SNDBUF}" \
-        --rcvbuf "${RCVBUF}" \
-        --io-threads "${IO_THREADS}" \
-        --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
-        --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
-      overall_rc=1
-    fi
-
-    if [[ -n "${server_pid}" ]] && kill -0 "${server_pid}" 2>/dev/null; then
-      kill "${server_pid}" >/dev/null 2>&1 || true
-      wait "${server_pid}" >/dev/null 2>&1 || true
-    fi
-  else
-    if ! "${BIN}" \
-        --scenario "${scenario}" \
-        --scenario-id "${resolved_scenario_id}" \
-        --transport "${transport}" \
-        --port "${port}" \
-        --ccu "${CCU}" \
-        --size "${SIZE}" \
-        --inflight "${INFLIGHT}" \
-        --warmup "${WARMUP}" \
-        --measure "${MEASURE}" \
-        --drain-timeout "${DRAIN_TIMEOUT}" \
-        --connect-concurrency "${CONNECT_CONCURRENCY}" \
-        --connect-timeout "${CONNECT_TIMEOUT}" \
-        --connect-retries "${CONNECT_RETRIES}" \
-        --connect-retry-delay-ms "${CONNECT_RETRY_DELAY_MS}" \
-        --backlog "${BACKLOG}" \
-        --hwm "${HWM}" \
-        --sndbuf "${SNDBUF}" \
-        --rcvbuf "${RCVBUF}" \
-        --io-threads "${IO_THREADS}" \
-        --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
-        --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
-      overall_rc=1
-    fi
+      --server-shards "${SERVER_SHARDS}" \
+      --client-workers "${CLIENT_WORKERS}" \
+      --send-batch "${SEND_BATCH}" \
+      --latency-sample-rate "${LATENCY_SAMPLE_RATE}" \
+      --metrics-csv "${METRICS_CSV}" "$@" 2>&1 | tee -a "${LOG_FILE}"; then
+    overall_rc=1
   fi
 }
 

@@ -5,7 +5,7 @@
 
 #include "transports/ws/asio_ws_listener.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
-#include "engine/asio/asio_raw_engine.hpp"
+#include "engine/asio/asio_stream_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
 #include "transports/ws/ws_transport.hpp"
@@ -521,7 +521,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
 #if defined ZLINK_HAVE_WSS
     if (_secure) {
         if (is_stream)
-            engine = new (std::nothrow) asio_raw_engine_t (
+            engine = new (std::nothrow) asio_stream_engine_t (
               fd_, engine_options, endpoint_pair, std::move (transport),
               std::move (ssl_context));
         else
@@ -532,7 +532,7 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
 #endif
     {
         if (is_stream)
-            engine = new (std::nothrow) asio_raw_engine_t (
+            engine = new (std::nothrow) asio_stream_engine_t (
               fd_, engine_options, endpoint_pair, std::move (transport));
         else
             engine = new (std::nothrow) asio_zmp_engine_t (

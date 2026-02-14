@@ -20,18 +20,13 @@ class stream_fast_decoder_t ZLINK_FINAL
     msg_t *msg () { return &_in_progress; }
 
   private:
-    int length_ready (unsigned char const *read_from_);
-    int stream_header_ready (unsigned char const *read_from_);
+    int header_ready (unsigned char const *read_from_);
     int payload_ready (unsigned char const *read_from_);
     int payload_size_ready (uint32_t size_, unsigned char const *read_from_);
 
     unsigned char _tmp_len[4];
-    unsigned char _stream_header[8];
     msg_t _in_progress;
     const uint32_t _max_msg_size_effective;
-    uint32_t _wire_body_size;
-    uint32_t _routing_id;
-    unsigned char _type;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_fast_decoder_t)
 };

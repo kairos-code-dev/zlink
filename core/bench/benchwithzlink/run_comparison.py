@@ -12,6 +12,7 @@ import sys
 import statistics
 import json
 import platform
+import time
 
 # Environment helpers
 IS_WINDOWS = os.name == 'nt'
@@ -156,6 +157,16 @@ def parse_env_list(name, cast_fn):
             continue
     return items or None
 
+
+def parse_env_int(name, default):
+    val = os.environ.get(name)
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
 # Settings for loop
 _env_transports = parse_env_list("BENCH_TRANSPORTS", str)
 
@@ -168,7 +179,11 @@ if not IS_WINDOWS:
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 
 def select_transports(pattern_name):
-    base = STREAM_TRANSPORTS if pattern_name in ("STREAM", "GATEWAY", "SPOT") else TRANSPORTS
+    if pattern_name == "MULTI_STREAM":
+        base = ["tcp"]
+    else:
+        base = STREAM_TRANSPORTS if pattern_name in ("STREAM", "GATEWAY",
+                                                     "SPOT") else TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -178,6 +193,47 @@ if _env_sizes:
     MSG_SIZES = _env_sizes
 else:
     MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
+
+_env_multi_stream_sizes = parse_env_list("BENCH_MULTI_STREAM_MSG_SIZES", int)
+if _env_multi_stream_sizes:
+    MULTI_STREAM_MSG_SIZES = _env_multi_stream_sizes
+elif _env_sizes:
+    MULTI_STREAM_MSG_SIZES = _env_sizes
+else:
+    MULTI_STREAM_MSG_SIZES = list(MSG_SIZES)
+
+MULTI_STREAM_SCENARIO = os.environ.get("BENCH_MULTI_STREAM_SCENARIO", "s2")
+MULTI_STREAM_CCU = parse_env_int("BENCH_MULTI_STREAM_CCU", 10000)
+MULTI_STREAM_INFLIGHT = parse_env_int("BENCH_MULTI_STREAM_INFLIGHT", 30)
+MULTI_STREAM_WARMUP = parse_env_int("BENCH_MULTI_STREAM_WARMUP", 3)
+MULTI_STREAM_MEASURE = parse_env_int("BENCH_MULTI_STREAM_MEASURE", 10)
+MULTI_STREAM_DRAIN_TIMEOUT = parse_env_int("BENCH_MULTI_STREAM_DRAIN_TIMEOUT",
+                                           10)
+MULTI_STREAM_CONNECT_CONCURRENCY = parse_env_int(
+    "BENCH_MULTI_STREAM_CONNECT_CONCURRENCY", 256)
+MULTI_STREAM_CONNECT_TIMEOUT = parse_env_int("BENCH_MULTI_STREAM_CONNECT_TIMEOUT",
+                                             10)
+MULTI_STREAM_CONNECT_RETRIES = parse_env_int("BENCH_MULTI_STREAM_CONNECT_RETRIES",
+                                             3)
+MULTI_STREAM_CONNECT_RETRY_DELAY_MS = parse_env_int(
+    "BENCH_MULTI_STREAM_CONNECT_RETRY_DELAY_MS", 100)
+MULTI_STREAM_BACKLOG = parse_env_int("BENCH_MULTI_STREAM_BACKLOG", 32768)
+MULTI_STREAM_HWM = parse_env_int("BENCH_MULTI_STREAM_HWM", 1000000)
+MULTI_STREAM_SNDBUF = parse_env_int("BENCH_MULTI_STREAM_SNDBUF", 262144)
+MULTI_STREAM_RCVBUF = parse_env_int("BENCH_MULTI_STREAM_RCVBUF", 262144)
+MULTI_STREAM_IO_THREADS = parse_env_int(
+    "BENCH_MULTI_STREAM_IO_THREADS",
+    parse_env_int("BENCH_IO_THREADS", 32))
+MULTI_STREAM_LATENCY_SAMPLE_RATE = parse_env_int(
+    "BENCH_MULTI_STREAM_LATENCY_SAMPLE_RATE", 16)
+MULTI_STREAM_BASE_PORT = parse_env_int("BENCH_MULTI_STREAM_BASE_PORT", 27110)
+MULTI_STREAM_SERVER_BOOT_SEC = parse_env_int(
+    "BENCH_MULTI_STREAM_SERVER_BOOT_SEC", 2)
+MULTI_STREAM_ATTEMPTS = parse_env_int("BENCH_MULTI_STREAM_ATTEMPTS", 2)
+
+_stream_scenario_ready = False
+_stream_scenario_bin = ""
+_multi_stream_port_counter = 0
 
 base_env = os.environ.copy()
 
@@ -195,8 +251,194 @@ def get_env_for_lib(lib_name):
             env["LD_LIBRARY_PATH"] = f"{CURRENT_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
     return env
 
+
+def derive_build_root_from_bin_dir(path):
+    build_root = path
+    base = os.path.basename(build_root)
+    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+        bin_root = os.path.dirname(build_root)
+        if os.path.basename(bin_root) == "bin":
+            build_root = os.path.dirname(bin_root)
+    elif base == "bin":
+        build_root = os.path.dirname(build_root)
+    return build_root
+
+
+def stream_scenario_bin_path():
+    build_root = derive_build_root_from_bin_dir(BUILD_DIR)
+    return os.path.join(build_root, "bin",
+                        "test_scenario_stream_zlink" + EXE_SUFFIX)
+
+
+def ensure_stream_scenario_binary():
+    global _stream_scenario_ready
+    global _stream_scenario_bin
+    if _stream_scenario_ready:
+        return _stream_scenario_bin
+
+    _stream_scenario_ready = True
+    candidate = stream_scenario_bin_path()
+    if os.path.exists(candidate):
+        _stream_scenario_bin = candidate
+        return _stream_scenario_bin
+
+    build_root = derive_build_root_from_bin_dir(BUILD_DIR)
+    try:
+        subprocess.run(
+            ["cmake", "-S", ROOT_DIR, "-B", build_root, "-DZLINK_BUILD_TESTS=ON"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        jobs = os.cpu_count() or 1
+        subprocess.run(
+            ["cmake", "--build", build_root, "--target",
+             "test_scenario_stream_zlink", "-j", str(jobs)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        _stream_scenario_bin = ""
+        return _stream_scenario_bin
+
+    candidate = stream_scenario_bin_path()
+    if os.path.exists(candidate):
+        _stream_scenario_bin = candidate
+    return _stream_scenario_bin
+
+
+def parse_scenario_result_line(line):
+    if not line.startswith("RESULT "):
+        return None
+    fields = {}
+    for token in line.strip().split()[1:]:
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        fields[key] = value
+    return fields if fields else None
+
+
+def next_multi_stream_port():
+    global _multi_stream_port_counter
+    _multi_stream_port_counter += 1
+    return MULTI_STREAM_BASE_PORT + _multi_stream_port_counter
+
+
+def run_multi_stream_test(lib_name, transport, size):
+    if transport != "tcp":
+        return []
+
+    scenario_bin = ensure_stream_scenario_binary()
+    if not scenario_bin:
+        return []
+
+    env = get_env_for_lib(lib_name)
+    port = next_multi_stream_port()
+    scenario_id = f"bench-ms-{lib_name}-{transport}-{size}-{port}"
+    base_args = [
+        "--scenario", MULTI_STREAM_SCENARIO,
+        "--transport", transport,
+        "--port", str(port),
+        "--ccu", str(max(1, MULTI_STREAM_CCU)),
+        "--size", str(max(16, int(size))),
+        "--inflight", str(max(1, MULTI_STREAM_INFLIGHT)),
+        "--warmup", str(max(1, MULTI_STREAM_WARMUP)),
+        "--measure", str(max(1, MULTI_STREAM_MEASURE)),
+        "--drain-timeout", str(max(1, MULTI_STREAM_DRAIN_TIMEOUT)),
+        "--connect-concurrency", str(max(1, MULTI_STREAM_CONNECT_CONCURRENCY)),
+        "--connect-timeout", str(max(1, MULTI_STREAM_CONNECT_TIMEOUT)),
+        "--connect-retries", str(max(1, MULTI_STREAM_CONNECT_RETRIES)),
+        "--connect-retry-delay-ms",
+        str(max(0, MULTI_STREAM_CONNECT_RETRY_DELAY_MS)),
+        "--backlog", str(max(1, MULTI_STREAM_BACKLOG)),
+        "--hwm", str(max(1, MULTI_STREAM_HWM)),
+        "--sndbuf", str(max(1, MULTI_STREAM_SNDBUF)),
+        "--rcvbuf", str(max(1, MULTI_STREAM_RCVBUF)),
+        "--io-threads", str(max(1, MULTI_STREAM_IO_THREADS)),
+        "--latency-sample-rate", str(max(0, MULTI_STREAM_LATENCY_SAMPLE_RATE)),
+    ]
+
+    server_cmd = [
+        scenario_bin,
+        "--scenario-id", scenario_id + "-server",
+        "--role", "server",
+    ] + base_args
+    client_cmd = [
+        scenario_bin,
+        "--scenario-id", scenario_id,
+        "--role", "client",
+    ] + base_args
+
+    timeout_sec = max(
+        60,
+        MULTI_STREAM_WARMUP + MULTI_STREAM_MEASURE + MULTI_STREAM_DRAIN_TIMEOUT
+        + MULTI_STREAM_CONNECT_TIMEOUT + 30,
+    )
+
+    attempts = max(1, MULTI_STREAM_ATTEMPTS)
+    for _ in range(attempts):
+        server_proc = None
+        try:
+            server_proc = subprocess.Popen(
+                server_cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            time.sleep(float(max(1, MULTI_STREAM_SERVER_BOOT_SEC)))
+            client_res = subprocess.run(
+                client_cmd,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+
+            parsed_result = None
+            for line in client_res.stdout.splitlines():
+                parsed = parse_scenario_result_line(line)
+                if parsed is not None:
+                    parsed_result = parsed
+                    break
+            if parsed_result is None:
+                continue
+
+            if parsed_result.get("pass_fail", "").upper() == "SKIP":
+                return []
+
+            throughput = float(parsed_result.get("throughput", 0.0))
+            latency = float(parsed_result.get(
+                "p95_us", parsed_result.get("p50_us", 0.0)))
+            return [
+                {"metric": "throughput", "value": throughput},
+                {"metric": "latency", "value": latency},
+            ]
+        except Exception:
+            pass
+        finally:
+            if server_proc is not None:
+                try:
+                    if server_proc.poll() is None:
+                        server_proc.terminate()
+                        server_proc.wait(timeout=5)
+                except Exception:
+                    try:
+                        if server_proc.poll() is None:
+                            server_proc.kill()
+                    except Exception:
+                        pass
+        time.sleep(0.5)
+
+    return []
+
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
+    if pattern_name == "MULTI_STREAM":
+        return run_multi_stream_test(lib_name, transport, size)
+
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
 
@@ -244,7 +486,8 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
         transports = TRANSPORTS
 
     for tr in transports:
-        sizes = MSG_SIZES
+        sizes = (MULTI_STREAM_MSG_SIZES
+                 if pattern_name == "MULTI_STREAM" else MSG_SIZES)
 
         for sz in sizes:
             print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
@@ -287,7 +530,7 @@ def parse_args():
     usage = (
         "Usage: run_comparison.py [PATTERN] [options]\n\n"
         "Compare baseline zlink (previous version) vs current zlink (new build).\n\n"
-        "Note: PATTERN=ALL includes STREAM by default.\n\n"
+        "Note: PATTERN=ALL includes STREAM and MULTI_STREAM by default.\n\n"
         "Options:\n"
         "  --refresh-baseline      Refresh baseline cache\n"
         "  --refresh-libzlink        Alias for --refresh-baseline\n"
@@ -301,6 +544,8 @@ def parse_args():
         "Env:\n"
         "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
         "  BENCH_TRANSPORTS=list  Comma-separated transports (e.g., tcp,ws,wss)\n"
+        "  BENCH_MULTI_STREAM_SCENARIO=s2\n"
+        "  BENCH_MULTI_STREAM_MSG_SIZES=64,256,1024,65536,131072,262144\n"
     )
     refresh = False
     p_req = "ALL"
@@ -365,12 +610,38 @@ def main():
     if pin_cpu:
         base_env["BENCH_TASKSET"] = "1"
 
-    # Check if any target binary exists
-    check_bin = os.path.join(BUILD_DIR, "comp_current_pair" + EXE_SUFFIX)
-    if not os.path.exists(check_bin):
-        print(f"Error: Binaries not found at {BUILD_DIR}.")
-        print("Please build the project first or pass --build-dir.")
-        return
+    comparisons = [
+        ("comp_baseline_pair", "comp_current_pair", "PAIR"),
+        ("comp_baseline_pubsub", "comp_current_pubsub", "PUBSUB"),
+        ("comp_baseline_dealer_dealer", "comp_current_dealer_dealer", "DEALER_DEALER"),
+        ("comp_baseline_dealer_router", "comp_current_dealer_router", "DEALER_ROUTER"),
+        ("comp_baseline_router_router", "comp_current_router_router", "ROUTER_ROUTER"),
+        ("comp_baseline_router_router_poll", "comp_current_router_router_poll",
+         "ROUTER_ROUTER_POLL"),
+        ("comp_baseline_stream", "comp_current_stream", "STREAM"),
+        ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
+        ("comp_baseline_spot", "comp_current_spot", "SPOT"),
+        ("multi_stream", "multi_stream", "MULTI_STREAM"),
+    ]
+
+    all_failures = []
+    if p_req == "ALL":
+        requested = None
+    else:
+        requested = {p.strip().upper() for p in p_req.split(",") if p.strip()}
+        if not requested:
+            print("Error: --pattern requires at least one value.", file=sys.stderr)
+            sys.exit(1)
+
+    needs_standard_bench = requested is None or any(
+        p != "MULTI_STREAM" for p in requested)
+
+    if needs_standard_bench:
+        check_bin = os.path.join(BUILD_DIR, "comp_current_pair" + EXE_SUFFIX)
+        if not os.path.exists(check_bin):
+            print(f"Error: Binaries not found at {BUILD_DIR}.")
+            print("Please build the project first or pass --build-dir.")
+            return
 
     cache = {}
     if not current_only:
@@ -383,32 +654,12 @@ def main():
         else:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
 
-    comparisons = [
-        ("comp_baseline_pair", "comp_current_pair", "PAIR"),
-        ("comp_baseline_pubsub", "comp_current_pubsub", "PUBSUB"),
-        ("comp_baseline_dealer_dealer", "comp_current_dealer_dealer", "DEALER_DEALER"),
-        ("comp_baseline_dealer_router", "comp_current_dealer_router", "DEALER_ROUTER"),
-        ("comp_baseline_router_router", "comp_current_router_router", "ROUTER_ROUTER"),
-        ("comp_baseline_router_router_poll", "comp_current_router_router_poll",
-         "ROUTER_ROUTER_POLL"),
-        ("comp_baseline_stream", "comp_current_stream", "STREAM"),
-        ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
-        ("comp_baseline_spot", "comp_current_spot", "SPOT"),
-    ]
-
-    all_failures = []
-    if p_req == "ALL":
-        requested = None
-    else:
-        requested = {p.strip().upper() for p in p_req.split(",") if p.strip()}
-        if not requested:
-            print("Error: --pattern requires at least one value.", file=sys.stderr)
-            sys.exit(1)
-
     missing_current = []
     missing_baseline = []
     for baseline_bin, current_bin, p_name in comparisons:
         if requested is not None and p_name not in requested:
+            continue
+        if p_name == "MULTI_STREAM":
             continue
         current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
         if not os.path.exists(current_path):
@@ -486,7 +737,8 @@ def main():
                 print(
                     f"|{'-' * (size_w + 2)}|{'-' * (metric_w + 2)}|{'-' * (val_w + 2)}|{'-' * (val_w + 2)}|{'-' * (diff_w + 2)}|"
                 )
-            sizes = MSG_SIZES
+            sizes = (MULTI_STREAM_MSG_SIZES
+                     if p_name == "MULTI_STREAM" else MSG_SIZES)
             for sz in sizes:
                 ct = c_stats.get(f"{tr}|{sz}|throughput", 0)
                 cl = c_stats.get(f"{tr}|{sz}|latency", 0)

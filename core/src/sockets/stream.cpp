@@ -7,10 +7,18 @@
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 
+#include <cstdlib>
+
 namespace
 {
 const unsigned char stream_event_connect = 0x01;
 const unsigned char stream_event_disconnect = 0x00;
+
+bool stream_single_frame_recv_enabled ()
+{
+    const char *env = getenv ("ZLINK_STREAM_SINGLE_FRAME_RECV");
+    return env && *env && *env != '0';
+}
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -75,6 +83,37 @@ int zlink::stream_t::xsend (msg_t *msg_)
 {
     if (!_more_out) {
         zlink_assert (!_current_out);
+
+        // Fast path: single-frame send with routing id attached in msg_t.
+        // This bypasses the ROUTING_ID + payload multipart requirement while
+        // keeping backward-compatible multipart behavior.
+        if (!(msg_->flags () & msg_t::more) && msg_->get_routing_id () != 0) {
+            const uint32_t routing_id = msg_->get_routing_id ();
+            const std::map<uint32_t, pipe_t *>::iterator it =
+              _out_by_id.find (routing_id);
+            if (it == _out_by_id.end ()) {
+                errno = EHOSTUNREACH;
+                return -1;
+            }
+
+            pipe_t *out = it->second;
+            if (!out->check_write ()) {
+                errno = EAGAIN;
+                return -1;
+            }
+
+            const bool ok = out->write (msg_);
+            if (likely (ok))
+                out->flush ();
+            else {
+                const int close_rc = msg_->close ();
+                errno_assert (close_rc == 0);
+            }
+
+            const int init_rc = msg_->init ();
+            errno_assert (init_rc == 0);
+            return 0;
+        }
 
         if (msg_->flags () & msg_t::more) {
             if (msg_->size () != 4) {
@@ -150,6 +189,47 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
+    if (stream_single_frame_recv_enabled ()) {
+        if (_prefetched) {
+            const int rc = msg_->move (_prefetched_msg);
+            errno_assert (rc == 0);
+            _prefetched = false;
+            _routing_id_sent = false;
+            return 0;
+        }
+
+        if (prefetch_event ()) {
+            if (_prefetched_routing_id_value != 0) {
+                const int rc = _prefetched_msg.set_routing_id (
+                  _prefetched_routing_id_value);
+                if (unlikely (rc != 0))
+                    return -1;
+            }
+            return xrecv (msg_);
+        }
+
+        pipe_t *pipe = NULL;
+        int rc = _fq.recvpipe (&_prefetched_msg, &pipe);
+        if (rc != 0)
+            return -1;
+
+        zlink_assert (pipe != NULL);
+
+        uint32_t routing_id_value = _prefetched_msg.get_routing_id ();
+        if (routing_id_value == 0)
+            routing_id_value = pipe->get_server_socket_routing_id ();
+
+        if (routing_id_value != 0 && _prefetched_msg.get_routing_id () == 0) {
+            rc = _prefetched_msg.set_routing_id (routing_id_value);
+            if (unlikely (rc != 0))
+                return -1;
+        }
+
+        _prefetched = true;
+        _routing_id_sent = false;
+        return xrecv (msg_);
+    }
+
     if (_prefetched) {
         if (!_routing_id_sent) {
             int rc = msg_->close ();
@@ -207,6 +287,42 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
 bool zlink::stream_t::xhas_in ()
 {
+    if (stream_single_frame_recv_enabled ()) {
+        if (_prefetched)
+            return true;
+
+        if (prefetch_event ()) {
+            if (_prefetched_routing_id_value != 0) {
+                const int rc = _prefetched_msg.set_routing_id (
+                  _prefetched_routing_id_value);
+                if (unlikely (rc != 0))
+                    return false;
+            }
+            return true;
+        }
+
+        pipe_t *pipe = NULL;
+        int rc = _fq.recvpipe (&_prefetched_msg, &pipe);
+        if (rc != 0)
+            return false;
+
+        zlink_assert (pipe != NULL);
+
+        uint32_t routing_id_value = _prefetched_msg.get_routing_id ();
+        if (routing_id_value == 0)
+            routing_id_value = pipe->get_server_socket_routing_id ();
+
+        if (routing_id_value != 0 && _prefetched_msg.get_routing_id () == 0) {
+            rc = _prefetched_msg.set_routing_id (routing_id_value);
+            if (unlikely (rc != 0))
+                return false;
+        }
+
+        _prefetched = true;
+        _routing_id_sent = false;
+        return true;
+    }
+
     if (_prefetched)
         return true;
 

@@ -1,23 +1,22 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "testutil.hpp"
+#include "core/msg.hpp"
+#include "sockets/socket_base.hpp"
 
-#include <boost/asio.hpp>
-#include <boost/asio/detail/socket_option.hpp>
+#include <zlink.h>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <csignal>
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <functional>
+#include <deque>
+#include <limits>
 #include <map>
-#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -25,9 +24,9 @@
 
 namespace {
 
-using boost::asio::ip::tcp;
-typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-  io_work_guard_t;
+static const size_t kRoutingIdMaxSize = 256;
+static const unsigned char kConnectCode = 0x01;
+static const unsigned char kDisconnectCode = 0x00;
 
 struct Config
 {
@@ -49,11 +48,11 @@ struct Config
     int hwm;
     int sndbuf;
     int rcvbuf;
-    int no_delay;
     int io_threads;
+    int server_shards;
+    int client_workers;
     int send_batch;
     int latency_sample_rate;
-    std::string role;
     std::string scenario_id_override;
     std::string metrics_csv;
     std::string summary_json;
@@ -77,11 +76,11 @@ struct Config
           hwm (1000000),
           sndbuf (256 * 1024),
           rcvbuf (256 * 1024),
-          no_delay (1),
           io_threads (1),
-          send_batch (1),
+          server_shards (0),
+          client_workers (0),
+          send_batch (30),
           latency_sample_rate (1),
-          role ("both"),
           scenario_id_override ("")
     {
     }
@@ -136,12 +135,67 @@ struct ErrorBag
     std::mutex lock;
 };
 
+struct ServerCounters
+{
+    std::atomic<long> connect_events;
+    std::atomic<long> disconnect_events;
+    std::atomic<long> recv_data;
+    std::atomic<long> recv_proto_errors;
+
+    ServerCounters ()
+        : connect_events (0), disconnect_events (0), recv_data (0),
+          recv_proto_errors (0)
+    {
+    }
+};
+
+struct ClientConn
+{
+    void *socket;
+    unsigned char routing_id[kRoutingIdMaxSize];
+    size_t routing_id_size;
+    int pending;
+    int shard;
+    int worker_slot;
+    bool connected;
+    std::vector<unsigned char> recv_partial;
+
+    ClientConn () :
+        socket (NULL),
+        routing_id_size (0),
+        pending (0),
+        shard (0),
+        worker_slot (0),
+        connected (false)
+    {
+        memset (routing_id, 0, sizeof (routing_id));
+    }
+};
+
+struct TlsGuard
+{
+    bool enabled;
+    tls_test_files_t files;
+
+    TlsGuard () : enabled (false) {}
+};
+
 uint64_t now_ns ()
 {
     return static_cast<uint64_t> (
       std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::steady_clock::now ().time_since_epoch ())
         .count ());
+}
+
+bool stream_single_frame_mode ()
+{
+    static int cached = -1;
+    if (cached == -1) {
+        const char *env = std::getenv ("ZLINK_STREAM_SINGLE_FRAME_RECV");
+        cached = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return cached == 1;
 }
 
 bool has_arg (int argc, char **argv, const char *key)
@@ -184,15 +238,6 @@ void record_error (ErrorBag &bag, int err)
     bag.by_errno[err] += 1;
 }
 
-bool is_ignorable_socket_error (const boost::system::error_code &ec)
-{
-    return ec == boost::asio::error::connection_aborted
-           || ec == boost::asio::error::connection_refused
-           || ec == boost::asio::error::connection_reset
-           || ec == boost::asio::error::eof
-           || ec == boost::asio::error::operation_aborted;
-}
-
 void merge_errors (std::map<int, long> &dst, const ErrorBag &src)
 {
     std::lock_guard<std::mutex> guard (
@@ -220,11 +265,964 @@ std::string errors_to_string (const std::map<int, long> &errors)
     return out;
 }
 
-std::atomic<bool> g_server_stop_requested (false);
-
-void handle_server_stop_signal (int)
+std::string make_endpoint (const Config &cfg)
 {
-    g_server_stop_requested.store (true, std::memory_order_release);
+    char endpoint[128];
+    snprintf (endpoint, sizeof (endpoint), "%s://%s:%d", cfg.transport.c_str (),
+              cfg.bind_host.c_str (), cfg.port);
+    return std::string (endpoint);
+}
+
+bool is_transport_supported (const std::string &transport, std::string &reason)
+{
+    if (transport == "tcp")
+        return true;
+
+    if (transport == "tls") {
+#if defined ZLINK_HAVE_TLS
+        return true;
+#else
+        reason = "tls not enabled";
+        return false;
+#endif
+    }
+
+    if (transport == "ws") {
+#if defined ZLINK_HAVE_WS
+        return true;
+#else
+        reason = "ws not enabled";
+        return false;
+#endif
+    }
+
+    if (transport == "wss") {
+#if defined ZLINK_HAVE_WSS
+        return true;
+#else
+        reason = "wss not enabled";
+        return false;
+#endif
+    }
+
+    reason = "unknown transport";
+    return false;
+}
+
+bool uses_tls (const std::string &transport)
+{
+    return transport == "tls" || transport == "wss";
+}
+
+bool set_int_opt (void *socket, int option, int value)
+{
+    return zlink_setsockopt (socket, option, &value, sizeof (value)) == 0;
+}
+
+bool configure_stream_socket (void *socket,
+                              const Config &cfg,
+                              bool is_server,
+                              ErrorBag &errors)
+{
+    const int linger = 0;
+    const int rcvtimeo = 1;
+    const int sndtimeo = 1;
+
+    if (!set_int_opt (socket, ZLINK_LINGER, linger)
+        || !set_int_opt (socket, ZLINK_RCVTIMEO, rcvtimeo)
+        || !set_int_opt (socket, ZLINK_SNDTIMEO, sndtimeo)
+        || !set_int_opt (socket, ZLINK_SNDHWM, cfg.hwm)
+        || !set_int_opt (socket, ZLINK_RCVHWM, cfg.hwm)
+        || !set_int_opt (socket, ZLINK_SNDBUF, cfg.sndbuf)
+        || !set_int_opt (socket, ZLINK_RCVBUF, cfg.rcvbuf)) {
+        record_error (errors, zlink_errno ());
+        return false;
+    }
+
+    if (is_server && !set_int_opt (socket, ZLINK_BACKLOG, cfg.backlog)) {
+        record_error (errors, zlink_errno ());
+        return false;
+    }
+
+    return true;
+}
+
+bool configure_tls_socket (void *socket,
+                           bool is_server,
+                           const TlsGuard &tls,
+                           ErrorBag &errors)
+{
+    if (!tls.enabled)
+        return true;
+
+    if (is_server) {
+        if (zlink_setsockopt (socket, ZLINK_TLS_CERT, tls.files.server_cert.c_str (),
+                             tls.files.server_cert.size ())
+            != 0) {
+            record_error (errors, zlink_errno ());
+            return false;
+        }
+        if (zlink_setsockopt (socket, ZLINK_TLS_KEY, tls.files.server_key.c_str (),
+                             tls.files.server_key.size ())
+            != 0) {
+            record_error (errors, zlink_errno ());
+            return false;
+        }
+        return true;
+    }
+
+    const int trust_system = 0;
+    if (zlink_setsockopt (socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system,
+                         sizeof (trust_system))
+        != 0) {
+        record_error (errors, zlink_errno ());
+        return false;
+    }
+
+    if (zlink_setsockopt (socket, ZLINK_TLS_CA, tls.files.ca_cert.c_str (),
+                         tls.files.ca_cert.size ())
+        != 0) {
+        record_error (errors, zlink_errno ());
+        return false;
+    }
+
+    const char hostname[] = "localhost";
+    if (zlink_setsockopt (socket, ZLINK_TLS_HOSTNAME, hostname,
+                         strlen (hostname))
+        != 0) {
+        record_error (errors, zlink_errno ());
+        return false;
+    }
+
+    return true;
+}
+
+int send_stream_msg (void *socket,
+                     const unsigned char *routing_id,
+                     size_t routing_id_size,
+                     const unsigned char *payload,
+                     size_t payload_size)
+{
+    if (routing_id && routing_id_size == 4) {
+        zlink::socket_base_t *stream_socket =
+          static_cast<zlink::socket_base_t *> (socket);
+        if (!stream_socket || !stream_socket->check_tag ())
+            return EFAULT;
+
+        const uint32_t rid =
+          (static_cast<uint32_t> (routing_id[0]) << 24)
+          | (static_cast<uint32_t> (routing_id[1]) << 16)
+          | (static_cast<uint32_t> (routing_id[2]) << 8)
+          | static_cast<uint32_t> (routing_id[3]);
+
+        zlink::msg_t msg;
+        if (msg.init_buffer (payload, payload_size) != 0)
+            return errno;
+
+        if (msg.set_routing_id (rid) != 0) {
+            const int err = errno;
+            msg.close ();
+            return err;
+        }
+
+        int spin = 0;
+        while (stream_socket->send (&msg, ZLINK_DONTWAIT) < 0) {
+            const int err = errno;
+            if (err != EAGAIN && err != EINTR) {
+                msg.close ();
+                return err;
+            }
+            ++spin;
+            if ((spin % 64) == 0)
+                std::this_thread::yield ();
+        }
+
+        msg.close ();
+        return 0;
+    }
+
+    int spin = 0;
+    if (!routing_id || routing_id_size == 0 || routing_id_size > kRoutingIdMaxSize)
+        return EINVAL;
+
+    while (zlink_send (socket, routing_id, routing_id_size,
+                       ZLINK_SNDMORE | ZLINK_DONTWAIT)
+           < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    spin = 0;
+    while (zlink_send (socket, payload, payload_size, ZLINK_DONTWAIT) < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    return 0;
+}
+
+int send_stream_msg_const (void *socket,
+                           const unsigned char *routing_id,
+                           size_t routing_id_size,
+                           const unsigned char *payload,
+                           size_t payload_size)
+{
+    if (routing_id && routing_id_size == 4) {
+        zlink::socket_base_t *stream_socket =
+          static_cast<zlink::socket_base_t *> (socket);
+        if (!stream_socket || !stream_socket->check_tag ())
+            return EFAULT;
+
+        const uint32_t rid =
+          (static_cast<uint32_t> (routing_id[0]) << 24)
+          | (static_cast<uint32_t> (routing_id[1]) << 16)
+          | (static_cast<uint32_t> (routing_id[2]) << 8)
+          | static_cast<uint32_t> (routing_id[3]);
+
+        zlink::msg_t msg;
+        if (msg.init_data (const_cast<unsigned char *> (payload), payload_size,
+                           NULL, NULL)
+            != 0) {
+            return errno;
+        }
+
+        if (msg.set_routing_id (rid) != 0) {
+            const int err = errno;
+            msg.close ();
+            return err;
+        }
+
+        int spin = 0;
+        while (stream_socket->send (&msg, ZLINK_DONTWAIT) < 0) {
+            const int err = errno;
+            if (err != EAGAIN && err != EINTR) {
+                msg.close ();
+                return err;
+            }
+            ++spin;
+            if ((spin % 64) == 0)
+                std::this_thread::yield ();
+        }
+
+        msg.close ();
+        return 0;
+    }
+
+    int spin = 0;
+    if (!routing_id || routing_id_size == 0 || routing_id_size > kRoutingIdMaxSize)
+        return EINVAL;
+
+    while (zlink_send (socket, routing_id, routing_id_size,
+                       ZLINK_SNDMORE | ZLINK_DONTWAIT)
+           < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    spin = 0;
+    while (zlink_send_const (socket, payload, payload_size, ZLINK_DONTWAIT) < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    return 0;
+}
+
+int send_stream_msg_ref (void *socket,
+                         zlink_msg_t *routing_id_msg,
+                         zlink_msg_t *payload_msg)
+{
+    if (!routing_id_msg || !payload_msg)
+        return EINVAL;
+
+    if (zlink_msg_size (routing_id_msg) == 4) {
+        const unsigned char *routing_id =
+          static_cast<const unsigned char *> (zlink_msg_data (routing_id_msg));
+        const uint32_t rid =
+          (static_cast<uint32_t> (routing_id[0]) << 24)
+          | (static_cast<uint32_t> (routing_id[1]) << 16)
+          | (static_cast<uint32_t> (routing_id[2]) << 8)
+          | static_cast<uint32_t> (routing_id[3]);
+
+        zlink::msg_t *payload = reinterpret_cast<zlink::msg_t *> (payload_msg);
+        if (payload->set_routing_id (rid) != 0)
+            return errno;
+
+        int spin = 0;
+        while (zlink_msg_send (payload_msg, socket, ZLINK_DONTWAIT) < 0) {
+            const int err = zlink_errno ();
+            if (err != EAGAIN && err != EINTR)
+                return err;
+            ++spin;
+            if ((spin % 64) == 0)
+                std::this_thread::yield ();
+        }
+        return 0;
+    }
+
+    int spin = 0;
+    while (zlink_msg_send (routing_id_msg, socket,
+                           ZLINK_SNDMORE | ZLINK_DONTWAIT)
+           < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    spin = 0;
+    while (zlink_msg_send (payload_msg, socket, ZLINK_DONTWAIT) < 0) {
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR)
+            return err;
+        ++spin;
+        if ((spin % 64) == 0)
+            std::this_thread::yield ();
+    }
+
+    return 0;
+}
+
+enum RecvStatus
+{
+    recv_ok,
+    recv_would_block,
+    recv_error,
+    recv_proto_error
+};
+
+enum WaitStatus
+{
+    wait_ok,
+    wait_timeout,
+    wait_error
+};
+
+RecvStatus recv_stream_msg (void *socket,
+                            unsigned char *routing_id,
+                            size_t routing_id_cap,
+                            size_t *routing_id_size,
+                            std::vector<unsigned char> &payload,
+                            int *payload_len,
+                            int flags,
+                            int *err)
+{
+    if (!routing_id || routing_id_cap == 0 || !routing_id_size) {
+        if (err)
+            *err = EINVAL;
+        return recv_error;
+    }
+
+    *routing_id_size = 0;
+    *payload_len = 0;
+    *err = 0;
+
+    if (stream_single_frame_mode ()) {
+        zlink_msg_t payload_msg;
+        if (zlink_msg_init (&payload_msg) != 0) {
+            *err = zlink_errno ();
+            return recv_error;
+        }
+
+        if (zlink_msg_recv (&payload_msg, socket, flags) < 0) {
+            *err = zlink_errno ();
+            zlink_msg_close (&payload_msg);
+            if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                || *err == EWOULDBLOCK
+#endif
+            ) {
+                return recv_would_block;
+            }
+            return recv_error;
+        }
+
+        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (&payload_msg);
+        const uint32_t rid = msg->get_routing_id ();
+        if (rid == 0) {
+            *err = EPROTO;
+            zlink_msg_close (&payload_msg);
+            return recv_proto_error;
+        }
+        if (routing_id_cap < 4) {
+            *err = EMSGSIZE;
+            zlink_msg_close (&payload_msg);
+            return recv_error;
+        }
+
+        routing_id[0] = static_cast<unsigned char> ((rid >> 24) & 0xFF);
+        routing_id[1] = static_cast<unsigned char> ((rid >> 16) & 0xFF);
+        routing_id[2] = static_cast<unsigned char> ((rid >> 8) & 0xFF);
+        routing_id[3] = static_cast<unsigned char> (rid & 0xFF);
+        *routing_id_size = 4;
+
+        const size_t n = zlink_msg_size (&payload_msg);
+        if (n > payload.size ()) {
+            *err = EMSGSIZE;
+            *payload_len = static_cast<int> (payload.size ());
+            zlink_msg_close (&payload_msg);
+            return recv_error;
+        }
+
+        if (n > 0)
+            memcpy (&payload[0], zlink_msg_data (&payload_msg), n);
+        *payload_len = static_cast<int> (n);
+        zlink_msg_close (&payload_msg);
+        return recv_ok;
+    }
+
+    const int rid_len =
+      zlink_recv (socket, routing_id, routing_id_cap, flags);
+    if (rid_len < 0) {
+        *err = zlink_errno ();
+        if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+            || *err == EWOULDBLOCK
+#endif
+        ) {
+            return recv_would_block;
+        }
+        return recv_error;
+    }
+
+    if (rid_len == 0) {
+        *err = EPROTO;
+        return recv_error;
+    }
+
+    if (rid_len > static_cast<int> (routing_id_cap)) {
+        // Message was truncated into routing_id buffer.
+        *err = EMSGSIZE;
+        return recv_error;
+    }
+    *routing_id_size = static_cast<size_t> (rid_len);
+
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0
+        || !more) {
+        *err = EPROTO;
+        return recv_proto_error;
+    }
+
+    const int n = zlink_recv (socket, &payload[0], payload.size (), 0);
+    if (n < 0) {
+        *err = zlink_errno ();
+        return recv_error;
+    }
+
+    if (n > static_cast<int> (payload.size ())) {
+        // Message was truncated into payload buffer.
+        *err = EMSGSIZE;
+        *payload_len = static_cast<int> (payload.size ());
+        return recv_error;
+    }
+
+    *payload_len = n;
+    return recv_ok;
+}
+
+RecvStatus recv_stream_msg_ref (void *socket,
+                                zlink_msg_t *routing_id_msg,
+                                zlink_msg_t *payload_msg,
+                                int flags,
+                                int *err)
+{
+    if (!socket || !routing_id_msg || !payload_msg || !err) {
+        if (err)
+            *err = EINVAL;
+        return recv_error;
+    }
+
+    *err = 0;
+    if (zlink_msg_init (routing_id_msg) != 0) {
+        *err = zlink_errno ();
+        return recv_error;
+    }
+
+    if (zlink_msg_init (payload_msg) != 0) {
+        *err = zlink_errno ();
+        zlink_msg_close (routing_id_msg);
+        return recv_error;
+    }
+
+    if (stream_single_frame_mode ()) {
+        if (zlink_msg_recv (payload_msg, socket, flags) < 0) {
+            *err = zlink_errno ();
+            zlink_msg_close (routing_id_msg);
+            zlink_msg_close (payload_msg);
+            if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                || *err == EWOULDBLOCK
+#endif
+            ) {
+                return recv_would_block;
+            }
+            return recv_error;
+        }
+
+        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (payload_msg);
+        const uint32_t rid = msg->get_routing_id ();
+        if (rid == 0) {
+            *err = EPROTO;
+            zlink_msg_close (routing_id_msg);
+            zlink_msg_close (payload_msg);
+            return recv_proto_error;
+        }
+
+        if (zlink_msg_init_size (routing_id_msg, 4) != 0) {
+            *err = zlink_errno ();
+            zlink_msg_close (routing_id_msg);
+            zlink_msg_close (payload_msg);
+            return recv_error;
+        }
+
+        unsigned char *rid_data =
+          static_cast<unsigned char *> (zlink_msg_data (routing_id_msg));
+        rid_data[0] = static_cast<unsigned char> ((rid >> 24) & 0xFF);
+        rid_data[1] = static_cast<unsigned char> ((rid >> 16) & 0xFF);
+        rid_data[2] = static_cast<unsigned char> ((rid >> 8) & 0xFF);
+        rid_data[3] = static_cast<unsigned char> (rid & 0xFF);
+        return recv_ok;
+    }
+
+    const int rid_len = zlink_msg_recv (routing_id_msg, socket, flags);
+    if (rid_len < 0) {
+        *err = zlink_errno ();
+        zlink_msg_close (routing_id_msg);
+        zlink_msg_close (payload_msg);
+        if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+            || *err == EWOULDBLOCK
+#endif
+        ) {
+            return recv_would_block;
+        }
+        return recv_error;
+    }
+
+    if (rid_len == 0) {
+        *err = EPROTO;
+        zlink_msg_close (routing_id_msg);
+        zlink_msg_close (payload_msg);
+        return recv_error;
+    }
+
+    if (!zlink_msg_more (routing_id_msg)) {
+        *err = EPROTO;
+        zlink_msg_close (routing_id_msg);
+        zlink_msg_close (payload_msg);
+        return recv_proto_error;
+    }
+
+    if (zlink_msg_recv (payload_msg, socket, flags) < 0) {
+        *err = zlink_errno ();
+        zlink_msg_close (routing_id_msg);
+        zlink_msg_close (payload_msg);
+        return recv_error;
+    }
+
+    return recv_ok;
+}
+
+RecvStatus recv_stream_msg_payload_ref (void *socket,
+                                        unsigned char *routing_id,
+                                        size_t routing_id_cap,
+                                        size_t *routing_id_size,
+                                        zlink_msg_t *payload_msg,
+                                        int flags,
+                                        int *err)
+{
+    if (!routing_id || routing_id_cap == 0 || !routing_id_size || !payload_msg
+        || !err) {
+        if (err)
+            *err = EINVAL;
+        return recv_error;
+    }
+
+    *routing_id_size = 0;
+    *err = 0;
+
+    if (stream_single_frame_mode ()) {
+        if (zlink_msg_init (payload_msg) != 0) {
+            *err = zlink_errno ();
+            return recv_error;
+        }
+
+        if (zlink_msg_recv (payload_msg, socket, flags) < 0) {
+            *err = zlink_errno ();
+            zlink_msg_close (payload_msg);
+            if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+                || *err == EWOULDBLOCK
+#endif
+            ) {
+                return recv_would_block;
+            }
+            return recv_error;
+        }
+
+        zlink::msg_t *msg = reinterpret_cast<zlink::msg_t *> (payload_msg);
+        const uint32_t rid = msg->get_routing_id ();
+        if (rid == 0) {
+            *err = EPROTO;
+            zlink_msg_close (payload_msg);
+            return recv_proto_error;
+        }
+
+        if (routing_id_cap < 4) {
+            *err = EMSGSIZE;
+            zlink_msg_close (payload_msg);
+            return recv_error;
+        }
+
+        routing_id[0] = static_cast<unsigned char> ((rid >> 24) & 0xFF);
+        routing_id[1] = static_cast<unsigned char> ((rid >> 16) & 0xFF);
+        routing_id[2] = static_cast<unsigned char> ((rid >> 8) & 0xFF);
+        routing_id[3] = static_cast<unsigned char> (rid & 0xFF);
+        *routing_id_size = 4;
+        return recv_ok;
+    }
+
+    const int rid_len =
+      zlink_recv (socket, routing_id, routing_id_cap, flags);
+    if (rid_len < 0) {
+        *err = zlink_errno ();
+        if (*err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+            || *err == EWOULDBLOCK
+#endif
+        ) {
+            return recv_would_block;
+        }
+        return recv_error;
+    }
+
+    if (rid_len == 0) {
+        *err = EPROTO;
+        return recv_error;
+    }
+
+    if (rid_len > static_cast<int> (routing_id_cap)) {
+        *err = EMSGSIZE;
+        return recv_error;
+    }
+    *routing_id_size = static_cast<size_t> (rid_len);
+
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0
+        || !more) {
+        *err = EPROTO;
+        return recv_proto_error;
+    }
+
+    if (zlink_msg_init (payload_msg) != 0) {
+        *err = zlink_errno ();
+        return recv_error;
+    }
+
+    if (zlink_msg_recv (payload_msg, socket, flags) < 0) {
+        *err = zlink_errno ();
+        zlink_msg_close (payload_msg);
+        return recv_error;
+    }
+
+    return recv_ok;
+}
+
+void close_socket (void *&socket)
+{
+    if (!socket)
+        return;
+    zlink_close (socket);
+    socket = NULL;
+}
+
+void cleanup_clients (std::vector<ClientConn> &clients)
+{
+    for (size_t i = 0; i < clients.size (); ++i)
+        close_socket (clients[i].socket);
+}
+
+void server_loop (void *server_socket,
+                  std::atomic<bool> &running,
+                  std::atomic<bool> &data_mode,
+                  bool echo_enabled,
+                  size_t payload_cap,
+                  ServerCounters &counters,
+                  ErrorBag &errors)
+{
+    LIBZLINK_UNUSED (payload_cap);
+
+    while (running.load (std::memory_order_acquire)) {
+        zlink_msg_t rid_msg;
+        zlink_msg_t payload_msg;
+        int err = 0;
+        const RecvStatus st = recv_stream_msg_ref (
+          server_socket, &rid_msg, &payload_msg, ZLINK_DONTWAIT, &err);
+        if (st == recv_would_block) {
+            std::this_thread::yield ();
+            continue;
+        }
+        if (st == recv_error) {
+            record_error (errors, err);
+            continue;
+        }
+        if (st == recv_proto_error) {
+            counters.recv_proto_errors.fetch_add (1, std::memory_order_relaxed);
+            record_error (errors, err);
+            continue;
+        }
+
+        const size_t payload_size = zlink_msg_size (&payload_msg);
+        const unsigned char *payload_data =
+          static_cast<const unsigned char *> (zlink_msg_data (&payload_msg));
+
+        if (!data_mode.load (std::memory_order_acquire) && payload_size == 1
+            && payload_data[0] == kConnectCode) {
+            counters.connect_events.fetch_add (1, std::memory_order_relaxed);
+            zlink_msg_close (&payload_msg);
+            zlink_msg_close (&rid_msg);
+            continue;
+        }
+        if (!data_mode.load (std::memory_order_acquire) && payload_size == 1
+            && payload_data[0] == kDisconnectCode) {
+            counters.disconnect_events.fetch_add (1, std::memory_order_relaxed);
+            zlink_msg_close (&payload_msg);
+            zlink_msg_close (&rid_msg);
+            continue;
+        }
+
+        counters.recv_data.fetch_add (1, std::memory_order_relaxed);
+
+        if (!echo_enabled) {
+            zlink_msg_close (&payload_msg);
+            zlink_msg_close (&rid_msg);
+            continue;
+        }
+
+        const int rc =
+          send_stream_msg_ref (server_socket, &rid_msg, &payload_msg);
+        zlink_msg_close (&payload_msg);
+        zlink_msg_close (&rid_msg);
+        if (rc != 0)
+            record_error (errors, rc);
+    }
+}
+
+void write_u64_le (unsigned char *p, uint64_t v)
+{
+    memcpy (p, &v, sizeof (v));
+}
+
+uint64_t read_u64_le (const unsigned char *p)
+{
+    uint64_t v = 0;
+    memcpy (&v, p, sizeof (v));
+    return v;
+}
+
+void write_u32_be (unsigned char *p, uint32_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 24) & 0xFF);
+    p[1] = static_cast<unsigned char> ((v >> 16) & 0xFF);
+    p[2] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[3] = static_cast<unsigned char> (v & 0xFF);
+}
+
+uint32_t read_u32_be (const unsigned char *p)
+{
+    return (static_cast<uint32_t> (p[0]) << 24)
+           | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8)
+           | static_cast<uint32_t> (p[3]);
+}
+
+bool consume_stream_payload (ClientConn &conn,
+                             const unsigned char *chunk,
+                             size_t chunk_len,
+                             size_t expected_body_size,
+                             bool measure_mode,
+                             int latency_sample_rate,
+                             long &pending_total,
+                             long &recv_measure,
+                             long &gating_violation,
+                             std::vector<double> &latencies_us)
+{
+    if (chunk_len == 0)
+        return true;
+
+    const size_t expected_packet_size = 4U + expected_body_size;
+    if (expected_packet_size == 0 || (chunk_len % expected_packet_size) != 0)
+        return false;
+
+    if (read_u32_be (chunk) != expected_body_size)
+        return false;
+
+    const unsigned char phase = chunk[4];
+    const long packet_count = static_cast<long> (chunk_len / expected_packet_size);
+
+    if (measure_mode && phase != 1)
+        return true;
+
+    if (conn.pending >= packet_count) {
+        conn.pending -= static_cast<int> (packet_count);
+        pending_total -= packet_count;
+    } else {
+        const long deficit = packet_count - conn.pending;
+        pending_total -= conn.pending;
+        conn.pending = 0;
+        gating_violation += deficit;
+    }
+
+    if (phase == 1) {
+        recv_measure += packet_count;
+        if (latency_sample_rate > 0
+            && (latency_sample_rate == 1
+                || (recv_measure % latency_sample_rate) == 0)) {
+            const uint64_t sent_ns = read_u64_le (chunk + 5);
+            if (sent_ns > 0) {
+                const uint64_t now = now_ns ();
+                const uint64_t delta_ns = now > sent_ns ? now - sent_ns : 0;
+                latencies_us.push_back (static_cast<double> (delta_ns) / 1000.0);
+            }
+        }
+    }
+
+    return true;
+}
+
+WaitStatus wait_for_connect_event (void *socket,
+                                   unsigned char routing_id[kRoutingIdMaxSize],
+                                   size_t *routing_id_size,
+                                   int timeout_ms,
+                                   ErrorBag &errors)
+{
+    if (!routing_id_size)
+        return wait_error;
+    *routing_id_size = 0;
+
+    const auto deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
+
+    std::vector<unsigned char> payload (64);
+
+    while (std::chrono::steady_clock::now () < deadline) {
+        int payload_len = 0;
+        int err = 0;
+        size_t rid_size = 0;
+        const RecvStatus st = recv_stream_msg (socket, routing_id,
+                                               kRoutingIdMaxSize, &rid_size,
+                                               payload, &payload_len, 0, &err);
+        if (st == recv_would_block)
+            continue;
+        if (st == recv_error || st == recv_proto_error) {
+            record_error (errors, err);
+            return wait_error;
+        }
+
+        if (payload_len == 1 && payload[0] == kConnectCode) {
+            *routing_id_size = rid_size;
+            return wait_ok;
+        }
+
+        if (payload_len == 1 && payload[0] == kDisconnectCode)
+            return wait_error;
+    }
+
+    return wait_timeout;
+}
+
+void connect_worker (void *ctx,
+                     const Config &cfg,
+                     const std::string &endpoint,
+                     const TlsGuard &tls,
+                     std::vector<ClientConn> &clients,
+                     std::atomic<int> &next_index,
+                     std::atomic<long> &connect_success,
+                     std::atomic<long> &connect_fail,
+                     std::atomic<long> &connect_timeout,
+                     ErrorBag &errors)
+{
+    for (;;) {
+        const int idx = next_index.fetch_add (1, std::memory_order_relaxed);
+        if (idx >= cfg.ccu)
+            return;
+
+        bool done = false;
+        for (int attempt = 1; attempt <= cfg.connect_retries && !done; ++attempt) {
+            void *socket = zlink_socket (ctx, ZLINK_STREAM);
+            if (!socket) {
+                record_error (errors, zlink_errno ());
+                break;
+            }
+
+            if (!configure_stream_socket (socket, cfg, false, errors)
+                || !configure_tls_socket (socket, false, tls, errors)) {
+                close_socket (socket);
+                break;
+            }
+
+            if (zlink_connect (socket, endpoint.c_str ()) != 0) {
+                record_error (errors, zlink_errno ());
+                close_socket (socket);
+
+                if (attempt < cfg.connect_retries
+                    && cfg.connect_retry_delay_ms > 0) {
+                    std::this_thread::sleep_for (
+                      std::chrono::milliseconds (cfg.connect_retry_delay_ms));
+                }
+                continue;
+            }
+
+            unsigned char rid[kRoutingIdMaxSize];
+            size_t rid_size = 0;
+            const WaitStatus ws =
+              wait_for_connect_event (socket, rid, &rid_size,
+                                      cfg.connect_timeout_sec * 1000, errors);
+            if (ws == wait_ok) {
+                clients[idx].socket = socket;
+                clients[idx].routing_id_size = rid_size;
+                memcpy (clients[idx].routing_id, rid, rid_size);
+                clients[idx].connected = true;
+                connect_success.fetch_add (1, std::memory_order_relaxed);
+                done = true;
+                break;
+            }
+
+            close_socket (socket);
+            if (ws == wait_timeout)
+                connect_timeout.fetch_add (1, std::memory_order_relaxed);
+
+            if (attempt < cfg.connect_retries
+                && cfg.connect_retry_delay_ms > 0) {
+                std::this_thread::sleep_for (
+                  std::chrono::milliseconds (cfg.connect_retry_delay_ms));
+            }
+        }
+
+        if (!done)
+            connect_fail.fetch_add (1, std::memory_order_relaxed);
+    }
 }
 
 double percentile (std::vector<double> samples, double p)
@@ -239,34 +1237,6 @@ double percentile (std::vector<double> samples, double p)
     return samples[std::min (idx, samples.size () - 1)];
 }
 
-void write_u32_be (unsigned char *dst, uint32_t v)
-{
-    dst[0] = static_cast<unsigned char> ((v >> 24) & 0xFF);
-    dst[1] = static_cast<unsigned char> ((v >> 16) & 0xFF);
-    dst[2] = static_cast<unsigned char> ((v >> 8) & 0xFF);
-    dst[3] = static_cast<unsigned char> (v & 0xFF);
-}
-
-uint32_t read_u32_be (const unsigned char *src)
-{
-    return (static_cast<uint32_t> (src[0]) << 24)
-           | (static_cast<uint32_t> (src[1]) << 16)
-           | (static_cast<uint32_t> (src[2]) << 8)
-           | static_cast<uint32_t> (src[3]);
-}
-
-void write_u64_le (unsigned char *dst, uint64_t v)
-{
-    memcpy (dst, &v, sizeof (v));
-}
-
-uint64_t read_u64_le (const unsigned char *src)
-{
-    uint64_t v = 0;
-    memcpy (&v, src, sizeof (v));
-    return v;
-}
-
 void fill_common_row (ResultRow &row, const Config &cfg)
 {
     row.scenario_id =
@@ -277,828 +1247,170 @@ void fill_common_row (ResultRow &row, const Config &cfg)
     row.size = cfg.size;
 }
 
-class BenchmarkState
+bool ensure_tls_guard (const Config &cfg, TlsGuard &tls, ErrorBag &errors)
 {
-  public:
-    explicit BenchmarkState (const Config &cfg, int shard_count)
-        : _cfg (cfg),
-          _send_enabled (false),
-          _measure_enabled (false)
-    {
-        const int shards = std::max (1, shard_count);
-        _shards.reserve (static_cast<size_t> (shards));
-        for (int i = 0; i < shards; ++i) {
-            _shards.push_back (
-              std::shared_ptr<ShardCounters> (new ShardCounters ()));
-        }
-    }
-
-    void set_phase (bool send_enabled, bool measure_enabled)
-    {
-        _send_enabled.store (send_enabled, std::memory_order_release);
-        _measure_enabled.store (measure_enabled, std::memory_order_release);
-    }
-
-    bool send_enabled () const
-    {
-        return _send_enabled.load (std::memory_order_acquire);
-    }
-
-    int current_phase () const
-    {
-        return _measure_enabled.load (std::memory_order_acquire) ? 1 : 0;
-    }
-
-    void reset_measure_metrics ()
-    {
-        for (size_t i = 0; i < _shards.size (); ++i) {
-            _shards[i]->sent_measure.store (0, std::memory_order_relaxed);
-            _shards[i]->recv_measure.store (0, std::memory_order_relaxed);
-            _shards[i]->gating_violation.store (0, std::memory_order_relaxed);
-            std::lock_guard<std::mutex> guard (_shards[i]->latency_lock);
-            _shards[i]->latencies_us.clear ();
-        }
-    }
-
-    void on_sent (int phase, size_t shard)
-    {
-        ShardCounters &s = *counter_shard (shard);
-        if (phase == 1)
-            s.sent_measure.fetch_add (1, std::memory_order_relaxed);
-        s.pending_total.fetch_add (1, std::memory_order_relaxed);
-    }
-
-    void on_recv (int phase, uint64_t sent_ns, size_t shard)
-    {
-        ShardCounters &s = *counter_shard (shard);
-        const long before =
-          s.pending_total.fetch_sub (1, std::memory_order_relaxed);
-        if (before <= 0) {
-            s.gating_violation.fetch_add (1, std::memory_order_relaxed);
-        }
-
-        if (phase != 1)
-            return;
-
-        s.recv_measure.fetch_add (1, std::memory_order_relaxed);
-        if (sent_ns == 0)
-            return;
-
-        const uint64_t now = now_ns ();
-        const uint64_t delta = now >= sent_ns ? now - sent_ns : 0;
-        std::lock_guard<std::mutex> guard (s.latency_lock);
-        s.latencies_us.push_back (static_cast<double> (delta) / 1000.0);
-    }
-
-    void drop_pending (int n, size_t shard)
-    {
-        if (n <= 0)
-            return;
-        counter_shard (shard)->pending_total.fetch_sub (n, std::memory_order_relaxed);
-    }
-
-    long pending_total () const
-    {
-        long total = 0;
-        for (size_t i = 0; i < _shards.size (); ++i)
-            total += _shards[i]->pending_total.load (std::memory_order_relaxed);
-        return total;
-    }
-
-    long sent_measure () const
-    {
-        long total = 0;
-        for (size_t i = 0; i < _shards.size (); ++i)
-            total += _shards[i]->sent_measure.load (std::memory_order_relaxed);
-        return total;
-    }
-
-    long recv_measure () const
-    {
-        long total = 0;
-        for (size_t i = 0; i < _shards.size (); ++i)
-            total += _shards[i]->recv_measure.load (std::memory_order_relaxed);
-        return total;
-    }
-
-    long gating_violation () const
-    {
-        long total = 0;
-        for (size_t i = 0; i < _shards.size (); ++i)
-            total += _shards[i]->gating_violation.load (
-              std::memory_order_relaxed);
-        return total;
-    }
-
-    std::vector<double> latency_snapshot () const
-    {
-        std::vector<double> out;
-        for (size_t i = 0; i < _shards.size (); ++i) {
-            std::lock_guard<std::mutex> guard (_shards[i]->latency_lock);
-            out.insert (out.end (), _shards[i]->latencies_us.begin (),
-                        _shards[i]->latencies_us.end ());
-        }
-        return out;
-    }
-
-  private:
-    struct ShardCounters
-    {
-        std::atomic<long> pending_total;
-        std::atomic<long> sent_measure;
-        std::atomic<long> recv_measure;
-        std::atomic<long> gating_violation;
-        std::vector<double> latencies_us;
-        mutable std::mutex latency_lock;
-
-        ShardCounters ()
-            : pending_total (0),
-              sent_measure (0),
-              recv_measure (0),
-              gating_violation (0)
-        {
-        }
-    };
-
-    ShardCounters *counter_shard (size_t shard)
-    {
-        const size_t idx = shard % _shards.size ();
-        return _shards[idx].get ();
-    }
-
-    const Config &_cfg;
-    std::atomic<bool> _send_enabled;
-    std::atomic<bool> _measure_enabled;
-    std::vector<std::shared_ptr<ShardCounters> > _shards;
-};
-
-class ServerSession : public std::enable_shared_from_this<ServerSession>
-{
-  public:
-    ServerSession (tcp::socket socket,
-                   bool echo_enabled,
-                   ErrorBag &errors,
-                   size_t packet_size)
-        : _socket (std::move (socket)),
-          _echo_enabled (echo_enabled),
-          _errors (errors),
-          _closed (false),
-          _sending (false),
-          _send_flush_offset (0),
-          _packet_size (packet_size),
-          _send_limit (1 * 1024 * 1024)
-    {
-        const size_t read_cap = std::max<size_t> (64 * 1024, _packet_size * 64);
-        _read_buffer.resize (read_cap);
-        _send_main.reserve (256 * 1024);
-        _send_flush.reserve (256 * 1024);
-    }
-
-    void start () { do_read (); }
-
-    void shutdown ()
-    {
-        std::shared_ptr<ServerSession> self = shared_from_this ();
-        boost::asio::post (self->_socket.get_executor (), [self] () {
-            self->do_close ();
-        });
-    }
-
-  private:
-    void do_read ()
-    {
-        auto self = shared_from_this ();
-        _socket.async_read_some (
-          boost::asio::buffer (_read_buffer),
-          [self] (const boost::system::error_code &ec, std::size_t n) {
-              if (ec) {
-                  self->handle_error (ec);
-                  return;
-              }
-
-              if (n > 0 && self->_echo_enabled)
-                  self->queue_send (&self->_read_buffer[0], n);
-
-              self->do_read ();
-          });
-    }
-
-    void queue_send (const unsigned char *data, std::size_t size)
-    {
-        if (size == 0 || _closed)
-            return;
-
-        const bool send_required = _send_main.empty () || _send_flush.empty ();
-        if ((_send_main.size () + size) > _send_limit) {
-            record_error (_errors,
-                          static_cast<int> (
-                            boost::asio::error::no_buffer_space));
-            do_close ();
-            return;
-        }
-
-        _send_main.insert (_send_main.end (), data, data + size);
-
-        if (!send_required)
-            return;
-
-        auto self = shared_from_this ();
-        boost::asio::dispatch (self->_socket.get_executor (), [self] () {
-            self->do_write ();
-        });
-    }
-
-    void do_write ()
-    {
-        if (_sending || _closed)
-            return;
-
-        if (_send_flush.empty ()) {
-            _send_flush.swap (_send_main);
-            _send_flush_offset = 0;
-        }
-
-        if (_send_flush.empty ())
-            return;
-
-        _sending = true;
-
-        auto self = shared_from_this ();
-        _socket.async_write_some (
-          boost::asio::buffer (_send_flush.data () + _send_flush_offset,
-                               _send_flush.size () - _send_flush_offset),
-          [self] (const boost::system::error_code &ec, std::size_t size) {
-              self->_sending = false;
-              if (ec) {
-                  self->handle_error (ec);
-                  return;
-              }
-
-              if (size > 0) {
-                  self->_send_flush_offset += size;
-                  if (self->_send_flush_offset >= self->_send_flush.size ()) {
-                      self->_send_flush.clear ();
-                      self->_send_flush_offset = 0;
-                  }
-              }
-
-              self->do_write ();
-          });
-    }
-
-    void handle_error (const boost::system::error_code &ec)
-    {
-        if (is_ignorable_socket_error (ec))
-            return;
-        record_error (_errors, ec.value ());
-        do_close ();
-    }
-
-    void do_close ()
-    {
-        if (_closed)
-            return;
-        _closed = true;
-
-        boost::system::error_code ignored;
-        _socket.shutdown (tcp::socket::shutdown_both, ignored);
-        _socket.close (ignored);
-    }
-
-    tcp::socket _socket;
-    bool _echo_enabled;
-    ErrorBag &_errors;
-    bool _closed;
-    bool _sending;
-    size_t _send_flush_offset;
-    size_t _packet_size;
-    size_t _send_limit;
-
-    std::vector<unsigned char> _read_buffer;
-    std::vector<unsigned char> _send_main;
-    std::vector<unsigned char> _send_flush;
-};
-
-class EchoServer
-{
-  public:
-    EchoServer (boost::asio::io_context &accept_io,
-                std::vector<std::shared_ptr<boost::asio::io_context> > &session_ios,
-                const Config &cfg,
-                bool echo_enabled,
-                ErrorBag &errors)
-        : _accept_io (accept_io),
-          _session_ios (session_ios),
-          _cfg (cfg),
-          _acceptor (accept_io),
-          _echo_enabled (echo_enabled),
-          _errors (errors),
-          _running (false),
-          _next_session_shard (0)
-    {
-    }
-
-    bool start ()
-    {
-        if (_session_ios.empty ()) {
-            record_error (
-              _errors,
-              static_cast<int> (boost::asio::error::invalid_argument));
-            return false;
-        }
-
-        boost::system::error_code ec;
-        const boost::asio::ip::address addr =
-          boost::asio::ip::make_address (_cfg.bind_host, ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-
-        const tcp::endpoint endpoint (addr, static_cast<unsigned short> (_cfg.port));
-
-        _acceptor.open (endpoint.protocol (), ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-
-        _acceptor.set_option (tcp::acceptor::reuse_address (true), ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-
-#ifdef SO_REUSEPORT
-        typedef boost::asio::detail::socket_option::boolean<SOL_SOCKET,
-                                                            SO_REUSEPORT>
-          reuse_port_t;
-        _acceptor.set_option (reuse_port_t (true), ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-#endif
-
-        _acceptor.bind (endpoint, ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-
-        _acceptor.listen (std::max (1, _cfg.backlog), ec);
-        if (ec) {
-            record_error (_errors, ec.value ());
-            return false;
-        }
-
-        _running.store (true, std::memory_order_release);
-        do_accept ();
+    if (!uses_tls (cfg.transport))
         return true;
+
+    tls.files = make_tls_test_files ();
+    tls.enabled = true;
+
+    if (tls.files.ca_cert.empty () || tls.files.server_cert.empty ()
+        || tls.files.server_key.empty ()) {
+        record_error (errors, EINVAL);
+        return false;
     }
 
-    void stop ()
-    {
-        _running.store (false, std::memory_order_release);
-        boost::system::error_code ignored;
-        _acceptor.close (ignored);
+    return true;
+}
 
-        std::lock_guard<std::mutex> guard (_sessions_lock);
-        for (size_t i = 0; i < _sessions.size (); ++i)
-            _sessions[i]->shutdown ();
-        _sessions.clear ();
-    }
-
-  private:
-    boost::asio::io_context &next_session_io ()
-    {
-        const size_t shards = _session_ios.size ();
-        const size_t idx =
-          _next_session_shard.fetch_add (1, std::memory_order_relaxed);
-        return *_session_ios[idx % shards];
-    }
-
-    void do_accept ()
-    {
-        boost::asio::io_context &session_io = next_session_io ();
-        auto socket = std::make_shared<tcp::socket> (session_io);
-        _acceptor.async_accept (
-          *socket, [this, socket] (const boost::system::error_code &ec) {
-              if (!_running.load (std::memory_order_acquire))
-                  return;
-
-              if (ec) {
-                  if (ec != boost::asio::error::operation_aborted)
-                      record_error (_errors, ec.value ());
-              } else {
-                  boost::system::error_code sec;
-                  if (_cfg.no_delay != 0)
-                      socket->set_option (tcp::no_delay (true), sec);
-                  if (_cfg.sndbuf > 0) {
-                      socket->set_option (
-                        boost::asio::socket_base::send_buffer_size (
-                          _cfg.sndbuf),
-                        sec);
-                  }
-                  if (_cfg.rcvbuf > 0) {
-                      socket->set_option (
-                        boost::asio::socket_base::receive_buffer_size (
-                          _cfg.rcvbuf),
-                        sec);
-                  }
-
-                  std::shared_ptr<ServerSession> session (
-                    new ServerSession (std::move (*socket), _echo_enabled,
-                                       _errors,
-                                       static_cast<size_t> (
-                                         4 + std::max (9, _cfg.size))));
-
-                  {
-                      std::lock_guard<std::mutex> guard (_sessions_lock);
-                      _sessions.push_back (session);
-                  }
-                  session->start ();
-              }
-
-              if (_running.load (std::memory_order_acquire))
-                  do_accept ();
-          });
-    }
-
-    boost::asio::io_context &_accept_io;
-    std::vector<std::shared_ptr<boost::asio::io_context> > &_session_ios;
-    const Config &_cfg;
-    tcp::acceptor _acceptor;
-    bool _echo_enabled;
-    ErrorBag &_errors;
-    std::atomic<bool> _running;
-    std::atomic<size_t> _next_session_shard;
-
-    std::mutex _sessions_lock;
-    std::vector<std::shared_ptr<ServerSession> > _sessions;
-};
-
-class ClientSession : public std::enable_shared_from_this<ClientSession>
+void cleanup_tls_guard (TlsGuard &tls)
 {
-  public:
-    typedef std::function<void(bool)> connect_cb_t;
-
-    ClientSession (boost::asio::io_context &io,
-                   BenchmarkState &state,
-                   const Config &cfg,
-                   ErrorBag &errors,
-                   size_t shard_id)
-        : _socket (io),
-          _state (state),
-          _cfg (cfg),
-          _errors (errors),
-          _shard_id (shard_id),
-          _connected (false),
-          _closed (false),
-          _pending (0),
-          _sending (false),
-          _send_flush_offset (0),
-          _body_size (static_cast<size_t> (std::max (9, cfg.size))),
-          _packet_size (4 + _body_size),
-          _latency_enabled (cfg.latency_sample_rate > 0),
-          _sample_rate (std::max (1, cfg.latency_sample_rate)),
-          _sample_seq (0)
-    {
-        _packet_template.resize (_packet_size, 0x33);
-        write_u32_be (&_packet_template[0], static_cast<uint32_t> (_body_size));
-
-        _read_buffer.resize (std::max<size_t> (64 * 1024, _packet_size * 64));
-        const size_t reserve_size = std::max<size_t> (
-          256 * 1024,
-          _packet_size
-            * static_cast<size_t> (std::max (64, _cfg.inflight * 4)));
-        _send_main.reserve (reserve_size);
-        _send_flush.reserve (reserve_size);
-    }
-
-    void start_connect (const tcp::endpoint &endpoint, const connect_cb_t &cb)
-    {
-        _connect_cb = cb;
-
-        auto self = shared_from_this ();
-        _socket.async_connect (endpoint, [self] (const boost::system::error_code &ec) {
-            self->handle_connect (ec);
-        });
-    }
-
-    void kick_send ()
-    {
-        std::shared_ptr<ClientSession> self = shared_from_this ();
-        boost::asio::post (self->_socket.get_executor (), [self] () {
-            self->fill_send_window ();
-        });
-    }
-
-    void shutdown ()
-    {
-        std::shared_ptr<ClientSession> self = shared_from_this ();
-        boost::asio::post (self->_socket.get_executor (), [self] () {
-            self->do_close ();
-        });
-    }
-
-  private:
-    void handle_connect (const boost::system::error_code &ec)
-    {
-        if (ec) {
-            record_error (_errors, ec.value ());
-            if (_connect_cb)
-                _connect_cb (false);
-            return;
-        }
-
-        boost::system::error_code sec;
-        if (_cfg.no_delay != 0)
-            _socket.set_option (tcp::no_delay (true), sec);
-        if (_cfg.sndbuf > 0) {
-            _socket.set_option (
-              boost::asio::socket_base::send_buffer_size (_cfg.sndbuf), sec);
-        }
-        if (_cfg.rcvbuf > 0) {
-            _socket.set_option (
-              boost::asio::socket_base::receive_buffer_size (_cfg.rcvbuf), sec);
-        }
-
-        _connected = true;
-        if (_connect_cb)
-            _connect_cb (true);
-
-        do_read ();
-        fill_send_window ();
-    }
-
-    void do_read ()
-    {
-        if (!_connected)
-            return;
-
-        auto self = shared_from_this ();
-        _socket.async_read_some (
-          boost::asio::buffer (_read_buffer), [self] (const boost::system::error_code &ec,
-                                                      std::size_t n) {
-              if (ec) {
-                  self->handle_error (ec);
-                  return;
-              }
-
-              if (n > 0) {
-                  self->consume_received (&self->_read_buffer[0], n);
-
-                  if (self->_state.send_enabled ())
-                      self->fill_send_window ();
-              }
-
-              self->do_read ();
-          });
-    }
-
-    void consume_received (const unsigned char *data_, size_t size_)
-    {
-        if (size_ == 0)
-            return;
-
-        const unsigned char *cursor = data_;
-        size_t remaining = size_;
-
-        if (!_recv_partial.empty ()) {
-            const size_t need = _packet_size - _recv_partial.size ();
-            const size_t take = std::min (need, remaining);
-            _recv_partial.insert (_recv_partial.end (), cursor, cursor + take);
-            cursor += take;
-            remaining -= take;
-
-            if (_recv_partial.size () == _packet_size) {
-                on_packet_received (&_recv_partial[0]);
-                _recv_partial.clear ();
-            }
-        }
-
-        while (remaining >= _packet_size) {
-            on_packet_received (cursor);
-            cursor += _packet_size;
-            remaining -= _packet_size;
-        }
-
-        if (remaining > 0)
-            _recv_partial.insert (_recv_partial.end (), cursor, cursor + remaining);
-    }
-
-    void on_packet_received (const unsigned char *packet_)
-    {
-        int phase = _state.current_phase ();
-        uint64_t sent_ns = 0;
-        if (_packet_size >= (4 + 9)) {
-            phase = packet_[4];
-            sent_ns = read_u64_le (packet_ + 5);
-        }
-        if (!_latency_enabled)
-            sent_ns = 0;
-
-        if (_pending > 0)
-            _pending -= 1;
-
-        _state.on_recv (phase, sent_ns, _shard_id);
-    }
-
-    bool queue_packet ()
-    {
-        const int phase = _state.current_phase ();
-        uint64_t sent_ns = 0;
-        if (_latency_enabled && phase == 1) {
-            _sample_seq += 1;
-            if (_sample_rate <= 1 || (_sample_seq % static_cast<unsigned> (_sample_rate)) == 0)
-                sent_ns = now_ns ();
-        }
-        const size_t offset = _send_main.size ();
-        _send_main.resize (offset + _packet_size);
-
-        memcpy (&_send_main[offset], &_packet_template[0], _packet_size);
-        _send_main[offset + 4] = static_cast<unsigned char> (phase);
-        write_u64_le (&_send_main[offset + 5], sent_ns);
-
-        _state.on_sent (phase, _shard_id);
-        _pending += 1;
-        return true;
-    }
-
-    void fill_send_window ()
-    {
-        if (!_connected || !_state.send_enabled ())
-            return;
-
-        while (_pending < _cfg.inflight && _state.send_enabled ()) {
-            if (!queue_packet ())
-                break;
-        }
-
-        if (!_sending)
-            do_write ();
-    }
-
-    void do_write ()
-    {
-        if (_sending || !_connected || _closed)
-            return;
-
-        if (_send_flush.empty ()) {
-            _send_flush.swap (_send_main);
-            _send_flush_offset = 0;
-        }
-
-        if (_send_flush.empty ())
-            return;
-
-        _sending = true;
-
-        auto self = shared_from_this ();
-        _socket.async_write_some (
-          boost::asio::buffer (_send_flush.data () + _send_flush_offset,
-                               _send_flush.size () - _send_flush_offset),
-          [self] (const boost::system::error_code &ec, std::size_t size) {
-              self->_sending = false;
-              if (ec) {
-                  self->handle_error (ec);
-                  return;
-              }
-
-              if (size > 0) {
-                  self->_send_flush_offset += size;
-                  if (self->_send_flush_offset >= self->_send_flush.size ()) {
-                      self->_send_flush.clear ();
-                      self->_send_flush_offset = 0;
-                  }
-              }
-
-              self->do_write ();
-          });
-    }
-
-    void handle_error (const boost::system::error_code &ec)
-    {
-        if (is_ignorable_socket_error (ec))
-            return;
-        record_error (_errors, ec.value ());
-        do_close ();
-    }
-
-    void do_close ()
-    {
-        if (_closed)
-            return;
-
-        _closed = true;
-        _connected = false;
-
-        _state.drop_pending (_pending, _shard_id);
-        _pending = 0;
-        _send_main.clear ();
-        _send_flush.clear ();
-        _send_flush_offset = 0;
-        _recv_partial.clear ();
-
-        boost::system::error_code ignored;
-        _socket.shutdown (tcp::socket::shutdown_both, ignored);
-        _socket.close (ignored);
-    }
-
-    tcp::socket _socket;
-    BenchmarkState &_state;
-    const Config &_cfg;
-    ErrorBag &_errors;
-    size_t _shard_id;
-
-    bool _connected;
-    bool _closed;
-    int _pending;
-    bool _sending;
-    size_t _send_flush_offset;
-
-    connect_cb_t _connect_cb;
-
-    size_t _body_size;
-    size_t _packet_size;
-    bool _latency_enabled;
-    int _sample_rate;
-    unsigned _sample_seq;
-
-    std::vector<unsigned char> _packet_template;
-    std::vector<unsigned char> _read_buffer;
-    std::vector<unsigned char> _recv_partial;
-    std::vector<unsigned char> _send_main;
-    std::vector<unsigned char> _send_flush;
-};
+    if (!tls.enabled)
+        return;
+    cleanup_tls_test_files (tls.files);
+    tls.enabled = false;
+}
 
 bool run_s0 (const Config &cfg, ResultRow &row)
 {
     fill_common_row (row, cfg);
 
     ErrorBag errors;
-    boost::asio::io_context io;
+    TlsGuard tls;
 
+    if (!ensure_tls_guard (cfg, tls, errors)) {
+        row.pass_fail = "FAIL";
+        merge_errors (row.errors_by_errno, errors);
+        cleanup_tls_guard (tls);
+        return false;
+    }
+
+    void *ctx = zlink_ctx_new ();
+    if (!ctx) {
+        record_error (errors, zlink_errno ());
+        row.pass_fail = "FAIL";
+        merge_errors (row.errors_by_errno, errors);
+        cleanup_tls_guard (tls);
+        return false;
+    }
+
+    zlink_ctx_set (ctx, ZLINK_IO_THREADS, std::max (1, cfg.io_threads));
+    const int max_sockets =
+      std::max (2048, cfg.ccu * 2 + 64);
+    zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, max_sockets);
+
+    void *server = zlink_socket (ctx, ZLINK_STREAM);
+    void *client = zlink_socket (ctx, ZLINK_STREAM);
     bool ok = false;
+    const char *fail_stage = "none";
 
-    try {
-        const boost::asio::ip::address addr =
-          boost::asio::ip::make_address (cfg.bind_host);
-        tcp::acceptor acceptor (io, tcp::endpoint (addr,
-                                                   static_cast<unsigned short> (
-                                                     cfg.port)));
+    do {
+        if (!server || !client) {
+            record_error (errors, zlink_errno ());
+            fail_stage = "socket-create";
+            break;
+        }
 
-        std::thread server ([&]() {
-            try {
-                tcp::socket socket (io);
-                acceptor.accept (socket);
+        if (!configure_stream_socket (server, cfg, true, errors)
+            || !configure_stream_socket (client, cfg, false, errors)
+            || !configure_tls_socket (server, true, tls, errors)
+            || !configure_tls_socket (client, false, tls, errors)) {
+            fail_stage = "socket-config";
+            break;
+        }
 
-                std::array<unsigned char, 4> hdr;
-                boost::asio::read (socket, boost::asio::buffer (hdr));
-                const uint32_t len = read_u32_be (&hdr[0]);
+        const std::string endpoint = make_endpoint (cfg);
+        if (zlink_bind (server, endpoint.c_str ()) != 0) {
+            record_error (errors, zlink_errno ());
+            fail_stage = "bind";
+            break;
+        }
 
-                std::vector<unsigned char> body (len);
-                boost::asio::read (socket, boost::asio::buffer (body));
+        if (zlink_connect (client, endpoint.c_str ()) != 0) {
+            record_error (errors, zlink_errno ());
+            fail_stage = "connect";
+            break;
+        }
 
-                boost::asio::write (socket, boost::asio::buffer (hdr));
-                boost::asio::write (socket, boost::asio::buffer (body));
-            }
-            catch (...) {
-            }
-        });
+        unsigned char srv_rid[kRoutingIdMaxSize];
+        unsigned char cli_rid[kRoutingIdMaxSize];
+        size_t srv_rid_size = 0;
+        size_t cli_rid_size = 0;
 
-        tcp::socket client (io);
-        client.connect (tcp::endpoint (addr,
-                                       static_cast<unsigned short> (cfg.port)));
+        if (wait_for_connect_event (server, srv_rid, &srv_rid_size, 5000, errors)
+            != wait_ok) {
+            fail_stage = "wait-server-connect";
+            break;
+        }
+        if (wait_for_connect_event (client, cli_rid, &cli_rid_size, 5000, errors)
+            != wait_ok) {
+            fail_stage = "wait-client-connect";
+            break;
+        }
 
-        const size_t body_size = static_cast<size_t> (std::max (9, cfg.size));
-        std::vector<unsigned char> msg (4 + body_size, 0x44);
-        write_u32_be (&msg[0], static_cast<uint32_t> (body_size));
-        msg[4] = 1;
-        write_u64_le (&msg[5], now_ns ());
+        std::vector<unsigned char> payload (std::max (cfg.size, 16), 0x5A);
+        payload[0] = 2;
+        write_u64_le (&payload[1], now_ns ());
 
-        boost::asio::write (client, boost::asio::buffer (msg));
+        if (send_stream_msg (client, cli_rid, cli_rid_size, &payload[0],
+                             payload.size ())
+            != 0) {
+            record_error (errors, zlink_errno ());
+            fail_stage = "client-send";
+            break;
+        }
 
-        std::array<unsigned char, 4> rh;
-        boost::asio::read (client, boost::asio::buffer (rh));
-        const uint32_t rlen = read_u32_be (&rh[0]);
-        std::vector<unsigned char> rb (rlen);
-        boost::asio::read (client, boost::asio::buffer (rb));
+        std::vector<unsigned char> recv_buf (payload.size () + 32);
+        unsigned char recv_rid[kRoutingIdMaxSize];
+        size_t recv_rid_size = 0;
+        int recv_len = 0;
+        int err = 0;
 
-        if (rlen == body_size && rb[0] == 1)
-            ok = true;
+        RecvStatus st = recv_stream_msg (server, recv_rid, sizeof (recv_rid),
+                                         &recv_rid_size, recv_buf, &recv_len, 0,
+                                         &err);
+        if (st != recv_ok || recv_len <= 1
+            || (recv_len == 1
+                && (recv_buf[0] == kConnectCode
+                    || recv_buf[0] == kDisconnectCode))) {
+            record_error (errors, err == 0 ? EPROTO : err);
+            fail_stage = "server-recv";
+            break;
+        }
 
-        boost::system::error_code ignored;
-        client.shutdown (tcp::socket::shutdown_both, ignored);
-        client.close (ignored);
+        if (send_stream_msg (server, recv_rid, recv_rid_size, &recv_buf[0],
+                             static_cast<size_t> (recv_len))
+            != 0) {
+            record_error (errors, zlink_errno ());
+            fail_stage = "server-send";
+            break;
+        }
 
-        if (server.joinable ())
-            server.join ();
-    }
-    catch (const std::exception &) {
-        ok = false;
-    }
+        st = recv_stream_msg (client, recv_rid, sizeof (recv_rid),
+                              &recv_rid_size, recv_buf, &recv_len, 0, &err);
+        if (st != recv_ok || recv_len <= 1
+            || (recv_len == 1
+                && (recv_buf[0] == kConnectCode
+                    || recv_buf[0] == kDisconnectCode))) {
+            record_error (errors, err == 0 ? EPROTO : err);
+            fail_stage = "client-recv";
+            break;
+        }
+
+        close_socket (client);
+
+        if (wait_for_connect_event (server, recv_rid, &recv_rid_size, 5000, errors)
+            == wait_ok) {
+            // no-op: connect event is acceptable if queued
+        }
+
+        ok = true;
+    } while (false);
+
+    close_socket (client);
+    close_socket (server);
+    zlink_ctx_term (ctx);
 
     row.connect_success = ok ? 1 : 0;
     row.connect_fail = ok ? 0 : 1;
@@ -1106,492 +1418,706 @@ bool run_s0 (const Config &cfg, ResultRow &row)
     row.recv = ok ? 1 : 0;
     row.pass_fail = ok ? "PASS" : "FAIL";
 
+    if (!ok)
+        fprintf (stderr, "[stream-zlink-s0] fail_stage=%s\n", fail_stage);
+
     merge_errors (row.errors_by_errno, errors);
+    cleanup_tls_guard (tls);
     return ok;
 }
 
-bool run_s1_or_s2 (const Config &cfg, ResultRow &row, bool with_send)
+bool run_connect_phase (const Config &cfg,
+                        bool echo_enabled,
+                        ResultRow &row,
+                        std::vector<ClientConn> &clients,
+                        ServerCounters &server_counters,
+                        ErrorBag &errors)
 {
-    fill_common_row (row, cfg);
-
-    ErrorBag errors;
-    const int server_io_shards = std::max (1, cfg.io_threads);
-    const int client_io_shards =
-      std::max (1, std::min (server_io_shards, server_io_shards / 4));
-    BenchmarkState state (cfg, client_io_shards);
-
-    boost::asio::io_context server_accept_io;
-    std::vector<std::shared_ptr<boost::asio::io_context> > server_session_ios;
-    std::vector<std::shared_ptr<io_work_guard_t> >
-      server_session_work;
-    server_session_ios.reserve (static_cast<size_t> (server_io_shards));
-    server_session_work.reserve (static_cast<size_t> (server_io_shards));
-    for (int i = 0; i < server_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io (
-          new boost::asio::io_context ());
-        server_session_work.push_back (
-          std::shared_ptr<io_work_guard_t> (
-            new io_work_guard_t (io->get_executor ())));
-        server_session_ios.push_back (io);
-    }
-
-    std::vector<std::shared_ptr<boost::asio::io_context> > client_ios;
-    std::vector<std::shared_ptr<io_work_guard_t> > client_work;
-    client_ios.reserve (static_cast<size_t> (client_io_shards));
-    client_work.reserve (static_cast<size_t> (client_io_shards));
-    for (int i = 0; i < client_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io (
-          new boost::asio::io_context ());
-        client_work.push_back (
-          std::shared_ptr<io_work_guard_t> (
-            new io_work_guard_t (io->get_executor ())));
-        client_ios.push_back (io);
-    }
-
-    EchoServer server (
-      server_accept_io, server_session_ios, cfg, with_send, errors);
-    if (!server.start ()) {
-        row.pass_fail = "FAIL";
-        merge_errors (row.errors_by_errno, errors);
+    TlsGuard tls;
+    if (!ensure_tls_guard (cfg, tls, errors)) {
+        cleanup_tls_guard (tls);
         return false;
     }
 
-    std::thread server_accept_worker (
-      [&]() { server_accept_io.run (); });
-    std::vector<std::thread> server_session_workers;
-    server_session_workers.reserve (static_cast<size_t> (server_io_shards));
-    for (int i = 0; i < server_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io =
-          server_session_ios[static_cast<size_t> (i)];
-        server_session_workers.push_back (
-          std::thread ([io] () { io->run (); }));
-    }
+    const int io_hint = std::max (1, cfg.io_threads);
+    const int auto_server_shards =
+      io_hint >= 24 ? 6 : (io_hint >= 12 ? 4 : (io_hint >= 6 ? 2 : 1));
+    const int requested_server_shards =
+      cfg.server_shards > 0 ? cfg.server_shards : auto_server_shards;
+    const int server_shards = std::max (1, requested_server_shards);
 
-    std::vector<std::shared_ptr<ClientSession> > sessions (cfg.ccu);
+    const int auto_workers =
+      io_hint >= 24 ? 4 : (io_hint >= 12 ? 3 : (io_hint >= 6 ? 2 : 1));
+    const int requested_workers =
+      cfg.client_workers > 0 ? cfg.client_workers : auto_workers;
+    const int worker_count = std::max (1, std::min (requested_workers, cfg.ccu));
 
-    std::atomic<int> started (0);
-    std::atomic<int> completed (0);
-    std::atomic<long> connected (0);
-    std::atomic<long> failed (0);
+    std::vector<void *> server_contexts (static_cast<size_t> (server_shards), NULL);
+    const int server_io_threads =
+      std::max (1, cfg.io_threads / std::max (1, server_shards));
+    const int server_sockets_per_ctx =
+      std::max (2048, (cfg.ccu / std::max (1, server_shards)) * 2 + 128);
 
-    std::mutex wait_lock;
-    std::condition_variable wait_cv;
-
-    const boost::asio::ip::address addr =
-      boost::asio::ip::make_address (cfg.bind_host);
-    const tcp::endpoint endpoint (addr,
-                                  static_cast<unsigned short> (cfg.port));
-
-    std::function<void()> launch_one;
-    launch_one = [&]() {
-        const int idx = started.fetch_add (1, std::memory_order_relaxed);
-        if (idx >= cfg.ccu)
-            return;
-
-        boost::asio::io_context &session_io =
-          *client_ios[static_cast<size_t> (idx % client_io_shards)];
-        const size_t shard_id = static_cast<size_t> (idx % client_io_shards);
-        std::shared_ptr<ClientSession> session (
-          new ClientSession (session_io, state, cfg, errors, shard_id));
-        sessions[idx] = session;
-
-        session->start_connect (endpoint, [&, session] (bool ok) {
-            if (ok)
-                connected.fetch_add (1, std::memory_order_relaxed);
-            else
-                failed.fetch_add (1, std::memory_order_relaxed);
-
-            const int done =
-              completed.fetch_add (1, std::memory_order_relaxed) + 1;
-
-            if (started.load (std::memory_order_relaxed) < cfg.ccu) {
-                const int post_idx = started.load (std::memory_order_relaxed);
-                boost::asio::io_context &post_io =
-                  *client_ios[static_cast<size_t> (post_idx % client_io_shards)];
-                boost::asio::post (post_io, launch_one);
+    for (int i = 0; i < server_shards; ++i) {
+        void *ctx = zlink_ctx_new ();
+        if (!ctx) {
+            record_error (errors, zlink_errno ());
+            for (size_t j = 0; j < server_contexts.size (); ++j) {
+                if (server_contexts[j])
+                    zlink_ctx_term (server_contexts[j]);
             }
-
-            if (done >= cfg.ccu)
-                wait_cv.notify_one ();
-        });
-    };
-
-    const int concurrency =
-      std::max (1, std::min (cfg.connect_concurrency, cfg.ccu));
-    for (int i = 0; i < concurrency; ++i)
-        boost::asio::post (
-                           *client_ios[static_cast<size_t> (i % client_io_shards)],
-                           launch_one);
-
-    std::vector<std::thread> client_workers;
-    client_workers.reserve (static_cast<size_t> (client_io_shards));
-    for (int i = 0; i < client_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io = client_ios[static_cast<size_t> (i)];
-        client_workers.push_back (std::thread ([io] () { io->run (); }));
-    }
-
-    const auto connect_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (5, cfg.connect_timeout_sec));
-
-    {
-        std::unique_lock<std::mutex> lock (wait_lock);
-        wait_cv.wait_until (lock, connect_deadline, [&]() {
-            return completed.load (std::memory_order_relaxed) >= cfg.ccu;
-        });
-    }
-
-    row.connect_success = connected.load (std::memory_order_relaxed);
-    row.connect_fail = failed.load (std::memory_order_relaxed);
-    row.connect_timeout = cfg.ccu - completed.load (std::memory_order_relaxed);
-
-    bool ok = row.connect_success == cfg.ccu && row.connect_fail == 0
-              && row.connect_timeout == 0;
-
-    if (with_send && ok) {
-        const bool markerless_phase = cfg.latency_sample_rate == 0;
-        auto wait_for_drain = [&](long &timeout_flag) {
-            const auto deadline =
-              std::chrono::steady_clock::now ()
-              + std::chrono::seconds (std::max (1, cfg.drain_timeout_sec));
-            while (state.pending_total () > 0
-                   && std::chrono::steady_clock::now () < deadline) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (5));
-            }
-            if (state.pending_total () > 0)
-                timeout_flag = 1;
-        };
-
-        state.set_phase (true, false);
-        for (size_t i = 0; i < sessions.size (); ++i)
-            if (sessions[i])
-                sessions[i]->kick_send ();
-
-        if (cfg.warmup_sec > 0)
-            std::this_thread::sleep_for (
-              std::chrono::seconds (cfg.warmup_sec));
-
-        if (markerless_phase) {
-            long warmup_drain_timeout = 0;
-            state.set_phase (false, false);
-            wait_for_drain (warmup_drain_timeout);
-            if (warmup_drain_timeout > 0)
-                row.drain_timeout_count = 1;
+            cleanup_tls_guard (tls);
+            return false;
         }
 
-        state.reset_measure_metrics ();
-        state.set_phase (true, true);
-        for (size_t i = 0; i < sessions.size (); ++i)
-            if (sessions[i])
-                sessions[i]->kick_send ();
-
-        std::this_thread::sleep_for (
-          std::chrono::seconds (std::max (1, cfg.measure_sec)));
-
-        state.set_phase (false, markerless_phase);
-        wait_for_drain (row.drain_timeout_count);
-        if (markerless_phase)
-            state.set_phase (false, false);
-
-        row.sent = state.sent_measure ();
-        row.recv = state.recv_measure ();
-        row.incomplete_ratio =
-          row.sent > 0 ? static_cast<double> (row.sent - row.recv) / row.sent
-                       : 0.0;
-        row.throughput = cfg.measure_sec > 0
-                           ? static_cast<double> (row.recv) / cfg.measure_sec
-                           : 0.0;
-        row.gating_violation = state.gating_violation ();
-
-        const std::vector<double> lats = state.latency_snapshot ();
-        row.p50 = percentile (lats, 0.50);
-        row.p95 = percentile (lats, 0.95);
-        row.p99 = percentile (lats, 0.99);
-
-        ok = ok && row.recv > 0 && row.incomplete_ratio <= 0.01
-             && row.drain_timeout_count == 0 && row.gating_violation == 0;
+        zlink_ctx_set (ctx, ZLINK_IO_THREADS, server_io_threads);
+        zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, server_sockets_per_ctx);
+        server_contexts[static_cast<size_t> (i)] = ctx;
     }
 
-    for (size_t i = 0; i < sessions.size (); ++i) {
-        if (sessions[i])
-            sessions[i]->shutdown ();
-    }
+    std::vector<void *> client_contexts (static_cast<size_t> (worker_count), NULL);
+    const int client_io_threads =
+      std::max (1, cfg.io_threads / std::max (1, worker_count));
+    const int client_sockets_per_ctx =
+      std::max (2048, (cfg.ccu / std::max (1, worker_count)) * 2 + 128);
 
-    server.stop ();
-    client_work.clear ();
-    server_session_work.clear ();
-    for (size_t i = 0; i < client_ios.size (); ++i)
-        client_ios[i]->stop ();
-    for (size_t i = 0; i < server_session_ios.size (); ++i)
-        server_session_ios[i]->stop ();
-    server_accept_io.stop ();
-
-    for (size_t i = 0; i < client_workers.size (); ++i) {
-        if (client_workers[i].joinable ())
-            client_workers[i].join ();
-    }
-
-    for (size_t i = 0; i < server_session_workers.size (); ++i) {
-        if (server_session_workers[i].joinable ())
-            server_session_workers[i].join ();
-    }
-    if (server_accept_worker.joinable ())
-        server_accept_worker.join ();
-
-    row.pass_fail = ok ? "PASS" : "FAIL";
-    merge_errors (row.errors_by_errno, errors);
-    return ok;
-}
-
-bool run_client_only (const Config &cfg, ResultRow &row, bool with_send)
-{
-    fill_common_row (row, cfg);
-
-    ErrorBag errors;
-    const int client_io_shards = std::max (1, cfg.io_threads);
-    BenchmarkState state (cfg, client_io_shards);
-
-    std::vector<std::shared_ptr<boost::asio::io_context> > client_ios;
-    std::vector<std::shared_ptr<io_work_guard_t> > client_work;
-    client_ios.reserve (static_cast<size_t> (client_io_shards));
-    client_work.reserve (static_cast<size_t> (client_io_shards));
-    for (int i = 0; i < client_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io (
-          new boost::asio::io_context ());
-        client_work.push_back (
-          std::shared_ptr<io_work_guard_t> (
-            new io_work_guard_t (io->get_executor ())));
-        client_ios.push_back (io);
-    }
-
-    std::vector<std::shared_ptr<ClientSession> > sessions (cfg.ccu);
-
-    std::atomic<int> started (0);
-    std::atomic<int> completed (0);
-    std::atomic<long> connected (0);
-    std::atomic<long> failed (0);
-
-    std::mutex wait_lock;
-    std::condition_variable wait_cv;
-
-    const boost::asio::ip::address addr =
-      boost::asio::ip::make_address (cfg.bind_host);
-    const tcp::endpoint endpoint (addr,
-                                  static_cast<unsigned short> (cfg.port));
-
-    std::function<void()> launch_one;
-    launch_one = [&]() {
-        const int idx = started.fetch_add (1, std::memory_order_relaxed);
-        if (idx >= cfg.ccu)
-            return;
-
-        boost::asio::io_context &session_io =
-          *client_ios[static_cast<size_t> (idx % client_io_shards)];
-        const size_t shard_id = static_cast<size_t> (idx % client_io_shards);
-        std::shared_ptr<ClientSession> session (
-          new ClientSession (session_io, state, cfg, errors, shard_id));
-        sessions[idx] = session;
-
-        session->start_connect (endpoint, [&, session] (bool ok) {
-            if (ok)
-                connected.fetch_add (1, std::memory_order_relaxed);
-            else
-                failed.fetch_add (1, std::memory_order_relaxed);
-
-            const int done =
-              completed.fetch_add (1, std::memory_order_relaxed) + 1;
-
-            if (started.load (std::memory_order_relaxed) < cfg.ccu) {
-                const int post_idx = started.load (std::memory_order_relaxed);
-                boost::asio::io_context &post_io =
-                  *client_ios[static_cast<size_t> (post_idx % client_io_shards)];
-                boost::asio::post (post_io, launch_one);
+    for (int i = 0; i < worker_count; ++i) {
+        void *ctx = zlink_ctx_new ();
+        if (!ctx) {
+            record_error (errors, zlink_errno ());
+            for (size_t j = 0; j < client_contexts.size (); ++j) {
+                if (client_contexts[j])
+                    zlink_ctx_term (client_contexts[j]);
             }
-
-            if (done >= cfg.ccu)
-                wait_cv.notify_one ();
-        });
-    };
-
-    const int concurrency =
-      std::max (1, std::min (cfg.connect_concurrency, cfg.ccu));
-    for (int i = 0; i < concurrency; ++i)
-        boost::asio::post (
-          *client_ios[static_cast<size_t> (i % client_io_shards)], launch_one);
-
-    std::vector<std::thread> client_workers;
-    client_workers.reserve (static_cast<size_t> (client_io_shards));
-    for (int i = 0; i < client_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io =
-          client_ios[static_cast<size_t> (i)];
-        client_workers.push_back (std::thread ([io] () { io->run (); }));
-    }
-
-    const auto connect_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (5, cfg.connect_timeout_sec));
-
-    {
-        std::unique_lock<std::mutex> lock (wait_lock);
-        wait_cv.wait_until (lock, connect_deadline, [&]() {
-            return completed.load (std::memory_order_relaxed) >= cfg.ccu;
-        });
-    }
-
-    row.connect_success = connected.load (std::memory_order_relaxed);
-    row.connect_fail = failed.load (std::memory_order_relaxed);
-    row.connect_timeout = cfg.ccu - completed.load (std::memory_order_relaxed);
-
-    bool ok = row.connect_success == cfg.ccu && row.connect_fail == 0
-              && row.connect_timeout == 0;
-
-    if (with_send && ok) {
-        const bool markerless_phase = cfg.latency_sample_rate == 0;
-        auto wait_for_drain = [&](long &timeout_flag) {
-            const auto deadline =
-              std::chrono::steady_clock::now ()
-              + std::chrono::seconds (std::max (1, cfg.drain_timeout_sec));
-            while (state.pending_total () > 0
-                   && std::chrono::steady_clock::now () < deadline) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (5));
+            for (size_t k = 0; k < server_contexts.size (); ++k) {
+                if (server_contexts[k])
+                    zlink_ctx_term (server_contexts[k]);
             }
-            if (state.pending_total () > 0)
-                timeout_flag = 1;
-        };
-
-        state.set_phase (true, false);
-        for (size_t i = 0; i < sessions.size (); ++i)
-            if (sessions[i])
-                sessions[i]->kick_send ();
-
-        if (cfg.warmup_sec > 0)
-            std::this_thread::sleep_for (
-              std::chrono::seconds (cfg.warmup_sec));
-
-        if (markerless_phase) {
-            long warmup_drain_timeout = 0;
-            state.set_phase (false, false);
-            wait_for_drain (warmup_drain_timeout);
-            if (warmup_drain_timeout > 0)
-                row.drain_timeout_count = 1;
+            cleanup_tls_guard (tls);
+            return false;
         }
 
-        state.reset_measure_metrics ();
-        state.set_phase (true, true);
-        for (size_t i = 0; i < sessions.size (); ++i)
-            if (sessions[i])
-                sessions[i]->kick_send ();
-
-        std::this_thread::sleep_for (
-          std::chrono::seconds (std::max (1, cfg.measure_sec)));
-
-        state.set_phase (false, markerless_phase);
-        wait_for_drain (row.drain_timeout_count);
-        if (markerless_phase)
-            state.set_phase (false, false);
-
-        row.sent = state.sent_measure ();
-        row.recv = state.recv_measure ();
-        row.incomplete_ratio =
-          row.sent > 0 ? static_cast<double> (row.sent - row.recv) / row.sent
-                       : 0.0;
-        row.throughput = cfg.measure_sec > 0
-                           ? static_cast<double> (row.recv) / cfg.measure_sec
-                           : 0.0;
-        row.gating_violation = state.gating_violation ();
-
-        const std::vector<double> lats = state.latency_snapshot ();
-        row.p50 = percentile (lats, 0.50);
-        row.p95 = percentile (lats, 0.95);
-        row.p99 = percentile (lats, 0.99);
-
-        ok = ok && row.recv > 0 && row.incomplete_ratio <= 0.01
-             && row.drain_timeout_count == 0 && row.gating_violation == 0;
+        zlink_ctx_set (ctx, ZLINK_IO_THREADS, client_io_threads);
+        zlink_ctx_set (ctx, ZLINK_MAX_SOCKETS, client_sockets_per_ctx);
+        client_contexts[static_cast<size_t> (i)] = ctx;
     }
 
-    for (size_t i = 0; i < sessions.size (); ++i) {
-        if (sessions[i])
-            sessions[i]->shutdown ();
+    auto terminate_client_contexts = [&]() {
+        for (size_t i = 0; i < client_contexts.size (); ++i) {
+            if (client_contexts[i]) {
+                zlink_ctx_term (client_contexts[i]);
+                client_contexts[i] = NULL;
+            }
+        }
+    };
+
+    auto terminate_server_contexts = [&]() {
+        for (size_t i = 0; i < server_contexts.size (); ++i) {
+            if (server_contexts[i]) {
+                zlink_ctx_term (server_contexts[i]);
+                server_contexts[i] = NULL;
+            }
+        }
+    };
+
+    struct ServerState
+    {
+        void *socket;
+        std::atomic<bool> running;
+        std::atomic<bool> data_mode;
+        ServerCounters counters;
+        std::thread thread;
+        std::string endpoint;
+
+        ServerState () : socket (NULL), running (true), data_mode (false) {}
+    };
+
+    std::vector<ServerState *> servers;
+    servers.reserve (static_cast<size_t> (server_shards));
+
+    auto stop_servers = [&]() {
+        for (size_t i = 0; i < servers.size (); ++i)
+            servers[i]->running.store (false, std::memory_order_release);
+        for (size_t i = 0; i < servers.size (); ++i) {
+            if (servers[i]->thread.joinable ())
+                servers[i]->thread.join ();
+        }
+    };
+
+    auto cleanup_servers = [&]() {
+        stop_servers ();
+        for (size_t i = 0; i < servers.size (); ++i) {
+            close_socket (servers[i]->socket);
+            delete servers[i];
+        }
+        servers.clear ();
+    };
+
+    const size_t server_payload_cap = std::max<size_t> (
+      4 * 1024 * 1024,
+      static_cast<size_t> (4 + std::max (9, cfg.size))
+        * static_cast<size_t> (std::max (1, cfg.send_batch)) * 16);
+
+    for (int shard = 0; shard < server_shards; ++shard) {
+        ServerState *state = new (std::nothrow) ServerState ();
+        if (!state) {
+            record_error (errors, ENOMEM);
+            cleanup_servers ();
+            terminate_client_contexts ();
+            terminate_server_contexts ();
+            cleanup_tls_guard (tls);
+            return false;
+        }
+
+        state->socket =
+          zlink_socket (server_contexts[static_cast<size_t> (shard)],
+                        ZLINK_STREAM);
+        if (!state->socket) {
+            record_error (errors, zlink_errno ());
+            delete state;
+            cleanup_servers ();
+            terminate_client_contexts ();
+            terminate_server_contexts ();
+            cleanup_tls_guard (tls);
+            return false;
+        }
+
+        if (!configure_stream_socket (state->socket, cfg, true, errors)
+            || !configure_tls_socket (state->socket, true, tls, errors)) {
+            close_socket (state->socket);
+            delete state;
+            cleanup_servers ();
+            terminate_client_contexts ();
+            terminate_server_contexts ();
+            cleanup_tls_guard (tls);
+            return false;
+        }
+
+        Config shard_cfg = cfg;
+        shard_cfg.port = cfg.port + shard;
+        state->endpoint = make_endpoint (shard_cfg);
+        if (zlink_bind (state->socket, state->endpoint.c_str ()) != 0) {
+            record_error (errors, zlink_errno ());
+            close_socket (state->socket);
+            delete state;
+            cleanup_servers ();
+            terminate_client_contexts ();
+            terminate_server_contexts ();
+            cleanup_tls_guard (tls);
+            return false;
+        }
+
+        state->thread = std::thread (
+          server_loop, state->socket, std::ref (state->running),
+          std::ref (state->data_mode), echo_enabled, server_payload_cap,
+          std::ref (state->counters), std::ref (errors));
+        servers.push_back (state);
     }
 
-    client_work.clear ();
-    for (size_t i = 0; i < client_ios.size (); ++i)
-        client_ios[i]->stop ();
+    clients.assign (static_cast<size_t> (cfg.ccu), ClientConn ());
 
-    for (size_t i = 0; i < client_workers.size (); ++i) {
-        if (client_workers[i].joinable ())
-            client_workers[i].join ();
+    long connect_success = 0;
+    long connect_fail = 0;
+    long connect_timeout = 0;
+    for (int idx = 0; idx < cfg.ccu; ++idx) {
+        const int worker_slot = idx % worker_count;
+        bool done = false;
+        for (int attempt = 1; attempt <= cfg.connect_retries && !done; ++attempt) {
+            void *socket =
+              zlink_socket (client_contexts[static_cast<size_t> (worker_slot)],
+                            ZLINK_STREAM);
+            if (!socket) {
+                record_error (errors, zlink_errno ());
+                break;
+            }
+
+            if (!configure_stream_socket (socket, cfg, false, errors)
+                || !configure_tls_socket (socket, false, tls, errors)) {
+                close_socket (socket);
+                break;
+            }
+
+            const int shard = idx % server_shards;
+            if (zlink_connect (socket, servers[static_cast<size_t> (shard)]->endpoint.c_str ())
+                != 0) {
+                record_error (errors, zlink_errno ());
+                close_socket (socket);
+                if (attempt < cfg.connect_retries
+                    && cfg.connect_retry_delay_ms > 0) {
+                    std::this_thread::sleep_for (
+                      std::chrono::milliseconds (cfg.connect_retry_delay_ms));
+                }
+                continue;
+            }
+
+            unsigned char rid[kRoutingIdMaxSize];
+            size_t rid_size = 0;
+            const WaitStatus ws = wait_for_connect_event (
+              socket, rid, &rid_size, cfg.connect_timeout_sec * 1000, errors);
+            if (ws == wait_ok) {
+                clients[static_cast<size_t> (idx)].socket = socket;
+                clients[static_cast<size_t> (idx)].routing_id_size = rid_size;
+                memcpy (clients[static_cast<size_t> (idx)].routing_id, rid,
+                        rid_size);
+                clients[static_cast<size_t> (idx)].shard = shard;
+                clients[static_cast<size_t> (idx)].worker_slot = worker_slot;
+                clients[static_cast<size_t> (idx)].connected = true;
+                ++connect_success;
+                done = true;
+                break;
+            }
+
+            close_socket (socket);
+            if (ws == wait_timeout)
+                ++connect_timeout;
+
+            if (attempt < cfg.connect_retries
+                && cfg.connect_retry_delay_ms > 0) {
+                std::this_thread::sleep_for (
+                  std::chrono::milliseconds (cfg.connect_retry_delay_ms));
+            }
+        }
+
+        if (!done)
+            ++connect_fail;
     }
 
-    row.pass_fail = ok ? "PASS" : "FAIL";
-    merge_errors (row.errors_by_errno, errors);
-    return ok;
-}
+    row.connect_success = connect_success;
+    row.connect_fail = connect_fail;
+    row.connect_timeout = connect_timeout;
 
-bool run_server_only (const Config &cfg, ResultRow &row, bool with_send)
-{
-    fill_common_row (row, cfg);
-
-    ErrorBag errors;
-    const int server_io_shards = std::max (1, cfg.io_threads);
-
-    boost::asio::io_context server_accept_io;
-    std::vector<std::shared_ptr<boost::asio::io_context> > server_session_ios;
-    std::vector<std::shared_ptr<io_work_guard_t> > server_session_work;
-    server_session_ios.reserve (static_cast<size_t> (server_io_shards));
-    server_session_work.reserve (static_cast<size_t> (server_io_shards));
-    for (int i = 0; i < server_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io (
-          new boost::asio::io_context ());
-        server_session_work.push_back (
-          std::shared_ptr<io_work_guard_t> (
-            new io_work_guard_t (io->get_executor ())));
-        server_session_ios.push_back (io);
+    const auto server_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    while (std::chrono::steady_clock::now () < server_deadline) {
+        long ev = 0;
+        for (size_t i = 0; i < servers.size (); ++i) {
+            ev +=
+              servers[i]->counters.connect_events.load (std::memory_order_relaxed);
+        }
+        if (ev >= row.connect_success)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
     }
 
-    EchoServer server (
-      server_accept_io, server_session_ios, cfg, with_send, errors);
-    if (!server.start ()) {
-        row.pass_fail = "FAIL";
-        merge_errors (row.errors_by_errno, errors);
+    long connect_events_total = 0;
+    for (size_t i = 0; i < servers.size (); ++i) {
+        connect_events_total +=
+          servers[i]->counters.connect_events.load (std::memory_order_relaxed);
+    }
+    server_counters.connect_events.store (connect_events_total,
+                                          std::memory_order_relaxed);
+
+    if (row.connect_success < cfg.ccu) {
+        cleanup_clients (clients);
+        cleanup_servers ();
+        terminate_client_contexts ();
+        terminate_server_contexts ();
+        cleanup_tls_guard (tls);
         return false;
     }
 
-    std::thread server_accept_worker (
-      [&]() { server_accept_io.run (); });
-    std::vector<std::thread> server_session_workers;
-    server_session_workers.reserve (static_cast<size_t> (server_io_shards));
-    for (int i = 0; i < server_io_shards; ++i) {
-        std::shared_ptr<boost::asio::io_context> io =
-          server_session_ios[static_cast<size_t> (i)];
-        server_session_workers.push_back (
-          std::thread ([io] () { io->run (); }));
+    if (!echo_enabled) {
+        cleanup_clients (clients);
+        cleanup_servers ();
+        terminate_client_contexts ();
+        terminate_server_contexts ();
+        cleanup_tls_guard (tls);
+        return true;
     }
 
-    g_server_stop_requested.store (false, std::memory_order_release);
-    std::signal (SIGINT, handle_server_stop_signal);
-    std::signal (SIGTERM, handle_server_stop_signal);
+    for (size_t i = 0; i < servers.size (); ++i)
+        servers[i]->data_mode.store (true, std::memory_order_release);
 
-    while (!g_server_stop_requested.load (std::memory_order_acquire))
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
-
-    server.stop ();
-    server_session_work.clear ();
-    for (size_t i = 0; i < server_session_ios.size (); ++i)
-        server_session_ios[i]->stop ();
-    server_accept_io.stop ();
-
-    for (size_t i = 0; i < server_session_workers.size (); ++i) {
-        if (server_session_workers[i].joinable ())
-            server_session_workers[i].join ();
+    std::vector<std::vector<ClientConn *> > worker_clients (
+      static_cast<size_t> (worker_count));
+    for (size_t i = 0; i < clients.size (); ++i) {
+        if (!clients[i].connected || !clients[i].socket)
+            continue;
+        const int slot = clients[i].worker_slot;
+        const int worker_id =
+          (slot >= 0 && slot < worker_count) ? slot : 0;
+        worker_clients[static_cast<size_t> (worker_id)].push_back (&clients[i]);
     }
-    if (server_accept_worker.joinable ())
-        server_accept_worker.join ();
 
-    const bool ok = errors.by_errno.empty ();
-    row.pass_fail = ok ? "PASS" : "FAIL";
+    struct WorkerResult
+    {
+        long sent;
+        long recv;
+        long gating_violation;
+        long drain_timeout_count;
+        std::vector<double> latencies_us;
+
+        WorkerResult ()
+            : sent (0),
+              recv (0),
+              gating_violation (0),
+              drain_timeout_count (0)
+        {
+        }
+    };
+
+    std::vector<WorkerResult> worker_results (
+      static_cast<size_t> (worker_count));
+    std::vector<int> active_worker_ids;
+    active_worker_ids.reserve (static_cast<size_t> (worker_count));
+    for (int w = 0; w < worker_count; ++w) {
+        if (!worker_clients[static_cast<size_t> (w)].empty ())
+            active_worker_ids.push_back (w);
+    }
+
+    if (active_worker_ids.empty ()) {
+        cleanup_clients (clients);
+        cleanup_servers ();
+        terminate_client_contexts ();
+        terminate_server_contexts ();
+        cleanup_tls_guard (tls);
+        return false;
+    }
+
+    const size_t body_size = static_cast<size_t> (std::max (cfg.size, 9));
+    const size_t packet_size = 4U + body_size;
+    const int max_batch = std::max (1, std::min (cfg.send_batch, 64));
+    std::atomic<int> workers_ready (0);
+    std::atomic<bool> workers_start (false);
+    std::vector<std::thread> worker_threads;
+    worker_threads.reserve (active_worker_ids.size ());
+
+    for (size_t wi = 0; wi < active_worker_ids.size (); ++wi) {
+        const int worker_id = active_worker_ids[wi];
+        worker_threads.push_back (std::thread ([&, worker_id] () {
+            std::vector<ClientConn *> &worker_active =
+              worker_clients[static_cast<size_t> (worker_id)];
+            WorkerResult &out =
+              worker_results[static_cast<size_t> (worker_id)];
+
+            std::vector<zlink_pollitem_t> poll_items (worker_active.size ());
+            for (size_t i = 0; i < worker_active.size (); ++i) {
+                poll_items[i].socket = worker_active[i]->socket;
+                poll_items[i].fd = 0;
+                poll_items[i].events = ZLINK_POLLIN;
+                poll_items[i].revents = 0;
+            }
+
+            std::vector<unsigned char> send_payload_phase0 (
+              packet_size * static_cast<size_t> (max_batch), 0x11);
+            std::vector<unsigned char> send_payload_phase1 (
+              packet_size * static_cast<size_t> (max_batch), 0x11);
+            std::vector<unsigned char> send_payload_sample (
+              packet_size * static_cast<size_t> (max_batch), 0x11);
+            for (int i = 0; i < max_batch; ++i) {
+                unsigned char *packet =
+                  &send_payload_phase0[static_cast<size_t> (i) * packet_size];
+                write_u32_be (packet, static_cast<uint32_t> (body_size));
+                memset (packet + 4, 0x11, body_size);
+                packet[4] = 0;
+                write_u64_le (packet + 5, 0);
+            }
+            for (int i = 0; i < max_batch; ++i) {
+                unsigned char *packet =
+                  &send_payload_phase1[static_cast<size_t> (i) * packet_size];
+                write_u32_be (packet, static_cast<uint32_t> (body_size));
+                memset (packet + 4, 0x11, body_size);
+                packet[4] = 1;
+                write_u64_le (packet + 5, 0);
+            }
+
+            std::vector<double> latencies_us;
+            latencies_us.reserve (256 * 1024);
+
+            long pending_total = 0;
+            long sent_measure = 0;
+            long recv_measure = 0;
+            long gating_violation = 0;
+            long sent_measure_batches = 0;
+            std::deque<size_t> send_ready;
+            std::vector<unsigned char> send_ready_mark (worker_active.size (), 0);
+            for (size_t i = 0; i < worker_active.size (); ++i) {
+                send_ready.push_back (i);
+                send_ready_mark[i] = 1;
+            }
+
+            auto pump_once = [&](bool allow_send,
+                                 int phase,
+                                 bool measure_mode,
+                                 int poll_timeout) {
+                if (allow_send && !worker_active.empty ()) {
+                    const size_t max_attempts = send_ready.size ();
+                    for (size_t attempt = 0; attempt < max_attempts; ++attempt) {
+                        if (send_ready.empty ())
+                            break;
+                        const size_t idx = send_ready.front ();
+                        send_ready.pop_front ();
+                        send_ready_mark[idx] = 0;
+                        ClientConn *c = worker_active[idx];
+                        if (c->pending >= cfg.inflight)
+                            continue;
+
+                        const int window = cfg.inflight - c->pending;
+                        if (window <= 0)
+                            continue;
+                        const int batch = std::min (window, max_batch);
+
+                        const unsigned char *send_buf = NULL;
+                        bool send_buf_const = true;
+                        if (phase == 1 && cfg.latency_sample_rate > 0) {
+                            ++sent_measure_batches;
+                            const bool sample_batch =
+                              cfg.latency_sample_rate == 1
+                              || (sent_measure_batches % cfg.latency_sample_rate)
+                                   == 0;
+                            if (sample_batch) {
+                                memcpy (&send_payload_sample[0],
+                                        &send_payload_phase1[0],
+                                        packet_size * static_cast<size_t> (batch));
+                                write_u64_le (&send_payload_sample[5], now_ns ());
+                                send_buf = &send_payload_sample[0];
+                                send_buf_const = false;
+                            } else {
+                                send_buf = &send_payload_phase1[0];
+                                send_buf_const = true;
+                            }
+                        } else {
+                            send_buf = &send_payload_phase0[0];
+                            send_buf_const = true;
+                        }
+
+                        const int src = send_buf_const
+                                          ? send_stream_msg_const (
+                                              c->socket, c->routing_id,
+                                              c->routing_id_size, send_buf,
+                                              packet_size
+                                                * static_cast<size_t> (batch))
+                                          : send_stream_msg (
+                                              c->socket, c->routing_id,
+                                              c->routing_id_size, send_buf,
+                                              packet_size
+                                                * static_cast<size_t> (batch));
+                        if (src != 0) {
+                            if (src != EAGAIN)
+                                record_error (errors, src);
+                            if (!send_ready_mark[idx]) {
+                                send_ready.push_back (idx);
+                                send_ready_mark[idx] = 1;
+                            }
+                            continue;
+                        }
+
+                        c->pending += batch;
+                        pending_total += batch;
+                        if (phase == 1)
+                            sent_measure += batch;
+
+                        if (c->pending < cfg.inflight && !send_ready_mark[idx]) {
+                            send_ready.push_back (idx);
+                            send_ready_mark[idx] = 1;
+                        }
+                    }
+                }
+
+                const int prc =
+                  zlink_poll (poll_items.empty () ? NULL : &poll_items[0],
+                              poll_items.size (), poll_timeout);
+                if (prc < 0) {
+                    record_error (errors, zlink_errno ());
+                    return;
+                }
+
+                if (prc == 0)
+                    return;
+
+                for (size_t i = 0; i < poll_items.size (); ++i) {
+                    if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+                        continue;
+                    for (;;) {
+                        int err = 0;
+                        unsigned char rid[kRoutingIdMaxSize];
+                        size_t rid_size = 0;
+                        zlink_msg_t payload_msg;
+                        const RecvStatus st = recv_stream_msg_payload_ref (
+                          worker_active[i]->socket, rid, sizeof (rid), &rid_size,
+                          &payload_msg, ZLINK_DONTWAIT, &err);
+                        if (st == recv_would_block)
+                            break;
+                        if (st == recv_error || st == recv_proto_error) {
+                            record_error (errors, err == 0 ? EPROTO : err);
+                            break;
+                        }
+
+                        const unsigned char *payload_data =
+                          static_cast<const unsigned char *> (
+                            zlink_msg_data (&payload_msg));
+                        const size_t payload_len = zlink_msg_size (&payload_msg);
+                        const int pending_before = worker_active[i]->pending;
+                        if (!consume_stream_payload (
+                              *worker_active[i], payload_data, payload_len,
+                              body_size,
+                              measure_mode, cfg.latency_sample_rate,
+                              pending_total, recv_measure, gating_violation,
+                              latencies_us)) {
+                            zlink_msg_close (&payload_msg);
+                            record_error (errors, EPROTO);
+                            break;
+                        }
+                        zlink_msg_close (&payload_msg);
+
+                        if (pending_before != worker_active[i]->pending
+                            && worker_active[i]->pending < cfg.inflight
+                            && !send_ready_mark[i]) {
+                            send_ready.push_back (i);
+                            send_ready_mark[i] = 1;
+                        }
+                    }
+                }
+            };
+
+            auto drain_pending = [&](int timeout_sec, bool measure_mode) -> bool {
+                const auto deadline =
+                  std::chrono::steady_clock::now ()
+                  + std::chrono::seconds (std::max (1, timeout_sec));
+                while (pending_total > 0
+                       && std::chrono::steady_clock::now () < deadline) {
+                    pump_once (false, 0, measure_mode, 1);
+                }
+                return pending_total == 0;
+            };
+
+            workers_ready.fetch_add (1, std::memory_order_release);
+            while (!workers_start.load (std::memory_order_acquire))
+                std::this_thread::yield ();
+
+            if (cfg.warmup_sec > 0) {
+                const auto warmup_deadline =
+                  std::chrono::steady_clock::now ()
+                  + std::chrono::seconds (cfg.warmup_sec);
+                while (std::chrono::steady_clock::now () < warmup_deadline)
+                    pump_once (true, 0, false, 1);
+            }
+
+            if (!drain_pending (cfg.drain_timeout_sec, false))
+                out.drain_timeout_count = 1;
+
+            for (size_t i = 0; i < worker_active.size (); ++i)
+                worker_active[i]->pending = 0;
+            pending_total = 0;
+            sent_measure = 0;
+            recv_measure = 0;
+            gating_violation = 0;
+            latencies_us.clear ();
+            send_ready.clear ();
+            std::fill (send_ready_mark.begin (), send_ready_mark.end (), 0);
+            for (size_t i = 0; i < worker_active.size (); ++i) {
+                send_ready.push_back (i);
+                send_ready_mark[i] = 1;
+            }
+
+            const auto measure_deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::seconds (std::max (1, cfg.measure_sec));
+            while (std::chrono::steady_clock::now () < measure_deadline)
+                pump_once (true, 1, true, 1);
+
+            if (!drain_pending (cfg.drain_timeout_sec, true))
+                out.drain_timeout_count = 1;
+
+            out.sent = sent_measure;
+            out.recv = recv_measure;
+            out.gating_violation = gating_violation;
+            out.latencies_us.swap (latencies_us);
+        }));
+    }
+
+    while (workers_ready.load (std::memory_order_acquire)
+           < static_cast<int> (active_worker_ids.size ())) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    workers_start.store (true, std::memory_order_release);
+
+    for (size_t i = 0; i < worker_threads.size (); ++i) {
+        if (worker_threads[i].joinable ())
+            worker_threads[i].join ();
+    }
+
+    std::vector<double> latencies_us;
+    latencies_us.reserve (1024 * 1024);
+    row.sent = 0;
+    row.recv = 0;
+    row.gating_violation = 0;
+    row.drain_timeout_count = 0;
+    for (size_t wi = 0; wi < active_worker_ids.size (); ++wi) {
+        const WorkerResult &wr =
+          worker_results[static_cast<size_t> (active_worker_ids[wi])];
+        row.sent += wr.sent;
+        row.recv += wr.recv;
+        row.gating_violation += wr.gating_violation;
+        row.drain_timeout_count += wr.drain_timeout_count;
+        latencies_us.insert (latencies_us.end (), wr.latencies_us.begin (),
+                             wr.latencies_us.end ());
+    }
+
+    row.incomplete_ratio =
+      row.sent > 0 ? static_cast<double> (row.sent - row.recv) / row.sent : 0.0;
+    row.throughput =
+      cfg.measure_sec > 0 ? static_cast<double> (row.recv) / cfg.measure_sec : 0.0;
+    row.p50 = percentile (latencies_us, 0.50);
+    row.p95 = percentile (latencies_us, 0.95);
+    row.p99 = percentile (latencies_us, 0.99);
+
+    cleanup_clients (clients);
+    cleanup_servers ();
+    terminate_client_contexts ();
+    terminate_server_contexts ();
+    cleanup_tls_guard (tls);
+
+    const bool pass = row.connect_success == cfg.ccu && row.connect_fail == 0
+                      && row.connect_timeout == 0 && row.recv > 0
+                      && row.incomplete_ratio <= 0.01
+                      && row.drain_timeout_count == 0
+                      && row.gating_violation == 0;
+    row.pass_fail = pass ? "PASS" : "FAIL";
+
+    return pass;
+}
+
+bool run_s1 (const Config &cfg, ResultRow &row)
+{
+    fill_common_row (row, cfg);
+
+    std::vector<ClientConn> clients;
+    ServerCounters server_counters;
+    ErrorBag errors;
+
+    const bool ok = run_connect_phase (cfg, false, row, clients, server_counters,
+                                       errors);
+
+    row.sent = 0;
+    row.recv = 0;
+    row.incomplete_ratio = 0.0;
+    row.throughput = 0.0;
+
+    row.pass_fail = ok && row.connect_success == cfg.ccu && row.connect_fail == 0
+                      && row.connect_timeout == 0
+                      ? "PASS"
+                      : "FAIL";
+
     merge_errors (row.errors_by_errno, errors);
-    return ok;
+    return row.pass_fail == "PASS";
+}
+
+bool run_s2 (const Config &cfg, ResultRow &row)
+{
+    fill_common_row (row, cfg);
+
+    std::vector<ClientConn> clients;
+    ServerCounters server_counters;
+    ErrorBag errors;
+
+    const bool ok =
+      run_connect_phase (cfg, true, row, clients, server_counters, errors);
+    if (!ok && row.pass_fail.empty ())
+        row.pass_fail = "FAIL";
+
+    merge_errors (row.errors_by_errno, errors);
+    return row.pass_fail == "PASS";
 }
 
 void print_row (const ResultRow &row)
@@ -1691,30 +2217,30 @@ void print_usage (const char *prog)
 {
     printf ("Usage: %s --scenario s0|s1|s2 [options]\n", prog);
     printf ("Options:\n");
-    printf ("  --transport tcp                 (cs fastpath supports tcp only)\n");
-    printf ("  --port N                        (default 27110)\n");
-    printf ("  --ccu N                         (default 10000)\n");
-    printf ("  --size N                        (default 1024)\n");
-    printf ("  --inflight N                    (per-connection, default 30)\n");
-    printf ("  --warmup N                      (default 3 sec)\n");
-    printf ("  --measure N                     (default 10 sec)\n");
-    printf ("  --drain-timeout N               (default 10 sec)\n");
-    printf ("  --connect-concurrency N         (default 256)\n");
-    printf ("  --connect-timeout N             (default 10 sec)\n");
-    printf ("  --connect-retries N             (accepted, default 3)\n");
-    printf ("  --connect-retry-delay-ms N      (accepted, default 100)\n");
-    printf ("  --backlog N                     (default 32768)\n");
-    printf ("  --hwm N                         (accepted, default 1000000)\n");
-    printf ("  --sndbuf N                      (default 262144)\n");
-    printf ("  --rcvbuf N                      (default 262144)\n");
-    printf ("  --no-delay 0|1                  (default 1)\n");
-    printf ("  --io-threads N                  (default 1)\n");
-    printf ("  --send-batch N                  (default 1)\n");
-    printf ("  --latency-sample-rate N         (default 1, 0=disable latency)\n");
-    printf ("  --role both|server|client       (default both)\n");
-    printf ("  --scenario-id ID                override scenario_id output\n");
-    printf ("  --metrics-csv PATH              append row to csv\n");
-    printf ("  --summary-json PATH             write row json\n");
+    printf ("  --transport tcp|tls|ws|wss   (default tcp)\n");
+    printf ("  --port N                      (default 27110)\n");
+    printf ("  --ccu N                       (default 10000)\n");
+    printf ("  --size N                      (default 1024)\n");
+    printf ("  --inflight N                  (per-connection, default 30)\n");
+    printf ("  --warmup N                    (default 3 sec)\n");
+    printf ("  --measure N                   (default 10 sec)\n");
+    printf ("  --drain-timeout N             (default 10 sec)\n");
+    printf ("  --connect-concurrency N       (default 256)\n");
+    printf ("  --connect-timeout N           (default 10 sec)\n");
+    printf ("  --connect-retries N           (default 3)\n");
+    printf ("  --connect-retry-delay-ms N    (default 100)\n");
+    printf ("  --backlog N                   (default 32768)\n");
+    printf ("  --hwm N                       (default 1000000)\n");
+    printf ("  --sndbuf N                    (default 262144)\n");
+    printf ("  --rcvbuf N                    (default 262144)\n");
+    printf ("  --io-threads N                (default 1)\n");
+    printf ("  --server-shards N             (default 0:auto)\n");
+    printf ("  --client-workers N            (default 0:auto)\n");
+    printf ("  --send-batch N                (default 16)\n");
+    printf ("  --latency-sample-rate N       (default 1, 0=disable)\n");
+    printf ("  --scenario-id ID              override scenario_id output\n");
+    printf ("  --metrics-csv PATH            append row to csv\n");
+    printf ("  --summary-json PATH           write row json\n");
 }
 
 } // namespace
@@ -1749,12 +2275,13 @@ int main (int argc, char **argv)
     cfg.hwm = arg_int (argc, argv, "--hwm", cfg.hwm);
     cfg.sndbuf = arg_int (argc, argv, "--sndbuf", cfg.sndbuf);
     cfg.rcvbuf = arg_int (argc, argv, "--rcvbuf", cfg.rcvbuf);
-    cfg.no_delay = arg_int (argc, argv, "--no-delay", cfg.no_delay);
     cfg.io_threads = arg_int (argc, argv, "--io-threads", cfg.io_threads);
+    cfg.server_shards = arg_int (argc, argv, "--server-shards", cfg.server_shards);
+    cfg.client_workers =
+      arg_int (argc, argv, "--client-workers", cfg.client_workers);
     cfg.send_batch = arg_int (argc, argv, "--send-batch", cfg.send_batch);
     cfg.latency_sample_rate = arg_int (argc, argv, "--latency-sample-rate",
                                        cfg.latency_sample_rate);
-    cfg.role = arg_str (argc, argv, "--role", cfg.role.c_str ());
     cfg.scenario_id_override = arg_str (argc, argv, "--scenario-id", "");
     cfg.metrics_csv = arg_str (argc, argv, "--metrics-csv", "");
     cfg.summary_json = arg_str (argc, argv, "--summary-json", "");
@@ -1773,58 +2300,32 @@ int main (int argc, char **argv)
     cfg.connect_concurrency = std::max (1, cfg.connect_concurrency);
     cfg.connect_timeout_sec = std::max (1, cfg.connect_timeout_sec);
     cfg.connect_retries = std::max (1, cfg.connect_retries);
-    cfg.connect_retry_delay_ms = std::max (0, cfg.connect_retry_delay_ms);
-    cfg.hwm = std::max (1, cfg.hwm);
+    cfg.server_shards = std::max (0, cfg.server_shards);
+    cfg.client_workers = std::max (0, cfg.client_workers);
     cfg.send_batch = std::max (1, cfg.send_batch);
     cfg.latency_sample_rate = std::max (0, cfg.latency_sample_rate);
-    cfg.no_delay = cfg.no_delay != 0 ? 1 : 0;
 
-    const bool role_ok =
-      cfg.role == "both" || cfg.role == "server" || cfg.role == "client";
-    if (!role_ok) {
-        print_usage (argv[0]);
-        return 2;
-    }
-
+    std::string reason;
     ResultRow row;
     fill_common_row (row, cfg);
 
-    if (cfg.transport != "tcp") {
+    if (!is_transport_supported (cfg.transport, reason)) {
         row.pass_fail = "SKIP";
         print_row (row);
         append_csv (cfg.metrics_csv, row);
         write_summary_json (cfg.summary_json, row);
-        fprintf (stderr,
-                 "[stream-zlink-csfast] transport '%s' skipped (tcp only)\n",
-                 cfg.transport.c_str ());
+        fprintf (stderr, "[stream-zlink] transport '%s' skipped: %s\n",
+                 cfg.transport.c_str (), reason.c_str ());
         return 0;
     }
 
     bool ok = false;
-    if (cfg.scenario == "s0") {
-        if (cfg.role != "both") {
-            row.pass_fail = "FAIL";
-            print_row (row);
-            append_csv (cfg.metrics_csv, row);
-            write_summary_json (cfg.summary_json, row);
-            return 2;
-        }
+    if (cfg.scenario == "s0")
         ok = run_s0 (cfg, row);
-    } else if (cfg.scenario == "s1") {
-        if (cfg.role == "server")
-            ok = run_server_only (cfg, row, false);
-        else if (cfg.role == "client")
-            ok = run_client_only (cfg, row, false);
-        else
-            ok = run_s1_or_s2 (cfg, row, false);
-    } else {
-        if (cfg.role == "server")
-            ok = run_server_only (cfg, row, true);
-        else if (cfg.role == "client")
-            ok = run_client_only (cfg, row, true);
-        else
-            ok = run_s1_or_s2 (cfg, row, true);
-    }
+    else if (cfg.scenario == "s1")
+        ok = run_s1 (cfg, row);
+    else
+        ok = run_s2 (cfg, row);
 
     print_row (row);
     append_csv (cfg.metrics_csv, row);

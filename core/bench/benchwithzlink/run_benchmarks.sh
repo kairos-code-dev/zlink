@@ -60,7 +60,7 @@ usage() {
 Usage: core/bench/benchwithzlink/run_benchmarks.sh [options]
 
 Compare baseline zlink (previous version) vs current zlink (new build).
-Note: PATTERN=ALL includes STREAM by default.
+Note: PATTERN=ALL includes STREAM and MULTI_STREAM by default.
 
 Before running:
   1. Copy previous zlink library to core/bench/benchwithzlink/baseline/zlink_dist/<platform>-<arch>/

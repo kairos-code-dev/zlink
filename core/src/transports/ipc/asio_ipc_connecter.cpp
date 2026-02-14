@@ -6,7 +6,7 @@
 #include "transports/ipc/asio_ipc_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
-#include "engine/asio/asio_raw_engine.hpp"
+#include "engine/asio/asio_stream_engine.hpp"
 #include "transports/ipc/ipc_transport.hpp"
 #include "core/address.hpp"
 #include "utils/err.hpp"
@@ -309,7 +309,7 @@ void zlink::asio_ipc_connecter_t::create_engine (fd_t fd_,
 
     i_engine *engine = NULL;
     if (options.type == ZLINK_STREAM) {
-        engine = new (std::nothrow) asio_raw_engine_t (
+        engine = new (std::nothrow) asio_stream_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {
         engine = new (std::nothrow) asio_zmp_engine_t (

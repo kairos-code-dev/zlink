@@ -998,7 +998,8 @@ set(engine-sources
     src/engine/asio/asio_engine.cpp
     src/engine/asio/asio_poller.cpp
     src/engine/asio/asio_zmp_engine.cpp
-    src/engine/asio/asio_raw_engine.cpp)
+    src/engine/asio/asio_raw_engine.cpp
+    src/engine/asio/asio_stream_engine.cpp)
 
 set(transport-sources
     src/transports/tcp/tcp.cpp

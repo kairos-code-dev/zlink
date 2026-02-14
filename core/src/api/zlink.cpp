@@ -38,6 +38,7 @@ struct iovec
 #include <stdlib.h>
 #include <new>
 #include <climits>
+#include <vector>
 
 #include "sockets/proxy.hpp"
 #include "sockets/socket_base.hpp"
@@ -1617,42 +1618,101 @@ int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)
         return -1;
     }
 
-    zlink::fast_vector_t<pollfd, ZLINK_POLLITEMS_DFLT> pollfds (nitems_);
-    zlink::fast_vector_t<zlink::socket_base_t *, ZLINK_POLLITEMS_DFLT>
-      sockets (nitems_);
-    bool socket_fd_unavailable = false;
+    struct poll_cache_t
+    {
+        std::vector<pollfd> pollfds;
+        std::vector<zlink::socket_base_t *> sockets;
+        std::vector<void *> socket_handles;
+        std::vector<zlink::fd_t> fds;
+        std::vector<short> events;
+        bool socket_fd_unavailable;
+        bool initialized;
 
-    for (int i = 0; i != nitems_; i++) {
-        if (items_[i].socket) {
-            zlink::socket_base_t *socket =
-              static_cast<zlink::socket_base_t *> (items_[i].socket);
-            if (!socket->check_tag ()) {
-                errno = ENOTSOCK;
-                return -1;
-            }
-            sockets[i] = socket;
-            size_t zlink_fd_size = sizeof (zlink::fd_t);
-            if (socket->getsockopt (ZLINK_FD, &pollfds[i].fd, &zlink_fd_size)
-                == -1) {
-                if (errno == EINVAL) {
-                    socket_fd_unavailable = true;
-                    pollfds[i].fd = -1;
-                    pollfds[i].events = 0;
-                    continue;
-                }
-                return -1;
-            }
-            pollfds[i].events = items_[i].events ? POLLIN : 0;
+        poll_cache_t () :
+            socket_fd_unavailable (false),
+            initialized (false)
+        {
         }
-        else {
-            sockets[i] = NULL;
-            pollfds[i].fd = items_[i].fd;
-            pollfds[i].events =
-              (items_[i].events & ZLINK_POLLIN ? POLLIN : 0)
-              | (items_[i].events & ZLINK_POLLOUT ? POLLOUT : 0)
-              | (items_[i].events & ZLINK_POLLPRI ? POLLPRI : 0);
+    };
+
+    static thread_local poll_cache_t cache;
+
+    bool rebuild_cache =
+      !cache.initialized || static_cast<int> (cache.pollfds.size ()) != nitems_;
+
+    if (!rebuild_cache) {
+        for (int i = 0; i != nitems_; ++i) {
+            if (cache.socket_handles[i] != items_[i].socket
+                || cache.fds[i] != items_[i].fd
+                || cache.events[i] != items_[i].events) {
+                rebuild_cache = true;
+                break;
+            }
+            if (items_[i].socket) {
+                zlink::socket_base_t *socket = cache.sockets[i];
+                if (!socket || !socket->check_tag ()) {
+                    errno = ENOTSOCK;
+                    return -1;
+                }
+            }
         }
     }
+
+    if (rebuild_cache) {
+        cache.pollfds.resize (nitems_);
+        cache.sockets.resize (nitems_);
+        cache.socket_handles.resize (nitems_);
+        cache.fds.resize (nitems_);
+        cache.events.resize (nitems_);
+        cache.socket_fd_unavailable = false;
+
+        for (int i = 0; i != nitems_; i++) {
+            cache.socket_handles[i] = items_[i].socket;
+            cache.fds[i] = items_[i].fd;
+            cache.events[i] = items_[i].events;
+            cache.pollfds[i].revents = 0;
+
+            if (items_[i].socket) {
+                zlink::socket_base_t *socket =
+                  static_cast<zlink::socket_base_t *> (items_[i].socket);
+                if (!socket->check_tag ()) {
+                    errno = ENOTSOCK;
+                    return -1;
+                }
+                cache.sockets[i] = socket;
+                size_t zlink_fd_size = sizeof (zlink::fd_t);
+                if (socket->getsockopt (ZLINK_FD, &cache.pollfds[i].fd,
+                                        &zlink_fd_size)
+                    == -1) {
+                    if (errno == EINVAL) {
+                        cache.socket_fd_unavailable = true;
+                        cache.pollfds[i].fd = -1;
+                        cache.pollfds[i].events = 0;
+                        continue;
+                    }
+                    return -1;
+                }
+                cache.pollfds[i].events = items_[i].events ? POLLIN : 0;
+            }
+            else {
+                cache.sockets[i] = NULL;
+                cache.pollfds[i].fd = items_[i].fd;
+                cache.pollfds[i].events =
+                  (items_[i].events & ZLINK_POLLIN ? POLLIN : 0)
+                  | (items_[i].events & ZLINK_POLLOUT ? POLLOUT : 0)
+                  | (items_[i].events & ZLINK_POLLPRI ? POLLPRI : 0);
+            }
+        }
+
+        cache.initialized = true;
+    } else {
+        for (int i = 0; i != nitems_; ++i)
+            cache.pollfds[i].revents = 0;
+    }
+
+    std::vector<pollfd> &pollfds = cache.pollfds;
+    std::vector<zlink::socket_base_t *> &sockets = cache.sockets;
+    const bool socket_fd_unavailable = cache.socket_fd_unavailable;
 
     zlink::clock_t clock;
     uint64_t now = 0;

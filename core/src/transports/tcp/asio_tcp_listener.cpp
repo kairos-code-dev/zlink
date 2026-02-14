@@ -5,8 +5,9 @@
 
 #include "transports/tcp/asio_tcp_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
-#include "engine/asio/asio_zmp_engine.hpp"
 #include "engine/asio/asio_raw_engine.hpp"
+#include "engine/asio/asio_zmp_engine.hpp"
+#include "engine/asio/asio_stream_engine.hpp"
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"

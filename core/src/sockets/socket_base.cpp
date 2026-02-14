@@ -759,12 +759,6 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
         return -1;
     }
 
-    // STREAM is server-side only. Client-side connect is not supported.
-    if (options.type == ZLINK_STREAM) {
-        errno = EOPNOTSUPP;
-        return -1;
-    }
-
     if (protocol == protocol_name::inproc) {
         //  TODO: inproc connect is specific with respect to creating pipes
         //  as there's no 'reconnect' functionality implemented. Once that

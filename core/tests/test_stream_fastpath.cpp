@@ -3,20 +3,6 @@
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
 
-#include <errno.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <vector>
-
-#if defined(ZLINK_HAVE_WINDOWS)
-#include <winsock2.h>
-#else
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-
 SETUP_TEARDOWN_TESTCONTEXT
 
 static const size_t stream_routing_id_size = 4;
@@ -48,8 +34,8 @@ static void send_stream_msg (void *socket_,
     TEST_ASSERT_EQUAL_INT (
       static_cast<int> (stream_routing_id_size),
       TEST_ASSERT_SUCCESS_ERRNO (zlink_send (socket_, routing_id_,
-                                             stream_routing_id_size,
-                                             ZLINK_SNDMORE)));
+                                           stream_routing_id_size,
+                                           ZLINK_SNDMORE)));
     TEST_ASSERT_EQUAL_INT ((int) size_,
                            TEST_ASSERT_SUCCESS_ERRNO (
                              zlink_send (socket_, data_, size_, 0)));
@@ -73,190 +59,31 @@ static int recv_stream_msg (void *socket_,
     return zlink_recv (socket_, buf_, buf_size_, 0);
 }
 
-static uint32_t read_u32_be (const unsigned char *p_)
-{
-    return (static_cast<uint32_t> (p_[0]) << 24)
-           | (static_cast<uint32_t> (p_[1]) << 16)
-           | (static_cast<uint32_t> (p_[2]) << 8)
-           | static_cast<uint32_t> (p_[3]);
-}
-
-static void write_u32_be (unsigned char *p_, uint32_t v_)
-{
-    p_[0] = static_cast<unsigned char> ((v_ >> 24) & 0xFF);
-    p_[1] = static_cast<unsigned char> ((v_ >> 16) & 0xFF);
-    p_[2] = static_cast<unsigned char> ((v_ >> 8) & 0xFF);
-    p_[3] = static_cast<unsigned char> (v_ & 0xFF);
-}
-
-static bool parse_tcp_endpoint (const char *endpoint_,
-                                char host_[64],
-                                int *port_)
-{
-    if (!endpoint_ || !host_ || !port_)
-        return false;
-
-    char proto[8] = {0};
-    int port = 0;
-    if (sscanf (endpoint_, "%7[^:]://%63[^:]:%d", proto, host_, &port) != 3)
-        return false;
-
-    if (strcmp (proto, "tcp") != 0 || port <= 0 || port > 65535)
-        return false;
-
-    *port_ = port;
-    return true;
-}
-
-#if defined(ZLINK_HAVE_WINDOWS)
-static int connect_raw_tcp (const char *endpoint_)
-{
-    LIBZLINK_UNUSED (endpoint_);
-    errno = EOPNOTSUPP;
-    return -1;
-}
-
-static int send_stream_packet (int fd_, const void *data_, size_t size_)
-{
-    LIBZLINK_UNUSED (fd_);
-    LIBZLINK_UNUSED (data_);
-    LIBZLINK_UNUSED (size_);
-    return EOPNOTSUPP;
-}
-
-static int recv_stream_packet (int fd_, void *buf_, size_t cap_)
-{
-    LIBZLINK_UNUSED (fd_);
-    LIBZLINK_UNUSED (buf_);
-    LIBZLINK_UNUSED (cap_);
-    return -1;
-}
-
-static void close_raw_fd (int fd_)
-{
-    LIBZLINK_UNUSED (fd_);
-}
-#else
-static int connect_raw_tcp (const char *endpoint_)
-{
-    char host[64];
-    int port = 0;
-    if (!parse_tcp_endpoint (endpoint_, host, &port)) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    const int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (fd < 0)
-        return -1;
-
-    struct sockaddr_in addr;
-    memset (&addr, 0, sizeof (addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons (static_cast<uint16_t> (port));
-    if (inet_pton (AF_INET, host, &addr.sin_addr) != 1) {
-        close (fd);
-        errno = EINVAL;
-        return -1;
-    }
-
-    if (connect (fd, reinterpret_cast<const struct sockaddr *> (&addr),
-                 sizeof (addr))
-        != 0) {
-        const int err = errno;
-        close (fd);
-        errno = err;
-        return -1;
-    }
-
-    return fd;
-}
-
-static int send_all (int fd_, const unsigned char *buf_, size_t size_)
-{
-    size_t off = 0;
-    while (off < size_) {
-        const ssize_t n = send (fd_, buf_ + off, size_ - off, 0);
-        if (n > 0) {
-            off += static_cast<size_t> (n);
-            continue;
-        }
-        if (n < 0 && errno == EINTR)
-            continue;
-        return -1;
-    }
-    return 0;
-}
-
-static int recv_all (int fd_, unsigned char *buf_, size_t size_)
-{
-    size_t off = 0;
-    while (off < size_) {
-        const ssize_t n = recv (fd_, buf_ + off, size_ - off, 0);
-        if (n > 0) {
-            off += static_cast<size_t> (n);
-            continue;
-        }
-        if (n < 0 && errno == EINTR)
-            continue;
-        return -1;
-    }
-    return 0;
-}
-
-static int send_stream_packet (int fd_, const void *data_, size_t size_)
-{
-    std::vector<unsigned char> frame (4 + size_);
-    write_u32_be (&frame[0], static_cast<uint32_t> (size_));
-    if (size_ > 0)
-        memcpy (&frame[4], data_, size_);
-    return send_all (fd_, &frame[0], frame.size ());
-}
-
-static int recv_stream_packet (int fd_, void *buf_, size_t cap_)
-{
-    unsigned char hdr[4];
-    if (recv_all (fd_, hdr, sizeof (hdr)) != 0)
-        return -1;
-
-    const uint32_t size = read_u32_be (hdr);
-    if (size > cap_)
-        return -1;
-
-    if (size > 0 && recv_all (fd_, static_cast<unsigned char *> (buf_), size) != 0)
-        return -1;
-
-    return static_cast<int> (size);
-}
-
-static void close_raw_fd (int fd_)
-{
-    if (fd_ >= 0)
-        close (fd_);
-}
-#endif
-
 void test_stream_fastpath_tcp_basic ()
 {
     void *server = test_context_socket (ZLINK_STREAM);
+    void *client = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (server);
+    TEST_ASSERT_NOT_NULL (client);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-
-    const int client_fd = connect_raw_tcp (endpoint);
-    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
 
     unsigned char server_id[stream_routing_id_size];
+    unsigned char client_id[stream_routing_id_size];
+
     recv_stream_event (server, 0x01, server_id);
+    recv_stream_event (client, 0x01, client_id);
 
     const char payload[] = "hello";
-    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
-                                client_fd, payload, sizeof (payload) - 1));
+    send_stream_msg (client, client_id, payload, sizeof (payload) - 1);
 
     unsigned char recv_id[stream_routing_id_size];
     char recv_buf[64];
@@ -268,12 +95,12 @@ void test_stream_fastpath_tcp_basic ()
     const char reply[] = "world";
     send_stream_msg (server, server_id, reply, sizeof (reply) - 1);
 
-    char client_recv_buf[64];
-    rc = recv_stream_packet (client_fd, client_recv_buf, sizeof (client_recv_buf));
+    rc = recv_stream_msg (client, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (reply) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (reply, client_recv_buf, sizeof (reply) - 1);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (client_id, recv_id, stream_routing_id_size);
+    TEST_ASSERT_EQUAL_STRING_LEN (reply, recv_buf, sizeof (reply) - 1);
 
-    close_raw_fd (client_fd);
+    test_context_socket_close_zero_linger (client);
 
     zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
     TEST_ASSERT_EQUAL_INT (1, zlink_poll (items, 1, 2000));

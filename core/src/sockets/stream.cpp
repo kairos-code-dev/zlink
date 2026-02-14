@@ -68,8 +68,10 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     _fq.pipe_terminated (pipe_);
     if (pipe_ == _current_out)
         _current_out = NULL;
-    if (server_routing_id != 0)
-        _out_by_id.erase (server_routing_id);
+    if (server_routing_id != 0
+        && server_routing_id < static_cast<uint32_t> (_out_by_id.size ())) {
+        _out_by_id[server_routing_id] = NULL;
+    }
 
     queue_event (server_routing_id, stream_event_disconnect);
 }
@@ -89,26 +91,27 @@ int zlink::stream_t::xsend (msg_t *msg_)
         // keeping backward-compatible multipart behavior.
         if (!(msg_->flags () & msg_t::more) && msg_->get_routing_id () != 0) {
             const uint32_t routing_id = msg_->get_routing_id ();
-            const std::map<uint32_t, pipe_t *>::iterator it =
-              _out_by_id.find (routing_id);
-            if (it == _out_by_id.end ()) {
+            const size_t routing_index = static_cast<size_t> (routing_id);
+            if (routing_index >= _out_by_id.size ()) {
                 errno = EHOSTUNREACH;
                 return -1;
             }
 
-            pipe_t *out = it->second;
-            if (!out->check_write ()) {
-                errno = EAGAIN;
+            pipe_t *out = _out_by_id[routing_index];
+            if (!out) {
+                errno = EHOSTUNREACH;
                 return -1;
             }
 
             const bool ok = out->write (msg_);
-            if (likely (ok))
-                out->flush ();
-            else {
+            if (unlikely (!ok)) {
                 const int close_rc = msg_->close ();
                 errno_assert (close_rc == 0);
+                errno = EAGAIN;
+                return -1;
             }
+
+            out->flush ();
 
             const int init_rc = msg_->init ();
             errno_assert (init_rc == 0);
@@ -123,21 +126,19 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
             const uint32_t routing_id =
               get_uint32 (static_cast<unsigned char *> (msg_->data ()));
-            const std::map<uint32_t, pipe_t *>::iterator it =
-              _out_by_id.find (routing_id);
-
-            if (it != _out_by_id.end ()) {
-                _current_out = it->second;
-                if (!_current_out->check_write ()) {
-                    _current_out = NULL;
-                    errno = EAGAIN;
-                    return -1;
-                }
-            } else {
+            const size_t routing_index = static_cast<size_t> (routing_id);
+            if (routing_index >= _out_by_id.size ()
+                || !_out_by_id[routing_index]) {
                 errno = EHOSTUNREACH;
                 return -1;
             }
 
+            _current_out = _out_by_id[routing_index];
+            if (!_current_out->check_write ()) {
+                _current_out = NULL;
+                errno = EAGAIN;
+                return -1;
+            }
             _more_out = true;
         }
 
@@ -380,8 +381,12 @@ void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     pipe_->set_router_socket_routing_id (routing_id);
     pipe_->set_server_socket_routing_id (get_uint32 (routing_id.data ()));
+    const uint32_t routing_id_value = pipe_->get_server_socket_routing_id ();
+    const size_t idx = static_cast<size_t> (routing_id_value);
+    if (idx >= _out_by_id.size ())
+        _out_by_id.resize (idx + 1, NULL);
+    _out_by_id[idx] = pipe_;
     add_out_pipe (ZLINK_MOVE (routing_id), pipe_);
-    _out_by_id[pipe_->get_server_socket_routing_id ()] = pipe_;
 }
 
 void zlink::stream_t::queue_event (uint32_t routing_id_value_,

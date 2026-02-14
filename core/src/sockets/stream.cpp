@@ -356,11 +356,9 @@ int zlink::stream_t::xsetsockopt (int option_,
                                   size_t optvallen_)
 {
     if (option_ == ZLINK_CONNECT_ROUTING_ID) {
-        if (optval_ && optvallen_ == 4) {
-            return routing_socket_base_t::xsetsockopt (option_, optval_,
-                                                       optvallen_);
-        }
-        errno = EINVAL;
+        LIBZLINK_UNUSED (optval_);
+        LIBZLINK_UNUSED (optvallen_);
+        errno = EOPNOTSUPP;
         return -1;
     }
 
@@ -369,18 +367,8 @@ int zlink::stream_t::xsetsockopt (int option_,
 
 void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 {
+    LIBZLINK_UNUSED (locally_initiated_);
     blob_t routing_id;
-
-    if (locally_initiated_ && connect_routing_id_is_set ()) {
-        const std::string connect_routing_id = extract_connect_routing_id ();
-        if (connect_routing_id.size () == 4) {
-            routing_id.set (
-              reinterpret_cast<const unsigned char *> (
-                connect_routing_id.c_str ()),
-              connect_routing_id.size ());
-            zlink_assert (!has_out_pipe (routing_id));
-        }
-    }
 
     if (routing_id.size () == 0) {
         unsigned char buf[4];

@@ -123,7 +123,7 @@ const bool asio_stream_gather_on =
 // Keep gather enabled for STREAM, but only above a practical payload size.
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
 const size_t asio_stream_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 2048);
+  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 8192);
 
 }
 

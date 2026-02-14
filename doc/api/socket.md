@@ -147,7 +147,7 @@ category.
 | `ZLINK_BLOCKY` | 70 | Legacy option: block on context termination (`int`; 0 or 1) |
 | `ZLINK_USE_FD` | 89 | Use a pre-created file descriptor instead of creating a new one (`int`) |
 | `ZLINK_BINDTODEVICE` | 92 | Bind socket to a specific network interface (`string`) |
-| `ZLINK_CONNECT_ROUTING_ID` | 61 | Set the routing identity used for the next outgoing connection (`binary`) |
+| `ZLINK_CONNECT_ROUTING_ID` | 61 | Set routing identity for the next outgoing connection (`binary`, ROUTER path; STREAM returns `EOPNOTSUPP`) |
 | `ZLINK_RATE` | 8 | Multicast data rate in kbps (`int`) |
 | `ZLINK_RECOVERY_IVL` | 9 | Multicast recovery interval in milliseconds (`int`) |
 | `ZLINK_MULTICAST_HOPS` | 25 | Maximum multicast hops (TTL) (`int`) |

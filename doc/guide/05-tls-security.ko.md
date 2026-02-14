@@ -51,26 +51,17 @@ zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
 zlink_bind(socket, "wss://*:8443");
 ```
 
-### WSS 클라이언트
+### WSS 클라이언트 (외부 Raw 클라이언트)
 
-```c
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+`ZLINK_STREAM`은 서버 전용이므로, WSS 클라이언트는 외부 WebSocket/TLS 클라이언트 스택을 사용해야 한다.
 
-/* 시스템 CA 사용 비활성화 (사설 인증서 사용 시) */
-int trust_system = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system));
+개념 예시:
 
-/* CA 인증서 설정 */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", 0);
-
-/* 호스트명 검증 */
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "localhost", 9);
-
-/* WSS 연결 */
-zlink_connect(socket, "wss://server:8443");
+```text
+대상: wss://server:8443
+- CA 신뢰: /path/to/ca.pem
+- 호스트명 검증: localhost
 ```
-
-> 참고: `core/tests/test_stream_socket.cpp` — `test_stream_wss_basic()`
 
 ### ws vs wss 설정 비교
 
@@ -78,9 +69,9 @@ zlink_connect(socket, "wss://server:8443");
 |------|:--:|:---:|
 | 기본 소켓 생성 | O | O |
 | `ZLINK_TLS_CERT` / `ZLINK_TLS_KEY` (서버) | - | 필수 |
-| `ZLINK_TLS_CA` (클라이언트) | - | 권장 |
-| `ZLINK_TLS_HOSTNAME` (클라이언트) | - | 권장 |
-| `ZLINK_TLS_TRUST_SYSTEM` (클라이언트) | - | 선택 |
+| `ZLINK_TLS_CA` (클라이언트) | - | 권장 (외부 raw client) |
+| `ZLINK_TLS_HOSTNAME` (클라이언트) | - | 권장 (외부 raw client) |
+| `ZLINK_TLS_TRUST_SYSTEM` (클라이언트) | - | 선택 (외부 raw client) |
 
 ## 5. TLS 소켓 옵션 상세
 
@@ -322,32 +313,10 @@ int linger = 0;
 zlink_setsockopt(server, ZLINK_LINGER, &linger, sizeof(linger));
 zlink_bind(server, "wss://*:8443");
 
-/* WSS 클라이언트 (STREAM) */
-void *client = zlink_socket(ctx, ZLINK_STREAM);
-int trust = 0;
-zlink_setsockopt(client, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-zlink_setsockopt(client, ZLINK_TLS_CA, "ca.crt", 0);
-zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
-zlink_setsockopt(client, ZLINK_LINGER, &linger, sizeof(linger));
+/* 외부 raw WSS 클라이언트가 이 엔드포인트로 접속한다.
+ * STREAM 서버는 [routing_id][0x01] 이벤트 수신 후 데이터 프레임을 처리한다.
+ */
 
-char endpoint[256];
-size_t len = sizeof(endpoint);
-zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
-zlink_connect(client, endpoint);
-
-/* 연결 이벤트 수신 후 암호화된 데이터 교환 */
-unsigned char server_id[4], client_id[4], code;
-zlink_recv(server, server_id, 4, 0);
-zlink_recv(server, &code, 1, 0);  /* 0x01 = 연결 */
-
-zlink_recv(client, client_id, 4, 0);
-zlink_recv(client, &code, 1, 0);  /* 0x01 = 연결 */
-
-/* 데이터 전송 */
-zlink_send(client, client_id, 4, ZLINK_SNDMORE);
-zlink_send(client, "secure data", 11, 0);
-
-zlink_close(client);
 zlink_close(server);
 zlink_ctx_term(ctx);
 ```

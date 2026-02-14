@@ -97,6 +97,8 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTING_ID` applies to the entire socket
 - `ZLINK_CONNECT_ROUTING_ID` applies to individual connections
 - A single socket can have different aliases for each connection
+- `ZLINK_CONNECT_ROUTING_ID` is for ROUTER-side connection paths.
+- Setting it on `ZLINK_STREAM` returns `EOPNOTSUPP`.
 
 ## 6. Using routing_id with ROUTER Sockets
 

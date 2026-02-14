@@ -145,7 +145,7 @@
 | `ZLINK_BLOCKY` | 70 | 레거시 옵션: context 종료 시 블로킹 (`int`; 0 또는 1) |
 | `ZLINK_USE_FD` | 89 | 새로 생성하는 대신 미리 생성된 파일 디스크립터 사용 (`int`) |
 | `ZLINK_BINDTODEVICE` | 92 | 소켓을 특정 네트워크 인터페이스에 바인딩 (`string`) |
-| `ZLINK_CONNECT_ROUTING_ID` | 61 | 다음 발신 연결에 사용할 라우팅 아이덴티티 설정 (`binary`) |
+| `ZLINK_CONNECT_ROUTING_ID` | 61 | 다음 발신 연결의 라우팅 아이덴티티 설정 (`binary`, ROUTER 경로용; STREAM은 `EOPNOTSUPP`) |
 | `ZLINK_RATE` | 8 | 멀티캐스트 데이터 전송률 (kbps, `int`) |
 | `ZLINK_RECOVERY_IVL` | 9 | 멀티캐스트 복구 간격 (밀리초, `int`) |
 | `ZLINK_MULTICAST_HOPS` | 25 | 최대 멀티캐스트 홉 수 (TTL) (`int`) |

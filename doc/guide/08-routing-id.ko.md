@@ -97,6 +97,8 @@ zlink_connect(socket, "tcp://server2:5556");
 - `ZLINK_ROUTING_ID`는 소켓 전체에 적용
 - `ZLINK_CONNECT_ROUTING_ID`는 개별 연결에 적용
 - 하나의 소켓에서 여러 연결에 각각 다른 alias 가능
+- `ZLINK_CONNECT_ROUTING_ID`는 ROUTER 연결 경로용이다.
+- `ZLINK_STREAM`에 설정하면 `EOPNOTSUPP`를 반환한다.
 
 ## 6. ROUTER 소켓에서 routing_id 사용법
 

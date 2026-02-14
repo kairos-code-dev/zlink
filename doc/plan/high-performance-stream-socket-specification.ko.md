@@ -187,7 +187,7 @@ Fastpath 내부 동작:
 
 - `io_threads` 개수 기준으로 shard 생성
 - 각 shard는:
-  - accept/connect 처리
+  - accept 처리
   - 세션 read/write 상태기계 실행
   - shard-local session map 관리
 
@@ -289,8 +289,8 @@ stale send 방지:
 ### 12.2 Fastpath에서 축소/변경
 
 - `ZLINK_CONNECT_ROUTING_ID`:
-  - 호환성 이유로 지원은 유지
-  - 고성능 운영에서는 미사용 권장(자동 할당 라우팅 ID 사용)
+  - STREAM에서는 지원하지 않음 (`EOPNOTSUPP`)
+  - routing_id는 서버 자동 할당만 사용
 
 - `ZLINK_ROUTING_ID`:
   - "현재 peer id 조회" 의미로 사용하지 않는다.
@@ -336,9 +336,8 @@ stale send 방지:
 - `EMSGSIZE`: `MAXMSGSIZE` 초과
 - `ENOMEM`: 버퍼 확보 실패
 
-연결:
+연결/세션:
 
-- `ETIMEDOUT`: connect timeout
 - `ECONNRESET`/`EPIPE`: peer 종료
 
 ---
@@ -349,7 +348,7 @@ stale send 방지:
 
 1. 내부 처리 단위를 "2-프레임 멀티파트"에서 "단일 envelope"로 변경
 2. 이벤트를 payload 값(0x01/0x00) 혼용에서 `type` 필드 기반으로 변경
-3. `CONNECT_ROUTING_ID`를 필수 기능에서 선택/축소 기능으로 변경
+3. `CONNECT_ROUTING_ID`를 STREAM에서 비지원으로 변경
 4. 트랜스포트를 v1에서 TCP 중심으로 축소
 5. Fair Queue 의무를 제거하고 shard/session 기반 스케줄링으로 변경
 6. 라우팅 ID는 외부 4-byte 유지, 내부 식별은 별도 64-bit 키 허용
@@ -387,7 +386,7 @@ stale send 방지:
 
 - [ ] `ZLINK_STREAM_MODE` 구현
 - [ ] strict/fallback 정책 구현
-- [ ] `CONNECT_ROUTING_ID` 처리 정책 반영
+- [ ] STREAM `CONNECT_ROUTING_ID` 비지원(`EOPNOTSUPP`) 정책 반영
 
 ---
 

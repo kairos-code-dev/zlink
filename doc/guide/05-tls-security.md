@@ -51,26 +51,17 @@ zlink_setsockopt(socket, ZLINK_TLS_KEY, "/path/to/key.pem", 0);
 zlink_bind(socket, "wss://*:8443");
 ```
 
-### WSS Client
+### WSS Client (External Raw Client)
 
-```c
-void *socket = zlink_socket(ctx, ZLINK_STREAM);
+`ZLINK_STREAM` is server-only. For WSS clients, use an external WebSocket/TLS client stack.
 
-/* Disable system CA (when using private certificates) */
-int trust_system = 0;
-zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system));
+Conceptual client requirements:
 
-/* Set CA certificate */
-zlink_setsockopt(socket, ZLINK_TLS_CA, "/path/to/ca.pem", 0);
-
-/* Hostname verification */
-zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, "localhost", 9);
-
-/* WSS connect */
-zlink_connect(socket, "wss://server:8443");
+```text
+target: wss://server:8443
+- trust CA: /path/to/ca.pem
+- verify hostname: localhost
 ```
-
-> Reference: `core/tests/test_stream_socket.cpp` — `test_stream_wss_basic()`
 
 ### ws vs wss Configuration Comparison
 
@@ -78,9 +69,9 @@ zlink_connect(socket, "wss://server:8443");
 |---------|:--:|:---:|
 | Basic socket creation | O | O |
 | `ZLINK_TLS_CERT` / `ZLINK_TLS_KEY` (server) | - | Required |
-| `ZLINK_TLS_CA` (client) | - | Recommended |
-| `ZLINK_TLS_HOSTNAME` (client) | - | Recommended |
-| `ZLINK_TLS_TRUST_SYSTEM` (client) | - | Optional |
+| `ZLINK_TLS_CA` (client) | - | Recommended (external raw client) |
+| `ZLINK_TLS_HOSTNAME` (client) | - | Recommended (external raw client) |
+| `ZLINK_TLS_TRUST_SYSTEM` (client) | - | Optional (external raw client) |
 
 ## 5. TLS Socket Options Reference
 
@@ -322,32 +313,10 @@ int linger = 0;
 zlink_setsockopt(server, ZLINK_LINGER, &linger, sizeof(linger));
 zlink_bind(server, "wss://*:8443");
 
-/* WSS Client (STREAM) */
-void *client = zlink_socket(ctx, ZLINK_STREAM);
-int trust = 0;
-zlink_setsockopt(client, ZLINK_TLS_TRUST_SYSTEM, &trust, sizeof(trust));
-zlink_setsockopt(client, ZLINK_TLS_CA, "ca.crt", 0);
-zlink_setsockopt(client, ZLINK_TLS_HOSTNAME, "localhost", 9);
-zlink_setsockopt(client, ZLINK_LINGER, &linger, sizeof(linger));
+/* External raw WSS client connects to this endpoint.
+ * STREAM server receives [routing_id][0x01] and then data frames.
+ */
 
-char endpoint[256];
-size_t len = sizeof(endpoint);
-zlink_getsockopt(server, ZLINK_LAST_ENDPOINT, endpoint, &len);
-zlink_connect(client, endpoint);
-
-/* Receive connection event, then exchange encrypted data */
-unsigned char server_id[4], client_id[4], code;
-zlink_recv(server, server_id, 4, 0);
-zlink_recv(server, &code, 1, 0);  /* 0x01 = connected */
-
-zlink_recv(client, client_id, 4, 0);
-zlink_recv(client, &code, 1, 0);  /* 0x01 = connected */
-
-/* Send data */
-zlink_send(client, client_id, 4, ZLINK_SNDMORE);
-zlink_send(client, "secure data", 11, 0);
-
-zlink_close(client);
 zlink_close(server);
 zlink_ctx_term(ctx);
 ```

@@ -1905,13 +1905,18 @@ bool run_connect_phase (const Config &cfg,
                               cfg.latency_sample_rate == 1
                               || (sent_measure_batches % cfg.latency_sample_rate)
                                    == 0;
-                            if (sample_batch) {
-                                memcpy (&send_payload_sample[0],
-                                        &send_payload_phase1[0],
-                                        packet_size * static_cast<size_t> (batch));
-                                write_u64_le (&send_payload_sample[5], now_ns ());
-                                send_buf = &send_payload_sample[0];
-                            } else {
+if (sample_batch) {
+    memcpy (&send_payload_sample[0],
+            &send_payload_phase1[0],
+            packet_size * static_cast<size_t> (batch));
+    const uint64_t sample_ts = now_ns ();
+    for (int j = 0; j < batch; ++j) {
+        write_u64_le (
+          &send_payload_sample[static_cast<size_t> (j) * packet_size + 5],
+          sample_ts);
+    }
+    send_buf = &send_payload_sample[0];
+} else {
                                 send_buf = &send_payload_phase1[0];
                             }
                         } else {
@@ -2282,7 +2287,7 @@ void print_usage (const char *prog)
     printf ("  --io-threads N                (default 1)\n");
     printf ("  --server-shards N             (default 0:auto)\n");
     printf ("  --client-workers N            (default 0:auto)\n");
-    printf ("  --send-batch N                (default 16)\n");
+    printf ("  --send-batch N                (default 30)\n");
     printf ("  --latency-sample-rate N       (default 1, 0=disable)\n");
     printf ("  --scenario-id ID              override scenario_id output\n");
     printf ("  --metrics-csv PATH            append row to csv\n");

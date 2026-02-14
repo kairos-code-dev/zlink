@@ -176,6 +176,11 @@ internal sealed class BenchmarkState
         }
 
         var recvIdx = Interlocked.Increment(ref _recvMeasure);
+        if (!_measureEnabled)
+        {
+            return;
+        }
+
         var sampleRate = Math.Max(1, _cfg.LatencySampleRate);
         if (sampleRate > 1 && (recvIdx % sampleRate) != 0)
         {

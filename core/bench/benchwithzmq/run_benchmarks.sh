@@ -38,7 +38,8 @@ if [[ "${IS_WINDOWS}" -eq 1 ]]; then
 else
   BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
-PATTERN="ALL"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM"
+PATTERN="${STANDARD_PATTERNS}"
 WITH_LIBZMQ=1
 OUTPUT_FILE=""
 RUNS=1
@@ -48,9 +49,16 @@ PIN_CPU=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
+BENCH_MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
+BENCH_MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
+BENCH_MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
+BENCH_MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-}"
+BENCH_MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS:-}"
+BENCH_MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
 RESULTS=1
 RESULTS_DIR=""
 RESULTS_TAG=""
+BENCH_COMPARISON_SCRIPT="${BENCH_COMPARISON_SCRIPT:-${ROOT_DIR}/core/bench/benchwithzmq/run_comparison.py}"
 
 usage() {
   cat <<'USAGE'
@@ -62,6 +70,9 @@ Options:
   --with-libzmq        Run libzmq baseline and refresh cache (default).
   --pattern NAME       Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, STREAM).
   --build-dir PATH     Build directory (default: core/build/<platform>-<arch>).
+  Note: PATTERN=ALL runs single-pattern benchmarks (PAIR/PUBSUB/DEALER/ROUTER/STREAM).
+  Multi-socket benchmarks are excluded from this script.
+  Use run_benchmarks_multi.sh for MULTI_* patterns.
   --output PATH        Tee results to a file.
   --result             Write results under core/bench/benchwithzmq/results/YYYYMMDD/.
   --results-dir PATH   Override results root directory.
@@ -74,7 +85,16 @@ Options:
   --msg-sizes LIST     Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N             Convenience alias for --msg-sizes N.
   --transport LIST     Comma-separated transports (e.g., tcp or tcp,inproc,ipc).
-                       STREAM pattern runs on tcp only.
+                        STREAM pattern runs on tcp only.
+  --multi-clients N    Set BENCH_MULTI_CLIENTS.
+  --multi-inflight N   Set BENCH_MULTI_INFLIGHT.
+  --multi-connect-concurrency N
+                      Set BENCH_MULTI_CONNECT_CONCURRENCY.
+  --multi-warmup-seconds N
+                      Set BENCH_MULTI_WARMUP_SECONDS.
+  --multi-measure-seconds N
+                      Set BENCH_MULTI_MEASURE_SECONDS.
+  --multi-drain-ms N    Set BENCH_MULTI_DRAIN_MS.
 USAGE
 }
 
@@ -138,6 +158,30 @@ while [[ $# -gt 0 ]]; do
       BENCH_TRANSPORTS="${2:-}"
       shift
       ;;
+    --multi-clients)
+      BENCH_MULTI_CLIENTS="${2:-}"
+      shift
+      ;;
+    --multi-inflight)
+      BENCH_MULTI_INFLIGHT="${2:-}"
+      shift
+      ;;
+    --multi-connect-concurrency)
+      BENCH_MULTI_CONNECT_CONCURRENCY="${2:-}"
+      shift
+      ;;
+    --multi-warmup-seconds)
+      BENCH_MULTI_WARMUP_SECONDS="${2:-}"
+      shift
+      ;;
+    --multi-measure-seconds)
+      BENCH_MULTI_MEASURE_SECONDS="${2:-}"
+      shift
+      ;;
+    --multi-drain-ms)
+      BENCH_MULTI_DRAIN_MS="${2:-}"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -157,9 +201,16 @@ if [[ -z "${PATTERN}" ]]; then
   exit 1
 fi
 
+if [[ ! -f "${BENCH_COMPARISON_SCRIPT}" ]]; then
+  echo "Error: comparison script not found: ${BENCH_COMPARISON_SCRIPT}" >&2
+  exit 1
+fi
+
 # Normalize pattern to uppercase for consistent matching
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
+else
+  PATTERN="${STANDARD_PATTERNS}"
 fi
 
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
@@ -181,6 +232,36 @@ if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]
 fi
 if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-zA-Z0-9]+(,[a-zA-Z0-9]+)*$ ]]; then
   echo "BENCH_TRANSPORTS must be a comma-separated list of names." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_CLIENTS}" && ! "${BENCH_MULTI_CLIENTS}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_CLIENTS must be a positive integer." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_INFLIGHT}" && ! "${BENCH_MULTI_INFLIGHT}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_INFLIGHT must be a positive integer." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_CONNECT_CONCURRENCY}" && ! "${BENCH_MULTI_CONNECT_CONCURRENCY}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_CONNECT_CONCURRENCY must be a positive integer." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_WARMUP_SECONDS}" && ! "${BENCH_MULTI_WARMUP_SECONDS}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_WARMUP_SECONDS must be a positive integer." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_MEASURE_SECONDS}" && ! "${BENCH_MULTI_MEASURE_SECONDS}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_MEASURE_SECONDS must be a positive integer." >&2
+  usage >&2
+  exit 1
+fi
+if [[ -n "${BENCH_MULTI_DRAIN_MS}" && ! "${BENCH_MULTI_DRAIN_MS}" =~ ^[0-9]+$ ]]; then
+  echo "BENCH_MULTI_DRAIN_MS must be a positive integer." >&2
   usage >&2
   exit 1
 fi
@@ -277,7 +358,7 @@ else
   fi
 fi
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${ROOT_DIR}/core/bench/benchwithzmq/run_comparison.py" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_ENV+=(BENCH_TASKSET=1)
@@ -290,6 +371,24 @@ if [[ -n "${BENCH_MSG_SIZES}" ]]; then
 fi
 if [[ -n "${BENCH_TRANSPORTS}" ]]; then
   RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
+fi
+if [[ -n "${BENCH_MULTI_CLIENTS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_CLIENTS="${BENCH_MULTI_CLIENTS}")
+fi
+if [[ -n "${BENCH_MULTI_INFLIGHT}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT}")
+fi
+if [[ -n "${BENCH_MULTI_CONNECT_CONCURRENCY}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY}")
+fi
+if [[ -n "${BENCH_MULTI_WARMUP_SECONDS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS}")
+fi
+if [[ -n "${BENCH_MULTI_MEASURE_SECONDS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS}")
+fi
+if [[ -n "${BENCH_MULTI_DRAIN_MS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS}")
 fi
 
 if [[ "${ZLINK_ONLY}" -eq 1 ]]; then

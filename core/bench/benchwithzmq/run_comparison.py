@@ -163,6 +163,7 @@ else:
     TRANSPORTS = ["tcp", "inproc"]
     if not IS_WINDOWS:
         TRANSPORTS.append("ipc")  # IPC is more stable for benchmarks on Linux
+FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
 
 _env_sizes = parse_env_list("BENCH_MSG_SIZES", int)
 if _env_sizes:
@@ -188,6 +189,14 @@ def run_single_test(binary_name, lib_name, transport, size):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
     timeout_sec = 60
+    if ("_multi_" in binary_name):
+        timeout_sec = max(
+            60,
+            int(os.environ.get("BENCH_MULTI_WARMUP_SECONDS", 3))
+            + int(os.environ.get("BENCH_MULTI_MEASURE_SECONDS", 10))
+            + 30,
+        )
+
     # STREAM on large payloads can exceed the default timeout on Windows.
     if "stream" in binary_name and size >= 262144:
         timeout_sec = 180
@@ -235,10 +244,18 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
                 if results is None:
                     failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
                     continue
                 if not results:
                     failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
                     continue
                 for r in results:
                     m = r['metric']
@@ -273,6 +290,12 @@ def parse_args():
         "\n"
         "Env:\n"
         "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
+        "  BENCH_MULTI_CLIENTS=100\n"
+        "  BENCH_MULTI_INFLIGHT=30\n"
+        "  BENCH_MULTI_CONNECT_CONCURRENCY=128\n"
+        "  BENCH_MULTI_WARMUP_SECONDS=3\n"
+        "  BENCH_MULTI_MEASURE_SECONDS=10\n"
+        "  BENCH_MULTI_DRAIN_MS=300\n"
         "\n"
         "Notes:\n"
         "  STREAM pattern only runs on tcp transport.\n"
@@ -367,6 +390,15 @@ def main():
         ("comp_std_zmq_router_router_poll", "comp_zlink_router_router_poll",
          "ROUTER_ROUTER_POLL"),
         ("comp_std_zmq_stream", "comp_zlink_stream", "STREAM"),
+        ("comp_std_zmq_multi_dealer_dealer", "comp_zlink_multi_dealer_dealer",
+         "MULTI_DEALER_DEALER"),
+        ("comp_std_zmq_multi_dealer_router", "comp_zlink_multi_dealer_router",
+         "MULTI_DEALER_ROUTER"),
+        ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router",
+         "MULTI_ROUTER_ROUTER"),
+        ("comp_std_zmq_multi_router_router_poll",
+         "comp_zlink_multi_router_router_poll", "MULTI_ROUTER_ROUTER_POLL"),
+        ("comp_std_zmq_multi_pubsub", "comp_zlink_multi_pubsub", "MULTI_PUBSUB"),
     ]
     supported = sorted({p_name for _, _, p_name in comparisons})
     if p_req != "ALL" and p_req not in supported:
@@ -501,6 +533,8 @@ def main():
         print("\n## Failures")
         for pattern, lib_name, tr, sz, reason in all_failures:
             print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
+        if FAIL_FAST:
+            raise SystemExit(1)
 
 if __name__ == "__main__":
     main()

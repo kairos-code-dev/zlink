@@ -240,5 +240,17 @@
     "ipc|131072|latency": 31.61,
     "ipc|262144|throughput": 26567.64,
     "ipc|262144|latency": 92.33
+  },
+  "MULTI_DEALER_DEALER": {
+    "tcp|64|throughput": 184050.0,
+    "tcp|64|latency": 76.58,
+    "tcp|256|throughput": 9900.0,
+    "tcp|256|latency": 75.21,
+    "tcp|1024|throughput": 9900.0,
+    "tcp|1024|latency": 75.12,
+    "tcp|65536|throughput": 9900.0,
+    "tcp|65536|latency": 106.38,
+    "tcp|131072|throughput": 9900.0,
+    "tcp|131072|latency": 124.44
   }
 }

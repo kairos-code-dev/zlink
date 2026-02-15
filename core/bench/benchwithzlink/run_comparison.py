@@ -177,13 +177,19 @@ if not IS_WINDOWS:
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
 
 def select_transports(pattern_name):
     if pattern_name == "MULTI_STREAM":
         base = ["tcp"]
     else:
-        base = STREAM_TRANSPORTS if pattern_name in ("STREAM", "GATEWAY",
-                                                     "SPOT") else TRANSPORTS
+        base = STREAM_TRANSPORTS if pattern_name in (
+            "STREAM",
+            "GATEWAY",
+            "SPOT",
+            "MULTI_GATEWAY",
+            "MULTI_SPOT",
+        ) else TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -441,6 +447,14 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
 
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
+    timeout_sec = 60
+    if pattern_name.startswith("MULTI_"):
+        timeout_sec = max(
+            60,
+            parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
+            + parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10)
+            + 30,
+        )
 
     # For STREAM pattern with TLS/WS/WSS, limit msg count to avoid buffer/deadlock issues
     # WS has lower limits (~4K for 1KB+ messages), so use conservative 5000 for all
@@ -461,7 +475,7 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
                                 env=env,
                                 capture_output=True,
                                 text=True,
-                                timeout=60)
+                                timeout=timeout_sec)
         if result.returncode != 0:
             return []
 
@@ -500,10 +514,18 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                 if results is None:
                     failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
                     continue
                 if not results:
                     failed_runs += 1
                     failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
                     continue
                 for r in results:
                     m = r['metric']
@@ -530,7 +552,7 @@ def parse_args():
     usage = (
         "Usage: run_comparison.py [PATTERN] [options]\n\n"
         "Compare baseline zlink (previous version) vs current zlink (new build).\n\n"
-        "Note: PATTERN=ALL includes STREAM and MULTI_STREAM by default.\n\n"
+        "Note: PATTERN=ALL includes STREAM and MULTI_* patterns by default.\n\n"
         "Options:\n"
         "  --refresh-baseline      Refresh baseline cache\n"
         "  --refresh-libzlink        Alias for --refresh-baseline\n"
@@ -544,6 +566,12 @@ def parse_args():
         "Env:\n"
         "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
         "  BENCH_TRANSPORTS=list  Comma-separated transports (e.g., tcp,ws,wss)\n"
+        "  BENCH_MULTI_CLIENTS=100\n"
+        "  BENCH_MULTI_INFLIGHT=30\n"
+        "  BENCH_MULTI_CONNECT_CONCURRENCY=128\n"
+        "  BENCH_MULTI_WARMUP_SECONDS=3\n"
+        "  BENCH_MULTI_MEASURE_SECONDS=10\n"
+        "  BENCH_MULTI_DRAIN_MS=300\n"
         "  BENCH_MULTI_STREAM_SCENARIO=s2\n"
         "  BENCH_MULTI_STREAM_MSG_SIZES=64,256,1024,65536,131072,262144\n"
     )
@@ -619,6 +647,18 @@ def main():
         ("comp_baseline_router_router_poll", "comp_current_router_router_poll",
          "ROUTER_ROUTER_POLL"),
         ("comp_baseline_stream", "comp_current_stream", "STREAM"),
+        ("comp_baseline_multi_dealer_dealer", "comp_current_multi_dealer_dealer",
+         "MULTI_DEALER_DEALER"),
+        ("comp_baseline_multi_dealer_router", "comp_current_multi_dealer_router",
+         "MULTI_DEALER_ROUTER"),
+        ("comp_baseline_multi_router_router", "comp_current_multi_router_router",
+         "MULTI_ROUTER_ROUTER"),
+        ("comp_baseline_multi_router_router_poll",
+         "comp_current_multi_router_router_poll", "MULTI_ROUTER_ROUTER_POLL"),
+        ("comp_baseline_multi_pubsub", "comp_current_multi_pubsub", "MULTI_PUBSUB"),
+        ("comp_baseline_multi_gateway", "comp_current_multi_gateway",
+         "MULTI_GATEWAY"),
+        ("comp_baseline_multi_spot", "comp_current_multi_spot", "MULTI_SPOT"),
         ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
         ("comp_baseline_spot", "comp_current_spot", "SPOT"),
         ("multi_stream", "multi_stream", "MULTI_STREAM"),
@@ -771,6 +811,8 @@ def main():
         print("\n## Failures")
         for pattern, lib_name, tr, sz, reason in all_failures:
             print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
+        if FAIL_FAST:
+            raise SystemExit(1)
 
 if __name__ == "__main__":
     main()

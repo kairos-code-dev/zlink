@@ -209,13 +209,19 @@
 
 ## 11. 코드 반영 체크리스트
 
-- [ ] write path가 `header+body` gather write를 사용한다.
-- [ ] read buffer가 작은 기본값(4KB 근처)에 고정되어 있지 않다.
-- [ ] packet assembly가 불필요한 동적 컨테이너 연산 없이 동작한다.
-- [ ] latency 샘플 저장이 shard-local 구조다.
-- [ ] benchmark가 server/client 분리 실행을 지원한다.
-- [ ] 포트 설정이 ephemeral 충돌을 피한다.
+- [x] write path가 `header+body` gather write를 사용한다.
+- [x] read buffer가 작은 기본값(4KB 근처)에 고정되어 있지 않다.
+- [x] packet assembly가 불필요한 동적 컨테이너 연산 없이 동작한다.
+- [x] latency 샘플 저장이 shard-local 구조다.
+- [x] benchmark가 server/client 분리 실행을 지원한다.
+- [x] 포트 설정이 ephemeral 충돌을 피한다.
 - [ ] `ctest` 전체 회귀를 통과한다.
+
+상태 기준일: `2026-02-15`
+
+비고:
+- 체크 항목 1~6은 코드/시나리오 기준 반영 확인 완료.
+- `ctest` 전체 회귀는 이번 성능 튜닝 턴에서 미실행(별도 턴 필요).
 
 
 ## 12. 실무 결론
@@ -232,16 +238,99 @@ ASIO 성능 개선의 본질은 "핫패스에서 메시지당 일을 줄이는 �
 이 5가지를 먼저 적용하면, 이후 옵션 튜닝(threads, buffers, sample rate)은 미세조정 단계로 내려간다.
 
 
-## 13. 관련 링크
+## 13. 2026-02-15 실측 반영 내역
 
-### 13.1 내부 문서
+### 13.1 목표와 기준선
+
+- 목표: `zlink stream`이 `cppserver` 대비 각 메시지 크기에서 `±5%` 이내(또는 우수) 성능을 달성.
+- 64KB 기준선 선검증:
+  - `cppserver s2` (`ccu=10000`, `inflight=30`, `size=65536`) 단독 실행 결과
+  - throughput: `69,498.10 msg/s`, `incomplete_ratio=0`, `drain_timeout=0`, `PASS`
+  - 결과 파일: `core/tests/scenario/stream/result/cppserver_64k_verify_20260215_005919/metrics.csv`
+
+### 13.2 효과가 컸던 개선 항목
+
+1. STREAM gather threshold 상향 (`2048 -> 8192`)
+- 변경: `core/src/engine/asio/asio_engine.cpp`
+- 의도: `4KB` 구간에서 gather 경로 대신 encoder batch 경로를 우선 사용.
+- 효과:
+  - 변경 전(자동 튜닝만 적용): `4KB zlink=1,409,028.00`, `cpp=1,926,706.30`, 비율 `73.13%` (`FAIL`)
+  - 변경 후: `4KB zlink=1,810,347.00`, `cpp=1,829,124.20`, 비율 `98.97%` (`PASS`)
+  - 기준 파일:
+    - `core/tests/scenario/stream/result/size_compare_after_auto_tune_20260215_015700/summary.csv`
+    - `core/tests/scenario/stream/result/size_compare_after_gather8192_20260215_020245/summary.csv`
+
+2. 64KB send-path 정체(stall) 완화
+- 변경: `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
+- 핵심:
+  - `raw_send_all()`의 `EAGAIN` 처리에서 busy-yield 대신 `poll(POLLOUT, 1ms)` 대기.
+  - 대형 패킷에서 `max_batch`를 소켓 버퍼 기준으로 자동 제한(실질적으로 large packet은 batch 축소).
+- 효과:
+  - 초기 측정: `64KB` 비율 `37.71%`, `FAIL`
+  - 반영 후: `64KB` 비율 `132.76%`, `PASS`
+  - 기준 파일:
+    - `core/tests/scenario/stream/result/size_compare_20260215_010511/summary.csv`
+    - `core/tests/scenario/stream/result/size_compare_after_gather8192_20260215_020245/summary.csv`
+
+3. I/O 토폴로지 자동값 재조정
+- 변경: `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
+- 내용: `io_threads>=24`에서 auto `server_shards=8`, auto `client_workers=2`
+- 효과:
+  - 64KB 조합 스윕에서 `client_workers=2`가 가장 안정적으로 `PASS` 유지
+  - `client_workers>=3`에서 고 throughput이 나와도 `drain_timeout` 또는 `incomplete_ratio`로 `FAIL` 빈발
+  - 기준 파일: `core/tests/scenario/stream/result/size64k_combo_sweep_20260215_014036/summary.csv`
+
+4. 수신 파서 복사 경로 경량화
+- 변경: `core/tests/scenario/stream/zlink/test_scenario_stream_zlink.cpp`
+- 내용: 수신 청크 전체를 누적/erase하던 방식에서, 미완성 tail만 유지하는 방식으로 변경.
+- 효과:
+  - 고부하 구간에서 packet assembly 비용 완화 및 안정성 개선에 기여
+  - 특히 4KB/64KB에서 변동폭과 drain 안정성 개선에 유효
+
+### 13.3 효과가 제한적이었던 시도
+
+- `send_batch` 단독 증가는 `4KB`에서 상한 효과만 보임:
+  - `1 -> 64` 증가 시 throughput `546,250 -> 1,200,589.50 msg/s`
+  - 그러나 단독으로는 `cppserver 4KB` parity에 미달
+  - 기준 파일: `core/tests/scenario/stream/result/size4k_batch_sweep_20260215_011111/summary.csv`
+
+- `sndbuf/rcvbuf`를 `1MB`로 확대해도 `4KB` 개선폭은 제한적:
+  - `ss=8,cw=2` 기준 `1,420,882.50 -> 1,406,571.00 msg/s` (유의미한 개선 없음)
+  - 기준 파일:
+    - `core/tests/scenario/stream/result/size4k_current_ss8_cw2_probe_20260215_015327/metrics.csv`
+    - `core/tests/scenario/stream/result/size4k_current_ss8_cw2_buf1m_probe_20260215_015601/metrics.csv`
+
+### 13.4 최종 결과 (동일 시나리오, `ccu=10000`, `inflight=30`, `io_threads=32`)
+
+결과 파일: `core/tests/scenario/stream/result/size_compare_after_gather8192_20260215_020245/summary.csv`
+
+| size | cppserver msg/s | zlink msg/s | zlink/cppserver | 판정 |
+|---|---:|---:|---:|---|
+| 64 | 4,758,501.00 | 10,998,858.00 | 231.14% | PASS |
+| 256 | 4,406,904.10 | 8,744,193.00 | 198.42% | PASS |
+| 1024 | 4,174,260.90 | 4,750,371.00 | 113.80% | PASS |
+| 4096 | 1,829,124.20 | 1,810,347.00 | 98.97% | PASS |
+| 65536 | 79,846.30 | 106,000.00 | 132.76% | PASS |
+
+판정 기준:
+- `zlink/cppserver >= 95%`이면 목표 충족으로 판정.
+- 위 5개 사이즈 전 구간 목표 충족.
+
+### 13.5 반영 커밋
+
+- `e1aecf50`: `perf: stabilize stream 64k path and tune zlink scenario workers`
+- `580fbb82`: `perf: raise stream gather threshold for 4k parity`
+
+## 14. 관련 링크
+
+### 14.1 내부 문서
 
 - [고성능 stream 소켓 스펙](./high-performance-stream-socket-specification.ko.md)
 - [기존 stream 소켓 스펙](./stream-socket-specification.ko.md)
 - [STREAM CS fastpath 설계안](./stream-cs-fastpath-cppserver-based.ko.md)
 - [STREAM 5-stack parity/성능 정리](./stream-4stack-parity-and-zlink-improvement.ko.md)
 
-### 13.2 내부 코드 경로
+### 14.2 내부 코드 경로
 
 - [ASIO 엔진](../../core/src/engine/asio/asio_engine.cpp)
 - [ASIO RAW 엔진](../../core/src/engine/asio/asio_raw_engine.cpp)
@@ -253,7 +342,7 @@ ASIO 성능 개선의 본질은 "핫패스에서 메시지당 일을 줄이는 �
 - [zlink stream 시나리오 스크립트](../../core/tests/scenario/stream/zlink/run_stream_scenarios.sh)
 - [cppserver 시나리오 스크립트](../../core/tests/scenario/stream/cppserver/run_stream_scenarios.sh)
 
-### 13.3 외부 참고
+### 14.3 외부 참고
 
 - [Boost.Asio 공식 문서](https://www.boost.org/doc/libs/release/doc/html/boost_asio.html)
 - [CppServer GitHub](https://github.com/chronoxor/CppServer)

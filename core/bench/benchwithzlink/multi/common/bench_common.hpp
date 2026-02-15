@@ -1,0 +1,512 @@
+#ifndef BENCH_COMMON_HPP
+#define BENCH_COMMON_HPP
+
+#include <chrono>
+#include <vector>
+#include <string>
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
+#include <iomanip>
+#include <thread>
+#include <fstream>
+#include <zlink.h>
+
+#if !defined(_WIN32)
+#include <arpa/inet.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <dlfcn.h>
+#else
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#endif
+
+// --- TLS Socket Options ---
+#ifndef ZLINK_TLS_CERT
+#define ZLINK_TLS_CERT 95
+#endif
+#ifndef ZLINK_TLS_KEY
+#define ZLINK_TLS_KEY 96
+#endif
+#ifndef ZLINK_TLS_CA
+#define ZLINK_TLS_CA 97
+#endif
+#ifndef ZLINK_TLS_HOSTNAME
+#define ZLINK_TLS_HOSTNAME 100
+#endif
+
+// --- Configuration ---
+static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 262144};
+static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
+static const std::vector<std::string> STREAM_TRANSPORTS = {"tcp", "tls", "ws", "wss"};
+static const size_t MAX_SOCKET_STRING = 256;
+static const int SETTLE_TIME_MS = 300;
+
+// --- Stopwatch ---
+class stopwatch_t {
+public:
+    void start() { _start = std::chrono::steady_clock::now(); }
+    double elapsed_ms() const {
+        auto end = std::chrono::steady_clock::now();
+        return std::chrono::duration<double, std::milli>(end - _start).count();
+    }
+private:
+    std::chrono::steady_clock::time_point _start;
+};
+
+class ctx_guard_t {
+public:
+    ctx_guard_t() : _ctx(zlink_ctx_new()) {}
+    ~ctx_guard_t() {
+        if (_ctx)
+            zlink_ctx_term(_ctx);
+    }
+
+    void *get() const { return _ctx; }
+    bool valid() const { return _ctx != NULL; }
+
+private:
+    ctx_guard_t(const ctx_guard_t &);
+    ctx_guard_t &operator=(const ctx_guard_t &);
+
+    void *_ctx;
+};
+
+class socket_guard_t {
+public:
+    socket_guard_t() : _socket(NULL) {}
+    socket_guard_t(void *ctx_, int type_) : _socket(zlink_socket(ctx_, type_)) {}
+    ~socket_guard_t() {
+        if (_socket)
+            zlink_close(_socket);
+    }
+
+    void *get() const { return _socket; }
+    bool valid() const { return _socket != NULL; }
+    operator void *() const { return _socket; }
+
+private:
+    socket_guard_t(const socket_guard_t &);
+    socket_guard_t &operator=(const socket_guard_t &);
+
+    void *_socket;
+};
+
+inline void print_result(const std::string& lib_type,
+                         const std::string& pattern,
+                         const std::string& transport,
+                         size_t size,
+                         double throughput,
+                         double latency) {
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+}
+
+inline bool bench_debug_enabled() {
+    static const bool enabled = std::getenv("BENCH_DEBUG") != nullptr;
+    return enabled;
+}
+
+inline bool set_sockopt_int(void *socket_, int option_, int value_,
+                            const char *name_) {
+    const int rc = zlink_setsockopt(socket_, option_, &value_, sizeof(value_));
+    if (rc != 0 && bench_debug_enabled()) {
+        std::cerr << "setsockopt(" << name_ << ") failed: "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
+    if (bench_debug_enabled()) {
+        int out = 0;
+        size_t out_size = sizeof(out);
+        const int grc = zlink_getsockopt(socket_, option_, &out, &out_size);
+        if (grc == 0) {
+            std::cerr << "setsockopt(" << name_ << ") = " << out << std::endl;
+        }
+    }
+    return rc == 0;
+}
+
+inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
+    if (transport == "inproc")
+        return;
+
+    const int timeout_ms = 2000;
+    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+}
+
+inline std::string transport_from_endpoint(const std::string &endpoint)
+{
+    const std::string::size_type pos = endpoint.find("://");
+    if (pos == std::string::npos)
+        return std::string();
+    return endpoint.substr(0, pos);
+}
+
+inline std::string make_endpoint(const std::string& transport, const std::string& id) {
+    if (transport == "pgm" || transport == "epgm") {
+        if (transport == "pgm") {
+            if (const char *env = std::getenv("BENCH_PGM_ENDPOINT")) {
+                if (*env)
+                    return std::string(env);
+            }
+        } else {
+            if (const char *env = std::getenv("BENCH_EPGM_ENDPOINT")) {
+                if (*env)
+                    return std::string(env);
+            }
+        }
+#if !defined(_WIN32)
+        struct ifaddrs *ifaddr = nullptr;
+        if (getifaddrs(&ifaddr) == 0) {
+            for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+                if (!ifa->ifa_addr)
+                    continue;
+                if (!(ifa->ifa_flags & IFF_UP))
+                    continue;
+                if (!(ifa->ifa_flags & IFF_MULTICAST))
+                    continue;
+                if (ifa->ifa_flags & IFF_LOOPBACK)
+                    continue;
+                if (ifa->ifa_addr->sa_family != AF_INET)
+                    continue;
+                char addr[INET_ADDRSTRLEN];
+                const struct sockaddr_in *sa =
+                  reinterpret_cast<const struct sockaddr_in *>(ifa->ifa_addr);
+                if (inet_ntop(AF_INET, &sa->sin_addr, addr, sizeof(addr))) {
+                    std::string endpoint =
+                      transport + "://" + addr + ";239.192.1.1:5555";
+                    freeifaddrs(ifaddr);
+                    return endpoint;
+                }
+            }
+            freeifaddrs(ifaddr);
+        }
+#endif
+        return std::string();
+    }
+    if (transport == "inproc") return "inproc://" + id;
+    if (transport == "ipc") return "ipc://*";
+    if (transport == "ws") return "ws://127.0.0.1:*";
+    if (transport == "wss") return "wss://127.0.0.1:*";
+    if (transport == "tls") return "tls://127.0.0.1:*";
+    return "tcp://127.0.0.1:*";
+}
+
+inline std::string make_fixed_endpoint(const std::string& transport, int port) {
+    const std::string host = "127.0.0.1";
+    const std::string port_str = std::to_string(port);
+    if (transport == "ws") return "ws://" + host + ":" + port_str;
+    if (transport == "wss") return "wss://" + host + ":" + port_str;
+    if (transport == "tls") return "tls://" + host + ":" + port_str;
+    return "tcp://" + host + ":" + port_str;
+}
+
+inline void *resolve_symbol(const char *name) {
+#if defined(_WIN32)
+    HMODULE module = GetModuleHandleA(NULL);
+    if (!module)
+        return NULL;
+    return reinterpret_cast<void *>(GetProcAddress(module, name));
+#else
+    return dlsym(RTLD_DEFAULT, name);
+#endif
+}
+
+// --- Embedded Test Certificates for TLS ---
+namespace test_certs {
+
+static const char *ca_cert_pem =
+  "-----BEGIN CERTIFICATE-----\n"
+  "MIIDlzCCAn+gAwIBAgIUbGLNLbwV7np9Q07zD9ZWvmA+nkAwDQYJKoZIhvcNAQEL\n"
+  "BQAwWzELMAkGA1UEBhMCVVMxDTALBgNVBAgMBFRlc3QxDTALBgNVBAcMBFRlc3Qx\n"
+  "FjAUBgNVBAoMDVpMaW5rIFRlc3QgQ0ExFjAUBgNVBAMMDVpMaW5rIFRlc3QgQ0Ew\n"
+  "HhcNMjYwMTEyMTEyMjUzWhcNMzYwMTEwMTEyMjUzWjBbMQswCQYDVQQGEwJVUzEN\n"
+  "MAsGA1UECAwEVGVzdDENMAsGA1UEBwwEVGVzdDEWMBQGA1UECgwNWkxpbmsgVGVz\n"
+  "dCBDQTEWMBQGA1UEAwwNWkxpbmsgVGVzdCBDQTCCASIwDQYJKoZIhvcNAQEBBQAD\n"
+  "ggEPADCCAQoCggEBAKHAdjzB5SsoFlce8T4XBvQa0LAbYP9hQ+jcLXSzoF/QDmeP\n"
+  "sxGSE1WINM7ZT9BOqNa8OKl7kWWWYS45XeeqrNLVHDQbz9DvUAqUVaSsoxyAxCtV\n"
+  "8Zq+F6Zy01qbLXi+Nv1jWz685X9KSc5SCKz9acoOSBU7IOtJKCQ+QM+/x9PMqQeg\n"
+  "B+aRNkv+WE4RRLbpQnIGqSiZkUsNI6Z97o2otsHkGa1oVWWXmKqzUAmembVHjiCl\n"
+  "Rn9Ut4/HqqopLn/k2m7/Lj62QT6sOcB8ixDe+H4TwDF6sbxgHcs/1sdobys6VsUF\n"
+  "gFSJ5Dm33yYBjQmLfxXRaKMxKGukLmAofa+f28sCAwEAAaNTMFEwHQYDVR0OBBYE\n"
+  "FO3BqMenuNdTJuCz5tywoNrd11KjMB8GA1UdIwQYMBaAFO3BqMenuNdTJuCz5tyw\n"
+  "oNrd11KjMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBADF2GjWc\n"
+  "BuvU/3bG2406XNFtl7pb4V70zClo269Gb/SYVrF0k6EXp2I8UQ7cPXM+ueWu8JeG\n"
+  "XCbSTRADWxw702VxryCXLIYYMZ5hwF5ZtDGOagZQWSz38UFy2acCRNqY2ijyISQn\n"
+  "3M8YtRdeEGOan+gtTC6/xB3IIRX1tFohT35G/wjld8hs6kJVokYhVfKhk4EZKSxH\n"
+  "IiHsVaafpjUwm4EkAwCmwAWkOalKijbo5Jdq9h3UNfOn4RblN80FU/jD2cBFP+L8\n"
+  "U/Juz13KFa/4NXp9flzUl/1w5o//V1UXUpfYOMsVT8BaP3dV1pa9lDwhoJERyiI1\n"
+  "xj0kGsPBIt3nVwE=\n"
+  "-----END CERTIFICATE-----\n";
+
+static const char *server_cert_pem =
+  "-----BEGIN CERTIFICATE-----\n"
+  "MIIDrTCCApWgAwIBAgIUH3bva6lTINNSQ2BpgpJStZpT5NQwDQYJKoZIhvcNAQEL\n"
+  "BQAwWzELMAkGA1UEBhMCVVMxDTALBgNVBAgMBFRlc3QxDTALBgNVBAcMBFRlc3Qx\n"
+  "FjAUBgNVBAoMDVpMaW5rIFRlc3QgQ0ExFjAUBgNVBAMMDVpMaW5rIFRlc3QgQ0Ew\n"
+  "HhcNMjYwMTEyMTEyMzAxWhcNMjcwMTEyMTEyMzAxWjBUMQswCQYDVQQGEwJVUzEN\n"
+  "MAsGA1UECAwEVGVzdDENMAsGA1UEBwwEVGVzdDETMBEGA1UECgwKWkxpbmsgVGVz\n"
+  "dDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB\n"
+  "CgKCAQEAxZ5FpHxoY5JaTfbS3D1nSlz+BdvnrsZ5PqG+P/H1oGXJnY/2MMZGEeUZ\n"
+  "SZg9pVn6ZRURyGTwAHN1X+xarpX057pKfqWtHLztj2+WSJLbBfzSzwPdYNMP/h1C\n"
+  "MX9zMbui6ui8Tbys1g5IKO/ZEMRN8bVNHOJ4xkK829RzEu6f/4YCuf4Lz+Z1X4en\n"
+  "VBi7DGkWRSUiACjlGvVyZ24KHkLCggbAO3HhhyjZ4FwVd9JuE+d2/jm/neUu6HTt\n"
+  "J/9d/5GCovUamkuYWn+e62HA1FkpSnXNbgRrkmAkOrliJG1uCqh3btVzuF1c91Jj\n"
+  "8wjm0wm23lDeGVrCWExvyFhk3LBFCwIDAQABo3AwbjAsBgNVHREEJTAjgglsb2Nh\n"
+  "bGhvc3SHBH8AAAGHEAAAAAAAAAAAAAAAAAAAAAEwHQYDVR0OBBYEFFrMgnC8k4I0\n"
+  "XMjURlF0zXV59HJYMB8GA1UdIwQYMBaAFO3BqMenuNdTJuCz5tywoNrd11KjMA0G\n"
+  "CSqGSIb3DQEBCwUAA4IBAQCcXiKLN5y7rumetdr55PMDdx+4EV1Wl28fWCOB5nur\n"
+  "kFZRy876pFphFqZppjGCHWiiHzUIsZXUej/hBmY+OhsL13ojfGiACz/44OFzqCUa\n"
+  "I83V1M9ywbty09zhdqFc9DFfpiC2+ltDCn7o+eF7THUzgDg4fRZYHYM1njZElZaG\n"
+  "ecFImsQzqFIpmhB/TfZIZVmBQryYN+V1fl4sUJFiYEOr49RjWnATf6RKY3J5VKHp\n"
+  "TWSm7rTd4jB0CvyNlPpS+fYBdGC72m6R3zrce8Scfto+HPH4YdIU5AdoRHCCtOrA\n"
+  "Mq9brLTPUzAqlzC7zDw41hI/MS1Cdcxb1dZkKHgMXu8W\n"
+  "-----END CERTIFICATE-----\n";
+
+static const char *server_key_pem =
+  "-----BEGIN PRIVATE KEY-----\n"
+  "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFnkWkfGhjklpN\n"
+  "9tLcPWdKXP4F2+euxnk+ob4/8fWgZcmdj/YwxkYR5RlJmD2lWfplFRHIZPAAc3Vf\n"
+  "7FqulfTnukp+pa0cvO2Pb5ZIktsF/NLPA91g0w/+HUIxf3Mxu6Lq6LxNvKzWDkgo\n"
+  "79kQxE3xtU0c4njGQrzb1HMS7p//hgK5/gvP5nVfh6dUGLsMaRZFJSIAKOUa9XJn\n"
+  "bgoeQsKCBsA7ceGHKNngXBV30m4T53b+Ob+d5S7odO0n/13/kYKi9RqaS5haf57r\n"
+  "YcDUWSlKdc1uBGuSYCQ6uWIkbW4KqHdu1XO4XVz3UmPzCObTCbbeUN4ZWsJYTG/I\n"
+  "WGTcsEULAgMBAAECggEACAoWclsKcmqN71yaf7ZbyBZBP95XW9UAn7byx25UDn5H\n"
+  "3woUsgr8nehSyJuIx6CULMKPGVs3lXP4bpXbqyG4CeAss/H+XeekkL5D0nO4IsE5\n"
+  "BSBkaL/Wh275kbCA8HyU9gAZkQLkZbPFCb+XCKLfOpntcHWGut2CLs/VVzCLbX1A\n"
+  "hHerqJf3qEW+cU1Va5On+A2BEK7XtYFIR6IabS2LN5ecoZUfQ4EoeypdpQPRKwqM\n"
+  "m1tSet4CsRfovguLdY5Z/hAhFLZCMKF5zs8zzGln9+S+G5y2fdJ4VxwbeR0OqyAh\n"
+  "cB56xJo3L7rLm6hAoIb0mVXaiyRRGEuCBE/t9/pmSQKBgQD2hQgHpC20bQCyh08B\n"
+  "1CyJKz1ObZJeYCWR6hE0stUKKq9QizY9Ci8Q1Hg8eEAtKCKjW74DbJ7bgGJBm6rS\n"
+  "yNgpZZ3zw6NDSm4wY33y4alB5jzMR+H7izb6vxMPVcXn3DpjzoklxkN4l8JvgTbt\n"
+  "KxZWxD3hS+C6NuNKE4LHipJO1wKBgQDNN89O/71ktIBpxiEZk4sKzdq3JZMErFBi\n"
+  "cFJ4vATJ1LstrWdOAtOgRqQN81GhCSZ79vybrcOaq4Q4qLzsOWrAo7nb53gq684Y\n"
+  "GaVAZfxzA+qECyEY3CzrKnwIbSFvJY+IfA1QL/ricce8oL7lIRIP1+MuhvGUdw55\n"
+  "vXs01Wv47QKBgDo1sW60esJW1spRHvvMkPOWzTQetWgphdWNkqCB9cIf0CPRq24A\n"
+  "YJq1wOpubqD7ECrIt/ZxCJXGG+1oB48cM8aaoxBzSrLR+XDdnVjjpibUadjGxHq0\n"
+  "JbhRs/t0AnY8T2FP3JyZ00a/dv8DYOfhu7WjQwVW+GqgGU1djAz4EJIjAoGBAJe+\n"
+  "iOBVYmowvjN4eck7vDiE9xEuC4QNFnNzssfr326Oism/yv94P5voIC7gmJ+G8JoB\n"
+  "i9BhsJ2R7fcnbmsOGc3QQwJEKisyqfZQIE16HC2/240/3X1QcTaC96wTZgGVuIin\n"
+  "kgCVOeJvV8423nD2/zAP5sDkr4Wkc2O5pHzwwyIRAoGAID2/HQQbczTqQlEAXltB\n"
+  "K8YbNLP75FY+9w10SH3B0hUnEP+9YdeHvxkXdWtewn+TjkXnc3AYlb9A9u7GUuB+\n"
+  "K2AF/TMl2YdHFOEDtMAZ8IT6womo6JHYj4+FfbxPiMmOfBmOKrdxQ/WrqfCnZwEs\n"
+  "Dhpkrp6xWJWSNvXS0XcWGfM=\n"
+  "-----END PRIVATE KEY-----\n";
+
+}  // namespace test_certs
+
+// Write certificate to temp file and return path
+inline std::string write_temp_cert(const char* content, const std::string& suffix) {
+    std::string path = "/tmp/bench_" + suffix + ".pem";
+    std::ofstream ofs(path);
+    if (ofs) {
+        ofs << content;
+        ofs.close();
+    }
+    return path;
+}
+
+// Setup TLS options for server socket
+inline bool setup_tls_server(void* socket, const std::string& transport) {
+    if (transport != "tls" && transport != "wss") return true;
+
+    static std::string cert_path = write_temp_cert(test_certs::server_cert_pem, "server_cert");
+    static std::string key_path = write_temp_cert(test_certs::server_key_pem, "server_key");
+
+    if (zlink_setsockopt(socket, ZLINK_TLS_CERT, cert_path.c_str(), cert_path.size()) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZLINK_TLS_CERT: " << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    if (zlink_setsockopt(socket, ZLINK_TLS_KEY, key_path.c_str(), key_path.size()) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZLINK_TLS_KEY: " << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+// Setup TLS options for client socket
+inline bool setup_tls_client(void* socket, const std::string& transport) {
+    if (transport != "tls" && transport != "wss") return true;
+
+    static std::string ca_path = write_temp_cert(test_certs::ca_cert_pem, "ca_cert");
+    static const char* hostname = "localhost";
+
+    if (zlink_setsockopt(socket, ZLINK_TLS_CA, ca_path.c_str(), ca_path.size()) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZLINK_TLS_CA: " << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    if (zlink_setsockopt(socket, ZLINK_TLS_HOSTNAME, hostname, strlen(hostname)) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZLINK_TLS_HOSTNAME: " << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    int trust_system = 0;
+    if (zlink_setsockopt(socket, ZLINK_TLS_TRUST_SYSTEM, &trust_system, sizeof(trust_system)) != 0) {
+        if (bench_debug_enabled())
+            std::cerr << "Failed to set ZLINK_TLS_TRUST_SYSTEM: " << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+inline std::string bind_and_resolve_endpoint(void *socket_,
+                                             const std::string& transport,
+                                             const std::string& id) {
+    std::string endpoint = make_endpoint(transport, id);
+    if (endpoint.empty()) {
+        std::cerr << "No endpoint available for transport " << transport << std::endl;
+        return std::string();
+    }
+    if (zlink_bind(socket_, endpoint.c_str()) != 0) {
+        std::cerr << "bind failed for " << endpoint << ": "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+        return std::string();
+    }
+    if (transport != "inproc") {
+        char last_endpoint[MAX_SOCKET_STRING] = "";
+        size_t size = sizeof(last_endpoint);
+        if (zlink_getsockopt(socket_, ZLINK_LAST_ENDPOINT, last_endpoint, &size) != 0) {
+            std::cerr << "getsockopt(ZLINK_LAST_ENDPOINT) failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+            return std::string();
+        }
+        endpoint.assign(last_endpoint);
+        if (transport == "tcp" || transport == "ws") {
+            const std::string tcp_any = "://0.0.0.0:";
+            const std::string tcp_ipv6_any = "://[::]:";
+            size_t pos = endpoint.find(tcp_any);
+            if (pos != std::string::npos) {
+                endpoint.replace(pos, tcp_any.size(), "://127.0.0.1:");
+            } else {
+                pos = endpoint.find(tcp_ipv6_any);
+                if (pos != std::string::npos) {
+                    endpoint.replace(pos, tcp_ipv6_any.size(), "://127.0.0.1:");
+                }
+            }
+        }
+        if (bench_debug_enabled()) {
+            std::cerr << "Resolved endpoint (" << transport << "): " << endpoint << std::endl;
+        }
+    }
+    apply_debug_timeouts(socket_, transport);
+    return endpoint;
+}
+
+inline bool transport_available(const std::string& transport) {
+    if (transport == "ipc") return zlink_has("ipc") != 0;
+    return true;
+}
+
+inline void settle() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(SETTLE_TIME_MS));
+}
+
+inline bool connect_checked(void *socket_,
+                           const std::string& endpoint,
+                           const std::string& transport = std::string()) {
+    if (zlink_connect(socket_, endpoint.c_str()) != 0) {
+        std::cerr << "connect failed for " << endpoint << ": "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+        return false;
+    }
+    apply_debug_timeouts(socket_, transport.empty() ? transport_from_endpoint(endpoint)
+                                                   : transport);
+    if (bench_debug_enabled()) {
+        std::cerr << "Connected to " << endpoint << std::endl;
+    }
+    return true;
+}
+
+inline bool setup_connected_pair(void *bind_socket_,
+                                 void *connect_socket_,
+                                 const std::string &transport_,
+                                 const std::string &id_) {
+    if (!setup_tls_server(bind_socket_, transport_)
+        || !setup_tls_client(connect_socket_, transport_))
+        return false;
+
+    std::string endpoint =
+      bind_and_resolve_endpoint(bind_socket_, transport_, id_);
+    if (endpoint.empty())
+        return false;
+    if (!connect_checked(connect_socket_, endpoint))
+        return false;
+
+    settle();
+    return true;
+}
+
+template <typename StepFn>
+inline void repeat_n(int count_, StepFn step_) {
+    for (int i = 0; i < count_; ++i)
+        step_();
+}
+
+template <typename RoundTripFn>
+inline double measure_roundtrip_latency_us(int roundtrip_count_,
+                                           RoundTripFn roundtrip_) {
+    stopwatch_t sw;
+    sw.start();
+    repeat_n(roundtrip_count_, roundtrip_);
+    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
+}
+
+template <typename SendOneFn, typename RecvOneFn>
+inline double measure_throughput_msgs_per_sec(int msg_count_,
+                                              SendOneFn send_one_,
+                                              RecvOneFn recv_one_) {
+    std::thread receiver([&]() { repeat_n(msg_count_, recv_one_); });
+    stopwatch_t sw;
+    sw.start();
+    repeat_n(msg_count_, send_one_);
+    receiver.join();
+    const double elapsed_ms = sw.elapsed_ms();
+    return elapsed_ms > 0 ? (double)msg_count_ / (elapsed_ms / 1000.0) : 0.0;
+}
+
+inline int resolve_msg_count(size_t size) {
+    int count = (size <= 1024) ? 200000 : 20000;
+    if (const char *env = std::getenv("BENCH_MSG_COUNT")) {
+        errno = 0;
+        const long override = std::strtol(env, NULL, 10);
+        if (errno == 0 && override > 0)
+            count = static_cast<int>(override);
+    }
+    return count;
+}
+
+inline int resolve_bench_count(const char *env_name, int default_value) {
+    if (const char *env = std::getenv(env_name)) {
+        errno = 0;
+        const long override = std::strtol(env, NULL, 10);
+        if (errno == 0 && override > 0)
+            return static_cast<int>(override);
+    }
+    return default_value;
+}
+
+template <typename RunFn>
+inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
+    if (argc_ < 4)
+        return 1;
+    std::string lib_name = argv_[1];
+    std::string transport = argv_[2];
+    size_t size = std::stoul(argv_[3]);
+    int count = resolve_msg_count(size);
+    run_(transport, size, count, lib_name);
+    return 0;
+}
+
+#endif

@@ -400,28 +400,31 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
         }
     };
 
-    std::thread receiver ([&] () {
-        while (!fatal_error.load (std::memory_order_acquire)) {
-            const int current_phase = phase.load (std::memory_order_acquire);
-            if (current_phase == multi_phase_stop)
-                break;
+    std::thread receiver;
+    auto start_receiver = [&] () {
+        receiver = std::thread ([&] () {
+            while (!fatal_error.load (std::memory_order_acquire)) {
+                const int current_phase = phase.load (std::memory_order_acquire);
+                if (current_phase == multi_phase_stop)
+                    break;
 
-            const int count =
-              recv_batch_fn (static_cast<multi_bench_phase_t> (current_phase));
-            if (count < 0) {
-                std::this_thread::sleep_for (std::chrono::microseconds (50));
-                continue;
+                const int count =
+                  recv_batch_fn (static_cast<multi_bench_phase_t> (current_phase));
+                if (count < 0) {
+                    std::this_thread::sleep_for (std::chrono::microseconds (50));
+                    continue;
+                }
+                if (count <= 0)
+                    continue;
+
+                recv_total.fetch_add (count, std::memory_order_relaxed);
+                if (current_phase == multi_phase_measure)
+                    measure_recv.fetch_add (count, std::memory_order_relaxed);
+                else
+                    drain_recv.fetch_add (count, std::memory_order_relaxed);
             }
-            if (count <= 0)
-                continue;
-
-            recv_total.fetch_add (count, std::memory_order_relaxed);
-            if (current_phase == multi_phase_measure)
-                measure_recv.fetch_add (count, std::memory_order_relaxed);
-            else
-                drain_recv.fetch_add (count, std::memory_order_relaxed);
-        }
-    });
+        });
+    };
 
     const size_t worker_count =
       std::max<size_t> (
@@ -525,6 +528,9 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     const double ready_wait_ms = std::chrono::duration<double, std::milli> (
                                    ready_wait_end - ready_wait_start)
                                    .count ();
+
+    if (!fatal_error.load (std::memory_order_acquire))
+        start_receiver ();
 
     send_start.store (true, std::memory_order_release);
 
@@ -655,28 +661,31 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
         }
     };
 
-    std::thread receiver ([&] () {
-        while (!fatal_error.load (std::memory_order_acquire)) {
-            const int current_phase = phase.load (std::memory_order_acquire);
-            if (current_phase == multi_phase_stop)
-                break;
+    std::thread receiver;
+    auto start_receiver = [&] () {
+        receiver = std::thread ([&] () {
+            while (!fatal_error.load (std::memory_order_acquire)) {
+                const int current_phase = phase.load (std::memory_order_acquire);
+                if (current_phase == multi_phase_stop)
+                    break;
 
-            const int count =
-              recv_batch_fn (static_cast<multi_bench_phase_t> (current_phase));
-            if (count < 0) {
-                std::this_thread::sleep_for (std::chrono::microseconds (50));
-                continue;
+                const int count =
+                  recv_batch_fn (static_cast<multi_bench_phase_t> (current_phase));
+                if (count < 0) {
+                    std::this_thread::sleep_for (std::chrono::microseconds (50));
+                    continue;
+                }
+                if (count <= 0)
+                    continue;
+
+                recv_total.fetch_add (count, std::memory_order_relaxed);
+                if (current_phase == multi_phase_measure)
+                    measure_recv.fetch_add (count, std::memory_order_relaxed);
+                else
+                    drain_recv.fetch_add (count, std::memory_order_relaxed);
             }
-            if (count <= 0)
-                continue;
-
-            recv_total.fetch_add (count, std::memory_order_relaxed);
-            if (current_phase == multi_phase_measure)
-                measure_recv.fetch_add (count, std::memory_order_relaxed);
-            else
-                drain_recv.fetch_add (count, std::memory_order_relaxed);
-        }
-    });
+        });
+    };
 
     const size_t worker_count =
       std::max<size_t> (
@@ -791,6 +800,9 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     const double ready_wait_ms = std::chrono::duration<double, std::milli> (
                                    ready_wait_end - ready_wait_start)
                                    .count ();
+
+    if (!fatal_error.load (std::memory_order_acquire))
+        start_receiver ();
 
     send_start.store (true, std::memory_order_release);
 

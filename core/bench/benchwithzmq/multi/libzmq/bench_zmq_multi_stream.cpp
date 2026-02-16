@@ -39,6 +39,8 @@ static const socket_t INVALID_SOCKET_FD = -1;
 namespace {
 
 static const int STREAM_NOTIFY_ON = 1;
+static const unsigned char STREAM_EVENT_CONNECT = 0x01;
+static const unsigned char STREAM_EVENT_DISCONNECT = 0x00;
 static const size_t FRAME_PREFIX_SIZE = 4;
 static const size_t MAX_STREAM_FRAME_SIZE = 16 * 1024 * 1024;
 
@@ -537,6 +539,14 @@ bool decode_one_frame (stream_buffer_t &stash, std::vector<char> *payload_out)
     return true;
 }
 
+bool is_stream_event_payload (const char *data, size_t size)
+{
+    return size == 1
+           && (static_cast<unsigned char> (data[0]) == STREAM_EVENT_CONNECT
+               || static_cast<unsigned char> (data[0])
+                    == STREAM_EVENT_DISCONNECT);
+}
+
 int recv_batch_stream (void *server,
                        stream_decode_state_t &decode_state,
                        int recv_batch,
@@ -597,11 +607,18 @@ int recv_batch_stream (void *server,
         }
 
         const size_t payload_size = zmq_msg_size (&payload_msg);
-        if (payload_size > 0) {
+        const char *payload_data =
+          static_cast<const char *> (zmq_msg_data (&payload_msg));
+        if (payload_size > 0
+            && payload_data
+            && !is_stream_event_payload (payload_data, payload_size)) {
             const char *id_data = static_cast<const char *> (zmq_msg_data (&id_msg));
             const size_t id_size = zmq_msg_size (&id_msg);
-            (void)id_data;
-            (void)id_size;
+            if (!id_data || id_size == 0) {
+                zmq_msg_close (&id_msg);
+                zmq_msg_close (&payload_msg);
+                continue;
+            }
 
             std::string routing_id (id_data, id_size);
             size_t &pending = decode_state.pending_bytes[routing_id];
@@ -684,12 +701,19 @@ bool recv_one_stream_frame (void *server,
             }
 
             const size_t payload_size = zmq_msg_size (&payload_msg);
-            if (payload_size > 0) {
+            const char *payload_data =
+              static_cast<const char *> (zmq_msg_data (&payload_msg));
+            if (payload_size > 0
+                && payload_data
+                && !is_stream_event_payload (payload_data, payload_size)) {
                 const char *id_data =
                   static_cast<const char *> (zmq_msg_data (&id_msg));
                 const size_t id_size = zmq_msg_size (&id_msg);
-                const char *payload_data =
-                  static_cast<const char *> (zmq_msg_data (&payload_msg));
+                if (!id_data || id_size == 0) {
+                    zmq_msg_close (&id_msg);
+                    zmq_msg_close (&payload_msg);
+                    continue;
+                }
 
                 std::string routing_id (id_data, id_size);
                 stream_buffer_t &stash = stashes[routing_id];

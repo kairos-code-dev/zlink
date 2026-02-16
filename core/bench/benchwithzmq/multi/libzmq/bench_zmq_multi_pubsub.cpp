@@ -65,6 +65,36 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
     return received;
 }
 
+void drain_subscribers_queues (const std::vector<void *> &subs,
+                               std::vector<char> &recv_buf,
+                               int drain_ms)
+{
+    if (subs.empty ())
+        return;
+
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (std::max (0, drain_ms));
+    while (std::chrono::steady_clock::now () < deadline) {
+        bool got_any = false;
+        for (size_t i = 0; i < subs.size (); ++i) {
+            while (true) {
+                const int rc = zmq_recv (
+                  subs[i], recv_buf.data (), recv_buf.size (), ZMQ_DONTWAIT);
+                if (rc >= 0) {
+                    got_any = true;
+                    continue;
+                }
+                const int err = zmq_errno ();
+                if (err == EAGAIN || err == EINTR)
+                    break;
+                return;
+            }
+        }
+        if (!got_any)
+            break;
+    }
+}
+
 double measure_pubsub_latency_us (void *ctx,
                                   const std::string &transport,
                                   const std::string &lib_name,
@@ -286,14 +316,21 @@ void run_multi_pubsub (const std::string &transport,
                 subs, poll_items, recv_buf, settings.recv_batch, poll_timeout_ms);
           });
 
-        const double latency = measure_pubsub_latency_us (
-          ctx.get (),
-          transport,
-          lib_name,
-          current_size,
-          settings.hwm,
-          settings.connect_ready_timeout_ms,
-          poll_timeout_ms);
+        drain_subscribers_queues (
+          subs, recv_buf, std::max (settings.drain_ms, 2000));
+
+        double latency = 0.0;
+        ctx_guard_t lat_ctx;
+        if (lat_ctx.valid ()) {
+            latency = measure_pubsub_latency_us (
+              lat_ctx.get (),
+              transport,
+              lib_name,
+              current_size,
+              settings.hwm,
+              settings.connect_ready_timeout_ms,
+              poll_timeout_ms);
+        }
 
         const double throughput =
           !bench.failed && bench.measure_recv > 0

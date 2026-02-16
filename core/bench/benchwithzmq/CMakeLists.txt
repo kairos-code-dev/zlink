@@ -41,7 +41,7 @@ function(add_std_zmq_bench_single name source)
     target_link_libraries(${name} PRIVATE ${STD_LIBZMQ_LIBRARY} Threads::Threads)
     target_include_directories(${name} PRIVATE ${STD_LIBZMQ_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/single/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(${name} PRIVATE cxx_std_11)
+    target_compile_features(${name} PRIVATE cxx_std_17)
     
     if(WIN32)
         # Copy all runtime DLLs to the executable directory.
@@ -63,7 +63,7 @@ function(add_std_zmq_bench_multi name source)
     target_link_libraries(${name} PRIVATE ${STD_LIBZMQ_LIBRARY} Threads::Threads)
     target_include_directories(${name} PRIVATE ${STD_LIBZMQ_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(${name} PRIVATE cxx_std_11)
+    target_compile_features(${name} PRIVATE cxx_std_17)
     
     if(WIN32)
         # Copy all runtime DLLs to the executable directory.
@@ -85,7 +85,7 @@ function(add_zlink_bench_single name source)
     target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
     target_include_directories(${name} PRIVATE ${ZLINK_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/single/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(${name} PRIVATE cxx_std_11)
+    target_compile_features(${name} PRIVATE cxx_std_17)
     
     if(WIN32)
         # Copy the custom zlink.dll to the executable directory
@@ -102,7 +102,7 @@ function(add_zlink_bench_multi name source)
     target_link_libraries(${name} PRIVATE libzlink Threads::Threads)
     target_include_directories(${name} PRIVATE ${ZLINK_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
     target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(${name} PRIVATE cxx_std_11)
+    target_compile_features(${name} PRIVATE cxx_std_17)
     
     if(WIN32)
         # Copy the custom zlink.dll to the executable directory
@@ -133,6 +133,8 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                     multi/zlink/bench_zlink_multi_router_router_poll.cpp)
     add_zlink_bench_multi(comp_zlink_multi_pubsub
                     multi/zlink/bench_zlink_multi_pubsub.cpp)
+    add_zlink_bench_multi(comp_zlink_multi_stream
+                    multi/zlink/bench_zlink_multi_stream.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()
@@ -158,6 +160,8 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND STD_LIBZMQ_LIBRARY)
                       multi/libzmq/bench_zmq_multi_router_router_poll.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_pubsub
                       multi/libzmq/bench_zmq_multi_pubsub.cpp)
+    add_std_zmq_bench_multi(comp_std_zmq_multi_stream
+                      multi/libzmq/bench_zmq_multi_stream.cpp)
 else()
     message(STATUS "Standard libzmq not found. Comparative benchmarks will be skipped.")
 endif()

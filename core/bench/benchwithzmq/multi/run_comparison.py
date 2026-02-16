@@ -677,6 +677,7 @@ def normalize_pattern_name(raw):
         "ROUTER_ROUTER": "MULTI_ROUTER_ROUTER",
         "ROUTER_ROUTER_POLL": "MULTI_ROUTER_ROUTER_POLL",
         "PUBSUB": "MULTI_PUBSUB",
+        "STREAM": "MULTI_STREAM",
     }
     return aliases.get(token)
 
@@ -694,7 +695,7 @@ def parse_args():
         "  -h, --help              Show this help\n"
         "\n"
         "PATTERN:\n"
-        "  dealer_dealer | dealer_router | router_router | router_router_poll | pubsub\n"
+        "  dealer_dealer | dealer_router | router_router | router_router_poll | pubsub | stream\n"
         "  (legacy MULTI_* names are also accepted)\n"
         "\n"
         "Env:\n"
@@ -815,6 +816,7 @@ def main():
         ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router", "MULTI_ROUTER_ROUTER"),
         ("comp_std_zmq_multi_router_router_poll", "comp_zlink_multi_router_router_poll", "MULTI_ROUTER_ROUTER_POLL"),
         ("comp_std_zmq_multi_pubsub", "comp_zlink_multi_pubsub", "MULTI_PUBSUB"),
+        ("comp_std_zmq_multi_stream", "comp_zlink_multi_stream", "MULTI_STREAM"),
     ]
 
     supported = sorted({p for _, _, p in comparisons})

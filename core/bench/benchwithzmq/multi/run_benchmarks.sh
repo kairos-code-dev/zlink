@@ -24,6 +24,7 @@ normalize_pattern() {
     ROUTER_ROUTER) echo "MULTI_ROUTER_ROUTER" ;;
     ROUTER_ROUTER_POLL) echo "MULTI_ROUTER_ROUTER_POLL" ;;
     PUBSUB) echo "MULTI_PUBSUB" ;;
+    STREAM) echo "MULTI_STREAM" ;;
     *) return 1 ;;
   esac
 }
@@ -43,7 +44,8 @@ Run one multi benchmark pattern with one transport and compare libzmq vs zlink.
 Options:
   --pattern NAME                One pattern (default: router_router)
                                 Allowed: dealer_dealer, dealer_router,
-                                         router_router, router_router_poll, pubsub
+                                         router_router, router_router_poll,
+                                         pubsub, stream
                                 Also accepts MULTI_* legacy names.
   --runs N                      Iterations per configuration (default: 1)
   --transport NAME              One transport (default: tcp)
@@ -66,6 +68,8 @@ Options:
   --drain-ms N                  Override BENCH_MULTI_DRAIN_MS
   --recv-batch N                Override BENCH_MULTI_RECV_BATCH
   --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: 2)
+  --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: 3)
+  --stream-send-batch N         Override BENCH_MULTI_STREAM_SEND_BATCH (default: 64)
   --send-backoff-us N           Override BENCH_MULTI_SEND_BACKOFF_US
   --io-threads N                Override BENCH_IO_THREADS (auto: 4 when clients>=512)
   --msg-sizes LIST              Override BENCH_MSG_SIZES (e.g. 1024,65536)
@@ -98,6 +102,8 @@ MULTI_CONNECT_READY_TIMEOUT_MS="${BENCH_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
 MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-300}"
 MULTI_RECV_BATCH="${BENCH_MULTI_RECV_BATCH:-64}"
 MULTI_SEND_WORKERS="${BENCH_MULTI_SEND_WORKERS:-2}"
+MULTI_STREAM_SEND_WORKERS="${BENCH_MULTI_STREAM_SEND_WORKERS:-3}"
+MULTI_STREAM_SEND_BATCH="${BENCH_MULTI_STREAM_SEND_BATCH:-64}"
 MULTI_SEND_BACKOFF_US="${BENCH_MULTI_SEND_BACKOFF_US:-}"
 MULTI_IO_THREADS="${BENCH_IO_THREADS:-}"
 
@@ -196,6 +202,14 @@ while [[ $# -gt 0 ]]; do
       MULTI_SEND_WORKERS="${2:-}"
       shift 2
       ;;
+    --stream-send-workers|--multi-stream-send-workers)
+      MULTI_STREAM_SEND_WORKERS="${2:-}"
+      shift 2
+      ;;
+    --stream-send-batch|--multi-stream-send-batch)
+      MULTI_STREAM_SEND_BATCH="${2:-}"
+      shift 2
+      ;;
     --send-backoff-us|--multi-send-backoff-us)
       MULTI_SEND_BACKOFF_US="${2:-}"
       shift 2
@@ -227,7 +241,7 @@ if [[ "${PATTERN_RAW}" == *","* ]]; then
 fi
 PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   echo "Error: unsupported pattern '${PATTERN_RAW}'." >&2
-  echo "Supported: dealer_dealer, dealer_router, router_router, router_router_poll, pubsub" >&2
+  echo "Supported: dealer_dealer, dealer_router, router_router, router_router_poll, pubsub, stream" >&2
   exit 1
 }
 PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
@@ -261,6 +275,8 @@ export BENCH_MULTI_SETTLE_MS="${MULTI_SETTLE_MS}"
 export BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}"
 export BENCH_MULTI_RECV_BATCH="${MULTI_RECV_BATCH}"
 export BENCH_MULTI_HWM="${MULTI_HWM}"
+export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
+export BENCH_MULTI_STREAM_SEND_BATCH="${MULTI_STREAM_SEND_BATCH}"
 export BENCH_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}"
 if [[ -n "${MULTI_MONITOR_HWM}" ]]; then
   export BENCH_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}"
@@ -272,6 +288,9 @@ if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ 
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi
 echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${MULTI_DRAIN_MS}"
+if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
+  echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
+fi
 
 if [[ -n "${MULTI_IO_THREADS}" ]]; then
   export BENCH_IO_THREADS="${MULTI_IO_THREADS}"
@@ -334,6 +353,9 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
       ;;
     MULTI_PUBSUB)
       SINGLE_PATTERN="pubsub"
+      ;;
+    MULTI_STREAM)
+      SINGLE_PATTERN="stream"
       ;;
     *)
       SINGLE_PATTERN=""

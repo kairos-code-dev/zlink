@@ -147,7 +147,7 @@ inline int bench_monitor_hwm()
 
     const char *env = std::getenv("BENCH_MULTI_MONITOR_HWM");
     if (!env || !*env) {
-        monitor_hwm = 0;
+        monitor_hwm = 200000;
         return monitor_hwm;
     }
 
@@ -166,10 +166,14 @@ inline int bench_monitor_hwm()
 inline bool monitor_event_is_ready(uint16_t event_)
 {
 #ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
-    return event_ == ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
-#else
-    return event_ == ZMQ_EVENT_CONNECTED;
+    if (event_ == ZMQ_EVENT_HANDSHAKE_SUCCEEDED)
+        return true;
 #endif
+#ifdef ZMQ_EVENT_ACCEPTED
+    if (event_ == ZMQ_EVENT_ACCEPTED)
+        return true;
+#endif
+    return event_ == ZMQ_EVENT_CONNECTED;
 }
 
 inline bool open_connect_monitor(void *ctx_,
@@ -190,7 +194,10 @@ inline bool open_connect_monitor(void *ctx_,
 
     int events = ZMQ_EVENT_CONNECTED;
 #ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
-    events = ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
+    events |= ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
+#endif
+#ifdef ZMQ_EVENT_ACCEPTED
+    events |= ZMQ_EVENT_ACCEPTED;
 #endif
 
     if (zmq_socket_monitor(socket_, monitor_ep, events) != 0)

@@ -2,7 +2,9 @@
 #define BENCH_COMMON_HPP
 
 #include <chrono>
+#include <algorithm>
 #include <vector>
+#include <set>
 #include <string>
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +12,8 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <atomic>
+#include <cstring>
 #include <zmq.h>
 
 // --- Configuration ---
@@ -129,6 +133,291 @@ private:
     void *_socket;
 };
 
+struct connect_monitor_t {
+    void *owner;
+    void *monitor;
+    connect_monitor_t() : owner(NULL), monitor(NULL) {}
+};
+
+inline int bench_monitor_hwm()
+{
+    static int monitor_hwm = -1;
+    if (monitor_hwm >= 0)
+        return monitor_hwm;
+
+    const char *env = std::getenv("BENCH_MULTI_MONITOR_HWM");
+    if (!env || !*env) {
+        monitor_hwm = 0;
+        return monitor_hwm;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0) {
+        monitor_hwm = 0;
+        return monitor_hwm;
+    }
+
+    monitor_hwm = static_cast<int>(parsed);
+    return monitor_hwm;
+}
+
+inline bool monitor_event_is_ready(uint16_t event_)
+{
+#ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
+    return event_ == ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
+#else
+    return event_ == ZMQ_EVENT_CONNECTED;
+#endif
+}
+
+inline bool open_connect_monitor(void *ctx_,
+                                 void *socket_,
+                                 const std::string &tag_,
+                                 size_t idx_,
+                                 connect_monitor_t &out_)
+{
+    static std::atomic<unsigned long> seq(0);
+    char monitor_ep[160];
+    const unsigned long id = seq.fetch_add(1, std::memory_order_relaxed);
+    std::snprintf(monitor_ep,
+                  sizeof(monitor_ep),
+                  "inproc://multi-mon-%s-%zu-%lu",
+                  tag_.c_str(),
+                  idx_,
+                  id);
+
+    int events = ZMQ_EVENT_CONNECTED;
+#ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
+    events = ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
+#endif
+
+    if (zmq_socket_monitor(socket_, monitor_ep, events) != 0)
+        return false;
+
+    void *monitor = zmq_socket(ctx_, ZMQ_PAIR);
+    if (!monitor) {
+        zmq_socket_monitor(socket_, NULL, 0);
+        return false;
+    }
+
+    const int linger_ms = 0;
+    zmq_setsockopt(monitor, ZMQ_LINGER, &linger_ms, sizeof(linger_ms));
+    const int monitor_hwm = bench_monitor_hwm();
+    if (monitor_hwm > 0) {
+        zmq_setsockopt(
+          monitor, ZMQ_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zmq_setsockopt(
+          monitor, ZMQ_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
+    }
+    if (zmq_connect(monitor, monitor_ep) != 0) {
+        zmq_close(monitor);
+        zmq_socket_monitor(socket_, NULL, 0);
+        return false;
+    }
+
+    out_.owner = socket_;
+    out_.monitor = monitor;
+    return true;
+}
+
+inline int poll_connect_ready_count(connect_monitor_t &monitor_);
+
+inline bool wait_connect_ready(connect_monitor_t &monitor_, int timeout_ms_)
+{
+    if (!monitor_.monitor)
+        return false;
+
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline)
+            return false;
+
+        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 deadline - now)
+                                 .count();
+        zmq_pollitem_t item[] = {{monitor_.monitor, 0, ZMQ_POLLIN, 0}};
+        const int rc = zmq_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
+        if (rc < 0) {
+            if (zmq_errno() == EINTR)
+                continue;
+            return false;
+        }
+        if (rc == 0 || (item[0].revents & ZMQ_POLLIN) == 0)
+            continue;
+
+        if (poll_connect_ready_count(monitor_) > 0)
+            return true;
+    }
+}
+
+inline int poll_connect_ready_count(connect_monitor_t &monitor_)
+{
+    if (!monitor_.monitor)
+        return 0;
+
+    int ready = 0;
+    for (;;) {
+        zmq_msg_t part1;
+        zmq_msg_t part2;
+        zmq_msg_init(&part1);
+        zmq_msg_init(&part2);
+
+        const int n = zmq_msg_recv(&part1, monitor_.monitor, ZMQ_DONTWAIT);
+        if (n < 0) {
+            zmq_msg_close(&part1);
+            zmq_msg_close(&part2);
+            break;
+        }
+
+        (void)zmq_msg_recv(&part2, monitor_.monitor, ZMQ_DONTWAIT);
+
+        uint16_t event = 0;
+        if (zmq_msg_size(&part1) >= sizeof(uint16_t)) {
+            std::memcpy(&event, zmq_msg_data(&part1), sizeof(uint16_t));
+        }
+
+        zmq_msg_close(&part1);
+        zmq_msg_close(&part2);
+
+        if (monitor_event_is_ready(event))
+            ++ready;
+    }
+    return ready;
+}
+
+inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
+                                     size_t expected_ready_,
+                                     int timeout_ms_)
+{
+    if (expected_ready_ == 0)
+        return true;
+
+    size_t ready = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (std::chrono::steady_clock::now() < deadline && ready < expected_ready_) {
+        ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
+        if (ready >= expected_ready_)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return ready >= expected_ready_;
+}
+
+inline bool wait_connect_ready_unique(connect_monitor_t &monitor_,
+                                      size_t expected_ready_,
+                                      int timeout_ms_)
+{
+    if (!monitor_.monitor || expected_ready_ == 0)
+        return true;
+
+    std::set<std::string> peers;
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (std::chrono::steady_clock::now() < deadline
+           && peers.size() < expected_ready_) {
+        bool progress = false;
+        for (;;) {
+            zmq_msg_t part1;
+            zmq_msg_t part2;
+            zmq_msg_init(&part1);
+            zmq_msg_init(&part2);
+
+            const int n = zmq_msg_recv(&part1, monitor_.monitor, ZMQ_DONTWAIT);
+            if (n < 0) {
+                zmq_msg_close(&part1);
+                zmq_msg_close(&part2);
+                break;
+            }
+
+            (void)zmq_msg_recv(&part2, monitor_.monitor, ZMQ_DONTWAIT);
+
+            uint16_t event = 0;
+            int32_t value = 0;
+            if (zmq_msg_size(&part1) >= sizeof(uint16_t)) {
+                std::memcpy(&event, zmq_msg_data(&part1), sizeof(uint16_t));
+            }
+            if (zmq_msg_size(&part1) >= sizeof(uint16_t) + sizeof(int32_t)) {
+                std::memcpy(&value,
+                            static_cast<const char *>(zmq_msg_data(&part1))
+                              + sizeof(uint16_t),
+                            sizeof(int32_t));
+            }
+            if (monitor_event_is_ready(event)) {
+                const char *data = static_cast<const char *>(zmq_msg_data(&part2));
+                const size_t size = zmq_msg_size(&part2);
+                if (value != 0) {
+                    char fallback[64];
+                    std::snprintf(fallback, sizeof(fallback), "fd:%d", value);
+                    peers.insert(std::string(fallback));
+                } else if (data && size > 0) {
+                    peers.insert(std::string(data, size));
+                } else {
+                    char fallback[32];
+                    std::snprintf(fallback, sizeof(fallback), "ev:%u",
+                                  static_cast<unsigned>(event));
+                    peers.insert(std::string(fallback));
+                }
+            }
+
+            zmq_msg_close(&part1);
+            zmq_msg_close(&part2);
+            progress = true;
+        }
+        if (peers.size() >= expected_ready_)
+            return true;
+        if (!progress)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    const bool ok = peers.size() >= expected_ready_;
+    if (!ok && bench_debug_enabled()) {
+        std::cerr << "wait_connect_ready_unique timeout: peers=" << peers.size()
+                  << " expected=" << expected_ready_ << std::endl;
+    }
+    return ok;
+}
+
+inline bool wait_all_connect_ready(std::vector<connect_monitor_t> &monitors,
+                                   int timeout_ms_)
+{
+    if (monitors.empty())
+        return true;
+
+    std::vector<char> ready(monitors.size(), 0);
+    size_t ready_count = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (std::chrono::steady_clock::now() < deadline
+           && ready_count < monitors.size()) {
+        for (size_t i = 0; i < monitors.size(); ++i) {
+            if (ready[i])
+                continue;
+            if (poll_connect_ready_count(monitors[i]) > 0) {
+                ready[i] = 1;
+                ++ready_count;
+            }
+        }
+        if (ready_count >= monitors.size())
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return ready_count >= monitors.size();
+}
+
+inline void close_connect_monitor(connect_monitor_t &monitor_)
+{
+    if (monitor_.owner)
+        zmq_socket_monitor(monitor_.owner, NULL, 0);
+    if (monitor_.monitor)
+        zmq_close(monitor_.monitor);
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+}
+
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_)
 {
@@ -148,6 +437,15 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     }
 
     return rc == 0;
+}
+
+inline void apply_benchmark_hwm(void *socket_, int inflight_)
+{
+    if (inflight_ <= 0)
+        return;
+
+    set_sockopt_int(socket_, ZMQ_SNDHWM, inflight_, "ZMQ_SNDHWM");
+    set_sockopt_int(socket_, ZMQ_RCVHWM, inflight_, "ZMQ_RCVHWM");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport)
@@ -309,6 +607,38 @@ inline int resolve_msg_count(size_t size)
             count = static_cast<int>(override);
     }
     return count;
+}
+
+inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
+{
+    std::vector<size_t> sizes;
+    if (const char *env = std::getenv("BENCH_MSG_SIZES")) {
+        const char *cur = env;
+        while (*cur) {
+            while (*cur == ',' || *cur == ' ' || *cur == '\t')
+                ++cur;
+            if (!*cur)
+                break;
+
+            errno = 0;
+            char *end = NULL;
+            const unsigned long parsed = std::strtoul(cur, &end, 10);
+            if (errno == 0 && end != cur && parsed > 0)
+                sizes.push_back(static_cast<size_t>(parsed));
+
+            if (!end || end == cur)
+                break;
+            cur = end;
+            while (*cur && *cur != ',')
+                ++cur;
+            if (*cur == ',')
+                ++cur;
+        }
+    }
+
+    if (sizes.empty())
+        sizes.push_back(fallback_size);
+    return sizes;
 }
 
 inline int resolve_bench_count(const char *env_name, int default_value)

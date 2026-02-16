@@ -2,4 +2,117 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${SCRIPT_DIR}/../run_benchmarks.sh" "$@"
+RESULTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)/results"
+
+usage() {
+  cat <<'USAGE'
+Usage: core/bench/benchwithzmq/single/run_benchmarks.sh [options]
+
+Run SINGLE benchmark patterns and compare libzmq vs zlink.
+
+Options:
+  --patterns LIST               Pattern list (default: ALL)
+                                e.g. pair,pubsub,dealer_dealer,router_router
+  --pattern NAME                Alias for one pattern
+  --runs N                      Iterations per configuration (default: 1)
+  --transport LIST              Transport list (default: tcp,inproc,ipc)
+  --transports LIST             Alias for --transport
+  --msg-sizes LIST              Override BENCH_MSG_SIZES (e.g. 64,1024,65536)
+  --build-dir PATH              Forwarded to run_comparison.py
+  --pin-cpu                     Forwarded to run_comparison.py
+  --result                      Write output to core/bench/benchwithzmq/results/YYYYMMDD/
+  --help                        Show help
+USAGE
+}
+
+PATTERNS="ALL"
+RUNS=1
+TRANSPORTS="${BENCH_TRANSPORTS:-tcp,inproc,ipc}"
+MSG_SIZES="${BENCH_MSG_SIZES:-}"
+BUILD_DIR=""
+PIN_CPU=0
+RESULT_TO_FILE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --patterns)
+      PATTERNS="${2:-}"
+      shift 2
+      ;;
+    --pattern)
+      PATTERNS="${2:-}"
+      shift 2
+      ;;
+    --runs)
+      RUNS="${2:-}"
+      shift 2
+      ;;
+    --transport|--transports)
+      TRANSPORTS="${2:-}"
+      shift 2
+      ;;
+    --msg-sizes)
+      MSG_SIZES="${2:-}"
+      shift 2
+      ;;
+    --build-dir)
+      BUILD_DIR="${2:-}"
+      shift 2
+      ;;
+    --pin-cpu)
+      PIN_CPU=1
+      shift
+      ;;
+    --result)
+      RESULT_TO_FILE=1
+      shift
+      ;;
+    *)
+      echo "Error: unknown option '$1'" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -n "${TRANSPORTS}" ]]; then
+  export BENCH_TRANSPORTS="${TRANSPORTS}"
+fi
+if [[ -n "${MSG_SIZES}" ]]; then
+  export BENCH_MSG_SIZES="${MSG_SIZES}"
+fi
+
+if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
+  DATE_DIR="$(date +%Y%m%d)"
+  TS="$(date +%Y%m%d_%H%M%S)"
+  PLATFORM="linux"
+  case "$(uname -s)" in
+    Darwin*)
+      PLATFORM="macos"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      PLATFORM="windows"
+      ;;
+  esac
+
+  TAG="$(echo "${PATTERNS}" | tr '[:lower:], ' '[:upper:]__')"
+  OUTPUT_DIR="${RESULTS_ROOT}/${DATE_DIR}"
+  mkdir -p "${OUTPUT_DIR}"
+  OUTPUT_FILE="${OUTPUT_DIR}/bench_${PLATFORM}_${TAG}_${TS}.txt"
+  exec > >(tee "${OUTPUT_FILE}") 2>&1
+  echo "Saving benchmark output to: ${OUTPUT_FILE}"
+fi
+
+EXTRA_ARGS=(--patterns "${PATTERNS}" --runs "${RUNS}")
+if [[ -n "${BUILD_DIR}" ]]; then
+  EXTRA_ARGS+=(--build-dir "${BUILD_DIR}")
+fi
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  EXTRA_ARGS+=(--pin-cpu)
+fi
+
+python3 "${SCRIPT_DIR}/run_comparison.py" "${EXTRA_ARGS[@]}"

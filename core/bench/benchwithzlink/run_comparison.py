@@ -477,6 +477,9 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
                                 text=True,
                                 timeout=timeout_sec)
         if result.returncode != 0:
+            stderr = (result.stderr or "").lower()
+            if "protocol not supported" in stderr:
+                return [{"metric": "_unsupported_transport_", "value": 1.0}]
             return []
 
         parsed = []
@@ -503,10 +506,18 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
         sizes = (MULTI_STREAM_MSG_SIZES
                  if pattern_name == "MULTI_STREAM" else MSG_SIZES)
 
-        for sz in sizes:
+        tr_supported = True
+        for idx, sz in enumerate(sizes):
             print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
             metrics_raw = {}  # metric_name -> list of values
             failed_runs = 0
+
+            if not tr_supported:
+                final_stats[f"{tr}|{sz}|throughput"] = 0
+                final_stats[f"{tr}|{sz}|latency"] = 0
+                print("unsupported", end=" ", flush=True)
+                print("Done")
+                continue
 
             for i in range(num_runs):
                 print(f"{i+1} ", end="", flush=True)
@@ -526,6 +537,19 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         print(f"(failures={failed_runs}) ", end="", flush=True)
                         print("aborting")
                         return final_stats, failures
+                    continue
+                if len(results) == 1 and results[0].get("metric") == "_unsupported_transport_":
+                    print("unsupported", end=" ", flush=True)
+                    print("Done")
+                    tr_supported = False
+                    final_stats[f"{tr}|{sz}|throughput"] = 0
+                    final_stats[f"{tr}|{sz}|latency"] = 0
+                    for next_idx in range(idx + 1, len(sizes)):
+                        next_sz = sizes[next_idx]
+                        final_stats[f"{tr}|{next_sz}|throughput"] = 0
+                        final_stats[f"{tr}|{next_sz}|latency"] = 0
+                    if FAIL_FAST:
+                        break
                     continue
                 for r in results:
                     m = r['metric']
@@ -681,7 +705,7 @@ def main():
         if not os.path.exists(check_bin):
             print(f"Error: Binaries not found at {BUILD_DIR}.")
             print("Please build the project first or pass --build-dir.")
-            return
+            sys.exit(1)
 
     cache = {}
     if not current_only:

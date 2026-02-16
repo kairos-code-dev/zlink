@@ -222,6 +222,12 @@ inline bool transport_available(const std::string &transport)
 {
     if (transport == "ipc")
         return zmq_has("ipc") != 0;
+    if (transport == "tls")
+        return zmq_has("tls") != 0;
+    if (transport == "ws")
+        return zmq_has("ws") != 0;
+    if (transport == "wss")
+        return zmq_has("wss") != 0;
     return true;
 }
 

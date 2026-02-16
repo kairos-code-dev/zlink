@@ -150,6 +150,15 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     return rc == 0;
 }
 
+inline void apply_benchmark_hwm(void *socket_, int inflight_)
+{
+    if (inflight_ <= 0)
+        return;
+
+    set_sockopt_int(socket_, ZLINK_SNDHWM, inflight_, "ZLINK_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_RCVHWM, inflight_, "ZLINK_RCVHWM");
+}
+
 inline void apply_debug_timeouts(void *socket_, const std::string &transport)
 {
     if (!bench_debug_enabled())

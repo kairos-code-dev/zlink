@@ -51,7 +51,10 @@ inline multi_bench_settings_t resolve_multi_bench_settings()
     settings.connect_concurrency =
       resolve_multi_int_env("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1);
     settings.warmup_seconds = resolve_multi_int_env("BENCH_MULTI_WARMUP_SECONDS", 3, 0);
-    settings.measure_seconds = resolve_multi_int_env("BENCH_MULTI_MEASURE_SECONDS", 10, 1);
+    settings.measure_seconds =
+      resolve_multi_int_env("BENCH_MULTI_DURATION_SECONDS",
+                            resolve_multi_int_env("BENCH_MULTI_MEASURE_SECONDS", 10, 1),
+                            1);
     settings.drain_ms = resolve_multi_int_env("BENCH_MULTI_DRAIN_MS", 300, 0);
     return settings;
 }

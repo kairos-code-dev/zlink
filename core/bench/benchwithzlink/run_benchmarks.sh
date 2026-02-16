@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -o pipefail
 
 # core/bench/benchwithzlink - zlink version comparison benchmarks
 # Compares baseline (previous zlink) vs current (new build)
@@ -42,7 +43,7 @@ else
   BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM,GATEWAY,SPOT"
-PATTERN="${STANDARD_PATTERNS}"
+PATTERN="ALL"
 WITH_BASELINE=0
 OUTPUT_FILE=""
 RUNS=1
@@ -52,15 +53,10 @@ PIN_CPU=0
 BENCH_IO_THREADS=""
 BENCH_MSG_SIZES=""
 BENCH_TRANSPORTS=""
-BENCH_MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
-BENCH_MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
-BENCH_MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
-BENCH_MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-}"
-BENCH_MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS:-}"
-BENCH_MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
 RESULTS=1
 RESULTS_DIR=""
 RESULTS_TAG=""
+ALLOW_MULTI="${BENCH_ALLOW_MULTI:-0}"
 BENCH_COMPARISON_SCRIPT="${BENCH_COMPARISON_SCRIPT:-${ROOT_DIR}/core/bench/benchwithzlink/run_comparison.py}"
 
 usage() {
@@ -68,7 +64,8 @@ usage() {
 Usage: core/bench/benchwithzlink/run_benchmarks.sh [options]
 
 Compare baseline zlink (previous version) vs current zlink (new build).
-  Note: PATTERN=ALL runs single-pattern benchmarks (PAIR/PUBSUB/DEALER/ROUTER/STREAM/GATEWAY/SPOT).
+  Note: PATTERN=ALL (default) runs single-pattern benchmarks
+  (PAIR/PUBSUB/DEALER/ROUTER/STREAM/GATEWAY/SPOT).
   Multi-socket benchmarks are excluded from this script.
   Use run_benchmarks_multi.sh for MULTI_* patterns.
 
@@ -82,6 +79,7 @@ Options:
   -h, --help            Show this help.
   --with-baseline       Run baseline and refresh cache (default: use cache).
   --pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
+                       Use comma-separated patterns.
   --build-dir PATH      Build directory (default: core/build/<platform>-<arch>).
   --output PATH         Tee results to a file.
   --result              Write results under core/bench/benchwithzlink/results/YYYYMMDD/.
@@ -96,15 +94,6 @@ Options:
   --size N              Convenience alias for --msg-sizes N.
   --transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
   --transport NAME      Convenience alias for --transports NAME.
-  --multi-clients N     Set BENCH_MULTI_CLIENTS.
-  --multi-inflight N    Set BENCH_MULTI_INFLIGHT.
-  --multi-connect-concurrency N
-                        Set BENCH_MULTI_CONNECT_CONCURRENCY.
-  --multi-warmup-seconds N
-                        Set BENCH_MULTI_WARMUP_SECONDS.
-  --multi-measure-seconds N
-                        Set BENCH_MULTI_MEASURE_SECONDS.
-  --multi-drain-ms N    Set BENCH_MULTI_DRAIN_MS.
 USAGE
 }
 
@@ -171,30 +160,6 @@ while [[ $# -gt 0 ]]; do
       BENCH_TRANSPORTS="${2:-}"
       shift
       ;;
-    --multi-clients)
-      BENCH_MULTI_CLIENTS="${2:-}"
-      shift
-      ;;
-    --multi-inflight)
-      BENCH_MULTI_INFLIGHT="${2:-}"
-      shift
-      ;;
-    --multi-connect-concurrency)
-      BENCH_MULTI_CONNECT_CONCURRENCY="${2:-}"
-      shift
-      ;;
-    --multi-warmup-seconds)
-      BENCH_MULTI_WARMUP_SECONDS="${2:-}"
-      shift
-      ;;
-    --multi-measure-seconds)
-      BENCH_MULTI_MEASURE_SECONDS="${2:-}"
-      shift
-      ;;
-    --multi-drain-ms)
-      BENCH_MULTI_DRAIN_MS="${2:-}"
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
@@ -227,12 +192,34 @@ if [[ ! -f "${BENCH_COMPARISON_SCRIPT}" ]]; then
   exit 1
 fi
 
-# Normalize pattern to uppercase for consistent matching
+# Normalize pattern list
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
   PATTERN="${STANDARD_PATTERNS}"
 fi
+
+IFS=',' read -r -a PATTERN_LIST <<< "${PATTERN}"
+if [[ "${#PATTERN_LIST[@]}" -eq 0 ]]; then
+  echo "Error: no valid pattern specified." >&2
+  exit 1
+fi
+
+for i in "${!PATTERN_LIST[@]}"; do
+  PATTERN_LIST[i]="${PATTERN_LIST[i]//[[:space:]]/}"
+  if [[ -z "${PATTERN_LIST[i]}" ]]; then
+    echo "Error: empty pattern entry in list." >&2
+    exit 1
+  fi
+done
+
+for p in "${PATTERN_LIST[@]}"; do
+  if [[ "${p}" == *"MULTI_"* && "${ALLOW_MULTI}" -ne 1 ]]; then
+    echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
+    echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
+    exit 1
+  fi
+done
 
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
@@ -257,37 +244,6 @@ if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ 
   usage >&2
   exit 1
 fi
-if [[ -n "${BENCH_MULTI_CLIENTS}" && ! "${BENCH_MULTI_CLIENTS}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_CLIENTS must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-if [[ -n "${BENCH_MULTI_INFLIGHT}" && ! "${BENCH_MULTI_INFLIGHT}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_INFLIGHT must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-if [[ -n "${BENCH_MULTI_CONNECT_CONCURRENCY}" && ! "${BENCH_MULTI_CONNECT_CONCURRENCY}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_CONNECT_CONCURRENCY must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-if [[ -n "${BENCH_MULTI_WARMUP_SECONDS}" && ! "${BENCH_MULTI_WARMUP_SECONDS}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_WARMUP_SECONDS must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-if [[ -n "${BENCH_MULTI_MEASURE_SECONDS}" && ! "${BENCH_MULTI_MEASURE_SECONDS}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_MEASURE_SECONDS must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-if [[ -n "${BENCH_MULTI_DRAIN_MS}" && ! "${BENCH_MULTI_DRAIN_MS}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_MULTI_DRAIN_MS must be a positive integer." >&2
-  usage >&2
-  exit 1
-fi
-
 if [[ "${RESULTS}" -eq 1 ]]; then
   if [[ -n "${OUTPUT_FILE}" ]]; then
     echo "Error: --result cannot be used with --output." >&2
@@ -298,7 +254,7 @@ if [[ "${RESULTS}" -eq 1 ]]; then
   fi
   DATE_DIR="$(date +%Y%m%d)"
   TS="$(date +%Y%m%d_%H%M%S)"
-  NAME="bench_${PLATFORM}_${PATTERN}_${TS}"
+  NAME="bench_${PLATFORM}_${TS}"
   if [[ -n "${RESULTS_TAG}" ]]; then
     NAME="${NAME}_${RESULTS_TAG}"
   fi
@@ -349,34 +305,36 @@ if [[ "${ZLINK_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 1 ]]; then
 fi
 
 if [[ "${REUSE_BUILD}" -eq 1 ]]; then
-  echo "Reusing build directory: ${BUILD_DIR}"
-  if [[ ! -d "${BUILD_DIR}" ]]; then
-    echo "Error: build directory ${BUILD_DIR} does not exist" >&2
-    exit 1
+  if [[ -d "${BUILD_DIR}" ]]; then
+    echo "Reusing build directory: ${BUILD_DIR}"
+  else
+    echo "Build directory not found. Creating: ${BUILD_DIR}"
   fi
 else
   echo "Cleaning build directory: ${BUILD_DIR}"
   rm -rf "${BUILD_DIR}"
+fi
 
-  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-    CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
-    CMAKE_ARCH="${CMAKE_ARCH:-x64}"
-    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-      -G "${CMAKE_GENERATOR}" \
-      -A "${CMAKE_ARCH}" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_CXX_STANDARD=17
-  else
-    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_BENCHMARKS=ON \
-      -DZLINK_BUILD_BENCH_ZMQ=OFF \
-      -DZLINK_BUILD_BENCH_BEAST=OFF \
-      -DZLINK_CXX_STANDARD=17
-  fi
+if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+  CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+  CMAKE_ARCH="${CMAKE_ARCH:-x64}"
+  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+    -G "${CMAKE_GENERATOR}" \
+    -A "${CMAKE_ARCH}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_BENCH_ZMQ=OFF \
+    -DZLINK_BUILD_BENCH_ZLINK=ON \
+    -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_CXX_STANDARD=17
+else
+  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_BENCH_ZMQ=OFF \
+    -DZLINK_BUILD_BENCH_ZLINK=ON \
+    -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_CXX_STANDARD=17
 fi
 
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
@@ -408,7 +366,7 @@ else
   fi
 fi
 
-RUN_CMD=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" "${PATTERN}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+RUN_CMD_BASE=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
 RUN_ENV=()
 if [[ -n "${BENCH_IO_THREADS}" ]]; then
   RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")
@@ -420,32 +378,13 @@ if [[ -n "${BENCH_TRANSPORTS}" ]]; then
   RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
 fi
 if [[ "${PIN_CPU}" -eq 1 ]]; then
-  RUN_CMD+=(--pin-cpu)
+  RUN_CMD_BASE+=(--pin-cpu)
 fi
-if [[ -n "${BENCH_MULTI_CLIENTS}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_CLIENTS="${BENCH_MULTI_CLIENTS}")
-fi
-if [[ -n "${BENCH_MULTI_INFLIGHT}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT}")
-fi
-if [[ -n "${BENCH_MULTI_CONNECT_CONCURRENCY}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY}")
-fi
-if [[ -n "${BENCH_MULTI_WARMUP_SECONDS}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS}")
-fi
-if [[ -n "${BENCH_MULTI_MEASURE_SECONDS}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS}")
-fi
-if [[ -n "${BENCH_MULTI_DRAIN_MS}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS}")
-fi
-
 if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
-  RUN_CMD+=(--zlink-only)
+  RUN_CMD_BASE+=(--zlink-only)
 else
   if [[ "${WITH_BASELINE}" -eq 1 ]]; then
-    RUN_CMD+=(--refresh-libzlink)
+    RUN_CMD_BASE+=(--refresh-libzlink)
   else
     CACHE_FILE="${ROOT_DIR}/core/bench/benchwithzlink/baseline_cache_${PLATFORM}-${ARCH}.json"
     if [[ ! -f "${CACHE_FILE}" ]]; then
@@ -456,9 +395,27 @@ else
   fi
 fi
 
-if [[ -n "${OUTPUT_FILE}" ]]; then
-  mkdir -p "$(dirname "${OUTPUT_FILE}")"
-  env "${RUN_ENV[@]}" "${RUN_CMD[@]}" | tee "${OUTPUT_FILE}"
+RUN_CMD=("${RUN_CMD_BASE[@]}")
+if [[ "${#PATTERN_LIST[@]}" -eq 1 ]]; then
+  if [[ -n "${OUTPUT_FILE}" ]]; then
+    mkdir -p "$(dirname "${OUTPUT_FILE}")"
+    env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${PATTERN_LIST[0]}" | tee "${OUTPUT_FILE}"
+  else
+    env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${PATTERN_LIST[0]}"
+  fi
 else
-  env "${RUN_ENV[@]}" "${RUN_CMD[@]}"
+  for p in "${PATTERN_LIST[@]}"; do
+    if [[ -n "${OUTPUT_FILE}" ]]; then
+      SAFE_PATTERN="${p//,/\\_}"
+      PATTERN_OUTPUT="${RESULTS_DIR}/${DATE_DIR}/bench_${PLATFORM}_${SAFE_PATTERN}_${TS}"
+      if [[ -n "${RESULTS_TAG}" ]]; then
+        PATTERN_OUTPUT="${PATTERN_OUTPUT}_${RESULTS_TAG}"
+      fi
+      PATTERN_OUTPUT="${PATTERN_OUTPUT}.txt"
+      mkdir -p "$(dirname "${PATTERN_OUTPUT}")"
+      env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${p}" | tee "${PATTERN_OUTPUT}"
+    else
+      env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${p}"
+    fi
+  done
 fi

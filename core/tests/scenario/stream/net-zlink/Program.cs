@@ -29,7 +29,7 @@ internal sealed class Config
     public int Rcvbuf { get; set; } = 256 * 1024;
     public int IoThreads { get; set; } = 1;
     public int Shards { get; set; } = 1;
-    public int SendBatch { get; set; } = 1;
+    public int SendBatch { get; set; } = 30;
     public int LatencySampleRate { get; set; } = 1;
     public string ScenarioIdOverride { get; set; } = "";
     public string MetricsCsv { get; set; } = "";
@@ -213,13 +213,18 @@ internal sealed class ClientConn
 
 internal sealed class TrafficConnState
 {
-    public TrafficConnState(ClientConn conn, int payloadSize, int inflight)
+    public TrafficConnState(ClientConn conn, int payloadSize, int inflight, int sendBatch, Config cfg)
     {
         Conn = conn;
         InflightLimit = Math.Max(1, inflight);
         PacketBodySize = Math.Max(9, payloadSize);
         PacketSize = 4 + PacketBodySize;
-        MaxBatchPackets = Math.Max(1, Math.Min(InflightLimit, 32));
+        var sndbufBudget = Math.Max(1, cfg.Sndbuf);
+        var batchCap = PacketSize >= Math.Max(1, sndbufBudget / 4)
+                           ? 1
+                           : Math.Max(1, (sndbufBudget * 2) / PacketSize);
+        var maxBatch = Math.Max(1, Math.Min(sendBatch, Math.Min(64, batchCap)));
+        MaxBatchPackets = Math.Max(1, Math.Min(InflightLimit, maxBatch));
         SendPayload = new byte[PacketSize * MaxBatchPackets];
         RecvPartial = new byte[PacketSize];
         for (var i = 0; i < MaxBatchPackets; i++)
@@ -416,6 +421,7 @@ internal static class Program
 
     internal const int ErrnoEintr = 4;
     internal const int ErrnoEagain = 11;
+    internal const int ErrnoEtimeout = 110;
 
     public static async Task<int> Main(string[] args)
     {
@@ -520,16 +526,27 @@ internal static class Program
         context.SetOption(ContextOption.MaxSockets, Math.Max(1024, cfg.Ccu + 512));
 
         Socket? client = null;
+        var connectTimedOut = false;
         try
         {
             client = new Socket(context, SocketType.Stream);
             ConfigureStreamSocket(client, cfg, forBind: false);
             client.Connect(MakeEndpoint(cfg));
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(cfg.ConnectTimeoutSec));
-            if (!TryWaitStreamConnectEvent(client, cfg.ConnectTimeoutSec * 1000, cts.Token, errors, out var serverRid))
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(1, cfg.ConnectTimeoutSec)));
+            if (!TryWaitStreamConnectEvent(
+                  client,
+                  Math.Max(1, cfg.ConnectTimeoutSec) * 1000,
+                  cts.Token,
+                  errors,
+                  out var serverRid))
             {
                 row.ConnectFail = 1;
+                row.ConnectTimeout = cts.Token.IsCancellationRequested ? 1 : 0;
+                if (row.ConnectTimeout == 1)
+                {
+                    connectTimedOut = true;
+                }
                 row.PassFail = "FAIL";
                 row.ErrorsByErrno = errors.SnapshotSorted();
                 return Task.FromResult(false);
@@ -544,6 +561,7 @@ internal static class Program
                 || !TrySendPartWithRetry(client, payload, SendFlags.None, 1000, cts.Token, errors))
             {
                 row.ConnectFail = 1;
+                row.ConnectTimeout = cts.Token.IsCancellationRequested ? 1 : 0;
                 row.PassFail = "FAIL";
                 row.ErrorsByErrno = errors.SnapshotSorted();
                 return Task.FromResult(false);
@@ -556,6 +574,7 @@ internal static class Program
                 || recvRidLen <= 0)
             {
                 row.ConnectFail = 1;
+                row.ConnectTimeout = cts.Token.IsCancellationRequested ? 1 : 0;
                 row.PassFail = "FAIL";
                 row.ErrorsByErrno = errors.SnapshotSorted();
                 return Task.FromResult(false);
@@ -573,6 +592,14 @@ internal static class Program
         catch (Exception ex)
         {
             errors.RecordException(ex);
+            if (connectTimedOut || IsConnectTimeout(ex))
+            {
+                row.ConnectTimeout = 1;
+            }
+            else
+            {
+                row.ConnectFail = Math.Max(1, row.ConnectFail);
+            }
             row.PassFail = "FAIL";
             row.ErrorsByErrno = errors.SnapshotSorted();
             return Task.FromResult(false);
@@ -825,6 +852,7 @@ internal static class Program
         var timeout = 0L;
         var sockets = new ConcurrentBag<ClientConn>();
         var endpointCount = Math.Max(1, endpoints.Count);
+        var retryDelay = Math.Max(0, cfg.ConnectRetryDelayMs);
 
         using var sem = new SemaphoreSlim(Math.Max(1, Math.Min(cfg.ConnectConcurrency, cfg.Ccu)));
         var tasks = new List<Task>(cfg.Ccu);
@@ -836,29 +864,89 @@ internal static class Program
             tasks.Add(Task.Run(() =>
             {
                 Socket? socket = null;
+                var sawTimeout = false;
                 try
                 {
-                    socket = new Socket(context, SocketType.Stream);
-                    ConfigureStreamSocket(socket, cfg, forBind: false);
-                    socket.Connect(endpoints[connectIndex % endpointCount]);
-
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Max(1, cfg.ConnectTimeoutSec)));
-                    if (!TryWaitStreamConnectEvent(socket, cfg.ConnectTimeoutSec * 1000, cts.Token, errors, out var serverRid))
+                    for (var attempt = 1; attempt <= cfg.ConnectRetries; ++attempt)
                     {
-                        Interlocked.Increment(ref timeout);
-                        socket.Dispose();
-                        socket = null;
-                    }
-                    else
-                    {
-                        sockets.Add(new ClientConn
+                        if (attempt > 1 && retryDelay > 0)
                         {
-                            Socket = socket,
-                            PeerRoutingId = serverRid
-                        });
+                            Thread.Sleep(retryDelay);
+                        }
 
-                        Interlocked.Increment(ref success);
-                        socket = null;
+                        try
+                        {
+                            socket = new Socket(context, SocketType.Stream);
+                            ConfigureStreamSocket(socket, cfg, forBind: false);
+                            socket.Connect(endpoints[connectIndex % endpointCount]);
+
+                            using var cts = new CancellationTokenSource(
+                                TimeSpan.FromSeconds(Math.Max(1, cfg.ConnectTimeoutSec)));
+                            if (!TryWaitStreamConnectEvent(
+                                    socket,
+                                    Math.Max(1, cfg.ConnectTimeoutSec) * 1000,
+                                    cts.Token,
+                                    errors,
+                                    out var serverRid))
+                            {
+                                sawTimeout = true;
+                                if (attempt < cfg.ConnectRetries)
+                                {
+                                    socket.Dispose();
+                                    socket = null;
+                                    continue;
+                                }
+
+                                Interlocked.Increment(ref timeout);
+                                socket.Dispose();
+                                socket = null;
+                                break;
+                            }
+
+                            sockets.Add(new ClientConn
+                            {
+                                Socket = socket,
+                                PeerRoutingId = serverRid
+                            });
+                            socket = null;
+                            Interlocked.Increment(ref success);
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            if (IsConnectTimeout(ex))
+                            {
+                                sawTimeout = true;
+                            }
+
+                            errors.RecordException(ex);
+                            if (socket is not null)
+                            {
+                                try
+                                {
+                                    socket.Dispose();
+                                }
+                                catch
+                                {
+                                    // no-op
+                                }
+                                socket = null;
+                            }
+
+                            if (attempt < cfg.ConnectRetries)
+                            {
+                                continue;
+                            }
+                        }
+
+                        if (sawTimeout)
+                        {
+                            Interlocked.Increment(ref timeout);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref fail);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -934,7 +1022,9 @@ internal static class Program
         Task startGate,
         CancellationToken token)
     {
-        var connStates = shardClients.Select(client => new TrafficConnState(client, cfg.Size, cfg.Inflight)).ToList();
+        var connStates = shardClients.Select(
+          client =>
+            new TrafficConnState(client, cfg.Size, cfg.Inflight, cfg.SendBatch, cfg)).ToList();
         var recvRidScratch = new byte[256];
         var recvPayloadScratch = new byte[Math.Max(4 * 1024 * 1024, (4 + Math.Max(9, cfg.Size)) * 128)];
 
@@ -1485,17 +1575,32 @@ internal static class Program
 
     internal static void ConfigureStreamSocket(Socket socket, Config cfg, bool forBind)
     {
+        socket.SetOption(SocketOption.Linger, 0);
+        socket.SetOption(SocketOption.RcvTimeo, 1);
+        socket.SetOption(SocketOption.SndTimeo, 1);
         socket.SetOption(SocketOption.SndBuf, Math.Max(4096, cfg.Sndbuf));
         socket.SetOption(SocketOption.RcvBuf, Math.Max(4096, cfg.Rcvbuf));
         socket.SetOption(SocketOption.SndHwm, Math.Max(1000, cfg.Hwm));
         socket.SetOption(SocketOption.RcvHwm, Math.Max(1000, cfg.Hwm));
-        socket.SetOption(SocketOption.SndTimeo, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
-        socket.SetOption(SocketOption.RcvTimeo, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
-        socket.SetOption(SocketOption.ConnectTimeout, Math.Max(1, cfg.ConnectTimeoutSec * 1000));
         if (forBind)
         {
             socket.SetOption(SocketOption.Backlog, Math.Max(32, cfg.Backlog));
         }
+    }
+
+    internal static bool IsConnectTimeout(Exception ex)
+    {
+        if (ex is OperationCanceledException)
+        {
+            return true;
+        }
+
+        if (ex is ZlinkException ze && ze.Errno == ErrnoEtimeout)
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static void PrintRow(ResultRow row)
@@ -1669,7 +1774,7 @@ internal static class Program
         Console.WriteLine("  --rcvbuf N                       (default 262144)");
         Console.WriteLine("  --io-threads N                   (default 1)");
         Console.WriteLine("  --shards N                       (default 1)");
-        Console.WriteLine("  --send-batch N                   (accepted, default 1)");
+        Console.WriteLine("  --send-batch N                   (accepted, default 30)");
         Console.WriteLine("  --latency-sample-rate N          (default 1, 0=disable latency)");
         Console.WriteLine("  --scenario-id ID                 override scenario_id output");
         Console.WriteLine("  --metrics-csv PATH               append row to csv");
@@ -1701,7 +1806,7 @@ internal static class Program
             Rcvbuf = ArgInt(args, "--rcvbuf", 256 * 1024),
             IoThreads = ArgInt(args, "--io-threads", 1),
             Shards = ArgInt(args, "--shards", 1),
-            SendBatch = ArgInt(args, "--send-batch", 1),
+            SendBatch = ArgInt(args, "--send-batch", 30),
             LatencySampleRate = ArgInt(args, "--latency-sample-rate", 1),
             ScenarioIdOverride = ArgStr(args, "--scenario-id", ""),
             MetricsCsv = ArgStr(args, "--metrics-csv", ""),

@@ -27,11 +27,22 @@ Options:
                         Optional override for multi warmup seconds (default 3).
   --multi-measure-seconds N
                         Optional override for multi measure seconds (default 10).
+  --multi-clients N       Override number of client sockets per pattern.
+  --multi-inflight N      Override max in-flight messages.
+  --multi-connect-concurrency N
+                        Override concurrent connect count.
+  --multi-drain-ms N      Override drain timeout after benchmark (ms).
 USAGE
 }
 
 HAS_EXPLICIT_TRANSPORT=0
 HAS_EXPLICIT_RESULTS_TAG=0
+MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
+MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS:-10}"
+MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
+MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
+MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
+MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
 
@@ -73,12 +84,52 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --multi-warmup-seconds|--multi-measure-seconds)
+    --multi-warmup-seconds)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      SCRIPT_ARGS+=( "$1" "$2" )
+      MULTI_WARMUP_SECONDS="${2}"
+      shift 2
+      ;;
+    --multi-measure-seconds)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_MEASURE_SECONDS="${2}"
+      shift 2
+      ;;
+    --multi-clients)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_CLIENTS="${2}"
+      shift 2
+      ;;
+    --multi-inflight)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_INFLIGHT="${2}"
+      shift 2
+      ;;
+    --multi-connect-concurrency)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_CONNECT_CONCURRENCY="${2}"
+      shift 2
+      ;;
+    --multi-drain-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_DRAIN_MS="${2}"
       shift 2
       ;;
     --*)
@@ -107,18 +158,35 @@ RUN_BASE_ARGS=()
 if [[ "${HAS_EXPLICIT_RESULTS_TAG}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--results-tag "multi")
 fi
-RUN_BASE_ARGS+=(
-  --multi-warmup-seconds "${BENCH_MULTI_WARMUP_SECONDS:-3}"
-  --multi-measure-seconds "${BENCH_MULTI_MEASURE_SECONDS:-10}"
-)
 if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 && -z "${BENCH_TRANSPORTS:-}" ]]; then
   RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
 fi
+RUN_ENV=()
+RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
+RUN_ENV+=(BENCH_MULTI_MEASURE_SECONDS="${MULTI_MEASURE_SECONDS}")
+if [[ -n "${MULTI_CLIENTS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_CLIENTS="${MULTI_CLIENTS}")
+fi
+if [[ -n "${MULTI_INFLIGHT}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}")
+fi
+if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
+fi
+if [[ -n "${MULTI_DRAIN_MS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
+fi
 
 for pattern in "${PATTERNS[@]}"; do
+  if [[ "${pattern}" != MULTI_* ]]; then
+    echo "Error: run_benchmarks_multi.sh accepts only MULTI_* patterns." >&2
+    exit 1
+  fi
   echo "=== Running multi benchmark: ${pattern} ==="
-  if ! BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/multi/run_comparison.py" \
+  if ! BENCH_ALLOW_MULTI=1 \
+    BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/multi/run_comparison.py" \
     BENCH_FAIL_FAST=1 \
+    env "${RUN_ENV[@]}" \
     "${SCRIPT_DIR}/run_benchmarks.sh" \
     "${RUN_BASE_ARGS[@]}" \
     "${SCRIPT_ARGS[@]}" \

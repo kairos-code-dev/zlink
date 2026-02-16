@@ -174,8 +174,10 @@ inline int run_multi_timed_benchmark(const std::vector<void *> &clients,
                 limiter.acquire();
                 const bool ok = send_fn(i);
                 limiter.release();
-                if (!ok)
-                    break;
+                if (!ok) {
+                    std::this_thread::sleep_for(std::chrono::microseconds(50));
+                    continue;
+                }
                 if (sent_count)
                     sent_count->fetch_add(1, std::memory_order_relaxed);
             }

@@ -36,13 +36,21 @@ DOTNET_PROJECT="${STREAM_DIR}/dotnet/StreamServer.csproj"
 DOTNET_OUT_DIR="${STREAM_DIR}/dotnet/bin/Release/stream-bench"
 DOTNET_DLL="${DOTNET_OUT_DIR}/StreamServer.dll"
 
+CGDK_REPO_URL="${CGDK_REPO_URL:-https://github.com/CGLabs/CGDK10.Cpp.git}"
+CGDK_ROOT_DIR="${STREAM_DIR}/cgdk10"
+CGDK_SRC_DIR="${CGDK_ROOT_DIR}/upstream/CGDK10.Cpp"
+CGDK_BUILD_DIR="${CGDK_ROOT_DIR}/build"
+CGDK_BIN="${CGDK_BUILD_DIR}/test_scenario_stream_cgdk10"
+CGDK_SERVER_SRC="${CGDK_ROOT_DIR}/test_scenario_stream_cgdk10.cpp"
+CGDK_LIB_DIR="${CGDK_SRC_DIR}/lib/cgdk/sdk10/ubuntu"
+
 ACTIVE_SERVER_PID=""
 
 usage()
 {
     cat <<'EOF'
 Usage:
-  run_single_stack.sh --stack <asio|cppserver|dotnet|zlink> [options]
+  run_single_stack.sh --stack <asio|cppserver|dotnet|zlink|cgdk10> [options]
 
 Required:
   --stack                 stack to run
@@ -68,6 +76,48 @@ Other options:
   --skip-build            skip build
   -h, --help              show help
 EOF
+}
+
+ensure_cgdk_upstream()
+{
+    if [[ -d "${CGDK_SRC_DIR}/.git" ]]; then
+        return
+    fi
+
+    mkdir -p "$(dirname "${CGDK_SRC_DIR}")"
+    rm -rf "${CGDK_SRC_DIR}"
+    git clone --depth 1 "${CGDK_REPO_URL}" "${CGDK_SRC_DIR}" >/dev/null 2>&1
+}
+
+build_cgdk_server()
+{
+    ensure_cgdk_upstream
+    mkdir -p "${CGDK_BUILD_DIR}"
+
+    if [[ ! -d "${CGDK_LIB_DIR}" ]]; then
+        echo "cgdk10 lib dir not found: ${CGDK_LIB_DIR}" >&2
+        return 1
+    fi
+
+    g++ \
+        -I"${CGDK_SRC_DIR}/include" \
+        -DC_FLAGS \
+        -fexceptions \
+        -std=c++20 \
+        -DNDEBUG \
+        -O3 \
+        -Wall \
+        -Wextra \
+        -std=gnu++20 \
+        "${CGDK_SERVER_SRC}" \
+        -o "${CGDK_BIN}" \
+        -L"${CGDK_LIB_DIR}" \
+        -Wl,-rpath,"${CGDK_LIB_DIR}" \
+        -lCGDK10.net.socket_linux.Release \
+        -lCGDK10.system.object_linux.Release \
+        -lrt \
+        -lpthread \
+        >/dev/null 2>&1
 }
 
 parse_args()
@@ -234,24 +284,37 @@ stop_server()
     fi
 
     if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-        kill "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        for _ in $(seq 1 50); do
-            if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-                break
+        if [[ "${STACK}" == "cgdk10" ]]; then
+            kill -USR1 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 10); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
             fi
-            sleep 0.05
-        done
-        if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-            kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        fi
-        for _ in $(seq 1 50); do
-            if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-                break
+        else
+            kill "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 50); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
             fi
-            sleep 0.05
-        done
-        if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-            kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 50); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            fi
         fi
     fi
 
@@ -286,6 +349,9 @@ CPP
         dotnet)
             dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null 2>&1
             ;;
+        cgdk10)
+            build_cgdk_server
+            ;;
         *)
             echo "unsupported stack: ${STACK}" >&2
             exit 2
@@ -311,6 +377,9 @@ start_server()
             ;;
         dotnet)
             cmd=(dotnet "${DOTNET_DLL}")
+            ;;
+        cgdk10)
+            cmd=("${CGDK_BIN}")
             ;;
         *)
             echo "unsupported stack: ${STACK}" >&2

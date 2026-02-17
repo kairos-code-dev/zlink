@@ -12,3 +12,6 @@ cppserver/client_runner/obj/
 cppserver/upstream/
 cppserver/.upstream-ready
 
+cgdk10/upstream/
+cgdk10/build/
+

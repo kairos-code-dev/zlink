@@ -18,12 +18,12 @@ usage()
 {
     cat <<'EOF'
 Usage:
-  run_stream_compare.sh [--stack <asio|cppserver|dotnet|zlink|all>] [--size <64|1024|65536|all>] [--inflight <N>]
+  run_stream_compare.sh [--stack <asio|cppserver|dotnet|zlink|cgdk10|all>] [--size <64|1024|65536|all>] [--inflight <N>]
 
 Description:
   Run STREAM echo comparison matrix.
   Default (no options):
-    4 stacks (asio, cppserver, dotnet, zlink)
+    5 stacks (asio, cppserver, dotnet, zlink, cgdk10)
     x 3 sizes (64, 1024, 65536)
     x repeats
 
@@ -67,6 +67,7 @@ Notes:
       ./cppserver/run_single.sh
       ./dotnet/run_single.sh
       ./zlink/run_single.sh
+      ./cgdk10/run_single.sh
 EOF
 }
 
@@ -127,6 +128,14 @@ DOTNET_PROJECT="${SCRIPT_DIR}/dotnet/StreamServer.csproj"
 DOTNET_OUT_DIR="${SCRIPT_DIR}/dotnet/bin/Release/stream-bench"
 DOTNET_DLL="${DOTNET_OUT_DIR}/StreamServer.dll"
 
+CGDK_REPO_URL="${CGDK_REPO_URL:-https://github.com/CGLabs/CGDK10.Cpp.git}"
+CGDK_ROOT_DIR="${SCRIPT_DIR}/cgdk10"
+CGDK_SRC_DIR="${CGDK_ROOT_DIR}/upstream/CGDK10.Cpp"
+CGDK_BUILD_DIR="${CGDK_ROOT_DIR}/build"
+CGDK_BIN="${CGDK_BUILD_DIR}/test_scenario_stream_cgdk10"
+CGDK_SERVER_SRC="${CGDK_ROOT_DIR}/test_scenario_stream_cgdk10.cpp"
+CGDK_LIB_DIR="${CGDK_SRC_DIR}/lib/cgdk/sdk10/ubuntu"
+
 HOST="${HOST:-127.0.0.1}"
 CCU="${CCU:-10000}"
 DURATION="${DURATION:-5}"
@@ -148,7 +157,7 @@ CONNECT_RETRIES="${CONNECT_RETRIES:-4}"
 CONNECT_RETRY_DELAY_MS="${CONNECT_RETRY_DELAY_MS:-100}"
 
 SIZES=(64 1024 65536)
-STACKS=(asio cppserver dotnet zlink)
+STACKS=(asio cppserver dotnet zlink cgdk10)
 RUN_SIZES=()
 RUN_STACKS=()
 TARGETED_MODE=0
@@ -156,7 +165,7 @@ TARGETED_MODE=0
 validate_target_options()
 {
     case "${TARGET_STACK}" in
-        all|asio|cppserver|dotnet|zlink)
+        all|asio|cppserver|dotnet|zlink|cgdk10)
             ;;
         *)
             echo "invalid --stack: ${TARGET_STACK}" >&2
@@ -232,6 +241,7 @@ SELECTED_INFLIGHT[65536]=1
 
 PORT_CURSOR="${BASE_PORT}"
 ACTIVE_SERVER_PID=""
+ACTIVE_SERVER_STACK=""
 
 log()
 {
@@ -312,29 +322,43 @@ stop_active_server()
     fi
 
     if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-        kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        for _ in $(seq 1 40); do
-            if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-                break
+        if [[ "${ACTIVE_SERVER_STACK}" == "cgdk10" ]]; then
+            kill -USR1 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 10); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
             fi
-            sleep 0.05
-        done
-        if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-            kill "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        fi
-        for _ in $(seq 1 60); do
-            if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-                break
+        else
+            kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 40); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
             fi
-            sleep 0.05
-        done
-        if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-            kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            for _ in $(seq 1 60); do
+                if ! kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                    break
+                fi
+                sleep 0.05
+            done
+            if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
+                kill -9 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
+            fi
         fi
     fi
 
     wait "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
     ACTIVE_SERVER_PID=""
+    ACTIVE_SERVER_STACK=""
 }
 
 cleanup_on_exit()
@@ -343,6 +367,48 @@ cleanup_on_exit()
 }
 
 trap cleanup_on_exit EXIT
+
+ensure_cgdk_upstream()
+{
+    if [[ -d "${CGDK_SRC_DIR}/.git" ]]; then
+        return
+    fi
+
+    mkdir -p "$(dirname "${CGDK_SRC_DIR}")"
+    rm -rf "${CGDK_SRC_DIR}"
+    git clone --depth 1 "${CGDK_REPO_URL}" "${CGDK_SRC_DIR}" >/dev/null 2>&1
+}
+
+build_cgdk_server()
+{
+    ensure_cgdk_upstream
+    mkdir -p "${CGDK_BUILD_DIR}"
+
+    if [[ ! -d "${CGDK_LIB_DIR}" ]]; then
+        log "cgdk10 lib dir not found: ${CGDK_LIB_DIR}"
+        return 1
+    fi
+
+    g++ \
+        -I"${CGDK_SRC_DIR}/include" \
+        -DC_FLAGS \
+        -fexceptions \
+        -std=c++20 \
+        -DNDEBUG \
+        -O3 \
+        -Wall \
+        -Wextra \
+        -std=gnu++20 \
+        "${CGDK_SERVER_SRC}" \
+        -o "${CGDK_BIN}" \
+        -L"${CGDK_LIB_DIR}" \
+        -Wl,-rpath,"${CGDK_LIB_DIR}" \
+        -lCGDK10.net.socket_linux.Release \
+        -lCGDK10.system.object_linux.Release \
+        -lrt \
+        -lpthread \
+        >/dev/null 2>&1
+}
 
 start_server()
 {
@@ -368,6 +434,9 @@ start_server()
         dotnet)
             cmd=(dotnet "${DOTNET_DLL}")
             ;;
+        cgdk10)
+            cmd=("${CGDK_BIN}")
+            ;;
         *)
             log "unknown stack: ${stack}"
             return 2
@@ -391,6 +460,7 @@ start_server()
         exec "${cmd[@]}" >"${server_log}" 2>&1
     ) &
     ACTIVE_SERVER_PID="$!"
+    ACTIVE_SERVER_STACK="${stack}"
 
     if ! wait_for_port "${host}" "${port}" 25; then
         log "server start timeout: stack=${stack} port=${port}"
@@ -554,11 +624,15 @@ CPP
     log "build dotnet stream server"
     dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null
 
+    log "build cgdk10 stream server"
+    build_cgdk_server
+
     [[ -x "${CLIENT_BIN}" ]]
     [[ -x "${ASIO_BIN}" ]]
     [[ -x "${ZLINK_BIN}" ]]
     [[ -x "${CPPSERVER_BIN}" ]]
     [[ -f "${DOTNET_DLL}" ]]
+    [[ -x "${CGDK_BIN}" ]]
 }
 
 run_smoke()

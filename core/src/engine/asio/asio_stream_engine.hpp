@@ -16,6 +16,7 @@
 #include "core/msg.hpp"
 #include "engine/i_engine.hpp"
 #include "engine/asio/i_asio_transport.hpp"
+#include "engine/asio/handler_allocator.hpp"
 #include "utils/fd.hpp"
 
 #if defined ZLINK_HAVE_ASIO_SSL
@@ -102,6 +103,9 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     std::vector<unsigned char> _send_buffer_flush;
     size_t _send_buffer_flush_offset;
     size_t _send_buffer_limit;
+
+    handler_allocator _recv_allocator;
+    handler_allocator _send_allocator;
 
     session_base_t *_session;
     socket_base_t *_socket;

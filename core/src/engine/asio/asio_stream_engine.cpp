@@ -327,9 +327,11 @@ void zlink::asio_stream_engine_t::start_async_read ()
     _transport->async_read_some (
       &_recv_buffer[_recv_offset + _recv_size],
       _recv_buffer.size () - _recv_offset - _recv_size,
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_read_complete (ec, bytes);
-      });
+      make_custom_alloc_handler (
+        _recv_allocator,
+        [this] (const boost::system::error_code &ec, std::size_t bytes) {
+            on_read_complete (ec, bytes);
+        }));
 }
 
 void zlink::asio_stream_engine_t::on_read_complete (
@@ -524,9 +526,11 @@ void zlink::asio_stream_engine_t::start_async_write ()
     _transport->async_write_some (
       &_send_buffer_flush[0] + _send_buffer_flush_offset,
       _send_buffer_flush.size () - _send_buffer_flush_offset,
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_write_complete (ec, bytes);
-      });
+      make_custom_alloc_handler (
+        _send_allocator,
+        [this] (const boost::system::error_code &ec, std::size_t bytes) {
+            on_write_complete (ec, bytes);
+        }));
 }
 
 void zlink::asio_stream_engine_t::on_write_complete (

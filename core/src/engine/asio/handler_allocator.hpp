@@ -60,19 +60,72 @@ class handler_allocator
 
   private:
     //  Inline storage for small allocations
-    //  256 bytes is sufficient for typical lambda captures with ASIO wrapper:
+    //  1024 bytes accommodates typical lambda captures with ASIO wrapper
+    //  including the custom_alloc_handler wrapper itself:
     //  - this pointer (8 bytes)
     //  - entry_ pointer (8 bytes)
     //  - ASIO internal wrapper (~80-200 bytes)
+    //  - custom_alloc_handler wrapper (~200-400 bytes)
     //  - Additional state/padding
-    typename std::aligned_storage<256>::type _storage;
+    typename std::aligned_storage<1024>::type _storage;
     bool _in_use;
+};
+
+
+//  STL-compliant allocator that wraps handler_allocator.
+//  Required for Boost.Asio 1.74+ which uses the associated_allocator
+//  mechanism instead of the deprecated asio_handler_allocate hooks.
+template <typename T>
+class recycling_allocator
+{
+  public:
+    using value_type = T;
+
+    explicit recycling_allocator (handler_allocator &alloc) noexcept :
+        _allocator (&alloc)
+    {
+    }
+
+    template <typename U>
+    recycling_allocator (const recycling_allocator<U> &other) noexcept :
+        _allocator (other._allocator)
+    {
+    }
+
+    T *allocate (std::size_t n)
+    {
+        return static_cast<T *> (_allocator->allocate (n * sizeof (T)));
+    }
+
+    void deallocate (T *p, std::size_t /*n*/) noexcept
+    {
+        _allocator->deallocate (p);
+    }
+
+    template <typename U>
+    bool operator== (const recycling_allocator<U> &other) const noexcept
+    {
+        return _allocator == other._allocator;
+    }
+
+    template <typename U>
+    bool operator!= (const recycling_allocator<U> &other) const noexcept
+    {
+        return _allocator != other._allocator;
+    }
+
+  private:
+    template <typename U>
+    friend class recycling_allocator;
+
+    handler_allocator *_allocator;
 };
 
 
 //  Custom handler wrapper that uses handler hooks for custom allocation.
 //  This wrapper stores a reference to the handler_allocator and allows
-//  ASIO to use it via the asio_handler_allocate/deallocate hooks (ADL).
+//  ASIO to use it via the associated_allocator mechanism (Boost 1.74+)
+//  and the legacy asio_handler_allocate/deallocate hooks (older versions).
 template <typename Handler>
 class custom_alloc_handler
 {
@@ -100,10 +153,7 @@ class custom_alloc_handler
         _handler (std::forward<Args> (args)...);
     }
 
-    //  Friend functions for ASIO handler hooks (found via ADL)
-    //  Note: In newer Boost.Asio versions (1.74+), these hooks may be ignored
-    //  in favor of the associated_allocator mechanism, but they still work
-    //  as a fallback and provide compatibility with older versions.
+    //  Legacy ASIO handler hooks (found via ADL, for Boost < 1.74)
     friend void *asio_handler_allocate (std::size_t size,
                                         custom_alloc_handler *this_handler)
     {
@@ -117,9 +167,12 @@ class custom_alloc_handler
         this_handler->_allocator.deallocate (pointer);
     }
 
-    //  Associated allocator support (for newer Boost.Asio versions)
-    using allocator_type = std::allocator<void>;
-    allocator_type get_allocator () const noexcept { return allocator_type{}; }
+    //  Associated allocator support (for Boost.Asio 1.74+)
+    using allocator_type = recycling_allocator<void>;
+    allocator_type get_allocator () const noexcept
+    {
+        return allocator_type{_allocator};
+    }
 
   private:
     handler_allocator &_allocator;

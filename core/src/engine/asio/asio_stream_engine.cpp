@@ -56,7 +56,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _send_buffer_flush_offset (0),
     _send_buffer_limit (
       std::max<size_t> (normalize_buffer_size (_options.out_batch_size, 65536),
-                        static_cast<size_t> (512 * 1024))),
+                        static_cast<size_t> (64 * 1024))),
     _session (NULL),
     _socket (NULL)
 {
@@ -91,7 +91,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _send_buffer_flush_offset (0),
     _send_buffer_limit (
       std::max<size_t> (normalize_buffer_size (_options.out_batch_size, 65536),
-                        static_cast<size_t> (512 * 1024))),
+                        static_cast<size_t> (64 * 1024))),
     _session (NULL),
     _socket (NULL)
 {
@@ -132,7 +132,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _send_buffer_flush_offset (0),
     _send_buffer_limit (
       std::max<size_t> (normalize_buffer_size (_options.out_batch_size, 65536),
-                        static_cast<size_t> (512 * 1024))),
+                        static_cast<size_t> (64 * 1024))),
     _session (NULL),
     _socket (NULL),
     _ssl_context (std::move (ssl_context_))

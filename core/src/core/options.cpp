@@ -171,6 +171,7 @@ zlink::options_t::options_t () :
     tcp_keepalive_idle (-1),
     tcp_keepalive_intvl (-1),
     stream_engine_type (0),
+    stream_single_frame_recv (0),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),
@@ -492,6 +493,14 @@ int zlink::options_t::setsockopt (int option_,
             }
             break;
 
+        case ZLINK_STREAM_SINGLE_FRAME_RECV:
+            if (is_int && (value == 0 || value == 1)
+                && type == ZLINK_STREAM) {
+                stream_single_frame_recv = value;
+                return 0;
+            }
+            break;
+
         default:
             break;
     }
@@ -809,6 +818,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_STREAM_ENGINE_TYPE:
             if (is_int) {
                 *value = stream_engine_type;
+                return 0;
+            }
+            break;
+
+        case ZLINK_STREAM_SINGLE_FRAME_RECV:
+            if (is_int) {
+                *value = stream_single_frame_recv;
                 return 0;
             }
             break;

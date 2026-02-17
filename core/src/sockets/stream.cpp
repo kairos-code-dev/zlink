@@ -23,6 +23,7 @@ bool stream_single_frame_recv_enabled ()
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
+    _single_frame_recv (false),
     _prefetched (false),
     _routing_id_sent (false),
     _prefetched_routing_id_value (0),
@@ -190,7 +191,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    if (stream_single_frame_recv_enabled ()) {
+    if (_single_frame_recv) {
         if (_prefetched) {
             const int rc = msg_->move (_prefetched_msg);
             errno_assert (rc == 0);
@@ -288,7 +289,7 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
 bool zlink::stream_t::xhas_in ()
 {
-    if (stream_single_frame_recv_enabled ()) {
+    if (_single_frame_recv) {
         if (_prefetched)
             return true;
 

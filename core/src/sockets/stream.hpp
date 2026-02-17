@@ -46,6 +46,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     fq_t _fq;
 
+    //  Cached single-frame recv mode (from socket option or env var).
+    bool _single_frame_recv;
+
     bool _prefetched;
     bool _routing_id_sent;
     uint32_t _prefetched_routing_id_value;

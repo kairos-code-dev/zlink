@@ -152,6 +152,10 @@ struct options_t
     //  0 = raw engine (default), 1 = stream engine.
     int stream_engine_type;
 
+    //  STREAM single-frame recv mode.
+    //  0 = multipart (default), 1 = single frame with routing_id in msg_t.
+    int stream_single_frame_recv;
+
     //  Enable READY metadata for ZMP (default: false)
     bool zmp_metadata;
 

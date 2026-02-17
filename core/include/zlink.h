@@ -387,6 +387,7 @@ ZLINK_EXPORT uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_);
 #define ZLINK_TOPICS_COUNT 116
 #define ZLINK_ZMP_METADATA 117
 #define ZLINK_STREAM_ENGINE_TYPE 119
+#define ZLINK_STREAM_SINGLE_FRAME_RECV 120
 
 //  TLS protocol options
 #define ZLINK_TLS_CERT 95

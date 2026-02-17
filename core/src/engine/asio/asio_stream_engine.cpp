@@ -48,6 +48,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_offset (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -82,6 +83,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_offset (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -122,6 +124,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_offset (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -303,17 +306,27 @@ void zlink::asio_stream_engine_t::start_async_read ()
         return;
 
     const size_t min_free = 4096;
-    if (_recv_buffer.size () - _recv_size < min_free) {
-        size_t new_size =
-          _recv_buffer.empty () ? 65536 : (_recv_buffer.size () * 2);
-        if (new_size - _recv_size < min_free)
-            new_size = _recv_size + min_free;
-        _recv_buffer.resize (new_size);
+    if (_recv_buffer.size () - _recv_offset - _recv_size < min_free) {
+        //  Compact before growing if offset is non-zero
+        if (_recv_offset > 0) {
+            if (_recv_size > 0)
+                memmove (&_recv_buffer[0], &_recv_buffer[_recv_offset],
+                         _recv_size);
+            _recv_offset = 0;
+        }
+        if (_recv_buffer.size () - _recv_size < min_free) {
+            size_t new_size =
+              _recv_buffer.empty () ? 65536 : (_recv_buffer.size () * 2);
+            if (new_size - _recv_size < min_free)
+                new_size = _recv_size + min_free;
+            _recv_buffer.resize (new_size);
+        }
     }
 
     _read_pending = true;
     _transport->async_read_some (
-      &_recv_buffer[0] + _recv_size, _recv_buffer.size () - _recv_size,
+      &_recv_buffer[_recv_offset + _recv_size],
+      _recv_buffer.size () - _recv_offset - _recv_size,
       [this] (const boost::system::error_code &ec, std::size_t bytes) {
           on_read_complete (ec, bytes);
       });
@@ -359,7 +372,8 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
         if ((_recv_size - offset) < 4)
             break;
 
-        const uint32_t payload_size = get_uint32 (&_recv_buffer[offset]);
+        const uint32_t payload_size =
+          get_uint32 (&_recv_buffer[_recv_offset + offset]);
         if (payload_size == 0) {
             errno = EPROTO;
             error (protocol_error);
@@ -375,7 +389,7 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
         if ((_recv_size - offset) < packet_size)
             break;
 
-        if (!push_one_frame (&_recv_buffer[offset + 4],
+        if (!push_one_frame (&_recv_buffer[_recv_offset + offset + 4],
                              static_cast<size_t> (payload_size))) {
             if (_input_stopped)
                 break;
@@ -389,10 +403,17 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
 
     if (offset > 0) {
         if (offset < _recv_size) {
-            memmove (&_recv_buffer[0], &_recv_buffer[offset], _recv_size - offset);
+            _recv_offset += offset;
             _recv_size -= offset;
+            //  Compact only when offset exceeds half the buffer
+            if (_recv_offset > _recv_buffer.size () / 2) {
+                memmove (&_recv_buffer[0], &_recv_buffer[_recv_offset],
+                         _recv_size);
+                _recv_offset = 0;
+            }
         } else {
             _recv_size = 0;
+            _recv_offset = 0;
         }
     }
 

@@ -94,6 +94,7 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     bool _output_stopped;
 
     std::vector<unsigned char> _recv_buffer;
+    size_t _recv_offset;
     size_t _recv_size;
     size_t _recv_limit;
 

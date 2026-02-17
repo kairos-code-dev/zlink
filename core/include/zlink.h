@@ -309,6 +309,13 @@ ZLINK_EXPORT int zlink_msg_set (zlink_msg_t *msg_, int property_, int optval_);
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
                                      const char *property_);
 
+/** @brief Set the routing ID on a message (for STREAM fastpath). */
+ZLINK_EXPORT int zlink_msg_set_routing_id (zlink_msg_t *msg_,
+                                            uint32_t routing_id_);
+
+/** @brief Get the routing ID from a message. */
+ZLINK_EXPORT uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_);
+
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/

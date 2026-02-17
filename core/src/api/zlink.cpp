@@ -1595,6 +1595,16 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_)
     return NULL;
 }
 
+int zlink_msg_set_routing_id (zlink_msg_t *msg_, uint32_t routing_id_)
+{
+    return ((zlink::msg_t *) msg_)->set_routing_id (routing_id_);
+}
+
+uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_)
+{
+    return ((const zlink::msg_t *) msg_)->get_routing_id ();
+}
+
 // Polling.
 
 int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_)

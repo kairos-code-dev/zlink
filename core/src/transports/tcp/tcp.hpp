@@ -10,8 +10,12 @@ namespace zlink
 class tcp_address_t;
 struct options_t;
 
-//  Tunes the supplied TCP socket for the best latency.
-int tune_tcp_socket (fd_t s_);
+//  Tunes the supplied TCP socket.
+//  tcp_nodelay_:
+//    1  -> enable TCP_NODELAY
+//    0  -> disable TCP_NODELAY
+//   -1  -> do not touch TCP_NODELAY
+int tune_tcp_socket (fd_t s_, int tcp_nodelay_ = 1);
 
 //  Sets the socket send buffer size.
 int set_tcp_send_buffer (fd_t sockfd_, int bufsize_);

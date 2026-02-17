@@ -172,6 +172,7 @@ zlink::options_t::options_t () :
     tcp_keepalive_intvl (-1),
     stream_engine_type (0),
     stream_single_frame_recv (0),
+    tcp_nodelay (1),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),
@@ -379,6 +380,13 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_TCP_KEEPALIVE_INTVL:
             if (is_int && (value == -1 || value >= 0)) {
                 tcp_keepalive_intvl = value;
+                return 0;
+            }
+            break;
+
+        case ZLINK_TCP_NODELAY:
+            if (is_int && (value == -1 || value == 0 || value == 1)) {
+                tcp_nodelay = value;
                 return 0;
             }
             break;
@@ -714,6 +722,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_TCP_KEEPALIVE_INTVL:
             if (is_int) {
                 *value = tcp_keepalive_intvl;
+                return 0;
+            }
+            break;
+
+        case ZLINK_TCP_NODELAY:
+            if (is_int) {
+                *value = tcp_nodelay;
                 return 0;
             }
             break;

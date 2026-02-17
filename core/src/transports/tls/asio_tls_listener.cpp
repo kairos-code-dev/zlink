@@ -488,7 +488,7 @@ void zlink::asio_tls_listener_t::close ()
 
 int zlink::asio_tls_listener_t::tune_socket (fd_t fd_) const
 {
-    int rc = tune_tcp_socket (fd_);
+    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
     rc = rc
          | tune_tcp_keepalives (fd_, options.tcp_keepalive,
                                 options.tcp_keepalive_cnt,

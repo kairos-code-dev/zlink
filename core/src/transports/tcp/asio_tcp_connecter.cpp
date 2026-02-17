@@ -418,7 +418,7 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
 bool zlink::asio_tcp_connecter_t::tune_socket (fd_t fd_)
 {
-    int rc = tune_tcp_socket (fd_);
+    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
     if (options.sndbuf >= 0)
         rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
     if (options.rcvbuf >= 0)

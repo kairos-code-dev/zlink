@@ -10,13 +10,14 @@
 
 namespace {
 
+static const size_t k_min_payload_size = 16;
+static const size_t k_max_payload_size = 4 * 1024 * 1024;
+
 struct server_options_t
 {
-    std::string mode;
     std::string host;
     int port;
     size_t size;
-    std::string scenario_id;
     int sndbuf;
     int rcvbuf;
     int backlog;
@@ -24,11 +25,9 @@ struct server_options_t
     int io_threads;
 
     server_options_t ()
-        : mode ("echo"),
-          host ("0.0.0.0"),
+        : host ("0.0.0.0"),
           port (38001),
           size (1024),
-          scenario_id ("stream-echo"),
           sndbuf (1024 * 1024),
           rcvbuf (1024 * 1024),
           backlog (32768),
@@ -67,15 +66,25 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void)zlink_setsockopt (socket, ZLINK_SNDBUF, &opt.sndbuf, sizeof (opt.sndbuf));
     (void)zlink_setsockopt (socket, ZLINK_RCVBUF, &opt.rcvbuf, sizeof (opt.rcvbuf));
     (void)zlink_setsockopt (socket, ZLINK_BACKLOG, &opt.backlog, sizeof (opt.backlog));
+    if (zlink_setsockopt (socket, ZLINK_TCP_NODELAY, &opt.tcp_nodelay,
+                          sizeof (opt.tcp_nodelay))
+        != 0) {
+        std::fprintf (stderr, "zlink stream: ZLINK_TCP_NODELAY set failed: %s\n",
+                      zlink_strerror (zlink_errno ()));
+    } else {
+        int applied = -2;
+        size_t applied_size = sizeof (applied);
+        if (zlink_getsockopt (socket, ZLINK_TCP_NODELAY, &applied, &applied_size)
+            == 0
+            && applied_size == sizeof (applied)) {
+            std::fprintf (stderr, "zlink stream: tcp_nodelay=%d\n", applied);
+        }
+    }
 
     const int zero = 0;
     (void)zlink_setsockopt (socket, ZLINK_RCVHWM, &zero, sizeof (zero));
     (void)zlink_setsockopt (socket, ZLINK_SNDHWM, &zero, sizeof (zero));
 
-    // STREAM socket doesn't expose TCP_NODELAY in this API.
-    if (opt.tcp_nodelay != 0)
-        std::fprintf (stderr,
-                      "zlink stream: tcp_nodelay requested but no public socket option is exposed; using runtime default\n");
 }
 
 class zlink_stream_echo_server_t
@@ -162,12 +171,6 @@ class zlink_stream_echo_server_t
             active_connections.load (std::memory_order_relaxed))
             .c_str ());
 
-        std::printf (
-          "METRIC stack=zlink scenario_id=%s connect_events=%ld disconnect_events=%ld\n",
-          opt.scenario_id.c_str (),
-          connect_events.load (std::memory_order_relaxed),
-          disconnect_events.load (std::memory_order_relaxed));
-
         return 0;
     }
 
@@ -249,8 +252,19 @@ class zlink_stream_echo_server_t
             return 1;
         }
 
-        if (payload_size != opt.size)
-            protocol_error.fetch_add (1, std::memory_order_relaxed);
+        // STREAM payload is a raw TCP chunk and can be partial/coalesced.
+        // Only validate/count when a chunk exactly matches a full frame.
+        const size_t expected_frame_size = opt.size + 4;
+        if (payload_size == expected_frame_size && payload) {
+            const size_t body_size =
+              static_cast<size_t> (stream_echo::load_u32_be (payload));
+            if (body_size < k_min_payload_size || body_size > k_max_payload_size
+                || body_size != opt.size) {
+                protocol_error.fetch_add (1, std::memory_order_relaxed);
+            } else {
+                recv_msgs.fetch_add (1, std::memory_order_relaxed);
+            }
+        }
 
         const int sent_rid = zlink_msg_send (&rid_msg, server, ZLINK_SNDMORE);
         if (sent_rid != static_cast<int> (rid_size))
@@ -259,8 +273,6 @@ class zlink_stream_echo_server_t
             const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
             if (sent_payload != static_cast<int> (payload_size))
                 send_error.fetch_add (1, std::memory_order_relaxed);
-            else
-                recv_msgs.fetch_add (1, std::memory_order_relaxed);
         }
 
         zlink_msg_close (&payload_msg);
@@ -300,22 +312,15 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
 {
     const stream_echo::arg_reader_t args (argc, argv);
 
-    opt.mode = args.get_string ("--mode", opt.mode.c_str ());
     opt.host = args.get_string ("--host", opt.host.c_str ());
     opt.port = args.get_int ("--port", opt.port, 1);
-    opt.size = args.get_size ("--size", opt.size, 16);
-    opt.scenario_id = args.get_string ("--scenario-id", opt.scenario_id.c_str ());
+    opt.size = args.get_size ("--size", opt.size, k_min_payload_size);
     opt.sndbuf = args.get_int ("--sndbuf", opt.sndbuf, 1);
     opt.rcvbuf = args.get_int ("--rcvbuf", opt.rcvbuf, 1);
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-
-    if (opt.mode != "echo") {
-        std::fprintf (stderr, "zlink stream: unsupported mode %s\n", opt.mode.c_str ());
-        return false;
-    }
-    if (opt.size > 4 * 1024 * 1024) {
+    if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "zlink stream: size too large %zu\n", opt.size);
         return false;
     }

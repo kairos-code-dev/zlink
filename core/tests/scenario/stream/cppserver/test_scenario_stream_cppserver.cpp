@@ -23,11 +23,9 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 
 struct server_options_t
 {
-    std::string mode;
     std::string host;
     int port;
     size_t size;
-    std::string scenario_id;
     int sndbuf;
     int rcvbuf;
     int backlog;
@@ -35,11 +33,9 @@ struct server_options_t
     int io_threads;
 
     server_options_t ()
-        : mode ("echo"),
-          host ("0.0.0.0"),
+        : host ("0.0.0.0"),
           port (38003),
           size (1024),
-          scenario_id ("stream-echo"),
           sndbuf (1024 * 1024),
           rcvbuf (1024 * 1024),
           backlog (32768),
@@ -145,7 +141,6 @@ class stream_echo_session_t : public TCPSession
                     return;
                 }
 
-                metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
                 partial_size = 0;
                 continue;
             }
@@ -179,7 +174,6 @@ class stream_echo_session_t : public TCPSession
                 return;
             }
 
-            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
             ptr += incoming_frame_size;
             remaining -= incoming_frame_size;
         }
@@ -248,22 +242,14 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
 {
     stream_echo::arg_reader_t args (argc, argv);
 
-    opt.mode = args.get_string ("--mode", opt.mode.c_str ());
     opt.host = args.get_string ("--host", opt.host.c_str ());
     opt.port = args.get_int ("--port", opt.port, 1);
     opt.size = args.get_size ("--size", opt.size, k_min_payload_size);
-    opt.scenario_id = args.get_string ("--scenario-id", opt.scenario_id.c_str ());
     opt.sndbuf = args.get_int ("--sndbuf", opt.sndbuf, 1);
     opt.rcvbuf = args.get_int ("--rcvbuf", opt.rcvbuf, 1);
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-
-    if (opt.mode != "echo") {
-        std::fprintf (stderr, "cppserver stream: unsupported mode %s\n",
-                      opt.mode.c_str ());
-        return false;
-    }
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "cppserver stream: size too large %zu\n", opt.size);
         return false;

@@ -170,6 +170,7 @@ zlink::options_t::options_t () :
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
     tcp_keepalive_intvl (-1),
+    stream_engine_type (0),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),
@@ -482,6 +483,14 @@ int zlink::options_t::setsockopt (int option_,
             return do_setsockopt_string_allow_empty_strict (
               optval_, optvallen_, &tls_password, 256);
 #endif
+
+        case ZLINK_STREAM_ENGINE_TYPE:
+            if (is_int && (value == 0 || value == 1)
+                && type == ZLINK_STREAM) {
+                stream_engine_type = value;
+                return 0;
+            }
+            break;
 
         default:
             break;
@@ -796,6 +805,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_TLS_PASSWORD:
             return do_getsockopt (optval_, optvallen_, tls_password);
 #endif
+
+        case ZLINK_STREAM_ENGINE_TYPE:
+            if (is_int) {
+                *value = stream_engine_type;
+                return 0;
+            }
+            break;
 
         default:
             break;

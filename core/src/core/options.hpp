@@ -148,6 +148,10 @@ struct options_t
     ipc_pid_accept_filters_t ipc_pid_accept_filters;
 #endif
 
+    //  Stream engine type for ZLINK_STREAM sockets.
+    //  0 = raw engine (default), 1 = stream engine.
+    int stream_engine_type;
+
     //  Enable READY metadata for ZMP (default: false)
     bool zmp_metadata;
 

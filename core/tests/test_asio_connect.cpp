@@ -79,12 +79,12 @@ void test_connect_before_bind ()
       zlink_setsockopt (client, ZLINK_RECONNECT_IVL, &reconnect_ivl, sizeof (int)));
 
     //  Connect first (before server binds)
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://127.0.0.1:15560"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, "tcp://127.0.0.1:15590"));
 
     msleep (50);
 
     //  Now bind the server
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:15560"));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_bind (server, "tcp://127.0.0.1:15590"));
 
     //  Wait for reconnect
     msleep (300);

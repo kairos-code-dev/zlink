@@ -102,11 +102,6 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     size_t _send_buffer_flush_offset;
     size_t _send_buffer_limit;
 
-    msg_t _tx_msg;
-    bool _tx_msg_valid;
-    unsigned char _tx_header[4];
-    size_t _tx_total_size;
-
     session_base_t *_session;
     socket_base_t *_socket;
 

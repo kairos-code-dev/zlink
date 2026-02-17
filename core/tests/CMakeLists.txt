@@ -59,6 +59,7 @@ set(tests
   spot/test_spot_pubsub_scenario
   scenario/router_router/zlink/test_scenario_router_router
   scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
+  scenario/stream/client/test_scenario_stream_client
   scenario/stream/zlink/test_scenario_stream_zlink
   scenario/stream/asio/test_scenario_stream_asio)
 
@@ -250,6 +251,10 @@ target_sources(
   PRIVATE scenario/router_router/zlink/router_router_scenario_core.cpp
           scenario/router_router/zlink/router_router_scenario_output.cpp)
 
+target_sources(
+  test_scenario_stream_client
+  PRIVATE scenario/stream/client/stream_client_core.cpp)
+
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
@@ -263,6 +268,8 @@ set_tests_properties(test_scenario_router_router PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router PROPERTIES LABELS "scenario;router_router")
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
+set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)

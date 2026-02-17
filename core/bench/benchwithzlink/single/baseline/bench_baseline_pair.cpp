@@ -4,9 +4,6 @@
 #include <cstring>
 #include <cstdlib>
 
-#ifndef ZLINK_TCP_NODELAY
-#define ZLINK_TCP_NODELAY 26
-#endif
 
 void run_pair(const std::string& transport, size_t msg_size, int msg_count, const std::string& lib_name) {
     if (!transport_available(transport))

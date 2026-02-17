@@ -356,6 +356,7 @@ ZLINK_EXPORT uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_);
 #define ZLINK_TCP_KEEPALIVE_CNT 35
 #define ZLINK_TCP_KEEPALIVE_IDLE 36
 #define ZLINK_TCP_KEEPALIVE_INTVL 37
+#define ZLINK_TCP_NODELAY 118
 #define ZLINK_IMMEDIATE 39
 #define ZLINK_XPUB_VERBOSE 40
 #define ZLINK_IPV6 42

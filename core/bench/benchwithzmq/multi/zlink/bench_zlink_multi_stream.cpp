@@ -32,9 +32,6 @@ static const socket_t INVALID_SOCKET_FD = -1;
 #define ZLINK_STREAM 11
 #endif
 
-#ifndef ZLINK_TCP_NODELAY
-#define ZLINK_TCP_NODELAY 26
-#endif
 
 namespace {
 

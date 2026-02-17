@@ -4,9 +4,6 @@
 #include <vector>
 #include <cstring>
 
-#ifndef ZLINK_TCP_NODELAY
-#define ZLINK_TCP_NODELAY 26
-#endif
 
 void run_pubsub(const std::string& transport, size_t msg_size, int msg_count) {
     void *ctx = zlink_ctx_new();

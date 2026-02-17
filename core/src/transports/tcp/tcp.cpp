@@ -27,25 +27,26 @@
 #include <TargetConditionals.h>
 #endif
 
-int zlink::tune_tcp_socket (fd_t s_)
+int zlink::tune_tcp_socket (fd_t s_, int tcp_nodelay_)
 {
-    //  Disable Nagle's algorithm. We are doing data batching on 0MQ level,
-    //  so using Nagle wouldn't improve throughput in anyway, but it would
-    //  hurt latency.
-    int nodelay = 1;
-    const int rc =
-      setsockopt (s_, IPPROTO_TCP, TCP_NODELAY,
-                  reinterpret_cast<char *> (&nodelay), sizeof (int));
-    assert_success_or_recoverable (s_, rc);
-    if (rc != 0)
-        return rc;
+    int rc = 0;
+    if (tcp_nodelay_ != -1) {
+        int nodelay = tcp_nodelay_ != 0 ? 1 : 0;
+        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELAY,
+                         reinterpret_cast<char *> (&nodelay), sizeof (int));
+        assert_success_or_recoverable (s_, rc);
+        if (rc != 0)
+            return rc;
+    }
 
 #ifdef ZLINK_HAVE_OPENVMS
     //  Disable delayed acknowledgements as they hurt latency significantly.
-    int nodelack = 1;
-    rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELACK, (char *) &nodelack,
-                     sizeof (int));
-    assert_success_or_recoverable (s_, rc);
+    if (tcp_nodelay_ != 0) {
+        int nodelack = 1;
+        rc = setsockopt (s_, IPPROTO_TCP, TCP_NODELACK, (char *) &nodelack,
+                         sizeof (int));
+        assert_success_or_recoverable (s_, rc);
+    }
 #endif
     return rc;
 }

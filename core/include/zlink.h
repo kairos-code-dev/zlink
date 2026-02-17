@@ -349,6 +349,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_KEEPALIVE_CNT 35
 #define ZLINK_TCP_KEEPALIVE_IDLE 36
 #define ZLINK_TCP_KEEPALIVE_INTVL 37
+#define ZLINK_TCP_NODELAY 118
 #define ZLINK_IMMEDIATE 39
 #define ZLINK_XPUB_VERBOSE 40
 #define ZLINK_IPV6 42

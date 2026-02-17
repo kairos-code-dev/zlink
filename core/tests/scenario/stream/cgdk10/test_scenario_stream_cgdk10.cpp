@@ -2,6 +2,7 @@
 
 #include "cgdk/sdk10/net.socket.h"
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <cstdio>
@@ -23,11 +24,9 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 
 struct server_options_t
 {
-    std::string mode;
     std::string host;
     int port;
     size_t size;
-    std::string scenario_id;
     int sndbuf;
     int rcvbuf;
     int backlog;
@@ -35,11 +34,9 @@ struct server_options_t
     int io_threads;
 
     server_options_t ()
-        : mode ("echo"),
-          host ("0.0.0.0"),
+        : host ("0.0.0.0"),
           port (38005),
           size (1024),
-          scenario_id ("stream-echo"),
           sndbuf (1024 * 1024),
           rcvbuf (1024 * 1024),
           backlog (32768),
@@ -69,6 +66,18 @@ struct metrics_t
 
 static const server_options_t *g_options = NULL;
 static metrics_t *g_metrics = NULL;
+
+void apply_native_socket_tuning (CGSOCKET handle, const server_options_t &opt)
+{
+    if (handle == INVALID_SOCKET)
+        return;
+
+    (void)api::socket::set_tcp_nodelay (handle, opt.tcp_nodelay != 0);
+    (void)api::socket::set_send_buffer_size (
+      handle, static_cast<size_t> (std::max (1, opt.sndbuf)));
+    (void)api::socket::set_receive_buffer_size (
+      handle, static_cast<size_t> (std::max (1, opt.rcvbuf)));
+}
 
 inline uint32_t load_u32_be (const unsigned char *p)
 {
@@ -142,6 +151,14 @@ class cgdk_stream_session_t
 
     void on_connect () override
     {
+        if (g_options) {
+            this->maximum_send_buffer_size (
+              static_cast<size_t> (std::max (1, g_options->sndbuf)));
+            this->maximum_receive_buffer_size (
+              static_cast<size_t> (std::max (1, g_options->rcvbuf)));
+            apply_native_socket_tuning (this->native_handle (), *g_options);
+        }
+
         if (g_metrics)
             g_metrics->active_connections.fetch_add (1, std::memory_order_relaxed);
     }
@@ -183,7 +200,6 @@ class cgdk_stream_session_t
             return eRESULT::DONE;
         }
 
-        g_metrics->recv_msgs.fetch_add (1, std::memory_order_relaxed);
         return eRESULT::DONE;
     }
 };
@@ -192,22 +208,14 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
 {
     const stream_echo::arg_reader_t args (argc, argv);
 
-    opt.mode = args.get_string ("--mode", opt.mode.c_str ());
     opt.host = args.get_string ("--host", opt.host.c_str ());
     opt.port = args.get_int ("--port", opt.port, 1);
     opt.size = args.get_size ("--size", opt.size, k_min_payload_size);
-    opt.scenario_id = args.get_string ("--scenario-id", opt.scenario_id.c_str ());
     opt.sndbuf = args.get_int ("--sndbuf", opt.sndbuf, 1);
     opt.rcvbuf = args.get_int ("--rcvbuf", opt.rcvbuf, 1);
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-
-    if (opt.mode != "echo") {
-        std::fprintf (stderr, "cgdk10 stream: unsupported mode %s\n",
-                      opt.mode.c_str ());
-        return false;
-    }
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "cgdk10 stream: size too large %zu\n", opt.size);
         return false;
@@ -223,6 +231,15 @@ int run_server (const server_options_t &opt)
 
     g_options = &opt;
     g_metrics = &metrics;
+
+    const size_t tuned_sndbuf = static_cast<size_t> (std::max (1, opt.sndbuf));
+    const size_t tuned_rcvbuf = static_cast<size_t> (std::max (1, opt.rcvbuf));
+    net::io::socket::Ntcp::set_default_maximum_send_buffer_size (tuned_sndbuf);
+    net::io::socket::Ntcp::set_default_maximum_receive_buffer_size (tuned_rcvbuf);
+    net::io::sendable::Itcp_gather::default_maximum_queued_bytes (
+      std::max<size_t> (8 * 1024 * 1024, tuned_sndbuf * 8));
+    net::io::sendable::Itcp_gather::default_maximum_depth_of_send_buffer (
+      131072);
 
     sigset_t signal_set;
     sigemptyset (&signal_set);
@@ -276,6 +293,12 @@ int run_server (const server_options_t &opt)
     net::acceptor<cgdk_stream_session_t>::START_PARAMETER start_parameter;
     start_parameter.local_endpoint =
       net::ip::tcp::endpoint (bind_addr, static_cast<unsigned short> (opt.port));
+    const size_t prepared =
+      std::max<size_t> (
+        256, std::min<size_t> (static_cast<size_t> (opt.backlog), 8192));
+    start_parameter.prepare_on_start = prepared;
+    start_parameter.must_prepare = prepared / 2;
+    start_parameter.enable_progress_log = false;
 
     const result_code rc = pacceptor->start (start_parameter);
     if (rc != eRESULT::SUCCESS) {
@@ -284,11 +307,6 @@ int run_server (const server_options_t &opt)
         close (signal_fd);
         return 2;
     }
-
-    if (opt.tcp_nodelay == 0)
-        std::fprintf (
-          stderr,
-          "cgdk10 stream: tcp_nodelay disable is not exposed; using library default\n");
 
     if (opt.io_threads != 8)
         std::fprintf (

@@ -522,7 +522,7 @@ void zlink::asio_tls_connecter_t::create_engine (fd_t fd_,
 
 bool zlink::asio_tls_connecter_t::tune_socket (fd_t fd_)
 {
-    const int rc = tune_tcp_socket (fd_)
+    const int rc = tune_tcp_socket (fd_, options.tcp_nodelay)
                    | tune_tcp_keepalives (fd_, options.tcp_keepalive,
                                           options.tcp_keepalive_cnt,
                                           options.tcp_keepalive_idle,

@@ -13,6 +13,7 @@ IS_WINDOWS = os.name == "nt"
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
+BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
 
 
 def platform_arch_tag():
@@ -91,37 +92,70 @@ def normalize_build_dir(path):
     if not path:
         return path
     abs_path = os.path.abspath(path)
-    if os.path.isdir(abs_path):
-        bin_dir = os.path.join(abs_path, "bin")
-        release_dir = os.path.join(bin_dir, "Release")
-        debug_dir = os.path.join(bin_dir, "Debug")
-        if os.path.exists(os.path.join(bin_dir, "comp_zlink_multi_dealer_dealer" + EXE_SUFFIX)):
-            return bin_dir
-        if os.path.exists(
-            os.path.join(abs_path, "comp_zlink_multi_dealer_dealer" + EXE_SUFFIX)
-        ):
-            return abs_path
-        if os.path.exists(
-            os.path.join(release_dir, "comp_zlink_multi_dealer_dealer" + EXE_SUFFIX)
-        ):
-            return release_dir
-        if os.path.exists(
-            os.path.join(debug_dir, "comp_zlink_multi_dealer_dealer" + EXE_SUFFIX)
-        ):
-            return debug_dir
+    if not os.path.isdir(abs_path):
+        return abs_path
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        return abs_path
+
+    if base == "bin":
+        if IS_WINDOWS:
+            release_dir = os.path.join(abs_path, "Release")
+            if os.path.isdir(release_dir):
+                return release_dir
+        return abs_path
+
+    bin_dir = os.path.join(abs_path, "bin")
+    if os.path.isdir(bin_dir):
+        if IS_WINDOWS:
+            release_dir = os.path.join(bin_dir, "Release")
+            if os.path.isdir(release_dir):
+                return release_dir
+        return bin_dir
+
     return abs_path
 
 
 def derive_zlink_lib_dir(build_dir):
     build_root = build_dir
     base = os.path.basename(build_root)
-    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+    if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(build_root)
         if os.path.basename(bin_root) == "bin":
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
+
+
+def has_cmake_cache(path):
+    return os.path.isfile(os.path.join(path, "CMakeCache.txt"))
+
+
+def derive_cmake_build_dir(runtime_build_dir):
+    if not runtime_build_dir:
+        return ""
+
+    abs_path = os.path.abspath(runtime_build_dir)
+    if not os.path.isdir(abs_path):
+        return ""
+    if has_cmake_cache(abs_path):
+        return abs_path
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        bin_root = os.path.dirname(abs_path)
+        if os.path.basename(bin_root) == "bin":
+            candidate = os.path.dirname(bin_root)
+            if has_cmake_cache(candidate):
+                return candidate
+    elif base == "bin":
+        candidate = os.path.dirname(abs_path)
+        if has_cmake_cache(candidate):
+            return candidate
+
+    return ""
 
 
 if IS_WINDOWS:
@@ -174,6 +208,78 @@ MSG_SIZES = _env_sizes if _env_sizes else [64, 256, 1024, 65536, 131072, 262144]
 
 FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
 base_env = os.environ.copy()
+
+
+def parse_nonnegative_int_env(name, default_value):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default_value
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default_value
+
+
+DEFAULT_RUN_COOLDOWN_MS = parse_nonnegative_int_env(
+    "BENCH_MULTI_RUN_COOLDOWN_MS", 3000
+)
+
+
+def select_comparisons(comparisons, pattern_req):
+    selected = []
+    for item in comparisons:
+        if pattern_req != "ALL" and item[2] != pattern_req:
+            continue
+        selected.append(item)
+    return selected
+
+
+def expected_runtime_binaries(selected_comparisons, zlink_only):
+    names = []
+    for std_bin, zlk_bin, _ in selected_comparisons:
+        names.append(zlk_bin)
+        if not zlink_only:
+            names.append(std_bin)
+    return names
+
+
+def collect_missing_binaries(runtime_bin_dir, names):
+    missing = []
+    for name in names:
+        bin_path = os.path.join(runtime_bin_dir, name + EXE_SUFFIX)
+        if not os.path.exists(bin_path):
+            missing.append(name)
+    return sorted(set(missing))
+
+
+def collect_multi_build_targets(comparisons, zlink_only):
+    targets = []
+    for std_bin, zlk_bin, _ in comparisons:
+        if not zlink_only and std_bin not in targets:
+            targets.append(std_bin)
+        if zlk_bin not in targets:
+            targets.append(zlk_bin)
+    return targets
+
+
+def run_cmake_build(cmake_build_dir, targets):
+    cmd = ["cmake", "--build", cmake_build_dir]
+    if IS_WINDOWS:
+        cmd.extend(["--config", "Release"])
+    if targets:
+        cmd.append("--target")
+        cmd.extend(targets)
+
+    print(
+        f"  > Auto-building missing benchmark binaries in {cmake_build_dir}",
+        flush=True,
+    )
+    print(f"  > Build command: {' '.join(cmd)}", flush=True)
+    try:
+        return subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: cmake not found in PATH", file=sys.stderr)
+        return 127
 
 
 def get_env_for_lib(lib_name):
@@ -419,7 +525,9 @@ def run_single_test(
         }
 
 
-def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
+def collect_data(
+    binary_name, lib_name, pattern_name, num_runs, transports, run_cooldown_ms
+):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
     final_stats = {}
     failures = []
@@ -439,6 +547,13 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
             seen_sizes = set()
             live_metrics = {}
             reported_sizes = set()
+            has_next_run = (i + 1) < num_runs
+
+            def maybe_cooldown():
+                if run_cooldown_ms <= 0 or not has_next_run:
+                    return
+                print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
+                time.sleep(run_cooldown_ms / 1000.0)
 
             def on_size_done(size, connect_ms=None, ready_ms=None):
                 if size in seen_sizes:
@@ -480,6 +595,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
                 if FAIL_FAST:
                     print("aborting")
                     return final_stats, failures
+                maybe_cooldown()
                 continue
 
             if run_error:
@@ -488,6 +604,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
                 if FAIL_FAST:
                     print("aborting")
                     return final_stats, failures
+                maybe_cooldown()
                 continue
 
             if not results:
@@ -497,6 +614,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
                 if FAIL_FAST:
                     print("aborting")
                     return final_stats, failures
+                maybe_cooldown()
                 continue
 
             missing = [key for key in expected_keys if key not in results]
@@ -516,6 +634,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
 
             for key, value in results.items():
                 metrics_raw.setdefault(key, []).append(value)
+            maybe_cooldown()
 
         for key, vals in metrics_raw.items():
             final_stats[key] = statistics.median(vals) if vals else 0
@@ -690,6 +809,7 @@ def parse_args():
         "  --refresh-std-cache     Refresh libzmq cache with current measurements\n"
         "  --std-cache-file PATH   libzmq cache file path (default: platform cache in multi/)\n"
         "  --runs N                Iterations per configuration (default: 1)\n"
+        "  --run-cooldown-ms N     Sleep between runs (default: BENCH_MULTI_RUN_COOLDOWN_MS)\n"
         "  --build-dir PATH        Build directory\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
@@ -697,6 +817,7 @@ def parse_args():
         "PATTERN:\n"
         "  dealer_dealer | dealer_router | router_router | router_router_poll | pubsub | stream\n"
         "  (legacy MULTI_* names are also accepted)\n"
+        "  Missing benchmark binaries are auto-built via cmake --build.\n"
         "\n"
         "Env:\n"
         "  BENCH_TRANSPORTS=tcp\n"
@@ -713,12 +834,14 @@ def parse_args():
         "  BENCH_MULTI_RECV_BATCH=64\n"
         "  BENCH_MULTI_SEND_WORKERS=2\n"
         "  BENCH_MULTI_SEND_BACKOFF_US=20\n"
+        "  BENCH_MULTI_RUN_COOLDOWN_MS=3000\n"
         "  BENCH_IO_THREADS=4\n"
         "  BENCH_MULTI_TIMEOUT_SECONDS=600\n"
     )
 
     pattern = "ALL"
     num_runs = DEFAULT_NUM_RUNS
+    run_cooldown_ms = DEFAULT_RUN_COOLDOWN_MS
     build_dir = ""
     zlink_only = False
     pin_cpu = False
@@ -751,6 +874,14 @@ def parse_args():
             i += 1
         elif arg.startswith("--runs="):
             num_runs = int(arg.split("=", 1)[1])
+        elif arg == "--run-cooldown-ms":
+            if i + 1 >= len(sys.argv):
+                print("Error: --run-cooldown-ms requires a value", file=sys.stderr)
+                sys.exit(1)
+            run_cooldown_ms = max(0, int(sys.argv[i + 1]))
+            i += 1
+        elif arg.startswith("--run-cooldown-ms="):
+            run_cooldown_ms = max(0, int(arg.split("=", 1)[1]))
         elif arg == "--build-dir":
             if i + 1 >= len(sys.argv):
                 print("Error: --build-dir requires a value", file=sys.stderr)
@@ -776,6 +907,7 @@ def parse_args():
     return (
         pattern,
         num_runs,
+        run_cooldown_ms,
         build_dir,
         zlink_only,
         pin_cpu,
@@ -790,6 +922,7 @@ def main():
     (
         pattern_req,
         num_runs,
+        run_cooldown_ms,
         build_dir,
         zlink_only,
         pin_cpu,
@@ -827,18 +960,39 @@ def main():
         )
         return 2
 
-    missing = []
-    for std_bin, zlk_bin, p_name in comparisons:
-        if pattern_req != "ALL" and p_name != pattern_req:
-            continue
-        if not os.path.exists(os.path.join(BUILD_DIR, zlk_bin + EXE_SUFFIX)):
-            missing.append(zlk_bin)
-        if not zlink_only and not os.path.exists(os.path.join(BUILD_DIR, std_bin + EXE_SUFFIX)):
-            missing.append(std_bin)
+    selected_comparisons = select_comparisons(comparisons, pattern_req)
+    expected_bins = expected_runtime_binaries(selected_comparisons, zlink_only)
+    missing = collect_missing_binaries(BUILD_DIR, expected_bins)
+
+    if missing:
+        cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
+        if not cmake_build_dir:
+            print(
+                f"Error: missing benchmark binaries in {BUILD_DIR} and failed to derive CMake build dir.",
+                file=sys.stderr,
+            )
+            print(
+                "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                file=sys.stderr,
+            )
+            for name in missing:
+                print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
+            return 2
+
+        build_targets = collect_multi_build_targets(comparisons, zlink_only)
+        build_rc = run_cmake_build(cmake_build_dir, build_targets)
+        if build_rc != 0:
+            print(
+                f"Error: auto-build failed with exit code {build_rc}",
+                file=sys.stderr,
+            )
+            return build_rc
+
+        missing = collect_missing_binaries(BUILD_DIR, expected_bins)
 
     if missing:
         print(f"Error: missing benchmark binaries in {BUILD_DIR}:", file=sys.stderr)
-        for name in sorted(set(missing)):
+        for name in missing:
             print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
         return 2
 
@@ -870,16 +1024,31 @@ def main():
                 std_data, std_fail = cached
                 print(f"  > Using cached libzmq for {p_name} from {cache_file}")
             zlk_data, zlk_fail = collect_data(
-                zlk_bin, "zlink", p_name, num_runs, TRANSPORTS
+                zlk_bin,
+                "zlink",
+                p_name,
+                num_runs,
+                TRANSPORTS,
+                run_cooldown_ms,
             )
         else:
             std_data, std_fail = collect_data(
-                std_bin, "libzmq", p_name, num_runs, TRANSPORTS
+                std_bin,
+                "libzmq",
+                p_name,
+                num_runs,
+                TRANSPORTS,
+                run_cooldown_ms,
             )
             if refresh_std_cache:
                 update_cached_std_entry(std_cache, p_name, std_data, std_fail)
             zlk_data, zlk_fail = collect_data(
-                zlk_bin, "zlink", p_name, num_runs, TRANSPORTS
+                zlk_bin,
+                "zlink",
+                p_name,
+                num_runs,
+                TRANSPORTS,
+                run_cooldown_ms,
             )
 
         print_pattern_report(std_data, zlk_data, std_available=std_available)

@@ -19,6 +19,7 @@ IS_WINDOWS = os.name == 'nt'
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
 
 def platform_arch_tag():
     sys_name = platform.system().lower()
@@ -86,31 +87,69 @@ def normalize_build_dir(path):
     if not path:
         return path
     abs_path = os.path.abspath(path)
-    if os.path.isdir(abs_path):
-        bin_dir = os.path.join(abs_path, "bin")
-        release_dir = os.path.join(bin_dir, "Release")
-        debug_dir = os.path.join(bin_dir, "Debug")
-        # Check bin dir first on Linux
-        if os.path.exists(os.path.join(bin_dir, "comp_current_pair" + EXE_SUFFIX)):
-            return bin_dir
-        if os.path.exists(os.path.join(abs_path, "comp_current_pair" + EXE_SUFFIX)):
-            return abs_path
-        if os.path.exists(os.path.join(release_dir, "comp_current_pair" + EXE_SUFFIX)):
-            return release_dir
-        if os.path.exists(os.path.join(debug_dir, "comp_current_pair" + EXE_SUFFIX)):
-            return debug_dir
+    if not os.path.isdir(abs_path):
+        return abs_path
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        return abs_path
+
+    if base == "bin":
+        if IS_WINDOWS:
+            release_dir = os.path.join(abs_path, "Release")
+            if os.path.isdir(release_dir):
+                return release_dir
+        return abs_path
+
+    bin_dir = os.path.join(abs_path, "bin")
+    if os.path.isdir(bin_dir):
+        if IS_WINDOWS:
+            release_dir = os.path.join(bin_dir, "Release")
+            if os.path.isdir(release_dir):
+                return release_dir
+        return bin_dir
+
     return abs_path
 
 def derive_current_lib_dir(build_dir):
     build_root = build_dir
     base = os.path.basename(build_root)
-    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
+    if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(build_root)
         if os.path.basename(bin_root) == "bin":
             build_root = os.path.dirname(bin_root)
     elif base == "bin":
         build_root = os.path.dirname(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
+
+
+def has_cmake_cache(path):
+    return os.path.isfile(os.path.join(path, "CMakeCache.txt"))
+
+
+def derive_cmake_build_dir(runtime_build_dir):
+    if not runtime_build_dir:
+        return ""
+
+    abs_path = os.path.abspath(runtime_build_dir)
+    if not os.path.isdir(abs_path):
+        return ""
+    if has_cmake_cache(abs_path):
+        return abs_path
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        bin_root = os.path.dirname(abs_path)
+        if os.path.basename(bin_root) == "bin":
+            candidate = os.path.dirname(bin_root)
+            if has_cmake_cache(candidate):
+                return candidate
+    elif base == "bin":
+        candidate = os.path.dirname(abs_path)
+        if has_cmake_cache(candidate):
+            return candidate
+
+    return ""
 
 if IS_WINDOWS:
     BUILD_DIR = os.path.join(
@@ -256,6 +295,43 @@ def get_env_for_lib(lib_name):
         else:
             env["LD_LIBRARY_PATH"] = f"{CURRENT_LIB_DIR}:{env.get('LD_LIBRARY_PATH', '')}"
     return env
+
+
+def collect_missing_patterns(comparisons, requested, current_only):
+    missing_current = []
+    missing_baseline = []
+    for baseline_bin, current_bin, p_name in comparisons:
+        if requested is not None and p_name not in requested:
+            continue
+        if p_name == "MULTI_STREAM":
+            continue
+
+        current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
+        if not os.path.exists(current_path):
+            missing_current.append(p_name)
+
+        if not current_only:
+            baseline_path = os.path.join(BUILD_DIR, baseline_bin + EXE_SUFFIX)
+            if not os.path.exists(baseline_path):
+                missing_baseline.append(p_name)
+
+    return sorted(set(missing_current)), sorted(set(missing_baseline))
+
+
+def run_cmake_build(cmake_build_dir):
+    cmd = ["cmake", "--build", cmake_build_dir]
+    if IS_WINDOWS:
+        cmd.extend(["--config", "Release"])
+
+    print(f"  > Auto-building missing benchmark binaries in {cmake_build_dir}",
+          flush=True)
+    print(f"  > Build command: {' '.join(cmd)}", flush=True)
+
+    try:
+        return subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: cmake not found in PATH.", file=sys.stderr)
+        return 127
 
 
 def derive_build_root_from_bin_dir(path):
@@ -586,6 +662,7 @@ def parse_args():
         "  --build-dir PATH        Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
+        "  Missing benchmark binaries are auto-built via cmake --build.\n"
         "\n"
         "Env:\n"
         "  BENCH_TASKSET=1         Enable taskset CPU pinning on Linux\n"
@@ -701,11 +778,36 @@ def main():
         p != "MULTI_STREAM" for p in requested)
 
     if needs_standard_bench:
-        check_bin = os.path.join(BUILD_DIR, "comp_current_pair" + EXE_SUFFIX)
-        if not os.path.exists(check_bin):
-            print(f"Error: Binaries not found at {BUILD_DIR}.")
-            print("Please build the project first or pass --build-dir.")
-            sys.exit(1)
+        missing_current, missing_baseline = collect_missing_patterns(
+            comparisons, requested, current_only)
+        if missing_current or missing_baseline:
+            cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
+            if not cmake_build_dir:
+                print(
+                    f"Error: missing benchmark binaries in {BUILD_DIR} and failed to derive CMake build dir.",
+                    file=sys.stderr,
+                )
+                print(
+                    "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                    file=sys.stderr,
+                )
+                if missing_current:
+                    print(
+                        "  current missing: " + ", ".join(missing_current),
+                        file=sys.stderr,
+                    )
+                if missing_baseline:
+                    print(
+                        "  baseline missing: " + ", ".join(missing_baseline),
+                        file=sys.stderr,
+                    )
+                sys.exit(1)
+
+            build_rc = run_cmake_build(cmake_build_dir)
+            if build_rc != 0:
+                print(f"Error: auto-build failed with exit code {build_rc}.",
+                      file=sys.stderr)
+                sys.exit(build_rc)
 
     cache = {}
     if not current_only:
@@ -718,20 +820,8 @@ def main():
         else:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
 
-    missing_current = []
-    missing_baseline = []
-    for baseline_bin, current_bin, p_name in comparisons:
-        if requested is not None and p_name not in requested:
-            continue
-        if p_name == "MULTI_STREAM":
-            continue
-        current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
-        if not os.path.exists(current_path):
-            missing_current.append(p_name)
-        if not current_only:
-            baseline_path = os.path.join(BUILD_DIR, baseline_bin + EXE_SUFFIX)
-            if not os.path.exists(baseline_path):
-                missing_baseline.append(p_name)
+    missing_current, missing_baseline = collect_missing_patterns(
+        comparisons, requested, current_only)
 
     if missing_current:
         print(
@@ -739,7 +829,8 @@ def main():
             + ", ".join(missing_current),
             file=sys.stderr,
         )
-        print("Re-run without -ReuseBuild to configure/build benchmark targets.", file=sys.stderr)
+        print("Auto-build was attempted but some current binaries are still missing.",
+              file=sys.stderr)
         sys.exit(1)
 
     if missing_baseline:
@@ -748,7 +839,8 @@ def main():
             + ", ".join(missing_baseline),
             file=sys.stderr,
         )
-        print("Re-run with -WithBaseline and without -ReuseBuild to build baseline targets.", file=sys.stderr)
+        print("Auto-build was attempted but baseline binaries are still missing.",
+              file=sys.stderr)
         sys.exit(1)
 
     for baseline_bin, current_bin, p_name in comparisons:

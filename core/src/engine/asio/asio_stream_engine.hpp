@@ -145,6 +145,10 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     //  True when this engine runs on a worker io_thread (background worker).
     bool _on_worker_context;
 
+    //  Index into the socket's per-worker recv queues.
+    //  0 = primary context, 1..N = worker index + 1.
+    int _queue_index;
+
     //  Per-engine reusable send buffer for worker write path (non-zero-copy).
     std::vector<unsigned char> _direct_write_buf;
 

@@ -43,9 +43,10 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _direct_io_thread (NULL),
     _direct_io_tid (0),
     _direct_io_active (false),
-    _direct_queue_lock (ATOMIC_FLAG_INIT),
     _direct_io_rr_counter (0),
-    _direct_recv_head (0)
+    _recv_live (0),
+    _recv_drain_idx (0),
+    _direct_engine_lock (ATOMIC_FLAG_INIT)
 {
     options.type = ZLINK_STREAM;
     options.backlog = 65536;
@@ -72,44 +73,58 @@ zlink::stream_t::~stream_t ()
     teardown_direct_io ();
     flush_dirty_send_pipes ();
     _prefetched_msg.close ();
-    //  Close any queued direct msgs.
-    for (size_t i = _direct_recv_head; i < _direct_recv_queue.size (); ++i)
-        _direct_recv_queue[i].msg.close ();
-    _direct_recv_queue.clear ();
-    _direct_recv_head = 0;
+    //  Drain and delete all per-worker recv queues.
+    for (size_t q = 0; q < _recv_queues.size (); ++q) {
+        worker_recv_queue_t *wq = _recv_queues[q];
+        for (size_t i = wq->head; i < wq->queue.size (); ++i)
+            wq->queue[i].msg.close ();
+        delete wq;
+    }
+    _recv_queues.clear ();
 }
 
 int zlink::stream_t::push_msg_direct (msg_t *msg_,
                                        uint32_t routing_id_,
-                                       void *engine_hint_)
+                                       void *engine_hint_,
+                                       int queue_index_)
 {
-    //  Spinlock: background IO thread may call concurrently with app thread.
-    lock_direct_queue ();
-
-    //  Update engine pointer for send-direction bypass.
+    //  Update engine pointer under the engine lock.
     //  NULL engine_hint clears the entry (called from engine unplug).
+    lock_engine_map ();
     const size_t idx = static_cast<size_t> (routing_id_);
     if (idx >= _direct_send_engines.size ())
         _direct_send_engines.resize (idx + 1, NULL);
     _direct_send_engines[idx] = engine_hint_;
+    unlock_engine_map ();
 
     //  NULL msg means engine is just updating/clearing the pointer.
-    if (!msg_) {
-        unlock_direct_queue ();
+    if (!msg_)
         return 0;
-    }
 
     //  Set routing_id on msg before moving — it travels with the msg.
     msg_->set_routing_id (routing_id_);
 
-    //  Append to direct recv queue (msg_t move, no data copy for lmsg).
-    _direct_recv_queue.resize (_direct_recv_queue.size () + 1);
-    direct_msg_t &entry = _direct_recv_queue.back ();
+    //  Push to the per-worker recv queue.
+    //  Contention: only this worker + app thread (down from N+1).
+    const int qi = (queue_index_ >= 0
+                    && queue_index_
+                         < static_cast<int> (_recv_queues.size ()))
+                   ? queue_index_
+                   : 0;
+    worker_recv_queue_t *wq = _recv_queues[qi];
+
+    while (wq->lock.test_and_set (std::memory_order_acquire))
+        ;
+
+    wq->queue.resize (wq->queue.size () + 1);
+    direct_msg_t &entry = wq->queue.back ();
     entry.routing_id = routing_id_;
     entry.msg.init ();
     msg_->move (entry.msg);
 
-    unlock_direct_queue ();
+    wq->lock.clear (std::memory_order_release);
+
+    _recv_live.fetch_add (1, std::memory_order_release);
     return 0;
 }
 
@@ -157,8 +172,12 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
 
     //  Clear direct send engine pointer for this connection.
     if (server_routing_id != 0
-        && server_routing_id < static_cast<uint32_t> (_direct_send_engines.size ()))
+        && server_routing_id
+             < static_cast<uint32_t> (_direct_send_engines.size ())) {
+        lock_engine_map ();
         _direct_send_engines[server_routing_id] = NULL;
+        unlock_engine_map ();
+    }
 
     queue_event (server_routing_id, stream_event_disconnect);
 }
@@ -182,14 +201,13 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
             //  Direct IO send bypass: write directly to engine send buffer,
             //  skipping pipe write/flush/ypipe/CAS/mailbox entirely.
-            //  Spinlock: engine pointer may be cleared by background thread.
-            lock_direct_queue ();
+            lock_engine_map ();
             if (routing_index < _direct_send_engines.size ()
                 && _direct_send_engines[routing_index] != NULL) {
                 i_engine *engine = static_cast<i_engine *> (
                   _direct_send_engines[routing_index]);
                 const int send_rc = engine->queue_direct_send (msg_);
-                unlock_direct_queue ();
+                unlock_engine_map ();
                 if (send_rc >= 0) {
                     //  send_rc==0: sync write done, restart deferred read.
                     //  send_rc==1: async posted to worker thread, restart
@@ -202,7 +220,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 }
                 //  Fall through to pipe path on failure.
             } else {
-                unlock_direct_queue ();
+                unlock_engine_map ();
             }
 
             if (routing_index >= _out_by_id.size ()) {
@@ -312,25 +330,37 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    //  Direct IO pipe bypass: drain direct queue first.
-    //  Messages already have routing_id set by push_msg_direct.
-    //  Spinlock: background IO thread may push concurrently.
-    lock_direct_queue ();
-    if (_direct_recv_head < _direct_recv_queue.size ()) {
-        direct_msg_t &entry = _direct_recv_queue[_direct_recv_head];
-        entry.msg.move (*msg_);
-        entry.msg.close ();
-        ++_direct_recv_head;
-        //  Reset queue when fully drained to avoid unbounded growth.
-        if (_direct_recv_head == _direct_recv_queue.size ()) {
-            _direct_recv_queue.clear ();
-            _direct_recv_head = 0;
+    //  Direct IO pipe bypass: drain per-worker recv queues (round-robin).
+    //  Lock-free fast check; per-queue lock only on actual drain.
+    if (_recv_live.load (std::memory_order_acquire) > 0) {
+        const size_t n = _recv_queues.size ();
+        for (size_t probe = 0; probe < n; ++probe) {
+            const size_t qi =
+              (_recv_drain_idx + probe) % n;
+            worker_recv_queue_t *wq = _recv_queues[qi];
+
+            while (wq->lock.test_and_set (std::memory_order_acquire))
+                ;
+            if (wq->head < wq->queue.size ()) {
+                direct_msg_t &entry = wq->queue[wq->head];
+                entry.msg.move (*msg_);
+                entry.msg.close ();
+                ++wq->head;
+                if (wq->head == wq->queue.size ()) {
+                    wq->queue.clear ();
+                    wq->head = 0;
+                }
+                wq->lock.clear (std::memory_order_release);
+
+                _recv_live.fetch_sub (1, std::memory_order_relaxed);
+                _recv_drain_idx =
+                  static_cast<uint32_t> ((qi + 1) % n);
+                _routing_id_sent = false;
+                return 0;
+            }
+            wq->lock.clear (std::memory_order_release);
         }
-        unlock_direct_queue ();
-        _routing_id_sent = false;
-        return 0;
     }
-    unlock_direct_queue ();
 
     //  In Direct IO mode, re-activate all FQ pipes so that data pushed
     //  by the io_context pump (in process_commands) becomes readable.
@@ -448,8 +478,8 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
 bool zlink::stream_t::xhas_in ()
 {
-    //  Direct IO pipe bypass: check direct queue first.
-    if (_direct_recv_head < _direct_recv_queue.size ())
+    //  Direct IO pipe bypass: check per-worker recv queues (lock-free).
+    if (_recv_live.load (std::memory_order_acquire) > 0)
         return true;
 
     //  In Direct IO mode, re-activate all FQ pipes so that data pushed
@@ -607,15 +637,15 @@ bool zlink::stream_t::prefetch_event ()
     return true;
 }
 
-void zlink::stream_t::lock_direct_queue ()
+void zlink::stream_t::lock_engine_map ()
 {
-    while (_direct_queue_lock.test_and_set (std::memory_order_acquire))
+    while (_direct_engine_lock.test_and_set (std::memory_order_acquire))
         ;
 }
 
-void zlink::stream_t::unlock_direct_queue ()
+void zlink::stream_t::unlock_engine_map ()
 {
-    _direct_queue_lock.clear (std::memory_order_release);
+    _direct_engine_lock.clear (std::memory_order_release);
 }
 
 void zlink::stream_t::setup_direct_io ()
@@ -654,6 +684,8 @@ void zlink::stream_t::setup_direct_io ()
     {
         const char *no_worker = std::getenv ("ZLINK_STREAM_NO_WORKER");
         if (no_worker && *no_worker && *no_worker != '0') {
+            //  No workers: allocate primary-context recv queue only.
+            _recv_queues.push_back (new worker_recv_queue_t ());
             _direct_io_active = true;
             return;
         }
@@ -690,6 +722,12 @@ void zlink::stream_t::setup_direct_io ()
           static_cast<void *> (ht));
     }
 
+    //  Allocate per-worker recv queues: [0]=primary, [1..N]=workers.
+    const size_t n_queues = 1 + _io_workers.size ();
+    _recv_queues.reserve (n_queues);
+    for (size_t i = 0; i < n_queues; ++i)
+        _recv_queues.push_back (new worker_recv_queue_t ());
+
     _direct_io_active = true;
 }
 
@@ -712,6 +750,16 @@ void zlink::stream_t::teardown_direct_io ()
     }
     _io_workers.clear ();
     options.io_workers.clear ();
+
+    //  Drain and free per-worker recv queues.
+    for (size_t q = 0; q < _recv_queues.size (); ++q) {
+        worker_recv_queue_t *wq = _recv_queues[q];
+        for (size_t i = wq->head; i < wq->queue.size (); ++i)
+            wq->queue[i].msg.close ();
+        delete wq;
+    }
+    _recv_queues.clear ();
+    _recv_live.store (0, std::memory_order_relaxed);
 
     if (_direct_io_thread) {
         //  Drain any remaining ASIO handlers.

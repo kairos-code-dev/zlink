@@ -38,7 +38,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     //  Direct IO pipe bypass: engine pushes msgs here instead of pipe.
     int push_msg_direct (zlink::msg_t *msg_,
                          uint32_t routing_id_,
-                         void *engine_hint_) ZLINK_OVERRIDE;
+                         void *engine_hint_,
+                         int queue_index_) ZLINK_OVERRIDE;
 
   private:
     struct stream_event_t
@@ -97,12 +98,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     };
     std::vector<io_worker_t> _io_workers;
 
-    //  Spinlock protecting _direct_recv_queue and _direct_send_engines
-    //  against concurrent access from the background IO thread.
-    std::atomic_flag _direct_queue_lock;
-    void lock_direct_queue ();
-    void unlock_direct_queue ();
-
     //  Round-robin counter for distributing connections between
     //  the primary and worker io_threads.
     uint32_t _direct_io_rr_counter;
@@ -114,8 +109,29 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
         uint32_t routing_id;
         msg_t msg;
     };
-    std::vector<direct_msg_t> _direct_recv_queue;
-    size_t _direct_recv_head;
+
+    //  Per-worker recv queue.  Each worker is the sole producer;
+    //  the app thread is the sole consumer.  The per-queue spinlock
+    //  reduces contention from O(N+1) to O(2) per queue.
+    struct alignas (64) worker_recv_queue_t
+    {
+        std::atomic_flag lock;
+        std::vector<direct_msg_t> queue;
+        size_t head;
+
+        worker_recv_queue_t () : lock (ATOMIC_FLAG_INIT), head (0) {}
+    };
+
+    //  Per-worker recv queues: [0]=primary context, [1..N]=workers.
+    std::vector<worker_recv_queue_t *> _recv_queues;
+    std::atomic<size_t> _recv_live;      //  total messages across all queues
+    uint32_t _recv_drain_idx;            //  round-robin drain cursor
+
+    //  Separate spinlock for _direct_send_engines (engine map).
+    //  Decoupled from recv queues to reduce lock scope.
+    std::atomic_flag _direct_engine_lock;
+    void lock_engine_map ();
+    void unlock_engine_map ();
 
     //  Engine pointers indexed by routing_id for send-direction bypass.
     //  Populated by push_msg_direct, cleared by xpipe_terminated.

@@ -70,6 +70,8 @@ Options:
   --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: 2)
   --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: 3)
   --stream-send-batch N         Override BENCH_MULTI_STREAM_SEND_BATCH (default: 64)
+  --run-cooldown-ms N           Sleep between --runs iterations (default: 3000)
+  --cooldown-ms N               Alias for --run-cooldown-ms
   --send-backoff-us N           Override BENCH_MULTI_SEND_BACKOFF_US
   --io-threads N                Override BENCH_IO_THREADS (auto: 4 when clients>=512)
   --msg-sizes LIST              Override BENCH_MSG_SIZES (e.g. 1024,65536)
@@ -104,6 +106,7 @@ MULTI_RECV_BATCH="${BENCH_MULTI_RECV_BATCH:-64}"
 MULTI_SEND_WORKERS="${BENCH_MULTI_SEND_WORKERS:-2}"
 MULTI_STREAM_SEND_WORKERS="${BENCH_MULTI_STREAM_SEND_WORKERS:-3}"
 MULTI_STREAM_SEND_BATCH="${BENCH_MULTI_STREAM_SEND_BATCH:-64}"
+MULTI_RUN_COOLDOWN_MS="${BENCH_MULTI_RUN_COOLDOWN_MS:-3000}"
 MULTI_SEND_BACKOFF_US="${BENCH_MULTI_SEND_BACKOFF_US:-}"
 MULTI_IO_THREADS="${BENCH_IO_THREADS:-}"
 
@@ -210,6 +213,10 @@ while [[ $# -gt 0 ]]; do
       MULTI_STREAM_SEND_BATCH="${2:-}"
       shift 2
       ;;
+    --run-cooldown-ms|--cooldown-ms)
+      MULTI_RUN_COOLDOWN_MS="${2:-}"
+      shift 2
+      ;;
     --send-backoff-us|--multi-send-backoff-us)
       MULTI_SEND_BACKOFF_US="${2:-}"
       shift 2
@@ -277,6 +284,7 @@ export BENCH_MULTI_RECV_BATCH="${MULTI_RECV_BATCH}"
 export BENCH_MULTI_HWM="${MULTI_HWM}"
 export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
 export BENCH_MULTI_STREAM_SEND_BATCH="${MULTI_STREAM_SEND_BATCH}"
+export BENCH_MULTI_RUN_COOLDOWN_MS="${MULTI_RUN_COOLDOWN_MS}"
 export BENCH_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}"
 if [[ -n "${MULTI_MONITOR_HWM}" ]]; then
   export BENCH_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}"
@@ -287,7 +295,7 @@ effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"
 if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi
-echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${MULTI_DRAIN_MS}"
+echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${MULTI_DRAIN_MS}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
 if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
   echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
 fi

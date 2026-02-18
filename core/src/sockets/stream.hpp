@@ -50,6 +50,10 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     void queue_event (uint32_t routing_id_value_, unsigned char code_);
     bool prefetch_event ();
+    int try_direct_send (zlink::msg_t *msg_, uint32_t routing_id_);
+    bool pop_direct_msg (zlink::msg_t *msg_);
+    bool has_direct_msg ();
+    size_t direct_recv_shard (uint32_t routing_id_) const;
 
     fq_t _fq;
 
@@ -95,11 +99,16 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     zlink::io_thread_t *_direct_io_helper_thread2;
     uint32_t _direct_io_helper_tid2;
 
-    //  Spinlock protecting _direct_recv_queue and _direct_send_engines
-    //  against concurrent access from the background IO thread.
-    std::atomic_flag _direct_queue_lock;
-    void lock_direct_queue ();
-    void unlock_direct_queue ();
+    //  Separate spinlocks:
+    //  - engine lock protects routing_id -> engine map
+    //  - recv locks protect sharded direct recv queues
+    std::atomic_flag _direct_engine_lock;
+    std::atomic_flag _direct_recv_lock0;
+    std::atomic_flag _direct_recv_lock1;
+    void lock_direct_engine ();
+    void unlock_direct_engine ();
+    void lock_direct_recv (size_t shard_);
+    void unlock_direct_recv (size_t shard_);
 
     //  Round-robin counter for distributing connections between
     //  the primary and helper io_threads.
@@ -112,8 +121,14 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
         uint32_t routing_id;
         msg_t msg;
     };
-    std::vector<direct_msg_t> _direct_recv_queue;
-    size_t _direct_recv_head;
+    static const size_t direct_recv_shard_count = 2;
+    static const size_t direct_recv_queue_limit = 262144;
+    std::vector<direct_msg_t> _direct_recv_queue0;
+    std::vector<direct_msg_t> _direct_recv_queue1;
+    size_t _direct_recv_head0;
+    size_t _direct_recv_head1;
+    uint32_t _direct_recv_probe;
+    std::atomic<size_t> _direct_recv_live;
 
     //  Engine pointers indexed by routing_id for send-direction bypass.
     //  Populated by push_msg_direct, cleared by xpipe_terminated.

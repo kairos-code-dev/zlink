@@ -1412,8 +1412,8 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
             if (iot->get_io_context ().stopped ())
                 iot->get_io_context ().restart ();
 
-            if (!options.direct_io_helpers.empty ()) {
-                //  Helper thread active: data may arrive in
+            if (!options.io_workers.empty ()) {
+                //  Worker thread active: data may arrive in
                 //  _direct_recv_queue from the background thread at
                 //  any time, without waking the primary io_context.
                 //  Non-blocking poll so the caller can check the queue

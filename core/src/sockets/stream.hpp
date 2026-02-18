@@ -87,15 +87,15 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void setup_direct_io ();
     void teardown_direct_io ();
 
-    //  Helper IO threads: background workers with their own io_contexts.
-    //  Connections are distributed round-robin across all helpers.
-    //  Count configurable via ZLINK_STREAM_HELPER_THREADS (default: 2).
-    struct helper_thread_t
+    //  IO worker threads: background workers with their own io_contexts.
+    //  Connections are distributed round-robin across all workers.
+    //  Count configurable via ZLINK_STREAM_IO_WORKERS (default: 2).
+    struct io_worker_t
     {
         zlink::io_thread_t *thread;
         uint32_t tid;
     };
-    std::vector<helper_thread_t> _direct_io_helpers;
+    std::vector<io_worker_t> _io_workers;
 
     //  Spinlock protecting _direct_recv_queue and _direct_send_engines
     //  against concurrent access from the background IO thread.
@@ -104,7 +104,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void unlock_direct_queue ();
 
     //  Round-robin counter for distributing connections between
-    //  the primary and helper io_threads.
+    //  the primary and worker io_threads.
     uint32_t _direct_io_rr_counter;
 
     //  Direct IO pipe bypass: msgs delivered here by engine, read by xrecv.

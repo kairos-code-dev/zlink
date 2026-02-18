@@ -192,7 +192,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 unlock_direct_queue ();
                 if (send_rc >= 0) {
                     //  send_rc==0: sync write done, restart deferred read.
-                    //  send_rc==1: async posted to helper thread, restart
+                    //  send_rc==1: async posted to worker thread, restart
                     //              handled in the posted lambda.
                     if (send_rc == 0)
                         engine->restart_deferred_read ();
@@ -646,30 +646,30 @@ void zlink::stream_t::setup_direct_io ()
     //  Store the pointer in options so that listener/create_engine can use it.
     options.direct_io_thread_ptr = _direct_io_thread;
 
-    //  Create helper io_threads with their own io_contexts (opt-out
+    //  Create worker io_threads with their own io_contexts (opt-out
     //  via env).  Each runs on a background worker thread and handles
     //  both read AND write for its assigned connections — true per-thread
     //  independence, similar to cppserver's architecture.
-    //  Count: ZLINK_STREAM_HELPER_THREADS env var (default 2).
+    //  Count: ZLINK_STREAM_IO_WORKERS env var (default 2).
     {
-        const char *no_helper = std::getenv ("ZLINK_STREAM_NO_HELPER");
-        if (no_helper && *no_helper && *no_helper != '0') {
+        const char *no_worker = std::getenv ("ZLINK_STREAM_NO_WORKER");
+        if (no_worker && *no_worker && *no_worker != '0') {
             _direct_io_active = true;
             return;
         }
     }
 
-    int helper_count = 2;
+    int worker_count = 2;
     {
-        const char *env = std::getenv ("ZLINK_STREAM_HELPER_THREADS");
+        const char *env = std::getenv ("ZLINK_STREAM_IO_WORKERS");
         if (env && *env) {
             const int val = std::atoi (env);
             if (val > 0 && val <= 16)
-                helper_count = val;
+                worker_count = val;
         }
     }
 
-    for (int i = 0; i < helper_count; ++i) {
+    for (int i = 0; i < worker_count; ++i) {
         io_thread_t *ht =
           new (std::nothrow) io_thread_t (get_ctx (), 0);
         if (!ht)
@@ -682,11 +682,11 @@ void zlink::stream_t::setup_direct_io ()
         }
         ht->set_tid (tid);
         ht->start ();
-        helper_thread_t entry;
+        io_worker_t entry;
         entry.thread = ht;
         entry.tid = tid;
-        _direct_io_helpers.push_back (entry);
-        options.direct_io_helpers.push_back (
+        _io_workers.push_back (entry);
+        options.io_workers.push_back (
           static_cast<void *> (ht));
     }
 
@@ -700,18 +700,18 @@ void zlink::stream_t::teardown_direct_io ()
 
     _direct_io_active = false;
 
-    //  Stop the helper io_threads first (they run background workers).
-    for (size_t i = _direct_io_helpers.size (); i > 0; --i) {
-        helper_thread_t &h = _direct_io_helpers[i - 1];
-        if (h.thread) {
-            h.thread->stop ();
-            if (h.tid != 0)
-                get_ctx ()->release_tid_slot (h.tid);
-            delete h.thread;
+    //  Stop the worker io_threads first.
+    for (size_t i = _io_workers.size (); i > 0; --i) {
+        io_worker_t &w = _io_workers[i - 1];
+        if (w.thread) {
+            w.thread->stop ();
+            if (w.tid != 0)
+                get_ctx ()->release_tid_slot (w.tid);
+            delete w.thread;
         }
     }
-    _direct_io_helpers.clear ();
-    options.direct_io_helpers.clear ();
+    _io_workers.clear ();
+    options.io_workers.clear ();
 
     if (_direct_io_thread) {
         //  Drain any remaining ASIO handlers.

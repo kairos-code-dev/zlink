@@ -72,7 +72,8 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_worker_context (false)
+    _on_worker_context (false),
+    _worker_index (0)
 {
     alloc_assert (_transport);
 }
@@ -112,7 +113,8 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_worker_context (false)
+    _on_worker_context (false),
+    _worker_index (0)
 {
     if (!_transport) {
         _transport = std::unique_ptr<i_asio_transport> (
@@ -159,6 +161,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _read_deferred (false),
     _zero_copy_active (false),
     _on_worker_context (false),
+    _worker_index (0),
     _ssl_context (std::move (ssl_context_))
 {
     if (!_transport) {
@@ -209,9 +212,11 @@ void zlink::asio_stream_engine_t::plug (io_thread_t *io_thread_,
     {
         void *self = static_cast<void *> (io_thread_);
         _on_worker_context = false;
+        _worker_index = 0;
         for (size_t i = 0; i < _options.io_workers.size (); ++i) {
             if (_options.io_workers[i] == self) {
                 _on_worker_context = true;
+                _worker_index = static_cast<uint32_t> (i);
                 break;
             }
         }
@@ -277,6 +282,13 @@ void zlink::asio_stream_engine_t::complete_handshake ()
     if (_options.direct_io_thread_ptr)
         _connection_routing_id = _session->get_server_socket_routing_id ();
 
+    if (_socket && _connection_routing_id != 0) {
+        //  Register once per connection; data path should not update
+        //  the routing_id->engine map on every message.
+        _socket->push_msg_direct (NULL, _connection_routing_id,
+                                  static_cast<void *> (this), _worker_index);
+    }
+
     if (_socket) {
         _socket->event_connection_ready (_endpoint_uri_pair, NULL, 0);
     }
@@ -316,7 +328,8 @@ void zlink::asio_stream_engine_t::unplug ()
     //  Clear direct send engine pointer before losing _socket reference.
     //  Passing NULL msg + NULL engine_hint clears the entry safely.
     if (_socket && _connection_routing_id != 0) {
-        _socket->push_msg_direct (NULL, _connection_routing_id, NULL);
+        _socket->push_msg_direct (NULL, _connection_routing_id, NULL,
+                                  _worker_index);
         _connection_routing_id = 0;
     }
 
@@ -600,7 +613,8 @@ bool zlink::asio_stream_engine_t::push_one_frame (const unsigned char *data_,
         errno_assert (rc == 0);
 
         rc = _socket->push_msg_direct (&msg, _connection_routing_id,
-                                        static_cast<void *> (this));
+                                       static_cast<void *> (this),
+                                       _worker_index);
         if (rc == 0) {
             rc = msg.close ();
             errno_assert (rc == 0);

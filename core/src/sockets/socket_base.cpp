@@ -1571,7 +1571,10 @@ int zlink::socket_base_t::xrecv (msg_t *)
     return -1;
 }
 
-int zlink::socket_base_t::push_msg_direct (msg_t *, uint32_t, void *)
+int zlink::socket_base_t::push_msg_direct (msg_t *,
+                                           uint32_t,
+                                           void *,
+                                           uint32_t)
 {
     errno = ENOTSUP;
     return -1;

@@ -144,6 +144,7 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
 
     //  True when this engine runs on the worker io_thread (background worker).
     bool _on_worker_context;
+    uint32_t _worker_index;
 
     //  Per-engine reusable send buffer for worker write path (non-zero-copy).
     std::vector<unsigned char> _direct_write_buf;

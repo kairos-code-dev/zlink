@@ -38,7 +38,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     //  Direct IO pipe bypass: engine pushes msgs here instead of pipe.
     int push_msg_direct (zlink::msg_t *msg_,
                          uint32_t routing_id_,
-                         void *engine_hint_) ZLINK_OVERRIDE;
+                         void *engine_hint_,
+                         uint32_t producer_index_) ZLINK_OVERRIDE;
 
   private:
     struct stream_event_t
@@ -97,8 +98,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     };
     std::vector<io_worker_t> _io_workers;
 
-    //  Spinlock protecting _direct_recv_queue and _direct_send_engines
-    //  against concurrent access from the background IO thread.
+    //  Spinlock protecting fallback direct recv queue and send-engine map.
+    //  SPSC recv path is lock-free; this lock is used for compatibility
+    //  fallback and send map lifetime safety.
     std::atomic_flag _direct_queue_lock;
     void lock_direct_queue ();
     void unlock_direct_queue ();
@@ -107,13 +109,42 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     //  the primary and worker io_threads.
     uint32_t _direct_io_rr_counter;
 
-    //  Direct IO pipe bypass: msgs delivered here by engine, read by xrecv.
-    //  Eliminates pipe write/read/flush/CAS/mailbox overhead entirely.
+    //  Direct IO pipe bypass message wrapper.
     struct direct_msg_t
     {
         uint32_t routing_id;
         msg_t msg;
     };
+
+    //  Per-worker SPSC recv rings (producer=worker, consumer=app thread).
+    //  Enabled by default, disabled with ZLINK_STREAM_SPSC_RECV=0.
+    struct worker_recv_ring_t
+    {
+        worker_recv_ring_t ();
+        std::vector<direct_msg_t> slots;
+        size_t mask;
+        std::atomic<size_t> head;
+        std::atomic<size_t> tail;
+    };
+    static const size_t worker_recv_ring_capacity = 8192;
+    static const size_t recv_batch_rr_limit = 32;
+    std::vector<worker_recv_ring_t *> _worker_recv_rings;
+    bool init_worker_recv_rings (size_t worker_count_);
+    void clear_worker_recv_rings ();
+    bool push_to_worker_ring (size_t producer_index_,
+                              zlink::msg_t *msg_,
+                              uint32_t routing_id_);
+    bool pop_from_worker_ring (size_t worker_index_, zlink::msg_t *msg_);
+    bool pop_from_batch_cache (zlink::msg_t *msg_);
+    void clear_batch_cache ();
+    std::atomic<size_t> _recv_live;
+    size_t _recv_rr_idx;
+    std::vector<direct_msg_t> _recv_batch_cache;
+    size_t _recv_batch_head;
+    size_t _recv_batch_size;
+    bool _spsc_recv_enabled;
+
+    //  Legacy fallback queue used when SPSC is disabled or unavailable.
     std::vector<direct_msg_t> _direct_recv_queue;
     size_t _direct_recv_head;
 

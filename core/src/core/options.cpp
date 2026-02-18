@@ -172,6 +172,10 @@ zlink::options_t::options_t () :
     tcp_keepalive_intvl (-1),
     stream_engine_type (0),
     stream_single_frame_recv (0),
+    stream_direct_io (0),
+    direct_io_thread_ptr (NULL),
+    direct_io_helper_thread_ptr (NULL),
+    direct_io_helper_thread2_ptr (NULL),
     tcp_nodelay (1),
     socket_id (0),
     conflate (false),
@@ -509,6 +513,14 @@ int zlink::options_t::setsockopt (int option_,
             }
             break;
 
+        case ZLINK_STREAM_DIRECT_IO:
+            if (is_int && (value == 0 || value == 1)
+                && type == ZLINK_STREAM) {
+                stream_direct_io = value;
+                return 0;
+            }
+            break;
+
         default:
             break;
     }
@@ -840,6 +852,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_STREAM_SINGLE_FRAME_RECV:
             if (is_int) {
                 *value = stream_single_frame_recv;
+                return 0;
+            }
+            break;
+
+        case ZLINK_STREAM_DIRECT_IO:
+            if (is_int) {
+                *value = stream_direct_io;
                 return 0;
             }
             break;

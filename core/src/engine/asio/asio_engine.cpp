@@ -1346,8 +1346,7 @@ const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 
 int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
-    const bool trace =
-      std::getenv ("ZLINK_ASIO_TRACE") != NULL;
+    static const bool trace = env_flag_enabled ("ZLINK_ASIO_TRACE");
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
         cancel_timer (heartbeat_timeout_timer_id);

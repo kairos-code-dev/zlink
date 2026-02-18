@@ -44,6 +44,13 @@ void zlink::fq_t::activated (pipe_t *pipe_)
     _active++;
 }
 
+void zlink::fq_t::force_activate_all ()
+{
+    for (pipes_t::size_type i = _active; i < _pipes.size (); ++i)
+        _pipes[i]->force_in_active ();
+    _active = _pipes.size ();
+}
+
 int zlink::fq_t::recv (msg_t *msg_)
 {
     return recvpipe (msg_, NULL);
@@ -77,6 +84,44 @@ int zlink::fq_t::recvpipe (msg_t *msg_, pipe_t **pipe_)
         //  Check the atomicity of the message.
         //  If we've already received the first part of the message
         //  we should get the remaining parts without blocking.
+        zlink_assert (!_more);
+
+        _active--;
+        _pipes.swap (_current, _active);
+        if (_current == _active)
+            _current = 0;
+    }
+
+    //  No message is available. Initialise the output parameter
+    //  to be a 0-byte message.
+    rc = msg_->init ();
+    errno_assert (rc == 0);
+    errno = EAGAIN;
+    return -1;
+}
+
+int zlink::fq_t::recvpipe_drain (msg_t *msg_, pipe_t **pipe_)
+{
+    //  Deallocate old content of the message.
+    int rc = msg_->close ();
+    errno_assert (rc == 0);
+
+    //  Drain current pipe: keep reading from the same pipe until it is
+    //  empty, then move to the next.  This dramatically improves cache
+    //  locality when many pipes are active (10K+ connections) because
+    //  consecutive reads hit the same ypipe queue chunk.
+    while (_active > 0) {
+        const bool fetched = _pipes[_current]->read (msg_);
+
+        if (fetched) {
+            if (pipe_)
+                *pipe_ = _pipes[_current];
+            _more = (msg_->flags () & msg_t::more) != 0;
+            //  Unlike recvpipe(), do NOT advance _current on single-part
+            //  messages.  Stay on this pipe to drain it completely.
+            return 0;
+        }
+
         zlink_assert (!_more);
 
         _active--;

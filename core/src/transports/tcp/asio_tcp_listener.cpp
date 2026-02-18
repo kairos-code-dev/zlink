@@ -3,6 +3,8 @@
 #include "utils/precompiled.hpp"
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO
 
+#include <atomic>
+
 #include "transports/tcp/asio_tcp_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/asio_raw_engine.hpp"
@@ -356,9 +358,41 @@ void zlink::asio_tcp_listener_t::create_engine (fd_t fd_)
         engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
-    //  Choose I/O thread to run engine in. Given that we are already
-    //  running in an I/O thread, there must be at least one available.
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    //  Choose I/O thread to run engine in.  When direct IO is active,
+    //  distribute connections round-robin between primary and helper
+    //  io_threads.  The primary is polled by the app thread; the helper
+    //  runs on a background worker thread for read parallelization.
+    io_thread_t *io_thread = NULL;
+    if (options.direct_io_thread_ptr) {
+        if (options.direct_io_helper_thread2_ptr) {
+            //  2-helper mode: ALL data connections go to helper threads.
+            //  Primary io_context only handles accepts.
+            //  Each helper independently handles read+write for its
+            //  assigned connections, similar to cppserver's architecture.
+            static std::atomic<uint32_t> rr_counter (0);
+            if ((rr_counter.fetch_add (1, std::memory_order_relaxed) & 1)
+                == 0)
+                io_thread = static_cast<io_thread_t *> (
+                  options.direct_io_helper_thread_ptr);
+            else
+                io_thread = static_cast<io_thread_t *> (
+                  options.direct_io_helper_thread2_ptr);
+        } else if (options.direct_io_helper_thread_ptr) {
+            //  1-helper mode: round-robin between primary and helper.
+            static std::atomic<uint32_t> rr_counter (0);
+            if ((rr_counter.fetch_add (1, std::memory_order_relaxed) & 1)
+                == 0)
+                io_thread = static_cast<io_thread_t *> (
+                  options.direct_io_thread_ptr);
+            else
+                io_thread = static_cast<io_thread_t *> (
+                  options.direct_io_helper_thread_ptr);
+        } else {
+            io_thread =
+              static_cast<io_thread_t *> (options.direct_io_thread_ptr);
+        }
+    } else
+        io_thread = choose_io_thread (options.affinity);
     zlink_assert (io_thread);
 
     //  Create and launch a session object.

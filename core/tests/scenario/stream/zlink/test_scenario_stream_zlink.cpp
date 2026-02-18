@@ -127,6 +127,14 @@ class zlink_stream_echo_server_t
 
         apply_socket_tuning (server, opt);
 
+        // Enable single-frame recv mode: one recv returns payload with
+        // routing_id attached to msg_t, eliminating 2-message multipart.
+        {
+            const int sfr = 1;
+            (void)zlink_setsockopt (server, ZLINK_STREAM_SINGLE_FRAME_RECV,
+                                    &sfr, sizeof (sfr));
+        }
+
         const std::string endpoint = make_endpoint (opt.host, opt.port);
         if (zlink_bind (server, endpoint.c_str ()) != 0) {
             std::fprintf (stderr, "zlink stream: bind failed: %s endpoint=%s\n",
@@ -140,7 +148,7 @@ class zlink_stream_echo_server_t
 
         while (!stop.load (std::memory_order_acquire)) {
             zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
-            const int prc = zlink_poll (items, 1, 1000);
+            const int prc = zlink_poll (items, 1, 0);
             if (prc < 0) {
                 const int err = zlink_errno ();
                 if (err == EINTR || err == ETERM)
@@ -177,15 +185,15 @@ class zlink_stream_echo_server_t
   private:
     int receive_and_process_once ()
     {
-        zlink_msg_t rid_msg;
-        zlink_msg_t payload_msg;
-
-        if (zlink_msg_init (&rid_msg) != 0)
+        // Single-frame recv: one recv returns payload with routing_id
+        // attached in msg_t, eliminating 2-message multipart overhead.
+        zlink_msg_t msg;
+        if (zlink_msg_init (&msg) != 0)
             return -1;
 
-        int rc = zlink_msg_recv (&rid_msg, server, ZLINK_DONTWAIT);
+        int rc = zlink_msg_recv (&msg, server, ZLINK_DONTWAIT);
         if (rc < 0) {
-            zlink_msg_close (&rid_msg);
+            zlink_msg_close (&msg);
             const int err = zlink_errno ();
             if (err == EAGAIN)
                 return 0;
@@ -194,66 +202,32 @@ class zlink_stream_echo_server_t
             return -1;
         }
 
-        if (zlink_msg_init (&payload_msg) != 0) {
-            zlink_msg_close (&rid_msg);
-            return -1;
-        }
-
-        if (!zlink_msg_more (&rid_msg)) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        rc = zlink_msg_recv (&payload_msg, server, 0);
-        if (rc < 0) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return -1;
-        }
-
-        if (get_rcvmore (server)) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        const unsigned char *rid_data =
-          static_cast<const unsigned char *> (zlink_msg_data (&rid_msg));
-        const size_t rid_size = zlink_msg_size (&rid_msg);
         const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (&payload_msg));
-        const size_t payload_size = zlink_msg_size (&payload_msg);
+          static_cast<const unsigned char *> (zlink_msg_data (&msg));
+        const size_t payload_size = zlink_msg_size (&msg);
+        const uint32_t routing_id = zlink_msg_get_routing_id (&msg);
 
-        if (!rid_data || rid_size == 0 || rid_size > 255) {
+        if (routing_id == 0) {
             parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
+            zlink_msg_close (&msg);
             return 1;
         }
 
-        if (payload_size == 1 && payload && payload[0] == 1) {
-            connect_events.fetch_add (1, std::memory_order_relaxed);
-            active_connections.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
+        // Connect/disconnect events (1-byte payload).
+        if (payload_size == 1 && payload) {
+            if (payload[0] == 1) {
+                connect_events.fetch_add (1, std::memory_order_relaxed);
+                active_connections.fetch_add (1, std::memory_order_relaxed);
+            } else if (payload[0] == 0) {
+                if (active_connections.load (std::memory_order_relaxed) > 0)
+                    active_connections.fetch_sub (1, std::memory_order_relaxed);
+                disconnect_events.fetch_add (1, std::memory_order_relaxed);
+            }
+            zlink_msg_close (&msg);
             return 1;
         }
 
-        if (payload_size == 1 && payload && payload[0] == 0) {
-            if (active_connections.load (std::memory_order_relaxed) > 0)
-                active_connections.fetch_sub (1, std::memory_order_relaxed);
-            disconnect_events.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        // STREAM payload is a raw TCP chunk and can be partial/coalesced.
-        // Only validate/count when a chunk exactly matches a full frame.
+        // Validate full-frame payloads for metrics.
         const size_t expected_frame_size = opt.size + 4;
         if (payload_size == expected_frame_size && payload) {
             const size_t body_size =
@@ -266,17 +240,13 @@ class zlink_stream_echo_server_t
             }
         }
 
-        const int sent_rid = zlink_msg_send (&rid_msg, server, ZLINK_SNDMORE);
-        if (sent_rid != static_cast<int> (rid_size))
+        // Single-frame send: routing_id already attached to msg,
+        // bypasses multipart (routing_id frame + payload frame).
+        const int sent = zlink_msg_send (&msg, server, 0);
+        if (sent != static_cast<int> (payload_size))
             send_error.fetch_add (1, std::memory_order_relaxed);
-        else {
-            const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
-            if (sent_payload != static_cast<int> (payload_size))
-                send_error.fetch_add (1, std::memory_order_relaxed);
-        }
 
-        zlink_msg_close (&payload_msg);
-        zlink_msg_close (&rid_msg);
+        zlink_msg_close (&msg);
         return 1;
     }
 

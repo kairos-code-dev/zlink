@@ -104,6 +104,13 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Returns NULL if no I/O thread is available.
     zlink::io_thread_t *choose_io_thread (uint64_t affinity_);
 
+    //  Allocate a mailbox slot for a direct-IO thread.
+    //  Returns 0 on failure, valid tid on success.
+    uint32_t allocate_tid_slot (i_mailbox *mailbox_);
+
+    //  Release a previously allocated mailbox slot.
+    void release_tid_slot (uint32_t tid_);
+
     //  Returns reaper thread object.
     zlink::object_t *get_reaper () const;
 

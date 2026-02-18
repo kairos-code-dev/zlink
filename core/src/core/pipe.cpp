@@ -97,7 +97,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _state (active),
     _delay (true),
     _server_socket_routing_id (0),
-    _conflate (conflate_)
+    _conflate (conflate_),
+    _skip_peer_activation (false)
 {
     _disconnect_msg.init ();
 }
@@ -279,8 +280,22 @@ void zlink::pipe_t::flush ()
     if (_state == term_ack_sent)
         return;
 
-    if (_out_pipe && !_out_pipe->flush ())
-        send_activate_read (_peer);
+    if (_out_pipe && !_out_pipe->flush ()) {
+        //  In Direct IO mode the session-side pipe skips mailbox
+        //  signaling; the socket will force-activate pipes instead.
+        if (!_skip_peer_activation)
+            send_activate_read (_peer);
+    }
+}
+
+void zlink::pipe_t::set_skip_peer_activation (bool skip_)
+{
+    _skip_peer_activation = skip_;
+}
+
+void zlink::pipe_t::force_in_active ()
+{
+    _in_active = true;
 }
 
 void zlink::pipe_t::process_activate_read ()

@@ -47,6 +47,14 @@ struct i_engine
     virtual void restart_output () = 0;
 
     virtual const endpoint_uri_pair_t &get_endpoint () const = 0;
+
+    //  Direct IO: queue a message for sending, bypassing the outbound pipe.
+    //  Default returns -1 (not supported). Overridden by asio_stream_engine_t.
+    virtual int queue_direct_send (class msg_t * /*msg_*/) { return -1; }
+
+    //  Direct IO: restart a deferred async read.
+    //  Called by the socket after all zero-copy messages have been consumed.
+    virtual void restart_deferred_read () {}
 };
 }
 

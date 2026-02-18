@@ -53,6 +53,11 @@ class io_thread_t ZLINK_FINAL : public object_t, public i_poll_events
     //  Returns load experienced by the I/O thread.
     int get_load () const;
 
+    //  Process all pending mailbox commands.
+    //  Public so that direct-IO sockets can drive the io_thread
+    //  from the application thread.
+    void process_mailbox ();
+
   private:
     //  I/O thread accesses incoming commands via this mailbox.
     mailbox_t _mailbox;
@@ -61,7 +66,6 @@ class io_thread_t ZLINK_FINAL : public object_t, public i_poll_events
     poller_t *_poller;
 
     static void mailbox_handler (void *arg_);
-    void process_mailbox ();
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (io_thread_t)
 };

@@ -127,6 +127,18 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     void send_hiccup_msg (const std::vector<unsigned char> &hiccup_);
 
+    //  Direct IO mode: skip peer activation signaling on flush.
+    //  When set, flush() will not send activate_read to the peer,
+    //  avoiding mailbox/eventfd overhead.  The consumer must
+    //  call force_in_active() explicitly to enable reading.
+    void set_skip_peer_activation (bool skip_);
+
+    //  Force the inbound pipe into active state so that read() will
+    //  attempt to read from the ypipe without waiting for an
+    //  activate_read command.  Used by Direct IO after pumping
+    //  the io_context.
+    void force_in_active ();
+
   private:
     //  Type of the underlying lock-free pipe.
     typedef ypipe_base_t<msg_t> upipe_t;
@@ -230,6 +242,9 @@ class pipe_t ZLINK_FINAL : public object_t,
     static int compute_lwm (int hwm_);
 
     const bool _conflate;
+
+    //  When true, flush() does not send activate_read to peer.
+    bool _skip_peer_activation;
 
     // The endpoints of this pipe.
     endpoint_uri_pair_t _endpoint_pair;

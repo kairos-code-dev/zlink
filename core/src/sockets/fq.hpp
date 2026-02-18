@@ -27,7 +27,18 @@ class fq_t
 
     int recv (msg_t *msg_);
     int recvpipe (msg_t *msg_, pipe_t **pipe_);
+
+    //  Like recvpipe but drains the current pipe until empty before
+    //  moving to the next.  This improves cache locality when many
+    //  pipes are active (e.g. 10K connections).
+    int recvpipe_drain (msg_t *msg_, pipe_t **pipe_);
+
     bool has_in ();
+
+    //  Force all pipes into the active set, calling force_in_active()
+    //  on each inactive pipe.  Used by Direct IO to re-enable reading
+    //  after io_context pump without mailbox signaling.
+    void force_activate_all ();
 
   private:
     //  Inbound pipes.

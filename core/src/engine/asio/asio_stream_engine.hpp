@@ -58,6 +58,12 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     void restart_output () ZLINK_OVERRIDE;
     const endpoint_uri_pair_t &get_endpoint () const ZLINK_OVERRIDE;
 
+    //  Direct IO: queue a message for sending, bypassing the outbound pipe.
+    int queue_direct_send (class msg_t *msg_) ZLINK_OVERRIDE;
+
+    //  Direct IO: restart a deferred async read after zero-copy msgs consumed.
+    void restart_deferred_read () ZLINK_OVERRIDE;
+
   private:
     void start_transport_handshake ();
     void on_transport_handshake (const boost::system::error_code &ec);
@@ -107,8 +113,39 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     handler_allocator _recv_allocator;
     handler_allocator _send_allocator;
 
+    //  Echo loopback: when enabled, incoming data frames are copied directly
+    //  to the send buffer without crossing through pipes/app-thread.
+    //  Activated via ZLINK_STREAM_ECHO_LOOPBACK env var.
+    bool _echo_loopback;
+
+    //  Serialized raw echo: read → write (from same buffer) → read.
+    //  No overlap, no memcpy, no heap handler allocation.
+    //  Bypasses transport abstraction for maximum I/O throughput.
+    void start_raw_echo_read ();
+    void start_raw_echo_write ();
+    size_t _echo_write_size;
+    size_t _echo_write_offset;
+
     session_base_t *_session;
     socket_base_t *_socket;
+
+    //  Direct IO pipe bypass: routing_id of this connection, cached at handshake.
+    //  Non-zero activates the direct recv/send bypass path.
+    uint32_t _connection_routing_id;
+
+    //  Direct IO zero-copy: when true, async read was deferred to protect
+    //  recv buffer data referenced by zero-copy messages in the socket's
+    //  direct recv queue.  Cleared by restart_deferred_read().
+    bool _read_deferred;
+
+    //  Set to true during process_input_buffer when any frame used zero-copy.
+    //  Controls whether reads need to be deferred in on_read_complete.
+    bool _zero_copy_active;
+
+    //  True when this engine runs on the helper io_thread (background worker).
+    //  In that case, queue_direct_send uses raw POSIX writev on the native fd
+    //  instead of ASIO socket operations, avoiding cross-thread ASIO access.
+    bool _on_helper_context;
 
 #if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;

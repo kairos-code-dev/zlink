@@ -4,6 +4,7 @@
 #include <new>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 
 #include "utils/macros.hpp"
@@ -601,8 +602,14 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 #endif
 
     //  Remaining transports require to be run in an I/O thread, so at this
-    //  point we'll choose one.
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    //  point we'll choose one.  When direct IO is active the socket owns
+    //  its own io_thread driven from the application thread.
+    io_thread_t *io_thread = NULL;
+    if (options.direct_io_thread_ptr)
+        io_thread =
+          static_cast<io_thread_t *> (options.direct_io_thread_ptr);
+    else
+        io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
         errno = EMTHREAD;
         return -1;
@@ -1375,6 +1382,64 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
         }
     }
 
+    //  If direct IO is active, pump the io_context so that ASIO callbacks
+    //  (read/write completions) fire.  With pipe bypass, data arrives in
+    //  the socket's direct recv queue without signaling the mailbox, so
+    //  we must process BOTH io_context events AND mailbox commands in an
+    //  interleaved fashion.  Mailbox commands are needed for pipe/session
+    //  setup (e.g. cmd_bind after accept), while io_context events deliver
+    //  actual data frames via push_msg_direct.
+    if (options.direct_io_thread_ptr) {
+        io_thread_t *iot =
+          static_cast<io_thread_t *> (options.direct_io_thread_ptr);
+
+        //  Pump ASIO handlers (non-blocking).
+        if (iot->get_io_context ().stopped ())
+            iot->get_io_context ().restart ();
+        iot->get_io_context ().poll ();
+
+        //  Process all pending mailbox commands (non-blocking).
+        //  This is critical: accept handlers post cmd_bind to the mailbox,
+        //  which must be processed before the engine can start async_read.
+        command_t cmd;
+        while (_mailbox->recv (&cmd, 0) == 0)
+            cmd.destination->process_command (cmd);
+
+        if (timeout_ != 0) {
+            //  Blocking mode: wait on io_context for the next ASIO
+            //  completion.  Mailbox commands above have already set up
+            //  sessions/engines, so async_read should be pending.
+            if (iot->get_io_context ().stopped ())
+                iot->get_io_context ().restart ();
+
+            if (options.direct_io_helper_thread_ptr) {
+                //  Helper thread active: data may arrive in
+                //  _direct_recv_queue from the background thread at
+                //  any time, without waking the primary io_context.
+                //  Non-blocking poll so the caller can check the queue
+                //  immediately via xrecv.
+                iot->get_io_context ().poll_one ();
+            } else if (timeout_ > 0) {
+                iot->get_io_context ().run_one_for (
+                  std::chrono::milliseconds (timeout_));
+            } else {
+                iot->get_io_context ().run_one ();
+            }
+            iot->get_io_context ().poll ();
+
+            //  Process any new mailbox commands.
+            while (_mailbox->recv (&cmd, 0) == 0)
+                cmd.destination->process_command (cmd);
+        }
+
+        if (_ctx_terminated) {
+            errno = ETERM;
+            return -1;
+        }
+
+        return 0;
+    }
+
     //  Check whether there are any commands pending for this thread.
     command_t cmd;
     int rc = _mailbox->recv (&cmd, timeout_);
@@ -1501,6 +1566,12 @@ int zlink::socket_base_t::xleave (const char *group_)
 }
 
 int zlink::socket_base_t::xrecv (msg_t *)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::push_msg_direct (msg_t *, uint32_t, void *)
 {
     errno = ENOTSUP;
     return -1;

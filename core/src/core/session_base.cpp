@@ -265,6 +265,21 @@ zlink::socket_base_t *zlink::session_base_t::get_socket () const
     return _socket;
 }
 
+uint32_t zlink::session_base_t::get_server_socket_routing_id () const
+{
+    return _pipe ? _pipe->get_server_socket_routing_id () : 0;
+}
+
+int zlink::session_base_t::direct_send_to_engine (msg_t *msg_)
+{
+    if (!_engine)
+        return -1;
+    //  Cast to asio_stream_engine_t is safe: this method is only called
+    //  in Direct IO mode where the engine is always asio_stream_engine_t.
+    //  Implemented in asio_stream_engine.cpp via i_engine extension.
+    return _engine->queue_direct_send (msg_);
+}
+
 void zlink::session_base_t::process_plug ()
 {
     if (_active)
@@ -319,6 +334,12 @@ void zlink::session_base_t::engine_ready ()
             _pending_peer_routing_id.clear ();
             _pending_peer_routing_id_valid = false;
         }
+
+        //  In Direct IO mode, the session-side pipe (pipes[0]) skips
+        //  mailbox signaling on flush.  The socket will force-activate
+        //  its FQ pipes after pumping the io_context instead.
+        if (options.direct_io_thread_ptr)
+            pipes[0]->set_skip_peer_activation (true);
 
         //  Ask socket to plug into the remote end of the pipe.
         send_bind (_socket, pipes[1]);

@@ -615,6 +615,24 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
     return selected_io_thread;
 }
 
+uint32_t zlink::ctx_t::allocate_tid_slot (i_mailbox *mailbox_)
+{
+    scoped_lock_t locker (_slot_sync);
+    if (_empty_slots.empty ())
+        return 0;
+    const uint32_t tid = _empty_slots.back ();
+    _empty_slots.pop_back ();
+    _slots[tid] = mailbox_;
+    return tid;
+}
+
+void zlink::ctx_t::release_tid_slot (uint32_t tid_)
+{
+    scoped_lock_t locker (_slot_sync);
+    _slots[tid_] = NULL;
+    _empty_slots.push_back (tid_);
+}
+
 int zlink::ctx_t::register_endpoint (const char *addr_,
                                    const endpoint_t &endpoint_)
 {

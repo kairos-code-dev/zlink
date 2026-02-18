@@ -150,7 +150,7 @@ class msg_t
     //  rather than being reference-counted.
     enum
     {
-        msg_t_size = 64
+        msg_t_size = 128
     };
     enum
     {

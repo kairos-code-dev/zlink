@@ -140,6 +140,13 @@ class socket_base_t : public own_t,
     bool is_disconnected () const;
     bool is_ctx_terminated () const;
 
+    //  Direct IO: engine pushes msg directly to socket, bypassing pipe.
+    //  Default returns -1 (not supported). Overridden by stream_t.
+    //  engine_hint is an opaque pointer to the engine for send-direction routing.
+    virtual int push_msg_direct (zlink::msg_t *msg_,
+                                 uint32_t routing_id_,
+                                 void *engine_hint_);
+
   protected:
     socket_base_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~socket_base_t () ZLINK_OVERRIDE;

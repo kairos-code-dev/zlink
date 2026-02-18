@@ -331,6 +331,14 @@ void zlink::session_base_t::engine_error (bool handshaked_,
     //  Engine is dead. Let's forget about it.
     _engine = NULL;
 
+    //  During termination convergence, late engine callbacks may still arrive.
+    //  Do not restart termination/reconnect paths in that state.
+    if (is_terminating ()) {
+        if (_pipe)
+            _pipe->check_read ();
+        return;
+    }
+
     //  Remove any half-done messages from the pipes.
     if (_pipe) {
         clean_pipes ();

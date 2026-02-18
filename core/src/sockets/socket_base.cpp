@@ -1388,7 +1388,8 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
     mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
     mailbox->set_io_context (&_poller->get_io_context (),
                              &socket_base_t::reaper_mailbox_handler, this,
-                             &socket_base_t::reaper_mailbox_pre_post);
+                             &socket_base_t::reaper_mailbox_pre_post,
+                             _poller->get_strand ());
     mailbox->schedule_if_needed ();
 
     //  Initialise the termination and check whether it can be deallocated

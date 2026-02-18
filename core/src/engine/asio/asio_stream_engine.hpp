@@ -82,6 +82,7 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     fd_t _fd;
     std::unique_ptr<i_asio_transport> _transport;
     boost::asio::io_context *_io_context;
+    boost::asio::strand<boost::asio::io_context::executor_type> *_strand;
 
     bool _has_handshake_stage;
     bool _handshaking;

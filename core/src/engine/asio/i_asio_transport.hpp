@@ -49,6 +49,14 @@ class i_asio_transport
     //  For WS: wraps socket in Beast WebSocket stream
     virtual bool open (boost::asio::io_context &io_context, fd_t fd) = 0;
 
+    //  Optionally provide an executor for completion handlers.
+    //  Transports that support this should invoke async completions on it.
+    virtual void
+    set_completion_executor (const boost::asio::any_io_executor &executor)
+    {
+        (void) executor;
+    }
+
     //  Check if transport is open and ready for I/O
     virtual bool is_open () const = 0;
 

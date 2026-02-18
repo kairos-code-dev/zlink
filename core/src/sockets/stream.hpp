@@ -53,6 +53,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     zlink::pipe_t *_current_out;
     bool _more_out;
+    bool _single_frame_recv;
 
     uint32_t _next_integral_routing_id;
     typedef std::vector<zlink::pipe_t *> out_pipe_vec_t;

@@ -7,18 +7,10 @@
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
 
-#include <cstdlib>
-
 namespace
 {
 const unsigned char stream_event_connect = 0x01;
 const unsigned char stream_event_disconnect = 0x00;
-
-bool stream_single_frame_recv_enabled ()
-{
-    const char *env = getenv ("ZLINK_STREAM_SINGLE_FRAME_RECV");
-    return env && *env && *env != '0';
-}
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -28,15 +20,20 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _prefetched_routing_id_value (0),
     _current_out (NULL),
     _more_out (false),
+    _single_frame_recv (false),
     _next_integral_routing_id (1)
 {
     options.type = ZLINK_STREAM;
     options.backlog = 65536;
-    const int stream_batch_size = 65536;
+    //  STREAM frames add a 4-byte length prefix on the wire.
+    //  Keep batch buffers at least one full 64KiB payload + prefix to avoid
+    //  first-frame resize churn under large payload traffic.
+    const int stream_batch_size = 65536 + 4;
     if (options.in_batch_size < stream_batch_size)
         options.in_batch_size = stream_batch_size;
     if (options.out_batch_size < stream_batch_size)
         options.out_batch_size = stream_batch_size;
+    _single_frame_recv = options.stream_single_frame_recv;
 
     _prefetched_msg.init ();
 }
@@ -190,7 +187,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    if (stream_single_frame_recv_enabled ()) {
+    if (_single_frame_recv) {
         if (_prefetched) {
             const int rc = msg_->move (_prefetched_msg);
             errno_assert (rc == 0);
@@ -288,7 +285,7 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
 bool zlink::stream_t::xhas_in ()
 {
-    if (stream_single_frame_recv_enabled ()) {
+    if (_single_frame_recv) {
         if (_prefetched)
             return true;
 
@@ -356,6 +353,15 @@ int zlink::stream_t::xsetsockopt (int option_,
                                   const void *optval_,
                                   size_t optvallen_)
 {
+    if (option_ == ZLINK_STREAM_SINGLE_FRAME_RECV) {
+        const int rc = options.setsockopt (option_, optval_, optvallen_);
+        if (rc != 0)
+            return rc;
+
+        _single_frame_recv = options.stream_single_frame_recv;
+        return 0;
+    }
+
     if (option_ == ZLINK_CONNECT_ROUTING_ID) {
         LIBZLINK_UNUSED (optval_);
         LIBZLINK_UNUSED (optvallen_);

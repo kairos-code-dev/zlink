@@ -229,9 +229,11 @@ class asio_engine_t : public i_engine
 
     //  Unplug the engine from the session.
     void unplug ();
+    void finalize_if_safe ();
 
     //  Pointer to io_context (set during plug())
     boost::asio::io_context *_io_context;
+    asio_poller_t::io_strand_t *_strand;
 
     //  Transport abstraction (TCP/SSL/etc)
     std::unique_ptr<i_asio_transport> _transport;
@@ -298,6 +300,8 @@ class asio_engine_t : public i_engine
 
     //  True if engine is being terminated (prevents callback processing)
     bool _terminating;
+    bool _delete_pending;
+    bool _timer_wait_pending;
 
     //  Buffer pointer for current async read (points to where data was read)
     unsigned char *_read_buffer_ptr;

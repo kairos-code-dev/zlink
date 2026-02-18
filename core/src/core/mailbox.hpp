@@ -15,6 +15,8 @@
 
 #include <atomic>
 #include <vector>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/strand.hpp>
 
 namespace boost
 {
@@ -30,6 +32,9 @@ namespace zlink
 class mailbox_t ZLINK_FINAL : public i_mailbox
 {
   public:
+    typedef boost::asio::strand<boost::asio::io_context::executor_type>
+      io_strand_t;
+
     mailbox_t ();
     ~mailbox_t ();
 
@@ -44,7 +49,8 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     void set_io_context (boost::asio::io_context *io_context_,
                          mailbox_handler_t handler_,
                          void *handler_arg_,
-                         mailbox_pre_post_t pre_post_ = NULL);
+                         mailbox_pre_post_t pre_post_ = NULL,
+                         io_strand_t *strand_ = NULL);
     void schedule_if_needed ();
     bool reschedule_if_needed ();
 
@@ -79,6 +85,7 @@ class mailbox_t ZLINK_FINAL : public i_mailbox
     mutex_t _sync;
 
     boost::asio::io_context *_io_context;
+    io_strand_t *_strand;
     mailbox_handler_t _handler;
     void *_handler_arg;
     mailbox_pre_post_t _pre_post;

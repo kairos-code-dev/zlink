@@ -8,6 +8,7 @@
 #include "core/io_thread.hpp"
 #include "core/msg.hpp"
 #include "core/session_base.hpp"
+#include "engine/asio/asio_poller.hpp"
 #include "protocol/wire.hpp"
 #include "sockets/socket_base.hpp"
 #include "transports/tcp/tcp_transport.hpp"
@@ -38,6 +39,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _fd (fd_),
     _transport (new (std::nothrow) tcp_transport_t ()),
     _io_context (NULL),
+    _strand (NULL),
     _has_handshake_stage (true),
     _handshaking (true),
     _plugged (false),
@@ -73,6 +75,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _fd (fd_),
     _transport (std::move (transport_)),
     _io_context (NULL),
+    _strand (NULL),
     _has_handshake_stage (true),
     _handshaking (true),
     _plugged (false),
@@ -114,6 +117,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _fd (fd_),
     _transport (std::move (transport_)),
     _io_context (NULL),
+    _strand (NULL),
     _has_handshake_stage (true),
     _handshaking (true),
     _plugged (false),
@@ -179,9 +183,16 @@ void zlink::asio_stream_engine_t::plug (io_thread_t *io_thread_,
     _plugged = true;
     _session = session_;
     _socket = _session->get_socket ();
-    _io_context = &io_thread_->get_io_context ();
+    asio_poller_t *poller =
+      static_cast<asio_poller_t *> (io_thread_->get_poller ());
+    _io_context = &poller->get_io_context ();
+    _strand = poller->get_strand ();
     _io_error = false;
     _terminating = false;
+
+    zlink_assert (_strand);
+    if (_transport)
+        _transport->set_completion_executor (*_strand);
 
     if (!_transport || !_transport->open (*_io_context, _fd)) {
         error (connection_error);
@@ -198,13 +209,19 @@ void zlink::asio_stream_engine_t::plug (io_thread_t *io_thread_,
 
 void zlink::asio_stream_engine_t::start_transport_handshake ()
 {
+    zlink_assert (_strand);
     const int handshake_type =
       _endpoint_uri_pair.local_type == endpoint_type_connect ? 0 : 1;
 
     _transport->async_handshake (
       handshake_type,
       [this] (const boost::system::error_code &ec, std::size_t) {
-          on_transport_handshake (ec);
+          if (_strand->running_in_this_thread ()) {
+              on_transport_handshake (ec);
+              return;
+          }
+          boost::asio::dispatch (
+            *_strand, [this, ec] () { on_transport_handshake (ec); });
       });
 }
 
@@ -328,10 +345,17 @@ void zlink::asio_stream_engine_t::start_async_read ()
     }
 
     _read_pending = true;
+    zlink_assert (_strand);
     _transport->async_read_some (
       &_recv_buffer[0] + recv_end, _recv_buffer.size () - recv_end,
       [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_read_complete (ec, bytes);
+          if (_strand->running_in_this_thread ()) {
+              on_read_complete (ec, bytes);
+              return;
+          }
+          boost::asio::dispatch (*_strand, [this, ec, bytes] () {
+              on_read_complete (ec, bytes);
+          });
       });
 }
 
@@ -524,11 +548,18 @@ void zlink::asio_stream_engine_t::start_async_write ()
         return;
 
     _write_pending = true;
+    zlink_assert (_strand);
     _transport->async_write_some (
       &_send_buffer_flush[0] + _send_buffer_flush_offset,
       _send_buffer_flush.size () - _send_buffer_flush_offset,
       [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_write_complete (ec, bytes);
+          if (_strand->running_in_this_thread ()) {
+              on_write_complete (ec, bytes);
+              return;
+          }
+          boost::asio::dispatch (*_strand, [this, ec, bytes] () {
+              on_write_complete (ec, bytes);
+          });
       });
 }
 

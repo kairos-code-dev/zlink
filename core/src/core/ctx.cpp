@@ -86,6 +86,9 @@ zlink::ctx_t::~ctx_t ()
         LIBZLINK_DELETE (_io_threads[i]);
     }
 
+    //  Deallocate the reaper thread object.
+    LIBZLINK_DELETE (_reaper);
+
     if (_shared_io_context_work_guard) {
         _shared_io_context_work_guard->reset ();
         _shared_io_context_work_guard.reset ();
@@ -94,9 +97,6 @@ zlink::ctx_t::~ctx_t ()
         _shared_io_context->stop ();
         _shared_io_context.reset ();
     }
-
-    //  Deallocate the reaper thread object.
-    LIBZLINK_DELETE (_reaper);
 
     //  The mailboxes in _slots themselves were deallocated with their
     //  corresponding io_thread/socket objects.

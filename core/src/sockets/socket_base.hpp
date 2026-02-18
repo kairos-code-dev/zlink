@@ -136,10 +136,16 @@ class socket_base_t : public own_t,
     int socket_peer_routing_id (int index_, zlink_routing_id_t *out_);
     int socket_peer_count ();
     int socket_peers (zlink_peer_info_t *peers_, size_t *count_);
-    int get_type () const { return options.type; }
 
     bool is_disconnected () const;
     bool is_ctx_terminated () const;
+
+    //  Direct IO: engine pushes msg directly to socket, bypassing pipe.
+    //  Default returns -1 (not supported). Overridden by stream_t.
+    //  engine_hint is an opaque pointer to the engine for send-direction routing.
+    virtual int push_msg_direct (zlink::msg_t *msg_,
+                                 uint32_t routing_id_,
+                                 void *engine_hint_);
 
   protected:
     socket_base_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
@@ -298,10 +304,6 @@ class socket_base_t : public own_t,
 
     //  Number of messages received since last command processing.
     int _ticks;
-
-    //  STREAM legacy multipart send coalescing state.
-    bool _stream_send_routing_pending;
-    uint32_t _stream_send_routing_id;
 
     //  True if the last message received had MORE flag set.
     bool _rcvmore;

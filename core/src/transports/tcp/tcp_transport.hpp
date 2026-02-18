@@ -56,6 +56,7 @@ class tcp_transport_t : public i_asio_transport
     bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
 
     const char *name () const ZLINK_OVERRIDE { return "tcp"; }
+    boost::asio::ip::tcp::socket *raw_socket () { return _socket.get (); }
 
   private:
     std::unique_ptr<boost::asio::ip::tcp::socket> _socket;

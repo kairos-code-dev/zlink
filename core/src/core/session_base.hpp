@@ -58,6 +58,14 @@ class session_base_t : public own_t, public io_object_t, public i_pipe_events
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     const blob_t &peer_routing_id () const;
 
+    //  Returns the server-socket routing id from the attached pipe.
+    //  Used by Direct IO engines to identify the connection.
+    uint32_t get_server_socket_routing_id () const;
+
+    //  Direct IO: write msg directly to engine send buffer, bypassing pipe.
+    //  Returns 0 on success, -1 on failure.
+    int direct_send_to_engine (msg_t *msg_);
+
   protected:
     session_base_t (zlink::io_thread_t *io_thread_,
                     bool active_,

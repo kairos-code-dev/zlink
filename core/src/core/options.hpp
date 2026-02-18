@@ -136,11 +136,6 @@ struct options_t
     //  1 = enable, 0 = disable, -1 = do not change socket option.
     int tcp_nodelay;
 
-    //  STREAM recv mode.
-    //  false = legacy multipart (routing_id + payload),
-    //  true = single-frame payload with msg routing id metadata.
-    bool stream_single_frame_recv;
-
     // TCP accept() filters
     typedef std::vector<tcp_address_mask_t> tcp_accept_filters_t;
     tcp_accept_filters_t tcp_accept_filters;
@@ -156,6 +151,30 @@ struct options_t
     typedef std::set<pid_t> ipc_pid_accept_filters_t;
     ipc_pid_accept_filters_t ipc_pid_accept_filters;
 #endif
+
+    //  Stream engine type for ZLINK_STREAM sockets.
+    //  0 = raw engine (default), 1 = stream engine.
+    int stream_engine_type;
+
+    //  STREAM single-frame recv mode.
+    //  0 = multipart (default), 1 = single frame with routing_id in msg_t.
+    int stream_single_frame_recv;
+
+    //  STREAM direct IO mode.
+    //  When enabled, the STREAM socket creates its own io_thread and drives
+    //  its io_context from the application thread, eliminating thread crossings.
+    //  0 = disabled (default), 1 = enabled.
+    int stream_direct_io;
+
+    //  Pointer to the socket's direct io_thread (io_thread_t*), or NULL.
+    //  Set by stream_t before bind; used by listener and socket_base.
+    void *direct_io_thread_ptr;
+
+    //  Pointer to the socket's helper io_threads (io_thread_t*), or NULL.
+    //  When non-NULL, background threads run these io_contexts to
+    //  parallelize read+write processing independently per thread.
+    void *direct_io_helper_thread_ptr;
+    void *direct_io_helper_thread2_ptr;
 
     //  Enable READY metadata for ZMP (default: false)
     bool zmp_metadata;

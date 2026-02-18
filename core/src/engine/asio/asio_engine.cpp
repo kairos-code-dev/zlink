@@ -110,9 +110,6 @@ const bool asio_gather_write_on =
 const bool asio_single_write_on =
   env_flag_enabled ("ZLINK_ASIO_SINGLE_WRITE");
 
-const bool asio_trace_on =
-  env_flag_enabled ("ZLINK_ASIO_TRACE");
-
 const size_t asio_gather_threshold =
   parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 
@@ -156,7 +153,6 @@ zlink::asio_engine_t::asio_engine_t (
     _peer_address (get_peer_address (fd_)),
     _has_handshake_stage (true),
     _io_context (NULL),
-    _strand (NULL),
     _transport (std::move (transport_)),
     _current_timer_id (-1),
     _read_buffer (read_buffer_size),
@@ -174,8 +170,6 @@ zlink::asio_engine_t::asio_engine_t (
     _gather_body (NULL),
     _gather_body_size (0),
     _terminating (false),
-    _delete_pending (false),
-    _timer_wait_pending (false),
     _read_buffer_ptr (NULL),
     _read_from_pending_pool (false),
     _session (NULL),
@@ -200,10 +194,7 @@ zlink::asio_engine_t::~asio_engine_t ()
 {
     ENGINE_DBG ("Destructor called");
 
-    //  Shared io_context shutdown can interleave with late callbacks.
-    //  Keep teardown idempotent instead of aborting on residual plug state.
-    if (_plugged)
-        unplug ();
+    zlink_assert (!_plugged);
 
     if (_transport) {
         _transport->close ();
@@ -264,14 +255,12 @@ void zlink::asio_engine_t::plug (io_thread_t *io_thread_,
     asio_poller_t *poller =
       static_cast<asio_poller_t *> (io_thread_->get_poller ());
     _io_context = &poller->get_io_context ();
-    _strand = poller->get_strand ();
 
     //  Allocate timer with correct io_context
     _timer = std::unique_ptr<boost::asio::steady_timer> (
       new boost::asio::steady_timer (*_io_context));
 
     _io_error = false;
-    _transport->set_completion_executor (*_strand);
 
     if (!_transport || !_transport->open (*_io_context, _fd)) {
         error (connection_error);
@@ -289,7 +278,6 @@ void zlink::asio_engine_t::plug (io_thread_t *io_thread_,
 void zlink::asio_engine_t::start_transport_handshake ()
 {
     ENGINE_DBG ("start_transport_handshake");
-    zlink_assert (_strand);
 
     _handshake_pending = true;
     if (_options.handshake_ivl > 0)
@@ -301,12 +289,7 @@ void zlink::asio_engine_t::start_transport_handshake ()
     _transport->async_handshake (
       handshake_type,
       [this] (const boost::system::error_code &ec, std::size_t) {
-          if (_strand->running_in_this_thread ()) {
-              on_transport_handshake (ec);
-              return;
-          }
-          boost::asio::dispatch (
-            *_strand, [this, ec] () { on_transport_handshake (ec); });
+          on_transport_handshake (ec);
       });
 }
 
@@ -317,15 +300,11 @@ void zlink::asio_engine_t::on_transport_handshake (
                 ec.message ().c_str (), _terminating);
 
     _handshake_pending = false;
-    if (_terminating) {
-        finalize_if_safe ();
+    if (_terminating)
         return;
-    }
 
-    if (!_plugged) {
-        finalize_if_safe ();
+    if (!_plugged)
         return;
-    }
 
     if (_has_handshake_timer) {
         cancel_timer (handshake_timer_id);
@@ -362,8 +341,7 @@ void zlink::asio_engine_t::unplug ()
 {
     ENGINE_DBG ("unplug called");
 
-    if (!_plugged)
-        return;
+    zlink_assert (_plugged);
     _plugged = false;
 
     //  Cancel all timers.
@@ -404,25 +382,21 @@ void zlink::asio_engine_t::terminate ()
 {
     ENGINE_DBG ("terminate called");
 
-    if (!_terminating) {
-        //  Mark as terminating to prevent callbacks from processing.
-        _terminating = true;
-        unplug ();
+    //  Mark as terminating to prevent callbacks from processing
+    _terminating = true;
+
+    unplug ();
+
+    //  Drain any pending async handlers while the object is still alive.
+    //  The _terminating flag ensures callbacks are no-ops.
+    if (_io_context
+        && (_read_pending || _write_pending || _handshake_pending)) {
+        _io_context->poll ();
     }
 
-    _delete_pending = true;
-    finalize_if_safe ();
-}
-
-void zlink::asio_engine_t::finalize_if_safe ()
-{
-    if (!_delete_pending)
-        return;
-
-    if (_read_pending || _write_pending || _handshake_pending
-        || _timer_wait_pending)
-        return;
-
+    //  Engine lifetime is controlled by session/IO ownership, not by stack scope.
+    //  At this point callbacks were drained (or marked no-op), so self-destruction
+    //  is the final ownership handoff for this engine instance.
     delete this;
 }
 
@@ -490,19 +464,12 @@ void zlink::asio_engine_t::start_async_read ()
     }
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
-    zlink_assert (_strand);
 
     if (_transport) {
         _transport->async_read_some (
           _read_buffer_ptr, read_size,
           [this] (const boost::system::error_code &ec, std::size_t bytes) {
-              if (_strand->running_in_this_thread ()) {
-                  on_read_complete (ec, bytes);
-                  return;
-              }
-              boost::asio::dispatch (*_strand, [this, ec, bytes] () {
-                  on_read_complete (ec, bytes);
-              });
+              on_read_complete (ec, bytes);
           });
     }
 }
@@ -598,19 +565,12 @@ void zlink::asio_engine_t::start_async_write ()
 
     _write_pending = true;
     _async_zero_copy = true;
-    zlink_assert (_strand);
 
     if (_transport) {
         _transport->async_write_some (
           _outpos, _outsize,
           [this] (const boost::system::error_code &ec, std::size_t bytes) {
-              if (_strand->running_in_this_thread ()) {
-                  on_write_complete (ec, bytes);
-                  return;
-              }
-              boost::asio::dispatch (*_strand, [this, ec, bytes] () {
-                  on_write_complete (ec, bytes);
-              });
+              on_write_complete (ec, bytes);
           });
     }
 }
@@ -668,17 +628,11 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     _write_pending = true;
     _async_zero_copy = false;
     _output_stopped = false;
-    zlink_assert (_strand);
 
     _transport->async_writev (
       _gather_header, _gather_header_size, _gather_body, _gather_body_size,
       [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          if (_strand->running_in_this_thread ()) {
-              on_write_complete (ec, bytes);
-              return;
-          }
-          boost::asio::dispatch (
-            *_strand, [this, ec, bytes] () { on_write_complete (ec, bytes); });
+          on_write_complete (ec, bytes);
       });
     return true;
 }
@@ -707,22 +661,16 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
                 ec.message ().c_str (), bytes_transferred, _terminating,
                 _input_stopped);
 
-    //  If terminating, just return.
-    if (_terminating) {
-        finalize_if_safe ();
+    //  If terminating, just return - terminate() is draining handlers
+    if (_terminating)
         return;
-    }
 
-    if (!_plugged) {
-        finalize_if_safe ();
+    if (!_plugged)
         return;
-    }
 
     if (ec) {
-        if (ec == boost::asio::error::operation_aborted) {
-            finalize_if_safe ();
+        if (ec == boost::asio::error::operation_aborted)
             return;
-        }
         error (connection_error);
         return;
     }
@@ -835,22 +783,16 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
     ENGINE_DBG ("on_write_complete: ec=%s, bytes=%zu, terminating=%d",
                 ec.message ().c_str (), bytes_transferred, _terminating);
 
-    //  If terminating, just return.
-    if (_terminating) {
-        finalize_if_safe ();
+    //  If terminating, just return - terminate() is draining handlers
+    if (_terminating)
         return;
-    }
 
-    if (!_plugged) {
-        finalize_if_safe ();
+    if (!_plugged)
         return;
-    }
 
     if (ec) {
-        if (ec == boost::asio::error::operation_aborted) {
-            finalize_if_safe ();
+        if (ec == boost::asio::error::operation_aborted)
             return;
-        }
         //  IO error - stop writing but continue reading to detect connection close
         _io_error = true;
         finish_gather_output ();
@@ -871,19 +813,12 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
 
         if (_outsize > 0) {
             _write_pending = true;
-            zlink_assert (_strand);
             if (_transport) {
                 _transport->async_write_some (
                   _outpos, _outsize,
                   [this] (const boost::system::error_code &wec,
                           std::size_t bytes) {
-                      if (_strand->running_in_this_thread ()) {
-                          on_write_complete (wec, bytes);
-                          return;
-                      }
-                      boost::asio::dispatch (*_strand, [this, wec, bytes] () {
-                          on_write_complete (wec, bytes);
-                      });
+                      on_write_complete (wec, bytes);
                   });
             }
             return;
@@ -1411,6 +1346,7 @@ const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 
 int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
+    static const bool trace = env_flag_enabled ("ZLINK_ASIO_TRACE");
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
         cancel_timer (heartbeat_timeout_timer_id);
@@ -1428,7 +1364,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
     if (_metadata)
         msg_->set_metadata (_metadata);
     if (_session->push_msg (msg_) == -1) {
-        if (asio_trace_on) {
+        if (trace) {
             fprintf (stderr,
                      "[ASIO_TRACE] push_msg failed size=%zu flags=0x%x errno=%d\n",
                      msg_->size (), msg_->flags (), errno);
@@ -1437,7 +1373,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
             _process_msg = &asio_engine_t::push_one_then_decode_and_push;
         return -1;
     }
-    if (asio_trace_on) {
+    if (trace) {
         fprintf (stderr, "[ASIO_TRACE] push_msg ok size=%zu flags=0x%x\n",
                  msg_->size (), msg_->flags ());
     }
@@ -1466,12 +1402,9 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
 {
     ENGINE_DBG ("error: reason=%d", static_cast<int> (reason_));
 
-    //  Mark as terminating to prevent callbacks from processing.
-    if (_terminating) {
-        _delete_pending = true;
-        finalize_if_safe ();
+    //  Mark as terminating to prevent callbacks from processing
+    if (_terminating)
         return;
-    }
     _terminating = true;
 
     zlink_assert (_session);
@@ -1502,8 +1435,21 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
     _session->engine_error (!_handshaking, reason_);
     unplug ();
 
-    _delete_pending = true;
-    finalize_if_safe ();
+    //  Drain any pending async handlers while the object is still alive.
+    //  The _terminating flag ensures callbacks are no-ops.
+    if (_io_context && (_read_pending || _write_pending)) {
+        _io_context->poll ();
+    }
+
+    if (_io_context) {
+        //  If we are on (or racing with) the io_context thread, posting deletion
+        //  avoids destroying the engine in the middle of an in-flight handler.
+        boost::asio::post (*_io_context, [this] () { delete this; });
+        return;
+    }
+
+    //  Fallback path when io_context is unavailable.
+    delete this;
 }
 
 void zlink::asio_engine_t::set_handshake_timer ()
@@ -1529,15 +1475,12 @@ void zlink::asio_engine_t::add_timer (int timeout_, int id_)
     ENGINE_DBG ("add_timer: timeout=%d, id=%d", timeout_, id_);
 
     zlink_assert (_timer);
-    zlink_assert (_strand);
     _current_timer_id = id_;
-    _timer_wait_pending = true;
     _timer->expires_after (std::chrono::milliseconds (timeout_));
     _timer->async_wait (
-      boost::asio::bind_executor (
-        *_strand, [this, id_] (const boost::system::error_code &ec) {
-            on_timer (id_, ec);
-        }));
+      [this, id_] (const boost::system::error_code &ec) {
+          on_timer (id_, ec);
+      });
 }
 
 void zlink::asio_engine_t::cancel_timer (int id_)
@@ -1552,26 +1495,18 @@ void zlink::asio_engine_t::cancel_timer (int id_)
 
 void zlink::asio_engine_t::on_timer (int id_, const boost::system::error_code &ec)
 {
-    _timer_wait_pending = false;
-
     ENGINE_DBG ("on_timer: id=%d, ec=%s, terminating=%d", id_,
                 ec.message ().c_str (), _terminating);
 
-    if (ec == boost::asio::error::operation_aborted) {
-        finalize_if_safe ();
+    if (ec == boost::asio::error::operation_aborted)
         return;
-    }
 
-    //  If terminating, just return.
-    if (_terminating) {
-        finalize_if_safe ();
+    //  If terminating, just return - terminate() is draining handlers
+    if (_terminating)
         return;
-    }
 
-    if (!_plugged) {
-        finalize_if_safe ();
+    if (!_plugged)
         return;
-    }
 
     if (id_ == handshake_timer_id) {
         _has_handshake_timer = false;

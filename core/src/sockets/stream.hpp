@@ -3,6 +3,7 @@
 #ifndef __ZLINK_STREAM_HPP_INCLUDED__
 #define __ZLINK_STREAM_HPP_INCLUDED__
 
+#include <atomic>
 #include <deque>
 #include <vector>
 
@@ -14,6 +15,7 @@ namespace zlink
 {
 class ctx_t;
 class pipe_t;
+class io_thread_t;
 
 class stream_t ZLINK_FINAL : public routing_socket_base_t
 {
@@ -33,6 +35,11 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
       ZLINK_FINAL;
 
+    //  Direct IO pipe bypass: engine pushes msgs here instead of pipe.
+    int push_msg_direct (zlink::msg_t *msg_,
+                         uint32_t routing_id_,
+                         void *engine_hint_) ZLINK_OVERRIDE;
+
   private:
     struct stream_event_t
     {
@@ -46,6 +53,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     fq_t _fq;
 
+    //  Cached single-frame recv mode (from socket option or env var).
+    bool _single_frame_recv;
+
     bool _prefetched;
     bool _routing_id_sent;
     uint32_t _prefetched_routing_id_value;
@@ -53,7 +63,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     zlink::pipe_t *_current_out;
     bool _more_out;
-    bool _single_frame_recv;
 
     uint32_t _next_integral_routing_id;
     typedef std::vector<zlink::pipe_t *> out_pipe_vec_t;
@@ -61,6 +70,54 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     out_pipe_vec_t _out_by_id;
 
     std::deque<stream_event_t> _pending_events;
+
+    //  Deferred send flush: accumulate pipes that need flushing and
+    //  batch-flush them when recv drains or threshold is reached.
+    //  This reduces per-message mailbox signaling overhead.
+    static const size_t flush_batch_threshold = 1;
+    std::vector<zlink::pipe_t *> _dirty_send_pipes;
+    void flush_dirty_send_pipes ();
+
+    //  Direct IO: socket-owned io_thread driven by app thread.
+    //  When active, all ASIO operations (accept, read, write) run in
+    //  the application thread, eliminating cross-thread signaling.
+    zlink::io_thread_t *_direct_io_thread;
+    uint32_t _direct_io_tid;
+    bool _direct_io_active;
+    void setup_direct_io ();
+    void teardown_direct_io ();
+
+    //  Helper IO thread: a 2nd io_thread with its own io_context,
+    //  running on a background worker thread.  Half the connections
+    //  are assigned here to parallelize read processing.
+    zlink::io_thread_t *_direct_io_helper_thread;
+    uint32_t _direct_io_helper_tid;
+    zlink::io_thread_t *_direct_io_helper_thread2;
+    uint32_t _direct_io_helper_tid2;
+
+    //  Spinlock protecting _direct_recv_queue and _direct_send_engines
+    //  against concurrent access from the background IO thread.
+    std::atomic_flag _direct_queue_lock;
+    void lock_direct_queue ();
+    void unlock_direct_queue ();
+
+    //  Round-robin counter for distributing connections between
+    //  the primary and helper io_threads.
+    uint32_t _direct_io_rr_counter;
+
+    //  Direct IO pipe bypass: msgs delivered here by engine, read by xrecv.
+    //  Eliminates pipe write/read/flush/CAS/mailbox overhead entirely.
+    struct direct_msg_t
+    {
+        uint32_t routing_id;
+        msg_t msg;
+    };
+    std::vector<direct_msg_t> _direct_recv_queue;
+    size_t _direct_recv_head;
+
+    //  Engine pointers indexed by routing_id for send-direction bypass.
+    //  Populated by push_msg_direct, cleared by xpipe_terminated.
+    std::vector<void *> _direct_send_engines;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

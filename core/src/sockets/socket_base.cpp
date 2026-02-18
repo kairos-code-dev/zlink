@@ -4,6 +4,7 @@
 #include <new>
 #include <string>
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 
 #include "utils/macros.hpp"
@@ -187,8 +188,6 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _poller (NULL),
     _last_tsc (0),
     _ticks (0),
-    _stream_send_routing_pending (false),
-    _stream_send_routing_id (0),
     _rcvmore (false),
     _monitor_socket (NULL),
     _monitor_events (0),
@@ -603,8 +602,14 @@ int zlink::socket_base_t::bind (const char *endpoint_uri_)
 #endif
 
     //  Remaining transports require to be run in an I/O thread, so at this
-    //  point we'll choose one.
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    //  point we'll choose one.  When direct IO is active the socket owns
+    //  its own io_thread driven from the application thread.
+    io_thread_t *io_thread = NULL;
+    if (options.direct_io_thread_ptr)
+        io_thread =
+          static_cast<io_thread_t *> (options.direct_io_thread_ptr);
+    else
+        io_thread = choose_io_thread (options.affinity);
     if (!io_thread) {
         errno = EMTHREAD;
         return -1;
@@ -1128,52 +1133,9 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     }
 
     //  Process pending commands, if any.
-    //  STREAM legacy multipart fast path already processed commands at
-    //  routing-id frame stage, so skip duplicate processing for the
-    //  immediate payload frame.
-    const bool skip_stream_payload_commands =
-      options.type == ZLINK_STREAM && _stream_send_routing_pending
-      && ((flags_ & ZLINK_SNDMORE) == 0);
-    int rc = 0;
-    if (!skip_stream_payload_commands) {
-        rc = process_commands (0, true);
-        if (unlikely (rc != 0)) {
-            return -1;
-        }
-    }
-
-    //  STREAM legacy multipart fast path:
-    //  1) first call: send(routing_id_frame, ZLINK_SNDMORE) -> just cache rid
-    //  2) second call: send(payload, 0) -> attach cached rid and send once
-    if (options.type == ZLINK_STREAM) {
-        const bool send_more = (flags_ & ZLINK_SNDMORE) != 0;
-
-        if (!_stream_send_routing_pending && send_more
-            && msg_->get_routing_id () == 0 && msg_->size () == 4) {
-            _stream_send_routing_id =
-              get_uint32 (static_cast<const unsigned char *> (msg_->data ()));
-            _stream_send_routing_pending = true;
-
-            rc = msg_->close ();
-            errno_assert (rc == 0);
-            rc = msg_->init ();
-            errno_assert (rc == 0);
-            return 0;
-        }
-
-        if (_stream_send_routing_pending) {
-            const uint32_t routing_id = _stream_send_routing_id;
-            _stream_send_routing_pending = false;
-            _stream_send_routing_id = 0;
-
-            if (routing_id != 0 && msg_->get_routing_id () == 0) {
-                rc = msg_->set_routing_id (routing_id);
-                if (unlikely (rc != 0))
-                    return -1;
-            }
-
-            flags_ &= ~ZLINK_SNDMORE;
-        }
+    int rc = process_commands (0, true);
+    if (unlikely (rc != 0)) {
+        return -1;
     }
 
     //  Clear any user-visible flags that are set on the message.
@@ -1266,9 +1228,7 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     //  Note that 'recv' uses different command throttling algorithm (the one
     //  described above) from the one used by 'send'. This is because counting
     //  ticks is more efficient than doing RDTSC all the time.
-    const int poll_rate =
-      options.type == ZLINK_STREAM ? (inbound_poll_rate * 4) : inbound_poll_rate;
-    if (++_ticks == poll_rate) {
+    if (++_ticks == inbound_poll_rate) {
         if (unlikely (process_commands (0, false) != 0)) {
             return -1;
         }
@@ -1388,8 +1348,7 @@ void zlink::socket_base_t::start_reaping (poller_t *poller_)
     mailbox_t *mailbox = static_cast<mailbox_t *> (_mailbox);
     mailbox->set_io_context (&_poller->get_io_context (),
                              &socket_base_t::reaper_mailbox_handler, this,
-                             &socket_base_t::reaper_mailbox_pre_post,
-                             _poller->get_strand ());
+                             &socket_base_t::reaper_mailbox_pre_post);
     mailbox->schedule_if_needed ();
 
     //  Initialise the termination and check whether it can be deallocated
@@ -1421,6 +1380,64 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
                 return 0;
             _last_tsc = tsc;
         }
+    }
+
+    //  If direct IO is active, pump the io_context so that ASIO callbacks
+    //  (read/write completions) fire.  With pipe bypass, data arrives in
+    //  the socket's direct recv queue without signaling the mailbox, so
+    //  we must process BOTH io_context events AND mailbox commands in an
+    //  interleaved fashion.  Mailbox commands are needed for pipe/session
+    //  setup (e.g. cmd_bind after accept), while io_context events deliver
+    //  actual data frames via push_msg_direct.
+    if (options.direct_io_thread_ptr) {
+        io_thread_t *iot =
+          static_cast<io_thread_t *> (options.direct_io_thread_ptr);
+
+        //  Pump ASIO handlers (non-blocking).
+        if (iot->get_io_context ().stopped ())
+            iot->get_io_context ().restart ();
+        iot->get_io_context ().poll ();
+
+        //  Process all pending mailbox commands (non-blocking).
+        //  This is critical: accept handlers post cmd_bind to the mailbox,
+        //  which must be processed before the engine can start async_read.
+        command_t cmd;
+        while (_mailbox->recv (&cmd, 0) == 0)
+            cmd.destination->process_command (cmd);
+
+        if (timeout_ != 0) {
+            //  Blocking mode: wait on io_context for the next ASIO
+            //  completion.  Mailbox commands above have already set up
+            //  sessions/engines, so async_read should be pending.
+            if (iot->get_io_context ().stopped ())
+                iot->get_io_context ().restart ();
+
+            if (options.direct_io_helper_thread_ptr) {
+                //  Helper thread active: data may arrive in
+                //  _direct_recv_queue from the background thread at
+                //  any time, without waking the primary io_context.
+                //  Non-blocking poll so the caller can check the queue
+                //  immediately via xrecv.
+                iot->get_io_context ().poll_one ();
+            } else if (timeout_ > 0) {
+                iot->get_io_context ().run_one_for (
+                  std::chrono::milliseconds (timeout_));
+            } else {
+                iot->get_io_context ().run_one ();
+            }
+            iot->get_io_context ().poll ();
+
+            //  Process any new mailbox commands.
+            while (_mailbox->recv (&cmd, 0) == 0)
+                cmd.destination->process_command (cmd);
+        }
+
+        if (_ctx_terminated) {
+            errno = ETERM;
+            return -1;
+        }
+
+        return 0;
     }
 
     //  Check whether there are any commands pending for this thread.
@@ -1549,6 +1566,12 @@ int zlink::socket_base_t::xleave (const char *group_)
 }
 
 int zlink::socket_base_t::xrecv (msg_t *)
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::push_msg_direct (msg_t *, uint32_t, void *)
 {
     errno = ENOTSUP;
     return -1;

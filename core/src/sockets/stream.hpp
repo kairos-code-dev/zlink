@@ -50,10 +50,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     void queue_event (uint32_t routing_id_value_, unsigned char code_);
     bool prefetch_event ();
-    int try_direct_send (zlink::msg_t *msg_, uint32_t routing_id_);
-    bool pop_direct_msg (zlink::msg_t *msg_);
-    bool has_direct_msg ();
-    size_t direct_recv_shard (uint32_t routing_id_) const;
 
     fq_t _fq;
 

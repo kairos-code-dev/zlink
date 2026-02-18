@@ -26,7 +26,11 @@ bool stream_single_frame_recv_enabled ()
 bool stream_direct_io_enabled ()
 {
     const char *env = getenv ("ZLINK_STREAM_DIRECT_IO");
-    return env && *env && *env != '0';
+    //  STREAM direct-io is enabled by default.
+    //  Export ZLINK_STREAM_DIRECT_IO=0 to force-disable.
+    if (!env || !*env)
+        return true;
+    return *env != '0';
 }
 
 }
@@ -55,11 +59,10 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     if (options.out_batch_size < stream_batch_size)
         options.out_batch_size = stream_batch_size;
 
-    //  Auto-enable direct IO from environment variable.
-    if (stream_direct_io_enabled ())
-        options.stream_direct_io = 1;
+    //  Enable direct IO by default, with env override.
+    options.stream_direct_io = stream_direct_io_enabled () ? 1 : 0;
 
-    //  Set up direct IO if enabled (by env var or pre-set option).
+    //  Set up direct IO when enabled.
     if (options.stream_direct_io)
         setup_direct_io ();
 
@@ -290,9 +293,27 @@ int zlink::stream_t::xsend (msg_t *msg_)
         }
 
         const uint32_t routing_id = _current_out->get_server_socket_routing_id ();
-        if (try_direct_send (msg_, routing_id) == 1) {
-            _current_out = NULL;
-            return 0;
+        if (routing_id != 0) {
+            const size_t routing_index = static_cast<size_t> (routing_id);
+            lock_direct_queue ();
+            if (routing_index < _direct_send_engines.size ()
+                && _direct_send_engines[routing_index] != NULL) {
+                i_engine *engine = static_cast<i_engine *> (
+                  _direct_send_engines[routing_index]);
+                const int send_rc = engine->queue_direct_send (msg_);
+                unlock_direct_queue ();
+                if (send_rc >= 0) {
+                    if (send_rc == 0)
+                        engine->restart_deferred_read ();
+                    const int rc = msg_->init ();
+                    errno_assert (rc == 0);
+                    _current_out = NULL;
+                    return 0;
+                }
+                //  Fall back to pipe path on failure.
+            } else {
+                unlock_direct_queue ();
+            }
         }
 
         if (unlikely (routing_id == 0 || msg_->set_routing_id (routing_id) != 0)) {

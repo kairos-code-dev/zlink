@@ -163,7 +163,9 @@ struct options_t
     //  STREAM direct IO mode.
     //  When enabled, the STREAM socket creates its own io_thread and drives
     //  its io_context from the application thread, eliminating thread crossings.
-    //  0 = disabled (default), 1 = enabled.
+    //  0 = disabled, 1 = enabled.
+    //  Note: stream_t may enable this by default and honor env/setsockopt
+    //  overrides at runtime.
     int stream_direct_io;
 
     //  Pointer to the socket's direct io_thread (io_thread_t*), or NULL.

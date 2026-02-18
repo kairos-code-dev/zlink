@@ -5,6 +5,8 @@
 
 #include "transports/tcp/asio_tcp_connecter.hpp"
 #include "engine/asio/asio_poller.hpp"
+#include "engine/asio/asio_raw_engine.hpp"
+#include "engine/asio/asio_stream_engine.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
 #include "core/io_thread.hpp"
 #include "core/session_base.hpp"
@@ -27,6 +29,8 @@
 
 #include <limits>
 #include <cerrno>
+#include <cstdlib>
+#include <cstring>
 
 // Debug logging for ASIO TCP connecter - set to 1 to enable
 #define ASIO_CONNECTER_DEBUG 0
@@ -41,6 +45,19 @@
 
 namespace
 {
+bool use_tcp_stream_engine_connecter ()
+{
+    const char *env = std::getenv ("ZLINK_TCP_STREAM_CONNECTER_ENGINE");
+    if (!env || !*env)
+        env = std::getenv ("ZLINK_TCP_STREAM_ENGINE");
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp (env, "stream") == 0 || std::strcmp (env, "1") == 0
+           || std::strcmp (env, "on") == 0
+           || std::strcmp (env, "true") == 0;
+}
+
 int connect_delayed_errno_value ()
 {
 #ifdef ZLINK_HAVE_WINDOWS
@@ -392,15 +409,19 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
     const endpoint_uri_pair_t endpoint_pair (local_address_, _endpoint_str,
                                              endpoint_type_connect);
 
-    if (options.type == ZLINK_STREAM) {
-        close ();
-        terminate ();
-        return;
-    }
-
     //  Create the engine object for this connection using true proactor mode.
-    i_engine *engine =
-      new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
+    i_engine *engine = NULL;
+    if (options.type == ZLINK_STREAM) {
+        if (use_tcp_stream_engine_connecter ())
+            engine =
+              new (std::nothrow) asio_stream_engine_t (fd_, options, endpoint_pair);
+        else
+            engine = new (std::nothrow) asio_raw_engine_t (fd_, options,
+                                                           endpoint_pair);
+    } else {
+        engine = new (std::nothrow) asio_zmp_engine_t (fd_, options,
+                                                       endpoint_pair);
+    }
     alloc_assert (engine);
 
     //  Attach the engine to the corresponding session object.
@@ -414,7 +435,7 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
 bool zlink::asio_tcp_connecter_t::tune_socket (fd_t fd_)
 {
-    int rc = tune_tcp_socket (fd_);
+    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
     if (options.sndbuf >= 0)
         rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
     if (options.rcvbuf >= 0)

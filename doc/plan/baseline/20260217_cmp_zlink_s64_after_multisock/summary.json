@@ -1,0 +1,34 @@
+{
+  "config": {
+    "stacks": [
+      "zlink"
+    ],
+    "sizes": [
+      64
+    ],
+    "repeats": 3
+  },
+  "expected_rows": 3,
+  "actual_rows": 3,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "64": {
+      "zlink": {
+        "total": 3,
+        "pass": 3
+      }
+    }
+  },
+  "medians": {
+    "64": {
+      "zlink": {
+        "throughput_msg_s": 281100.8,
+        "throughput_mib_s": 34.31,
+        "p50_us": 34863.32,
+        "p95_us": 38154.06,
+        "p99_us": 42496.6
+      }
+    }
+  }
+}

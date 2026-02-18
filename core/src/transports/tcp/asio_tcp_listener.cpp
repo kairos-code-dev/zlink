@@ -16,6 +16,9 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
+#include <cstdlib>
+#include <cstring>
+
 #ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
@@ -36,6 +39,22 @@
 #else
 #define LISTENER_DBG(fmt, ...)
 #endif
+
+namespace
+{
+bool use_tcp_stream_engine_listener ()
+{
+    const char *env = std::getenv ("ZLINK_TCP_STREAM_LISTENER_ENGINE");
+    if (!env || !*env)
+        env = std::getenv ("ZLINK_TCP_STREAM_ENGINE");
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp (env, "stream") == 0 || std::strcmp (env, "1") == 0
+           || std::strcmp (env, "on") == 0
+           || std::strcmp (env, "true") == 0;
+}
+}
 
 zlink::asio_tcp_listener_t::asio_tcp_listener_t (io_thread_t *io_thread_,
                                                socket_base_t *socket_,
@@ -348,9 +367,14 @@ void zlink::asio_tcp_listener_t::create_engine (fd_t fd_)
 
     //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM)
-        engine = new (std::nothrow) asio_raw_engine_t (fd_, options, endpoint_pair);
-    else
+    if (options.type == ZLINK_STREAM) {
+        if (use_tcp_stream_engine_listener ())
+            engine =
+              new (std::nothrow) asio_stream_engine_t (fd_, options, endpoint_pair);
+        else
+            engine = new (std::nothrow) asio_raw_engine_t (fd_, options,
+                                                           endpoint_pair);
+    } else
         engine = new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
     alloc_assert (engine);
 
@@ -386,7 +410,7 @@ void zlink::asio_tcp_listener_t::close ()
 
 int zlink::asio_tcp_listener_t::tune_socket (fd_t fd_) const
 {
-    int rc = tune_tcp_socket (fd_);
+    int rc = tune_tcp_socket (fd_, options.tcp_nodelay);
     if (options.sndbuf >= 0)
         rc = rc | set_tcp_send_buffer (fd_, options.sndbuf);
     if (options.rcvbuf >= 0)

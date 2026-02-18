@@ -1,0 +1,19 @@
+[2026-02-18 00:36:09] run scope stacks=cppserver sizes=64,1024,65536
+[2026-02-18 00:36:09] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21345
+[2026-02-18 00:36:09] build stream client
+[2026-02-18 00:36:10] build cppserver server
+[2026-02-18 00:36:12] run start stack=cppserver size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21345
+[2026-02-18 00:36:17] run pass stack=cppserver size=64 repeat=1 tp=386252.00 p95_us=27280.49
+[2026-02-18 00:36:18] run start stack=cppserver size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21346
+[2026-02-18 00:36:24] run pass stack=cppserver size=64 repeat=2 tp=389916.40 p95_us=27491.26
+[2026-02-18 00:36:25] run start stack=cppserver size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21347
+[2026-02-18 00:36:31] run pass stack=cppserver size=64 repeat=3 tp=393002.80 p95_us=27187.17
+[2026-02-18 00:36:32] run start stack=cppserver size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21349
+[2026-02-18 00:36:37] run pass stack=cppserver size=1024 repeat=1 tp=351649.80 p95_us=30363.00
+[2026-02-18 00:36:38] run start stack=cppserver size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21350
+[2026-02-18 00:36:44] run pass stack=cppserver size=1024 repeat=2 tp=349648.80 p95_us=30117.91
+[2026-02-18 00:36:45] run start stack=cppserver size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21351
+[2026-02-18 00:36:51] run pass stack=cppserver size=1024 repeat=3 tp=327086.40 p95_us=43990.34
+[2026-02-18 00:36:52] run start stack=cppserver size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21353
+[2026-02-18 00:36:59] run pass stack=cppserver size=65536 repeat=1 tp=73972.00 p95_us=36974.29
+[2026-02-18 00:37:00] run start stack=cppserver size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21354

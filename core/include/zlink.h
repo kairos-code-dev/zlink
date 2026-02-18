@@ -309,6 +309,18 @@ ZLINK_EXPORT int zlink_msg_set (zlink_msg_t *msg_, int property_, int optval_);
 ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
                                      const char *property_);
 
+/** @brief Set STREAM routing id metadata on a message. */
+ZLINK_EXPORT int zlink_msg_set_routing_id (zlink_msg_t *msg_,
+                                           uint32_t routing_id_);
+
+/** @brief Get STREAM routing id metadata from a message. */
+ZLINK_EXPORT uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_);
+
+/**
+ * @brief Backward-compatible alias of zlink_msg_get_routing_id().
+ */
+ZLINK_EXPORT uint32_t zlink_msg_routing_id (zlink_msg_t *msg_);
+
 /******************************************************************************/
 /*  0MQ socket definition.                                                    */
 /******************************************************************************/
@@ -349,6 +361,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_KEEPALIVE_CNT 35
 #define ZLINK_TCP_KEEPALIVE_IDLE 36
 #define ZLINK_TCP_KEEPALIVE_INTVL 37
+#define ZLINK_TCP_NODELAY 118
 #define ZLINK_IMMEDIATE 39
 #define ZLINK_XPUB_VERBOSE 40
 #define ZLINK_IPV6 42
@@ -378,6 +391,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_ONLY_FIRST_SUBSCRIBE 108
 #define ZLINK_TOPICS_COUNT 116
 #define ZLINK_ZMP_METADATA 117
+#define ZLINK_STREAM_SINGLE_FRAME_RECV 119
 
 //  TLS protocol options
 #define ZLINK_TLS_CERT 95

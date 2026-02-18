@@ -1,0 +1,66 @@
+{
+  "config": {
+    "stacks": [
+      "cppserver"
+    ],
+    "sizes": [
+      64,
+      1024,
+      65536
+    ],
+    "repeats": 3
+  },
+  "expected_rows": 9,
+  "actual_rows": 9,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "64": {
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      }
+    },
+    "1024": {
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      }
+    },
+    "65536": {
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      }
+    }
+  },
+  "medians": {
+    "64": {
+      "cppserver": {
+        "throughput_msg_s": 382128.4,
+        "throughput_mib_s": 46.65,
+        "p50_us": 19358.1,
+        "p95_us": 27741.16,
+        "p99_us": 30407.14
+      }
+    },
+    "1024": {
+      "cppserver": {
+        "throughput_msg_s": 337266.4,
+        "throughput_mib_s": 658.72,
+        "p50_us": 20877.35,
+        "p95_us": 30832.67,
+        "p99_us": 33526.8
+      }
+    },
+    "65536": {
+      "cppserver": {
+        "throughput_msg_s": 68719.6,
+        "throughput_mib_s": 8589.95,
+        "p50_us": 32838.91,
+        "p95_us": 42635.92,
+        "p99_us": 5407252.63
+      }
+    }
+  }
+}

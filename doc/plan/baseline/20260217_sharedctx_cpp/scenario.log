@@ -1,0 +1,27 @@
+[2026-02-18 06:50:50] run scope stacks=cppserver sizes=64,1024,65536
+[2026-02-18 06:50:50] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21806
+[2026-02-18 06:50:50] build stream client
+[2026-02-18 06:50:51] build cppserver server
+[2026-02-18 06:50:53] run start stack=cppserver size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21806
+[2026-02-18 06:50:59] run pass stack=cppserver size=64 repeat=1 tp=382128.40 p95_us=26826.60
+[2026-02-18 06:51:00] run start stack=cppserver size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21807
+[2026-02-18 06:51:06] run pass stack=cppserver size=64 repeat=2 tp=382369.00 p95_us=27741.16
+[2026-02-18 06:51:07] run start stack=cppserver size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21809
+[2026-02-18 06:51:11] run pass stack=cppserver size=64 repeat=3 tp=378750.40 p95_us=28413.22
+[2026-02-18 06:51:12] run start stack=cppserver size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21811
+[2026-02-18 06:51:18] run pass stack=cppserver size=1024 repeat=1 tp=342505.80 p95_us=30832.67
+[2026-02-18 06:51:19] run start stack=cppserver size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21813
+[2026-02-18 06:51:25] run pass stack=cppserver size=1024 repeat=2 tp=337148.20 p95_us=29938.12
+[2026-02-18 06:51:26] run start stack=cppserver size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21814
+[2026-02-18 06:51:32] run pass stack=cppserver size=1024 repeat=3 tp=337266.40 p95_us=31296.46
+[2026-02-18 06:51:33] run start stack=cppserver size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21815
+[2026-02-18 06:51:39] run pass stack=cppserver size=65536 repeat=1 tp=68719.60 p95_us=37759.92
+[2026-02-18 06:51:40] run start stack=cppserver size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21817
+[2026-02-18 06:51:47] run pass stack=cppserver size=65536 repeat=2 tp=69305.60 p95_us=49057.42
+[2026-02-18 06:51:48] run start stack=cppserver size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21819
+[2026-02-18 06:51:56] run pass stack=cppserver size=65536 repeat=3 tp=68613.40 p95_us=42635.92
+[2026-02-18 06:51:57] result_dir=doc/plan/baseline/20260217_sharedctx_cpp
+[2026-02-18 06:51:57] metrics_csv=doc/plan/baseline/20260217_sharedctx_cpp/metrics.csv
+[2026-02-18 06:51:57] summary_json=doc/plan/baseline/20260217_sharedctx_cpp/summary.json
+[2026-02-18 06:51:57] comparison_md=doc/plan/baseline/20260217_sharedctx_cpp/comparison.md
+[2026-02-18 06:51:57] completed all runs

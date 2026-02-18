@@ -1,0 +1,15 @@
+[2026-02-17 23:22:28] run scope stacks=zlink sizes=64
+[2026-02-17 23:22:28] settings host=127.0.0.1 ccu=1000 duration=5 repeats=3 inflight=1 client_io_threads=1 server_io_threads=1 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21554
+[2026-02-17 23:22:28] build stream client
+[2026-02-17 23:22:29] build zlink server
+[2026-02-17 23:22:29] run start stack=zlink size=64 repeat=1 attempt=1 ccu=1000 duration=5 inflight=1 port=21554
+[2026-02-17 23:22:34] run pass stack=zlink size=64 repeat=1 tp=254089.80 p95_us=5210.10
+[2026-02-17 23:22:35] run start stack=zlink size=64 repeat=2 attempt=1 ccu=1000 duration=5 inflight=1 port=21555
+[2026-02-17 23:22:41] run pass stack=zlink size=64 repeat=2 tp=248681.60 p95_us=5279.27
+[2026-02-17 23:22:42] run start stack=zlink size=64 repeat=3 attempt=1 ccu=1000 duration=5 inflight=1 port=21556
+[2026-02-17 23:22:47] run pass stack=zlink size=64 repeat=3 tp=246036.60 p95_us=5077.54
+[2026-02-17 23:22:48] result_dir=doc/plan/baseline/20260217_final_pr_gate_workspace_script/zlink_s64
+[2026-02-17 23:22:48] metrics_csv=doc/plan/baseline/20260217_final_pr_gate_workspace_script/zlink_s64/metrics.csv
+[2026-02-17 23:22:48] summary_json=doc/plan/baseline/20260217_final_pr_gate_workspace_script/zlink_s64/summary.json
+[2026-02-17 23:22:48] comparison_md=doc/plan/baseline/20260217_final_pr_gate_workspace_script/zlink_s64/comparison.md
+[2026-02-17 23:22:48] completed all runs

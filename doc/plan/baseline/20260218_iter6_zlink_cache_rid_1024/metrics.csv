@@ -1,0 +1,4 @@
+stack,size,repeat,attempt,ccu,duration,inflight,client_rc,throughput_msg_s,throughput_mib_s,p50_us,p95_us,p99_us,pass_fail,port,client_log,server_log
+zlink,1024,1,1,10000,5,1,0,140719.80,274.84,48153.40,68295.00,95953.60,PASS,20517,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r1_a1_client.log,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r1_a1_server.log
+zlink,1024,2,1,10000,5,1,0,137126.20,267.82,47699.43,67773.74,103821.31,PASS,20519,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r2_a1_client.log,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r2_a1_server.log
+zlink,1024,3,1,10000,5,1,0,135927.60,265.48,48278.29,70392.39,100243.60,PASS,20521,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r3_a1_client.log,doc/plan/baseline/20260218_iter6_zlink_cache_rid_1024/logs/zlink_s1024_r3_a1_server.log

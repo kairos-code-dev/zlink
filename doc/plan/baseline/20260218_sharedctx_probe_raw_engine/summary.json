@@ -1,0 +1,66 @@
+{
+  "config": {
+    "stacks": [
+      "zlink"
+    ],
+    "sizes": [
+      64,
+      1024,
+      65536
+    ],
+    "repeats": 1
+  },
+  "expected_rows": 3,
+  "actual_rows": 3,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "64": {
+      "zlink": {
+        "total": 1,
+        "pass": 1
+      }
+    },
+    "1024": {
+      "zlink": {
+        "total": 1,
+        "pass": 1
+      }
+    },
+    "65536": {
+      "zlink": {
+        "total": 1,
+        "pass": 1
+      }
+    }
+  },
+  "medians": {
+    "64": {
+      "zlink": {
+        "throughput_msg_s": 234367.2,
+        "throughput_mib_s": 28.61,
+        "p50_us": 40848.68,
+        "p95_us": 46342.05,
+        "p99_us": 85614.83
+      }
+    },
+    "1024": {
+      "zlink": {
+        "throughput_msg_s": 216757.2,
+        "throughput_mib_s": 423.35,
+        "p50_us": 45303.97,
+        "p95_us": 49609.09,
+        "p99_us": 69876.04
+      }
+    },
+    "65536": {
+      "zlink": {
+        "throughput_msg_s": 67313.2,
+        "throughput_mib_s": 8414.15,
+        "p50_us": 134920.84,
+        "p95_us": 164628.24,
+        "p99_us": 938663.58
+      }
+    }
+  }
+}

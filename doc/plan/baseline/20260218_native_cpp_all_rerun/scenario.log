@@ -1,0 +1,6 @@
+[2026-02-18 00:37:46] run scope stacks=cppserver sizes=64,1024,65536
+[2026-02-18 00:37:46] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20453
+[2026-02-18 00:37:46] build stream client
+[2026-02-18 00:37:47] build cppserver server
+[2026-02-18 00:37:49] run start stack=cppserver size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20453
+[2026-02-18 00:37:55] run pass stack=cppserver size=64 repeat=1 tp=395888.00 p95_us=26156.90

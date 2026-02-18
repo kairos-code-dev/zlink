@@ -187,6 +187,8 @@ zlink::socket_base_t::socket_base_t (ctx_t *parent_,
     _poller (NULL),
     _last_tsc (0),
     _ticks (0),
+    _stream_send_routing_pending (false),
+    _stream_send_routing_id (0),
     _rcvmore (false),
     _monitor_socket (NULL),
     _monitor_events (0),
@@ -1126,9 +1128,52 @@ int zlink::socket_base_t::send (msg_t *msg_, int flags_)
     }
 
     //  Process pending commands, if any.
-    int rc = process_commands (0, true);
-    if (unlikely (rc != 0)) {
-        return -1;
+    //  STREAM legacy multipart fast path already processed commands at
+    //  routing-id frame stage, so skip duplicate processing for the
+    //  immediate payload frame.
+    const bool skip_stream_payload_commands =
+      options.type == ZLINK_STREAM && _stream_send_routing_pending
+      && ((flags_ & ZLINK_SNDMORE) == 0);
+    int rc = 0;
+    if (!skip_stream_payload_commands) {
+        rc = process_commands (0, true);
+        if (unlikely (rc != 0)) {
+            return -1;
+        }
+    }
+
+    //  STREAM legacy multipart fast path:
+    //  1) first call: send(routing_id_frame, ZLINK_SNDMORE) -> just cache rid
+    //  2) second call: send(payload, 0) -> attach cached rid and send once
+    if (options.type == ZLINK_STREAM) {
+        const bool send_more = (flags_ & ZLINK_SNDMORE) != 0;
+
+        if (!_stream_send_routing_pending && send_more
+            && msg_->get_routing_id () == 0 && msg_->size () == 4) {
+            _stream_send_routing_id =
+              get_uint32 (static_cast<const unsigned char *> (msg_->data ()));
+            _stream_send_routing_pending = true;
+
+            rc = msg_->close ();
+            errno_assert (rc == 0);
+            rc = msg_->init ();
+            errno_assert (rc == 0);
+            return 0;
+        }
+
+        if (_stream_send_routing_pending) {
+            const uint32_t routing_id = _stream_send_routing_id;
+            _stream_send_routing_pending = false;
+            _stream_send_routing_id = 0;
+
+            if (routing_id != 0 && msg_->get_routing_id () == 0) {
+                rc = msg_->set_routing_id (routing_id);
+                if (unlikely (rc != 0))
+                    return -1;
+            }
+
+            flags_ &= ~ZLINK_SNDMORE;
+        }
     }
 
     //  Clear any user-visible flags that are set on the message.
@@ -1221,7 +1266,9 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     //  Note that 'recv' uses different command throttling algorithm (the one
     //  described above) from the one used by 'send'. This is because counting
     //  ticks is more efficient than doing RDTSC all the time.
-    if (++_ticks == inbound_poll_rate) {
+    const int poll_rate =
+      options.type == ZLINK_STREAM ? (inbound_poll_rate * 4) : inbound_poll_rate;
+    if (++_ticks == poll_rate) {
         if (unlikely (process_commands (0, false) != 0)) {
             return -1;
         }

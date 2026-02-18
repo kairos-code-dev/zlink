@@ -1,0 +1,37 @@
+[2026-02-18 09:09:56] run scope stacks=asio,cppserver,dotnet,zlink,cgdk10 sizes=64,1024,65536
+[2026-02-18 09:09:56] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20121
+[2026-02-18 09:09:56] build stream client
+[2026-02-18 09:09:58] build asio server
+[2026-02-18 09:09:59] build cppserver server
+[2026-02-18 09:10:02] build dotnet server
+[2026-02-18 09:10:04] build zlink server
+[2026-02-18 09:10:05] build cgdk10 server
+[2026-02-18 09:10:42] run start stack=asio size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20121
+[2026-02-18 09:10:48] run pass stack=asio size=64 repeat=1 tp=309989.40 p95_us=35028.82
+[2026-02-18 09:10:49] run start stack=asio size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20122
+[2026-02-18 09:10:55] run pass stack=asio size=64 repeat=2 tp=320473.20 p95_us=32310.81
+[2026-02-18 09:10:56] run start stack=asio size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20123
+[2026-02-18 09:11:01] run pass stack=asio size=64 repeat=3 tp=316954.20 p95_us=32784.49
+[2026-02-18 09:11:02] run start stack=asio size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20125
+[2026-02-18 09:11:08] run pass stack=asio size=1024 repeat=1 tp=251266.40 p95_us=42591.96
+[2026-02-18 09:11:08] run start stack=asio size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20126
+[2026-02-18 09:11:14] run pass stack=asio size=1024 repeat=2 tp=256098.40 p95_us=41748.23
+[2026-02-18 09:11:15] run start stack=asio size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20127
+[2026-02-18 09:11:20] run pass stack=asio size=1024 repeat=3 tp=250359.60 p95_us=42676.93
+[2026-02-18 09:11:21] run start stack=asio size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20129
+[2026-02-18 09:11:28] run pass stack=asio size=65536 repeat=1 tp=58898.80 p95_us=59084.10
+[2026-02-18 09:11:29] run start stack=asio size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20131
+[2026-02-18 09:11:36] run pass stack=asio size=65536 repeat=2 tp=58720.80 p95_us=66386.31
+[2026-02-18 09:11:36] run start stack=asio size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20133
+[2026-02-18 09:11:43] run pass stack=asio size=65536 repeat=3 tp=58184.60 p95_us=48713.10
+[2026-02-18 09:11:44] run start stack=cppserver size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20135
+[2026-02-18 09:11:50] run pass stack=cppserver size=64 repeat=1 tp=371801.80 p95_us=28644.82
+[2026-02-18 09:11:51] run start stack=cppserver size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20137
+[2026-02-18 09:11:56] run pass stack=cppserver size=64 repeat=2 tp=373407.00 p95_us=28286.40
+[2026-02-18 09:11:57] run start stack=cppserver size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20139
+[2026-02-18 09:12:03] run pass stack=cppserver size=64 repeat=3 tp=366694.40 p95_us=28380.49
+[2026-02-18 09:12:04] run start stack=cppserver size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20141
+[2026-02-18 09:12:09] run pass stack=cppserver size=1024 repeat=1 tp=336238.40 p95_us=31117.11
+[2026-02-18 09:12:10] run start stack=cppserver size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20143
+[2026-02-18 09:12:15] run pass stack=cppserver size=1024 repeat=2 tp=330249.60 p95_us=30201.88
+[2026-02-18 09:12:16] run start stack=cppserver size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20145

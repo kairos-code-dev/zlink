@@ -1,0 +1,15 @@
+[2026-02-18 00:33:11] run scope stacks=zlink sizes=1024
+[2026-02-18 00:33:11] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21833
+[2026-02-18 00:33:11] build stream client
+[2026-02-18 00:33:12] build zlink server
+[2026-02-18 00:33:12] run start stack=zlink size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21833
+[2026-02-18 00:33:18] run pass stack=zlink size=1024 repeat=1 tp=141623.80 p95_us=67757.48
+[2026-02-18 00:33:19] run start stack=zlink size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21835
+[2026-02-18 00:33:25] run pass stack=zlink size=1024 repeat=2 tp=143719.20 p95_us=71702.71
+[2026-02-18 00:33:26] run start stack=zlink size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21837
+[2026-02-18 00:33:31] run pass stack=zlink size=1024 repeat=3 tp=141861.60 p95_us=71237.86
+[2026-02-18 00:33:32] result_dir=doc/plan/baseline/20260218_iter5_zlink_quickack_1024
+[2026-02-18 00:33:32] metrics_csv=doc/plan/baseline/20260218_iter5_zlink_quickack_1024/metrics.csv
+[2026-02-18 00:33:32] summary_json=doc/plan/baseline/20260218_iter5_zlink_quickack_1024/summary.json
+[2026-02-18 00:33:32] comparison_md=doc/plan/baseline/20260218_iter5_zlink_quickack_1024/comparison.md
+[2026-02-18 00:33:32] completed all runs

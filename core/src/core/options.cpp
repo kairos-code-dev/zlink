@@ -170,6 +170,8 @@ zlink::options_t::options_t () :
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
     tcp_keepalive_intvl (-1),
+    tcp_nodelay (1),
+    stream_single_frame_recv (false),
     socket_id (0),
     conflate (false),
     handshake_ivl (30000),
@@ -381,6 +383,15 @@ int zlink::options_t::setsockopt (int option_,
             }
             break;
 
+        case ZLINK_TCP_NODELAY:
+            if (is_int && (value == -1 || value == 0 || value == 1)) {
+                if (connected)
+                    break;
+                tcp_nodelay = value;
+                return 0;
+            }
+            break;
+
         case ZLINK_IMMEDIATE:
             if (is_int && (value == 0 || value == 1)) {
                 immediate = value;
@@ -406,6 +417,12 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_ZMP_METADATA:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &zmp_metadata);
+
+        case ZLINK_STREAM_SINGLE_FRAME_RECV:
+            if (connected)
+                break;
+            return do_setsockopt_int_as_bool_strict (
+              optval_, optvallen_, &stream_single_frame_recv);
 
         case ZLINK_HEARTBEAT_IVL:
             if (is_int && value >= 0) {
@@ -700,6 +717,13 @@ int zlink::options_t::getsockopt (int option_,
             }
             break;
 
+        case ZLINK_TCP_NODELAY:
+            if (is_int) {
+                *value = tcp_nodelay;
+                return 0;
+            }
+            break;
+
         case ZLINK_CONFLATE:
             if (is_int) {
                 *value = conflate;
@@ -724,6 +748,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_ZMP_METADATA:
             if (is_int) {
                 *value = zmp_metadata ? 1 : 0;
+                return 0;
+            }
+            break;
+
+        case ZLINK_STREAM_SINGLE_FRAME_RECV:
+            if (is_int) {
+                *value = stream_single_frame_recv ? 1 : 0;
                 return 0;
             }
             break;

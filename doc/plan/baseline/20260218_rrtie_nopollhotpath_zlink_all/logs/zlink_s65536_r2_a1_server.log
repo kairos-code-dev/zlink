@@ -1,0 +1,2 @@
+zlink stream: tcp_nodelay=1
+Assertion failed: check () (/home/hep7/project/kairos/zlink-perf-wt/core/src/core/msg.cpp:387)

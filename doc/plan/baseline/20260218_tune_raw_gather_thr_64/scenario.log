@@ -1,0 +1,13 @@
+[2026-02-18 00:19:40] run scope stacks=zlink sizes=1024
+[2026-02-18 00:19:40] settings host=127.0.0.1 ccu=10000 duration=5 repeats=2 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20906
+[2026-02-18 00:19:40] build stream client
+[2026-02-18 00:19:41] build zlink server
+[2026-02-18 00:19:41] run start stack=zlink size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20906
+[2026-02-18 00:19:47] run pass stack=zlink size=1024 repeat=1 tp=124487.60 p95_us=75805.74
+[2026-02-18 00:19:48] run start stack=zlink size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20907
+[2026-02-18 00:19:54] run pass stack=zlink size=1024 repeat=2 tp=124900.60 p95_us=67620.87
+[2026-02-18 00:19:55] result_dir=doc/plan/baseline/20260218_tune_raw_gather_thr_64
+[2026-02-18 00:19:55] metrics_csv=doc/plan/baseline/20260218_tune_raw_gather_thr_64/metrics.csv
+[2026-02-18 00:19:55] summary_json=doc/plan/baseline/20260218_tune_raw_gather_thr_64/summary.json
+[2026-02-18 00:19:55] comparison_md=doc/plan/baseline/20260218_tune_raw_gather_thr_64/comparison.md
+[2026-02-18 00:19:55] completed all runs

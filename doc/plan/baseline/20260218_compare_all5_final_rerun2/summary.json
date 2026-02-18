@@ -1,0 +1,202 @@
+{
+  "config": {
+    "stacks": [
+      "asio",
+      "cppserver",
+      "dotnet",
+      "zlink",
+      "cgdk10"
+    ],
+    "sizes": [
+      64,
+      1024,
+      65536
+    ],
+    "repeats": 3
+  },
+  "expected_rows": 45,
+  "actual_rows": 45,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "64": {
+      "asio": {
+        "total": 3,
+        "pass": 3
+      },
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      },
+      "dotnet": {
+        "total": 3,
+        "pass": 3
+      },
+      "zlink": {
+        "total": 3,
+        "pass": 3
+      },
+      "cgdk10": {
+        "total": 3,
+        "pass": 3
+      }
+    },
+    "1024": {
+      "asio": {
+        "total": 3,
+        "pass": 3
+      },
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      },
+      "dotnet": {
+        "total": 3,
+        "pass": 3
+      },
+      "zlink": {
+        "total": 3,
+        "pass": 3
+      },
+      "cgdk10": {
+        "total": 3,
+        "pass": 3
+      }
+    },
+    "65536": {
+      "asio": {
+        "total": 3,
+        "pass": 3
+      },
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      },
+      "dotnet": {
+        "total": 3,
+        "pass": 3
+      },
+      "zlink": {
+        "total": 3,
+        "pass": 3
+      },
+      "cgdk10": {
+        "total": 3,
+        "pass": 3
+      }
+    }
+  },
+  "medians": {
+    "64": {
+      "asio": {
+        "throughput_msg_s": 318301.8,
+        "throughput_mib_s": 38.86,
+        "p50_us": 31274.86,
+        "p95_us": 32864.43,
+        "p99_us": 37127.71
+      },
+      "cppserver": {
+        "throughput_msg_s": 374868.0,
+        "throughput_mib_s": 45.76,
+        "p50_us": 19397.89,
+        "p95_us": 28382.93,
+        "p99_us": 32015.13
+      },
+      "dotnet": {
+        "throughput_msg_s": 387285.6,
+        "throughput_mib_s": 47.28,
+        "p50_us": 25708.06,
+        "p95_us": 26567.36,
+        "p99_us": 28369.74
+      },
+      "zlink": {
+        "throughput_msg_s": 352261.2,
+        "throughput_mib_s": 43.0,
+        "p50_us": 26801.73,
+        "p95_us": 29495.18,
+        "p99_us": 30642.65
+      },
+      "cgdk10": {
+        "throughput_msg_s": 330252.0,
+        "throughput_mib_s": 40.31,
+        "p50_us": 27377.2,
+        "p95_us": 34760.52,
+        "p99_us": 40609.44
+      }
+    },
+    "1024": {
+      "asio": {
+        "throughput_msg_s": 255097.0,
+        "throughput_mib_s": 498.24,
+        "p50_us": 35813.71,
+        "p95_us": 41749.61,
+        "p99_us": 43054.8
+      },
+      "cppserver": {
+        "throughput_msg_s": 332876.2,
+        "throughput_mib_s": 650.15,
+        "p50_us": 20454.76,
+        "p95_us": 30870.9,
+        "p99_us": 34536.45
+      },
+      "dotnet": {
+        "throughput_msg_s": 361526.0,
+        "throughput_mib_s": 706.11,
+        "p50_us": 26959.56,
+        "p95_us": 30064.84,
+        "p99_us": 31489.3
+      },
+      "zlink": {
+        "throughput_msg_s": 321122.4,
+        "throughput_mib_s": 627.19,
+        "p50_us": 28986.64,
+        "p95_us": 32151.28,
+        "p99_us": 34437.63
+      },
+      "cgdk10": {
+        "throughput_msg_s": 296494.4,
+        "throughput_mib_s": 579.09,
+        "p50_us": 29737.52,
+        "p95_us": 36190.93,
+        "p99_us": 61314.97
+      }
+    },
+    "65536": {
+      "asio": {
+        "throughput_msg_s": 59066.4,
+        "throughput_mib_s": 7383.3,
+        "p50_us": 51141.09,
+        "p95_us": 58229.12,
+        "p99_us": 5223457.26
+      },
+      "cppserver": {
+        "throughput_msg_s": 68949.0,
+        "throughput_mib_s": 8618.62,
+        "p50_us": 36286.29,
+        "p95_us": 46426.07,
+        "p99_us": 5467902.48
+      },
+      "dotnet": {
+        "throughput_msg_s": 78980.6,
+        "throughput_mib_s": 9872.58,
+        "p50_us": 123443.77,
+        "p95_us": 138408.16,
+        "p99_us": 170263.31
+      },
+      "zlink": {
+        "throughput_msg_s": 74089.6,
+        "throughput_mib_s": 9261.2,
+        "p50_us": 75377.06,
+        "p95_us": 94880.45,
+        "p99_us": 3891367.11
+      },
+      "cgdk10": {
+        "throughput_msg_s": 74546.2,
+        "throughput_mib_s": 9318.27,
+        "p50_us": 124793.32,
+        "p95_us": 142567.61,
+        "p99_us": 452565.0
+      }
+    }
+  }
+}

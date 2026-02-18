@@ -1,0 +1,15 @@
+[2026-02-18 00:07:26] run scope stacks=cppserver sizes=65536
+[2026-02-18 00:07:26] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20511
+[2026-02-18 00:07:26] build stream client
+[2026-02-18 00:07:27] build cppserver server
+[2026-02-18 00:07:30] run start stack=cppserver size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20511
+[2026-02-18 00:07:37] run pass stack=cppserver size=65536 repeat=1 tp=72800.00 p95_us=36432.69
+[2026-02-18 00:07:38] run start stack=cppserver size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20513
+[2026-02-18 00:07:46] run pass stack=cppserver size=65536 repeat=2 tp=72226.80 p95_us=36922.54
+[2026-02-18 00:07:47] run start stack=cppserver size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20515
+[2026-02-18 00:07:54] run pass stack=cppserver size=65536 repeat=3 tp=69216.60 p95_us=51735.31
+[2026-02-18 00:07:55] result_dir=doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun
+[2026-02-18 00:07:55] metrics_csv=doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/metrics.csv
+[2026-02-18 00:07:55] summary_json=doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/summary.json
+[2026-02-18 00:07:55] comparison_md=doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/comparison.md
+[2026-02-18 00:07:55] completed all runs

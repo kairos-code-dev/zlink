@@ -1,0 +1,2 @@
+zlink stream: tcp_nodelay=1
+zlink stream: bind failed: Address already in use endpoint=tcp://127.0.0.1:21804

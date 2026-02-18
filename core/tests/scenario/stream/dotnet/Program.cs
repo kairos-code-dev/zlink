@@ -7,11 +7,9 @@ namespace StreamScenarioDotnet;
 
 internal sealed class ServerOptions
 {
-    public string Mode { get; set; } = "echo";
     public string Host { get; set; } = "0.0.0.0";
     public int Port { get; set; } = 38004;
     public int Size { get; set; } = 1024;
-    public string ScenarioId { get; set; } = "stream-echo";
     public int SndBuf { get; set; } = 1024 * 1024;
     public int RcvBuf { get; set; } = 1024 * 1024;
     public int Backlog { get; set; } = 32768;
@@ -36,9 +34,6 @@ internal sealed class ServerOptions
             string value = args[++i];
             switch (key)
             {
-                case "--mode":
-                    options.Mode = value;
-                    break;
                 case "--host":
                     options.Host = value;
                     break;
@@ -47,9 +42,6 @@ internal sealed class ServerOptions
                     break;
                 case "--size":
                     options.Size = ParseInt(value, options.Size, MinPayloadSize);
-                    break;
-                case "--scenario-id":
-                    options.ScenarioId = value;
                     break;
                 case "--sndbuf":
                     options.SndBuf = ParseInt(value, options.SndBuf, 1);
@@ -67,12 +59,6 @@ internal sealed class ServerOptions
                     options.IoThreads = ParseInt(value, options.IoThreads, 1);
                     break;
             }
-        }
-
-        if (!string.Equals(options.Mode, "echo", StringComparison.Ordinal))
-        {
-            Console.Error.WriteLine($"dotnet stream: unsupported mode {options.Mode}");
-            return false;
         }
 
         if (options.Size > MaxPayloadSize)
@@ -291,7 +277,6 @@ internal sealed class EchoServer
                     sent += nsend;
                 }
 
-                _metrics.AddRecvMsg();
             }
         }
         catch (OperationCanceledException)
@@ -387,13 +372,27 @@ internal static class Program
         using CancellationTokenSource cts = new();
         PosixSignalRegistration? sigIntReg = null;
         PosixSignalRegistration? sigTermReg = null;
+        void RequestCancel()
+        {
+            try
+            {
+                if (!cts.IsCancellationRequested)
+                    cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // ignored
+            }
+        }
 
-        Console.CancelKeyPress += (_, e) =>
+        ConsoleCancelEventHandler cancelHandler = (_, e) =>
         {
             e.Cancel = true;
-            cts.Cancel();
+            RequestCancel();
         };
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+        EventHandler processExitHandler = (_, _) => RequestCancel();
+        Console.CancelKeyPress += cancelHandler;
+        AppDomain.CurrentDomain.ProcessExit += processExitHandler;
 
         try
         {
@@ -402,12 +401,12 @@ internal static class Program
                 sigIntReg = PosixSignalRegistration.Create(PosixSignal.SIGINT, context =>
                 {
                     context.Cancel = true;
-                    cts.Cancel();
+                    RequestCancel();
                 });
                 sigTermReg = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
                 {
                     context.Cancel = true;
-                    cts.Cancel();
+                    RequestCancel();
                 });
             }
         }
@@ -431,6 +430,8 @@ internal static class Program
         }
         finally
         {
+            Console.CancelKeyPress -= cancelHandler;
+            AppDomain.CurrentDomain.ProcessExit -= processExitHandler;
             sigIntReg?.Dispose();
             sigTermReg?.Dispose();
         }

@@ -1,0 +1,1 @@
+RESULT throughput_msg_s=182441.40 throughput_mib_s=22.27 p50_us=5432.48 p95_us=6730.23 p99_us=7879.86 pass_fail=PASS

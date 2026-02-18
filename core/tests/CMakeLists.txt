@@ -50,6 +50,11 @@ set(tests
   test_router_multiple_dealers
   test_stream_socket
   test_stream_fastpath
+  test_stream_msg_routing_id_api
+  test_stream_single_frame_recv_sockopt
+  test_tcp_nodelay_sockopt
+  test_stream_invalid_sockopt
+  test_stream_option_change_after_connect
   test_transport_matrix
   routing-id/test_router_auto_id_format
   routing-id/test_stream_routing_id_size

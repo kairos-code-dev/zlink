@@ -9,7 +9,9 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -27,48 +29,41 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 
 struct client_options_t
 {
-    std::string mode;
     std::string host;
     int port;
     int ccu;
     size_t size;
     int duration;
     int inflight;
-    std::string scenario_id;
-    int sndbuf;
-    int rcvbuf;
-    int tcp_nodelay;
     int io_threads;
-    int connect_timeout;
-    int connect_retries;
-    int connect_retry_delay_ms;
 
     client_options_t ()
-        : mode ("echo"),
-          host ("127.0.0.1"),
+        : host ("127.0.0.1"),
           port (38001),
           ccu (10000),
           size (1024),
           duration (5),
-          inflight (10),
-          scenario_id ("stream-echo"),
-          sndbuf (1024 * 1024),
-          rcvbuf (1024 * 1024),
-          tcp_nodelay (1),
-          io_threads (8),
-          connect_timeout (10),
-          connect_retries (3),
-          connect_retry_delay_ms (100)
+          inflight (1),
+          io_threads (1)
     {
     }
 };
+
+static const int k_connect_timeout_s = 60;
+static const int k_connect_retry_delay_ms = 25;
+static const int k_socket_sndbuf = 256 * 1024;
+static const int k_socket_rcvbuf = 256 * 1024;
+static const int k_socket_tcp_nodelay = 1;
+static const size_t k_loopback_port_headroom = 64;
 
 class echo_client_t;
 
 class client_session_t : public std::enable_shared_from_this<client_session_t>
 {
   public:
-    client_session_t (echo_client_t &owner_, boost::asio::io_context &io_);
+    client_session_t (echo_client_t &owner_,
+                      boost::asio::io_context &io_,
+                      const tcp::endpoint &source_bind_ep_);
 
     void begin_connect (const tcp::endpoint &endpoint_);
     void start_traffic ();
@@ -98,14 +93,85 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     bool closed;
     bool write_inflight;
     bool connect_started;
-    int retry_attempt;
     size_t outstanding;
+    std::chrono::steady_clock::time_point connect_deadline;
 
     tcp::endpoint endpoint;
+    tcp::endpoint source_bind_ep;
     std::vector<unsigned char> read_header;
     std::vector<unsigned char> read_body;
     std::vector<unsigned char> write_buf;
 };
+
+struct loopback_bind_plan_t
+{
+    size_t port_capacity;
+    std::vector<boost::asio::ip::address_v4> source_addrs;
+
+    loopback_bind_plan_t () : port_capacity (0), source_addrs () {}
+};
+
+size_t read_ipv4_ephemeral_port_capacity ()
+{
+    std::ifstream in ("/proc/sys/net/ipv4/ip_local_port_range");
+    if (!in.is_open ())
+        return 0;
+
+    int low = 0;
+    int high = 0;
+    in >> low >> high;
+    if (!in.good () && !in.eof ())
+        return 0;
+    if (low <= 0 || high <= 0 || high < low)
+        return 0;
+    return static_cast<size_t> (high - low + 1);
+}
+
+boost::asio::ip::address_v4 make_loopback_shard_addr (size_t idx)
+{
+    const size_t block = idx / 254;
+    const size_t tail = (idx % 254) + 1;
+    boost::asio::ip::address_v4::bytes_type bytes;
+    bytes[0] = 127;
+    bytes[1] = 0;
+    bytes[2] = static_cast<unsigned char> (block & 0xFF);
+    bytes[3] = static_cast<unsigned char> (tail);
+    return boost::asio::ip::address_v4 (bytes);
+}
+
+loopback_bind_plan_t make_loopback_bind_plan (const tcp::endpoint &endpoint,
+                                              int ccu)
+{
+    loopback_bind_plan_t plan;
+    if (ccu <= 0)
+        return plan;
+    if (!endpoint.address ().is_v4 ())
+        return plan;
+    if (!endpoint.address ().to_v4 ().is_loopback ())
+        return plan;
+
+    plan.port_capacity = read_ipv4_ephemeral_port_capacity ();
+    if (plan.port_capacity == 0)
+        return plan;
+
+    const size_t usable_ports =
+      plan.port_capacity > k_loopback_port_headroom
+        ? plan.port_capacity - k_loopback_port_headroom
+        : plan.port_capacity;
+    if (usable_ports == 0)
+        return plan;
+
+    const size_t required =
+      static_cast<size_t> (ccu + static_cast<int> (usable_ports) - 1)
+      / usable_ports;
+    if (required <= 1)
+        return plan;
+
+    plan.source_addrs.reserve (required);
+    for (size_t i = 0; i < required; ++i)
+        plan.source_addrs.push_back (make_loopback_shard_addr (i));
+    return plan;
+}
 
 class echo_client_t
 {
@@ -133,7 +199,16 @@ class echo_client_t
                     static_cast<unsigned short> (opt.port))
     {
         connected_sessions.reserve (static_cast<size_t> (std::max (1, opt.ccu)));
-        rtt_samples_us.reserve (k_rtt_sample_capacity);
+        rtt_samples_us.assign (k_rtt_sample_capacity, 0.0);
+        loopback_bind_plan = make_loopback_bind_plan (endpoint, opt.ccu);
+        if (!loopback_bind_plan.source_addrs.empty ()) {
+            std::fprintf (
+              stderr,
+              "stream client: loopback source-ip sharding enabled "
+              "(ccu=%d, port_capacity=%zu, shards=%zu)\n",
+              opt.ccu, loopback_bind_plan.port_capacity,
+              loopback_bind_plan.source_addrs.size ());
+        }
     }
 
     int run ()
@@ -144,8 +219,10 @@ class echo_client_t
         }
 
         sessions.reserve (static_cast<size_t> (std::max (1, opt.ccu)));
-        for (int i = 0; i < opt.ccu; ++i)
-            sessions.push_back (std::make_shared<client_session_t> (*this, io));
+        for (int i = 0; i < opt.ccu; ++i) {
+            sessions.push_back (std::make_shared<client_session_t> (
+              *this, io, source_bind_endpoint_for (static_cast<size_t> (i))));
+        }
 
         const std::chrono::steady_clock::time_point connect_begin =
           std::chrono::steady_clock::now ();
@@ -153,7 +230,7 @@ class echo_client_t
 
         const auto connect_deadline = std::chrono::steady_clock::now ()
                                       + std::chrono::seconds (
-                                        std::max (1, opt.connect_timeout));
+                                        k_connect_timeout_s);
         {
             std::unique_lock<std::mutex> lk (connect_mu);
             while (connect_completed.load (std::memory_order_acquire)
@@ -201,7 +278,7 @@ class echo_client_t
 
         const auto drain_deadline = std::chrono::steady_clock::now ()
                                     + std::chrono::seconds (
-                                      std::max (5, opt.connect_timeout));
+                                      std::max (5, k_connect_timeout_s));
         while (std::chrono::steady_clock::now () < drain_deadline) {
             if (outstanding_total.load (std::memory_order_relaxed) <= 0)
                 break;
@@ -239,9 +316,15 @@ class echo_client_t
             : 0.0;
 
         stream_echo::summary_stats_t stats;
-        {
-            std::lock_guard<std::mutex> lk (samples_mu);
-            stats = stream_echo::make_summary_stats (rtt_samples_us);
+        const size_t sample_count = std::min<size_t> (
+          sample_overwrite_idx.load (std::memory_order_relaxed),
+          rtt_samples_us.size ());
+        if (sample_count > 0) {
+            std::vector<double> snapshot;
+            snapshot.reserve (sample_count);
+            for (size_t i = 0; i < sample_count; ++i)
+                snapshot.push_back (rtt_samples_us[i]);
+            stats = stream_echo::make_summary_stats (snapshot);
         }
 
         const bool have_samples = stats.p95_us > 0.0;
@@ -253,23 +336,10 @@ class echo_client_t
         std::printf (
           "%s\n",
           stream_echo::make_result_line (
-            "client", opt.scenario_id, opt.size, opt.ccu, opt.inflight,
-            opt.duration, throughput_msg_s,
-            throughput_mib_s, stats,
-            connect_success.load (std::memory_order_relaxed),
-            connect_fail.load (std::memory_order_relaxed),
-            connect_ms,
-            parse_error.load (std::memory_order_relaxed),
-            timeout_error.load (std::memory_order_relaxed), incomplete_ratio,
-            pass)
+            throughput_msg_s, throughput_mib_s, stats, pass)
             .c_str ());
 
-        std::printf (
-          "METRIC stack=client scenario_id=%s sent_msgs=%ld recv_msgs=%ld "
-          "abandoned_outstanding=%ld send_error=%ld\n",
-          opt.scenario_id.c_str (), sent, recv,
-          abandoned_outstanding.load (std::memory_order_relaxed),
-          send_error.load (std::memory_order_relaxed));
+        (void)connect_ms;
 
         return pass ? 0 : 2;
     }
@@ -351,20 +421,28 @@ class echo_client_t
 
     void add_rtt_sample (double us)
     {
-        std::lock_guard<std::mutex> lk (samples_mu);
-        if (rtt_samples_us.size () < k_rtt_sample_capacity) {
-            rtt_samples_us.push_back (us);
-        } else {
-            const size_t idx =
-              sample_overwrite_idx.fetch_add (1, std::memory_order_relaxed)
-              % k_rtt_sample_capacity;
-            rtt_samples_us[idx] = us;
-        }
+        if (rtt_samples_us.empty ())
+            return;
+
+        const size_t idx =
+          sample_overwrite_idx.fetch_add (1, std::memory_order_relaxed)
+          % rtt_samples_us.size ();
+        rtt_samples_us[idx] = us;
     }
 
     const client_options_t &options () const { return opt; }
 
   private:
+    tcp::endpoint source_bind_endpoint_for (size_t idx) const
+    {
+        if (loopback_bind_plan.source_addrs.empty ())
+            return tcp::endpoint ();
+        const boost::asio::ip::address_v4 &addr =
+          loopback_bind_plan.source_addrs[idx
+                                          % loopback_bind_plan.source_addrs.size ()];
+        return tcp::endpoint (addr, 0);
+    }
+
     client_options_t opt;
     boost::asio::io_context io;
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
@@ -397,9 +475,9 @@ class echo_client_t
     std::chrono::steady_clock::time_point measure_start;
     std::chrono::steady_clock::time_point measure_end;
 
-    std::mutex samples_mu;
     std::vector<double> rtt_samples_us;
     std::atomic<size_t> sample_overwrite_idx;
+    loopback_bind_plan_t loopback_bind_plan;
 
     std::mutex connect_mu;
     std::condition_variable connect_cv;
@@ -407,7 +485,9 @@ class echo_client_t
     tcp::endpoint endpoint;
 };
 
-client_session_t::client_session_t (echo_client_t &owner_, boost::asio::io_context &io_)
+client_session_t::client_session_t (echo_client_t &owner_,
+                                    boost::asio::io_context &io_,
+                                    const tcp::endpoint &source_bind_ep_)
     : owner (owner_),
       socket (io_),
       retry_timer (io_),
@@ -417,9 +497,10 @@ client_session_t::client_session_t (echo_client_t &owner_, boost::asio::io_conte
       closed (false),
       write_inflight (false),
       connect_started (false),
-      retry_attempt (0),
       outstanding (0),
+      connect_deadline (),
       endpoint (),
+      source_bind_ep (source_bind_ep_),
       read_header (4, 0),
       read_body (owner_.options ().size, 0),
       write_buf (4 + owner_.options ().size, 0)
@@ -466,6 +547,10 @@ void client_session_t::start_traffic ()
 void client_session_t::do_connect ()
 {
     connect_started = true;
+    if (connect_deadline.time_since_epoch ().count () == 0) {
+        connect_deadline = std::chrono::steady_clock::now ()
+                           + std::chrono::seconds (k_connect_timeout_s);
+    }
     boost::system::error_code ec;
 
     if (socket.is_open ())
@@ -475,6 +560,15 @@ void client_session_t::do_connect ()
     if (ec) {
         on_connect (ec);
         return;
+    }
+
+    if (source_bind_ep.address ().is_v4 ()
+        && !source_bind_ep.address ().to_v4 ().is_unspecified ()) {
+        socket.bind (source_bind_ep, ec);
+        if (ec) {
+            // Fallback to kernel source address selection if bind fails.
+            ec.clear ();
+        }
     }
 
     const std::shared_ptr<client_session_t> self = shared_from_this ();
@@ -500,10 +594,9 @@ void client_session_t::on_connect (const boost::system::error_code &ec)
         return;
     }
 
-    retry_attempt += 1;
-    if (retry_attempt < owner.options ().connect_retries) {
+    if (std::chrono::steady_clock::now () < connect_deadline) {
         retry_timer.expires_after (
-          std::chrono::milliseconds (owner.options ().connect_retry_delay_ms));
+          std::chrono::milliseconds (k_connect_retry_delay_ms));
         const std::shared_ptr<client_session_t> self = shared_from_this ();
         retry_timer.async_wait (boost::asio::bind_executor (
           strand, [self] (const boost::system::error_code &wait_ec) {
@@ -523,10 +616,10 @@ void client_session_t::apply_socket_tuning ()
 {
     boost::system::error_code ec;
     socket.set_option (
-      boost::asio::ip::tcp::no_delay (owner.options ().tcp_nodelay != 0), ec);
-    boost::asio::socket_base::send_buffer_size snd (owner.options ().sndbuf);
+      boost::asio::ip::tcp::no_delay (k_socket_tcp_nodelay != 0), ec);
+    boost::asio::socket_base::send_buffer_size snd (k_socket_sndbuf);
     socket.set_option (snd, ec);
-    boost::asio::socket_base::receive_buffer_size rcv (owner.options ().rcvbuf);
+    boost::asio::socket_base::receive_buffer_size rcv (k_socket_rcvbuf);
     socket.set_option (rcv, ec);
 }
 
@@ -705,29 +798,13 @@ bool parse_options (int argc, char **argv, client_options_t &opt)
 {
     const stream_echo::arg_reader_t args (argc, argv);
 
-    opt.mode = args.get_string ("--mode", opt.mode.c_str ());
     opt.host = args.get_string ("--host", opt.host.c_str ());
     opt.port = args.get_int ("--port", opt.port, 1);
     opt.ccu = args.get_int ("--ccu", opt.ccu, 1);
     opt.size = args.get_size ("--size", opt.size, k_min_payload_size);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
     opt.inflight = args.get_int ("--inflight", opt.inflight, 1);
-    opt.scenario_id = args.get_string ("--scenario-id", opt.scenario_id.c_str ());
-    opt.sndbuf = args.get_int ("--sndbuf", opt.sndbuf, 1);
-    opt.rcvbuf = args.get_int ("--rcvbuf", opt.rcvbuf, 1);
-    opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-    opt.connect_timeout =
-      args.get_int ("--connect-timeout", opt.connect_timeout, 1);
-    opt.connect_retries =
-      args.get_int ("--connect-retries", opt.connect_retries, 1);
-    opt.connect_retry_delay_ms = args.get_int (
-      "--connect-retry-delay-ms", opt.connect_retry_delay_ms, 0);
-
-    if (opt.mode != "echo") {
-        std::fprintf (stderr, "unsupported mode: %s\n", opt.mode.c_str ());
-        return false;
-    }
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "size too large: %zu\n", opt.size);
         return false;

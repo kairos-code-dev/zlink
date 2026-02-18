@@ -132,6 +132,15 @@ struct options_t
     int tcp_keepalive_idle;
     int tcp_keepalive_intvl;
 
+    //  TCP_NODELAY setting.
+    //  1 = enable, 0 = disable, -1 = do not change socket option.
+    int tcp_nodelay;
+
+    //  STREAM recv mode.
+    //  false = legacy multipart (routing_id + payload),
+    //  true = single-frame payload with msg routing id metadata.
+    bool stream_single_frame_recv;
+
     // TCP accept() filters
     typedef std::vector<tcp_address_mask_t> tcp_accept_filters_t;
     tcp_accept_filters_t tcp_accept_filters;

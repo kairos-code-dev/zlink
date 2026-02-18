@@ -34,6 +34,7 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
     typedef void *handle_t;
 
     asio_poller_t (const thread_ctx_t &ctx_);
+    asio_poller_t (const ctx_t &ctx_);
     ~asio_poller_t () ZLINK_OVERRIDE;
 
     //  "poller" concept.
@@ -56,7 +57,7 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
 
     //  Get access to the io_context for ASIO-based operations
     //  (used by asio_tcp_listener, asio_tcp_connecter, and other ASIO components)
-    boost::asio::io_context &get_io_context () { return _io_context; }
+    boost::asio::io_context &get_io_context () { return *_io_context; }
 
   private:
     //  Main event loop.
@@ -93,12 +94,13 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
     //  Cancel pending async operations for an entry
     void cancel_ops (poll_entry_t *entry_);
 
-    //  The Asio io_context that drives the event loop
-    boost::asio::io_context _io_context;
+    //  Shared io_context (owned by ctx_t) or fallback owned context.
+    boost::asio::io_context _owned_io_context;
+    boost::asio::io_context *_io_context;
 
-    //  Work guard to keep io_context running even when no handlers are pending
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
-      _work_guard;
+    //  Work guard is only used when this poller owns _owned_io_context.
+    std::unique_ptr<boost::asio::executor_work_guard<
+      boost::asio::io_context::executor_type> > _work_guard;
 
     //  List of retired event sources (to be deleted after loop iteration)
     typedef std::vector<poll_entry_t *> retired_t;
@@ -109,6 +111,7 @@ class asio_poller_t ZLINK_FINAL : public worker_poller_base_t
 
     //  Flag to track stopping state
     bool _stopping;
+    bool _using_shared_io_context;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (asio_poller_t)
 };

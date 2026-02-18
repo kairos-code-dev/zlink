@@ -1,0 +1,82 @@
+{
+  "config": {
+    "stacks": [
+      "asio",
+      "cppserver",
+      "dotnet",
+      "zlink",
+      "cgdk10"
+    ],
+    "sizes": [
+      1024
+    ],
+    "repeats": 3
+  },
+  "expected_rows": 15,
+  "actual_rows": 15,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "1024": {
+      "asio": {
+        "total": 3,
+        "pass": 3
+      },
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      },
+      "dotnet": {
+        "total": 3,
+        "pass": 3
+      },
+      "zlink": {
+        "total": 3,
+        "pass": 3
+      },
+      "cgdk10": {
+        "total": 3,
+        "pass": 3
+      }
+    }
+  },
+  "medians": {
+    "1024": {
+      "asio": {
+        "throughput_msg_s": 212603.8,
+        "throughput_mib_s": 415.24,
+        "p50_us": 281153.58,
+        "p95_us": 331283.22,
+        "p99_us": 5365624.12
+      },
+      "cppserver": {
+        "throughput_msg_s": 320108.2,
+        "throughput_mib_s": 625.21,
+        "p50_us": 187345.61,
+        "p95_us": 255447.9,
+        "p99_us": 5061312.5
+      },
+      "dotnet": {
+        "throughput_msg_s": 292401.4,
+        "throughput_mib_s": 571.1,
+        "p50_us": 347861.48,
+        "p95_us": 393330.43,
+        "p99_us": 739078.56
+      },
+      "zlink": {
+        "throughput_msg_s": 299738.6,
+        "throughput_mib_s": 585.43,
+        "p50_us": 280938.96,
+        "p95_us": 378444.88,
+        "p99_us": 2982211.38
+      },
+      "cgdk10": {
+        "throughput_msg_s": 243492.0,
+        "throughput_mib_s": 475.57,
+        "p50_us": 390608.91,
+        "p95_us": 758860.56,
+        "p99_us": 1251712.94
+      }
+    }
+  }
+}

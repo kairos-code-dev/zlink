@@ -1,0 +1,1 @@
+cgdk10 stream: io_threads option is not exposed; using library-managed worker setup

@@ -1,0 +1,4 @@
+stack,size,repeat,attempt,ccu,duration,inflight,client_rc,throughput_msg_s,throughput_mib_s,p50_us,p95_us,p99_us,pass_fail,port,client_log,server_log
+cppserver,65536,1,1,10000,5,1,0,72800.00,9100.00,26909.35,36432.69,5468601.72,PASS,20511,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r1_a1_client.log,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r1_a1_server.log
+cppserver,65536,2,1,10000,5,1,0,72226.80,9028.35,27653.47,36922.54,5466564.00,PASS,20513,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r2_a1_client.log,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r2_a1_server.log
+cppserver,65536,3,1,10000,5,1,0,69216.60,8652.08,36443.37,51735.31,5452637.71,PASS,20515,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r3_a1_client.log,doc/plan/baseline/20260217_cmp_cppserver_s65536_rerun/logs/cppserver_s65536_r3_a1_server.log

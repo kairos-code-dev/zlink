@@ -110,6 +110,9 @@ const bool asio_gather_write_on =
 const bool asio_single_write_on =
   env_flag_enabled ("ZLINK_ASIO_SINGLE_WRITE");
 
+const bool asio_trace_on =
+  env_flag_enabled ("ZLINK_ASIO_TRACE");
+
 const size_t asio_gather_threshold =
   parse_size_env ("ZLINK_ASIO_GATHER_THRESHOLD", 65536);
 
@@ -1346,8 +1349,6 @@ const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 
 int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
-    const bool trace =
-      std::getenv ("ZLINK_ASIO_TRACE") != NULL;
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
         cancel_timer (heartbeat_timeout_timer_id);
@@ -1365,7 +1366,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
     if (_metadata)
         msg_->set_metadata (_metadata);
     if (_session->push_msg (msg_) == -1) {
-        if (trace) {
+        if (asio_trace_on) {
             fprintf (stderr,
                      "[ASIO_TRACE] push_msg failed size=%zu flags=0x%x errno=%d\n",
                      msg_->size (), msg_->flags (), errno);
@@ -1374,7 +1375,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
             _process_msg = &asio_engine_t::push_one_then_decode_and_push;
         return -1;
     }
-    if (trace) {
+    if (asio_trace_on) {
         fprintf (stderr, "[ASIO_TRACE] push_msg ok size=%zu flags=0x%x\n",
                  msg_->size (), msg_->flags ());
     }

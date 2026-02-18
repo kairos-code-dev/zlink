@@ -1,0 +1,11 @@
+[2026-02-18 08:39:36] run scope stacks=zlink sizes=64
+[2026-02-18 08:39:36] settings host=127.0.0.1 ccu=10000 duration=5 repeats=1 inflight=1 client_io_threads=4 server_io_threads=4 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21941
+[2026-02-18 08:39:36] build stream client
+[2026-02-18 08:39:37] build zlink server
+[2026-02-18 08:39:37] run start stack=zlink size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21941
+[2026-02-18 08:39:43] run pass stack=zlink size=64 repeat=1 tp=213157.40 p95_us=49941.88
+[2026-02-18 08:39:44] result_dir=doc/plan/baseline/20260218_probe_iothread4_now
+[2026-02-18 08:39:44] metrics_csv=doc/plan/baseline/20260218_probe_iothread4_now/metrics.csv
+[2026-02-18 08:39:44] summary_json=doc/plan/baseline/20260218_probe_iothread4_now/summary.json
+[2026-02-18 08:39:44] comparison_md=doc/plan/baseline/20260218_probe_iothread4_now/comparison.md
+[2026-02-18 08:39:44] completed all runs

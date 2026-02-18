@@ -1,0 +1,27 @@
+[2026-02-18 09:33:04] run scope stacks=zlink sizes=64,1024,65536
+[2026-02-18 09:33:04] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20570
+[2026-02-18 09:33:04] build stream client
+[2026-02-18 09:33:05] build zlink server
+[2026-02-18 09:33:05] run start stack=zlink size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20571
+[2026-02-18 09:33:11] run pass stack=zlink size=64 repeat=1 tp=347640.80 p95_us=29547.53
+[2026-02-18 09:33:12] run start stack=zlink size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20572
+[2026-02-18 09:33:16] run pass stack=zlink size=64 repeat=2 tp=351457.60 p95_us=29190.22
+[2026-02-18 09:33:17] run start stack=zlink size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20573
+[2026-02-18 09:33:23] run pass stack=zlink size=64 repeat=3 tp=354341.20 p95_us=29030.30
+[2026-02-18 09:33:24] run start stack=zlink size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20575
+[2026-02-18 09:33:30] run pass stack=zlink size=1024 repeat=1 tp=324456.80 p95_us=32357.36
+[2026-02-18 09:33:31] run start stack=zlink size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20577
+[2026-02-18 09:33:37] run pass stack=zlink size=1024 repeat=2 tp=325136.20 p95_us=31695.60
+[2026-02-18 09:33:38] run start stack=zlink size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20579
+[2026-02-18 09:33:42] run pass stack=zlink size=1024 repeat=3 tp=294569.20 p95_us=35212.39
+[2026-02-18 09:33:43] run start stack=zlink size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20581
+[2026-02-18 09:33:50] run pass stack=zlink size=65536 repeat=1 tp=73391.20 p95_us=93875.58
+[2026-02-18 09:33:51] run start stack=zlink size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20583
+[2026-02-18 09:33:58] run pass stack=zlink size=65536 repeat=2 tp=73145.80 p95_us=96435.76
+[2026-02-18 09:33:59] run start stack=zlink size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20585
+[2026-02-18 09:34:06] run pass stack=zlink size=65536 repeat=3 tp=69762.20 p95_us=116168.68
+[2026-02-18 09:34:07] result_dir=doc/plan/baseline/20260218_recmp_zlink_inflight1
+[2026-02-18 09:34:07] metrics_csv=doc/plan/baseline/20260218_recmp_zlink_inflight1/metrics.csv
+[2026-02-18 09:34:07] summary_json=doc/plan/baseline/20260218_recmp_zlink_inflight1/summary.json
+[2026-02-18 09:34:07] comparison_md=doc/plan/baseline/20260218_recmp_zlink_inflight1/comparison.md
+[2026-02-18 09:34:07] completed all runs

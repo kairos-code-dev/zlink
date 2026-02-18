@@ -44,10 +44,36 @@ zlink::asio_poller_t::poll_entry_t::poll_entry_t (
 
 zlink::asio_poller_t::asio_poller_t (const zlink::thread_ctx_t &ctx_) :
     worker_poller_base_t (ctx_),
-    _io_context (),
-    _work_guard (boost::asio::make_work_guard (_io_context)),
-    _stopping (false)
+    _owned_io_context (),
+    _io_context (&_owned_io_context),
+    _work_guard (),
+    _stopping (false),
+    _using_shared_io_context (false)
 {
+    _work_guard.reset (
+      new boost::asio::executor_work_guard<
+        boost::asio::io_context::executor_type> (
+        boost::asio::make_work_guard (*_io_context)));
+
+    ASIO_DBG ("Constructor called (owned context), this=%p", (void *) this);
+}
+
+zlink::asio_poller_t::asio_poller_t (const zlink::ctx_t &ctx_) :
+    worker_poller_base_t (ctx_),
+    _owned_io_context (),
+    _io_context (ctx_.get_shared_io_context ()),
+    _work_guard (),
+    _stopping (false),
+    _using_shared_io_context (_io_context != NULL)
+{
+    if (!_io_context) {
+        _io_context = &_owned_io_context;
+        _work_guard.reset (
+          new boost::asio::executor_work_guard<
+            boost::asio::io_context::executor_type> (
+            boost::asio::make_work_guard (*_io_context)));
+    }
+
     ASIO_DBG ("Constructor called, this=%p", (void *) this);
 }
 
@@ -79,7 +105,7 @@ zlink::asio_poller_t::add_fd (fd_t fd_, i_poll_events *events_)
     errno_assert (dup_fd != -1);
 
     boost::asio::posix::stream_descriptor *descriptor =
-      new (std::nothrow) boost::asio::posix::stream_descriptor (_io_context);
+      new (std::nothrow) boost::asio::posix::stream_descriptor (*_io_context);
     alloc_assert (descriptor);
 
     boost::system::error_code ec;
@@ -241,7 +267,10 @@ void zlink::asio_poller_t::stop ()
 {
     check_thread ();
     _stopping = true;
-    _io_context.stop ();
+
+    if (!_using_shared_io_context && _io_context) {
+        _io_context->stop ();
+    }
 }
 
 int zlink::asio_poller_t::max_fds ()
@@ -445,15 +474,16 @@ void zlink::asio_poller_t::cancel_ops (poll_entry_t *entry_)
 void zlink::asio_poller_t::loop ()
 {
     ASIO_DBG ("loop: started, this=%p", (void *) this);
+    zlink_assert (_io_context);
 
     while (!_stopping) {
         //  Execute any due timers.
         uint64_t timeout = execute_timers ();
 
         //  Reset the io_context if it's stopped (e.g., after previous run completion)
-        if (_io_context.stopped ()) {
+        if (_io_context->stopped ()) {
             ASIO_DBG ("loop: restarting io_context");
-            _io_context.restart ();
+            _io_context->restart ();
         }
 
         //  Phase 1 Optimization: Event Batching
@@ -466,7 +496,7 @@ void zlink::asio_poller_t::loop ()
         //  scenarios like ROUTER patterns where multiple messages arrive rapidly.
 
         //  Step 1: Process all ready events non-blocking
-        std::size_t events_processed = _io_context.poll ();
+        std::size_t events_processed = _io_context->poll ();
         ASIO_DBG ("loop: poll() processed %zu events", events_processed);
 
         //  Step 2: Only wait if no events were ready
@@ -481,7 +511,7 @@ void zlink::asio_poller_t::loop ()
             }
 
             ASIO_DBG ("loop: run_for %d ms (no ready events)", poll_timeout_ms);
-            _io_context.run_for (
+            _io_context->run_for (
               std::chrono::milliseconds (poll_timeout_ms));
         }
         //  else: Events were processed, continue loop immediately to check
@@ -502,7 +532,7 @@ void zlink::asio_poller_t::loop ()
     ASIO_DBG ("loop: stopping");
 
     //  Run any remaining handlers (cancelled async ops will fire with error)
-    _io_context.poll ();
+    _io_context->poll ();
     ASIO_DBG ("loop: finished");
 }
 

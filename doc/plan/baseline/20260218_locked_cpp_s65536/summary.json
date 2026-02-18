@@ -1,0 +1,34 @@
+{
+  "config": {
+    "stacks": [
+      "cppserver"
+    ],
+    "sizes": [
+      65536
+    ],
+    "repeats": 3
+  },
+  "expected_rows": 3,
+  "actual_rows": 3,
+  "row_mismatch": false,
+  "invalid_pass_rows": 0,
+  "pass_count": {
+    "65536": {
+      "cppserver": {
+        "total": 3,
+        "pass": 3
+      }
+    }
+  },
+  "medians": {
+    "65536": {
+      "cppserver": {
+        "throughput_msg_s": 73707.4,
+        "throughput_mib_s": 9213.42,
+        "p50_us": 28296.38,
+        "p95_us": 38438.17,
+        "p99_us": 5447234.3
+      }
+    }
+  }
+}

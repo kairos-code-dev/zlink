@@ -181,36 +181,18 @@ inline std::string make_tcp_endpoint (const std::string &host, int port)
     return std::string (buf);
 }
 
-inline std::string make_result_line (
-  const std::string &stack,
-  const std::string &scenario_id,
-  size_t size,
-  int ccu,
-  int inflight,
-  int duration,
-  double throughput_msg_s,
-  double throughput_mib,
-  const summary_stats_t &stats,
-  long connect_success,
-  long connect_fail,
-  double connect_ms,
-  long parse_error,
-  long timeout_error,
-  double incomplete_ratio,
-  bool pass)
+inline std::string make_result_line (double throughput_msg_s,
+                                     double throughput_mib,
+                                     const summary_stats_t &stats,
+                                     bool pass)
 {
-    char buf[1024];
+    char buf[512];
     std::snprintf (
       buf, sizeof (buf),
-      "RESULT stack=%s scenario_id=%s mode=echo size=%zu ccu=%d inflight=%d "
-      "duration=%d throughput_msg_s=%.2f throughput_mib_s=%.2f p50_us=%.2f "
-      "p95_us=%.2f p99_us=%.2f connect_success=%ld connect_fail=%ld "
-      "connect_ms=%.2f parse_error=%ld timeout_error=%ld "
-      "incomplete_ratio=%.6f pass_fail=%s",
-      stack.c_str (), scenario_id.c_str (), size, ccu, inflight, duration,
+      "RESULT throughput_msg_s=%.2f throughput_mib_s=%.2f p50_us=%.2f "
+      "p95_us=%.2f p99_us=%.2f pass_fail=%s",
       throughput_msg_s, throughput_mib, stats.p50_us, stats.p95_us, stats.p99_us,
-      connect_success, connect_fail, connect_ms, parse_error, timeout_error,
-      incomplete_ratio, pass ? "PASS" : "FAIL");
+      pass ? "PASS" : "FAIL");
     return std::string (buf);
 }
 

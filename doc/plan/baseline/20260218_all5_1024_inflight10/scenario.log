@@ -1,0 +1,43 @@
+[2026-02-18 09:27:09] run scope stacks=asio,cppserver,dotnet,zlink,cgdk10 sizes=1024
+[2026-02-18 09:27:09] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=10 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20906
+[2026-02-18 09:27:09] build stream client
+[2026-02-18 09:27:10] build asio server
+[2026-02-18 09:27:10] build cppserver server
+[2026-02-18 09:27:13] build dotnet server
+[2026-02-18 09:27:13] build zlink server
+[2026-02-18 09:27:14] build cgdk10 server
+[2026-02-18 09:27:17] run start stack=asio size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=10 port=20906
+[2026-02-18 09:27:23] run pass stack=asio size=1024 repeat=1 tp=212603.80 p95_us=331283.22
+[2026-02-18 09:27:24] run start stack=asio size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=10 port=20907
+[2026-02-18 09:27:29] run pass stack=asio size=1024 repeat=2 tp=211437.00 p95_us=476808.86
+[2026-02-18 09:27:30] run start stack=asio size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=10 port=20909
+[2026-02-18 09:27:36] run pass stack=asio size=1024 repeat=3 tp=215174.60 p95_us=327508.09
+[2026-02-18 09:27:37] run start stack=cppserver size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=10 port=20911
+[2026-02-18 09:27:43] run pass stack=cppserver size=1024 repeat=1 tp=320108.20 p95_us=251434.77
+[2026-02-18 09:27:44] run start stack=cppserver size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=10 port=20913
+[2026-02-18 09:27:50] run pass stack=cppserver size=1024 repeat=2 tp=316482.60 p95_us=264683.57
+[2026-02-18 09:27:51] run start stack=cppserver size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=10 port=20915
+[2026-02-18 09:27:56] run pass stack=cppserver size=1024 repeat=3 tp=321444.20 p95_us=255447.90
+[2026-02-18 09:27:57] run start stack=dotnet size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=10 port=20917
+[2026-02-18 09:28:03] run pass stack=dotnet size=1024 repeat=1 tp=292401.40 p95_us=393330.43
+[2026-02-18 09:28:04] run start stack=dotnet size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=10 port=20919
+[2026-02-18 09:28:10] run pass stack=dotnet size=1024 repeat=2 tp=291717.80 p95_us=394750.71
+[2026-02-18 09:28:11] run start stack=dotnet size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=10 port=20921
+[2026-02-18 09:28:17] run pass stack=dotnet size=1024 repeat=3 tp=295345.20 p95_us=387945.52
+[2026-02-18 09:28:18] run start stack=zlink size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=10 port=20923
+[2026-02-18 09:28:23] run pass stack=zlink size=1024 repeat=1 tp=299738.60 p95_us=378444.88
+[2026-02-18 09:28:24] run start stack=zlink size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=10 port=20925
+[2026-02-18 09:28:29] run pass stack=zlink size=1024 repeat=2 tp=302009.00 p95_us=375029.61
+[2026-02-18 09:28:30] run start stack=zlink size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=10 port=20927
+[2026-02-18 09:28:36] run pass stack=zlink size=1024 repeat=3 tp=297964.00 p95_us=385871.01
+[2026-02-18 09:28:37] run start stack=cgdk10 size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=10 port=20929
+[2026-02-18 09:28:44] run pass stack=cgdk10 size=1024 repeat=1 tp=246998.80 p95_us=637324.81
+[2026-02-18 09:28:45] run start stack=cgdk10 size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=10 port=20931
+[2026-02-18 09:28:51] run pass stack=cgdk10 size=1024 repeat=2 tp=209030.60 p95_us=1456301.31
+[2026-02-18 09:28:52] run start stack=cgdk10 size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=10 port=20933
+[2026-02-18 09:28:57] run pass stack=cgdk10 size=1024 repeat=3 tp=243492.00 p95_us=758860.56
+[2026-02-18 09:28:58] result_dir=doc/plan/baseline/20260218_all5_1024_inflight10
+[2026-02-18 09:28:58] metrics_csv=doc/plan/baseline/20260218_all5_1024_inflight10/metrics.csv
+[2026-02-18 09:28:58] summary_json=doc/plan/baseline/20260218_all5_1024_inflight10/summary.json
+[2026-02-18 09:28:58] comparison_md=doc/plan/baseline/20260218_all5_1024_inflight10/comparison.md
+[2026-02-18 09:28:58] completed all runs

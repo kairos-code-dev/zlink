@@ -1,0 +1,103 @@
+[2026-02-18 09:15:41] run scope stacks=asio,cppserver,dotnet,zlink,cgdk10 sizes=64,1024,65536
+[2026-02-18 09:15:41] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21234
+[2026-02-18 09:15:41] build stream client
+[2026-02-18 09:15:42] build asio server
+[2026-02-18 09:15:42] build cppserver server
+[2026-02-18 09:15:44] build dotnet server
+[2026-02-18 09:15:45] build zlink server
+[2026-02-18 09:15:45] build cgdk10 server
+[2026-02-18 09:15:49] run start stack=asio size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21234
+[2026-02-18 09:15:54] run pass stack=asio size=64 repeat=1 tp=320307.20 p95_us=32642.22
+[2026-02-18 09:15:55] run start stack=asio size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21235
+[2026-02-18 09:16:00] run pass stack=asio size=64 repeat=2 tp=318301.80 p95_us=32864.43
+[2026-02-18 09:16:01] run start stack=asio size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21237
+[2026-02-18 09:16:07] run pass stack=asio size=64 repeat=3 tp=306453.40 p95_us=35015.15
+[2026-02-18 09:16:08] run start stack=asio size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21239
+[2026-02-18 09:16:13] run pass stack=asio size=1024 repeat=1 tp=250258.80 p95_us=42340.48
+[2026-02-18 09:16:14] run start stack=asio size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21240
+[2026-02-18 09:16:20] run pass stack=asio size=1024 repeat=2 tp=255097.00 p95_us=41749.61
+[2026-02-18 09:16:21] run start stack=asio size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21241
+[2026-02-18 09:16:25] run pass stack=asio size=1024 repeat=3 tp=269524.80 p95_us=40675.26
+[2026-02-18 09:16:27] run start stack=asio size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21243
+[2026-02-18 09:16:33] run pass stack=asio size=65536 repeat=1 tp=58955.60 p95_us=58229.12
+[2026-02-18 09:16:34] run start stack=asio size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21245
+[2026-02-18 09:16:42] run pass stack=asio size=65536 repeat=2 tp=59066.40 p95_us=46991.24
+[2026-02-18 09:16:43] run start stack=asio size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21247
+[2026-02-18 09:16:49] run pass stack=asio size=65536 repeat=3 tp=59484.00 p95_us=62524.30
+[2026-02-18 09:16:50] run start stack=cppserver size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21249
+[2026-02-18 09:16:55] run pass stack=cppserver size=64 repeat=1 tp=375953.40 p95_us=28382.93
+[2026-02-18 09:16:56] run start stack=cppserver size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21251
+[2026-02-18 09:17:02] run pass stack=cppserver size=64 repeat=2 tp=374868.00 p95_us=28227.37
+[2026-02-18 09:17:03] run start stack=cppserver size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21252
+[2026-02-18 09:17:08] run pass stack=cppserver size=64 repeat=3 tp=370386.00 p95_us=28533.69
+[2026-02-18 09:17:09] run start stack=cppserver size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21253
+[2026-02-18 09:17:15] run pass stack=cppserver size=1024 repeat=1 tp=334735.00 p95_us=30347.19
+[2026-02-18 09:17:16] run start stack=cppserver size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21255
+[2026-02-18 09:17:22] run pass stack=cppserver size=1024 repeat=2 tp=332876.20 p95_us=30870.90
+[2026-02-18 09:17:22] run start stack=cppserver size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21257
+[2026-02-18 09:17:27] run pass stack=cppserver size=1024 repeat=3 tp=329848.00 p95_us=31677.29
+[2026-02-18 09:17:28] run start stack=cppserver size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21259
+[2026-02-18 09:17:36] run pass stack=cppserver size=65536 repeat=1 tp=68949.20 p95_us=42613.22
+[2026-02-18 09:17:37] run start stack=cppserver size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21261
+[2026-02-18 09:17:44] run pass stack=cppserver size=65536 repeat=2 tp=67259.00 p95_us=46426.07
+[2026-02-18 09:17:45] run start stack=cppserver size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21263
+[2026-02-18 09:17:51] run pass stack=cppserver size=65536 repeat=3 tp=68949.00 p95_us=48175.69
+[2026-02-18 09:17:53] run start stack=dotnet size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21265
+[2026-02-18 09:17:58] run pass stack=dotnet size=64 repeat=1 tp=394314.20 p95_us=26345.52
+[2026-02-18 09:17:59] run start stack=dotnet size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21267
+[2026-02-18 09:18:05] run pass stack=dotnet size=64 repeat=2 tp=387285.60 p95_us=26567.36
+[2026-02-18 09:18:06] run start stack=dotnet size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21269
+[2026-02-18 09:18:12] run pass stack=dotnet size=64 repeat=3 tp=377267.80 p95_us=28328.11
+[2026-02-18 09:18:13] run start stack=dotnet size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21271
+[2026-02-18 09:18:19] run pass stack=dotnet size=1024 repeat=1 tp=361526.00 p95_us=31271.01
+[2026-02-18 09:18:20] run start stack=dotnet size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21273
+[2026-02-18 09:18:24] run pass stack=dotnet size=1024 repeat=2 tp=366969.20 p95_us=29043.19
+[2026-02-18 09:18:25] run start stack=dotnet size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21275
+[2026-02-18 09:18:31] run pass stack=dotnet size=1024 repeat=3 tp=358663.20 p95_us=30064.84
+[2026-02-18 09:18:32] run start stack=dotnet size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21277
+[2026-02-18 09:18:38] run pass stack=dotnet size=65536 repeat=1 tp=79160.00 p95_us=134702.38
+[2026-02-18 09:18:40] run start stack=dotnet size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21279
+[2026-02-18 09:18:46] run pass stack=dotnet size=65536 repeat=2 tp=78980.60 p95_us=138408.16
+[2026-02-18 09:18:47] run start stack=dotnet size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21281
+[2026-02-18 09:18:52] run pass stack=dotnet size=65536 repeat=3 tp=78878.00 p95_us=141296.44
+[2026-02-18 09:18:53] run start stack=zlink size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21283
+[2026-02-18 09:18:59] run pass stack=zlink size=64 repeat=1 tp=352261.20 p95_us=29495.18
+[2026-02-18 09:19:00] run start stack=zlink size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21285
+[2026-02-18 09:19:06] run pass stack=zlink size=64 repeat=2 tp=344108.80 p95_us=29561.87
+[2026-02-18 09:19:07] run start stack=zlink size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21287
+[2026-02-18 09:19:12] run pass stack=zlink size=64 repeat=3 tp=353997.40 p95_us=29389.93
+[2026-02-18 09:19:13] run start stack=zlink size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21288
+[2026-02-18 09:19:18] run pass stack=zlink size=1024 repeat=1 tp=321037.60 p95_us=32151.28
+[2026-02-18 09:19:19] run start stack=zlink size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21289
+[2026-02-18 09:19:25] run pass stack=zlink size=1024 repeat=2 tp=329736.20 p95_us=32077.78
+[2026-02-18 09:19:26] run start stack=zlink size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21291
+[2026-02-18 09:19:32] run pass stack=zlink size=1024 repeat=3 tp=321122.40 p95_us=32509.74
+[2026-02-18 09:19:33] run start stack=zlink size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21293
+[2026-02-18 09:19:39] run pass stack=zlink size=65536 repeat=1 tp=73511.40 p95_us=81539.19
+[2026-02-18 09:19:40] run start stack=zlink size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21295
+[2026-02-18 09:19:46] run pass stack=zlink size=65536 repeat=2 tp=74089.60 p95_us=99199.81
+[2026-02-18 09:19:47] run start stack=zlink size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21297
+[2026-02-18 09:19:54] run pass stack=zlink size=65536 repeat=3 tp=74359.80 p95_us=94880.45
+[2026-02-18 09:19:55] run start stack=cgdk10 size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21299
+[2026-02-18 09:20:01] run pass stack=cgdk10 size=64 repeat=1 tp=330252.00 p95_us=35056.85
+[2026-02-18 09:20:02] run start stack=cgdk10 size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21301
+[2026-02-18 09:20:08] run pass stack=cgdk10 size=64 repeat=2 tp=325036.00 p95_us=33653.98
+[2026-02-18 09:20:09] run start stack=cgdk10 size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21303
+[2026-02-18 09:20:15] run pass stack=cgdk10 size=64 repeat=3 tp=337054.60 p95_us=34760.52
+[2026-02-18 09:20:15] run start stack=cgdk10 size=1024 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21305
+[2026-02-18 09:20:21] run pass stack=cgdk10 size=1024 repeat=1 tp=296494.40 p95_us=34226.34
+[2026-02-18 09:20:22] run start stack=cgdk10 size=1024 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21307
+[2026-02-18 09:20:28] run pass stack=cgdk10 size=1024 repeat=2 tp=289361.60 p95_us=36190.93
+[2026-02-18 09:20:29] run start stack=cgdk10 size=1024 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21311
+[2026-02-18 09:20:35] run pass stack=cgdk10 size=1024 repeat=3 tp=305691.80 p95_us=42550.86
+[2026-02-18 09:20:36] run start stack=cgdk10 size=65536 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21313
+[2026-02-18 09:20:43] run pass stack=cgdk10 size=65536 repeat=1 tp=74546.20 p95_us=142567.61
+[2026-02-18 09:20:43] run start stack=cgdk10 size=65536 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=21315
+[2026-02-18 09:20:49] run pass stack=cgdk10 size=65536 repeat=2 tp=70056.60 p95_us=137111.76
+[2026-02-18 09:20:50] run start stack=cgdk10 size=65536 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=21317
+[2026-02-18 09:20:57] run pass stack=cgdk10 size=65536 repeat=3 tp=76307.80 p95_us=144814.04
+[2026-02-18 09:20:58] result_dir=doc/plan/baseline/20260218_compare_all5_final_rerun2
+[2026-02-18 09:20:58] metrics_csv=doc/plan/baseline/20260218_compare_all5_final_rerun2/metrics.csv
+[2026-02-18 09:20:58] summary_json=doc/plan/baseline/20260218_compare_all5_final_rerun2/summary.json
+[2026-02-18 09:20:58] comparison_md=doc/plan/baseline/20260218_compare_all5_final_rerun2/comparison.md
+[2026-02-18 09:20:58] completed all runs

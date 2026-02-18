@@ -1,0 +1,15 @@
+[2026-02-17 23:30:51] run scope stacks=zlink sizes=64
+[2026-02-17 23:30:51] settings host=127.0.0.1 ccu=10000 duration=5 repeats=3 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20417
+[2026-02-17 23:30:51] build stream client
+[2026-02-17 23:30:52] build zlink server
+[2026-02-17 23:30:52] run start stack=zlink size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=20417
+[2026-02-17 23:30:59] run pass stack=zlink size=64 repeat=1 tp=104404.40 p95_us=203243.25
+[2026-02-17 23:31:00] run start stack=zlink size=64 repeat=2 attempt=1 ccu=10000 duration=5 inflight=1 port=20419
+[2026-02-17 23:31:06] run pass stack=zlink size=64 repeat=2 tp=109720.00 p95_us=56111.62
+[2026-02-17 23:31:07] run start stack=zlink size=64 repeat=3 attempt=1 ccu=10000 duration=5 inflight=1 port=20421
+[2026-02-17 23:31:13] run pass stack=zlink size=64 repeat=3 tp=109860.80 p95_us=173008.18
+[2026-02-17 23:31:14] result_dir=doc/plan/baseline/20260217_cmp_zlink_s64
+[2026-02-17 23:31:14] metrics_csv=doc/plan/baseline/20260217_cmp_zlink_s64/metrics.csv
+[2026-02-17 23:31:14] summary_json=doc/plan/baseline/20260217_cmp_zlink_s64/summary.json
+[2026-02-17 23:31:14] comparison_md=doc/plan/baseline/20260217_cmp_zlink_s64/comparison.md
+[2026-02-17 23:31:14] completed all runs

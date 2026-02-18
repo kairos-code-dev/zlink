@@ -1,0 +1,15 @@
+[2026-02-17 22:48:52] run scope stacks=zlink sizes=64
+[2026-02-17 22:48:52] settings host=127.0.0.1 ccu=1000 duration=5 repeats=3 inflight=1 client_io_threads=1 server_io_threads=1 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=20577
+[2026-02-17 22:48:52] build stream client
+[2026-02-17 22:48:53] build zlink server
+[2026-02-17 22:48:53] run start stack=zlink size=64 repeat=1 attempt=1 ccu=1000 duration=5 inflight=1 port=20577
+[2026-02-17 22:48:59] run pass stack=zlink size=64 repeat=1 tp=238525.40 p95_us=5484.49
+[2026-02-17 22:48:59] run start stack=zlink size=64 repeat=2 attempt=1 ccu=1000 duration=5 inflight=1 port=20578
+[2026-02-17 22:49:04] run pass stack=zlink size=64 repeat=2 tp=224926.40 p95_us=5993.49
+[2026-02-17 22:49:04] run start stack=zlink size=64 repeat=3 attempt=1 ccu=1000 duration=5 inflight=1 port=20579
+[2026-02-17 22:49:10] run pass stack=zlink size=64 repeat=3 tp=234588.40 p95_us=5730.64
+[2026-02-17 22:49:10] result_dir=/home/hep7/project/kairos/zlink-perf-wt/doc/plan/baseline/20260217_phase0_zlink64
+[2026-02-17 22:49:10] metrics_csv=/home/hep7/project/kairos/zlink-perf-wt/doc/plan/baseline/20260217_phase0_zlink64/metrics.csv
+[2026-02-17 22:49:10] summary_json=/home/hep7/project/kairos/zlink-perf-wt/doc/plan/baseline/20260217_phase0_zlink64/summary.json
+[2026-02-17 22:49:10] comparison_md=/home/hep7/project/kairos/zlink-perf-wt/doc/plan/baseline/20260217_phase0_zlink64/comparison.md
+[2026-02-17 22:49:10] completed all runs

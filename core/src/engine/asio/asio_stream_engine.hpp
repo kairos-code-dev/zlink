@@ -94,6 +94,7 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     bool _output_stopped;
 
     std::vector<unsigned char> _recv_buffer;
+    size_t _recv_start;
     size_t _recv_size;
     size_t _recv_limit;
 
@@ -101,11 +102,6 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     std::vector<unsigned char> _send_buffer_flush;
     size_t _send_buffer_flush_offset;
     size_t _send_buffer_limit;
-
-    msg_t _tx_msg;
-    bool _tx_msg_valid;
-    unsigned char _tx_header[4];
-    size_t _tx_total_size;
 
     session_base_t *_session;
     socket_base_t *_socket;

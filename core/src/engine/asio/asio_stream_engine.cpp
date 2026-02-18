@@ -48,6 +48,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_start (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -82,6 +83,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_start (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -122,6 +124,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _input_stopped (false),
     _output_stopped (false),
     _recv_buffer (normalize_buffer_size (_options.in_batch_size, 65536)),
+    _recv_start (0),
     _recv_size (0),
     _recv_limit (
       _options.maxmsgsize > 0 ? static_cast<size_t> (_options.maxmsgsize)
@@ -303,17 +306,30 @@ void zlink::asio_stream_engine_t::start_async_read ()
         return;
 
     const size_t min_free = 4096;
-    if (_recv_buffer.size () - _recv_size < min_free) {
+    size_t recv_end = _recv_start + _recv_size;
+    if (_recv_buffer.size () - recv_end < min_free) {
+        if (_recv_start > 0
+            && _recv_buffer.size () - _recv_size >= min_free) {
+            if (_recv_size > 0) {
+                memmove (&_recv_buffer[0], &_recv_buffer[_recv_start],
+                         _recv_size);
+            }
+            _recv_start = 0;
+            recv_end = _recv_size;
+        }
+    }
+
+    if (_recv_buffer.size () - recv_end < min_free) {
         size_t new_size =
           _recv_buffer.empty () ? 65536 : (_recv_buffer.size () * 2);
-        if (new_size - _recv_size < min_free)
-            new_size = _recv_size + min_free;
+        if (new_size - recv_end < min_free)
+            new_size = recv_end + min_free;
         _recv_buffer.resize (new_size);
     }
 
     _read_pending = true;
     _transport->async_read_some (
-      &_recv_buffer[0] + _recv_size, _recv_buffer.size () - _recv_size,
+      &_recv_buffer[0] + recv_end, _recv_buffer.size () - recv_end,
       [this] (const boost::system::error_code &ec, std::size_t bytes) {
           on_read_complete (ec, bytes);
       });
@@ -354,12 +370,13 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
 {
     size_t offset = 0;
     bool pushed_any = false;
+    const unsigned char *base = &_recv_buffer[_recv_start];
 
     while (!_input_stopped) {
-        if ((_recv_size - offset) < 4)
+        if (_recv_size - offset < 4)
             break;
 
-        const uint32_t payload_size = get_uint32 (&_recv_buffer[offset]);
+        const uint32_t payload_size = get_uint32 (&base[offset]);
         if (payload_size == 0) {
             errno = EPROTO;
             error (protocol_error);
@@ -372,10 +389,10 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
         }
 
         const size_t packet_size = 4U + static_cast<size_t> (payload_size);
-        if ((_recv_size - offset) < packet_size)
+        if (_recv_size - offset < packet_size)
             break;
 
-        if (!push_one_frame (&_recv_buffer[offset + 4],
+        if (!push_one_frame (&base[offset + 4],
                              static_cast<size_t> (payload_size))) {
             if (_input_stopped)
                 break;
@@ -389,11 +406,18 @@ bool zlink::asio_stream_engine_t::process_input_buffer ()
 
     if (offset > 0) {
         if (offset < _recv_size) {
-            memmove (&_recv_buffer[0], &_recv_buffer[offset], _recv_size - offset);
+            _recv_start += offset;
             _recv_size -= offset;
         } else {
+            _recv_start = 0;
             _recv_size = 0;
         }
+    }
+
+    if (_recv_start > 0 && _recv_size > 0
+        && (_recv_start > (_recv_buffer.size () / 2))) {
+        memmove (&_recv_buffer[0], &_recv_buffer[_recv_start], _recv_size);
+        _recv_start = 0;
     }
 
     if (pushed_any && _session)

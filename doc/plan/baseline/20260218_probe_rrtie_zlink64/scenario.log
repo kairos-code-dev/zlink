@@ -1,0 +1,11 @@
+[2026-02-18 08:41:14] run scope stacks=zlink sizes=64
+[2026-02-18 08:41:14] settings host=127.0.0.1 ccu=10000 duration=5 repeats=1 inflight=1 client_io_threads=4 server_io_threads=2 max_attempts=10 retry_delay=2s case_gap=1s server_start_timeout=40s port_scan_limit=5000 sndbuf=1048576 rcvbuf=1048576 backlog=32768 tcp_nodelay=1 base_port=21970
+[2026-02-18 08:41:14] build stream client
+[2026-02-18 08:41:15] build zlink server
+[2026-02-18 08:41:15] run start stack=zlink size=64 repeat=1 attempt=1 ccu=10000 duration=5 inflight=1 port=21970
+[2026-02-18 08:41:21] run pass stack=zlink size=64 repeat=1 tp=334256.80 p95_us=32677.97
+[2026-02-18 08:41:21] result_dir=doc/plan/baseline/20260218_probe_rrtie_zlink64
+[2026-02-18 08:41:21] metrics_csv=doc/plan/baseline/20260218_probe_rrtie_zlink64/metrics.csv
+[2026-02-18 08:41:21] summary_json=doc/plan/baseline/20260218_probe_rrtie_zlink64/summary.json
+[2026-02-18 08:41:21] comparison_md=doc/plan/baseline/20260218_probe_rrtie_zlink64/comparison.md
+[2026-02-18 08:41:21] completed all runs

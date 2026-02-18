@@ -58,6 +58,10 @@ class tcp_transport_t : public i_asio_transport
     const char *name () const ZLINK_OVERRIDE { return "tcp"; }
     boost::asio::ip::tcp::socket *raw_socket () { return _socket.get (); }
 
+    //  Direct access to the underlying socket for bypassing transport
+    //  abstraction in performance-critical paths (e.g., echo loopback).
+    boost::asio::ip::tcp::socket *raw_socket () { return _socket.get (); }
+
   private:
     std::unique_ptr<boost::asio::ip::tcp::socket> _socket;
     boost::asio::any_io_executor _completion_executor;

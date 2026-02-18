@@ -143,13 +143,9 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     bool _zero_copy_active;
 
     //  True when this engine runs on the helper io_thread (background worker).
+    //  In that case, queue_direct_send uses raw POSIX writev on the native fd
+    //  instead of ASIO socket operations, avoiding cross-thread ASIO access.
     bool _on_helper_context;
-
-    //  Per-engine reusable send buffer for helper write path.
-    //  Eliminates per-send heap allocation (app thread alloc, helper free).
-    //  Safe because deferred read ensures at most one in-flight send per
-    //  engine.  Falls back to vector allocation on multi-send (rare).
-    std::vector<unsigned char> _direct_write_buf;
 
 #if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;

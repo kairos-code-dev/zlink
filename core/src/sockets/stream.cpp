@@ -47,14 +47,9 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _direct_io_helper_tid (0),
     _direct_io_helper_thread2 (NULL),
     _direct_io_helper_tid2 (0),
-    _direct_engine_lock (ATOMIC_FLAG_INIT),
-    _direct_recv_lock0 (ATOMIC_FLAG_INIT),
-    _direct_recv_lock1 (ATOMIC_FLAG_INIT),
+    _direct_queue_lock (ATOMIC_FLAG_INIT),
     _direct_io_rr_counter (0),
-    _direct_recv_head0 (0),
-    _direct_recv_head1 (0),
-    _direct_recv_probe (0),
-    _direct_recv_live (0)
+    _direct_recv_head (0)
 {
     options.type = ZLINK_STREAM;
     options.backlog = 65536;
@@ -81,129 +76,45 @@ zlink::stream_t::~stream_t ()
     teardown_direct_io ();
     flush_dirty_send_pipes ();
     _prefetched_msg.close ();
-    //  Close any queued direct msgs from all shards.
-    for (size_t i = _direct_recv_head0; i < _direct_recv_queue0.size (); ++i)
-        _direct_recv_queue0[i].msg.close ();
-    for (size_t i = _direct_recv_head1; i < _direct_recv_queue1.size (); ++i)
-        _direct_recv_queue1[i].msg.close ();
-    _direct_recv_queue0.clear ();
-    _direct_recv_queue1.clear ();
-    _direct_recv_head0 = 0;
-    _direct_recv_head1 = 0;
-    _direct_recv_live.store (0, std::memory_order_relaxed);
+    //  Close any queued direct msgs.
+    for (size_t i = _direct_recv_head; i < _direct_recv_queue.size (); ++i)
+        _direct_recv_queue[i].msg.close ();
+    _direct_recv_queue.clear ();
+    _direct_recv_head = 0;
 }
 
 int zlink::stream_t::push_msg_direct (msg_t *msg_,
                                        uint32_t routing_id_,
                                        void *engine_hint_)
 {
+    //  Spinlock: background IO thread may call concurrently with app thread.
+    lock_direct_queue ();
+
     //  Update engine pointer for send-direction bypass.
     //  NULL engine_hint clears the entry (called from engine unplug).
-    lock_direct_engine ();
     const size_t idx = static_cast<size_t> (routing_id_);
     if (idx >= _direct_send_engines.size ())
         _direct_send_engines.resize (idx + 1, NULL);
-    if (_direct_send_engines[idx] != engine_hint_)
-        _direct_send_engines[idx] = engine_hint_;
-    unlock_direct_engine ();
+    _direct_send_engines[idx] = engine_hint_;
 
     //  NULL msg means engine is just updating/clearing the pointer.
-    if (!msg_)
+    if (!msg_) {
+        unlock_direct_queue ();
         return 0;
+    }
 
     //  Set routing_id on msg before moving — it travels with the msg.
     msg_->set_routing_id (routing_id_);
 
-    const size_t shard = direct_recv_shard (routing_id_);
-    lock_direct_recv (shard);
-
-    std::vector<direct_msg_t> *queue =
-      shard == 0 ? &_direct_recv_queue0 : &_direct_recv_queue1;
-    size_t *head = shard == 0 ? &_direct_recv_head0 : &_direct_recv_head1;
-    if (queue->size () - *head >= direct_recv_queue_limit) {
-        unlock_direct_recv (shard);
-        errno = EAGAIN;
-        return -1;
-    }
-
     //  Append to direct recv queue (msg_t move, no data copy for lmsg).
-    queue->resize (queue->size () + 1);
-    direct_msg_t &entry = queue->back ();
+    _direct_recv_queue.resize (_direct_recv_queue.size () + 1);
+    direct_msg_t &entry = _direct_recv_queue.back ();
     entry.routing_id = routing_id_;
     entry.msg.init ();
     msg_->move (entry.msg);
-    _direct_recv_live.fetch_add (1, std::memory_order_relaxed);
 
-    unlock_direct_recv (shard);
+    unlock_direct_queue ();
     return 0;
-}
-
-int zlink::stream_t::try_direct_send (msg_t *msg_, uint32_t routing_id_)
-{
-    if (routing_id_ == 0)
-        return 0;
-
-    const size_t routing_index = static_cast<size_t> (routing_id_);
-    lock_direct_engine ();
-    if (routing_index >= _direct_send_engines.size ()
-        || _direct_send_engines[routing_index] == NULL) {
-        unlock_direct_engine ();
-        return 0;
-    }
-
-    i_engine *engine =
-      static_cast<i_engine *> (_direct_send_engines[routing_index]);
-    const int send_rc = engine->queue_direct_send (msg_);
-    if (send_rc >= 0 && send_rc == 0)
-        engine->restart_deferred_read ();
-    unlock_direct_engine ();
-
-    if (send_rc < 0)
-        return 0;
-
-    const int init_rc = msg_->init ();
-    errno_assert (init_rc == 0);
-    return 1;
-}
-
-size_t zlink::stream_t::direct_recv_shard (uint32_t routing_id_) const
-{
-    return static_cast<size_t> (routing_id_ & 1U);
-}
-
-bool zlink::stream_t::pop_direct_msg (msg_t *msg_)
-{
-    for (size_t n = 0; n < direct_recv_shard_count; ++n) {
-        const size_t shard = (_direct_recv_probe + n) % direct_recv_shard_count;
-        lock_direct_recv (shard);
-
-        std::vector<direct_msg_t> *queue =
-          shard == 0 ? &_direct_recv_queue0 : &_direct_recv_queue1;
-        size_t *head = shard == 0 ? &_direct_recv_head0 : &_direct_recv_head1;
-        if (*head < queue->size ()) {
-            direct_msg_t &entry = (*queue)[*head];
-            entry.msg.move (*msg_);
-            entry.msg.close ();
-            ++(*head);
-            if (*head == queue->size ()) {
-                queue->clear ();
-                *head = 0;
-            }
-            _direct_recv_live.fetch_sub (1, std::memory_order_relaxed);
-            unlock_direct_recv (shard);
-            _direct_recv_probe = static_cast<uint32_t> ((shard + 1)
-                                                        % direct_recv_shard_count);
-            _routing_id_sent = false;
-            return true;
-        }
-        unlock_direct_recv (shard);
-    }
-    return false;
-}
-
-bool zlink::stream_t::has_direct_msg ()
-{
-    return _direct_recv_live.load (std::memory_order_relaxed) != 0;
 }
 
 void zlink::stream_t::flush_dirty_send_pipes ()
@@ -249,12 +160,9 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     }
 
     //  Clear direct send engine pointer for this connection.
-    lock_direct_engine ();
     if (server_routing_id != 0
-        && server_routing_id
-             < static_cast<uint32_t> (_direct_send_engines.size ()))
+        && server_routing_id < static_cast<uint32_t> (_direct_send_engines.size ()))
         _direct_send_engines[server_routing_id] = NULL;
-    unlock_direct_engine ();
 
     queue_event (server_routing_id, stream_event_disconnect);
 }
@@ -278,8 +186,28 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
             //  Direct IO send bypass: write directly to engine send buffer,
             //  skipping pipe write/flush/ypipe/CAS/mailbox entirely.
-            if (try_direct_send (msg_, routing_id) == 1)
-                return 0;
+            //  Spinlock: engine pointer may be cleared by background thread.
+            lock_direct_queue ();
+            if (routing_index < _direct_send_engines.size ()
+                && _direct_send_engines[routing_index] != NULL) {
+                i_engine *engine = static_cast<i_engine *> (
+                  _direct_send_engines[routing_index]);
+                const int send_rc = engine->queue_direct_send (msg_);
+                unlock_direct_queue ();
+                if (send_rc >= 0) {
+                    //  send_rc==0: sync write done, restart deferred read.
+                    //  send_rc==1: async posted to helper thread, restart
+                    //              handled in the posted lambda.
+                    if (send_rc == 0)
+                        engine->restart_deferred_read ();
+                    const int init_rc = msg_->init ();
+                    errno_assert (init_rc == 0);
+                    return 0;
+                }
+                //  Fall through to pipe path on failure.
+            } else {
+                unlock_direct_queue ();
+            }
 
             if (routing_index >= _out_by_id.size ()) {
                 errno = EHOSTUNREACH;
@@ -393,9 +321,25 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    //  Direct IO pipe bypass: drain sharded direct queues first.
-    if (has_direct_msg () && pop_direct_msg (msg_))
+    //  Direct IO pipe bypass: drain direct queue first.
+    //  Messages already have routing_id set by push_msg_direct.
+    //  Spinlock: background IO thread may push concurrently.
+    lock_direct_queue ();
+    if (_direct_recv_head < _direct_recv_queue.size ()) {
+        direct_msg_t &entry = _direct_recv_queue[_direct_recv_head];
+        entry.msg.move (*msg_);
+        entry.msg.close ();
+        ++_direct_recv_head;
+        //  Reset queue when fully drained to avoid unbounded growth.
+        if (_direct_recv_head == _direct_recv_queue.size ()) {
+            _direct_recv_queue.clear ();
+            _direct_recv_head = 0;
+        }
+        unlock_direct_queue ();
+        _routing_id_sent = false;
         return 0;
+    }
+    unlock_direct_queue ();
 
     //  In Direct IO mode, re-activate all FQ pipes so that data pushed
     //  by the io_context pump (in process_commands) becomes readable.
@@ -513,8 +457,8 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
 bool zlink::stream_t::xhas_in ()
 {
-    //  Direct IO pipe bypass: check sharded direct queues first.
-    if (has_direct_msg ())
+    //  Direct IO pipe bypass: check direct queue first.
+    if (_direct_recv_head < _direct_recv_queue.size ())
         return true;
 
     //  In Direct IO mode, re-activate all FQ pipes so that data pushed
@@ -672,28 +616,15 @@ bool zlink::stream_t::prefetch_event ()
     return true;
 }
 
-void zlink::stream_t::lock_direct_engine ()
+void zlink::stream_t::lock_direct_queue ()
 {
-    while (_direct_engine_lock.test_and_set (std::memory_order_acquire))
+    while (_direct_queue_lock.test_and_set (std::memory_order_acquire))
         ;
 }
 
-void zlink::stream_t::unlock_direct_engine ()
+void zlink::stream_t::unlock_direct_queue ()
 {
-    _direct_engine_lock.clear (std::memory_order_release);
-}
-
-void zlink::stream_t::lock_direct_recv (size_t shard_)
-{
-    std::atomic_flag *lock = shard_ == 0 ? &_direct_recv_lock0 : &_direct_recv_lock1;
-    while (lock->test_and_set (std::memory_order_acquire))
-        ;
-}
-
-void zlink::stream_t::unlock_direct_recv (size_t shard_)
-{
-    std::atomic_flag *lock = shard_ == 0 ? &_direct_recv_lock0 : &_direct_recv_lock1;
-    lock->clear (std::memory_order_release);
+    _direct_queue_lock.clear (std::memory_order_release);
 }
 
 void zlink::stream_t::setup_direct_io ()

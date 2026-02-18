@@ -110,9 +110,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _session (NULL),
     _socket (NULL),
     _connection_routing_id (0),
-    _read_deferred (false),
-    _zero_copy_active (false),
-    _on_helper_context (false)
+    _read_deferred (false)
 {
     if (!_transport) {
         _transport = std::unique_ptr<i_asio_transport> (
@@ -863,73 +861,44 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
     //  Helper-context path: post write + restart to helper io_context.
     //  Each helper thread independently handles both read and write for
     //  its assigned connections, parallelizing IO across two threads.
-    //  Data is copied to a per-engine buffer because the msg may reference
+    //  Data is copied to a local buffer because the msg may reference
     //  the engine's recv buffer (zero-copy), which becomes invalid
     //  after restart_deferred_read triggers a new async_read.
-    //  The per-engine buffer (_direct_write_buf) is reused across sends,
-    //  eliminating per-send heap allocation.  Safe because deferred read
-    //  ensures at most one in-flight send per engine; the buffer is
-    //  cleared in the lambda before read restarts.
     if (_on_helper_context && msg_size > 0 && _io_context) {
         const size_t total = 4U + msg_size;
-        _direct_write_buf.resize (total); //  reuses existing capacity
-        put_uint32 (_direct_write_buf.data (),
-                    static_cast<uint32_t> (msg_size));
-        memcpy (_direct_write_buf.data () + 4, msg_->data (), msg_size);
+        std::vector<unsigned char> send_buf (total);
+        put_uint32 (send_buf.data (), static_cast<uint32_t> (msg_size));
+        memcpy (send_buf.data () + 4, msg_->data (), msg_size);
 
         boost::asio::post (
           *_io_context,
-          [this] () {
+          [this, buf = std::move (send_buf)] () {
               if (_terminating || _io_error || !_transport
-                  || !_transport->is_open ()) {
-                  _direct_write_buf.clear ();
+                  || !_transport->is_open ())
                   return;
-              }
               tcp_transport_t *tcp =
                 static_cast<tcp_transport_t *> (_transport.get ());
               boost::asio::ip::tcp::socket *sock = tcp->raw_socket ();
-              if (!sock || !sock->is_open ()) {
-                  _direct_write_buf.clear ();
+              if (!sock || !sock->is_open ())
                   return;
-              }
 
-              const unsigned char *data = _direct_write_buf.data ();
-              const size_t sz = _direct_write_buf.size ();
-
-              //  Bounded retry loop: keep retrying as long as progress
-              //  is made (kernel is draining the TCP send buffer).
-              //  If no progress after 16 yields, the receiver is too
-              //  slow — disconnect immediately (like cppserver).
-              //  Stale data to a slow receiver is useless; fast
-              //  disconnect + reconnect is cleaner for real-time.
+              const unsigned char *data = buf.data ();
+              const size_t sz = buf.size ();
               size_t sent = 0;
-              int eagain_count = 0;
               while (sent < sz) {
-                  const ssize_t n = ::write (
-                    sock->native_handle (), data + sent, sz - sent);
+                  const ssize_t n =
+                    ::write (sock->native_handle (), data + sent, sz - sent);
                   if (n > 0) {
                       sent += static_cast<size_t> (n);
-                      eagain_count = 0;
-                  } else if (n < 0
-                             && (errno == EAGAIN
-                                 || errno == EWOULDBLOCK)) {
-                      if (++eagain_count >= 16) {
-                          //  Slow receiver — disconnect.
-                          _direct_write_buf.clear ();
-                          error (connection_error);
-                          return;
-                      }
+                  } else if (n < 0 && errno == EAGAIN) {
                       sched_yield ();
                   } else {
-                      _direct_write_buf.clear ();
-                      error (connection_error);
                       return;
                   }
               }
 
-              _direct_write_buf.clear (); //  keep capacity for reuse
-
-              //  Restart deferred read on this helper thread.
+              //  Write complete — restart deferred read on this thread.
+              //  Safe because both read and write run on the same helper.
               if (_read_deferred) {
                   _read_deferred = false;
                   if (!_input_stopped && !_terminating && !_io_error

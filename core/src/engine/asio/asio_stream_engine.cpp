@@ -72,9 +72,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_helper_context (false),
-    _direct_send_lock (ATOMIC_FLAG_INIT),
-    _direct_send_scheduled (false)
+    _on_helper_context (false)
 {
     alloc_assert (_transport);
 }
@@ -114,9 +112,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_helper_context (false),
-    _direct_send_lock (ATOMIC_FLAG_INIT),
-    _direct_send_scheduled (false)
+    _on_helper_context (false)
 {
     if (!_transport) {
         _transport = std::unique_ptr<i_asio_transport> (
@@ -163,8 +159,6 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _read_deferred (false),
     _zero_copy_active (false),
     _on_helper_context (false),
-    _direct_send_lock (ATOMIC_FLAG_INIT),
-    _direct_send_scheduled (false),
     _ssl_context (std::move (ssl_context_))
 {
     if (!_transport) {
@@ -212,11 +206,16 @@ void zlink::asio_stream_engine_t::plug (io_thread_t *io_thread_,
     _io_context = &io_thread_->get_io_context ();
     _io_error = false;
     _terminating = false;
-    _on_helper_context =
-      (static_cast<void *> (io_thread_)
-         == _options.direct_io_helper_thread_ptr
-       || static_cast<void *> (io_thread_)
-            == _options.direct_io_helper_thread2_ptr);
+    {
+        void *self = static_cast<void *> (io_thread_);
+        _on_helper_context = false;
+        for (size_t i = 0; i < _options.direct_io_helpers.size (); ++i) {
+            if (_options.direct_io_helpers[i] == self) {
+                _on_helper_context = true;
+                break;
+            }
+        }
+    }
 
     if (!_transport || !_transport->open (*_io_context, _fd)) {
         error (connection_error);
@@ -869,39 +868,101 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
     //  Helper-context path: post write + restart to helper io_context.
     //  Each helper thread independently handles both read and write for
     //  its assigned connections, parallelizing IO across two threads.
-    //  Data is copied to a local buffer because the msg may reference
-    //  the engine's recv buffer (zero-copy), which becomes invalid
-    //  after restart_deferred_read triggers a new async_read.
-    //  On EAGAIN/partial write, remainder goes to send_buffer_main for
-    //  non-blocking async_write — a slow receiver cannot block other
-    //  connections on the same helper thread.
     if (_on_helper_context && msg_size > 0 && _io_context) {
+        const unsigned char *msg_data =
+          static_cast<const unsigned char *> (msg_->data ());
+
+        //  Zero-copy write: if message data references this engine's
+        //  recv buffer (from zero-copy push_one_frame), write the
+        //  original wire-format packet directly — zero memcpy.
+        //  The 4-byte length header is contiguous at msg_data - 4.
+        //  Safe because _read_deferred prevents async_read from
+        //  modifying the recv buffer until the write completes.
+        if (msg_data >= _recv_buffer.data () + 4
+            && msg_data
+                 < _recv_buffer.data () + _recv_buffer.size ()) {
+            //  Packet starts at the 4-byte header before the payload.
+            const size_t packet_offset = static_cast<size_t> (
+              msg_data - _recv_buffer.data ()) - 4;
+            const size_t packet_size = 4U + msg_size;
+
+            boost::asio::post (
+              *_io_context,
+              [this, packet_offset, packet_size] () {
+                  if (_terminating || _io_error || !_transport
+                      || !_transport->is_open ())
+                      return;
+                  tcp_transport_t *tcp =
+                    static_cast<tcp_transport_t *> (_transport.get ());
+                  boost::asio::ip::tcp::socket *sock =
+                    tcp->raw_socket ();
+                  if (!sock || !sock->is_open ())
+                      return;
+
+                  const unsigned char *pkt =
+                    _recv_buffer.data () + packet_offset;
+                  size_t sent = 0;
+                  int eagain_count = 0;
+                  while (sent < packet_size) {
+                      const ssize_t n = ::write (
+                        sock->native_handle (), pkt + sent,
+                        packet_size - sent);
+                      if (n > 0) {
+                          sent += static_cast<size_t> (n);
+                          eagain_count = 0;
+                      } else if (n < 0
+                                 && (errno == EAGAIN
+                                     || errno == EWOULDBLOCK)) {
+                          if (++eagain_count >= 16) {
+                              error (connection_error);
+                              return;
+                          }
+                          sched_yield ();
+                      } else {
+                          error (connection_error);
+                          return;
+                      }
+                  }
+
+                  //  Restart deferred read on this helper thread.
+                  if (_read_deferred) {
+                      _read_deferred = false;
+                      if (!_input_stopped && !_terminating && !_io_error
+                          && !_read_pending)
+                          start_async_read ();
+                  }
+              });
+            return 1;
+        }
+
+        //  Non-zero-copy helper path: copy to per-engine reusable buffer.
+        //  Used for small messages (< 4KB) where push_one_frame copied
+        //  the data into the msg rather than referencing the recv buffer.
         const size_t total = 4U + msg_size;
-        std::vector<unsigned char> send_buf (total);
-        put_uint32 (send_buf.data (), static_cast<uint32_t> (msg_size));
-        memcpy (send_buf.data () + 4, msg_->data (), msg_size);
+        _direct_write_buf.resize (total);
+        put_uint32 (_direct_write_buf.data (),
+                    static_cast<uint32_t> (msg_size));
+        memcpy (_direct_write_buf.data () + 4, msg_data, msg_size);
 
         boost::asio::post (
           *_io_context,
-          [this, buf = std::move (send_buf)] () {
+          [this] () {
               if (_terminating || _io_error || !_transport
-                  || !_transport->is_open ())
+                  || !_transport->is_open ()) {
+                  _direct_write_buf.clear ();
                   return;
+              }
               tcp_transport_t *tcp =
                 static_cast<tcp_transport_t *> (_transport.get ());
               boost::asio::ip::tcp::socket *sock = tcp->raw_socket ();
-              if (!sock || !sock->is_open ())
+              if (!sock || !sock->is_open ()) {
+                  _direct_write_buf.clear ();
                   return;
+              }
 
-              const unsigned char *data = buf.data ();
-              const size_t sz = buf.size ();
+              const unsigned char *data = _direct_write_buf.data ();
+              const size_t sz = _direct_write_buf.size ();
 
-              //  Bounded retry loop: keep retrying as long as progress
-              //  is made (kernel is draining the TCP send buffer).
-              //  Fall back to non-blocking async_write when the send
-              //  buffer is truly full (no progress after several yields).
-              //  This prevents indefinite blocking on slow receivers
-              //  while keeping the fast path (1-2 syscalls) efficient.
               size_t sent = 0;
               int eagain_count = 0;
               while (sent < sz) {
@@ -914,22 +975,19 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
                              && (errno == EAGAIN
                                  || errno == EWOULDBLOCK)) {
                       if (++eagain_count >= 16) {
-                          //  No progress — async fallback.
-                          const size_t remain = sz - sent;
-                          const size_t old =
-                            _send_buffer_main.size ();
-                          _send_buffer_main.resize (old + remain);
-                          memcpy (&_send_buffer_main[old],
-                                  data + sent, remain);
-                          start_async_write ();
-                          break;
+                          _direct_write_buf.clear ();
+                          error (connection_error);
+                          return;
                       }
                       sched_yield ();
                   } else {
+                      _direct_write_buf.clear ();
                       error (connection_error);
                       return;
                   }
               }
+
+              _direct_write_buf.clear ();
 
               //  Restart deferred read on this helper thread.
               if (_read_deferred) {
@@ -939,7 +997,7 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
                       start_async_read ();
               }
           });
-        return 1; //  Async posted; caller must NOT call restart_deferred_read.
+        return 1;
     }
 
     //  Primary-context fast path: non-blocking scatter-gather write.
@@ -1026,72 +1084,6 @@ void zlink::asio_stream_engine_t::restart_deferred_read ()
         });
     } else {
         start_async_read ();
-    }
-}
-
-void zlink::asio_stream_engine_t::drain_direct_sends ()
-{
-    if (_terminating || _io_error || !_transport || !_transport->is_open ())
-        return;
-
-    //  Swap staging buffer under spinlock (O(1) pointer swap).
-    //  Double-buffering: _pending keeps its allocation across drains.
-    while (_direct_send_lock.test_and_set (std::memory_order_acquire)) {
-    }
-    _direct_send_pending.swap (_direct_send_queue);
-    _direct_send_scheduled = false;
-    _direct_send_lock.clear (std::memory_order_release);
-
-    if (!_direct_send_pending.empty ()) {
-        //  Fast path: no write pending — try raw non-blocking write
-        //  directly from pending buffer.  Avoids memcpy to _send_buffer_main.
-        if (!_write_pending && _send_buffer_flush.empty ()
-            && _send_buffer_main.empty ()) {
-            tcp_transport_t *tcp =
-              static_cast<tcp_transport_t *> (_transport.get ());
-            boost::asio::ip::tcp::socket *sock = tcp->raw_socket ();
-            if (sock && sock->is_open ()) {
-                const unsigned char *data = _direct_send_pending.data ();
-                const size_t sz = _direct_send_pending.size ();
-                const ssize_t n =
-                  ::write (sock->native_handle (), data, sz);
-
-                if (n > 0 && static_cast<size_t> (n) == sz) {
-                    //  All sent synchronously — zero extra copy.
-                    _direct_send_pending.clear ();
-                } else {
-                    const size_t written =
-                      n > 0 ? static_cast<size_t> (n) : 0;
-                    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                        _direct_send_pending.clear ();
-                        error (connection_error);
-                        return;
-                    }
-                    //  Partial or EAGAIN: copy remainder for async write.
-                    const size_t remain = sz - written;
-                    _send_buffer_main.resize (remain);
-                    memcpy (&_send_buffer_main[0], data + written, remain);
-                    _direct_send_pending.clear ();
-                    start_async_write ();
-                }
-            }
-        } else {
-            //  Write already pending: merge into send_buffer_main.
-            const size_t old_size = _send_buffer_main.size ();
-            const size_t pend_size = _direct_send_pending.size ();
-            _send_buffer_main.resize (old_size + pend_size);
-            memcpy (&_send_buffer_main[old_size],
-                    _direct_send_pending.data (), pend_size);
-            _direct_send_pending.clear ();
-            start_async_write ();
-        }
-    }
-
-    //  Restart deferred read — all zero-copy references released by now.
-    if (_read_deferred) {
-        _read_deferred = false;
-        if (!_input_stopped && !_terminating && !_io_error && !_read_pending)
-            start_async_read ();
     }
 }
 

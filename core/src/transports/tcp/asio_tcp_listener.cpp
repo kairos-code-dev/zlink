@@ -359,34 +359,19 @@ void zlink::asio_tcp_listener_t::create_engine (fd_t fd_)
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in.  When direct IO is active,
-    //  distribute connections round-robin between primary and helper
-    //  io_threads.  The primary is polled by the app thread; the helper
-    //  runs on a background worker thread for read parallelization.
+    //  distribute connections round-robin across helper threads.
+    //  Primary io_context only handles accepts; all data connections
+    //  go to helpers for true per-thread independence.
     io_thread_t *io_thread = NULL;
     if (options.direct_io_thread_ptr) {
-        if (options.direct_io_helper_thread2_ptr) {
-            //  2-helper mode: ALL data connections go to helper threads.
-            //  Primary io_context only handles accepts.
-            //  Each helper independently handles read+write for its
-            //  assigned connections, similar to cppserver's architecture.
+        const size_t n_helpers = options.direct_io_helpers.size ();
+        if (n_helpers > 0) {
             static std::atomic<uint32_t> rr_counter (0);
-            if ((rr_counter.fetch_add (1, std::memory_order_relaxed) & 1)
-                == 0)
-                io_thread = static_cast<io_thread_t *> (
-                  options.direct_io_helper_thread_ptr);
-            else
-                io_thread = static_cast<io_thread_t *> (
-                  options.direct_io_helper_thread2_ptr);
-        } else if (options.direct_io_helper_thread_ptr) {
-            //  1-helper mode: round-robin between primary and helper.
-            static std::atomic<uint32_t> rr_counter (0);
-            if ((rr_counter.fetch_add (1, std::memory_order_relaxed) & 1)
-                == 0)
-                io_thread = static_cast<io_thread_t *> (
-                  options.direct_io_thread_ptr);
-            else
-                io_thread = static_cast<io_thread_t *> (
-                  options.direct_io_helper_thread_ptr);
+            const uint32_t idx =
+              rr_counter.fetch_add (1, std::memory_order_relaxed)
+              % static_cast<uint32_t> (n_helpers);
+            io_thread = static_cast<io_thread_t *> (
+              options.direct_io_helpers[idx]);
         } else {
             io_thread =
               static_cast<io_thread_t *> (options.direct_io_thread_ptr);

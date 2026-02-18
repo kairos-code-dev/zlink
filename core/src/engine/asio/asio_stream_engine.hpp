@@ -145,16 +145,8 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     //  True when this engine runs on the helper io_thread (background worker).
     bool _on_helper_context;
 
-    //  Thread-safe staging buffer for cross-thread direct sends.
-    //  App thread appends frame data (4-byte header + payload) to _queue;
-    //  helper thread swaps _queue↔_pending (O(1)) and writes from _pending.
-    //  Double-buffering preserves allocation across drain cycles.
-    //  Protected by _direct_send_lock spinlock.
-    std::vector<unsigned char> _direct_send_queue;
-    std::vector<unsigned char> _direct_send_pending;
-    std::atomic_flag _direct_send_lock;
-    bool _direct_send_scheduled;
-    void drain_direct_sends ();
+    //  Per-engine reusable send buffer for helper write path (non-zero-copy).
+    std::vector<unsigned char> _direct_write_buf;
 
 #if defined ZLINK_HAVE_ASIO_SSL
     std::unique_ptr<boost::asio::ssl::context> _ssl_context;

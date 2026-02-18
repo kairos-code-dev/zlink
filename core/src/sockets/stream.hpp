@@ -87,13 +87,15 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void setup_direct_io ();
     void teardown_direct_io ();
 
-    //  Helper IO thread: a 2nd io_thread with its own io_context,
-    //  running on a background worker thread.  Half the connections
-    //  are assigned here to parallelize read processing.
-    zlink::io_thread_t *_direct_io_helper_thread;
-    uint32_t _direct_io_helper_tid;
-    zlink::io_thread_t *_direct_io_helper_thread2;
-    uint32_t _direct_io_helper_tid2;
+    //  Helper IO threads: background workers with their own io_contexts.
+    //  Connections are distributed round-robin across all helpers.
+    //  Count configurable via ZLINK_STREAM_HELPER_THREADS (default: 2).
+    struct helper_thread_t
+    {
+        zlink::io_thread_t *thread;
+        uint32_t tid;
+    };
+    std::vector<helper_thread_t> _direct_io_helpers;
 
     //  Spinlock protecting _direct_recv_queue and _direct_send_engines
     //  against concurrent access from the background IO thread.

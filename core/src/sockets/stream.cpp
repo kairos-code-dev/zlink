@@ -43,10 +43,6 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _direct_io_thread (NULL),
     _direct_io_tid (0),
     _direct_io_active (false),
-    _direct_io_helper_thread (NULL),
-    _direct_io_helper_tid (0),
-    _direct_io_helper_thread2 (NULL),
-    _direct_io_helper_tid2 (0),
     _direct_queue_lock (ATOMIC_FLAG_INIT),
     _direct_io_rr_counter (0),
     _direct_recv_head (0)
@@ -650,10 +646,11 @@ void zlink::stream_t::setup_direct_io ()
     //  Store the pointer in options so that listener/create_engine can use it.
     options.direct_io_thread_ptr = _direct_io_thread;
 
-    //  Create two helper io_threads with their own io_contexts (opt-out
+    //  Create helper io_threads with their own io_contexts (opt-out
     //  via env).  Each runs on a background worker thread and handles
     //  both read AND write for its assigned connections — true per-thread
     //  independence, similar to cppserver's architecture.
+    //  Count: ZLINK_STREAM_HELPER_THREADS env var (default 2).
     {
         const char *no_helper = std::getenv ("ZLINK_STREAM_NO_HELPER");
         if (no_helper && *no_helper && *no_helper != '0') {
@@ -661,33 +658,36 @@ void zlink::stream_t::setup_direct_io ()
             return;
         }
     }
-    _direct_io_helper_thread = new (std::nothrow) io_thread_t (get_ctx (), 0);
-    if (_direct_io_helper_thread) {
-        _direct_io_helper_tid = get_ctx ()->allocate_tid_slot (
-          _direct_io_helper_thread->get_mailbox ());
-        if (_direct_io_helper_tid != 0) {
-            _direct_io_helper_thread->set_tid (_direct_io_helper_tid);
-            _direct_io_helper_thread->start ();
-            options.direct_io_helper_thread_ptr = _direct_io_helper_thread;
-        } else {
-            delete _direct_io_helper_thread;
-            _direct_io_helper_thread = NULL;
+
+    int helper_count = 2;
+    {
+        const char *env = std::getenv ("ZLINK_STREAM_HELPER_THREADS");
+        if (env && *env) {
+            const int val = std::atoi (env);
+            if (val > 0 && val <= 16)
+                helper_count = val;
         }
     }
 
-    //  Create 2nd helper io_thread for write parallelization.
-    _direct_io_helper_thread2 = new (std::nothrow) io_thread_t (get_ctx (), 0);
-    if (_direct_io_helper_thread2) {
-        _direct_io_helper_tid2 = get_ctx ()->allocate_tid_slot (
-          _direct_io_helper_thread2->get_mailbox ());
-        if (_direct_io_helper_tid2 != 0) {
-            _direct_io_helper_thread2->set_tid (_direct_io_helper_tid2);
-            _direct_io_helper_thread2->start ();
-            options.direct_io_helper_thread2_ptr = _direct_io_helper_thread2;
-        } else {
-            delete _direct_io_helper_thread2;
-            _direct_io_helper_thread2 = NULL;
+    for (int i = 0; i < helper_count; ++i) {
+        io_thread_t *ht =
+          new (std::nothrow) io_thread_t (get_ctx (), 0);
+        if (!ht)
+            break;
+        const uint32_t tid =
+          get_ctx ()->allocate_tid_slot (ht->get_mailbox ());
+        if (tid == 0) {
+            delete ht;
+            break;
         }
+        ht->set_tid (tid);
+        ht->start ();
+        helper_thread_t entry;
+        entry.thread = ht;
+        entry.tid = tid;
+        _direct_io_helpers.push_back (entry);
+        options.direct_io_helpers.push_back (
+          static_cast<void *> (ht));
     }
 
     _direct_io_active = true;
@@ -701,27 +701,17 @@ void zlink::stream_t::teardown_direct_io ()
     _direct_io_active = false;
 
     //  Stop the helper io_threads first (they run background workers).
-    if (_direct_io_helper_thread2) {
-        _direct_io_helper_thread2->stop ();
-        if (_direct_io_helper_tid2 != 0) {
-            get_ctx ()->release_tid_slot (_direct_io_helper_tid2);
-            _direct_io_helper_tid2 = 0;
+    for (size_t i = _direct_io_helpers.size (); i > 0; --i) {
+        helper_thread_t &h = _direct_io_helpers[i - 1];
+        if (h.thread) {
+            h.thread->stop ();
+            if (h.tid != 0)
+                get_ctx ()->release_tid_slot (h.tid);
+            delete h.thread;
         }
-        delete _direct_io_helper_thread2;
-        _direct_io_helper_thread2 = NULL;
-        options.direct_io_helper_thread2_ptr = NULL;
     }
-
-    if (_direct_io_helper_thread) {
-        _direct_io_helper_thread->stop ();
-        if (_direct_io_helper_tid != 0) {
-            get_ctx ()->release_tid_slot (_direct_io_helper_tid);
-            _direct_io_helper_tid = 0;
-        }
-        delete _direct_io_helper_thread;
-        _direct_io_helper_thread = NULL;
-        options.direct_io_helper_thread_ptr = NULL;
-    }
+    _direct_io_helpers.clear ();
+    options.direct_io_helpers.clear ();
 
     if (_direct_io_thread) {
         //  Drain any remaining ASIO handlers.

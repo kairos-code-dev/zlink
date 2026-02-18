@@ -275,6 +275,16 @@ set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stre
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 
+# Legacy raw-TCP stream tests are not compatible with Direct-IO mode
+# (they use raw sockets and rely on pipe-based disconnect detection).
+# Disable Direct-IO for these tests.
+foreach(_legacy_stream_test test_stream_socket test_stream_fastpath test_stream_routing_id_size)
+  if(TARGET ${_legacy_stream_test})
+    set_tests_properties(${_legacy_stream_test} PROPERTIES
+      ENVIRONMENT "ZLINK_STREAM_DIRECT_IO=0;LD_LIBRARY_PATH=$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
+  endif()
+endforeach()
+
 # Check whether all tests in the current folder are present
 file(READ "${CMAKE_CURRENT_LIST_FILE}" CURRENT_LIST_FILE_CONTENT)
 file(GLOB ALL_TEST_SOURCES "test_*.cpp" "*/test_*.cpp")

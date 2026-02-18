@@ -23,10 +23,10 @@ bool stream_single_frame_recv_enabled ()
     return env && *env && *env != '0';
 }
 
-bool stream_direct_io_enabled ()
+bool stream_direct_io_disabled ()
 {
     const char *env = getenv ("ZLINK_STREAM_DIRECT_IO");
-    return env && *env && *env != '0';
+    return env && *env == '0';
 }
 
 }
@@ -56,13 +56,15 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     if (options.out_batch_size < stream_batch_size)
         options.out_batch_size = stream_batch_size;
 
-    //  Auto-enable direct IO from environment variable.
-    if (stream_direct_io_enabled ())
-        options.stream_direct_io = 1;
+    //  Single-frame recv mode: allow opt-in via env var.
+    if (stream_single_frame_recv_enabled ())
+        options.stream_single_frame_recv = 1;
 
-    //  Set up direct IO if enabled (by env var or pre-set option).
-    if (options.stream_direct_io)
-        setup_direct_io ();
+    //  Direct IO is on by default; allow opt-out via env var.
+    if (stream_direct_io_disabled ())
+        options.stream_direct_io = 0;
+
+    //  Direct IO setup is deferred to bind() via xprepare_bind().
 
     _dirty_send_pipes.reserve (256);
     _prefetched_msg.init ();
@@ -73,13 +75,9 @@ zlink::stream_t::~stream_t ()
     teardown_direct_io ();
     flush_dirty_send_pipes ();
     _prefetched_msg.close ();
-    //  Drain and delete all per-worker recv queues.
-    for (size_t q = 0; q < _recv_queues.size (); ++q) {
-        worker_recv_queue_t *wq = _recv_queues[q];
-        for (size_t i = wq->head; i < wq->queue.size (); ++i)
-            wq->queue[i].msg.close ();
-        delete wq;
-    }
+    //  Delete all per-worker SPSC queues (destructor drains & closes).
+    for (size_t q = 0; q < _recv_queues.size (); ++q)
+        delete _recv_queues[q];
     _recv_queues.clear ();
 }
 
@@ -104,25 +102,16 @@ int zlink::stream_t::push_msg_direct (msg_t *msg_,
     //  Set routing_id on msg before moving — it travels with the msg.
     msg_->set_routing_id (routing_id_);
 
-    //  Push to the per-worker recv queue.
-    //  Contention: only this worker + app thread (down from N+1).
+    //  Push to the per-worker SPSC ring buffer (lock-free).
     const int qi = (queue_index_ >= 0
                     && queue_index_
                          < static_cast<int> (_recv_queues.size ()))
                    ? queue_index_
                    : 0;
-    worker_recv_queue_t *wq = _recv_queues[qi];
+    spsc_recv_queue_t *q = _recv_queues[qi];
 
-    while (wq->lock.test_and_set (std::memory_order_acquire))
-        ;
-
-    wq->queue.resize (wq->queue.size () + 1);
-    direct_msg_t &entry = wq->queue.back ();
-    entry.routing_id = routing_id_;
-    entry.msg.init ();
-    msg_->move (entry.msg);
-
-    wq->lock.clear (std::memory_order_release);
+    while (!q->try_push (msg_, routing_id_))
+        ; //  backpressure spin (rare — app drains fast)
 
     _recv_live.fetch_add (1, std::memory_order_release);
     return 0;
@@ -330,35 +319,40 @@ int zlink::stream_t::xsend (msg_t *msg_)
 
 int zlink::stream_t::xrecv (msg_t *msg_)
 {
-    //  Direct IO pipe bypass: drain per-worker recv queues (round-robin).
-    //  Lock-free fast check; per-queue lock only on actual drain.
-    if (_recv_live.load (std::memory_order_acquire) > 0) {
+    //  Direct IO pipe bypass: drain per-worker SPSC queues (round-robin).
+    //  Entirely lock-free — no spinlocks on the recv path.
+    //  Guard with !_prefetched so that multipart delivery (routing_id frame
+    //  + data frame) is not interrupted by popping a new message.
+    if (!_prefetched && _recv_live.load (std::memory_order_acquire) > 0) {
         const size_t n = _recv_queues.size ();
         for (size_t probe = 0; probe < n; ++probe) {
             const size_t qi =
               (_recv_drain_idx + probe) % n;
-            worker_recv_queue_t *wq = _recv_queues[qi];
 
-            while (wq->lock.test_and_set (std::memory_order_acquire))
-                ;
-            if (wq->head < wq->queue.size ()) {
-                direct_msg_t &entry = wq->queue[wq->head];
-                entry.msg.move (*msg_);
-                entry.msg.close ();
-                ++wq->head;
-                if (wq->head == wq->queue.size ()) {
-                    wq->queue.clear ();
-                    wq->head = 0;
+            if (options.stream_single_frame_recv) {
+                //  Single-frame mode: pop directly into user's msg.
+                if (_recv_queues[qi]->try_pop (msg_)) {
+                    _recv_live.fetch_sub (1, std::memory_order_relaxed);
+                    _recv_drain_idx =
+                      static_cast<uint32_t> ((qi + 1) % n);
+                    _routing_id_sent = false;
+                    return 0;
                 }
-                wq->lock.clear (std::memory_order_release);
-
-                _recv_live.fetch_sub (1, std::memory_order_relaxed);
-                _recv_drain_idx =
-                  static_cast<uint32_t> ((qi + 1) % n);
-                _routing_id_sent = false;
-                return 0;
+            } else {
+                //  Multipart mode: pop into prefetch buffer so that
+                //  the caller gets routing_id frame + data frame.
+                if (_recv_queues[qi]->try_pop (&_prefetched_msg)) {
+                    _recv_live.fetch_sub (1, std::memory_order_relaxed);
+                    _recv_drain_idx =
+                      static_cast<uint32_t> ((qi + 1) % n);
+                    _prefetched_routing_id_value =
+                      _prefetched_msg.get_routing_id ();
+                    _prefetched = true;
+                    _routing_id_sent = false;
+                    //  Fall through to multipart delivery below.
+                    break;
+                }
             }
-            wq->lock.clear (std::memory_order_release);
         }
     }
 
@@ -561,6 +555,21 @@ bool zlink::stream_t::xhas_out ()
     return true;
 }
 
+void zlink::stream_t::xprepare_bind ()
+{
+    if (!options.stream_direct_io || _direct_io_active)
+        return;
+
+    //  Direct IO only works with the ASIO stream engine (type != 0).
+    //  Raw engines use the traditional poller path.
+    if (options.stream_engine_type == 0) {
+        options.stream_direct_io = 0;
+        return;
+    }
+
+    setup_direct_io ();
+}
+
 int zlink::stream_t::xsetsockopt (int option_,
                                   const void *optval_,
                                   size_t optvallen_)
@@ -648,6 +657,60 @@ void zlink::stream_t::unlock_engine_map ()
     _direct_engine_lock.clear (std::memory_order_release);
 }
 
+//  ---------------------------------------------------------------
+//  SPSC lock-free ring buffer implementation.
+//  ---------------------------------------------------------------
+
+zlink::stream_t::spsc_recv_queue_t::spsc_recv_queue_t (size_t capacity) :
+    head (0), tail (0), mask (capacity - 1)
+{
+    zlink_assert (capacity > 0 && (capacity & mask) == 0); //  power of 2
+    ring = static_cast<direct_msg_t *> (
+      std::malloc (sizeof (direct_msg_t) * capacity));
+    alloc_assert (ring);
+    for (size_t i = 0; i < capacity; ++i)
+        ring[i].msg.init ();
+}
+
+zlink::stream_t::spsc_recv_queue_t::~spsc_recv_queue_t ()
+{
+    //  Close every slot (both occupied and pre-init'd).
+    for (size_t i = 0; i <= mask; ++i)
+        ring[i].msg.close ();
+    std::free (ring);
+}
+
+bool zlink::stream_t::spsc_recv_queue_t::try_push (msg_t *msg_,
+                                                     uint32_t routing_id_)
+{
+    const size_t t = tail.load (std::memory_order_relaxed);
+    const size_t next = (t + 1) & mask;
+    if (next == head.load (std::memory_order_acquire))
+        return false; //  full — backpressure
+    ring[t].routing_id = routing_id_;
+    ring[t].msg.init ();
+    msg_->move (ring[t].msg);
+    tail.store (next, std::memory_order_release);
+    return true;
+}
+
+bool zlink::stream_t::spsc_recv_queue_t::try_pop (msg_t *msg_out_)
+{
+    const size_t h = head.load (std::memory_order_relaxed);
+    if (h == tail.load (std::memory_order_acquire))
+        return false; //  empty
+    ring[h].msg.move (*msg_out_);
+    ring[h].msg.close ();
+    head.store ((h + 1) & mask, std::memory_order_release);
+    return true;
+}
+
+bool zlink::stream_t::spsc_recv_queue_t::empty () const
+{
+    return head.load (std::memory_order_acquire)
+           == tail.load (std::memory_order_acquire);
+}
+
 void zlink::stream_t::setup_direct_io ()
 {
     if (_direct_io_active)
@@ -684,8 +747,8 @@ void zlink::stream_t::setup_direct_io ()
     {
         const char *no_worker = std::getenv ("ZLINK_STREAM_NO_WORKER");
         if (no_worker && *no_worker && *no_worker != '0') {
-            //  No workers: allocate primary-context recv queue only.
-            _recv_queues.push_back (new worker_recv_queue_t ());
+            //  No workers: allocate primary-context SPSC queue only.
+            _recv_queues.push_back (new spsc_recv_queue_t ());
             _direct_io_active = true;
             return;
         }
@@ -722,11 +785,11 @@ void zlink::stream_t::setup_direct_io ()
           static_cast<void *> (ht));
     }
 
-    //  Allocate per-worker recv queues: [0]=primary, [1..N]=workers.
+    //  Allocate per-worker SPSC ring buffers: [0]=primary, [1..N]=workers.
     const size_t n_queues = 1 + _io_workers.size ();
     _recv_queues.reserve (n_queues);
     for (size_t i = 0; i < n_queues; ++i)
-        _recv_queues.push_back (new worker_recv_queue_t ());
+        _recv_queues.push_back (new spsc_recv_queue_t ());
 
     _direct_io_active = true;
 }
@@ -751,13 +814,9 @@ void zlink::stream_t::teardown_direct_io ()
     _io_workers.clear ();
     options.io_workers.clear ();
 
-    //  Drain and free per-worker recv queues.
-    for (size_t q = 0; q < _recv_queues.size (); ++q) {
-        worker_recv_queue_t *wq = _recv_queues[q];
-        for (size_t i = wq->head; i < wq->queue.size (); ++i)
-            wq->queue[i].msg.close ();
-        delete wq;
-    }
+    //  Free per-worker SPSC queues (destructor drains & closes).
+    for (size_t q = 0; q < _recv_queues.size (); ++q)
+        delete _recv_queues[q];
     _recv_queues.clear ();
     _recv_live.store (0, std::memory_order_relaxed);
 

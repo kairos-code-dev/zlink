@@ -172,7 +172,7 @@ zlink::options_t::options_t () :
     tcp_keepalive_intvl (-1),
     stream_engine_type (0),
     stream_single_frame_recv (0),
-    stream_direct_io (0),
+    stream_direct_io (1),
     direct_io_thread_ptr (NULL),
     io_workers (),
     tcp_nodelay (1),

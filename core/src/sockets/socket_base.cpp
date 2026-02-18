@@ -559,6 +559,8 @@ int zlink::socket_base_t::leave (const char *group_)
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
+    //  Allow socket types to perform deferred setup before binding.
+    xprepare_bind ();
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -1521,6 +1523,10 @@ void zlink::socket_base_t::update_pipe_options (int option_)
 void zlink::socket_base_t::process_destroy ()
 {
     _destroyed = true;
+}
+
+void zlink::socket_base_t::xprepare_bind ()
+{
 }
 
 int zlink::socket_base_t::xsetsockopt (int, const void *, size_t)

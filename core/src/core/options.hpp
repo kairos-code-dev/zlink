@@ -163,7 +163,8 @@ struct options_t
     //  STREAM direct IO mode.
     //  When enabled, the STREAM socket creates its own io_thread and drives
     //  its io_context from the application thread, eliminating thread crossings.
-    //  0 = disabled (default), 1 = enabled.
+    //  1 = enabled (default), 0 = disabled.  Set ZLINK_STREAM_DIRECT_IO=0
+    //  to disable at runtime.
     int stream_direct_io;
 
     //  Pointer to the socket's direct io_thread (io_thread_t*), or NULL.

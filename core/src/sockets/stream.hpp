@@ -34,6 +34,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
       ZLINK_FINAL;
+    void xprepare_bind () ZLINK_FINAL;
 
     //  Direct IO pipe bypass: engine pushes msgs here instead of pipe.
     int push_msg_direct (zlink::msg_t *msg_,
@@ -110,20 +111,34 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
         msg_t msg;
     };
 
-    //  Per-worker recv queue.  Each worker is the sole producer;
-    //  the app thread is the sole consumer.  The per-queue spinlock
-    //  reduces contention from O(N+1) to O(2) per queue.
-    struct alignas (64) worker_recv_queue_t
+    //  Lock-free SPSC ring buffer per worker.  Each worker is the sole
+    //  producer; the app thread is the sole consumer.  Power-of-2 fixed
+    //  capacity eliminates all locking on the recv path.
+    struct alignas (64) spsc_recv_queue_t
     {
-        std::atomic_flag lock;
-        std::vector<direct_msg_t> queue;
-        size_t head;
+        //  Consumer (app thread) cache line.
+        alignas (64) std::atomic<size_t> head;
 
-        worker_recv_queue_t () : lock (ATOMIC_FLAG_INIT), head (0) {}
+        //  Producer (worker thread) cache line.
+        alignas (64) std::atomic<size_t> tail;
+
+        direct_msg_t *ring;
+        size_t mask;    //  capacity - 1
+
+        explicit spsc_recv_queue_t (size_t capacity = 8192);
+        ~spsc_recv_queue_t ();
+
+        //  Producer: move msg into ring.  Returns false if full.
+        bool try_push (msg_t *msg_, uint32_t routing_id_);
+
+        //  Consumer: move msg out of ring.  Returns false if empty.
+        bool try_pop (msg_t *msg_out_);
+
+        bool empty () const;
     };
 
     //  Per-worker recv queues: [0]=primary context, [1..N]=workers.
-    std::vector<worker_recv_queue_t *> _recv_queues;
+    std::vector<spsc_recv_queue_t *> _recv_queues;
     std::atomic<size_t> _recv_live;      //  total messages across all queues
     uint32_t _recv_drain_idx;            //  round-robin drain cursor
 

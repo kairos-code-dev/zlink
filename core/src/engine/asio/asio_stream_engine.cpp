@@ -72,7 +72,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_helper_context (false)
+    _on_worker_context (false)
 {
     alloc_assert (_transport);
 }
@@ -112,7 +112,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_helper_context (false)
+    _on_worker_context (false)
 {
     if (!_transport) {
         _transport = std::unique_ptr<i_asio_transport> (
@@ -158,7 +158,7 @@ zlink::asio_stream_engine_t::asio_stream_engine_t (
     _connection_routing_id (0),
     _read_deferred (false),
     _zero_copy_active (false),
-    _on_helper_context (false),
+    _on_worker_context (false),
     _ssl_context (std::move (ssl_context_))
 {
     if (!_transport) {
@@ -208,10 +208,10 @@ void zlink::asio_stream_engine_t::plug (io_thread_t *io_thread_,
     _terminating = false;
     {
         void *self = static_cast<void *> (io_thread_);
-        _on_helper_context = false;
-        for (size_t i = 0; i < _options.direct_io_helpers.size (); ++i) {
-            if (_options.direct_io_helpers[i] == self) {
-                _on_helper_context = true;
+        _on_worker_context = false;
+        for (size_t i = 0; i < _options.io_workers.size (); ++i) {
+            if (_options.io_workers[i] == self) {
+                _on_worker_context = true;
                 break;
             }
         }
@@ -865,10 +865,10 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
 
     const size_t msg_size = msg_->size ();
 
-    //  Helper-context path: post write + restart to helper io_context.
-    //  Each helper thread independently handles both read and write for
+    //  Worker-context path: post write + restart to worker io_context.
+    //  Each worker thread independently handles both read and write for
     //  its assigned connections, parallelizing IO across two threads.
-    if (_on_helper_context && msg_size > 0 && _io_context) {
+    if (_on_worker_context && msg_size > 0 && _io_context) {
         const unsigned char *msg_data =
           static_cast<const unsigned char *> (msg_->data ());
 
@@ -924,7 +924,7 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
                       }
                   }
 
-                  //  Restart deferred read on this helper thread.
+                  //  Restart deferred read on this worker thread.
                   if (_read_deferred) {
                       _read_deferred = false;
                       if (!_input_stopped && !_terminating && !_io_error
@@ -935,7 +935,7 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
             return 1;
         }
 
-        //  Non-zero-copy helper path: copy to per-engine reusable buffer.
+        //  Non-zero-copy worker path: copy to per-engine reusable buffer.
         //  Used for small messages (< 4KB) where push_one_frame copied
         //  the data into the msg rather than referencing the recv buffer.
         const size_t total = 4U + msg_size;
@@ -989,7 +989,7 @@ int zlink::asio_stream_engine_t::queue_direct_send (msg_t *msg_)
 
               _direct_write_buf.clear ();
 
-              //  Restart deferred read on this helper thread.
+              //  Restart deferred read on this worker thread.
               if (_read_deferred) {
                   _read_deferred = false;
                   if (!_input_stopped && !_terminating && !_io_error
@@ -1074,8 +1074,8 @@ void zlink::asio_stream_engine_t::restart_deferred_read ()
     if (_input_stopped || _terminating || _io_error)
         return;
 
-    if (_on_helper_context && _io_context) {
-        //  Helper-thread engine: the socket belongs to the helper io_context.
+    if (_on_worker_context && _io_context) {
+        //  Worker-thread engine: the socket belongs to the worker io_context.
         //  Post to the correct thread to avoid cross-thread ASIO access.
         boost::asio::post (*_io_context, [this] () {
             if (!_input_stopped && !_terminating && !_io_error

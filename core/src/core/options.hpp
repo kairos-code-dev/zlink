@@ -172,11 +172,11 @@ struct options_t
     //  Set by stream_t before bind; used by listener and socket_base.
     void *direct_io_thread_ptr;
 
-    //  Pointers to the socket's helper io_threads (io_thread_t*).
+    //  Pointers to the socket's worker io_threads (io_thread_t*).
     //  When non-empty, background threads run these io_contexts to
     //  parallelize read+write processing independently per thread.
-    //  Count configurable via ZLINK_STREAM_HELPER_THREADS (default: 2).
-    std::vector<void *> direct_io_helpers;
+    //  Count configurable via ZLINK_STREAM_IO_WORKERS (default: 2).
+    std::vector<void *> io_workers;
 
     //  Enable READY metadata for ZMP (default: false)
     bool zmp_metadata;

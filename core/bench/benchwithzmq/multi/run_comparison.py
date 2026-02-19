@@ -88,12 +88,28 @@ def resolve_linux_paths():
     return build_dir, libzmq_lib_dir, zlink_lib_dir
 
 
+def runtime_bin_dir_from_cmake_dir(cmake_build_dir):
+    bin_dir = os.path.join(cmake_build_dir, "bin")
+    if IS_WINDOWS:
+        return os.path.join(bin_dir, "Release")
+    return bin_dir
+
+
 def normalize_build_dir(path):
     if not path:
         return path
     abs_path = os.path.abspath(path)
     if not os.path.isdir(abs_path):
-        return abs_path
+        base = os.path.basename(abs_path)
+        if base in BUILD_CONFIG_DIRS:
+            return abs_path
+        if base == "bin":
+            if IS_WINDOWS:
+                return os.path.join(abs_path, "Release")
+            return abs_path
+        if os.path.basename(os.path.dirname(abs_path)) == "bin":
+            return abs_path
+        return runtime_bin_dir_from_cmake_dir(abs_path)
 
     base = os.path.basename(abs_path)
     if base in BUILD_CONFIG_DIRS:
@@ -102,17 +118,18 @@ def normalize_build_dir(path):
     if base == "bin":
         if IS_WINDOWS:
             release_dir = os.path.join(abs_path, "Release")
-            if os.path.isdir(release_dir):
-                return release_dir
+            return release_dir
         return abs_path
 
     bin_dir = os.path.join(abs_path, "bin")
     if os.path.isdir(bin_dir):
         if IS_WINDOWS:
             release_dir = os.path.join(bin_dir, "Release")
-            if os.path.isdir(release_dir):
-                return release_dir
+            return release_dir
         return bin_dir
+
+    if os.path.isfile(os.path.join(abs_path, "CMakeCache.txt")):
+        return runtime_bin_dir_from_cmake_dir(abs_path)
 
     return abs_path
 
@@ -138,8 +155,6 @@ def derive_cmake_build_dir(runtime_build_dir):
         return ""
 
     abs_path = os.path.abspath(runtime_build_dir)
-    if not os.path.isdir(abs_path):
-        return ""
     if has_cmake_cache(abs_path):
         return abs_path
 
@@ -147,15 +162,15 @@ def derive_cmake_build_dir(runtime_build_dir):
     if base in BUILD_CONFIG_DIRS:
         bin_root = os.path.dirname(abs_path)
         if os.path.basename(bin_root) == "bin":
-            candidate = os.path.dirname(bin_root)
-            if has_cmake_cache(candidate):
-                return candidate
+            return os.path.dirname(bin_root)
+        return os.path.dirname(abs_path)
     elif base == "bin":
-        candidate = os.path.dirname(abs_path)
-        if has_cmake_cache(candidate):
-            return candidate
+        return os.path.dirname(abs_path)
 
-    return ""
+    parent = os.path.dirname(abs_path)
+    if os.path.basename(parent) == "bin":
+        return os.path.dirname(parent)
+    return abs_path
 
 
 if IS_WINDOWS:
@@ -275,6 +290,52 @@ def run_cmake_build(cmake_build_dir, targets):
         flush=True,
     )
     print(f"  > Build command: {' '.join(cmd)}", flush=True)
+    try:
+        return subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: cmake not found in PATH", file=sys.stderr)
+        return 127
+
+
+def detect_cmake_source_dir(cmake_build_dir):
+    cache_path = os.path.join(cmake_build_dir, "CMakeCache.txt")
+    if os.path.isfile(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as cache_file:
+                for line in cache_file:
+                    if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                        source_dir = line.split("=", 1)[1].strip()
+                        if source_dir:
+                            return source_dir
+        except OSError:
+            pass
+
+    root_cmake = os.path.join(ROOT_DIR, "CMakeLists.txt")
+    if os.path.isfile(root_cmake):
+        return ROOT_DIR
+    return os.path.join(ROOT_DIR, "core")
+
+
+def run_cmake_configure(cmake_build_dir):
+    source_dir = detect_cmake_source_dir(cmake_build_dir)
+    cmd = [
+        "cmake",
+        "-S",
+        source_dir,
+        "-B",
+        cmake_build_dir,
+        "-DBUILD_SHARED=ON",
+        "-DBUILD_BENCHMARKS=ON",
+        "-DZLINK_BUILD_BENCH_ZMQ=ON",
+        "-DZLINK_BUILD_BENCH_ZLINK=ON",
+        "-DZLINK_BUILD_BENCH_BEAST=OFF",
+    ]
+
+    print(
+        f"  > Configuring benchmark build in {cmake_build_dir}",
+        flush=True,
+    )
+    print(f"  > Configure command: {' '.join(cmd)}", flush=True)
     try:
         return subprocess.run(cmd).returncode
     except FileNotFoundError:
@@ -979,7 +1040,17 @@ def main():
                 print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
             return 2
 
-        build_targets = collect_multi_build_targets(comparisons, zlink_only)
+        configure_rc = run_cmake_configure(cmake_build_dir)
+        if configure_rc != 0:
+            print(
+                f"Error: auto-configure failed with exit code {configure_rc}",
+                file=sys.stderr,
+            )
+            return configure_rc
+
+        BUILD_DIR = normalize_build_dir(runtime_bin_dir_from_cmake_dir(cmake_build_dir))
+        ZLINK_LIB_DIR = derive_zlink_lib_dir(BUILD_DIR)
+        build_targets = collect_multi_build_targets(selected_comparisons, zlink_only)
         build_rc = run_cmake_build(cmake_build_dir, build_targets)
         if build_rc != 0:
             print(

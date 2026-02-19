@@ -173,6 +173,10 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/current/bench_current_multi_gateway.cpp)
     add_current_bench_multi(comp_current_multi_spot
                            multi/current/bench_current_multi_spot.cpp)
+    add_current_bench_multi(comp_current_multi_e2e_server
+                           multi_e2e/current/bench_current_multi_e2e_server.cpp)
+    add_current_bench_multi(comp_current_multi_e2e_client
+                           multi_e2e/current/bench_current_multi_e2e_client.cpp)
 
     # --- baseline zlink benchmarks (optional) ---
     if(BASELINE_ZLINK_LIBRARY)
@@ -201,6 +205,10 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                                multi/baseline/bench_baseline_multi_gateway.cpp)
         add_baseline_bench_multi(comp_baseline_multi_spot
                                multi/baseline/bench_baseline_multi_spot.cpp)
+        add_baseline_bench_multi(comp_baseline_multi_e2e_server
+                               multi_e2e/baseline/bench_baseline_multi_e2e_server.cpp)
+        add_baseline_bench_multi(comp_baseline_multi_e2e_client
+                               multi_e2e/baseline/bench_baseline_multi_e2e_client.cpp)
     else()
         message(STATUS "Baseline zlink not found in ${BASELINE_ZLINK_ROOT}. Copy previous version library there to enable comparison benchmarks.")
     endif()

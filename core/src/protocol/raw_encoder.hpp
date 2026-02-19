@@ -7,7 +7,7 @@
 
 namespace zlink
 {
-//  Encoder for raw STREAM framing (4-byte length prefix).
+//  Encoder for raw STREAM payload (no extra framing).
 class raw_encoder_t ZLINK_FINAL : public encoder_base_t<raw_encoder_t>
 {
   public:
@@ -15,10 +15,7 @@ class raw_encoder_t ZLINK_FINAL : public encoder_base_t<raw_encoder_t>
     ~raw_encoder_t ();
 
   private:
-    void header_ready ();
-    void body_ready ();
-
-    unsigned char _tmp_buf[4];
+    void raw_message_ready ();
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (raw_encoder_t)
 };

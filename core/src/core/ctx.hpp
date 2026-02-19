@@ -202,6 +202,10 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Number of I/O threads to launch.
     int _io_thread_count;
 
+    //  Tie-breaker cursor for distributing connections across I/O threads
+    //  when reported load is equal (common in ASIO path).
+    atomic_counter_t _next_io_thread;
+
     //  Does context wait (possibly forever) on termination?
     bool _blocky;
 

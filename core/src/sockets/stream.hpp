@@ -34,15 +34,14 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
       ZLINK_FINAL;
 
   private:
-    struct stream_event_t
-    {
-        uint32_t routing_id_value;
-        unsigned char code;
-    };
+    typedef std::vector<uint32_t> pending_notify_vec_t;
+    typedef std::deque<uint32_t> pending_notify_deque_t;
 
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
-    void queue_event (uint32_t routing_id_value_, unsigned char code_);
-    bool prefetch_event ();
+    void queue_notify_event (uint32_t routing_id_value_);
+    bool prefetch_notify_event ();
+    void emit_connect_event (pipe_t *pipe_);
+    void emit_disconnect_event (pipe_t *pipe_);
 
     fq_t _fq;
 
@@ -59,7 +58,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     out_pipe_vec_t _out_by_id;
 
-    std::deque<stream_event_t> _pending_events;
+    pending_notify_vec_t _pending_notify_events_vec;
+    pending_notify_deque_t _pending_notify_events_deque;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

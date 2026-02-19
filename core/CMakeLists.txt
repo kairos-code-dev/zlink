@@ -963,8 +963,6 @@ set(protocol-sources
     src/protocol/zmp_encoder.cpp
     src/protocol/raw_decoder.cpp
     src/protocol/raw_encoder.cpp
-    src/protocol/stream_fast_decoder.cpp
-    src/protocol/stream_fast_encoder.cpp
     src/protocol/metadata.cpp
     src/protocol/decoder_allocators.cpp)
 
@@ -998,8 +996,7 @@ set(engine-sources
     src/engine/asio/asio_engine.cpp
     src/engine/asio/asio_poller.cpp
     src/engine/asio/asio_zmp_engine.cpp
-    src/engine/asio/asio_raw_engine.cpp
-    src/engine/asio/asio_stream_engine.cpp)
+    src/engine/asio/asio_raw_engine.cpp)
 
 set(transport-sources
     src/transports/tcp/tcp.cpp

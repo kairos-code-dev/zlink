@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdlib>
 #ifndef ZLINK_HAVE_WINDOWS
+#include <sys/socket.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #endif
@@ -200,38 +201,80 @@ std::size_t tcp_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         ++tcp_read_some_calls;
     }
 
-    boost::system::error_code ec;
-    const std::size_t bytes_read =
-      _socket->read_some (boost::asio::buffer (buffer, len), ec);
+    const fd_t fd = _socket->native_handle ();
 
-    if (ec) {
-        if (ec == boost::asio::error::would_block
-            || ec == boost::asio::error::try_again) {
-            errno = EAGAIN;
-            if (tcp_stats_on)
-                ++tcp_read_some_eagain;
-            return 0;
-        }
-        if (ec == boost::asio::error::eof
-            || ec == boost::asio::error::connection_reset
-            || ec == boost::asio::error::broken_pipe) {
-            errno = EPIPE;
-        } else if (ec == boost::asio::error::not_connected) {
-            errno = ENOTCONN;
-        } else if (ec == boost::asio::error::bad_descriptor) {
-            errno = EBADF;
-        } else {
-            errno = EIO;
-        }
+#if defined(ZLINK_HAVE_WINDOWS)
+    const int recv_len =
+      len > static_cast<std::size_t> (0x7fffffff) ? 0x7fffffff
+                                                  : static_cast<int> (len);
+    const int rc = ::recv (fd, reinterpret_cast<char *> (buffer), recv_len, 0);
+    if (rc > 0) {
+        errno = 0;
+        if (tcp_stats_on)
+            tcp_read_some_bytes += static_cast<std::size_t> (rc);
+        return static_cast<std::size_t> (rc);
+    }
+    if (rc == 0) {
+        errno = EPIPE;
         if (tcp_stats_on)
             ++tcp_read_some_errors;
         return 0;
     }
 
-    errno = 0;
+    const int werr = WSAGetLastError ();
+    if (werr == WSAEWOULDBLOCK) {
+        errno = EAGAIN;
+        if (tcp_stats_on)
+            ++tcp_read_some_eagain;
+        return 0;
+    }
+
+    if (werr == WSAECONNRESET || werr == WSAESHUTDOWN)
+        errno = EPIPE;
+    else if (werr == WSAENOTCONN)
+        errno = ENOTCONN;
+    else if (werr == WSAENOTSOCK)
+        errno = EBADF;
+    else
+        errno = EIO;
+
     if (tcp_stats_on)
-        tcp_read_some_bytes += bytes_read;
-    return bytes_read;
+        ++tcp_read_some_errors;
+    return 0;
+#else
+    ssize_t rc = 0;
+    do {
+#ifdef MSG_DONTWAIT
+        rc = ::recv (fd, buffer, len, MSG_DONTWAIT);
+#else
+        rc = ::recv (fd, buffer, len, 0);
+#endif
+    } while (rc == -1 && errno == EINTR);
+
+    if (rc > 0) {
+        if (tcp_stats_on)
+            tcp_read_some_bytes += static_cast<std::size_t> (rc);
+        return static_cast<std::size_t> (rc);
+    }
+
+    if (rc == 0) {
+        errno = EPIPE;
+        if (tcp_stats_on)
+            ++tcp_read_some_errors;
+        return 0;
+    }
+
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        errno = EAGAIN;
+        if (tcp_stats_on)
+            ++tcp_read_some_eagain;
+        return 0;
+    }
+
+    if (tcp_stats_on)
+        ++tcp_read_some_errors;
+    return 0;
+#endif
 }
 
 void tcp_transport_t::async_write_some (const unsigned char *buffer,
@@ -531,6 +574,11 @@ std::size_t tcp_transport_t::write_some (const std::uint8_t *data,
 bool tcp_transport_t::supports_speculative_write () const
 {
     return tcp_allow_sync_write_on;
+}
+
+bool tcp_transport_t::supports_speculative_read () const
+{
+    return true;
 }
 
 }  // namespace zlink

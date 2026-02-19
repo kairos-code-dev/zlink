@@ -91,6 +91,14 @@ bool env_flag_enabled (const char *name_)
     return env && *env && *env != '0';
 }
 
+bool env_flag_default_true (const char *name_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return true;
+    return *env != '0';
+}
+
 size_t parse_size_env (const char *name_, size_t fallback_)
 {
     const char *env = std::getenv (name_);
@@ -125,6 +133,21 @@ const bool asio_stream_gather_on =
 const size_t asio_stream_gather_threshold =
   parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 8192);
 
+const bool asio_trace_on =
+  env_flag_enabled ("ZLINK_ASIO_TRACE");
+
+const bool asio_stream_enable_handler_alloc =
+  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC");
+
+const bool asio_stream_enable_read_drain =
+  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN");
+
+const size_t asio_stream_read_drain_max_loops =
+  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 8);
+
+const size_t asio_stream_read_drain_max_bytes =
+  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES", 262144);
+
 }
 
 zlink::asio_engine_t::asio_engine_t (
@@ -156,6 +179,8 @@ zlink::asio_engine_t::asio_engine_t (
     _transport (std::move (transport_)),
     _current_timer_id (-1),
     _read_buffer (read_buffer_size),
+    _read_from_pending_pool (false),
+    _last_speculative_read_bytes (0),
     _total_pending_bytes (0),
     _fd (fd_),
     _plugged (false),
@@ -166,12 +191,12 @@ zlink::asio_engine_t::asio_engine_t (
     _handshake_pending (false),
     _async_zero_copy (false),
     _async_gather (false),
+    _in_read_drain (false),
     _gather_header_size (0),
     _gather_body (NULL),
     _gather_body_size (0),
     _terminating (false),
     _read_buffer_ptr (NULL),
-    _read_from_pending_pool (false),
     _session (NULL),
     _socket (NULL)
 {
@@ -286,11 +311,23 @@ void zlink::asio_engine_t::start_transport_handshake ()
     const int handshake_type =
       _endpoint_uri_pair.local_type == endpoint_type_connect ? 0 : 1;
 
-    _transport->async_handshake (
-      handshake_type,
-      [this] (const boost::system::error_code &ec, std::size_t) {
-          on_transport_handshake (ec);
-      });
+    const bool use_stream_handler_alloc =
+      _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+    if (use_stream_handler_alloc) {
+        _transport->async_handshake (
+          handshake_type,
+          make_custom_alloc_handler (
+            _stream_handshake_handler_allocator,
+            [this] (const boost::system::error_code &ec, std::size_t) {
+                on_transport_handshake (ec);
+            }));
+    } else {
+        _transport->async_handshake (
+          handshake_type,
+          [this] (const boost::system::error_code &ec, std::size_t) {
+              on_transport_handshake (ec);
+          });
+    }
 }
 
 void zlink::asio_engine_t::on_transport_handshake (
@@ -466,18 +503,33 @@ void zlink::asio_engine_t::start_async_read ()
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
 
     if (_transport) {
-        _transport->async_read_some (
-          _read_buffer_ptr, read_size,
-          [this] (const boost::system::error_code &ec, std::size_t bytes) {
-              on_read_complete (ec, bytes);
-          });
+        const bool use_stream_handler_alloc =
+          _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+        if (use_stream_handler_alloc) {
+            _transport->async_read_some (
+              _read_buffer_ptr, read_size,
+              make_custom_alloc_handler (
+                _stream_read_handler_allocator,
+                [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                    on_read_complete (ec, bytes);
+                }));
+        } else {
+            _transport->async_read_some (
+              _read_buffer_ptr, read_size,
+              [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                  on_read_complete (ec, bytes);
+              });
+        }
     }
 }
 
 bool zlink::asio_engine_t::speculative_read ()
 {
-    if (_read_pending || _io_error || !_transport)
+    if (_read_pending || _io_error || !_transport
+        || !_transport->supports_speculative_read ())
         return false;
+
+    _last_speculative_read_bytes = 0;
 
     //  Prepare read buffer the same way as start_async_read().
     size_t read_size;
@@ -507,8 +559,7 @@ bool zlink::asio_engine_t::speculative_read ()
 
     errno = 0;
     const std::size_t bytes =
-      _transport->read_some (reinterpret_cast<std::uint8_t *> (
-                               _read_buffer_ptr),
+      _transport->read_some (reinterpret_cast<std::uint8_t *> (_read_buffer_ptr),
                              read_size);
 
     if (bytes == 0) {
@@ -519,7 +570,54 @@ bool zlink::asio_engine_t::speculative_read ()
         return true;
     }
 
-    on_read_complete (boost::system::error_code (), bytes);
+    _last_speculative_read_bytes = bytes;
+
+    //  Mirror async path behavior for backpressure buffering.
+    if (_input_stopped) {
+        if (_read_from_pending_pool) {
+            const size_t total_pending = _total_pending_bytes + _insize;
+            if (total_pending + bytes > max_pending_buffer_size) {
+                _read_from_pending_pool = false;
+                error (connection_error);
+                return true;
+            }
+
+            _pending_read_buffer.resize (bytes);
+            _pending_buffers.push_back (std::move (_pending_read_buffer));
+            _total_pending_bytes += bytes;
+            _read_from_pending_pool = false;
+            return true;
+        }
+
+        const size_t total_pending = _total_pending_bytes + _insize;
+        if (total_pending + bytes > max_pending_buffer_size) {
+            error (connection_error);
+            return true;
+        }
+
+        std::vector<unsigned char> buffer (bytes);
+        std::memcpy (buffer.data (), _read_buffer_ptr, bytes);
+        _pending_buffers.push_back (std::move (buffer));
+        _total_pending_bytes += bytes;
+        return true;
+    }
+
+    if (_decoder && _insize > 0) {
+        const size_t partial_size = _insize;
+        _insize = partial_size + bytes;
+    } else {
+        _inpos = _read_buffer_ptr;
+        _insize = bytes;
+    }
+    _input_in_decoder_buffer = (_decoder != NULL);
+
+    if (!process_input ()) {
+        if (_handshaking && errno == EAGAIN) {
+            if (_outsize > 0)
+                start_async_write ();
+        }
+    }
+
     return true;
 }
 
@@ -543,8 +641,7 @@ void zlink::asio_engine_t::start_async_write ()
     }
 
     //  Try a synchronous write first when supported (libzlink-like path).
-    const bool use_speculative_write =
-      _options.type == ZLINK_STREAM || _transport->supports_speculative_write ();
+    const bool use_speculative_write = _transport->supports_speculative_write ();
     if (use_speculative_write) {
         const std::size_t bytes =
           _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
@@ -567,11 +664,23 @@ void zlink::asio_engine_t::start_async_write ()
     _async_zero_copy = true;
 
     if (_transport) {
-        _transport->async_write_some (
-          _outpos, _outsize,
-          [this] (const boost::system::error_code &ec, std::size_t bytes) {
-              on_write_complete (ec, bytes);
-          });
+        const bool use_stream_handler_alloc =
+          _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+        if (use_stream_handler_alloc) {
+            _transport->async_write_some (
+              _outpos, _outsize,
+              make_custom_alloc_handler (
+                _stream_write_handler_allocator,
+                [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                    on_write_complete (ec, bytes);
+                }));
+        } else {
+            _transport->async_write_some (
+              _outpos, _outsize,
+              [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                  on_write_complete (ec, bytes);
+              });
+        }
     }
 }
 
@@ -629,11 +738,23 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     _async_zero_copy = false;
     _output_stopped = false;
 
-    _transport->async_writev (
-      _gather_header, _gather_header_size, _gather_body, _gather_body_size,
-      [this] (const boost::system::error_code &ec, std::size_t bytes) {
-          on_write_complete (ec, bytes);
-      });
+    const bool use_stream_handler_alloc =
+      _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
+    if (use_stream_handler_alloc) {
+        _transport->async_writev (
+          _gather_header, _gather_header_size, _gather_body, _gather_body_size,
+          make_custom_alloc_handler (
+            _stream_write_handler_allocator,
+            [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                on_write_complete (ec, bytes);
+            }));
+    } else {
+        _transport->async_writev (
+          _gather_header, _gather_header_size, _gather_body, _gather_body_size,
+          [this] (const boost::system::error_code &ec, std::size_t bytes) {
+              on_write_complete (ec, bytes);
+          });
+    }
     return true;
 }
 
@@ -770,10 +891,49 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
         return;
     }
 
-    //  True Proactor Pattern: Always continue reading.
-    //  If backpressure was triggered during process_input(), data will be
-    //  buffered in the next on_read_complete() call.
-    start_async_read ();
+    //  Drain a bounded amount of immediately available STREAM data before
+    //  re-arming async read. This reduces callback churn on small frames.
+    if (_in_read_drain)
+        return;
+
+    maybe_drain_stream_reads ();
+}
+
+void zlink::asio_engine_t::maybe_drain_stream_reads ()
+{
+    if (_terminating || _io_error)
+        return;
+
+    const bool should_drain =
+      _options.type == ZLINK_STREAM && asio_stream_enable_read_drain
+      && asio_stream_read_drain_max_loops > 0 && _transport
+      && _transport->supports_speculative_read ();
+    if (!should_drain) {
+        start_async_read ();
+        return;
+    }
+
+    _in_read_drain = true;
+    size_t drained_loops = 0;
+    size_t drained_bytes = 0;
+
+    while (!_terminating && !_io_error && !_read_pending && !_input_stopped
+           && drained_loops < asio_stream_read_drain_max_loops
+           && drained_bytes < asio_stream_read_drain_max_bytes) {
+        const bool progressed = speculative_read ();
+        if (!progressed)
+            break;
+
+        ++drained_loops;
+        if (_last_speculative_read_bytes == 0)
+            break;
+        drained_bytes += _last_speculative_read_bytes;
+    }
+
+    _in_read_drain = false;
+
+    if (!_terminating && !_io_error && !_read_pending)
+        start_async_read ();
 }
 
 void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &ec,
@@ -814,12 +974,26 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
         if (_outsize > 0) {
             _write_pending = true;
             if (_transport) {
-                _transport->async_write_some (
-                  _outpos, _outsize,
-                  [this] (const boost::system::error_code &wec,
-                          std::size_t bytes) {
-                      on_write_complete (wec, bytes);
-                  });
+                const bool use_stream_handler_alloc =
+                  _options.type == ZLINK_STREAM
+                  && asio_stream_enable_handler_alloc;
+                if (use_stream_handler_alloc) {
+                    _transport->async_write_some (
+                      _outpos, _outsize,
+                      make_custom_alloc_handler (
+                        _stream_write_handler_allocator,
+                        [this] (const boost::system::error_code &wec,
+                                std::size_t bytes) {
+                            on_write_complete (wec, bytes);
+                        }));
+                } else {
+                    _transport->async_write_some (
+                      _outpos, _outsize,
+                      [this] (const boost::system::error_code &wec,
+                              std::size_t bytes) {
+                          on_write_complete (wec, bytes);
+                      });
+                }
             }
             return;
         }
@@ -994,8 +1168,7 @@ void zlink::asio_engine_t::speculative_write ()
         return;
     }
 
-    const bool use_speculative_write =
-      _options.type == ZLINK_STREAM || _transport->supports_speculative_write ();
+    const bool use_speculative_write = _transport->supports_speculative_write ();
     if (!use_speculative_write) {
         ENGINE_DBG ("speculative_write: transport prefers async");
         start_async_write ();
@@ -1346,8 +1519,6 @@ const zlink::endpoint_uri_pair_t &zlink::asio_engine_t::get_endpoint () const
 
 int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
 {
-    const bool trace =
-      std::getenv ("ZLINK_ASIO_TRACE") != NULL;
     if (_has_timeout_timer) {
         _has_timeout_timer = false;
         cancel_timer (heartbeat_timeout_timer_id);
@@ -1365,7 +1536,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
     if (_metadata)
         msg_->set_metadata (_metadata);
     if (_session->push_msg (msg_) == -1) {
-        if (trace) {
+        if (asio_trace_on) {
             fprintf (stderr,
                      "[ASIO_TRACE] push_msg failed size=%zu flags=0x%x errno=%d\n",
                      msg_->size (), msg_->flags (), errno);
@@ -1374,7 +1545,7 @@ int zlink::asio_engine_t::decode_and_push (msg_t *msg_)
             _process_msg = &asio_engine_t::push_one_then_decode_and_push;
         return -1;
     }
-    if (trace) {
+    if (asio_trace_on) {
         fprintf (stderr, "[ASIO_TRACE] push_msg ok size=%zu flags=0x%x\n",
                  msg_->size (), msg_->flags ());
     }
@@ -1425,13 +1596,15 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
         disconnect_reason = ZLINK_DISCONNECT_TRANSPORT_ERROR;
     }
 
-    const zlink::blob_t *routing_id = _session ? &_session->peer_routing_id ()
-                                             : NULL;
-    const unsigned char *routing_id_data =
-      routing_id ? routing_id->data () : NULL;
-    const size_t routing_id_size = routing_id ? routing_id->size () : 0;
-    _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
-                                 routing_id_data, routing_id_size);
+    if (_options.type != ZLINK_STREAM) {
+        const zlink::blob_t *routing_id = _session ? &_session->peer_routing_id ()
+                                                 : NULL;
+        const unsigned char *routing_id_data =
+          routing_id ? routing_id->data () : NULL;
+        const size_t routing_id_size = routing_id ? routing_id->size () : 0;
+        _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
+                                     routing_id_data, routing_id_size);
+    }
     _session->flush ();
     _session->engine_error (!_handshaking, reason_);
     unplug ();

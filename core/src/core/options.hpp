@@ -125,6 +125,10 @@ struct options_t
     //  If true, the routing id message is forwarded to the socket.
     bool recv_routing_id;
 
+    //  For STREAM sockets, emit 0-byte connect/disconnect notifications
+    //  into the receive path.
+    bool stream_notify;
+
     //  TCP keep-alive settings.
     //  Defaults to -1 = do not change socket options
     int tcp_keepalive;

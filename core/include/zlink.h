@@ -363,6 +363,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_BLOCKY 70
 #define ZLINK_XPUB_MANUAL 71
 #define ZLINK_XPUB_WELCOME_MSG 72
+#define ZLINK_STREAM_NOTIFY 73
 #define ZLINK_INVERT_MATCHING 74
 #define ZLINK_HEARTBEAT_IVL 75
 #define ZLINK_HEARTBEAT_TTL 76

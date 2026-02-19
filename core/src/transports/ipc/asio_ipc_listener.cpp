@@ -6,7 +6,7 @@
 #include "transports/ipc/asio_ipc_listener.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
-#include "engine/asio/asio_stream_engine.hpp"
+#include "engine/asio/asio_raw_engine.hpp"
 #include "transports/ipc/ipc_transport.hpp"
 #include "core/address.hpp"
 #include "utils/err.hpp"
@@ -16,6 +16,9 @@
 #include "core/session_base.hpp"
 #include "sockets/socket_base.hpp"
 
+#include <algorithm>
+#include <cerrno>
+#include <cstdlib>
 #include <string.h>
 #include <memory>
 
@@ -69,6 +72,28 @@ make_ipc_endpoint (const zlink::ipc_address_t &addr_)
     endpoint.resize (addr_.addrlen ());
     return endpoint;
 }
+
+size_t parse_stream_accept_concurrency ()
+{
+    const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
+    if (!env || !*env)
+        return 1;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return 1;
+
+    return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
+}
+
+size_t stream_accept_target (const zlink::options_t &options_)
+{
+    if (options_.type != ZLINK_STREAM)
+        return 1;
+    return parse_stream_accept_concurrency ();
+}
 }
 
 zlink::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
@@ -78,9 +103,8 @@ zlink::asio_ipc_listener_t::asio_ipc_listener_t (io_thread_t *io_thread_,
     io_object_t (io_thread_),
     _io_context (io_thread_->get_io_context ()),
     _acceptor (_io_context),
-    _accept_socket (_io_context),
     _socket (socket_),
-    _accepting (false),
+    _accepting_count (0),
     _terminating (false),
     _linger (0),
     _has_file (false)
@@ -197,77 +221,87 @@ void zlink::asio_ipc_listener_t::process_plug ()
 
 void zlink::asio_ipc_listener_t::process_term (int linger_)
 {
-    IPC_LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
-                      _accepting);
+    IPC_LISTENER_DBG ("process_term called, linger=%d, accepting=%zu", linger_,
+                      _accepting_count);
 
     _terminating = true;
     _linger = linger_;
 
     close ();
 
-    if (_accepting) {
-        _io_context.poll ();
-    }
+    for (size_t i = 0; i < 4096 && _accepting_count > 0; ++i)
+        _io_context.poll_one ();
 
     own_t::process_term (linger_);
 }
 
 void zlink::asio_ipc_listener_t::start_accept ()
 {
-    if (_accepting || !_acceptor.is_open ())
+    if (!_acceptor.is_open ())
         return;
 
-    _accepting = true;
-    IPC_LISTENER_DBG ("start_accept: starting async_accept");
+    const size_t target_accepts = stream_accept_target (options);
+    while (_accepting_count < target_accepts && _acceptor.is_open ()) {
+        const std::shared_ptr<boost::asio::local::stream_protocol::socket>
+          accept_socket (
+            new (std::nothrow)
+              boost::asio::local::stream_protocol::socket (_io_context));
+        alloc_assert (accept_socket.get ());
 
-    _acceptor.async_accept (
-      _accept_socket,
-      [this] (const boost::system::error_code &ec) { on_accept (ec); });
+        ++_accepting_count;
+        IPC_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)",
+                          _accepting_count, target_accepts);
+        _acceptor.async_accept (
+          *accept_socket, [this, accept_socket] (const boost::system::error_code &ec) {
+              on_accept (accept_socket, ec);
+          });
+    }
 }
 
-void zlink::asio_ipc_listener_t::on_accept (const boost::system::error_code &ec)
+void zlink::asio_ipc_listener_t::on_accept (
+  const std::shared_ptr<boost::asio::local::stream_protocol::socket>
+    &accept_socket_,
+  const boost::system::error_code &ec)
 {
-    _accepting = false;
-    IPC_LISTENER_DBG ("on_accept: ec=%s, terminating=%d", ec.message ().c_str (),
-                      _terminating);
+    if (_accepting_count > 0)
+        --_accepting_count;
+    IPC_LISTENER_DBG ("on_accept: ec=%s, terminating=%d, pending=%zu",
+                      ec.message ().c_str (), _terminating, _accepting_count);
 
     if (_terminating) {
-        if (!ec) {
-            _accept_socket.close ();
+        if (!ec && accept_socket_ && accept_socket_->is_open ()) {
+            boost::system::error_code close_ec;
+            accept_socket_->close (close_ec);
         }
         return;
     }
 
     if (ec) {
         if (ec == boost::asio::error::operation_aborted) {
+            start_accept ();
             return;
         }
 
         _socket->event_accept_failed (
           make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
 
-        _accept_socket =
-          boost::asio::local::stream_protocol::socket (_io_context);
         start_accept ();
         return;
     }
 
-    const fd_t fd = _accept_socket.native_handle ();
+    const fd_t fd = accept_socket_->native_handle ();
 
     if (!apply_accept_filters (fd)) {
-        _accept_socket.close ();
-        _accept_socket =
-          boost::asio::local::stream_protocol::socket (_io_context);
+        boost::system::error_code close_ec;
+        accept_socket_->close (close_ec);
         start_accept ();
         return;
     }
 
-    _accept_socket.release ();
+    accept_socket_->release ();
 
     create_engine (fd);
 
-    _accept_socket =
-      boost::asio::local::stream_protocol::socket (_io_context);
     start_accept ();
 }
 
@@ -286,7 +320,7 @@ void zlink::asio_ipc_listener_t::create_engine (fd_t fd_)
 
     i_engine *engine = NULL;
     if (options.type == ZLINK_STREAM) {
-        engine = new (std::nothrow) asio_stream_engine_t (
+        engine = new (std::nothrow) asio_raw_engine_t (
           fd_, options, endpoint_pair, std::move (transport));
     } else {
         engine = new (std::nothrow) asio_zmp_engine_t (

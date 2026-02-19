@@ -6,6 +6,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <string>
 
 namespace {
@@ -94,13 +95,12 @@ class zlink_stream_echo_server_t
         : opt (opt_),
           ctx (NULL),
           server (NULL),
+          monitor (NULL),
           recv_msgs (0),
           parse_error (0),
           protocol_error (0),
           send_error (0),
           active_connections (0),
-          connect_events (0),
-          disconnect_events (0),
           stop (false)
     {
     }
@@ -134,13 +134,27 @@ class zlink_stream_echo_server_t
             return 2;
         }
 
+        monitor = zlink_socket_monitor_open (
+          server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+        if (!monitor) {
+            std::fprintf (stderr, "zlink stream: monitor open failed: %s\n",
+                          zlink_strerror (zlink_errno ()));
+            return 2;
+        }
+        const int linger_ms = 0;
+        (void)zlink_setsockopt (monitor, ZLINK_LINGER, &linger_ms,
+                                sizeof (linger_ms));
+
         std::signal (SIGINT, on_signal);
         std::signal (SIGTERM, on_signal);
         g_stop_flag = &stop;
 
         while (!stop.load (std::memory_order_acquire)) {
-            zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
-            const int prc = zlink_poll (items, 1, 1000);
+            zlink_pollitem_t items[] = {
+              {server, 0, ZLINK_POLLIN, 0},
+              {monitor, 0, ZLINK_POLLIN, 0},
+            };
+            const int prc = zlink_poll (items, 2, 1000);
             if (prc < 0) {
                 const int err = zlink_errno ();
                 if (err == EINTR || err == ETERM)
@@ -151,6 +165,9 @@ class zlink_stream_echo_server_t
             }
             if (prc == 0)
                 continue;
+
+            if ((items[1].revents & ZLINK_POLLIN) != 0)
+                process_monitor_events ();
 
             if ((items[0].revents & ZLINK_POLLIN) != 0) {
                 for (;;) {
@@ -235,23 +252,6 @@ class zlink_stream_echo_server_t
             return 1;
         }
 
-        if (payload_size == 1 && payload && payload[0] == 1) {
-            connect_events.fetch_add (1, std::memory_order_relaxed);
-            active_connections.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        if (payload_size == 1 && payload && payload[0] == 0) {
-            if (active_connections.load (std::memory_order_relaxed) > 0)
-                active_connections.fetch_sub (1, std::memory_order_relaxed);
-            disconnect_events.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
         // STREAM payload is a raw TCP chunk and can be partial/coalesced.
         // Only validate/count when a chunk exactly matches a full frame.
         const size_t expected_frame_size = opt.size + 4;
@@ -280,8 +280,52 @@ class zlink_stream_echo_server_t
         return 1;
     }
 
+    void process_monitor_events ()
+    {
+        if (!monitor)
+            return;
+
+        for (;;) {
+            zlink_monitor_event_t event;
+            if (zlink_monitor_recv (monitor, &event, ZLINK_DONTWAIT) != 0)
+                break;
+
+            if (event.event == ZLINK_EVENT_CONNECTION_READY) {
+                if (event.routing_id.size > 0) {
+                    std::string key (
+                      reinterpret_cast<const char *> (event.routing_id.data),
+                      event.routing_id.size);
+                    if (_active_peer_ids.insert (key).second)
+                        active_connections.fetch_add (1,
+                                                      std::memory_order_relaxed);
+                }
+            } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
+                if (event.routing_id.size > 0) {
+                    std::string key (
+                      reinterpret_cast<const char *> (event.routing_id.data),
+                      event.routing_id.size);
+                    if (_active_peer_ids.erase (key) > 0) {
+                        if (active_connections.load (std::memory_order_relaxed)
+                            > 0) {
+                            active_connections.fetch_sub (
+                              1, std::memory_order_relaxed);
+                        }
+                    }
+                } else if (active_connections.load (std::memory_order_relaxed)
+                           > 0) {
+                    active_connections.fetch_sub (1, std::memory_order_relaxed);
+                }
+            }
+        }
+    }
+
     void cleanup ()
     {
+        if (monitor) {
+            zlink_close (monitor);
+            monitor = NULL;
+        }
+
         if (server) {
             zlink_close (server);
             server = NULL;
@@ -296,14 +340,14 @@ class zlink_stream_echo_server_t
     server_options_t opt;
     void *ctx;
     void *server;
+    void *monitor;
 
     std::atomic<long> recv_msgs;
     std::atomic<long> parse_error;
     std::atomic<long> protocol_error;
     std::atomic<long> send_error;
     std::atomic<long> active_connections;
-    std::atomic<long> connect_events;
-    std::atomic<long> disconnect_events;
+    std::set<std::string> _active_peer_ids;
 
     std::atomic<bool> stop;
 };

@@ -44,6 +44,7 @@ class ipc_transport_t ZLINK_FINAL : public i_asio_transport
     std::size_t write_some (const std::uint8_t *data,
                             std::size_t len) ZLINK_OVERRIDE;
 
+    bool supports_speculative_read () const ZLINK_OVERRIDE;
     bool supports_speculative_write () const ZLINK_OVERRIDE;
     bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
 

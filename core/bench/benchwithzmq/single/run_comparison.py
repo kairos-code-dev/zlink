@@ -9,6 +9,7 @@ IS_WINDOWS = os.name == "nt"
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
+BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
 
 
 def platform_arch_tag():
@@ -90,19 +91,44 @@ def normalize_build_dir(path):
     if not path:
         return path
     abs_path = os.path.abspath(path)
-    if os.path.isdir(abs_path):
-        bin_dir = os.path.join(abs_path, "bin")
-        release_dir = os.path.join(bin_dir, "Release")
-        debug_dir = os.path.join(bin_dir, "Debug")
-        if os.path.exists(os.path.join(bin_dir, "comp_zlink_pair" + EXE_SUFFIX)):
-            return bin_dir
-        if os.path.exists(os.path.join(abs_path, "comp_zlink_pair" + EXE_SUFFIX)):
+    if not os.path.isdir(abs_path):
+        base = os.path.basename(abs_path)
+        if base in BUILD_CONFIG_DIRS:
             return abs_path
-        if os.path.exists(os.path.join(release_dir, "comp_zlink_pair" + EXE_SUFFIX)):
-            return release_dir
-        if os.path.exists(os.path.join(debug_dir, "comp_zlink_pair" + EXE_SUFFIX)):
-            return debug_dir
+        if base == "bin":
+            if IS_WINDOWS:
+                return os.path.join(abs_path, "Release")
+            return abs_path
+        if os.path.basename(os.path.dirname(abs_path)) == "bin":
+            return abs_path
+        return runtime_bin_dir_from_cmake_dir(abs_path)
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        return abs_path
+
+    if base == "bin":
+        if IS_WINDOWS:
+            return os.path.join(abs_path, "Release")
+        return abs_path
+
+    bin_dir = os.path.join(abs_path, "bin")
+    if os.path.isdir(bin_dir):
+        if IS_WINDOWS:
+            return os.path.join(bin_dir, "Release")
+        return bin_dir
+
+    if os.path.isfile(os.path.join(abs_path, "CMakeCache.txt")):
+        return runtime_bin_dir_from_cmake_dir(abs_path)
+
     return abs_path
+
+
+def runtime_bin_dir_from_cmake_dir(cmake_build_dir):
+    bin_dir = os.path.join(cmake_build_dir, "bin")
+    if IS_WINDOWS:
+        return os.path.join(bin_dir, "Release")
+    return bin_dir
 
 
 def derive_zlink_lib_dir(build_dir):
@@ -115,6 +141,126 @@ def derive_zlink_lib_dir(build_dir):
     elif base == "bin":
         build_root = os.path.dirname(build_root)
     return os.path.abspath(os.path.join(build_root, "lib"))
+
+
+def has_cmake_cache(path):
+    return os.path.isfile(os.path.join(path, "CMakeCache.txt"))
+
+
+def derive_cmake_build_dir(runtime_build_dir):
+    if not runtime_build_dir:
+        return ""
+
+    abs_path = os.path.abspath(runtime_build_dir)
+    if has_cmake_cache(abs_path):
+        return abs_path
+
+    base = os.path.basename(abs_path)
+    if base in BUILD_CONFIG_DIRS:
+        bin_root = os.path.dirname(abs_path)
+        if os.path.basename(bin_root) == "bin":
+            return os.path.dirname(bin_root)
+        return os.path.dirname(abs_path)
+    if base == "bin":
+        return os.path.dirname(abs_path)
+
+    parent = os.path.dirname(abs_path)
+    if os.path.basename(parent) == "bin":
+        return os.path.dirname(parent)
+    return abs_path
+
+
+def expected_runtime_binaries(selected_comparisons):
+    names = []
+    for std_bin, zlk_bin, _ in selected_comparisons:
+        names.append(std_bin)
+        names.append(zlk_bin)
+    return names
+
+
+def collect_missing_binaries(runtime_bin_dir, names):
+    missing = []
+    for name in names:
+        bin_path = os.path.join(runtime_bin_dir, name + EXE_SUFFIX)
+        if not os.path.exists(bin_path):
+            missing.append(name)
+    return sorted(set(missing))
+
+
+def collect_single_build_targets(comparisons):
+    targets = []
+    for std_bin, zlk_bin, _ in comparisons:
+        if std_bin not in targets:
+            targets.append(std_bin)
+        if zlk_bin not in targets:
+            targets.append(zlk_bin)
+    return targets
+
+
+def run_cmake_build(cmake_build_dir, targets):
+    cmd = ["cmake", "--build", cmake_build_dir]
+    if IS_WINDOWS:
+        cmd.extend(["--config", "Release"])
+    if targets:
+        cmd.append("--target")
+        cmd.extend(targets)
+
+    print(
+        f"  > Auto-building missing benchmark binaries in {cmake_build_dir}",
+        flush=True,
+    )
+    print(f"  > Build command: {' '.join(cmd)}", flush=True)
+    try:
+        return subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: cmake not found in PATH", file=sys.stderr)
+        return 127
+
+
+def detect_cmake_source_dir(cmake_build_dir):
+    cache_path = os.path.join(cmake_build_dir, "CMakeCache.txt")
+    if os.path.isfile(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as cache_file:
+                for line in cache_file:
+                    if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                        source_dir = line.split("=", 1)[1].strip()
+                        if source_dir:
+                            return source_dir
+        except OSError:
+            pass
+
+    root_cmake = os.path.join(ROOT_DIR, "CMakeLists.txt")
+    if os.path.isfile(root_cmake):
+        return ROOT_DIR
+    return os.path.join(ROOT_DIR, "core")
+
+
+def run_cmake_configure(cmake_build_dir):
+    source_dir = detect_cmake_source_dir(cmake_build_dir)
+    cmd = [
+        "cmake",
+        "-S",
+        source_dir,
+        "-B",
+        cmake_build_dir,
+        "-DBUILD_SHARED=ON",
+        "-DBUILD_BENCHMARKS=ON",
+        "-DZLINK_BUILD_BENCH_ZMQ=ON",
+        "-DZLINK_BUILD_BENCH_ZLINK=ON",
+        "-DZLINK_BUILD_BENCH_BEAST=OFF",
+    ]
+
+    print(
+        f"  > Configuring benchmark build in {cmake_build_dir}",
+        flush=True,
+    )
+    print(f"  > Configure command: {' '.join(cmd)}", flush=True)
+    try:
+        return subprocess.run(cmd).returncode
+    except FileNotFoundError:
+        print("Error: cmake not found in PATH", file=sys.stderr)
+        return 127
 
 
 if IS_WINDOWS:
@@ -552,12 +698,45 @@ def main():
             )
             return 2
 
-    missing = []
-    for std_bin, zlk_bin, _ in selected:
-        if not os.path.exists(os.path.join(BUILD_DIR, std_bin + EXE_SUFFIX)):
-            missing.append(std_bin)
-        if not os.path.exists(os.path.join(BUILD_DIR, zlk_bin + EXE_SUFFIX)):
-            missing.append(zlk_bin)
+    expected_bins = expected_runtime_binaries(selected)
+    missing = collect_missing_binaries(BUILD_DIR, expected_bins)
+
+    if missing:
+        cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
+        if not cmake_build_dir:
+            print(
+                f"Error: missing benchmark binaries in {BUILD_DIR} and failed to derive CMake build dir.",
+                file=sys.stderr,
+            )
+            print(
+                "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                file=sys.stderr,
+            )
+            for name in missing:
+                print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
+            return 2
+
+        configure_rc = run_cmake_configure(cmake_build_dir)
+        if configure_rc != 0:
+            print(
+                f"Error: auto-configure failed with exit code {configure_rc}",
+                file=sys.stderr,
+            )
+            return configure_rc
+
+        BUILD_DIR = normalize_build_dir(runtime_bin_dir_from_cmake_dir(cmake_build_dir))
+        ZLINK_LIB_DIR = derive_zlink_lib_dir(BUILD_DIR)
+        build_targets = collect_single_build_targets(selected)
+        build_rc = run_cmake_build(cmake_build_dir, build_targets)
+        if build_rc != 0:
+            print(
+                f"Error: auto-build failed with exit code {build_rc}",
+                file=sys.stderr,
+            )
+            return build_rc
+
+        missing = collect_missing_binaries(BUILD_DIR, expected_bins)
+
     if missing:
         print(f"Error: missing benchmark binaries in {BUILD_DIR}:", file=sys.stderr)
         for name in sorted(set(missing)):

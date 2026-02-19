@@ -166,6 +166,7 @@ zlink::options_t::options_t () :
     filter (false),
     invert_matching (false),
     recv_routing_id (false),
+    stream_notify (false),
     tcp_keepalive (-1),
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
@@ -410,6 +411,10 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_INVERT_MATCHING:
             return do_setsockopt_int_as_bool_relaxed (optval_, optvallen_,
                                                       &invert_matching);
+
+        case ZLINK_STREAM_NOTIFY:
+            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
+                                                     &stream_notify);
 
         case ZLINK_ZMP_METADATA:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
@@ -732,6 +737,13 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_INVERT_MATCHING:
             if (is_int) {
                 *value = invert_matching;
+                return 0;
+            }
+            break;
+
+        case ZLINK_STREAM_NOTIFY:
+            if (is_int) {
+                *value = stream_notify ? 1 : 0;
                 return 0;
             }
             break;

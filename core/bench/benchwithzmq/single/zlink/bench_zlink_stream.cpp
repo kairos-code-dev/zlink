@@ -25,8 +25,8 @@ static const socket_t INVALID_SOCKET_FD = -1;
 
 namespace {
 
-static const unsigned char STREAM_EVENT_CONNECT = 0x01;
-static const unsigned char STREAM_EVENT_DISCONNECT = 0x00;
+static const int STREAM_NOTIFY_ON = 1;
+static const size_t FRAME_PREFIX = 4;
 
 #ifdef _WIN32
 void ensure_winsock_initialized()
@@ -49,6 +49,26 @@ void close_socket_fd(socket_t fd)
     closesocket(fd);
 #else
     close(fd);
+#endif
+}
+
+void set_socket_timeouts(socket_t fd, int timeout_ms)
+{
+    if (timeout_ms <= 0)
+        return;
+
+#ifdef _WIN32
+    const DWORD timeout = static_cast<DWORD>(timeout_ms);
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout),
+               sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&timeout),
+               sizeof(timeout));
+#else
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 #endif
 }
 
@@ -137,8 +157,7 @@ socket_t connect_tcp(const std::string &endpoint)
     }
 #endif
 
-    if (connect(fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr))
-        != 0) {
+    if (connect(fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) != 0) {
         close_socket_fd(fd);
         return INVALID_SOCKET_FD;
     }
@@ -153,7 +172,7 @@ bool send_framed(socket_t fd, const std::vector<char> &payload)
         return false;
     if (payload.empty())
         return true;
-    return write_all(fd, &payload[0], payload.size());
+    return write_all(fd, payload.data(), payload.size());
 }
 
 bool recv_framed(socket_t fd, std::vector<char> *payload)
@@ -165,84 +184,167 @@ bool recv_framed(socket_t fd, std::vector<char> *payload)
     payload->assign(len, 0);
     if (len == 0)
         return true;
-    return read_all(fd, &(*payload)[0], len);
+    return read_all(fd, payload->data(), len);
 }
 
-bool is_stream_event_payload(const char *data, size_t size)
+bool expect_connect_event(void *socket_, std::vector<unsigned char> &routing_id)
 {
-    return size == 1
-           && (static_cast<unsigned char>(data[0]) == STREAM_EVENT_CONNECT
-               || static_cast<unsigned char>(data[0]) == STREAM_EVENT_DISCONNECT);
+    zlink_msg_t id_frame;
+    zlink_msg_init(&id_frame);
+    const int id_len = zlink_msg_recv(&id_frame, socket_, 0);
+    if (id_len <= 0) {
+        zlink_msg_close(&id_frame);
+        return false;
+    }
+
+    routing_id.assign(
+      static_cast<const unsigned char *>(zlink_msg_data(&id_frame)),
+      static_cast<const unsigned char *>(zlink_msg_data(&id_frame)) + id_len);
+    zlink_msg_close(&id_frame);
+
+    int more = 0;
+    size_t more_size = sizeof(more);
+    if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0 || !more)
+        return false;
+
+    zlink_msg_t payload;
+    zlink_msg_init(&payload);
+    const int payload_len = zlink_msg_recv(&payload, socket_, 0);
+    zlink_msg_close(&payload);
+    return payload_len >= 0;
 }
 
-bool recv_stream_payload(void *socket,
-                         std::vector<unsigned char> *routing_id,
-                         std::vector<char> *payload)
+bool send_stream_frame(void *socket_,
+                       const std::vector<unsigned char> &routing_id,
+                       const std::vector<char> &payload)
+{
+    if (routing_id.empty())
+        return false;
+    if (zlink_send(socket_, routing_id.data(), routing_id.size(), ZLINK_SNDMORE) < 0)
+        return false;
+
+    const uint32_t len = htonl(static_cast<uint32_t>(payload.size()));
+    std::vector<char> frame(sizeof(len) + payload.size());
+    std::memcpy(frame.data(), &len, sizeof(len));
+    if (!payload.empty())
+        std::memcpy(frame.data() + sizeof(len), payload.data(), payload.size());
+    return zlink_send(socket_, frame.data(), frame.size(), 0) >= 0;
+}
+
+struct stream_buffer_t {
+    std::vector<char> data;
+    size_t offset;
+
+    stream_buffer_t() : offset(0) {}
+
+    void append(const char *buf, size_t len)
+    {
+        if (len == 0)
+            return;
+        data.insert(data.end(), buf, buf + len);
+    }
+
+    bool read_bytes(size_t len, std::vector<char> *out)
+    {
+        if (data.size() - offset < len)
+            return false;
+
+        out->assign(data.begin() + offset, data.begin() + offset + len);
+        offset += len;
+
+        if (offset > 4096 && offset >= data.size()) {
+            data.clear();
+            offset = 0;
+        } else if (offset > 4096) {
+            data.erase(data.begin(), data.begin() + offset);
+            offset = 0;
+        }
+
+        return true;
+    }
+};
+
+bool recv_stream_chunk(void *socket_,
+                       std::vector<unsigned char> *routing_id_out,
+                       std::vector<char> *data_out)
 {
     for (;;) {
         zlink_msg_t id_frame;
-        zlink_msg_t data_frame;
         zlink_msg_init(&id_frame);
-        zlink_msg_init(&data_frame);
-
-        const int id_len = zlink_msg_recv(&id_frame, socket, 0);
+        const int id_len = zlink_msg_recv(&id_frame, socket_, 0);
         if (id_len <= 0) {
             zlink_msg_close(&id_frame);
-            zlink_msg_close(&data_frame);
             return false;
         }
 
         int more = 0;
         size_t more_size = sizeof(more);
-        if (zlink_getsockopt(socket, ZLINK_RCVMORE, &more, &more_size) != 0
+        if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0
             || !more) {
             zlink_msg_close(&id_frame);
-            zlink_msg_close(&data_frame);
             return false;
         }
 
-        const int payload_len = zlink_msg_recv(&data_frame, socket, 0);
+        zlink_msg_t payload;
+        zlink_msg_init(&payload);
+        const int payload_len = zlink_msg_recv(&payload, socket_, 0);
         if (payload_len < 0) {
+            zlink_msg_close(&payload);
             zlink_msg_close(&id_frame);
-            zlink_msg_close(&data_frame);
             return false;
         }
 
-        const char *payload_data =
-          static_cast<const char *>(zlink_msg_data(&data_frame));
-        const size_t payload_size = zlink_msg_size(&data_frame);
-        const bool event_frame =
-          payload_size > 0 && is_stream_event_payload(payload_data, payload_size);
-
-        if (!event_frame) {
-            if (routing_id) {
-                routing_id->assign(
-                  static_cast<const unsigned char *>(zlink_msg_data(&id_frame)),
-                  static_cast<const unsigned char *>(zlink_msg_data(&id_frame))
-                    + zlink_msg_size(&id_frame));
-            }
-            payload->assign(payload_data, payload_data + payload_size);
-            zlink_msg_close(&id_frame);
-            zlink_msg_close(&data_frame);
-            return true;
+        if (routing_id_out) {
+            routing_id_out->assign(
+              static_cast<const unsigned char *>(zlink_msg_data(&id_frame)),
+              static_cast<const unsigned char *>(zlink_msg_data(&id_frame))
+                + id_len);
         }
+        data_out->assign(
+          static_cast<const char *>(zlink_msg_data(&payload)),
+          static_cast<const char *>(zlink_msg_data(&payload)) + payload_len);
 
+        zlink_msg_close(&payload);
         zlink_msg_close(&id_frame);
-        zlink_msg_close(&data_frame);
+
+        if (!data_out->empty())
+            return true;
     }
 }
 
-bool send_stream_msg(void *socket,
-                     const std::vector<unsigned char> &routing_id,
-                     const void *data,
-                     size_t len)
+bool recv_framed_stream(void *socket_,
+                        const std::vector<unsigned char> &routing_id,
+                        stream_buffer_t *stash,
+                        std::vector<char> *payload_out)
 {
-    if (routing_id.empty())
-        return false;
-    if (zlink_send(socket, routing_id.data(), routing_id.size(), ZLINK_SNDMORE)
-        < 0)
-        return false;
-    return zlink_send(socket, data, len, 0) >= 0;
+    std::vector<char> prefix;
+    while (!stash->read_bytes(FRAME_PREFIX, &prefix)) {
+        std::vector<unsigned char> rid;
+        std::vector<char> chunk;
+        if (!recv_stream_chunk(socket_, &rid, &chunk))
+            return false;
+        if (rid != routing_id || chunk.empty())
+            return false;
+        stash->append(chunk.data(), chunk.size());
+    }
+
+    uint32_t len = 0;
+    std::memcpy(&len, prefix.data(), sizeof(len));
+    const size_t payload_len = static_cast<size_t>(ntohl(len));
+
+    std::vector<char> payload;
+    while (!stash->read_bytes(payload_len, &payload)) {
+        std::vector<unsigned char> rid;
+        std::vector<char> chunk;
+        if (!recv_stream_chunk(socket_, &rid, &chunk))
+            return false;
+        if (rid != routing_id || chunk.empty())
+            return false;
+        stash->append(chunk.data(), chunk.size());
+    }
+
+    *payload_out = payload;
+    return true;
 }
 
 } // namespace
@@ -269,6 +371,13 @@ void run_stream(const std::string &transport,
         return;
     }
 
+    set_sockopt_int(server.get(), ZLINK_STREAM_NOTIFY, STREAM_NOTIFY_ON,
+                    "ZLINK_STREAM_NOTIFY");
+
+    const int hwm = 0;
+    set_sockopt_int(server.get(), ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
+    set_sockopt_int(server.get(), ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
+
     const int io_timeout_ms = resolve_bench_count("BENCH_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int(server.get(), ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(server.get(), ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
@@ -285,6 +394,7 @@ void run_stream(const std::string &transport,
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
         return;
     }
+    set_socket_timeouts(raw_client, io_timeout_ms);
 
     auto cleanup_client = [&]() { close_socket_fd(raw_client); };
     auto fail = [&]() {
@@ -292,16 +402,22 @@ void run_stream(const std::string &transport,
         cleanup_client();
     };
 
+    std::vector<unsigned char> server_client_id;
     settle();
+    if (!expect_connect_event(server.get(), server_client_id)) {
+        fail();
+        return;
+    }
 
     std::vector<char> send_buf(msg_size, 'a');
     std::vector<char> recv_buf;
-    std::vector<unsigned char> peer_routing_id;
+    stream_buffer_t stash;
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_framed(raw_client, send_buf)
-            || !recv_stream_payload(server.get(), &peer_routing_id, &recv_buf)) {
+            || !recv_framed_stream(server.get(), server_client_id, &stash,
+                                   &recv_buf)) {
             fail();
             return;
         }
@@ -312,10 +428,9 @@ void run_stream(const std::string &transport,
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
         if (!send_framed(raw_client, send_buf)
-            || !recv_stream_payload(server.get(), &peer_routing_id, &recv_buf)
-            || !send_stream_msg(server.get(), peer_routing_id,
-                                recv_buf.empty() ? "" : &recv_buf[0],
-                                recv_buf.size())
+            || !recv_framed_stream(server.get(), server_client_id, &stash,
+                                   &recv_buf)
+            || !send_stream_frame(server.get(), server_client_id, recv_buf)
             || !recv_framed(raw_client, &recv_buf)) {
             fail();
             return;
@@ -326,9 +441,10 @@ void run_stream(const std::string &transport,
     std::atomic<int> received(0);
     std::atomic<bool> recv_ok(true);
     std::thread receiver([&]() {
-        std::vector<char> thr_recv_buf;
+        std::vector<char> recv_tmp;
         for (int i = 0; i < msg_count; ++i) {
-            if (!recv_stream_payload(server.get(), NULL, &thr_recv_buf)) {
+            if (!recv_framed_stream(server.get(), server_client_id, &stash,
+                                    &recv_tmp)) {
                 recv_ok.store(false);
                 break;
             }
@@ -371,4 +487,3 @@ int main(int argc, char **argv)
 {
     return run_standard_bench_main(argc, argv, run_stream);
 }
-

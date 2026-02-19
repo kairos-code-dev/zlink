@@ -50,6 +50,7 @@ zlink::ctx_t::ctx_t () :
     _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
+    _next_io_thread (0),
     _blocky (true),
     _ipv6 (false)
 {
@@ -599,11 +600,18 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
     if (_io_threads.empty ())
         return NULL;
 
+    const io_threads_t::size_type io_threads_size = _io_threads.size ();
+    const io_threads_t::size_type start_index =
+      io_threads_size == 0
+        ? 0
+        : static_cast<io_threads_t::size_type> (
+            _next_io_thread.add (1) % io_threads_size);
+
     //  Find the I/O thread with minimum load.
     int min_load = -1;
     io_thread_t *selected_io_thread = NULL;
-    for (io_threads_t::size_type i = 0, size = _io_threads.size (); i != size;
-         i++) {
+    for (io_threads_t::size_type n = 0; n != io_threads_size; ++n) {
+        const io_threads_t::size_type i = (start_index + n) % io_threads_size;
         if (!affinity_ || (affinity_ & (uint64_t (1) << i))) {
             const int load = _io_threads[i]->get_load ();
             if (selected_io_thread == NULL || load < min_load) {

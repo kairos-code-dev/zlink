@@ -35,6 +35,78 @@ display_pattern() {
   echo "$(echo "${internal}" | tr '[:upper:]' '[:lower:]')"
 }
 
+is_uint() {
+  local value="${1:-}"
+  [[ "${value}" =~ ^[0-9]+$ ]]
+}
+
+ensure_nofile_limit() {
+  local clients="${1:-}"
+  if [[ "${BENCH_SKIP_NOFILE_CHECK:-0}" == "1" ]]; then
+    return 0
+  fi
+  if ! is_uint "${clients}"; then
+    return 0
+  fi
+
+  local required=$(( clients * 2 + 4096 ))
+  local soft
+  local hard
+  soft="$(ulimit -Sn 2>/dev/null || true)"
+  hard="$(ulimit -Hn 2>/dev/null || true)"
+  if [[ -z "${soft}" || -z "${hard}" ]]; then
+    return 0
+  fi
+
+  if [[ "${soft}" == "unlimited" ]]; then
+    return 0
+  fi
+  if ! is_uint "${soft}"; then
+    return 0
+  fi
+
+  local soft_num="${soft}"
+  local hard_num=-1
+  if [[ "${hard}" == "unlimited" ]]; then
+    hard_num=-1
+  elif is_uint "${hard}"; then
+    hard_num="${hard}"
+  else
+    hard_num="${soft_num}"
+  fi
+
+  if (( soft_num < required )); then
+    local target="${required}"
+    if (( hard_num >= 0 && target > hard_num )); then
+      target="${hard_num}"
+    fi
+    if (( target > soft_num )); then
+      ulimit -Sn "${target}" 2>/dev/null || true
+      soft="$(ulimit -Sn 2>/dev/null || true)"
+      if is_uint "${soft}"; then
+        soft_num="${soft}"
+      fi
+    fi
+  fi
+
+  if (( soft_num >= required )); then
+    return 0
+  fi
+
+  echo "Error: insufficient open-file limit for high client count." >&2
+  echo "  clients=${clients}" >&2
+  echo "  required soft nofile >= ${required} (formula: clients*2+4096)" >&2
+  echo "  current soft=${soft}, hard=${hard}" >&2
+  if (( hard_num >= 0 && hard_num < required )); then
+    echo "  hard limit is below required; raise hard limit first, then rerun." >&2
+  else
+    echo "  try: ulimit -n ${required}" >&2
+  fi
+  echo "  or skip this preflight check:" >&2
+  echo "    BENCH_SKIP_NOFILE_CHECK=1 ./run_benchmarks.sh ..." >&2
+  exit 2
+}
+
 usage() {
   cat <<'USAGE'
 Usage: core/bench/benchwithzmq/multi/run_benchmarks.sh [options]
@@ -78,6 +150,9 @@ Options:
   --build-dir PATH              Forwarded to run_comparison.py
   --pin-cpu                     Forwarded to run_comparison.py
   --help                        Show help
+
+Environment:
+  BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
 USAGE
 }
 
@@ -292,6 +367,7 @@ fi
 
 effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-100}}"
 effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"
+ensure_nofile_limit "${effective_clients}"
 if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi

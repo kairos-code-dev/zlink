@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <vector>
 
 #if defined(ZLINK_HAVE_WINDOWS)
 #include <winsock2.h>
@@ -23,23 +22,39 @@ SETUP_TEARDOWN_TESTCONTEXT
 
 static const size_t stream_routing_id_size = 4;
 
-static void recv_stream_event (void *socket_,
-                               unsigned char expected_code_,
-                               unsigned char routing_id_[stream_routing_id_size])
+static bool wait_monitor_event (void *monitor_,
+                                void *activity_socket_,
+                                uint64_t expected_event_,
+                                unsigned char routing_id_[stream_routing_id_size],
+                                int timeout_ms_)
 {
-    int rc = zlink_recv (socket_, routing_id_, stream_routing_id_size, 0);
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (stream_routing_id_size), rc);
+    const int poll_slice_ms = 200;
+    const int poll_timeout = timeout_ms_ > 0 ? timeout_ms_ : 10000;
+    const int attempts = poll_timeout / poll_slice_ms + 1;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_pollitem_t items[] = {
+          {monitor_, 0, ZLINK_POLLIN, 0},
+          {activity_socket_, 0, ZLINK_POLLIN, 0},
+        };
+        const int count = activity_socket_ ? 2 : 1;
+        const int rc = zlink_poll (items, count, poll_slice_ms);
+        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+            continue;
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (socket_, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_TRUE (more);
+        for (;;) {
+            zlink_monitor_event_t event;
+            if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+                break;
+            if (event.event != expected_event_)
+                continue;
+            if (event.routing_id.size != stream_routing_id_size)
+                continue;
+            memcpy (routing_id_, event.routing_id.data, stream_routing_id_size);
+            return true;
+        }
+    }
 
-    unsigned char code = 0xFF;
-    rc = zlink_recv (socket_, &code, 1, 0);
-    TEST_ASSERT_EQUAL_INT (1, rc);
-    TEST_ASSERT_EQUAL_UINT8 (expected_code_, code);
+    return false;
 }
 
 static void send_stream_msg (void *socket_,
@@ -73,22 +88,6 @@ static int recv_stream_msg (void *socket_,
         return -1;
 
     return zlink_recv (socket_, buf_, buf_size_, 0);
-}
-
-static uint32_t read_u32_be (const unsigned char *p_)
-{
-    return (static_cast<uint32_t> (p_[0]) << 24)
-           | (static_cast<uint32_t> (p_[1]) << 16)
-           | (static_cast<uint32_t> (p_[2]) << 8)
-           | static_cast<uint32_t> (p_[3]);
-}
-
-static void write_u32_be (unsigned char *p_, uint32_t v_)
-{
-    p_[0] = static_cast<unsigned char> ((v_ >> 24) & 0xFF);
-    p_[1] = static_cast<unsigned char> ((v_ >> 16) & 0xFF);
-    p_[2] = static_cast<unsigned char> ((v_ >> 8) & 0xFF);
-    p_[3] = static_cast<unsigned char> (v_ & 0xFF);
 }
 
 static bool parse_tcp_endpoint (const char *endpoint_,
@@ -190,45 +189,17 @@ static int send_all (int fd_, const unsigned char *buf_, size_t size_)
     return 0;
 }
 
-static int recv_all (int fd_, unsigned char *buf_, size_t size_)
-{
-    size_t off = 0;
-    while (off < size_) {
-        const ssize_t n = recv (fd_, buf_ + off, size_ - off, 0);
-        if (n > 0) {
-            off += static_cast<size_t> (n);
-            continue;
-        }
-        if (n < 0 && errno == EINTR)
-            continue;
-        return -1;
-    }
-    return 0;
-}
-
 static int send_stream_packet (int fd_, const void *data_, size_t size_)
 {
-    std::vector<unsigned char> frame (4 + size_);
-    write_u32_be (&frame[0], static_cast<uint32_t> (size_));
-    if (size_ > 0)
-        memcpy (&frame[4], data_, size_);
-    return send_all (fd_, &frame[0], frame.size ());
+    return send_all (fd_, static_cast<const unsigned char *> (data_), size_);
 }
 
 static int recv_stream_packet (int fd_, void *buf_, size_t cap_)
 {
-    unsigned char hdr[4];
-    if (recv_all (fd_, hdr, sizeof (hdr)) != 0)
+    const ssize_t n = recv (fd_, static_cast<unsigned char *> (buf_), cap_, 0);
+    if (n <= 0)
         return -1;
-
-    const uint32_t size = read_u32_be (hdr);
-    if (size > cap_)
-        return -1;
-
-    if (size > 0 && recv_all (fd_, static_cast<unsigned char *> (buf_), size) != 0)
-        return -1;
-
-    return static_cast<int> (size);
+    return static_cast<int> (n);
 }
 
 static void close_raw_fd (int fd_)
@@ -250,11 +221,14 @@ void test_stream_tcp_basic ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
-
-    unsigned char server_id[stream_routing_id_size];
-    recv_stream_event (server, 0x01, server_id);
 
     const char payload[] = "hello";
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
@@ -264,11 +238,15 @@ void test_stream_tcp_basic ()
     char recv_buf[64];
     int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
     TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
     TEST_ASSERT_EQUAL_STRING_LEN (payload, recv_buf, sizeof (payload) - 1);
 
+    unsigned char server_id[stream_routing_id_size];
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_CONNECTION_READY, server_id, 2000));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
+
     const char reply[] = "world";
-    send_stream_msg (server, server_id, reply, sizeof (reply) - 1);
+    send_stream_msg (server, recv_id, reply, sizeof (reply) - 1);
 
     char client_recv_buf[64];
     rc = recv_stream_packet (client_fd, client_recv_buf, sizeof (client_recv_buf));
@@ -277,12 +255,11 @@ void test_stream_tcp_basic ()
 
     close_raw_fd (client_fd);
 
-    zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
-    TEST_ASSERT_EQUAL_INT (1, zlink_poll (items, 1, 2000));
-
-    recv_stream_event (server, 0x00, recv_id);
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_DISCONNECTED, recv_id, 10000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
 
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }
 
@@ -302,25 +279,114 @@ void test_stream_maxmsgsize ()
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
 
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+
     const int client_fd = connect_raw_tcp (endpoint);
     TEST_ASSERT_TRUE (client_fd >= 0);
 
-    unsigned char server_id[stream_routing_id_size];
-    recv_stream_event (server, 0x01, server_id);
-
-    const char payload[] = "toolarge";
+    const char probe_payload[] = "ok";
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
-                                client_fd, payload, sizeof (payload) - 1));
+                                client_fd, probe_payload,
+                                sizeof (probe_payload) - 1));
 
-    zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
-    TEST_ASSERT_EQUAL_INT (1, zlink_poll (items, 1, 2000));
+    unsigned char server_id[stream_routing_id_size];
+    char probe_recv_buf[16];
+    int rc = recv_stream_msg (server, server_id, probe_recv_buf,
+                              sizeof (probe_recv_buf));
+    TEST_ASSERT_EQUAL_INT ((int) sizeof (probe_payload) - 1, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (probe_payload, probe_recv_buf,
+                                  sizeof (probe_payload) - 1);
+
+    unsigned char connect_id[stream_routing_id_size];
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_CONNECTION_READY, connect_id, 2000));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (connect_id, server_id, stream_routing_id_size);
+
+    char payload[1024];
+    memset (payload, 'A', sizeof (payload));
+    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
+                                client_fd, payload, sizeof (payload)));
 
     unsigned char recv_id[stream_routing_id_size];
-    recv_stream_event (server, 0x00, recv_id);
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_DISCONNECTED, recv_id, 10000));
     TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
 
     close_raw_fd (client_fd);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_tcp_connect_basic ()
+{
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+    void *client = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (client);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    const int io_timeout_ms = 5000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_RCVTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_SNDTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_RCVTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      client, ZLINK_SNDTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *client_monitor = zlink_socket_monitor_open (
+      client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (client_monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (client_monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+
+    unsigned char client_peer_id[stream_routing_id_size];
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      client_monitor, client, ZLINK_EVENT_CONNECTION_READY, client_peer_id, 5000));
+
+    const char req_payload[] = "hello";
+    send_stream_msg (client, client_peer_id, req_payload, sizeof (req_payload) - 1);
+
+    unsigned char server_peer_id[stream_routing_id_size];
+    char server_recv_buf[64];
+    int rc = recv_stream_msg (
+      server, server_peer_id, server_recv_buf, sizeof (server_recv_buf));
+    TEST_ASSERT_EQUAL_INT ((int) sizeof (req_payload) - 1, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      req_payload, server_recv_buf, sizeof (req_payload) - 1);
+
+    const char resp_payload[] = "world";
+    send_stream_msg (
+      server, server_peer_id, resp_payload, sizeof (resp_payload) - 1);
+
+    unsigned char client_recv_id[stream_routing_id_size];
+    char client_recv_buf[64];
+    rc = recv_stream_msg (
+      client, client_recv_id, client_recv_buf, sizeof (client_recv_buf));
+    TEST_ASSERT_EQUAL_INT ((int) sizeof (resp_payload) - 1, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (
+      resp_payload, client_recv_buf, sizeof (resp_payload) - 1);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      client_peer_id, client_recv_id, stream_routing_id_size);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_monitor));
+    test_context_socket_close_zero_linger (server);
+    test_context_socket_close_zero_linger (client);
 }
 
 #if defined ZLINK_HAVE_WS
@@ -345,6 +411,7 @@ int main (void)
 
     RUN_TEST (test_stream_tcp_basic);
     RUN_TEST (test_stream_maxmsgsize);
+    RUN_TEST (test_stream_tcp_connect_basic);
 
 #if defined ZLINK_HAVE_WS
     RUN_TEST (test_stream_ws_basic);

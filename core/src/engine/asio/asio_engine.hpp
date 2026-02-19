@@ -20,6 +20,7 @@
 #include "protocol/i_decoder.hpp"
 #include "core/msg.hpp"
 #include "protocol/metadata.hpp"
+#include "engine/asio/handler_allocator.hpp"
 #include "engine/asio/i_asio_transport.hpp"
 
 namespace zlink
@@ -216,6 +217,10 @@ class asio_engine_t : public i_engine
     //  Returns true if a read was attempted or an error occurred.
     bool speculative_read ();
 
+    //  Drain a bounded number of immediately available STREAM reads after an
+    //  async callback to reduce callback churn on small payloads.
+    void maybe_drain_stream_reads ();
+
     //  Prepare output buffer from encoder (called by speculative_write).
     //  Returns true if data is available in _outpos/_outsize.
     bool prepare_output_buffer ();
@@ -261,6 +266,9 @@ class asio_engine_t : public i_engine
     bool _read_from_pending_pool;
     enum { pending_buffer_pool_max = 4 };
 
+    //  Last synchronous read result (used by STREAM read-drain budgeting).
+    size_t _last_speculative_read_bytes;
+
     //  Total bytes in _pending_buffers (O(1) tracking instead of O(n) iteration)
     size_t _total_pending_bytes;
 
@@ -290,6 +298,14 @@ class asio_engine_t : public i_engine
     bool _handshake_pending;
     bool _async_zero_copy;
     bool _async_gather;
+
+    //  Guard against nested drain recursion from speculative_read callbacks.
+    bool _in_read_drain;
+
+    //  STREAM-only custom allocator slots for high-frequency callbacks.
+    handler_allocator _stream_read_handler_allocator;
+    handler_allocator _stream_write_handler_allocator;
+    handler_allocator _stream_handshake_handler_allocator;
 
     unsigned char _gather_header[64];
     size_t _gather_header_size;

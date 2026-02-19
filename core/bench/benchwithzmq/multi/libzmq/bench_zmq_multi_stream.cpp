@@ -206,7 +206,7 @@ int resolve_stream_tcp_nodelay (bool force_enable)
 {
     if (force_enable)
         return 1;
-    return resolve_stream_socket_int_env ("BENCH_STREAM_TCP_NODELAY", 0, 0);
+    return resolve_stream_socket_int_env ("BENCH_STREAM_TCP_NODELAY", 1, 0);
 }
 
 void apply_stream_tcp_fd_tuning (socket_t fd, bool force_nodelay)
@@ -393,7 +393,7 @@ bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
     if (sender.valid ())
         return true;
 
-    socket_t fd = connect_tcp_socket (endpoint, false);
+    socket_t fd = connect_tcp_socket (endpoint, true);
     if (fd == INVALID_SOCKET_FD)
         return false;
     if (!set_socket_nonblocking (fd)) {
@@ -893,7 +893,7 @@ void run_multi_stream (const std::string &transport,
     const int linger_ms = 0;
     set_sockopt_int (server, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
     apply_benchmark_hwm (server, settings.hwm);
-    apply_stream_server_tuning (server, false);
+    apply_stream_server_tuning (server, true);
 #ifdef ZMQ_STREAM_NOTIFY
     set_sockopt_int (
       server, ZMQ_STREAM_NOTIFY, STREAM_NOTIFY_ON, "ZMQ_STREAM_NOTIFY");

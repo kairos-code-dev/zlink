@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdlib>
 #ifndef ZLINK_HAVE_WINDOWS
+#include <sys/socket.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #endif
@@ -195,38 +196,39 @@ std::size_t ipc_transport_t::read_some (std::uint8_t *buffer, std::size_t len)
         ++ipc_read_some_calls;
     }
 
-    boost::system::error_code ec;
-    const std::size_t bytes_read =
-      _socket->read_some (boost::asio::buffer (buffer, len), ec);
+    const fd_t fd = _socket->native_handle ();
+    ssize_t rc = 0;
+    do {
+#ifdef MSG_DONTWAIT
+        rc = ::recv (fd, buffer, len, MSG_DONTWAIT);
+#else
+        rc = ::recv (fd, buffer, len, 0);
+#endif
+    } while (rc == -1 && errno == EINTR);
 
-    if (ec) {
-        if (ec == boost::asio::error::would_block
-            || ec == boost::asio::error::try_again) {
-            errno = EAGAIN;
-            if (ipc_stats_on)
-                ++ipc_read_some_eagain;
-            return 0;
-        }
-        if (ec == boost::asio::error::eof
-            || ec == boost::asio::error::connection_reset
-            || ec == boost::asio::error::broken_pipe) {
-            errno = EPIPE;
-        } else if (ec == boost::asio::error::not_connected) {
-            errno = ENOTCONN;
-        } else if (ec == boost::asio::error::bad_descriptor) {
-            errno = EBADF;
-        } else {
-            errno = EIO;
-        }
+    if (rc > 0) {
+        if (ipc_stats_on)
+            ipc_read_some_bytes += static_cast<std::size_t> (rc);
+        return static_cast<std::size_t> (rc);
+    }
+
+    if (rc == 0) {
+        errno = EPIPE;
         if (ipc_stats_on)
             ++ipc_read_some_errors;
         return 0;
     }
 
-    errno = 0;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        errno = EAGAIN;
+        if (ipc_stats_on)
+            ++ipc_read_some_eagain;
+        return 0;
+    }
+
     if (ipc_stats_on)
-        ipc_read_some_bytes += bytes_read;
-    return bytes_read;
+        ++ipc_read_some_errors;
+    return 0;
 }
 
 void ipc_transport_t::async_write_some (
@@ -534,6 +536,11 @@ std::size_t ipc_transport_t::write_some (const std::uint8_t *data,
 bool ipc_transport_t::supports_speculative_write () const
 {
     return ipc_allow_sync_write_on && !ipc_force_async_on;
+}
+
+bool ipc_transport_t::supports_speculative_read () const
+{
+    return !ipc_force_async_on;
 }
 
 }  // namespace zlink

@@ -24,7 +24,7 @@ namespace zlink
 {
 
 //  Recycling allocator for async handlers.
-//  Provides a 256-byte inline buffer to avoid heap allocations for
+//  Provides a 1024-byte inline buffer to avoid heap allocations for
 //  typical lambda captures (pointer + a few state flags).
 //
 //  Thread-safety: Each handler_allocator should be used by a single
@@ -59,14 +59,112 @@ class handler_allocator
     }
 
   private:
-    //  Inline storage for small allocations
-    //  256 bytes is sufficient for typical lambda captures with ASIO wrapper:
-    //  - this pointer (8 bytes)
-    //  - entry_ pointer (8 bytes)
-    //  - ASIO internal wrapper (~80-200 bytes)
-    //  - Additional state/padding
-    typename std::aligned_storage<256>::type _storage;
+    //  Inline storage for small allocations. 1KB keeps handler-wrapper
+    //  allocations off the heap for the common read/write completion path.
+    typename std::aligned_storage<1024>::type _storage;
     bool _in_use;
+};
+
+
+template <typename T>
+class handler_alloc_std_allocator;
+
+template <>
+class handler_alloc_std_allocator<void>
+{
+  public:
+    typedef void value_type;
+    typedef void *pointer;
+    typedef const void *const_pointer;
+
+    template <typename U>
+    struct rebind
+    {
+        typedef handler_alloc_std_allocator<U> other;
+    };
+
+    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept :
+        _allocator (&alloc)
+    {
+    }
+
+    template <typename U>
+    handler_alloc_std_allocator (
+      const handler_alloc_std_allocator<U> &other) noexcept :
+        _allocator (other._allocator)
+    {
+    }
+
+    bool operator== (const handler_alloc_std_allocator<void> &other) const noexcept
+    {
+        return _allocator == other._allocator;
+    }
+
+    bool operator!= (const handler_alloc_std_allocator<void> &other) const noexcept
+    {
+        return !(*this == other);
+    }
+
+  private:
+    template <typename U>
+    friend class handler_alloc_std_allocator;
+
+    handler_allocator *_allocator;
+};
+
+template <typename T>
+class handler_alloc_std_allocator
+{
+  public:
+    typedef T value_type;
+    typedef T *pointer;
+    typedef const T *const_pointer;
+    typedef std::size_t size_type;
+    typedef std::ptrdiff_t difference_type;
+
+    template <typename U>
+    struct rebind
+    {
+        typedef handler_alloc_std_allocator<U> other;
+    };
+
+    explicit handler_alloc_std_allocator (handler_allocator &alloc) noexcept :
+        _allocator (&alloc)
+    {
+    }
+
+    template <typename U>
+    handler_alloc_std_allocator (
+      const handler_alloc_std_allocator<U> &other) noexcept :
+        _allocator (other._allocator)
+    {
+    }
+
+    pointer allocate (size_type n)
+    {
+        return static_cast<pointer> (_allocator->allocate (n * sizeof (T)));
+    }
+
+    void deallocate (pointer p, size_type)
+    {
+        _allocator->deallocate (p);
+    }
+
+    bool operator== (const handler_alloc_std_allocator<T> &other) const noexcept
+    {
+        return _allocator == other._allocator;
+    }
+
+    bool operator!= (const handler_alloc_std_allocator<T> &other) const noexcept
+    {
+        return !(*this == other);
+    }
+
+  private:
+    template <typename U>
+    friend class handler_alloc_std_allocator;
+
+    handler_allocator *_allocator;
 };
 
 
@@ -117,9 +215,12 @@ class custom_alloc_handler
         this_handler->_allocator.deallocate (pointer);
     }
 
-    //  Associated allocator support (for newer Boost.Asio versions)
-    using allocator_type = std::allocator<void>;
-    allocator_type get_allocator () const noexcept { return allocator_type{}; }
+    //  Associated allocator support (for newer Boost.Asio versions).
+    using allocator_type = handler_alloc_std_allocator<void>;
+    allocator_type get_allocator () const noexcept
+    {
+        return allocator_type (_allocator);
+    }
 
   private:
     handler_allocator &_allocator;

@@ -8,6 +8,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/local/stream_protocol.hpp>
+#include <memory>
 #include <string>
 
 #include "utils/fd.hpp"
@@ -39,7 +40,10 @@ class asio_ipc_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void process_term (int linger_) ZLINK_OVERRIDE;
 
     void start_accept ();
-    void on_accept (const boost::system::error_code &ec);
+    void on_accept (
+      const std::shared_ptr<boost::asio::local::stream_protocol::socket>
+        &accept_socket_,
+      const boost::system::error_code &ec);
 
     void create_engine (fd_t fd_);
     void close ();
@@ -52,12 +56,11 @@ class asio_ipc_listener_t ZLINK_FINAL : public own_t, public io_object_t
 
     boost::asio::io_context &_io_context;
     boost::asio::local::stream_protocol::acceptor _acceptor;
-    boost::asio::local::stream_protocol::socket _accept_socket;
 
     zlink::socket_base_t *const _socket;
 
     std::string _endpoint;
-    bool _accepting;
+    size_t _accepting_count;
     bool _terminating;
     int _linger;
 

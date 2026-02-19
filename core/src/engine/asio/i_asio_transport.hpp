@@ -78,6 +78,10 @@ class i_asio_transport
     //    - Caller must check errno when return value is 0
     virtual std::size_t read_some (std::uint8_t *buffer, std::size_t len) = 0;
 
+    //  Indicates whether read_some() is guaranteed non-blocking and safe for
+    //  speculative hot-path drains from completion handlers.
+    virtual bool supports_speculative_read () const { return false; }
+
     //  Start async write operation.
     //  Writes up to buffer_size bytes from buffer.
     //  Calls handler on completion with error code and bytes written.

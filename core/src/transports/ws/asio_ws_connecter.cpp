@@ -4,6 +4,7 @@
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include "transports/ws/asio_ws_connecter.hpp"
+#include "engine/asio/asio_raw_engine.hpp"
 #include "engine/asio/asio_zmp_engine.hpp"
 #include "engine/asio/asio_poller.hpp"
 #include "transports/tls/ssl_context_helper.hpp"
@@ -532,24 +533,29 @@ void zlink::asio_ws_connecter_t::create_engine (
         transport.reset (ws_transport.release ());
     }
 
-    if (options.type == ZLINK_STREAM) {
-        close ();
-        terminate ();
-        return;
-    }
-
     const options_t engine_options = adjust_ws_options (options);
     i_engine *engine = NULL;
 #if defined ZLINK_HAVE_WSS
     if (_secure) {
-        engine = new (std::nothrow) asio_zmp_engine_t (
-          fd_, engine_options, endpoint_pair, std::move (transport),
-          std::move (ssl_context));
+        if (options.type == ZLINK_STREAM) {
+            engine = new (std::nothrow) asio_raw_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport),
+              std::move (ssl_context));
+        } else {
+            engine = new (std::nothrow) asio_zmp_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport),
+              std::move (ssl_context));
+        }
     } else
 #endif
     {
-        engine = new (std::nothrow) asio_zmp_engine_t (
-          fd_, engine_options, endpoint_pair, std::move (transport));
+        if (options.type == ZLINK_STREAM) {
+            engine = new (std::nothrow) asio_raw_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport));
+        } else {
+            engine = new (std::nothrow) asio_zmp_engine_t (
+              fd_, engine_options, endpoint_pair, std::move (transport));
+        }
     }
     alloc_assert (engine);
 

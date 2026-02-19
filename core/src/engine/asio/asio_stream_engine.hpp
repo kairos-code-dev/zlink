@@ -142,14 +142,10 @@ class asio_stream_engine_t ZLINK_FINAL : public i_engine
     //  Controls whether reads need to be deferred in on_read_complete.
     bool _zero_copy_active;
 
-    //  True when this engine runs on a worker io_thread (background worker).
-    bool _on_worker_context;
+    //  True when this engine runs on the helper io_thread (background worker).
+    bool _on_helper_context;
 
-    //  Index into the socket's per-worker recv queues.
-    //  0 = primary context, 1..N = worker index + 1.
-    int _queue_index;
-
-    //  Per-engine reusable send buffer for worker write path (non-zero-copy).
+    //  Per-engine reusable send buffer for helper write path (non-zero-copy).
     std::vector<unsigned char> _direct_write_buf;
 
 #if defined ZLINK_HAVE_ASIO_SSL

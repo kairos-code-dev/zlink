@@ -1559,6 +1559,32 @@ int zlink_msg_more (const zlink_msg_t *msg_)
     return (((zlink::msg_t *) msg_)->flags () & zlink::msg_t::more) ? 1 : 0;
 }
 
+int zlink_msg_set_routing_id (zlink_msg_t *msg_, uint32_t routing_id_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    return (reinterpret_cast<zlink::msg_t *> (msg_))
+      ->set_routing_id (routing_id_);
+}
+
+uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_)
+{
+    if (!msg_) {
+        errno = EFAULT;
+        return 0;
+    }
+
+    return (reinterpret_cast<const zlink::msg_t *> (msg_))->get_routing_id ();
+}
+
+uint32_t zlink_msg_routing_id (zlink_msg_t *msg_)
+{
+    return zlink_msg_get_routing_id (msg_);
+}
+
 int zlink_msg_get (const zlink_msg_t *msg_, int property_)
 {
     switch (property_) {
@@ -1593,16 +1619,6 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_)
 
     errno = EINVAL;
     return NULL;
-}
-
-int zlink_msg_set_routing_id (zlink_msg_t *msg_, uint32_t routing_id_)
-{
-    return ((zlink::msg_t *) msg_)->set_routing_id (routing_id_);
-}
-
-uint32_t zlink_msg_get_routing_id (const zlink_msg_t *msg_)
-{
-    return ((const zlink::msg_t *) msg_)->get_routing_id ();
 }
 
 // Polling.

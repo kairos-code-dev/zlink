@@ -559,8 +559,6 @@ int zlink::socket_base_t::leave (const char *group_)
 
 int zlink::socket_base_t::bind (const char *endpoint_uri_)
 {
-    //  Allow socket types to perform deferred setup before binding.
-    xprepare_bind ();
 
     if (unlikely (_ctx_terminated)) {
         errno = ETERM;
@@ -1414,8 +1412,8 @@ int zlink::socket_base_t::process_commands (int timeout_, bool throttle_)
             if (iot->get_io_context ().stopped ())
                 iot->get_io_context ().restart ();
 
-            if (!options.io_workers.empty ()) {
-                //  Worker thread active: data may arrive in
+            if (!options.direct_io_helpers.empty ()) {
+                //  Helper thread active: data may arrive in
                 //  _direct_recv_queue from the background thread at
                 //  any time, without waking the primary io_context.
                 //  Non-blocking poll so the caller can check the queue
@@ -1525,10 +1523,6 @@ void zlink::socket_base_t::process_destroy ()
     _destroyed = true;
 }
 
-void zlink::socket_base_t::xprepare_bind ()
-{
-}
-
 int zlink::socket_base_t::xsetsockopt (int, const void *, size_t)
 {
     errno = EINVAL;
@@ -1577,7 +1571,7 @@ int zlink::socket_base_t::xrecv (msg_t *)
     return -1;
 }
 
-int zlink::socket_base_t::push_msg_direct (msg_t *, uint32_t, void *, int)
+int zlink::socket_base_t::push_msg_direct (msg_t *, uint32_t, void *)
 {
     errno = ENOTSUP;
     return -1;

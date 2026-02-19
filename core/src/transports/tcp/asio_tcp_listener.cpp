@@ -359,19 +359,19 @@ void zlink::asio_tcp_listener_t::create_engine (fd_t fd_)
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in.  When direct IO is active,
-    //  distribute connections round-robin across worker threads.
+    //  distribute connections round-robin across helper threads.
     //  Primary io_context only handles accepts; all data connections
-    //  go to workers for true per-thread independence.
+    //  go to helpers for true per-thread independence.
     io_thread_t *io_thread = NULL;
     if (options.direct_io_thread_ptr) {
-        const size_t n_workers = options.io_workers.size ();
-        if (n_workers > 0) {
+        const size_t n_helpers = options.direct_io_helpers.size ();
+        if (n_helpers > 0) {
             static std::atomic<uint32_t> rr_counter (0);
             const uint32_t idx =
               rr_counter.fetch_add (1, std::memory_order_relaxed)
-              % static_cast<uint32_t> (n_workers);
+              % static_cast<uint32_t> (n_helpers);
             io_thread = static_cast<io_thread_t *> (
-              options.io_workers[idx]);
+              options.direct_io_helpers[idx]);
         } else {
             io_thread =
               static_cast<io_thread_t *> (options.direct_io_thread_ptr);

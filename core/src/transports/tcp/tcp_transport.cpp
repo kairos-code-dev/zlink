@@ -98,7 +98,10 @@ const bool tcp_writev_single_shot_on =
   env_flag_enabled ("ZLINK_ASIO_WRITEV_SINGLE_SHOT");
 }
 
-tcp_transport_t::tcp_transport_t ()
+tcp_transport_t::tcp_transport_t () :
+    _socket (),
+    _completion_executor (),
+    _has_completion_executor (false)
 {
 }
 
@@ -137,6 +140,13 @@ bool tcp_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
     return true;
 }
 
+void tcp_transport_t::set_completion_executor (
+  const boost::asio::any_io_executor &executor)
+{
+    _completion_executor = executor;
+    _has_completion_executor = true;
+}
+
 bool tcp_transport_t::is_open () const
 {
     return _socket && _socket->is_open ();
@@ -163,20 +173,33 @@ void tcp_transport_t::async_read_some (unsigned char *buffer,
 
     if (_socket) {
         if (tcp_stats_on) {
-            _socket->async_read_some (
-              boost::asio::buffer (buffer, buffer_size),
-              [handler](const boost::system::error_code &ec,
-                        std::size_t bytes) {
+            const auto stats_handler =
+              [handler] (const boost::system::error_code &ec, std::size_t bytes) {
                   if (ec)
                       ++tcp_async_read_errors;
                   else
                       tcp_async_read_bytes += bytes;
                   if (handler)
                       handler (ec, bytes);
-              });
+              };
+
+            if (_has_completion_executor) {
+                _socket->async_read_some (
+                  boost::asio::buffer (buffer, buffer_size),
+                  boost::asio::bind_executor (_completion_executor, stats_handler));
+            } else {
+                _socket->async_read_some (boost::asio::buffer (buffer, buffer_size),
+                                          stats_handler);
+            }
         } else {
-            _socket->async_read_some (boost::asio::buffer (buffer, buffer_size),
-                                      handler);
+            if (_has_completion_executor) {
+                _socket->async_read_some (
+                  boost::asio::buffer (buffer, buffer_size),
+                  boost::asio::bind_executor (_completion_executor, handler));
+            } else {
+                _socket->async_read_some (
+                  boost::asio::buffer (buffer, buffer_size), handler);
+            }
         }
     } else if (handler) {
         handler (boost::asio::error::bad_descriptor, 0);
@@ -256,20 +279,46 @@ void tcp_transport_t::async_write_some (const unsigned char *buffer,
                       handler (ec, bytes);
               };
             if (tcp_use_async_write_some_on) {
-                _socket->async_write_some (
-                  boost::asio::buffer (buffer, buffer_size), stats_handler);
+                if (_has_completion_executor) {
+                    _socket->async_write_some (
+                      boost::asio::buffer (buffer, buffer_size),
+                      boost::asio::bind_executor (_completion_executor,
+                                                  stats_handler));
+                } else {
+                    _socket->async_write_some (
+                      boost::asio::buffer (buffer, buffer_size), stats_handler);
+                }
             } else {
-                boost::asio::async_write (
-                  *_socket, boost::asio::buffer (buffer, buffer_size),
-                  stats_handler);
+                if (_has_completion_executor) {
+                    boost::asio::async_write (
+                      *_socket, boost::asio::buffer (buffer, buffer_size),
+                      boost::asio::bind_executor (_completion_executor,
+                                                  stats_handler));
+                } else {
+                    boost::asio::async_write (
+                      *_socket, boost::asio::buffer (buffer, buffer_size),
+                      stats_handler);
+                }
             }
         } else {
             if (tcp_use_async_write_some_on) {
-                _socket->async_write_some (
-                  boost::asio::buffer (buffer, buffer_size), handler);
+                if (_has_completion_executor) {
+                    _socket->async_write_some (
+                      boost::asio::buffer (buffer, buffer_size),
+                      boost::asio::bind_executor (_completion_executor, handler));
+                } else {
+                    _socket->async_write_some (
+                      boost::asio::buffer (buffer, buffer_size), handler);
+                }
             } else {
-                boost::asio::async_write (
-                  *_socket, boost::asio::buffer (buffer, buffer_size), handler);
+                if (_has_completion_executor) {
+                    boost::asio::async_write (
+                      *_socket, boost::asio::buffer (buffer, buffer_size),
+                      boost::asio::bind_executor (_completion_executor, handler));
+                } else {
+                    boost::asio::async_write (
+                      *_socket, boost::asio::buffer (buffer, buffer_size), handler);
+                }
             }
         }
     } else if (handler) {
@@ -318,12 +367,24 @@ void tcp_transport_t::async_writev (const unsigned char *header,
         std::array<boost::asio::const_buffer, 2> buffers = {
           boost::asio::buffer (header, header_size),
           boost::asio::buffer (body, body_size)};
-        boost::asio::async_write (*_socket, buffers, stats_handler);
+        if (_has_completion_executor) {
+            boost::asio::async_write (
+              *_socket, buffers,
+              boost::asio::bind_executor (_completion_executor, stats_handler));
+        } else {
+            boost::asio::async_write (*_socket, buffers, stats_handler);
+        }
     } else {
         std::array<boost::asio::const_buffer, 2> buffers = {
           boost::asio::buffer (header, header_size),
           boost::asio::buffer (body, body_size)};
-        boost::asio::async_write (*_socket, buffers, handler);
+        if (_has_completion_executor) {
+            boost::asio::async_write (
+              *_socket, buffers,
+              boost::asio::bind_executor (_completion_executor, handler));
+        } else {
+            boost::asio::async_write (*_socket, buffers, handler);
+        }
     }
 #else
     if (tcp_use_asio_writev_on) {
@@ -340,12 +401,25 @@ void tcp_transport_t::async_writev (const unsigned char *header,
             std::array<boost::asio::const_buffer, 2> buffers = {
               boost::asio::buffer (header, header_size),
               boost::asio::buffer (body, body_size)};
-            boost::asio::async_write (*_socket, buffers, stats_handler);
+            if (_has_completion_executor) {
+                boost::asio::async_write (
+                  *_socket, buffers,
+                  boost::asio::bind_executor (_completion_executor,
+                                              stats_handler));
+            } else {
+                boost::asio::async_write (*_socket, buffers, stats_handler);
+            }
         } else {
             std::array<boost::asio::const_buffer, 2> buffers = {
               boost::asio::buffer (header, header_size),
               boost::asio::buffer (body, body_size)};
-            boost::asio::async_write (*_socket, buffers, handler);
+            if (_has_completion_executor) {
+                boost::asio::async_write (
+                  *_socket, buffers,
+                  boost::asio::bind_executor (_completion_executor, handler));
+            } else {
+                boost::asio::async_write (*_socket, buffers, handler);
+            }
         }
         return;
     }
@@ -437,11 +511,21 @@ void tcp_transport_t::async_writev (const unsigned char *header,
                                               + state->body_size);
                         return;
                     }
-                    _socket->async_wait (
-                      boost::asio::socket_base::wait_write,
-                      [do_write](const boost::system::error_code &wec) {
-                          (*do_write)(wec);
-                      });
+                    if (_has_completion_executor) {
+                        _socket->async_wait (
+                          boost::asio::socket_base::wait_write,
+                          boost::asio::bind_executor (
+                            _completion_executor,
+                            [do_write] (const boost::system::error_code &wec) {
+                                (*do_write) (wec);
+                            }));
+                    } else {
+                        _socket->async_wait (
+                          boost::asio::socket_base::wait_write,
+                          [do_write] (const boost::system::error_code &wec) {
+                              (*do_write) (wec);
+                          });
+                    }
                     return;
                 }
                 continue;
@@ -450,11 +534,21 @@ void tcp_transport_t::async_writev (const unsigned char *header,
                 continue;
             if (rc == -1
                 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)) {
-                _socket->async_wait (
-                  boost::asio::socket_base::wait_write,
-                  [do_write](const boost::system::error_code &wec) {
-                      (*do_write)(wec);
-                  });
+                if (_has_completion_executor) {
+                    _socket->async_wait (
+                      boost::asio::socket_base::wait_write,
+                      boost::asio::bind_executor (
+                        _completion_executor,
+                        [do_write] (const boost::system::error_code &wec) {
+                            (*do_write) (wec);
+                        }));
+                } else {
+                    _socket->async_wait (
+                      boost::asio::socket_base::wait_write,
+                      [do_write] (const boost::system::error_code &wec) {
+                          (*do_write) (wec);
+                      });
+                }
                 return;
             }
 

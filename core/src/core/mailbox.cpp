@@ -14,6 +14,7 @@ zlink::mailbox_t::mailbox_t ()
     zlink_assert (!ok);
     _active = false;
     _io_context = NULL;
+    _strand = NULL;
     _handler = NULL;
     _handler_arg = NULL;
     _pre_post = NULL;
@@ -93,9 +94,11 @@ bool zlink::mailbox_t::valid () const
 void zlink::mailbox_t::set_io_context (boost::asio::io_context *io_context_,
                                      mailbox_handler_t handler_,
                                      void *handler_arg_,
-                                     mailbox_pre_post_t pre_post_)
+                                     mailbox_pre_post_t pre_post_,
+                                     io_strand_t *strand_)
 {
     _io_context = io_context_;
+    _strand = strand_;
     _handler = handler_;
     _handler_arg = handler_arg_;
     _pre_post = pre_post_;
@@ -109,10 +112,17 @@ void zlink::mailbox_t::schedule_if_needed ()
     if (!_scheduled.exchange (true, std::memory_order_acquire)) {
         if (_pre_post)
             _pre_post (_handler_arg);
-        boost::asio::post (*_io_context, [this]() {
-            if (_handler)
-                _handler (_handler_arg);
-        });
+        if (_strand) {
+            boost::asio::post (*_strand, [this]() {
+                if (_handler)
+                    _handler (_handler_arg);
+            });
+        } else {
+            boost::asio::post (*_io_context, [this]() {
+                if (_handler)
+                    _handler (_handler_arg);
+            });
+        }
     }
 }
 

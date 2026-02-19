@@ -29,6 +29,8 @@
 
 #include <limits>
 #include <cerrno>
+#include <cstdlib>
+#include <cstring>
 
 // Debug logging for ASIO TCP connecter - set to 1 to enable
 #define ASIO_CONNECTER_DEBUG 0
@@ -43,6 +45,19 @@
 
 namespace
 {
+bool use_tcp_stream_engine_connecter ()
+{
+    const char *env = std::getenv ("ZLINK_TCP_STREAM_CONNECTER_ENGINE");
+    if (!env || !*env)
+        env = std::getenv ("ZLINK_TCP_STREAM_ENGINE");
+    if (!env || !*env)
+        return false;
+
+    return std::strcmp (env, "stream") == 0 || std::strcmp (env, "1") == 0
+           || std::strcmp (env, "on") == 0
+           || std::strcmp (env, "true") == 0;
+}
+
 int connect_delayed_errno_value ()
 {
 #ifdef ZLINK_HAVE_WINDOWS
@@ -396,15 +411,17 @@ void zlink::asio_tcp_connecter_t::create_engine (fd_t fd_,
 
     //  Create the engine object for this connection using true proactor mode.
     i_engine *engine = NULL;
-    if (options.type == ZLINK_STREAM && options.stream_engine_type == 1)
-        engine =
-          new (std::nothrow) asio_stream_engine_t (fd_, options, endpoint_pair);
-    else if (options.type == ZLINK_STREAM)
-        engine =
-          new (std::nothrow) asio_raw_engine_t (fd_, options, endpoint_pair);
-    else
-        engine =
-          new (std::nothrow) asio_zmp_engine_t (fd_, options, endpoint_pair);
+    if (options.type == ZLINK_STREAM) {
+        if (use_tcp_stream_engine_connecter ())
+            engine =
+              new (std::nothrow) asio_stream_engine_t (fd_, options, endpoint_pair);
+        else
+            engine = new (std::nothrow) asio_raw_engine_t (fd_, options,
+                                                           endpoint_pair);
+    } else {
+        engine = new (std::nothrow) asio_zmp_engine_t (fd_, options,
+                                                       endpoint_pair);
+    }
     alloc_assert (engine);
 
     //  Attach the engine to the corresponding session object.

@@ -27,6 +27,8 @@ class tcp_transport_t : public i_asio_transport
 
     //  i_asio_transport interface
     bool open (boost::asio::io_context &io_context, fd_t fd) ZLINK_OVERRIDE;
+    void set_completion_executor (
+      const boost::asio::any_io_executor &executor) ZLINK_OVERRIDE;
     bool is_open () const ZLINK_OVERRIDE;
     void close () ZLINK_OVERRIDE;
 
@@ -54,13 +56,14 @@ class tcp_transport_t : public i_asio_transport
     bool supports_gather_write () const ZLINK_OVERRIDE { return true; }
 
     const char *name () const ZLINK_OVERRIDE { return "tcp"; }
-
     //  Direct access to the underlying socket for bypassing transport
     //  abstraction in performance-critical paths (e.g., echo loopback).
     boost::asio::ip::tcp::socket *raw_socket () { return _socket.get (); }
 
   private:
     std::unique_ptr<boost::asio::ip::tcp::socket> _socket;
+    boost::asio::any_io_executor _completion_executor;
+    bool _has_completion_executor;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (tcp_transport_t)
 };

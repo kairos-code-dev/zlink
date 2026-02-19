@@ -50,6 +50,9 @@ zlink::ctx_t::ctx_t () :
     _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
+    _io_thread_rr_cursor (0),
+    _shared_io_context (),
+    _shared_io_context_work_guard (),
     _blocky (true),
     _ipv6 (false)
 {
@@ -86,6 +89,15 @@ zlink::ctx_t::~ctx_t ()
     //  Deallocate the reaper thread object.
     LIBZLINK_DELETE (_reaper);
 
+    if (_shared_io_context_work_guard) {
+        _shared_io_context_work_guard->reset ();
+        _shared_io_context_work_guard.reset ();
+    }
+    if (_shared_io_context) {
+        _shared_io_context->stop ();
+        _shared_io_context.reset ();
+    }
+
     //  The mailboxes in _slots themselves were deallocated with their
     //  corresponding io_thread/socket objects.
 
@@ -99,6 +111,11 @@ zlink::ctx_t::~ctx_t ()
 bool zlink::ctx_t::valid () const
 {
     return _term_mailbox.valid ();
+}
+
+boost::asio::io_context *zlink::ctx_t::get_shared_io_context () const
+{
+    return _shared_io_context.get ();
 }
 
 int zlink::ctx_t::terminate ()
@@ -353,6 +370,20 @@ bool zlink::ctx_t::start ()
     }
     _slots.resize (term_and_reaper_threads_count);
 
+    if (ios > 0) {
+        try {
+            _shared_io_context.reset (new boost::asio::io_context ());
+            _shared_io_context_work_guard.reset (
+              new boost::asio::executor_work_guard<
+                boost::asio::io_context::executor_type> (
+                boost::asio::make_work_guard (*_shared_io_context)));
+        }
+        catch (const std::bad_alloc &) {
+            errno = ENOMEM;
+            goto fail_cleanup_slots;
+        }
+    }
+
     //  Initialise the infrastructure for zlink_ctx_term thread.
     _slots[term_tid] = &_term_mailbox;
 
@@ -401,6 +432,14 @@ fail_cleanup_reaper:
     _reaper = NULL;
 
 fail_cleanup_slots:
+    if (_shared_io_context_work_guard) {
+        _shared_io_context_work_guard->reset ();
+        _shared_io_context_work_guard.reset ();
+    }
+    if (_shared_io_context) {
+        _shared_io_context->stop ();
+        _shared_io_context.reset ();
+    }
     _slots.clear ();
     return false;
 }
@@ -599,19 +638,47 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
     if (_io_threads.empty ())
         return NULL;
 
+    const io_threads_t::size_type io_count = _io_threads.size ();
+
+    //  In the common case (no affinity mask), strict round-robin avoids
+    //  connection skew during accept bursts and keeps long-lived STREAM
+    //  sessions evenly spread across workers.
+    if (!affinity_) {
+        const io_threads_t::size_type index =
+          _io_thread_rr_cursor.add (1)
+          % static_cast<atomic_counter_t::integer_t> (io_count);
+        return _io_threads[index];
+    }
+
     //  Find the I/O thread with minimum load.
+    //  For equal load, rotate the starting point to avoid biasing
+    //  early-accept bursts to the lowest-index I/O thread.
+    const io_threads_t::size_type start =
+      io_count == 0 ? 0
+                    : _io_thread_rr_cursor.add (1)
+                        % static_cast<atomic_counter_t::integer_t> (io_count);
+
     int min_load = -1;
     io_thread_t *selected_io_thread = NULL;
-    for (io_threads_t::size_type i = 0, size = _io_threads.size (); i != size;
-         i++) {
+    io_threads_t::size_type selected_index = 0;
+
+    for (io_threads_t::size_type step = 0; step != io_count; ++step) {
+        const io_threads_t::size_type i = (start + step) % io_count;
         if (!affinity_ || (affinity_ & (uint64_t (1) << i))) {
             const int load = _io_threads[i]->get_load ();
             if (selected_io_thread == NULL || load < min_load) {
                 min_load = load;
                 selected_io_thread = _io_threads[i];
+                selected_index = i;
             }
         }
     }
+
+    if (selected_io_thread != NULL) {
+        _io_thread_rr_cursor.set (
+          static_cast<atomic_counter_t::integer_t> (selected_index + 1));
+    }
+
     return selected_io_thread;
 }
 

@@ -145,16 +145,11 @@ class socket_base_t : public own_t,
     //  engine_hint is an opaque pointer to the engine for send-direction routing.
     virtual int push_msg_direct (zlink::msg_t *msg_,
                                  uint32_t routing_id_,
-                                 void *engine_hint_,
-                                 int queue_index_);
+                                 void *engine_hint_);
 
   protected:
     socket_base_t (zlink::ctx_t *parent_, uint32_t tid_, int sid_);
     ~socket_base_t () ZLINK_OVERRIDE;
-
-    //  Called at the start of bind() before any endpoint processing.
-    //  Override to perform deferred setup (e.g. direct IO initialization).
-    virtual void xprepare_bind ();
 
     //  Concrete algorithms for the x- methods are to be defined by
     //  individual socket types.

@@ -166,8 +166,18 @@ void zlink::own_t::check_term_acks ()
 {
     if (_terminating && _processed_seqnum == _sent_seqnum.get ()
         && _term_acks == 0) {
-        //  Sanity check. There should be no active children at this point.
-        zlink_assert (_owned.empty ());
+        //  In shared-io_context mode, late OWN commands can arrive while
+        //  termination is converging. Drain any leftover children instead of
+        //  aborting on assertion.
+        if (!_owned.empty ()) {
+            for (owned_t::iterator it = _owned.begin (), end = _owned.end ();
+                 it != end; ++it) {
+                send_term (*it, 0);
+            }
+            register_term_acks (static_cast<int> (_owned.size ()));
+            _owned.clear ();
+            return;
+        }
 
         //  The root object has nobody to confirm the termination to.
         //  Other nodes will confirm the termination to the owner.

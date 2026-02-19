@@ -7,6 +7,9 @@
 #include <vector>
 #include <string>
 #include <stdarg.h>
+#include <memory>
+
+#include <boost/asio.hpp>
 
 #include "core/mailbox.hpp"
 #include "utils/array.hpp"
@@ -91,6 +94,9 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     int set (int option_, const void *optval_, size_t optvallen_);
     int get (int option_, void *optval_, const size_t *optvallen_);
     int get (int option_);
+
+    // Shared ASIO io_context used by all I/O threads.
+    boost::asio::io_context *get_shared_io_context () const;
 
     //  Create and destroy a socket.
     zlink::socket_base_t *create_socket (int type_);
@@ -208,6 +214,14 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
 
     //  Number of I/O threads to launch.
     int _io_thread_count;
+
+    //  Cursor for round-robin tie-break when selecting I/O thread.
+    atomic_counter_t _io_thread_rr_cursor;
+
+    //  Shared ASIO io_context and keep-alive guard for all I/O threads.
+    std::unique_ptr<boost::asio::io_context> _shared_io_context;
+    std::unique_ptr<boost::asio::executor_work_guard<
+      boost::asio::io_context::executor_type> > _shared_io_context_work_guard;
 
     //  Does context wait (possibly forever) on termination?
     bool _blocky;

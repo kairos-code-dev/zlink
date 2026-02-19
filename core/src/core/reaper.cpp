@@ -18,7 +18,8 @@ zlink::reaper_t::reaper_t (class ctx_t *ctx_, uint32_t tid_) :
     _poller = new (std::nothrow) poller_t (*ctx_);
     alloc_assert (_poller);
     _mailbox.set_io_context (&_poller->get_io_context (),
-                             &reaper_t::mailbox_handler, this, NULL);
+                             &reaper_t::mailbox_handler, this, NULL,
+                             _poller->get_strand ());
     _mailbox.schedule_if_needed ();
 
 #ifdef HAVE_FORK

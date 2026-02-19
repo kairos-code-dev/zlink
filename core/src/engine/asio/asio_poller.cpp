@@ -44,15 +44,49 @@ zlink::asio_poller_t::poll_entry_t::poll_entry_t (
 
 zlink::asio_poller_t::asio_poller_t (const zlink::thread_ctx_t &ctx_) :
     worker_poller_base_t (ctx_),
-    _io_context (),
-    _work_guard (boost::asio::make_work_guard (_io_context)),
-    _stopping (false)
+    _owned_io_context (),
+    _io_context (&_owned_io_context),
+    _work_guard (),
+    _strand (),
+    _stopping (false),
+    _using_shared_io_context (false)
 {
+    _work_guard.reset (
+      new boost::asio::executor_work_guard<
+        boost::asio::io_context::executor_type> (
+        boost::asio::make_work_guard (*_io_context)));
+    _strand.reset (new io_strand_t (_io_context->get_executor ()));
+
+    ASIO_DBG ("Constructor called (owned context), this=%p", (void *) this);
+}
+
+zlink::asio_poller_t::asio_poller_t (const zlink::ctx_t &ctx_) :
+    worker_poller_base_t (ctx_),
+    _owned_io_context (),
+    _io_context (ctx_.get_shared_io_context ()),
+    _work_guard (),
+    _strand (),
+    _stopping (false),
+    _using_shared_io_context (_io_context != NULL)
+{
+    if (!_io_context) {
+        _io_context = &_owned_io_context;
+        _work_guard.reset (
+          new boost::asio::executor_work_guard<
+            boost::asio::io_context::executor_type> (
+            boost::asio::make_work_guard (*_io_context)));
+    }
+
+    _strand.reset (new io_strand_t (_io_context->get_executor ()));
+
     ASIO_DBG ("Constructor called, this=%p", (void *) this);
 }
 
 zlink::asio_poller_t::~asio_poller_t ()
 {
+    //  Ensure loop termination even if mailbox stop command was not observed.
+    stop ();
+
     //  Wait till the worker thread exits.
     stop_worker ();
 
@@ -79,7 +113,7 @@ zlink::asio_poller_t::add_fd (fd_t fd_, i_poll_events *events_)
     errno_assert (dup_fd != -1);
 
     boost::asio::posix::stream_descriptor *descriptor =
-      new (std::nothrow) boost::asio::posix::stream_descriptor (_io_context);
+      new (std::nothrow) boost::asio::posix::stream_descriptor (*_io_context);
     alloc_assert (descriptor);
 
     boost::system::error_code ec;
@@ -239,9 +273,11 @@ void zlink::asio_poller_t::reset_pollout (handle_t handle_)
 
 void zlink::asio_poller_t::stop ()
 {
-    check_thread ();
-    _stopping = true;
-    _io_context.stop ();
+    _stopping.store (true);
+
+    if (!_using_shared_io_context && _io_context) {
+        _io_context->stop ();
+    }
 }
 
 int zlink::asio_poller_t::max_fds ()
@@ -258,15 +294,16 @@ void zlink::asio_poller_t::start_wait_read (poll_entry_t *entry_)
           static_cast<boost::asio::ip::tcp::socket *> (entry_->socket);
         socket->async_wait (
           boost::asio::socket_base::wait_read,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->in_event_pending = false;
               ASIO_DBG ("read callback: socket=%p, ec=%s, pollin_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollin_enabled, _stopping);
+                        entry_->pollin_enabled, _stopping.load ());
 
               //  Check if the entry has been retired or pollin disabled
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollin_enabled || _stopping)) {
+                  || !entry_->pollin_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -276,24 +313,25 @@ void zlink::asio_poller_t::start_wait_read (poll_entry_t *entry_)
               //  Re-register for read events if still enabled
               if (entry_->pollin_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_read (entry_);
               }
-          });
+            }));
     } else if (entry_->type == poll_entry_t::socket_type_ipc) {
         boost::asio::local::stream_protocol::socket *socket =
           static_cast<boost::asio::local::stream_protocol::socket *> (
             entry_->socket);
         socket->async_wait (
           boost::asio::socket_base::wait_read,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->in_event_pending = false;
               ASIO_DBG ("read callback: socket=%p, ec=%s, pollin_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollin_enabled, _stopping);
+                        entry_->pollin_enabled, _stopping.load ());
 
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollin_enabled || _stopping)) {
+                  || !entry_->pollin_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -301,24 +339,25 @@ void zlink::asio_poller_t::start_wait_read (poll_entry_t *entry_)
 
               if (entry_->pollin_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_read (entry_);
               }
-          });
+            }));
 #ifndef ZLINK_HAVE_WINDOWS
     } else if (entry_->type == poll_entry_t::socket_type_fd) {
         boost::asio::posix::stream_descriptor *descriptor =
           static_cast<boost::asio::posix::stream_descriptor *> (entry_->socket);
         descriptor->async_wait (
           boost::asio::posix::descriptor_base::wait_read,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->in_event_pending = false;
               ASIO_DBG ("read callback: socket=%p, ec=%s, pollin_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollin_enabled, _stopping);
+                        entry_->pollin_enabled, _stopping.load ());
 
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollin_enabled || _stopping)) {
+                  || !entry_->pollin_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -326,10 +365,10 @@ void zlink::asio_poller_t::start_wait_read (poll_entry_t *entry_)
 
               if (entry_->pollin_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_read (entry_);
               }
-          });
+            }));
 #endif
     } else {
         entry_->in_event_pending = false;
@@ -345,14 +384,15 @@ void zlink::asio_poller_t::start_wait_write (poll_entry_t *entry_)
           static_cast<boost::asio::ip::tcp::socket *> (entry_->socket);
         socket->async_wait (
           boost::asio::socket_base::wait_write,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->out_event_pending = false;
               ASIO_DBG ("write callback: socket=%p, ec=%s, pollout_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollout_enabled, _stopping);
+                        entry_->pollout_enabled, _stopping.load ());
 
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollout_enabled || _stopping)) {
+                  || !entry_->pollout_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -360,24 +400,25 @@ void zlink::asio_poller_t::start_wait_write (poll_entry_t *entry_)
 
               if (entry_->pollout_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_write (entry_);
               }
-          });
+            }));
     } else if (entry_->type == poll_entry_t::socket_type_ipc) {
         boost::asio::local::stream_protocol::socket *socket =
           static_cast<boost::asio::local::stream_protocol::socket *> (
             entry_->socket);
         socket->async_wait (
           boost::asio::socket_base::wait_write,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->out_event_pending = false;
               ASIO_DBG ("write callback: socket=%p, ec=%s, pollout_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollout_enabled, _stopping);
+                        entry_->pollout_enabled, _stopping.load ());
 
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollout_enabled || _stopping)) {
+                  || !entry_->pollout_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -385,24 +426,25 @@ void zlink::asio_poller_t::start_wait_write (poll_entry_t *entry_)
 
               if (entry_->pollout_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_write (entry_);
               }
-          });
+            }));
 #ifndef ZLINK_HAVE_WINDOWS
     } else if (entry_->type == poll_entry_t::socket_type_fd) {
         boost::asio::posix::stream_descriptor *descriptor =
           static_cast<boost::asio::posix::stream_descriptor *> (entry_->socket);
         descriptor->async_wait (
           boost::asio::posix::descriptor_base::wait_write,
-          [this, entry_] (const boost::system::error_code &ec) {
+          boost::asio::bind_executor (
+            *_strand, [this, entry_] (const boost::system::error_code &ec) {
               entry_->out_event_pending = false;
               ASIO_DBG ("write callback: socket=%p, ec=%s, pollout_enabled=%d, stopping=%d",
                         entry_->socket, ec.message ().c_str (),
-                        entry_->pollout_enabled, _stopping);
+                        entry_->pollout_enabled, _stopping.load ());
 
               if (unlikely (ec || entry_->type == poll_entry_t::socket_type_none
-                  || !entry_->pollout_enabled || _stopping)) {
+                  || !entry_->pollout_enabled || _stopping.load ())) {
                   return;
               }
 
@@ -410,10 +452,10 @@ void zlink::asio_poller_t::start_wait_write (poll_entry_t *entry_)
 
               if (entry_->pollout_enabled
                   && entry_->type != poll_entry_t::socket_type_none
-                  && !_stopping) {
+                  && !_stopping.load ()) {
                   start_wait_write (entry_);
               }
-          });
+            }));
 #endif
     } else {
         entry_->out_event_pending = false;
@@ -445,15 +487,16 @@ void zlink::asio_poller_t::cancel_ops (poll_entry_t *entry_)
 void zlink::asio_poller_t::loop ()
 {
     ASIO_DBG ("loop: started, this=%p", (void *) this);
+    zlink_assert (_io_context);
 
-    while (!_stopping) {
+    while (!_stopping.load ()) {
         //  Execute any due timers.
         uint64_t timeout = execute_timers ();
 
         //  Reset the io_context if it's stopped (e.g., after previous run completion)
-        if (_io_context.stopped ()) {
+        if (_io_context->stopped ()) {
             ASIO_DBG ("loop: restarting io_context");
-            _io_context.restart ();
+            _io_context->restart ();
         }
 
         //  Phase 1 Optimization: Event Batching
@@ -466,7 +509,7 @@ void zlink::asio_poller_t::loop ()
         //  scenarios like ROUTER patterns where multiple messages arrive rapidly.
 
         //  Step 1: Process all ready events non-blocking
-        std::size_t events_processed = _io_context.poll ();
+        std::size_t events_processed = _io_context->poll ();
         ASIO_DBG ("loop: poll() processed %zu events", events_processed);
 
         //  Step 2: Only wait if no events were ready
@@ -481,7 +524,7 @@ void zlink::asio_poller_t::loop ()
             }
 
             ASIO_DBG ("loop: run_for %d ms (no ready events)", poll_timeout_ms);
-            _io_context.run_for (
+            _io_context->run_for (
               std::chrono::milliseconds (poll_timeout_ms));
         }
         //  else: Events were processed, continue loop immediately to check
@@ -502,7 +545,7 @@ void zlink::asio_poller_t::loop ()
     ASIO_DBG ("loop: stopping");
 
     //  Run any remaining handlers (cancelled async ops will fire with error)
-    _io_context.poll ();
+    _io_context->poll ();
     ASIO_DBG ("loop: finished");
 }
 

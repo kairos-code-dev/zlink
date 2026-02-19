@@ -134,14 +134,12 @@ bool expect_stream_connect_id(void *socket, std::string &routing_id)
             return false;
         }
 
-        const int payload_rc = zlink_msg_recv(&payload_msg, socket, ZLINK_DONTWAIT);
+        // Once id frame is received, payload frame of the same event should follow.
+        // Use blocking recv here to avoid dropping the id frame on transient EAGAIN.
+        const int payload_rc = zlink_msg_recv(&payload_msg, socket, 0);
         if (payload_rc < 0) {
             zlink_msg_close(&id_msg);
             zlink_msg_close(&payload_msg);
-            if (zlink_errno() == EAGAIN) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                continue;
-            }
             return false;
         }
 
@@ -290,8 +288,10 @@ int main(int argc, char **argv)
 
     const pattern_t pattern = parse_pattern(parse_string_env("BENCH_MULTI_E2E_PATTERN",
                                                             "MULTI_STREAM"));
-    if (pattern == pattern_unknown)
+    if (pattern == pattern_unknown) {
+        std::fprintf(stderr, "multi_e2e client: unknown pattern\n");
         return 2;
+    }
 
     if (transport != "tcp") {
         print_result(lib_name, pattern, transport, msg_size, 0.0, 0.0);
@@ -309,12 +309,19 @@ int main(int argc, char **argv)
     const int port = static_cast<int>(parse_long_env("BENCH_MULTI_E2E_PORT", 29100, 1));
 
     void *ctx = zlink_ctx_new();
-    if (!ctx)
+    if (!ctx) {
+        std::fprintf(stderr, "multi_e2e client: zlink_ctx_new failed\n");
         return 2;
+    }
     (void) zlink_ctx_set(ctx, ZLINK_IO_THREADS, io_threads);
+    const long max_sockets_default = std::max<long>(2048, clients + 1024L);
+    const int max_sockets = static_cast<int>(
+      parse_long_env("BENCH_MULTI_MAX_SOCKETS", max_sockets_default, 1));
+    (void) zlink_ctx_set(ctx, ZLINK_MAX_SOCKETS, max_sockets);
 
     const int socket_type = socket_type_for_pattern(pattern);
     if (socket_type < 0) {
+        std::fprintf(stderr, "multi_e2e client: invalid socket type for pattern\n");
         zlink_ctx_term(ctx);
         return 2;
     }
@@ -327,6 +334,9 @@ int main(int argc, char **argv)
     for (int i = 0; i < clients; ++i) {
         void *sock = zlink_socket(ctx, socket_type);
         if (!sock) {
+            std::fprintf(stderr,
+                         "multi_e2e client: zlink_socket failed at index=%d errno=%d\n",
+                         i, zlink_errno());
             for (size_t j = 0; j < sockets.size(); ++j)
                 if (sockets[j])
                     zlink_close(sockets[j]);
@@ -354,6 +364,9 @@ int main(int argc, char **argv)
         }
 
         if (zlink_connect(sock, endpoint.c_str()) != 0) {
+            std::fprintf(stderr,
+                         "multi_e2e client: zlink_connect failed at index=%d errno=%d\n",
+                         i, zlink_errno());
             zlink_close(sock);
             for (size_t j = 0; j < sockets.size(); ++j)
                 if (sockets[j])
@@ -369,6 +382,9 @@ int main(int argc, char **argv)
         for (int i = 0; i < clients; ++i) {
             std::string rid;
             if (!expect_stream_connect_id(sockets[static_cast<size_t>(i)], rid)) {
+                std::fprintf(stderr,
+                             "multi_e2e client: stream connect id timeout index=%d\n",
+                             i);
                 for (size_t j = 0; j < sockets.size(); ++j)
                     if (sockets[j])
                         zlink_close(sockets[j]);

@@ -407,6 +407,11 @@ def run_single_stack_test(build_dir,
             timeout=timeout_sec,
         )
         if result.returncode != 0:
+            err_msg = (result.stderr or "").strip()
+            if err_msg:
+                err_msg = err_msg.splitlines()[-1].strip()
+            if err_msg:
+                return None, f"client_rc_{result.returncode}:{err_msg}"
             return None, f"client_rc_{result.returncode}"
         parsed = parse_result(result.stdout, transport, msg_size, pattern)
         if "throughput" not in parsed or "latency" not in parsed:

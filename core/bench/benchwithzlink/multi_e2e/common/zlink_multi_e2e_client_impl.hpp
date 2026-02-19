@@ -478,7 +478,10 @@ int main(int argc, char **argv)
         } else if (is_oneway_pattern(pattern)) {
             for (int i = 0; i < clients; ++i) {
                 uint64_t wire_ts = 0;
-                while (recv_pubsub_message(sockets[static_cast<size_t>(i)], wire_ts)) {
+                int recv_budget = 256;
+                while (recv_budget-- > 0
+                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
+                                              wire_ts)) {
                     const uint64_t now = now_ns();
                     if (now >= wire_ts) {
                         latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
@@ -516,7 +519,10 @@ int main(int argc, char **argv)
         } else if (is_oneway_pattern(pattern)) {
             for (int i = 0; i < clients; ++i) {
                 uint64_t wire_ts = 0;
-                while (recv_pubsub_message(sockets[static_cast<size_t>(i)], wire_ts)) {
+                int recv_budget = 256;
+                while (recv_budget-- > 0
+                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
+                                              wire_ts)) {
                     const uint64_t now = now_ns();
                     if (now >= wire_ts) {
                         latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;

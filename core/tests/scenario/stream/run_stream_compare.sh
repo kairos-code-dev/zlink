@@ -20,7 +20,7 @@ Usage:
   run_stream_compare.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|zlink|cgdk10|all>
+  --stack <asio|cppserver|dotnet|zlink|zmq|cgdk10|all>
   --size <64|1024|65536|all>
   --ccu <N>
   --duration <sec>
@@ -151,7 +151,7 @@ RCVBUF="${RCVBUF:-1048576}"
 BACKLOG="${BACKLOG:-32768}"
 TCP_NODELAY="${TCP_NODELAY:-1}"
 
-STACKS_ALL=(asio cppserver dotnet zlink cgdk10)
+STACKS_ALL=(asio cppserver dotnet zlink zmq cgdk10)
 SIZES_ALL=(64 1024 65536)
 RUN_STACKS=()
 RUN_SIZES=()
@@ -197,7 +197,7 @@ case "${TARGET_STACK}" in
     all)
         RUN_STACKS=("${STACKS_ALL[@]}")
         ;;
-    asio|cppserver|dotnet|zlink|cgdk10)
+    asio|cppserver|dotnet|zlink|zmq|cgdk10)
         RUN_STACKS=("${TARGET_STACK}")
         ;;
     *)
@@ -229,6 +229,8 @@ COMPARISON_MD="${RESULT_DIR}/comparison.md"
 CLIENT_BIN="${BUILD_DIR}/bin/test_scenario_stream_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
+ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
+ZMQ_LIB_DIR="${SCRIPT_DIR}/zmq/libzmq_dist/linux-x64/lib"
 
 CPPSERVER_SRC_DIR="${SCRIPT_DIR}/cppserver/upstream"
 CPPSERVER_BUILD_DIR="${CPPSERVER_SRC_DIR}/build-stream"
@@ -295,7 +297,23 @@ wait_for_port()
     start_ts="$(date +%s)"
 
     while true; do
-        if (echo >/dev/tcp/"${host}"/"${port}") >/dev/null 2>&1; then
+        if python3 - "${host}" "${port}" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(0.2)
+try:
+    rc = s.connect_ex((host, port))
+finally:
+    s.close()
+
+sys.exit(0 if rc == 0 else 1)
+PY
+        then
             return 0
         fi
 
@@ -440,6 +458,10 @@ build_selected()
                 log "build zlink server"
                 cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
                 ;;
+            zmq)
+                log "build zmq server"
+                cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
+                ;;
             cppserver)
                 log "build cppserver server"
                 cat >"${CPPSERVER_UPSTREAM_ENTRY}" <<'CPP'
@@ -476,6 +498,9 @@ start_server()
         zlink)
             cmd=("${ZLINK_BIN}")
             ;;
+        zmq)
+            cmd=("${ZMQ_BIN}")
+            ;;
         cppserver)
             cmd=("${CPPSERVER_BIN}")
             ;;
@@ -502,9 +527,16 @@ start_server()
         --io-threads "${SERVER_IO_THREADS}"
     )
 
-    (
-        exec "${cmd[@]}" >"${server_log}" 2>&1
-    ) &
+    if [[ "${stack}" == "zmq" ]]; then
+        (
+            export LD_LIBRARY_PATH="${ZMQ_LIB_DIR}:${LD_LIBRARY_PATH:-}"
+            exec "${cmd[@]}" >"${server_log}" 2>&1
+        ) &
+    else
+        (
+            exec "${cmd[@]}" >"${server_log}" 2>&1
+        ) &
+    fi
     ACTIVE_SERVER_PID="$!"
     ACTIVE_SERVER_STACK="${stack}"
 

@@ -63,6 +63,41 @@ set(tests
   scenario/stream/zlink/test_scenario_stream_zlink
   scenario/stream/asio/test_scenario_stream_asio)
 
+set(
+  STREAM_SCENARIO_ZMQ_DIST_ROOT
+  "${CMAKE_CURRENT_LIST_DIR}/scenario/stream/zmq/libzmq_dist"
+  CACHE PATH "Bundled libzmq distribution root for stream scenario tests")
+
+if(WIN32)
+  set(STREAM_SCENARIO_ZMQ_ROOT "${STREAM_SCENARIO_ZMQ_DIST_ROOT}/windows-x64")
+  file(GLOB STREAM_SCENARIO_ZMQ_LIBRARY "${STREAM_SCENARIO_ZMQ_ROOT}/lib/*.lib")
+  set(STREAM_SCENARIO_ZMQ_RUNTIME_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/bin")
+else()
+  set(STREAM_SCENARIO_ZMQ_ROOT "${STREAM_SCENARIO_ZMQ_DIST_ROOT}/linux-x64")
+  file(
+    GLOB
+    STREAM_SCENARIO_ZMQ_LIBRARY
+    "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.so"
+    "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.so.*"
+    "${STREAM_SCENARIO_ZMQ_ROOT}/lib/libzmq.dylib")
+  set(STREAM_SCENARIO_ZMQ_RUNTIME_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/lib")
+endif()
+set(STREAM_SCENARIO_ZMQ_INCLUDE_DIR "${STREAM_SCENARIO_ZMQ_ROOT}/include")
+
+set(STREAM_SCENARIO_ZMQ_LIBRARY_FILE "")
+if(STREAM_SCENARIO_ZMQ_LIBRARY)
+  list(GET STREAM_SCENARIO_ZMQ_LIBRARY 0 STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
+endif()
+
+if(EXISTS "${STREAM_SCENARIO_ZMQ_INCLUDE_DIR}/zmq.h"
+   AND STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
+  list(APPEND tests scenario/stream/zmq/test_scenario_stream_zmq)
+else()
+  message(
+    STATUS
+      "stream scenario zmq test disabled: libzmq bundle not found under ${STREAM_SCENARIO_ZMQ_ROOT}")
+endif()
+
 if(NOT WIN32)
   list(APPEND tests test_connect_null_fuzzer test_bind_null_fuzzer test_connect_fuzzer test_bind_fuzzer)
 endif()
@@ -255,6 +290,30 @@ target_sources(
   test_scenario_stream_client
   PRIVATE scenario/stream/client/stream_client_core.cpp)
 
+if(TARGET test_scenario_stream_zmq)
+  target_include_directories(
+    test_scenario_stream_zmq PRIVATE ${STREAM_SCENARIO_ZMQ_INCLUDE_DIR})
+  target_link_libraries(test_scenario_stream_zmq
+                        ${STREAM_SCENARIO_ZMQ_LIBRARY_FILE})
+
+  if(WIN32)
+    set_tests_properties(
+      test_scenario_stream_zmq
+      PROPERTIES ENVIRONMENT
+                 "PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR};$<TARGET_FILE_DIR:libzlink>;$ENV{PATH}")
+  elseif(APPLE)
+    set_tests_properties(
+      test_scenario_stream_zmq
+      PROPERTIES ENVIRONMENT
+                 "DYLD_LIBRARY_PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR}:$<TARGET_FILE_DIR:libzlink>:$ENV{DYLD_LIBRARY_PATH}")
+  else()
+    set_tests_properties(
+      test_scenario_stream_zmq
+      PROPERTIES ENVIRONMENT
+                 "LD_LIBRARY_PATH=${STREAM_SCENARIO_ZMQ_RUNTIME_DIR}:$<TARGET_FILE_DIR:libzlink>:$ENV{LD_LIBRARY_PATH}")
+  endif()
+endif()
+
 # override timeout for these tests
 set_tests_properties(test_heartbeats PROPERTIES TIMEOUT 60)
 set_tests_properties(test_reconnect_ivl PROPERTIES TIMEOUT 15)
@@ -274,6 +333,10 @@ set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
+if(TARGET test_scenario_stream_zmq)
+  set_tests_properties(test_scenario_stream_zmq PROPERTIES TIMEOUT 120)
+  set_tests_properties(test_scenario_stream_zmq PROPERTIES LABELS "scenario;stream;zmq")
+endif()
 
 # Legacy raw-TCP stream tests are not compatible with Direct-IO mode
 # (they use raw sockets and rely on pipe-based disconnect detection).

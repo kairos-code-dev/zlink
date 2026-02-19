@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -82,12 +83,14 @@ typedef std::unordered_map<std::string, stream_buffer_t> stream_stash_map_t;
 struct stream_decode_state_t {
     stream_stash_map_t stashes;
     size_t complete_frames;
+    size_t decode_errors;
 
-    stream_decode_state_t () : complete_frames (0) {}
+    stream_decode_state_t () : complete_frames (0), decode_errors (0) {}
     void reset ()
     {
         stashes.clear ();
         complete_frames = 0;
+        decode_errors = 0;
     }
 };
 
@@ -564,7 +567,6 @@ int recv_batch_stream (void *server,
             stream_buffer_t &stash = decode_state.stashes[routing_id];
             stash.append (payload_data, payload_size);
 
-            bool invalid_header = false;
             size_t decoded_now = 0;
             while (stash.available () >= FRAME_PREFIX_SIZE) {
                 const unsigned char *ptr = reinterpret_cast<const unsigned char *> (
@@ -576,7 +578,7 @@ int recv_batch_stream (void *server,
                 const size_t single_frame_size = static_cast<size_t> (net_len);
                 if (single_frame_size > MAX_STREAM_FRAME_SIZE) {
                     stash.reset ();
-                    invalid_header = true;
+                    ++decode_state.decode_errors;
                     break;
                 }
                 if (stash.available () < FRAME_PREFIX_SIZE + single_frame_size)
@@ -587,8 +589,6 @@ int recv_batch_stream (void *server,
             stash.compact ();
             if (decoded_now > 0)
                 decode_state.complete_frames += decoded_now;
-            else if (invalid_header)
-                decode_state.complete_frames += 1;
 
             if (decode_state.complete_frames > 0) {
                 const size_t take =
@@ -903,6 +903,12 @@ void run_multi_stream (const std::string &transport,
                            bench.connect_ms, bench.ready_wait_ms);
         print_result (
           lib_name, "MULTI_STREAM", transport, current_size, throughput, latency);
+        if (decode_state.decode_errors > 0) {
+            std::fprintf (stderr,
+                          "WARN,MULTI_STREAM,%s,%zu,decode_errors,%zu\n",
+                          transport.c_str (), current_size,
+                          decode_state.decode_errors);
+        }
     }
 
     for (size_t i = 0; i < senders.size (); ++i)

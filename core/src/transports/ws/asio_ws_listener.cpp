@@ -31,6 +31,7 @@
 #endif
 #include <cerrno>
 #include <cstdlib>
+#include <algorithm>
 
 //  Debug logging for ASIO WS listener - set to 1 to enable
 #define ASIO_WS_LISTENER_DEBUG 0
@@ -128,6 +129,28 @@ zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 
     return adjusted;
 }
+
+size_t parse_stream_accept_concurrency ()
+{
+    const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
+    if (!env || !*env)
+        return 1;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return 1;
+
+    return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
+}
+
+size_t stream_accept_target (const zlink::options_t &options_)
+{
+    if (options_.type != ZLINK_STREAM)
+        return 1;
+    return parse_stream_accept_concurrency ();
+}
 }
 #else
 namespace
@@ -164,6 +187,28 @@ zlink::options_t adjust_ws_options (const zlink::options_t &options_)
 
     return adjusted;
 }
+
+size_t parse_stream_accept_concurrency ()
+{
+    const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
+    if (!env || !*env)
+        return 1;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return 1;
+
+    return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
+}
+
+size_t stream_accept_target (const zlink::options_t &options_)
+{
+    if (options_.type != ZLINK_STREAM)
+        return 1;
+    return parse_stream_accept_concurrency ();
+}
 }
 #endif
 
@@ -174,12 +219,11 @@ zlink::asio_ws_listener_t::asio_ws_listener_t (io_thread_t *io_thread_,
     io_object_t (io_thread_),
     _io_context (io_thread_->get_io_context ()),
     _acceptor (_io_context),
-    _accept_socket (_io_context),
     _socket (socket_),
     _path ("/"),
     _port (0),
     _secure (false),
-    _accepting (false),
+    _accepting_count (0),
     _terminating (false),
     _linger (0)
 {
@@ -336,8 +380,8 @@ void zlink::asio_ws_listener_t::process_plug ()
 
 void zlink::asio_ws_listener_t::process_term (int linger_)
 {
-    WS_LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
-                     _accepting);
+    WS_LISTENER_DBG ("process_term called, linger=%d, accepting=%zu", linger_,
+                     _accepting_count);
 
     _terminating = true;
     _linger = linger_;
@@ -352,35 +396,46 @@ void zlink::asio_ws_listener_t::process_term (int linger_)
     }
 
     //  Process pending handlers
-    if (_accepting) {
-        _io_context.poll ();
-    }
+    for (size_t i = 0; i < 4096 && _accepting_count > 0; ++i)
+        _io_context.poll_one ();
 
     own_t::process_term (linger_);
 }
 
 void zlink::asio_ws_listener_t::start_accept ()
 {
-    if (_accepting || !_acceptor.is_open ())
+    if (!_acceptor.is_open ())
         return;
 
-    _accepting = true;
-    WS_LISTENER_DBG ("start_accept: starting async_accept");
+    const size_t target_accepts = stream_accept_target (options);
+    while (_accepting_count < target_accepts && _acceptor.is_open ()) {
+        const std::shared_ptr<boost::asio::ip::tcp::socket> accept_socket (
+          new (std::nothrow) boost::asio::ip::tcp::socket (_io_context));
+        alloc_assert (accept_socket.get ());
 
-    _acceptor.async_accept (
-      _accept_socket,
-      [this] (const boost::system::error_code &ec) { on_accept (ec); });
+        ++_accepting_count;
+        WS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)",
+                         _accepting_count, target_accepts);
+        _acceptor.async_accept (
+          *accept_socket, [this, accept_socket] (const boost::system::error_code &ec) {
+              on_accept (accept_socket, ec);
+          });
+    }
 }
 
-void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
+void zlink::asio_ws_listener_t::on_accept (
+  const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+  const boost::system::error_code &ec)
 {
-    _accepting = false;
-    WS_LISTENER_DBG ("on_accept: ec=%s, terminating=%d", ec.message ().c_str (),
-                     _terminating);
+    if (_accepting_count > 0)
+        --_accepting_count;
+    WS_LISTENER_DBG ("on_accept: ec=%s, terminating=%d, pending=%zu",
+                     ec.message ().c_str (), _terminating, _accepting_count);
 
     if (_terminating) {
-        if (!ec) {
-            _accept_socket.close ();
+        if (!ec && accept_socket_ && accept_socket_->is_open ()) {
+            boost::system::error_code close_ec;
+            accept_socket_->close (close_ec);
         }
         return;
     }
@@ -388,25 +443,25 @@ void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
     if (ec) {
         if (ec == boost::asio::error::operation_aborted) {
             WS_LISTENER_DBG ("on_accept: operation aborted");
+            start_accept ();
             return;
         }
 
         _socket->event_accept_failed (
           make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
 
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
 
     //  Get the native handle before releasing ownership
-    fd_t fd = _accept_socket.native_handle ();
+    fd_t fd = accept_socket_->native_handle ();
     WS_LISTENER_DBG ("on_accept: accepted connection, fd=%d", fd);
 
     //  Get peer address for accept filter
     boost::system::error_code peer_ec;
     boost::asio::ip::tcp::endpoint remote_endpoint =
-      _accept_socket.remote_endpoint (peer_ec);
+      accept_socket_->remote_endpoint (peer_ec);
 
     struct sockaddr_storage ss;
     socklen_t ss_len = sizeof (ss);
@@ -437,14 +492,14 @@ void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
     //  Apply accept filters
     if (!apply_accept_filters (fd, ss, ss_len)) {
         WS_LISTENER_DBG ("on_accept: connection rejected by filter");
-        _accept_socket.close ();
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
+        boost::system::error_code close_ec;
+        accept_socket_->close (close_ec);
         start_accept ();
         return;
     }
 
     //  Release ownership of the socket
-    _accept_socket.release ();
+    accept_socket_->release ();
 
     //  Tune the accepted socket
     if (tune_socket (fd) != 0) {
@@ -456,7 +511,6 @@ void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
 #else
         ::close (fd);
 #endif
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
@@ -464,8 +518,6 @@ void zlink::asio_ws_listener_t::on_accept (const boost::system::error_code &ec)
     //  Create engine for this connection
     create_engine (fd);
 
-    //  Prepare for next connection
-    _accept_socket = boost::asio::ip::tcp::socket (_io_context);
     start_accept ();
 }
 
@@ -541,7 +593,9 @@ void zlink::asio_ws_listener_t::create_engine (fd_t fd_)
     alloc_assert (engine);
 
     //  Choose I/O thread for engine
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    io_thread_t *io_thread = options.type == ZLINK_STREAM
+                               ? choose_io_thread_stream (options.affinity)
+                               : choose_io_thread (options.affinity);
     zlink_assert (io_thread);
 
     //  Create and launch session

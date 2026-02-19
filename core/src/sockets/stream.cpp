@@ -43,6 +43,7 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
+    _prefetched_routing_id_value (0),
     _current_out (NULL),
     _more_out (false),
     _next_integral_routing_id (1)
@@ -55,13 +56,11 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     if (options.out_batch_size < stream_batch_size)
         options.out_batch_size = stream_batch_size;
 
-    _prefetched_routing_id.init ();
     _prefetched_msg.init ();
 }
 
 zlink::stream_t::~stream_t ()
 {
-    _prefetched_routing_id.close ();
     _prefetched_msg.close ();
 }
 
@@ -215,8 +214,8 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 {
     if (_prefetched) {
         if (!_routing_id_sent) {
-            const int rc = msg_->move (_prefetched_routing_id);
-            errno_assert (rc == 0);
+            init_routing_id_frame (
+              msg_, _prefetched_routing_id_value, _prefetched_msg.metadata ());
             _routing_id_sent = true;
         } else {
             const int rc = msg_->move (_prefetched_msg);
@@ -226,7 +225,7 @@ int zlink::stream_t::xrecv (msg_t *msg_)
         return 0;
     }
 
-    if (prefetch_notify_event ())
+    if (options.stream_notify && prefetch_notify_event ())
         return xrecv (msg_);
 
     pipe_t *pipe = NULL;
@@ -236,15 +235,15 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
     zlink_assert (pipe != NULL);
 
+    //  Match libzmq STREAM fast-path: keep payload prefetched and return
+    //  routing-id frame directly to caller without extra msg move indirection.
     uint32_t routing_id_value = _prefetched_msg.get_routing_id ();
     if (routing_id_value == 0)
         routing_id_value = pipe->get_server_socket_routing_id ();
 
-    metadata_t *metadata = _prefetched_msg.metadata ();
-    prepare_prefetched_routing_id (routing_id_value, metadata);
-    rc = msg_->move (_prefetched_routing_id);
-    errno_assert (rc == 0);
+    init_routing_id_frame (msg_, routing_id_value, _prefetched_msg.metadata ());
 
+    _prefetched_routing_id_value = routing_id_value;
     _prefetched = true;
     _routing_id_sent = true;
 
@@ -256,7 +255,7 @@ bool zlink::stream_t::xhas_in ()
     if (_prefetched)
         return true;
 
-    if (prefetch_notify_event ())
+    if (options.stream_notify && prefetch_notify_event ())
         return true;
 
     pipe_t *pipe = NULL;
@@ -270,9 +269,7 @@ bool zlink::stream_t::xhas_in ()
     if (routing_id_value == 0)
         routing_id_value = pipe->get_server_socket_routing_id ();
 
-    metadata_t *metadata = _prefetched_msg.metadata ();
-    prepare_prefetched_routing_id (routing_id_value, metadata);
-
+    _prefetched_routing_id_value = routing_id_value;
     _prefetched = true;
     _routing_id_sent = false;
 
@@ -345,7 +342,7 @@ bool zlink::stream_t::prefetch_notify_event ()
         _pending_notify_events_vec.erase (_pending_notify_events_vec.begin ());
     }
 
-    prepare_prefetched_routing_id (routing_id_value, NULL);
+    _prefetched_routing_id_value = routing_id_value;
 
     int rc = _prefetched_msg.close ();
     errno_assert (rc == 0);
@@ -358,20 +355,20 @@ bool zlink::stream_t::prefetch_notify_event ()
     return true;
 }
 
-void zlink::stream_t::prepare_prefetched_routing_id (
-  uint32_t routing_id_value_,
-  metadata_t *metadata_)
+void zlink::stream_t::init_routing_id_frame (msg_t *msg_,
+                                             uint32_t routing_id_value_,
+                                             metadata_t *metadata_)
 {
-    int rc = _prefetched_routing_id.close ();
+    int rc = msg_->close ();
     errno_assert (rc == 0);
-    rc = _prefetched_routing_id.init_size (4);
+    rc = msg_->init_size (4);
     errno_assert (rc == 0);
 
-    put_uint32 (static_cast<unsigned char *> (_prefetched_routing_id.data ()),
+    put_uint32 (static_cast<unsigned char *> (msg_->data ()),
                 routing_id_value_);
     if (metadata_)
-        _prefetched_routing_id.set_metadata (metadata_);
-    _prefetched_routing_id.set_flags (msg_t::more);
+        msg_->set_metadata (metadata_);
+    msg_->set_flags (msg_t::more);
 }
 
 void zlink::stream_t::emit_connect_event (pipe_t *pipe_)

@@ -10,6 +10,18 @@
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
 
+namespace
+{
+bool env_flag_enabled (const char *name_)
+{
+    const char *env = std::getenv (name_);
+    return env && *env && *env != '0';
+}
+
+const bool asio_stream_disable_metadata =
+  env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_METADATA");
+}
+
 zlink::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
   const options_t &options_,
@@ -70,7 +82,9 @@ void zlink::asio_raw_engine_t::plug_internal ()
     }
 
     properties_t properties;
-    if (init_properties (properties)) {
+    const bool skip_stream_metadata =
+      _options.type == ZLINK_STREAM && asio_stream_disable_metadata;
+    if (!skip_stream_metadata && init_properties (properties)) {
         zlink_assert (_metadata == NULL);
         _metadata = new (std::nothrow) metadata_t (properties);
         alloc_assert (_metadata);

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+import json
 import os
 import platform
 import statistics
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 IS_WINDOWS = os.name == "nt"
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
@@ -283,6 +285,10 @@ else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 1
+_platform_tag, _arch_tag = platform_arch_tag()
+DEFAULT_STD_CACHE_FILE = os.path.join(
+    SCRIPT_DIR, f"std_zmq_single_cache_{_platform_tag}-{_arch_tag}.json"
+)
 DEFAULT_MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 if IS_WINDOWS:
     DEFAULT_TRANSPORTS = ["tcp", "inproc"]
@@ -458,6 +464,49 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports):
             print("Done")
 
     return final_stats, failures
+
+
+def load_std_cache(path):
+    if not path or not os.path.exists(path):
+        return {}
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_std_cache(path, cache_data):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cache_data, f, indent=2, sort_keys=True, ensure_ascii=True)
+
+
+def sanitize_metric_map(raw):
+    out = {}
+    if not isinstance(raw, dict):
+        return out
+    for k, v in raw.items():
+        try:
+            out[str(k)] = float(v)
+        except Exception:
+            continue
+    return out
+
+
+def update_cached_std_entry(cache_data, pattern_name, std_data, std_fail):
+    patterns = cache_data.setdefault("patterns", {})
+    patterns[pattern_name] = {
+        "data": sanitize_metric_map(std_data),
+        "failures": [list(x) for x in std_fail],
+        "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "transports": list(TRANSPORTS),
+        "msg_sizes": list(MSG_SIZES),
+    }
 
 
 def format_throughput(msgs_per_sec):
@@ -743,12 +792,20 @@ def main():
             print(f"  - {name}{EXE_SUFFIX}", file=sys.stderr)
         return 2
 
+    cache_file = os.path.abspath(
+        os.environ.get("BENCH_STD_CACHE_FILE", "") or DEFAULT_STD_CACHE_FILE
+    )
+    std_cache = load_std_cache(cache_file)
+    cache_updated = False
+
     all_failures = []
     any_failure = False
 
     for std_bin, zlk_bin, pattern_name in selected:
         print(f"\n## PATTERN: {pattern_name}")
         std_data, std_fail = collect_data(std_bin, "libzmq", pattern_name, num_runs, TRANSPORTS)
+        update_cached_std_entry(std_cache, pattern_name, std_data, std_fail)
+        cache_updated = True
         zlk_data, zlk_fail = collect_data(zlk_bin, "zlink", pattern_name, num_runs, TRANSPORTS)
         print_pattern_report(std_data, zlk_data, TRANSPORTS)
 
@@ -756,6 +813,17 @@ def main():
         all_failures.extend(zlk_fail)
         if std_fail or zlk_fail:
             any_failure = True
+
+    if cache_updated:
+        std_cache["meta"] = {
+            "build_dir": BUILD_DIR,
+            "libzmq_lib_dir": LIBZMQ_LIB_DIR,
+            "platform_tag": _platform_tag,
+            "arch_tag": _arch_tag,
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        save_std_cache(cache_file, std_cache)
+        print(f"Saved libzmq cache: {cache_file}")
 
     if all_failures:
         print("\n## Failures")

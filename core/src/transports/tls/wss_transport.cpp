@@ -93,6 +93,14 @@ bool wss_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
         return false;
     }
 
+    //  Keep synchronous read_some/write paths non-blocking.
+    socket.native_non_blocking (true, ec);
+    if (ec) {
+        ASIO_GLOBAL_ERROR ("wss_transport non-blocking failed: %s",
+                           ec.message ().c_str ());
+        return false;
+    }
+
     //  Create SSL stream wrapping the socket
     ssl_stream_t ssl_stream (std::move (socket), _ssl_ctx);
 

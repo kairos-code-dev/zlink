@@ -104,6 +104,12 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Returns NULL if no I/O thread is available.
     zlink::io_thread_t *choose_io_thread (uint64_t affinity_);
 
+    //  STREAM-specific I/O thread selection policy.
+    //  Selection is controlled by ZLINK_ASIO_STREAM_SESSION_SCHED:
+    //   - minload (default): choose least loaded thread (legacy behavior)
+    //   - rr: round-robin across eligible threads
+    zlink::io_thread_t *choose_io_thread_stream (uint64_t affinity_);
+
     //  Returns reaper thread object.
     zlink::object_t *get_reaper () const;
 
@@ -205,6 +211,9 @@ class ctx_t ZLINK_FINAL : public thread_ctx_t
     //  Tie-breaker cursor for distributing connections across I/O threads
     //  when reported load is equal (common in ASIO path).
     atomic_counter_t _next_io_thread;
+
+    //  Dedicated cursor for STREAM round-robin scheduling.
+    atomic_counter_t _next_stream_io_thread;
 
     //  Does context wait (possibly forever) on termination?
     bool _blocky;

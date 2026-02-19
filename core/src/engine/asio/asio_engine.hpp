@@ -235,6 +235,23 @@ class asio_engine_t : public i_engine
     //  Unplug the engine from the session.
     void unplug ();
 
+    bool is_tcp_transport () const;
+    bool use_stream_speculative_write () const;
+    bool use_non_tcp_speculative_read () const;
+    bool use_stream_rx_slab () const;
+
+    struct stream_rx_chunk_t
+    {
+        std::vector<unsigned char> data;
+        size_t offset;
+
+        stream_rx_chunk_t () : offset (0) {}
+        size_t size () const
+        {
+            return data.size () > offset ? data.size () - offset : 0;
+        }
+    };
+
     //  Pointer to io_context (set during plug())
     boost::asio::io_context *_io_context;
 
@@ -260,8 +277,12 @@ class asio_engine_t : public i_engine
     //  eliminating unnecessary recvfrom() calls and EAGAIN errors.
     std::deque<std::vector<unsigned char>> _pending_buffers;
 
+    //  STREAM RX slab chunks (optional fast path, gated by env toggle).
+    std::deque<stream_rx_chunk_t> _pending_stream_rx_chunks;
+
     //  Backpressure read buffers (avoid extra copy into _pending_buffers).
     std::vector<std::vector<unsigned char> > _pending_buffer_pool;
+    std::vector<stream_rx_chunk_t> _pending_stream_rx_chunk_pool;
     std::vector<unsigned char> _pending_read_buffer;
     bool _read_from_pending_pool;
     enum { pending_buffer_pool_max = 4 };

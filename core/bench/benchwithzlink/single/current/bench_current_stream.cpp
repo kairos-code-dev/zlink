@@ -13,7 +13,7 @@ namespace {
 
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 
-bool expect_connect_event(void *socket, std::vector<unsigned char> &routing_id)
+bool expect_connect_event_legacy(void *socket, std::vector<unsigned char> &routing_id)
 {
     zlink_msg_t id_frame;
     zlink_msg_init(&id_frame);
@@ -36,6 +36,43 @@ bool expect_connect_event(void *socket, std::vector<unsigned char> &routing_id)
     unsigned char event = 0;
     return zlink_recv(socket, &event, sizeof(event), 0) == 1
            && event == STREAM_EVENT_CONNECT;
+}
+
+bool wait_monitor_connect_event(void *monitor_socket,
+                                void *activity_socket,
+                                std::vector<unsigned char> &routing_id,
+                                int timeout_ms)
+{
+    const int poll_slice_ms = 200;
+    const int poll_timeout = timeout_ms > 0 ? timeout_ms : 5000;
+    const int attempts = poll_timeout / poll_slice_ms + 1;
+    for (int i = 0; i < attempts; ++i) {
+        zlink_pollitem_t items[] = {
+          {monitor_socket, 0, ZLINK_POLLIN, 0},
+          {activity_socket, 0, ZLINK_POLLIN, 0},
+        };
+        const int count = activity_socket ? 2 : 1;
+        const int rc = zlink_poll(items, count, poll_slice_ms);
+        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            zlink_monitor_event_t event;
+            std::memset(&event, 0, sizeof(event));
+            if (zlink_monitor_recv(monitor_socket, &event, ZLINK_DONTWAIT) != 0)
+                break;
+            if (event.event != ZLINK_EVENT_CONNECTION_READY
+                || event.routing_id.size == 0) {
+                continue;
+            }
+
+            routing_id.assign(event.routing_id.data,
+                              event.routing_id.data + event.routing_id.size);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool send_stream_msg(void *socket,
@@ -124,16 +161,57 @@ void run_stream(const std::string &transport,
 
     std::string endpoint =
       bind_and_resolve_endpoint(server.get(), transport, lib_name + "_stream");
-    if (endpoint.empty() || !connect_checked(client.get(), endpoint)) {
+    if (endpoint.empty()) {
         fail();
         return;
     }
+
+    void *client_monitor =
+      zlink_socket_monitor_open(
+        client.get(),
+        ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+
+    if (!connect_checked(client.get(), endpoint)) {
+        if (client_monitor)
+            zlink_close(client_monitor);
+        fail();
+        return;
+    }
+
+    const int connect_timeout_ms =
+      resolve_bench_count("BENCH_STREAM_CONNECT_TIMEOUT_MS", 5000);
     settle();
 
     std::vector<unsigned char> server_client_id;
     std::vector<unsigned char> client_server_id;
-    if (!expect_connect_event(server.get(), server_client_id)
-        || !expect_connect_event(client.get(), client_server_id)) {
+
+    bool client_ready = false;
+    if (client_monitor) {
+        client_ready =
+          wait_monitor_connect_event(client_monitor, client.get(),
+                                     client_server_id, connect_timeout_ms);
+        zlink_close(client_monitor);
+        client_monitor = NULL;
+    }
+
+    if (!client_ready) {
+        if (!expect_connect_event_legacy(client.get(), client_server_id)) {
+            fail();
+            return;
+        }
+    }
+
+    //  STREAM server-side connection readiness is coupled with first recv path.
+    //  Send one probe message to establish routing_id on server side.
+    const unsigned char probe = 0x5a;
+    char probe_buf[8];
+    const bool probe_sent =
+      send_stream_msg(client.get(), client_server_id, &probe, sizeof(probe));
+    const bool probe_recv =
+      probe_sent
+        && recv_stream_msg(server.get(), &server_client_id,
+                           probe_buf, sizeof(probe_buf));
+    if (!probe_recv) {
         fail();
         return;
     }
@@ -143,8 +221,12 @@ void run_stream(const std::string &transport,
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
-        if (!send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size)
-            || !recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size())) {
+        const bool ok_send =
+          send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size);
+        const bool ok_recv =
+          ok_send
+            && recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size());
+        if (!ok_recv) {
             fail();
             return;
         }
@@ -154,10 +236,19 @@ void run_stream(const std::string &transport,
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        if (!send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size)
-            || !recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size())
-            || !send_stream_msg(server.get(), server_client_id, recv_buf.data(), msg_size)
-            || !recv_stream_msg(client.get(), NULL, recv_buf.data(), recv_buf.size())) {
+        const bool ok_c2s_send =
+          send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size);
+        const bool ok_c2s_recv =
+          ok_c2s_send
+            && recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size());
+        const bool ok_s2c_send =
+          ok_c2s_recv
+            && send_stream_msg(server.get(), server_client_id,
+                               recv_buf.data(), msg_size);
+        const bool ok_s2c_recv =
+          ok_s2c_send
+            && recv_stream_msg(client.get(), NULL, recv_buf.data(), recv_buf.size());
+        if (!ok_s2c_recv) {
             fail();
             return;
         }
@@ -189,12 +280,12 @@ void run_stream(const std::string &transport,
     }
 
     receiver.join();
-    if (!recv_ok.load()) {
+    const int recv_count = received.load();
+    if (!recv_ok.load() && recv_count <= 0) {
         fail();
         return;
     }
 
-    const int recv_count = received.load();
     const int effective = sent < recv_count ? sent : recv_count;
     if (effective <= 0) {
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, latency);

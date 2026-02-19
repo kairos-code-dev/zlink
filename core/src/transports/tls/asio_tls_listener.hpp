@@ -57,7 +57,9 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void start_accept ();
 
     //  Handle TCP accept completion
-    void on_tcp_accept (const boost::system::error_code &ec);
+    void on_tcp_accept (
+      const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+      const boost::system::error_code &ec);
 
     //  Create SSL context from options
     std::unique_ptr<boost::asio::ssl::context> create_ssl_context () const;
@@ -86,9 +88,6 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
     //  The ASIO acceptor for listening
     boost::asio::ip::tcp::acceptor _acceptor;
 
-    //  Socket to accept into
-    boost::asio::ip::tcp::socket _accept_socket;
-
     //  Address being listened on
     tcp_address_t _address;
 
@@ -98,8 +97,8 @@ class asio_tls_listener_t ZLINK_FINAL : public own_t, public io_object_t
     //  Reference to the socket we belong to
     zlink::socket_base_t *const _socket;
 
-    //  True if async accept is in progress
-    bool _accepting;
+    //  Number of outstanding async_accept operations.
+    size_t _accepting_count;
 
     //  True if process_term has been called
     bool _terminating;

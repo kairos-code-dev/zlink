@@ -142,6 +142,18 @@ const bool asio_stream_enable_handler_alloc =
 const bool asio_stream_enable_read_drain =
   env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN");
 
+const bool asio_stream_enable_speculative_write =
+  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE");
+
+const bool asio_stream_enable_rx_slab =
+  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_RX_SLAB");
+
+const bool asio_stream_enable_non_tcp_spec_read =
+  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
+
+const size_t asio_stream_spec_write_budget_bytes =
+  parse_size_env ("ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES", 262144);
+
 const size_t asio_stream_read_drain_max_loops =
   parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 16);
 
@@ -256,6 +268,7 @@ zlink::asio_engine_t::~asio_engine_t ()
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
+    _pending_stream_rx_chunks.clear ();
     _total_pending_bytes = 0;
 
     //  Smart pointers will automatically clean up ASIO objects
@@ -410,6 +423,7 @@ void zlink::asio_engine_t::unplug ()
 
     //  Clear pending buffers (True Proactor Pattern)
     _pending_buffers.clear ();
+    _pending_stream_rx_chunks.clear ();
     _total_pending_bytes = 0;
 
     _session = NULL;
@@ -470,7 +484,12 @@ void zlink::asio_engine_t::start_async_read ()
         if (read_size == 0)
             read_size = read_buffer_size;
 
-        if (!_pending_buffer_pool.empty ()) {
+        if (use_stream_rx_slab () && !_pending_stream_rx_chunk_pool.empty ()) {
+            stream_rx_chunk_t chunk =
+              ZLINK_MOVE (_pending_stream_rx_chunk_pool.back ());
+            _pending_stream_rx_chunk_pool.pop_back ();
+            _pending_read_buffer = ZLINK_MOVE (chunk.data);
+        } else if (!_pending_buffer_pool.empty ()) {
             _pending_read_buffer = std::move (_pending_buffer_pool.back ());
             _pending_buffer_pool.pop_back ();
         }
@@ -501,7 +520,6 @@ void zlink::asio_engine_t::start_async_read ()
     }
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
-
     if (_transport) {
         const bool use_stream_handler_alloc =
           _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
@@ -525,8 +543,11 @@ void zlink::asio_engine_t::start_async_read ()
 
 bool zlink::asio_engine_t::speculative_read ()
 {
-    if (_read_pending || _io_error || !_transport
-        || !_transport->supports_speculative_read ())
+    const bool supports_speculative_read =
+      _transport
+      && (_transport->supports_speculative_read ()
+          || use_non_tcp_speculative_read ());
+    if (_read_pending || _io_error || !supports_speculative_read)
         return false;
 
     _last_speculative_read_bytes = 0;
@@ -583,7 +604,14 @@ bool zlink::asio_engine_t::speculative_read ()
             }
 
             _pending_read_buffer.resize (bytes);
-            _pending_buffers.push_back (std::move (_pending_read_buffer));
+            if (use_stream_rx_slab ()) {
+                stream_rx_chunk_t chunk;
+                chunk.data.swap (_pending_read_buffer);
+                chunk.offset = 0;
+                _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+            } else {
+                _pending_buffers.push_back (std::move (_pending_read_buffer));
+            }
             _total_pending_bytes += bytes;
             _read_from_pending_pool = false;
             return true;
@@ -597,7 +625,14 @@ bool zlink::asio_engine_t::speculative_read ()
 
         std::vector<unsigned char> buffer (bytes);
         std::memcpy (buffer.data (), _read_buffer_ptr, bytes);
-        _pending_buffers.push_back (std::move (buffer));
+        if (use_stream_rx_slab ()) {
+            stream_rx_chunk_t chunk;
+            chunk.data.swap (buffer);
+            chunk.offset = 0;
+            _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+        } else {
+            _pending_buffers.push_back (std::move (buffer));
+        }
         _total_pending_bytes += bytes;
         return true;
     }
@@ -641,7 +676,7 @@ void zlink::asio_engine_t::start_async_write ()
     }
 
     //  Try a synchronous write first when supported (libzlink-like path).
-    const bool use_speculative_write = _transport->supports_speculative_write ();
+    const bool use_speculative_write = use_stream_speculative_write ();
     if (use_speculative_write) {
         const std::size_t bytes =
           _transport->write_some (reinterpret_cast<const std::uint8_t *> (_outpos),
@@ -774,6 +809,39 @@ void zlink::asio_engine_t::finish_gather_output ()
     errno_assert (rc_init == 0);
 }
 
+bool zlink::asio_engine_t::is_tcp_transport () const
+{
+    return _transport && _transport->name ()
+           && strcmp (_transport->name (), "tcp") == 0;
+}
+
+bool zlink::asio_engine_t::use_stream_speculative_write () const
+{
+    if (!_transport)
+        return false;
+
+    if (_options.type == ZLINK_STREAM && is_tcp_transport ())
+        return asio_stream_enable_speculative_write;
+
+    return _transport->supports_speculative_write ();
+}
+
+bool zlink::asio_engine_t::use_non_tcp_speculative_read () const
+{
+    if (!_transport || _options.type != ZLINK_STREAM)
+        return false;
+
+    if (is_tcp_transport ())
+        return true;
+
+    return asio_stream_enable_non_tcp_spec_read;
+}
+
+bool zlink::asio_engine_t::use_stream_rx_slab () const
+{
+    return _options.type == ZLINK_STREAM && asio_stream_enable_rx_slab;
+}
+
 void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
                                            std::size_t bytes_transferred)
 {
@@ -819,7 +887,14 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
             }
 
             _pending_read_buffer.resize (bytes_transferred);
-            _pending_buffers.push_back (std::move (_pending_read_buffer));
+            if (use_stream_rx_slab ()) {
+                stream_rx_chunk_t chunk;
+                chunk.data.swap (_pending_read_buffer);
+                chunk.offset = 0;
+                _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+            } else {
+                _pending_buffers.push_back (std::move (_pending_read_buffer));
+            }
             _total_pending_bytes += bytes_transferred;
             _read_from_pending_pool = false;
 
@@ -846,7 +921,14 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
         //  Store data in pending buffer for later processing
         std::vector<unsigned char> buffer (bytes_transferred);
         std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
-        _pending_buffers.push_back (std::move (buffer));
+        if (use_stream_rx_slab ()) {
+            stream_rx_chunk_t chunk;
+            chunk.data.swap (buffer);
+            chunk.offset = 0;
+            _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
+        } else {
+            _pending_buffers.push_back (std::move (buffer));
+        }
         _total_pending_bytes += bytes_transferred;
 
         ENGINE_DBG ("on_read_complete: buffered %zu bytes (total pending: %zu)",
@@ -904,10 +986,13 @@ void zlink::asio_engine_t::maybe_drain_stream_reads ()
     if (_terminating || _io_error)
         return;
 
+    const bool supports_speculative_read =
+      _transport
+      && (_transport->supports_speculative_read ()
+          || use_non_tcp_speculative_read ());
     const bool should_drain =
       _options.type == ZLINK_STREAM && asio_stream_enable_read_drain
-      && asio_stream_read_drain_max_loops > 0 && _transport
-      && _transport->supports_speculative_read ();
+      && asio_stream_read_drain_max_loops > 0 && supports_speculative_read;
     if (!should_drain) {
         start_async_read ();
         return;
@@ -1168,12 +1253,18 @@ void zlink::asio_engine_t::speculative_write ()
         return;
     }
 
-    const bool use_speculative_write = _transport->supports_speculative_write ();
+    const bool use_speculative_write = use_stream_speculative_write ();
     if (!use_speculative_write) {
         ENGINE_DBG ("speculative_write: transport prefers async");
         start_async_write ();
         return;
     }
+
+    const bool stream_tcp_speculative =
+      _options.type == ZLINK_STREAM && is_tcp_transport ()
+      && asio_stream_enable_speculative_write;
+    const size_t stream_spec_budget = asio_stream_spec_write_budget_bytes;
+    size_t stream_spec_bytes = 0;
 
     //  Attempt synchronous write using transport's write_some()
     zlink_assert (_transport);
@@ -1202,6 +1293,8 @@ void zlink::asio_engine_t::speculative_write ()
     //  Partial or complete write succeeded
     _outpos += bytes;
     _outsize -= bytes;
+    if (stream_tcp_speculative)
+        stream_spec_bytes += bytes;
 
     ENGINE_DBG ("speculative_write: wrote %zu bytes, remaining=%zu", bytes,
                 _outsize);
@@ -1222,6 +1315,12 @@ void zlink::asio_engine_t::speculative_write ()
             return;
 
         if (asio_single_write_on) {
+            start_async_write ();
+            return;
+        }
+
+        if (stream_tcp_speculative && stream_spec_budget > 0
+            && stream_spec_bytes >= stream_spec_budget) {
             start_async_write ();
             return;
         }
@@ -1248,9 +1347,17 @@ void zlink::asio_engine_t::speculative_write ()
 
             _outpos += more_bytes;
             _outsize -= more_bytes;
+            if (stream_tcp_speculative)
+                stream_spec_bytes += more_bytes;
 
             if (_outsize > 0) {
                 //  Partial write - async for remaining
+                start_async_write ();
+                return;
+            }
+
+            if (stream_tcp_speculative && stream_spec_budget > 0
+                && stream_spec_bytes >= stream_spec_budget) {
                 start_async_write ();
                 return;
             }
@@ -1331,8 +1438,11 @@ bool zlink::asio_engine_t::restart_input_internal ()
     zlink_assert (_session != NULL);
     zlink_assert (_decoder != NULL);
 
+    const size_t pending_queue_size =
+      use_stream_rx_slab () ? _pending_stream_rx_chunks.size ()
+                            : _pending_buffers.size ();
     ENGINE_DBG ("restart_input: pending_buffers=%zu, insize=%zu",
-                _pending_buffers.size (), _insize);
+                pending_queue_size, _insize);
 
     //  First, try to process the previously failed message
     int rc = (this->*_process_msg) (_decoder->msg ());
@@ -1385,100 +1495,176 @@ bool zlink::asio_engine_t::restart_input_internal ()
         return false;
     }
 
-    //  Process any buffered data from _pending_buffers (if present).
-    while (!_pending_buffers.empty ()) {
-        std::vector<unsigned char> &buffer = _pending_buffers.front ();
-        const size_t original_buffer_size = buffer.size ();
+    //  Process any buffered data from pending queues (if present).
+    if (use_stream_rx_slab ()) {
+        while (!_pending_stream_rx_chunks.empty ()) {
+            stream_rx_chunk_t &chunk = _pending_stream_rx_chunks.front ();
+            const size_t chunk_available = chunk.size ();
 
-        ENGINE_DBG ("restart_input: processing pending buffer of %zu bytes",
-                    buffer.size ());
+            ENGINE_DBG ("restart_input: processing stream slab chunk of %zu bytes",
+                        chunk_available);
 
-        //  Copy to decoder buffer and process
-        unsigned char *decode_buf;
-        size_t decode_size;
-        _decoder->get_buffer (&decode_buf, &decode_size);
-        decode_size = std::min (buffer.size (), decode_size);
-        memcpy (decode_buf, buffer.data (), decode_size);
-        _decoder->resize_buffer (decode_size);
+            unsigned char *decode_buf = NULL;
+            size_t decode_size = 0;
+            size_t chunk_pos = 0;
+            size_t chunk_remaining = chunk_available;
 
-        size_t buffer_pos = 0;
-        size_t buffer_remaining = buffer.size ();
-
-        while (buffer_remaining > 0) {
-            size_t processed = 0;
-
-            //  If we've consumed the initial copy, get more buffer space
-            if (buffer_pos > 0) {
+            while (chunk_remaining > 0) {
+                size_t processed = 0;
                 _decoder->get_buffer (&decode_buf, &decode_size);
-                const size_t to_copy = std::min (buffer_remaining, decode_size);
-                memcpy (decode_buf, buffer.data () + buffer_pos, to_copy);
+                const size_t to_copy = std::min (chunk_remaining, decode_size);
+                memcpy (decode_buf, chunk.data.data () + chunk.offset + chunk_pos,
+                        to_copy);
                 _decoder->resize_buffer (to_copy);
-                decode_size = to_copy;
-            } else {
-                //  First iteration uses already copied data
-                decode_size = std::min (buffer_remaining, decode_size);
+
+                rc = _decoder->decode (decode_buf, to_copy, processed);
+                chunk_pos += processed;
+                chunk_remaining -= processed;
+
+                if (rc == 0 || rc == -1)
+                    break;
+
+                rc = (this->*_process_msg) (_decoder->msg ());
+                if (rc == -1)
+                    break;
             }
 
-            rc = _decoder->decode (decode_buf, decode_size, processed);
-            buffer_pos += processed;
-            buffer_remaining -= processed;
+            if (rc == -1 && errno == EAGAIN) {
+                if (chunk_pos > 0) {
+                    chunk.offset += chunk_pos;
+                    _total_pending_bytes -= chunk_pos;
+                    ENGINE_DBG (
+                      "restart_input: stream slab backpressure, %zu bytes remaining",
+                      chunk.size ());
+                }
+                _session->flush ();
+                ENGINE_DBG ("restart_input: backpressure during stream slab chunk");
+                return true;
+            } else if (_io_error) {
+                error (connection_error);
+                return false;
+            } else if (rc == -1) {
+                error (protocol_error);
+                return false;
+            }
 
-            if (rc == 0 || rc == -1)
+            if (rc == 0 && chunk_remaining > 0) {
+                if (chunk_pos > 0) {
+                    chunk.offset += chunk_pos;
+                    _total_pending_bytes -= chunk_pos;
+                    ENGINE_DBG (
+                      "restart_input: stream slab decode needs more data, %zu bytes remaining",
+                      chunk.size ());
+                }
                 break;
+            }
 
-            rc = (this->*_process_msg) (_decoder->msg ());
-            if (rc == -1)
+            _total_pending_bytes -= chunk_available;
+            if (_pending_stream_rx_chunk_pool.size () < pending_buffer_pool_max) {
+                chunk.data.clear ();
+                chunk.offset = 0;
+                _pending_stream_rx_chunk_pool.push_back (ZLINK_MOVE (chunk));
+            }
+            _pending_stream_rx_chunks.pop_front ();
+        }
+    } else {
+        while (!_pending_buffers.empty ()) {
+            std::vector<unsigned char> &buffer = _pending_buffers.front ();
+            const size_t original_buffer_size = buffer.size ();
+
+            ENGINE_DBG ("restart_input: processing pending buffer of %zu bytes",
+                        buffer.size ());
+
+            //  Copy to decoder buffer and process
+            unsigned char *decode_buf;
+            size_t decode_size;
+            _decoder->get_buffer (&decode_buf, &decode_size);
+            decode_size = std::min (buffer.size (), decode_size);
+            memcpy (decode_buf, buffer.data (), decode_size);
+            _decoder->resize_buffer (decode_size);
+
+            size_t buffer_pos = 0;
+            size_t buffer_remaining = buffer.size ();
+
+            while (buffer_remaining > 0) {
+                size_t processed = 0;
+
+                //  If we've consumed the initial copy, get more buffer space
+                if (buffer_pos > 0) {
+                    _decoder->get_buffer (&decode_buf, &decode_size);
+                    const size_t to_copy = std::min (buffer_remaining, decode_size);
+                    memcpy (decode_buf, buffer.data () + buffer_pos, to_copy);
+                    _decoder->resize_buffer (to_copy);
+                    decode_size = to_copy;
+                } else {
+                    //  First iteration uses already copied data
+                    decode_size = std::min (buffer_remaining, decode_size);
+                }
+
+                rc = _decoder->decode (decode_buf, decode_size, processed);
+                buffer_pos += processed;
+                buffer_remaining -= processed;
+
+                if (rc == 0 || rc == -1)
+                    break;
+
+                rc = (this->*_process_msg) (_decoder->msg ());
+                if (rc == -1)
+                    break;
+            }
+
+            //  If backpressure occurred, keep remaining data in buffer
+            if (rc == -1 && errno == EAGAIN) {
+                if (buffer_remaining > 0 && buffer_pos > 0) {
+                    //  Trim processed data from buffer and update tracking
+                    const size_t bytes_consumed = buffer_pos;
+                    buffer.erase (buffer.begin (),
+                                  buffer.begin ()
+                                    + static_cast<long> (buffer_pos));
+                    _total_pending_bytes -= bytes_consumed;
+                    ENGINE_DBG ("restart_input: partial pending buffer, %zu bytes "
+                                "remaining",
+                                buffer.size ());
+                }
+                _session->flush ();
+                ENGINE_DBG ("restart_input: backpressure during pending buffer");
+                return true;
+            } else if (_io_error) {
+                error (connection_error);
+                return false;
+            } else if (rc == -1) {
+                error (protocol_error);
+                return false;
+            }
+
+            //  Bug fix: rc == 0 means decoder needs more data but buffer_remaining
+            //  may still be > 0. In this case, we must preserve the remaining data.
+            if (rc == 0 && buffer_remaining > 0) {
+                if (buffer_pos > 0) {
+                    //  Trim processed data from buffer and update tracking
+                    const size_t bytes_consumed = buffer_pos;
+                    buffer.erase (buffer.begin (),
+                                  buffer.begin ()
+                                    + static_cast<long> (buffer_pos));
+                    _total_pending_bytes -= bytes_consumed;
+                    ENGINE_DBG (
+                      "restart_input: decoder needs more data, %zu bytes "
+                      "remaining in buffer",
+                      buffer.size ());
+                }
+                //  Don't pop_front - keep remaining data for next iteration
+                //  when more data arrives from network
                 break;
-        }
-
-        //  If backpressure occurred, keep remaining data in buffer
-        if (rc == -1 && errno == EAGAIN) {
-            if (buffer_remaining > 0 && buffer_pos > 0) {
-                //  Trim processed data from buffer and update tracking
-                const size_t bytes_consumed = buffer_pos;
-                buffer.erase (buffer.begin (),
-                              buffer.begin () + static_cast<long> (buffer_pos));
-                _total_pending_bytes -= bytes_consumed;
-                ENGINE_DBG ("restart_input: partial pending buffer, %zu bytes "
-                            "remaining",
-                            buffer.size ());
             }
-            _session->flush ();
-            ENGINE_DBG ("restart_input: backpressure during pending buffer");
-            return true;
-        } else if (_io_error) {
-            error (connection_error);
-            return false;
-        } else if (rc == -1) {
-            error (protocol_error);
-            return false;
-        }
 
-        //  Bug fix: rc == 0 means decoder needs more data but buffer_remaining
-        //  may still be > 0. In this case, we must preserve the remaining data.
-        if (rc == 0 && buffer_remaining > 0) {
-            if (buffer_pos > 0) {
-                //  Trim processed data from buffer and update tracking
-                const size_t bytes_consumed = buffer_pos;
-                buffer.erase (buffer.begin (),
-                              buffer.begin () + static_cast<long> (buffer_pos));
-                _total_pending_bytes -= bytes_consumed;
-                ENGINE_DBG ("restart_input: decoder needs more data, %zu bytes "
-                            "remaining in buffer",
-                            buffer.size ());
+            //  Buffer fully processed, remove it and update tracking
+            _total_pending_bytes -= original_buffer_size;
+            if (_pending_buffer_pool.size () < pending_buffer_pool_max) {
+                buffer.clear ();
+                _pending_buffer_pool.push_back (std::move (buffer));
             }
-            //  Don't pop_front - keep remaining data for next iteration
-            //  when more data arrives from network
-            break;
+            _pending_buffers.pop_front ();
         }
-
-        //  Buffer fully processed, remove it and update tracking
-        _total_pending_bytes -= original_buffer_size;
-        if (_pending_buffer_pool.size () < pending_buffer_pool_max) {
-            buffer.clear ();
-            _pending_buffer_pool.push_back (std::move (buffer));
-        }
-        _pending_buffers.pop_front ();
     }
 
     //  All pending data processed successfully - NOW safe to clear flag
@@ -1494,13 +1680,16 @@ bool zlink::asio_engine_t::restart_input_internal ()
     //  - on_read_complete() sees _input_stopped = false, so it processes data directly
     //  - BUT if it hits backpressure, it won't buffer (since _input_stopped = false)
     //  Solution: Check if any buffers accumulated and re-enter stopped mode
-    if (!_pending_buffers.empty()) {
+    const size_t pending_after_flush =
+      use_stream_rx_slab () ? _pending_stream_rx_chunks.size ()
+                            : _pending_buffers.size ();
+    if (pending_after_flush > 0) {
         ENGINE_DBG ("restart_input: race detected AFTER flush, %zu buffers accumulated, re-entering stopped mode",
-                    _pending_buffers.size());
+                    pending_after_flush);
         //  Re-enter stopped mode and recursively drain.
         //  Call restart_input_internal() directly to keep state local.
         _input_stopped = true;
-        return restart_input_internal();
+        return restart_input_internal ();
     }
 
     //  Speculative read (libzlink pattern): drain immediately available data

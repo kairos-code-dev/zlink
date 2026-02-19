@@ -40,8 +40,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     void queue_notify_event (uint32_t routing_id_value_);
     bool prefetch_notify_event ();
-    void prepare_prefetched_routing_id (uint32_t routing_id_value_,
-                                        metadata_t *metadata_);
+    void init_routing_id_frame (msg_t *msg_,
+                                uint32_t routing_id_value_,
+                                metadata_t *metadata_);
     void emit_connect_event (pipe_t *pipe_);
     void emit_disconnect_event (pipe_t *pipe_);
 
@@ -49,7 +50,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     bool _prefetched;
     bool _routing_id_sent;
-    msg_t _prefetched_routing_id;
+    uint32_t _prefetched_routing_id_value;
     msg_t _prefetched_msg;
 
     zlink::pipe_t *_current_out;

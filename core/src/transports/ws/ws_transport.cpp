@@ -87,6 +87,14 @@ bool ws_transport_t::open (boost::asio::io_context &io_context, fd_t fd)
         return false;
     }
 
+    //  Keep synchronous read_some/write paths non-blocking.
+    socket.native_non_blocking (true, ec);
+    if (ec) {
+        ASIO_GLOBAL_ERROR ("ws_transport non-blocking failed: %s",
+                           ec.message ().c_str ());
+        return false;
+    }
+
     //  Create WebSocket stream wrapping the socket
     try {
         _ws_stream =

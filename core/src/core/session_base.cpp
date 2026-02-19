@@ -472,7 +472,9 @@ void zlink::session_base_t::start_connecting (bool wait_)
 
     //  Choose I/O thread to run connecter in. Given that we are already
     //  running in an I/O thread, there must be at least one available.
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    io_thread_t *io_thread = options.type == ZLINK_STREAM
+                               ? choose_io_thread_stream (options.affinity)
+                               : choose_io_thread (options.affinity);
     zlink_assert (io_thread);
 
     //  Create the connecter object.

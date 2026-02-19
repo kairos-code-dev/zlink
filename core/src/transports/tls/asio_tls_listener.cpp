@@ -17,6 +17,10 @@
 #include "utils/ip.hpp"
 #include "transports/tcp/tcp.hpp"
 
+#include <algorithm>
+#include <cerrno>
+#include <cstdlib>
+
 #ifndef ZLINK_HAVE_WINDOWS
 #include <unistd.h>
 #include <sys/socket.h>
@@ -38,6 +42,31 @@
 #define TLS_LISTENER_DBG(fmt, ...)
 #endif
 
+namespace
+{
+size_t parse_stream_accept_concurrency ()
+{
+    const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
+    if (!env || !*env)
+        return 1;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long long value = std::strtoull (env, &end, 10);
+    if (errno != 0 || end == env || value == 0)
+        return 1;
+
+    return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
+}
+
+size_t stream_accept_target (const zlink::options_t &options_)
+{
+    if (options_.type != ZLINK_STREAM)
+        return 1;
+    return parse_stream_accept_concurrency ();
+}
+}
+
 zlink::asio_tls_listener_t::asio_tls_listener_t (io_thread_t *io_thread_,
                                                 socket_base_t *socket_,
                                                 const options_t &options_) :
@@ -45,9 +74,8 @@ zlink::asio_tls_listener_t::asio_tls_listener_t (io_thread_t *io_thread_,
     io_object_t (io_thread_),
     _io_context (io_thread_->get_io_context ()),
     _acceptor (_io_context),
-    _accept_socket (_io_context),
     _socket (socket_),
-    _accepting (false),
+    _accepting_count (0),
     _terminating (false),
     _linger (0)
 {
@@ -190,8 +218,8 @@ void zlink::asio_tls_listener_t::process_plug ()
 
 void zlink::asio_tls_listener_t::process_term (int linger_)
 {
-    TLS_LISTENER_DBG ("process_term called, linger=%d, accepting=%d", linger_,
-                      _accepting);
+    TLS_LISTENER_DBG ("process_term called, linger=%d, accepting=%zu", linger_,
+                      _accepting_count);
 
     _terminating = true;
     _linger = linger_;
@@ -206,37 +234,47 @@ void zlink::asio_tls_listener_t::process_term (int linger_)
     }
 
     //  Process pending handlers while object is still alive
-    if (_accepting) {
-        _io_context.poll ();
-    }
+    for (size_t i = 0; i < 4096 && _accepting_count > 0; ++i)
+        _io_context.poll_one ();
 
     own_t::process_term (linger_);
 }
 
 void zlink::asio_tls_listener_t::start_accept ()
 {
-    if (_accepting || !_acceptor.is_open ())
+    if (!_acceptor.is_open ())
         return;
 
-    _accepting = true;
-    TLS_LISTENER_DBG ("start_accept: starting async_accept");
+    const size_t target_accepts = stream_accept_target (options);
+    while (_accepting_count < target_accepts && _acceptor.is_open ()) {
+        const std::shared_ptr<boost::asio::ip::tcp::socket> accept_socket (
+          new (std::nothrow) boost::asio::ip::tcp::socket (_io_context));
+        alloc_assert (accept_socket.get ());
 
-    _acceptor.async_accept (
-      _accept_socket,
-      [this] (const boost::system::error_code &ec) { on_tcp_accept (ec); });
+        ++_accepting_count;
+        TLS_LISTENER_DBG ("start_accept: starting async_accept (%zu/%zu)",
+                          _accepting_count, target_accepts);
+        _acceptor.async_accept (
+          *accept_socket, [this, accept_socket] (const boost::system::error_code &ec) {
+              on_tcp_accept (accept_socket, ec);
+          });
+    }
 }
 
 void zlink::asio_tls_listener_t::on_tcp_accept (
+  const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
   const boost::system::error_code &ec)
 {
-    _accepting = false;
-    TLS_LISTENER_DBG ("on_tcp_accept: ec=%s, terminating=%d",
-                      ec.message ().c_str (), _terminating);
+    if (_accepting_count > 0)
+        --_accepting_count;
+    TLS_LISTENER_DBG ("on_tcp_accept: ec=%s, terminating=%d, pending=%zu",
+                      ec.message ().c_str (), _terminating, _accepting_count);
 
     if (_terminating) {
         TLS_LISTENER_DBG ("on_tcp_accept: terminating, ignoring callback");
-        if (!ec) {
-            _accept_socket.close ();
+        if (!ec && accept_socket_ && accept_socket_->is_open ()) {
+            boost::system::error_code close_ec;
+            accept_socket_->close (close_ec);
         }
         return;
     }
@@ -244,6 +282,7 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
     if (ec) {
         if (ec == boost::asio::error::operation_aborted) {
             TLS_LISTENER_DBG ("on_tcp_accept: operation aborted");
+            start_accept ();
             return;
         }
 
@@ -251,22 +290,20 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
         _socket->event_accept_failed (
           make_unconnected_bind_endpoint_pair (_endpoint), ec.value ());
 
-        //  Continue accepting
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
 
     TLS_LISTENER_DBG ("on_tcp_accept: TCP accepted, fd=%d",
-                      static_cast<int> (_accept_socket.native_handle ()));
+                      static_cast<int> (accept_socket_->native_handle ()));
 
     //  Get the native handle before wrapping in SSL
-    fd_t fd = _accept_socket.native_handle ();
+    fd_t fd = accept_socket_->native_handle ();
 
     //  Get peer address for accept filter
     boost::system::error_code peer_ec;
     boost::asio::ip::tcp::endpoint remote_endpoint =
-      _accept_socket.remote_endpoint (peer_ec);
+      accept_socket_->remote_endpoint (peer_ec);
 
     //  Store peer address in sockaddr_storage for filter check
     struct sockaddr_storage ss;
@@ -298,14 +335,14 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
     //  Apply accept filters
     if (!apply_accept_filters (fd, ss, ss_len)) {
         TLS_LISTENER_DBG ("on_tcp_accept: connection rejected by filter");
-        _accept_socket.close ();
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
+        boost::system::error_code close_ec;
+        accept_socket_->close (close_ec);
         start_accept ();
         return;
     }
 
     //  Release socket from ASIO management (engine will take ownership)
-    _accept_socket.release ();
+    accept_socket_->release ();
 
     //  Tune the socket
     if (tune_socket (fd) != 0) {
@@ -317,7 +354,6 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
 #else
         ::close (fd);
 #endif
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
@@ -333,7 +369,6 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
 #else
         ::close (fd);
 #endif
-        _accept_socket = boost::asio::ip::tcp::socket (_io_context);
         start_accept ();
         return;
     }
@@ -341,8 +376,6 @@ void zlink::asio_tls_listener_t::on_tcp_accept (
     //  Create engine with SSL transport
     create_engine (fd, std::move (ssl_context));
 
-    //  Prepare for next connection
-    _accept_socket = boost::asio::ip::tcp::socket (_io_context);
     start_accept ();
 }
 
@@ -458,7 +491,9 @@ void zlink::asio_tls_listener_t::create_engine (
     alloc_assert (engine);
 
     //  Choose I/O thread to run engine in
-    io_thread_t *io_thread = choose_io_thread (options.affinity);
+    io_thread_t *io_thread = options.type == ZLINK_STREAM
+                               ? choose_io_thread_stream (options.affinity)
+                               : choose_io_thread (options.affinity);
     zlink_assert (io_thread);
 
     //  Create and launch a session

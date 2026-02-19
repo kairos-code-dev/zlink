@@ -8,6 +8,7 @@
 
 #include <limits>
 #include <climits>
+#include <cstdlib>
 #include <new>
 #include <sstream>
 #include <string.h>
@@ -42,6 +43,29 @@ static int clipped_maxsocket (int max_requested_)
     return max_requested_;
 }
 
+namespace
+{
+enum stream_sched_mode_t
+{
+    stream_sched_minload = 0,
+    stream_sched_rr = 1
+};
+
+stream_sched_mode_t parse_stream_session_sched_mode ()
+{
+    const char *env = std::getenv ("ZLINK_ASIO_STREAM_SESSION_SCHED");
+    if (!env || !*env)
+        return stream_sched_minload;
+
+    if (!strcmp (env, "rr") || !strcmp (env, "RR"))
+        return stream_sched_rr;
+    if (!strcmp (env, "minload") || !strcmp (env, "MINLOAD"))
+        return stream_sched_minload;
+
+    return stream_sched_minload;
+}
+}
+
 zlink::ctx_t::ctx_t () :
     _tag (ZLINK_CTX_TAG_VALUE_GOOD),
     _starting (true),
@@ -51,6 +75,7 @@ zlink::ctx_t::ctx_t () :
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
     _next_io_thread (0),
+    _next_stream_io_thread (0),
     _blocky (true),
     _ipv6 (false)
 {
@@ -621,6 +646,32 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread (uint64_t affinity_)
         }
     }
     return selected_io_thread;
+}
+
+zlink::io_thread_t *zlink::ctx_t::choose_io_thread_stream (uint64_t affinity_)
+{
+    if (_io_threads.empty ())
+        return NULL;
+
+    const stream_sched_mode_t mode = parse_stream_session_sched_mode ();
+    if (mode == stream_sched_rr) {
+        const io_threads_t::size_type io_threads_size = _io_threads.size ();
+        const io_threads_t::size_type start_index =
+          io_threads_size == 0
+            ? 0
+            : static_cast<io_threads_t::size_type> (
+                _next_stream_io_thread.add (1) % io_threads_size);
+
+        for (io_threads_t::size_type n = 0; n != io_threads_size; ++n) {
+            const io_threads_t::size_type i = (start_index + n) % io_threads_size;
+            if (!affinity_ || (affinity_ & (uint64_t (1) << i)))
+                return _io_threads[i];
+        }
+
+        return NULL;
+    }
+
+    return choose_io_thread (affinity_);
 }
 
 int zlink::ctx_t::register_endpoint (const char *addr_,

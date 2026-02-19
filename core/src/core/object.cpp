@@ -175,6 +175,12 @@ zlink::io_thread_t *zlink::object_t::choose_io_thread (uint64_t affinity_) const
     return _ctx->choose_io_thread (affinity_);
 }
 
+zlink::io_thread_t *
+zlink::object_t::choose_io_thread_stream (uint64_t affinity_) const
+{
+    return _ctx->choose_io_thread_stream (affinity_);
+}
+
 void zlink::object_t::send_stop ()
 {
     //  'stop' command goes always from administrative thread to

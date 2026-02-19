@@ -7,6 +7,7 @@
 #if defined ZLINK_IOTHREAD_POLLER_USE_ASIO && defined ZLINK_HAVE_WS
 
 #include <boost/asio.hpp>
+#include <memory>
 #include <string>
 
 #include "utils/fd.hpp"
@@ -56,7 +57,9 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     void start_accept ();
 
     //  Handle accept completion
-    void on_accept (const boost::system::error_code &ec);
+    void on_accept (
+      const std::shared_ptr<boost::asio::ip::tcp::socket> &accept_socket_,
+      const boost::system::error_code &ec);
 
     //  Create engine for accepted connection
     void create_engine (fd_t fd_);
@@ -78,9 +81,6 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     //  TCP acceptor for incoming connections
     boost::asio::ip::tcp::acceptor _acceptor;
 
-    //  Socket for next accepted connection
-    boost::asio::ip::tcp::socket _accept_socket;
-
     //  Socket the listener belongs to
     zlink::socket_base_t *_socket;
 
@@ -94,7 +94,7 @@ class asio_ws_listener_t ZLINK_FINAL : public own_t, public io_object_t
     std::string _endpoint;
 
     //  State flags
-    bool _accepting;
+    size_t _accepting_count;
     bool _terminating;
     int _linger;
 

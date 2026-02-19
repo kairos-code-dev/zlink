@@ -249,11 +249,11 @@ def select_comparisons(comparisons, pattern_req):
     return selected
 
 
-def expected_runtime_binaries(selected_comparisons, zlink_only):
+def expected_runtime_binaries(selected_comparisons, include_std):
     names = []
     for std_bin, zlk_bin, _ in selected_comparisons:
         names.append(zlk_bin)
-        if not zlink_only:
+        if include_std:
             names.append(std_bin)
     return names
 
@@ -267,10 +267,10 @@ def collect_missing_binaries(runtime_bin_dir, names):
     return sorted(set(missing))
 
 
-def collect_multi_build_targets(comparisons, zlink_only):
+def collect_multi_build_targets(comparisons, include_std):
     targets = []
     for std_bin, zlk_bin, _ in comparisons:
-        if not zlink_only and std_bin not in targets:
+        if include_std and std_bin not in targets:
             targets.append(std_bin)
         if zlk_bin not in targets:
             targets.append(zlk_bin)
@@ -1000,8 +1000,8 @@ def main():
 
     if zlink_only and refresh_std_cache:
         print(
-            "Warning: --refresh-std-cache is ignored with --zlink-only",
-            file=sys.stderr,
+            "Info: --zlink-only with --refresh-std-cache will refresh libzmq baselines first.",
+            flush=True,
         )
 
     comparisons = [
@@ -1022,7 +1022,16 @@ def main():
         return 2
 
     selected_comparisons = select_comparisons(comparisons, pattern_req)
-    expected_bins = expected_runtime_binaries(selected_comparisons, zlink_only)
+    missing_cache_patterns = [
+        p_name
+        for _, _, p_name in selected_comparisons
+        if get_cached_std_entry(std_cache, p_name) is None
+    ]
+    need_std_baseline = (not zlink_only) or refresh_std_cache or bool(
+        missing_cache_patterns
+    )
+
+    expected_bins = expected_runtime_binaries(selected_comparisons, need_std_baseline)
     missing = collect_missing_binaries(BUILD_DIR, expected_bins)
 
     if missing:
@@ -1050,7 +1059,9 @@ def main():
 
         BUILD_DIR = normalize_build_dir(runtime_bin_dir_from_cmake_dir(cmake_build_dir))
         ZLINK_LIB_DIR = derive_zlink_lib_dir(BUILD_DIR)
-        build_targets = collect_multi_build_targets(selected_comparisons, zlink_only)
+        build_targets = collect_multi_build_targets(
+            selected_comparisons, need_std_baseline
+        )
         build_rc = run_cmake_build(cmake_build_dir, build_targets)
         if build_rc != 0:
             print(
@@ -1069,7 +1080,7 @@ def main():
 
     any_failure = False
     all_failures = []
-    no_cache_patterns = []
+    cache_updated = False
 
     for std_bin, zlk_bin, p_name in comparisons:
         if pattern_req != "ALL" and p_name != pattern_req:
@@ -1081,16 +1092,26 @@ def main():
         std_fail = []
         zlk_data = {}
         zlk_fail = []
-        std_available = True
+        cached = get_cached_std_entry(std_cache, p_name)
         if zlink_only:
-            cached = get_cached_std_entry(std_cache, p_name)
-            if cached is None:
-                std_available = False
-                no_cache_patterns.append(p_name)
-                print(
-                    f"  > Cached libzmq missing for {p_name}; "
-                    f"running zlink-only without comparison baseline."
+            if refresh_std_cache or cached is None:
+                reason = (
+                    "refresh requested" if refresh_std_cache else "baseline missing"
                 )
+                print(
+                    f"  > Cached libzmq {reason} for {p_name}; "
+                    "measuring and caching libzmq baseline now."
+                )
+                std_data, std_fail = collect_data(
+                    std_bin,
+                    "libzmq",
+                    p_name,
+                    num_runs,
+                    TRANSPORTS,
+                    run_cooldown_ms,
+                )
+                update_cached_std_entry(std_cache, p_name, std_data, std_fail)
+                cache_updated = True
             else:
                 std_data, std_fail = cached
                 print(f"  > Using cached libzmq for {p_name} from {cache_file}")
@@ -1111,8 +1132,9 @@ def main():
                 TRANSPORTS,
                 run_cooldown_ms,
             )
-            if refresh_std_cache:
+            if refresh_std_cache or cached is None:
                 update_cached_std_entry(std_cache, p_name, std_data, std_fail)
+                cache_updated = True
             zlk_data, zlk_fail = collect_data(
                 zlk_bin,
                 "zlink",
@@ -1122,14 +1144,14 @@ def main():
                 run_cooldown_ms,
             )
 
-        print_pattern_report(std_data, zlk_data, std_available=std_available)
+        print_pattern_report(std_data, zlk_data, std_available=True)
         all_failures.extend(std_fail)
         all_failures.extend(zlk_fail)
 
         if std_fail or zlk_fail:
             any_failure = True
 
-    if refresh_std_cache and not zlink_only:
+    if cache_updated:
         std_cache["meta"] = {
             "build_dir": BUILD_DIR,
             "libzmq_lib_dir": LIBZMQ_LIB_DIR,
@@ -1139,12 +1161,6 @@ def main():
         }
         save_std_cache(cache_file, std_cache)
         print(f"Saved libzmq cache: {cache_file}")
-
-    if no_cache_patterns:
-        print("\n## Zlink-only Mode")
-        print("- No cached libzmq baseline for:")
-        for p in no_cache_patterns:
-            print(f"  - {p}")
 
     if all_failures:
         print("\n## Failures")

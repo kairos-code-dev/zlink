@@ -143,10 +143,10 @@ const bool asio_stream_enable_read_drain =
   env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN");
 
 const size_t asio_stream_read_drain_max_loops =
-  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 8);
+  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 16);
 
 const size_t asio_stream_read_drain_max_bytes =
-  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES", 262144);
+  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES", 1048576);
 
 }
 

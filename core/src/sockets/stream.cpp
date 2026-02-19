@@ -6,6 +6,7 @@
 #include "protocol/wire.hpp"
 #include "utils/err.hpp"
 #include "utils/likely.hpp"
+#include <climits>
 #include <cstdlib>
 
 namespace
@@ -20,30 +21,47 @@ bool env_flag_default_true (const char *name_)
 
 const bool stream_notify_queue_deque =
   env_flag_default_true ("ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE");
+
+int parse_positive_int_env (const char *name_, int default_value_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    char *end = NULL;
+    const long value = std::strtol (env, &end, 10);
+    if (!end || end == env || value <= 0 || value > INT_MAX)
+        return default_value_;
+    return static_cast<int> (value);
+}
+
+const int stream_batch_size_min =
+  parse_positive_int_env ("ZLINK_ASIO_STREAM_BATCH_SIZE", 12288);
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     routing_socket_base_t (parent_, tid_, sid_),
     _prefetched (false),
     _routing_id_sent (false),
-    _prefetched_routing_id_value (0),
     _current_out (NULL),
     _more_out (false),
     _next_integral_routing_id (1)
 {
     options.type = ZLINK_STREAM;
     options.backlog = 65536;
-    const int stream_batch_size = 8192;
+    const int stream_batch_size = stream_batch_size_min;
     if (options.in_batch_size < stream_batch_size)
         options.in_batch_size = stream_batch_size;
     if (options.out_batch_size < stream_batch_size)
         options.out_batch_size = stream_batch_size;
 
+    _prefetched_routing_id.init ();
     _prefetched_msg.init ();
 }
 
 zlink::stream_t::~stream_t ()
 {
+    _prefetched_routing_id.close ();
     _prefetched_msg.close ();
 }
 
@@ -197,16 +215,8 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 {
     if (_prefetched) {
         if (!_routing_id_sent) {
-            int rc = msg_->close ();
+            const int rc = msg_->move (_prefetched_routing_id);
             errno_assert (rc == 0);
-            rc = msg_->init_size (4);
-            errno_assert (rc == 0);
-            put_uint32 (static_cast<unsigned char *> (msg_->data ()),
-                        _prefetched_routing_id_value);
-            metadata_t *metadata = _prefetched_msg.metadata ();
-            if (metadata)
-                msg_->set_metadata (metadata);
-            msg_->set_flags (msg_t::more);
             _routing_id_sent = true;
         } else {
             const int rc = msg_->move (_prefetched_msg);
@@ -226,22 +236,14 @@ int zlink::stream_t::xrecv (msg_t *msg_)
 
     zlink_assert (pipe != NULL);
 
-    _prefetched_routing_id_value = _prefetched_msg.get_routing_id ();
-    if (_prefetched_routing_id_value == 0)
-        _prefetched_routing_id_value = pipe->get_server_socket_routing_id ();
-
-    rc = msg_->close ();
-    errno_assert (rc == 0);
-    rc = msg_->init_size (4);
-    errno_assert (rc == 0);
+    uint32_t routing_id_value = _prefetched_msg.get_routing_id ();
+    if (routing_id_value == 0)
+        routing_id_value = pipe->get_server_socket_routing_id ();
 
     metadata_t *metadata = _prefetched_msg.metadata ();
-    if (metadata)
-        msg_->set_metadata (metadata);
-
-    put_uint32 (static_cast<unsigned char *> (msg_->data ()),
-                _prefetched_routing_id_value);
-    msg_->set_flags (msg_t::more);
+    prepare_prefetched_routing_id (routing_id_value, metadata);
+    rc = msg_->move (_prefetched_routing_id);
+    errno_assert (rc == 0);
 
     _prefetched = true;
     _routing_id_sent = true;
@@ -264,9 +266,12 @@ bool zlink::stream_t::xhas_in ()
 
     zlink_assert (pipe != NULL);
 
-    _prefetched_routing_id_value = _prefetched_msg.get_routing_id ();
-    if (_prefetched_routing_id_value == 0)
-        _prefetched_routing_id_value = pipe->get_server_socket_routing_id ();
+    uint32_t routing_id_value = _prefetched_msg.get_routing_id ();
+    if (routing_id_value == 0)
+        routing_id_value = pipe->get_server_socket_routing_id ();
+
+    metadata_t *metadata = _prefetched_msg.metadata ();
+    prepare_prefetched_routing_id (routing_id_value, metadata);
 
     _prefetched = true;
     _routing_id_sent = false;
@@ -326,25 +331,47 @@ void zlink::stream_t::queue_notify_event (uint32_t routing_id_value_)
 
 bool zlink::stream_t::prefetch_notify_event ()
 {
+    uint32_t routing_id_value = 0;
+
     if (stream_notify_queue_deque) {
         if (_pending_notify_events_deque.empty ())
             return false;
-        _prefetched_routing_id_value = _pending_notify_events_deque.front ();
+        routing_id_value = _pending_notify_events_deque.front ();
         _pending_notify_events_deque.pop_front ();
     } else {
         if (_pending_notify_events_vec.empty ())
             return false;
-        _prefetched_routing_id_value = _pending_notify_events_vec.front ();
+        routing_id_value = _pending_notify_events_vec.front ();
         _pending_notify_events_vec.erase (_pending_notify_events_vec.begin ());
     }
 
-    const int rc = _prefetched_msg.init_size (0);
+    prepare_prefetched_routing_id (routing_id_value, NULL);
+
+    int rc = _prefetched_msg.close ();
+    errno_assert (rc == 0);
+    rc = _prefetched_msg.init_size (0);
     errno_assert (rc == 0);
 
     _prefetched = true;
     _routing_id_sent = false;
 
     return true;
+}
+
+void zlink::stream_t::prepare_prefetched_routing_id (
+  uint32_t routing_id_value_,
+  metadata_t *metadata_)
+{
+    int rc = _prefetched_routing_id.close ();
+    errno_assert (rc == 0);
+    rc = _prefetched_routing_id.init_size (4);
+    errno_assert (rc == 0);
+
+    put_uint32 (static_cast<unsigned char *> (_prefetched_routing_id.data ()),
+                routing_id_value_);
+    if (metadata_)
+        _prefetched_routing_id.set_metadata (metadata_);
+    _prefetched_routing_id.set_flags (msg_t::more);
 }
 
 void zlink::stream_t::emit_connect_event (pipe_t *pipe_)

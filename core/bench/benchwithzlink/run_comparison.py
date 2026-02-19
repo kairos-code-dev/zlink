@@ -180,16 +180,14 @@ STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
 
 def select_transports(pattern_name):
-    if pattern_name == "MULTI_STREAM":
-        base = ["tcp"]
-    else:
-        base = STREAM_TRANSPORTS if pattern_name in (
-            "STREAM",
-            "GATEWAY",
-            "SPOT",
-            "MULTI_GATEWAY",
-            "MULTI_SPOT",
-        ) else TRANSPORTS
+    base = STREAM_TRANSPORTS if pattern_name in (
+        "MULTI_STREAM",
+        "STREAM",
+        "GATEWAY",
+        "SPOT",
+        "MULTI_GATEWAY",
+        "MULTI_SPOT",
+    ) else TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -442,9 +440,6 @@ def run_multi_stream_test(lib_name, transport, size):
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
-    if pattern_name == "MULTI_STREAM":
-        return run_multi_stream_test(lib_name, transport, size)
-
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
     timeout_sec = 60
@@ -685,7 +680,7 @@ def main():
         ("comp_baseline_multi_spot", "comp_current_multi_spot", "MULTI_SPOT"),
         ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
         ("comp_baseline_spot", "comp_current_spot", "SPOT"),
-        ("multi_stream", "multi_stream", "MULTI_STREAM"),
+        ("comp_baseline_multi_stream", "comp_current_multi_stream", "MULTI_STREAM"),
     ]
 
     all_failures = []
@@ -722,8 +717,6 @@ def main():
     missing_baseline = []
     for baseline_bin, current_bin, p_name in comparisons:
         if requested is not None and p_name not in requested:
-            continue
-        if p_name == "MULTI_STREAM":
             continue
         current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
         if not os.path.exists(current_path):

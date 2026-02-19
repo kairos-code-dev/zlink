@@ -478,10 +478,29 @@ def main():
             return 2
         patterns = req
 
-    transports = parse_env_list("BENCH_TRANSPORTS", str) or ["tcp", "tls", "ws", "wss"]
-    transports = [t for t in transports if t in ("tcp", "tls", "ws", "wss")]
+    requested_transports = parse_env_list("BENCH_TRANSPORTS", str) or [
+        "tcp", "tls", "ws", "wss"
+    ]
+    requested_transports = [t.strip().lower() for t in requested_transports if t]
+    allowed_transports = ("tcp", "tls", "ws", "wss")
+    invalid_transports = [t for t in requested_transports
+                          if t not in allowed_transports]
+    if invalid_transports:
+        uniq = []
+        for t in invalid_transports:
+            if t not in uniq:
+                uniq.append(t)
+        print("Error: unsupported transport(s): " + ",".join(uniq),
+              file=sys.stderr)
+        print("Allowed transports: tcp,tls,ws,wss", file=sys.stderr)
+        return 2
+
+    transports = []
+    for t in requested_transports:
+        if t not in transports:
+            transports.append(t)
     if not transports:
-        print("No valid transports requested (allowed: tcp,tls,ws,wss)")
+        print("No transports requested")
         return 0
 
     msg_sizes = parse_env_list("BENCH_MSG_SIZES", int) or [64, 256, 1024, 65536, 131072, 262144]

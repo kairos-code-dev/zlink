@@ -24,7 +24,7 @@ int socket_type_for_pattern(pattern_t pattern)
 {
     switch (pattern) {
     case pattern_dealer_dealer:
-        return ZLINK_ROUTER;
+        return ZLINK_DEALER;
     case pattern_dealer_router:
     case pattern_router_router:
     case pattern_router_router_poll:
@@ -249,6 +249,8 @@ int run_echo_server(void *server, pattern_t pattern, void *monitor)
                 ok = handle_stream_once(server, stashes);
                 break;
             case pattern_dealer_dealer:
+                ok = handle_dealer_once(server);
+                break;
             case pattern_dealer_router:
             case pattern_router_router:
             case pattern_router_router_poll:

@@ -424,13 +424,18 @@ int main(int argc, char **argv)
                                         stream_stash[static_cast<size_t>(i)],
                                         wire_ts)) {
                     uint64_t sent_ts = wire_ts;
+                    std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
                     if (pattern == pattern_dealer_dealer) {
+                        // DEALER<->DEALER replies are not strictly correlated by peer.
+                        // Release local credit on any received message.
+                        if (!q.empty()) {
+                            q.pop_front();
+                        }
                         if (!pending_global.empty()) {
                             sent_ts = pending_global.front();
                             pending_global.pop_front();
                         }
                     } else {
-                        std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
                         if (!q.empty()) {
                             sent_ts = q.front();
                             q.pop_front();

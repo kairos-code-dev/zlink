@@ -489,6 +489,16 @@ def main():
         patterns = req
 
     requested_transports = parse_env_list("BENCH_TRANSPORTS", str) or ["tcp"]
+    requested_transports = [t.strip().lower() for t in requested_transports if t]
+    unsupported_transports = [t for t in requested_transports if t != "tcp"]
+    if unsupported_transports:
+        uniq = []
+        for t in unsupported_transports:
+            if t not in uniq:
+                uniq.append(t)
+        print("Note: benchwithzmq multi_e2e supports only tcp; skipping: "
+              + ",".join(uniq))
+
     transports = [t for t in requested_transports if t == "tcp"]
     if not transports:
         print("No tcp transport requested; nothing to run.")

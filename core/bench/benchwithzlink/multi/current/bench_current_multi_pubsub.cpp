@@ -12,19 +12,30 @@ void run_multi_pubsub(const std::string& transport,
     if (!transport_available(transport))
         return;
 
+    const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(msg_size);
+    const auto emit_zero_from = [&](size_t start_index) {
+        for (size_t i = start_index; i < msg_sizes.size(); ++i) {
+            print_result(lib_name, "MULTI_PUBSUB", transport, msg_sizes[i], 0.0, 0.0);
+        }
+    };
+
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     if (settings.clients == 0) {
-        print_result(lib_name, "MULTI_PUBSUB", transport, msg_size, 0.0, 0.0);
+        emit_zero_from(0);
         return;
     }
 
     ctx_guard_t ctx;
-    if (!ctx.valid())
+    if (!ctx.valid()) {
+        emit_zero_from(0);
         return;
+    }
 
     void *pub = zlink_socket(ctx.get(), ZLINK_PUB);
-    if (!pub)
+    if (!pub) {
+        emit_zero_from(0);
         return;
+    }
 
     std::vector<void *> subs(settings.clients, NULL);
     for (size_t i = 0; i < subs.size(); ++i) {
@@ -33,6 +44,7 @@ void run_multi_pubsub(const std::string& transport,
             for (size_t j = 0; j < i; ++j)
                 zlink_close(subs[j]);
             zlink_close(pub);
+            emit_zero_from(0);
             return;
         }
         zlink_setsockopt(subs[i], ZLINK_SUBSCRIBE, "", 0);
@@ -41,6 +53,7 @@ void run_multi_pubsub(const std::string& transport,
                 if (sock)
                     zlink_close(sock);
             zlink_close(pub);
+            emit_zero_from(0);
             return;
         }
     }
@@ -56,6 +69,7 @@ void run_multi_pubsub(const std::string& transport,
 
     if (!setup_tls_server(pub, transport)) {
         cleanup();
+        emit_zero_from(0);
         return;
     }
 
@@ -69,7 +83,7 @@ void run_multi_pubsub(const std::string& transport,
 
         const char *cap = transport == "pgm" ? "pgm" : "epgm";
         if (!zlink_has(cap)) {
-            print_result(lib_name, "MULTI_PUBSUB", transport, msg_size, 0.0, 0.0);
+            emit_zero_from(0);
             cleanup();
             return;
         }
@@ -96,70 +110,92 @@ void run_multi_pubsub(const std::string& transport,
           },
           settings.connect_concurrency)) {
         cleanup();
+        emit_zero_from(0);
         return;
     }
 
-    std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(std::max<size_t>(1, msg_size));
+    for (size_t s = 0; s < msg_sizes.size(); ++s) {
+        const size_t current_size = msg_sizes[s];
+        std::vector<char> buffer(std::max<size_t>(1, current_size), 'a');
+        std::vector<char> recv_buf(std::max<size_t>(1, current_size));
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
-    for (int i = 0; i < warmup_count; ++i) {
-        zlink_send(pub, buffer.data(), msg_size, 0);
-        zlink_pollitem_t items[] = {{subs[0], 0, ZLINK_POLLIN, 0}};
-        if (zlink_poll(items, 1, poll_timeout_ms) > 0 &&
-            (items[0].revents & ZLINK_POLLIN)) {
-            zlink_recv(subs[0], recv_buf.data(), recv_buf.size(), 0);
+        const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+        bool round_failed = false;
+        for (int i = 0; i < warmup_count; ++i) {
+            if (zlink_send(pub, buffer.data(), current_size, 0) < 0) {
+                round_failed = true;
+                break;
+            }
+            zlink_pollitem_t items[] = {{subs[0], 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll(items, 1, poll_timeout_ms) > 0
+                && (items[0].revents & ZLINK_POLLIN)) {
+                if (zlink_recv(subs[0], recv_buf.data(), recv_buf.size(), 0) < 0) {
+                    round_failed = true;
+                    break;
+                }
+            }
         }
-    }
-
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
-    std::chrono::steady_clock::time_point lat_start =
-      std::chrono::steady_clock::now();
-    for (int i = 0; i < lat_count; ++i) {
-        zlink_send(pub, buffer.data(), msg_size, 0);
-        zlink_pollitem_t items[] = {{subs[0], 0, ZLINK_POLLIN, 0}};
-        if (zlink_poll(items, 1, poll_timeout_ms) <= 0 ||
-            !(items[0].revents & ZLINK_POLLIN) ||
-            zlink_recv(subs[0], recv_buf.data(), recv_buf.size(), 0) < 0) {
-            // keep going; latency metric will reflect missing receptions.
+        if (round_failed) {
+            emit_zero_from(s);
+            break;
         }
-    }
-    const auto lat_elapsed = std::chrono::steady_clock::now() - lat_start;
-    const double latency =
-      (std::chrono::duration<double, std::milli>(lat_elapsed).count() * 1000.0)
-      / std::max(1, lat_count);
 
-    std::vector<void *> publishers(1, pub);
-    std::atomic<int> received(0);
-    const int received_count = run_multi_timed_benchmark(
-      publishers,
-      settings,
-      [&](size_t) {
-          return zlink_send(pub, buffer.data(), msg_size, 0) >= 0;
-      },
-      [&]() {
-          for (void *sub : subs) {
-              zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
-              if (zlink_poll(items, 1, 0) > 0 &&
-                  (items[0].revents & ZLINK_POLLIN)) {
-                  if (zlink_recv(sub, recv_buf.data(), recv_buf.size(), 0) >= 0)
-                      return true;
+        const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
+        std::chrono::steady_clock::time_point lat_start =
+          std::chrono::steady_clock::now();
+        for (int i = 0; i < lat_count; ++i) {
+            zlink_send(pub, buffer.data(), current_size, 0);
+            zlink_pollitem_t items[] = {{subs[0], 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll(items, 1, poll_timeout_ms) <= 0
+                || !(items[0].revents & ZLINK_POLLIN)
+                || zlink_recv(subs[0], recv_buf.data(), recv_buf.size(), 0) < 0) {
+                // keep going; latency metric will reflect missing receptions.
+            }
+        }
+        const auto lat_elapsed = std::chrono::steady_clock::now() - lat_start;
+        const double latency =
+          (std::chrono::duration<double, std::milli>(lat_elapsed).count()
+           * 1000.0)
+          / std::max(1, lat_count);
+
+        std::vector<void *> publishers(1, pub);
+        std::atomic<int> received(0);
+        const int received_count = run_multi_timed_benchmark(
+          publishers,
+          settings,
+          [&](size_t) {
+              return zlink_send(pub, buffer.data(), current_size, 0) >= 0;
+          },
+          [&]() {
+              for (void *sub : subs) {
+                  zlink_pollitem_t items[] = {{sub, 0, ZLINK_POLLIN, 0}};
+                  if (zlink_poll(items, 1, 0) > 0
+                      && (items[0].revents & ZLINK_POLLIN)) {
+                      if (zlink_recv(sub, recv_buf.data(), recv_buf.size(), 0) >= 0)
+                          return true;
+                  }
               }
-          }
-          return false;
-      },
-      settings.measure_seconds,
-      &received);
+              return false;
+          },
+          settings.measure_seconds,
+          &received);
 
-    const double throughput =
-      received_count > 0
-        ? static_cast<double>(received_count)
-            / static_cast<double>(std::max(1, settings.measure_seconds))
-        : 0.0;
+        const double throughput =
+          received_count > 0
+            ? static_cast<double>(received_count)
+                / static_cast<double>(std::max(1, settings.measure_seconds))
+            : 0.0;
 
-    (void)received;
-    print_result(lib_name, "MULTI_PUBSUB", transport, msg_size, throughput,
-                 latency);
+        (void)received;
+        print_result(lib_name,
+                     "MULTI_PUBSUB",
+                     transport,
+                     current_size,
+                     throughput,
+                     latency);
+        settle();
+    }
+
     cleanup();
 }
 

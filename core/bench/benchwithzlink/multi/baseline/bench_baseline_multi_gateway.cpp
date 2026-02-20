@@ -2,6 +2,7 @@
 #include "../common/bench_common_multi.hpp"
 #include <zlink.h>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 #include <thread>
@@ -193,6 +194,34 @@ static bool recv_one_provider_any(const std::vector<void *> &routers)
     return false;
 }
 
+static bool recv_one_provider_any_with_timeout(const std::vector<void *> &routers,
+                                               int timeout_ms)
+{
+    if (routers.empty())
+        return false;
+
+    std::vector<zlink_pollitem_t> items(routers.size());
+    for (size_t i = 0; i < routers.size(); ++i) {
+        items[i].socket = routers[i];
+        items[i].fd = 0;
+        items[i].events = ZLINK_POLLIN;
+        items[i].revents = 0;
+    }
+
+    const int rc =
+      zlink_poll(&items[0], static_cast<int>(items.size()), timeout_ms);
+    if (rc <= 0)
+        return false;
+
+    for (size_t i = 0; i < routers.size(); ++i) {
+        if ((items[i].revents & ZLINK_POLLIN) == 0)
+            continue;
+        if (recv_one_provider_message(routers[i]))
+            return true;
+    }
+    return false;
+}
+
 static bool send_one_gateway(void *gateway,
                             const char *service,
                             size_t msg_size)
@@ -216,21 +245,31 @@ void run_multi_gateway(const std::string &transport,
     if (!transport_available(transport))
         return;
 
+    const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(msg_size);
+    const auto emit_zero_from = [&](size_t start_index) {
+        for (size_t i = start_index; i < msg_sizes.size(); ++i) {
+            print_result(
+              lib_name, "MULTI_GATEWAY", transport, msg_sizes[i], 0.0, 0.0);
+        }
+    };
+
     if ((transport == "tls" || transport == "wss")
         && !resolve_symbol("zlink_gateway_set_tls_client")) {
-        print_result(lib_name, "MULTI_GATEWAY", transport, msg_size, 0.0, 0.0);
+        emit_zero_from(0);
         return;
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     if (settings.clients == 0) {
-        print_result(lib_name, "MULTI_GATEWAY", transport, msg_size, 0.0, 0.0);
+        emit_zero_from(0);
         return;
     }
 
     ctx_guard_t ctx;
-    if (!ctx.valid())
+    if (!ctx.valid()) {
+        emit_zero_from(0);
         return;
+    }
 
     std::string suffix = lib_name + "_gwm_" + transport;
 #if !defined(_WIN32)
@@ -263,24 +302,33 @@ void run_multi_gateway(const std::string &transport,
             zlink_registry_destroy(&registry);
     };
 
-    auto fail = [&](double latency = 0.0) {
-        print_result(lib_name, "MULTI_GATEWAY", transport, msg_size, 0.0, latency);
-        cleanup();
+    auto log_fail = [&](const char *stage, size_t size) {
+        if (!bench_debug_enabled())
+            return;
+        std::fprintf(stderr,
+                     "MULTI_GATEWAY fail(%s,size=%zu): %s\n",
+                     transport.c_str(),
+                     size,
+                     stage ? stage : "unknown");
     };
 
     registry = zlink_registry_new(ctx.get());
-    if (!registry)
+    if (!registry) {
+        emit_zero_from(0);
         return;
+    }
 
     if (zlink_registry_set_endpoints(registry, reg_pub.c_str(), reg_router.c_str())
         != 0
         || zlink_registry_start(registry) != 0) {
+        emit_zero_from(0);
         cleanup();
         return;
     }
 
     discovery = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!discovery) {
+        emit_zero_from(0);
         cleanup();
         return;
     }
@@ -289,12 +337,15 @@ void run_multi_gateway(const std::string &transport,
 
     gateway = zlink_gateway_new(ctx.get(), discovery, NULL);
     if (!gateway) {
+        emit_zero_from(0);
         cleanup();
         return;
     }
 
     if (!configure_gateway_tls(gateway, transport)) {
-        fail();
+        log_fail("setup_gateway_tls", msg_sizes[0]);
+        emit_zero_from(0);
+        cleanup();
         return;
     }
 
@@ -305,20 +356,20 @@ void run_multi_gateway(const std::string &transport,
     base_port += (_getpid() % 2000);
 #endif
 
-    for (size_t i = 0; i < providers.size(); ++i) {
-        (void)i;
-    }
-
     for (size_t i = 0; i < static_cast<size_t>(settings.clients); ++i) {
         void *provider = zlink_receiver_new(ctx.get(), NULL);
         if (!provider) {
-            fail();
+            log_fail("setup_provider", msg_sizes[0]);
+            emit_zero_from(0);
+            cleanup();
             return;
         }
 
         if (!configure_provider_tls(provider, transport)) {
             zlink_receiver_destroy(&provider);
-            fail();
+            log_fail("setup_provider_tls", msg_sizes[0]);
+            emit_zero_from(0);
+            cleanup();
             return;
         }
 
@@ -326,7 +377,9 @@ void run_multi_gateway(const std::string &transport,
           bind_provider(provider, transport, base_port + static_cast<int>(i));
         if (provider_endpoint.empty()) {
             zlink_receiver_destroy(&provider);
-            fail();
+            log_fail("bind_provider", msg_sizes[0]);
+            emit_zero_from(0);
+            cleanup();
             return;
         }
 
@@ -335,14 +388,18 @@ void run_multi_gateway(const std::string &transport,
                                       provider_endpoint.c_str(), 1)
                    != 0) {
             zlink_receiver_destroy(&provider);
-            fail();
+            log_fail("register_provider", msg_sizes[0]);
+            emit_zero_from(0);
+            cleanup();
             return;
         }
 
         void *provider_router = zlink_receiver_router(provider);
         if (!provider_router) {
             zlink_receiver_destroy(&provider);
-            fail();
+            log_fail("provider_router", msg_sizes[0]);
+            emit_zero_from(0);
+            cleanup();
             return;
         }
 
@@ -350,77 +407,125 @@ void run_multi_gateway(const std::string &transport,
         provider_routers.push_back(provider_router);
     }
 
-    if (!wait_for_discovery(discovery, service_name, 1000)
-        || !wait_for_gateway(gateway, service_name, 1000)) {
-        fail();
+    const int ready_wait_timeout_ms =
+      resolve_bench_count("BENCH_MULTI_READY_TIMEOUT_MS", 5000);
+    if (!wait_for_discovery(discovery, service_name, ready_wait_timeout_ms)
+        || !wait_for_gateway(gateway, service_name, ready_wait_timeout_ms)) {
+        log_fail("ready_wait", msg_sizes[0]);
+        emit_zero_from(0);
+        cleanup();
         return;
     }
 
     settle();
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_one_gateway(gateway, service_name, msg_size)
-            || !recv_one_provider_any(provider_routers)) {
-            fail();
+    const int prep_recv_timeout_ms =
+      resolve_bench_count("BENCH_MULTI_GATEWAY_RECV_TIMEOUT_MS", 2000);
+    for (size_t s = 0; s < msg_sizes.size(); ++s) {
+        const size_t current_size = msg_sizes[s];
+
+        const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
+        bool round_failed = false;
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!send_one_gateway(gateway, service_name, current_size)
+                || !recv_one_provider_any_with_timeout(
+                  provider_routers, prep_recv_timeout_ms)) {
+                round_failed = true;
+                log_fail("warmup", current_size);
+                break;
+            }
+        }
+        if (round_failed) {
+            print_result(
+              lib_name, "MULTI_GATEWAY", transport, current_size, 0.0, 0.0);
+            emit_zero_from(s + 1);
+            cleanup();
             return;
         }
-    }
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
-    stopwatch_t sw;
-    sw.start();
-    for (int i = 0; i < lat_count; ++i) {
-        if (!send_one_gateway(gateway, service_name, msg_size)
-            || !recv_one_provider_any(provider_routers)) {
-            fail();
+        const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
+        stopwatch_t sw;
+        sw.start();
+        for (int i = 0; i < lat_count; ++i) {
+            if (!send_one_gateway(gateway, service_name, current_size)
+                || !recv_one_provider_any_with_timeout(
+                  provider_routers, prep_recv_timeout_ms)) {
+                round_failed = true;
+                log_fail("latency", current_size);
+                break;
+            }
+        }
+        const double latency =
+          (sw.elapsed_ms() * 1000.0) / std::max(1, lat_count);
+        if (round_failed) {
+            print_result(
+              lib_name, "MULTI_GATEWAY", transport, current_size, 0.0, latency);
+            emit_zero_from(s + 1);
+            cleanup();
             return;
         }
-    }
-    const double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
 
-    std::atomic<int> received(0);
-    const auto measure_end =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(std::max(1, settings.measure_seconds));
-    const auto drain_end =
-      measure_end + std::chrono::milliseconds(std::max(0, settings.drain_ms));
+        std::atomic<int> received(0);
+        const auto measure_end =
+          std::chrono::steady_clock::now()
+          + std::chrono::seconds(std::max(1, settings.measure_seconds));
+        const auto drain_end =
+          measure_end + std::chrono::milliseconds(std::max(0, settings.drain_ms));
 
-    std::vector<std::thread> receiver_threads;
-    receiver_threads.reserve(provider_routers.size());
-    for (void *router : provider_routers) {
-        receiver_threads.emplace_back([&, router]() {
-            while (std::chrono::steady_clock::now() < measure_end) {
-                if (recv_one_provider_message_nowait(router))
-                    ++received;
-                else
-                    std::this_thread::sleep_for(std::chrono::microseconds(50));
+        std::vector<std::thread> receiver_threads;
+        receiver_threads.reserve(provider_routers.size());
+        for (void *router : provider_routers) {
+            receiver_threads.emplace_back([&, router]() {
+                while (std::chrono::steady_clock::now() < measure_end) {
+                    if (recv_one_provider_message_nowait(router))
+                        ++received;
+                    else
+                        std::this_thread::sleep_for(std::chrono::microseconds(50));
+                }
+                while (std::chrono::steady_clock::now() < drain_end) {
+                    if (recv_one_provider_message_nowait(router))
+                        ++received;
+                    else
+                        std::this_thread::sleep_for(std::chrono::microseconds(100));
+                }
+            });
+        }
+
+        bool measure_send_failed = false;
+        sw.start();
+        while (std::chrono::steady_clock::now() < measure_end) {
+            if (!send_one_gateway(gateway, service_name, current_size)) {
+                measure_send_failed = true;
+                break;
             }
-            while (std::chrono::steady_clock::now() < drain_end) {
-                if (recv_one_provider_message_nowait(router))
-                    ++received;
-                else
-                    std::this_thread::sleep_for(std::chrono::microseconds(100));
-            }
-        });
+        }
+
+        for (size_t t = 0; t < receiver_threads.size(); ++t)
+            receiver_threads[t].join();
+
+        const int recv_count = received.load();
+        const double elapsed_ms = sw.elapsed_ms();
+        if (measure_send_failed || recv_count <= 0 || elapsed_ms <= 0) {
+            log_fail(
+              measure_send_failed ? "measure_send" : "measure", current_size);
+            print_result(
+              lib_name, "MULTI_GATEWAY", transport, current_size, 0.0, latency);
+            emit_zero_from(s + 1);
+            cleanup();
+            return;
+        }
+        const double throughput =
+          (double)recv_count / (elapsed_ms / 1000.0);
+
+        print_result(lib_name,
+                     "MULTI_GATEWAY",
+                     transport,
+                     current_size,
+                     throughput,
+                     latency);
+        settle();
     }
 
-    sw.start();
-    while (std::chrono::steady_clock::now() < measure_end) {
-        if (!send_one_gateway(gateway, service_name, msg_size))
-            break;
-    }
-
-    for (auto &thread : receiver_threads)
-        thread.join();
-
-    const int recv_count = received.load();
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput = recv_count > 0 && elapsed_ms > 0
-                               ? (double)recv_count / (elapsed_ms / 1000.0)
-                               : 0.0;
-
-    print_result(lib_name, "MULTI_GATEWAY", transport, msg_size, throughput, latency);
     cleanup();
 }
 

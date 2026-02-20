@@ -219,16 +219,14 @@ STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
 
 def select_transports(pattern_name):
-    if pattern_name == "MULTI_STREAM":
-        base = ["tcp"]
-    else:
-        base = STREAM_TRANSPORTS if pattern_name in (
-            "STREAM",
-            "GATEWAY",
-            "SPOT",
-            "MULTI_GATEWAY",
-            "MULTI_SPOT",
-        ) else TRANSPORTS
+    base = STREAM_TRANSPORTS if pattern_name in (
+        "STREAM",
+        "MULTI_STREAM",
+        "GATEWAY",
+        "SPOT",
+        "MULTI_GATEWAY",
+        "MULTI_SPOT",
+    ) else TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -302,8 +300,6 @@ def collect_missing_patterns(comparisons, requested, current_only):
     missing_baseline = []
     for baseline_bin, current_bin, p_name in comparisons:
         if requested is not None and p_name not in requested:
-            continue
-        if p_name == "MULTI_STREAM":
             continue
 
         current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
@@ -516,13 +512,98 @@ def run_multi_stream_test(lib_name, transport, size):
 
     return []
 
+
+def parse_result_line(line, transport, expected_sizes):
+    if not line.startswith("RESULT,"):
+        return None
+    parts = line.split(",")
+    if len(parts) < 7:
+        return None
+    try:
+        line_transport = parts[3]
+        line_size = int(parts[4])
+        metric = parts[5].strip().lower()
+        value = float(parts[6])
+    except ValueError:
+        return None
+    if line_transport != transport or line_size not in expected_sizes:
+        return None
+    if metric not in ("throughput", "latency"):
+        return None
+    return line_transport, line_size, metric, value
+
+
+def run_multi_sizes_test(binary_name, lib_name, transport, sizes, pattern_name):
+    binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
+    fallback_size = sizes[0] if sizes else 64
+    duration_seconds = max(1, parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10))
+    timeout_sec = max(120, duration_seconds * max(1, len(sizes)) * 8 + 60)
+    attempts = 1
+    if pattern_name == "MULTI_STREAM":
+        attempts = max(1, MULTI_STREAM_ATTEMPTS)
+        timeout_sec = max(180, timeout_sec)
+
+    expected_sizes = set(sizes)
+    for attempt_idx in range(attempts):
+        env = get_env_for_lib(lib_name)
+        env["BENCH_MSG_SIZES"] = ",".join(str(sz) for sz in sizes)
+        if pattern_name == "MULTI_STREAM":
+            env["BENCH_MULTI_STREAM_MSG_SIZES"] = ",".join(str(sz) for sz in sizes)
+
+        try:
+            if IS_WINDOWS:
+                cmd = [binary_path, lib_name, transport, str(fallback_size)]
+            elif os.environ.get("BENCH_TASKSET") == "1":
+                cmd = [
+                    "taskset",
+                    "-c",
+                    "1",
+                    binary_path,
+                    lib_name,
+                    transport,
+                    str(fallback_size),
+                ]
+            else:
+                cmd = [binary_path, lib_name, transport, str(fallback_size)]
+
+            result = subprocess.run(
+                cmd, env=env, capture_output=True, text=True, timeout=timeout_sec
+            )
+            if result.returncode != 0:
+                stderr = (result.stderr or "").lower()
+                if "protocol not supported" in stderr:
+                    return {"unsupported": True, "parsed": {}, "timed_out": False}
+                if attempt_idx + 1 < attempts:
+                    continue
+                return {"unsupported": False, "parsed": {}, "timed_out": False}
+
+            parsed = {}
+            for line in result.stdout.splitlines():
+                parsed_line = parse_result_line(line, transport, expected_sizes)
+                if not parsed_line:
+                    continue
+                line_transport, line_size, metric, value = parsed_line
+                parsed[f"{line_transport}|{line_size}|{metric}"] = value
+
+            if parsed:
+                return {"unsupported": False, "parsed": parsed, "timed_out": False}
+            if attempt_idx + 1 < attempts:
+                continue
+            return {"unsupported": False, "parsed": {}, "timed_out": False}
+        except subprocess.TimeoutExpired:
+            if attempt_idx + 1 < attempts:
+                continue
+            return {"unsupported": False, "parsed": {}, "timed_out": True}
+        except Exception:
+            if attempt_idx + 1 < attempts:
+                continue
+            return {"unsupported": False, "parsed": {}, "timed_out": False}
+
+    return {"unsupported": False, "parsed": {}, "timed_out": False}
+
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
-    if pattern_name == "MULTI_STREAM":
-        return run_multi_stream_test(lib_name, transport, size)
-
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
-    env = get_env_for_lib(lib_name)
     timeout_sec = 60
     if pattern_name.startswith("MULTI_"):
         timeout_sec = max(
@@ -531,44 +612,68 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
             + parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10)
             + 30,
         )
+    attempts = 1
+    if pattern_name == "MULTI_STREAM":
+        # STREAM multi can sporadically need extra teardown time.
+        timeout_sec = max(
+            120,
+            parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
+            + parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10)
+            + 90,
+        )
+        attempts = max(1, MULTI_STREAM_ATTEMPTS)
 
     # For STREAM pattern with TLS/WS/WSS, limit msg count to avoid buffer/deadlock issues
     # WS has lower limits (~4K for 1KB+ messages), so use conservative 5000 for all
-    if pattern_name == "STREAM" and transport in ("tls", "ws", "wss"):
-        env["BENCH_MSG_COUNT"] = "5000"
-        env["BENCH_WARMUP_COUNT"] = "100"  # Reduce warmup as well
+    for attempt_idx in range(attempts):
+        env = get_env_for_lib(lib_name)
+        if pattern_name == "STREAM" and transport in ("tls", "ws", "wss"):
+            env["BENCH_MSG_COUNT"] = "5000"
+            env["BENCH_WARMUP_COUNT"] = "100"  # Reduce warmup as well
 
-    try:
-        # Args: [lib_name] [transport] [size]
-        # Default: do not pin CPU. Enable with BENCH_TASKSET=1 on Linux.
-        if IS_WINDOWS:
-            cmd = [binary_path, lib_name, transport, str(size)]
-        elif os.environ.get("BENCH_TASKSET") == "1":
-            cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
-        else:
-            cmd = [binary_path, lib_name, transport, str(size)]
-        result = subprocess.run(cmd,
-                                env=env,
-                                capture_output=True,
-                                text=True,
-                                timeout=timeout_sec)
-        if result.returncode != 0:
-            stderr = (result.stderr or "").lower()
-            if "protocol not supported" in stderr:
-                return [{"metric": "_unsupported_transport_", "value": 1.0}]
+        try:
+            # Args: [lib_name] [transport] [size]
+            # Default: do not pin CPU. Enable with BENCH_TASKSET=1 on Linux.
+            if IS_WINDOWS:
+                cmd = [binary_path, lib_name, transport, str(size)]
+            elif os.environ.get("BENCH_TASKSET") == "1":
+                cmd = ["taskset", "-c", "1", binary_path, lib_name, transport,
+                       str(size)]
+            else:
+                cmd = [binary_path, lib_name, transport, str(size)]
+
+            result = subprocess.run(cmd,
+                                    env=env,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=timeout_sec)
+            if result.returncode != 0:
+                stderr = (result.stderr or "").lower()
+                if "protocol not supported" in stderr:
+                    return [{"metric": "_unsupported_transport_", "value": 1.0}]
+                if attempt_idx + 1 < attempts:
+                    continue
+                return []
+
+            parsed = []
+            for line in result.stdout.splitlines():
+                if line.startswith("RESULT,"):
+                    p = line.split(",")
+                    if len(p) >= 7:
+                        parsed.append({"metric": p[5], "value": float(p[6])})
+            if parsed:
+                return parsed
+            if attempt_idx + 1 < attempts:
+                continue
             return []
-
-        parsed = []
-        for line in result.stdout.splitlines():
-            if line.startswith("RESULT,"):
-                p = line.split(",")
-                if len(p) >= 7:
-                    parsed.append({"metric": p[5], "value": float(p[6])})
-        return parsed
-    except subprocess.TimeoutExpired:
-        return None
-    except Exception:
-        return []
+        except subprocess.TimeoutExpired:
+            if attempt_idx + 1 < attempts:
+                continue
+            return None
+        except Exception:
+            if attempt_idx + 1 < attempts:
+                continue
+            return []
 
 def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None):
     print(f"  > Benchmarking {lib_name} for {pattern_name}...")
@@ -581,6 +686,84 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
     for tr in transports:
         sizes = (MULTI_STREAM_MSG_SIZES
                  if pattern_name == "MULTI_STREAM" else MSG_SIZES)
+
+        if pattern_name.startswith("MULTI_"):
+            size_tag = ",".join(f"{sz}B" for sz in sizes)
+            print(f"    Testing {tr} | {size_tag}: ", end="", flush=True)
+            metrics_raw = {}
+            failed_runs = 0
+            expected_keys = []
+            for sz in sizes:
+                expected_keys.append(f"{tr}|{sz}|throughput")
+                expected_keys.append(f"{tr}|{sz}|latency")
+
+            tr_supported = True
+            for i in range(num_runs):
+                print(f"{i+1} ", end="", flush=True)
+                outcome = run_multi_sizes_test(
+                    binary_name, lib_name, tr, sizes, pattern_name
+                )
+                if outcome.get("timed_out", False):
+                    failed_runs += 1
+                    for sz in sizes:
+                        failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
+                    continue
+
+                if outcome.get("unsupported", False):
+                    tr_supported = False
+                    for sz in sizes:
+                        final_stats[f"{tr}|{sz}|throughput"] = 0
+                        final_stats[f"{tr}|{sz}|latency"] = 0
+                    print("unsupported ", end="", flush=True)
+                    break
+
+                parsed = outcome.get("parsed", {})
+                if not parsed:
+                    failed_runs += 1
+                    for sz in sizes:
+                        failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
+                    continue
+
+                missing = [key for key in expected_keys if key not in parsed]
+                if missing:
+                    failed_runs += 1
+                    for key in missing:
+                        parts = key.split("|")
+                        sz = int(parts[1])
+                        metric = parts[2]
+                        failures.append(
+                            (pattern_name, lib_name, tr, sz, f"missing_{metric}")
+                        )
+                    if FAIL_FAST:
+                        print(f"(failures={failed_runs}) ", end="", flush=True)
+                        print("aborting")
+                        return final_stats, failures
+
+                for key, value in parsed.items():
+                    if key not in metrics_raw:
+                        metrics_raw[key] = []
+                    metrics_raw[key].append(value)
+
+            if not tr_supported:
+                print("Done")
+                continue
+
+            for key in expected_keys:
+                vals = metrics_raw.get(key, [])
+                final_stats[key] = statistics.median(vals) if vals else 0
+
+            if failed_runs:
+                print(f"(failures={failed_runs}) ", end="", flush=True)
+            print("Done")
+            continue
 
         tr_supported = True
         for idx, sz in enumerate(sizes):
@@ -643,6 +826,44 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                 print(f"(failures={failed_runs}) ", end="", flush=True)
             print("Done")
     return final_stats, failures
+
+
+def sizes_for_pattern(pattern_name):
+    return MULTI_STREAM_MSG_SIZES if pattern_name == "MULTI_STREAM" else MSG_SIZES
+
+
+def baseline_cache_valid(pattern_name, stats, transports):
+    if not isinstance(stats, dict):
+        return False
+
+    sizes = sizes_for_pattern(pattern_name)
+    for tr in transports:
+        for sz in sizes:
+            throughput_key = f"{tr}|{sz}|throughput"
+            latency_key = f"{tr}|{sz}|latency"
+            if throughput_key not in stats or latency_key not in stats:
+                return False
+
+    if pattern_name in ("MULTI_STREAM", "MULTI_GATEWAY", "MULTI_SPOT") \
+            and "tcp" in transports:
+        has_nonzero_tcp = False
+        for sz in sizes:
+            throughput_key = f"tcp|{sz}|throughput"
+            latency_key = f"tcp|{sz}|latency"
+            if throughput_key not in stats or latency_key not in stats:
+                return False
+            try:
+                throughput = float(stats.get(throughput_key, 0.0))
+                latency = float(stats.get(latency_key, 0.0))
+            except (TypeError, ValueError):
+                return False
+            if throughput > 0.0 or latency > 0.0:
+                has_nonzero_tcp = True
+                break
+        if not has_nonzero_tcp:
+            return False
+
+    return True
 
 def format_throughput(size, msgs_per_sec):
     return f"{msgs_per_sec/1e3:6.2f} Kmsg/s"
@@ -758,9 +979,10 @@ def main():
         ("comp_baseline_multi_gateway", "comp_current_multi_gateway",
          "MULTI_GATEWAY"),
         ("comp_baseline_multi_spot", "comp_current_multi_spot", "MULTI_SPOT"),
+        ("comp_baseline_multi_stream", "comp_current_multi_stream",
+         "MULTI_STREAM"),
         ("comp_baseline_gateway", "comp_current_gateway", "GATEWAY"),
         ("comp_baseline_spot", "comp_current_spot", "SPOT"),
-        ("multi_stream", "multi_stream", "MULTI_STREAM"),
     ]
 
     all_failures = []
@@ -772,40 +994,36 @@ def main():
             print("Error: --pattern requires at least one value.", file=sys.stderr)
             sys.exit(1)
 
-    needs_standard_bench = requested is None or any(
-        p != "MULTI_STREAM" for p in requested)
-
-    if needs_standard_bench:
-        missing_current, missing_baseline = collect_missing_patterns(
-            comparisons, requested, current_only)
-        if missing_current or missing_baseline:
-            cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
-            if not cmake_build_dir:
+    missing_current, missing_baseline = collect_missing_patterns(
+        comparisons, requested, current_only)
+    if missing_current or missing_baseline:
+        cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
+        if not cmake_build_dir:
+            print(
+                f"Error: missing benchmark binaries in {BUILD_DIR} and failed to derive CMake build dir.",
+                file=sys.stderr,
+            )
+            print(
+                "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                file=sys.stderr,
+            )
+            if missing_current:
                 print(
-                    f"Error: missing benchmark binaries in {BUILD_DIR} and failed to derive CMake build dir.",
+                    "  current missing: " + ", ".join(missing_current),
                     file=sys.stderr,
                 )
+            if missing_baseline:
                 print(
-                    "Hint: pass --build-dir as a CMake build root or its bin(/Release) directory.",
+                    "  baseline missing: " + ", ".join(missing_baseline),
                     file=sys.stderr,
                 )
-                if missing_current:
-                    print(
-                        "  current missing: " + ", ".join(missing_current),
-                        file=sys.stderr,
-                    )
-                if missing_baseline:
-                    print(
-                        "  baseline missing: " + ", ".join(missing_baseline),
-                        file=sys.stderr,
-                    )
-                sys.exit(1)
+            sys.exit(1)
 
-            build_rc = run_cmake_build(cmake_build_dir)
-            if build_rc != 0:
-                print(f"Error: auto-build failed with exit code {build_rc}.",
-                      file=sys.stderr)
-                sys.exit(build_rc)
+        build_rc = run_cmake_build(cmake_build_dir)
+        if build_rc != 0:
+            print(f"Error: auto-build failed with exit code {build_rc}.",
+                  file=sys.stderr)
+            sys.exit(build_rc)
 
     cache = {}
     if not current_only:
@@ -857,7 +1075,16 @@ def main():
             c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports)
             all_failures.extend(failures)
         else:
-            if refresh or p_name not in cache:
+            refresh_reason = ""
+            if refresh:
+                refresh_reason = "refresh requested"
+            elif p_name not in cache:
+                refresh_reason = "baseline missing"
+            elif not baseline_cache_valid(p_name, cache.get(p_name, {}), pattern_transports):
+                refresh_reason = "invalid baseline cache"
+
+            if refresh_reason:
+                print(f"  [baseline] Refreshing baseline ({refresh_reason}).")
                 b_stats, failures = collect_data(baseline_bin, "baseline", p_name, num_runs, pattern_transports)
                 all_failures.extend(failures)
                 cache[p_name] = b_stats

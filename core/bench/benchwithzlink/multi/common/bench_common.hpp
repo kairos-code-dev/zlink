@@ -65,8 +65,10 @@ class ctx_guard_t {
 public:
     ctx_guard_t() : _ctx(zlink_ctx_new()) {}
     ~ctx_guard_t() {
-        if (_ctx)
+        if (_ctx) {
+            zlink_ctx_shutdown(_ctx);
             zlink_ctx_term(_ctx);
+        }
     }
 
     void *get() const { return _ctx; }
@@ -485,6 +487,38 @@ inline int resolve_msg_count(size_t size) {
             count = static_cast<int>(override);
     }
     return count;
+}
+
+inline std::vector<size_t> resolve_bench_msg_sizes(size_t fallback_size)
+{
+    std::vector<size_t> sizes;
+    if (const char *env = std::getenv("BENCH_MSG_SIZES")) {
+        const char *cur = env;
+        while (*cur) {
+            while (*cur == ',' || *cur == ' ' || *cur == '\t')
+                ++cur;
+            if (!*cur)
+                break;
+
+            errno = 0;
+            char *end = NULL;
+            const unsigned long parsed = std::strtoul(cur, &end, 10);
+            if (errno == 0 && end != cur && parsed > 0)
+                sizes.push_back(static_cast<size_t>(parsed));
+
+            if (!end || end == cur)
+                break;
+            cur = end;
+            while (*cur && *cur != ',')
+                ++cur;
+            if (*cur == ',')
+                ++cur;
+        }
+    }
+
+    if (sizes.empty())
+        sizes.push_back(fallback_size);
+    return sizes;
 }
 
 inline int resolve_bench_count(const char *env_name, int default_value) {

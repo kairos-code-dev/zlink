@@ -2,6 +2,7 @@
 #include "../common/bench_common_multi.hpp"
 #include <zlink.h>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -135,21 +136,30 @@ void run_multi_spot(const std::string &transport,
     if (!transport_available(transport))
         return;
 
+    const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(msg_size);
+    const auto emit_zero_from = [&](size_t start_index) {
+        for (size_t i = start_index; i < msg_sizes.size(); ++i) {
+            print_result(lib_name, "MULTI_SPOT", transport, msg_sizes[i], 0.0, 0.0);
+        }
+    };
+
     if ((transport == "tls" || transport == "wss")
         && !resolve_symbol("zlink_spot_node_set_tls_server")) {
-        print_result(lib_name, "MULTI_SPOT", transport, msg_size, 0.0, 0.0);
+        emit_zero_from(0);
         return;
     }
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
     if (settings.clients == 0) {
-        print_result(lib_name, "MULTI_SPOT", transport, msg_size, 0.0, 0.0);
+        emit_zero_from(0);
         return;
     }
 
     ctx_guard_t ctx;
-    if (!ctx.valid())
+    if (!ctx.valid()) {
+        emit_zero_from(0);
         return;
+    }
 
     void *node_pub = zlink_spot_node_new(ctx.get());
     if (!node_pub)
@@ -158,11 +168,27 @@ void run_multi_spot(const std::string &transport,
     std::vector<void *> node_subs(settings.clients, NULL);
     std::vector<void *> spot_subs;
     spot_subs.reserve(settings.clients);
+    void *spot_pub = NULL;
+    std::atomic<bool> receiver_stop(false);
+    std::vector<std::thread> receiver_threads;
+
+    auto stop_and_join_receivers = [&]() {
+        receiver_stop.store(true, std::memory_order_release);
+        for (size_t i = 0; i < receiver_threads.size(); ++i) {
+            if (receiver_threads[i].joinable())
+                receiver_threads[i].join();
+        }
+        receiver_threads.clear();
+    };
 
     auto cleanup = [&]() {
+        stop_and_join_receivers();
         for (void *sub : spot_subs)
             if (sub)
                 zlink_spot_sub_destroy(&sub);
+        spot_subs.clear();
+        if (spot_pub)
+            zlink_spot_pub_destroy(&spot_pub);
         for (void *node : node_subs)
             if (node)
                 zlink_spot_node_destroy(&node);
@@ -170,24 +196,31 @@ void run_multi_spot(const std::string &transport,
             zlink_spot_node_destroy(&node_pub);
     };
 
-    auto fail = [&](double latency = 0.0) {
-        print_result(lib_name, "MULTI_SPOT", transport, msg_size, 0.0, latency);
+    auto fail = [&](const char *stage, double latency = 0.0) {
+        if (bench_debug_enabled()) {
+            std::fprintf(stderr,
+                         "MULTI_SPOT fail(%s,size=%zu): %s\n",
+                         transport.c_str(),
+                         msg_sizes.empty() ? 0 : msg_sizes[0],
+                         stage ? stage : "unknown");
+        }
+        emit_zero_from(0);
         cleanup();
     };
 
     if (!configure_spot_tls_server(node_pub, transport)) {
-        fail();
+        fail("setup_server_tls");
         return;
     }
 
     for (size_t i = 0; i < settings.clients; ++i) {
         node_subs[i] = zlink_spot_node_new(ctx.get());
         if (!node_subs[i]) {
-            fail();
+            fail("setup_node_sub");
             return;
         }
         if (!configure_spot_tls_client(node_subs[i], transport)) {
-            fail();
+            fail("setup_client_tls");
             return;
         }
     }
@@ -200,28 +233,38 @@ void run_multi_spot(const std::string &transport,
 #endif
     std::string endpoint = bind_spot_node(node_pub, transport, base_port);
     if (endpoint.empty()) {
-        fail();
+        fail("bind");
         return;
     }
 
     for (size_t i = 0; i < node_subs.size(); ++i) {
         if (zlink_spot_node_connect_peer_pub(node_subs[i], endpoint.c_str()) != 0) {
-            fail();
+            fail("connect_peer_pub");
             return;
         }
     }
 
-    void *spot_pub = zlink_spot_pub_new(node_pub);
+    spot_pub = zlink_spot_pub_new(node_pub);
     if (!spot_pub) {
-        fail();
+        fail("setup_pub");
         return;
+    }
+    {
+        const int linger_ms = 0;
+        zlink_spot_pub_setsockopt(spot_pub, ZLINK_LINGER, &linger_ms,
+                                  sizeof(linger_ms));
     }
 
     for (size_t i = 0; i < node_subs.size(); ++i) {
         void *spot_sub = zlink_spot_sub_new(node_subs[i]);
         if (!spot_sub) {
-            fail();
+            fail("setup_sub");
             return;
+        }
+        {
+            const int linger_ms = 0;
+            zlink_spot_sub_setsockopt(spot_sub, ZLINK_LINGER, &linger_ms,
+                                      sizeof(linger_ms));
         }
         zlink_spot_sub_subscribe(spot_sub, "bench");
         spot_subs.push_back(spot_sub);
@@ -230,67 +273,144 @@ void run_multi_spot(const std::string &transport,
     const std::string topic = "bench";
     settle();
 
-    const int recv_timeout_ms = 5000;
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_spot_with_timeout(spot_subs[0], recv_timeout_ms)) {
-            fail();
+    for (size_t s = 0; s < msg_sizes.size(); ++s) {
+        const size_t current_size = msg_sizes[s];
+
+        const int recv_timeout_ms = 5000;
+        const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
+        bool round_failed = false;
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!send_spot(spot_pub, topic, current_size)
+                || !recv_spot_with_timeout(spot_subs[0], recv_timeout_ms)) {
+                round_failed = true;
+                if (bench_debug_enabled()) {
+                    std::fprintf(stderr,
+                                 "MULTI_SPOT fail(%s,size=%zu): warmup\n",
+                                 transport.c_str(),
+                                 current_size);
+                }
+                break;
+            }
+        }
+        if (round_failed) {
+            print_result(lib_name, "MULTI_SPOT", transport, current_size, 0.0, 0.0);
+            emit_zero_from(s + 1);
+            cleanup();
             return;
         }
-    }
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
-    stopwatch_t sw;
-    sw.start();
-    for (int i = 0; i < lat_count; ++i) {
-        if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_spot_with_timeout(spot_subs[0], recv_timeout_ms)) {
-            fail(sw.elapsed_ms() * 1000.0 / (i + 1 > 0 ? (i + 1) : 1));
+        const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
+        stopwatch_t sw;
+        sw.start();
+        for (int i = 0; i < lat_count; ++i) {
+            if (!send_spot(spot_pub, topic, current_size)
+                || !recv_spot_with_timeout(spot_subs[0], recv_timeout_ms)) {
+                round_failed = true;
+                if (bench_debug_enabled()) {
+                    std::fprintf(stderr,
+                                 "MULTI_SPOT fail(%s,size=%zu): latency\n",
+                                 transport.c_str(),
+                                 current_size);
+                }
+                break;
+            }
+        }
+        const double latency =
+          (sw.elapsed_ms() * 1000.0) / std::max(1, lat_count);
+        if (round_failed) {
+            print_result(
+              lib_name, "MULTI_SPOT", transport, current_size, 0.0, latency);
+            emit_zero_from(s + 1);
+            cleanup();
             return;
         }
-    }
-    const double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
 
-    std::vector<void *> publishers(1, spot_pub);
-    auto recv_any = [&]() {
+        const auto measure_end =
+          std::chrono::steady_clock::now()
+          + std::chrono::seconds(std::max(1, settings.measure_seconds));
+        const auto drain_end =
+          measure_end + std::chrono::milliseconds(std::max(0, settings.drain_ms));
+        const int measure_recv_timeout_ms =
+          resolve_bench_count("BENCH_MULTI_SPOT_RECV_TIMEOUT_MS", 1);
+        std::atomic<long> measure_received(0);
+        std::atomic<long> total_received(0);
+        receiver_stop.store(false, std::memory_order_release);
+        receiver_threads.reserve(spot_subs.size());
         for (void *sub : spot_subs) {
-            if (recv_spot_with_timeout(sub, 1))
-                return true;
+            receiver_threads.push_back(std::thread([&, sub]() {
+                while (!receiver_stop.load(std::memory_order_acquire)) {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now >= drain_end)
+                        break;
+                    if (!recv_spot_with_timeout(sub, measure_recv_timeout_ms))
+                        continue;
+                    total_received.fetch_add(1, std::memory_order_relaxed);
+                    if (now < measure_end) {
+                        measure_received.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            }));
         }
-        return false;
-    };
 
-    std::atomic<int> sent_count(0);
-    const int received = run_multi_timed_benchmark(
-      publishers,
-      settings,
-      [&](size_t) {
-          return send_spot(spot_pub, topic, msg_size);
-      },
-      [&]() {
-          return recv_any();
-      },
-      settings.measure_seconds,
-      &sent_count);
+        sw.start();
+        long published = 0;
+        const long fanout = static_cast<long>(std::max<size_t>(1, settings.clients));
+        const long max_backlog =
+          static_cast<long>(std::max(1, settings.inflight)) * fanout;
+        while (std::chrono::steady_clock::now() < measure_end) {
+            const long recv_total = total_received.load(std::memory_order_relaxed);
+            const long backlog = published * fanout - recv_total;
+            if (backlog >= max_backlog) {
+                std::this_thread::sleep_for(std::chrono::microseconds(50));
+                continue;
+            }
+            if (!send_spot(spot_pub, topic, current_size)) {
+                round_failed = true;
+                if (bench_debug_enabled()) {
+                    std::fprintf(stderr,
+                                 "MULTI_SPOT fail(%s,size=%zu): measure_send\n",
+                                 transport.c_str(),
+                                 current_size);
+                }
+                break;
+            }
+            ++published;
+        }
 
-    for (void *sub : spot_subs)
-        if (sub)
-            zlink_spot_sub_destroy(&sub);
-    spot_subs.clear();
+        if (std::chrono::steady_clock::now() < drain_end) {
+            std::this_thread::sleep_until(drain_end);
+        }
+        stop_and_join_receivers();
 
-    if (spot_pub)
-        zlink_spot_pub_destroy(&spot_pub);
-    for (void *node : node_subs)
-        if (node)
-            zlink_spot_node_destroy(&node);
-    if (node_pub)
-        zlink_spot_node_destroy(&node_pub);
+        const long recv_measure = measure_received.load(std::memory_order_relaxed);
+        if (round_failed || recv_measure <= 0) {
+            if (!round_failed && bench_debug_enabled()) {
+                std::fprintf(stderr,
+                             "MULTI_SPOT fail(%s,size=%zu): measure\n",
+                             transport.c_str(),
+                             current_size);
+            }
+            print_result(
+              lib_name, "MULTI_SPOT", transport, current_size, 0.0, latency);
+            emit_zero_from(s + 1);
+            cleanup();
+            return;
+        }
 
-    const double throughput =
-      received > 0 ? (double)received / (double)std::max(1, settings.measure_seconds)
-                   : 0.0;
-    print_result(lib_name, "MULTI_SPOT", transport, msg_size, throughput, latency);
+        const double throughput =
+          static_cast<double>(recv_measure)
+          / static_cast<double>(std::max(1, settings.measure_seconds));
+        (void)total_received;
+        print_result(lib_name,
+                     "MULTI_SPOT",
+                     transport,
+                     current_size,
+                     throughput,
+                     latency);
+        settle();
+    }
+
+    cleanup();
 }
 
 int main(int argc, char **argv)

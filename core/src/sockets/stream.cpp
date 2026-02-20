@@ -45,6 +45,7 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _routing_id_sent (false),
     _prefetched_routing_id_value (0),
     _current_out (NULL),
+    _current_out_checked_writable (false),
     _more_out (false),
     _next_integral_routing_id (1)
 {
@@ -91,8 +92,10 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
 
     erase_out_pipe (pipe_);
     _fq.pipe_terminated (pipe_);
-    if (pipe_ == _current_out)
+    if (pipe_ == _current_out) {
         _current_out = NULL;
+        _current_out_checked_writable = false;
+    }
     if (server_routing_id != 0
         && server_routing_id < static_cast<uint32_t> (_out_by_id.size ())) {
         _out_by_id[server_routing_id] = NULL;
@@ -111,6 +114,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
 {
     if (!_more_out) {
         zlink_assert (!_current_out);
+        _current_out_checked_writable = false;
 
         // Fast path: single-frame send with routing id attached in msg_t.
         if (!(msg_->flags () & msg_t::more) && msg_->get_routing_id () != 0) {
@@ -126,11 +130,15 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 errno = EHOSTUNREACH;
                 return -1;
             }
+            if (!out->check_write ()) {
+                errno = EAGAIN;
+                return -1;
+            }
 
             if (msg_->size () == 0) {
                 out->terminate (false);
             } else {
-                const bool ok = out->write (msg_);
+                const bool ok = out->write_no_hwm_check (msg_);
                 if (unlikely (!ok)) {
                     const int close_rc = msg_->close ();
                     errno_assert (close_rc == 0);
@@ -167,6 +175,7 @@ int zlink::stream_t::xsend (msg_t *msg_)
                 errno = EAGAIN;
                 return -1;
             }
+            _current_out_checked_writable = true;
         }
 
         // Match libzmq STREAM semantics: consume the first frame and
@@ -192,13 +201,17 @@ int zlink::stream_t::xsend (msg_t *msg_)
             rc = msg_->init ();
             errno_assert (rc == 0);
             _current_out = NULL;
+            _current_out_checked_writable = false;
             return 0;
         }
 
-        const bool ok = _current_out->write (msg_);
+        const bool ok = _current_out_checked_writable
+                          ? _current_out->write_no_hwm_check (msg_)
+                          : _current_out->write (msg_);
         if (likely (ok))
             _current_out->flush ();
         _current_out = NULL;
+        _current_out_checked_writable = false;
     } else {
         const int rc = msg_->close ();
         errno_assert (rc == 0);

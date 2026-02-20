@@ -31,6 +31,7 @@ struct server_options_t
     int backlog;
     int tcp_nodelay;
     int io_threads;
+    int raw_echo;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -40,7 +41,8 @@ struct server_options_t
           rcvbuf (1024 * 1024),
           backlog (32768),
           tcp_nodelay (1),
-          io_threads (8)
+          io_threads (8),
+          raw_echo (0)
     {
     }
 };
@@ -107,6 +109,16 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
+        if (opt.raw_echo != 0) {
+            if (!SendAsync (buffer, size)) {
+                metrics.send_error.fetch_add (1, std::memory_order_relaxed);
+                Disconnect ();
+                return;
+            }
+            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
+            return;
+        }
+
         const unsigned char *ptr = static_cast<const unsigned char *> (buffer);
         size_t remaining = size;
 
@@ -141,6 +153,7 @@ class stream_echo_session_t : public TCPSession
                     return;
                 }
 
+                metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
                 partial_size = 0;
                 continue;
             }
@@ -174,6 +187,7 @@ class stream_echo_session_t : public TCPSession
                 return;
             }
 
+            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
             ptr += incoming_frame_size;
             remaining -= incoming_frame_size;
         }
@@ -250,6 +264,7 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
+    opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "cppserver stream: size too large %zu\n", opt.size);
         return false;

@@ -393,8 +393,13 @@ void close_sender (tcp_sender_state_t &sender)
 
 bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
 {
-    if (sender.valid ())
+    if (sender.valid ()) {
+        //  Keep connection alive across message-size rounds, but reset any
+        //  partially staged frame from a previous round.
+        sender.frame.clear ();
+        sender.sent_bytes = 0;
         return true;
+    }
 
     socket_t fd = connect_tcp_socket (endpoint, true);
     if (fd == INVALID_SOCKET_FD)
@@ -626,10 +631,26 @@ void drain_pending_stream_frames (void *server,
                                   stream_decode_state_t &decode_state,
                                   size_t frame_size)
 {
-    for (int i = 0; i < 16; ++i) {
+    const int idle_ms_target = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_DRAIN_IDLE_MS", 10, 1);
+    const int max_wait_ms = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_DRAIN_MAX_MS", 2000, 0);
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (0, max_wait_ms));
+
+    int idle_ms = 0;
+    while (std::chrono::steady_clock::now () < deadline) {
         const int drained =
           recv_batch_stream (server, decode_state, 4096, frame_size, 0);
-        if (drained <= 0)
+        if (drained > 0) {
+            idle_ms = 0;
+            continue;
+        }
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        ++idle_ms;
+        if (idle_ms >= idle_ms_target)
             break;
     }
     decode_state.reset ();
@@ -772,8 +793,7 @@ bool send_stream_reply (void *server,
     return zlink_send (server, &framed[0], framed.size (), 0) >= 0;
 }
 
-double measure_stream_latency_us (void *ctx,
-                                  const std::string &transport,
+double measure_stream_latency_us (const std::string &transport,
                                   const std::string &lib_name,
                                   size_t msg_size,
                                   int hwm,
@@ -782,7 +802,11 @@ double measure_stream_latency_us (void *ctx,
     if (transport != "tcp")
         return 0.0;
 
-    void *server = zlink_socket (ctx, ZLINK_STREAM);
+    ctx_guard_t latency_ctx;
+    if (!latency_ctx.valid ())
+        return 0.0;
+
+    void *server = zlink_socket (latency_ctx.get (), ZLINK_STREAM);
     if (!server)
         return 0.0;
 
@@ -817,10 +841,17 @@ double measure_stream_latency_us (void *ctx,
     size_t observed_ready = 0;
     const bool ready_ok =
       wait_stream_ready_count (monitor, server, 1, ready_timeout_ms, &observed_ready);
-    if (!ready_ok && bench_debug_enabled ()) {
-        std::fprintf (stderr,
-                      "MULTI_STREAM latency: connect_ready wait timeout (observed=%zu)\n",
-                      observed_ready);
+    if (!ready_ok) {
+        if (bench_debug_enabled ()) {
+            std::fprintf (
+              stderr,
+              "MULTI_STREAM latency: connect_ready wait timeout (observed=%zu)\n",
+              observed_ready);
+        }
+        close_socket_fd (client);
+        close_connect_monitor (monitor);
+        zlink_close (server);
+        return 0.0;
     }
     close_connect_monitor (monitor);
 
@@ -945,10 +976,14 @@ void run_multi_stream (const std::string &transport,
                                                settings.clients,
                                                settings.connect_ready_timeout_ms,
                                                &observed_ready);
-                    if (!ready_ok && bench_debug_enabled ()) {
-                        std::fprintf (stderr,
-                                      "MULTI_STREAM: connect_ready wait timeout (expected=%zu observed=%zu)\n",
-                                      settings.clients, observed_ready);
+                    if (!ready_ok) {
+                        if (bench_debug_enabled ()) {
+                            std::fprintf (
+                              stderr,
+                              "MULTI_STREAM: connect_ready wait timeout (expected=%zu observed=%zu)\n",
+                              settings.clients, observed_ready);
+                        }
+                        return false;
                     }
                 }
                 drain_pending_stream_frames (server, decode_state, frame_size);
@@ -963,7 +998,7 @@ void run_multi_stream (const std::string &transport,
         }
 
         const double latency = measure_stream_latency_us (
-          ctx.get (), transport, lib_name, current_size, settings.hwm,
+          transport, lib_name, current_size, settings.hwm,
           settings.connect_ready_timeout_ms);
 
         const double throughput =

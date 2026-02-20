@@ -54,6 +54,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     msg_t _prefetched_msg;
 
     zlink::pipe_t *_current_out;
+    bool _current_out_checked_writable;
     bool _more_out;
 
     uint32_t _next_integral_routing_id;

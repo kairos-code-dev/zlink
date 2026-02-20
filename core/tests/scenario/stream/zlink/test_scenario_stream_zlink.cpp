@@ -24,6 +24,7 @@ struct server_options_t
     int backlog;
     int tcp_nodelay;
     int io_threads;
+    int raw_echo;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -33,7 +34,8 @@ struct server_options_t
           rcvbuf (1024 * 1024),
           backlog (32768),
           tcp_nodelay (1),
-          io_threads (4)
+          io_threads (4),
+          raw_echo (0)
     {
     }
 };
@@ -252,27 +254,34 @@ class zlink_stream_echo_server_t
             return 1;
         }
 
-        // STREAM payload is a raw TCP chunk and can be partial/coalesced.
-        // Only validate/count when a chunk exactly matches a full frame.
-        const size_t expected_frame_size = opt.size + 4;
-        if (payload_size == expected_frame_size && payload) {
-            const size_t body_size =
-              static_cast<size_t> (stream_echo::load_u32_be (payload));
-            if (body_size < k_min_payload_size || body_size > k_max_payload_size
-                || body_size != opt.size) {
-                protocol_error.fetch_add (1, std::memory_order_relaxed);
-            } else {
+        if (opt.raw_echo != 0) {
+            if (payload_size > 0)
                 recv_msgs.fetch_add (1, std::memory_order_relaxed);
+        } else {
+            // STREAM payload is a raw TCP chunk and can be partial/coalesced.
+            // Only validate/count when a chunk exactly matches a full frame.
+            const size_t expected_frame_size = opt.size + 4;
+            if (payload_size == expected_frame_size && payload) {
+                const size_t body_size =
+                  static_cast<size_t> (stream_echo::load_u32_be (payload));
+                if (body_size < k_min_payload_size
+                    || body_size > k_max_payload_size || body_size != opt.size) {
+                    protocol_error.fetch_add (1, std::memory_order_relaxed);
+                } else {
+                    recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                }
             }
         }
 
-        const int sent_rid = zlink_msg_send (&rid_msg, server, ZLINK_SNDMORE);
-        if (sent_rid != static_cast<int> (rid_size))
-            send_error.fetch_add (1, std::memory_order_relaxed);
-        else {
-            const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
-            if (sent_payload != static_cast<int> (payload_size))
+        if (payload_size > 0) {
+            const int sent_rid = zlink_msg_send (&rid_msg, server, ZLINK_SNDMORE);
+            if (sent_rid != static_cast<int> (rid_size))
                 send_error.fetch_add (1, std::memory_order_relaxed);
+            else {
+                const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
+                if (sent_payload != static_cast<int> (payload_size))
+                    send_error.fetch_add (1, std::memory_order_relaxed);
+            }
         }
 
         zlink_msg_close (&payload_msg);
@@ -364,6 +373,7 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
+    opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "zlink stream: size too large %zu\n", opt.size);
         return false;

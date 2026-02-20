@@ -32,6 +32,7 @@ struct server_options_t
     int backlog;
     int tcp_nodelay;
     int io_threads;
+    int raw_echo;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -41,7 +42,8 @@ struct server_options_t
           rcvbuf (1024 * 1024),
           backlog (32768),
           tcp_nodelay (1),
-          io_threads (8)
+          io_threads (8),
+          raw_echo (0)
     {
     }
 };
@@ -139,6 +141,32 @@ struct be_body_header_t : public message_headerable
 static_assert (sizeof (be_body_header_t) == 4,
                "be_body_header_t must be 4 bytes");
 
+struct raw_stream_header_t : public message_headerable
+{
+    static void _set_message_size (buffer &_buffer) noexcept
+    {
+        (void)_buffer;
+    }
+
+    static std::size_t _get_message_size (const buffer_view &_buffer) noexcept
+    {
+        return _buffer.size ();
+    }
+
+    static bool _validate_message (const buffer_view &_buffer) noexcept
+    {
+        (void)_buffer;
+        return true;
+    }
+
+    static bool
+    _validate_message (const std::vector<shared_buffer> &_vector_buffer) noexcept
+    {
+        (void)_vector_buffer;
+        return true;
+    }
+};
+
 class cgdk_stream_session_t
     : public net::socket::tcp_buffered<be_body_header_t, be_body_header_t>
 {
@@ -204,6 +232,55 @@ class cgdk_stream_session_t
     }
 };
 
+class cgdk_stream_raw_session_t
+    : public net::socket::tcp_buffered<raw_stream_header_t, raw_stream_header_t>
+{
+  public:
+    cgdk_stream_raw_session_t ()
+    {
+        this->minimum_message_buffer_size (1);
+        this->maximum_message_buffer_size (k_max_payload_size);
+    }
+
+    void on_connect () override
+    {
+        if (g_options) {
+            this->maximum_send_buffer_size (
+              static_cast<size_t> (std::max (1, g_options->sndbuf)));
+            this->maximum_receive_buffer_size (
+              static_cast<size_t> (std::max (1, g_options->rcvbuf)));
+            apply_native_socket_tuning (this->native_handle (), *g_options);
+        }
+
+        if (g_metrics)
+            g_metrics->active_connections.fetch_add (1, std::memory_order_relaxed);
+    }
+
+    void on_disconnect (uint64_t reason) override
+    {
+        (void)reason;
+
+        if (g_metrics
+            && g_metrics->active_connections.load (std::memory_order_relaxed) > 0) {
+            g_metrics->active_connections.fetch_sub (1, std::memory_order_relaxed);
+        }
+    }
+
+    result_code on_message (sMESSAGE_NETWORK &_msg) override
+    {
+        if (!g_metrics)
+            return eRESULT::DONE;
+
+        if (_msg.buf_message.empty ())
+            return eRESULT::DONE;
+
+        g_metrics->recv_msgs.fetch_add (1, std::memory_order_relaxed);
+        if (!this->send (_msg.buf_message))
+            g_metrics->send_error.fetch_add (1, std::memory_order_relaxed);
+        return eRESULT::DONE;
+    }
+};
+
 bool parse_options (int argc, char **argv, server_options_t &opt)
 {
     const stream_echo::arg_reader_t args (argc, argv);
@@ -216,6 +293,7 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
+    opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "cgdk10 stream: size too large %zu\n", opt.size);
         return false;
@@ -224,7 +302,8 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     return true;
 }
 
-int run_server (const server_options_t &opt)
+template <typename TSession>
+int run_server_impl (const server_options_t &opt)
 {
     metrics_t metrics;
     std::atomic<bool> stop (false);
@@ -288,9 +367,9 @@ int run_server (const server_options_t &opt)
         return 2;
     }
 
-    auto pacceptor = make_own<net::acceptor<cgdk_stream_session_t>> ();
+    auto pacceptor = make_own<net::acceptor<TSession>> ();
 
-    net::acceptor<cgdk_stream_session_t>::START_PARAMETER start_parameter;
+    typename net::acceptor<TSession>::START_PARAMETER start_parameter;
     start_parameter.local_endpoint =
       net::ip::tcp::endpoint (bind_addr, static_cast<unsigned short> (opt.port));
     const size_t prepared =
@@ -348,6 +427,13 @@ int run_server (const server_options_t &opt)
         .c_str ());
 
     return 0;
+}
+
+int run_server (const server_options_t &opt)
+{
+    if (opt.raw_echo != 0)
+        return run_server_impl<cgdk_stream_raw_session_t> (opt);
+    return run_server_impl<cgdk_stream_session_t> (opt);
 }
 
 } // namespace

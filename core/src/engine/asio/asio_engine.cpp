@@ -142,17 +142,19 @@ const bool asio_stream_enable_handler_alloc =
 const bool asio_stream_enable_read_drain =
   env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN");
 
+// STREAM/TCP is dominated by small-frame send overhead in high-connection
+// tests. Keep speculative write enabled by default and allow opt-out.
 const bool asio_stream_enable_speculative_write =
-  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE");
+  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE");
 
 const bool asio_stream_enable_rx_slab =
-  env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_RX_SLAB");
+  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_RX_SLAB");
 
 const bool asio_stream_enable_non_tcp_spec_read =
   env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
 
 const size_t asio_stream_spec_write_budget_bytes =
-  parse_size_env ("ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES", 262144);
+  parse_size_env ("ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES", 2097152);
 
 const size_t asio_stream_read_drain_max_loops =
   parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 16);
@@ -1090,9 +1092,15 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
     if (_handshaking && _outsize == 0)
         return;
 
-    //  Continue writing if more data available
-    if (!_output_stopped)
-        start_async_write ();
+    //  Continue writing if more data available.
+    //  For STREAM/TCP, prefer speculative loop from completion callback
+    //  to reduce async callback churn on small frames.
+    if (!_output_stopped) {
+        if (_options.type == ZLINK_STREAM && use_stream_speculative_write ())
+            speculative_write ();
+        else
+            start_async_write ();
+    }
 }
 
 bool zlink::asio_engine_t::process_input ()

@@ -87,6 +87,10 @@ class pipe_t ZLINK_FINAL : public object_t,
     //  retains ownership of its message buffer.
     bool write (const msg_t *msg_);
 
+    //  Writes a message assuming HWM was already checked by caller.
+    //  Still validates pipe active/termination state.
+    bool write_no_hwm_check (const msg_t *msg_);
+
     //  Remove unfinished parts of the outbound message from the pipe.
     void rollback () const;
 

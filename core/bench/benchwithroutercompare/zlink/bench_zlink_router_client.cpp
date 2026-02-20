@@ -1,0 +1,262 @@
+#include "../common/bench_router_compare_common.hpp"
+
+#include <zlink.h>
+
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace {
+
+using namespace bench_rc;
+
+static const char k_server_routing_id[] = "RC_SRV";
+
+void apply_socket_options(void *socket)
+{
+    const int linger = 0;
+    const int rcvtimeo = 100;
+    const int sndtimeo = 100;
+    const int hwm = static_cast<int>(parse_long_env("BENCH_HWM", 300000, 1));
+    (void) zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
+    (void) zlink_setsockopt(socket, ZLINK_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
+    (void) zlink_setsockopt(socket, ZLINK_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
+    (void) zlink_setsockopt(socket, ZLINK_RCVHWM, &hwm, sizeof(hwm));
+    (void) zlink_setsockopt(socket, ZLINK_SNDHWM, &hwm, sizeof(hwm));
+    const int nodelay = 1;
+    (void) zlink_setsockopt(socket, ZLINK_TCP_NODELAY, &nodelay, sizeof(nodelay));
+}
+
+bool send_rtt_message(void *socket,
+                      std::vector<unsigned char> &payload,
+                      uint64_t send_ts)
+{
+    store_u64_be(payload.data(), send_ts);
+    store_u64_be(payload.data() + 8, send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
+
+    if (zlink_send(socket, k_server_routing_id, std::strlen(k_server_routing_id),
+                   ZLINK_SNDMORE | ZLINK_DONTWAIT)
+        < 0) {
+        return false;
+    }
+    return zlink_send(socket, payload.data(), payload.size(), ZLINK_DONTWAIT) >= 0;
+}
+
+bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
+                      unsigned char *payload_buf, size_t payload_cap,
+                      uint64_t &wire_send_ts)
+{
+    const int id_len = zlink_recv(socket, id_buf, id_cap, ZLINK_DONTWAIT);
+    if (id_len < 0)
+        return false;
+    const int rc = zlink_recv(socket, payload_buf, payload_cap, ZLINK_DONTWAIT);
+    if (rc < 16)
+        return false;
+    wire_send_ts = load_u64_be(payload_buf);
+    return true;
+}
+
+void close_all(std::vector<void *> &sockets, void *ctx)
+{
+    for (size_t i = 0; i < sockets.size(); ++i)
+        if (sockets[i])
+            zlink_close(sockets[i]);
+    zlink_ctx_term(ctx);
+}
+
+bool run_measure_once(const std::vector<void *> &sockets,
+                      int clients,
+                      int inflight,
+                      int duration_s,
+                      int settle_ms,
+                      int drain_ms,
+                      size_t msg_size,
+                      double &throughput_out,
+                      double &latency_out)
+{
+    if (settle_ms > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(settle_ms));
+
+    const auto measure_start = std::chrono::steady_clock::now();
+    const auto measure_end = measure_start + std::chrono::seconds(duration_s);
+
+    long recv_count = 0;
+    double latency_sum_us = 0.0;
+    long latency_samples = 0;
+
+    std::vector<std::deque<uint64_t> > pending(static_cast<size_t>(clients));
+    std::vector<unsigned char> payload(std::max<size_t>(16, msg_size), 0xAB);
+
+    std::vector<char> recv_id_buf(512);
+    std::vector<unsigned char> recv_payload_buf(1024 * 1024);
+
+    while (std::chrono::steady_clock::now() < measure_end) {
+        bool progressed = false;
+
+        for (int i = 0; i < clients; ++i) {
+            std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+            while (static_cast<int>(q.size()) < inflight) {
+                const uint64_t ts = now_ns();
+                if (!send_rtt_message(sockets[static_cast<size_t>(i)],
+                                      payload, ts)) {
+                    break;
+                }
+                q.push_back(ts);
+                progressed = true;
+            }
+        }
+
+        for (int i = 0; i < clients; ++i) {
+            uint64_t wire_ts = 0;
+            while (recv_rtt_message(sockets[static_cast<size_t>(i)],
+                                    recv_id_buf.data(), recv_id_buf.size(),
+                                    recv_payload_buf.data(), recv_payload_buf.size(),
+                                    wire_ts)) {
+                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+                if (!q.empty())
+                    q.pop_front();
+
+                const uint64_t now = now_ns();
+                if (now >= wire_ts) {
+                    latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                    ++latency_samples;
+                }
+                ++recv_count;
+                progressed = true;
+            }
+        }
+
+        if (!progressed)
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+
+    const auto measure_stop = std::chrono::steady_clock::now();
+    const auto drain_end =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
+    while (std::chrono::steady_clock::now() < drain_end) {
+        bool progressed = false;
+        for (int i = 0; i < clients; ++i) {
+            uint64_t wire_ts = 0;
+            while (recv_rtt_message(sockets[static_cast<size_t>(i)],
+                                    recv_id_buf.data(), recv_id_buf.size(),
+                                    recv_payload_buf.data(), recv_payload_buf.size(),
+                                    wire_ts)) {
+                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+                if (!q.empty())
+                    q.pop_front();
+
+                const uint64_t now = now_ns();
+                if (now >= wire_ts) {
+                    latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                    ++latency_samples;
+                }
+                ++recv_count;
+                progressed = true;
+            }
+        }
+
+        if (!progressed)
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+
+    double elapsed_s =
+      std::chrono::duration_cast<std::chrono::duration<double> >(measure_stop
+                                                                  - measure_start)
+        .count();
+    if (elapsed_s <= 0.0)
+        elapsed_s = static_cast<double>(std::max(1, duration_s));
+
+    throughput_out = static_cast<double>(recv_count) / elapsed_s;
+    latency_out = latency_samples > 0
+                    ? latency_sum_us / static_cast<double>(latency_samples)
+                    : 0.0;
+    return true;
+}
+
+} // namespace
+
+int main(int argc, char **argv)
+{
+    const std::string lib_name = argc > 1 ? std::string(argv[1]) : std::string("zlink");
+    const std::string msg_sizes_raw = parse_string_env("BENCH_MSG_SIZES", "");
+    std::vector<size_t> msg_sizes;
+    if (!msg_sizes_raw.empty() && !parse_size_list(msg_sizes_raw, msg_sizes)) {
+        std::fprintf(stderr, "rc client: invalid BENCH_MSG_SIZES\n");
+        return 2;
+    }
+    if (msg_sizes.empty())
+        msg_sizes = {64, 256, 1024, 65536, 131072, 262144};
+
+    const int clients = static_cast<int>(parse_long_env("BENCH_CLIENTS", 100, 1));
+    const int inflight = static_cast<int>(parse_long_env("BENCH_INFLIGHT", 1, 1));
+    const int duration_s =
+      static_cast<int>(parse_long_env("BENCH_DURATION_SECONDS", 5, 1));
+    const int settle_ms =
+      static_cast<int>(parse_long_env("BENCH_SETTLE_MS", 500, 0));
+    const int drain_ms = static_cast<int>(parse_long_env("BENCH_DRAIN_MS", 300, 0));
+    const int io_threads = static_cast<int>(parse_long_env("BENCH_IO_THREADS", 4, 1));
+    const int port = static_cast<int>(parse_long_env("BENCH_PORT", 29200, 1));
+
+    void *ctx = zlink_ctx_new();
+    if (!ctx) {
+        std::fprintf(stderr, "rc client: zlink_ctx_new failed\n");
+        return 2;
+    }
+    (void) zlink_ctx_set(ctx, ZLINK_IO_THREADS, io_threads);
+    const long max_sockets_default = std::max<long>(2048, clients + 1024L);
+    const int max_sockets = static_cast<int>(
+      parse_long_env("BENCH_MAX_SOCKETS", max_sockets_default, 1));
+    (void) zlink_ctx_set(ctx, ZLINK_MAX_SOCKETS, max_sockets);
+
+    const std::string endpoint = endpoint_from_port(port);
+
+    std::vector<void *> sockets(static_cast<size_t>(clients), NULL);
+
+    for (int i = 0; i < clients; ++i) {
+        void *sock = zlink_socket(ctx, ZLINK_ROUTER);
+        if (!sock) {
+            std::fprintf(stderr,
+                         "rc client: zlink_socket failed at index=%d errno=%d\n",
+                         i, zlink_errno());
+            close_all(sockets, ctx);
+            return 2;
+        }
+
+        apply_socket_options(sock);
+
+        char rid[64];
+        std::snprintf(rid, sizeof(rid), "RC_C_%d", i);
+        (void) zlink_setsockopt(sock, ZLINK_ROUTING_ID, rid, std::strlen(rid));
+
+        if (zlink_connect(sock, endpoint.c_str()) != 0) {
+            std::fprintf(stderr,
+                         "rc client: zlink_connect failed at index=%d errno=%d\n",
+                         i, zlink_errno());
+            zlink_close(sock);
+            close_all(sockets, ctx);
+            return 2;
+        }
+
+        sockets[static_cast<size_t>(i)] = sock;
+    }
+
+    for (size_t i = 0; i < msg_sizes.size(); ++i) {
+        double throughput = 0.0;
+        double latency = 0.0;
+        if (!run_measure_once(sockets, clients, inflight,
+                              duration_s, settle_ms, drain_ms, msg_sizes[i],
+                              throughput, latency)) {
+            close_all(sockets, ctx);
+            return 2;
+        }
+        print_result(lib_name, "tcp", msg_sizes[i], throughput, latency);
+    }
+
+    close_all(sockets, ctx);
+    return 0;
+}

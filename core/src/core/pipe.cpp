@@ -260,6 +260,20 @@ bool zlink::pipe_t::write (const msg_t *msg_)
     return true;
 }
 
+bool zlink::pipe_t::write_no_hwm_check (const msg_t *msg_)
+{
+    if (unlikely (!_out_active || _state != active))
+        return false;
+
+    const bool more = (msg_->flags () & msg_t::more) != 0;
+    const bool is_routing_id = msg_->is_routing_id ();
+    _out_pipe->write (*msg_, more);
+    if (!more && !is_routing_id)
+        _msgs_written++;
+
+    return true;
+}
+
 void zlink::pipe_t::rollback () const
 {
     //  Remove incomplete message from the outbound pipe.

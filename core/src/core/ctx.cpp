@@ -55,14 +55,14 @@ stream_sched_mode_t parse_stream_session_sched_mode ()
 {
     const char *env = std::getenv ("ZLINK_ASIO_STREAM_SESSION_SCHED");
     if (!env || !*env)
-        return stream_sched_minload;
+        return stream_sched_rr;
 
     if (!strcmp (env, "rr") || !strcmp (env, "RR"))
         return stream_sched_rr;
     if (!strcmp (env, "minload") || !strcmp (env, "MINLOAD"))
         return stream_sched_minload;
 
-    return stream_sched_minload;
+    return stream_sched_rr;
 }
 }
 
@@ -653,7 +653,7 @@ zlink::io_thread_t *zlink::ctx_t::choose_io_thread_stream (uint64_t affinity_)
     if (_io_threads.empty ())
         return NULL;
 
-    const stream_sched_mode_t mode = parse_stream_session_sched_mode ();
+    static const stream_sched_mode_t mode = parse_stream_session_sched_mode ();
     if (mode == stream_sched_rr) {
         const io_threads_t::size_type io_threads_size = _io_threads.size ();
         const io_threads_t::size_type start_index =

@@ -85,7 +85,7 @@ English | [한국어](README.ko.md)
 | [architecture.md](internals/architecture.md) | System architecture overview (5-layer details) |
 | [protocol-zmp.md](internals/protocol-zmp.md) | ZMP v1.0 protocol details |
 | [protocol-raw.md](internals/protocol-raw.md) | RAW (STREAM) protocol details |
-| [stream-socket.md](internals/stream-socket.md) | STREAM socket WS/WSS optimization |
+| [stream-socket.md](internals/stream-socket.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
 | [threading-model.md](internals/threading-model.md) | Threading and concurrency model |
 | [services-internals.md](internals/services-internals.md) | Service layer internal design |
 | [design-decisions.md](internals/design-decisions.md) | Design decision records |

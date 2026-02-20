@@ -32,6 +32,7 @@ libzmq는 강력하지만 수십 년간 축적된 복잡성을 안고 있습니�
 ### 간소화된 Core
 
 REQ/REP, PUSH/PULL, 모든 draft socket을 제거했습니다. 남은 7종의 socket type — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM — 으로 실전 메시징 패턴의 대부분을 커버하면서, 복잡성에 의한 실수를 줄입니다. STREAM 소켓은 외부 클라이언트와의 RAW 통신을 위해 tcp, tls, ws, wss transport를 지원합니다.
+현재 STREAM 기본값은 실전 처리량 기준으로 튜닝되어 있습니다: accept 동시성 `4`, 세션 스케줄링 `rr`, `SNDBUF/RCVBUF` 미지정 시 `256KB` 자동 적용. 기존 STREAM 런타임 튜닝 환경변수 대부분은 제거되고 내부 상수로 고정되었습니다.
 
 ### Boost.Asio 기반 I/O Engine
 

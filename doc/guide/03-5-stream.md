@@ -118,7 +118,7 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 ---
 
-## 6. Option Policy
+## 6. Option and Runtime Policy
 
 Main supported options:
 - `ZLINK_MAXMSGSIZE`, `ZLINK_SNDHWM`, `ZLINK_RCVHWM`, `ZLINK_SNDBUF`, `ZLINK_RCVBUF`, `ZLINK_BACKLOG`, `ZLINK_LINGER`
@@ -126,6 +126,37 @@ Main supported options:
 
 Unsupported/changed:
 - Setting `ZLINK_CONNECT_ROUTING_ID` on STREAM returns `EOPNOTSUPP`.
+
+### 6.1 Default STREAM runtime profile
+
+Defaults currently used by STREAM internals:
+- `ZLINK_BACKLOG`: `65536`
+- `ZLINK_SNDBUF`: `262144` when unset (`-1`)
+- `ZLINK_RCVBUF`: `262144` when unset (`-1`)
+- minimum in/out batch size: `12288`
+- STREAM accept concurrency default: `4` (clamped to max `128`)
+- STREAM session scheduling default: `rr`
+
+### 6.2 STREAM runtime environment knobs (still supported)
+
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY` (default `4`, STREAM listener only)
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`, default `rr`)
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ` (default off)
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER` (default off; gather enabled)
+- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE` (default on)
+- `ZLINK_ASIO_STREAM_BATCH_SIZE` (default `12288`)
+
+### 6.3 STREAM tuning envs removed (fixed constants)
+
+The following STREAM env-based toggles were removed and are now fixed in code:
+- `ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC` -> always enabled
+- `ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN` -> always enabled
+- `ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE` -> fixed on for STREAM/TCP path
+- `ZLINK_ASIO_STREAM_ENABLE_RX_SLAB` -> always enabled
+- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD` -> fixed to `8192`
+- `ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES` -> fixed to `2097152`
+- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS` -> fixed to `16`
+- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES` -> fixed to `1048576`
 
 ---
 

@@ -85,7 +85,7 @@
 | [architecture.ko.md](internals/architecture.ko.md) | 시스템 아키텍처 전체 (5계층 상세) |
 | [protocol-zmp.ko.md](internals/protocol-zmp.ko.md) | ZMP v1.0 프로토콜 상세 |
 | [protocol-raw.ko.md](internals/protocol-raw.ko.md) | RAW (STREAM) 프로토콜 상세 |
-| [stream-socket.ko.md](internals/stream-socket.ko.md) | STREAM 소켓 WS/WSS 최적화 |
+| [stream-socket.ko.md](internals/stream-socket.ko.md) | STREAM 소켓 내부 구조, WS/WSS 최적화, 런타임 기본값 |
 | [threading-model.ko.md](internals/threading-model.ko.md) | 스레딩 및 동시성 모델 |
 | [services-internals.ko.md](internals/services-internals.ko.md) | 서비스 계층 내부 설계 |
 | [design-decisions.ko.md](internals/design-decisions.ko.md) | 설계 결정 기록 |

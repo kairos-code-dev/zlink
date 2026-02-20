@@ -79,3 +79,37 @@ Application                Stream Socket              Engine              Transp
 - Speculative write not supported (WebSocket is frame-based)
 - Gather write supported for WS/WSS (Beast handles internal buffering)
 - TLS/WSS has encryption overhead
+
+## 6. Current STREAM Runtime Defaults (2026-02)
+
+This document originally focused on WS/WSS path optimization, but STREAM now
+uses a consolidated default profile across transports.
+
+### 6.1 Fixed internal constants
+
+These values are no longer controlled by STREAM env knobs:
+- handler allocator: enabled
+- read drain: enabled
+- speculative write: fixed on for STREAM/TCP path
+- RX slab buffering: enabled
+- gather threshold: `8192`
+- speculative write byte budget: `2097152`
+- read drain max loops: `16`
+- read drain max bytes: `1048576`
+
+### 6.2 Effective socket/listener defaults
+
+- backlog: `65536`
+- `sndbuf` default when unset: `262144`
+- `rcvbuf` default when unset: `262144`
+- accept concurrency (STREAM only): default `4`, max `128`
+- session scheduler (STREAM): default `rr`
+
+### 6.3 Remaining STREAM runtime env controls
+
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`)
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER`
+- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE`
+- `ZLINK_ASIO_STREAM_BATCH_SIZE`

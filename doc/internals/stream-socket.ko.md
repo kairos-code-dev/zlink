@@ -79,3 +79,37 @@ Application                Stream Socket              Engine              Transp
 - Speculative write 미지원 (WebSocket 프레임 기반)
 - Gather write는 WS/WSS에서 지원 (Beast가 내부 버퍼링)
 - TLS/WSS는 암호화 오버헤드 존재
+
+## 6. 현재 STREAM 런타임 기본값 (2026-02)
+
+이 문서는 원래 WS/WSS 경로 최적화 중심이었지만, 현재 STREAM은 transport 전반에
+공통된 기본 성능 프로파일을 사용한다.
+
+### 6.1 내부 상수 고정 항목
+
+아래 값들은 STREAM env로 더 이상 제어하지 않고 상수로 고정된다:
+- handler allocator: 활성
+- read drain: 활성
+- speculative write: STREAM/TCP 경로에서 상시 on 고정
+- RX slab buffering: 활성
+- gather threshold: `8192`
+- speculative write byte budget: `2097152`
+- read drain max loops: `16`
+- read drain max bytes: `1048576`
+
+### 6.2 소켓/리스너 기본값
+
+- backlog: `65536`
+- `sndbuf` 미지정 시 기본값: `262144`
+- `rcvbuf` 미지정 시 기본값: `262144`
+- accept 동시성(STREAM 전용): 기본 `4`, 최대 `128`
+- 세션 스케줄러(STREAM): 기본 `rr`
+
+### 6.3 현재 유지되는 STREAM 런타임 환경변수
+
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY`
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`)
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER`
+- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE`
+- `ZLINK_ASIO_STREAM_BATCH_SIZE`

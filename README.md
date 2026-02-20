@@ -32,6 +32,7 @@ libzmq is powerful, but it carries decades of accumulated complexity — legacy 
 ### Streamlined Core
 
 REQ/REP, PUSH/PULL, and all draft sockets have been removed. The remaining 7 socket types — PAIR, PUB/SUB, XPUB/XSUB, DEALER/ROUTER, STREAM — cover the vast majority of real-world messaging patterns while reducing mistakes caused by unnecessary complexity. The STREAM socket supports tcp, tls, ws, and wss transports for raw communication with external clients.
+Current STREAM defaults are tuned for production throughput: accept concurrency `4`, session scheduling `rr`, and socket `SNDBUF/RCVBUF` auto-default to `256KB` when unset. Most legacy STREAM runtime tuning env flags were removed and replaced with fixed internal constants.
 
 ### Boost.Asio-Based I/O Engine
 

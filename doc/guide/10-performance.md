@@ -34,6 +34,12 @@
 
 > For details on WS/WSS internal optimizations (copy elimination, gather write), see [STREAM Socket Optimization](../internals/stream-socket.md).
 
+### STREAM Benchmark Policy
+
+- `libzmq STREAM` comparison is **tcp-only**.
+- For `tls/ws/wss`, use zlink-to-zlink baseline comparison (previous zlink baseline vs current build).
+- For current STREAM default runtime values and remaining tuning knobs, see [03-5-stream.md](03-5-stream.md).
+
 ## 3. Throughput Guidelines by Message Size
 
 | Message Size | Characteristics | Recommendation |

@@ -34,6 +34,12 @@
 
 > WS/WSS 내부 최적화 상세(Copy elimination, Gather write)는 [STREAM 소켓 최적화](../internals/stream-socket.ko.md)를 참고.
 
+### STREAM 벤치 정책
+
+- `libzmq STREAM` 비교는 **tcp만** 수행한다.
+- `tls/ws/wss`는 zlink-to-zlink baseline 비교(이전 zlink baseline vs 현재 빌드)로 측정한다.
+- 현재 STREAM 기본 런타임 값/잔여 튜닝 포인트는 [03-5-stream.ko.md](03-5-stream.ko.md)를 참고한다.
+
 ## 3. 메시지 크기별 처리량 가이드라인
 
 | 메시지 크기 | 특성 | 권장 사항 |

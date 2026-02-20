@@ -118,7 +118,7 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 ---
 
-## 6. 옵션 정책
+## 6. 옵션 및 런타임 정책
 
 주요 옵션:
 - 지원: `ZLINK_MAXMSGSIZE`, `ZLINK_SNDHWM`, `ZLINK_RCVHWM`, `ZLINK_SNDBUF`, `ZLINK_RCVBUF`, `ZLINK_BACKLOG`, `ZLINK_LINGER`
@@ -126,6 +126,37 @@ recv(fd, body, body_len, MSG_WAITALL);
 
 비지원/변경:
 - `ZLINK_CONNECT_ROUTING_ID`를 STREAM에 설정하면 `EOPNOTSUPP`
+
+### 6.1 STREAM 기본 런타임 프로파일
+
+현재 STREAM 내부 기본값:
+- `ZLINK_BACKLOG`: `65536`
+- `ZLINK_SNDBUF`: 미지정(`-1`)이면 `262144`
+- `ZLINK_RCVBUF`: 미지정(`-1`)이면 `262144`
+- in/out batch 최소 크기: `12288`
+- STREAM accept 동시성 기본값: `4` (최대 `128`로 clamp)
+- STREAM 세션 스케줄링 기본값: `rr`
+
+### 6.2 STREAM 런타임 환경변수 (현재 유지)
+
+- `ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY` (기본 `4`, STREAM listener 전용)
+- `ZLINK_ASIO_STREAM_SESSION_SCHED` (`rr|minload`, 기본 `rr`)
+- `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ` (기본 off)
+- `ZLINK_ASIO_STREAM_DISABLE_GATHER` (기본 off, gather on)
+- `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE` (기본 on)
+- `ZLINK_ASIO_STREAM_BATCH_SIZE` (기본 `12288`)
+
+### 6.3 STREAM 튜닝 환경변수 제거(내부 상수 고정)
+
+다음 STREAM env 토글은 제거되었고 코드 상수로 고정됨:
+- `ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC` -> 항상 활성
+- `ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN` -> 항상 활성
+- `ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE` -> STREAM/TCP 경로에서 상시 on 고정
+- `ZLINK_ASIO_STREAM_ENABLE_RX_SLAB` -> 항상 활성
+- `ZLINK_ASIO_STREAM_GATHER_THRESHOLD` -> `8192` 고정
+- `ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES` -> `2097152` 고정
+- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS` -> `16` 고정
+- `ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES` -> `1048576` 고정
 
 ---
 

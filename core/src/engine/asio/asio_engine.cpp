@@ -91,14 +91,6 @@ bool env_flag_enabled (const char *name_)
     return env && *env && *env != '0';
 }
 
-bool env_flag_default_true (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return true;
-    return *env != '0';
-}
-
 size_t parse_size_env (const char *name_, size_t fallback_)
 {
     const char *env = std::getenv (name_);
@@ -130,37 +122,29 @@ const bool asio_stream_gather_on =
 
 // Keep gather enabled for STREAM, but only above a practical payload size.
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
-const size_t asio_stream_gather_threshold =
-  parse_size_env ("ZLINK_ASIO_STREAM_GATHER_THRESHOLD", 8192);
+const size_t asio_stream_gather_threshold = 8192;
 
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
 
-const bool asio_stream_enable_handler_alloc =
-  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_HANDLER_ALLOC");
+const bool asio_stream_enable_handler_alloc = true;
 
-const bool asio_stream_enable_read_drain =
-  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_READ_DRAIN");
+const bool asio_stream_enable_read_drain = true;
 
 // STREAM/TCP is dominated by small-frame send overhead in high-connection
-// tests. Keep speculative write enabled by default and allow opt-out.
-const bool asio_stream_enable_speculative_write =
-  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_SPECULATIVE_WRITE");
+// tests. Keep speculative write always enabled in the STREAM fast-path.
+const bool asio_stream_enable_speculative_write = true;
 
-const bool asio_stream_enable_rx_slab =
-  env_flag_default_true ("ZLINK_ASIO_STREAM_ENABLE_RX_SLAB");
+const bool asio_stream_enable_rx_slab = true;
 
 const bool asio_stream_enable_non_tcp_spec_read =
   env_flag_enabled ("ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ");
 
-const size_t asio_stream_spec_write_budget_bytes =
-  parse_size_env ("ZLINK_ASIO_STREAM_SPEC_WRITE_BUDGET_BYTES", 2097152);
+const size_t asio_stream_spec_write_budget_bytes = 2097152;
 
-const size_t asio_stream_read_drain_max_loops =
-  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_LOOPS", 16);
+const size_t asio_stream_read_drain_max_loops = 16;
 
-const size_t asio_stream_read_drain_max_bytes =
-  parse_size_env ("ZLINK_ASIO_STREAM_READ_DRAIN_MAX_BYTES", 1048576);
+const size_t asio_stream_read_drain_max_bytes = 1048576;
 
 }
 

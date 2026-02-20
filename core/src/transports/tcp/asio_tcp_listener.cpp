@@ -46,13 +46,13 @@ size_t parse_stream_accept_concurrency ()
 {
     const char *env = std::getenv ("ZLINK_ASIO_STREAM_ACCEPT_CONCURRENCY");
     if (!env || !*env)
-        return 1;
+        return 4;
 
     errno = 0;
     char *end = NULL;
     const unsigned long long value = std::strtoull (env, &end, 10);
     if (errno != 0 || end == env || value == 0)
-        return 1;
+        return 4;
 
     return static_cast<size_t> (std::min<unsigned long long> (value, 128ULL));
 }

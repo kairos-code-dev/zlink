@@ -22,7 +22,6 @@ normalize_pattern() {
     DEALER_DEALER) echo "MULTI_DEALER_DEALER" ;;
     DEALER_ROUTER) echo "MULTI_DEALER_ROUTER" ;;
     ROUTER_ROUTER) echo "MULTI_ROUTER_ROUTER" ;;
-    ROUTER_ROUTER_POLL) echo "MULTI_ROUTER_ROUTER_POLL" ;;
     PUBSUB) echo "MULTI_PUBSUB" ;;
     STREAM) echo "MULTI_STREAM" ;;
     *) return 1 ;;
@@ -116,7 +115,7 @@ Run one multi benchmark pattern with one transport and compare libzmq vs zlink.
 Options:
   --pattern NAME                One pattern (default: router_router)
                                 Allowed: dealer_dealer, dealer_router,
-                                         router_router, router_router_poll,
+                                         router_router,
                                          pubsub, stream
                                 Also accepts MULTI_* legacy names.
   --runs N                      Iterations per configuration (default: 1)
@@ -323,7 +322,7 @@ if [[ "${PATTERN_RAW}" == *","* ]]; then
 fi
 PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   echo "Error: unsupported pattern '${PATTERN_RAW}'." >&2
-  echo "Supported: dealer_dealer, dealer_router, router_router, router_router_poll, pubsub, stream" >&2
+  echo "Supported: dealer_dealer, dealer_router, router_router, pubsub, stream" >&2
   exit 1
 }
 PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
@@ -431,9 +430,6 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
       ;;
     MULTI_ROUTER_ROUTER)
       SINGLE_PATTERN="router_router"
-      ;;
-    MULTI_ROUTER_ROUTER_POLL)
-      SINGLE_PATTERN="router_router_poll"
       ;;
     MULTI_PUBSUB)
       SINGLE_PATTERN="pubsub"

@@ -4,7 +4,6 @@ import os
 import platform
 import re
 import socket
-import statistics
 import subprocess
 import sys
 import time
@@ -15,15 +14,34 @@ EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
+COMMON_PY_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "common"))
+if COMMON_PY_DIR not in sys.path:
+    sys.path.insert(0, COMMON_PY_DIR)
+
+from multi_e2e_metrics import (
+    format_latency,
+    format_throughput,
+    latency_diff_str,
+    load_cached_stats,
+    parse_result,
+    parse_results,
+    throughput_diff_str,
+    update_stats_with_median,
+)
 
 DEFAULT_PATTERNS = [
     "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
-    "MULTI_ROUTER_ROUTER_POLL",
     "MULTI_PUBSUB",
     "MULTI_STREAM",
 ]
+RTT_PATTERNS = {
+    "MULTI_DEALER_DEALER",
+    "MULTI_DEALER_ROUTER",
+    "MULTI_ROUTER_ROUTER",
+    "MULTI_STREAM",
+}
 
 
 def parse_env_list(name, cast_fn):
@@ -265,34 +283,6 @@ def parse_args():
     return pattern, num_runs, zlink_only, refresh_std_cache, std_cache_file, build_dir, run_cooldown_ms, pin_cpu
 
 
-def parse_result(stdout, transport, msg_size, pattern):
-    out = {}
-    for line in stdout.splitlines():
-        if not line.startswith("RESULT,"):
-            continue
-        p = line.split(",")
-        if len(p) < 7:
-            continue
-        if p[2].strip() != pattern:
-            continue
-        if p[3].strip() != transport:
-            continue
-        try:
-            size = int(p[4])
-        except ValueError:
-            continue
-        if size != msg_size:
-            continue
-        metric = p[5].strip().lower()
-        if metric not in ("throughput", "latency"):
-            continue
-        try:
-            out[metric] = float(p[6])
-        except ValueError:
-            continue
-    return out
-
-
 def get_env_for_lib(base_env, lib_name, libzmq_lib_dir, zlink_lib_dir):
     env = base_env.copy()
     if IS_WINDOWS:
@@ -362,7 +352,8 @@ def run_single_stack_test(build_dir,
                           settle_ms,
                           drain_ms,
                           io_threads,
-                          base_env):
+                          base_env,
+                          msg_sizes_override=None):
     port = find_free_port(29100)
     env = base_env.copy()
     env["BENCH_MULTI_E2E_PATTERN"] = pattern
@@ -373,18 +364,23 @@ def run_single_stack_test(build_dir,
     env["BENCH_MULTI_SETTLE_MS"] = str(settle_ms)
     env["BENCH_MULTI_DRAIN_MS"] = str(drain_ms)
     env["BENCH_IO_THREADS"] = str(io_threads)
+    if msg_sizes_override:
+        env["BENCH_MULTI_E2E_MSG_SIZES"] = ",".join(str(int(v)) for v in msg_sizes_override)
+    elif "BENCH_MULTI_E2E_MSG_SIZES" in env:
+        del env["BENCH_MULTI_E2E_MSG_SIZES"]
 
+    size_arg = int(msg_size)
     server_cmd = [
         os.path.join(build_dir, server_bin + EXE_SUFFIX),
         lib_name,
         transport,
-        str(msg_size),
+        str(size_arg),
     ]
     client_cmd = [
         os.path.join(build_dir, client_bin + EXE_SUFFIX),
         lib_name,
         transport,
-        str(msg_size),
+        str(size_arg),
     ]
 
     server_proc = None
@@ -413,7 +409,20 @@ def run_single_stack_test(build_dir,
             if err_msg:
                 return None, f"client_rc_{result.returncode}:{err_msg}"
             return None, f"client_rc_{result.returncode}"
-        parsed = parse_result(result.stdout, transport, msg_size, pattern)
+        if msg_sizes_override:
+            parsed_map = parse_results(result.stdout, pattern, transport)
+            filtered = {}
+            for size in msg_sizes_override:
+                parsed = parsed_map.get(int(size))
+                if not parsed:
+                    continue
+                if "throughput" not in parsed or "latency" not in parsed:
+                    continue
+                filtered[int(size)] = parsed
+            if not filtered:
+                return None, "no_data"
+            return filtered, ""
+        parsed = parse_result(result.stdout, pattern, transport, int(msg_size))
         if "throughput" not in parsed or "latency" not in parsed:
             return None, "no_data"
         return parsed, ""
@@ -431,10 +440,6 @@ def run_single_stack_test(build_dir,
                         server_proc.kill()
                 except Exception:
                     pass
-
-
-def format_t(v):
-    return f"{v/1e3:6.2f} Kmsg/s"
 
 
 def main():
@@ -543,14 +548,98 @@ def main():
         for transport in transports:
             for clients in clients_matrix:
                 print(f"  > Config clients={clients} inflight={inflight} transport={transport}")
+
+                use_size_reuse = pattern in RTT_PATTERNS
+                if use_size_reuse:
+                    size_csv = ",".join(str(s) for s in msg_sizes)
+                    need_std = (not zlink_only) or refresh_std_cache or not cached
+                    std_values_by_size = {size: [] for size in msg_sizes}
+                    zlk_values_by_size = {size: [] for size in msg_sizes}
+
+                    if need_std:
+                        for i in range(runs):
+                            print(f"    libzmq sizes[{size_csv}] run {i+1}/{runs}", flush=True)
+                            env_std = get_env_for_lib(base_env, "libzmq", libzmq_lib_dir, zlink_lib_dir)
+                            parsed_map, err = run_single_stack_test(
+                                build_dir,
+                                "comp_std_zmq_multi_e2e_server",
+                                "comp_std_zmq_multi_e2e_client",
+                                "libzmq",
+                                pattern,
+                                transport,
+                                msg_sizes[0],
+                                clients,
+                                inflight,
+                                duration,
+                                settle_ms,
+                                drain_ms,
+                                io_threads,
+                                env_std,
+                                msg_sizes_override=msg_sizes,
+                            )
+                            if not parsed_map:
+                                all_failures.append((pattern, "libzmq", transport, clients, 0, err))
+                                continue
+                            for size in msg_sizes:
+                                parsed = parsed_map.get(size)
+                                if not parsed:
+                                    all_failures.append((pattern, "libzmq", transport, clients, size, "missing_metric"))
+                                    continue
+                                std_values_by_size[size].append(parsed)
+                            if run_cooldown_ms > 0 and i + 1 < runs:
+                                time.sleep(run_cooldown_ms / 1000.0)
+                    elif cached:
+                        for size in msg_sizes:
+                            key_prefix = f"{transport}|{clients}|{size}"
+                            load_cached_stats(std_stats, cached, key_prefix)
+
+                    for i in range(runs):
+                        print(f"    zlink  sizes[{size_csv}] run {i+1}/{runs}", flush=True)
+                        env_zlk = get_env_for_lib(base_env, "zlink", libzmq_lib_dir, zlink_lib_dir)
+                        parsed_map, err = run_single_stack_test(
+                            build_dir,
+                            "comp_zlink_multi_e2e_server",
+                            "comp_zlink_multi_e2e_client",
+                            "zlink",
+                            pattern,
+                            transport,
+                            msg_sizes[0],
+                            clients,
+                            inflight,
+                            duration,
+                            settle_ms,
+                            drain_ms,
+                            io_threads,
+                            env_zlk,
+                            msg_sizes_override=msg_sizes,
+                        )
+                        if not parsed_map:
+                            all_failures.append((pattern, "zlink", transport, clients, 0, err))
+                            continue
+                        for size in msg_sizes:
+                            parsed = parsed_map.get(size)
+                            if not parsed:
+                                all_failures.append((pattern, "zlink", transport, clients, size, "missing_metric"))
+                                continue
+                            zlk_values_by_size[size].append(parsed)
+                        if run_cooldown_ms > 0 and i + 1 < runs:
+                            time.sleep(run_cooldown_ms / 1000.0)
+
+                    for size in msg_sizes:
+                        key_prefix = f"{transport}|{clients}|{size}"
+                        std_values = std_values_by_size.get(size, [])
+                        zlk_values = zlk_values_by_size.get(size, [])
+                        if std_values:
+                            update_stats_with_median(std_stats, key_prefix, std_values)
+                        if zlk_values:
+                            update_stats_with_median(zlk_stats, key_prefix, zlk_values)
+                    continue
+
                 for size in msg_sizes:
                     key_prefix = f"{transport}|{clients}|{size}"
 
                     std_values = []
                     zlk_values = []
-
-                    if not zlink_only:
-                        pass
 
                     need_std = (not zlink_only) or refresh_std_cache or not cached
                     if need_std:
@@ -580,11 +669,7 @@ def main():
                             if run_cooldown_ms > 0 and i + 1 < runs:
                                 time.sleep(run_cooldown_ms / 1000.0)
                     elif cached:
-                        ck = cached.get(f"{key_prefix}|throughput")
-                        cl = cached.get(f"{key_prefix}|latency")
-                        if ck is not None and cl is not None:
-                            std_stats[f"{key_prefix}|throughput"] = float(ck)
-                            std_stats[f"{key_prefix}|latency"] = float(cl)
+                        load_cached_stats(std_stats, cached, key_prefix)
 
                     for i in range(runs):
                         print(f"    zlink  {size}B run {i+1}/{runs}", flush=True)
@@ -612,12 +697,8 @@ def main():
                         if run_cooldown_ms > 0 and i + 1 < runs:
                             time.sleep(run_cooldown_ms / 1000.0)
 
-                    if std_values:
-                        std_stats[f"{key_prefix}|throughput"] = statistics.median(v["throughput"] for v in std_values)
-                        std_stats[f"{key_prefix}|latency"] = statistics.median(v["latency"] for v in std_values)
-                    if zlk_values:
-                        zlk_stats[f"{key_prefix}|throughput"] = statistics.median(v["throughput"] for v in zlk_values)
-                        zlk_stats[f"{key_prefix}|latency"] = statistics.median(v["latency"] for v in zlk_values)
+                    update_stats_with_median(std_stats, key_prefix, std_values)
+                    update_stats_with_median(zlk_stats, key_prefix, zlk_values)
 
         if not zlink_only or refresh_std_cache or not cached:
             cache_patterns[cache_key] = {k: float(v) for k, v in std_stats.items()}
@@ -637,21 +718,13 @@ def main():
                     zlk_t = zlk_stats.get(f"{key_prefix}|throughput")
                     zlk_l = zlk_stats.get(f"{key_prefix}|latency")
 
-                    if std_t and zlk_t and std_t > 0:
-                        td = (zlk_t - std_t) / std_t * 100.0
-                        td_s = f"{td:+.2f}%"
-                    else:
-                        td_s = "N/A"
-                    if std_l and zlk_l and std_l > 0:
-                        ld = (std_l - zlk_l) / std_l * 100.0
-                        ld_s = f"{ld:+.2f}%"
-                    else:
-                        ld_s = "N/A"
+                    td_s = throughput_diff_str(std_t, zlk_t)
+                    ld_s = latency_diff_str(std_l, zlk_l)
 
-                    std_t_s = format_t(std_t) if std_t is not None else "N/A"
-                    zlk_t_s = format_t(zlk_t) if zlk_t is not None else "N/A"
-                    std_l_s = f"{std_l:8.2f} us" if std_l is not None else "N/A"
-                    zlk_l_s = f"{zlk_l:8.2f} us" if zlk_l is not None else "N/A"
+                    std_t_s = format_throughput(std_t) if std_t is not None else "N/A"
+                    zlk_t_s = format_throughput(zlk_t) if zlk_t is not None else "N/A"
+                    std_l_s = format_latency(std_l) if std_l is not None else "N/A"
+                    zlk_l_s = format_latency(zlk_l) if zlk_l is not None else "N/A"
 
                     print(f"| {clients} | {size}B | Throughput | {std_t_s} | {zlk_t_s} | {td_s} |")
                     print(f"| {clients} | {size}B | Latency | {std_l_s} | {zlk_l_s} | {ld_s} |")

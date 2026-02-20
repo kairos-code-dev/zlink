@@ -16,7 +16,6 @@ normalize_pattern() {
     DEALER_DEALER) echo "MULTI_DEALER_DEALER" ;;
     DEALER_ROUTER) echo "MULTI_DEALER_ROUTER" ;;
     ROUTER_ROUTER) echo "MULTI_ROUTER_ROUTER" ;;
-    ROUTER_ROUTER_POLL) echo "MULTI_ROUTER_ROUTER_POLL" ;;
     PUBSUB) echo "MULTI_PUBSUB" ;;
     STREAM) echo "MULTI_STREAM" ;;
     *) return 1 ;;
@@ -108,7 +107,7 @@ Run multi_e2e benchmark (server/client split) and compare libzmq vs zlink.
 Options:
   --pattern NAME                Pattern (default: stream)
                                 dealer_dealer, dealer_router,
-                                router_router, router_router_poll,
+                                router_router,
                                 pubsub, stream
   --runs N                      Iterations per configuration (default: 5)
   --transport NAME              Transport list (default: tcp)

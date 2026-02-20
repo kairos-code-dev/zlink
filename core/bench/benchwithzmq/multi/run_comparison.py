@@ -855,7 +855,6 @@ def normalize_pattern_name(raw):
         "DEALER_DEALER": "MULTI_DEALER_DEALER",
         "DEALER_ROUTER": "MULTI_DEALER_ROUTER",
         "ROUTER_ROUTER": "MULTI_ROUTER_ROUTER",
-        "ROUTER_ROUTER_POLL": "MULTI_ROUTER_ROUTER_POLL",
         "PUBSUB": "MULTI_PUBSUB",
         "STREAM": "MULTI_STREAM",
     }
@@ -876,7 +875,7 @@ def parse_args():
         "  -h, --help              Show this help\n"
         "\n"
         "PATTERN:\n"
-        "  dealer_dealer | dealer_router | router_router | router_router_poll | pubsub | stream\n"
+        "  dealer_dealer | dealer_router | router_router | pubsub | stream\n"
         "  (legacy MULTI_* names are also accepted)\n"
         "  Missing benchmark binaries are auto-built via cmake --build.\n"
         "\n"
@@ -1008,7 +1007,6 @@ def main():
         ("comp_std_zmq_multi_dealer_dealer", "comp_zlink_multi_dealer_dealer", "MULTI_DEALER_DEALER"),
         ("comp_std_zmq_multi_dealer_router", "comp_zlink_multi_dealer_router", "MULTI_DEALER_ROUTER"),
         ("comp_std_zmq_multi_router_router", "comp_zlink_multi_router_router", "MULTI_ROUTER_ROUTER"),
-        ("comp_std_zmq_multi_router_router_poll", "comp_zlink_multi_router_router_poll", "MULTI_ROUTER_ROUTER_POLL"),
         ("comp_std_zmq_multi_pubsub", "comp_zlink_multi_pubsub", "MULTI_PUBSUB"),
         ("comp_std_zmq_multi_stream", "comp_zlink_multi_stream", "MULTI_STREAM"),
     ]

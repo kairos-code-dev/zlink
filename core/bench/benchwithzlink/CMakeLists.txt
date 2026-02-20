@@ -165,8 +165,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                            multi/current/bench_current_multi_dealer_router.cpp)
     add_current_bench_multi(comp_current_multi_router_router
                            multi/current/bench_current_multi_router_router.cpp)
-    add_current_bench_multi(comp_current_multi_router_router_poll
-                           multi/current/bench_current_multi_router_router_poll.cpp)
     add_current_bench_multi(comp_current_multi_pubsub
                            multi/current/bench_current_multi_pubsub.cpp)
     add_current_bench_multi(comp_current_multi_gateway
@@ -197,8 +195,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                                multi/baseline/bench_baseline_multi_dealer_router.cpp)
         add_baseline_bench_multi(comp_baseline_multi_router_router
                                multi/baseline/bench_baseline_multi_router_router.cpp)
-        add_baseline_bench_multi(comp_baseline_multi_router_router_poll
-                               multi/baseline/bench_baseline_multi_router_router_poll.cpp)
         add_baseline_bench_multi(comp_baseline_multi_pubsub
                                multi/baseline/bench_baseline_multi_pubsub.cpp)
         add_baseline_bench_multi(comp_baseline_multi_gateway

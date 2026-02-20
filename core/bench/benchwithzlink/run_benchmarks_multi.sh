@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MULTI_PATTERNS="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_ROUTER_ROUTER_POLL,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM"
+MULTI_PATTERNS="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM"
 MULTI_TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a MULTI_PATTERN_LIST <<< "${MULTI_PATTERNS}"
 
@@ -12,7 +12,7 @@ Usage: core/bench/benchwithzlink/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_ROUTER_ROUTER_POLL,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM
+  MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM
 By default, multi-bench keeps warmup at 3s and measure window at 10s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
@@ -178,6 +178,10 @@ if [[ -n "${MULTI_DRAIN_MS}" ]]; then
 fi
 
 for pattern in "${PATTERNS[@]}"; do
+  if [[ "${pattern^^}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
+    echo "Error: MULTI_ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
+    exit 1
+  fi
   if [[ "${pattern}" != MULTI_* ]]; then
     echo "Error: run_benchmarks_multi.sh accepts only MULTI_* patterns." >&2
     exit 1

@@ -3,6 +3,7 @@
 #include <zlink.h>
 
 #include <cerrno>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -16,6 +17,7 @@ namespace {
 using namespace bench_multi_e2e;
 
 static const char k_server_routing_id[] = "E2E_SRV";
+static const size_t k_max_stream_frame_size = 16u * 1024u * 1024u;
 
 struct stream_buffer_t {
     std::vector<char> data;
@@ -70,7 +72,6 @@ int socket_type_for_pattern(pattern_t pattern)
     case pattern_dealer_router:
         return ZLINK_DEALER;
     case pattern_router_router:
-    case pattern_router_router_poll:
         return ZLINK_ROUTER;
     case pattern_pubsub:
         return ZLINK_SUB;
@@ -97,6 +98,11 @@ bool read_one_stream_frame(stream_buffer_t &stash, std::vector<char> &body)
     const unsigned char *prefix =
       reinterpret_cast<const unsigned char *>(&stash.data[stash.offset]);
     const uint32_t frame_len = load_u32_be(prefix);
+    if (frame_len > k_max_stream_frame_size) {
+        stash.data.clear();
+        stash.offset = 0;
+        return false;
+    }
     const size_t required = 4u + static_cast<size_t>(frame_len);
     if (stash.available() < required)
         return false;
@@ -168,7 +174,7 @@ bool send_rtt_message(pattern_t pattern,
     store_u64_be(payload.data(), send_ts);
     store_u64_be(payload.data() + 8, send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
 
-    if (pattern == pattern_router_router || pattern == pattern_router_router_poll) {
+    if (pattern == pattern_router_router) {
         if (zlink_send(socket, k_server_routing_id, std::strlen(k_server_routing_id),
                        ZLINK_SNDMORE | ZLINK_DONTWAIT)
             < 0) {
@@ -238,7 +244,7 @@ bool recv_rtt_message(pattern_t pattern,
 {
     std::vector<unsigned char> payload(1024 * 1024, 0);
 
-    if (pattern == pattern_router_router || pattern == pattern_router_router_poll) {
+    if (pattern == pattern_router_router) {
         std::vector<char> id(512, 0);
         const int id_len = zlink_recv(socket, id.data(), id.size(), ZLINK_DONTWAIT);
         if (id_len < 0)
@@ -277,14 +283,206 @@ bool recv_pubsub_message(void *socket, uint64_t &wire_send_ts)
     return true;
 }
 
+bool parse_size_list(const std::string &raw, std::vector<size_t> &out)
+{
+    out.clear();
+    if (raw.empty())
+        return false;
+
+    const char *cur = raw.c_str();
+    while (*cur) {
+        while (*cur == ',' || std::isspace(static_cast<unsigned char>(*cur)))
+            ++cur;
+        if (*cur == '\0')
+            break;
+
+        char *end = NULL;
+        const unsigned long value = std::strtoul(cur, &end, 10);
+        if (end == cur || value == 0)
+            return false;
+
+        out.push_back(static_cast<size_t>(value));
+        cur = end;
+
+        while (*cur && *cur != ',') {
+            if (!std::isspace(static_cast<unsigned char>(*cur)))
+                return false;
+            ++cur;
+        }
+        if (*cur == ',')
+            ++cur;
+    }
+    return !out.empty();
+}
+
+void close_all(std::vector<void *> &sockets, void *ctx)
+{
+    for (size_t i = 0; i < sockets.size(); ++i)
+        if (sockets[i])
+            zlink_close(sockets[i]);
+    zlink_ctx_term(ctx);
+}
+
+bool run_measure_once(pattern_t pattern,
+                      const std::vector<void *> &sockets,
+                      const std::vector<std::string> &stream_rids,
+                      int clients,
+                      int inflight,
+                      int duration_s,
+                      int settle_ms,
+                      int drain_ms,
+                      size_t msg_size,
+                      double &throughput_out,
+                      double &latency_out)
+{
+    if (settle_ms > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(settle_ms));
+
+    const auto measure_start = std::chrono::steady_clock::now();
+    const auto measure_end = measure_start + std::chrono::seconds(duration_s);
+
+    long recv_count = 0;
+    double latency_sum_us = 0.0;
+    long latency_samples = 0;
+
+    std::vector<std::deque<uint64_t> > pending(static_cast<size_t>(clients));
+    std::vector<stream_buffer_t> stream_stash(static_cast<size_t>(clients));
+    std::vector<unsigned char> payload(std::max<size_t>(16, msg_size), 0xAB);
+
+    while (std::chrono::steady_clock::now() < measure_end) {
+        bool progressed = false;
+
+        if (is_rtt_pattern(pattern)) {
+            for (int i = 0; i < clients; ++i) {
+                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+                while (static_cast<int>(q.size()) < inflight) {
+                    const uint64_t ts = now_ns();
+                    if (!send_rtt_message(pattern, sockets[static_cast<size_t>(i)],
+                                          stream_rids[static_cast<size_t>(i)],
+                                          payload, ts)) {
+                        break;
+                    }
+                    q.push_back(ts);
+                    progressed = true;
+                }
+            }
+
+            for (int i = 0; i < clients; ++i) {
+                uint64_t wire_ts = 0;
+                while (recv_rtt_message(pattern, sockets[static_cast<size_t>(i)],
+                                        stream_stash[static_cast<size_t>(i)],
+                                        wire_ts)) {
+                    std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+                    if (!q.empty())
+                        q.pop_front();
+
+                    const uint64_t now = now_ns();
+                    if (now >= wire_ts) {
+                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                        ++latency_samples;
+                    }
+                    ++recv_count;
+                    progressed = true;
+                }
+            }
+        } else if (is_oneway_pattern(pattern)) {
+            for (int i = 0; i < clients; ++i) {
+                uint64_t wire_ts = 0;
+                int recv_budget = 256;
+                while (recv_budget-- > 0
+                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
+                                              wire_ts)) {
+                    const uint64_t now = now_ns();
+                    if (now >= wire_ts) {
+                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                        ++latency_samples;
+                    }
+                    ++recv_count;
+                    progressed = true;
+                }
+            }
+        }
+
+        if (!progressed)
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+
+    const auto measure_stop = std::chrono::steady_clock::now();
+    const auto drain_end =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
+    while (std::chrono::steady_clock::now() < drain_end) {
+        bool progressed = false;
+        if (is_rtt_pattern(pattern)) {
+            for (int i = 0; i < clients; ++i) {
+                uint64_t wire_ts = 0;
+                while (recv_rtt_message(pattern, sockets[static_cast<size_t>(i)],
+                                        stream_stash[static_cast<size_t>(i)],
+                                        wire_ts)) {
+                    std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
+                    if (!q.empty())
+                        q.pop_front();
+
+                    const uint64_t now = now_ns();
+                    if (now >= wire_ts) {
+                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                        ++latency_samples;
+                    }
+                    ++recv_count;
+                    progressed = true;
+                }
+            }
+        } else if (is_oneway_pattern(pattern)) {
+            for (int i = 0; i < clients; ++i) {
+                uint64_t wire_ts = 0;
+                int recv_budget = 256;
+                while (recv_budget-- > 0
+                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
+                                              wire_ts)) {
+                    const uint64_t now = now_ns();
+                    if (now >= wire_ts) {
+                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
+                        ++latency_samples;
+                    }
+                    ++recv_count;
+                    progressed = true;
+                }
+            }
+        }
+
+        if (!progressed)
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+
+    double elapsed_s =
+      std::chrono::duration_cast<std::chrono::duration<double> >(measure_stop
+                                                                  - measure_start)
+        .count();
+    if (elapsed_s <= 0.0)
+        elapsed_s = static_cast<double>(std::max(1, duration_s));
+
+    throughput_out = static_cast<double>(recv_count) / elapsed_s;
+    latency_out = latency_samples > 0
+                    ? latency_sum_us / static_cast<double>(latency_samples)
+                    : 0.0;
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     const std::string lib_name = argc > 1 ? std::string(argv[1]) : std::string("zlink");
     const std::string transport = argc > 2 ? std::string(argv[2]) : std::string("tcp");
-    const size_t msg_size =
+    const size_t msg_size_arg =
       static_cast<size_t>(argc > 3 ? std::strtoul(argv[3], NULL, 10) : 1024u);
+    const std::string msg_sizes_raw = parse_string_env("BENCH_MULTI_E2E_MSG_SIZES", "");
+    std::vector<size_t> msg_sizes;
+    if (!msg_sizes_raw.empty() && !parse_size_list(msg_sizes_raw, msg_sizes)) {
+        std::fprintf(stderr, "multi_e2e client: invalid BENCH_MULTI_E2E_MSG_SIZES\n");
+        return 2;
+    }
+    if (msg_sizes.empty())
+        msg_sizes.push_back(msg_size_arg);
 
     const pattern_t pattern = parse_pattern(parse_string_env("BENCH_MULTI_E2E_PATTERN",
                                                             "MULTI_STREAM"));
@@ -294,8 +492,15 @@ int main(int argc, char **argv)
     }
 
     if (transport != "tcp") {
-        print_result(lib_name, pattern, transport, msg_size, 0.0, 0.0);
+        for (size_t i = 0; i < msg_sizes.size(); ++i)
+            print_result(lib_name, pattern, transport, msg_sizes[i], 0.0, 0.0);
         return 0;
+    }
+
+    if (!is_rtt_pattern(pattern) && msg_sizes.size() > 1) {
+        std::fprintf(stderr,
+                     "multi_e2e client: multi-size reuse supports RTT patterns only\n");
+        return 2;
     }
 
     const int clients = static_cast<int>(parse_long_env("BENCH_MULTI_CLIENTS", 100, 1));
@@ -337,10 +542,7 @@ int main(int argc, char **argv)
             std::fprintf(stderr,
                          "multi_e2e client: zlink_socket failed at index=%d errno=%d\n",
                          i, zlink_errno());
-            for (size_t j = 0; j < sockets.size(); ++j)
-                if (sockets[j])
-                    zlink_close(sockets[j]);
-            zlink_ctx_term(ctx);
+            close_all(sockets, ctx);
             return 2;
         }
 
@@ -357,7 +559,7 @@ int main(int argc, char **argv)
 #endif
         }
 
-        if (pattern == pattern_router_router || pattern == pattern_router_router_poll) {
+        if (pattern == pattern_router_router) {
             char rid[64];
             std::snprintf(rid, sizeof(rid), "E2E_C_%d", i);
             (void) zlink_setsockopt(sock, ZLINK_ROUTING_ID, rid, std::strlen(rid));
@@ -368,10 +570,7 @@ int main(int argc, char **argv)
                          "multi_e2e client: zlink_connect failed at index=%d errno=%d\n",
                          i, zlink_errno());
             zlink_close(sock);
-            for (size_t j = 0; j < sockets.size(); ++j)
-                if (sockets[j])
-                    zlink_close(sockets[j]);
-            zlink_ctx_term(ctx);
+            close_all(sockets, ctx);
             return 2;
         }
 
@@ -385,159 +584,26 @@ int main(int argc, char **argv)
                 std::fprintf(stderr,
                              "multi_e2e client: stream connect id timeout index=%d\n",
                              i);
-                for (size_t j = 0; j < sockets.size(); ++j)
-                    if (sockets[j])
-                        zlink_close(sockets[j]);
-                zlink_ctx_term(ctx);
+                close_all(sockets, ctx);
                 return 2;
             }
             stream_rids[static_cast<size_t>(i)] = rid;
         }
     }
 
-    if (settle_ms > 0)
-        std::this_thread::sleep_for(std::chrono::milliseconds(settle_ms));
-
-    const auto measure_start = std::chrono::steady_clock::now();
-    const auto measure_end = measure_start + std::chrono::seconds(duration_s);
-
-    long recv_count = 0;
-    double latency_sum_us = 0.0;
-    long latency_samples = 0;
-
-    std::vector<std::deque<uint64_t> > pending(static_cast<size_t>(clients));
-    std::deque<uint64_t> pending_global;
-    std::vector<stream_buffer_t> stream_stash(static_cast<size_t>(clients));
-
-    std::vector<unsigned char> payload(std::max<size_t>(16, msg_size), 0xAB);
-
-    while (std::chrono::steady_clock::now() < measure_end) {
-        bool progressed = false;
-
-        if (is_rtt_pattern(pattern)) {
-            for (int i = 0; i < clients; ++i) {
-                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
-                while (static_cast<int>(q.size()) < inflight) {
-                    const uint64_t ts = now_ns();
-                    if (!send_rtt_message(pattern, sockets[static_cast<size_t>(i)],
-                                          stream_rids[static_cast<size_t>(i)],
-                                          payload, ts)) {
-                        break;
-                    }
-                    q.push_back(ts);
-                    if (pattern == pattern_dealer_dealer)
-                        pending_global.push_back(ts);
-                    progressed = true;
-                }
-            }
-
-            for (int i = 0; i < clients; ++i) {
-                uint64_t wire_ts = 0;
-                while (recv_rtt_message(pattern, sockets[static_cast<size_t>(i)],
-                                        stream_stash[static_cast<size_t>(i)],
-                                        wire_ts)) {
-                    uint64_t sent_ts = wire_ts;
-                    std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
-                    if (pattern == pattern_dealer_dealer) {
-                        // DEALER<->DEALER replies are not strictly correlated by peer.
-                        // Release local credit on any received message.
-                        if (!q.empty()) {
-                            q.pop_front();
-                        }
-                        if (!pending_global.empty()) {
-                            sent_ts = pending_global.front();
-                            pending_global.pop_front();
-                        }
-                    } else {
-                        if (!q.empty()) {
-                            sent_ts = q.front();
-                            q.pop_front();
-                        }
-                    }
-
-                    const uint64_t now = now_ns();
-                    if (now >= sent_ts) {
-                        latency_sum_us += static_cast<double>(now - sent_ts) / 1000.0;
-                        ++latency_samples;
-                    }
-                    ++recv_count;
-                    progressed = true;
-                }
-            }
-        } else if (is_oneway_pattern(pattern)) {
-            for (int i = 0; i < clients; ++i) {
-                uint64_t wire_ts = 0;
-                int recv_budget = 256;
-                while (recv_budget-- > 0
-                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
-                                              wire_ts)) {
-                    const uint64_t now = now_ns();
-                    if (now >= wire_ts) {
-                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
-                        ++latency_samples;
-                    }
-                    ++recv_count;
-                    progressed = true;
-                }
-            }
+    for (size_t i = 0; i < msg_sizes.size(); ++i) {
+        double throughput = 0.0;
+        double latency = 0.0;
+        if (!run_measure_once(pattern, sockets, stream_rids, clients, inflight,
+                              duration_s, settle_ms, drain_ms, msg_sizes[i],
+                              throughput, latency)) {
+            close_all(sockets, ctx);
+            return 2;
         }
-
-        if (!progressed)
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
+        print_result(lib_name, pattern, transport, msg_sizes[i], throughput,
+                     latency);
     }
 
-    const auto drain_end =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
-    while (std::chrono::steady_clock::now() < drain_end) {
-        bool progressed = false;
-        if (is_rtt_pattern(pattern)) {
-            for (int i = 0; i < clients; ++i) {
-                uint64_t wire_ts = 0;
-                while (recv_rtt_message(pattern, sockets[static_cast<size_t>(i)],
-                                        stream_stash[static_cast<size_t>(i)],
-                                        wire_ts)) {
-                    const uint64_t now = now_ns();
-                    if (now >= wire_ts) {
-                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
-                        ++latency_samples;
-                    }
-                    ++recv_count;
-                    progressed = true;
-                }
-            }
-        } else if (is_oneway_pattern(pattern)) {
-            for (int i = 0; i < clients; ++i) {
-                uint64_t wire_ts = 0;
-                int recv_budget = 256;
-                while (recv_budget-- > 0
-                       && recv_pubsub_message(sockets[static_cast<size_t>(i)],
-                                              wire_ts)) {
-                    const uint64_t now = now_ns();
-                    if (now >= wire_ts) {
-                        latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
-                        ++latency_samples;
-                    }
-                    ++recv_count;
-                    progressed = true;
-                }
-            }
-        }
-
-        if (!progressed)
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
-    }
-
-    for (size_t i = 0; i < sockets.size(); ++i)
-        if (sockets[i])
-            zlink_close(sockets[i]);
-    zlink_ctx_term(ctx);
-
-    const double throughput =
-      static_cast<double>(recv_count) / static_cast<double>(std::max(1, duration_s));
-    const double latency = latency_samples > 0
-                             ? latency_sum_us / static_cast<double>(latency_samples)
-                             : 0.0;
-
-    print_result(lib_name, pattern, transport, msg_size, throughput, latency);
+    close_all(sockets, ctx);
     return 0;
 }

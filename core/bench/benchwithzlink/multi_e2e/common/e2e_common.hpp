@@ -16,7 +16,6 @@ enum pattern_t {
     pattern_dealer_dealer,
     pattern_dealer_router,
     pattern_router_router,
-    pattern_router_router_poll,
     pattern_pubsub,
     pattern_stream,
     pattern_gateway,
@@ -43,8 +42,6 @@ inline pattern_t parse_pattern(const std::string &raw)
         return pattern_dealer_router;
     if (p == "MULTI_ROUTER_ROUTER" || p == "ROUTER_ROUTER")
         return pattern_router_router;
-    if (p == "MULTI_ROUTER_ROUTER_POLL" || p == "ROUTER_ROUTER_POLL")
-        return pattern_router_router_poll;
     if (p == "MULTI_PUBSUB" || p == "PUBSUB")
         return pattern_pubsub;
     if (p == "MULTI_STREAM" || p == "STREAM")
@@ -65,8 +62,6 @@ inline const char *pattern_name(pattern_t p)
         return "MULTI_DEALER_ROUTER";
     case pattern_router_router:
         return "MULTI_ROUTER_ROUTER";
-    case pattern_router_router_poll:
-        return "MULTI_ROUTER_ROUTER_POLL";
     case pattern_pubsub:
         return "MULTI_PUBSUB";
     case pattern_stream:
@@ -162,8 +157,7 @@ inline std::string endpoint_from_port(const std::string &transport, int port)
 inline bool is_rtt_pattern(pattern_t pattern)
 {
     return pattern == pattern_dealer_dealer || pattern == pattern_dealer_router
-           || pattern == pattern_router_router
-           || pattern == pattern_router_router_poll || pattern == pattern_stream;
+           || pattern == pattern_router_router || pattern == pattern_stream;
 }
 
 inline bool is_oneway_pattern(pattern_t pattern)

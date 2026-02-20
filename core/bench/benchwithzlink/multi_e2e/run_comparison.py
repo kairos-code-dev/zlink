@@ -3,7 +3,6 @@ import json
 import os
 import platform
 import socket
-import statistics
 import subprocess
 import sys
 import time
@@ -14,17 +13,36 @@ EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
 BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
+COMMON_PY_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "common"))
+if COMMON_PY_DIR not in sys.path:
+    sys.path.insert(0, COMMON_PY_DIR)
+
+from multi_e2e_metrics import (
+    format_latency,
+    format_throughput,
+    latency_diff_str,
+    load_cached_stats,
+    parse_result,
+    parse_results,
+    throughput_diff_str,
+    update_stats_with_median,
+)
 
 DEFAULT_PATTERNS = [
     "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
-    "MULTI_ROUTER_ROUTER_POLL",
     "MULTI_PUBSUB",
     "MULTI_STREAM",
     "MULTI_GATEWAY",
     "MULTI_SPOT",
 ]
+RTT_PATTERNS = {
+    "MULTI_DEALER_DEALER",
+    "MULTI_DEALER_ROUTER",
+    "MULTI_ROUTER_ROUTER",
+    "MULTI_STREAM",
+}
 
 
 def platform_arch_tag():
@@ -251,34 +269,6 @@ def parse_args():
     return pattern, runs, refresh_baseline, current_only, build_dir, run_cooldown_ms, pin_cpu
 
 
-def parse_result(stdout, transport, msg_size, pattern):
-    out = {}
-    for line in stdout.splitlines():
-        if not line.startswith("RESULT,"):
-            continue
-        p = line.split(",")
-        if len(p) < 7:
-            continue
-        if p[2].strip() != pattern:
-            continue
-        if p[3].strip() != transport:
-            continue
-        try:
-            size = int(p[4])
-        except ValueError:
-            continue
-        if size != msg_size:
-            continue
-        metric = p[5].strip().lower()
-        if metric not in ("throughput", "latency"):
-            continue
-        try:
-            out[metric] = float(p[6])
-        except ValueError:
-            continue
-    return out
-
-
 def ensure_runtime_binaries(build_dir, current_only):
     required = [
         "comp_current_multi_e2e_server",
@@ -337,7 +327,8 @@ def run_single_stack_test(build_dir,
                           settle_ms,
                           drain_ms,
                           io_threads,
-                          base_env):
+                          base_env,
+                          msg_sizes_override=None):
     port = find_free_port(29300)
     env = base_env.copy()
     env["BENCH_MULTI_E2E_PATTERN"] = pattern
@@ -348,18 +339,23 @@ def run_single_stack_test(build_dir,
     env["BENCH_MULTI_SETTLE_MS"] = str(settle_ms)
     env["BENCH_MULTI_DRAIN_MS"] = str(drain_ms)
     env["BENCH_IO_THREADS"] = str(io_threads)
+    if msg_sizes_override:
+        env["BENCH_MULTI_E2E_MSG_SIZES"] = ",".join(str(int(v)) for v in msg_sizes_override)
+    elif "BENCH_MULTI_E2E_MSG_SIZES" in env:
+        del env["BENCH_MULTI_E2E_MSG_SIZES"]
 
+    size_arg = int(msg_size)
     server_cmd = [
         os.path.join(build_dir, server_bin + EXE_SUFFIX),
         lib_name,
         transport,
-        str(msg_size),
+        str(size_arg),
     ]
     client_cmd = [
         os.path.join(build_dir, client_bin + EXE_SUFFIX),
         lib_name,
         transport,
-        str(msg_size),
+        str(size_arg),
     ]
 
     server_proc = None
@@ -388,7 +384,20 @@ def run_single_stack_test(build_dir,
             if err_msg:
                 return None, f"client_rc_{result.returncode}:{err_msg}"
             return None, f"client_rc_{result.returncode}"
-        parsed = parse_result(result.stdout, transport, msg_size, pattern)
+        if msg_sizes_override:
+            parsed_map = parse_results(result.stdout, pattern, transport)
+            filtered = {}
+            for size in msg_sizes_override:
+                parsed = parsed_map.get(int(size))
+                if not parsed:
+                    continue
+                if "throughput" not in parsed or "latency" not in parsed:
+                    continue
+                filtered[int(size)] = parsed
+            if not filtered:
+                return None, "no_data"
+            return filtered, ""
+        parsed = parse_result(result.stdout, pattern, transport, int(msg_size))
         if "throughput" not in parsed or "latency" not in parsed:
             return None, "no_data"
         return parsed, ""
@@ -423,10 +432,6 @@ def save_cache(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, sort_keys=True, ensure_ascii=True)
-
-
-def format_t(v):
-    return f"{v/1e3:6.2f} Kmsg/s"
 
 
 def main():
@@ -541,6 +546,91 @@ def main():
         for transport in transports:
             for clients in clients_matrix:
                 print(f"  > Config clients={clients} inflight={inflight} transport={transport}")
+
+                use_size_reuse = pattern in RTT_PATTERNS
+                if use_size_reuse:
+                    size_csv = ",".join(str(s) for s in msg_sizes)
+                    need_baseline = (not current_only) or refresh_baseline or not cached
+                    baseline_values_by_size = {size: [] for size in msg_sizes}
+                    current_values_by_size = {size: [] for size in msg_sizes}
+
+                    if need_baseline:
+                        for i in range(runs):
+                            print(f"    baseline sizes[{size_csv}] run {i+1}/{runs}", flush=True)
+                            env_baseline = get_env(base_env, "baseline", baseline_lib_dir, current_lib_dir)
+                            parsed_map, err = run_single_stack_test(
+                                build_dir,
+                                "comp_baseline_multi_e2e_server",
+                                "comp_baseline_multi_e2e_client",
+                                "baseline",
+                                pattern,
+                                transport,
+                                msg_sizes[0],
+                                clients,
+                                inflight,
+                                duration,
+                                settle_ms,
+                                drain_ms,
+                                io_threads,
+                                env_baseline,
+                                msg_sizes_override=msg_sizes,
+                            )
+                            if not parsed_map:
+                                all_failures.append((pattern, "baseline", transport, clients, 0, err))
+                                continue
+                            for size in msg_sizes:
+                                parsed = parsed_map.get(size)
+                                if not parsed:
+                                    all_failures.append((pattern, "baseline", transport, clients, size, "missing_metric"))
+                                    continue
+                                baseline_values_by_size[size].append(parsed)
+                            if run_cooldown_ms > 0 and i + 1 < runs:
+                                time.sleep(run_cooldown_ms / 1000.0)
+                    elif cached:
+                        for size in msg_sizes:
+                            key_prefix = f"{transport}|{clients}|{size}"
+                            load_cached_stats(baseline_stats, cached, key_prefix)
+
+                    for i in range(runs):
+                        print(f"    current  sizes[{size_csv}] run {i+1}/{runs}", flush=True)
+                        env_current = get_env(base_env, "current", baseline_lib_dir, current_lib_dir)
+                        parsed_map, err = run_single_stack_test(
+                            build_dir,
+                            "comp_current_multi_e2e_server",
+                            "comp_current_multi_e2e_client",
+                            "current",
+                            pattern,
+                            transport,
+                            msg_sizes[0],
+                            clients,
+                            inflight,
+                            duration,
+                            settle_ms,
+                            drain_ms,
+                            io_threads,
+                            env_current,
+                            msg_sizes_override=msg_sizes,
+                        )
+                        if not parsed_map:
+                            all_failures.append((pattern, "current", transport, clients, 0, err))
+                            continue
+                        for size in msg_sizes:
+                            parsed = parsed_map.get(size)
+                            if not parsed:
+                                all_failures.append((pattern, "current", transport, clients, size, "missing_metric"))
+                                continue
+                            current_values_by_size[size].append(parsed)
+                        if run_cooldown_ms > 0 and i + 1 < runs:
+                            time.sleep(run_cooldown_ms / 1000.0)
+
+                    for size in msg_sizes:
+                        key_prefix = f"{transport}|{clients}|{size}"
+                        baseline_values = baseline_values_by_size.get(size, [])
+                        current_values = current_values_by_size.get(size, [])
+                        update_stats_with_median(baseline_stats, key_prefix, baseline_values)
+                        update_stats_with_median(current_stats, key_prefix, current_values)
+                    continue
+
                 for size in msg_sizes:
                     key_prefix = f"{transport}|{clients}|{size}"
 
@@ -575,11 +665,7 @@ def main():
                             if run_cooldown_ms > 0 and i + 1 < runs:
                                 time.sleep(run_cooldown_ms / 1000.0)
                     elif cached:
-                        ck = cached.get(f"{key_prefix}|throughput")
-                        cl = cached.get(f"{key_prefix}|latency")
-                        if ck is not None and cl is not None:
-                            baseline_stats[f"{key_prefix}|throughput"] = float(ck)
-                            baseline_stats[f"{key_prefix}|latency"] = float(cl)
+                        load_cached_stats(baseline_stats, cached, key_prefix)
 
                     for i in range(runs):
                         print(f"    current  {size}B run {i+1}/{runs}", flush=True)
@@ -607,12 +693,8 @@ def main():
                         if run_cooldown_ms > 0 and i + 1 < runs:
                             time.sleep(run_cooldown_ms / 1000.0)
 
-                    if baseline_values:
-                        baseline_stats[f"{key_prefix}|throughput"] = statistics.median(v["throughput"] for v in baseline_values)
-                        baseline_stats[f"{key_prefix}|latency"] = statistics.median(v["latency"] for v in baseline_values)
-                    if current_values:
-                        current_stats[f"{key_prefix}|throughput"] = statistics.median(v["throughput"] for v in current_values)
-                        current_stats[f"{key_prefix}|latency"] = statistics.median(v["latency"] for v in current_values)
+                    update_stats_with_median(baseline_stats, key_prefix, baseline_values)
+                    update_stats_with_median(current_stats, key_prefix, current_values)
 
         if not current_only or refresh_baseline or not cached:
             cache_patterns[pattern] = {k: float(v) for k, v in baseline_stats.items()}
@@ -632,21 +714,13 @@ def main():
                     ct = current_stats.get(f"{key_prefix}|throughput")
                     cl = current_stats.get(f"{key_prefix}|latency")
 
-                    if bt and ct and bt > 0:
-                        td = (ct - bt) / bt * 100.0
-                        td_s = f"{td:+.2f}%"
-                    else:
-                        td_s = "N/A"
-                    if bl and cl and bl > 0:
-                        ld = (bl - cl) / bl * 100.0
-                        ld_s = f"{ld:+.2f}%"
-                    else:
-                        ld_s = "N/A"
+                    td_s = throughput_diff_str(bt, ct)
+                    ld_s = latency_diff_str(bl, cl)
 
-                    bt_s = format_t(bt) if bt is not None else "N/A"
-                    ct_s = format_t(ct) if ct is not None else "N/A"
-                    bl_s = f"{bl:8.2f} us" if bl is not None else "N/A"
-                    cl_s = f"{cl:8.2f} us" if cl is not None else "N/A"
+                    bt_s = format_throughput(bt) if bt is not None else "N/A"
+                    ct_s = format_throughput(ct) if ct is not None else "N/A"
+                    bl_s = format_latency(bl) if bl is not None else "N/A"
+                    cl_s = format_latency(cl) if cl is not None else "N/A"
 
                     print(f"| {clients} | {size}B | Throughput | {bt_s} | {ct_s} | {td_s} |")
                     print(f"| {clients} | {size}B | Latency | {bl_s} | {cl_s} | {ld_s} |")

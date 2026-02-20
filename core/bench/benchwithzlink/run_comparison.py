@@ -754,8 +754,6 @@ def main():
          "MULTI_DEALER_ROUTER"),
         ("comp_baseline_multi_router_router", "comp_current_multi_router_router",
          "MULTI_ROUTER_ROUTER"),
-        ("comp_baseline_multi_router_router_poll",
-         "comp_current_multi_router_router_poll", "MULTI_ROUTER_ROUTER_POLL"),
         ("comp_baseline_multi_pubsub", "comp_current_multi_pubsub", "MULTI_PUBSUB"),
         ("comp_baseline_multi_gateway", "comp_current_multi_gateway",
          "MULTI_GATEWAY"),

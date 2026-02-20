@@ -14,6 +14,7 @@ namespace {
 using namespace bench_multi_e2e;
 
 static std::atomic<bool> g_stop(false);
+static const size_t k_max_stream_frame_size = 16u * 1024u * 1024u;
 
 void on_signal(int)
 {
@@ -35,7 +36,6 @@ int socket_type_for_pattern(pattern_t pattern)
         return ZMQ_DEALER;
     case pattern_dealer_router:
     case pattern_router_router:
-    case pattern_router_router_poll:
         return ZMQ_ROUTER;
     case pattern_pubsub:
         return ZMQ_PUB;
@@ -119,6 +119,11 @@ bool read_one_stream_frame(stream_buffer_t &stash, std::vector<char> &body)
     const unsigned char *prefix =
       reinterpret_cast<const unsigned char *>(&stash.data[stash.offset]);
     const uint32_t frame_len = load_u32_be(prefix);
+    if (frame_len > k_max_stream_frame_size) {
+        stash.data.clear();
+        stash.offset = 0;
+        return false;
+    }
     const size_t required = 4u + static_cast<size_t>(frame_len);
     if (stash.available() < required)
         return false;
@@ -265,7 +270,6 @@ int run_echo_server(void *server, pattern_t pattern)
                 break;
             case pattern_dealer_router:
             case pattern_router_router:
-            case pattern_router_router_poll:
                 ok = handle_router_once(server);
                 break;
             default:
@@ -322,7 +326,7 @@ int main(int argc, char **argv)
 
     apply_socket_options(server);
 
-    if (pattern == pattern_router_router || pattern == pattern_router_router_poll) {
+    if (pattern == pattern_router_router) {
         const char *server_id = "E2E_SRV";
         (void) zmq_setsockopt(server, ZMQ_ROUTING_ID, server_id,
                               std::strlen(server_id));

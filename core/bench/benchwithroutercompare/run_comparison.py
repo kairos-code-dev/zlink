@@ -10,10 +10,12 @@ import platform
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 
 IS_WINDOWS = os.name == "nt"
+IS_LINUX = sys.platform.startswith("linux")
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
@@ -189,9 +191,108 @@ def get_env_for_lib(base_env, lib_name, build_dir):
     return env
 
 
+# ---------------------------------------------------------------------------
+# Resource monitoring (Linux only, via /proc)
+# ---------------------------------------------------------------------------
+
+def _read_proc_cpu_ticks(pid):
+    """Read utime + stime from /proc/[pid]/stat. Returns total ticks or None."""
+    try:
+        with open(f"/proc/{pid}/stat", "r") as f:
+            # Split on ')' to skip comm field which may contain spaces
+            parts = f.read().split(")")
+            if len(parts) < 2:
+                return None
+            fields = parts[-1].split()
+            # After ')', index 11 = utime, 12 = stime (0-based)
+            return int(fields[11]) + int(fields[12])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _read_proc_rss_kb(pid):
+    """Read VmRSS from /proc/[pid]/status. Returns kB or None."""
+    try:
+        with open(f"/proc/{pid}/status", "r") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except (OSError, IndexError, ValueError):
+        pass
+    return None
+
+
+def _median(values):
+    """Return median of a list of numbers, or None if empty."""
+    if not values:
+        return None
+    s = sorted(values)
+    n = len(s)
+    if n % 2 == 1:
+        return s[n // 2]
+    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+class _ResourceSampler:
+    """Background thread that periodically samples CPU and RSS for given PIDs."""
+
+    def __init__(self, pids, interval=0.25):
+        self._pids = pids  # dict: role -> pid
+        self._interval = interval
+        self._stop_event = threading.Event()
+        self._ticks_per_sec = os.sysconf("SC_CLK_TCK")
+        self._start_wall = time.monotonic()
+        self._start_ticks = {}
+        self._latest_ticks = {}
+        for role, pid in self._pids.items():
+            t = _read_proc_cpu_ticks(pid)
+            if t is not None:
+                self._start_ticks[role] = t
+                self._latest_ticks[role] = t
+        self._peak_rss_kb = {role: 0 for role in self._pids}
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self):
+        while not self._stop_event.is_set():
+            for role, pid in self._pids.items():
+                rss = _read_proc_rss_kb(pid)
+                if rss is not None and rss > self._peak_rss_kb[role]:
+                    self._peak_rss_kb[role] = rss
+                t = _read_proc_cpu_ticks(pid)
+                if t is not None:
+                    self._latest_ticks[role] = t
+            self._stop_event.wait(self._interval)
+
+    def stop(self):
+        """Stop sampling and return {role: {cpu_pct, rss_mb}} results."""
+        # Final read (may fail if process already reaped)
+        for role, pid in self._pids.items():
+            t = _read_proc_cpu_ticks(pid)
+            if t is not None:
+                self._latest_ticks[role] = t
+            rss = _read_proc_rss_kb(pid)
+            if rss is not None and rss > self._peak_rss_kb[role]:
+                self._peak_rss_kb[role] = rss
+        end_wall = time.monotonic()
+        self._stop_event.set()
+        self._thread.join(timeout=2.0)
+        wall_secs = max(0.001, end_wall - self._start_wall)
+        results = {}
+        for role in self._pids:
+            cpu_pct = None
+            if role in self._start_ticks and role in self._latest_ticks:
+                delta = self._latest_ticks[role] - self._start_ticks[role]
+                cpu_pct = (delta / self._ticks_per_sec) / wall_secs * 100.0
+            rss_mb = (self._peak_rss_kb[role] / 1024.0
+                      if self._peak_rss_kb[role] > 0 else None)
+            results[role] = {"cpu_pct": cpu_pct, "rss_mb": rss_mb}
+        return results
+
+
 def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
                     settle_ms, drain_ms, inflight, base_env):
-    """Run server+client for a single library and return parsed results."""
+    """Run server+client for a single library. Returns (parsed_map, err, resource_stats)."""
     server_bin, client_bin = BINARIES[lib_name]
 
     port = find_free_port(29200)
@@ -208,6 +309,8 @@ def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
     client_cmd = [os.path.join(build_dir, client_bin + EXE_SUFFIX), lib_name]
 
     server_proc = None
+    client_proc = None
+    sampler = None
     try:
         server_proc = subprocess.Popen(
             server_cmd,
@@ -219,30 +322,52 @@ def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
         time.sleep(max(1.0, settle_ms / 250.0))
 
         timeout_sec = max(60, duration * len(msg_sizes) + 40)
-        result = subprocess.run(
+        client_proc = subprocess.Popen(
             client_cmd,
             env=env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout_sec,
         )
-        if result.returncode != 0:
-            err_msg = (result.stderr or "").strip()
+
+        if IS_LINUX:
+            sampler = _ResourceSampler({"server": server_proc.pid,
+                                        "client": client_proc.pid})
+
+        try:
+            stdout, stderr = client_proc.communicate(timeout=timeout_sec)
+        except subprocess.TimeoutExpired:
+            client_proc.kill()
+            client_proc.communicate()
+            rs = sampler.stop() if sampler else None
+            sampler = None
+            return None, "timeout", rs
+
+        rs = sampler.stop() if sampler else None
+        sampler = None
+
+        if client_proc.returncode != 0:
+            err_msg = (stderr or "").strip()
             if err_msg:
                 err_msg = err_msg.splitlines()[-1].strip()
-            return None, f"client_rc_{result.returncode}:{err_msg}" if err_msg else f"client_rc_{result.returncode}"
+            err = (f"client_rc_{client_proc.returncode}:{err_msg}"
+                   if err_msg else f"client_rc_{client_proc.returncode}")
+            return None, err, rs
 
         parsed_map = {}
         for size in msg_sizes:
-            parsed = parse_result(result.stdout, "ROUTER_ECHO", "tcp", size)
+            parsed = parse_result(stdout, "ROUTER_ECHO", "tcp", size)
             if parsed and "throughput" in parsed and "latency" in parsed:
                 parsed_map[size] = parsed
         if not parsed_map:
-            return None, "no_data"
-        return parsed_map, ""
-    except subprocess.TimeoutExpired:
-        return None, "timeout"
+            return None, "no_data", rs
+        return parsed_map, "", rs
     finally:
+        if sampler is not None:
+            try:
+                sampler.stop()
+            except Exception:
+                pass
         if server_proc is not None:
             try:
                 if server_proc.poll() is None:
@@ -254,6 +379,13 @@ def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
                         server_proc.kill()
                 except Exception:
                     pass
+        if client_proc is not None:
+            try:
+                if client_proc.poll() is None:
+                    client_proc.kill()
+                    client_proc.wait(timeout=5)
+            except Exception:
+                pass
 
 
 def ensure_binary(build_dir, name):
@@ -361,11 +493,35 @@ def print_comparison_table(title, msg_sizes, stats_by_lib):
         print(f"| {size}B | Latency | {zmq_l_s} | {zlk_l_s} | {grpc_l_s} | {ld_zmq} | {ld_grpc} |")
 
 
+def print_resource_table(title, resource_by_lib):
+    """Print CPU/memory usage comparison table."""
+    if not resource_by_lib:
+        return
+    print(f"\n### Resource Usage: {title}")
+    print("| Metric | libzmq | zlink | gRPC |")
+    print("|--------|--------|-------|------|")
+    for role, role_label in (("server", "Server"), ("client", "Client")):
+        for metric, metric_label, fmt_fn in (
+            ("cpu_pct", "CPU%", lambda v: f"{v:.1f}%"),
+            ("rss_mb", "RSS", lambda v: f"{v:.1f} MB"),
+        ):
+            vals = []
+            for lib in LIBRARIES:
+                r = resource_by_lib.get(lib, {}).get(role, {})
+                v = r.get(metric)
+                vals.append(fmt_fn(v) if v is not None else "N/A")
+            print(f"| {role_label} {metric_label} | {vals[0]} | {vals[1]} | {vals[2]} |")
+
+
 def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
                  settle_ms, drain_ms, inflight, run_cooldown_ms, base_env,
                  cache, zlink_only, refresh_cache):
-    """Run all libraries for a given client count. Returns stats_by_lib dict."""
+    """Run all libraries for a given client count.
+
+    Returns (stats_by_lib, all_failures, cache_updated, resource_by_lib).
+    """
     stats_by_lib = {}
+    resource_by_lib = {}
     all_failures = []
     cache_updated = False
 
@@ -378,11 +534,12 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
             need_run = False
 
         values_by_size = {size: [] for size in msg_sizes}
+        resource_runs = []
 
         if need_run:
             for i in range(runs):
                 print(f"    {lib} clients={clients} run {i+1}/{runs}", flush=True)
-                parsed_map, err = run_single_test(
+                parsed_map, err, res_stats = run_single_test(
                     build_dir, lib, clients, msg_sizes, duration,
                     settle_ms, drain_ms, inflight, base_env,
                 )
@@ -393,6 +550,8 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
                     parsed = parsed_map.get(size)
                     if parsed:
                         values_by_size[size].append(parsed)
+                if res_stats:
+                    resource_runs.append(res_stats)
                 if run_cooldown_ms > 0 and i + 1 < runs:
                     time.sleep(run_cooldown_ms / 1000.0)
 
@@ -404,6 +563,20 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
                     update_stats_with_median(lib_stats, key_prefix, vals)
             stats_by_lib[lib] = lib_stats
 
+            # Aggregate resource stats (median across runs)
+            if resource_runs:
+                res_median = {}
+                for role in ("server", "client"):
+                    cpu_vals = [r[role]["cpu_pct"] for r in resource_runs
+                                if r.get(role, {}).get("cpu_pct") is not None]
+                    rss_vals = [r[role]["rss_mb"] for r in resource_runs
+                                if r.get(role, {}).get("rss_mb") is not None]
+                    res_median[role] = {
+                        "cpu_pct": _median(cpu_vals),
+                        "rss_mb": _median(rss_vals),
+                    }
+                resource_by_lib[lib] = res_median
+
             if lib != "zlink":
                 cache[cache_key] = {k: float(v) for k, v in lib_stats.items()}
                 cache_updated = True
@@ -413,7 +586,7 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
                 lib_stats = {k: float(v) for k, v in cached.items()}
             stats_by_lib[lib] = lib_stats
 
-    return stats_by_lib, all_failures, cache_updated
+    return stats_by_lib, all_failures, cache_updated, resource_by_lib
 
 
 def main():
@@ -453,7 +626,7 @@ def main():
 
     # Phase 1: 1:1 Echo
     print("\n  > Phase 1: 1:1 Echo")
-    stats_1to1, failures_1, updated_1 = run_scenario(
+    stats_1to1, failures_1, updated_1, resource_1to1 = run_scenario(
         build_dir, available_libs, 1, msg_sizes, num_runs,
         duration, settle_ms, drain_ms, inflight, run_cooldown_ms,
         base_env, cache, zlink_only, refresh_cache,
@@ -463,7 +636,7 @@ def main():
 
     # Phase 2: N:1 Echo
     print(f"\n  > Phase 2: {multi_clients}:1 Echo")
-    stats_nto1, failures_n, updated_n = run_scenario(
+    stats_nto1, failures_n, updated_n, resource_nto1 = run_scenario(
         build_dir, available_libs, multi_clients, msg_sizes, num_runs,
         duration, settle_ms, drain_ms, inflight, run_cooldown_ms,
         base_env, cache, zlink_only, refresh_cache,
@@ -475,8 +648,13 @@ def main():
     print_comparison_table(
         "1:1 Echo (clients=1)", msg_sizes, stats_1to1,
     )
+    print_resource_table("1:1 Echo (clients=1)", resource_1to1)
+
     print_comparison_table(
         f"{multi_clients}:1 Echo (clients={multi_clients})", msg_sizes, stats_nto1,
+    )
+    print_resource_table(
+        f"{multi_clients}:1 Echo (clients={multi_clients})", resource_nto1,
     )
 
     if cache_updated:

@@ -69,6 +69,8 @@ void close_all(std::vector<void *> &sockets, void *ctx)
     zlink_ctx_term(ctx);
 }
 
+static const long k_poll_timeout_ms = 1000;
+
 bool run_measure_once(const std::vector<void *> &sockets,
                       int clients,
                       int inflight,
@@ -95,9 +97,17 @@ bool run_measure_once(const std::vector<void *> &sockets,
     std::vector<char> recv_id_buf(512);
     std::vector<unsigned char> recv_payload_buf(1024 * 1024);
 
-    while (std::chrono::steady_clock::now() < measure_end) {
-        bool progressed = false;
+    // Build poll items for all client sockets
+    std::vector<zlink_pollitem_t> poll_items(static_cast<size_t>(clients));
+    for (int i = 0; i < clients; ++i) {
+        poll_items[static_cast<size_t>(i)].socket = sockets[static_cast<size_t>(i)];
+        poll_items[static_cast<size_t>(i)].fd = 0;
+        poll_items[static_cast<size_t>(i)].events = ZLINK_POLLIN;
+        poll_items[static_cast<size_t>(i)].revents = 0;
+    }
 
+    while (std::chrono::steady_clock::now() < measure_end) {
+        // Send phase: fill inflight for all sockets
         for (int i = 0; i < clients; ++i) {
             std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
             while (static_cast<int>(q.size()) < inflight) {
@@ -107,11 +117,19 @@ bool run_measure_once(const std::vector<void *> &sockets,
                     break;
                 }
                 q.push_back(ts);
-                progressed = true;
             }
         }
 
+        // Poll: wait for any socket to become readable (up to 1ms)
+        const int poll_rc = zlink_poll(poll_items.data(), clients, k_poll_timeout_ms);
+        if (poll_rc <= 0)
+            continue;
+
+        // Recv phase: batch-drain all readable sockets
         for (int i = 0; i < clients; ++i) {
+            if (!(poll_items[static_cast<size_t>(i)].revents & ZLINK_POLLIN))
+                continue;
+
             uint64_t wire_ts = 0;
             while (recv_rtt_message(sockets[static_cast<size_t>(i)],
                                     recv_id_buf.data(), recv_id_buf.size(),
@@ -127,20 +145,24 @@ bool run_measure_once(const std::vector<void *> &sockets,
                     ++latency_samples;
                 }
                 ++recv_count;
-                progressed = true;
             }
         }
-
-        if (!progressed)
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
 
     const auto measure_stop = std::chrono::steady_clock::now();
+
+    // Drain phase: collect remaining in-flight responses
     const auto drain_end =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
     while (std::chrono::steady_clock::now() < drain_end) {
-        bool progressed = false;
+        const int poll_rc = zlink_poll(poll_items.data(), clients, k_poll_timeout_ms);
+        if (poll_rc <= 0)
+            continue;
+
         for (int i = 0; i < clients; ++i) {
+            if (!(poll_items[static_cast<size_t>(i)].revents & ZLINK_POLLIN))
+                continue;
+
             uint64_t wire_ts = 0;
             while (recv_rtt_message(sockets[static_cast<size_t>(i)],
                                     recv_id_buf.data(), recv_id_buf.size(),
@@ -156,12 +178,8 @@ bool run_measure_once(const std::vector<void *> &sockets,
                     ++latency_samples;
                 }
                 ++recv_count;
-                progressed = true;
             }
         }
-
-        if (!progressed)
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
 
     double elapsed_s =

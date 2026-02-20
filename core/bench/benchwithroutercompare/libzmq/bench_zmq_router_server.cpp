@@ -53,6 +53,8 @@ bool handle_router_once(void *server, char *id_buf, size_t id_cap,
     return zmq_send(server, payload_buf, rc, 0) >= 0;
 }
 
+static const long k_poll_timeout_ms = 1000;
+
 int run_echo_server(void *server)
 {
     zmq_pollitem_t item[] = {{server, 0, ZMQ_POLLIN, 0}};
@@ -61,7 +63,7 @@ int run_echo_server(void *server)
     std::vector<char> payload_buf(1024 * 1024);
 
     while (!g_stop.load(std::memory_order_acquire)) {
-        const int prc = zmq_poll(item, 1, 100);
+        const int prc = zmq_poll(item, 1, k_poll_timeout_ms);
         if (prc < 0) {
             if (zmq_errno() == EINTR)
                 continue;

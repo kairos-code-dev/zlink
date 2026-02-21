@@ -37,7 +37,6 @@ public final class NettyStreamServer
         int backlog = 32768;
         int tcpNoDelay = 1;
         int ioThreads = 4;
-        int rawEcho = 0;
 
         static ServerOptions parse(String[] args)
         {
@@ -71,9 +70,6 @@ public final class NettyStreamServer
                         break;
                     case "--io-threads":
                         opt.ioThreads = parseInt(value, opt.ioThreads, 1);
-                        break;
-                    case "--raw-echo":
-                        opt.rawEcho = parseInt(value, opt.rawEcho, 0);
                         break;
                     default:
                         break;
@@ -130,12 +126,7 @@ public final class NettyStreamServer
         {
             opt = opt_;
             metrics = metrics_;
-            // In raw echo mode, framed stash is never used.
-            // Avoid per-connection allocation to keep CCU-scale memory stable.
-            if (opt.rawEcho != 0)
-                stash = null;
-            else
-                stash = Unpooled.buffer(4096);
+            stash = Unpooled.buffer(4096);
         }
 
         @Override
@@ -158,32 +149,11 @@ public final class NettyStreamServer
                 ReferenceCountUtil.release(msg);
                 return;
             }
-
-            if (opt.rawEcho != 0) {
-                handleRaw(ctx, (ByteBuf) msg);
-                return;
-            }
-
             handleFramed(ctx, (ByteBuf) msg);
-        }
-
-        private void handleRaw(ChannelHandlerContext ctx, ByteBuf buf)
-        {
-            if (buf.readableBytes() > 0)
-                metrics.recvMsgs.incrementAndGet();
-            ctx.writeAndFlush(buf).addListener((ChannelFutureListener) future -> {
-                if (!future.isSuccess()) {
-                    metrics.sendError.incrementAndGet();
-                    future.channel().close();
-                }
-            });
         }
 
         private void handleFramed(ChannelHandlerContext ctx, ByteBuf incoming)
         {
-            if (stash == null)
-                stash = Unpooled.buffer(4096);
-
             try {
                 stash.writeBytes(incoming);
             } finally {
@@ -205,6 +175,7 @@ public final class NettyStreamServer
                 if (stash.readableBytes() < frameSize)
                     break;
 
+                // We have one complete frame; echo the exact frame bytes.
                 ByteBuf frame = stash.readRetainedSlice(frameSize);
                 if (bodySize > opt.size) {
                     frame.release();

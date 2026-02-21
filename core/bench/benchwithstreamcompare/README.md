@@ -25,7 +25,7 @@ Supported stacks:
 - `cppserver`
 - `dotnet`
 - `zlink`
-- `zlinkraw` (`zlink` with `ZLINK_STREAM_PACKET_MODE_RAW`)
+- `zlinkraw` (dedicated raw-stream server binary)
 - `zmq`
 - `netty`
 
@@ -37,7 +37,7 @@ Supported payload sizes:
 
 ## Design Notes (Fairness)
 
-- All stacks are run in `--raw-echo 0` mode (framed echo path).
+- All stacks run the framed echo path in their default server configuration.
 - The same client binary is used for all stacks.
 - The client always uses one wire format for every stack:
   `4-byte big-endian payload length + payload`.
@@ -140,8 +140,7 @@ Notes:
 - `netty` requires Gradle 8.8+. If system `gradle` is older, the runner
   auto-downloads Gradle `8.10.2` under
   `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/`.
-- `zlink` stack runs with `--packet-mode len32be`.
-- `zlinkraw` stack runs with `--packet-mode raw` for A/B comparison.
+- `zlink` and `zlinkraw` are separate server binaries and are run directly.
 
 ## Output Files
 

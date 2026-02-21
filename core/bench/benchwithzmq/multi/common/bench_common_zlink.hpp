@@ -163,7 +163,13 @@ inline int bench_monitor_hwm()
 
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
-    const int events = ZLINK_EVENT_CONNECTION_READY;
+    int events = ZLINK_EVENT_CONNECTION_READY;
+#ifdef ZLINK_EVENT_CONNECTED
+    events |= ZLINK_EVENT_CONNECTED;
+#endif
+#ifdef ZLINK_EVENT_ACCEPTED
+    events |= ZLINK_EVENT_ACCEPTED;
+#endif
     void *monitor = zlink_socket_monitor_open(socket_, events);
     if (!monitor)
         return false;
@@ -225,7 +231,14 @@ inline int poll_connect_ready_count(connect_monitor_t &monitor_)
         zlink_monitor_event_t ev;
         if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
             break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
+        if (ev.event == ZLINK_EVENT_CONNECTION_READY
+#ifdef ZLINK_EVENT_CONNECTED
+            || ev.event == ZLINK_EVENT_CONNECTED
+#endif
+#ifdef ZLINK_EVENT_ACCEPTED
+            || ev.event == ZLINK_EVENT_ACCEPTED
+#endif
+        ) {
             ++ready;
         }
     }

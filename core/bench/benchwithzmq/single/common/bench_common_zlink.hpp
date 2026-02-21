@@ -2,6 +2,7 @@
 #define BENCH_COMMON_HPP
 
 #include <chrono>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <set>
 #include <zlink.h>
 
 // --- Configuration ---
@@ -69,6 +71,49 @@ inline int bench_io_threads()
     return threads;
 }
 
+inline int bench_stream_server_io_threads()
+{
+    static int threads = -1;
+    if (threads >= 0)
+        return threads;
+
+    const char *env = std::getenv("BENCH_STREAM_SERVER_IO_THREADS");
+    if (!env || !*env)
+        env = std::getenv("BENCH_IO_THREADS");
+
+    if (!env || !*env) {
+        threads = 4;
+        return threads;
+    }
+
+    const int val = std::atoi(env);
+    threads = val > 0 ? val : 4;
+    return threads;
+}
+
+inline int bench_stream_client_threads(size_t clients_)
+{
+    const int fallback = clients_ >= 10000 ? 4 : 1;
+    const char *env = std::getenv("BENCH_STREAM_CLIENT_THREADS");
+    if (!env || !*env)
+        env = std::getenv("BENCH_MULTI_STREAM_SEND_WORKERS");
+
+    int threads = fallback;
+    if (env && *env) {
+        const int parsed = std::atoi(env);
+        if (parsed > 0)
+            threads = parsed;
+    }
+
+    if (threads < 1)
+        threads = 1;
+    if (threads > 4)
+        threads = 4;
+    if (clients_ > 0 && threads > static_cast<int>(clients_))
+        threads = static_cast<int>(clients_);
+    return threads;
+}
+
 inline void apply_io_threads(void *ctx_)
 {
     const int threads = bench_io_threads();
@@ -78,6 +123,19 @@ inline void apply_io_threads(void *ctx_)
     const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, threads);
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "zlink_ctx_set(ZLINK_IO_THREADS) failed: "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
+}
+
+inline void apply_stream_server_io_threads(void *ctx_)
+{
+    const int threads = bench_stream_server_io_threads();
+    if (threads <= 0)
+        return;
+
+    const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, threads);
+    if (rc != 0 && std::getenv("BENCH_DEBUG") != NULL) {
+        std::cerr << "zlink_ctx_set(ZLINK_IO_THREADS, stream) failed: "
                   << zlink_strerror(zlink_errno()) << std::endl;
     }
 }
@@ -128,6 +186,116 @@ private:
 
     void *_socket;
 };
+
+struct connect_monitor_t {
+    void *owner;
+    void *monitor;
+    connect_monitor_t() : owner(NULL), monitor(NULL) {}
+};
+
+inline int bench_monitor_hwm()
+{
+    static int monitor_hwm = -1;
+    if (monitor_hwm >= 0)
+        return monitor_hwm;
+
+    const char *env = std::getenv("BENCH_MULTI_MONITOR_HWM");
+    if (!env || !*env) {
+        monitor_hwm = 200000;
+        return monitor_hwm;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0) {
+        monitor_hwm = 0;
+        return monitor_hwm;
+    }
+
+    monitor_hwm = static_cast<int>(parsed);
+    return monitor_hwm;
+}
+
+inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
+{
+    int events = ZLINK_EVENT_CONNECTION_READY;
+#ifdef ZLINK_EVENT_CONNECTED
+    events |= ZLINK_EVENT_CONNECTED;
+#endif
+#ifdef ZLINK_EVENT_ACCEPTED
+    events |= ZLINK_EVENT_ACCEPTED;
+#endif
+    void *monitor = zlink_socket_monitor_open(socket_, events);
+    if (!monitor)
+        return false;
+
+    const int linger_ms = 0;
+    zlink_setsockopt(monitor, ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+    const int monitor_hwm = bench_monitor_hwm();
+    if (monitor_hwm > 0) {
+        zlink_setsockopt(
+          monitor, ZLINK_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zlink_setsockopt(
+          monitor, ZLINK_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
+    }
+
+    out_.owner = socket_;
+    out_.monitor = monitor;
+    return true;
+}
+
+inline int poll_connect_ready_count(connect_monitor_t &monitor_)
+{
+    if (!monitor_.monitor)
+        return 0;
+
+    int ready = 0;
+    for (;;) {
+        zlink_monitor_event_t ev;
+        if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
+            break;
+        if (ev.event == ZLINK_EVENT_CONNECTION_READY
+#ifdef ZLINK_EVENT_CONNECTED
+            || ev.event == ZLINK_EVENT_CONNECTED
+#endif
+#ifdef ZLINK_EVENT_ACCEPTED
+            || ev.event == ZLINK_EVENT_ACCEPTED
+#endif
+        )
+            ++ready;
+    }
+    return ready;
+}
+
+inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
+                                     size_t expected_ready_,
+                                     int timeout_ms_)
+{
+    if (expected_ready_ == 0)
+        return true;
+
+    size_t ready = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (std::chrono::steady_clock::now() < deadline && ready < expected_ready_) {
+        ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
+        if (ready >= expected_ready_)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return ready >= expected_ready_;
+}
+
+inline void close_connect_monitor(connect_monitor_t &monitor_)
+{
+    if (monitor_.owner)
+        zlink_socket_monitor(monitor_.owner, NULL, 0);
+    if (monitor_.monitor)
+        zlink_close(monitor_.monitor);
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+}
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_)

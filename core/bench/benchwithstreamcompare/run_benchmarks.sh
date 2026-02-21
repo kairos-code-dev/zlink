@@ -39,7 +39,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(asio cppserver dotnet zlink zlinkraw zmq netty)
+STACKS_ALL=(zlinkraw zlink asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -52,7 +52,7 @@ CLIENT_IO_THREADS=4
 SERVER_IO_THREADS=4
 RESOURCE_SAMPLE_MS=500
 SERVER_START_TIMEOUT=40
-STACK_GAP_SEC=5
+STACK_GAP_SEC=8
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -195,6 +195,7 @@ SKIP_CSV="${RESULT_DIR}/skipped_stacks.csv"
 CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
+ZLINKRAW_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlinkraw"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
 STACKS_ROOT_DIR="${ROOT_DIR}/core/bench/benchwithstreamcompare/stacks"
 ZMQ_LIB_DIR="${STACKS_ROOT_DIR}/zmq/libzmq_dist/linux-x64/lib"
@@ -231,6 +232,85 @@ ALLOCATED_PORT=""
 ACTIVE_STACKS=()
 FAILED_CASES=0
 MONITOR_PID=""
+
+min_int()
+{
+    local value="$1"
+    local minimum="$2"
+    if (( value < minimum )); then
+        echo "${minimum}"
+    else
+        echo "${value}"
+    fi
+}
+
+resolve_stack_tuning()
+{
+    local stack="$1"
+
+    STACK_SNDBUF=1048576
+    STACK_RCVBUF=1048576
+    STACK_BACKLOG=32768
+    STACK_TCP_NODELAY=1
+    STACK_IO_THREADS="${SERVER_IO_THREADS}"
+    STACK_ENV_VARS=()
+
+    case "${stack}" in
+        cppserver)
+            STACK_IO_THREADS=1
+            STACK_SNDBUF=4194304
+            STACK_RCVBUF=4194304
+            STACK_BACKLOG=65535
+            ;;
+        dotnet)
+            STACK_IO_THREADS=1
+            STACK_SNDBUF=32768
+            STACK_RCVBUF=32768
+            STACK_BACKLOG=32768
+            STACK_TCP_NODELAY=0
+            ;;
+        netty)
+            STACK_IO_THREADS=1
+            STACK_SNDBUF=4194304
+            STACK_RCVBUF=4194304
+            STACK_BACKLOG=65535
+            STACK_ENV_VARS+=(
+              "JAVA_OPTS=${JAVA_OPTS:-} -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g"
+            )
+            ;;
+        asio)
+            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 4)"
+            STACK_SNDBUF=2097152
+            STACK_RCVBUF=2097152
+            ;;
+        zlink)
+            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 4)"
+            STACK_SNDBUF=2097152
+            STACK_RCVBUF=2097152
+            STACK_ENV_VARS+=(
+              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=0"
+            )
+            ;;
+        zlinkraw)
+            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 12)"
+            STACK_SNDBUF=8388608
+            STACK_RCVBUF=8388608
+            STACK_BACKLOG=65535
+            STACK_ENV_VARS+=(
+              "ZLINK_ASIO_STREAM_BATCH_SIZE=65536"
+              "ZLINK_ASIO_STREAM_DISABLE_METADATA=1"
+              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=0"
+            )
+            ;;
+        zmq)
+            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 2)"
+            STACK_SNDBUF=2097152
+            STACK_RCVBUF=2097152
+            ;;
+        *)
+            ;;
+    esac
+}
 
 log()
 {
@@ -790,7 +870,7 @@ try_build_stack()
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
             ;;
         zlinkraw)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
+            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlinkraw -j"$(nproc)" >/dev/null
             ;;
         zmq)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
@@ -847,6 +927,7 @@ start_server()
     local size_hint="$5"
 
     local -a cmd=()
+    local -a env_cmd=()
     case "${stack}" in
         asio)
             cmd=("${ASIO_BIN}")
@@ -855,7 +936,7 @@ start_server()
             cmd=("${ZLINK_BIN}")
             ;;
         zlinkraw)
-            cmd=("${ZLINK_BIN}")
+            cmd=("${ZLINKRAW_BIN}")
             ;;
         zmq)
             cmd=("${ZMQ_BIN}")
@@ -874,38 +955,51 @@ start_server()
             ;;
     esac
 
+    resolve_stack_tuning "${stack}"
+
     cmd+=(
         --host "${host}"
         --port "${port}"
         --size "${size_hint}"
-        --sndbuf "1048576"
-        --rcvbuf "1048576"
-        --backlog "32768"
-        --tcp-nodelay "1"
-        --io-threads "${SERVER_IO_THREADS}"
-        --raw-echo "0"
+        --sndbuf "${STACK_SNDBUF}"
+        --rcvbuf "${STACK_RCVBUF}"
+        --backlog "${STACK_BACKLOG}"
+        --tcp-nodelay "${STACK_TCP_NODELAY}"
+        --io-threads "${STACK_IO_THREADS}"
     )
 
-    if [[ "${stack}" == "zlink" ]]; then
-        cmd+=(--packet-mode "len32be")
-    elif [[ "${stack}" == "zlinkraw" ]]; then
-        cmd+=(--packet-mode "raw")
+    if [[ ${#STACK_ENV_VARS[@]} -gt 0 ]]; then
+        env_cmd=(env "${STACK_ENV_VARS[@]}")
     fi
+
+    log "stack_tuning stack=${stack} io_threads=${STACK_IO_THREADS} sndbuf=${STACK_SNDBUF} rcvbuf=${STACK_RCVBUF} backlog=${STACK_BACKLOG}"
 
     if [[ "${stack}" == "zmq" ]]; then
         (
             export LD_LIBRARY_PATH="${ZMQ_LIB_DIR}:${LD_LIBRARY_PATH:-}"
-            exec "${cmd[@]}" >"${server_log}" 2>&1
+            if [[ ${#env_cmd[@]} -gt 0 ]]; then
+                exec "${env_cmd[@]}" "${cmd[@]}" >"${server_log}" 2>&1
+            else
+                exec "${cmd[@]}" >"${server_log}" 2>&1
+            fi
         ) &
     elif [[ "${stack}" == "netty" ]]; then
         (
             export JAVA_HOME="${NETTY_JAVA_HOME}"
             export PATH="${NETTY_JAVA_HOME}/bin:${PATH}"
-            exec "${cmd[@]}" >"${server_log}" 2>&1
+            if [[ ${#env_cmd[@]} -gt 0 ]]; then
+                exec "${env_cmd[@]}" "${cmd[@]}" >"${server_log}" 2>&1
+            else
+                exec "${cmd[@]}" >"${server_log}" 2>&1
+            fi
         ) &
     else
         (
-            exec "${cmd[@]}" >"${server_log}" 2>&1
+            if [[ ${#env_cmd[@]} -gt 0 ]]; then
+                exec "${env_cmd[@]}" "${cmd[@]}" >"${server_log}" 2>&1
+            else
+                exec "${cmd[@]}" >"${server_log}" 2>&1
+            fi
         ) &
     fi
 

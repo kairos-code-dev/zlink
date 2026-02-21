@@ -30,7 +30,6 @@ struct server_options_t
     int backlog;
     int tcp_nodelay;
     int io_threads;
-    int raw_echo;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -40,8 +39,7 @@ struct server_options_t
           rcvbuf (1024 * 1024),
           backlog (32768),
           tcp_nodelay (1),
-          io_threads (8),
-          raw_echo (0)
+          io_threads (8)
     {
     }
 };
@@ -62,9 +60,6 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     void on_read_header (const boost::system::error_code &ec, size_t bytes);
     void start_read_body ();
     void on_read_body (const boost::system::error_code &ec, size_t bytes);
-    void start_read_raw ();
-    void on_read_raw (const boost::system::error_code &ec, size_t bytes);
-    void on_write_raw (const boost::system::error_code &ec, size_t bytes);
     void on_write (const boost::system::error_code &ec, size_t bytes);
     void close_internal ();
 
@@ -76,12 +71,9 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     bool writing;
 
     unsigned char read_header[4];
-    unsigned char write_header[4];
     size_t current_read_len;
-    size_t raw_read_len;
 
     std::vector<unsigned char> frame_body;
-    std::vector<unsigned char> raw_buf;
 };
 
 class asio_echo_server_t
@@ -205,8 +197,6 @@ class asio_echo_server_t
         send_error.fetch_add (1, std::memory_order_relaxed);
     }
 
-    bool raw_echo_enabled () const { return opt.raw_echo != 0; }
-
     void apply_socket_tuning (tcp::socket &socket)
     {
         boost::system::error_code ec;
@@ -263,12 +253,9 @@ asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_cont
       closed (false),
       writing (false),
       current_read_len (0),
-      raw_read_len (0),
-      frame_body (),
-      raw_buf (std::max<size_t> (owner_.payload_size (), 64 * 1024), 0)
+      frame_body ()
 {
     std::memset (read_header, 0, sizeof (read_header));
-    std::memset (write_header, 0, sizeof (write_header));
     // Keep initial framed buffer small and grow on demand.
     // This avoids per-connection allocation of max benchmark frame size.
     frame_body.reserve (4096);
@@ -277,65 +264,8 @@ asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_cont
 void asio_session_t::start ()
 {
     owner.on_session_open ();
-    if (owner.raw_echo_enabled ())
-        start_read_raw ();
-    else
-        start_read_header ();
-}
-
-void asio_session_t::start_read_raw ()
-{
-    if (closed)
-        return;
-
-    const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    socket.async_read_some (
-      boost::asio::buffer (raw_buf),
-      boost::asio::bind_executor (
-        strand,
-        [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_read_raw (ec, bytes);
-        }));
-}
-
-void asio_session_t::on_read_raw (const boost::system::error_code &ec, size_t bytes)
-{
-    if (closed)
-        return;
-
-    if (ec || bytes == 0) {
-        close_internal ();
-        return;
-    }
-
-    owner.on_recv_frame (bytes);
-    raw_read_len = bytes;
-    writing = true;
-
-    const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    boost::asio::async_write (
-      socket, boost::asio::buffer (&raw_buf[0], raw_read_len),
-      boost::asio::bind_executor (
-        strand,
-        [self] (const boost::system::error_code &w_ec, size_t w_bytes) {
-            self->on_write_raw (w_ec, w_bytes);
-        }));
-}
-
-void asio_session_t::on_write_raw (const boost::system::error_code &ec, size_t bytes)
-{
-    writing = false;
-
-    if (closed)
-        return;
-
-    if (ec || bytes != raw_read_len) {
-        owner.on_send_error ();
-        close_internal ();
-        return;
-    }
-
-    start_read_raw ();
+    // Stream-compare server is framed-only: 4-byte big-endian length + payload.
+    start_read_header ();
 }
 
 void asio_session_t::start_read_header ()
@@ -408,10 +338,10 @@ void asio_session_t::on_read_body (const boost::system::error_code &ec, size_t b
 
     owner.on_recv_frame (current_read_len);
     writing = true;
-    std::memcpy (write_header, read_header, sizeof (write_header));
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
+    // Echo exactly one complete framed packet.
     std::array<boost::asio::const_buffer, 2> buffers = {
-      boost::asio::buffer (write_header, sizeof (write_header)),
+      boost::asio::buffer (read_header, sizeof (read_header)),
       boost::asio::buffer (&frame_body[0], current_read_len)};
     boost::asio::async_write (
       socket, buffers,
@@ -429,7 +359,7 @@ void asio_session_t::on_write (const boost::system::error_code &ec, size_t bytes
     if (closed)
         return;
 
-    const size_t write_size = sizeof (write_header) + current_read_len;
+    const size_t write_size = sizeof (read_header) + current_read_len;
     if (ec || bytes != write_size) {
         owner.on_send_error ();
         close_internal ();
@@ -471,7 +401,6 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-    opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "asio server: size too large %zu\n", opt.size);
         return false;

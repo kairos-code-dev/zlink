@@ -892,13 +892,23 @@ void run_multi_stream (const std::string &transport,
     const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const int stream_send_batch =
       resolve_multi_int_env ("BENCH_MULTI_STREAM_SEND_BATCH", 64, 1);
+    const int stream_client_threads_default =
+      settings.clients >= 10000 ? 4 : 1;
+    int stream_client_threads = resolve_multi_int_env (
+      "BENCH_STREAM_CLIENT_THREADS",
+      resolve_multi_int_env (
+        "BENCH_MULTI_STREAM_SEND_WORKERS", stream_client_threads_default, 1),
+      1);
+    stream_client_threads = std::max (1, std::min (4, stream_client_threads));
     multi_bench_settings_t stream_settings = settings;
     stream_settings.send_workers = std::max (
-      stream_settings.send_workers,
-      resolve_multi_int_env ("BENCH_MULTI_STREAM_SEND_WORKERS", 3, 1));
+      1,
+      std::min<int> (
+        stream_client_threads, static_cast<int> (std::max<size_t> (1, settings.clients))));
     stream_settings.drain_ms = std::max (
       stream_settings.drain_ms,
       resolve_multi_int_env ("BENCH_MULTI_STREAM_DRAIN_MS", 2000, 0));
+    const int stream_hwm = resolve_multi_int_env ("BENCH_STREAM_HWM", 100000, 1);
     if (settings.clients == 0) {
         for (size_t s = 0; s < msg_sizes.size (); ++s) {
             print_result (
@@ -917,7 +927,7 @@ void run_multi_stream (const std::string &transport,
 
     const int linger_ms = 0;
     set_sockopt_int (server, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
-    apply_benchmark_hwm (server, settings.hwm);
+    apply_benchmark_hwm (server, stream_hwm);
     apply_stream_server_tuning (server, true);
 #ifdef ZMQ_STREAM_NOTIFY
     set_sockopt_int (
@@ -982,7 +992,7 @@ void run_multi_stream (const std::string &transport,
         }
 
         const double latency = measure_stream_latency_us (
-          transport, lib_name, current_size, settings.hwm,
+          transport, lib_name, current_size, stream_hwm,
           settings.connect_ready_timeout_ms);
 
         const double throughput =

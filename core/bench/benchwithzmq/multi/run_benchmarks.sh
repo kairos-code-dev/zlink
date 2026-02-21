@@ -354,6 +354,10 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   exit 1
 }
 PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
+if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" && "${TRANSPORT}" != "tcp" ]]; then
+  echo "Error: benchwithzmq STREAM supports only tcp transport." >&2
+  exit 1
+fi
 
 if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
   DATE_DIR="$(date +%Y%m%d)"
@@ -405,6 +409,8 @@ fi
 
 if [[ -n "${MULTI_IO_THREADS}" ]]; then
   export BENCH_IO_THREADS="${MULTI_IO_THREADS}"
+elif [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" && -z "${BENCH_IO_THREADS:-}" ]]; then
+  export BENCH_IO_THREADS="4"
 elif [[ -z "${BENCH_IO_THREADS:-}" && "${effective_clients}" =~ ^[0-9]+$ && "${effective_clients}" -ge 512 ]]; then
   export BENCH_IO_THREADS="4"
 fi
@@ -426,6 +432,18 @@ if [[ -n "${MULTI_SEND_BACKOFF_US}" ]]; then
 fi
 if [[ -n "${MSG_SIZES}" ]]; then
   export BENCH_MSG_SIZES="${MSG_SIZES}"
+fi
+if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
+  if [[ -z "${BENCH_STREAM_CLIENT_THREADS:-}" ]]; then
+    if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_clients}" -ge 10000 ]]; then
+      export BENCH_STREAM_CLIENT_THREADS="4"
+    else
+      export BENCH_STREAM_CLIENT_THREADS="1"
+    fi
+  fi
+  if [[ -z "${BENCH_STREAM_HWM:-}" ]]; then
+    export BENCH_STREAM_HWM="100000"
+  fi
 fi
 
 EXTRA_ARGS=(--runs "${RUNS}")

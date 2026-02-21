@@ -15,7 +15,6 @@ internal sealed class ServerOptions
     public int Backlog { get; set; } = 32768;
     public int TcpNoDelay { get; set; } = 1;
     public int IoThreads { get; set; } = 8;
-    public int RawEcho { get; set; } = 0;
 
     public const int MinPayloadSize = 16;
     public const int MaxPayloadSize = 4 * 1024 * 1024;
@@ -58,9 +57,6 @@ internal sealed class ServerOptions
                     break;
                 case "--io-threads":
                     options.IoThreads = ParseInt(value, options.IoThreads, 1);
-                    break;
-                case "--raw-echo":
-                    options.RawEcho = ParseInt(value, options.RawEcho, 0);
                     break;
             }
         }
@@ -227,12 +223,7 @@ internal sealed class EchoServer
 
     private async Task RunConnectionAsync(Socket socket, CancellationToken token)
     {
-        if (_options.RawEcho != 0)
-        {
-            await RunConnectionRawAsync(socket, token).ConfigureAwait(false);
-            return;
-        }
-
+        // Stream-compare server is framed-only: 4-byte big-endian length + payload.
         int initialFrame = Math.Max(
             ServerOptions.MinPayloadSize,
             Math.Min(_options.Size, 4096));
@@ -317,65 +308,6 @@ internal sealed class EchoServer
 
             socket.Dispose();
             ArrayPool<byte>.Shared.Return(frameBuffer);
-            _metrics.RemoveConnection();
-        }
-    }
-
-    private async Task RunConnectionRawAsync(Socket socket, CancellationToken token)
-    {
-        int bufSize = 64 * 1024;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(bufSize);
-
-        try
-        {
-            while (!token.IsCancellationRequested)
-            {
-                int nrecv = await socket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer, 0, buffer.Length),
-                    SocketFlags.None,
-                    token).ConfigureAwait(false);
-                if (nrecv <= 0)
-                    break;
-
-                _metrics.AddRecvMsg();
-
-                int sent = 0;
-                while (sent < nrecv)
-                {
-                    int nsend = await socket.SendAsync(
-                        new ArraySegment<byte>(buffer, sent, nrecv - sent),
-                        SocketFlags.None,
-                        token).ConfigureAwait(false);
-                    if (nsend <= 0)
-                    {
-                        _metrics.AddSendError();
-                        return;
-                    }
-                    sent += nsend;
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // ignored
-        }
-        catch (SocketException)
-        {
-            _metrics.AddSendError();
-        }
-        finally
-        {
-            try
-            {
-                socket.Shutdown(SocketShutdown.Both);
-            }
-            catch
-            {
-                // ignored
-            }
-
-            socket.Dispose();
-            ArrayPool<byte>.Shared.Return(buffer);
             _metrics.RemoveConnection();
         }
     }

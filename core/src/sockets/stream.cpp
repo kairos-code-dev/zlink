@@ -45,6 +45,9 @@ const int stream_packet_msg_pool_max = parse_positive_int_env (
 
 const int stream_packet_copy_threshold = parse_positive_int_env (
   "ZLINK_STREAM_PACKET_COPY_THRESHOLD", 128);
+
+const int stream_packet_recv_drain_max = parse_positive_int_env (
+  "ZLINK_STREAM_PACKET_RECV_DRAIN_MAX", 32);
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -281,31 +284,35 @@ int zlink::stream_t::xrecv (msg_t *msg_)
         return xrecv (msg_);
 
     if (stream_packet_mode_enabled ()) {
+        for (int drained = 0; drained < stream_packet_recv_drain_max;
+             ++drained) {
+            int prefetch_rc = prefetch_packetized_message ();
+            if (prefetch_rc < 0)
+                return -1;
+            if (prefetch_rc > 0)
+                return xrecv (msg_);
+
+            pipe_t *pipe = NULL;
+            int rc = _fq.recvpipe (&_packet_chunk_msg, &pipe);
+            if (rc != 0)
+                return -1;
+
+            zlink_assert (pipe != NULL);
+
+            uint32_t routing_id_value = _packet_chunk_msg.get_routing_id ();
+            if (routing_id_value == 0)
+                routing_id_value = pipe->get_server_socket_routing_id ();
+
+            rc = append_packetized_input (pipe, routing_id_value,
+                                          &_packet_chunk_msg);
+            if (rc != 0)
+                return -1;
+
+            if (_prefetched)
+                return xrecv (msg_);
+        }
+
         int prefetch_rc = prefetch_packetized_message ();
-        if (prefetch_rc < 0)
-            return -1;
-        if (prefetch_rc > 0)
-            return xrecv (msg_);
-
-        pipe_t *pipe = NULL;
-        int rc = _fq.recvpipe (&_packet_chunk_msg, &pipe);
-        if (rc != 0)
-            return -1;
-
-        zlink_assert (pipe != NULL);
-
-        uint32_t routing_id_value = _packet_chunk_msg.get_routing_id ();
-        if (routing_id_value == 0)
-            routing_id_value = pipe->get_server_socket_routing_id ();
-
-        rc = append_packetized_input (pipe, routing_id_value, &_packet_chunk_msg);
-        if (rc != 0)
-            return -1;
-
-        if (_prefetched)
-            return xrecv (msg_);
-
-        prefetch_rc = prefetch_packetized_message ();
         if (prefetch_rc < 0)
             return -1;
         if (prefetch_rc > 0)
@@ -662,19 +669,113 @@ int zlink::stream_t::append_packetized_input (pipe_t *pipe_,
     zlink_assert (pipe_ != NULL);
     zlink_assert (chunk_ != NULL);
 
-    packet_rx_state_t *state = get_or_create_packet_state (routing_id_value_);
-    if (!state) {
-        int rc = chunk_->close ();
-        errno_assert (rc == 0);
-        rc = chunk_->init ();
-        errno_assert (rc == 0);
-        return -1;
-    }
+    packet_rx_state_t *state = NULL;
+    const size_t state_idx = static_cast<size_t> (routing_id_value_);
+    if (state_idx < _packet_rx_states.size ())
+        state = _packet_rx_states[state_idx];
 
     const unsigned char *chunk_begin =
       static_cast<unsigned char *> (chunk_->data ());
     const unsigned char *chunk_data = chunk_begin;
     size_t remaining = chunk_->size ();
+
+    const bool state_is_empty = !state
+                                || (state->header_filled == 0
+                                    && state->payload_size == 0
+                                    && state->payload_written == 0
+                                    && state->payload_msg == NULL);
+
+    if (state_is_empty) {
+        while (remaining >= 4) {
+            const uint32_t payload_size = get_uint32 (chunk_data);
+            if (payload_size
+                > static_cast<uint32_t> (options.stream_packet_max_size)
+                || static_cast<size_t> (payload_size) + 4
+                     > static_cast<size_t> (
+                       options.stream_packet_buffer_max)) {
+                destroy_packet_state (routing_id_value_);
+                pipe_->terminate (false);
+                int rc = chunk_->close ();
+                errno_assert (rc == 0);
+                rc = chunk_->init ();
+                errno_assert (rc == 0);
+                return 0;
+            }
+
+            const size_t frame_size = static_cast<size_t> (payload_size) + 4;
+            if (remaining < frame_size)
+                break;
+
+            msg_t *ready_msg = acquire_packet_msg ();
+            if (!ready_msg) {
+                int rc = chunk_->close ();
+                errno_assert (rc == 0);
+                rc = chunk_->init ();
+                errno_assert (rc == 0);
+                return -1;
+            }
+
+            int rc = 0;
+            if (payload_size == 0) {
+                rc = ready_msg->init_size (0);
+            } else if (payload_size
+                       <= static_cast<uint32_t> (stream_packet_copy_threshold)) {
+                rc = ready_msg->init_size (payload_size);
+                if (rc == 0) {
+                    memcpy (ready_msg->data (), chunk_data + 4,
+                            static_cast<size_t> (payload_size));
+                }
+            } else {
+                const size_t payload_offset =
+                  static_cast<size_t> (chunk_data - chunk_begin) + 4;
+                rc = ready_msg->init_view (*chunk_, payload_offset,
+                                           static_cast<size_t> (payload_size));
+            }
+
+            if (rc != 0) {
+                const int saved_errno = errno;
+                release_packet_msg (ready_msg);
+                int close_rc = chunk_->close ();
+                errno_assert (close_rc == 0);
+                close_rc = chunk_->init ();
+                errno_assert (close_rc == 0);
+                errno = saved_errno;
+                return -1;
+            }
+
+            const int queue_rc =
+              queue_or_prefetch_packet (routing_id_value_, ready_msg);
+            if (queue_rc < 0) {
+                int close_rc = chunk_->close ();
+                errno_assert (close_rc == 0);
+                close_rc = chunk_->init ();
+                errno_assert (close_rc == 0);
+                return -1;
+            }
+
+            chunk_data += frame_size;
+            remaining -= frame_size;
+        }
+
+        if (remaining == 0) {
+            int rc = chunk_->close ();
+            errno_assert (rc == 0);
+            rc = chunk_->init ();
+            errno_assert (rc == 0);
+            return 0;
+        }
+
+        if (!state) {
+            state = get_or_create_packet_state (routing_id_value_);
+            if (!state) {
+                int rc = chunk_->close ();
+                errno_assert (rc == 0);
+                rc = chunk_->init ();
+                errno_assert (rc == 0);
+                return -1;
+            }
+        }
+    }
 
     while (remaining > 0) {
         if (state->header_filled < 4) {

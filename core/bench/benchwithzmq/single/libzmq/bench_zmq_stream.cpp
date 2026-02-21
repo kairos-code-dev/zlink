@@ -144,33 +144,6 @@ bool recv_framed(socket_t sock, std::vector<char> *payload)
     return read_all(sock, payload->data(), payload_len);
 }
 
-bool expect_connect_event(void *socket_, std::vector<unsigned char> &routing_id)
-{
-    zmq_msg_t id_frame;
-    zmq_msg_init(&id_frame);
-    const int id_len = zmq_msg_recv(&id_frame, socket_, 0);
-    if (id_len <= 0) {
-        zmq_msg_close(&id_frame);
-        return false;
-    }
-
-    routing_id.assign(
-      static_cast<const unsigned char *>(zmq_msg_data(&id_frame)),
-      static_cast<const unsigned char *>(zmq_msg_data(&id_frame)) + id_len);
-    zmq_msg_close(&id_frame);
-
-    int more = 0;
-    size_t more_size = sizeof(more);
-    if (zmq_getsockopt(socket_, ZMQ_RCVMORE, &more, &more_size) != 0 || !more)
-        return false;
-
-    zmq_msg_t payload;
-    zmq_msg_init(&payload);
-    const int payload_len = zmq_msg_recv(&payload, socket_, 0);
-    zmq_msg_close(&payload);
-    return payload_len >= 0;
-}
-
 bool send_stream_frame(void *socket_,
                        const std::vector<unsigned char> &routing_id,
                        const std::vector<char> &payload)
@@ -305,6 +278,7 @@ void run_stream(const std::string &transport,
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
         return;
     }
+    apply_stream_server_io_threads(ctx.get());
 
     socket_guard_t server(ctx.get(), ZMQ_STREAM);
     if (!server.valid()) {
@@ -315,7 +289,7 @@ void run_stream(const std::string &transport,
     set_sockopt_int(server.get(), ZMQ_STREAM_NOTIFY, STREAM_NOTIFY_ON,
                     "ZMQ_STREAM_NOTIFY");
 
-    const int hwm = 0;
+    const int hwm = resolve_bench_count("BENCH_STREAM_HWM", 100000);
     set_sockopt_int(server.get(), ZMQ_SNDHWM, hwm, "ZMQ_SNDHWM");
     set_sockopt_int(server.get(), ZMQ_RCVHWM, hwm, "ZMQ_RCVHWM");
 
@@ -329,9 +303,16 @@ void run_stream(const std::string &transport,
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
         return;
     }
+    connect_monitor_t monitor;
+    if (!open_connect_monitor(
+          ctx.get(), server.get(), lib_name + "_single_stream_srv", 0, monitor)) {
+        print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
+        return;
+    }
 
     socket_t client = connect_tcp(endpoint);
     if (client == INVALID_SOCKET_FD) {
+        close_connect_monitor(monitor);
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
 #ifdef _WIN32
         WSACleanup();
@@ -341,6 +322,7 @@ void run_stream(const std::string &transport,
 
     auto cleanup_client = [&]() {
         close_socket(client);
+        close_connect_monitor(monitor);
 #ifdef _WIN32
         WSACleanup();
 #endif
@@ -351,15 +333,33 @@ void run_stream(const std::string &transport,
         cleanup_client();
     };
 
-    std::vector<unsigned char> server_client_id;
-    if (!expect_connect_event(server.get(), server_client_id)) {
+    const int connect_timeout_ms =
+      resolve_bench_count("BENCH_STREAM_CONNECT_TIMEOUT_MS", 5000);
+    if (!wait_connect_ready_count(monitor, 1, connect_timeout_ms)) {
         fail();
         return;
     }
 
+    std::vector<unsigned char> server_client_id;
     std::vector<char> payload(msg_size, 'a');
     std::vector<char> recv_payload;
     stream_buffer_t stash;
+    std::vector<char> probe_payload(1, 'p');
+    std::vector<char> probe_chunk;
+
+    if (!send_framed(client, probe_payload)
+        || !recv_stream_chunk(server.get(), &server_client_id, &probe_chunk)
+        || server_client_id.empty()) {
+        fail();
+        return;
+    }
+    stash.append(probe_chunk.data(), probe_chunk.size());
+    std::vector<char> probe_recv;
+    if (!recv_framed_stream(server.get(), server_client_id, &stash, &probe_recv)
+        || probe_recv != probe_payload) {
+        fail();
+        return;
+    }
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {

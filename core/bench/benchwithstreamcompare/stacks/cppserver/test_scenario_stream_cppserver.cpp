@@ -31,7 +31,6 @@ struct server_options_t
     int backlog;
     int tcp_nodelay;
     int io_threads;
-    int raw_echo;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -41,8 +40,7 @@ struct server_options_t
           rcvbuf (1024 * 1024),
           backlog (32768),
           tcp_nodelay (1),
-          io_threads (8),
-          raw_echo (0)
+          io_threads (8)
     {
     }
 };
@@ -110,16 +108,6 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
-        if (opt.raw_echo != 0) {
-            if (!SendAsync (buffer, size)) {
-                metrics.send_error.fetch_add (1, std::memory_order_relaxed);
-                Disconnect ();
-                return;
-            }
-            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
-            return;
-        }
-
         const unsigned char *ptr = static_cast<const unsigned char *> (buffer);
         size_t remaining = size;
 
@@ -128,14 +116,8 @@ class stream_echo_session_t : public TCPSession
                 if (partial_size >= 4 && partial_expected_frame_size == 0) {
                     const size_t body_size = static_cast<size_t> (
                       stream_echo::load_u32_be (&partial_frame[0]));
-                    if (body_size < k_min_payload_size
-                        || body_size > k_max_payload_size
-                        || body_size > opt.size) {
-                        metrics.parse_error.fetch_add (1,
-                                                       std::memory_order_relaxed);
-                        metrics.protocol_error.fetch_add (
-                          1, std::memory_order_relaxed);
-                        Disconnect ();
+                    if (invalid_body_size (body_size)) {
+                        fail_parse_and_disconnect ();
                         return;
                     }
                     partial_expected_frame_size = 4 + body_size;
@@ -157,14 +139,8 @@ class stream_echo_session_t : public TCPSession
                 if (partial_expected_frame_size == 0) {
                     const size_t body_size = static_cast<size_t> (
                       stream_echo::load_u32_be (&partial_frame[0]));
-                    if (body_size < k_min_payload_size
-                        || body_size > k_max_payload_size
-                        || body_size > opt.size) {
-                        metrics.parse_error.fetch_add (1,
-                                                       std::memory_order_relaxed);
-                        metrics.protocol_error.fetch_add (
-                          1, std::memory_order_relaxed);
-                        Disconnect ();
+                    if (invalid_body_size (body_size)) {
+                        fail_parse_and_disconnect ();
                         return;
                     }
                     partial_expected_frame_size = 4 + body_size;
@@ -173,13 +149,10 @@ class stream_echo_session_t : public TCPSession
                 if (partial_size < partial_expected_frame_size)
                     continue;
 
-                if (!SendAsync (&partial_frame[0], partial_expected_frame_size)) {
-                    metrics.send_error.fetch_add (1, std::memory_order_relaxed);
-                    Disconnect ();
+                // We have one complete framed packet: echo it as-is.
+                if (!echo_complete_frame (&partial_frame[0],
+                                          partial_expected_frame_size))
                     return;
-                }
-
-                metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
                 partial_size = 0;
                 partial_expected_frame_size = 0;
                 continue;
@@ -195,11 +168,8 @@ class stream_echo_session_t : public TCPSession
 
             const size_t body_size =
               static_cast<size_t> (stream_echo::load_u32_be (ptr));
-            if (body_size < k_min_payload_size || body_size > k_max_payload_size
-                || body_size > opt.size) {
-                metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
-                metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
-                Disconnect ();
+            if (invalid_body_size (body_size)) {
+                fail_parse_and_disconnect ();
                 return;
             }
 
@@ -212,13 +182,8 @@ class stream_echo_session_t : public TCPSession
                 return;
             }
 
-            if (!SendAsync (ptr, incoming_frame_size)) {
-                metrics.send_error.fetch_add (1, std::memory_order_relaxed);
-                Disconnect ();
+            if (!echo_complete_frame (ptr, incoming_frame_size))
                 return;
-            }
-
-            metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
             ptr += incoming_frame_size;
             remaining -= incoming_frame_size;
         }
@@ -232,6 +197,30 @@ class stream_echo_session_t : public TCPSession
     }
 
   private:
+    bool invalid_body_size (size_t body_size) const
+    {
+        return body_size < k_min_payload_size || body_size > k_max_payload_size
+               || body_size > opt.size;
+    }
+
+    void fail_parse_and_disconnect ()
+    {
+        metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
+        metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
+        Disconnect ();
+    }
+
+    bool echo_complete_frame (const unsigned char *data, size_t frame_size)
+    {
+        if (!SendAsync (data, frame_size)) {
+            metrics.send_error.fetch_add (1, std::memory_order_relaxed);
+            Disconnect ();
+            return false;
+        }
+        metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
+        return true;
+    }
+
     void ensure_partial_capacity (size_t required_size)
     {
         if (partial_frame.size () < required_size)
@@ -301,7 +290,6 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-    opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "cppserver stream: size too large %zu\n", opt.size);
         return false;

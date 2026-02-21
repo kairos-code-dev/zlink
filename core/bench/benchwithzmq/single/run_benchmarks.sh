@@ -114,6 +114,23 @@ if [[ -n "${MSG_SIZES}" ]]; then
   export BENCH_MSG_SIZES="${MSG_SIZES}"
 fi
 
+PATTERN_UP="$(echo "${PATTERNS}" | tr '[:lower:]' '[:upper:]' | tr -d ' ')"
+if [[ "${PATTERN_UP}" == "STREAM" ]]; then
+  if [[ "${TRANSPORTS}" != "tcp" ]]; then
+    echo "Error: benchwithzmq STREAM supports only tcp transport." >&2
+    exit 1
+  fi
+  if [[ -z "${BENCH_STREAM_HWM:-}" ]]; then
+    export BENCH_STREAM_HWM="100000"
+  fi
+  if [[ -z "${BENCH_STREAM_SERVER_IO_THREADS:-}" ]]; then
+    export BENCH_STREAM_SERVER_IO_THREADS="4"
+  fi
+  if [[ -z "${BENCH_IO_THREADS:-}" ]]; then
+    export BENCH_IO_THREADS="4"
+  fi
+fi
+
 if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
   DATE_DIR="$(date +%Y%m%d)"
   TS="$(date +%Y%m%d_%H%M%S)"

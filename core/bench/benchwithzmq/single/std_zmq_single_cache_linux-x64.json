@@ -4,7 +4,7 @@
     "build_dir": "/home/hep7/project/kairos/zlink/core/build/linux-x64/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-20T08:55:35.320419+00:00"
+    "updated_at_utc": "2026-02-21T04:50:17.585201+00:00"
   },
   "patterns": {
     "DEALER_DEALER": {
@@ -37,18 +37,18 @@
     },
     "STREAM": {
       "data": {
-        "tcp|1024|latency": 21966.15,
-        "tcp|1024|throughput": 1387076.24,
-        "tcp|131072|latency": 68.16,
-        "tcp|131072|throughput": 42649.1,
-        "tcp|256|latency": 21991.8,
-        "tcp|256|throughput": 1714604.13,
-        "tcp|262144|latency": 129.43,
-        "tcp|262144|throughput": 22401.6,
-        "tcp|64|latency": 21958.45,
-        "tcp|64|throughput": 1769099.03,
-        "tcp|65536|latency": 65.49,
-        "tcp|65536|throughput": 74922.85
+        "tcp|1024|latency": 22112.01,
+        "tcp|1024|throughput": 1401345.51,
+        "tcp|131072|latency": 76.66,
+        "tcp|131072|throughput": 47212.19,
+        "tcp|256|latency": 22141.17,
+        "tcp|256|throughput": 1611077.58,
+        "tcp|262144|latency": 84.44,
+        "tcp|262144|throughput": 24005.9,
+        "tcp|64|latency": 22109.52,
+        "tcp|64|throughput": 1683176.38,
+        "tcp|65536|latency": 48.99,
+        "tcp|65536|throughput": 82382.09
       },
       "failures": [],
       "msg_sizes": [
@@ -62,7 +62,7 @@
       "transports": [
         "tcp"
       ],
-      "updated_at_utc": "2026-02-20T08:54:27.803870+00:00"
+      "updated_at_utc": "2026-02-21T04:49:13.222482+00:00"
     }
   }
 }

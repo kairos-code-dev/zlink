@@ -25,7 +25,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - `cppserver`
 - `dotnet`
 - `zlink`
-- `zlinkraw` (`zlink` + `ZLINK_STREAM_PACKET_MODE_RAW`)
+- `zlinkraw` (raw-stream 전용 서버 바이너리)
 - `zmq`
 - `netty`
 
@@ -37,7 +37,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 
 ## 공정성 설계 포인트
 
-- 모든 스택을 `--raw-echo 0`(framed echo 경로)로 실행
+- 모든 스택은 기본 서버 설정에서 framed echo 경로로 실행
 - 모든 스택에 동일 클라이언트 바이너리 사용
 - 클라이언트 wire format은 모든 스택에서 고정:
   `4-byte big-endian 길이 + payload`
@@ -139,8 +139,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `netty`는 Gradle 8.8+가 필요하며 시스템 `gradle`이 오래된 경우
   러너가 `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/` 아래에
   Gradle `8.10.2`를 자동 다운로드해서 사용
-- `zlink` 스택은 `--packet-mode len32be`로 실행
-- `zlinkraw` 스택은 A/B 비교를 위해 `--packet-mode raw`로 실행
+- `zlink`와 `zlinkraw`는 분리된 서버 바이너리를 직접 실행
 
 ## 결과 파일
 

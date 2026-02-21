@@ -2,6 +2,7 @@
 #define BENCH_COMMON_HPP
 
 #include <chrono>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -10,6 +11,9 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <atomic>
+#include <set>
+#include <cstring>
 #include <zmq.h>
 
 // --- Configuration ---
@@ -69,6 +73,49 @@ inline int bench_io_threads()
     return threads;
 }
 
+inline int bench_stream_server_io_threads()
+{
+    static int threads = -1;
+    if (threads >= 0)
+        return threads;
+
+    const char *env = std::getenv("BENCH_STREAM_SERVER_IO_THREADS");
+    if (!env || !*env)
+        env = std::getenv("BENCH_IO_THREADS");
+
+    if (!env || !*env) {
+        threads = 4;
+        return threads;
+    }
+
+    const int val = std::atoi(env);
+    threads = val > 0 ? val : 4;
+    return threads;
+}
+
+inline int bench_stream_client_threads(size_t clients_)
+{
+    const int fallback = clients_ >= 10000 ? 4 : 1;
+    const char *env = std::getenv("BENCH_STREAM_CLIENT_THREADS");
+    if (!env || !*env)
+        env = std::getenv("BENCH_MULTI_STREAM_SEND_WORKERS");
+
+    int threads = fallback;
+    if (env && *env) {
+        const int parsed = std::atoi(env);
+        if (parsed > 0)
+            threads = parsed;
+    }
+
+    if (threads < 1)
+        threads = 1;
+    if (threads > 4)
+        threads = 4;
+    if (clients_ > 0 && threads > static_cast<int>(clients_))
+        threads = static_cast<int>(clients_);
+    return threads;
+}
+
 inline void apply_io_threads(void *ctx_)
 {
     const int threads = bench_io_threads();
@@ -78,6 +125,19 @@ inline void apply_io_threads(void *ctx_)
     const int rc = zmq_ctx_set(ctx_, ZMQ_IO_THREADS, threads);
     if (rc != 0 && bench_debug_enabled()) {
         std::cerr << "zmq_ctx_set(ZMQ_IO_THREADS) failed: "
+                  << zmq_strerror(zmq_errno()) << std::endl;
+    }
+}
+
+inline void apply_stream_server_io_threads(void *ctx_)
+{
+    const int threads = bench_stream_server_io_threads();
+    if (threads <= 0)
+        return;
+
+    const int rc = zmq_ctx_set(ctx_, ZMQ_IO_THREADS, threads);
+    if (rc != 0 && std::getenv("BENCH_DEBUG") != NULL) {
+        std::cerr << "zmq_ctx_set(ZMQ_IO_THREADS, stream) failed: "
                   << zmq_strerror(zmq_errno()) << std::endl;
     }
 }
@@ -128,6 +188,165 @@ private:
 
     void *_socket;
 };
+
+struct connect_monitor_t {
+    void *owner;
+    void *monitor;
+    connect_monitor_t() : owner(NULL), monitor(NULL) {}
+};
+
+inline int bench_monitor_hwm()
+{
+    static int monitor_hwm = -1;
+    if (monitor_hwm >= 0)
+        return monitor_hwm;
+
+    const char *env = std::getenv("BENCH_MULTI_MONITOR_HWM");
+    if (!env || !*env) {
+        monitor_hwm = 200000;
+        return monitor_hwm;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0) {
+        monitor_hwm = 0;
+        return monitor_hwm;
+    }
+
+    monitor_hwm = static_cast<int>(parsed);
+    return monitor_hwm;
+}
+
+inline bool monitor_event_is_ready(uint16_t event_)
+{
+#ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
+    if (event_ == ZMQ_EVENT_HANDSHAKE_SUCCEEDED)
+        return true;
+#endif
+#ifdef ZMQ_EVENT_ACCEPTED
+    if (event_ == ZMQ_EVENT_ACCEPTED)
+        return true;
+#endif
+    return event_ == ZMQ_EVENT_CONNECTED;
+}
+
+inline bool open_connect_monitor(void *ctx_,
+                                 void *socket_,
+                                 const std::string &tag_,
+                                 size_t idx_,
+                                 connect_monitor_t &out_)
+{
+    static std::atomic<unsigned long> seq(0);
+    char monitor_ep[160];
+    const unsigned long id = seq.fetch_add(1, std::memory_order_relaxed);
+    std::snprintf(monitor_ep,
+                  sizeof(monitor_ep),
+                  "inproc://single-mon-%s-%zu-%lu",
+                  tag_.c_str(),
+                  idx_,
+                  id);
+
+    int events = ZMQ_EVENT_CONNECTED;
+#ifdef ZMQ_EVENT_HANDSHAKE_SUCCEEDED
+    events |= ZMQ_EVENT_HANDSHAKE_SUCCEEDED;
+#endif
+#ifdef ZMQ_EVENT_ACCEPTED
+    events |= ZMQ_EVENT_ACCEPTED;
+#endif
+
+    if (zmq_socket_monitor(socket_, monitor_ep, events) != 0)
+        return false;
+
+    void *monitor = zmq_socket(ctx_, ZMQ_PAIR);
+    if (!monitor) {
+        zmq_socket_monitor(socket_, NULL, 0);
+        return false;
+    }
+
+    const int linger_ms = 0;
+    zmq_setsockopt(monitor, ZMQ_LINGER, &linger_ms, sizeof(linger_ms));
+    const int monitor_hwm = bench_monitor_hwm();
+    if (monitor_hwm > 0) {
+        zmq_setsockopt(
+          monitor, ZMQ_RCVHWM, &monitor_hwm, sizeof(monitor_hwm));
+        zmq_setsockopt(
+          monitor, ZMQ_SNDHWM, &monitor_hwm, sizeof(monitor_hwm));
+    }
+    if (zmq_connect(monitor, monitor_ep) != 0) {
+        zmq_close(monitor);
+        zmq_socket_monitor(socket_, NULL, 0);
+        return false;
+    }
+
+    out_.owner = socket_;
+    out_.monitor = monitor;
+    return true;
+}
+
+inline int poll_connect_ready_count(connect_monitor_t &monitor_)
+{
+    if (!monitor_.monitor)
+        return 0;
+
+    int ready = 0;
+    for (;;) {
+        zmq_msg_t part1;
+        zmq_msg_t part2;
+        zmq_msg_init(&part1);
+        zmq_msg_init(&part2);
+
+        const int n = zmq_msg_recv(&part1, monitor_.monitor, ZMQ_DONTWAIT);
+        if (n < 0) {
+            zmq_msg_close(&part1);
+            zmq_msg_close(&part2);
+            break;
+        }
+
+        (void)zmq_msg_recv(&part2, monitor_.monitor, ZMQ_DONTWAIT);
+
+        uint16_t event = 0;
+        if (zmq_msg_size(&part1) >= sizeof(uint16_t))
+            std::memcpy(&event, zmq_msg_data(&part1), sizeof(uint16_t));
+
+        zmq_msg_close(&part1);
+        zmq_msg_close(&part2);
+
+        if (monitor_event_is_ready(event))
+            ++ready;
+    }
+    return ready;
+}
+
+inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
+                                     size_t expected_ready_,
+                                     int timeout_ms_)
+{
+    if (expected_ready_ == 0)
+        return true;
+
+    size_t ready = 0;
+    const auto deadline = std::chrono::steady_clock::now()
+                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
+    while (std::chrono::steady_clock::now() < deadline && ready < expected_ready_) {
+        ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
+        if (ready >= expected_ready_)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return ready >= expected_ready_;
+}
+
+inline void close_connect_monitor(connect_monitor_t &monitor_)
+{
+    if (monitor_.owner)
+        zmq_socket_monitor(monitor_.owner, NULL, 0);
+    if (monitor_.monitor)
+        zmq_close(monitor_.monitor);
+    monitor_.owner = NULL;
+    monitor_.monitor = NULL;
+}
 
 inline bool set_sockopt_int(void *socket_, int option_, int value_,
                             const char *name_)

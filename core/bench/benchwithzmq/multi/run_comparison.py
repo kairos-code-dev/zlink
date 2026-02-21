@@ -222,6 +222,10 @@ _env_sizes = parse_env_list("BENCH_MSG_SIZES", int)
 MSG_SIZES = _env_sizes if _env_sizes else [64, 256, 1024, 65536, 131072, 262144]
 
 FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
+SHOW_PREP = (
+    os.environ.get("BENCH_STREAM_SHOW_PREP", "0") == "1"
+    or os.environ.get("BENCH_DEBUG", "0") == "1"
+)
 base_env = os.environ.copy()
 
 
@@ -620,7 +624,11 @@ def collect_data(
                 if size in seen_sizes:
                     return
                 seen_sizes.add(size)
-                if connect_ms is not None and ready_ms is not None:
+                if (
+                    SHOW_PREP
+                    and connect_ms is not None
+                    and ready_ms is not None
+                ):
                     print(
                         f"{size}B(c={connect_ms:.0f}ms,r={ready_ms:.0f}ms) ",
                         end="",

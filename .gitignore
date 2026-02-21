@@ -210,10 +210,9 @@ buildenv/win/env.ps1
 .venv-bindings/
 
 # Local benchmark outputs
-core/bench/benchwithzlink/results/
-core/bench/benchwithzmq/results/
+core/bench/**/results/
 bindings/*/benchwithzlink/results/
-core/tests/scenario/router_router/result/
-core/tests/scenario/router_router/zlink/result/
-core/tests/scenario/router_router/zmq/result/
-core/tests/scenario/router_router/zlink-connect/result/
+core/tests/scenario/**/result/
+
+# Clangd cache
+core/.cache/

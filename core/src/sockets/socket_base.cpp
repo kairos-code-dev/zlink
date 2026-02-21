@@ -1099,6 +1099,16 @@ int zlink::socket_base_t::term_endpoint (const char *endpoint_uri_)
             it->second.second->terminate (false);
         term_child (it->second.first);
     }
+
+    //  Accepted pipes are not tracked in _endpoints; terminate any active pipe
+    //  that belongs to this endpoint identifier.
+    for (pipes_t::size_type i = 0; i < _pipes.size (); ++i) {
+        pipe_t *const pipe = _pipes[i];
+        if (!pipe)
+            continue;
+        if (pipe->get_endpoint_pair ().identifier () == resolved_endpoint_uri)
+            pipe->terminate (false);
+    }
     _endpoints.erase (range.first, range.second);
 
     return 0;

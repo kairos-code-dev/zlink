@@ -16,6 +16,7 @@ Primary goals:
 
 - `run_benchmarks.sh`: end-to-end benchmark runner.
 - `client/bench_stream_client.cpp`: common benchmark client.
+- `stacks/*`: per-stack server sources and project files.
 - `run_comparison.py`: summary and ranking generator.
 
 Supported stacks:
@@ -24,8 +25,8 @@ Supported stacks:
 - `cppserver`
 - `dotnet`
 - `zlink`
+- `zlinkraw` (`zlink` with `ZLINK_STREAM_PACKET_MODE_RAW`)
 - `zmq`
-- `cgdk10`
 - `netty`
 
 Supported payload sizes:
@@ -36,8 +37,10 @@ Supported payload sizes:
 
 ## Design Notes (Fairness)
 
-- All stacks are run in `--raw-echo 1` mode.
+- All stacks are run in `--raw-echo 0` mode (framed echo path).
 - The same client binary is used for all stacks.
+- The client always uses one wire format for every stack:
+  `4-byte big-endian payload length + payload`.
 - Client `inflight` is fixed to `1` (hard-fixed in client code).
 - Runner uses one server process per stack and executes stacks sequentially.
 - Runner sets server `--size` to the maximum size in the requested size list.
@@ -95,10 +98,18 @@ Run one stack with multi-size sequence on the same connected clients:
   --size 64,1024,65536
 ```
 
+Compare `zlink` LEN32BE on/off directly:
+
+```bash
+./core/bench/benchwithstreamcompare/run_benchmarks.sh \
+  --stack zlink,zlinkraw \
+  --size 64,1024,65536
+```
+
 ## Runner Options
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zmq|cgdk10|netty|all|csv>
+--stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    default: 10000
 --runs <N>                   default: 1
@@ -106,6 +117,7 @@ Run one stack with multi-size sequence on the same connected clients:
 --duration <sec>             default: 10
 --client-io-threads <N>      default: 4
 --server-io-threads <N>      default: 4
+--resource-sample-ms <N>     default: 500
 --server-start-timeout <sec> default: 40
 --stack-gap <sec>            default: 5
 ```
@@ -115,7 +127,6 @@ Supported environment variables:
 - `RESULT_DIR`: override output directory
 - `HOST`: benchmark target host (default `127.0.0.1`)
 - `BASE_PORT`: start port for stack runs (default `22000`)
-- `CGDK_REPO_URL`: override CGDK upstream repository URL
 - `NETTY_JAVA_HOME`: JDK home for `netty` stack (must be Java 22+)
 - `NETTY_GRADLE_BIN`: override Gradle binary for `netty` stack
 
@@ -124,13 +135,13 @@ Notes:
 - A lock file (`/tmp/bench_streamcompare.lock`) blocks concurrent benchmark runs.
 - Stacks are built before execution. Build failure for one stack is recorded as
   skipped, not a hard stop for all stacks.
-- `cgdk10` may clone its upstream source on first run. Network access is
-  required unless the upstream directory already exists locally.
 - `netty` requires Java 22+ and resolves Java in this order:
   `NETTY_JAVA_HOME -> JAVA_HOME -> PATH java`.
 - `netty` requires Gradle 8.8+. If system `gradle` is older, the runner
   auto-downloads Gradle `8.10.2` under
-  `core/tests/scenario/stream/netty/.gradle-tools/`.
+  `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/`.
+- `zlink` stack runs with `--packet-mode len32be`.
+- `zlinkraw` stack runs with `--packet-mode raw` for A/B comparison.
 
 ## Output Files
 
@@ -145,6 +156,8 @@ Generated files:
 - `comparison.md`: human-readable report
 - `skipped_stacks.csv`: skipped stacks and reasons
 - `logs/*_client.log`, `logs/*_server.log`: per-stack logs
+- `logs/*_client_resource.csv`, `logs/*_server_resource.csv`: sampled process usage
+- `logs/*_system_resource.csv`: sampled host-level usage during each stack run
 
 `metrics.csv` key fields:
 
@@ -153,6 +166,13 @@ Generated files:
 - `connect_ok`, `connect_fail`
 - `send_err`, `recv_err`, `timeout`
 - `pass_fail`
+- `client_avg_cpu_pct`, `client_peak_cpu_pct`
+- `client_avg_rss_kb`, `client_peak_rss_kb`, `client_peak_hwm_kb`
+- `server_avg_cpu_pct`, `server_peak_cpu_pct`
+- `server_avg_rss_kb`, `server_peak_rss_kb`, `server_peak_hwm_kb`
+- `system_avg_cpu_pct`, `system_peak_cpu_pct`
+- `system_avg_mem_used_kb`, `system_peak_mem_used_kb`
+- `system_avg_mem_used_pct`, `system_peak_mem_used_pct`
 
 Important interpretation note:
 
@@ -180,4 +200,3 @@ Recommended check flow:
 
 - `inflight` is intentionally fixed to `1`.
 - Latency percentiles are `0` when latency sampling is disabled (runner default).
-- `cgdk10` may not expose full runtime control for worker thread count.

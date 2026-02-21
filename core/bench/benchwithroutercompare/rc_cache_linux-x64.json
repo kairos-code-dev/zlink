@@ -1,0 +1,62 @@
+{
+  "grpc|1": {
+    "1024|latency": 72.18,
+    "1024|throughput": 13837.82,
+    "131072|latency": 146.79,
+    "131072|throughput": 6807.96,
+    "256|latency": 67.73,
+    "256|throughput": 14751.27,
+    "262144|latency": 230.15,
+    "262144|throughput": 4343.15,
+    "64|latency": 69.66,
+    "64|throughput": 14342.02,
+    "65536|latency": 114.4,
+    "65536|throughput": 8733.38
+  },
+  "grpc|100": {
+    "1024|latency": 882.51,
+    "1024|throughput": 113282.69,
+    "131072|latency": 14568.84,
+    "131072|throughput": 6859.13,
+    "256|latency": 895.91,
+    "256|throughput": 111590.54,
+    "262144|latency": 19412.04,
+    "262144|throughput": 5143.46,
+    "64|latency": 966.07,
+    "64|throughput": 103486.31,
+    "65536|latency": 6926.74,
+    "65536|throughput": 14425.04
+  },
+  "libzmq|1": {
+    "1024|latency": 120.21,
+    "1024|throughput": 708512.43,
+    "131072|latency": 7082.23,
+    "131072|throughput": 31654.39,
+    "256|latency": 134.4,
+    "256|throughput": 880222.14,
+    "262144|latency": 6558.62,
+    "262144|throughput": 18342.6,
+    "64|latency": 139.49,
+    "64|throughput": 1029022.79,
+    "65536|latency": 9137.93,
+    "65536|throughput": 51823.4
+  },
+  "libzmq|100": {
+    "1024|latency": 355.68,
+    "1024|throughput": 627330.74,
+    "131072|latency": 1313835.84,
+    "131072|throughput": 43511.67,
+    "256|latency": 329.91,
+    "256|throughput": 679463.56,
+    "262144|latency": 2248826.32,
+    "262144|throughput": 24567.35,
+    "64|latency": 298.34,
+    "64|throughput": 746618.56,
+    "65536|latency": 715560.0,
+    "65536|throughput": 68678.88
+  },
+  "meta": {
+    "build_dir": "/home/hep7/project/kairos/zlink/core/build/bin",
+    "updated_at_utc": "2026-02-20T11:46:10.515948+00:00"
+  }
+}

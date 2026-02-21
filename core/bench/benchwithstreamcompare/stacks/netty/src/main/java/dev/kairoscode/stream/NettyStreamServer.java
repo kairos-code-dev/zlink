@@ -135,7 +135,7 @@ public final class NettyStreamServer
             if (opt.rawEcho != 0)
                 stash = null;
             else
-                stash = Unpooled.buffer(Math.max(1024, opt.size + 4));
+                stash = Unpooled.buffer(4096);
         }
 
         @Override
@@ -182,7 +182,7 @@ public final class NettyStreamServer
         private void handleFramed(ChannelHandlerContext ctx, ByteBuf incoming)
         {
             if (stash == null)
-                stash = Unpooled.buffer(Math.max(1024, opt.size + 4));
+                stash = Unpooled.buffer(4096);
 
             try {
                 stash.writeBytes(incoming);
@@ -190,6 +190,7 @@ public final class NettyStreamServer
                 incoming.release();
             }
 
+            boolean wrote = false;
             while (stash.readableBytes() >= 4) {
                 final int base = stash.readerIndex();
                 final int bodySize = stash.getInt(base);
@@ -205,18 +206,25 @@ public final class NettyStreamServer
                     break;
 
                 ByteBuf frame = stash.readRetainedSlice(frameSize);
-                if (bodySize != opt.size)
+                if (bodySize > opt.size) {
+                    frame.release();
                     metrics.protocolError.incrementAndGet();
-                else
-                    metrics.recvMsgs.incrementAndGet();
+                    ctx.close();
+                    return;
+                }
+                metrics.recvMsgs.incrementAndGet();
 
-                ctx.writeAndFlush(frame).addListener((ChannelFutureListener) future -> {
+                ctx.write(frame).addListener((ChannelFutureListener) future -> {
                     if (!future.isSuccess()) {
                         metrics.sendError.incrementAndGet();
                         future.channel().close();
                     }
                 });
+                wrote = true;
             }
+
+            if (wrote)
+                ctx.flush();
 
             if (stash.readerIndex() > 0)
                 stash.discardReadBytes();

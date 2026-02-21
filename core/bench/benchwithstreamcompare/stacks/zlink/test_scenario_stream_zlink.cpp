@@ -36,7 +36,14 @@ struct stream_buffer_t
         }
 
         const size_t old_size = data.size ();
-        data.resize (old_size + len);
+        const size_t new_size = old_size + len;
+        if (data.capacity () < new_size) {
+            size_t next_cap = data.capacity () > 0 ? data.capacity () : 1024;
+            while (next_cap < new_size)
+                next_cap *= 2;
+            data.reserve (next_cap);
+        }
+        data.resize (new_size);
         std::memcpy (&data[old_size], buf, len);
     }
 

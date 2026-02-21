@@ -17,6 +17,8 @@ Options:
   --zlink-only          Run only zlink and compare with cached baselines.
   --refresh-cache       Refresh baseline caches.
   --run-cooldown-ms N   Sleep between runs in ms (default: 3000).
+  --single              Run only 1:1 echo phase.
+  --multi               Run only N:1 echo phase.
   --help                Show this help.
 USAGE
 }
@@ -27,6 +29,7 @@ BUILD_DIR=""
 ZLINK_ONLY=0
 REFRESH_CACHE=0
 RUN_COOLDOWN_MS=3000
+PHASE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +77,14 @@ while [[ $# -gt 0 ]]; do
       RUN_COOLDOWN_MS="$2"
       shift 2
       ;;
+    --single)
+      PHASE="single"
+      shift
+      ;;
+    --multi)
+      PHASE="multi"
+      shift
+      ;;
     *)
       echo "Error: unknown argument: $1" >&2
       usage >&2
@@ -81,6 +92,30 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# --- Resolve build directory and auto-build if needed ---
+CORE_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)/core"
+if [[ -z "${BUILD_DIR}" ]]; then
+  BUILD_DIR="${CORE_DIR}/build"
+fi
+
+RC_TARGETS=(bench_rc_zlink_server bench_rc_zlink_client
+            bench_rc_zmq_server bench_rc_zmq_client
+            bench_rc_grpc_server bench_rc_grpc_client)
+
+need_build=0
+for t in "${RC_TARGETS[@]}"; do
+  if [[ ! -x "${BUILD_DIR}/bin/${t}" ]]; then
+    need_build=1
+    break
+  fi
+done
+
+if [[ "${need_build}" -eq 1 ]]; then
+  echo "  Some benchmark binaries missing — building..."
+  cmake --build "${BUILD_DIR}" --target "${RC_TARGETS[@]}" -j"$(nproc)"
+  echo "  Build complete."
+fi
 
 PY_ARGS=()
 PY_ARGS+=(--runs "${RUNS}")
@@ -95,6 +130,9 @@ if [[ "${ZLINK_ONLY}" -eq 1 ]]; then
 fi
 if [[ "${REFRESH_CACHE}" -eq 1 ]]; then
   PY_ARGS+=(--refresh-cache)
+fi
+if [[ -n "${PHASE}" ]]; then
+  PY_ARGS+=(--phase "${PHASE}")
 fi
 
 echo "=== Router Compare Benchmark ==="

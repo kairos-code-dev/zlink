@@ -6,6 +6,34 @@ MULTI_PATTERNS="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULT
 MULTI_TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a MULTI_PATTERN_LIST <<< "${MULTI_PATTERNS}"
 
+SECONDS=0
+SHOW_TOTAL_TIME=0
+format_elapsed() {
+  local total_sec="${1:-0}"
+  local hours=$(( total_sec / 3600 ))
+  local minutes=$(( (total_sec % 3600) / 60 ))
+  local seconds=$(( total_sec % 60 ))
+  if (( hours > 0 )); then
+    printf "%dh %dm %ds" "${hours}" "${minutes}" "${seconds}"
+  elif (( minutes > 0 )); then
+    printf "%dm %ds" "${minutes}" "${seconds}"
+  else
+    printf "%ds" "${seconds}"
+  fi
+}
+print_total_time() {
+  if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
+    return
+  fi
+  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+    return
+  fi
+  local status="${1:-0}"
+  local elapsed="${SECONDS}"
+  echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
+}
+trap 'print_total_time $?' EXIT
+
 usage() {
   cat <<'USAGE'
 Usage: core/bench/benchwithzlink/run_benchmarks_multi.sh [options]
@@ -177,6 +205,7 @@ if [[ -n "${MULTI_DRAIN_MS}" ]]; then
   RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
 
+SHOW_TOTAL_TIME=1
 for pattern in "${PATTERNS[@]}"; do
   if [[ "${pattern^^}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
     echo "Error: MULTI_ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
@@ -190,6 +219,7 @@ for pattern in "${PATTERNS[@]}"; do
   if ! BENCH_ALLOW_MULTI=1 \
     BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/multi/run_comparison.py" \
     BENCH_FAIL_FAST=1 \
+    BENCH_SUPPRESS_TOTAL_TIME=1 \
     env "${RUN_ENV[@]}" \
     "${SCRIPT_DIR}/run_benchmarks.sh" \
     "${RUN_BASE_ARGS[@]}" \

@@ -9,6 +9,34 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # repo root (three levels above: core/bench/benchwithzlink)
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
+SECONDS=0
+SHOW_TOTAL_TIME=0
+format_elapsed() {
+  local total_sec="${1:-0}"
+  local hours=$(( total_sec / 3600 ))
+  local minutes=$(( (total_sec % 3600) / 60 ))
+  local seconds=$(( total_sec % 60 ))
+  if (( hours > 0 )); then
+    printf "%dh %dm %ds" "${hours}" "${minutes}" "${seconds}"
+  elif (( minutes > 0 )); then
+    printf "%dm %ds" "${minutes}" "${seconds}"
+  else
+    printf "%ds" "${seconds}"
+  fi
+}
+print_total_time() {
+  if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
+    return
+  fi
+  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+    return
+  fi
+  local status="${1:-0}"
+  local elapsed="${SECONDS}"
+  echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
+}
+trap 'print_total_time $?' EXIT
+
 IS_WINDOWS=0
 PLATFORM="linux"
 ARCH="x64"
@@ -323,17 +351,23 @@ if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     -A "${CMAKE_ARCH}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_TESTS=OFF \
     -DZLINK_BUILD_BENCH_ZMQ=OFF \
     -DZLINK_BUILD_BENCH_ZLINK=ON \
     -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
     -DZLINK_CXX_STANDARD=17
 else
   cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARKS=ON \
+    -DZLINK_BUILD_TESTS=OFF \
     -DZLINK_BUILD_BENCH_ZMQ=OFF \
     -DZLINK_BUILD_BENCH_ZLINK=ON \
     -DZLINK_BUILD_BENCH_BEAST=OFF \
+    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
     -DZLINK_CXX_STANDARD=17
 fi
 
@@ -396,6 +430,7 @@ else
 fi
 
 RUN_CMD=("${RUN_CMD_BASE[@]}")
+SHOW_TOTAL_TIME=1
 if [[ "${#PATTERN_LIST[@]}" -eq 1 ]]; then
   if [[ -n "${OUTPUT_FILE}" ]]; then
     mkdir -p "$(dirname "${OUTPUT_FILE}")"

@@ -24,7 +24,7 @@ void apply_socket_options(void *socket)
     const int linger = 0;
     const int rcvtimeo = 100;
     const int sndtimeo = 100;
-    const int hwm = static_cast<int>(parse_long_env("BENCH_HWM", 300000, 1));
+    const int hwm = static_cast<int>(parse_long_env("BENCH_HWM", 1000, 1));
     (void) zlink_setsockopt(socket, ZLINK_LINGER, &linger, sizeof(linger));
     (void) zlink_setsockopt(socket, ZLINK_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
     (void) zlink_setsockopt(socket, ZLINK_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));

@@ -291,7 +291,7 @@ class _ResourceSampler:
 
 
 def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
-                    settle_ms, drain_ms, inflight, base_env):
+                    settle_ms, drain_ms, base_env):
     """Run server+client for a single library. Returns (parsed_map, err, resource_stats)."""
     server_bin, client_bin = BINARIES[lib_name]
 
@@ -299,7 +299,6 @@ def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
     env = get_env_for_lib(base_env, lib_name, build_dir)
     env["BENCH_PORT"] = str(port)
     env["BENCH_CLIENTS"] = str(clients)
-    env["BENCH_INFLIGHT"] = str(inflight)
     env["BENCH_DURATION_SECONDS"] = str(duration)
     env["BENCH_SETTLE_MS"] = str(settle_ms)
     env["BENCH_DRAIN_MS"] = str(drain_ms)
@@ -396,20 +395,22 @@ def parse_args():
     usage = (
         "Usage: run_comparison.py [options]\n\n"
         "Options:\n"
-        "  --runs N              Iterations per config (default: 5)\n"
+        "  --runs N              Iterations per config (default: 1)\n"
         "  --clients N           N:1 test client count (default: 100)\n"
         "  --build-dir PATH      Build directory\n"
         "  --zlink-only          Run only zlink, use cache for zmq/grpc\n"
         "  --refresh-cache       Refresh baseline cache\n"
         "  --run-cooldown-ms N   Sleep between runs (default: 3000)\n"
+        "  --phase PHASE         Run only 'single' or 'multi' phase\n"
     )
 
-    num_runs = 5
+    num_runs = 1
     clients = 100
     zlink_only = False
     refresh_cache = False
     build_dir = ""
     run_cooldown_ms = int(os.environ.get("BENCH_RUN_COOLDOWN_MS", "3000"))
+    phase = ""
 
     i = 1
     while i < len(sys.argv):
@@ -433,13 +434,20 @@ def parse_args():
         elif arg == "--run-cooldown-ms":
             i += 1
             run_cooldown_ms = max(0, int(sys.argv[i]))
+        elif arg == "--phase":
+            i += 1
+            phase = sys.argv[i]
+            if phase not in ("single", "multi"):
+                print(f"Error: --phase must be 'single' or 'multi', got '{phase}'",
+                      file=sys.stderr)
+                sys.exit(1)
         i += 1
 
     if num_runs < 1:
         print("Error: --runs must be >= 1", file=sys.stderr)
         sys.exit(1)
 
-    return num_runs, clients, zlink_only, refresh_cache, build_dir, run_cooldown_ms
+    return num_runs, clients, zlink_only, refresh_cache, build_dir, run_cooldown_ms, phase
 
 
 def load_cache(path):
@@ -514,7 +522,7 @@ def print_resource_table(title, resource_by_lib):
 
 
 def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
-                 settle_ms, drain_ms, inflight, run_cooldown_ms, base_env,
+                 settle_ms, drain_ms, run_cooldown_ms, base_env,
                  cache, zlink_only, refresh_cache):
     """Run all libraries for a given client count.
 
@@ -541,7 +549,7 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
                 print(f"    {lib} clients={clients} run {i+1}/{runs}", flush=True)
                 parsed_map, err, res_stats = run_single_test(
                     build_dir, lib, clients, msg_sizes, duration,
-                    settle_ms, drain_ms, inflight, base_env,
+                    settle_ms, drain_ms, base_env,
                 )
                 if not parsed_map:
                     all_failures.append((lib, clients, err))
@@ -590,7 +598,7 @@ def run_scenario(build_dir, libs, clients, msg_sizes, runs, duration,
 
 
 def main():
-    num_runs, multi_clients, zlink_only, refresh_cache, build_dir_arg, run_cooldown_ms = parse_args()
+    num_runs, multi_clients, zlink_only, refresh_cache, build_dir_arg, run_cooldown_ms, phase = parse_args()
 
     global_build_dir = resolve_linux_paths()
     build_dir = normalize_build_dir(build_dir_arg) if build_dir_arg else normalize_build_dir(global_build_dir)
@@ -615,47 +623,59 @@ def main():
     duration = int(os.environ.get("BENCH_DURATION_SECONDS", "5"))
     settle_ms = int(os.environ.get("BENCH_SETTLE_MS", "500"))
     drain_ms = int(os.environ.get("BENCH_DRAIN_MS", "300"))
-    inflight = int(os.environ.get("BENCH_INFLIGHT", "1"))
 
     cache = load_cache(cache_file)
     base_env = os.environ.copy()
     all_failures = []
     cache_updated = False
+    total_start = time.monotonic()
+
+    run_single = phase in ("", "single")
+    run_multi = phase in ("", "multi")
 
     print("\n## Router Compare Benchmark Results")
 
-    # Phase 1: 1:1 Echo
-    print("\n  > Phase 1: 1:1 Echo")
-    stats_1to1, failures_1, updated_1, resource_1to1 = run_scenario(
-        build_dir, available_libs, 1, msg_sizes, num_runs,
-        duration, settle_ms, drain_ms, inflight, run_cooldown_ms,
-        base_env, cache, zlink_only, refresh_cache,
-    )
-    all_failures.extend(failures_1)
-    cache_updated = cache_updated or updated_1
+    stats_1to1 = {}
+    resource_1to1 = {}
+    stats_nto1 = {}
+    resource_nto1 = {}
 
-    # Phase 2: N:1 Echo
-    print(f"\n  > Phase 2: {multi_clients}:1 Echo")
-    stats_nto1, failures_n, updated_n, resource_nto1 = run_scenario(
-        build_dir, available_libs, multi_clients, msg_sizes, num_runs,
-        duration, settle_ms, drain_ms, inflight, run_cooldown_ms,
-        base_env, cache, zlink_only, refresh_cache,
-    )
-    all_failures.extend(failures_n)
-    cache_updated = cache_updated or updated_n
+    if run_single:
+        # Phase 1: 1:1 Echo
+        print("\n  > Phase 1: 1:1 Echo")
+        stats_1to1, failures_1, updated_1, resource_1to1 = run_scenario(
+            build_dir, available_libs, 1, msg_sizes, num_runs,
+            duration, settle_ms, drain_ms, run_cooldown_ms,
+            base_env, cache, zlink_only, refresh_cache,
+        )
+        all_failures.extend(failures_1)
+        cache_updated = cache_updated or updated_1
 
-    # Phase 3: Combined output
-    print_comparison_table(
-        "1:1 Echo (clients=1)", msg_sizes, stats_1to1,
-    )
-    print_resource_table("1:1 Echo (clients=1)", resource_1to1)
+    if run_multi:
+        # Phase 2: N:1 Echo
+        print(f"\n  > Phase 2: {multi_clients}:1 Echo")
+        stats_nto1, failures_n, updated_n, resource_nto1 = run_scenario(
+            build_dir, available_libs, multi_clients, msg_sizes, num_runs,
+            duration, settle_ms, drain_ms, run_cooldown_ms,
+            base_env, cache, zlink_only, refresh_cache,
+        )
+        all_failures.extend(failures_n)
+        cache_updated = cache_updated or updated_n
 
-    print_comparison_table(
-        f"{multi_clients}:1 Echo (clients={multi_clients})", msg_sizes, stats_nto1,
-    )
-    print_resource_table(
-        f"{multi_clients}:1 Echo (clients={multi_clients})", resource_nto1,
-    )
+    # Combined output
+    if run_single:
+        print_comparison_table(
+            "1:1 Echo (clients=1)", msg_sizes, stats_1to1,
+        )
+        print_resource_table("1:1 Echo (clients=1)", resource_1to1)
+
+    if run_multi:
+        print_comparison_table(
+            f"{multi_clients}:1 Echo (clients={multi_clients})", msg_sizes, stats_nto1,
+        )
+        print_resource_table(
+            f"{multi_clients}:1 Echo (clients={multi_clients})", resource_nto1,
+        )
 
     if cache_updated:
         cache["meta"] = {
@@ -670,6 +690,9 @@ def main():
         for f in all_failures:
             lib, clients, reason = f
             print(f"  - {lib} clients={clients}: {reason}")
+
+    total_elapsed = time.monotonic() - total_start
+    print(f"\nTotal elapsed: {total_elapsed:.1f}s")
 
     return 1 if all_failures else 0
 

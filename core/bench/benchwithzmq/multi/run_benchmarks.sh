@@ -4,6 +4,34 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)/results"
 
+SECONDS=0
+SHOW_TOTAL_TIME=0
+format_elapsed() {
+  local total_sec="${1:-0}"
+  local hours=$(( total_sec / 3600 ))
+  local minutes=$(( (total_sec % 3600) / 60 ))
+  local seconds=$(( total_sec % 60 ))
+  if (( hours > 0 )); then
+    printf "%dh %dm %ds" "${hours}" "${minutes}" "${seconds}"
+  elif (( minutes > 0 )); then
+    printf "%dm %ds" "${minutes}" "${seconds}"
+  else
+    printf "%ds" "${seconds}"
+  fi
+}
+print_total_time() {
+  if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
+    return
+  fi
+  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+    return
+  fi
+  local status="${1:-0}"
+  local elapsed="${SECONDS}"
+  echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
+}
+trap 'print_total_time $?' EXIT
+
 DEFAULT_PATTERN="router_router"
 DEFAULT_TRANSPORT="tcp"
 
@@ -418,6 +446,7 @@ if [[ -n "${STD_CACHE_FILE}" ]]; then
 fi
 
 echo "=== Running multi benchmark: ${PATTERN_TAG} ==="
+SHOW_TOTAL_TIME=1
 python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}"
 
 if [[ "${RUN_SINGLE}" -eq 1 ]]; then
@@ -465,5 +494,5 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
   fi
 
   echo "=== Running matching single benchmark: ${SINGLE_PATTERN} (runs=${SINGLE_RUNS_EFFECTIVE}) ==="
-  "${SINGLE_SCRIPT}" "${SINGLE_ARGS[@]}"
+  BENCH_SUPPRESS_TOTAL_TIME=1 "${SINGLE_SCRIPT}" "${SINGLE_ARGS[@]}"
 fi

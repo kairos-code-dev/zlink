@@ -4,9 +4,23 @@
     "build_dir": "/home/hep7/project/kairos/zlink/core/build/linux-x64/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-19T17:01:06.256013+00:00"
+    "updated_at_utc": "2026-02-20T06:21:03.728127+00:00"
   },
   "patterns": {
+    "MULTI_DEALER_DEALER": {
+      "data": {
+        "tcp|64|latency": 57.03,
+        "tcp|64|throughput": 193854.8
+      },
+      "failures": [],
+      "msg_sizes": [
+        64
+      ],
+      "transports": [
+        "tcp"
+      ],
+      "updated_at_utc": "2026-02-20T06:20:57.818936+00:00"
+    },
     "MULTI_STREAM": {
       "data": {
         "tcp|1024|latency": 29.12,

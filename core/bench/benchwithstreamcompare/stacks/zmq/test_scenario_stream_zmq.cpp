@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
-#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -18,10 +17,6 @@
 #define ZMQ_STREAM 11
 #endif
 
-#ifndef ZMQ_TCP_NODELAY
-#define ZMQ_TCP_NODELAY 26
-#endif
-
 namespace {
 
 static const size_t k_min_payload_size = 16;
@@ -30,6 +25,7 @@ static const unsigned char k_stream_event_connect = 0x01;
 static const unsigned char k_stream_event_disconnect = 0x00;
 static const size_t k_frame_prefix_size = 4;
 static const size_t k_max_stream_frame_size = 16 * 1024 * 1024;
+static const int k_recv_batch_size = 256;
 
 struct server_options_t
 {
@@ -119,6 +115,7 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void)zmq_setsockopt (socket, ZMQ_BACKLOG, &opt.backlog,
                           sizeof (opt.backlog));
 
+#ifdef ZMQ_TCP_NODELAY
     if (zmq_setsockopt (socket, ZMQ_TCP_NODELAY, &opt.tcp_nodelay,
                         sizeof (opt.tcp_nodelay))
         != 0) {
@@ -133,6 +130,7 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
             std::fprintf (stderr, "zmq stream: tcp_nodelay=%d\n", applied);
         }
     }
+#endif
 
 #ifdef ZMQ_STREAM_NOTIFY
     const int stream_notify = 1;
@@ -146,11 +144,14 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
 }
 
 bool decode_one_frame (stream_buffer_t &stash,
-                       std::vector<char> *payload_out,
+                       const char **payload_data_out,
+                       size_t *payload_size_out,
                        bool *invalid_frame)
 {
     if (invalid_frame)
         *invalid_frame = false;
+    if (!payload_data_out || !payload_size_out)
+        return false;
 
     if (stash.available () < k_frame_prefix_size)
         return false;
@@ -171,194 +172,86 @@ bool decode_one_frame (stream_buffer_t &stash,
     if (stash.available () < required)
         return false;
 
-    payload_out->assign (frame_len, 0);
-    if (frame_len > 0) {
-        std::memcpy (&(*payload_out)[0],
-                     &stash.data[stash.offset + k_frame_prefix_size], frame_len);
-    }
-
+    *payload_data_out =
+      frame_len > 0 ? &stash.data[stash.offset + k_frame_prefix_size] : NULL;
+    *payload_size_out = frame_len;
     stash.offset += required;
-    stash.compact ();
     return true;
 }
 
 bool is_stream_event_payload (const char *data, size_t size)
 {
-    return size == 1
+    return data && size == 1
            && (static_cast<unsigned char> (data[0]) == k_stream_event_connect
                || static_cast<unsigned char> (data[0])
                     == k_stream_event_disconnect);
 }
 
-bool recv_one_stream_frame (void *server,
-                            stream_stash_map_t &stashes,
-                            int timeout_ms,
-                            std::string &routing_id_out,
-                            std::vector<char> &payload_out,
-                            std::atomic<long> &parse_error)
-{
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (0, timeout_ms));
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        const auto now = std::chrono::steady_clock::now ();
-        const long remain_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
-            .count ();
-        zmq_pollitem_t item[] = {{server, 0, ZMQ_POLLIN, 0}};
-        const int prc = zmq_poll (item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (prc < 0) {
-            if (zmq_errno () == EINTR)
-                continue;
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            return false;
-        }
-        if (prc == 0 || (item[0].revents & ZMQ_POLLIN) == 0)
-            continue;
-
-        while (true) {
-            zmq_msg_t id_msg;
-            zmq_msg_t payload_msg;
-            zmq_msg_init (&id_msg);
-            zmq_msg_init (&payload_msg);
-
-            const int id_rc = zmq_msg_recv (&id_msg, server, ZMQ_DONTWAIT);
-            if (id_rc < 0) {
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                break;
-            }
-
-            const int data_rc =
-              zmq_msg_recv (&payload_msg, server, ZMQ_DONTWAIT);
-            if (data_rc < 0) {
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                break;
-            }
-
-            const size_t payload_size = zmq_msg_size (&payload_msg);
-            const char *payload_data =
-              static_cast<const char *> (zmq_msg_data (&payload_msg));
-            if (payload_size > 0
-                && payload_data
-                && !is_stream_event_payload (payload_data, payload_size)) {
-                const char *id_data =
-                  static_cast<const char *> (zmq_msg_data (&id_msg));
-                const size_t id_size = zmq_msg_size (&id_msg);
-                if (!id_data || id_size == 0) {
-                    parse_error.fetch_add (1, std::memory_order_relaxed);
-                    zmq_msg_close (&id_msg);
-                    zmq_msg_close (&payload_msg);
-                    continue;
-                }
-
-                std::string routing_id (id_data, id_size);
-                stream_buffer_t &stash = stashes[routing_id];
-                stash.append (payload_data, payload_size);
-
-                bool invalid_frame = false;
-                if (decode_one_frame (stash, &payload_out, &invalid_frame)) {
-                    routing_id_out = routing_id;
-                    zmq_msg_close (&id_msg);
-                    zmq_msg_close (&payload_msg);
-                    return true;
-                }
-                if (invalid_frame)
-                    parse_error.fetch_add (1, std::memory_order_relaxed);
-            }
-
-            zmq_msg_close (&id_msg);
-            zmq_msg_close (&payload_msg);
-        }
-    }
-
-    return false;
-}
-
-bool recv_one_stream_chunk_msg (void *server,
-                                int timeout_ms,
-                                zmq_msg_t *routing_id_out,
-                                zmq_msg_t *payload_out,
-                                std::unordered_set<std::string> *active_peers,
-                                long *active_connection_count,
-                                std::atomic<long> &parse_error)
+int recv_one_stream_chunk_msg_nowait (
+  void *server,
+  zmq_msg_t *routing_id_out,
+  zmq_msg_t *payload_out,
+  std::unordered_set<std::string> *active_peers,
+  long *active_connection_count,
+  stream_stash_map_t *stashes,
+  std::atomic<long> &parse_error)
 {
     if (!routing_id_out || !payload_out)
-        return false;
+        return -1;
 
-    if (zmq_msg_init (routing_id_out) != 0)
-        return false;
-    if (zmq_msg_init (payload_out) != 0) {
-        zmq_msg_close (routing_id_out);
-        return false;
-    }
+    while (true) {
+        if (zmq_msg_init (routing_id_out) != 0)
+            return -1;
+        if (zmq_msg_init (payload_out) != 0) {
+            zmq_msg_close (routing_id_out);
+            return -1;
+        }
 
-    const auto deadline = std::chrono::steady_clock::now ()
-                          + std::chrono::milliseconds (
-                            std::max (0, timeout_ms));
+        const int id_rc = zmq_msg_recv (routing_id_out, server, ZMQ_DONTWAIT);
+        if (id_rc < 0) {
+            const int err = zmq_errno ();
+            zmq_msg_close (payload_out);
+            zmq_msg_close (routing_id_out);
+            if (err == EAGAIN || err == EINTR)
+                return 0;
+            parse_error.fetch_add (1, std::memory_order_relaxed);
+            return -1;
+        }
 
-    while (std::chrono::steady_clock::now () < deadline) {
-        const auto now = std::chrono::steady_clock::now ();
-        const long remain_ms =
-          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
-            .count ();
-        zmq_pollitem_t item[] = {{server, 0, ZMQ_POLLIN, 0}};
-        const int prc = zmq_poll (item, 1, remain_ms > 0 ? remain_ms : 0);
-        if (prc < 0) {
-            if (zmq_errno () == EINTR)
-                continue;
+        const int data_rc = zmq_msg_recv (payload_out, server, ZMQ_DONTWAIT);
+        if (data_rc < 0) {
+            const int err = zmq_errno ();
+            zmq_msg_close (payload_out);
+            zmq_msg_close (routing_id_out);
+            if (err != EAGAIN && err != EINTR)
+                parse_error.fetch_add (1, std::memory_order_relaxed);
+            return -1;
+        }
+
+        const char *id_data =
+          static_cast<const char *> (zmq_msg_data (routing_id_out));
+        const size_t id_size = zmq_msg_size (routing_id_out);
+        const char *payload_data =
+          static_cast<const char *> (zmq_msg_data (payload_out));
+        const size_t payload_size = zmq_msg_size (payload_out);
+
+        if (!id_data || id_size == 0) {
             parse_error.fetch_add (1, std::memory_order_relaxed);
             zmq_msg_close (payload_out);
             zmq_msg_close (routing_id_out);
-            return false;
-        }
-        if (prc == 0 || (item[0].revents & ZMQ_POLLIN) == 0)
             continue;
+        }
 
-        while (true) {
-            zmq_msg_t id_msg;
-            zmq_msg_t payload_msg;
-            zmq_msg_init (&id_msg);
-            zmq_msg_init (&payload_msg);
+        if (payload_size == 0
+            || is_stream_event_payload (payload_data, payload_size)) {
+            if (payload_size == 1 && payload_data) {
+                const unsigned char ev =
+                  static_cast<unsigned char> (payload_data[0]);
+                const std::string peer_id (id_data, id_size);
+                if (ev == k_stream_event_disconnect && stashes)
+                    stashes->erase (peer_id);
 
-            const int id_rc = zmq_msg_recv (&id_msg, server, ZMQ_DONTWAIT);
-            if (id_rc < 0) {
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                break;
-            }
-
-            const int data_rc =
-              zmq_msg_recv (&payload_msg, server, ZMQ_DONTWAIT);
-            if (data_rc < 0) {
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                break;
-            }
-
-            const char *id_data =
-              static_cast<const char *> (zmq_msg_data (&id_msg));
-            const size_t id_size = zmq_msg_size (&id_msg);
-            const char *payload_data =
-              static_cast<const char *> (zmq_msg_data (&payload_msg));
-            const size_t payload_size = zmq_msg_size (&payload_msg);
-
-            if (!id_data || id_size == 0) {
-                parse_error.fetch_add (1, std::memory_order_relaxed);
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                continue;
-            }
-
-            if (payload_size == 0
-                || is_stream_event_payload (payload_data, payload_size)) {
-                if (payload_size == 1 && id_data && id_size > 0 && payload_data
-                    && active_peers && active_connection_count) {
-                    const unsigned char ev =
-                      static_cast<unsigned char> (payload_data[0]);
-                    const std::string peer_id (id_data, id_size);
+                if (active_peers && active_connection_count) {
                     if (ev == k_stream_event_connect) {
                         if (active_peers->insert (peer_id).second)
                             ++(*active_connection_count);
@@ -369,28 +262,21 @@ bool recv_one_stream_chunk_msg (void *server,
                         }
                     }
                 }
-                zmq_msg_close (&id_msg);
-                zmq_msg_close (&payload_msg);
-                continue;
             }
-
-            zmq_msg_move (routing_id_out, &id_msg);
-            zmq_msg_move (payload_out, &payload_msg);
-
-            zmq_msg_close (&id_msg);
-            zmq_msg_close (&payload_msg);
-            return true;
+            zmq_msg_close (payload_out);
+            zmq_msg_close (routing_id_out);
+            continue;
         }
-    }
 
-    zmq_msg_close (payload_out);
-    zmq_msg_close (routing_id_out);
-    return false;
+        return 1;
+    }
 }
 
 bool send_stream_reply (void *server,
                         const std::string &routing_id,
-                        const std::vector<char> &payload)
+                        const char *payload_data,
+                        size_t payload_size,
+                        std::vector<unsigned char> &frame_buf)
 {
     if (routing_id.empty ())
         return false;
@@ -399,14 +285,15 @@ bool send_stream_reply (void *server,
         < 0)
         return false;
 
-    std::vector<unsigned char> framed (k_frame_prefix_size + payload.size (), 0);
-    stream_echo::store_u32_be (
-      &framed[0], static_cast<uint32_t> (payload.size ()));
-    if (!payload.empty ()) {
-        std::memcpy (&framed[k_frame_prefix_size], &payload[0], payload.size ());
+    frame_buf.resize (k_frame_prefix_size + payload_size);
+    stream_echo::store_u32_be (&frame_buf[0], static_cast<uint32_t> (payload_size));
+    if (payload_size > 0) {
+        if (!payload_data)
+            return false;
+        std::memcpy (&frame_buf[k_frame_prefix_size], payload_data, payload_size);
     }
 
-    return zmq_send (server, &framed[0], framed.size (), 0) >= 0;
+    return zmq_send (server, &frame_buf[0], frame_buf.size (), 0) >= 0;
 }
 
 bool send_stream_chunk_msg (void *server,
@@ -486,41 +373,114 @@ class zmq_stream_echo_server_t
         std::unordered_set<std::string> active_peers;
         long active_connection_count = 0;
         std::string routing_id;
-        std::vector<char> payload;
+        std::vector<unsigned char> frame_buf;
 
         while (!stop.load (std::memory_order_acquire)) {
-            if (opt.raw_echo != 0) {
-                zmq_msg_t routing_id_msg;
-                zmq_msg_t payload_msg;
-                if (!recv_one_stream_chunk_msg (server, 1000, &routing_id_msg,
-                                                &payload_msg, &active_peers,
-                                                &active_connection_count,
-                                                parse_error)) {
+            zmq_pollitem_t item[] = {{server, 0, ZMQ_POLLIN, 0}};
+            const int prc = zmq_poll (item, 1, 1000);
+            if (prc < 0) {
+                if (zmq_errno () == EINTR)
                     continue;
-                }
+                parse_error.fetch_add (1, std::memory_order_relaxed);
+                break;
+            }
+            if (prc == 0 || (item[0].revents & ZMQ_POLLIN) == 0)
+                continue;
 
-                recv_msgs.fetch_add (1, std::memory_order_relaxed);
-                if (!send_stream_chunk_msg (server, &routing_id_msg, &payload_msg))
-                    send_error.fetch_add (1, std::memory_order_relaxed);
+            for (;;) {
+                int processed = 0;
 
-                zmq_msg_close (&payload_msg);
-                zmq_msg_close (&routing_id_msg);
-            } else {
-                if (!recv_one_stream_frame (server, stashes, 1000, routing_id,
-                                            payload, parse_error)) {
-                    continue;
-                }
+                if (opt.raw_echo != 0) {
+                    for (; processed < k_recv_batch_size; ++processed) {
+                        zmq_msg_t routing_id_msg;
+                        zmq_msg_t payload_msg;
+                        const int rc = recv_one_stream_chunk_msg_nowait (
+                          server, &routing_id_msg, &payload_msg, &active_peers,
+                          &active_connection_count, NULL, parse_error);
+                        if (rc == 0)
+                            break;
+                        if (rc < 0) {
+                            if (processed == 0)
+                                processed = -1;
+                            break;
+                        }
 
-                if (payload.size () < k_min_payload_size
-                    || payload.size () > k_max_payload_size
-                    || payload.size () != opt.size) {
-                    protocol_error.fetch_add (1, std::memory_order_relaxed);
+                        recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                        if (!send_stream_chunk_msg (
+                              server, &routing_id_msg, &payload_msg)) {
+                            send_error.fetch_add (1, std::memory_order_relaxed);
+                        }
+
+                        zmq_msg_close (&payload_msg);
+                        zmq_msg_close (&routing_id_msg);
+                    }
                 } else {
-                    recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                    for (; processed < k_recv_batch_size; ++processed) {
+                        zmq_msg_t routing_id_msg;
+                        zmq_msg_t payload_msg;
+                        const int rc = recv_one_stream_chunk_msg_nowait (
+                          server, &routing_id_msg, &payload_msg, NULL, NULL,
+                          &stashes, parse_error);
+                        if (rc == 0)
+                            break;
+                        if (rc < 0) {
+                            if (processed == 0)
+                                processed = -1;
+                            break;
+                        }
+
+                        const char *id_data = static_cast<const char *> (
+                          zmq_msg_data (&routing_id_msg));
+                        const size_t id_size = zmq_msg_size (&routing_id_msg);
+                        const char *chunk_data = static_cast<const char *> (
+                          zmq_msg_data (&payload_msg));
+                        const size_t chunk_size = zmq_msg_size (&payload_msg);
+
+                        if (!id_data || id_size == 0 || !chunk_data
+                            || chunk_size == 0) {
+                            parse_error.fetch_add (1, std::memory_order_relaxed);
+                            zmq_msg_close (&payload_msg);
+                            zmq_msg_close (&routing_id_msg);
+                            continue;
+                        }
+
+                        routing_id.assign (id_data, id_size);
+                        stream_buffer_t &stash = stashes[routing_id];
+                        stash.append (chunk_data, chunk_size);
+
+                        bool invalid_frame = false;
+                        const char *payload_data = NULL;
+                        size_t payload_size = 0;
+                        while (decode_one_frame (stash, &payload_data, &payload_size,
+                                                 &invalid_frame)) {
+                            if (payload_size < k_min_payload_size
+                                || payload_size > k_max_payload_size
+                                || payload_size > opt.size) {
+                                protocol_error.fetch_add (
+                                  1, std::memory_order_relaxed);
+                            } else {
+                                recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                            }
+
+                            if (!send_stream_reply (server, routing_id,
+                                                    payload_data, payload_size,
+                                                    frame_buf)) {
+                                send_error.fetch_add (1,
+                                                      std::memory_order_relaxed);
+                            }
+
+                            stash.compact ();
+                        }
+                        if (invalid_frame)
+                            parse_error.fetch_add (1, std::memory_order_relaxed);
+
+                        zmq_msg_close (&payload_msg);
+                        zmq_msg_close (&routing_id_msg);
+                    }
                 }
 
-                if (!send_stream_reply (server, routing_id, payload))
-                    send_error.fetch_add (1, std::memory_order_relaxed);
+                if (processed < 0 || processed < k_recv_batch_size)
+                    break;
             }
         }
 

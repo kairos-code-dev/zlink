@@ -90,6 +90,37 @@ static int recv_stream_msg (void *socket_,
     return zlink_recv (socket_, buf_, buf_size_, 0);
 }
 
+static void configure_stream_len32be (void *socket_,
+                                      int packet_max_size_,
+                                      int packet_buffer_max_)
+{
+    const int mode = ZLINK_STREAM_PACKET_MODE_LEN32BE;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      socket_, ZLINK_STREAM_PACKET_MODE, &mode, sizeof (mode)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      socket_, ZLINK_STREAM_PACKET_MAX_SIZE, &packet_max_size_,
+      sizeof (packet_max_size_)));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      socket_, ZLINK_STREAM_PACKET_BUFFER_MAX, &packet_buffer_max_,
+      sizeof (packet_buffer_max_)));
+}
+
+static void write_u32_be (unsigned char out_[4], uint32_t value_)
+{
+    out_[0] = static_cast<unsigned char> ((value_ >> 24) & 0xFFu);
+    out_[1] = static_cast<unsigned char> ((value_ >> 16) & 0xFFu);
+    out_[2] = static_cast<unsigned char> ((value_ >> 8) & 0xFFu);
+    out_[3] = static_cast<unsigned char> (value_ & 0xFFu);
+}
+
+static uint32_t read_u32_be (const unsigned char in_[4])
+{
+    return (static_cast<uint32_t> (in_[0]) << 24)
+           | (static_cast<uint32_t> (in_[1]) << 16)
+           | (static_cast<uint32_t> (in_[2]) << 8)
+           | static_cast<uint32_t> (in_[3]);
+}
+
 static bool parse_tcp_endpoint (const char *endpoint_,
                                 char host_[64],
                                 int *port_)
@@ -136,6 +167,14 @@ static int recv_stream_packet (int fd_, void *buf_, size_t cap_)
 static void close_raw_fd (int fd_)
 {
     LIBZLINK_UNUSED (fd_);
+}
+
+static int recv_exact (int fd_, void *buf_, size_t size_)
+{
+    LIBZLINK_UNUSED (fd_);
+    LIBZLINK_UNUSED (buf_);
+    LIBZLINK_UNUSED (size_);
+    return -1;
 }
 #else
 static int connect_raw_tcp (const char *endpoint_)
@@ -206,6 +245,23 @@ static void close_raw_fd (int fd_)
 {
     if (fd_ >= 0)
         close (fd_);
+}
+
+static int recv_exact (int fd_, void *buf_, size_t size_)
+{
+    unsigned char *dst = static_cast<unsigned char *> (buf_);
+    size_t off = 0;
+    while (off < size_) {
+        const ssize_t n = recv (fd_, dst + off, size_ - off, 0);
+        if (n > 0) {
+            off += static_cast<size_t> (n);
+            continue;
+        }
+        if (n < 0 && errno == EINTR)
+            continue;
+        return -1;
+    }
+    return 0;
 }
 #endif
 
@@ -321,6 +377,206 @@ void test_stream_maxmsgsize ()
     test_context_socket_close_zero_linger (server);
 }
 
+void test_stream_len32be_recv_fragmented_and_coalesced ()
+{
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    configure_stream_len32be (server, 1024, 4096);
+
+    const int recv_timeout_ms = 5000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_RCVTIMEO, &recv_timeout_ms, sizeof (recv_timeout_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+
+    const char fragmented_payload[] = "fragmented-payload";
+    enum
+    {
+        fragmented_size = sizeof (fragmented_payload) - 1
+    };
+    unsigned char fragmented_header[4];
+    write_u32_be (fragmented_header, fragmented_size);
+
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, fragmented_header, 2));
+
+    unsigned char header_and_partial[5];
+    memcpy (header_and_partial, fragmented_header + 2, 2);
+    memcpy (header_and_partial + 2, fragmented_payload, 3);
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, header_and_partial, sizeof (header_and_partial)));
+
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, fragmented_payload + 3, fragmented_size - 3));
+
+    unsigned char recv_id[stream_routing_id_size];
+    char recv_buf[128];
+    int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
+    TEST_ASSERT_EQUAL_INT (fragmented_size, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (fragmented_payload, recv_buf, fragmented_size);
+
+    const char packet_a[] = "ABC";
+    const char packet_b[] = "01234567";
+    enum
+    {
+        packet_a_size = sizeof (packet_a) - 1,
+        packet_b_size = sizeof (packet_b) - 1,
+        coalesced_size = 4 + packet_a_size + 4 + packet_b_size
+    };
+
+    unsigned char coalesced[coalesced_size];
+    write_u32_be (coalesced, packet_a_size);
+    memcpy (coalesced + 4, packet_a, packet_a_size);
+    write_u32_be (coalesced + 4 + packet_a_size, packet_b_size);
+    memcpy (coalesced + 8 + packet_a_size, packet_b, packet_b_size);
+
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, coalesced, sizeof (coalesced)));
+
+    unsigned char recv_id_a[stream_routing_id_size];
+    char recv_buf_a[64];
+    rc = recv_stream_msg (server, recv_id_a, recv_buf_a, sizeof (recv_buf_a));
+    TEST_ASSERT_EQUAL_INT (packet_a_size, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (packet_a, recv_buf_a, packet_a_size);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (recv_id, recv_id_a, stream_routing_id_size);
+
+    unsigned char recv_id_b[stream_routing_id_size];
+    char recv_buf_b[64];
+    rc = recv_stream_msg (server, recv_id_b, recv_buf_b, sizeof (recv_buf_b));
+    TEST_ASSERT_EQUAL_INT (packet_b_size, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (packet_b, recv_buf_b, packet_b_size);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (recv_id, recv_id_b, stream_routing_id_size);
+
+    close_raw_fd (client_fd);
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_len32be_send_frames_payload ()
+{
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    configure_stream_len32be (server, 1024, 4096);
+
+    const int recv_timeout_ms = 5000;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_RCVTIMEO, &recv_timeout_ms, sizeof (recv_timeout_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+
+    const char probe_payload[] = "probe";
+    enum
+    {
+        probe_size = sizeof (probe_payload) - 1
+    };
+    unsigned char probe_header[4];
+    write_u32_be (probe_header, probe_size);
+    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (client_fd, probe_header, 4));
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, probe_payload, probe_size));
+
+    unsigned char server_id[stream_routing_id_size];
+    char probe_recv_buf[64];
+    int rc = recv_stream_msg (server, server_id, probe_recv_buf,
+                              sizeof (probe_recv_buf));
+    TEST_ASSERT_EQUAL_INT (probe_size, rc);
+    TEST_ASSERT_EQUAL_STRING_LEN (probe_payload, probe_recv_buf, probe_size);
+
+    const char reply_payload[] = "reply";
+    enum
+    {
+        reply_size = sizeof (reply_payload) - 1,
+        framed_reply_size = 4 + reply_size
+    };
+    send_stream_msg (server, server_id, reply_payload, reply_size);
+
+    unsigned char framed_reply[framed_reply_size];
+    TEST_ASSERT_EQUAL_INT (
+      0, recv_exact (client_fd, framed_reply, sizeof (framed_reply)));
+    TEST_ASSERT_EQUAL_UINT32 (reply_size, read_u32_be (framed_reply));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      reinterpret_cast<const unsigned char *> (reply_payload),
+      framed_reply + 4, reply_size);
+
+    close_raw_fd (client_fd);
+    test_context_socket_close_zero_linger (server);
+}
+
+void test_stream_len32be_oversize_disconnect ()
+{
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    configure_stream_len32be (server, 16, 128);
+
+    const int recv_timeout_ms = 200;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
+      server, ZLINK_RCVTIMEO, &recv_timeout_ms, sizeof (recv_timeout_ms)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (
+      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    const int client_fd = connect_raw_tcp (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+
+    unsigned char connected_id[stream_routing_id_size];
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_CONNECTION_READY, connected_id, 2000));
+
+    unsigned char invalid_header[4];
+    write_u32_be (invalid_header, 4096);
+    TEST_ASSERT_EQUAL_INT (
+      0, send_stream_packet (client_fd, invalid_header, sizeof (invalid_header)));
+
+    unsigned char tmp_rid[stream_routing_id_size];
+    char tmp_payload[32];
+    int rc = zlink_recv (server, tmp_rid, stream_routing_id_size, 0);
+    if (rc == static_cast<int> (stream_routing_id_size)) {
+        TEST_ASSERT_EQUAL_INT (
+          -1, zlink_recv (server, tmp_payload, sizeof (tmp_payload),
+                          ZLINK_DONTWAIT));
+    } else {
+        TEST_ASSERT_EQUAL_INT (-1, rc);
+    }
+
+    unsigned char disconnected_id[stream_routing_id_size];
+    TEST_ASSERT_TRUE (wait_monitor_event (
+      monitor, server, ZLINK_EVENT_DISCONNECTED, disconnected_id, 10000));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY (
+      connected_id, disconnected_id, stream_routing_id_size);
+
+    close_raw_fd (client_fd);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
 void test_stream_tcp_connect_basic ()
 {
     void *server = test_context_socket (ZLINK_STREAM);
@@ -411,6 +667,9 @@ int main (void)
 
     RUN_TEST (test_stream_tcp_basic);
     RUN_TEST (test_stream_maxmsgsize);
+    RUN_TEST (test_stream_len32be_recv_fragmented_and_coalesced);
+    RUN_TEST (test_stream_len32be_send_frames_payload);
+    RUN_TEST (test_stream_len32be_oversize_disconnect);
     RUN_TEST (test_stream_tcp_connect_basic);
 
 #if defined ZLINK_HAVE_WS

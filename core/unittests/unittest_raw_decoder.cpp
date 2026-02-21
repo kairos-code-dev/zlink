@@ -3,7 +3,6 @@
 #include "../tests/testutil.hpp"
 
 #include "protocol/raw_decoder.hpp"
-#include "protocol/wire.hpp"
 #include "utils/ip.hpp"
 
 #include <unity.h>
@@ -17,40 +16,17 @@ void tearDown ()
 {
 }
 
-static void append_frame (std::vector<unsigned char> &buf_,
-                          const unsigned char *data_,
-                          size_t size_)
+void test_decode_passthrough_single_buffer ()
 {
-    const size_t offset = buf_.size ();
-    buf_.resize (offset + 4 + size_);
-    zlink::put_uint32 (&buf_[offset], static_cast<uint32_t> (size_));
-    if (size_ > 0)
-        memcpy (&buf_[offset + 4], data_, size_);
-}
+    zlink::raw_decoder_t decoder (32, -1);
 
-void test_decode_two_messages_single_buffer ()
-{
-    zlink::raw_decoder_t decoder (64, -1);
-
-    std::vector<unsigned char> buf;
-    const unsigned char msg1[] = "abc";
-    const unsigned char msg2[] = "de";
-    append_frame (buf, msg1, sizeof (msg1) - 1);
-    append_frame (buf, msg2, sizeof (msg2) - 1);
-
+    const unsigned char buf[] = {'a', 'b', 'c'};
     size_t processed = 0;
-    int rc = decoder.decode (&buf[0], buf.size (), processed);
+    const int rc = decoder.decode (buf, sizeof (buf), processed);
     TEST_ASSERT_EQUAL_INT (1, rc);
-    TEST_ASSERT_EQUAL_INT (3, decoder.msg ()->size ());
+    TEST_ASSERT_EQUAL_UINT (sizeof (buf), processed);
+    TEST_ASSERT_EQUAL_INT ((int) sizeof (buf), decoder.msg ()->size ());
     TEST_ASSERT_EQUAL_STRING_LEN ("abc",
-                                  static_cast<const char *> (decoder.msg ()->data ()),
-                                  decoder.msg ()->size ());
-
-    size_t processed2 = 0;
-    rc = decoder.decode (&buf[0] + processed, buf.size () - processed, processed2);
-    TEST_ASSERT_EQUAL_INT (1, rc);
-    TEST_ASSERT_EQUAL_INT (2, decoder.msg ()->size ());
-    TEST_ASSERT_EQUAL_STRING_LEN ("de",
                                   static_cast<const char *> (decoder.msg ()->data ()),
                                   decoder.msg ()->size ());
 }
@@ -59,22 +35,20 @@ void test_decode_zero_length ()
 {
     zlink::raw_decoder_t decoder (64, -1);
 
-    unsigned char header[4];
-    zlink::put_uint32 (header, 0);
     size_t processed = 0;
-    const int rc = decoder.decode (header, sizeof (header), processed);
+    const int rc = decoder.decode (NULL, 0, processed);
     TEST_ASSERT_EQUAL_INT (1, rc);
+    TEST_ASSERT_EQUAL_INT (0, processed);
     TEST_ASSERT_EQUAL_INT (0, decoder.msg ()->size ());
 }
 
-void test_body_too_large ()
+void test_raw_payload_too_large ()
 {
     zlink::raw_decoder_t decoder (64, 4);
 
-    unsigned char header[4];
-    zlink::put_uint32 (header, 8);
+    const unsigned char payload[8] = {0};
     size_t processed = 0;
-    const int rc = decoder.decode (header, sizeof (header), processed);
+    const int rc = decoder.decode (payload, sizeof (payload), processed);
     TEST_ASSERT_EQUAL_INT (-1, rc);
     TEST_ASSERT_EQUAL_INT (EMSGSIZE, errno);
 }
@@ -86,9 +60,9 @@ int main (void)
     zlink::initialize_network ();
     setup_test_environment ();
 
-    RUN_TEST (test_decode_two_messages_single_buffer);
+    RUN_TEST (test_decode_passthrough_single_buffer);
     RUN_TEST (test_decode_zero_length);
-    RUN_TEST (test_body_too_large);
+    RUN_TEST (test_raw_payload_too_large);
 
     zlink::shutdown_network ();
 

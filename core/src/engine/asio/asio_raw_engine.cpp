@@ -6,9 +6,12 @@
 #include "engine/asio/asio_raw_engine.hpp"
 #include "protocol/raw_encoder.hpp"
 #include "protocol/raw_decoder.hpp"
+#include "protocol/wire.hpp"
 #include "utils/err.hpp"
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
+
+#include <climits>
 
 namespace
 {
@@ -69,8 +72,13 @@ void zlink::asio_raw_engine_t::init_raw_engine ()
 
 void zlink::asio_raw_engine_t::plug_internal ()
 {
+    const bool len32be =
+      _options.type == ZLINK_STREAM
+      && _options.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE;
+
     if (_encoder == NULL) {
-        _encoder = new (std::nothrow) raw_encoder_t (_options.out_batch_size);
+        _encoder =
+          new (std::nothrow) raw_encoder_t (_options.out_batch_size, len32be);
         alloc_assert (_encoder);
     }
 
@@ -98,6 +106,30 @@ void zlink::asio_raw_engine_t::plug_internal ()
 
     start_async_read ();
     start_async_write ();
+}
+
+bool zlink::asio_raw_engine_t::build_gather_header (const msg_t &msg_,
+                                                     unsigned char *buffer_,
+                                                     size_t buffer_size_,
+                                                     size_t &header_size_)
+{
+    LIBZLINK_UNUSED (msg_);
+
+    if (_options.type != ZLINK_STREAM
+        || _options.stream_packet_mode != ZLINK_STREAM_PACKET_MODE_LEN32BE) {
+        header_size_ = 0;
+        return false;
+    }
+
+    if (buffer_size_ < 4)
+        return false;
+
+    if (msg_.size () > static_cast<size_t> (UINT32_MAX))
+        return false;
+
+    put_uint32 (buffer_, static_cast<uint32_t> (msg_.size ()));
+    header_size_ = 4;
+    return true;
 }
 
 #endif  // ZLINK_IOTHREAD_POLLER_USE_ASIO

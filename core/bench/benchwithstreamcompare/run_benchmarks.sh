@@ -20,7 +20,7 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|zlink|zmq|cgdk10|netty|all|csv>
+  --stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
   --ccu <N>                    default: 10000
   --runs <N>                   default: 1
@@ -28,6 +28,7 @@ Options:
   --duration <sec>             default: 10
   --client-io-threads <N>      default: 4
   --server-io-threads <N>      default: 4
+  --resource-sample-ms <N>     default: 500
   --server-start-timeout <sec> default: 40
   --stack-gap <sec>            default: 5
   -h, --help
@@ -38,7 +39,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(asio cppserver dotnet zlink zmq cgdk10 netty)
+STACKS_ALL=(asio cppserver dotnet zlink zlinkraw zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -49,6 +50,7 @@ WARMUP=2
 DURATION=10
 CLIENT_IO_THREADS=4
 SERVER_IO_THREADS=4
+RESOURCE_SAMPLE_MS=500
 SERVER_START_TIMEOUT=40
 STACK_GAP_SEC=5
 
@@ -84,6 +86,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --server-io-threads)
             SERVER_IO_THREADS="${2:-}"
+            shift 2
+            ;;
+        --resource-sample-ms)
+            RESOURCE_SAMPLE_MS="${2:-}"
             shift 2
             ;;
         --server-start-timeout)
@@ -122,6 +128,7 @@ validate_int "--warmup" "${WARMUP}"
 validate_int "--duration" "${DURATION}"
 validate_int "--client-io-threads" "${CLIENT_IO_THREADS}"
 validate_int "--server-io-threads" "${SERVER_IO_THREADS}"
+validate_int "--resource-sample-ms" "${RESOURCE_SAMPLE_MS}"
 validate_int "--server-start-timeout" "${SERVER_START_TIMEOUT}"
 validate_int "--stack-gap" "${STACK_GAP_SEC}"
 
@@ -150,7 +157,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|zlink|zmq|cgdk10|netty)
+        asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -189,18 +196,19 @@ CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
-ZMQ_LIB_DIR="${ROOT_DIR}/core/tests/scenario/stream/zmq/libzmq_dist/linux-x64/lib"
+STACKS_ROOT_DIR="${ROOT_DIR}/core/bench/benchwithstreamcompare/stacks"
+ZMQ_LIB_DIR="${STACKS_ROOT_DIR}/zmq/libzmq_dist/linux-x64/lib"
 
-CPPSERVER_SRC_DIR="${ROOT_DIR}/core/tests/scenario/stream/cppserver/upstream"
+CPPSERVER_SRC_DIR="${STACKS_ROOT_DIR}/cppserver/upstream"
 CPPSERVER_BUILD_DIR="${CPPSERVER_SRC_DIR}/build-stream"
 CPPSERVER_BIN="${CPPSERVER_BUILD_DIR}/cppserver-performance-stream_fixed_server"
 CPPSERVER_UPSTREAM_ENTRY="${CPPSERVER_SRC_DIR}/performance/stream_fixed_server.cpp"
 
-DOTNET_PROJECT="${ROOT_DIR}/core/tests/scenario/stream/dotnet/StreamServer.csproj"
-DOTNET_OUT_DIR="${ROOT_DIR}/core/tests/scenario/stream/dotnet/bin/Release/stream-bench"
+DOTNET_PROJECT="${STACKS_ROOT_DIR}/dotnet/StreamServer.csproj"
+DOTNET_OUT_DIR="${STACKS_ROOT_DIR}/dotnet/bin/Release/stream-bench"
 DOTNET_DLL="${DOTNET_OUT_DIR}/StreamServer.dll"
 
-NETTY_PROJECT_DIR="${ROOT_DIR}/core/tests/scenario/stream/netty"
+NETTY_PROJECT_DIR="${STACKS_ROOT_DIR}/netty"
 NETTY_BUILD_DIR="${NETTY_PROJECT_DIR}/build"
 NETTY_BIN="${NETTY_BUILD_DIR}/install/netty-stream-server/bin/netty-stream-server"
 NETTY_JAVA_HOME="${NETTY_JAVA_HOME:-}"
@@ -213,14 +221,6 @@ NETTY_GRADLE_FALLBACK_VERSION="8.10.2"
 NETTY_GRADLE_TOOLS_DIR="${NETTY_PROJECT_DIR}/.gradle-tools"
 NETTY_GRADLE_FALLBACK_DIR="${NETTY_GRADLE_TOOLS_DIR}/gradle-${NETTY_GRADLE_FALLBACK_VERSION}"
 
-CGDK_REPO_URL="${CGDK_REPO_URL:-https://github.com/CGLabs/CGDK10.Cpp.git}"
-CGDK_ROOT_DIR="${ROOT_DIR}/core/tests/scenario/stream/cgdk10"
-CGDK_SRC_DIR="${CGDK_ROOT_DIR}/upstream/CGDK10.Cpp"
-CGDK_BUILD_DIR="${CGDK_ROOT_DIR}/build"
-CGDK_BIN="${CGDK_BUILD_DIR}/test_scenario_stream_cgdk10"
-CGDK_SERVER_SRC="${CGDK_ROOT_DIR}/test_scenario_stream_cgdk10.cpp"
-CGDK_LIB_DIR="${CGDK_SRC_DIR}/lib/cgdk/sdk10/ubuntu"
-
 ACTIVE_SERVER_PID=""
 ACTIVE_SERVER_STACK=""
 HOST="${HOST:-127.0.0.1}"
@@ -230,11 +230,261 @@ ALLOCATED_PORT=""
 
 ACTIVE_STACKS=()
 FAILED_CASES=0
+MONITOR_PID=""
 
 log()
 {
     mkdir -p "${RESULT_DIR}" "${LOG_DIR}"
     echo "[$(date +'%F %T')] $*" | tee -a "${SCENARIO_LOG}"
+}
+
+start_process_resource_monitor()
+{
+    local target_pid="$1"
+    local sample_ms="$2"
+    local usage_csv="$3"
+    local summary_file="$4"
+
+    if ! [[ "${target_pid}" =~ ^[0-9]+$ ]] || (( target_pid < 1 )); then
+        MONITOR_PID=""
+        return 1
+    fi
+
+    python3 - "${target_pid}" "${sample_ms}" "${usage_csv}" "${summary_file}" <<'PY' >/dev/null 2>&1 &
+import os
+import sys
+import time
+
+pid = int(sys.argv[1])
+sample_ms = max(100, int(sys.argv[2]))
+usage_csv = sys.argv[3]
+summary_file = sys.argv[4]
+
+clk_tck = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+page_size = os.sysconf("SC_PAGE_SIZE")
+interval_s = sample_ms / 1000.0
+
+
+def proc_exists(proc_pid):
+    return os.path.exists(f"/proc/{proc_pid}")
+
+
+def read_proc(proc_pid):
+    with open(f"/proc/{proc_pid}/stat", encoding="utf-8", errors="replace") as f:
+        tokens = f.read().split()
+
+    cpu_ticks = int(tokens[13]) + int(tokens[14])
+    start_ticks = int(tokens[21])
+    rss_kb = 0
+    hwm_kb = 0
+
+    try:
+        with open(f"/proc/{proc_pid}/status", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        rss_kb = int(parts[1])
+                elif line.startswith("VmHWM:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        hwm_kb = int(parts[1])
+    except Exception:
+        pass
+
+    if rss_kb <= 0 and len(tokens) > 23:
+        rss_pages = int(tokens[23])
+        if rss_pages > 0:
+            rss_kb = (rss_pages * page_size) // 1024
+
+    return cpu_ticks, rss_kb, hwm_kb, start_ticks
+
+
+cpu_samples = []
+rss_samples = []
+peak_cpu_pct = 0.0
+peak_rss_kb = 0
+peak_hwm_kb = 0
+prev_ticks = None
+prev_time = None
+origin_start_ticks = None
+
+os.makedirs(os.path.dirname(usage_csv), exist_ok=True)
+with open(usage_csv, "w", encoding="utf-8") as out:
+    out.write("ts_ns,cpu_pct,rss_kb,hwm_kb\n")
+
+    while proc_exists(pid):
+        try:
+            cpu_ticks, rss_kb, hwm_kb, start_ticks = read_proc(pid)
+        except Exception:
+            break
+
+        if origin_start_ticks is None:
+            origin_start_ticks = start_ticks
+        elif start_ticks != origin_start_ticks:
+            # PID has been recycled for another process.
+            break
+
+        now = time.monotonic()
+        cpu_pct = 0.0
+        if prev_ticks is not None and prev_time is not None and now > prev_time:
+            cpu_sec = (cpu_ticks - prev_ticks) / float(clk_tck)
+            elapsed = now - prev_time
+            if cpu_sec >= 0.0 and elapsed > 0.0:
+                cpu_pct = max(0.0, (cpu_sec / elapsed) * 100.0)
+
+        prev_ticks = cpu_ticks
+        prev_time = now
+
+        cpu_samples.append(cpu_pct)
+        rss_samples.append(rss_kb)
+        if cpu_pct > peak_cpu_pct:
+            peak_cpu_pct = cpu_pct
+        if rss_kb > peak_rss_kb:
+            peak_rss_kb = rss_kb
+        if hwm_kb > peak_hwm_kb:
+            peak_hwm_kb = hwm_kb
+
+        out.write(f"{time.time_ns()},{cpu_pct:.4f},{rss_kb},{hwm_kb}\n")
+        out.flush()
+        time.sleep(interval_s)
+
+avg_cpu_pct = (sum(cpu_samples) / len(cpu_samples)) if cpu_samples else 0.0
+avg_rss_kb = (sum(rss_samples) / len(rss_samples)) if rss_samples else 0.0
+
+with open(summary_file, "w", encoding="utf-8") as f:
+    f.write(f"sample_count={len(cpu_samples)}\n")
+    f.write(f"avg_cpu_pct={avg_cpu_pct:.4f}\n")
+    f.write(f"peak_cpu_pct={peak_cpu_pct:.4f}\n")
+    f.write(f"avg_rss_kb={avg_rss_kb:.2f}\n")
+    f.write(f"peak_rss_kb={peak_rss_kb}\n")
+    f.write(f"peak_hwm_kb={peak_hwm_kb}\n")
+PY
+    MONITOR_PID="$!"
+    return 0
+}
+
+start_system_resource_monitor()
+{
+    local sample_ms="$1"
+    local usage_csv="$2"
+    local summary_file="$3"
+
+    python3 - "${sample_ms}" "${usage_csv}" "${summary_file}" <<'PY' >/dev/null 2>&1 &
+import os
+import signal
+import sys
+import time
+
+sample_ms = max(100, int(sys.argv[1]))
+usage_csv = sys.argv[2]
+summary_file = sys.argv[3]
+interval_s = sample_ms / 1000.0
+
+running = True
+
+
+def on_signal(signum, frame):
+    del signum, frame
+    global running
+    running = False
+
+
+signal.signal(signal.SIGINT, on_signal)
+signal.signal(signal.SIGTERM, on_signal)
+
+
+def read_cpu_total_idle():
+    with open("/proc/stat", encoding="utf-8", errors="replace") as f:
+        head = f.readline().split()
+    if len(head) < 5 or head[0] != "cpu":
+        return 0, 0
+    values = [int(x) for x in head[1:]]
+    total = sum(values)
+    idle = values[3]
+    if len(values) > 4:
+        idle += values[4]
+    return total, idle
+
+
+def read_mem_used():
+    mem_total = 0
+    mem_available = 0
+    with open("/proc/meminfo", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("MemTotal:"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    mem_total = int(parts[1])
+            elif line.startswith("MemAvailable:"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    mem_available = int(parts[1])
+            if mem_total > 0 and mem_available > 0:
+                break
+
+    if mem_total <= 0:
+        return 0, 0.0
+    used_kb = max(0, mem_total - mem_available)
+    used_pct = (used_kb / float(mem_total)) * 100.0
+    return used_kb, used_pct
+
+
+cpu_samples = []
+mem_used_samples = []
+mem_used_pct_samples = []
+peak_cpu_pct = 0.0
+peak_mem_used_kb = 0
+peak_mem_used_pct = 0.0
+
+prev_total, prev_idle = read_cpu_total_idle()
+
+os.makedirs(os.path.dirname(usage_csv), exist_ok=True)
+with open(usage_csv, "w", encoding="utf-8") as out:
+    out.write("ts_ns,cpu_pct,mem_used_kb,mem_used_pct\n")
+
+    while running:
+        time.sleep(interval_s)
+        total, idle = read_cpu_total_idle()
+        dt = total - prev_total
+        di = idle - prev_idle
+        prev_total, prev_idle = total, idle
+
+        cpu_pct = 0.0
+        if dt > 0:
+            busy = dt - di
+            cpu_pct = max(0.0, min(100.0, (busy / float(dt)) * 100.0))
+
+        mem_used_kb, mem_used_pct = read_mem_used()
+
+        cpu_samples.append(cpu_pct)
+        mem_used_samples.append(mem_used_kb)
+        mem_used_pct_samples.append(mem_used_pct)
+        if cpu_pct > peak_cpu_pct:
+            peak_cpu_pct = cpu_pct
+        if mem_used_kb > peak_mem_used_kb:
+            peak_mem_used_kb = mem_used_kb
+        if mem_used_pct > peak_mem_used_pct:
+            peak_mem_used_pct = mem_used_pct
+
+        out.write(f"{time.time_ns()},{cpu_pct:.4f},{mem_used_kb},{mem_used_pct:.4f}\n")
+        out.flush()
+
+avg_cpu_pct = (sum(cpu_samples) / len(cpu_samples)) if cpu_samples else 0.0
+avg_mem_used_kb = (sum(mem_used_samples) / len(mem_used_samples)) if mem_used_samples else 0.0
+avg_mem_used_pct = (sum(mem_used_pct_samples) / len(mem_used_pct_samples)) if mem_used_pct_samples else 0.0
+
+with open(summary_file, "w", encoding="utf-8") as f:
+    f.write(f"sample_count={len(cpu_samples)}\n")
+    f.write(f"avg_cpu_pct={avg_cpu_pct:.4f}\n")
+    f.write(f"peak_cpu_pct={peak_cpu_pct:.4f}\n")
+    f.write(f"avg_mem_used_kb={avg_mem_used_kb:.2f}\n")
+    f.write(f"peak_mem_used_kb={peak_mem_used_kb}\n")
+    f.write(f"avg_mem_used_pct={avg_mem_used_pct:.4f}\n")
+    f.write(f"peak_mem_used_pct={peak_mem_used_pct:.4f}\n")
+PY
+    MONITOR_PID="$!"
+    return 0
 }
 
 java_major_version()
@@ -489,11 +739,7 @@ stop_active_server()
     fi
 
     if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
-        if [[ "${ACTIVE_SERVER_STACK}" == "cgdk10" ]]; then
-            kill -USR1 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        else
-            kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
-        fi
+        kill -INT "${ACTIVE_SERVER_PID}" >/dev/null 2>&1 || true
         sleep 0.5
 
         if kill -0 "${ACTIVE_SERVER_PID}" >/dev/null 2>&1; then
@@ -521,47 +767,6 @@ record_skip()
     log "skip stack=${stack} reason=${reason}"
 }
 
-ensure_cgdk_upstream()
-{
-    if [[ -d "${CGDK_SRC_DIR}/.git" ]]; then
-        return
-    fi
-
-    mkdir -p "$(dirname "${CGDK_SRC_DIR}")"
-    rm -rf "${CGDK_SRC_DIR}"
-    git clone --depth 1 "${CGDK_REPO_URL}" "${CGDK_SRC_DIR}" >/dev/null 2>&1
-}
-
-build_cgdk_server()
-{
-    ensure_cgdk_upstream
-    mkdir -p "${CGDK_BUILD_DIR}"
-
-    if [[ ! -d "${CGDK_LIB_DIR}" ]]; then
-        return 1
-    fi
-
-    g++ \
-        -I"${CGDK_SRC_DIR}/include" \
-        -DC_FLAGS \
-        -fexceptions \
-        -std=c++20 \
-        -DNDEBUG \
-        -O3 \
-        -Wall \
-        -Wextra \
-        -std=gnu++20 \
-        "${CGDK_SERVER_SRC}" \
-        -o "${CGDK_BIN}" \
-        -L"${CGDK_LIB_DIR}" \
-        -Wl,-rpath,"${CGDK_LIB_DIR}" \
-        -lCGDK10.net.socket_linux.Release \
-        -lCGDK10.system.object_linux.Release \
-        -lrt \
-        -lpthread \
-        >/dev/null 2>&1
-}
-
 build_core_targets()
 {
     log "configure core build"
@@ -584,6 +789,9 @@ try_build_stack()
         zlink)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
             ;;
+        zlinkraw)
+            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
+            ;;
         zmq)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
             ;;
@@ -604,9 +812,6 @@ CPP
             JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
                 "${NETTY_GRADLE_BIN}" -p "${NETTY_PROJECT_DIR}" --no-daemon installDist >/dev/null
             [[ -x "${NETTY_BIN}" ]]
-            ;;
-        cgdk10)
-            build_cgdk_server
             ;;
         *)
             return 1
@@ -649,6 +854,9 @@ start_server()
         zlink)
             cmd=("${ZLINK_BIN}")
             ;;
+        zlinkraw)
+            cmd=("${ZLINK_BIN}")
+            ;;
         zmq)
             cmd=("${ZMQ_BIN}")
             ;;
@@ -660,9 +868,6 @@ start_server()
             ;;
         netty)
             cmd=("${NETTY_BIN}")
-            ;;
-        cgdk10)
-            cmd=("${CGDK_BIN}")
             ;;
         *)
             return 2
@@ -678,8 +883,14 @@ start_server()
         --backlog "32768"
         --tcp-nodelay "1"
         --io-threads "${SERVER_IO_THREADS}"
-        --raw-echo "1"
+        --raw-echo "0"
     )
+
+    if [[ "${stack}" == "zlink" ]]; then
+        cmd+=(--packet-mode "len32be")
+    elif [[ "${stack}" == "zlinkraw" ]]; then
+        cmd+=(--packet-mode "raw")
+    fi
 
     if [[ "${stack}" == "zmq" ]]; then
         (
@@ -690,11 +901,6 @@ start_server()
         (
             export JAVA_HOME="${NETTY_JAVA_HOME}"
             export PATH="${NETTY_JAVA_HOME}/bin:${PATH}"
-            exec "${cmd[@]}" >"${server_log}" 2>&1
-        ) &
-    elif [[ "${stack}" == "cgdk10" ]]; then
-        (
-            export LD_LIBRARY_PATH="${CGDK_LIB_DIR}:${LD_LIBRARY_PATH:-}"
             exec "${cmd[@]}" >"${server_log}" 2>&1
         ) &
     else
@@ -719,16 +925,76 @@ append_rows_from_client_log()
     local client_rc="$2"
     local client_log="$3"
     local server_log="$4"
+    local client_resource_summary="$5"
+    local server_resource_summary="$6"
+    local client_resource_log="$7"
+    local server_resource_log="$8"
+    local system_resource_summary="$9"
+    local system_resource_log="${10}"
 
     python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${client_rc}" \
-        "${client_log}" "${server_log}" <<'PY'
+        "${client_log}" "${server_log}" \
+        "${client_resource_summary}" "${server_resource_summary}" \
+        "${client_resource_log}" "${server_resource_log}" \
+        "${system_resource_summary}" "${system_resource_log}" <<'PY'
 import csv
 import sys
 
-metrics_csv, stack, ccu, client_rc, client_log, server_log = sys.argv[1:7]
+(
+    metrics_csv,
+    stack,
+    ccu,
+    client_rc,
+    client_log,
+    server_log,
+    client_resource_summary,
+    server_resource_summary,
+    client_resource_log,
+    server_resource_log,
+    system_resource_summary,
+    system_resource_log,
+) = sys.argv[1:13]
 ccu = int(ccu)
 
 rows = []
+
+
+def load_resource_summary(path):
+    out = {
+        "sample_count": "0",
+        "avg_cpu_pct": "0.00",
+        "peak_cpu_pct": "0.00",
+        "avg_rss_kb": "0",
+        "peak_rss_kb": "0",
+        "peak_hwm_kb": "0",
+        "avg_mem_used_kb": "0",
+        "peak_mem_used_kb": "0",
+        "avg_mem_used_pct": "0",
+        "peak_mem_used_pct": "0",
+    }
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key in out:
+                    out[key] = value.strip()
+    except Exception:
+        pass
+    return out
+
+def parse_float(text, fallback=0.0):
+    try:
+        return float(text)
+    except Exception:
+        return fallback
+
+
+client_resource = load_resource_summary(client_resource_summary)
+server_resource = load_resource_summary(server_resource_summary)
+system_resource = load_resource_summary(system_resource_summary)
 
 with open(client_log, encoding="utf-8", errors="replace") as f:
     for raw_line in f:
@@ -742,15 +1008,27 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             key, value = token.split("=", 1)
             fields[key] = value
 
+        size_text = fields.get("size", "0")
+        size = 0
+        try:
+            size = int(size_text)
+        except Exception:
+            size = 0
+        throughput_bps = parse_float(fields.get("throughput_bps", "0"), 0.0)
+        throughput_tps = 0.0
+        if size > 0:
+            throughput_tps = throughput_bps / float(size)
+
         row = {
             "stack": stack,
-            "size": fields.get("size", "0"),
+            "size": size_text,
             "run": fields.get("run", "0"),
             "ccu": str(ccu),
             "inflight": "1",
             "client_rc": str(client_rc),
             "throughput_bps": fields.get("throughput_bps", "0"),
             "throughput_mib_s": fields.get("throughput_mib_s", "0"),
+            "throughput_tps": f"{throughput_tps:.2f}",
             "p50_us": fields.get("p50_us", "0"),
             "p95_us": fields.get("p95_us", "0"),
             "p99_us": fields.get("p99_us", "0"),
@@ -760,6 +1038,25 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             "recv_err": fields.get("recv_err", "0"),
             "timeout": fields.get("timeout", "0"),
             "pass_fail": fields.get("pass_fail", "FAIL"),
+            "client_avg_cpu_pct": client_resource["avg_cpu_pct"],
+            "client_peak_cpu_pct": client_resource["peak_cpu_pct"],
+            "client_avg_rss_kb": client_resource["avg_rss_kb"],
+            "client_peak_rss_kb": client_resource["peak_rss_kb"],
+            "client_peak_hwm_kb": client_resource["peak_hwm_kb"],
+            "server_avg_cpu_pct": server_resource["avg_cpu_pct"],
+            "server_peak_cpu_pct": server_resource["peak_cpu_pct"],
+            "server_avg_rss_kb": server_resource["avg_rss_kb"],
+            "server_peak_rss_kb": server_resource["peak_rss_kb"],
+            "server_peak_hwm_kb": server_resource["peak_hwm_kb"],
+            "system_avg_cpu_pct": system_resource["avg_cpu_pct"],
+            "system_peak_cpu_pct": system_resource["peak_cpu_pct"],
+            "system_avg_mem_used_kb": system_resource.get("avg_mem_used_kb", "0"),
+            "system_peak_mem_used_kb": system_resource.get("peak_mem_used_kb", "0"),
+            "system_avg_mem_used_pct": system_resource.get("avg_mem_used_pct", "0"),
+            "system_peak_mem_used_pct": system_resource.get("peak_mem_used_pct", "0"),
+            "client_resource_log": client_resource_log,
+            "server_resource_log": server_resource_log,
+            "system_resource_log": system_resource_log,
             "client_log": client_log,
             "server_log": server_log,
         }
@@ -770,9 +1067,19 @@ with open(metrics_csv, "a", newline="", encoding="utf-8") as f:
         f,
         fieldnames=[
             "stack", "size", "run", "ccu", "inflight", "client_rc",
-            "throughput_bps", "throughput_mib_s", "p50_us", "p95_us",
+            "throughput_bps", "throughput_mib_s", "throughput_tps",
+            "p50_us", "p95_us",
             "p99_us", "connect_ok", "connect_fail", "send_err",
-            "recv_err", "timeout", "pass_fail", "client_log", "server_log",
+            "recv_err", "timeout", "pass_fail",
+            "client_avg_cpu_pct", "client_peak_cpu_pct",
+            "client_avg_rss_kb", "client_peak_rss_kb", "client_peak_hwm_kb",
+            "server_avg_cpu_pct", "server_peak_cpu_pct",
+            "server_avg_rss_kb", "server_peak_rss_kb", "server_peak_hwm_kb",
+            "system_avg_cpu_pct", "system_peak_cpu_pct",
+            "system_avg_mem_used_kb", "system_peak_mem_used_kb",
+            "system_avg_mem_used_pct", "system_peak_mem_used_pct",
+            "client_resource_log", "server_resource_log", "system_resource_log",
+            "client_log", "server_log",
         ],
     )
     for row in rows:
@@ -786,11 +1093,14 @@ run_stack_once()
 {
     local stack="$1"
     local port="$2"
-    local server_log="$3"
-    local client_log="$4"
+    local client_log="$3"
 
     local sizes_csv
     sizes_csv="$(IFS=,; echo "${RUN_SIZES[*]}")"
+    local client_resource_log="${client_log%.log}_resource.csv"
+    local client_resource_summary="${client_log%.log}_resource.summary"
+    local client_pid=""
+    local client_monitor_pid=""
 
     set +e
     "${CLIENT_BIN}" \
@@ -804,26 +1114,26 @@ run_stack_once()
         --inflight "1" \
         --latency-sample-rate "0" \
         --io-threads "${CLIENT_IO_THREADS}" \
-        >"${client_log}" 2>&1
+        >"${client_log}" 2>&1 &
+    client_pid="$!"
+
+    MONITOR_PID=""
+    start_process_resource_monitor "${client_pid}" "${RESOURCE_SAMPLE_MS}" "${client_resource_log}" "${client_resource_summary}"
+    local client_monitor_rc="$?"
+    client_monitor_pid="${MONITOR_PID:-}"
+    if [[ "${client_monitor_rc}" != "0" || -z "${client_monitor_pid}" ]]; then
+        client_monitor_pid=""
+        log "warning: failed to start client resource monitor stack=${stack}"
+    fi
+
+    wait "${client_pid}"
     local client_rc="$?"
+    if [[ -n "${client_monitor_pid}" ]]; then
+        wait "${client_monitor_pid}" >/dev/null 2>&1 || true
+    fi
     set -e
 
-    local row_count
-    row_count="$(append_rows_from_client_log "${stack}" "${client_rc}" "${client_log}" "${server_log}")"
-
-    if [[ "${client_rc}" != "0" ]]; then
-        log "client failed stack=${stack} rc=${client_rc}"
-        FAILED_CASES="$((FAILED_CASES + 1))"
-        return 1
-    fi
-
-    if [[ "${row_count}" == "0" ]]; then
-        log "no RESULT rows parsed stack=${stack}"
-        FAILED_CASES="$((FAILED_CASES + 1))"
-        return 1
-    fi
-
-    return 0
+    return "${client_rc}"
 }
 
 main()
@@ -832,7 +1142,7 @@ main()
     : >"${SCENARIO_LOG}"
 
     cat >"${METRICS_CSV}" <<'CSV'
-stack,size,run,ccu,inflight,client_rc,throughput_bps,throughput_mib_s,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,pass_fail,client_log,server_log
+stack,size,run,ccu,inflight,client_rc,throughput_bps,throughput_mib_s,throughput_tps,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,pass_fail,client_avg_cpu_pct,client_peak_cpu_pct,client_avg_rss_kb,client_peak_rss_kb,client_peak_hwm_kb,server_avg_cpu_pct,server_peak_cpu_pct,server_avg_rss_kb,server_peak_rss_kb,server_peak_hwm_kb,system_avg_cpu_pct,system_peak_cpu_pct,system_avg_mem_used_kb,system_peak_mem_used_kb,system_avg_mem_used_pct,system_peak_mem_used_pct,client_resource_log,server_resource_log,system_resource_log,client_log,server_log
 CSV
 
     cat >"${SKIP_CSV}" <<'CSV'
@@ -840,7 +1150,7 @@ stack,reason
 CSV
 
     log "scope stacks=$(IFS=,; echo "${RUN_STACKS[*]}") sizes=$(IFS=,; echo "${RUN_SIZES[*]}")"
-    log "settings ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s inflight=1 server_size=${MAX_RUN_SIZE}"
+    log "settings ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s inflight=1 server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
 
     build_selected
 
@@ -860,6 +1170,14 @@ CSV
         local port="${ALLOCATED_PORT}"
         local server_log="${LOG_DIR}/${stack}_server.log"
         local client_log="${LOG_DIR}/${stack}_client.log"
+        local client_resource_log="${LOG_DIR}/${stack}_client_resource.csv"
+        local client_resource_summary="${LOG_DIR}/${stack}_client_resource.summary"
+        local server_resource_log="${LOG_DIR}/${stack}_server_resource.csv"
+        local server_resource_summary="${LOG_DIR}/${stack}_server_resource.summary"
+        local system_resource_log="${LOG_DIR}/${stack}_system_resource.csv"
+        local system_resource_summary="${LOG_DIR}/${stack}_system_resource.summary"
+        local server_monitor_pid=""
+        local system_monitor_pid=""
 
         log "start stack=${stack} port=${port}"
         if ! start_server "${stack}" "${HOST}" "${port}" "${server_log}" "${MAX_RUN_SIZE}"; then
@@ -869,9 +1187,64 @@ CSV
             continue
         fi
 
-        run_stack_once "${stack}" "${port}" "${server_log}" "${client_log}" || true
+        set +e
+        MONITOR_PID=""
+        start_process_resource_monitor "${ACTIVE_SERVER_PID}" "${RESOURCE_SAMPLE_MS}" "${server_resource_log}" "${server_resource_summary}"
+        local server_monitor_rc="$?"
+        server_monitor_pid="${MONITOR_PID:-}"
+        set -e
+        if [[ "${server_monitor_rc}" != "0" || -z "${server_monitor_pid}" ]]; then
+            server_monitor_pid=""
+            log "warning: failed to start server resource monitor stack=${stack}"
+        fi
+
+        set +e
+        MONITOR_PID=""
+        start_system_resource_monitor "${RESOURCE_SAMPLE_MS}" "${system_resource_log}" "${system_resource_summary}"
+        local system_monitor_rc="$?"
+        system_monitor_pid="${MONITOR_PID:-}"
+        set -e
+        if [[ "${system_monitor_rc}" != "0" || -z "${system_monitor_pid}" ]]; then
+            system_monitor_pid=""
+            log "warning: failed to start system resource monitor stack=${stack}"
+        fi
+
+        set +e
+        run_stack_once "${stack}" "${port}" "${client_log}"
+        local client_rc="$?"
+        set -e
 
         stop_active_server
+        if [[ -n "${server_monitor_pid}" ]]; then
+            wait "${server_monitor_pid}" >/dev/null 2>&1 || true
+        fi
+        if [[ -n "${system_monitor_pid}" ]]; then
+            kill -TERM "${system_monitor_pid}" >/dev/null 2>&1 || true
+            wait "${system_monitor_pid}" >/dev/null 2>&1 || true
+        fi
+
+        local row_count
+        row_count="$(append_rows_from_client_log \
+            "${stack}" \
+            "${client_rc}" \
+            "${client_log}" \
+            "${server_log}" \
+            "${client_resource_summary}" \
+            "${server_resource_summary}" \
+            "${client_resource_log}" \
+            "${server_resource_log}" \
+            "${system_resource_summary}" \
+            "${system_resource_log}")"
+
+        if [[ "${client_rc}" != "0" ]]; then
+            log "client failed stack=${stack} rc=${client_rc}"
+            FAILED_CASES="$((FAILED_CASES + 1))"
+        fi
+
+        if [[ "${row_count}" == "0" ]]; then
+            log "no RESULT rows parsed stack=${stack}"
+            FAILED_CASES="$((FAILED_CASES + 1))"
+        fi
 
         if (( STACK_GAP_SEC > 0 )); then
             sleep "${STACK_GAP_SEC}"

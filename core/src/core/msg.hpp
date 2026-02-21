@@ -81,6 +81,10 @@ class msg_t
     int init_size (size_t size_);
     int init_buffer (const void *buf_, size_t size_);
     int init_data (void *data_, size_t size_, msg_free_fn *ffn_, void *hint_);
+    // Create a message view for [offset_, offset_ + size_) from src_.
+    // Large-message sources share underlying storage; small sources fall back to
+    // a copy.
+    int init_view (msg_t &src_, size_t offset_, size_t size_);
     int init_external_storage (content_t *content_,
                                void *data_,
                                size_t size_,
@@ -165,6 +169,7 @@ class msg_t
     };
 
   private:
+    static void call_dec_ref_on_slice (void *data_, void *hint_);
     zlink::atomic_counter_t *refcnt ();
 
     //  Different message types.

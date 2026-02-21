@@ -233,7 +233,9 @@ internal sealed class EchoServer
             return;
         }
 
-        int initialFrame = Math.Max(ServerOptions.MinPayloadSize, _options.Size);
+        int initialFrame = Math.Max(
+            ServerOptions.MinPayloadSize,
+            Math.Min(_options.Size, 4096));
         byte[] frameBuffer = ArrayPool<byte>.Shared.Rent(initialFrame + 4);
 
         try
@@ -269,8 +271,13 @@ internal sealed class EchoServer
                     break;
                 }
 
-                if (bodySize != _options.Size)
+                if (bodySize > _options.Size)
+                {
                     _metrics.AddProtocolError();
+                    return;
+                }
+
+                _metrics.AddRecvMsg();
 
                 int sent = 0;
                 while (sent < frameSize)
@@ -316,7 +323,7 @@ internal sealed class EchoServer
 
     private async Task RunConnectionRawAsync(Socket socket, CancellationToken token)
     {
-        int bufSize = Math.Max(64 * 1024, Math.Max(ServerOptions.MinPayloadSize, _options.Size));
+        int bufSize = 64 * 1024;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(bufSize);
 
         try

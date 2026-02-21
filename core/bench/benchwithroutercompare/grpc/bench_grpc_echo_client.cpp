@@ -25,15 +25,11 @@ struct thread_result_t {
 
 // Each thread measures its own time window independently.  The main thread
 // uses the longest elapsed time across all threads for throughput calculation.
-// NOTE: With inflight > 1 each iteration does sequential Write+Read per
-// message, unlike zmq/zlink which batch-send then batch-recv.  For the
-// default inflight=1 the behaviour is identical.
-void client_thread_fn(const std::string &target,
+void client_thread_fn(std::shared_ptr<grpc::Channel> channel,
                       size_t msg_size,
                       int duration_s,
                       int settle_ms,
                       int drain_ms,
-                      int inflight,
                       thread_result_t &result)
 {
     result.recv_count = 0;
@@ -41,15 +37,6 @@ void client_thread_fn(const std::string &target,
     result.latency_samples = 0;
     result.elapsed_s = 0.0;
 
-    grpc::ChannelArguments ch_args;
-    ch_args.SetMaxReceiveMessageSize(16 * 1024 * 1024);
-    ch_args.SetMaxSendMessageSize(16 * 1024 * 1024);
-    ch_args.SetInt(GRPC_ARG_HTTP2_MAX_FRAME_SIZE, 4 * 1024 * 1024);
-    ch_args.SetInt(GRPC_ARG_HTTP2_STREAM_LOOKAHEAD_BYTES, 4 * 1024 * 1024);
-    ch_args.SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 4 * 1024 * 1024);
-
-    auto channel = grpc::CreateCustomChannel(
-      target, grpc::InsecureChannelCredentials(), ch_args);
     auto stub = bench_echo::EchoService::NewStub(channel);
 
     grpc::ClientContext context;
@@ -71,33 +58,31 @@ void client_thread_fn(const std::string &target,
     bench_echo::EchoResponse response;
 
     while (std::chrono::steady_clock::now() < measure_end) {
-        for (int f = 0; f < inflight; ++f) {
-            const uint64_t send_ts = now_ns();
-            store_u64_be(payload_buf.data(), send_ts);
-            store_u64_be(payload_buf.data() + 8,
-                         send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
+        const uint64_t send_ts = now_ns();
+        store_u64_be(payload_buf.data(), send_ts);
+        store_u64_be(payload_buf.data() + 8,
+                     send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
 
-            request.set_payload(payload_buf.data(), payload_buf.size());
+        request.set_payload(payload_buf.data(), payload_buf.size());
 
-            if (!stream->Write(request))
-                goto done;
+        if (!stream->Write(request))
+            goto done;
 
-            if (!stream->Read(&response))
-                goto done;
+        if (!stream->Read(&response))
+            goto done;
 
-            const std::string &resp_payload = response.payload();
-            if (resp_payload.size() >= 16) {
-                const uint64_t wire_ts = load_u64_be(
-                  reinterpret_cast<const unsigned char *>(resp_payload.data()));
-                const uint64_t now = now_ns();
-                if (now >= wire_ts) {
-                    result.latency_sum_us +=
-                      static_cast<double>(now - wire_ts) / 1000.0;
-                    ++result.latency_samples;
-                }
+        const std::string &resp_payload = response.payload();
+        if (resp_payload.size() >= 16) {
+            const uint64_t wire_ts = load_u64_be(
+              reinterpret_cast<const unsigned char *>(resp_payload.data()));
+            const uint64_t now = now_ns();
+            if (now >= wire_ts) {
+                result.latency_sum_us +=
+                  static_cast<double>(now - wire_ts) / 1000.0;
+                ++result.latency_samples;
             }
-            ++result.recv_count;
         }
+        ++result.recv_count;
     }
 
 done:
@@ -129,7 +114,6 @@ int main(int argc, char **argv)
         msg_sizes = {64, 256, 1024, 65536, 131072, 262144};
 
     const int clients = static_cast<int>(parse_long_env("BENCH_CLIENTS", 100, 1));
-    const int inflight = static_cast<int>(parse_long_env("BENCH_INFLIGHT", 1, 1));
     const int duration_s =
       static_cast<int>(parse_long_env("BENCH_DURATION_SECONDS", 5, 1));
     const int settle_ms =
@@ -139,6 +123,21 @@ int main(int argc, char **argv)
 
     const std::string target = "127.0.0.1:" + std::to_string(port);
 
+    // Create channels once, reuse across all msg_sizes
+    grpc::ChannelArguments ch_args;
+    ch_args.SetMaxReceiveMessageSize(16 * 1024 * 1024);
+    ch_args.SetMaxSendMessageSize(16 * 1024 * 1024);
+    ch_args.SetInt(GRPC_ARG_HTTP2_MAX_FRAME_SIZE, 4 * 1024 * 1024);
+    ch_args.SetInt(GRPC_ARG_HTTP2_STREAM_LOOKAHEAD_BYTES, 4 * 1024 * 1024);
+    ch_args.SetInt(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE, 4 * 1024 * 1024);
+
+    std::vector<std::shared_ptr<grpc::Channel>> channels(
+      static_cast<size_t>(clients));
+    for (int i = 0; i < clients; ++i) {
+        channels[static_cast<size_t>(i)] = grpc::CreateCustomChannel(
+          target, grpc::InsecureChannelCredentials(), ch_args);
+    }
+
     for (size_t si = 0; si < msg_sizes.size(); ++si) {
         const size_t msg_size = msg_sizes[si];
 
@@ -147,8 +146,9 @@ int main(int argc, char **argv)
         threads.reserve(static_cast<size_t>(clients));
 
         for (int i = 0; i < clients; ++i) {
-            threads.emplace_back(client_thread_fn, target, msg_size,
-                                 duration_s, settle_ms, drain_ms, inflight,
+            threads.emplace_back(client_thread_fn,
+                                 channels[static_cast<size_t>(i)],
+                                 msg_size, duration_s, settle_ms, drain_ms,
                                  std::ref(results[static_cast<size_t>(i)]));
         }
 

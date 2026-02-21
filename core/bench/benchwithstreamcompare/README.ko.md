@@ -16,6 +16,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 
 - `run_benchmarks.sh`: 전체 벤치 실행 스크립트
 - `client/bench_stream_client.cpp`: 공통 벤치 클라이언트
+- `stacks/*`: 스택별 서버 소스/프로젝트 파일
 - `run_comparison.py`: 요약/랭킹 리포트 생성
 
 지원 스택:
@@ -24,8 +25,8 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - `cppserver`
 - `dotnet`
 - `zlink`
+- `zlinkraw` (`zlink` + `ZLINK_STREAM_PACKET_MODE_RAW`)
 - `zmq`
-- `cgdk10`
 - `netty`
 
 지원 사이즈:
@@ -36,8 +37,10 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 
 ## 공정성 설계 포인트
 
-- 모든 스택을 `--raw-echo 1`로 실행
+- 모든 스택을 `--raw-echo 0`(framed echo 경로)로 실행
 - 모든 스택에 동일 클라이언트 바이너리 사용
+- 클라이언트 wire format은 모든 스택에서 고정:
+  `4-byte big-endian 길이 + payload`
 - 클라이언트 `inflight`는 코드에서 `1`로 고정
 - 스택은 순차 실행(동시 벤치 금지)
 - 서버 `--size`는 요청 사이즈 목록의 최대값으로 자동 설정
@@ -95,10 +98,18 @@ cat /proc/sys/net/ipv4/ip_local_port_range
   --size 64,1024,65536
 ```
 
+`zlink` LEN32BE on/off 직접 비교:
+
+```bash
+./core/bench/benchwithstreamcompare/run_benchmarks.sh \
+  --stack zlink,zlinkraw \
+  --size 64,1024,65536
+```
+
 ## 실행 옵션
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zmq|cgdk10|netty|all|csv>
+--stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    기본값: 10000
 --runs <N>                   기본값: 1
@@ -106,6 +117,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 --duration <sec>             기본값: 10
 --client-io-threads <N>      기본값: 4
 --server-io-threads <N>      기본값: 4
+--resource-sample-ms <N>     기본값: 500
 --server-start-timeout <sec> 기본값: 40
 --stack-gap <sec>            기본값: 5
 ```
@@ -115,7 +127,6 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `RESULT_DIR`: 결과 출력 디렉토리 지정
 - `HOST`: 벤치 대상 호스트 (기본값 `127.0.0.1`)
 - `BASE_PORT`: 스택 실행 시작 포트 (기본값 `22000`)
-- `CGDK_REPO_URL`: CGDK upstream 저장소 URL 재정의
 - `NETTY_JAVA_HOME`: `netty` 스택에서 사용할 JDK 22 경로
 - `NETTY_GRADLE_BIN`: `netty` 스택에서 사용할 Gradle 실행 파일 경로
 
@@ -123,13 +134,13 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 
 - `/tmp/bench_streamcompare.lock` 파일락으로 동시 실행 방지
 - 일부 스택 빌드 실패 시 전체 중단 대신 `skip`으로 기록
-- `cgdk10`은 첫 실행 시 upstream 소스를 clone할 수 있음
-  : 로컬에 소스가 없으면 네트워크 접근이 필요
 - `netty`는 JDK 22 이상이 필요하며 탐색 우선순위는
   `NETTY_JAVA_HOME -> JAVA_HOME -> PATH java` 순서
 - `netty`는 Gradle 8.8+가 필요하며 시스템 `gradle`이 오래된 경우
-  러너가 `core/tests/scenario/stream/netty/.gradle-tools/` 아래에
+  러너가 `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/` 아래에
   Gradle `8.10.2`를 자동 다운로드해서 사용
+- `zlink` 스택은 `--packet-mode len32be`로 실행
+- `zlinkraw` 스택은 A/B 비교를 위해 `--packet-mode raw`로 실행
 
 ## 결과 파일
 
@@ -144,6 +155,8 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `comparison.md`: 사람이 읽기 쉬운 리포트
 - `skipped_stacks.csv`: 제외된 스택과 사유
 - `logs/*_client.log`, `logs/*_server.log`: 스택별 로그
+- `logs/*_client_resource.csv`, `logs/*_server_resource.csv`: 프로세스 사용량 샘플
+- `logs/*_system_resource.csv`: 스택 실행 구간의 호스트 전체 사용량 샘플
 
 `metrics.csv` 주요 필드:
 
@@ -152,6 +165,13 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `connect_ok`, `connect_fail`
 - `send_err`, `recv_err`, `timeout`
 - `pass_fail`
+- `client_avg_cpu_pct`, `client_peak_cpu_pct`
+- `client_avg_rss_kb`, `client_peak_rss_kb`, `client_peak_hwm_kb`
+- `server_avg_cpu_pct`, `server_peak_cpu_pct`
+- `server_avg_rss_kb`, `server_peak_rss_kb`, `server_peak_hwm_kb`
+- `system_avg_cpu_pct`, `system_peak_cpu_pct`
+- `system_avg_mem_used_kb`, `system_peak_mem_used_kb`
+- `system_avg_mem_used_pct`, `system_peak_mem_used_pct`
 
 해석 주의:
 
@@ -177,4 +197,3 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 
 - `inflight`는 의도적으로 `1` 고정
 - 기본 러너에서는 latency 퍼센타일이 `0`으로 기록될 수 있음
-- `cgdk10`은 런타임 worker thread 제어에 제한이 있을 수 있음

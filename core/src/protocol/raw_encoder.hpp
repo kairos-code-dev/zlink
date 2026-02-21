@@ -11,11 +11,15 @@ namespace zlink
 class raw_encoder_t ZLINK_FINAL : public encoder_base_t<raw_encoder_t>
 {
   public:
-    explicit raw_encoder_t (size_t bufsize_);
+    raw_encoder_t (size_t bufsize_, bool len32be_);
     ~raw_encoder_t ();
 
   private:
     void raw_message_ready ();
+    void raw_message_body ();
+
+    bool _len32be;
+    unsigned char _header[4];
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (raw_encoder_t)
 };

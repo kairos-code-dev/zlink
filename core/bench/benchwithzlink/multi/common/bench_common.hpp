@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <thread>
 #include <fstream>
+#include <climits>
 #include <zlink.h>
 
 #if !defined(_WIN32)
@@ -61,9 +62,75 @@ private:
     std::chrono::steady_clock::time_point _start;
 };
 
+inline int parse_positive_env(const char *name_, int default_value_)
+{
+    if (!name_)
+        return default_value_;
+
+    const char *env = std::getenv(name_);
+    if (!env || !*env)
+        return default_value_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(env, &end, 10);
+    if (errno != 0 || end == env || parsed <= 0)
+        return default_value_;
+
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
+}
+
+inline int bench_io_threads()
+{
+    return parse_positive_env("BENCH_IO_THREADS", 0);
+}
+
+inline int bench_max_sockets()
+{
+    const int explicit_max = parse_positive_env("BENCH_MAX_SOCKETS", 0);
+    if (explicit_max > 0)
+        return explicit_max;
+
+    const int clients = parse_positive_env("BENCH_MULTI_CLIENTS", 0);
+    if (clients <= 0)
+        return 0;
+
+    const long required = static_cast<long>(clients) + 4096L;
+    if (required > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(required);
+}
+
+inline void apply_ctx_options(void *ctx_)
+{
+    const bool debug = std::getenv("BENCH_DEBUG") != NULL;
+    const int io_threads = bench_io_threads();
+    if (io_threads > 0) {
+        const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, io_threads);
+        if (rc != 0 && debug) {
+            std::cerr << "zlink_ctx_set(ZLINK_IO_THREADS) failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+    }
+
+    const int max_sockets = bench_max_sockets();
+    if (max_sockets > 0) {
+        const int rc = zlink_ctx_set(ctx_, ZLINK_MAX_SOCKETS, max_sockets);
+        if (rc != 0 && debug) {
+            std::cerr << "zlink_ctx_set(ZLINK_MAX_SOCKETS) failed: "
+                      << zlink_strerror(zlink_errno()) << std::endl;
+        }
+    }
+}
+
 class ctx_guard_t {
 public:
-    ctx_guard_t() : _ctx(zlink_ctx_new()) {}
+    ctx_guard_t() : _ctx(zlink_ctx_new()) {
+        if (_ctx)
+            apply_ctx_options(_ctx);
+    }
     ~ctx_guard_t() {
         if (_ctx) {
             zlink_ctx_shutdown(_ctx);

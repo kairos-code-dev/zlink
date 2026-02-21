@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <string>
 #include <thread>
 #include <vector>
@@ -22,12 +21,13 @@ void apply_socket_options(void *socket)
     const int linger = 0;
     const int rcvtimeo = 100;
     const int sndtimeo = 100;
-    const int hwm = static_cast<int>(parse_long_env("BENCH_HWM", 300000, 1));
+    const int rcvhwm = static_cast<int>(parse_long_env("BENCH_HWM", 1000, 1));
+    const int sndhwm = static_cast<int>(parse_long_env("BENCH_CLIENT_SNDHWM", 10, 1));
     (void) zmq_setsockopt(socket, ZMQ_LINGER, &linger, sizeof(linger));
     (void) zmq_setsockopt(socket, ZMQ_RCVTIMEO, &rcvtimeo, sizeof(rcvtimeo));
     (void) zmq_setsockopt(socket, ZMQ_SNDTIMEO, &sndtimeo, sizeof(sndtimeo));
-    (void) zmq_setsockopt(socket, ZMQ_RCVHWM, &hwm, sizeof(hwm));
-    (void) zmq_setsockopt(socket, ZMQ_SNDHWM, &hwm, sizeof(hwm));
+    (void) zmq_setsockopt(socket, ZMQ_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    (void) zmq_setsockopt(socket, ZMQ_SNDHWM, &sndhwm, sizeof(sndhwm));
 #ifdef ZMQ_TCP_NODELAY
     const int nodelay = 1;
     (void) zmq_setsockopt(socket, ZMQ_TCP_NODELAY, &nodelay, sizeof(nodelay));
@@ -42,11 +42,11 @@ bool send_rtt_message(void *socket,
     store_u64_be(payload.data() + 8, send_ts ^ 0x5a5a5a5a5a5a5a5aULL);
 
     if (zmq_send(socket, k_server_routing_id, std::strlen(k_server_routing_id),
-                 ZMQ_SNDMORE | ZMQ_DONTWAIT)
+                 ZMQ_SNDMORE)
         < 0) {
         return false;
     }
-    return zmq_send(socket, payload.data(), payload.size(), ZMQ_DONTWAIT) >= 0;
+    return zmq_send(socket, payload.data(), payload.size(), 0) >= 0;
 }
 
 bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
@@ -56,7 +56,7 @@ bool recv_rtt_message(void *socket, char *id_buf, size_t id_cap,
     const int id_len = zmq_recv(socket, id_buf, id_cap, ZMQ_DONTWAIT);
     if (id_len < 0)
         return false;
-    const int rc = zmq_recv(socket, payload_buf, payload_cap, ZMQ_DONTWAIT);
+    const int rc = zmq_recv(socket, payload_buf, payload_cap, 0);
     if (rc < 16)
         return false;
     wire_send_ts = load_u64_be(payload_buf);
@@ -71,11 +71,8 @@ void close_all(std::vector<void *> &sockets, void *ctx)
     zmq_ctx_term(ctx);
 }
 
-static const long k_poll_timeout_ms = 1000;
-
 bool run_measure_once(const std::vector<void *> &sockets,
                       int clients,
-                      int inflight,
                       int duration_s,
                       int settle_ms,
                       int drain_ms,
@@ -93,71 +90,64 @@ bool run_measure_once(const std::vector<void *> &sockets,
     double latency_sum_us = 0.0;
     long latency_samples = 0;
 
-    std::vector<std::deque<uint64_t> > pending(static_cast<size_t>(clients));
     std::vector<unsigned char> payload(std::max<size_t>(16, msg_size), 0xAB);
 
     std::vector<char> recv_id_buf(512);
     std::vector<unsigned char> recv_payload_buf(1024 * 1024);
 
-    // Build poll items for all client sockets
+    // Build poll items: POLLIN | POLLOUT for async pipeline
     std::vector<zmq_pollitem_t> poll_items(static_cast<size_t>(clients));
     for (int i = 0; i < clients; ++i) {
         poll_items[static_cast<size_t>(i)].socket = sockets[static_cast<size_t>(i)];
         poll_items[static_cast<size_t>(i)].fd = 0;
-        poll_items[static_cast<size_t>(i)].events = ZMQ_POLLIN;
+        poll_items[static_cast<size_t>(i)].events = ZMQ_POLLIN | ZMQ_POLLOUT;
         poll_items[static_cast<size_t>(i)].revents = 0;
     }
 
     while (std::chrono::steady_clock::now() < measure_end) {
-        // Send phase: fill inflight for all sockets
-        for (int i = 0; i < clients; ++i) {
-            std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
-            while (static_cast<int>(q.size()) < inflight) {
-                const uint64_t ts = now_ns();
-                if (!send_rtt_message(sockets[static_cast<size_t>(i)],
-                                      payload, ts)) {
-                    break;
-                }
-                q.push_back(ts);
-            }
-        }
-
-        // Poll: wait for any socket to become readable (up to 1ms)
-        const int poll_rc = zmq_poll(poll_items.data(), clients, k_poll_timeout_ms);
+        const int poll_rc = zmq_poll(poll_items.data(), clients, 1);
         if (poll_rc <= 0)
             continue;
 
-        // Recv phase: batch-drain all readable sockets
         for (int i = 0; i < clients; ++i) {
-            if (!(poll_items[static_cast<size_t>(i)].revents & ZMQ_POLLIN))
-                continue;
+            const short rev = poll_items[static_cast<size_t>(i)].revents;
 
-            uint64_t wire_ts = 0;
-            while (recv_rtt_message(sockets[static_cast<size_t>(i)],
-                                    recv_id_buf.data(), recv_id_buf.size(),
-                                    recv_payload_buf.data(), recv_payload_buf.size(),
-                                    wire_ts)) {
-                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
-                if (!q.empty())
-                    q.pop_front();
+            // Writable: send one message (POLLOUT means HWM has room)
+            if (rev & ZMQ_POLLOUT) {
+                send_rtt_message(sockets[static_cast<size_t>(i)],
+                                 payload, now_ns());
+            }
 
-                const uint64_t now = now_ns();
-                if (now >= wire_ts) {
-                    latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
-                    ++latency_samples;
+            // Readable: batch-drain all available responses
+            if (rev & ZMQ_POLLIN) {
+                uint64_t wire_ts = 0;
+                while (recv_rtt_message(
+                  sockets[static_cast<size_t>(i)],
+                  recv_id_buf.data(), recv_id_buf.size(),
+                  recv_payload_buf.data(), recv_payload_buf.size(),
+                  wire_ts)) {
+                    const uint64_t now = now_ns();
+                    if (now >= wire_ts) {
+                        latency_sum_us +=
+                          static_cast<double>(now - wire_ts) / 1000.0;
+                        ++latency_samples;
+                    }
+                    ++recv_count;
                 }
-                ++recv_count;
             }
         }
     }
 
     const auto measure_stop = std::chrono::steady_clock::now();
 
-    // Drain phase: collect remaining in-flight responses
+    // Drain phase: collect remaining in-flight responses (POLLIN only)
+    for (int i = 0; i < clients; ++i)
+        poll_items[static_cast<size_t>(i)].events = ZMQ_POLLIN;
+
     const auto drain_end =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(drain_ms);
     while (std::chrono::steady_clock::now() < drain_end) {
-        const int poll_rc = zmq_poll(poll_items.data(), clients, k_poll_timeout_ms);
+        const int poll_rc = zmq_poll(poll_items.data(), clients, 1);
         if (poll_rc <= 0)
             continue;
 
@@ -170,10 +160,6 @@ bool run_measure_once(const std::vector<void *> &sockets,
                                     recv_id_buf.data(), recv_id_buf.size(),
                                     recv_payload_buf.data(), recv_payload_buf.size(),
                                     wire_ts)) {
-                std::deque<uint64_t> &q = pending[static_cast<size_t>(i)];
-                if (!q.empty())
-                    q.pop_front();
-
                 const uint64_t now = now_ns();
                 if (now >= wire_ts) {
                     latency_sum_us += static_cast<double>(now - wire_ts) / 1000.0;
@@ -213,7 +199,6 @@ int main(int argc, char **argv)
         msg_sizes = {64, 256, 1024, 65536, 131072, 262144};
 
     const int clients = static_cast<int>(parse_long_env("BENCH_CLIENTS", 100, 1));
-    const int inflight = static_cast<int>(parse_long_env("BENCH_INFLIGHT", 1, 1));
     const int duration_s =
       static_cast<int>(parse_long_env("BENCH_DURATION_SECONDS", 5, 1));
     const int settle_ms =
@@ -268,7 +253,7 @@ int main(int argc, char **argv)
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         double throughput = 0.0;
         double latency = 0.0;
-        if (!run_measure_once(sockets, clients, inflight,
+        if (!run_measure_once(sockets, clients,
                               duration_s, settle_ms, drain_ms, msg_sizes[i],
                               throughput, latency)) {
             close_all(sockets, ctx);

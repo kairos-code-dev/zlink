@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.10)
 # On Windows: solution file will be called tests.sln
 project(tests)
 
+set(STREAM_SCENARIO_ROOT
+    "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
+
 set(tests
   test_ancillaries
   test_system
@@ -59,14 +62,34 @@ set(tests
   spot/test_spot_pubsub_scenario
   scenario/router_router/zlink/test_scenario_router_router
   scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
-  scenario/stream/client/test_scenario_stream_client
-  scenario/stream/zlink/test_scenario_stream_zlink
-  scenario/stream/asio/test_scenario_stream_asio)
+  ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
+  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
+  ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
-set(
-  STREAM_SCENARIO_ZMQ_DIST_ROOT
-  "${CMAKE_CURRENT_LIST_DIR}/scenario/stream/zmq/libzmq_dist"
-  CACHE PATH "Bundled libzmq distribution root for stream scenario tests")
+set(STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT
+    "${STREAM_SCENARIO_ROOT}/zmq/libzmq_dist")
+
+if(NOT DEFINED STREAM_SCENARIO_ZMQ_DIST_ROOT)
+  set(
+    STREAM_SCENARIO_ZMQ_DIST_ROOT
+    "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}"
+    CACHE PATH "Bundled libzmq distribution root for stream scenario tests")
+elseif(NOT EXISTS "${STREAM_SCENARIO_ZMQ_DIST_ROOT}"
+       AND EXISTS "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}")
+  set(
+    STREAM_SCENARIO_ZMQ_DIST_ROOT
+    "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}"
+    CACHE PATH "Bundled libzmq distribution root for stream scenario tests"
+          FORCE)
+elseif(NOT EXISTS "${STREAM_SCENARIO_ZMQ_DIST_ROOT}/linux-x64/include/zmq.h"
+       AND EXISTS
+             "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}/linux-x64/include/zmq.h")
+  set(
+    STREAM_SCENARIO_ZMQ_DIST_ROOT
+    "${STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT}"
+    CACHE PATH "Bundled libzmq distribution root for stream scenario tests"
+          FORCE)
+endif()
 
 if(WIN32)
   set(STREAM_SCENARIO_ZMQ_ROOT "${STREAM_SCENARIO_ZMQ_DIST_ROOT}/windows-x64")
@@ -91,7 +114,7 @@ endif()
 
 if(EXISTS "${STREAM_SCENARIO_ZMQ_INCLUDE_DIR}/zmq.h"
    AND STREAM_SCENARIO_ZMQ_LIBRARY_FILE)
-  list(APPEND tests scenario/stream/zmq/test_scenario_stream_zmq)
+  list(APPEND tests ${STREAM_SCENARIO_ROOT}/zmq/test_scenario_stream_zmq)
 else()
   message(
     STATUS
@@ -288,7 +311,7 @@ target_sources(
 
 target_sources(
   test_scenario_stream_client
-  PRIVATE scenario/stream/client/stream_client_core.cpp)
+  PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
 
 if(TARGET test_scenario_stream_zmq)
   target_include_directories(

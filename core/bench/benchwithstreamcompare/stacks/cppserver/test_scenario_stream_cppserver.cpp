@@ -82,10 +82,11 @@ class stream_echo_session_t : public TCPSession
         : TCPSession (server),
           opt (opt_),
           metrics (metrics_),
-          frame_size (4 + opt_.size),
-          partial_frame (frame_size, 0),
-          partial_size (0)
+          partial_frame (),
+          partial_size (0),
+          partial_expected_frame_size (0)
     {
+        partial_frame.reserve (4);
     }
 
   protected:
@@ -124,7 +125,27 @@ class stream_echo_session_t : public TCPSession
 
         while (remaining > 0) {
             if (partial_size > 0) {
-                const size_t need = frame_size - partial_size;
+                if (partial_size >= 4 && partial_expected_frame_size == 0) {
+                    const size_t body_size = static_cast<size_t> (
+                      stream_echo::load_u32_be (&partial_frame[0]));
+                    if (body_size < k_min_payload_size
+                        || body_size > k_max_payload_size
+                        || body_size > opt.size) {
+                        metrics.parse_error.fetch_add (1,
+                                                       std::memory_order_relaxed);
+                        metrics.protocol_error.fetch_add (
+                          1, std::memory_order_relaxed);
+                        Disconnect ();
+                        return;
+                    }
+                    partial_expected_frame_size = 4 + body_size;
+                }
+
+                const size_t expected =
+                  partial_expected_frame_size > 0 ? partial_expected_frame_size
+                                                  : 4;
+                ensure_partial_capacity (expected);
+                const size_t need = expected - partial_size;
                 const size_t n = std::min (need, remaining);
                 std::memcpy (&partial_frame[partial_size], ptr, n);
                 partial_size += n;
@@ -133,21 +154,26 @@ class stream_echo_session_t : public TCPSession
 
                 if (partial_size < 4)
                     continue;
-
-                const size_t body_size =
-                  static_cast<size_t> (stream_echo::load_u32_be (&partial_frame[0]));
-                if (body_size < k_min_payload_size || body_size > k_max_payload_size
-                    || body_size != opt.size) {
-                    metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
-                    metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
-                    Disconnect ();
-                    return;
+                if (partial_expected_frame_size == 0) {
+                    const size_t body_size = static_cast<size_t> (
+                      stream_echo::load_u32_be (&partial_frame[0]));
+                    if (body_size < k_min_payload_size
+                        || body_size > k_max_payload_size
+                        || body_size > opt.size) {
+                        metrics.parse_error.fetch_add (1,
+                                                       std::memory_order_relaxed);
+                        metrics.protocol_error.fetch_add (
+                          1, std::memory_order_relaxed);
+                        Disconnect ();
+                        return;
+                    }
+                    partial_expected_frame_size = 4 + body_size;
                 }
 
-                if (partial_size < frame_size)
+                if (partial_size < partial_expected_frame_size)
                     continue;
 
-                if (!SendAsync (&partial_frame[0], frame_size)) {
+                if (!SendAsync (&partial_frame[0], partial_expected_frame_size)) {
                     metrics.send_error.fetch_add (1, std::memory_order_relaxed);
                     Disconnect ();
                     return;
@@ -155,19 +181,22 @@ class stream_echo_session_t : public TCPSession
 
                 metrics.recv_msgs.fetch_add (1, std::memory_order_relaxed);
                 partial_size = 0;
+                partial_expected_frame_size = 0;
                 continue;
             }
 
             if (remaining < 4) {
+                ensure_partial_capacity (4);
                 std::memcpy (&partial_frame[0], ptr, remaining);
                 partial_size = remaining;
+                partial_expected_frame_size = 0;
                 return;
             }
 
             const size_t body_size =
               static_cast<size_t> (stream_echo::load_u32_be (ptr));
             if (body_size < k_min_payload_size || body_size > k_max_payload_size
-                || body_size != opt.size) {
+                || body_size > opt.size) {
                 metrics.parse_error.fetch_add (1, std::memory_order_relaxed);
                 metrics.protocol_error.fetch_add (1, std::memory_order_relaxed);
                 Disconnect ();
@@ -176,8 +205,10 @@ class stream_echo_session_t : public TCPSession
 
             const size_t incoming_frame_size = 4 + body_size;
             if (remaining < incoming_frame_size) {
+                ensure_partial_capacity (incoming_frame_size);
                 std::memcpy (&partial_frame[0], ptr, remaining);
                 partial_size = remaining;
+                partial_expected_frame_size = incoming_frame_size;
                 return;
             }
 
@@ -201,11 +232,17 @@ class stream_echo_session_t : public TCPSession
     }
 
   private:
+    void ensure_partial_capacity (size_t required_size)
+    {
+        if (partial_frame.size () < required_size)
+            partial_frame.resize (required_size);
+    }
+
     const server_options_t &opt;
     metrics_t &metrics;
-    const size_t frame_size;
     std::vector<unsigned char> partial_frame;
     size_t partial_size;
+    size_t partial_expected_frame_size;
 };
 
 class stream_echo_server_t : public TCPServer

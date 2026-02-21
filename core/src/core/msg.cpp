@@ -14,12 +14,88 @@
 #include "protocol/metadata.hpp"
 #include "utils/err.hpp"
 
+#include <climits>
+#include <vector>
+
 //  Check whether the sizes of public representation of the message (zlink_msg_t)
 //  and private representation of the message (zlink::msg_t) match.
 
 typedef char
   zlink_msg_size_check[2 * ((sizeof (zlink::msg_t) == sizeof (zlink_msg_t)) != 0)
                      - 1];
+
+namespace
+{
+const uintptr_t slice_lmsg_flag = static_cast<uintptr_t> (1);
+
+int parse_positive_int_env (const char *name_, int default_value_)
+{
+    const char *env = std::getenv (name_);
+    if (!env || !*env)
+        return default_value_;
+
+    char *end = NULL;
+    const long value = std::strtol (env, &end, 10);
+    if (!end || end == env || value <= 0 || value > INT_MAX)
+        return default_value_;
+    return static_cast<int> (value);
+}
+
+const size_t slice_content_pool_max = static_cast<size_t> (
+  parse_positive_int_env ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
+
+typedef std::vector<zlink::msg_t::content_t *> slice_content_pool_t;
+
+slice_content_pool_t &slice_content_pool ()
+{
+    static thread_local slice_content_pool_t pool;
+    return pool;
+}
+
+zlink::msg_t::content_t *acquire_slice_content ()
+{
+    slice_content_pool_t &pool = slice_content_pool ();
+    if (!pool.empty ()) {
+        zlink::msg_t::content_t *content = pool.back ();
+        pool.pop_back ();
+        return content;
+    }
+
+    zlink::msg_t::content_t *content = static_cast<zlink::msg_t::content_t *> (
+      std::malloc (sizeof (zlink::msg_t::content_t)));
+    if (!content)
+        errno = ENOMEM;
+    return content;
+}
+
+void release_slice_content (zlink::msg_t::content_t *content_)
+{
+    if (!content_)
+        return;
+
+    slice_content_pool_t &pool = slice_content_pool ();
+    if (pool.size () < slice_content_pool_max)
+        pool.push_back (content_);
+    else
+        std::free (content_);
+}
+
+void *encode_slice_hint (zlink::msg_t::content_t *content_, bool lmsg_owner_)
+{
+    return reinterpret_cast<void *> (
+      reinterpret_cast<uintptr_t> (content_)
+      | (lmsg_owner_ ? slice_lmsg_flag : 0));
+}
+
+zlink::msg_t::content_t *decode_slice_hint (void *hint_, bool *lmsg_owner_out_)
+{
+    const uintptr_t encoded = reinterpret_cast<uintptr_t> (hint_);
+    if (lmsg_owner_out_)
+        *lmsg_owner_out_ = (encoded & slice_lmsg_flag) != 0;
+    return reinterpret_cast<zlink::msg_t::content_t *> (encoded
+                                                        & ~slice_lmsg_flag);
+}
+}
 
 bool zlink::msg_t::check () const
 {
@@ -105,6 +181,119 @@ int zlink::msg_t::init_buffer (const void *buf_, size_t size_)
         assert (NULL != buf_);
         memcpy (data (), buf_, size_);
     }
+    return 0;
+}
+
+void zlink::msg_t::call_dec_ref_on_slice (void *data_, void *hint_)
+{
+    LIBZLINK_UNUSED (data_);
+
+    if (!hint_)
+        return;
+
+    bool lmsg_owner = false;
+    content_t *content = decode_slice_hint (hint_, &lmsg_owner);
+    if (!content)
+        return;
+
+    if (!content->refcnt.sub (1)) {
+        content->refcnt.~atomic_counter_t ();
+        if (content->ffn)
+            content->ffn (content->data, content->hint);
+        if (lmsg_owner)
+            free (content);
+    }
+}
+
+int zlink::msg_t::init_view (msg_t &src_, size_t offset_, size_t size_)
+{
+    //  Check the validity of the source.
+    if (unlikely (!src_.check ())) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    const size_t src_size = src_.size ();
+    if (offset_ > src_size || size_ > src_size - offset_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    int rc = close ();
+    if (unlikely (rc < 0))
+        return rc;
+
+    if (size_ == 0)
+        return init_size (0);
+
+    unsigned char *src_data = static_cast<unsigned char *> (src_.data ());
+    if (!src_data) {
+        errno = EFAULT;
+        return -1;
+    }
+    void *view_data = src_data + offset_;
+
+    if (src_.is_lmsg () || src_.is_zcmsg ()) {
+        content_t *content =
+          src_.is_lmsg () ? src_._u.lmsg.content : src_._u.zclmsg.content;
+        if (!content) {
+            errno = EFAULT;
+            return -1;
+        }
+
+        if (src_._u.base.flags & msg_t::shared)
+            content->refcnt.add (1);
+        else {
+            content->refcnt.set (2);
+            src_._u.base.flags |= msg_t::shared;
+        }
+
+        const bool lmsg_owner = src_.is_lmsg ();
+        content_t *view_content = acquire_slice_content ();
+        if (!view_content) {
+            if (!content->refcnt.sub (1)) {
+                content->refcnt.~atomic_counter_t ();
+                if (content->ffn)
+                    content->ffn (content->data, content->hint);
+                if (lmsg_owner)
+                    free (content);
+            }
+            const int init_rc = init ();
+            errno_assert (init_rc == 0);
+            return -1;
+        }
+
+        rc = init_external_storage (view_content, view_data, size_,
+                                    &msg_t::call_dec_ref_on_slice,
+                                    encode_slice_hint (content, lmsg_owner));
+        if (likely (rc == 0))
+            return 0;
+
+        const int saved_errno = errno;
+        release_slice_content (view_content);
+        if (!content->refcnt.sub (1)) {
+            content->refcnt.~atomic_counter_t ();
+            if (content->ffn)
+                content->ffn (content->data, content->hint);
+            if (lmsg_owner)
+                free (content);
+        }
+        const int init_rc = init ();
+        errno_assert (init_rc == 0);
+        errno = saved_errno;
+        return -1;
+    }
+
+    rc = init_size (size_);
+    if (unlikely (rc < 0)) {
+        const int saved_errno = errno;
+        const int init_rc = init ();
+        errno_assert (init_rc == 0);
+        errno = saved_errno;
+        return -1;
+    }
+
+    memcpy (data (), view_data, size_);
     return 0;
 }
 
@@ -265,17 +454,20 @@ int zlink::msg_t::close ()
 
     if (is_zcmsg ()) {
         zlink_assert (_u.zclmsg.content->ffn);
+        content_t *content = _u.zclmsg.content;
+        msg_free_fn *ffn = content->ffn;
+        const bool pooled_slice_content = ffn == &msg_t::call_dec_ref_on_slice;
 
         //  If the content is not shared, or if it is shared and the reference
         //  count has dropped to zero, deallocate it.
-        if (!(_u.zclmsg.flags & msg_t::shared)
-            || !_u.zclmsg.content->refcnt.sub (1)) {
+        if (!(_u.zclmsg.flags & msg_t::shared) || !content->refcnt.sub (1)) {
             //  We used "placement new" operator to initialize the reference
             //  counter so we call the destructor explicitly now.
-            _u.zclmsg.content->refcnt.~atomic_counter_t ();
+            content->refcnt.~atomic_counter_t ();
 
-            _u.zclmsg.content->ffn (_u.zclmsg.content->data,
-                                    _u.zclmsg.content->hint);
+            ffn (content->data, content->hint);
+            if (pooled_slice_content)
+                release_slice_content (content);
         }
     }
 
@@ -614,9 +806,12 @@ bool zlink::msg_t::rm_refs (int refs_)
 
     if (is_zcmsg () && !_u.zclmsg.content->refcnt.sub (refs_)) {
         // storage for rfcnt is provided externally
-        if (_u.zclmsg.content->ffn) {
-            _u.zclmsg.content->ffn (_u.zclmsg.content->data,
-                                    _u.zclmsg.content->hint);
+        msg_free_fn *ffn = _u.zclmsg.content->ffn;
+        const bool pooled_slice_content = ffn == &msg_t::call_dec_ref_on_slice;
+        if (ffn) {
+            ffn (_u.zclmsg.content->data, _u.zclmsg.content->hint);
+            if (pooled_slice_content)
+                release_slice_content (_u.zclmsg.content);
         }
 
         return false;

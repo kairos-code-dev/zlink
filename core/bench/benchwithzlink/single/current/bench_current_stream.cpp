@@ -139,6 +139,17 @@ void run_stream(const std::string &transport,
         return;
     }
 
+    const int linger_ms = 0;
+    set_sockopt_int(server.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int(client.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+
+    // Keep stream benchmark from stalling on queue backpressure in teardown.
+    const int hwm_unbounded = 0;
+    set_sockopt_int(server.get(), ZLINK_SNDHWM, hwm_unbounded, "ZLINK_SNDHWM");
+    set_sockopt_int(server.get(), ZLINK_RCVHWM, hwm_unbounded, "ZLINK_RCVHWM");
+    set_sockopt_int(client.get(), ZLINK_SNDHWM, hwm_unbounded, "ZLINK_SNDHWM");
+    set_sockopt_int(client.get(), ZLINK_RCVHWM, hwm_unbounded, "ZLINK_RCVHWM");
+
     const int io_timeout_ms = resolve_bench_count("BENCH_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int(server.get(), ZLINK_SNDTIMEO, io_timeout_ms,
                     "ZLINK_SNDTIMEO");
@@ -170,6 +181,8 @@ void run_stream(const std::string &transport,
       zlink_socket_monitor_open(
         client.get(),
         ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
+    if (client_monitor)
+        set_sockopt_int(client_monitor, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
 
     if (!connect_checked(client.get(), endpoint)) {
         if (client_monitor)

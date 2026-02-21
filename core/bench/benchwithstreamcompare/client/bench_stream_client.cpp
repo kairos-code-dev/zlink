@@ -48,6 +48,22 @@ uint64_t now_ns ()
         .count ());
 }
 
+uint32_t load_u32_be (const unsigned char *p)
+{
+    return (static_cast<uint32_t> (p[0]) << 24)
+           | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8)
+           | static_cast<uint32_t> (p[3]);
+}
+
+void store_u32_be (unsigned char *p, uint32_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 24) & 0xFF);
+    p[1] = static_cast<unsigned char> ((v >> 16) & 0xFF);
+    p[2] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[3] = static_cast<unsigned char> (v & 0xFF);
+}
+
 uint64_t load_u64_be (const unsigned char *p)
 {
     return (static_cast<uint64_t> (p[0]) << 56)
@@ -812,10 +828,11 @@ void client_session_t::set_chunk_size (size_t size,
     boost::asio::post (strand, [self, size, latch] () {
         if (!self->closed) {
             self->chunk_size = size;
-            if (self->write_buf.size () != size)
-                self->write_buf.resize (size);
-            if (self->read_buf.size () != size)
-                self->read_buf.resize (size);
+            const size_t wire_size = size + 4;
+            if (self->write_buf.size () != wire_size)
+                self->write_buf.resize (wire_size);
+            if (self->read_buf.size () != wire_size)
+                self->read_buf.resize (wire_size);
         }
         if (latch) {
             {
@@ -932,14 +949,17 @@ void client_session_t::send_one ()
         return;
 
     chunk_size = size;
-    if (write_buf.size () != size)
-        write_buf.resize (size);
+    const size_t wire_size = size + 4;
+    if (write_buf.size () != wire_size)
+        write_buf.resize (wire_size);
+    store_u32_be (&write_buf[0], static_cast<uint32_t> (size));
+    unsigned char *payload_write = write_buf.size () > 4 ? &write_buf[4] : NULL;
 
-    if (owner.latency_sampling_enabled () && write_buf.size () >= 16) {
+    if (owner.latency_sampling_enabled () && payload_write && size >= 16) {
         const uint64_t seq = owner.next_seq ();
         const uint64_t sent_ns = now_ns ();
-        store_u64_be (&write_buf[0], seq);
-        store_u64_be (&write_buf[8], sent_ns);
+        store_u64_be (payload_write, seq);
+        store_u64_be (payload_write + 8, sent_ns);
     }
 
     owner.on_send_begin (size);
@@ -981,8 +1001,10 @@ void client_session_t::start_read ()
     if (closed || !connected ())
         return;
 
-    if (read_buf.size () != chunk_size)
-        read_buf.resize (chunk_size);
+    const size_t wire_size = chunk_size + 4;
+
+    if (read_buf.size () != wire_size)
+        read_buf.resize (wire_size);
 
     read_inflight = true;
     const std::shared_ptr<client_session_t> self = shared_from_this ();
@@ -1012,16 +1034,40 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
         return;
     }
 
+    if (bytes < 4) {
+        owner.on_recv_error ();
+        if (outstanding) {
+            outstanding = false;
+            owner.on_abandon ();
+        }
+        close_internal ();
+        return;
+    }
+
+    const uint32_t declared = load_u32_be (&read_buf[0]);
+    if (declared != static_cast<uint32_t> (chunk_size)) {
+        owner.on_recv_error ();
+        if (outstanding) {
+            outstanding = false;
+            owner.on_abandon ();
+        }
+        close_internal ();
+        return;
+    }
+
+    const size_t payload_bytes = bytes - 4;
+    const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[4] : NULL;
+
     uint64_t seq = 0;
     uint64_t sent_ns = 0;
-    if (owner.latency_sampling_enabled () && read_buf.size () >= 16) {
-        seq = load_u64_be (&read_buf[0]);
-        sent_ns = load_u64_be (&read_buf[8]);
+    if (owner.latency_sampling_enabled () && payload_ptr && payload_bytes >= 16) {
+        seq = load_u64_be (payload_ptr);
+        sent_ns = load_u64_be (payload_ptr + 8);
     }
 
     if (outstanding) {
         outstanding = false;
-        owner.on_recv_done (bytes, seq, sent_ns);
+        owner.on_recv_done (payload_bytes, seq, sent_ns);
     }
 
     maybe_send_more ();

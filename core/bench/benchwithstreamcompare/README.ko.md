@@ -25,7 +25,6 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - `cppserver`
 - `dotnet`
 - `zlink`
-- `zlinkraw` (raw-stream 전용 서버 바이너리)
 - `zmq`
 - `netty`
 
@@ -98,18 +97,10 @@ cat /proc/sys/net/ipv4/ip_local_port_range
   --size 64,1024,65536
 ```
 
-`zlink` LEN32BE on/off 직접 비교:
-
-```bash
-./core/bench/benchwithstreamcompare/run_benchmarks.sh \
-  --stack zlink,zlinkraw \
-  --size 64,1024,65536
-```
-
 ## 실행 옵션
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    기본값: 10000
 --runs <N>                   기본값: 1
@@ -139,7 +130,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `netty`는 Gradle 8.8+가 필요하며 시스템 `gradle`이 오래된 경우
   러너가 `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/` 아래에
   Gradle `8.10.2`를 자동 다운로드해서 사용
-- `zlink`와 `zlinkraw`는 분리된 서버 바이너리를 직접 실행
+- `zlink` 스택은 native STREAM 서버 바이너리를 직접 실행
 
 ## 결과 파일
 

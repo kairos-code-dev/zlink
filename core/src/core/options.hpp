@@ -129,15 +129,6 @@ struct options_t
     //  into the receive path.
     bool stream_notify;
 
-    //  STREAM receive/send payload mode.
-    //  RAW: pass transport chunks through unchanged.
-    //  LEN32BE: parse/send 4-byte big-endian length prefixed payloads.
-    int stream_packet_mode;
-    //  Maximum payload size accepted/sent in LEN32BE mode.
-    int stream_packet_max_size;
-    //  Maximum buffered bytes per peer while assembling LEN32BE packets.
-    int stream_packet_buffer_max;
-
     //  TCP keep-alive settings.
     //  Defaults to -1 = do not change socket options
     int tcp_keepalive;

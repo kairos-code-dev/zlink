@@ -350,9 +350,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_KEEPALIVE_IDLE 36
 #define ZLINK_TCP_KEEPALIVE_INTVL 37
 #define ZLINK_TCP_NODELAY 118
-#define ZLINK_STREAM_PACKET_MODE 119
-#define ZLINK_STREAM_PACKET_MAX_SIZE 120
-#define ZLINK_STREAM_PACKET_BUFFER_MAX 121
 #define ZLINK_IMMEDIATE 39
 #define ZLINK_XPUB_VERBOSE 40
 #define ZLINK_IPV6 42
@@ -382,9 +379,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_ONLY_FIRST_SUBSCRIBE 108
 #define ZLINK_TOPICS_COUNT 116
 #define ZLINK_ZMP_METADATA 117
-
-#define ZLINK_STREAM_PACKET_MODE_RAW 0
-#define ZLINK_STREAM_PACKET_MODE_LEN32BE 1
 
 //  TLS protocol options
 #define ZLINK_TLS_CERT 95

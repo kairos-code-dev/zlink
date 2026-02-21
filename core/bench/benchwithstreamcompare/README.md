@@ -25,7 +25,6 @@ Supported stacks:
 - `cppserver`
 - `dotnet`
 - `zlink`
-- `zlinkraw` (dedicated raw-stream server binary)
 - `zmq`
 - `netty`
 
@@ -98,18 +97,10 @@ Run one stack with multi-size sequence on the same connected clients:
   --size 64,1024,65536
 ```
 
-Compare `zlink` LEN32BE on/off directly:
-
-```bash
-./core/bench/benchwithstreamcompare/run_benchmarks.sh \
-  --stack zlink,zlinkraw \
-  --size 64,1024,65536
-```
-
 ## Runner Options
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    default: 10000
 --runs <N>                   default: 1
@@ -140,7 +131,7 @@ Notes:
 - `netty` requires Gradle 8.8+. If system `gradle` is older, the runner
   auto-downloads Gradle `8.10.2` under
   `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/`.
-- `zlink` and `zlinkraw` are separate server binaries and are run directly.
+- `zlink` stack is run directly as the native STREAM server binary.
 
 ## Output Files
 

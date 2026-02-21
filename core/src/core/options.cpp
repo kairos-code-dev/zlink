@@ -136,41 +136,6 @@ static int do_setsockopt_set (const void *const optval_,
 
 const int default_hwm = 300000;
 
-namespace
-{
-void tune_stream_packet_batch_sizes (zlink::options_t &options_)
-{
-    if (options_.type != ZLINK_STREAM)
-        return;
-
-    const int len32be_batch_cap = 64 * 1024 + 4;
-    const int raw_batch_target = 64 * 1024 + 4;
-    int target = 0;
-
-    if (options_.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE) {
-        //  Keep LEN32BE receive/send batching large enough to avoid splitting
-        //  common 64KiB benchmark packets into many chunks, while capping
-        //  memory growth per connection.
-        target = options_.stream_packet_max_size;
-        if (target > INT_MAX - 4)
-            target = INT_MAX - 4;
-        target += 4;
-        if (target > len32be_batch_cap)
-            target = len32be_batch_cap;
-    } else if (options_.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_RAW) {
-        //  RAW mode commonly carries framed payloads in benchmarks and apps.
-        //  Keep the I/O batch large enough to reduce 64KiB frame splitting.
-        target = raw_batch_target;
-    } else
-        return;
-
-    if (options_.in_batch_size < target)
-        options_.in_batch_size = target;
-    if (options_.out_batch_size < target)
-        options_.out_batch_size = target;
-}
-}
-
 zlink::options_t::options_t () :
     sndhwm (default_hwm),
     rcvhwm (default_hwm),
@@ -202,9 +167,6 @@ zlink::options_t::options_t () :
     invert_matching (false),
     recv_routing_id (false),
     stream_notify (false),
-    stream_packet_mode (ZLINK_STREAM_PACKET_MODE_RAW),
-    stream_packet_max_size (16 * 1024 * 1024),
-    stream_packet_buffer_max (64 * 1024 * 1024),
     tcp_keepalive (-1),
     tcp_keepalive_cnt (-1),
     tcp_keepalive_idle (-1),
@@ -453,32 +415,6 @@ int zlink::options_t::setsockopt (int option_,
         case ZLINK_STREAM_NOTIFY:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
                                                      &stream_notify);
-
-        case ZLINK_STREAM_PACKET_MODE:
-            if (is_int
-                && (value == ZLINK_STREAM_PACKET_MODE_RAW
-                    || value == ZLINK_STREAM_PACKET_MODE_LEN32BE)) {
-                stream_packet_mode = value;
-                tune_stream_packet_batch_sizes (*this);
-                return 0;
-            }
-            break;
-
-        case ZLINK_STREAM_PACKET_MAX_SIZE:
-            if (is_int && value > 0
-                && value <= stream_packet_buffer_max - 4) {
-                stream_packet_max_size = value;
-                tune_stream_packet_batch_sizes (*this);
-                return 0;
-            }
-            break;
-
-        case ZLINK_STREAM_PACKET_BUFFER_MAX:
-            if (is_int && value >= 4 && value - 4 >= stream_packet_max_size) {
-                stream_packet_buffer_max = value;
-                return 0;
-            }
-            break;
 
         case ZLINK_ZMP_METADATA:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
@@ -808,27 +744,6 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_STREAM_NOTIFY:
             if (is_int) {
                 *value = stream_notify ? 1 : 0;
-                return 0;
-            }
-            break;
-
-        case ZLINK_STREAM_PACKET_MODE:
-            if (is_int) {
-                *value = stream_packet_mode;
-                return 0;
-            }
-            break;
-
-        case ZLINK_STREAM_PACKET_MAX_SIZE:
-            if (is_int) {
-                *value = stream_packet_max_size;
-                return 0;
-            }
-            break;
-
-        case ZLINK_STREAM_PACKET_BUFFER_MAX:
-            if (is_int) {
-                *value = stream_packet_buffer_max;
                 return 0;
             }
             break;

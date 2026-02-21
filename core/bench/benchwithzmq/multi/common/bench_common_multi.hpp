@@ -257,12 +257,14 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     std::atomic<long> recv_total (0);
     std::atomic<long> send_total (0);
 
-    const bool use_backlog_cap = false;
+    const long inflight_limit =
+      static_cast<long> (std::max<size_t> (1, senders.size ()))
+      * static_cast<long> (std::max (1, settings.inflight));
 
     auto window_exhausted = [&] () -> bool {
-        if (!use_backlog_cap)
-            return false;
-        return false;
+        const long in_flight = send_total.load (std::memory_order_relaxed)
+                               - recv_total.load (std::memory_order_relaxed);
+        return in_flight >= inflight_limit;
     };
 
     auto send_backoff = [&] () {
@@ -475,12 +477,14 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     std::atomic<long> send_total (0);
     std::atomic<long> send_success (0);
 
-    const bool use_backlog_cap = false;
+    const long inflight_limit =
+      static_cast<long> (std::max<size_t> (1, sender_count))
+      * static_cast<long> (std::max (1, settings.inflight));
 
     auto window_exhausted = [&] () -> bool {
-        if (!use_backlog_cap)
-            return false;
-        return false;
+        const long in_flight = send_total.load (std::memory_order_relaxed)
+                               - recv_total.load (std::memory_order_relaxed);
+        return in_flight >= inflight_limit;
     };
 
     auto send_backoff = [&] () {
@@ -734,12 +738,14 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     std::atomic<long> send_success (0);
 
     const int effective_send_batch = std::max (1, send_batch);
-    const bool use_backlog_cap = false;
+    const long inflight_limit =
+      static_cast<long> (std::max<size_t> (1, sender_count))
+      * static_cast<long> (std::max (1, settings.inflight));
 
     auto window_exhausted = [&] () -> bool {
-        if (!use_backlog_cap)
-            return false;
-        return false;
+        const long in_flight = send_total.load (std::memory_order_relaxed)
+                               - recv_total.load (std::memory_order_relaxed);
+        return in_flight >= inflight_limit;
     };
 
     auto send_backoff = [&] () {

@@ -83,22 +83,11 @@ struct stream_buffer_t {
 
 typedef std::unordered_map<std::string, stream_buffer_t> stream_stash_map_t;
 
-struct stream_decode_state_t {
-    std::unordered_map<std::string, size_t> pending_bytes;
-    size_t complete_frames;
-
-    stream_decode_state_t () : complete_frames (0) {}
-    void reset ()
-    {
-        pending_bytes.clear ();
-        complete_frames = 0;
-    }
-};
-
 struct tcp_sender_state_t {
     socket_t fd;
     std::vector<char> frame;
     size_t sent_bytes;
+    stream_buffer_t recv_stash;
 
     tcp_sender_state_t () : fd (INVALID_SOCKET_FD), sent_bytes (0) {}
     bool valid () const { return fd != INVALID_SOCKET_FD; }
@@ -386,6 +375,7 @@ void close_sender (tcp_sender_state_t &sender)
     sender.fd = INVALID_SOCKET_FD;
     sender.frame.clear ();
     sender.sent_bytes = 0;
+    sender.recv_stash.reset ();
 }
 
 bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
@@ -395,6 +385,7 @@ bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
         //  partially staged frame from a previous round.
         sender.frame.clear ();
         sender.sent_bytes = 0;
+        sender.recv_stash.reset ();
         return true;
     }
 
@@ -409,6 +400,7 @@ bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
     sender.fd = fd;
     sender.frame.clear ();
     sender.sent_bytes = 0;
+    sender.recv_stash.reset ();
     return true;
 }
 
@@ -552,105 +544,224 @@ bool is_stream_event_payload (const char *data, size_t size)
                     == STREAM_EVENT_DISCONNECT);
 }
 
-int recv_batch_stream (void *server,
-                       stream_decode_state_t &decode_state,
-                       int recv_batch,
-                       size_t frame_size,
-                       long poll_timeout_ms)
+int recv_sender_echoes_nonblocking (tcp_sender_state_t &sender, int max_frames)
 {
-    if (recv_batch <= 0 || frame_size == 0)
+    if (!sender.valid () || max_frames <= 0)
         return 0;
 
-    int decoded = 0;
-    if (decode_state.complete_frames > 0) {
-        const size_t take =
-          std::min<size_t> (
-            static_cast<size_t> (recv_batch), decode_state.complete_frames);
-        decode_state.complete_frames -= take;
-        decoded = static_cast<int> (take);
-        if (decoded >= recv_batch)
-            return decoded;
+    int completed = 0;
+    char buf[64 * 1024];
+    for (int i = 0; i < 8 && completed < max_frames; ++i) {
+#ifdef _WIN32
+        const int n = recv (sender.fd, buf, static_cast<int> (sizeof (buf)), 0);
+#else
+        const int n = static_cast<int> (recv (sender.fd, buf, sizeof (buf), 0));
+#endif
+        if (n > 0) {
+            sender.recv_stash.append (buf, static_cast<size_t> (n));
+            completed += decode_available_frames (
+              sender.recv_stash, max_frames - completed);
+            continue;
+        }
+
+        if (n == 0)
+            return -1;
+        if (is_would_block_error ())
+            break;
+        return -1;
     }
 
+    return completed;
+}
+
+int recv_batch_client_echoes (std::vector<tcp_sender_state_t> &senders,
+                              int recv_batch,
+                              size_t &scan_cursor)
+{
+    if (recv_batch <= 0 || senders.empty ())
+        return 0;
+
+    int received = 0;
+    const size_t sender_count = senders.size ();
+    const int per_sender_limit = std::max (1, recv_batch);
+    const size_t scan_budget = std::min<size_t> (
+      sender_count,
+      std::max<size_t> (
+        2048,
+        std::min<size_t> (8192, static_cast<size_t> (std::max (1, recv_batch)) * 16)));
+    size_t scanned = 0;
+    while (scanned < scan_budget) {
+        const size_t idx = (scan_cursor + scanned) % sender_count;
+        const int count =
+          recv_sender_echoes_nonblocking (senders[idx], per_sender_limit);
+        if (count < 0)
+            return -1;
+        received += count;
+        ++scanned;
+    }
+
+    scan_cursor = sender_count == 0 ? 0 : (scan_cursor + scanned) % sender_count;
+    return received;
+}
+
+int recv_batch_stream (void *server,
+                       std::vector<tcp_sender_state_t> &senders,
+                       int recv_batch,
+                       long poll_timeout_ms,
+                       size_t &scan_cursor)
+{
+    if (recv_batch <= 0)
+        return 0;
+
+    const int relay_budget = std::max (
+      256, std::min (8192, std::max (1, recv_batch) * 16));
     zmq_pollitem_t item[] = {{server, 0, ZMQ_POLLIN, 0}};
     const int prc = zmq_poll (item, 1, poll_timeout_ms);
     if (prc < 0)
         return zmq_errno () == EINTR ? 0 : -1;
-    if (prc == 0 || (item[0].revents & ZMQ_POLLIN) == 0)
-        return decoded;
+    int relayed = 0;
+    if (prc > 0 && (item[0].revents & ZMQ_POLLIN) != 0) {
+        while (relayed < relay_budget) {
+            const int flags = relayed == 0 ? 0 : ZMQ_DONTWAIT;
 
-    while (decoded < recv_batch) {
-        const int flags = decoded == 0 ? 0 : ZMQ_DONTWAIT;
+            zmq_msg_t id_msg;
+            zmq_msg_t payload_msg;
+            zmq_msg_init (&id_msg);
+            zmq_msg_init (&payload_msg);
 
-        zmq_msg_t id_msg;
-        zmq_msg_t payload_msg;
-        zmq_msg_init (&id_msg);
-        zmq_msg_init (&payload_msg);
-
-        const int id_rc = zmq_msg_recv (&id_msg, server, flags);
-        if (id_rc < 0) {
-            zmq_msg_close (&id_msg);
-            zmq_msg_close (&payload_msg);
-            if (decoded > 0
-                && (zmq_errno () == EAGAIN || zmq_errno () == EINTR))
-                break;
-            if (decoded == 0 && zmq_errno () == EINTR)
-                return 0;
-            return -1;
-        }
-
-        const int data_rc = zmq_msg_recv (&payload_msg, server, flags);
-        if (data_rc < 0) {
-            zmq_msg_close (&id_msg);
-            zmq_msg_close (&payload_msg);
-            if (decoded > 0
-                && (zmq_errno () == EAGAIN || zmq_errno () == EINTR))
-                break;
-            if (decoded == 0 && zmq_errno () == EINTR)
-                return 0;
-            return -1;
-        }
-
-        const size_t payload_size = zmq_msg_size (&payload_msg);
-        const char *payload_data =
-          static_cast<const char *> (zmq_msg_data (&payload_msg));
-        if (payload_size > 0
-            && payload_data
-            && !is_stream_event_payload (payload_data, payload_size)) {
-            const char *id_data = static_cast<const char *> (zmq_msg_data (&id_msg));
-            const size_t id_size = zmq_msg_size (&id_msg);
-            if (!id_data || id_size == 0) {
+            const int id_rc = zmq_msg_recv (&id_msg, server, flags);
+            if (id_rc < 0) {
                 zmq_msg_close (&id_msg);
                 zmq_msg_close (&payload_msg);
-                continue;
+                if (relayed > 0
+                    && (zmq_errno () == EAGAIN || zmq_errno () == EINTR))
+                    break;
+                if (relayed == 0 && zmq_errno () == EINTR)
+                    break;
+                return -1;
             }
 
-            std::string routing_id (id_data, id_size);
-            size_t &pending = decode_state.pending_bytes[routing_id];
-            const size_t total = pending + payload_size;
-            decode_state.complete_frames += total / frame_size;
-            pending = total % frame_size;
+            const int data_rc = zmq_msg_recv (&payload_msg, server, flags);
+            if (data_rc < 0) {
+                zmq_msg_close (&id_msg);
+                zmq_msg_close (&payload_msg);
+                if (relayed > 0
+                    && (zmq_errno () == EAGAIN || zmq_errno () == EINTR))
+                    break;
+                if (relayed == 0 && zmq_errno () == EINTR)
+                    break;
+                return -1;
+            }
 
-            if (decode_state.complete_frames > 0) {
-                const size_t take =
-                  std::min<size_t> (
-                    static_cast<size_t> (recv_batch - decoded),
-                    decode_state.complete_frames);
-                decode_state.complete_frames -= take;
-                decoded += static_cast<int> (take);
+            const size_t payload_size = zmq_msg_size (&payload_msg);
+            const char *payload_data =
+              static_cast<const char *> (zmq_msg_data (&payload_msg));
+            if (payload_size > 0
+                && payload_data
+                && !is_stream_event_payload (payload_data, payload_size)) {
+                const char *id_data =
+                  static_cast<const char *> (zmq_msg_data (&id_msg));
+                const size_t id_size = zmq_msg_size (&id_msg);
+                if (!id_data || id_size == 0) {
+                    zmq_msg_close (&id_msg);
+                    zmq_msg_close (&payload_msg);
+                    continue;
+                }
+
+                if (zmq_send (server, id_data, id_size, ZMQ_SNDMORE) < 0
+                    || zmq_send (server, payload_data, payload_size, 0) < 0) {
+                    zmq_msg_close (&id_msg);
+                    zmq_msg_close (&payload_msg);
+                    return -1;
+                }
+
+                ++relayed;
+            }
+
+            zmq_msg_close (&id_msg);
+            zmq_msg_close (&payload_msg);
+        }
+    }
+
+    int received = recv_batch_client_echoes (senders, recv_batch, scan_cursor);
+    if (received < 0)
+        return -1;
+
+    for (int attempt = 0; attempt < 2 && received < recv_batch; ++attempt) {
+        const int prc_more = zmq_poll (item, 1, 0);
+        if (prc_more < 0) {
+            if (zmq_errno () == EINTR)
+                break;
+            return -1;
+        }
+        if (prc_more > 0 && (item[0].revents & ZMQ_POLLIN) != 0) {
+            int relayed_more = 0;
+            while (relayed_more < relay_budget) {
+                zmq_msg_t id_msg;
+                zmq_msg_t payload_msg;
+                zmq_msg_init (&id_msg);
+                zmq_msg_init (&payload_msg);
+
+                const int id_rc = zmq_msg_recv (&id_msg, server, ZMQ_DONTWAIT);
+                if (id_rc < 0) {
+                    zmq_msg_close (&id_msg);
+                    zmq_msg_close (&payload_msg);
+                    if (zmq_errno () == EAGAIN || zmq_errno () == EINTR)
+                        break;
+                    return -1;
+                }
+
+                const int data_rc =
+                  zmq_msg_recv (&payload_msg, server, ZMQ_DONTWAIT);
+                if (data_rc < 0) {
+                    zmq_msg_close (&id_msg);
+                    zmq_msg_close (&payload_msg);
+                    if (zmq_errno () == EAGAIN || zmq_errno () == EINTR)
+                        break;
+                    return -1;
+                }
+
+                const size_t payload_size = zmq_msg_size (&payload_msg);
+                const char *payload_data =
+                  static_cast<const char *> (zmq_msg_data (&payload_msg));
+                if (payload_size > 0
+                    && payload_data
+                    && !is_stream_event_payload (payload_data, payload_size)) {
+                    const char *id_data =
+                      static_cast<const char *> (zmq_msg_data (&id_msg));
+                    const size_t id_size = zmq_msg_size (&id_msg);
+                    if (id_data && id_size > 0) {
+                        if (zmq_send (server, id_data, id_size, ZMQ_SNDMORE) < 0
+                            || zmq_send (server, payload_data, payload_size, 0)
+                                 < 0) {
+                            zmq_msg_close (&id_msg);
+                            zmq_msg_close (&payload_msg);
+                            return -1;
+                        }
+                        ++relayed_more;
+                    }
+                }
+
+                zmq_msg_close (&id_msg);
+                zmq_msg_close (&payload_msg);
             }
         }
 
-        zmq_msg_close (&id_msg);
-        zmq_msg_close (&payload_msg);
+        const int extra =
+          recv_batch_client_echoes (senders, recv_batch - received, scan_cursor);
+        if (extra < 0)
+            return -1;
+        received += extra;
+        if (prc_more == 0 && extra == 0)
+            break;
     }
 
-    return decoded;
+    return received;
 }
 
 void drain_pending_stream_frames (void *server,
-                                  stream_decode_state_t &decode_state,
-                                  size_t frame_size)
+                                  std::vector<tcp_sender_state_t> &senders,
+                                  size_t &scan_cursor)
 {
     const int idle_ms_target = resolve_multi_int_env (
       "BENCH_MULTI_STREAM_DRAIN_IDLE_MS", 10, 1);
@@ -663,7 +774,7 @@ void drain_pending_stream_frames (void *server,
     int idle_ms = 0;
     while (std::chrono::steady_clock::now () < deadline) {
         const int drained =
-          recv_batch_stream (server, decode_state, 4096, frame_size, 0);
+          recv_batch_stream (server, senders, 4096, 0, scan_cursor);
         if (drained > 0) {
             idle_ms = 0;
             continue;
@@ -674,7 +785,6 @@ void drain_pending_stream_frames (void *server,
         if (idle_ms >= idle_ms_target)
             break;
     }
-    decode_state.reset ();
 }
 
 bool recv_one_stream_frame (void *server,
@@ -953,12 +1063,11 @@ void run_multi_stream (const std::string &transport,
     }
 
     std::vector<tcp_sender_state_t> senders (settings.clients);
+    size_t recv_scan_cursor = 0;
     bool ready_wait_done = false;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> payload (std::max<size_t> (1, current_size), 'a');
-        stream_decode_state_t decode_state;
-        const size_t frame_size = FRAME_PREFIX_SIZE + current_size;
 
         const multi_bench_result_t bench =
           run_multi_phase_benchmark_with_sender_lifecycle_batched (
@@ -968,7 +1077,7 @@ void run_multi_stream (const std::string &transport,
             [&] (size_t idx) { return send_sender_nonblocking (senders[idx], payload); },
             [&] (multi_bench_phase_t) {
                 return recv_batch_stream (
-                  server, decode_state, settings.recv_batch, frame_size, 10);
+                  server, senders, settings.recv_batch, 10, recv_scan_cursor);
             },
             [&] (size_t) {},
             [&] () {
@@ -980,7 +1089,8 @@ void run_multi_stream (const std::string &transport,
                         return false;
                     }
                 }
-                drain_pending_stream_frames (server, decode_state, frame_size);
+                drain_pending_stream_frames (
+                  server, senders, recv_scan_cursor);
                 return true;
             },
             false);

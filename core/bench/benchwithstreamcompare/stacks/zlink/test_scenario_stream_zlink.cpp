@@ -6,13 +6,83 @@
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <string>
+#include <vector>
 
 namespace {
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
+static const size_t k_frame_prefix_size = 4;
 static const int k_recv_batch_size = 2048;
+
+struct stream_buffer_t
+{
+    std::vector<unsigned char> data;
+    size_t offset;
+
+    stream_buffer_t () : offset (0) {}
+
+    size_t available () const { return data.size () - offset; }
+
+    void append (const unsigned char *buf, size_t len)
+    {
+        if (!buf || len == 0)
+            return;
+        if (offset >= data.size ()) {
+            data.clear ();
+            offset = 0;
+        }
+
+        const size_t old_size = data.size ();
+        const size_t new_size = old_size + len;
+        if (data.capacity () < new_size) {
+            size_t next_cap = data.capacity () > 0 ? data.capacity () : 1024;
+            while (next_cap < new_size)
+                next_cap *= 2;
+            data.reserve (next_cap);
+        }
+        data.resize (new_size);
+        std::memcpy (&data[old_size], buf, len);
+    }
+
+    void compact ()
+    {
+        if (offset == 0)
+            return;
+        if (offset >= data.size ()) {
+            data.clear ();
+            offset = 0;
+            return;
+        }
+        if (offset > 4096 || offset * 2 >= data.size ()) {
+            const size_t remain = data.size () - offset;
+            std::memmove (&data[0], &data[offset], remain);
+            data.resize (remain);
+            offset = 0;
+        }
+    }
+
+    void reset ()
+    {
+        data.clear ();
+        offset = 0;
+    }
+};
+
+typedef std::vector<stream_buffer_t> stream_stash_vec_t;
+
+bool parse_routing_id_u32 (const unsigned char *rid_data_,
+                           size_t rid_size_,
+                           uint32_t *rid_value_out_)
+{
+    if (!rid_data_ || !rid_value_out_ || rid_size_ != 4)
+        return false;
+
+    *rid_value_out_ = stream_echo::load_u32_be (rid_data_);
+    return *rid_value_out_ != 0;
+}
 
 struct server_options_t
 {
@@ -64,24 +134,12 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     const int zero = 0;
     (void)zlink_setsockopt (socket, ZLINK_RCVHWM, &zero, sizeof (zero));
     (void)zlink_setsockopt (socket, ZLINK_SNDHWM, &zero, sizeof (zero));
-
-    // zlink stack is fixed to LEN32BE mode in this dedicated binary.
-    const int packet_mode = ZLINK_STREAM_PACKET_MODE_LEN32BE;
-    (void)zlink_setsockopt (socket, ZLINK_STREAM_PACKET_MODE, &packet_mode,
-                            sizeof (packet_mode));
-
-    const int packet_max_size = static_cast<int> (k_max_payload_size);
-    const int packet_buffer_max = packet_max_size + 4;
-    (void)zlink_setsockopt (socket, ZLINK_STREAM_PACKET_MAX_SIZE,
-                            &packet_max_size, sizeof (packet_max_size));
-    (void)zlink_setsockopt (socket, ZLINK_STREAM_PACKET_BUFFER_MAX,
-                            &packet_buffer_max, sizeof (packet_buffer_max));
 }
 
-class zlink_len32be_echo_server_t
+class zlink_stream_echo_server_t
 {
   public:
-    explicit zlink_len32be_echo_server_t (const server_options_t &opt_) :
+    explicit zlink_stream_echo_server_t (const server_options_t &opt_) :
         opt (opt_),
         ctx (NULL),
         server (NULL),
@@ -93,7 +151,7 @@ class zlink_len32be_echo_server_t
     {
     }
 
-    ~zlink_len32be_echo_server_t () { cleanup (); }
+    ~zlink_stream_echo_server_t () { cleanup (); }
 
     int run ()
     {
@@ -117,8 +175,9 @@ class zlink_len32be_echo_server_t
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
         if (zlink_bind (server, endpoint.c_str ()) != 0) {
-            std::fprintf (stderr, "zlink stream: bind failed: %s endpoint=%s\n",
-                          zlink_strerror (zlink_errno ()), endpoint.c_str ());
+            std::fprintf (
+              stderr, "zlink stream: bind failed: %s endpoint=%s\n",
+              zlink_strerror (zlink_errno ()), endpoint.c_str ());
             return 2;
         }
 
@@ -159,20 +218,91 @@ class zlink_len32be_echo_server_t
     }
 
   private:
-    bool valid_payload_size (size_t payload_size) const
+    bool send_copy_reply (const unsigned char *rid_data_,
+                          size_t rid_size_,
+                          const unsigned char *payload_data_,
+                          size_t payload_size_)
     {
-        return payload_size >= k_min_payload_size
-               && payload_size <= k_max_payload_size;
+        if (!rid_data_ || rid_size_ == 0 || !payload_data_ || payload_size_ == 0)
+            return false;
+        const int sent_rid =
+          zlink_send (server, rid_data_, rid_size_, ZLINK_SNDMORE);
+        if (sent_rid != static_cast<int> (rid_size_))
+            return false;
+        const int sent_payload =
+          zlink_send (server, payload_data_, payload_size_, 0);
+        return sent_payload == static_cast<int> (payload_size_);
     }
 
-    void record_payload_metrics (size_t payload_size)
+    bool valid_body_size (size_t body_size) const
     {
-        if (payload_size > opt.size)
+        return body_size >= k_min_payload_size && body_size <= k_max_payload_size;
+    }
+
+    void record_frame_metrics (size_t body_size)
+    {
+        if (body_size > opt.size)
             ++protocol_error;
         else
             ++recv_msgs;
     }
 
+    void record_invalid_frame (stream_buffer_t &stash)
+    {
+        stash.reset ();
+        ++parse_error;
+        ++protocol_error;
+    }
+
+    stream_buffer_t *find_stash (size_t routing_idx)
+    {
+        if (routing_idx >= _frame_stashes.size ())
+            return NULL;
+        return &_frame_stashes[routing_idx];
+    }
+
+    stream_buffer_t &ensure_stash (size_t routing_idx)
+    {
+        if (routing_idx >= _frame_stashes.size ())
+            _frame_stashes.resize (routing_idx + 1);
+        return _frame_stashes[routing_idx];
+    }
+
+    void emit_complete_frames_from_stash (stream_buffer_t &stash,
+                                          const unsigned char *rid_data,
+                                          size_t rid_size,
+                                          bool &invalid_frame)
+    {
+        size_t consumed = 0;
+        const size_t available = stash.available ();
+        while (consumed + k_frame_prefix_size <= available) {
+            const unsigned char *frame = &stash.data[stash.offset + consumed];
+            const size_t body_size = static_cast<size_t> (
+              stream_echo::load_u32_be (frame));
+            if (!valid_body_size (body_size)) {
+                invalid_frame = true;
+                break;
+            }
+
+            const size_t frame_size = k_frame_prefix_size + body_size;
+            if (consumed + frame_size > available)
+                break;
+
+            record_frame_metrics (body_size);
+            if (!send_copy_reply (rid_data, rid_size, frame, frame_size))
+                ++send_error;
+
+            consumed += frame_size;
+        }
+
+        if (consumed > 0) {
+            stash.offset += consumed;
+            stash.compact ();
+        }
+    }
+
+    // Raw STREAM mode can split one frame across many chunks. This routine
+    // keeps per-RID reassembly state and emits only complete frames.
     int receive_and_process_batch (int max_batch)
     {
         int processed = 0;
@@ -202,7 +332,6 @@ class zlink_len32be_echo_server_t
                 return processed > 0 ? processed : -1;
             }
 
-            // STREAM delivers RID frame followed by payload frame.
             if (!zlink_msg_more (&rid_msg)) {
                 ++parse_error;
                 zlink_msg_close (&payload_msg);
@@ -223,39 +352,40 @@ class zlink_len32be_echo_server_t
             const unsigned char *rid_data =
               static_cast<const unsigned char *> (zlink_msg_data (&rid_msg));
             const size_t rid_size = zlink_msg_size (&rid_msg);
+            const unsigned char *payload = static_cast<const unsigned char *> (
+              zlink_msg_data (&payload_msg));
             const size_t payload_size = zlink_msg_size (&payload_msg);
-            bool payload_needs_close = true;
 
-            if (!rid_data || rid_size == 0) {
+            uint32_t routing_id_value = 0;
+            if (!parse_routing_id_u32 (rid_data, rid_size, &routing_id_value)) {
                 ++parse_error;
                 zlink_msg_close (&payload_msg);
                 zlink_msg_close (&rid_msg);
                 continue;
             }
 
-            // Zero-size payload can be emitted on disconnect events; skip it.
+            const size_t routing_idx = static_cast<size_t> (routing_id_value);
+            stream_buffer_t *stash_ptr = find_stash (routing_idx);
+
             if (payload_size == 0) {
+                if (stash_ptr)
+                    stash_ptr->reset ();
                 zlink_msg_close (&payload_msg);
                 zlink_msg_close (&rid_msg);
                 continue;
             }
 
-            if (!valid_payload_size (payload_size)) {
-                ++parse_error;
-                ++protocol_error;
-            } else {
-                record_payload_metrics (payload_size);
-            }
+            bool invalid_frame = false;
+            stream_buffer_t &stash = ensure_stash (routing_idx);
+            if (payload && payload_size > 0)
+                stash.append (payload, payload_size);
 
-            const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
-            if (sent_payload != static_cast<int> (payload_size)) {
-                ++send_error;
-            } else {
-                payload_needs_close = false;
-            }
+            emit_complete_frames_from_stash (stash, rid_data, rid_size,
+                                             invalid_frame);
+            if (invalid_frame)
+                record_invalid_frame (stash);
 
-            if (payload_needs_close)
-                zlink_msg_close (&payload_msg);
+            zlink_msg_close (&payload_msg);
             zlink_msg_close (&rid_msg);
         }
 
@@ -264,6 +394,8 @@ class zlink_len32be_echo_server_t
 
     void cleanup ()
     {
+        _frame_stashes.clear ();
+
         if (server) {
             zlink_close (server);
             server = NULL;
@@ -283,6 +415,7 @@ class zlink_len32be_echo_server_t
     long parse_error;
     long protocol_error;
     long send_error;
+    stream_stash_vec_t _frame_stashes;
 
     std::atomic<bool> stop;
 };
@@ -321,6 +454,6 @@ int main (int argc, char **argv)
     if (!parse_options (argc, argv, opt))
         return 2;
 
-    zlink_len32be_echo_server_t server (opt);
+    zlink_stream_echo_server_t server (opt);
     return server.run ();
 }

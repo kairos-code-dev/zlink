@@ -60,11 +60,9 @@ set(tests
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
-  scenario/router_router/zlink/test_scenario_router_router
   scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
-  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlinkraw
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
 set(STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT
@@ -306,11 +304,6 @@ foreach(test_source ${tests})
 endforeach()
 
 target_sources(
-  test_scenario_router_router
-  PRIVATE scenario/router_router/zlink/router_router_scenario_core.cpp
-          scenario/router_router/zlink/router_router_scenario_output.cpp)
-
-target_sources(
   test_scenario_stream_client
   PRIVATE ${STREAM_SCENARIO_ROOT}/client/stream_client_core.cpp)
 
@@ -347,16 +340,12 @@ set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
 set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
-set_tests_properties(test_scenario_router_router PROPERTIES TIMEOUT 180)
-set_tests_properties(test_scenario_router_router PROPERTIES LABELS "scenario;router_router")
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
 set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
 set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
-set_tests_properties(test_scenario_stream_zlinkraw PROPERTIES TIMEOUT 120)
-set_tests_properties(test_scenario_stream_zlinkraw PROPERTIES LABELS "scenario;stream;zlinkraw")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 if(TARGET test_scenario_stream_zmq)

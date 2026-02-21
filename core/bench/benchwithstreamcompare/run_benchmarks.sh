@@ -20,7 +20,7 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty|all|csv>
+  --stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
   --ccu <N>                    default: 10000
   --runs <N>                   default: 1
@@ -39,7 +39,7 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlinkraw zlink asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 
 TARGET_STACK="all"
@@ -157,7 +157,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|zlink|zlinkraw|zmq|netty)
+        asio|cppserver|dotnet|zlink|zmq|netty)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -195,7 +195,6 @@ SKIP_CSV="${RESULT_DIR}/skipped_stacks.csv"
 CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
-ZLINKRAW_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlinkraw"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
 STACKS_ROOT_DIR="${ROOT_DIR}/core/bench/benchwithstreamcompare/stacks"
 ZMQ_LIB_DIR="${STACKS_ROOT_DIR}/zmq/libzmq_dist/linux-x64/lib"
@@ -236,9 +235,9 @@ MONITOR_PID=""
 min_int()
 {
     local value="$1"
-    local minimum="$2"
-    if (( value < minimum )); then
-        echo "${minimum}"
+    local maximum="$2"
+    if (( value > maximum )); then
+        echo "${maximum}"
     else
         echo "${value}"
     fi
@@ -291,18 +290,6 @@ resolve_stack_tuning()
             STACK_ENV_VARS+=(
               "ZLINK_ASIO_STREAM_BATCH_SIZE=65536"
               "ZLINK_ASIO_STREAM_DISABLE_METADATA=1"
-              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=8192"
-            )
-            ;;
-        zlinkraw)
-            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 12)"
-            STACK_SNDBUF=8388608
-            STACK_RCVBUF=8388608
-            STACK_BACKLOG=65535
-            STACK_ENV_VARS+=(
-              "ZLINK_ASIO_STREAM_BATCH_SIZE=65536"
-              "ZLINK_ASIO_STREAM_DISABLE_METADATA=1"
-              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=0"
             )
             ;;
         zmq)
@@ -872,9 +859,6 @@ try_build_stack()
         zlink)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
             ;;
-        zlinkraw)
-            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlinkraw -j"$(nproc)" >/dev/null
-            ;;
         zmq)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
             ;;
@@ -937,9 +921,6 @@ start_server()
             ;;
         zlink)
             cmd=("${ZLINK_BIN}")
-            ;;
-        zlinkraw)
-            cmd=("${ZLINKRAW_BIN}")
             ;;
         zmq)
             cmd=("${ZMQ_BIN}")

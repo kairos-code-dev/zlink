@@ -490,8 +490,6 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
 
     const int linger_ms = 0;
     set_sockopt_int(server.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int(server.get(), ZLINK_STREAM_PACKET_MODE,
-                    ZLINK_STREAM_PACKET_MODE_RAW, "ZLINK_STREAM_PACKET_MODE");
     const int hwm = resolve_stream_hwm("tcp");
     set_sockopt_int(server.get(), ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
     set_sockopt_int(server.get(), ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
@@ -659,10 +657,6 @@ void run_stream_zlink_client(const std::string &transport,
     const int linger_ms = 0;
     set_sockopt_int(server.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
     set_sockopt_int(client.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    set_sockopt_int(server.get(), ZLINK_STREAM_PACKET_MODE,
-                    ZLINK_STREAM_PACKET_MODE_RAW, "ZLINK_STREAM_PACKET_MODE");
-    set_sockopt_int(client.get(), ZLINK_STREAM_PACKET_MODE,
-                    ZLINK_STREAM_PACKET_MODE_RAW, "ZLINK_STREAM_PACKET_MODE");
 
     const int hwm = resolve_stream_hwm(transport);
     set_sockopt_int(server.get(), ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");

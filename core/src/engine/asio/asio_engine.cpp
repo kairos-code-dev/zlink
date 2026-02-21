@@ -124,6 +124,11 @@ const bool asio_stream_gather_on =
 // 1KB-ish workloads are faster through the encoder batch path on current stack.
 const size_t asio_stream_gather_threshold = 8192;
 
+// LEN32BE: keep gather enabled by default for max-throughput stream echo.
+// Small-frame tuning can override this via env.
+const size_t asio_stream_len32be_gather_threshold = parse_size_env (
+  "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD", 0);
+
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
 
@@ -737,9 +742,14 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     }
 
     const size_t body_size = _tx_msg.size ();
+    const bool stream_len32be =
+      stream_mode
+      && _options.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE;
     const size_t threshold =
-      stream_mode ? asio_stream_gather_threshold : asio_gather_threshold;
-    if (body_size < threshold) {
+      stream_len32be
+        ? asio_stream_len32be_gather_threshold
+        : (stream_mode ? asio_stream_gather_threshold : asio_gather_threshold);
+    if (body_size > 0 && body_size < threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;
     }

@@ -2,17 +2,83 @@
 
 #include "../../../../include/zlink.h"
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
-#include <set>
 #include <string>
+#include <vector>
 
 namespace {
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
+static const size_t k_frame_prefix_size = 4;
+static const int k_recv_batch_size = 512;
+
+struct stream_buffer_t
+{
+    std::vector<unsigned char> data;
+    size_t offset;
+
+    stream_buffer_t () : offset (0) {}
+
+    size_t available () const { return data.size () - offset; }
+
+    void append (const unsigned char *buf, size_t len)
+    {
+        if (!buf || len == 0)
+            return;
+        if (offset >= data.size ()) {
+            data.clear ();
+            offset = 0;
+        }
+
+        const size_t old_size = data.size ();
+        data.resize (old_size + len);
+        std::memcpy (&data[old_size], buf, len);
+    }
+
+    void compact ()
+    {
+        if (offset == 0)
+            return;
+        if (offset >= data.size ()) {
+            data.clear ();
+            offset = 0;
+            return;
+        }
+        if (offset > 4096 || offset * 2 >= data.size ()) {
+            const size_t remain = data.size () - offset;
+            std::memmove (&data[0], &data[offset], remain);
+            data.resize (remain);
+            offset = 0;
+        }
+    }
+
+    void reset ()
+    {
+        data.clear ();
+        offset = 0;
+    }
+};
+
+bool parse_routing_id_u32 (const unsigned char *rid_data_,
+                           size_t rid_size_,
+                           uint32_t *rid_value_out_)
+{
+    if (!rid_data_ || !rid_value_out_ || rid_size_ != 4)
+        return false;
+
+    *rid_value_out_ = stream_echo::load_u32_be (rid_data_);
+    if (*rid_value_out_ == 0)
+        return false;
+    return true;
+}
+
+typedef std::vector<stream_buffer_t> stream_stash_vec_t;
+typedef std::vector<unsigned char> active_peer_vec_t;
 
 struct server_options_t
 {
@@ -25,6 +91,7 @@ struct server_options_t
     int tcp_nodelay;
     int io_threads;
     int raw_echo;
+    int stream_packet_mode;
 
     server_options_t ()
         : host ("0.0.0.0"),
@@ -35,7 +102,8 @@ struct server_options_t
           backlog (32768),
           tcp_nodelay (1),
           io_threads (4),
-          raw_echo (0)
+          raw_echo (0),
+          stream_packet_mode (ZLINK_STREAM_PACKET_MODE_LEN32BE)
     {
     }
 };
@@ -53,15 +121,6 @@ std::string make_endpoint (const std::string &host, int port)
     char buf[256];
     std::snprintf (buf, sizeof (buf), "tcp://%s:%d", host.c_str (), port);
     return std::string (buf);
-}
-
-bool get_rcvmore (void *socket)
-{
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (socket, ZLINK_RCVMORE, &more, &more_size) != 0)
-        return false;
-    return more != 0;
 }
 
 void apply_socket_tuning (void *socket, const server_options_t &opt)
@@ -88,6 +147,24 @@ void apply_socket_tuning (void *socket, const server_options_t &opt)
     (void)zlink_setsockopt (socket, ZLINK_RCVHWM, &zero, sizeof (zero));
     (void)zlink_setsockopt (socket, ZLINK_SNDHWM, &zero, sizeof (zero));
 
+    const int packet_mode = opt.stream_packet_mode;
+    if (zlink_setsockopt (socket, ZLINK_STREAM_PACKET_MODE, &packet_mode,
+                          sizeof (packet_mode))
+        != 0) {
+        std::fprintf (stderr,
+                      "zlink stream: ZLINK_STREAM_PACKET_MODE set failed: %s\n",
+                      zlink_strerror (zlink_errno ()));
+    }
+
+    if (packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE) {
+        const int packet_max_size = static_cast<int> (k_max_payload_size);
+        const int packet_buffer_max = packet_max_size + 4;
+        (void)zlink_setsockopt (socket, ZLINK_STREAM_PACKET_MAX_SIZE,
+                                &packet_max_size, sizeof (packet_max_size));
+        (void)zlink_setsockopt (socket, ZLINK_STREAM_PACKET_BUFFER_MAX,
+                                &packet_buffer_max, sizeof (packet_buffer_max));
+    }
+
 }
 
 class zlink_stream_echo_server_t
@@ -97,7 +174,6 @@ class zlink_stream_echo_server_t
         : opt (opt_),
           ctx (NULL),
           server (NULL),
-          monitor (NULL),
           recv_msgs (0),
           parse_error (0),
           protocol_error (0),
@@ -136,27 +212,13 @@ class zlink_stream_echo_server_t
             return 2;
         }
 
-        monitor = zlink_socket_monitor_open (
-          server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
-        if (!monitor) {
-            std::fprintf (stderr, "zlink stream: monitor open failed: %s\n",
-                          zlink_strerror (zlink_errno ()));
-            return 2;
-        }
-        const int linger_ms = 0;
-        (void)zlink_setsockopt (monitor, ZLINK_LINGER, &linger_ms,
-                                sizeof (linger_ms));
-
         std::signal (SIGINT, on_signal);
         std::signal (SIGTERM, on_signal);
         g_stop_flag = &stop;
 
         while (!stop.load (std::memory_order_acquire)) {
-            zlink_pollitem_t items[] = {
-              {server, 0, ZLINK_POLLIN, 0},
-              {monitor, 0, ZLINK_POLLIN, 0},
-            };
-            const int prc = zlink_poll (items, 2, 1000);
+            zlink_pollitem_t items[] = {{server, 0, ZLINK_POLLIN, 0}};
+            const int prc = zlink_poll (items, 1, 1000);
             if (prc < 0) {
                 const int err = zlink_errno ();
                 if (err == EINTR || err == ETERM)
@@ -168,13 +230,10 @@ class zlink_stream_echo_server_t
             if (prc == 0)
                 continue;
 
-            if ((items[1].revents & ZLINK_POLLIN) != 0)
-                process_monitor_events ();
-
             if ((items[0].revents & ZLINK_POLLIN) != 0) {
                 for (;;) {
-                    const int rc = receive_and_process_once ();
-                    if (rc <= 0)
+                    const int rc = receive_and_process_batch (k_recv_batch_size);
+                    if (rc < k_recv_batch_size)
                         break;
                 }
             }
@@ -183,7 +242,9 @@ class zlink_stream_echo_server_t
         std::printf (
           "%s\n",
           stream_echo::make_metric_line (
-            "zlink", opt.size, recv_msgs.load (std::memory_order_relaxed),
+            opt.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE ? "zlink"
+                                                                        : "zlinkraw",
+            opt.size, recv_msgs.load (std::memory_order_relaxed),
             parse_error.load (std::memory_order_relaxed),
             protocol_error.load (std::memory_order_relaxed),
             send_error.load (std::memory_order_relaxed),
@@ -194,146 +255,324 @@ class zlink_stream_echo_server_t
     }
 
   private:
-    int receive_and_process_once ()
+    bool send_copy_reply (const unsigned char *rid_data_,
+                          size_t rid_size_,
+                          const unsigned char *payload_data_,
+                          size_t payload_size_)
     {
-        zlink_msg_t rid_msg;
-        zlink_msg_t payload_msg;
+        if (!rid_data_ || rid_size_ == 0 || !payload_data_ || payload_size_ == 0)
+            return false;
 
-        if (zlink_msg_init (&rid_msg) != 0)
-            return -1;
+        zlink_msg_t rid_out;
+        if (zlink_msg_init_size (&rid_out, rid_size_) != 0)
+            return false;
+        std::memcpy (zlink_msg_data (&rid_out), rid_data_, rid_size_);
 
-        int rc = zlink_msg_recv (&rid_msg, server, ZLINK_DONTWAIT);
-        if (rc < 0) {
-            zlink_msg_close (&rid_msg);
-            const int err = zlink_errno ();
-            if (err == EAGAIN)
-                return 0;
-            if (err != EINTR && err != ETERM)
+        zlink_msg_t payload_out;
+        if (zlink_msg_init_size (&payload_out, payload_size_) != 0) {
+            zlink_msg_close (&rid_out);
+            return false;
+        }
+        std::memcpy (zlink_msg_data (&payload_out), payload_data_, payload_size_);
+
+        bool ok = false;
+        const int sent_rid = zlink_msg_send (&rid_out, server, ZLINK_SNDMORE);
+        if (sent_rid == static_cast<int> (rid_size_)) {
+            const int sent_payload = zlink_msg_send (&payload_out, server, 0);
+            ok = sent_payload == static_cast<int> (payload_size_);
+        }
+
+        zlink_msg_close (&payload_out);
+        zlink_msg_close (&rid_out);
+        return ok;
+    }
+
+    void ensure_peer_slot (uint32_t routing_id_value_)
+    {
+        const size_t idx = static_cast<size_t> (routing_id_value_);
+        if (idx >= _frame_stashes.size ())
+            _frame_stashes.resize (idx + 1);
+        if (idx >= _active_peers.size ())
+            _active_peers.resize (idx + 1, 0);
+    }
+
+    void mark_peer_active (uint32_t routing_id_value_)
+    {
+        const size_t idx = static_cast<size_t> (routing_id_value_);
+        ensure_peer_slot (routing_id_value_);
+        if (_active_peers[idx] == 0) {
+            _active_peers[idx] = 1;
+            active_connections.fetch_add (1, std::memory_order_relaxed);
+        }
+    }
+
+    void mark_peer_inactive (uint32_t routing_id_value_)
+    {
+        const size_t idx = static_cast<size_t> (routing_id_value_);
+        if (idx >= _active_peers.size ())
+            return;
+
+        if (_active_peers[idx] != 0) {
+            _active_peers[idx] = 0;
+            if (active_connections.load (std::memory_order_relaxed) > 0)
+                active_connections.fetch_sub (1, std::memory_order_relaxed);
+        }
+    }
+
+    int receive_and_process_batch (int max_batch)
+    {
+        int processed = 0;
+        if (max_batch <= 0)
+            return 0;
+
+        for (; processed < max_batch; ++processed) {
+            zlink_msg_t rid_msg;
+            zlink_msg_t payload_msg;
+
+            if (zlink_msg_init (&rid_msg) != 0)
+                return -1;
+
+            int rc = zlink_msg_recv (&rid_msg, server, ZLINK_DONTWAIT);
+            if (rc < 0) {
+                zlink_msg_close (&rid_msg);
+                const int err = zlink_errno ();
+                if (err == EAGAIN)
+                    break;
+                if (err != EINTR && err != ETERM)
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                return processed > 0 ? processed : -1;
+            }
+
+            if (zlink_msg_init (&payload_msg) != 0) {
+                zlink_msg_close (&rid_msg);
+                return processed > 0 ? processed : -1;
+            }
+
+            if (!zlink_msg_more (&rid_msg)) {
                 parse_error.fetch_add (1, std::memory_order_relaxed);
-            return -1;
-        }
+                zlink_msg_close (&payload_msg);
+                zlink_msg_close (&rid_msg);
+                continue;
+            }
 
-        if (zlink_msg_init (&payload_msg) != 0) {
-            zlink_msg_close (&rid_msg);
-            return -1;
-        }
+            rc = zlink_msg_recv (&payload_msg, server, ZLINK_DONTWAIT);
+            if (rc < 0) {
+                const int err = zlink_errno ();
+                if (err != EAGAIN && err != EINTR && err != ETERM) {
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                }
+                zlink_msg_close (&payload_msg);
+                zlink_msg_close (&rid_msg);
+                return processed > 0 ? processed : -1;
+            }
 
-        if (!zlink_msg_more (&rid_msg)) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
+            const unsigned char *rid_data =
+              static_cast<const unsigned char *> (zlink_msg_data (&rid_msg));
+            const size_t rid_size = zlink_msg_size (&rid_msg);
+            const unsigned char *payload = static_cast<const unsigned char *> (
+              zlink_msg_data (&payload_msg));
+            const size_t payload_size = zlink_msg_size (&payload_msg);
+            bool rid_needs_close = true;
+            bool payload_needs_close = true;
 
-        rc = zlink_msg_recv (&payload_msg, server, 0);
-        if (rc < 0) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return -1;
-        }
+            if (!rid_data || rid_size == 0 || rid_size > 255) {
+                parse_error.fetch_add (1, std::memory_order_relaxed);
+                zlink_msg_close (&payload_msg);
+                zlink_msg_close (&rid_msg);
+                continue;
+            }
 
-        if (get_rcvmore (server)) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        const unsigned char *rid_data =
-          static_cast<const unsigned char *> (zlink_msg_data (&rid_msg));
-        const size_t rid_size = zlink_msg_size (&rid_msg);
-        const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (&payload_msg));
-        const size_t payload_size = zlink_msg_size (&payload_msg);
-
-        if (!rid_data || rid_size == 0 || rid_size > 255) {
-            parse_error.fetch_add (1, std::memory_order_relaxed);
-            zlink_msg_close (&payload_msg);
-            zlink_msg_close (&rid_msg);
-            return 1;
-        }
-
-        if (opt.raw_echo != 0) {
-            if (payload_size > 0)
+            if (opt.raw_echo != 0) {
+                if (payload_size == 0) {
+                    zlink_msg_close (&payload_msg);
+                    zlink_msg_close (&rid_msg);
+                    continue;
+                }
                 recv_msgs.fetch_add (1, std::memory_order_relaxed);
-        } else {
-            // STREAM payload is a raw TCP chunk and can be partial/coalesced.
-            // Only validate/count when a chunk exactly matches a full frame.
-            const size_t expected_frame_size = opt.size + 4;
-            if (payload_size == expected_frame_size && payload) {
-                const size_t body_size =
-                  static_cast<size_t> (stream_echo::load_u32_be (payload));
-                if (body_size < k_min_payload_size
-                    || body_size > k_max_payload_size || body_size != opt.size) {
+                const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
+                if (sent_payload != static_cast<int> (payload_size)) {
+                    send_error.fetch_add (1, std::memory_order_relaxed);
+                } else {
+                    payload_needs_close = false;
+                }
+            } else if (opt.stream_packet_mode
+                       == ZLINK_STREAM_PACKET_MODE_LEN32BE) {
+                if (payload_size == 0) {
+                    zlink_msg_close (&payload_msg);
+                    zlink_msg_close (&rid_msg);
+                    continue;
+                }
+                if (payload_size < k_min_payload_size
+                    || payload_size > k_max_payload_size) {
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                    protocol_error.fetch_add (1, std::memory_order_relaxed);
+                } else if (payload_size > opt.size) {
                     protocol_error.fetch_add (1, std::memory_order_relaxed);
                 } else {
                     recv_msgs.fetch_add (1, std::memory_order_relaxed);
                 }
-            }
-        }
 
-        if (payload_size > 0) {
-            const int sent_rid = zlink_msg_send (&rid_msg, server, ZLINK_SNDMORE);
-            if (sent_rid != static_cast<int> (rid_size))
-                send_error.fetch_add (1, std::memory_order_relaxed);
-            else {
                 const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
-                if (sent_payload != static_cast<int> (payload_size))
+                if (sent_payload != static_cast<int> (payload_size)) {
                     send_error.fetch_add (1, std::memory_order_relaxed);
-            }
-        }
-
-        zlink_msg_close (&payload_msg);
-        zlink_msg_close (&rid_msg);
-        return 1;
-    }
-
-    void process_monitor_events ()
-    {
-        if (!monitor)
-            return;
-
-        for (;;) {
-            zlink_monitor_event_t event;
-            if (zlink_monitor_recv (monitor, &event, ZLINK_DONTWAIT) != 0)
-                break;
-
-            if (event.event == ZLINK_EVENT_CONNECTION_READY) {
-                if (event.routing_id.size > 0) {
-                    std::string key (
-                      reinterpret_cast<const char *> (event.routing_id.data),
-                      event.routing_id.size);
-                    if (_active_peer_ids.insert (key).second)
-                        active_connections.fetch_add (1,
-                                                      std::memory_order_relaxed);
+                } else {
+                    payload_needs_close = false;
                 }
-            } else if (event.event == ZLINK_EVENT_DISCONNECTED) {
-                if (event.routing_id.size > 0) {
-                    std::string key (
-                      reinterpret_cast<const char *> (event.routing_id.data),
-                      event.routing_id.size);
-                    if (_active_peer_ids.erase (key) > 0) {
-                        if (active_connections.load (std::memory_order_relaxed)
-                            > 0) {
-                            active_connections.fetch_sub (
-                              1, std::memory_order_relaxed);
+            } else {
+                uint32_t routing_id_value = 0;
+                if (!parse_routing_id_u32 (rid_data, rid_size,
+                                           &routing_id_value)) {
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                    zlink_msg_close (&payload_msg);
+                    zlink_msg_close (&rid_msg);
+                    continue;
+                }
+
+                ensure_peer_slot (routing_id_value);
+
+                if (payload_size == 0) {
+                    _frame_stashes[routing_id_value].reset ();
+                    mark_peer_inactive (routing_id_value);
+                    zlink_msg_close (&payload_msg);
+                    zlink_msg_close (&rid_msg);
+                    continue;
+                }
+
+                mark_peer_active (routing_id_value);
+
+                stream_buffer_t &stash = _frame_stashes[routing_id_value];
+                bool invalid_frame = false;
+                size_t pos = 0;
+
+                // Single complete frame in one chunk: validate and forward
+                // directly to avoid per-frame copy/alloc overhead.
+                if (stash.available () == 0 && payload
+                    && payload_size >= k_frame_prefix_size) {
+                    const size_t body_size = static_cast<size_t> (
+                      stream_echo::load_u32_be (payload));
+                    const size_t frame_size = k_frame_prefix_size + body_size;
+                    if (frame_size == payload_size) {
+                        if (body_size < k_min_payload_size
+                            || body_size > k_max_payload_size) {
+                            invalid_frame = true;
+                        } else {
+                            if (body_size > opt.size) {
+                                protocol_error.fetch_add (
+                                  1, std::memory_order_relaxed);
+                            } else {
+                                recv_msgs.fetch_add (
+                                  1, std::memory_order_relaxed);
+                            }
+
+                            const int sent_payload =
+                              zlink_msg_send (&payload_msg, server, 0);
+                            if (sent_payload
+                                != static_cast<int> (payload_size)) {
+                                send_error.fetch_add (
+                                  1, std::memory_order_relaxed);
+                            } else {
+                                payload_needs_close = false;
+                            }
+                            pos = payload_size;
                         }
                     }
-                } else if (active_connections.load (std::memory_order_relaxed)
-                           > 0) {
-                    active_connections.fetch_sub (1, std::memory_order_relaxed);
+                }
+
+                // Fast-path: when no partial frame is buffered for this peer,
+                // parse and echo complete frames directly from the incoming chunk
+                // to avoid extra copy into the stash.
+                if (!invalid_frame && pos < payload_size
+                    && stash.available () == 0 && payload
+                    && payload_size > 0) {
+                    while (pos + k_frame_prefix_size <= payload_size) {
+                        const unsigned char *frame = payload + pos;
+                        const size_t body_size = static_cast<size_t> (
+                          stream_echo::load_u32_be (frame));
+                        if (body_size < k_min_payload_size
+                            || body_size > k_max_payload_size) {
+                            invalid_frame = true;
+                            break;
+                        }
+
+                        const size_t frame_size = k_frame_prefix_size + body_size;
+                        if (pos + frame_size > payload_size)
+                            break;
+
+                        if (body_size > opt.size) {
+                            protocol_error.fetch_add (
+                              1, std::memory_order_relaxed);
+                        } else {
+                            recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                        }
+
+                        if (!send_copy_reply (rid_data, rid_size, frame,
+                                              frame_size)) {
+                            send_error.fetch_add (1, std::memory_order_relaxed);
+                        }
+
+                        pos += frame_size;
+                    }
+                }
+
+                if (invalid_frame) {
+                    stash.reset ();
+                    parse_error.fetch_add (1, std::memory_order_relaxed);
+                    protocol_error.fetch_add (1, std::memory_order_relaxed);
+                } else {
+                    if (payload && pos < payload_size)
+                        stash.append (payload + pos, payload_size - pos);
+
+                    while (stash.available () >= k_frame_prefix_size) {
+                        const unsigned char *frame = &stash.data[stash.offset];
+                        const size_t body_size = static_cast<size_t> (
+                          stream_echo::load_u32_be (frame));
+                        if (body_size < k_min_payload_size
+                            || body_size > k_max_payload_size) {
+                            stash.reset ();
+                            invalid_frame = true;
+                            break;
+                        }
+
+                        const size_t frame_size = k_frame_prefix_size + body_size;
+                        if (stash.available () < frame_size)
+                            break;
+
+                        if (body_size > opt.size) {
+                            protocol_error.fetch_add (
+                              1, std::memory_order_relaxed);
+                        } else {
+                            recv_msgs.fetch_add (1, std::memory_order_relaxed);
+                        }
+
+                        if (!send_copy_reply (rid_data, rid_size, frame,
+                                              frame_size)) {
+                            send_error.fetch_add (1, std::memory_order_relaxed);
+                        }
+
+                        stash.offset += frame_size;
+                        stash.compact ();
+                    }
+
+                    if (invalid_frame) {
+                        parse_error.fetch_add (1, std::memory_order_relaxed);
+                        protocol_error.fetch_add (1, std::memory_order_relaxed);
+                    }
                 }
             }
+
+            if (payload_needs_close)
+                zlink_msg_close (&payload_msg);
+            if (rid_needs_close)
+                zlink_msg_close (&rid_msg);
         }
+
+        return processed;
     }
 
     void cleanup ()
     {
-        if (monitor) {
-            zlink_close (monitor);
-            monitor = NULL;
-        }
+        _frame_stashes.clear ();
+        _active_peers.clear ();
 
         if (server) {
             zlink_close (server);
@@ -349,14 +588,14 @@ class zlink_stream_echo_server_t
     server_options_t opt;
     void *ctx;
     void *server;
-    void *monitor;
 
     std::atomic<long> recv_msgs;
     std::atomic<long> parse_error;
     std::atomic<long> protocol_error;
     std::atomic<long> send_error;
     std::atomic<long> active_connections;
-    std::set<std::string> _active_peer_ids;
+    stream_stash_vec_t _frame_stashes;
+    active_peer_vec_t _active_peers;
 
     std::atomic<bool> stop;
 };
@@ -374,6 +613,19 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.raw_echo = args.get_int ("--raw-echo", opt.raw_echo, 0);
+    const std::string packet_mode =
+      args.get_string ("--packet-mode", "len32be");
+    if (packet_mode == "len32be") {
+        opt.stream_packet_mode = ZLINK_STREAM_PACKET_MODE_LEN32BE;
+    } else if (packet_mode == "raw" || packet_mode == "off") {
+        opt.stream_packet_mode = ZLINK_STREAM_PACKET_MODE_RAW;
+    } else {
+        std::fprintf (
+          stderr,
+          "zlink stream: invalid --packet-mode '%s' (expected len32be|raw)\n",
+          packet_mode.c_str ());
+        return false;
+    }
     if (opt.size > k_max_payload_size) {
         std::fprintf (stderr, "zlink stream: size too large %zu\n", opt.size);
         return false;

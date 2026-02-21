@@ -563,14 +563,7 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
         fail("probe_decode");
         return;
     }
-    const int require_monitor_ready_default =
-      lib_name == "baseline" ? 0 : 1;
-    const bool require_monitor_ready =
-      resolve_bench_count("BENCH_STREAM_REQUIRE_MONITOR_READY",
-                          require_monitor_ready_default)
-      != 0;
-    if (!wait_monitor_ready_count(server_monitor, 1, connect_timeout_ms)
-        && require_monitor_ready) {
+    if (!wait_monitor_ready_count(server_monitor, 1, connect_timeout_ms)) {
         fail("monitor_ready");
         return;
     }

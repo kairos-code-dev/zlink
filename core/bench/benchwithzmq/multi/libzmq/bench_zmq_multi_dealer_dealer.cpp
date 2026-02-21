@@ -10,7 +10,7 @@ namespace {
 multi_send_result_t send_nonblocking (void *socket,
                                       const std::vector<char> &buffer)
 {
-    if (zmq_send (socket, buffer.data (), buffer.size (), ZMQ_DONTWAIT) >= 0)
+    if (zmq_send (socket, buffer.data (), buffer.size (), bench_send_flags ()) >= 0)
         return multi_send_ok;
     const int err = zmq_errno ();
     if (err == ETERM || err == ENOTSOCK)

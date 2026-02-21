@@ -161,8 +161,10 @@ Options:
   --clients N                   Override BENCH_MULTI_CLIENTS
   --inflight N                  Per-client inflight window (global=clients*N, default: 30)
   --inflight-per-client N       Alias for --inflight
-  --hwm N                       Override BENCH_MULTI_HWM (default: 300000)
+  --hwm N                       Override BENCH_MULTI_HWM (default: 100000)
   --monitor-hwm N               Override BENCH_MULTI_MONITOR_HWM (monitor queue HWM)
+  --sndtimeo-ms N               Override BENCH_MULTI_SNDTIMEO_MS (default: 5000)
+  --rcvtimeo-ms N               Override BENCH_MULTI_RCVTIMEO_MS (default: 5000)
   --connect-ready-timeout-ms N Override BENCH_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000)
   --drain-ms N                  Override BENCH_MULTI_DRAIN_MS
   --recv-batch N                Override BENCH_MULTI_RECV_BATCH
@@ -200,8 +202,10 @@ MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SE
 MULTI_SETTLE_MS="${BENCH_MULTI_SETTLE_MS:-500}"
 MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
 MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
-MULTI_HWM="${BENCH_MULTI_HWM:-300000}"
+MULTI_HWM="${BENCH_MULTI_HWM:-100000}"
 MULTI_MONITOR_HWM="${BENCH_MULTI_MONITOR_HWM:-}"
+MULTI_SNDTIMEO_MS="${BENCH_MULTI_SNDTIMEO_MS:-5000}"
+MULTI_RCVTIMEO_MS="${BENCH_MULTI_RCVTIMEO_MS:-5000}"
 MULTI_CONNECT_READY_TIMEOUT_MS="${BENCH_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
 MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-300}"
 MULTI_RECV_BATCH="${BENCH_MULTI_RECV_BATCH:-64}"
@@ -289,6 +293,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --monitor-hwm|--multi-monitor-hwm)
       MULTI_MONITOR_HWM="${2:-}"
+      shift 2
+      ;;
+    --sndtimeo-ms|--multi-sndtimeo-ms)
+      MULTI_SNDTIMEO_MS="${2:-}"
+      shift 2
+      ;;
+    --rcvtimeo-ms|--multi-rcvtimeo-ms)
+      MULTI_RCVTIMEO_MS="${2:-}"
       shift 2
       ;;
     --connect-ready-timeout-ms|--multi-connect-ready-timeout-ms)
@@ -388,6 +400,8 @@ export BENCH_MULTI_SETTLE_MS="${MULTI_SETTLE_MS}"
 export BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}"
 export BENCH_MULTI_RECV_BATCH="${MULTI_RECV_BATCH}"
 export BENCH_MULTI_HWM="${MULTI_HWM}"
+export BENCH_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}"
+export BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}"
 export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
 export BENCH_MULTI_STREAM_SEND_BATCH="${MULTI_STREAM_SEND_BATCH}"
 export BENCH_MULTI_RUN_COOLDOWN_MS="${MULTI_RUN_COOLDOWN_MS}"
@@ -403,6 +417,7 @@ if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ 
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi
 echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${MULTI_DRAIN_MS}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
+echo "Config: hwm=${MULTI_HWM}, sndtimeo_ms=${MULTI_SNDTIMEO_MS}, rcvtimeo_ms=${MULTI_RCVTIMEO_MS}"
 if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
   echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
 fi

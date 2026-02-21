@@ -80,11 +80,10 @@ class stream_echo_session_t : public TCPSession
         : TCPSession (server),
           opt (opt_),
           metrics (metrics_),
-          partial_frame (),
-          partial_size (0),
-          partial_expected_frame_size (0)
+          rx_stash (),
+          rx_offset (0)
     {
-        partial_frame.reserve (4);
+        rx_stash.reserve (4096);
     }
 
   protected:
@@ -108,85 +107,8 @@ class stream_echo_session_t : public TCPSession
         if (!buffer || size == 0)
             return;
 
-        const unsigned char *ptr = static_cast<const unsigned char *> (buffer);
-        size_t remaining = size;
-
-        while (remaining > 0) {
-            if (partial_size > 0) {
-                if (partial_size >= 4 && partial_expected_frame_size == 0) {
-                    const size_t body_size = static_cast<size_t> (
-                      stream_echo::load_u32_be (&partial_frame[0]));
-                    if (invalid_body_size (body_size)) {
-                        fail_parse_and_disconnect ();
-                        return;
-                    }
-                    partial_expected_frame_size = 4 + body_size;
-                }
-
-                const size_t expected =
-                  partial_expected_frame_size > 0 ? partial_expected_frame_size
-                                                  : 4;
-                ensure_partial_capacity (expected);
-                const size_t need = expected - partial_size;
-                const size_t n = std::min (need, remaining);
-                std::memcpy (&partial_frame[partial_size], ptr, n);
-                partial_size += n;
-                ptr += n;
-                remaining -= n;
-
-                if (partial_size < 4)
-                    continue;
-                if (partial_expected_frame_size == 0) {
-                    const size_t body_size = static_cast<size_t> (
-                      stream_echo::load_u32_be (&partial_frame[0]));
-                    if (invalid_body_size (body_size)) {
-                        fail_parse_and_disconnect ();
-                        return;
-                    }
-                    partial_expected_frame_size = 4 + body_size;
-                }
-
-                if (partial_size < partial_expected_frame_size)
-                    continue;
-
-                // We have one complete framed packet: echo it as-is.
-                if (!echo_complete_frame (&partial_frame[0],
-                                          partial_expected_frame_size))
-                    return;
-                partial_size = 0;
-                partial_expected_frame_size = 0;
-                continue;
-            }
-
-            if (remaining < 4) {
-                ensure_partial_capacity (4);
-                std::memcpy (&partial_frame[0], ptr, remaining);
-                partial_size = remaining;
-                partial_expected_frame_size = 0;
-                return;
-            }
-
-            const size_t body_size =
-              static_cast<size_t> (stream_echo::load_u32_be (ptr));
-            if (invalid_body_size (body_size)) {
-                fail_parse_and_disconnect ();
-                return;
-            }
-
-            const size_t incoming_frame_size = 4 + body_size;
-            if (remaining < incoming_frame_size) {
-                ensure_partial_capacity (incoming_frame_size);
-                std::memcpy (&partial_frame[0], ptr, remaining);
-                partial_size = remaining;
-                partial_expected_frame_size = incoming_frame_size;
-                return;
-            }
-
-            if (!echo_complete_frame (ptr, incoming_frame_size))
-                return;
-            ptr += incoming_frame_size;
-            remaining -= incoming_frame_size;
-        }
+        append_to_stash (static_cast<const unsigned char *> (buffer), size);
+        process_complete_frames ();
     }
 
     void onError (int,
@@ -221,17 +143,57 @@ class stream_echo_session_t : public TCPSession
         return true;
     }
 
-    void ensure_partial_capacity (size_t required_size)
+    void append_to_stash (const unsigned char *data, size_t size)
     {
-        if (partial_frame.size () < required_size)
-            partial_frame.resize (required_size);
+        const size_t old_size = rx_stash.size ();
+        rx_stash.resize (old_size + size);
+        std::memcpy (&rx_stash[old_size], data, size);
+    }
+
+    void compact_stash ()
+    {
+        if (rx_offset == 0)
+            return;
+        if (rx_offset >= rx_stash.size ()) {
+            rx_stash.clear ();
+            rx_offset = 0;
+            return;
+        }
+        if (rx_offset > 4096 || rx_offset * 2 >= rx_stash.size ()) {
+            const size_t remain = rx_stash.size () - rx_offset;
+            std::memmove (&rx_stash[0], &rx_stash[rx_offset], remain);
+            rx_stash.resize (remain);
+            rx_offset = 0;
+        }
+    }
+
+    void process_complete_frames ()
+    {
+        while (rx_stash.size () - rx_offset >= 4) {
+            const unsigned char *frame = &rx_stash[rx_offset];
+            const size_t body_size = static_cast<size_t> (
+              stream_echo::load_u32_be (frame));
+            if (invalid_body_size (body_size)) {
+                fail_parse_and_disconnect ();
+                return;
+            }
+
+            const size_t frame_size = 4 + body_size;
+            if (rx_stash.size () - rx_offset < frame_size)
+                break;
+
+            if (!echo_complete_frame (frame, frame_size))
+                return;
+
+            rx_offset += frame_size;
+            compact_stash ();
+        }
     }
 
     const server_options_t &opt;
     metrics_t &metrics;
-    std::vector<unsigned char> partial_frame;
-    size_t partial_size;
-    size_t partial_expected_frame_size;
+    std::vector<unsigned char> rx_stash;
+    size_t rx_offset;
 };
 
 class stream_echo_server_t : public TCPServer

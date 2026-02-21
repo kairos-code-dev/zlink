@@ -553,10 +553,7 @@
     "wss|262144|throughput": 5734.91,
     "wss|262144|latency": 1079.66
   },
-  "MULTI_STREAM": {
-    "tcp|64|throughput": 257135.0,
-    "tcp|64|latency": 45.05
-  },
+  "MULTI_STREAM": {},
   "MULTI_DEALER_DEALER": {
     "tcp|64|throughput": 1507829.0,
     "tcp|64|latency": 90.74,
@@ -564,16 +561,32 @@
     "tcp|256|latency": 83.16
   },
   "MULTI_GATEWAY": {
-    "tcp|64|throughput": 3824297.65,
-    "tcp|64|latency": 37.41,
-    "tcp|256|throughput": 1456146.29,
-    "tcp|256|latency": 34.02
+    "tcp|64|throughput": 3274003.99,
+    "tcp|64|latency": 83.36,
+    "tcp|256|throughput": 0.0,
+    "tcp|256|latency": 70.61,
+    "tcp|1024|throughput": 0.0,
+    "tcp|1024|latency": 0.0,
+    "tcp|65536|throughput": 0.0,
+    "tcp|65536|latency": 0.0,
+    "tcp|131072|throughput": 0.0,
+    "tcp|131072|latency": 0.0,
+    "tcp|262144|throughput": 0.0,
+    "tcp|262144|latency": 0.0
   },
   "MULTI_SPOT": {
-    "tcp|64|throughput": 3613916.0,
-    "tcp|64|latency": 1102.77,
-    "tcp|256|throughput": 2847272.0,
-    "tcp|256|latency": 1107.93
+    "tcp|64|throughput": 2624782.2,
+    "tcp|64|latency": 1182.68,
+    "tcp|256|throughput": 2313451.8,
+    "tcp|256|latency": 1159.93,
+    "tcp|1024|throughput": 1244022.8,
+    "tcp|1024|latency": 1167.26,
+    "tcp|65536|throughput": 92112.4,
+    "tcp|65536|latency": 1148.85,
+    "tcp|131072|throughput": 42791.3,
+    "tcp|131072|latency": 1148.38,
+    "tcp|262144|throughput": 14486.6,
+    "tcp|262144|latency": 2314.16
   },
   "MULTI_DEALER_ROUTER": {
     "tcp|64|throughput": 1465629.0,
@@ -588,9 +601,17 @@
     "tcp|256|latency": 24.42
   },
   "MULTI_PUBSUB": {
-    "tcp|64|throughput": 1276834.0,
-    "tcp|64|latency": 108.44,
-    "tcp|256|throughput": 1947033.0,
-    "tcp|256|latency": 0.76
+    "tcp|64|throughput": 735616.0,
+    "tcp|64|latency": 33.44,
+    "tcp|256|throughput": 271515.0,
+    "tcp|256|latency": 31.61,
+    "tcp|1024|throughput": 162053.0,
+    "tcp|1024|latency": 34.52,
+    "tcp|65536|throughput": 11096.0,
+    "tcp|65536|latency": 49.12,
+    "tcp|131072|throughput": 8176.0,
+    "tcp|131072|latency": 63.15,
+    "tcp|262144|throughput": 8176.0,
+    "tcp|262144|latency": 85.6
   }
 }

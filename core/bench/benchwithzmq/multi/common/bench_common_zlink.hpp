@@ -12,6 +12,8 @@
 #include <iostream>
 #include <iomanip>
 #include <thread>
+#include <cstring>
+#include <climits>
 #include <zlink.h>
 
 // --- Configuration ---
@@ -52,6 +54,34 @@ inline bool bench_debug_enabled()
 {
     static const bool enabled = std::getenv("BENCH_DEBUG") != NULL;
     return enabled;
+}
+
+inline bool bench_blocking_send_enabled()
+{
+    static int enabled = -1;
+    if (enabled >= 0)
+        return enabled != 0;
+
+    const char *explicit_mode = std::getenv("BENCH_MULTI_BLOCKING_SEND");
+    if (explicit_mode && std::strcmp(explicit_mode, "0") != 0) {
+        enabled = 1;
+        return true;
+    }
+
+    const char *profile = std::getenv("BENCH_PROFILE");
+    if (profile && std::strcmp(profile, "realistic") == 0) {
+        enabled = 1;
+        return true;
+    }
+
+    enabled = 0;
+    return false;
+}
+
+inline int bench_send_flags(int base_flags = 0)
+{
+    return bench_blocking_send_enabled() ? base_flags
+                                         : (base_flags | ZLINK_DONTWAIT);
 }
 
 inline int bench_io_threads()
@@ -376,14 +406,36 @@ inline void apply_benchmark_hwm(void *socket_, int inflight_)
     set_sockopt_int(socket_, ZLINK_RCVHWM, inflight_, "ZLINK_RCVHWM");
 }
 
+inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)
+{
+    if (!name_ || !*name_)
+        return default_ms_;
+
+    const char *value = std::getenv(name_);
+    if (!value || !*value)
+        return default_ms_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value || parsed <= 0)
+        return default_ms_;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
+}
+
 inline void apply_debug_timeouts(void *socket_, const std::string &transport)
 {
     if (transport == "inproc")
         return;
 
-    const int timeout_ms = 2000;
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(socket_, ZLINK_RCVTIMEO, timeout_ms, "ZLINK_RCVTIMEO");
+    const int sndtimeo_ms =
+      bench_timeout_ms_from_env("BENCH_MULTI_SNDTIMEO_MS", 5000);
+    const int rcvtimeo_ms =
+      bench_timeout_ms_from_env("BENCH_MULTI_RCVTIMEO_MS", 5000);
+    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

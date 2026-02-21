@@ -273,75 +273,15 @@ class zlink_raw_echo_server_t
         return _frame_stashes[routing_idx];
     }
 
-    void try_zero_copy_whole_frame (zlink_msg_t &payload_msg,
-                                    const unsigned char *payload,
-                                    size_t payload_size,
-                                    bool has_partial_frame,
-                                    bool &invalid_frame,
-                                    bool &payload_needs_close,
-                                    size_t &pos)
-    {
-        if (has_partial_frame || !payload || payload_size < k_frame_prefix_size)
-            return;
-
-        const size_t body_size =
-          static_cast<size_t> (stream_echo::load_u32_be (payload));
-        const size_t frame_size = k_frame_prefix_size + body_size;
-        if (frame_size != payload_size)
-            return;
-        if (!valid_body_size (body_size)) {
-            invalid_frame = true;
-            return;
-        }
-
-        record_frame_metrics (body_size);
-        const int sent_payload = zlink_msg_send (&payload_msg, server, 0);
-        if (sent_payload != static_cast<int> (payload_size))
-            ++send_error;
-        else
-            payload_needs_close = false;
-        pos = payload_size;
-    }
-
-    void emit_complete_frames_from_chunk (const unsigned char *rid_data,
-                                          size_t rid_size,
-                                          const unsigned char *payload,
-                                          size_t payload_size,
-                                          bool has_partial_frame,
-                                          bool &invalid_frame,
-                                          size_t &pos)
-    {
-        if (invalid_frame || has_partial_frame || !payload || pos >= payload_size)
-            return;
-
-        while (pos + k_frame_prefix_size <= payload_size) {
-            const unsigned char *frame = payload + pos;
-            const size_t body_size = static_cast<size_t> (
-              stream_echo::load_u32_be (frame));
-            if (!valid_body_size (body_size)) {
-                invalid_frame = true;
-                break;
-            }
-
-            const size_t frame_size = k_frame_prefix_size + body_size;
-            if (pos + frame_size > payload_size)
-                break;
-
-            record_frame_metrics (body_size);
-            if (!send_copy_reply (rid_data, rid_size, frame, frame_size))
-                ++send_error;
-
-            pos += frame_size;
-        }
-    }
-
     void emit_complete_frames_from_stash (stream_buffer_t &stash,
                                           const unsigned char *rid_data,
                                           size_t rid_size,
                                           bool &invalid_frame)
     {
-        while (stash.available () >= k_frame_prefix_size) {
-            const unsigned char *frame = &stash.data[stash.offset];
+        size_t consumed = 0;
+        const size_t available = stash.available ();
+        while (consumed + k_frame_prefix_size <= available) {
+            const unsigned char *frame = &stash.data[stash.offset + consumed];
             const size_t body_size = static_cast<size_t> (
               stream_echo::load_u32_be (frame));
             if (!valid_body_size (body_size)) {
@@ -350,14 +290,18 @@ class zlink_raw_echo_server_t
             }
 
             const size_t frame_size = k_frame_prefix_size + body_size;
-            if (stash.available () < frame_size)
+            if (consumed + frame_size > available)
                 break;
 
             record_frame_metrics (body_size);
             if (!send_copy_reply (rid_data, rid_size, frame, frame_size))
                 ++send_error;
 
-            stash.offset += frame_size;
+            consumed += frame_size;
+        }
+
+        if (consumed > 0) {
+            stash.offset += consumed;
             stash.compact ();
         }
     }
@@ -416,7 +360,6 @@ class zlink_raw_echo_server_t
             const unsigned char *payload = static_cast<const unsigned char *> (
               zlink_msg_data (&payload_msg));
             const size_t payload_size = zlink_msg_size (&payload_msg);
-            bool payload_needs_close = true;
 
             uint32_t routing_id_value = 0;
             if (!parse_routing_id_u32 (rid_data, rid_size, &routing_id_value)) {
@@ -437,37 +380,19 @@ class zlink_raw_echo_server_t
                 continue;
             }
 
-            const bool has_partial_frame =
-              stash_ptr && stash_ptr->available () > 0;
             bool invalid_frame = false;
-            size_t pos = 0;
-
-            // Fast path: one full frame can be echoed with zlink_msg_send().
-            try_zero_copy_whole_frame (payload_msg, payload, payload_size,
-                                       has_partial_frame, invalid_frame,
-                                       payload_needs_close, pos);
-
-            // Fast path: emit complete frames that already exist in this chunk.
-            emit_complete_frames_from_chunk (rid_data, rid_size, payload,
-                                             payload_size, has_partial_frame,
-                                             invalid_frame, pos);
-
             stream_buffer_t &stash = ensure_stash (routing_idx);
-            if (invalid_frame) {
+            // App-like path: always append raw stream chunks to per-RID stash,
+            // then emit only fully assembled len32be frames.
+            if (payload && payload_size > 0)
+                stash.append (payload, payload_size);
+
+            emit_complete_frames_from_stash (stash, rid_data, rid_size,
+                                             invalid_frame);
+            if (invalid_frame)
                 record_invalid_frame (stash);
-            } else {
-                if (payload && pos < payload_size)
-                    stash.append (payload + pos, payload_size - pos);
 
-                // Slow path: parse frames from per-RID stash.
-                emit_complete_frames_from_stash (stash, rid_data, rid_size,
-                                                 invalid_frame);
-                if (invalid_frame)
-                    record_invalid_frame (stash);
-            }
-
-            if (payload_needs_close)
-                zlink_msg_close (&payload_msg);
+            zlink_msg_close (&payload_msg);
             zlink_msg_close (&rid_msg);
         }
 

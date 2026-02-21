@@ -4,7 +4,7 @@
     "build_dir": "/home/hep7/project/kairos/zlink/core/build/linux-x64/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-21T04:48:02.760892+00:00"
+    "updated_at_utc": "2026-02-21T06:16:24.211572+00:00"
   },
   "patterns": {
     "MULTI_DEALER_DEALER": {
@@ -20,6 +20,78 @@
         "tcp"
       ],
       "updated_at_utc": "2026-02-20T06:20:57.818936+00:00"
+    },
+    "MULTI_DEALER_ROUTER": {
+      "data": {
+        "tcp|1024|latency": 45.2,
+        "tcp|1024|throughput": 605419.4,
+        "tcp|131072|latency": 82.03,
+        "tcp|131072|throughput": 33480.8,
+        "tcp|256|latency": 32.32,
+        "tcp|256|throughput": 637376.4,
+        "tcp|262144|latency": 167.88,
+        "tcp|262144|throughput": 16173.4,
+        "tcp|64|latency": 31.06,
+        "tcp|64|throughput": 713981.8,
+        "tcp|65536|latency": 51.57,
+        "tcp|65536|throughput": 69740.6
+      },
+      "failures": [],
+      "msg_sizes": [
+        64,
+        256,
+        1024,
+        65536,
+        131072,
+        262144
+      ],
+      "transports": [
+        "tcp"
+      ],
+      "updated_at_utc": "2026-02-21T05:59:05.440628+00:00"
+    },
+    "MULTI_PUBSUB": {
+      "data": {
+        "tcp|262144|latency": 129.4,
+        "tcp|262144|throughput": 15344.2
+      },
+      "failures": [],
+      "msg_sizes": [
+        262144
+      ],
+      "transports": [
+        "tcp"
+      ],
+      "updated_at_utc": "2026-02-21T06:16:16.158639+00:00"
+    },
+    "MULTI_ROUTER_ROUTER": {
+      "data": {
+        "tcp|1024|latency": 58.78,
+        "tcp|1024|throughput": 609293.8,
+        "tcp|131072|latency": 96.63,
+        "tcp|131072|throughput": 36708.4,
+        "tcp|256|latency": 49.16,
+        "tcp|256|throughput": 689352.2,
+        "tcp|262144|latency": 154.82,
+        "tcp|262144|throughput": 20255.2,
+        "tcp|64|latency": 56.73,
+        "tcp|64|throughput": 731499.8,
+        "tcp|65536|latency": 111.1,
+        "tcp|65536|throughput": 77914.0
+      },
+      "failures": [],
+      "msg_sizes": [
+        64,
+        256,
+        1024,
+        65536,
+        131072,
+        262144
+      ],
+      "transports": [
+        "tcp"
+      ],
+      "updated_at_utc": "2026-02-21T06:00:22.679749+00:00"
     },
     "MULTI_STREAM": {
       "data": {

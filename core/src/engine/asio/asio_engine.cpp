@@ -129,6 +129,12 @@ const size_t asio_stream_gather_threshold = 8192;
 const size_t asio_stream_len32be_gather_threshold = parse_size_env (
   "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD", 0);
 
+// LEN32BE adaptive gather policy:
+// - Keep tiny payloads on encoder path to avoid writev overhead.
+// - Switch mid/large payloads to gather path earlier.
+const size_t asio_stream_len32be_mid_payload = 1024;
+const size_t asio_stream_len32be_large_payload = 32768;
+
 const bool asio_trace_on =
   env_flag_enabled ("ZLINK_ASIO_TRACE");
 
@@ -745,10 +751,17 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     const bool stream_len32be =
       stream_mode
       && _options.stream_packet_mode == ZLINK_STREAM_PACKET_MODE_LEN32BE;
-    const size_t threshold =
+    size_t threshold =
       stream_len32be
         ? asio_stream_len32be_gather_threshold
         : (stream_mode ? asio_stream_gather_threshold : asio_gather_threshold);
+    if (stream_len32be && threshold > 0) {
+        if (body_size >= asio_stream_len32be_large_payload)
+            threshold = 0;
+        else if (body_size >= asio_stream_len32be_mid_payload
+                 && threshold > asio_stream_len32be_mid_payload)
+            threshold = asio_stream_len32be_mid_payload;
+    }
     if (body_size > 0 && body_size < threshold) {
         _encoder->load_msg (&_tx_msg);
         return false;

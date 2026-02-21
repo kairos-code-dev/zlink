@@ -175,8 +175,10 @@ public final class NettyStreamServer
                 if (stash.readableBytes() < frameSize)
                     break;
 
-                // We have one complete frame; echo the exact frame bytes.
-                ByteBuf frame = stash.readRetainedSlice(frameSize);
+                // App-like path: build a complete packet buffer per frame,
+                // then echo that packet.
+                ByteBuf frame = ctx.alloc().buffer(frameSize);
+                frame.writeBytes(stash, frameSize);
                 if (bodySize > opt.size) {
                     frame.release();
                     metrics.protocolError.incrementAndGet();

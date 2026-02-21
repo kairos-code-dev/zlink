@@ -284,11 +284,14 @@ resolve_stack_tuning()
             STACK_RCVBUF=2097152
             ;;
         zlink)
-            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 4)"
-            STACK_SNDBUF=2097152
-            STACK_RCVBUF=2097152
+            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 12)"
+            STACK_SNDBUF=8388608
+            STACK_RCVBUF=8388608
+            STACK_BACKLOG=65535
             STACK_ENV_VARS+=(
-              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=0"
+              "ZLINK_ASIO_STREAM_BATCH_SIZE=65536"
+              "ZLINK_ASIO_STREAM_DISABLE_METADATA=1"
+              "ZLINK_ASIO_STREAM_LEN32BE_GATHER_THRESHOLD=8192"
             )
             ;;
         zlinkraw)

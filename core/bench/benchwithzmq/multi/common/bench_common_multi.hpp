@@ -2,16 +2,19 @@
 #define BENCH_COMMON_MULTI_HPP
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
-#include <vector>
-#include <string>
+#include <climits>
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
-#include <thread>
-#include <atomic>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
+#include <condition_variable>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 struct multi_bench_settings_t
 {
@@ -25,6 +28,8 @@ struct multi_bench_settings_t
     int send_workers;
     int send_backoff_us;
     int connect_ready_timeout_ms;
+    int connect_concurrency;
+    int server_recv_threads;
 };
 
 enum multi_send_result_t
@@ -63,6 +68,45 @@ struct multi_bench_result_t
     }
 };
 
+class simple_counter_semaphore_t
+{
+public:
+    explicit simple_counter_semaphore_t (int max_inflight)
+        : _max_count (max_inflight > 0 ? max_inflight : 1), _count (0)
+    {
+    }
+
+    void acquire ()
+    {
+        std::unique_lock<std::mutex> lock (_mutex);
+        _cv.wait (lock, [this] () { return _count < _max_count; });
+        ++_count;
+    }
+
+    void release ()
+    {
+        {
+            std::lock_guard<std::mutex> lock (_mutex);
+            --_count;
+        }
+        _cv.notify_one ();
+    }
+
+private:
+    const int _max_count;
+    int _count;
+    std::mutex _mutex;
+    std::condition_variable _cv;
+};
+
+inline bool bench_show_prep ()
+{
+    static const bool enabled =
+      std::getenv ("BENCH_SHOW_PREP") != NULL
+      && std::strcmp (std::getenv ("BENCH_SHOW_PREP"), "0") != 0;
+    return enabled;
+}
+
 inline void print_prep_result (const std::string &lib_type,
                                const std::string &pattern,
                                const std::string &transport,
@@ -70,6 +114,9 @@ inline void print_prep_result (const std::string &lib_type,
                                double connect_ms,
                                double ready_wait_ms)
 {
+    if (!bench_show_prep ())
+        return;
+
     std::cout << "PREP," << lib_type << "," << pattern << "," << transport << ","
               << size << ",connect_ms," << std::fixed << std::setprecision (2)
               << connect_ms << ",ready_ms," << ready_wait_ms << std::endl;
@@ -103,23 +150,41 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.clients = static_cast<size_t> (
       resolve_multi_int_env ("BENCH_MULTI_CLIENTS", 100, 1));
     settings.inflight = resolve_multi_int_env ("BENCH_MULTI_INFLIGHT", 30, 1);
-    settings.hwm = resolve_multi_int_env ("BENCH_MULTI_HWM", 300000, 1);
+    settings.hwm = resolve_multi_int_env ("BENCH_MULTI_HWM", 100000, 1);
     settings.measure_seconds =
       resolve_multi_int_env (
         "BENCH_MULTI_DURATION_SECONDS",
-        resolve_multi_int_env ("BENCH_MULTI_MEASURE_SECONDS", 5, 1), 1);
-    settings.settle_ms =
-      resolve_multi_int_env ("BENCH_MULTI_SETTLE_MS", 500, 0);
+        resolve_multi_int_env ("BENCH_MULTI_MEASURE_SECONDS", 10, 1), 1);
+    settings.settle_ms = resolve_multi_int_env ("BENCH_MULTI_SETTLE_MS", 500, 0);
     settings.drain_ms = resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
-    settings.recv_batch =
-      resolve_multi_int_env ("BENCH_MULTI_RECV_BATCH", 64, 1);
+    settings.recv_batch = resolve_multi_int_env ("BENCH_MULTI_RECV_BATCH", 64, 1);
+    const int default_workers =
+      settings.clients >= static_cast<size_t> (10000) ? 4 : 1;
     settings.send_workers =
-      resolve_multi_int_env ("BENCH_MULTI_SEND_WORKERS", 2, 1);
+      resolve_multi_int_env (
+        "BENCH_CLIENT_WORKERS",
+        resolve_multi_int_env (
+          "BENCH_MULTI_SEND_WORKERS", default_workers, 1),
+        1);
     settings.send_backoff_us =
       resolve_multi_int_env ("BENCH_MULTI_SEND_BACKOFF_US", 20, 0);
     settings.connect_ready_timeout_ms =
       resolve_multi_int_env ("BENCH_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0);
+    settings.connect_concurrency =
+      resolve_multi_int_env ("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1);
+    settings.server_recv_threads =
+      resolve_multi_int_env ("BENCH_SERVER_RECV_THREADS", 1, 1);
     return settings;
+}
+
+inline long compute_fanout_backlog_limit (const multi_bench_settings_t &settings,
+                                          size_t fanout,
+                                          size_t msg_size)
+{
+    (void) settings;
+    (void) fanout;
+    (void) msg_size;
+    return LONG_MAX / 4;
 }
 
 template <typename ConnectFn>
@@ -135,6 +200,38 @@ inline bool connect_clients_concurrently (const std::vector<void *> &sockets,
             return false;
     }
 
+    return true;
+}
+
+template <typename ConnectFn>
+inline bool connect_clients_concurrently (const std::vector<void *> &sockets,
+                                          const std::string &endpoint,
+                                          ConnectFn connect_fn,
+                                          int max_concurrency)
+{
+    if (sockets.empty ())
+        return true;
+
+    const size_t chunk =
+      static_cast<size_t> (std::max (1, max_concurrency));
+    size_t begin = 0;
+    while (begin < sockets.size ()) {
+        const size_t end = std::min (sockets.size (), begin + chunk);
+        std::atomic<bool> ok (true);
+        std::vector<std::thread> workers;
+        for (size_t i = begin; i < end; ++i) {
+            workers.push_back (
+              std::thread ([&, i] () {
+                  if (!connect_fn (sockets[i], endpoint))
+                      ok.store (false, std::memory_order_relaxed);
+              }));
+        }
+        for (size_t i = 0; i < workers.size (); ++i)
+            workers[i].join ();
+        if (!ok.load (std::memory_order_relaxed))
+            return false;
+        begin = end;
+    }
     return true;
 }
 
@@ -160,15 +257,12 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     std::atomic<long> recv_total (0);
     std::atomic<long> send_total (0);
 
-    // inflight is per-client; runtime throttle uses a single global window.
-    const long global_window =
-      static_cast<long> (std::max<size_t> (1, settings.clients))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const bool use_backlog_cap = false;
 
     auto window_exhausted = [&] () -> bool {
-        const long sent = send_total.load (std::memory_order_relaxed);
-        const long recv = recv_total.load (std::memory_order_relaxed);
-        return (sent - recv) >= global_window;
+        if (!use_backlog_cap)
+            return false;
+        return false;
     };
 
     auto send_backoff = [&] () {
@@ -212,7 +306,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     const size_t sender_count = senders.size ();
     const size_t worker_count =
       std::max<size_t> (
-        1, std::min<size_t> (sender_count, settings.send_workers));
+        1, std::min<size_t> (sender_count, static_cast<size_t> (settings.send_workers)));
     std::vector<char> sender_ready (sender_count, 0);
     std::atomic<long> ready_total (0);
 
@@ -225,7 +319,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     std::vector<std::thread> sender_threads;
     sender_threads.reserve (worker_count);
     for (size_t w = 0; w < worker_count; ++w) {
-        sender_threads.emplace_back ([&, w] () {
+        sender_threads.push_back (std::thread ([&, w] () {
             const std::vector<size_t> &owned = worker_assign[w];
             senders_ready.fetch_add (1, std::memory_order_release);
             while (!send_start.load (std::memory_order_acquire)
@@ -274,7 +368,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
                     send_backoff ();
                 }
             }
-        });
+        }));
     }
 
     while (senders_ready.load (std::memory_order_acquire)
@@ -291,7 +385,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
         while (std::chrono::steady_clock::now () < ready_deadline
                && !fatal_error.load (std::memory_order_acquire)
                && ready_total.load (std::memory_order_acquire)
-                < static_cast<long> (sender_count)) {
+                    < static_cast<long> (sender_count)) {
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     }
@@ -381,14 +475,12 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     std::atomic<long> send_total (0);
     std::atomic<long> send_success (0);
 
-    const long global_window =
-      static_cast<long> (std::max<size_t> (1, sender_count))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const bool use_backlog_cap = false;
 
     auto window_exhausted = [&] () -> bool {
-        const long sent = send_total.load (std::memory_order_relaxed);
-        const long recv = recv_total.load (std::memory_order_relaxed);
-        return (sent - recv) >= global_window;
+        if (!use_backlog_cap)
+            return false;
+        return false;
     };
 
     auto send_backoff = [&] () {
@@ -428,7 +520,7 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
 
     const size_t worker_count =
       std::max<size_t> (
-        1, std::min<size_t> (sender_count, settings.send_workers));
+        1, std::min<size_t> (sender_count, static_cast<size_t> (settings.send_workers)));
     std::vector<std::vector<size_t> > worker_assign (worker_count);
     for (size_t i = 0; i < sender_count; ++i) {
         const size_t w = i % worker_count;
@@ -444,7 +536,7 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     std::vector<std::thread> sender_threads;
     sender_threads.reserve (worker_count);
     for (size_t w = 0; w < worker_count; ++w) {
-        sender_threads.emplace_back ([&, w] () {
+        sender_threads.push_back (std::thread ([&, w] () {
             const std::vector<size_t> &owned = worker_assign[w];
             size_t initialized = 0;
             for (size_t i = 0; i < owned.size (); ++i) {
@@ -507,7 +599,7 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
 
             for (size_t i = 0; i < initialized; ++i)
                 cleanup_sender_fn (owned[i]);
-        });
+        }));
     }
 
     const auto connect_start = std::chrono::steady_clock::now ();
@@ -641,15 +733,13 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     std::atomic<long> send_total (0);
     std::atomic<long> send_success (0);
 
-    const long global_window =
-      static_cast<long> (std::max<size_t> (1, sender_count))
-      * static_cast<long> (std::max (1, settings.inflight));
     const int effective_send_batch = std::max (1, send_batch);
+    const bool use_backlog_cap = false;
 
     auto window_exhausted = [&] () -> bool {
-        const long sent = send_total.load (std::memory_order_relaxed);
-        const long recv = recv_total.load (std::memory_order_relaxed);
-        return (sent - recv) >= global_window;
+        if (!use_backlog_cap)
+            return false;
+        return false;
     };
 
     auto send_backoff = [&] () {
@@ -689,7 +779,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
 
     const size_t worker_count =
       std::max<size_t> (
-        1, std::min<size_t> (sender_count, settings.send_workers));
+        1, std::min<size_t> (sender_count, static_cast<size_t> (settings.send_workers)));
     std::vector<std::vector<size_t> > worker_assign (worker_count);
     for (size_t i = 0; i < sender_count; ++i) {
         const size_t w = i % worker_count;
@@ -705,7 +795,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     std::vector<std::thread> sender_threads;
     sender_threads.reserve (worker_count);
     for (size_t w = 0; w < worker_count; ++w) {
-        sender_threads.emplace_back ([&, w] () {
+        sender_threads.push_back (std::thread ([&, w] () {
             const std::vector<size_t> &owned = worker_assign[w];
             size_t initialized = 0;
             for (size_t i = 0; i < owned.size (); ++i) {
@@ -779,7 +869,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
 
             for (size_t i = 0; i < initialized; ++i)
                 cleanup_sender_fn (owned[i]);
-        });
+        }));
     }
 
     const auto connect_start = std::chrono::steady_clock::now ();
@@ -878,6 +968,80 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     result.ready_wait_ms = ready_wait_ms;
     result.failed = fatal_error.load (std::memory_order_acquire);
     return result;
+}
+
+template <typename SendFn, typename RecvFn>
+inline int run_multi_timed_benchmark (const std::vector<void *> &clients,
+                                      const multi_bench_settings_t &settings,
+                                      SendFn send_fn,
+                                      RecvFn recv_fn,
+                                      int seconds,
+                                      std::atomic<int> *sent_count)
+{
+    if (clients.empty () || seconds <= 0)
+        return 0;
+
+    const auto start = std::chrono::steady_clock::now ();
+    const auto measure_end =
+      start + std::chrono::seconds (std::max (1, seconds));
+
+    std::atomic<bool> receiver_should_drain (false);
+    std::atomic<int> received_count (0);
+    std::thread receiver ([&] () {
+        const int yield_sleep_us = 50;
+
+        while (true) {
+            if (recv_fn ())
+                ++received_count;
+            else
+                std::this_thread::sleep_for (
+                  std::chrono::microseconds (yield_sleep_us));
+
+            const auto now = std::chrono::steady_clock::now ();
+            if (receiver_should_drain.load (std::memory_order_acquire)
+                && now >= measure_end) {
+                break;
+            }
+        }
+
+        const auto drain_end =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (std::max (0, settings.drain_ms));
+        while (std::chrono::steady_clock::now () < drain_end) {
+            if (recv_fn ())
+                ++received_count;
+            else
+                std::this_thread::sleep_for (
+                  std::chrono::microseconds (yield_sleep_us));
+        }
+    });
+
+    simple_counter_semaphore_t limiter (settings.inflight);
+    std::vector<std::thread> senders;
+    senders.reserve (clients.size ());
+    for (size_t i = 0; i < clients.size (); ++i) {
+        senders.push_back (std::thread ([&, i] () {
+            while (std::chrono::steady_clock::now () < measure_end) {
+                limiter.acquire ();
+                const bool ok = send_fn (i);
+                limiter.release ();
+                if (!ok)
+                    break;
+                if (sent_count) {
+                    sent_count->fetch_add (1, std::memory_order_relaxed);
+                }
+            }
+        }));
+    }
+
+    for (size_t i = 0; i < senders.size (); ++i)
+        senders[i].join ();
+
+    receiver_should_drain.store (true, std::memory_order_release);
+    if (receiver.joinable ())
+        receiver.join ();
+
+    return received_count.load (std::memory_order_relaxed);
 }
 
 #endif

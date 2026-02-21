@@ -34,6 +34,78 @@ print_total_time() {
 }
 trap 'print_total_time $?' EXIT
 
+is_uint() {
+  local value="${1:-}"
+  [[ "${value}" =~ ^[0-9]+$ ]]
+}
+
+ensure_nofile_limit() {
+  local clients="${1:-}"
+  if [[ "${BENCH_SKIP_NOFILE_CHECK:-0}" == "1" ]]; then
+    return 0
+  fi
+  if ! is_uint "${clients}"; then
+    return 0
+  fi
+
+  local required=$(( clients * 2 + 4096 ))
+  local soft
+  local hard
+  soft="$(ulimit -Sn 2>/dev/null || true)"
+  hard="$(ulimit -Hn 2>/dev/null || true)"
+  if [[ -z "${soft}" || -z "${hard}" ]]; then
+    return 0
+  fi
+
+  if [[ "${soft}" == "unlimited" ]]; then
+    return 0
+  fi
+  if ! is_uint "${soft}"; then
+    return 0
+  fi
+
+  local soft_num="${soft}"
+  local hard_num=-1
+  if [[ "${hard}" == "unlimited" ]]; then
+    hard_num=-1
+  elif is_uint "${hard}"; then
+    hard_num="${hard}"
+  else
+    hard_num="${soft_num}"
+  fi
+
+  if (( soft_num < required )); then
+    local target="${required}"
+    if (( hard_num >= 0 && target > hard_num )); then
+      target="${hard_num}"
+    fi
+    if (( target > soft_num )); then
+      ulimit -Sn "${target}" 2>/dev/null || true
+      soft="$(ulimit -Sn 2>/dev/null || true)"
+      if is_uint "${soft}"; then
+        soft_num="${soft}"
+      fi
+    fi
+  fi
+
+  if (( soft_num >= required )); then
+    return 0
+  fi
+
+  echo "Error: insufficient open-file limit for multi benchmark clients." >&2
+  echo "  clients=${clients}" >&2
+  echo "  required soft nofile >= ${required} (formula: clients*2+4096)" >&2
+  echo "  current soft=${soft}, hard=${hard}" >&2
+  if (( hard_num >= 0 && hard_num < required )); then
+    echo "  hard limit is below required; raise hard limit first, then rerun." >&2
+  else
+    echo "  try: ulimit -n ${required}" >&2
+  fi
+  echo "  or skip this preflight check:" >&2
+  echo "    BENCH_SKIP_NOFILE_CHECK=1 ./run_benchmarks_multi.sh ..." >&2
+  exit 2
+}
+
 usage() {
   cat <<'USAGE'
 Usage: core/bench/benchwithzlink/run_benchmarks_multi.sh [options]
@@ -57,18 +129,29 @@ Options:
                         Optional override for multi measure seconds (default 10).
   --multi-clients N       Override number of client sockets per pattern.
   --multi-inflight N      Override max in-flight messages.
+  --multi-hwm N           Override BENCH_MULTI_HWM (default: 100000).
+  --multi-sndtimeo-ms N   Override BENCH_MULTI_SNDTIMEO_MS (default: 5000).
+  --multi-rcvtimeo-ms N   Override BENCH_MULTI_RCVTIMEO_MS (default: 5000).
   --multi-connect-concurrency N
                         Override concurrent connect count.
   --multi-drain-ms N      Override drain timeout after benchmark (ms).
+
+Environment:
+  BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
+  BENCH_MULTI_FORCE_CLEAN=1     Disable default --reuse-build behavior
 USAGE
 }
 
 HAS_EXPLICIT_TRANSPORT=0
 HAS_EXPLICIT_RESULTS_TAG=0
+HAS_EXPLICIT_REUSE_BUILD=0
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
 MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS:-10}"
 MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
 MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
+MULTI_HWM="${BENCH_MULTI_HWM:-100000}"
+MULTI_SNDTIMEO_MS="${BENCH_MULTI_SNDTIMEO_MS:-5000}"
+MULTI_RCVTIMEO_MS="${BENCH_MULTI_RCVTIMEO_MS:-5000}"
 MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
 MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
 EXPLICIT_PATTERNS=()
@@ -112,6 +195,11 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
+    --reuse-build)
+      HAS_EXPLICIT_REUSE_BUILD=1
+      SCRIPT_ARGS+=( "$1" )
+      shift
+      ;;
     --multi-warmup-seconds)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -142,6 +230,30 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       MULTI_INFLIGHT="${2}"
+      shift 2
+      ;;
+    --multi-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_HWM="${2}"
+      shift 2
+      ;;
+    --multi-sndtimeo-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_SNDTIMEO_MS="${2}"
+      shift 2
+      ;;
+    --multi-rcvtimeo-ms)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_RCVTIMEO_MS="${2}"
       shift 2
       ;;
     --multi-connect-concurrency)
@@ -189,6 +301,9 @@ fi
 if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 && -z "${BENCH_TRANSPORTS:-}" ]]; then
   RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
 fi
+if [[ "${HAS_EXPLICIT_REUSE_BUILD}" -eq 0 && "${BENCH_MULTI_FORCE_CLEAN:-0}" != "1" ]]; then
+  RUN_BASE_ARGS+=(--reuse-build)
+fi
 RUN_ENV=()
 RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
 RUN_ENV+=(BENCH_MULTI_MEASURE_SECONDS="${MULTI_MEASURE_SECONDS}")
@@ -198,12 +313,24 @@ fi
 if [[ -n "${MULTI_INFLIGHT}" ]]; then
   RUN_ENV+=(BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}")
 fi
+if [[ -n "${MULTI_HWM}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_HWM="${MULTI_HWM}")
+fi
+if [[ -n "${MULTI_SNDTIMEO_MS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}")
+fi
+if [[ -n "${MULTI_RCVTIMEO_MS}" ]]; then
+  RUN_ENV+=(BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
+fi
 if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
 fi
 if [[ -n "${MULTI_DRAIN_MS}" ]]; then
   RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
+
+effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-100}}"
+ensure_nofile_limit "${effective_clients}"
 
 SHOW_TOTAL_TIME=1
 for pattern in "${PATTERNS[@]}"; do

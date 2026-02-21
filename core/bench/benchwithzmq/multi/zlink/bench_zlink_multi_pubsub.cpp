@@ -13,9 +13,11 @@ multi_send_result_t send_pub_nonblocking (void *pub,
     if (zlink_send (pub, buffer.data (), buffer.size (), ZLINK_DONTWAIT) >= 0)
         return multi_send_ok;
     const int err = zlink_errno ();
+    if (err == EAGAIN || err == EINTR)
+        return multi_send_would_block;
     if (err == ETERM || err == ENOTSOCK)
         return multi_send_error;
-    return multi_send_would_block;
+    return multi_send_error;
 }
 
 int recv_batch_subscribers (const std::vector<void *> &subs,
@@ -94,6 +96,127 @@ void drain_subscribers_queues (const std::vector<void *> &subs,
         if (!got_any)
             break;
     }
+}
+
+struct pubsub_measure_result_t
+{
+    long measure_recv;
+    bool failed;
+
+    pubsub_measure_result_t () : measure_recv (0), failed (false) {}
+};
+
+pubsub_measure_result_t run_pubsub_measure (void *pub,
+                                            const std::vector<void *> &subs,
+                                            const multi_bench_settings_t &settings,
+                                            std::vector<char> &buffer,
+                                            std::vector<char> &recv_buf,
+                                            long poll_timeout_ms)
+{
+    pubsub_measure_result_t out;
+    if (!pub || subs.empty ()) {
+        out.failed = true;
+        return out;
+    }
+
+    std::vector<zlink_pollitem_t> poll_items;
+    poll_items.reserve (subs.size ());
+    for (size_t i = 0; i < subs.size (); ++i) {
+        zlink_pollitem_t item = {subs[i], 0, ZLINK_POLLIN, 0};
+        poll_items.push_back (item);
+    }
+
+    std::atomic<int> phase (0); // 0=settle, 1=measure, 2=drain, 3=stop
+    std::atomic<bool> fatal (false);
+    std::atomic<long> recv_total (0);
+    std::atomic<long> measure_recv (0);
+    std::atomic<long> sent_equiv (0);
+
+    std::thread receiver ([&] () {
+        while (!fatal.load (std::memory_order_acquire)) {
+            const int cur = phase.load (std::memory_order_acquire);
+            if (cur == 3)
+                break;
+
+            const int count = recv_batch_subscribers (
+              subs, poll_items, recv_buf, settings.recv_batch, poll_timeout_ms);
+            if (count < 0) {
+                fatal.store (true, std::memory_order_release);
+                break;
+            }
+            if (count == 0) {
+                std::this_thread::sleep_for (std::chrono::microseconds (50));
+                continue;
+            }
+
+            recv_total.fetch_add (count, std::memory_order_relaxed);
+            if (cur == 1)
+                measure_recv.fetch_add (count, std::memory_order_relaxed);
+        }
+    });
+
+    if (settings.settle_ms > 0)
+        std::this_thread::sleep_for (std::chrono::milliseconds (settings.settle_ms));
+
+    phase.store (1, std::memory_order_release);
+
+    const long fanout = static_cast<long> (std::max<size_t> (1, subs.size ()));
+    const long max_window = compute_fanout_backlog_limit (
+      settings, subs.size (), buffer.size ());
+    const auto measure_end =
+      std::chrono::steady_clock::now ()
+      + std::chrono::seconds (std::max (1, settings.measure_seconds));
+
+    while (std::chrono::steady_clock::now () < measure_end
+           && !fatal.load (std::memory_order_acquire)) {
+        const long inflight = sent_equiv.load (std::memory_order_relaxed)
+                              - recv_total.load (std::memory_order_relaxed);
+        if (inflight >= max_window) {
+            if (settings.send_backoff_us > 0)
+                std::this_thread::sleep_for (
+                  std::chrono::microseconds (settings.send_backoff_us));
+            else
+                std::this_thread::yield ();
+            continue;
+        }
+
+        const multi_send_result_t rc = send_pub_nonblocking (pub, buffer);
+        if (rc == multi_send_ok) {
+            sent_equiv.fetch_add (fanout, std::memory_order_relaxed);
+            continue;
+        }
+        if (rc == multi_send_error) {
+            fatal.store (true, std::memory_order_release);
+            break;
+        }
+
+        if (settings.send_backoff_us > 0)
+            std::this_thread::sleep_for (
+              std::chrono::microseconds (settings.send_backoff_us));
+        else
+            std::this_thread::yield ();
+    }
+
+    phase.store (2, std::memory_order_release);
+    const auto drain_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (0, settings.drain_ms));
+    while (std::chrono::steady_clock::now () < drain_deadline
+           && !fatal.load (std::memory_order_acquire)) {
+        const long inflight = sent_equiv.load (std::memory_order_relaxed)
+                              - recv_total.load (std::memory_order_relaxed);
+        if (inflight <= 0)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    phase.store (3, std::memory_order_release);
+    if (receiver.joinable ())
+        receiver.join ();
+
+    out.measure_recv = measure_recv.load (std::memory_order_relaxed);
+    out.failed = fatal.load (std::memory_order_acquire);
+    return out;
 }
 
 double measure_pubsub_latency_us (void *ctx,
@@ -204,7 +327,10 @@ void run_multi_pubsub (const std::string &transport,
         return;
 
     const int linger_ms = 0;
+    const int sndbuf = resolve_bench_count ("BENCH_MULTI_SNDBUF", 8388608);
+    const int rcvbuf = resolve_bench_count ("BENCH_MULTI_RCVBUF", 8388608);
     set_sockopt_int (pub, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int (pub, ZLINK_SNDBUF, sndbuf, "ZLINK_SNDBUF");
     apply_benchmark_hwm (pub, settings.hwm);
 
     std::vector<void *> subs (settings.clients, NULL);
@@ -218,6 +344,7 @@ void run_multi_pubsub (const std::string &transport,
         }
         zlink_setsockopt (subs[i], ZLINK_SUBSCRIBE, "", 0);
         set_sockopt_int (subs[i], ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+        set_sockopt_int (subs[i], ZLINK_RCVBUF, rcvbuf, "ZLINK_RCVBUF");
         apply_benchmark_hwm (subs[i], settings.hwm);
     }
 
@@ -260,6 +387,8 @@ void run_multi_pubsub (const std::string &transport,
     } else {
         poll_timeout_ms = resolve_bench_count ("BENCH_PUBSUB_POLL_TIMEOUT_MS", 50);
     }
+    const int measure_poll_timeout_ms =
+      resolve_bench_count ("BENCH_MULTI_PUBSUB_MEASURE_POLL_TIMEOUT_MS", 0);
 
     double connect_prep_ms = 0.0;
     double ready_wait_ms = 0.0;
@@ -295,27 +424,14 @@ void run_multi_pubsub (const std::string &transport,
 
     settle ();
 
-    std::vector<zlink_pollitem_t> poll_items;
-    poll_items.reserve (subs.size ());
-    for (size_t i = 0; i < subs.size (); ++i) {
-        zlink_pollitem_t item = {subs[i], 0, ZLINK_POLLIN, 0};
-        poll_items.push_back (item);
-    }
-
     const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (msg_size);
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
         std::vector<char> recv_buf (std::max<size_t> (1, current_size));
 
-        std::vector<void *> senders (1, pub);
-        const multi_bench_result_t bench = run_multi_phase_benchmark (
-          senders, settings,
-          [&] (size_t) { return send_pub_nonblocking (pub, buffer); },
-          [&] (multi_bench_phase_t) {
-              return recv_batch_subscribers (
-                subs, poll_items, recv_buf, settings.recv_batch, poll_timeout_ms);
-          });
+        const pubsub_measure_result_t bench = run_pubsub_measure (
+          pub, subs, settings, buffer, recv_buf, measure_poll_timeout_ms);
 
         drain_subscribers_queues (
           subs, recv_buf, std::max (settings.drain_ms, 2000));

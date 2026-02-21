@@ -355,8 +355,8 @@ void run_multi_spot(const std::string &transport,
         sw.start();
         long published = 0;
         const long fanout = static_cast<long>(std::max<size_t>(1, settings.clients));
-        const long max_backlog =
-          static_cast<long>(std::max(1, settings.inflight)) * fanout;
+        const long max_backlog = compute_fanout_backlog_limit(
+          settings, settings.clients, current_size);
         while (std::chrono::steady_clock::now() < measure_end) {
             const long recv_total = total_received.load(std::memory_order_relaxed);
             const long backlog = published * fanout - recv_total;

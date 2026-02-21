@@ -25,6 +25,13 @@ struct i_encoder
 
     //  Load a new message into encoder.
     virtual void load_msg (msg_t *msg_) = 0;
+
+    //  Optional: resize encoder-owned staging buffer.
+    //  Default is no-op so non-stream encoders keep existing behavior.
+    virtual void resize_buffer (size_t new_size_)
+    {
+        LIBZLINK_UNUSED (new_size_);
+    }
 };
 }
 

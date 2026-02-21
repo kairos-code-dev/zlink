@@ -10,7 +10,7 @@ Primary goals:
 - Compare library behavior with one common client implementation.
 - Keep the benchmark close to pure stream socket echo.
 - Avoid cross-run interference by running one benchmark process at a time.
-- Keep load model simple and stable: fixed `inflight=1`.
+- Keep load model simple and stable: configurable `inflight` (default `1`).
 
 ## What Is Included
 
@@ -40,7 +40,7 @@ Supported payload sizes:
 - The same client binary is used for all stacks.
 - The client always uses one wire format for every stack:
   `4-byte big-endian payload length + payload`.
-- Client `inflight` is fixed to `1` (hard-fixed in client code).
+- Client `inflight` is configurable via runner option `--inflight`.
 - Runner uses one server process per stack and executes stacks sequentially.
 - Runner sets server `--size` to the maximum size in the requested size list.
   This prevents stack-specific buffer bias when testing mixed sizes.
@@ -103,6 +103,7 @@ Run one stack with multi-size sequence on the same connected clients:
 --stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    default: 10000
+--inflight <N>               default: 1
 --runs <N>                   default: 1
 --warmup <sec>               default: 2
 --duration <sec>             default: 10
@@ -188,5 +189,5 @@ Recommended check flow:
 
 ## Known Limits
 
-- `inflight` is intentionally fixed to `1`.
+- `inflight` controls per-session outstanding request depth.
 - Latency percentiles are `0` when latency sampling is disabled (runner default).

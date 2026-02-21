@@ -245,38 +245,7 @@ elif _env_sizes:
 else:
     MULTI_STREAM_MSG_SIZES = list(MSG_SIZES)
 
-MULTI_STREAM_SCENARIO = os.environ.get("BENCH_MULTI_STREAM_SCENARIO", "s2")
-MULTI_STREAM_CCU = parse_env_int("BENCH_MULTI_STREAM_CCU", 10000)
-MULTI_STREAM_INFLIGHT = parse_env_int("BENCH_MULTI_STREAM_INFLIGHT", 30)
-MULTI_STREAM_WARMUP = parse_env_int("BENCH_MULTI_STREAM_WARMUP", 3)
-MULTI_STREAM_MEASURE = parse_env_int("BENCH_MULTI_STREAM_MEASURE", 10)
-MULTI_STREAM_DRAIN_TIMEOUT = parse_env_int("BENCH_MULTI_STREAM_DRAIN_TIMEOUT",
-                                           10)
-MULTI_STREAM_CONNECT_CONCURRENCY = parse_env_int(
-    "BENCH_MULTI_STREAM_CONNECT_CONCURRENCY", 256)
-MULTI_STREAM_CONNECT_TIMEOUT = parse_env_int("BENCH_MULTI_STREAM_CONNECT_TIMEOUT",
-                                             10)
-MULTI_STREAM_CONNECT_RETRIES = parse_env_int("BENCH_MULTI_STREAM_CONNECT_RETRIES",
-                                             3)
-MULTI_STREAM_CONNECT_RETRY_DELAY_MS = parse_env_int(
-    "BENCH_MULTI_STREAM_CONNECT_RETRY_DELAY_MS", 100)
-MULTI_STREAM_BACKLOG = parse_env_int("BENCH_MULTI_STREAM_BACKLOG", 32768)
-MULTI_STREAM_HWM = parse_env_int("BENCH_MULTI_STREAM_HWM", 1000000)
-MULTI_STREAM_SNDBUF = parse_env_int("BENCH_MULTI_STREAM_SNDBUF", 262144)
-MULTI_STREAM_RCVBUF = parse_env_int("BENCH_MULTI_STREAM_RCVBUF", 262144)
-MULTI_STREAM_IO_THREADS = parse_env_int(
-    "BENCH_MULTI_STREAM_IO_THREADS",
-    parse_env_int("BENCH_IO_THREADS", 32))
-MULTI_STREAM_LATENCY_SAMPLE_RATE = parse_env_int(
-    "BENCH_MULTI_STREAM_LATENCY_SAMPLE_RATE", 16)
-MULTI_STREAM_BASE_PORT = parse_env_int("BENCH_MULTI_STREAM_BASE_PORT", 27110)
-MULTI_STREAM_SERVER_BOOT_SEC = parse_env_int(
-    "BENCH_MULTI_STREAM_SERVER_BOOT_SEC", 2)
 MULTI_STREAM_ATTEMPTS = parse_env_int("BENCH_MULTI_STREAM_ATTEMPTS", 2)
-
-_stream_scenario_ready = False
-_stream_scenario_bin = ""
-_multi_stream_port_counter = 0
 
 base_env = os.environ.copy()
 
@@ -328,189 +297,6 @@ def run_cmake_build(cmake_build_dir):
     except FileNotFoundError:
         print("Error: cmake not found in PATH.", file=sys.stderr)
         return 127
-
-
-def derive_build_root_from_bin_dir(path):
-    build_root = path
-    base = os.path.basename(build_root)
-    if base in ("Release", "Debug", "RelWithDebInfo", "MinSizeRel"):
-        bin_root = os.path.dirname(build_root)
-        if os.path.basename(bin_root) == "bin":
-            build_root = os.path.dirname(bin_root)
-    elif base == "bin":
-        build_root = os.path.dirname(build_root)
-    return build_root
-
-
-def stream_scenario_bin_path():
-    build_root = derive_build_root_from_bin_dir(BUILD_DIR)
-    return os.path.join(build_root, "bin",
-                        "test_scenario_stream_zlink" + EXE_SUFFIX)
-
-
-def ensure_stream_scenario_binary():
-    global _stream_scenario_ready
-    global _stream_scenario_bin
-    if _stream_scenario_ready:
-        return _stream_scenario_bin
-
-    _stream_scenario_ready = True
-    candidate = stream_scenario_bin_path()
-    if os.path.exists(candidate):
-        _stream_scenario_bin = candidate
-        return _stream_scenario_bin
-
-    build_root = derive_build_root_from_bin_dir(BUILD_DIR)
-    try:
-        subprocess.run(
-            ["cmake", "-S", ROOT_DIR, "-B", build_root, "-DZLINK_BUILD_TESTS=ON"],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        jobs = os.cpu_count() or 1
-        subprocess.run(
-            ["cmake", "--build", build_root, "--target",
-             "test_scenario_stream_zlink", "-j", str(jobs)],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        _stream_scenario_bin = ""
-        return _stream_scenario_bin
-
-    candidate = stream_scenario_bin_path()
-    if os.path.exists(candidate):
-        _stream_scenario_bin = candidate
-    return _stream_scenario_bin
-
-
-def parse_scenario_result_line(line):
-    if not line.startswith("RESULT "):
-        return None
-    fields = {}
-    for token in line.strip().split()[1:]:
-        if "=" not in token:
-            continue
-        key, value = token.split("=", 1)
-        fields[key] = value
-    return fields if fields else None
-
-
-def next_multi_stream_port():
-    global _multi_stream_port_counter
-    _multi_stream_port_counter += 1
-    return MULTI_STREAM_BASE_PORT + _multi_stream_port_counter
-
-
-def run_multi_stream_test(lib_name, transport, size):
-    if transport != "tcp":
-        return []
-
-    scenario_bin = ensure_stream_scenario_binary()
-    if not scenario_bin:
-        return []
-
-    env = get_env_for_lib(lib_name)
-    port = next_multi_stream_port()
-    scenario_id = f"bench-ms-{lib_name}-{transport}-{size}-{port}"
-    base_args = [
-        "--scenario", MULTI_STREAM_SCENARIO,
-        "--transport", transport,
-        "--port", str(port),
-        "--ccu", str(max(1, MULTI_STREAM_CCU)),
-        "--size", str(max(16, int(size))),
-        "--inflight", str(max(1, MULTI_STREAM_INFLIGHT)),
-        "--warmup", str(max(1, MULTI_STREAM_WARMUP)),
-        "--measure", str(max(1, MULTI_STREAM_MEASURE)),
-        "--drain-timeout", str(max(1, MULTI_STREAM_DRAIN_TIMEOUT)),
-        "--connect-concurrency", str(max(1, MULTI_STREAM_CONNECT_CONCURRENCY)),
-        "--connect-timeout", str(max(1, MULTI_STREAM_CONNECT_TIMEOUT)),
-        "--connect-retries", str(max(1, MULTI_STREAM_CONNECT_RETRIES)),
-        "--connect-retry-delay-ms",
-        str(max(0, MULTI_STREAM_CONNECT_RETRY_DELAY_MS)),
-        "--backlog", str(max(1, MULTI_STREAM_BACKLOG)),
-        "--hwm", str(max(1, MULTI_STREAM_HWM)),
-        "--sndbuf", str(max(1, MULTI_STREAM_SNDBUF)),
-        "--rcvbuf", str(max(1, MULTI_STREAM_RCVBUF)),
-        "--io-threads", str(max(1, MULTI_STREAM_IO_THREADS)),
-        "--latency-sample-rate", str(max(0, MULTI_STREAM_LATENCY_SAMPLE_RATE)),
-    ]
-
-    server_cmd = [
-        scenario_bin,
-        "--scenario-id", scenario_id + "-server",
-        "--role", "server",
-    ] + base_args
-    client_cmd = [
-        scenario_bin,
-        "--scenario-id", scenario_id,
-        "--role", "client",
-    ] + base_args
-
-    timeout_sec = max(
-        60,
-        MULTI_STREAM_WARMUP + MULTI_STREAM_MEASURE + MULTI_STREAM_DRAIN_TIMEOUT
-        + MULTI_STREAM_CONNECT_TIMEOUT + 30,
-    )
-
-    attempts = max(1, MULTI_STREAM_ATTEMPTS)
-    for _ in range(attempts):
-        server_proc = None
-        try:
-            server_proc = subprocess.Popen(
-                server_cmd,
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            time.sleep(float(max(1, MULTI_STREAM_SERVER_BOOT_SEC)))
-            client_res = subprocess.run(
-                client_cmd,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=timeout_sec,
-            )
-
-            parsed_result = None
-            for line in client_res.stdout.splitlines():
-                parsed = parse_scenario_result_line(line)
-                if parsed is not None:
-                    parsed_result = parsed
-                    break
-            if parsed_result is None:
-                continue
-
-            if parsed_result.get("pass_fail", "").upper() == "SKIP":
-                return []
-
-            throughput = float(parsed_result.get("throughput", 0.0))
-            latency = float(parsed_result.get(
-                "p95_us", parsed_result.get("p50_us", 0.0)))
-            return [
-                {"metric": "throughput", "value": throughput},
-                {"metric": "latency", "value": latency},
-            ]
-        except Exception:
-            pass
-        finally:
-            if server_proc is not None:
-                try:
-                    if server_proc.poll() is None:
-                        server_proc.terminate()
-                        server_proc.wait(timeout=5)
-                except Exception:
-                    try:
-                        if server_proc.poll() is None:
-                            server_proc.kill()
-                    except Exception:
-                        pass
-        time.sleep(0.5)
-
-    return []
 
 
 def parse_result_line(line, transport, expected_sizes):
@@ -897,8 +683,8 @@ def parse_args():
         "  BENCH_MULTI_WARMUP_SECONDS=3\n"
         "  BENCH_MULTI_MEASURE_SECONDS=10\n"
         "  BENCH_MULTI_DRAIN_MS=300\n"
-        "  BENCH_MULTI_STREAM_SCENARIO=s2\n"
         "  BENCH_MULTI_STREAM_MSG_SIZES=64,256,1024,65536,131072,262144\n"
+        "  BENCH_MULTI_STREAM_ATTEMPTS=2\n"
     )
     refresh = False
     p_req = "ALL"

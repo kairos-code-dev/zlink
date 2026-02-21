@@ -343,10 +343,26 @@ else
   rm -rf "${BUILD_DIR}"
 fi
 
+CMAKE_SOURCE_DIR="${ROOT_DIR}"
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+  CACHE_CMAKE_SOURCE="$(
+    sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
+      | tail -n 1
+  )"
+  if [[ -n "${CACHE_CMAKE_SOURCE}" && "${CACHE_CMAKE_SOURCE}" != "${CMAKE_SOURCE_DIR}" ]]; then
+    echo "Build cache source mismatch detected:"
+    echo "  cache source: ${CACHE_CMAKE_SOURCE}"
+    echo "  required source: ${CMAKE_SOURCE_DIR}"
+    echo "Resetting build directory: ${BUILD_DIR}"
+    rm -rf "${BUILD_DIR}"
+  fi
+fi
+echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
+
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
   CMAKE_ARCH="${CMAKE_ARCH:-x64}"
-  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+  cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
     -G "${CMAKE_GENERATOR}" \
     -A "${CMAKE_ARCH}" \
     -DCMAKE_BUILD_TYPE=Release \
@@ -359,7 +375,7 @@ if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
     -DZLINK_CXX_STANDARD=17
 else
-  cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
+  cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARKS=ON \
     -DZLINK_BUILD_TESTS=OFF \

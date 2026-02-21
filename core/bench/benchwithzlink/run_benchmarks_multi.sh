@@ -329,9 +329,6 @@ if [[ -n "${MULTI_DRAIN_MS}" ]]; then
   RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
 
-effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-100}}"
-ensure_nofile_limit "${effective_clients}"
-
 SHOW_TOTAL_TIME=1
 for pattern in "${PATTERNS[@]}"; do
   if [[ "${pattern^^}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
@@ -342,11 +339,24 @@ for pattern in "${PATTERNS[@]}"; do
     echo "Error: run_benchmarks_multi.sh accepts only MULTI_* patterns." >&2
     exit 1
   fi
+
+  pattern_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}"
+  if [[ -z "${pattern_clients}" ]]; then
+    if [[ "${pattern^^}" == "MULTI_STREAM" ]]; then
+      pattern_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+    else
+      pattern_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-100}"
+    fi
+  fi
+
+  ensure_nofile_limit "${pattern_clients}"
+
   echo "=== Running multi benchmark: ${pattern} ==="
   if ! BENCH_ALLOW_MULTI=1 \
     BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/multi/run_comparison.py" \
     BENCH_FAIL_FAST=1 \
     BENCH_SUPPRESS_TOTAL_TIME=1 \
+    BENCH_MULTI_CLIENTS="${pattern_clients}" \
     env "${RUN_ENV[@]}" \
     "${SCRIPT_DIR}/run_benchmarks.sh" \
     "${RUN_BASE_ARGS[@]}" \

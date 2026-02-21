@@ -600,6 +600,9 @@ def collect_data(
     for tr in transports:
         size_tag = ",".join(f"{sz}B" for sz in MSG_SIZES)
         print(f"    Testing {tr} | {size_tag}: ", end="", flush=True)
+        if tr != "tcp":
+            print("Skipped (unsupported_transport(libzmq_tcp_only))")
+            continue
         metrics_raw = {}
         failed_runs = 0
         expected_keys = []

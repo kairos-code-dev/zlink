@@ -354,16 +354,7 @@ void run_multi_spot(const std::string &transport,
 
         sw.start();
         long published = 0;
-        const long fanout = static_cast<long>(std::max<size_t>(1, settings.clients));
-        const long max_backlog = compute_fanout_backlog_limit(
-          settings, settings.clients, current_size);
         while (std::chrono::steady_clock::now() < measure_end) {
-            const long recv_total = total_received.load(std::memory_order_relaxed);
-            const long backlog = published * fanout - recv_total;
-            if (backlog >= max_backlog) {
-                std::this_thread::sleep_for(std::chrono::microseconds(50));
-                continue;
-            }
             if (!send_spot(spot_pub, topic, current_size)) {
                 round_failed = true;
                 if (bench_debug_enabled()) {

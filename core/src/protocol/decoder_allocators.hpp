@@ -59,6 +59,11 @@ class shared_message_memory_allocator
     shared_message_memory_allocator (std::size_t bufsize_,
                                      std::size_t max_messages_);
 
+    // Create an allocator with explicit growth limit.
+    shared_message_memory_allocator (std::size_t bufsize_,
+                                     std::size_t max_messages_,
+                                     std::size_t max_size_);
+
     ~shared_message_memory_allocator ();
 
     // Allocate a new buffer
@@ -86,7 +91,13 @@ class shared_message_memory_allocator
     // Return pointer to the first byte of the buffer.
     unsigned char *buffer () { return _buf; }
 
-    void resize (std::size_t new_size_) { _buf_size = new_size_; }
+    // Adjust the visible decode window without changing allocation target.
+    void resize (std::size_t new_size_);
+
+    // Update allocation target (used by stream/raw dynamic growth path).
+    void set_allocation_size (std::size_t new_size_);
+    std::size_t allocation_size () const { return _allocation_size; }
+    std::size_t max_size () const { return _max_size; }
 
     zlink::msg_t::content_t *provide_content () { return _msg_content; }
 
@@ -97,7 +108,9 @@ class shared_message_memory_allocator
 
     unsigned char *_buf;
     std::size_t _buf_size;
+    std::size_t _allocation_size;
     const std::size_t _max_size;
+    std::size_t _allocated_size;
     zlink::msg_t::content_t *_msg_content;
     std::size_t _max_counters;
 };

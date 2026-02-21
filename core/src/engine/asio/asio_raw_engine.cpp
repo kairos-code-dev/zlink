@@ -10,18 +10,6 @@
 #include "sockets/socket_base.hpp"
 #include "core/session_base.hpp"
 
-namespace
-{
-bool env_flag_enabled (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    return env && *env && *env != '0';
-}
-
-const bool asio_stream_disable_metadata =
-  env_flag_enabled ("ZLINK_ASIO_STREAM_DISABLE_METADATA");
-}
-
 zlink::asio_raw_engine_t::asio_raw_engine_t (
   fd_t fd_,
   const options_t &options_,
@@ -75,16 +63,30 @@ void zlink::asio_raw_engine_t::plug_internal ()
     }
 
     if (_decoder == NULL) {
+        const size_t initial_read_buffer =
+          _options.in_batch_size > 0 ? static_cast<size_t> (_options.in_batch_size)
+                                     : static_cast<size_t> (8192);
+        size_t stream_max_read_buffer = initial_read_buffer;
+        if (_options.rcvbuf > 0
+            && static_cast<size_t> (_options.rcvbuf) > stream_max_read_buffer)
+            stream_max_read_buffer =
+              static_cast<size_t> (_options.rcvbuf);
+        if (_options.maxmsgsize > 0
+            && static_cast<size_t> (_options.maxmsgsize) < stream_max_read_buffer)
+            stream_max_read_buffer =
+              static_cast<size_t> (_options.maxmsgsize);
+        if (stream_max_read_buffer == 0)
+            stream_max_read_buffer = initial_read_buffer;
+
         _decoder = new (std::nothrow)
-          raw_decoder_t (_options.in_batch_size, _options.maxmsgsize);
+          raw_decoder_t (initial_read_buffer, _options.maxmsgsize,
+                         stream_max_read_buffer);
         alloc_assert (_decoder);
         _input_in_decoder_buffer = false;
     }
 
     properties_t properties;
-    const bool skip_stream_metadata =
-      _options.type == ZLINK_STREAM && asio_stream_disable_metadata;
-    if (!skip_stream_metadata && init_properties (properties)) {
+    if (init_properties (properties)) {
         zlink_assert (_metadata == NULL);
         _metadata = new (std::nothrow) metadata_t (properties);
         alloc_assert (_metadata);

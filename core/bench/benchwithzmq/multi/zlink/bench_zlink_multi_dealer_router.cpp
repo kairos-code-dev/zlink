@@ -67,6 +67,169 @@ int recv_batch_router (void *server,
     return received;
 }
 
+int recv_batch_dealer_clients (std::vector<void *> &clients,
+                               std::vector<zlink_pollitem_t> &poll_items,
+                               std::vector<char> &recv_buf,
+                               int recv_batch,
+                               long poll_timeout_ms)
+{
+    if (clients.empty () || recv_batch <= 0)
+        return 0;
+
+    if (poll_items.size () != clients.size ()) {
+        poll_items.clear ();
+        poll_items.reserve (clients.size ());
+        for (size_t i = 0; i < clients.size (); ++i) {
+            zlink_pollitem_t item = {clients[i], 0, ZLINK_POLLIN, 0};
+            poll_items.push_back (item);
+        }
+    }
+
+    for (size_t i = 0; i < poll_items.size (); ++i)
+        poll_items[i].revents = 0;
+
+    const int prc = zlink_poll (&poll_items[0],
+                                static_cast<int> (poll_items.size ()),
+                                poll_timeout_ms);
+    if (prc < 0)
+        return zlink_errno () == EINTR ? 0 : -1;
+    if (prc == 0)
+        return 0;
+
+    int received = 0;
+    for (size_t i = 0; i < poll_items.size () && received < recv_batch; ++i) {
+        if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        while (received < recv_batch) {
+            const int rc = zlink_recv (
+              clients[i], recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT);
+            if (rc >= 0) {
+                ++received;
+                continue;
+            }
+            if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+                break;
+            return -1;
+        }
+    }
+
+    return received;
+}
+
+int recv_batch_router_rtt (void *server,
+                           std::vector<void *> &clients,
+                           std::vector<zlink_pollitem_t> &client_poll_items,
+                           char *id_buf,
+                           size_t id_buf_size,
+                           std::vector<char> &payload,
+                           int recv_batch,
+                           long poll_timeout_ms)
+{
+    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
+    const int prc = zlink_poll (item, 1, poll_timeout_ms);
+    if (prc < 0)
+        return zlink_errno () == EINTR ? 0 : -1;
+    if (prc > 0 && (item[0].revents & ZLINK_POLLIN) != 0) {
+        int relayed = 0;
+        while (relayed < recv_batch) {
+            const int flags = relayed == 0 ? 0 : ZLINK_DONTWAIT;
+            const int id_len = zlink_recv (server, id_buf, id_buf_size, flags);
+            if (id_len <= 0) {
+                if (relayed == 0 && zlink_errno () == EINTR)
+                    break;
+                if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+                    break;
+                return -1;
+            }
+
+            if (zlink_recv (server, payload.data (), payload.size (), flags) < 0) {
+                if (zlink_errno () == EINTR)
+                    continue;
+                return -1;
+            }
+
+            if (zlink_send (server, id_buf, id_len, ZLINK_SNDMORE) < 0)
+                return -1;
+            if (zlink_send (server, payload.data (), payload.size (), 0) < 0) {
+                if (zlink_errno () == EINTR)
+                    continue;
+                return -1;
+            }
+            ++relayed;
+        }
+    }
+
+    return recv_batch_dealer_clients (
+      clients, client_poll_items, payload, recv_batch, 1);
+}
+
+int relay_batch_router_echo (void *server,
+                             char *id_buf,
+                             size_t id_buf_size,
+                             std::vector<char> &payload,
+                             int recv_batch,
+                             long poll_timeout_ms)
+{
+    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
+    const int prc = zlink_poll (item, 1, poll_timeout_ms);
+    if (prc < 0)
+        return zlink_errno () == EINTR ? 0 : -1;
+    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
+        return 0;
+
+    int relayed = 0;
+    while (relayed < recv_batch) {
+        const int flags = relayed == 0 ? 0 : ZLINK_DONTWAIT;
+        const int id_len = zlink_recv (server, id_buf, id_buf_size, flags);
+        if (id_len <= 0) {
+            if (relayed == 0 && zlink_errno () == EINTR)
+                return 0;
+            if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+                break;
+            return -1;
+        }
+
+        const int payload_len = zlink_recv (server, payload.data (), payload.size (), 0);
+        if (payload_len < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return -1;
+        }
+
+        if (zlink_send (server, id_buf, static_cast<size_t> (id_len), ZLINK_SNDMORE)
+            < 0)
+            return -1;
+        if (zlink_send (server, payload.data (), static_cast<size_t> (payload_len), 0)
+            < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return -1;
+        }
+        ++relayed;
+    }
+    return relayed;
+}
+
+int recv_batch_dealer_client_socket (void *client,
+                                     std::vector<char> &recv_buf,
+                                     int recv_batch)
+{
+    int received = 0;
+    while (received < recv_batch) {
+        const int rc =
+          zlink_recv (client, recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT);
+        if (rc >= 0) {
+            ++received;
+            continue;
+        }
+        if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
+            break;
+        return -1;
+    }
+    return received;
+}
+
 double measure_latency_us (void *ctx,
                            const std::string &transport,
                            const std::string &lib_name,
@@ -196,11 +359,13 @@ void run_multi_dealer_router (const std::string &transport,
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
-        std::vector<char> payload (std::max<size_t> (1, current_size));
-        char id_buf[256];
+        std::vector<char> relay_payload (std::max<size_t> (1, current_size));
+        std::vector<std::vector<char> > client_recv_bufs (
+          settings.clients, std::vector<char> (std::max<size_t> (1, current_size)));
+        char relay_id_buf[256];
 
         const multi_bench_result_t bench =
-          run_multi_phase_benchmark_with_sender_lifecycle (
+          run_multi_phase_socket_owned_rtt_benchmark (
             settings.clients, settings,
             [&] (size_t idx) {
                 if (clients[idx])
@@ -224,9 +389,14 @@ void run_multi_dealer_router (const std::string &transport,
                 return true;
             },
             [&] (size_t idx) { return send_nonblocking (clients[idx], buffer); },
-            [&] (multi_bench_phase_t) {
-                return recv_batch_router (server, id_buf, sizeof (id_buf), payload,
-                                          settings.recv_batch, 10);
+            [&] (multi_bench_phase_t, int recv_batch, long poll_timeout_ms) {
+                return relay_batch_router_echo (
+                  server, relay_id_buf, sizeof (relay_id_buf), relay_payload,
+                  recv_batch, poll_timeout_ms);
+            },
+            [&] (size_t idx, int recv_batch) {
+                return recv_batch_dealer_client_socket (
+                  clients[idx], client_recv_bufs[idx], recv_batch);
             },
             [&] (size_t) {},
             [&] () {

@@ -4,13 +4,13 @@
     "build_dir": "/home/hep7/project/kairos/zlink/core/build/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-21T11:17:18.441777+00:00"
+    "updated_at_utc": "2026-02-21T13:43:45.040508+00:00"
   },
   "patterns": {
     "MULTI_DEALER_DEALER": {
       "data": {
-        "tcp|64|latency": 57.03,
-        "tcp|64|throughput": 193854.8
+        "tcp|64|latency": 49.43,
+        "tcp|64|throughput": 3960727.5
       },
       "failures": [],
       "msg_sizes": [
@@ -19,7 +19,7 @@
       "transports": [
         "tcp"
       ],
-      "updated_at_utc": "2026-02-20T06:20:57.818936+00:00"
+      "updated_at_utc": "2026-02-21T13:23:30.747602+00:00"
     },
     "MULTI_DEALER_ROUTER": {
       "data": {
@@ -52,17 +52,23 @@
     },
     "MULTI_PUBSUB": {
       "data": {
-        "tcp|262144|latency": 129.4,
-        "tcp|262144|throughput": 15344.2
+        "tcp|1024|latency": 59.82,
+        "tcp|1024|throughput": 1088608.0,
+        "tcp|64|latency": 67.3,
+        "tcp|64|throughput": 1706912.0,
+        "tcp|65536|latency": 80.27,
+        "tcp|65536|throughput": 437152.0
       },
       "failures": [],
       "msg_sizes": [
-        262144
+        64,
+        1024,
+        65536
       ],
       "transports": [
         "tcp"
       ],
-      "updated_at_utc": "2026-02-21T06:16:16.158639+00:00"
+      "updated_at_utc": "2026-02-21T13:43:21.820644+00:00"
     },
     "MULTI_ROUTER_ROUTER": {
       "data": {
@@ -95,17 +101,17 @@
     },
     "MULTI_STREAM": {
       "data": {
-        "tcp|65536|latency": 52.52,
-        "tcp|65536|throughput": 5998.0
+        "tcp|1024|latency": 34.21,
+        "tcp|1024|throughput": 278644.0
       },
       "failures": [],
       "msg_sizes": [
-        65536
+        1024
       ],
       "transports": [
         "tcp"
       ],
-      "updated_at_utc": "2026-02-21T11:17:06.934130+00:00"
+      "updated_at_utc": "2026-02-21T13:41:51.575070+00:00"
     }
   }
 }

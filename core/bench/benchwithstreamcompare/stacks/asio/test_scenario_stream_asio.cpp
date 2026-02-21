@@ -8,6 +8,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <memory>
 #include <string>
 #include <thread>
@@ -56,10 +57,12 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     void close ();
 
   private:
-    void start_read_header ();
-    void on_read_header (const boost::system::error_code &ec, size_t bytes);
-    void start_read_body ();
-    void on_read_body (const boost::system::error_code &ec, size_t bytes);
+    void start_read_chunk ();
+    void on_read_chunk (const boost::system::error_code &ec, size_t bytes);
+    void append_to_stash (const unsigned char *data, size_t size);
+    void compact_stash ();
+    void process_complete_frames ();
+    void start_write_next ();
     void on_write (const boost::system::error_code &ec, size_t bytes);
     void close_internal ();
 
@@ -70,10 +73,10 @@ class asio_session_t : public std::enable_shared_from_this<asio_session_t>
     bool closed;
     bool writing;
 
-    unsigned char read_header[4];
-    size_t current_read_len;
-
-    std::vector<unsigned char> frame_body;
+    std::array<unsigned char, 16384> read_chunk;
+    std::vector<unsigned char> rx_stash;
+    size_t rx_offset;
+    std::deque<std::vector<unsigned char> > tx_queue;
 };
 
 class asio_echo_server_t
@@ -252,99 +255,126 @@ asio_session_t::asio_session_t (asio_echo_server_t &owner_, boost::asio::io_cont
       strand (boost::asio::make_strand (io_)),
       closed (false),
       writing (false),
-      current_read_len (0),
-      frame_body ()
+      read_chunk (),
+      rx_stash (),
+      rx_offset (0),
+      tx_queue ()
 {
-    std::memset (read_header, 0, sizeof (read_header));
-    // Keep initial framed buffer small and grow on demand.
-    // This avoids per-connection allocation of max benchmark frame size.
-    frame_body.reserve (4096);
+    rx_stash.reserve (4096);
 }
 
 void asio_session_t::start ()
 {
     owner.on_session_open ();
     // Stream-compare server is framed-only: 4-byte big-endian length + payload.
-    start_read_header ();
+    // App-like path: read chunks, reassemble complete packets in stash, then echo.
+    start_read_chunk ();
 }
 
-void asio_session_t::start_read_header ()
-{
-    if (closed)
-        return;
-    const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    boost::asio::async_read (
-      socket, boost::asio::buffer (read_header, sizeof (read_header)),
-      boost::asio::bind_executor (
-        strand,
-        [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_read_header (ec, bytes);
-        }));
-}
-
-void asio_session_t::on_read_header (const boost::system::error_code &ec, size_t bytes)
-{
-    if (closed)
-        return;
-
-    if (ec || bytes != sizeof (read_header)) {
-        close_internal ();
-        return;
-    }
-
-    const size_t len =
-      static_cast<size_t> (stream_echo::load_u32_be (read_header));
-    if (len < k_min_payload_size || len > k_max_payload_size) {
-        owner.on_parse_error ();
-        close_internal ();
-        return;
-    }
-    if (len > owner.payload_size ()) {
-        owner.on_protocol_error ();
-        close_internal ();
-        return;
-    }
-
-    current_read_len = len;
-    if (frame_body.size () < current_read_len)
-        frame_body.resize (current_read_len);
-    start_read_body ();
-}
-
-void asio_session_t::start_read_body ()
+void asio_session_t::start_read_chunk ()
 {
     if (closed)
         return;
 
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    boost::asio::async_read (
-      socket, boost::asio::buffer (&frame_body[0], current_read_len),
+    socket.async_read_some (
+      boost::asio::buffer (read_chunk),
       boost::asio::bind_executor (
         strand,
         [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_read_body (ec, bytes);
+            self->on_read_chunk (ec, bytes);
         }));
 }
 
-void asio_session_t::on_read_body (const boost::system::error_code &ec, size_t bytes)
+void asio_session_t::on_read_chunk (const boost::system::error_code &ec,
+                                    size_t bytes)
 {
     if (closed)
         return;
 
-    if (ec || bytes != current_read_len) {
+    if (ec || bytes == 0) {
         close_internal ();
         return;
     }
 
-    owner.on_recv_frame (current_read_len);
+    append_to_stash (&read_chunk[0], bytes);
+    process_complete_frames ();
+    start_read_chunk ();
+}
+
+void asio_session_t::append_to_stash (const unsigned char *data, size_t size)
+{
+    if (!data || size == 0)
+        return;
+
+    const size_t old_size = rx_stash.size ();
+    rx_stash.resize (old_size + size);
+    std::memcpy (&rx_stash[old_size], data, size);
+}
+
+void asio_session_t::compact_stash ()
+{
+    if (rx_offset == 0)
+        return;
+    if (rx_offset >= rx_stash.size ()) {
+        rx_stash.clear ();
+        rx_offset = 0;
+        return;
+    }
+    if (rx_offset > 4096 || rx_offset * 2 >= rx_stash.size ()) {
+        const size_t remain = rx_stash.size () - rx_offset;
+        std::memmove (&rx_stash[0], &rx_stash[rx_offset], remain);
+        rx_stash.resize (remain);
+        rx_offset = 0;
+    }
+}
+
+void asio_session_t::process_complete_frames ()
+{
+    while (!closed && rx_stash.size () - rx_offset >= 4) {
+        const unsigned char *frame = &rx_stash[rx_offset];
+        const size_t body_size = static_cast<size_t> (
+          stream_echo::load_u32_be (frame));
+
+        if (body_size < k_min_payload_size || body_size > k_max_payload_size) {
+            owner.on_parse_error ();
+            owner.on_protocol_error ();
+            close_internal ();
+            return;
+        }
+        if (body_size > owner.payload_size ()) {
+            owner.on_protocol_error ();
+            close_internal ();
+            return;
+        }
+
+        const size_t frame_size = 4 + body_size;
+        if (rx_stash.size () - rx_offset < frame_size)
+            break;
+
+        owner.on_recv_frame (body_size);
+
+        std::vector<unsigned char> frame_copy (frame_size);
+        std::memcpy (&frame_copy[0], frame, frame_size);
+        tx_queue.push_back (std::move (frame_copy));
+
+        rx_offset += frame_size;
+        compact_stash ();
+    }
+
+    start_write_next ();
+}
+
+void asio_session_t::start_write_next ()
+{
+    if (closed || writing || tx_queue.empty ())
+        return;
+
     writing = true;
     const std::shared_ptr<asio_session_t> self = shared_from_this ();
-    // Echo exactly one complete framed packet.
-    std::array<boost::asio::const_buffer, 2> buffers = {
-      boost::asio::buffer (read_header, sizeof (read_header)),
-      boost::asio::buffer (&frame_body[0], current_read_len)};
+    std::vector<unsigned char> &frame = tx_queue.front ();
     boost::asio::async_write (
-      socket, buffers,
+      socket, boost::asio::buffer (&frame[0], frame.size ()),
       boost::asio::bind_executor (
         strand,
         [self] (const boost::system::error_code &ec, size_t bytes) {
@@ -354,19 +384,24 @@ void asio_session_t::on_read_body (const boost::system::error_code &ec, size_t b
 
 void asio_session_t::on_write (const boost::system::error_code &ec, size_t bytes)
 {
-    writing = false;
-
     if (closed)
         return;
 
-    const size_t write_size = sizeof (read_header) + current_read_len;
-    if (ec || bytes != write_size) {
+    if (tx_queue.empty ()) {
+        writing = false;
+        return;
+    }
+
+    const size_t frame_size = tx_queue.front ().size ();
+    if (ec || bytes != frame_size) {
         owner.on_send_error ();
         close_internal ();
         return;
     }
 
-    start_read_header ();
+    tx_queue.pop_front ();
+    writing = false;
+    start_write_next ();
 }
 
 void asio_session_t::close ()
@@ -380,6 +415,9 @@ void asio_session_t::close_internal ()
     if (closed)
         return;
     closed = true;
+    tx_queue.clear ();
+    rx_stash.clear ();
+    rx_offset = 0;
 
     boost::system::error_code ec;
     socket.cancel (ec);

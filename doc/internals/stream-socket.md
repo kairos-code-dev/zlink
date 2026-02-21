@@ -92,6 +92,7 @@ These values are no longer controlled by STREAM env knobs:
 - read drain: enabled
 - speculative write: fixed on for STREAM/TCP path
 - RX slab buffering: enabled
+- minimum in/out batch size: `12288`
 - gather threshold: `8192`
 - speculative write byte budget: `2097152`
 - read drain max loops: `16`
@@ -112,4 +113,3 @@ These values are no longer controlled by STREAM env knobs:
 - `ZLINK_ASIO_STREAM_ENABLE_NON_TCP_SPEC_READ`
 - `ZLINK_ASIO_STREAM_DISABLE_GATHER`
 - `ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE`
-- `ZLINK_ASIO_STREAM_BATCH_SIZE`

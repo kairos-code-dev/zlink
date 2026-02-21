@@ -23,6 +23,7 @@ Options:
   --stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
   --ccu <N>                    default: 10000
+  --inflight <N>               default: 1
   --runs <N>                   default: 1
   --warmup <sec>               default: 2
   --duration <sec>             default: 10
@@ -45,6 +46,7 @@ SIZES_ALL=(64 1024 65536)
 TARGET_STACK="all"
 TARGET_SIZE="all"
 CCU=10000
+INFLIGHT=1
 RUNS=1
 WARMUP=2
 DURATION=10
@@ -66,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ccu)
             CCU="${2:-}"
+            shift 2
+            ;;
+        --inflight)
+            INFLIGHT="${2:-}"
             shift 2
             ;;
         --runs)
@@ -123,6 +129,7 @@ validate_int()
 }
 
 validate_int "--ccu" "${CCU}"
+validate_int "--inflight" "${INFLIGHT}"
 validate_int "--runs" "${RUNS}"
 validate_int "--warmup" "${WARMUP}"
 validate_int "--duration" "${DURATION}"
@@ -232,17 +239,6 @@ ACTIVE_STACKS=()
 FAILED_CASES=0
 MONITOR_PID=""
 
-min_int()
-{
-    local value="$1"
-    local maximum="$2"
-    if (( value > maximum )); then
-        echo "${maximum}"
-    else
-        echo "${value}"
-    fi
-}
-
 resolve_stack_tuning()
 {
     local stack="$1"
@@ -256,20 +252,20 @@ resolve_stack_tuning()
 
     case "${stack}" in
         cppserver)
-            STACK_IO_THREADS=1
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=4194304
             STACK_RCVBUF=4194304
             STACK_BACKLOG=65535
             ;;
         dotnet)
-            STACK_IO_THREADS=1
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=32768
             STACK_RCVBUF=32768
             STACK_BACKLOG=32768
             STACK_TCP_NODELAY=0
             ;;
         netty)
-            STACK_IO_THREADS=1
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=4194304
             STACK_RCVBUF=4194304
             STACK_BACKLOG=65535
@@ -278,22 +274,18 @@ resolve_stack_tuning()
             )
             ;;
         asio)
-            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 4)"
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=2097152
             STACK_RCVBUF=2097152
             ;;
         zlink)
-            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 12)"
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=8388608
             STACK_RCVBUF=8388608
             STACK_BACKLOG=65535
-            STACK_ENV_VARS+=(
-              "ZLINK_ASIO_STREAM_BATCH_SIZE=65536"
-              "ZLINK_ASIO_STREAM_DISABLE_METADATA=1"
-            )
             ;;
         zmq)
-            STACK_IO_THREADS="$(min_int "${SERVER_IO_THREADS}" 2)"
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=2097152
             STACK_RCVBUF=2097152
             ;;
@@ -1010,7 +1002,7 @@ append_rows_from_client_log()
     local system_resource_summary="$9"
     local system_resource_log="${10}"
 
-    python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${client_rc}" \
+    python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${INFLIGHT}" "${client_rc}" \
         "${client_log}" "${server_log}" \
         "${client_resource_summary}" "${server_resource_summary}" \
         "${client_resource_log}" "${server_resource_log}" \
@@ -1022,6 +1014,7 @@ import sys
     metrics_csv,
     stack,
     ccu,
+    inflight,
     client_rc,
     client_log,
     server_log,
@@ -1031,7 +1024,7 @@ import sys
     server_resource_log,
     system_resource_summary,
     system_resource_log,
-) = sys.argv[1:13]
+) = sys.argv[1:14]
 ccu = int(ccu)
 
 rows = []
@@ -1102,7 +1095,7 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             "size": size_text,
             "run": fields.get("run", "0"),
             "ccu": str(ccu),
-            "inflight": "1",
+            "inflight": str(inflight),
             "client_rc": str(client_rc),
             "throughput_bps": fields.get("throughput_bps", "0"),
             "throughput_mib_s": fields.get("throughput_mib_s", "0"),
@@ -1189,7 +1182,7 @@ run_stack_once()
         --runs "${RUNS}" \
         --warmup "${WARMUP}" \
         --duration "${DURATION}" \
-        --inflight "1" \
+        --inflight "${INFLIGHT}" \
         --latency-sample-rate "0" \
         --io-threads "${CLIENT_IO_THREADS}" \
         >"${client_log}" 2>&1 &
@@ -1228,7 +1221,7 @@ stack,reason
 CSV
 
     log "scope stacks=$(IFS=,; echo "${RUN_STACKS[*]}") sizes=$(IFS=,; echo "${RUN_SIZES[*]}")"
-    log "settings ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s inflight=1 server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
+    log "settings ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s inflight=${INFLIGHT} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
 
     build_selected
 

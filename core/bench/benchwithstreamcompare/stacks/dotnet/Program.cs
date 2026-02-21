@@ -224,67 +224,66 @@ internal sealed class EchoServer
     private async Task RunConnectionAsync(Socket socket, CancellationToken token)
     {
         // Stream-compare server is framed-only: 4-byte big-endian length + payload.
-        int initialFrame = Math.Max(
-            ServerOptions.MinPayloadSize,
-            Math.Min(_options.Size, 4096));
-        byte[] frameBuffer = ArrayPool<byte>.Shared.Rent(initialFrame + 4);
+        // App-like path: read chunks, stash partial data, parse complete packets, echo.
+        byte[] readChunk = ArrayPool<byte>.Shared.Rent(16 * 1024);
+        byte[] stash = ArrayPool<byte>.Shared.Rent(4096);
+        int stashOffset = 0;
+        int stashLength = 0;
 
         try
         {
             while (!token.IsCancellationRequested)
             {
-                if (!await ReadExactAsync(socket, frameBuffer, 0, 4, token)
-                        .ConfigureAwait(false))
-                {
+                int nread = await socket.SendReceiveAsyncHelper(
+                    readChunk, 0, readChunk.Length, token).ConfigureAwait(false);
+                if (nread <= 0)
                     break;
-                }
 
-                int bodySize = ReadU32Be(frameBuffer, 0);
-                if (bodySize < ServerOptions.MinPayloadSize
-                    || bodySize > ServerOptions.MaxPayloadSize)
+                EnsureStashCapacity(ref stash, ref stashOffset, ref stashLength, nread);
+                Buffer.BlockCopy(readChunk, 0, stash, stashLength, nread);
+                stashLength += nread;
+
+                while (stashLength - stashOffset >= 4)
                 {
-                    _metrics.AddParseError();
-                    _metrics.AddProtocolError();
-                    return;
-                }
-
-                int frameSize = 4 + bodySize;
-                if (frameSize > frameBuffer.Length)
-                {
-                    ArrayPool<byte>.Shared.Return(frameBuffer);
-                    frameBuffer = ArrayPool<byte>.Shared.Rent(frameSize);
-                    WriteU32Be(frameBuffer, 0, bodySize);
-                }
-
-                if (!await ReadExactAsync(socket, frameBuffer, 4, bodySize, token)
-                        .ConfigureAwait(false))
-                {
-                    break;
-                }
-
-                if (bodySize > _options.Size)
-                {
-                    _metrics.AddProtocolError();
-                    return;
-                }
-
-                _metrics.AddRecvMsg();
-
-                int sent = 0;
-                while (sent < frameSize)
-                {
-                    int nsend = await socket.SendAsync(
-                        new ArraySegment<byte>(frameBuffer, sent, frameSize - sent),
-                        SocketFlags.None,
-                        token).ConfigureAwait(false);
-                    if (nsend <= 0)
+                    int bodySize = ReadU32Be(stash, stashOffset);
+                    if (bodySize < ServerOptions.MinPayloadSize
+                        || bodySize > ServerOptions.MaxPayloadSize)
                     {
-                        _metrics.AddSendError();
+                        _metrics.AddParseError();
+                        _metrics.AddProtocolError();
                         return;
                     }
-                    sent += nsend;
+                    if (bodySize > _options.Size)
+                    {
+                        _metrics.AddProtocolError();
+                        return;
+                    }
+
+                    int frameSize = 4 + bodySize;
+                    if (stashLength - stashOffset < frameSize)
+                        break;
+
+                    _metrics.AddRecvMsg();
+
+                    int sent = 0;
+                    while (sent < frameSize)
+                    {
+                        int nsend = await socket.SendAsync(
+                            new ArraySegment<byte>(stash, stashOffset + sent, frameSize - sent),
+                            SocketFlags.None,
+                            token).ConfigureAwait(false);
+                        if (nsend <= 0)
+                        {
+                            _metrics.AddSendError();
+                            return;
+                        }
+                        sent += nsend;
+                    }
+
+                    stashOffset += frameSize;
                 }
 
+                CompactStash(stash, ref stashOffset, ref stashLength);
             }
         }
         catch (OperationCanceledException)
@@ -307,31 +306,50 @@ internal sealed class EchoServer
             }
 
             socket.Dispose();
-            ArrayPool<byte>.Shared.Return(frameBuffer);
+            ArrayPool<byte>.Shared.Return(readChunk);
+            ArrayPool<byte>.Shared.Return(stash);
             _metrics.RemoveConnection();
         }
     }
 
-    private static async ValueTask<bool> ReadExactAsync(
-        Socket socket,
-        byte[] buffer,
-        int offset,
-        int length,
-        CancellationToken token)
+    private static void EnsureStashCapacity(
+        ref byte[] stash,
+        ref int offset,
+        ref int length,
+        int appendSize)
     {
-        int read = 0;
-        while (read < length)
+        CompactStash(stash, ref offset, ref length);
+        if (length + appendSize <= stash.Length)
+            return;
+
+        int next = stash.Length;
+        while (next < length + appendSize)
+            next *= 2;
+
+        byte[] bigger = ArrayPool<byte>.Shared.Rent(next);
+        if (length > 0)
+            Buffer.BlockCopy(stash, 0, bigger, 0, length);
+        ArrayPool<byte>.Shared.Return(stash);
+        stash = bigger;
+    }
+
+    private static void CompactStash(byte[] stash, ref int offset, ref int length)
+    {
+        if (offset <= 0)
+            return;
+        if (offset >= length)
         {
-            int n = await socket.SendReceiveAsyncHelper(
-                buffer,
-                offset + read,
-                length - read,
-                token).ConfigureAwait(false);
-            if (n <= 0)
-                return false;
-            read += n;
+            offset = 0;
+            length = 0;
+            return;
         }
-        return true;
+        if (offset > 4096 || offset * 2 >= length)
+        {
+            int remain = length - offset;
+            Buffer.BlockCopy(stash, offset, stash, 0, remain);
+            offset = 0;
+            length = remain;
+        }
     }
 
     private static int ReadU32Be(byte[] data, int offset)
@@ -342,13 +360,6 @@ internal sealed class EchoServer
                | data[offset + 3];
     }
 
-    private static void WriteU32Be(byte[] data, int offset, int value)
-    {
-        data[offset] = (byte)((value >> 24) & 0xFF);
-        data[offset + 1] = (byte)((value >> 16) & 0xFF);
-        data[offset + 2] = (byte)((value >> 8) & 0xFF);
-        data[offset + 3] = (byte)(value & 0xFF);
-    }
 }
 
 internal static class SocketExtensions

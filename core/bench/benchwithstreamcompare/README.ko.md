@@ -10,7 +10,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - 하나의 공통 클라이언트로 라이브러리 성능 비교
 - 순수 stream socket echo에 가까운 측정
 - 동시 실행 방지로 측정 간 간섭 최소화
-- 단순하고 안정적인 부하 모델 유지: `inflight=1` 고정
+- 단순하고 안정적인 부하 모델 유지: `inflight` 설정 가능(기본값 `1`)
 
 ## 구성 요소
 
@@ -40,7 +40,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - 모든 스택에 동일 클라이언트 바이너리 사용
 - 클라이언트 wire format은 모든 스택에서 고정:
   `4-byte big-endian 길이 + payload`
-- 클라이언트 `inflight`는 코드에서 `1`로 고정
+- 클라이언트 `inflight`는 러너 옵션 `--inflight`로 설정 가능
 - 스택은 순차 실행(동시 벤치 금지)
 - 서버 `--size`는 요청 사이즈 목록의 최대값으로 자동 설정
   : 혼합 사이즈 테스트에서 스택별 버퍼 편향 감소
@@ -103,6 +103,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 --stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    기본값: 10000
+--inflight <N>               기본값: 1
 --runs <N>                   기본값: 1
 --warmup <sec>               기본값: 2
 --duration <sec>             기본값: 10
@@ -185,5 +186,5 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 
 ## 현재 제한 사항
 
-- `inflight`는 의도적으로 `1` 고정
+- `inflight`는 세션당 outstanding 요청 깊이를 제어
 - 기본 러너에서는 latency 퍼센타일이 `0`으로 기록될 수 있음

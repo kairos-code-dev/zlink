@@ -239,6 +239,12 @@ class asio_engine_t : public i_engine
     bool use_stream_speculative_write () const;
     bool use_non_tcp_speculative_read () const;
     bool use_stream_rx_slab () const;
+    bool use_stream_dynamic_read_growth () const;
+    bool use_stream_dynamic_write_growth () const;
+    void prime_stream_decoder_read_target ();
+    void maybe_grow_stream_decoder_read_target (size_t bytes_transferred_);
+    void apply_pending_stream_encoder_resize ();
+    void maybe_schedule_stream_encoder_growth (size_t filled_out_batch_);
 
     struct stream_rx_chunk_t
     {
@@ -338,6 +344,13 @@ class asio_engine_t : public i_engine
 
     //  Buffer pointer for current async read (points to where data was read)
     unsigned char *_read_buffer_ptr;
+    size_t _last_read_request_size;
+    bool _last_read_had_partial_prefix;
+    size_t _stream_decoder_read_target_size;
+    size_t _stream_decoder_read_target_max;
+    size_t _stream_encoder_write_target_size;
+    size_t _stream_encoder_write_target_max;
+    size_t _stream_encoder_pending_resize_size;
 
     //  The session this engine is attached to.
     zlink::session_base_t *_session;

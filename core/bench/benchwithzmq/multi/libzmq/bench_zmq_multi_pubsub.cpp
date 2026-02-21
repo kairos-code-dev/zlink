@@ -23,6 +23,7 @@ multi_send_result_t send_pub_blocking (void *pub,
 int recv_batch_subscribers (const std::vector<void *> &subs,
                             std::vector<zmq_pollitem_t> &poll_items,
                             std::vector<char> &recv_buf,
+                            size_t &rr_cursor,
                             int recv_batch,
                             long poll_timeout_ms)
 {
@@ -39,22 +40,31 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
         return 0;
 
     int received = 0;
-    for (size_t i = 0; i < subs.size () && received < recv_batch; ++i) {
-        if ((poll_items[i].revents & ZMQ_POLLIN) == 0)
+    const size_t sub_count = subs.size ();
+    for (size_t i = 0; i < sub_count && received < recv_batch; ++i) {
+        const size_t idx = (rr_cursor + i) % sub_count;
+        if ((poll_items[idx].revents & ZMQ_POLLIN) == 0)
             continue;
-        if (zmq_recv (subs[i], recv_buf.data (), recv_buf.size (), 0) < 0)
+        if (zmq_recv (subs[idx], recv_buf.data (), recv_buf.size (), 0) < 0) {
+            const int err = zmq_errno ();
+            if (err == EAGAIN || err == EINTR)
+                continue;
             return -1;
+        }
+        rr_cursor = (idx + 1) % sub_count;
         ++received;
     }
 
     while (received < recv_batch) {
         bool got_any = false;
-        for (size_t i = 0; i < subs.size () && received < recv_batch; ++i) {
+        for (size_t i = 0; i < sub_count && received < recv_batch; ++i) {
+            const size_t idx = (rr_cursor + i) % sub_count;
             const int rc =
-              zmq_recv (subs[i], recv_buf.data (), recv_buf.size (), ZMQ_DONTWAIT);
+              zmq_recv (subs[idx], recv_buf.data (), recv_buf.size (), ZMQ_DONTWAIT);
             if (rc >= 0) {
                 ++received;
                 got_any = true;
+                rr_cursor = (idx + 1) % sub_count;
                 continue;
             }
             if (zmq_errno () != EAGAIN && zmq_errno () != EINTR)
@@ -67,23 +77,50 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
     return received;
 }
 
+int recv_available_subscribers (const std::vector<void *> &subs,
+                                std::vector<zmq_pollitem_t> &poll_items,
+                                std::vector<char> &recv_buf,
+                                size_t &rr_cursor,
+                                int recv_batch,
+                                long poll_timeout_ms)
+{
+    int total = 0;
+    long timeout = poll_timeout_ms;
+    while (true) {
+        const int count = recv_batch_subscribers (
+          subs, poll_items, recv_buf, rr_cursor, recv_batch, timeout);
+        if (count < 0)
+            return -1;
+        if (count == 0)
+            return total;
+        total += count;
+        if (count < recv_batch)
+            return total;
+        timeout = 0;
+    }
+}
+
 void drain_subscribers_queues (const std::vector<void *> &subs,
                                std::vector<char> &recv_buf,
+                               size_t &rr_cursor,
                                int drain_ms)
 {
     if (subs.empty ())
         return;
 
+    const size_t sub_count = subs.size ();
     const auto deadline = std::chrono::steady_clock::now ()
                           + std::chrono::milliseconds (std::max (0, drain_ms));
     while (std::chrono::steady_clock::now () < deadline) {
         bool got_any = false;
-        for (size_t i = 0; i < subs.size (); ++i) {
+        for (size_t i = 0; i < sub_count; ++i) {
+            const size_t idx = (rr_cursor + i) % sub_count;
             while (true) {
                 const int rc = zmq_recv (
-                  subs[i], recv_buf.data (), recv_buf.size (), ZMQ_DONTWAIT);
+                  subs[idx], recv_buf.data (), recv_buf.size (), ZMQ_DONTWAIT);
                 if (rc >= 0) {
                     got_any = true;
+                    rr_cursor = (idx + 1) % sub_count;
                     continue;
                 }
                 const int err = zmq_errno ();
@@ -105,6 +142,65 @@ struct pubsub_measure_result_t
     pubsub_measure_result_t () : measure_recv (0), failed (false) {}
 };
 
+bool run_pubsub_warmup (void *pub,
+                        const std::vector<void *> &subs,
+                        const multi_bench_settings_t &settings,
+                        const std::vector<char> &buffer,
+                        std::vector<char> &recv_buf,
+                        long poll_timeout_ms)
+{
+    if (!pub || subs.empty ())
+        return false;
+
+    const int warmup_seconds =
+      resolve_bench_count ("BENCH_MULTI_WARMUP_SECONDS", 1);
+    if (warmup_seconds <= 0)
+        return true;
+
+    std::vector<zmq_pollitem_t> poll_items;
+    poll_items.reserve (subs.size ());
+    for (size_t i = 0; i < subs.size (); ++i) {
+        zmq_pollitem_t item = {subs[i], 0, ZMQ_POLLIN, 0};
+        poll_items.push_back (item);
+    }
+    size_t rr_cursor = 0;
+    const int recv_batch =
+      std::max (settings.recv_batch, static_cast<int> (subs.size ()));
+    const int target_drain = std::max (1, static_cast<int> (subs.size ()));
+
+    const auto warmup_end = std::chrono::steady_clock::now ()
+                            + std::chrono::seconds (warmup_seconds);
+    while (std::chrono::steady_clock::now () < warmup_end) {
+        bool progressed = false;
+        const multi_send_result_t rc = send_pub_blocking (pub, buffer);
+        if (rc == multi_send_error)
+            return false;
+        if (rc == multi_send_ok)
+            progressed = true;
+
+        int drained = 0;
+        long timeout = poll_timeout_ms;
+        while (drained < target_drain) {
+            const int count = recv_available_subscribers (
+              subs, poll_items, recv_buf, rr_cursor, recv_batch, timeout);
+            if (count < 0)
+                return false;
+            if (count == 0)
+                break;
+            progressed = true;
+            drained += count;
+            timeout = 0;
+        }
+
+        if (!progressed)
+            std::this_thread::yield ();
+    }
+
+    drain_subscribers_queues (
+      subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 1000));
+    return true;
+}
+
 pubsub_measure_result_t run_pubsub_measure (void *pub,
                                             const std::vector<void *> &subs,
                                             const multi_bench_settings_t &settings,
@@ -124,74 +220,42 @@ pubsub_measure_result_t run_pubsub_measure (void *pub,
         zmq_pollitem_t item = {subs[i], 0, ZMQ_POLLIN, 0};
         poll_items.push_back (item);
     }
-
-    std::atomic<int> phase (0); // 0=settle, 1=measure, 2=drain, 3=stop
-    std::atomic<bool> fatal (false);
-    std::atomic<long> measure_recv (0);
-
-    std::thread receiver ([&] () {
-        while (!fatal.load (std::memory_order_acquire)) {
-            const int cur = phase.load (std::memory_order_acquire);
-            if (cur == 3)
-                break;
-
-            const int count = recv_batch_subscribers (
-              subs, poll_items, recv_buf, settings.recv_batch, poll_timeout_ms);
-            if (count < 0) {
-                fatal.store (true, std::memory_order_release);
-                break;
-            }
-            if (count == 0) {
-                std::this_thread::sleep_for (std::chrono::microseconds (50));
-                continue;
-            }
-
-            if (cur == 1)
-                measure_recv.fetch_add (count, std::memory_order_relaxed);
-        }
-    });
-
-    if (settings.settle_ms > 0)
-        std::this_thread::sleep_for (std::chrono::milliseconds (settings.settle_ms));
-
-    phase.store (1, std::memory_order_release);
-
+    size_t rr_cursor = 0;
+    const int recv_batch =
+      std::max (settings.recv_batch, static_cast<int> (subs.size ()));
+    const int target_drain = std::max (1, static_cast<int> (subs.size ()));
+    long measure_recv = 0;
     const auto measure_end =
       std::chrono::steady_clock::now ()
       + std::chrono::seconds (std::max (1, settings.measure_seconds));
 
-    while (std::chrono::steady_clock::now () < measure_end
-           && !fatal.load (std::memory_order_acquire)) {
+    while (std::chrono::steady_clock::now () < measure_end) {
         const multi_send_result_t rc = send_pub_blocking (pub, buffer);
-        if (rc == multi_send_ok)
-            continue;
         if (rc == multi_send_error) {
-            fatal.store (true, std::memory_order_release);
+            out.failed = true;
             break;
         }
 
-        if (settings.send_backoff_us > 0)
-            std::this_thread::sleep_for (
-              std::chrono::microseconds (settings.send_backoff_us));
-        else
-            std::this_thread::yield ();
+        int drained = 0;
+        long timeout = poll_timeout_ms;
+        while (drained < target_drain) {
+            const int count = recv_available_subscribers (
+              subs, poll_items, recv_buf, rr_cursor, recv_batch, timeout);
+            if (count < 0) {
+                out.failed = true;
+                break;
+            }
+            if (count == 0)
+                break;
+            measure_recv += count;
+            drained += count;
+            timeout = 0;
+        }
+        if (out.failed)
+            break;
     }
 
-    phase.store (2, std::memory_order_release);
-    const auto drain_deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (0, settings.drain_ms));
-    while (std::chrono::steady_clock::now () < drain_deadline
-           && !fatal.load (std::memory_order_acquire)) {
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-
-    phase.store (3, std::memory_order_release);
-    if (receiver.joinable ())
-        receiver.join ();
-
-    out.measure_recv = measure_recv.load (std::memory_order_relaxed);
-    out.failed = fatal.load (std::memory_order_acquire);
+    out.measure_recv = measure_recv;
     return out;
 }
 
@@ -303,14 +367,14 @@ void run_multi_pubsub (const std::string &transport,
         return;
 
     const int linger_ms = 0;
-    const int sndbuf = resolve_bench_count ("BENCH_MULTI_SNDBUF", 8388608);
-    const int rcvbuf = resolve_bench_count ("BENCH_MULTI_RCVBUF", 8388608);
+    const int pubsub_hwm = resolve_bench_count ("BENCH_MULTI_PUBSUB_HWM", 5000);
     const int sndtimeo_ms =
       resolve_bench_count ("BENCH_MULTI_SNDTIMEO_MS", 5000);
+    const int rcvtimeo_ms =
+      resolve_bench_count ("BENCH_MULTI_RCVTIMEO_MS", 5000);
     set_sockopt_int (pub, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
-    set_sockopt_int (pub, ZMQ_SNDBUF, sndbuf, "ZMQ_SNDBUF");
     set_sockopt_int (pub, ZMQ_SNDTIMEO, sndtimeo_ms, "ZMQ_SNDTIMEO");
-    apply_benchmark_hwm (pub, settings.hwm);
+    apply_benchmark_hwm (pub, pubsub_hwm);
 
     std::vector<void *> subs (settings.clients, NULL);
     for (size_t i = 0; i < subs.size (); ++i) {
@@ -323,8 +387,8 @@ void run_multi_pubsub (const std::string &transport,
         }
         zmq_setsockopt (subs[i], ZMQ_SUBSCRIBE, "", 0);
         set_sockopt_int (subs[i], ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
-        set_sockopt_int (subs[i], ZMQ_RCVBUF, rcvbuf, "ZMQ_RCVBUF");
-        apply_benchmark_hwm (subs[i], settings.hwm);
+        set_sockopt_int (subs[i], ZMQ_RCVTIMEO, rcvtimeo_ms, "ZMQ_RCVTIMEO");
+        apply_benchmark_hwm (subs[i], pubsub_hwm);
     }
 
     connect_monitor_t server_monitor;
@@ -367,7 +431,7 @@ void run_multi_pubsub (const std::string &transport,
         poll_timeout_ms = resolve_bench_count ("BENCH_PUBSUB_POLL_TIMEOUT_MS", 50);
     }
     const int measure_poll_timeout_ms =
-      resolve_bench_count ("BENCH_MULTI_PUBSUB_MEASURE_POLL_TIMEOUT_MS", 0);
+      resolve_bench_count ("BENCH_MULTI_PUBSUB_MEASURE_POLL_TIMEOUT_MS", 1);
 
     double connect_prep_ms = 0.0;
     double ready_wait_ms = 0.0;
@@ -409,11 +473,20 @@ void run_multi_pubsub (const std::string &transport,
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
         std::vector<char> recv_buf (std::max<size_t> (1, current_size));
 
+        if (!run_pubsub_warmup (
+              pub, subs, settings, buffer, recv_buf, poll_timeout_ms)) {
+            print_result (
+              lib_name, "MULTI_PUBSUB", transport, current_size, 0.0, 0.0);
+            cleanup ();
+            return;
+        }
+
         const pubsub_measure_result_t bench = run_pubsub_measure (
           pub, subs, settings, buffer, recv_buf, measure_poll_timeout_ms);
 
+        size_t rr_cursor = 0;
         drain_subscribers_queues (
-          subs, recv_buf, std::max (settings.drain_ms, 2000));
+          subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 2000));
 
         double latency = 0.0;
         ctx_guard_t lat_ctx;
@@ -423,7 +496,7 @@ void run_multi_pubsub (const std::string &transport,
               transport,
               lib_name,
               current_size,
-              settings.hwm,
+              pubsub_hwm,
               settings.connect_ready_timeout_ms,
               poll_timeout_ms);
         }

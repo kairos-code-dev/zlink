@@ -22,19 +22,6 @@ bool env_flag_default_true (const char *name_)
 const bool stream_notify_queue_deque =
   env_flag_default_true ("ZLINK_ASIO_STREAM_NOTIFY_QUEUE_DEQUE");
 
-int parse_positive_int_env (const char *name_, int default_value_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return default_value_;
-
-    char *end = NULL;
-    const long value = std::strtol (env, &end, 10);
-    if (!end || end == env || value <= 0 || value > INT_MAX)
-        return default_value_;
-    return static_cast<int> (value);
-}
-
 int parse_non_negative_int_env (const char *name_, int default_value_)
 {
     const char *env = std::getenv (name_);
@@ -48,8 +35,7 @@ int parse_non_negative_int_env (const char *name_, int default_value_)
     return static_cast<int> (value);
 }
 
-const int stream_batch_size_min =
-  parse_positive_int_env ("ZLINK_ASIO_STREAM_BATCH_SIZE", 12288);
+const int stream_batch_size_min = 12288;
 
 // Keep a small read headroom so framed application protocols (e.g. length
 // prefix + payload) are less likely to split at the exact payload boundary.
@@ -64,6 +50,7 @@ int apply_headroom (int base_, int headroom_)
         return base_;
     return base_ + headroom_;
 }
+
 }
 
 zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
@@ -83,8 +70,9 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     if (options.rcvbuf < 0)
         options.rcvbuf = 262144;
     const int stream_batch_size = stream_batch_size_min;
+    const int stream_in_batch_base = stream_batch_size;
     const int stream_read_batch_size =
-      apply_headroom (stream_batch_size, stream_batch_read_headroom);
+      apply_headroom (stream_in_batch_base, stream_batch_read_headroom);
     if (options.in_batch_size < stream_read_batch_size)
         options.in_batch_size = stream_read_batch_size;
     if (options.out_batch_size < stream_batch_size)

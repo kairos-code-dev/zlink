@@ -146,6 +146,56 @@ const size_t asio_stream_read_drain_max_loops = 16;
 
 const size_t asio_stream_read_drain_max_bytes = 1048576;
 
+size_t stream_decoder_initial_read_target (const zlink::options_t &options_)
+{
+    if (options_.in_batch_size > 0)
+        return static_cast<size_t> (options_.in_batch_size);
+    return 8192;
+}
+
+size_t stream_decoder_max_read_target (const zlink::options_t &options_)
+{
+    size_t max_target = stream_decoder_initial_read_target (options_);
+
+    if (options_.rcvbuf > 0
+        && static_cast<size_t> (options_.rcvbuf) > max_target)
+        max_target = static_cast<size_t> (options_.rcvbuf);
+
+    if (options_.maxmsgsize > 0
+        && static_cast<size_t> (options_.maxmsgsize) < max_target)
+        max_target = static_cast<size_t> (options_.maxmsgsize);
+
+    if (max_target == 0)
+        return stream_decoder_initial_read_target (options_);
+
+    return max_target;
+}
+
+size_t stream_encoder_initial_write_target (const zlink::options_t &options_)
+{
+    if (options_.out_batch_size > 0)
+        return static_cast<size_t> (options_.out_batch_size);
+    return 8192;
+}
+
+size_t stream_encoder_max_write_target (const zlink::options_t &options_)
+{
+    size_t max_target = stream_encoder_initial_write_target (options_);
+
+    if (options_.sndbuf > 0
+        && static_cast<size_t> (options_.sndbuf) > max_target)
+        max_target = static_cast<size_t> (options_.sndbuf);
+
+    if (options_.maxmsgsize > 0
+        && static_cast<size_t> (options_.maxmsgsize) < max_target)
+        max_target = static_cast<size_t> (options_.maxmsgsize);
+
+    if (max_target == 0)
+        return stream_encoder_initial_write_target (options_);
+
+    return max_target;
+}
+
 }
 
 zlink::asio_engine_t::asio_engine_t (
@@ -195,6 +245,15 @@ zlink::asio_engine_t::asio_engine_t (
     _gather_body_size (0),
     _terminating (false),
     _read_buffer_ptr (NULL),
+    _last_read_request_size (0),
+    _last_read_had_partial_prefix (false),
+    _stream_decoder_read_target_size (
+      stream_decoder_initial_read_target (options_)),
+    _stream_decoder_read_target_max (stream_decoder_max_read_target (options_)),
+    _stream_encoder_write_target_size (
+      stream_encoder_initial_write_target (options_)),
+    _stream_encoder_write_target_max (stream_encoder_max_write_target (options_)),
+    _stream_encoder_pending_resize_size (0),
     _session (NULL),
     _socket (NULL)
 {
@@ -461,6 +520,8 @@ void zlink::asio_engine_t::start_async_read ()
 
     _read_pending = true;
     _read_from_pending_pool = false;
+    _last_read_request_size = 0;
+    _last_read_had_partial_prefix = false;
 
     //  Get buffer from decoder if available
     size_t read_size;
@@ -483,6 +544,8 @@ void zlink::asio_engine_t::start_async_read ()
         _read_buffer_ptr = _pending_read_buffer.data ();
         _read_from_pending_pool = true;
     } else if (_decoder) {
+        const bool had_partial_prefix = _insize > 0;
+        prime_stream_decoder_read_target ();
         _decoder->get_buffer (&_read_buffer_ptr, &read_size);
 
         //  If we have partial data from previous read, move it to buffer start.
@@ -499,11 +562,14 @@ void zlink::asio_engine_t::start_async_read ()
             _read_buffer_ptr += _insize;
             read_size -= _insize;
         }
+        _last_read_had_partial_prefix = had_partial_prefix;
     } else {
         //  During handshake, use internal buffer
         _read_buffer_ptr = _read_buffer.data ();
         read_size = _read_buffer.size ();
     }
+
+    _last_read_request_size = read_size;
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
     if (_transport) {
@@ -537,11 +603,15 @@ bool zlink::asio_engine_t::speculative_read ()
         return false;
 
     _last_speculative_read_bytes = 0;
+    _last_read_request_size = 0;
+    _last_read_had_partial_prefix = false;
 
     //  Prepare read buffer the same way as start_async_read().
     size_t read_size;
 
     if (_decoder) {
+        const bool had_partial_prefix = _insize > 0;
+        prime_stream_decoder_read_target ();
         _decoder->get_buffer (&_read_buffer_ptr, &read_size);
 
         //  If we have partial data from previous read, move it to buffer start.
@@ -556,6 +626,7 @@ bool zlink::asio_engine_t::speculative_read ()
             _read_buffer_ptr += _insize;
             read_size -= _insize;
         }
+        _last_read_had_partial_prefix = had_partial_prefix;
     } else {
         _read_buffer_ptr = _read_buffer.data ();
         read_size = _read_buffer.size ();
@@ -563,6 +634,8 @@ bool zlink::asio_engine_t::speculative_read ()
 
     if (read_size == 0)
         return false;
+
+    _last_read_request_size = read_size;
 
     errno = 0;
     const std::size_t bytes =
@@ -622,6 +695,8 @@ bool zlink::asio_engine_t::speculative_read ()
         _total_pending_bytes += bytes;
         return true;
     }
+
+    maybe_grow_stream_decoder_read_target (bytes);
 
     if (_decoder && _insize > 0) {
         const size_t partial_size = _insize;
@@ -828,6 +903,94 @@ bool zlink::asio_engine_t::use_stream_rx_slab () const
     return _options.type == ZLINK_STREAM && asio_stream_enable_rx_slab;
 }
 
+bool zlink::asio_engine_t::use_stream_dynamic_read_growth () const
+{
+    return _options.type == ZLINK_STREAM && _decoder != NULL
+           && _stream_decoder_read_target_max > _stream_decoder_read_target_size;
+}
+
+bool zlink::asio_engine_t::use_stream_dynamic_write_growth () const
+{
+    return _options.type == ZLINK_STREAM && _encoder != NULL
+           && _stream_encoder_write_target_max > _stream_encoder_write_target_size;
+}
+
+void zlink::asio_engine_t::prime_stream_decoder_read_target ()
+{
+    if (_options.type != ZLINK_STREAM || !_decoder)
+        return;
+
+    _decoder->resize_buffer (_stream_decoder_read_target_size);
+}
+
+void zlink::asio_engine_t::maybe_grow_stream_decoder_read_target (
+  size_t bytes_transferred_)
+{
+    if (!use_stream_dynamic_read_growth ())
+        return;
+
+    if (_last_read_had_partial_prefix || _last_read_request_size == 0)
+        return;
+
+    if (bytes_transferred_ < _last_read_request_size)
+        return;
+
+    size_t grown = _stream_decoder_read_target_size;
+    if (grown >= _stream_decoder_read_target_max)
+        return;
+
+    if (grown > _stream_decoder_read_target_max / 2)
+        grown = _stream_decoder_read_target_max;
+    else
+        grown *= 2;
+
+    if (grown > _stream_decoder_read_target_max)
+        grown = _stream_decoder_read_target_max;
+
+    if (grown <= _stream_decoder_read_target_size)
+        return;
+
+    _stream_decoder_read_target_size = grown;
+    _decoder->resize_buffer (_stream_decoder_read_target_size);
+}
+
+void zlink::asio_engine_t::apply_pending_stream_encoder_resize ()
+{
+    if (_options.type != ZLINK_STREAM || !_encoder)
+        return;
+
+    if (_stream_encoder_pending_resize_size <= _stream_encoder_write_target_size)
+        return;
+
+    _stream_encoder_write_target_size = _stream_encoder_pending_resize_size;
+    _stream_encoder_pending_resize_size = 0;
+    _encoder->resize_buffer (_stream_encoder_write_target_size);
+}
+
+void zlink::asio_engine_t::maybe_schedule_stream_encoder_growth (
+  size_t filled_out_batch_)
+{
+    if (!use_stream_dynamic_write_growth ())
+        return;
+
+    if (filled_out_batch_ < _stream_encoder_write_target_size)
+        return;
+
+    size_t grown = _stream_encoder_write_target_size;
+    if (grown > _stream_encoder_write_target_max / 2)
+        grown = _stream_encoder_write_target_max;
+    else
+        grown *= 2;
+
+    if (grown > _stream_encoder_write_target_max)
+        grown = _stream_encoder_write_target_max;
+
+    if (grown <= _stream_encoder_write_target_size)
+        return;
+
+    _stream_encoder_pending_resize_size = grown;
+}
+
 void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec,
                                            std::size_t bytes_transferred)
 {
@@ -926,6 +1089,8 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
         start_async_read ();
         return;
     }
+
+    maybe_grow_stream_decoder_read_target (bytes_transferred);
 
     //  Handle buffer pointers based on whether we have partial data
     if (_decoder && _insize > 0) {
@@ -1192,11 +1357,17 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
         return false;
     }
 
+    apply_pending_stream_encoder_resize ();
+
     _outpos = NULL;
     _outsize = _encoder->encode (&_outpos, 0);
 
     const size_t max_out_batch = static_cast<size_t> (_options.out_batch_size);
-    size_t target_out_batch = max_out_batch;
+    size_t target_out_batch =
+      _options.type == ZLINK_STREAM ? _stream_encoder_write_target_size
+                                    : max_out_batch;
+    if (target_out_batch < max_out_batch)
+        target_out_batch = max_out_batch;
 
     while (_outsize < target_out_batch) {
         if ((this->*_next_msg) (&_tx_msg) == -1) {
@@ -1215,6 +1386,8 @@ bool zlink::asio_engine_t::prepare_output_buffer ()
             _outpos = bufptr;
         _outsize += n;
     }
+
+    maybe_schedule_stream_encoder_growth (_outsize);
 
     ENGINE_DBG ("prepare_output_buffer: prepared %zu bytes", _outsize);
     return _outsize > 0;
@@ -1421,6 +1594,13 @@ void zlink::asio_engine_t::restart_output ()
 
 bool zlink::asio_engine_t::restart_input ()
 {
+    //  write_activated() can be delivered even when input flow is already
+    //  running. In that case restart is a no-op.
+    if (unlikely (!_input_stopped)) {
+        ENGINE_DBG ("restart_input: ignored (input not stopped)");
+        return true;
+    }
+
     return restart_input_internal ();
 }
 

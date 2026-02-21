@@ -5,7 +5,7 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 1
-#define ZLINK_VERSION_MINOR 1
+#define ZLINK_VERSION_MINOR 3
 #define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
@@ -349,6 +349,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_KEEPALIVE_CNT 35
 #define ZLINK_TCP_KEEPALIVE_IDLE 36
 #define ZLINK_TCP_KEEPALIVE_INTVL 37
+#define ZLINK_TCP_NODELAY 118
 #define ZLINK_IMMEDIATE 39
 #define ZLINK_XPUB_VERBOSE 40
 #define ZLINK_IPV6 42
@@ -362,6 +363,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_BLOCKY 70
 #define ZLINK_XPUB_MANUAL 71
 #define ZLINK_XPUB_WELCOME_MSG 72
+#define ZLINK_STREAM_NOTIFY 73
 #define ZLINK_INVERT_MATCHING 74
 #define ZLINK_HEARTBEAT_IVL 75
 #define ZLINK_HEARTBEAT_TTL 76

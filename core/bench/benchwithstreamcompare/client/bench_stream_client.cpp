@@ -346,7 +346,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     bool connect_reported;
     bool write_inflight;
     bool read_inflight;
-    bool outstanding;
+    size_t outstanding;
 
     size_t chunk_size;
     std::chrono::steady_clock::time_point connect_deadline;
@@ -556,9 +556,10 @@ class bench_client_t
         timeout_error_measure.fetch_add (count, std::memory_order_relaxed);
     }
 
-    void on_abandon ()
+    void on_abandon (long count)
     {
-        outstanding_total.fetch_sub (1, std::memory_order_relaxed);
+        if (count > 0)
+            outstanding_total.fetch_sub (count, std::memory_order_relaxed);
     }
 
     int inflight_limit () const { return std::max (1, opt.inflight); }
@@ -794,7 +795,7 @@ client_session_t::client_session_t (bench_client_t &owner_,
       connect_reported (false),
       write_inflight (false),
       read_inflight (false),
-      outstanding (false),
+      outstanding (0),
       chunk_size (64),
       connect_deadline (),
       endpoint (),
@@ -828,11 +829,6 @@ void client_session_t::set_chunk_size (size_t size,
     boost::asio::post (strand, [self, size, latch] () {
         if (!self->closed) {
             self->chunk_size = size;
-            const size_t wire_size = size + 4;
-            if (self->write_buf.size () != wire_size)
-                self->write_buf.resize (wire_size);
-            if (self->read_buf.size () != wire_size)
-                self->read_buf.resize (wire_size);
         }
         if (latch) {
             {
@@ -934,9 +930,11 @@ void client_session_t::maybe_send_more ()
 {
     if (closed || !connected ())
         return;
-    if (write_inflight || read_inflight || outstanding)
+    if (write_inflight)
         return;
     if (!owner.allow_send ())
+        return;
+    if (outstanding >= static_cast<size_t> (owner.inflight_limit ()))
         return;
 
     send_one ();
@@ -963,7 +961,7 @@ void client_session_t::send_one ()
     }
 
     owner.on_send_begin (size);
-    outstanding = true;
+    ++outstanding;
     write_inflight = true;
 
     const std::shared_ptr<client_session_t> self = shared_from_this ();
@@ -985,20 +983,23 @@ void client_session_t::on_write (const boost::system::error_code &ec, size_t byt
 
     if (ec || bytes != write_buf.size ()) {
         owner.on_send_error ();
-        if (outstanding) {
-            outstanding = false;
-            owner.on_abandon ();
+        if (outstanding > 0) {
+            --outstanding;
+            owner.on_abandon (1);
         }
         close_internal ();
         return;
     }
 
     start_read ();
+    maybe_send_more ();
 }
 
 void client_session_t::start_read ()
 {
     if (closed || !connected ())
+        return;
+    if (read_inflight)
         return;
 
     const size_t wire_size = chunk_size + 4;
@@ -1026,9 +1027,10 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
 
     if (ec || bytes != read_buf.size ()) {
         owner.on_recv_error ();
-        if (outstanding) {
-            outstanding = false;
-            owner.on_abandon ();
+        if (outstanding > 0) {
+            const long dropped = static_cast<long> (outstanding);
+            outstanding = 0;
+            owner.on_abandon (dropped);
         }
         close_internal ();
         return;
@@ -1036,9 +1038,10 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
 
     if (bytes < 4) {
         owner.on_recv_error ();
-        if (outstanding) {
-            outstanding = false;
-            owner.on_abandon ();
+        if (outstanding > 0) {
+            const long dropped = static_cast<long> (outstanding);
+            outstanding = 0;
+            owner.on_abandon (dropped);
         }
         close_internal ();
         return;
@@ -1047,9 +1050,10 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
     const uint32_t declared = load_u32_be (&read_buf[0]);
     if (declared != static_cast<uint32_t> (chunk_size)) {
         owner.on_recv_error ();
-        if (outstanding) {
-            outstanding = false;
-            owner.on_abandon ();
+        if (outstanding > 0) {
+            const long dropped = static_cast<long> (outstanding);
+            outstanding = 0;
+            owner.on_abandon (dropped);
         }
         close_internal ();
         return;
@@ -1065,12 +1069,14 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
         sent_ns = load_u64_be (payload_ptr + 8);
     }
 
-    if (outstanding) {
-        outstanding = false;
+    if (outstanding > 0) {
+        --outstanding;
         owner.on_recv_done (payload_bytes, seq, sent_ns);
     }
 
     maybe_send_more ();
+    if (outstanding > 0)
+        start_read ();
 }
 
 void client_session_t::request_close ()
@@ -1085,9 +1091,10 @@ void client_session_t::close_internal ()
         return;
     closed = true;
 
-    if (outstanding) {
-        outstanding = false;
-        owner.on_abandon ();
+    if (outstanding > 0) {
+        const long dropped = static_cast<long> (outstanding);
+        outstanding = 0;
+        owner.on_abandon (dropped);
     }
 
     boost::system::error_code ec;
@@ -1118,12 +1125,6 @@ bool parse_options (int argc, char **argv, client_options_t &opt)
             std::fprintf (stderr, "invalid --sizes: %s\n", sizes_text.c_str ());
             return false;
         }
-    }
-
-    if (opt.inflight != 1) {
-        std::fprintf (stderr,
-                      "bench_stream_client: inflight is fixed to 1; forcing --inflight=1\n");
-        opt.inflight = 1;
     }
 
     return true;

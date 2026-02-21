@@ -133,10 +133,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
                     multi/zlink/bench_zlink_multi_pubsub.cpp)
     add_zlink_bench_multi(comp_zlink_multi_stream
                     multi/zlink/bench_zlink_multi_stream.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_e2e_server
-                    multi_e2e/zlink/bench_zlink_multi_e2e_server.cpp)
-    add_zlink_bench_multi(comp_zlink_multi_e2e_client
-                    multi_e2e/zlink/bench_zlink_multi_e2e_client.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()
@@ -162,10 +158,6 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND STD_LIBZMQ_LIBRARY)
                       multi/libzmq/bench_zmq_multi_pubsub.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_stream
                       multi/libzmq/bench_zmq_multi_stream.cpp)
-    add_std_zmq_bench_multi(comp_std_zmq_multi_e2e_server
-                      multi_e2e/libzmq/bench_zmq_multi_e2e_server.cpp)
-    add_std_zmq_bench_multi(comp_std_zmq_multi_e2e_client
-                      multi_e2e/libzmq/bench_zmq_multi_e2e_client.cpp)
 else()
     message(STATUS "Standard libzmq not found. Comparative benchmarks will be skipped.")
 endif()

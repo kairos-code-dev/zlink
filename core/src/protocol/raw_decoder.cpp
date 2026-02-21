@@ -12,6 +12,16 @@ zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_, int64_t maxmsgsize_) :
     errno_assert (rc == 0);
 }
 
+zlink::raw_decoder_t::raw_decoder_t (size_t bufsize_,
+                                     int64_t maxmsgsize_,
+                                     size_t max_buffer_size_) :
+    _allocator (bufsize_, 1, max_buffer_size_),
+    _max_msg_size (maxmsgsize_)
+{
+    const int rc = _in_progress.init ();
+    errno_assert (rc == 0);
+}
+
 zlink::raw_decoder_t::~raw_decoder_t ()
 {
     const int rc = _in_progress.close ();

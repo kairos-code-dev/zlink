@@ -33,7 +33,7 @@ print_total_time() {
 trap 'print_total_time $?' EXIT
 
 DEFAULT_PATTERN="router_router"
-DEFAULT_TRANSPORT="tcp"
+DEFAULT_TRANSPORT="tcp,tls,ws,wss"
 
 normalize_pattern() {
   local raw="${1:-}"
@@ -138,7 +138,7 @@ usage() {
   cat <<'USAGE'
 Usage: core/bench/benchwithzmq/multi/run_benchmarks.sh [options]
 
-Run one multi benchmark pattern with one transport and compare libzmq vs zlink.
+Run one multi benchmark pattern with one or more transports and compare libzmq vs zlink.
 
 Options:
   --pattern NAME                One pattern (default: router_router)
@@ -147,7 +147,8 @@ Options:
                                          pubsub, stream
                                 Also accepts MULTI_* legacy names.
   --runs N                      Iterations per configuration (default: 1)
-  --transport NAME              One transport (default: tcp)
+  --transport NAME              Transport(s), comma-separated allowed
+                                (default: tcp,tls,ws,wss)
   --transports NAME             Alias for --transport
   --zlink-only                  Re-measure only zlink (compare with cached libzmq)
   --single [N]                  Also run matching single pattern after multi
@@ -347,10 +348,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${TRANSPORT}" == *","* ]]; then
-  echo "Error: only one transport is supported. Use a single value (e.g. tcp)." >&2
-  exit 1
-fi
 if [[ -z "${TRANSPORT}" ]]; then
   echo "Error: --transport requires a non-empty value." >&2
   exit 1
@@ -366,10 +363,6 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
   exit 1
 }
 PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
-if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" && "${TRANSPORT}" != "tcp" ]]; then
-  echo "Error: benchwithzmq STREAM supports only tcp transport." >&2
-  exit 1
-fi
 
 if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
   DATE_DIR="$(date +%Y%m%d)"
@@ -410,7 +403,14 @@ if [[ -n "${MULTI_MONITOR_HWM}" ]]; then
   export BENCH_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}"
 fi
 
-effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-100}}"
+effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}"
+if [[ -z "${effective_clients}" ]]; then
+  if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
+    effective_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+  else
+    effective_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-100}"
+  fi
+fi
 effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"
 ensure_nofile_limit "${effective_clients}"
 if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
@@ -433,9 +433,7 @@ if [[ -n "${BENCH_IO_THREADS:-}" ]]; then
   echo "Config: io_threads=${BENCH_IO_THREADS}"
 fi
 
-if [[ -n "${MULTI_CLIENTS}" ]]; then
-  export BENCH_MULTI_CLIENTS="${MULTI_CLIENTS}"
-fi
+export BENCH_MULTI_CLIENTS="${effective_clients}"
 if [[ -n "${MULTI_INFLIGHT}" ]]; then
   export BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}"
 fi

@@ -106,6 +106,24 @@ template <typename T> class encoder_base_t : public i_encoder
         (static_cast<T *> (this)->*_next) ();
     }
 
+    void resize_buffer (size_t new_size_) ZLINK_FINAL
+    {
+        if (new_size_ == 0 || new_size_ == _buf_size)
+            return;
+
+        unsigned char *resized =
+          static_cast<unsigned char *> (realloc (_buf, new_size_));
+        alloc_assert (resized);
+
+        if (_write_pos && _write_pos >= _buf && _write_pos <= _buf + _buf_size) {
+            const size_t offset = static_cast<size_t> (_write_pos - _buf);
+            _write_pos = resized + offset;
+        }
+
+        _buf = resized;
+        _buf_size = new_size_;
+    }
+
   protected:
     //  Prototype of state machine action.
     typedef void (T::*step_t) ();
@@ -139,8 +157,8 @@ template <typename T> class encoder_base_t : public i_encoder
     bool _new_msg_flag;
 
     //  The buffer for encoded data.
-    const size_t _buf_size;
-    unsigned char *const _buf;
+    size_t _buf_size;
+    unsigned char *_buf;
 
     msg_t *_in_progress;
 

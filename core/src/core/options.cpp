@@ -159,8 +159,6 @@ zlink::options_t::options_t () :
     maxmsgsize (-1),
     rcvtimeo (-1),
     sndtimeo (-1),
-    request_timeout (5000),
-    request_correlate (true),
     ipv6 (false),
     immediate (0),
     filter (false),
@@ -339,17 +337,6 @@ int zlink::options_t::setsockopt (int option_,
                 return 0;
             }
             break;
-
-        case ZLINK_REQUEST_TIMEOUT:
-            if (is_int && value >= -1) {
-                request_timeout = value;
-                return 0;
-            }
-            break;
-
-        case ZLINK_REQUEST_CORRELATE:
-            return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
-                                                     &request_correlate);
 
         case ZLINK_IPV6:
             return do_setsockopt_int_as_bool_strict (optval_, optvallen_,
@@ -653,20 +640,6 @@ int zlink::options_t::getsockopt (int option_,
         case ZLINK_SNDTIMEO:
             if (is_int) {
                 *value = sndtimeo;
-                return 0;
-            }
-            break;
-
-        case ZLINK_REQUEST_TIMEOUT:
-            if (is_int) {
-                *value = request_timeout;
-                return 0;
-            }
-            break;
-
-        case ZLINK_REQUEST_CORRELATE:
-            if (is_int) {
-                *value = request_correlate;
                 return 0;
             }
             break;

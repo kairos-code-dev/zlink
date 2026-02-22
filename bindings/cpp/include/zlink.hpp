@@ -107,8 +107,6 @@ enum class socket_option : int
     tcp_maxrt = ZLINK_TCP_MAXRT,
     multicast_maxtpdu = ZLINK_MULTICAST_MAXTPDU,
     use_fd = ZLINK_USE_FD,
-    request_timeout = ZLINK_REQUEST_TIMEOUT,
-    request_correlate = ZLINK_REQUEST_CORRELATE,
     bindtodevice = ZLINK_BINDTODEVICE,
     tls_cert = ZLINK_TLS_CERT,
     tls_key = ZLINK_TLS_KEY,

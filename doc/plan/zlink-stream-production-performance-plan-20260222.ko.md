@@ -7,7 +7,7 @@
 ## 0) 고정 의사결정
 
 1. 공개 API 시그니처는 유지한다.
-- `zlink_stream_start()`, `zlink_stream_stop()`, `zlink_stream_send()`
+- `zlink_stream_attach()`, `zlink_stream_detach()`, `zlink_stream_send()`
 - `zlink_stream_on_packets_fn` 시그니처 유지
 
 2. 성능 목표는 아래 2개 스택에 대해 동시에 적용한다.

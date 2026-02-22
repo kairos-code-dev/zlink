@@ -40,7 +40,6 @@ export declare const SocketOption: {
   readonly HEARTBEAT_TIMEOUT: 77; readonly XPUB_VERBOSER: 78;
   readonly CONNECT_TIMEOUT: 79; readonly TCP_MAXRT: 80;
   readonly MULTICAST_MAXTPDU: 84; readonly USE_FD: 89;
-  readonly REQUEST_TIMEOUT: 90; readonly REQUEST_CORRELATE: 91;
   readonly BINDTODEVICE: 92; readonly TLS_CERT: 95;
   readonly TLS_KEY: 96; readonly TLS_CA: 97;
   readonly TLS_VERIFY: 98; readonly TLS_REQUIRE_CLIENT_CERT: 99;

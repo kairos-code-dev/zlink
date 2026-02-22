@@ -152,8 +152,6 @@
 | `ZLINK_TOS` | 57 | IP Type-of-Service 값 (`int`) |
 | `ZLINK_MULTICAST_MAXTPDU` | 84 | 최대 멀티캐스트 전송 데이터 유닛 크기 (바이트, `int`) |
 | `ZLINK_ZMP_METADATA` | 117 | 발신 연결에 ZMP 메타데이터 속성 첨부 (`binary`) |
-| `ZLINK_REQUEST_TIMEOUT` | 90 | REQ 소켓의 요청 타임아웃 (밀리초, `int`) |
-| `ZLINK_REQUEST_CORRELATE` | 91 | REQ 소켓에서 엄격한 요청-응답 상관관계 활성화 (`int`; 0 또는 1) |
 
 ## 함수
 

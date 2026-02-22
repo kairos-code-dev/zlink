@@ -84,6 +84,8 @@ Application                Stream Socket              Engine              Transp
 
 This document originally focused on WS/WSS path optimization, but STREAM now
 uses a consolidated default profile across transports.
+For non-STREAM-wide socket defaults, see
+[socket-option-defaults.md](socket-option-defaults.md).
 
 ### 6.1 Fixed internal constants
 

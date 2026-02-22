@@ -124,11 +124,11 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (zlink_stream_start (server, &zlink_stream_echo_server_t::on_packet_static,
+        if (zlink_stream_attach (server, &zlink_stream_echo_server_t::on_packet_static,
                                 ZLINK_STREAM_DISPATCH_LEN32BE)
             != 0) {
             std::fprintf (stderr,
-                          "zlink-len32be: dispatch start failed: %s\n",
+                          "zlink-len32be: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
         }
@@ -140,7 +140,7 @@ class zlink_stream_echo_server_t
         while (!stop.load (std::memory_order_acquire))
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
 
-        (void) zlink_stream_stop (server);
+        (void) zlink_stream_detach (server);
 
         std::printf ("%s\n",
                      stream_echo::make_metric_line (

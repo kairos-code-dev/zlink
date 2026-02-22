@@ -205,7 +205,7 @@ void test_stream_auto_routing_id_size ()
 
     g_stream_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_start (server, on_stream_packet, 0));
+      zlink_stream_attach (server, on_stream_packet, 0));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -238,7 +238,7 @@ void test_stream_auto_routing_id_size ()
     TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load (std::memory_order_acquire));
 
     close_raw_fd (client_fd);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);

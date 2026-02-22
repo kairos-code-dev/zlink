@@ -84,6 +84,8 @@ Application                Stream Socket              Engine              Transp
 
 이 문서는 원래 WS/WSS 경로 최적화 중심이었지만, 현재 STREAM은 transport 전반에
 공통된 기본 성능 프로파일을 사용한다.
+STREAM 외 공통 소켓 기본값은
+[socket-option-defaults.ko.md](socket-option-defaults.ko.md)를 참고한다.
 
 ### 6.1 내부 상수 고정 항목
 

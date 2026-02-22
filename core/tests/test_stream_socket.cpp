@@ -582,7 +582,7 @@ void test_stream_callback_lifecycle ()
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_stream_start (pair, stream_echo_callback, 0));
+                           zlink_stream_attach (pair, stream_echo_callback, 0));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     test_context_socket_close_zero_linger (pair);
 
@@ -594,15 +594,15 @@ void test_stream_callback_lifecycle ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_start (stream, stream_echo_callback, 0));
+      zlink_stream_attach (stream, stream_echo_callback, 0));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_stream_start (stream, stream_echo_callback, 0));
+                           zlink_stream_attach (stream, stream_echo_callback, 0));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (stream));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
     g_stream_callback_probe = NULL;
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_stop (stream));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_detach (stream));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
 
     test_context_socket_close_zero_linger (stream);
@@ -639,14 +639,14 @@ void test_stream_dispatch_start_rejects_stream_notify ()
       zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &enable, sizeof (enable)));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_start (stream, stream_echo_callback, 0));
+    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_attach (stream, stream_echo_callback, 0));
     TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, errno);
 
     const int disable = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &disable, sizeof (disable)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (stream, stream_echo_callback, 0));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (stream));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (stream, stream_echo_callback, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -716,7 +716,7 @@ void test_stream_callback_echo_raw ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_start (server, stream_echo_callback, 0));
+      zlink_stream_attach (server, stream_echo_callback, 0));
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
                                 client_fd, payload, sizeof (payload) - 1));
 
@@ -748,7 +748,7 @@ void test_stream_callback_echo_raw ()
       two_part_reply, recv_two_part,
       static_cast<unsigned int> (sizeof (two_part_reply) - 1));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
 
     close_raw_fd (client_fd);
@@ -778,7 +778,7 @@ void test_stream_callback_echo_len32be ()
     probe.expected_size = sizeof (payload) - 1;
 
     g_stream_callback_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_echo_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     unsigned char req_frame[4 + sizeof (payload) - 1];
@@ -801,7 +801,7 @@ void test_stream_callback_echo_len32be ()
 
     TEST_ASSERT_TRUE (wait_counter_at_least (&probe.matched, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.send_ok.load (std::memory_order_acquire));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
 
     close_raw_fd (client_fd);
@@ -832,7 +832,7 @@ void test_stream_callback_echo_single_zero_byte ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_start (server, stream_echo_callback, 0));
+      zlink_stream_attach (server, stream_echo_callback, 0));
     TEST_ASSERT_EQUAL_INT (
       0, send_stream_packet (client_fd, payload, sizeof (payload)));
 
@@ -845,7 +845,7 @@ void test_stream_callback_echo_single_zero_byte ()
     TEST_ASSERT_TRUE (wait_counter_at_least (&probe.matched, 1, 3000));
     TEST_ASSERT_EQUAL_INT (1, probe.send_ok.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_callback_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1045,7 +1045,7 @@ void test_stream_len32be_single_frame ()
     push_expected_len32be_packet (&probe, payload, sizeof (payload) - 1);
     probe.expected_batch_sizes.push_back (1);
     g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     TEST_ASSERT_EQUAL_INT (
@@ -1065,7 +1065,7 @@ void test_stream_len32be_single_frame ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1097,7 +1097,7 @@ void test_stream_len32be_header_split ()
     push_expected_len32be_packet (&probe, payload, sizeof (payload) - 1);
     probe.expected_batch_sizes.push_back (1);
     g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (client_fd, &frame[0], 2));
@@ -1118,7 +1118,7 @@ void test_stream_len32be_header_split ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1150,7 +1150,7 @@ void test_stream_len32be_body_split ()
     push_expected_len32be_packet (&probe, payload, sizeof (payload) - 1);
     probe.expected_batch_sizes.push_back (1);
     g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     const size_t split = 4 + 5;
@@ -1172,7 +1172,7 @@ void test_stream_len32be_body_split ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1205,7 +1205,7 @@ void test_stream_len32be_multi_frame_single_read ()
     push_expected_len32be_packet (&probe, payload3, sizeof (payload3) - 1);
     probe.expected_batch_sizes.push_back (3);
     g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     std::vector<unsigned char> merged_frames;
@@ -1241,7 +1241,7 @@ void test_stream_len32be_multi_frame_single_read ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1273,7 +1273,7 @@ void test_stream_len32be_callback_lifecycle_contract ()
     probe.expected_batch_sizes.push_back (1);
     probe.expected_batch_sizes.push_back (1);
     g_stream_len32be_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_len32be_probe_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     TEST_ASSERT_EQUAL_INT (
@@ -1304,7 +1304,7 @@ void test_stream_len32be_callback_lifecycle_contract ()
     TEST_ASSERT_EQUAL_INT (0, probe.bad_batch.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_len32be_probe = NULL;
     close_raw_fd (client_fd);
     test_context_socket_close_zero_linger (server);
@@ -1441,7 +1441,7 @@ void test_stream_raw_multiclient_load_integrity ()
     probe.expected_payload_size = payload_size;
     g_stream_raw_load_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_start (server, stream_raw_load_echo_callback, 0));
+      zlink_stream_attach (server, stream_raw_load_echo_callback, 0));
 
     std::atomic<int> client_failures (0);
     std::vector<std::thread> clients;
@@ -1462,7 +1462,7 @@ void test_stream_raw_multiclient_load_integrity ()
       0, probe.parse_error.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_raw_load_probe = NULL;
     test_context_socket_close_zero_linger (server);
 }
@@ -1489,7 +1489,7 @@ void test_stream_len32be_multiclient_load_integrity ()
     probe.socket = server;
     probe.expected_payload_size = payload_size;
     g_stream_load_probe = &probe;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_start (
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
       server, stream_load_echo_callback, ZLINK_STREAM_DISPATCH_LEN32BE));
 
     std::atomic<int> client_failures (0);
@@ -1510,7 +1510,7 @@ void test_stream_len32be_multiclient_load_integrity ()
       0, probe.invalid_payload.load (std::memory_order_acquire));
     TEST_ASSERT_EQUAL_INT (0, probe.send_fail.load (std::memory_order_acquire));
 
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
     g_stream_load_probe = NULL;
     test_context_socket_close_zero_linger (server);
 }

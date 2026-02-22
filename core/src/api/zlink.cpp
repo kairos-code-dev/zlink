@@ -1559,7 +1559,7 @@ int zlink_recv (void *s_, void *buf_, size_t len_, int flags_)
     return nbytes;
 }
 
-int zlink_stream_start (void *s_,
+int zlink_stream_attach (void *s_,
                         zlink_stream_on_packets_fn on_packet_,
                         int flags_)
 {
@@ -1580,7 +1580,7 @@ int zlink_stream_start (void *s_,
     return handle.socket->stream_dispatch_start (on_packet_, flags_);
 }
 
-int zlink_stream_stop (void *s_)
+int zlink_stream_detach (void *s_)
 {
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)

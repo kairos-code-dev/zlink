@@ -183,7 +183,7 @@ bool start_stream_len32be_dispatch (void *socket_,
     dispatch.socket = socket_;
     dispatch.running.store (true, std::memory_order_release);
     g_stream_dispatch = &dispatch;
-    if (zlink_stream_start (
+    if (zlink_stream_attach (
           socket_, &on_stream_len32be_packets, ZLINK_STREAM_DISPATCH_LEN32BE)
         != 0) {
         dispatch.running.store (false, std::memory_order_release);
@@ -200,7 +200,7 @@ void stop_stream_len32be_dispatch (stream_len32be_dispatch_t &dispatch)
     if (!dispatch.running.exchange (false, std::memory_order_acq_rel))
         return;
     if (dispatch.socket)
-        (void) zlink_stream_stop (dispatch.socket);
+        (void) zlink_stream_detach (dispatch.socket);
     {
         std::lock_guard<std::mutex> guard (dispatch.lock);
         dispatch.packets.clear ();
@@ -1454,7 +1454,7 @@ void run_multi_stream (const std::string &transport,
                         if (bench_debug_enabled ()) {
                             std::fprintf (
                               stderr,
-                              "MULTI_STREAM: zlink_stream_start_len32be failed\n");
+                              "MULTI_STREAM: zlink_stream_attach_len32be failed\n");
                         }
                         return false;
                     }

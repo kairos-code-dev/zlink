@@ -114,7 +114,7 @@ bool start_stream_len32be_dispatch_slot (
     dispatch.socket = socket;
     dispatch.running.store (true, std::memory_order_release);
     *slot = &dispatch;
-    if (zlink_stream_start (
+    if (zlink_stream_attach (
           socket, callback, ZLINK_STREAM_DISPATCH_LEN32BE)
         != 0) {
         dispatch.running.store (false, std::memory_order_release);
@@ -133,7 +133,7 @@ void stop_stream_len32be_dispatch_slot (stream_len32be_dispatch_t &dispatch,
         return;
 
     if (dispatch.socket)
-        (void) zlink_stream_stop (dispatch.socket);
+        (void) zlink_stream_detach (dispatch.socket);
 
     {
         std::lock_guard<std::mutex> guard (dispatch.lock);
@@ -752,7 +752,7 @@ void run_multi_stream (const std::string &transport,
     }
 
     if (!start_stream_len32be_dispatch (server, dispatch)) {
-        fail_setup ("zlink_stream_start_len32be");
+        fail_setup ("zlink_stream_attach_len32be");
         return;
     }
 

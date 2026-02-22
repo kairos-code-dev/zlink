@@ -373,8 +373,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_MAXRT 80
 #define ZLINK_MULTICAST_MAXTPDU 84
 #define ZLINK_USE_FD 89
-#define ZLINK_REQUEST_TIMEOUT 90
-#define ZLINK_REQUEST_CORRELATE 91
 #define ZLINK_BINDTODEVICE 92
 #define ZLINK_XPUB_MANUAL_LAST_VALUE 98
 #define ZLINK_ONLY_FIRST_SUBSCRIBE 108
@@ -521,43 +519,37 @@ typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
                                            zlink_msg_t *msgs_,
                                            size_t msg_count_);
 
-/** @brief zlink_stream_start() flag: decode LEN32BE frames before callback. */
+/** @brief zlink_stream_attach() flag: decode LEN32BE frames before callback. */
 #define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
 
 /**
- * @brief Start STREAM callback dispatch.
+ * @brief Attach STREAM callback dispatch.
  *
  * Valid only for ZLINK_STREAM sockets.
- * If already running for the socket, returns -1 with errno=EBUSY.
+ * If already attached for the socket, returns -1 with errno=EBUSY.
  *
  * @param s_         STREAM socket.
  * @param on_packets_ Callback for received stream data.
  * @param flags_     Dispatch flags (e.g. ZLINK_STREAM_DISPATCH_LEN32BE).
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_stream_start (void *s_,
-                                     zlink_stream_on_packets_fn on_packets_,
-                                     int flags_);
+ZLINK_EXPORT int zlink_stream_attach (void *s_,
+                                      zlink_stream_on_packets_fn on_packets_,
+                                      int flags_);
 
 /**
- * @brief Start STREAM LEN32BE batch callback dispatch.
- *
- * Valid only for ZLINK_STREAM sockets. This mode always enables LEN32BE
- * decoding and delivers complete payload packets via @p on_packets_.
- */
-/**
- * @brief Stop STREAM callback dispatch for a socket.
+ * @brief Detach STREAM callback dispatch from a socket.
  *
  * @param s_ STREAM socket.
  * @return 0 on success, -1 on failure (errno is set).
  */
-ZLINK_EXPORT int zlink_stream_stop (void *s_);
+ZLINK_EXPORT int zlink_stream_detach (void *s_);
 
 /**
  * @brief Send STREAM payload to a specific peer by routing id.
  *
  * Sends routing id as the first STREAM frame and payload as the second frame.
- * If dispatcher was started in LEN32BE mode for this socket, payload is framed
+ * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
  * as 4-byte big-endian length + payload before sending.
  *
  * @param s_    STREAM socket.
@@ -577,7 +569,7 @@ ZLINK_EXPORT int zlink_stream_send (void *s_,
  * @brief Send STREAM payload message to a specific peer by routing id.
  *
  * This API consumes @p msg_ and reinitializes it before returning.
- * If dispatcher was started in LEN32BE mode for this socket, payload is framed
+ * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
  * as 4-byte big-endian length + payload before sending.
  *
  * @param s_    STREAM socket.

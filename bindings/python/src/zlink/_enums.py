@@ -78,8 +78,6 @@ class SocketOption(IntEnum):
     TCP_MAXRT = 80
     MULTICAST_MAXTPDU = 84
     USE_FD = 89
-    REQUEST_TIMEOUT = 90
-    REQUEST_CORRELATE = 91
     BINDTODEVICE = 92
     TLS_CERT = 95
     TLS_KEY = 96

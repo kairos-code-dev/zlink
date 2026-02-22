@@ -154,8 +154,6 @@ category.
 | `ZLINK_TOS` | 57 | IP Type-of-Service value (`int`) |
 | `ZLINK_MULTICAST_MAXTPDU` | 84 | Maximum multicast transport data unit size in bytes (`int`) |
 | `ZLINK_ZMP_METADATA` | 117 | Attach ZMP metadata properties to outgoing connections (`binary`) |
-| `ZLINK_REQUEST_TIMEOUT` | 90 | Request timeout for REQ sockets in milliseconds (`int`) |
-| `ZLINK_REQUEST_CORRELATE` | 91 | Enable strict request-reply correlation on REQ sockets (`int`; 0 or 1) |
 
 ## Functions
 

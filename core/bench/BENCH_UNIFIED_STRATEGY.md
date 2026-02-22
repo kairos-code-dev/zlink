@@ -29,7 +29,7 @@
 
 1. **결과 출력 포맷**: 모든 벤치마크가 동일한 `RESULT,` 라인 포맷 사용
 2. **메트릭 항목**: 공통 필수 메트릭 + 선택 확장 메트릭 정의
-3. **테스트 페이즈**: warmup → settle → measure → drain 4단계 통일
+3. **테스트 페이즈**: warmup → settle → duration 3단계 통일
 4. **통계 집계**: median 기반 단일 방식 통일 (CV%/gate/confidence 안정성 분석은 사용하지 않음)
 5. **환경 변수**: 네이밍 컨벤션 통일
 
@@ -91,48 +91,47 @@ PREP,<lib>,<pattern>,<transport>,<size>,connect_ms,<value>,ready_ms,<value>
 
 ## 3. 통합 테스트 페이즈
 
-모든 벤치마크는 다음 4단계를 따른다.
+모든 벤치마크는 다음 3단계를 따른다.
 
 ```
-[warmup] → [settle] → [measure] → [drain]
+[warmup] → [settle] → [duration]
 ```
 
 ### 3.1 페이즈 정의
 
 | 페이즈 | 목적 | 기본값 | 환경 변수 | 구현 레벨 |
 |--------|------|--------|-----------|-----------|
-| **warmup** | 타임아웃 계산용 여유 시간 | 3s | `BENCH_MULTI_WARMUP_SECONDS` | **쉘 스크립트** (타임아웃 계산 전용) |
+| **warmup** | 측정 전 워밍업 (send/recv 순환) | 3s | `BENCH_MULTI_WARMUP_SECONDS` | C++ (`bench_*_multi_pubsub.cpp`) + 쉘 타임아웃 계산 |
 | **settle** | 연결 후 버퍼 안정화 대기 | 500ms | `BENCH_MULTI_SETTLE_MS` | C++ (`bench_common_multi.hpp`) |
-| **measure** | 실제 측정 구간 | 10s | `BENCH_MULTI_MEASURE_SECONDS` | C++ (`bench_common_multi.hpp`) |
-| **drain** | 잔여 in-flight 메시지 소진 | 300ms | `BENCH_MULTI_DRAIN_MS` | C++ (`bench_common_multi.hpp`) |
+| **duration** | 실제 측정 구간 | 5s | `BENCH_MULTI_DURATION_SECONDS` | C++ (`bench_common_multi.hpp`) |
+| ~~**drain**~~ | *(폐지)* 잔여 in-flight 메시지 소진 | ~~300ms~~ | `BENCH_MULTI_DRAIN_MS` | *(일부 pubsub/stream에만 잔존, 통합 후 제거 예정)* |
 
-> **참고 — warmup 페이즈의 실제 구현**
+> **참고 — warmup 페이즈의 구현 위치**
 >
-> `bench_common_multi.hpp`의 `multi_bench_settings_t`에는 `warmup_seconds` 필드가 **존재하지 않는다**.
-> C++ 바이너리 레벨의 실제 측정 페이즈는 `settle → measure → drain` 3단계이다.
-> `BENCH_MULTI_WARMUP_SECONDS`는 쉘 스크립트(`run_benchmarks_multi.sh`)와
-> Python 비교 러너(`run_comparison.py`)에서 **프로세스 타임아웃 계산** 시에만 사용된다:
+> `bench_common_multi.hpp`의 `multi_bench_settings_t`에 `warmup_seconds` 필드가 존재하며,
+> pubsub 벤치마크(`bench_*_multi_pubsub.cpp`)에서 측정 전 send/recv 순환을 통해 **실제 워밍업을 수행**한다.
+> C++ 바이너리 레벨의 전체 측정 페이즈는 `warmup → settle → duration` 3단계이다 (drain은 사용하지 않는다).
+> 추가로, 쉘 스크립트(`run_benchmarks_multi.sh`)와
+> Python 비교 러너(`run_comparison.py`)에서 **프로세스 타임아웃 계산**에도 포함된다:
 >
 > ```
-> timeout = warmup_seconds + measure_seconds + extra_margin
+> timeout = warmup_seconds + duration_seconds + extra_margin
 > ```
->
-> 따라서 warmup은 "시스템 워밍업 시간"이 아니라, 연결 확립·바이너리 기동에 필요한 여유 시간이다.
 
 ### 3.2 페이즈 적용 규칙
 
 - **다중 클라이언트 패턴** (MULTI_*):
-  C++ 바이너리 내부에서 settle → measure → drain 3단계를 실행한다.
-  warmup은 쉘 스크립트에서 프로세스 타임아웃에만 반영되며, 바이너리 측정에 영향을 주지 않는다.
-  measure는 시간 기반 (seconds), settle/drain은 밀리초 기반.
+  C++ 바이너리 내부에서 warmup → settle → duration 3단계를 실행한다.
+  drain 페이즈는 사용하지 않는다 (측정 종료 후 소켓을 즉시 닫는다).
+  duration은 시간 기반 (seconds), settle은 밀리초 기반.
 - **비교 벤치마크** (routercompare, streamcompare, zmq/multi):
   대상 스위트의 페이즈 전략을 따르되, 동일 조건에서 모든 스택을 실행
 
 ### 3.3 측정 구간 규칙
 
-- throughput = measure 구간의 `recv_count / measure_seconds`
-- latency = measure 구간의 roundtrip 평균 (`elapsed_us / (roundtrip_count * 2)`)
-- warmup/drain 구간의 데이터는 최종 메트릭에서 **제외**한다
+- throughput = duration 구간의 `recv_count / duration_seconds`
+- latency = duration 구간의 roundtrip 평균 (`elapsed_us / (roundtrip_count * 2)`)
+- warmup 구간의 데이터는 최종 메트릭에서 **제외**한다
 
 ---
 
@@ -142,8 +141,8 @@ PREP,<lib>,<pattern>,<transport>,<size>,connect_ms,<value>,ready_ms,<value>
 
 | 메트릭 | 단위 | 설명 | 계산 방식 |
 |--------|------|------|-----------|
-| `throughput` | msgs/sec | 메시지 처리량 | measure 구간 recv_count / measure_seconds |
-| `latency` | us (microseconds) | 평균 라운드트립 지연 | measure 구간 total_elapsed_us / (count * 2) |
+| `throughput` | msgs/sec | 메시지 처리량 | duration 구간 recv_count / duration_seconds |
+| `latency` | us (microseconds) | 평균 라운드트립 지연 | duration 구간 total_elapsed_us / (count * 2) |
 
 ### 4.2 Tier 2: 권장 메트릭 (다중 클라이언트 / 서버-클라이언트 분리 벤치마크)
 
@@ -232,7 +231,7 @@ latency_diff    = ((base - current) / base) * 100.0    # 양수 = current가 빠
 | `BENCH_TASKSET` | Linux CPU pinning 활성화 (`1`) | 0 |
 | `BENCH_FAIL_FAST` | 첫 실패 시 즉시 중단 | 0 |
 
-> ² routercompare와 streamcompare는 시간 기반(`BENCH_DURATION_SECONDS`, `DURATION`)으로 동작하며 `BENCH_MSG_COUNT`를 사용하지 않는다.
+> ² routercompare와 streamcompare는 시간 기반(`BENCH_MULTI_DURATION_SECONDS`)으로 동작하며 `BENCH_MSG_COUNT`를 사용하지 않는다.
 
 ### 6.2 다중 클라이언트 전용 (`BENCH_MULTI_*`)
 
@@ -244,10 +243,10 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 | `BENCH_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (STREAM: 10000) | = |
 | `BENCH_MULTI_INFLIGHT` | 클라이언트당 in-flight 메시지 수 | 30 | = |
 | `BENCH_MULTI_HWM` | 소켓 HWM (SNDHWM/RCVHWM) | 100000 | = |
-| `BENCH_MULTI_WARMUP_SECONDS` | 타임아웃 계산용 여유 시간 (초) | 3 | = |
-| `BENCH_MULTI_MEASURE_SECONDS` | 측정 시간 (초) | **zlink/multi: 10, zmq/multi: 5** | 10 |
+| `BENCH_MULTI_WARMUP_SECONDS` | 측정 전 워밍업 시간 (초) | 3 | = |
+| `BENCH_MULTI_DURATION_SECONDS` | 측정 시간 (초) | **zlink/multi: 10, zmq/multi: 5** | **5** |
 | `BENCH_MULTI_SETTLE_MS` | settle 대기 (ms) | 500 | = |
-| `BENCH_MULTI_DRAIN_MS` | drain 대기 (ms) | 300 | = |
+| `BENCH_MULTI_DRAIN_MS` | *(deprecated)* drain 대기 (ms) | 300 | **0 (제거)** |
 | `BENCH_MULTI_SEND_WORKERS` | 송신 워커 스레드 수 | **zlink/multi: auto¹, zmq/multi: 2** | auto¹ |
 | `BENCH_MULTI_SEND_BACKOFF_US` | 송신 블록 시 backoff (us) | 20 | = |
 | `BENCH_MULTI_RECV_BATCH` | 수신 배치 크기 | 64 | = |
@@ -265,7 +264,7 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 
 | 항목 | benchwithzlink/multi (기준) | benchwithzmq/multi (현행) | To-be |
 |------|---------------------------|--------------------------|-------|
-| measure 시간 | 10s | **5s** (`BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}`) | 10s로 통일 |
+| duration 시간 | 10s | **5s** (`BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}`) | 5s로 통일 |
 | send_workers | auto¹ | **2** (`BENCH_MULTI_SEND_WORKERS:-2`) | auto¹로 통일 |
 | STREAM send_workers | 4 (auto¹) | 3 (`MULTI_STREAM_SEND_WORKERS:-3`) | auto¹로 통일 |
 | STREAM send_batch | 64 | 64 (`MULTI_STREAM_SEND_BATCH:-64`) | = |
@@ -300,17 +299,9 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 | 64B    | Latency    |    45.23 us |    40.10 us |  +11.34% |
 ```
 
-### 7.2 3-Way 비교 (routercompare: zlink vs libzmq vs gRPC)
+### 7.2 다중 스택 비교 (3개 이상 라이브러리: 랭킹 포맷)
 
-```
-### Transport: tcp
-
-| Size   | Metric     |     libzmq |      zlink |       gRPC | zlk vs zmq | zlk vs grpc |
-|--------|------------|-----------|-----------|-----------|------------|-------------|
-| 64B    | Throughput | 100.00 K  | 135.00 K  |  80.00 K  |   +35.00%  |   +68.75%   |
-```
-
-### 7.3 확장 비교 (streamcompare: 다중 스택 랭킹)
+routercompare, streamcompare 등 3개 이상 스택을 비교할 때는 다중 스택 랭킹 포맷을 사용한다.
 
 ```
 ## Phase: throughput | Size: 64B
@@ -318,7 +309,8 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 | Rank | Stack       | Pass | Peak BPS    | Med BPS     | p95(us) |
 |------|-------------|------|-------------|-------------|---------|
 | 1    | zlink       | 3/3  | 1.2 Gbps   | 1.1 Gbps   | 45 us   |
-| 2    | asio        | 3/3  | 0.9 Gbps   | 0.8 Gbps   | 62 us   |
+| 2    | libzmq      | 3/3  | 0.9 Gbps   | 0.8 Gbps   | 62 us   |
+| 3    | gRPC        | 3/3  | 0.7 Gbps   | 0.6 Gbps   | 85 us   |
 ```
 
 > CV%, Gate 컬럼은 사용하지 않는다 (5.2절 참조).
@@ -329,15 +321,16 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 
 ### 8.1 표준 메시지 크기
 
-```
-MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
-```
+토폴로지에 따라 두 가지 크기 세트를 사용한다.
+
+| 토폴로지 | 크기 세트 | 설명 |
+|----------|----------|------|
+| **Server-to-Server** | `[64, 256, 1024, 65536, 131072, 262144]` | 6개, 세밀한 페이로드 분포 측정 |
+| **Client-to-Server** | `[64, 1024, 65536]` | 3개, 다수 클라이언트 부하 환경에서 핵심 구간만 측정 |
 
 - 64B: 최소 메시지, overhead 비율 측정
-- 256B, 1024B: 일반적인 RPC 페이로드 크기
-- 65536B, 131072B, 262144B: 대용량 전송 처리량 측정
-
-> **참고**: benchwithstreamcompare는 현행 `SIZES_ALL=(64 1024 65536)` 3개만 사용한다.
+- 256B, 1024B: 일반적인 RPC 페이로드 크기 (Server-to-Server 전용)
+- 65536B, 131072B, 262144B: 대용량 전송 처리량 측정 (131072B, 262144B는 Server-to-Server 전용)
 
 ### 8.2 트랜스포트 매트릭스
 
@@ -368,8 +361,7 @@ MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 이미 통합 표준을 따르고 있다. 변경 없음.
 
 - RESULT 라인 포맷: 준수
-- C++ 측정 페이즈: settle → measure → drain (3단계)
-- warmup: 쉘 스크립트 타임아웃 계산 전용 (C++ 바이너리 내부에 warmup 단계 없음)
+- C++ 측정 페이즈: warmup → settle → duration (3단계)
 - 메트릭: throughput, latency (Tier 1)
 - 통계: median (엔트리 `run_benchmarks.sh` 기본 1 run, `run_comparison.py` 직접 실행 시 3 runs)
 - 환경 변수: `BENCH_MULTI_*` 네이밍 준수
@@ -377,7 +369,7 @@ MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 ### 9.2 benchwithroutercompare
 
 **현재 차이점:**
-- 시간 기반 측정 (`BENCH_DURATION_SECONDS`, 기본 5s) — C++ 바이너리가 직접 사용
+- 시간 기반 측정 (`BENCH_DURATION_SECONDS`, 기본 5s) — `BENCH_MULTI_DURATION_SECONDS`로 통일 예정
 - 리소스 메트릭(CPU%, RSS)을 Python 스크립트 내부에서 수집하여 별도 포맷으로 출력
 - 3-way 비교 테이블 구조
 - `BENCH_PORT`, `BENCH_DURATION_SECONDS`, `BENCH_SETTLE_MS` 등 독자 환경 변수
@@ -387,7 +379,7 @@ MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 1. C++ 바이너리 RESULT 라인은 이미 표준 포맷 → 유지
 2. 리소스 메트릭을 RESULT 라인 확장 포맷(Tier 3)으로 출력하도록 개선
 3. 환경 변수 매핑 추가:
-   - `BENCH_DURATION_SECONDS` → `BENCH_MULTI_MEASURE_SECONDS` (호환 별칭)
+   - `BENCH_DURATION_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` (통일)
    - `BENCH_SETTLE_MS` → `BENCH_MULTI_SETTLE_MS` (통일)
 4. 비교 테이블: 3-way 유지하되, 동일 Markdown 포맷 규칙 적용
 
@@ -441,7 +433,8 @@ MSG_SIZES = [64, 256, 1024, 65536, 131072, 262144]
 
 ### Phase 3: 환경 변수 통일
 
-- [ ] `BENCH_DURATION_SECONDS` → `BENCH_MULTI_MEASURE_SECONDS` 별칭 지원
+- [ ] `BENCH_DURATION_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 통일
+- [ ] `BENCH_MULTI_MEASURE_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 통일 (호환 별칭 유지)
 - [ ] `BENCH_SETTLE_MS` → `BENCH_MULTI_SETTLE_MS` 별칭 지원
 - [ ] streamcompare 전용 변수를 `BENCH_MULTI_*` 네이밍으로 마이그레이션
 
@@ -500,16 +493,16 @@ def compute_diff_pct(base, current, metric_type):
 
 ## 부록 C: 측정 시간 기준
 
-다중 클라이언트 시간 기반 테스트에서는 `BENCH_MULTI_MEASURE_SECONDS`가 기준이며,
+다중 클라이언트 시간 기반 테스트에서는 `BENCH_MULTI_DURATION_SECONDS`가 기준이며,
 메시지 수는 시스템이 처리하는 만큼 자동 결정된다.
 
 #### 현행 기본값 (As-is)
 
-| 스위트 | measure 기본값 | 비고 |
-|--------|---------------|------|
-| benchwithzlink/multi | 10s | `run_benchmarks_multi.sh` MULTI_MEASURE_SECONDS |
-| benchwithzmq/multi | **5s** | `BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}` |
-| benchwithroutercompare | **5s** | `BENCH_DURATION_SECONDS` (시간 기반, C++ 바이너리에서 직접 사용) |
-| benchwithstreamcompare | 5s | `DURATION=5` |
+| 스위트 | duration 기본값 | 현행 환경 변수 | 비고 |
+|--------|----------------|---------------|------|
+| benchwithzlink/multi | **10s** | `BENCH_MULTI_MEASURE_SECONDS` | To-be에서 5s로 변경 |
+| benchwithzmq/multi | 5s | `BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}` | = |
+| benchwithroutercompare | 5s | `BENCH_DURATION_SECONDS` | = |
+| benchwithstreamcompare | 5s | `DURATION=5` | = |
 
-> To-be: 모든 스위트의 measure 시간을 10s로 통일한다.
+> To-be: 모든 스위트의 duration 시간을 **5s**로 통일하고, 환경 변수를 `BENCH_MULTI_DURATION_SECONDS`로 통일한다.

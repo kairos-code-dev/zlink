@@ -82,8 +82,6 @@ public enum SocketOption
     TcpMaxRt = 80,
     MulticastMaxTpdu = 84,
     UseFd = 89,
-    RequestTimeout = 90,
-    RequestCorrelate = 91,
     BindToDevice = 92,
     TlsCert = 95,
     TlsKey = 96,

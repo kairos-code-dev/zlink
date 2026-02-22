@@ -1,7 +1,7 @@
 sources:
   "1.4.0":
-    url: "https://github.com/kairos-code-dev/zlink/releases/download/core/v1.4.0-hotfix1/zlink-1.4.0-source.tar.gz"
-    sha256: "333273bad74a633f36180da19f8a6e76b35653507eaa7667a10d9a64d7d757ae"
+    url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v1.4.0-hotfix1.tar.gz"
+    sha256: "d4081e63846de62d27ec7e8e79b56d616236e174c8b4524499f76f678a360177"
   "0.9.0":
     url: "https://github.com/ulala-x/zlink/archive/refs/tags/0.9.0.tar.gz"
     sha256: "7f0560d41d201f457ef0158f7e446f2919d9550253afdac522d2202a047716df"

@@ -166,7 +166,16 @@ unsigned char *zlink::shared_message_memory_allocator::data ()
 
 void zlink::shared_message_memory_allocator::resize (std::size_t new_size_)
 {
-    _buf_size = clamp_allocation_size (new_size_, _allocation_size);
+    const std::size_t clamped =
+      clamp_allocation_size (new_size_, _allocation_size);
+    if (clamped >= _buf_size) {
+        _buf_size = clamped;
+        return;
+    }
+
+    // Avoid frequent shrink/grow oscillation on bursty read sizes.
+    if (_buf_size == 0 || clamped * 2 <= _buf_size)
+        _buf_size = clamped;
 }
 
 void zlink::shared_message_memory_allocator::set_allocation_size (

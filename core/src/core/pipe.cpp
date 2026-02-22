@@ -73,6 +73,46 @@ void zlink::send_hello_msg (pipe_t *pipe_, const options_t &options_)
     pipe_->flush ();
 }
 
+zlink::pipe_t::stream_reassembly_state_t::stream_reassembly_state_t () :
+    header (),
+    header_written (0),
+    assembling (),
+    payload_len (0),
+    written (0),
+    active (false)
+{
+    header[0] = 0;
+    header[1] = 0;
+    header[2] = 0;
+    header[3] = 0;
+}
+
+zlink::pipe_t::stream_reassembly_state_t::~stream_reassembly_state_t ()
+{
+    if (active) {
+        const int rc = assembling.close ();
+        errno_assert (rc == 0);
+        active = false;
+    }
+}
+
+void zlink::pipe_t::stream_reassembly_state_t::reset ()
+{
+    if (active) {
+        const int rc = assembling.close ();
+        errno_assert (rc == 0);
+        active = false;
+    }
+
+    header[0] = 0;
+    header[1] = 0;
+    header[2] = 0;
+    header[3] = 0;
+    header_written = 0;
+    payload_len = 0;
+    written = 0;
+}
+
 zlink::pipe_t::pipe_t (object_t *parent_,
                      upipe_t *inpipe_,
                      upipe_t *outpipe_,
@@ -97,6 +137,8 @@ zlink::pipe_t::pipe_t (object_t *parent_,
     _state (active),
     _delay (true),
     _server_socket_routing_id (0),
+    _stream_reassembly_state (),
+    _stream_reassembly_epoch (0),
     _conflate (conflate_)
 {
     _disconnect_msg.init ();
@@ -171,6 +213,33 @@ uint64_t zlink::pipe_t::get_msgs_read () const
 uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;
+}
+
+zlink::pipe_t::stream_reassembly_state_t &
+zlink::pipe_t::stream_reassembly_state ()
+{
+    return _stream_reassembly_state;
+}
+
+const zlink::pipe_t::stream_reassembly_state_t &
+zlink::pipe_t::stream_reassembly_state () const
+{
+    return _stream_reassembly_state;
+}
+
+void zlink::pipe_t::reset_stream_reassembly_state ()
+{
+    _stream_reassembly_state.reset ();
+}
+
+uint32_t zlink::pipe_t::get_stream_reassembly_epoch () const
+{
+    return _stream_reassembly_epoch;
+}
+
+void zlink::pipe_t::set_stream_reassembly_epoch (uint32_t epoch_)
+{
+    _stream_reassembly_epoch = epoch_;
 }
 
 bool zlink::pipe_t::check_read ()

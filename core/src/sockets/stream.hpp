@@ -4,10 +4,8 @@
 #define __ZLINK_STREAM_HPP_INCLUDED__
 
 #include <deque>
-#include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 #include <atomic>
 
@@ -47,28 +45,14 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
                                       size_t size_,
                                       int flags_,
                                       bool len32be_) ZLINK_OVERRIDE;
+    int stream_dispatch_send_msg_from_io (const zlink_routing_id_t *rid_,
+                                          zlink::msg_t *msg_,
+                                          int flags_,
+                                          bool len32be_) ZLINK_OVERRIDE;
 
   private:
     typedef std::vector<uint32_t> pending_notify_vec_t;
     typedef std::deque<uint32_t> pending_notify_deque_t;
-    struct stream_reassembly_state_t
-    {
-        unsigned char header[4];
-        size_t header_written;
-        uint32_t payload_size;
-        size_t payload_written;
-        msg_t packet;
-        bool packet_active;
-        std::mutex mutex;
-
-        stream_reassembly_state_t ();
-        ~stream_reassembly_state_t ();
-        void reset_frame ();
-    };
-
-    typedef std::shared_ptr<stream_reassembly_state_t> stream_reassembly_state_ptr_t;
-    typedef std::unordered_map<uint32_t, stream_reassembly_state_ptr_t>
-      stream_reassembly_map_t;
 
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     uint32_t ensure_dispatch_routing_id (pipe_t *pipe_);
@@ -83,13 +67,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
       ZLINK_OVERRIDE;
     int dispatch_len32be (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
-    stream_reassembly_state_ptr_t
-    get_or_create_reassembly_state (uint32_t routing_id_value_);
-    stream_reassembly_state_ptr_t
-    find_reassembly_state (uint32_t routing_id_value_) const;
     uint32_t resolve_dispatch_routing_id_fast (const zlink::msg_t *msg_,
                                                zlink::pipe_t *pipe_);
-    void clear_reassembly ();
     void stop_dispatch_from_callback ();
 
     fq_t _fq;
@@ -100,7 +79,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     msg_t _prefetched_msg;
 
     zlink::pipe_t *_current_out;
-    bool _current_out_checked_writable;
     bool _more_out;
 
     std::atomic<uint32_t> _next_integral_routing_id;
@@ -114,9 +92,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     std::atomic<bool> _dispatch_active;
     std::atomic<bool> _dispatch_len32be;
     std::atomic<zlink_stream_on_packets_fn> _dispatch_callback;
-    stream_reassembly_map_t _dispatch_reassembly;
+    std::atomic<uint32_t> _dispatch_reassembly_epoch;
     mutable std::mutex _dispatch_control_mu;
-    mutable std::mutex _dispatch_reassembly_mu;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

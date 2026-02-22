@@ -72,6 +72,11 @@ class socket_base_t : public own_t,
                                               size_t size_,
                                               int flags_,
                                               bool len32be_);
+    virtual int stream_dispatch_send_msg_from_io (
+      const zlink_routing_id_t *rid_,
+      zlink::msg_t *msg_,
+      int flags_,
+      bool len32be_);
 
     //  These functions are used by the polling mechanism to determine
     //  which events are to be reported from this socket.

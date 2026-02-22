@@ -63,9 +63,22 @@ void zlink::asio_raw_engine_t::plug_internal ()
     }
 
     if (_decoder == NULL) {
-        const size_t initial_read_buffer =
+        size_t initial_read_buffer =
           _options.in_batch_size > 0 ? static_cast<size_t> (_options.in_batch_size)
-                                     : static_cast<size_t> (8192);
+                                     : static_cast<size_t> (4096);
+        if (initial_read_buffer > static_cast<size_t> (8192))
+            initial_read_buffer = static_cast<size_t> (8192);
+        if (_options.rcvbuf > 0
+            && static_cast<size_t> (_options.rcvbuf) < initial_read_buffer) {
+            initial_read_buffer = static_cast<size_t> (_options.rcvbuf);
+        }
+        if (_options.maxmsgsize > 0
+            && static_cast<size_t> (_options.maxmsgsize) < initial_read_buffer) {
+            initial_read_buffer = static_cast<size_t> (_options.maxmsgsize);
+        }
+        if (initial_read_buffer == 0)
+            initial_read_buffer = 1;
+
         size_t stream_max_read_buffer = initial_read_buffer;
         if (_options.rcvbuf > 0
             && static_cast<size_t> (_options.rcvbuf) > stream_max_read_buffer)

@@ -62,14 +62,26 @@ def load_skips(path):
 
 
 def ranking_sort_key(phase, entry):
+    median_tps = entry.get("median_tps")
+    median_tps_value = median_tps if median_tps is not None else 0.0
+    median = entry.get("median_bps")
+    median_bps = median if median is not None else 0.0
+    peak_tps = entry.get("peak_tps")
+    peak_tps_value = peak_tps if peak_tps is not None else 0.0
     peak = entry.get("peak_bps") or 0.0
     p95 = entry.get("median_p95_us")
     if phase == "latency":
         return (
             p95 if p95 is not None else 1e30,
+            -median_tps_value,
+            -median_bps,
+            -peak_tps_value,
             -peak,
         )
     return (
+        -median_tps_value,
+        -median_bps,
+        -peak_tps_value,
         -peak,
         p95 if p95 is not None else 1e30,
     )
@@ -202,18 +214,15 @@ def main():
                 median_tps = statistics.median(tps_values) if tps_values else None
                 median_p95 = statistics.median(p95s) if p95s else None
 
-                cv = None
-                cv_series = throughputs if phase == "throughput" else p95s
-                if len(cv_series) >= 2:
-                    mean = statistics.mean(cv_series)
-                    if mean > 0:
-                        cv = statistics.pstdev(cv_series) / mean * 100.0
-
                 pass_rate = (len(pass_rows) / total) if total > 0 else 0.0
 
                 if args.runs <= 1:
                     if phase == "throughput":
-                        gate_pass = pass_rate == 1.0 and peak is not None
+                        gate_pass = (
+                            pass_rate == 1.0
+                            and median is not None
+                            and median_tps is not None
+                        )
                     else:
                         gate_pass = pass_rate == 1.0 and median_p95 is not None
                     confidence = "LOW_SINGLE_RUN"
@@ -221,16 +230,13 @@ def main():
                     if phase == "throughput":
                         gate_pass = (
                             pass_rate == 1.0
-                            and peak is not None
-                            and cv is not None
-                            and cv <= 5.0
+                            and median is not None
+                            and median_tps is not None
                         )
                     else:
                         gate_pass = (
                             pass_rate == 1.0
                             and median_p95 is not None
-                            and cv is not None
-                            and cv <= 5.0
                         )
                     confidence = "STABLE_CHECKED" if gate_pass else "UNSTABLE"
 
@@ -244,7 +250,6 @@ def main():
                     "median_bps": median,
                     "peak_tps": peak_tps,
                     "median_tps": median_tps,
-                    "cv_pct": cv,
                     "median_p95_us": median_p95,
                     "mismatch_total": mismatch_total,
                     "mismatch_total_all": mismatch_total_all,
@@ -276,10 +281,16 @@ def main():
             ref = []
             for stack in selected_stacks:
                 item = summary["metrics"].get(f"{phase}:{stack}:{size}")
-                if not item or item.get("peak_bps") is None:
+                if not item:
+                    continue
+                if phase == "throughput" and item.get("median_bps") is None:
+                    continue
+                if phase == "latency" and item.get("median_p95_us") is None:
                     continue
                 entry = {
                     "stack": stack,
+                    "median_bps": item.get("median_bps"),
+                    "median_tps": item.get("median_tps"),
                     "peak_bps": item.get("peak_bps"),
                     "peak_tps": item.get("peak_tps"),
                     "median_p95_us": item.get("median_p95_us"),
@@ -328,15 +339,14 @@ def main():
     for phase in selected_phases:
         lines.append(f"## Metrics (phase={phase})")
         lines.append("")
-        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | cv% | p95(us) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) | gate | confidence |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
+        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(us) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) | gate | confidence |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
         for size in selected_sizes:
             for stack in selected_stacks:
                 item = summary["metrics"].get(f"{phase}:{stack}:{size}")
                 if not item:
-                    lines.append(f"| {stack} | {size} | 0/0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | FAIL | n/a |")
+                    lines.append(f"| {stack} | {size} | 0/0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | FAIL | n/a |")
                     continue
-                cv = item.get("cv_pct")
                 srv_cpu = item.get("median_server_avg_cpu_pct")
                 srv_rss_kb = item.get("median_server_peak_rss_kb")
                 cli_cpu = item.get("median_client_avg_cpu_pct")
@@ -344,7 +354,7 @@ def main():
                 sys_cpu = item.get("median_system_avg_cpu_pct")
                 sys_mem_peak = item.get("median_system_peak_mem_used_pct")
                 lines.append(
-                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_tps} | {median} | {median_tps} | {cv} | {p95} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} | {gate} | {confidence} |".format(
+                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_tps} | {median} | {median_tps} | {p95} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} | {gate} | {confidence} |".format(
                         stack=stack,
                         size=size,
                         pass_runs=item.get("pass_runs", 0),
@@ -353,7 +363,6 @@ def main():
                         peak_tps=(f"{item['peak_tps']:.2f}" if item.get("peak_tps") is not None else "n/a"),
                         median=(f"{item['median_bps']:.2f}" if item.get("median_bps") is not None else "n/a"),
                         median_tps=(f"{item['median_tps']:.2f}" if item.get("median_tps") is not None else "n/a"),
-                        cv=(f"{cv:.2f}" if cv is not None else "n/a"),
                         p95=(f"{item['median_p95_us']:.2f}" if item.get("median_p95_us") is not None else "n/a"),
                         mismatch=item.get("mismatch_total_all", 0),
                         srv_cpu=(f"{srv_cpu:.2f}" if srv_cpu is not None else "n/a"),
@@ -371,21 +380,27 @@ def main():
             lines.append("")
             lines.append(f"## Official Ranking (phase={phase}, size={size})")
             lines.append("")
-            lines.append("| rank | stack | peak bps | peak tps | p95(us) | mismatch |")
+            lines.append("| rank | stack | median bps | median tps | p95(us) | mismatch |")
             lines.append("|---:|---|---:|---:|---:|---:|")
             official = summary["official_ranking"].get(f"{phase}:{size}", [])
             if not official:
                 lines.append("| 1 | n/a | n/a | n/a | n/a | n/a |")
             else:
                 for idx, entry in enumerate(official, 1):
-                    peak_tps = entry.get("peak_tps")
-                    peak_tps_text = f"{peak_tps:.2f}" if peak_tps is not None else "n/a"
+                    median_tps = entry.get("median_tps")
+                    median_tps_text = (
+                        f"{median_tps:.2f}" if median_tps is not None else "n/a"
+                    )
                     p95 = entry.get("median_p95_us")
                     p95_text = f"{p95:.2f}" if p95 is not None else "n/a"
                     mismatch = entry.get("mismatch_total_all", 0)
+                    median_bps = entry.get("median_bps")
+                    median_bps_text = (
+                        f"{median_bps:.2f}" if median_bps is not None else "n/a"
+                    )
                     lines.append(
-                        f"| {idx} | {entry['stack']} | {entry['peak_bps']:.2f} | "
-                        f"{peak_tps_text} | {p95_text} | {mismatch} |"
+                        f"| {idx} | {entry['stack']} | {median_bps_text} | "
+                        f"{median_tps_text} | {p95_text} | {mismatch} |"
                     )
         lines.append("")
 

@@ -225,6 +225,39 @@ static bool stream_dispatch_len32be_enabled (void *socket_,
     return handle_.socket->stream_dispatch_len32be_enabled ();
 }
 
+static bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
+                                     uint32_t *routing_id_out_)
+{
+    if (!rid_ || !routing_id_out_ || rid_->size == 0
+        || rid_->size > sizeof (rid_->data) || rid_->size != 4) {
+        errno = EINVAL;
+        return false;
+    }
+
+    *routing_id_out_ = (static_cast<uint32_t> (rid_->data[0]) << 24)
+                       | (static_cast<uint32_t> (rid_->data[1]) << 16)
+                       | (static_cast<uint32_t> (rid_->data[2]) << 8)
+                       | static_cast<uint32_t> (rid_->data[3]);
+    return true;
+}
+
+static void release_stream_send_msg (zlink::msg_t *msg_)
+{
+    if (!msg_ || !msg_->check ())
+        return;
+
+    int rc = msg_->close ();
+    errno_assert (rc == 0);
+    rc = msg_->init ();
+    errno_assert (rc == 0);
+}
+
+static int stream_payload_result (size_t size_)
+{
+    return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
+                                                                    : INT_MAX);
+}
+
 } // namespace
 
 void *zlink_socket (void *ctx_, int type_)
@@ -1644,6 +1677,124 @@ int zlink_stream_send (void *s_,
 
     return static_cast<int> (size_ < static_cast<size_t> (INT_MAX) ? size_
                                                                     : INT_MAX);
+}
+
+int zlink_stream_send_msg (void *s_,
+                           const zlink_routing_id_t *rid_,
+                           zlink_msg_t *msg_,
+                           int flags_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return -1;
+
+    if (!msg_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::msg_t *core_msg = reinterpret_cast<zlink::msg_t *> (msg_);
+    if (!core_msg->check ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    if (!is_stream_type (handle)) {
+        errno = EINVAL;
+        release_stream_send_msg (core_msg);
+        return -1;
+    }
+
+    uint32_t routing_id = 0;
+    if (!parse_stream_routing_id (rid_, &routing_id)) {
+        const int err = errno;
+        release_stream_send_msg (core_msg);
+        errno = err;
+        return -1;
+    }
+
+    const size_t payload_size = core_msg->size ();
+    const bool len32be = stream_dispatch_len32be_enabled (s_, handle);
+    if (len32be && payload_size > static_cast<size_t> (0xFFFFFFFFu)) {
+        errno = EMSGSIZE;
+        release_stream_send_msg (core_msg);
+        return -1;
+    }
+
+    const int io_send_rc = handle.socket->stream_dispatch_send_msg_from_io (
+      rid_, core_msg, flags_, len32be);
+    if (io_send_rc < 0) {
+        const int err = errno;
+        release_stream_send_msg (core_msg);
+        errno = err;
+        return -1;
+    }
+    if (io_send_rc > 0)
+        return stream_payload_result (payload_size);
+
+    const int base_flags = flags_ & ZLINK_DONTWAIT;
+    if (!len32be) {
+        if (core_msg->set_routing_id (routing_id) != 0) {
+            const int err = errno;
+            release_stream_send_msg (core_msg);
+            errno = err;
+            return -1;
+        }
+
+        const int send_rc = s_sendmsg (handle, msg_, base_flags);
+        if (send_rc < 0) {
+            const int err = errno;
+            release_stream_send_msg (core_msg);
+            errno = err;
+            return -1;
+        }
+        return stream_payload_result (payload_size);
+    }
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (core_msg->data ());
+    if (!payload && payload_size > 0) {
+        errno = EFAULT;
+        release_stream_send_msg (core_msg);
+        return -1;
+    }
+
+    const size_t wire_size = payload_size + 4;
+    zlink_msg_t wire_msg;
+    if (zlink_msg_init_size (&wire_msg, wire_size) != 0) {
+        const int err = errno;
+        release_stream_send_msg (core_msg);
+        errno = err;
+        return -1;
+    }
+
+    unsigned char *wire =
+      static_cast<unsigned char *> (zlink_msg_data (&wire_msg));
+    store_u32_be (wire, static_cast<uint32_t> (payload_size));
+    if (payload_size > 0)
+        memcpy (wire + 4, payload, payload_size);
+
+    zlink::msg_t *wire_core = reinterpret_cast<zlink::msg_t *> (&wire_msg);
+    if (wire_core->set_routing_id (routing_id) != 0) {
+        const int err = errno;
+        (void) zlink_msg_close (&wire_msg);
+        release_stream_send_msg (core_msg);
+        errno = err;
+        return -1;
+    }
+
+    const int send_rc = s_sendmsg (handle, &wire_msg, base_flags);
+    if (send_rc < 0) {
+        const int err = errno;
+        (void) zlink_msg_close (&wire_msg);
+        release_stream_send_msg (core_msg);
+        errno = err;
+        return -1;
+    }
+
+    (void) zlink_msg_close (&wire_msg);
+    release_stream_send_msg (core_msg);
+    return stream_payload_result (payload_size);
 }
 
 // Message manipulators.

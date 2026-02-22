@@ -6,8 +6,10 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -16,10 +18,8 @@ static const size_t k_max_payload_size = 4 * 1024 * 1024;
 
 bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 {
-    return size_ == 0
-           || (size_ == 1
-               && payload_
-               && (payload_[0] == 0x00 || payload_[0] == 0x01));
+    (void) payload_;
+    return size_ == 0;
 }
 
 struct server_options_t
@@ -203,7 +203,14 @@ class zlink_stream_echo_server_t
 
         record_payload_size (payload_size);
 
-        if (zlink_stream_send (server, rid_, payload, payload_size, 0)
+        std::vector<unsigned char> payload_copy;
+        payload_copy.resize (payload_size);
+        if (payload_size > 0 && payload)
+            memcpy (&payload_copy[0], payload, payload_size);
+
+        if (zlink_stream_send (
+              server, rid_, payload_size > 0 ? &payload_copy[0] : NULL,
+              payload_size, 0)
             != static_cast<int> (payload_size)) {
             send_error.fetch_add (1, std::memory_order_relaxed);
         }

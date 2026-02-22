@@ -349,8 +349,10 @@ class asio_engine_t : public i_engine
     bool _last_read_had_partial_prefix;
     size_t _stream_decoder_read_target_size;
     size_t _stream_decoder_read_target_max;
+    size_t _stream_decoder_read_target_full_hits;
     size_t _stream_encoder_write_target_size;
     size_t _stream_encoder_write_target_max;
+    size_t _stream_encoder_write_target_full_hits;
     size_t _stream_encoder_pending_resize_size;
 
     //  The session this engine is attached to.

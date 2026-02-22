@@ -3,11 +3,13 @@
 #include "../../../../include/zlink.h"
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <stdint.h>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -19,13 +21,12 @@ static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
 static const size_t k_frame_prefix_size = 4;
 static const size_t k_stash_trim_capacity = 64 * 1024;
+static const size_t k_stash_shard_count = 64;
 
 bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 {
-    return size_ == 0
-           || (size_ == 1
-               && payload_
-               && (payload_[0] == 0x00 || payload_[0] == 0x01));
+    (void) payload_;
+    return size_ == 0;
 }
 
 struct stream_buffer_t
@@ -80,7 +81,23 @@ struct stream_buffer_t
     }
 };
 
-typedef std::unordered_map<std::string, stream_buffer_t> stream_stash_map_t;
+struct stash_shard_t
+{
+    std::unordered_map<uint32_t, stream_buffer_t> stashes;
+    std::mutex mu;
+};
+
+bool try_load_routing_id_u32 (const zlink_routing_id_t *rid_, uint32_t *value_out_)
+{
+    if (!rid_ || !value_out_ || rid_->size != 4)
+        return false;
+
+    *value_out_ = (static_cast<uint32_t> (rid_->data[0]) << 24)
+                  | (static_cast<uint32_t> (rid_->data[1]) << 16)
+                  | (static_cast<uint32_t> (rid_->data[2]) << 8)
+                  | static_cast<uint32_t> (rid_->data[3]);
+    return true;
+}
 
 struct server_options_t
 {
@@ -149,7 +166,8 @@ class zlink_stream_echo_server_t
         parse_error (0),
         protocol_error (0),
         send_error (0),
-        stop (false)
+        stop (false),
+        _stash_shards ()
     {
     }
 
@@ -253,14 +271,20 @@ class zlink_stream_echo_server_t
         if (is_stream_control_event (payload, payload_size))
             return 0;
 
+        uint32_t routing_id_value = 0;
+        if (!try_load_routing_id_u32 (rid_, &routing_id_value)) {
+            mark_parse_error ();
+            return 0;
+        }
+
         std::vector<std::vector<unsigned char> > complete_frames;
         bool invalid_frame = false;
         bool dropped_non_data = false;
         {
-            const std::string key (reinterpret_cast<const char *> (rid_->data),
-                                   rid_->size);
-            std::lock_guard<std::mutex> lk (stash_mu);
-            stream_buffer_t &stash = _stashes[key];
+            stash_shard_t &shard =
+              _stash_shards[routing_id_value % k_stash_shard_count];
+            std::lock_guard<std::mutex> lk (shard.mu);
+            stream_buffer_t &stash = shard.stashes[routing_id_value];
             stash.append (payload, payload_size);
 
             size_t consumed = 0;
@@ -294,9 +318,13 @@ class zlink_stream_echo_server_t
 
             if (invalid_frame || dropped_non_data) {
                 stash.reset ();
+                if (stash.available () == 0)
+                    shard.stashes.erase (routing_id_value);
             } else if (consumed > 0) {
                 stash.offset += consumed;
                 stash.compact ();
+                if (stash.available () == 0)
+                    shard.stashes.erase (routing_id_value);
             }
         }
 
@@ -319,7 +347,10 @@ class zlink_stream_echo_server_t
 
     void cleanup ()
     {
-        _stashes.clear ();
+        for (size_t i = 0; i < k_stash_shard_count; ++i) {
+            std::lock_guard<std::mutex> lk (_stash_shards[i].mu);
+            _stash_shards[i].stashes.clear ();
+        }
 
         if (server) {
             zlink_close (server);
@@ -342,8 +373,7 @@ class zlink_stream_echo_server_t
     std::atomic<long> protocol_error;
     std::atomic<long> send_error;
 
-    stream_stash_map_t _stashes;
-    std::mutex stash_mu;
+    std::array<stash_shard_t, k_stash_shard_count> _stash_shards;
     std::atomic<bool> stop;
 };
 

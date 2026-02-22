@@ -146,16 +146,47 @@ const size_t asio_stream_read_drain_max_loops = 16;
 
 const size_t asio_stream_read_drain_max_bytes = 1048576;
 
+const size_t stream_target_default_size = 4096;
+const size_t stream_target_initial_cap = 8192;
+
+size_t clamp_stream_target_limit (size_t target_,
+                                  const zlink::options_t &options_,
+                                  bool read_path_)
+{
+    size_t clamped = target_ > 0 ? target_ : stream_target_default_size;
+
+    if (read_path_ && options_.rcvbuf > 0
+        && static_cast<size_t> (options_.rcvbuf) < clamped) {
+        clamped = static_cast<size_t> (options_.rcvbuf);
+    }
+
+    if (!read_path_ && options_.sndbuf > 0
+        && static_cast<size_t> (options_.sndbuf) < clamped) {
+        clamped = static_cast<size_t> (options_.sndbuf);
+    }
+
+    if (options_.maxmsgsize > 0
+        && static_cast<size_t> (options_.maxmsgsize) < clamped) {
+        clamped = static_cast<size_t> (options_.maxmsgsize);
+    }
+
+    return clamped > 0 ? clamped : static_cast<size_t> (1);
+}
+
 size_t stream_decoder_initial_read_target (const zlink::options_t &options_)
 {
-    if (options_.in_batch_size > 0)
-        return static_cast<size_t> (options_.in_batch_size);
-    return 8192;
+    size_t target = options_.in_batch_size > 0
+                      ? static_cast<size_t> (options_.in_batch_size)
+                      : stream_target_default_size;
+    if (target > stream_target_initial_cap)
+        target = stream_target_initial_cap;
+    return clamp_stream_target_limit (target, options_, true);
 }
 
 size_t stream_decoder_max_read_target (const zlink::options_t &options_)
 {
-    size_t max_target = stream_decoder_initial_read_target (options_);
+    const size_t initial_target = stream_decoder_initial_read_target (options_);
+    size_t max_target = initial_target;
 
     if (options_.rcvbuf > 0
         && static_cast<size_t> (options_.rcvbuf) > max_target)
@@ -166,21 +197,25 @@ size_t stream_decoder_max_read_target (const zlink::options_t &options_)
         max_target = static_cast<size_t> (options_.maxmsgsize);
 
     if (max_target == 0)
-        return stream_decoder_initial_read_target (options_);
+        return initial_target;
 
     return max_target;
 }
 
 size_t stream_encoder_initial_write_target (const zlink::options_t &options_)
 {
-    if (options_.out_batch_size > 0)
-        return static_cast<size_t> (options_.out_batch_size);
-    return 8192;
+    size_t target = options_.out_batch_size > 0
+                      ? static_cast<size_t> (options_.out_batch_size)
+                      : stream_target_default_size;
+    if (target > stream_target_initial_cap)
+        target = stream_target_initial_cap;
+    return clamp_stream_target_limit (target, options_, false);
 }
 
 size_t stream_encoder_max_write_target (const zlink::options_t &options_)
 {
-    size_t max_target = stream_encoder_initial_write_target (options_);
+    const size_t initial_target = stream_encoder_initial_write_target (options_);
+    size_t max_target = initial_target;
 
     if (options_.sndbuf > 0
         && static_cast<size_t> (options_.sndbuf) > max_target)
@@ -191,7 +226,7 @@ size_t stream_encoder_max_write_target (const zlink::options_t &options_)
         max_target = static_cast<size_t> (options_.maxmsgsize);
 
     if (max_target == 0)
-        return stream_encoder_initial_write_target (options_);
+        return initial_target;
 
     return max_target;
 }
@@ -251,9 +286,11 @@ zlink::asio_engine_t::asio_engine_t (
     _stream_decoder_read_target_size (
       stream_decoder_initial_read_target (options_)),
     _stream_decoder_read_target_max (stream_decoder_max_read_target (options_)),
+    _stream_decoder_read_target_full_hits (0),
     _stream_encoder_write_target_size (
       stream_encoder_initial_write_target (options_)),
     _stream_encoder_write_target_max (stream_encoder_max_write_target (options_)),
+    _stream_encoder_write_target_full_hits (0),
     _stream_encoder_pending_resize_size (0),
     _session (NULL),
     _socket (NULL)
@@ -537,7 +574,10 @@ void zlink::asio_engine_t::start_async_read ()
     size_t read_size;
 
     if (_decoder && _input_stopped) {
-        read_size = _options.in_batch_size;
+        read_size = _stream_decoder_read_target_size;
+        if (read_size == 0) {
+            read_size = _options.in_batch_size;
+        }
         if (read_size == 0)
             read_size = read_buffer_size;
 
@@ -699,14 +739,24 @@ bool zlink::asio_engine_t::speculative_read ()
             return true;
         }
 
-        std::vector<unsigned char> buffer (bytes);
-        std::memcpy (buffer.data (), _read_buffer_ptr, bytes);
         if (use_stream_rx_slab ()) {
             stream_rx_chunk_t chunk;
-            chunk.data.swap (buffer);
+            if (!_pending_stream_rx_chunk_pool.empty ()) {
+                chunk = ZLINK_MOVE (_pending_stream_rx_chunk_pool.back ());
+                _pending_stream_rx_chunk_pool.pop_back ();
+            }
             chunk.offset = 0;
+            chunk.data.resize (bytes);
+            std::memcpy (chunk.data.data (), _read_buffer_ptr, bytes);
             _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
         } else {
+            std::vector<unsigned char> buffer;
+            if (!_pending_buffer_pool.empty ()) {
+                buffer = ZLINK_MOVE (_pending_buffer_pool.back ());
+                _pending_buffer_pool.pop_back ();
+            }
+            buffer.resize (bytes);
+            std::memcpy (buffer.data (), _read_buffer_ptr, bytes);
             _pending_buffers.push_back (std::move (buffer));
         }
         _total_pending_bytes += bytes;
@@ -960,11 +1010,20 @@ void zlink::asio_engine_t::maybe_grow_stream_decoder_read_target (
     if (!use_stream_dynamic_read_growth ())
         return;
 
-    if (_last_read_had_partial_prefix || _last_read_request_size == 0)
+    if (_last_read_had_partial_prefix || _last_read_request_size == 0) {
+        _stream_decoder_read_target_full_hits = 0;
         return;
+    }
 
-    if (bytes_transferred_ < _last_read_request_size)
+    if (bytes_transferred_ < _last_read_request_size) {
+        _stream_decoder_read_target_full_hits = 0;
         return;
+    }
+
+    ++_stream_decoder_read_target_full_hits;
+    if (_stream_decoder_read_target_full_hits < 2)
+        return;
+    _stream_decoder_read_target_full_hits = 0;
 
     size_t grown = _stream_decoder_read_target_size;
     if (grown >= _stream_decoder_read_target_max)
@@ -1004,8 +1063,15 @@ void zlink::asio_engine_t::maybe_schedule_stream_encoder_growth (
     if (!use_stream_dynamic_write_growth ())
         return;
 
-    if (filled_out_batch_ < _stream_encoder_write_target_size)
+    if (filled_out_batch_ < _stream_encoder_write_target_size) {
+        _stream_encoder_write_target_full_hits = 0;
         return;
+    }
+
+    ++_stream_encoder_write_target_full_hits;
+    if (_stream_encoder_write_target_full_hits < 2)
+        return;
+    _stream_encoder_write_target_full_hits = 0;
 
     size_t grown = _stream_encoder_write_target_size;
     if (grown > _stream_encoder_write_target_max / 2)
@@ -1098,15 +1164,26 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
             return;
         }
 
-        //  Store data in pending buffer for later processing
-        std::vector<unsigned char> buffer (bytes_transferred);
-        std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
+        //  Store data in pending buffer for later processing.
+        //  Reuse pool storage when available to avoid per-read temporaries.
         if (use_stream_rx_slab ()) {
             stream_rx_chunk_t chunk;
-            chunk.data.swap (buffer);
+            if (!_pending_stream_rx_chunk_pool.empty ()) {
+                chunk = ZLINK_MOVE (_pending_stream_rx_chunk_pool.back ());
+                _pending_stream_rx_chunk_pool.pop_back ();
+            }
             chunk.offset = 0;
+            chunk.data.resize (bytes_transferred);
+            std::memcpy (chunk.data.data (), _read_buffer_ptr, bytes_transferred);
             _pending_stream_rx_chunks.push_back (ZLINK_MOVE (chunk));
         } else {
+            std::vector<unsigned char> buffer;
+            if (!_pending_buffer_pool.empty ()) {
+                buffer = ZLINK_MOVE (_pending_buffer_pool.back ());
+                _pending_buffer_pool.pop_back ();
+            }
+            buffer.resize (bytes_transferred);
+            std::memcpy (buffer.data (), _read_buffer_ptr, bytes_transferred);
             _pending_buffers.push_back (std::move (buffer));
         }
         _total_pending_bytes += bytes_transferred;

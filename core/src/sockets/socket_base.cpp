@@ -1338,6 +1338,15 @@ int zlink::socket_base_t::stream_dispatch_send_from_io (
     return 0;
 }
 
+int zlink::socket_base_t::stream_dispatch_send_msg_from_io (
+  const zlink_routing_id_t *,
+  msg_t *,
+  int,
+  bool)
+{
+    return 0;
+}
+
 int zlink::socket_base_t::close ()
 {
     if (_mailbox)

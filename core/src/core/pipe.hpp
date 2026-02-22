@@ -71,6 +71,25 @@ class pipe_t ZLINK_FINAL : public object_t,
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
     uint64_t get_connected_time () const;
+    struct stream_reassembly_state_t
+    {
+        unsigned char header[4];
+        size_t header_written;
+        msg_t assembling;
+        uint32_t payload_len;
+        size_t written;
+        bool active;
+
+        stream_reassembly_state_t ();
+        ~stream_reassembly_state_t ();
+        void reset ();
+    };
+
+    stream_reassembly_state_t &stream_reassembly_state ();
+    const stream_reassembly_state_t &stream_reassembly_state () const;
+    void reset_stream_reassembly_state ();
+    uint32_t get_stream_reassembly_epoch () const;
+    void set_stream_reassembly_epoch (uint32_t epoch_);
 
     //  Returns true if there is at least one message to read in the pipe.
     bool check_read ();
@@ -227,6 +246,10 @@ class pipe_t ZLINK_FINAL : public object_t,
 
     //  Routing id of the writer. Used uniquely by the reader side.
     int _server_socket_routing_id;
+
+    //  STREAM LEN32BE per-pipe reassembly state (owner thread only).
+    stream_reassembly_state_t _stream_reassembly_state;
+    uint32_t _stream_reassembly_epoch;
 
     //  Returns true if the message is delimiter; false otherwise.
     static bool is_delimiter (const msg_t &msg_);

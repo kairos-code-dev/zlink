@@ -554,14 +554,14 @@
     "wss|262144|latency": 1079.66
   },
   "MULTI_STREAM": {
-    "tcp|64|throughput": 377131.5,
-    "tcp|64|latency": 65.53,
-    "tls|64|throughput": 37731.5,
-    "tls|64|latency": 8701.19,
-    "ws|64|throughput": 230927.5,
-    "ws|64|latency": 68.77,
-    "wss|64|throughput": 36722.5,
-    "wss|64|latency": 4443.91
+    "tcp|64|throughput": 375969.5,
+    "tcp|64|latency": 95.6,
+    "tls|64|throughput": 36125.0,
+    "tls|64|latency": 4563.69,
+    "ws|64|throughput": 226833.0,
+    "ws|64|latency": 51.35,
+    "wss|64|throughput": 35249.5,
+    "wss|64|latency": 126.51
   },
   "MULTI_DEALER_DEALER": {
     "tcp|64|throughput": 2337057.0,

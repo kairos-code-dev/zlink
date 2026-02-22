@@ -574,6 +574,24 @@ ZLINK_EXPORT int zlink_stream_send (void *s_,
                                     int flags_);
 
 /**
+ * @brief Send STREAM payload message to a specific peer by routing id.
+ *
+ * This API consumes @p msg_ and reinitializes it before returning.
+ * If dispatcher was started in LEN32BE mode for this socket, payload is framed
+ * as 4-byte big-endian length + payload before sending.
+ *
+ * @param s_    STREAM socket.
+ * @param rid_  Target peer routing id.
+ * @param msg_  Payload message to send (consumed by this call).
+ * @param flags_ Send flags (0 or ZLINK_DONTWAIT).
+ * @return Number of payload bytes accepted, or -1 on failure.
+ */
+ZLINK_EXPORT int zlink_stream_send_msg (void *s_,
+                                        const zlink_routing_id_t *rid_,
+                                        zlink_msg_t *msg_,
+                                        int flags_);
+
+/**
  * @brief Start a socket monitor via an inproc address (legacy).
  * @param addr_    Monitor inproc endpoint.
  * @param events_  Event bitmask (combination of ZLINK_EVENT_* flags).

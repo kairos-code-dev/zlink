@@ -98,6 +98,54 @@ if (n == 1 && payload[0] == 0x01) {
 
 ---
 
+## 4b. Callback Dispatch Pattern (High-Performance)
+
+For high-throughput servers, use the callback dispatch API instead of polling
+with `zlink_recv()`. The callback is invoked directly on the I/O thread,
+eliminating poll overhead.
+
+### Attach with LEN32BE decoding
+
+```c
+int on_packets (const zlink_routing_id_t *rid,
+                zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        void *data = zlink_msg_data (&msgs[i]);
+        size_t size = zlink_msg_size (&msgs[i]);
+
+        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+            /* connect event */
+        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+            /* disconnect event */
+        } else {
+            /* echo reply */
+            zlink_stream_send (stream, rid, data, size, 0);
+        }
+    }
+    return 0;  /* 0 = continue, non-zero = stop */
+}
+
+/* attach */
+zlink_stream_attach (stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
+
+/* ... when done: */
+zlink_stream_detach (stream);
+```
+
+### Key differences from Section 4
+
+| | `zlink_recv()` pattern | Callback dispatch |
+|---|---|---|
+| Thread | Application thread polls | I/O thread invokes callback |
+| Framing | Manual 2-frame recv | Automatic (LEN32BE mode) |
+| Send | `zlink_send()` with SNDMORE | `zlink_stream_send()` |
+| Concurrency | One at a time | Parallel I/O threads |
+
+> For the full API reference, see [Socket API — STREAM Callback Dispatch](../api/socket.md#stream-callback-dispatch-api).
+
+---
+
 ## 5. Client Implementation Rule
 
 Clients must be implemented as raw socket/websocket clients.

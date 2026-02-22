@@ -431,6 +431,139 @@ may be 0 or `ZLINK_DONTWAIT`.
 
 ---
 
+### STREAM Callback Dispatch API
+
+The following functions provide a high-performance callback-based interface
+for STREAM sockets. Instead of polling with `zlink_recv()`, the application
+attaches a callback that is invoked directly on the I/O thread when data
+arrives.
+
+#### Constants
+
+| Constant | Value | Description |
+|---|---|---|
+| `ZLINK_STREAM_DISPATCH_LEN32BE` | `0x0001` | Decode 4-byte big-endian length-prefixed frames before invoking the callback. Each callback invocation receives complete payloads. |
+
+#### Types
+
+##### zlink_stream_on_packets_fn
+
+```c
+typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
+                                           zlink_msg_t *msgs_,
+                                           size_t msg_count_);
+```
+
+Callback invoked on the STREAM I/O thread when data arrives. `rid_` identifies
+the peer. `msgs_` is an array of `msg_count_` messages — in LEN32BE mode each
+entry is a complete payload; otherwise each entry may be a raw stream chunk.
+The callback must not close or retain pointers from `msgs_` after returning.
+Return 0 to continue dispatch, non-zero to request shutdown.
+
+---
+
+#### zlink_stream_attach
+
+Attach a callback dispatch to a STREAM socket.
+
+```c
+int zlink_stream_attach (void *s_,
+                         zlink_stream_on_packets_fn on_packets_,
+                         int flags_);
+```
+
+Registers `on_packets_` as the dispatch callback for STREAM socket `s_`. Pass
+`ZLINK_STREAM_DISPATCH_LEN32BE` in `flags_` to enable automatic LEN32BE frame
+decoding. Only one callback can be attached at a time; calling this while a
+callback is already attached returns -1 with `errno=EBUSY`.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EINVAL` if `s_` is not a STREAM socket or `on_packets_` is NULL.
+`EBUSY` if a callback is already attached.
+
+**Thread safety:** Not thread-safe on the same socket.
+
+**See also:** `zlink_stream_detach`, `zlink_stream_send`
+
+---
+
+#### zlink_stream_detach
+
+Detach callback dispatch from a STREAM socket.
+
+```c
+int zlink_stream_detach (void *s_);
+```
+
+Removes the previously attached dispatch callback. After detaching, the socket
+reverts to the standard `zlink_recv()` pattern.
+
+**Returns:** 0 on success, -1 on failure (errno is set).
+
+**Errors:** `EINVAL` if `s_` is not a STREAM socket.
+
+**Thread safety:** Not thread-safe on the same socket.
+
+**See also:** `zlink_stream_attach`
+
+---
+
+#### zlink_stream_send
+
+Send payload to a specific STREAM peer by routing id.
+
+```c
+int zlink_stream_send (void *s_,
+                       const zlink_routing_id_t *rid_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_);
+```
+
+Sends `size_` bytes from `data_` to the peer identified by `rid_`. Internally
+sends the routing id as the first frame and the payload as the second frame. If
+the dispatcher was attached in LEN32BE mode, the payload is automatically framed
+with a 4-byte big-endian length prefix before sending.
+
+**Returns:** Number of payload bytes accepted (`size_`), or -1 on failure.
+
+**Errors:** `EINVAL` if `s_` is not a STREAM socket or `rid_` is invalid.
+`EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
+
+**Thread safety:** Not thread-safe on the same socket.
+
+**See also:** `zlink_stream_send_msg`, `zlink_stream_attach`
+
+---
+
+#### zlink_stream_send_msg
+
+Send a message to a specific STREAM peer by routing id.
+
+```c
+int zlink_stream_send_msg (void *s_,
+                           const zlink_routing_id_t *rid_,
+                           zlink_msg_t *msg_,
+                           int flags_);
+```
+
+Behaves like `zlink_stream_send()` but takes a `zlink_msg_t` instead of a raw
+buffer. The message `msg_` is consumed (moved) by this call and reinitialized
+before returning. If LEN32BE mode is active, the payload is automatically
+length-prefixed.
+
+**Returns:** Number of payload bytes accepted, or -1 on failure.
+
+**Errors:** `EINVAL` if `s_` is not a STREAM socket or `rid_` is invalid.
+`EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
+
+**Thread safety:** Not thread-safe on the same socket.
+
+**See also:** `zlink_stream_send`, `zlink_stream_attach`
+
+---
+
 ### zlink_socket_monitor
 
 Start a socket monitor via an inproc address (legacy).

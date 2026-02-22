@@ -21,7 +21,7 @@ struct multi_bench_settings_t
     size_t clients;
     int inflight;
     int hwm;
-    int measure_seconds;
+    int duration_seconds;
     int settle_ms;
     int drain_ms;
     int recv_batch;
@@ -146,6 +146,38 @@ inline int resolve_multi_int_env (const char *env_name,
     return static_cast<int> (parsed);
 }
 
+inline bool multi_pattern_uses_default_drain (const char *pattern)
+{
+    if (!pattern || !*pattern)
+        return false;
+
+    return std::strcmp (pattern, "MULTI_DEALER_DEALER") == 0
+           || std::strcmp (pattern, "MULTI_DEALER_ROUTER") == 0
+           || std::strcmp (pattern, "MULTI_ROUTER_ROUTER") == 0
+           || std::strcmp (pattern, "MULTI_PUBSUB") == 0
+           || std::strcmp (pattern, "MULTI_STREAM") == 0;
+}
+
+inline int resolve_multi_drain_ms ()
+{
+    const int explicit_drain = resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", -1, 0);
+    if (explicit_drain >= 0)
+        return explicit_drain;
+
+    const char *pattern = std::getenv ("BENCH_MULTI_PATTERN");
+    if (multi_pattern_uses_default_drain (pattern))
+        return 300;
+    return 0;
+}
+
+inline int resolve_multi_connect_concurrency (size_t clients)
+{
+    const int default_concurrency =
+      clients >= static_cast<size_t> (10000) ? 1024 : 128;
+    return resolve_multi_int_env (
+      "BENCH_MULTI_CONNECT_CONCURRENCY", default_concurrency, 1);
+}
+
 inline multi_bench_settings_t resolve_multi_bench_settings ()
 {
     multi_bench_settings_t settings;
@@ -153,12 +185,10 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
       resolve_multi_int_env ("BENCH_MULTI_CLIENTS", 100, 1));
     settings.inflight = resolve_multi_int_env ("BENCH_MULTI_INFLIGHT", 30, 1);
     settings.hwm = resolve_multi_int_env ("BENCH_MULTI_HWM", 100000, 1);
-    settings.measure_seconds =
-      resolve_multi_int_env (
-        "BENCH_MULTI_DURATION_SECONDS",
-        resolve_multi_int_env ("BENCH_MULTI_MEASURE_SECONDS", 10, 1), 1);
+    settings.duration_seconds =
+      resolve_multi_int_env ("BENCH_MULTI_DURATION_SECONDS", 5, 1);
     settings.settle_ms = resolve_multi_int_env ("BENCH_MULTI_SETTLE_MS", 500, 0);
-    settings.drain_ms = resolve_multi_int_env ("BENCH_MULTI_DRAIN_MS", 300, 0);
+    settings.drain_ms = resolve_multi_drain_ms ();
     settings.recv_batch = resolve_multi_int_env ("BENCH_MULTI_RECV_BATCH", 64, 1);
     const int default_workers =
       settings.clients >= static_cast<size_t> (10000) ? 4 : 1;
@@ -173,7 +203,7 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.connect_ready_timeout_ms =
       resolve_multi_int_env ("BENCH_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0);
     settings.connect_concurrency =
-      resolve_multi_int_env ("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1);
+      resolve_multi_connect_concurrency (settings.clients);
     settings.server_recv_threads =
       resolve_multi_int_env ("BENCH_SERVER_RECV_THREADS", 1, 1);
     return settings;
@@ -291,7 +321,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
         }
     });
 
-    const int measure_seconds = std::max (1, settings.measure_seconds);
+    const int duration_seconds = std::max (1, settings.duration_seconds);
     std::atomic<bool> send_start (false);
     std::atomic<bool> send_running (true);
     std::atomic<int> senders_ready (0);
@@ -398,7 +428,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_end =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (measure_seconds);
+      + std::chrono::seconds (duration_seconds);
     while (std::chrono::steady_clock::now () < measure_end
            && !fatal_error.load (std::memory_order_acquire)) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -650,11 +680,11 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
         }
     }
 
-    const int measure_seconds = std::max (1, settings.measure_seconds);
+    const int duration_seconds = std::max (1, settings.duration_seconds);
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_end =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (measure_seconds);
+      + std::chrono::seconds (duration_seconds);
     while (std::chrono::steady_clock::now () < measure_end
            && !fatal_error.load (std::memory_order_acquire)) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -922,11 +952,11 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
         }
     }
 
-    const int measure_seconds = std::max (1, settings.measure_seconds);
+    const int duration_seconds = std::max (1, settings.duration_seconds);
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_end =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (measure_seconds);
+      + std::chrono::seconds (duration_seconds);
     while (std::chrono::steady_clock::now () < measure_end
            && !fatal_error.load (std::memory_order_acquire)) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
@@ -1237,7 +1267,7 @@ inline multi_bench_result_t run_multi_phase_socket_owned_rtt_benchmark (
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_deadline =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (1, settings.measure_seconds));
+      + std::chrono::seconds (std::max (1, settings.duration_seconds));
     while (!fatal_error.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < measure_deadline) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));

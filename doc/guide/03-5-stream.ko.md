@@ -98,6 +98,53 @@ if (n == 1 && payload[0] == 0x01) {
 
 ---
 
+## 4b. 콜백 Dispatch 패턴 (고성능)
+
+고처리량 서버에서는 `zlink_recv()` 폴링 대신 콜백 dispatch API를 사용한다.
+콜백이 I/O 스레드에서 직접 호출되어 poll 오버헤드를 제거한다.
+
+### LEN32BE 디코딩으로 attach
+
+```c
+int on_packets (const zlink_routing_id_t *rid,
+                zlink_msg_t *msgs, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        void *data = zlink_msg_data (&msgs[i]);
+        size_t size = zlink_msg_size (&msgs[i]);
+
+        if (size == 1 && ((uint8_t *)data)[0] == 0x01) {
+            /* 연결 이벤트 */
+        } else if (size == 1 && ((uint8_t *)data)[0] == 0x00) {
+            /* 연결 해제 이벤트 */
+        } else {
+            /* 에코 응답 */
+            zlink_stream_send (stream, rid, data, size, 0);
+        }
+    }
+    return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
+}
+
+/* attach */
+zlink_stream_attach (stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
+
+/* ... 완료 시: */
+zlink_stream_detach (stream);
+```
+
+### 섹션 4와의 주요 차이점
+
+| | `zlink_recv()` 패턴 | 콜백 dispatch |
+|---|---|---|
+| 스레드 | 애플리케이션 스레드에서 폴링 | I/O 스레드에서 콜백 호출 |
+| 프레이밍 | 수동 2프레임 수신 | 자동 (LEN32BE 모드) |
+| 전송 | `zlink_send()` + SNDMORE | `zlink_stream_send()` |
+| 동시성 | 하나씩 처리 | 병렬 I/O 스레드 |
+
+> 전체 API 레퍼런스는 [소켓 API — STREAM 콜백 Dispatch](../api/socket.ko.md#stream-콜백-dispatch-api)를 참고한다.
+
+---
+
 ## 5. 클라이언트 구현 원칙
 
 클라이언트는 raw socket/websocket로 구현한다.

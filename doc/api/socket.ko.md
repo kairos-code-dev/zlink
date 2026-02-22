@@ -425,6 +425,137 @@ Context가 종료된 경우 `ETERM`.
 
 ---
 
+### STREAM 콜백 Dispatch API
+
+다음 함수들은 STREAM 소켓을 위한 고성능 콜백 기반 인터페이스를 제공합니다.
+`zlink_recv()`로 폴링하는 대신, I/O 스레드에서 데이터 도착 시 직접 호출되는
+콜백을 등록합니다.
+
+#### 상수
+
+| 상수 | 값 | 설명 |
+|------|-----|------|
+| `ZLINK_STREAM_DISPATCH_LEN32BE` | `0x0001` | 콜백 호출 전 4바이트 big-endian 길이 프리픽스 프레임을 디코딩. 각 콜백 호출 시 완성된 페이로드를 수신. |
+
+#### 타입
+
+##### zlink_stream_on_packets_fn
+
+```c
+typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
+                                           zlink_msg_t *msgs_,
+                                           size_t msg_count_);
+```
+
+STREAM I/O 스레드에서 데이터 도착 시 호출되는 콜백. `rid_`는 피어를 식별합니다.
+`msgs_`는 `msg_count_`개의 메시지 배열이며, LEN32BE 모드에서는 각 항목이 완성된
+페이로드이고, 그렇지 않으면 raw 스트림 청크일 수 있습니다. 콜백은 반환 후
+`msgs_`의 포인터를 유지하거나 닫아서는 안 됩니다. 0을 반환하면 dispatch 계속,
+0이 아니면 종료를 요청합니다.
+
+---
+
+#### zlink_stream_attach
+
+STREAM 소켓에 콜백 dispatch를 등록합니다.
+
+```c
+int zlink_stream_attach (void *s_,
+                         zlink_stream_on_packets_fn on_packets_,
+                         int flags_);
+```
+
+STREAM 소켓 `s_`에 dispatch 콜백 `on_packets_`를 등록합니다. `flags_`에
+`ZLINK_STREAM_DISPATCH_LEN32BE`를 전달하면 자동 LEN32BE 프레임 디코딩이
+활성화됩니다. 한 번에 하나의 콜백만 등록 가능하며, 이미 등록된 상태에서 호출하면
+`errno=EBUSY`와 함께 -1을 반환합니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `s_`가 STREAM 소켓이 아니거나 `on_packets_`가 NULL이면 `EINVAL`.
+이미 콜백이 등록된 경우 `EBUSY`.
+
+**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
+
+**참고:** `zlink_stream_detach`, `zlink_stream_send`
+
+---
+
+#### zlink_stream_detach
+
+STREAM 소켓에서 콜백 dispatch를 해제합니다.
+
+```c
+int zlink_stream_detach (void *s_);
+```
+
+이전에 등록된 dispatch 콜백을 제거합니다. 해제 후 소켓은 표준
+`zlink_recv()` 패턴으로 돌아갑니다.
+
+**반환값:** 성공 시 0, 실패 시 -1 (errno가 설정됨).
+
+**에러:** `s_`가 STREAM 소켓이 아니면 `EINVAL`.
+
+**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
+
+**참고:** `zlink_stream_attach`
+
+---
+
+#### zlink_stream_send
+
+routing id로 특정 STREAM 피어에게 페이로드를 전송합니다.
+
+```c
+int zlink_stream_send (void *s_,
+                       const zlink_routing_id_t *rid_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_);
+```
+
+`rid_`로 식별되는 피어에게 `data_`의 `size_` 바이트를 전송합니다. 내부적으로
+routing id를 첫 번째 프레임으로, 페이로드를 두 번째 프레임으로 전송합니다.
+LEN32BE 모드로 attach된 경우 페이로드에 4바이트 big-endian 길이 프리픽스가 자동
+추가됩니다.
+
+**반환값:** 수락된 페이로드 바이트 수(`size_`), 또는 실패 시 -1.
+
+**에러:** `s_`가 STREAM 소켓이 아니거나 `rid_`가 유효하지 않으면 `EINVAL`.
+작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
+
+**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
+
+**참고:** `zlink_stream_send_msg`, `zlink_stream_attach`
+
+---
+
+#### zlink_stream_send_msg
+
+routing id로 특정 STREAM 피어에게 메시지를 전송합니다.
+
+```c
+int zlink_stream_send_msg (void *s_,
+                           const zlink_routing_id_t *rid_,
+                           zlink_msg_t *msg_,
+                           int flags_);
+```
+
+`zlink_stream_send()`와 동일하지만 raw 버퍼 대신 `zlink_msg_t`를 받습니다.
+메시지 `msg_`는 이 호출에 의해 소비(move)되며 반환 전에 재초기화됩니다. LEN32BE
+모드가 활성화된 경우 페이로드에 길이 프리픽스가 자동 추가됩니다.
+
+**반환값:** 수락된 페이로드 바이트 수, 또는 실패 시 -1.
+
+**에러:** `s_`가 STREAM 소켓이 아니거나 `rid_`가 유효하지 않으면 `EINVAL`.
+작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`.
+
+**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
+
+**참고:** `zlink_stream_send`, `zlink_stream_attach`
+
+---
+
 ### zlink_socket_monitor
 
 inproc 주소를 통해 소켓 모니터를 시작합니다 (레거시).

@@ -355,10 +355,10 @@ def run_multi_sizes_test(binary_name, lib_name, transport, sizes, pattern_name):
             result = subprocess.run(
                 cmd, env=env, capture_output=True, text=True, timeout=timeout_sec
             )
+            stderr = (result.stderr or "").lower()
+            if "protocol not supported" in stderr:
+                return {"unsupported": True, "parsed": {}, "timed_out": False}
             if result.returncode != 0:
-                stderr = (result.stderr or "").lower()
-                if "protocol not supported" in stderr:
-                    return {"unsupported": True, "parsed": {}, "timed_out": False}
                 if attempt_idx + 1 < attempts:
                     continue
                 return {"unsupported": False, "parsed": {}, "timed_out": False}
@@ -433,10 +433,10 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
                                     capture_output=True,
                                     text=True,
                                     timeout=timeout_sec)
+            stderr = (result.stderr or "").lower()
+            if "protocol not supported" in stderr:
+                return [{"metric": "_unsupported_transport_", "value": 1.0}]
             if result.returncode != 0:
-                stderr = (result.stderr or "").lower()
-                if "protocol not supported" in stderr:
-                    return [{"metric": "_unsupported_transport_", "value": 1.0}]
                 if attempt_idx + 1 < attempts:
                     continue
                 return []
@@ -504,6 +504,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                     for sz in sizes:
                         final_stats[f"{tr}|{sz}|throughput"] = 0
                         final_stats[f"{tr}|{sz}|latency"] = 0
+                        final_stats[f"{tr}|{sz}|unsupported"] = 1
                     print("unsupported ", end="", flush=True)
                     break
 
@@ -560,6 +561,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
             if not tr_supported:
                 final_stats[f"{tr}|{sz}|throughput"] = 0
                 final_stats[f"{tr}|{sz}|latency"] = 0
+                final_stats[f"{tr}|{sz}|unsupported"] = 1
                 print("unsupported", end=" ", flush=True)
                 print("Done")
                 continue
@@ -589,10 +591,12 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                     tr_supported = False
                     final_stats[f"{tr}|{sz}|throughput"] = 0
                     final_stats[f"{tr}|{sz}|latency"] = 0
+                    final_stats[f"{tr}|{sz}|unsupported"] = 1
                     for next_idx in range(idx + 1, len(sizes)):
                         next_sz = sizes[next_idx]
                         final_stats[f"{tr}|{next_sz}|throughput"] = 0
                         final_stats[f"{tr}|{next_sz}|latency"] = 0
+                        final_stats[f"{tr}|{next_sz}|unsupported"] = 1
                     if FAIL_FAST:
                         break
                     continue
@@ -682,7 +686,7 @@ def parse_args():
         "  BENCH_MULTI_CONNECT_CONCURRENCY=128\n"
         "  BENCH_MULTI_WARMUP_SECONDS=3\n"
         "  BENCH_MULTI_MEASURE_SECONDS=10\n"
-        "  BENCH_MULTI_DRAIN_MS=300\n"
+        "  BENCH_MULTI_DRAIN_MS=300  (deprecated)\n"
         "  BENCH_MULTI_STREAM_MSG_SIZES=64,256,1024,65536,131072,262144\n"
         "  BENCH_MULTI_STREAM_ATTEMPTS=2\n"
     )
@@ -923,18 +927,30 @@ def main():
                     )
                 else:
                     bt = b_stats.get(f"{tr}|{sz}|throughput", 0)
-                    td = ((ct - bt) / bt * 100) if bt > 0 else 0
                     bl = b_stats.get(f"{tr}|{sz}|latency", 0)
-                    ld = ((bl - cl) / bl * 100) if bl > 0 else 0
-                    bt_s = format_throughput(sz, bt)
-                    ct_s = format_throughput(sz, ct)
-                    bl_s = f"{bl:8.2f} us"
-                    cl_s = f"{cl:8.2f} us"
+                    b_unsupported = bool(b_stats.get(f"{tr}|{sz}|unsupported", 0))
+                    c_unsupported = bool(c_stats.get(f"{tr}|{sz}|unsupported", 0))
+                    if b_unsupported or c_unsupported:
+                        bt_s = "N/A"
+                        ct_s = "N/A"
+                        bl_s = "N/A"
+                        cl_s = "N/A"
+                        td_s = "N/A"
+                        ld_s = "N/A"
+                    else:
+                        td = ((ct - bt) / bt * 100) if bt > 0 else 0
+                        ld = ((bl - cl) / bl * 100) if bl > 0 else 0
+                        bt_s = format_throughput(sz, bt)
+                        ct_s = format_throughput(sz, ct)
+                        bl_s = f"{bl:8.2f} us"
+                        cl_s = f"{cl:8.2f} us"
+                        td_s = f"{td:+7.2f}%"
+                        ld_s = f"{ld:+7.2f}%"
                     print(
-                        f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {bt_s:>{val_w}} | {ct_s:>{val_w}} | {td:>+7.2f}% |"
+                        f"| {f'{sz}B':<{size_w}} | {'Throughput':<{metric_w}} | {bt_s:>{val_w}} | {ct_s:>{val_w}} | {td_s:>{diff_w}} |"
                     )
                     print(
-                        f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {bl_s:>{val_w}} | {cl_s:>{val_w}} | {ld:>+7.2f}% |"
+                        f"| {f'{sz}B':<{size_w}} | {'Latency':<{metric_w}} | {bl_s:>{val_w}} | {cl_s:>{val_w}} | {ld_s:>{diff_w}} |"
                     )
 
     if all_failures:

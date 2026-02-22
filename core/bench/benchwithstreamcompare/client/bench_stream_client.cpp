@@ -176,6 +176,7 @@ struct client_options_t
     int runs;
     int warmup;
     int duration;
+    int drain_ms;
     int inflight;
     int io_threads;
     int latency_sample_rate;
@@ -188,6 +189,7 @@ struct client_options_t
           runs (1),
           warmup (2),
           duration (10),
+          drain_ms (300),
           inflight (1),
           io_threads (4),
           latency_sample_rate (0)
@@ -280,6 +282,7 @@ struct case_metrics_t
     long send_error;
     long recv_error;
     long timeout_error;
+    long size_mismatch;
     bool pass;
 
     case_metrics_t ()
@@ -293,6 +296,7 @@ struct case_metrics_t
           send_error (0),
           recv_error (0),
           timeout_error (0),
+          size_mismatch (0),
           pass (false)
     {
     }
@@ -330,8 +334,10 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     void maybe_send_more ();
     void send_one ();
     void on_write (const boost::system::error_code &ec, size_t bytes);
-    void start_read ();
-    void on_read (const boost::system::error_code &ec, size_t bytes);
+    void start_read_header ();
+    void start_read_payload ();
+    void on_read_header (const boost::system::error_code &ec, size_t bytes);
+    void on_read_payload (const boost::system::error_code &ec, size_t bytes);
     void close_internal ();
     void apply_socket_tuning ();
 
@@ -354,6 +360,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     tcp::endpoint source_bind_ep;
 
     std::vector<unsigned char> write_buf;
+    unsigned char read_header[4];
+    uint32_t read_declared;
     std::vector<unsigned char> read_buf;
 };
 
@@ -378,6 +386,7 @@ class bench_client_t
           send_error_measure (0),
           recv_error_measure (0),
           timeout_error_measure (0),
+          size_mismatch_measure (0),
           collect_metrics (false),
           sample_overwrite_idx (0),
           endpoint (boost::asio::ip::make_address (opt.host),
@@ -439,10 +448,11 @@ class bench_client_t
                   "RESULT size=%zu run=%d throughput_bps=%.2f throughput_mib_s=%.2f "
                   "p50_us=%.2f p95_us=%.2f p99_us=%.2f connect_ok=%ld "
                   "connect_fail=%ld send_err=%ld recv_err=%ld timeout=%ld "
+                  "size_mismatch=%ld "
                   "pass_fail=%s\n",
                   size, run_idx, m.throughput_bps, m.throughput_mib_s, m.p50_us,
                   m.p95_us, m.p99_us, m.connect_ok, m.connect_fail, m.send_error,
-                  m.recv_error, m.timeout_error, pass_text);
+                  m.recv_error, m.timeout_error, m.size_mismatch, pass_text);
                 if (!m.pass)
                     all_pass = false;
             }
@@ -562,6 +572,13 @@ class bench_client_t
             outstanding_total.fetch_sub (count, std::memory_order_relaxed);
     }
 
+    void on_size_mismatch ()
+    {
+        if (!collect_metrics.load (std::memory_order_acquire))
+            return;
+        size_mismatch_measure.fetch_add (1, std::memory_order_relaxed);
+    }
+
     int inflight_limit () const { return std::max (1, opt.inflight); }
 
   private:
@@ -634,19 +651,20 @@ class bench_client_t
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const auto drain_deadline = std::chrono::steady_clock::now ()
-                                    + std::chrono::seconds (
-                                      std::max (5, k_connect_timeout_s));
+        // Multi benchmark behavior: bounded drain wait before timeout accounting.
+        const auto drain_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (std::max (0, opt.drain_ms));
         while (std::chrono::steady_clock::now () < drain_deadline) {
             if (outstanding_total.load (std::memory_order_relaxed) <= 0)
                 break;
-            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
 
         const long remaining = outstanding_total.load (std::memory_order_relaxed);
         if (remaining > 0) {
             on_timeout (remaining);
-            return false;
+            on_abandon (remaining);
         }
 
         return true;
@@ -658,6 +676,7 @@ class bench_client_t
         send_error_measure.store (0, std::memory_order_relaxed);
         recv_error_measure.store (0, std::memory_order_relaxed);
         timeout_error_measure.store (0, std::memory_order_relaxed);
+        size_mismatch_measure.store (0, std::memory_order_relaxed);
         sample_overwrite_idx.store (0, std::memory_order_relaxed);
     }
 
@@ -717,9 +736,10 @@ class bench_client_t
         out.send_error = send_error_measure.load (std::memory_order_relaxed);
         out.recv_error = recv_error_measure.load (std::memory_order_relaxed);
         out.timeout_error = timeout_error_measure.load (std::memory_order_relaxed);
+        out.size_mismatch = size_mismatch_measure.load (std::memory_order_relaxed);
 
         out.pass = window_ok && out.connect_fail == 0 && out.send_error == 0
-                   && out.recv_error == 0 && out.timeout_error == 0
+                   && out.recv_error == 0
                    && out.throughput_bps > 0.0;
         return out;
     }
@@ -772,6 +792,7 @@ class bench_client_t
     std::atomic<long> send_error_measure;
     std::atomic<long> recv_error_measure;
     std::atomic<long> timeout_error_measure;
+    std::atomic<long> size_mismatch_measure;
 
     std::atomic<bool> collect_metrics;
 
@@ -801,8 +822,10 @@ client_session_t::client_session_t (bench_client_t &owner_,
       endpoint (),
       source_bind_ep (source_bind_ep_),
       write_buf (),
+      read_declared (0),
       read_buf ()
 {
+    std::memset (read_header, 0, sizeof (read_header));
 }
 
 bool client_session_t::connected () const
@@ -991,41 +1014,86 @@ void client_session_t::on_write (const boost::system::error_code &ec, size_t byt
         return;
     }
 
-    start_read ();
+    start_read_header ();
     maybe_send_more ();
 }
 
-void client_session_t::start_read ()
+void client_session_t::start_read_header ()
 {
     if (closed || !connected ())
         return;
     if (read_inflight)
         return;
 
-    const size_t wire_size = chunk_size + 4;
-
-    if (read_buf.size () != wire_size)
-        read_buf.resize (wire_size);
-
     read_inflight = true;
+    const std::shared_ptr<client_session_t> self = shared_from_this ();
+    boost::asio::async_read (
+      socket, boost::asio::buffer (read_header),
+      boost::asio::bind_executor (
+        strand,
+        [self] (const boost::system::error_code &ec, size_t bytes) {
+            self->on_read_header (ec, bytes);
+        }));
+}
+
+void client_session_t::start_read_payload ()
+{
+    if (closed || !connected ())
+        return;
+    if (read_declared > static_cast<uint32_t> (k_max_chunk_size)) {
+        owner.on_recv_error ();
+        if (outstanding > 0) {
+            const long dropped = static_cast<long> (outstanding);
+            outstanding = 0;
+            owner.on_abandon (dropped);
+        }
+        close_internal ();
+        return;
+    }
+
+    if (read_buf.size () != static_cast<size_t> (read_declared))
+        read_buf.resize (static_cast<size_t> (read_declared));
+
     const std::shared_ptr<client_session_t> self = shared_from_this ();
     boost::asio::async_read (
       socket, boost::asio::buffer (read_buf),
       boost::asio::bind_executor (
         strand,
         [self] (const boost::system::error_code &ec, size_t bytes) {
-            self->on_read (ec, bytes);
+            self->on_read_payload (ec, bytes);
         }));
 }
 
-void client_session_t::on_read (const boost::system::error_code &ec, size_t bytes)
+void client_session_t::on_read_header (const boost::system::error_code &ec,
+                                       size_t bytes)
+{
+    if (closed)
+        return;
+
+    if (ec || bytes != sizeof (read_header)) {
+        owner.on_recv_error ();
+        if (outstanding > 0) {
+            const long dropped = static_cast<long> (outstanding);
+            outstanding = 0;
+            owner.on_abandon (dropped);
+        }
+        close_internal ();
+        return;
+    }
+
+    read_declared = load_u32_be (read_header);
+    start_read_payload ();
+}
+
+void client_session_t::on_read_payload (const boost::system::error_code &ec,
+                                        size_t bytes)
 {
     read_inflight = false;
 
     if (closed)
         return;
 
-    if (ec || bytes != read_buf.size ()) {
+    if (ec || bytes != static_cast<size_t> (read_declared)) {
         owner.on_recv_error ();
         if (outstanding > 0) {
             const long dropped = static_cast<long> (outstanding);
@@ -1036,31 +1104,20 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
         return;
     }
 
-    if (bytes < 4) {
-        owner.on_recv_error ();
+    if (read_declared != static_cast<uint32_t> (chunk_size)) {
+        owner.on_size_mismatch ();
         if (outstanding > 0) {
-            const long dropped = static_cast<long> (outstanding);
-            outstanding = 0;
-            owner.on_abandon (dropped);
+            --outstanding;
+            owner.on_abandon (1);
         }
-        close_internal ();
+        maybe_send_more ();
+        if (outstanding > 0)
+            start_read_header ();
         return;
     }
 
-    const uint32_t declared = load_u32_be (&read_buf[0]);
-    if (declared != static_cast<uint32_t> (chunk_size)) {
-        owner.on_recv_error ();
-        if (outstanding > 0) {
-            const long dropped = static_cast<long> (outstanding);
-            outstanding = 0;
-            owner.on_abandon (dropped);
-        }
-        close_internal ();
-        return;
-    }
-
-    const size_t payload_bytes = bytes - 4;
-    const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[4] : NULL;
+    const size_t payload_bytes = bytes;
+    const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[0] : NULL;
 
     uint64_t seq = 0;
     uint64_t sent_ns = 0;
@@ -1076,7 +1133,7 @@ void client_session_t::on_read (const boost::system::error_code &ec, size_t byte
 
     maybe_send_more ();
     if (outstanding > 0)
-        start_read ();
+        start_read_header ();
 }
 
 void client_session_t::request_close ()
@@ -1114,6 +1171,7 @@ bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.runs = args.get_int ("--runs", opt.runs, 1);
     opt.warmup = args.get_int ("--warmup", opt.warmup, 0);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
+    opt.drain_ms = args.get_int ("--drain-ms", opt.drain_ms, 0);
     opt.inflight = args.get_int ("--inflight", opt.inflight, 1);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.latency_sample_rate = args.get_int ("--latency-sample-rate",

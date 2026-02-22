@@ -143,6 +143,11 @@ const zlink::blob_t &zlink::pipe_t::get_routing_id () const
     return _router_socket_routing_id;
 }
 
+zlink::pipe_t *zlink::pipe_t::get_peer () const
+{
+    return _peer;
+}
+
 void zlink::pipe_t::set_peer_routing_id (const unsigned char *data_, size_t size_)
 {
     blob_t routing_id;

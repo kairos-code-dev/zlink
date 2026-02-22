@@ -20,13 +20,16 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
+  --stack <asio|cppserver|dotnet|zlink|zlink-len32be|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
+  --phases <both|throughput|latency|csv>  default: both
   --ccu <N>                    default: 10000
   --inflight <N>               default: 1
   --runs <N>                   default: 1
   --warmup <sec>               default: 2
-  --duration <sec>             default: 10
+  --duration <sec>             default: 5
+  --drain-ms <N>               default: 300
+  --latency-sample-rate <N>    default: 100
   --client-io-threads <N>      default: 4
   --server-io-threads <N>      default: 4
   --resource-sample-ms <N>     default: 500
@@ -40,21 +43,25 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlink asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink zlink-len32be asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
+PHASES_ALL=(throughput latency)
 
 TARGET_STACK="all"
 TARGET_SIZE="all"
+TARGET_PHASES="both"
 CCU=10000
 INFLIGHT=1
 RUNS=1
 WARMUP=2
-DURATION=10
+DURATION=5
+DRAIN_MS=300
+LATENCY_SAMPLE_RATE=100
 CLIENT_IO_THREADS=4
 SERVER_IO_THREADS=4
 RESOURCE_SAMPLE_MS=500
 SERVER_START_TIMEOUT=40
-STACK_GAP_SEC=8
+STACK_GAP_SEC=5
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -64,6 +71,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --size)
             TARGET_SIZE="${2:-}"
+            shift 2
+            ;;
+        --phases)
+            TARGET_PHASES="${2:-}"
             shift 2
             ;;
         --ccu)
@@ -84,6 +95,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --duration)
             DURATION="${2:-}"
+            shift 2
+            ;;
+        --drain-ms)
+            DRAIN_MS="${2:-}"
+            shift 2
+            ;;
+        --latency-sample-rate)
+            LATENCY_SAMPLE_RATE="${2:-}"
             shift 2
             ;;
         --client-io-threads)
@@ -133,6 +152,8 @@ validate_int "--inflight" "${INFLIGHT}"
 validate_int "--runs" "${RUNS}"
 validate_int "--warmup" "${WARMUP}"
 validate_int "--duration" "${DURATION}"
+validate_int "--drain-ms" "${DRAIN_MS}"
+validate_int "--latency-sample-rate" "${LATENCY_SAMPLE_RATE}"
 validate_int "--client-io-threads" "${CLIENT_IO_THREADS}"
 validate_int "--server-io-threads" "${SERVER_IO_THREADS}"
 validate_int "--resource-sample-ms" "${RESOURCE_SAMPLE_MS}"
@@ -162,9 +183,21 @@ if [[ ${#RUN_SIZES[@]} -eq 0 ]]; then
     exit 2
 fi
 
+RUN_PHASES=()
+if [[ "${TARGET_PHASES}" == "both" ]]; then
+    RUN_PHASES=("${PHASES_ALL[@]}")
+else
+    IFS=',' read -r -a RUN_PHASES <<<"${TARGET_PHASES}"
+fi
+
+if [[ ${#RUN_PHASES[@]} -eq 0 ]]; then
+    echo "empty phase set" >&2
+    exit 2
+fi
+
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|zlink|zmq|netty)
+        asio|cppserver|dotnet|zlink|zlink-len32be|zmq|netty)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -179,6 +212,17 @@ for sz in "${RUN_SIZES[@]}"; do
             ;;
         *)
             echo "invalid size: ${sz}" >&2
+            exit 2
+            ;;
+    esac
+done
+
+for phase in "${RUN_PHASES[@]}"; do
+    case "${phase}" in
+        throughput|latency)
+            ;;
+        *)
+            echo "invalid phase: ${phase}" >&2
             exit 2
             ;;
     esac
@@ -202,6 +246,7 @@ SKIP_CSV="${RESULT_DIR}/skipped_stacks.csv"
 CLIENT_BIN="${BUILD_DIR}/bin/bench_streamcompare_client"
 ASIO_BIN="${BUILD_DIR}/bin/test_scenario_stream_asio"
 ZLINK_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink"
+ZLINK_LEN32BE_BIN="${BUILD_DIR}/bin/test_scenario_stream_zlink_len32be"
 ZMQ_BIN="${BUILD_DIR}/bin/test_scenario_stream_zmq"
 STACKS_ROOT_DIR="${ROOT_DIR}/core/bench/benchwithstreamcompare/stacks"
 ZMQ_LIB_DIR="${STACKS_ROOT_DIR}/zmq/libzmq_dist/linux-x64/lib"
@@ -278,7 +323,7 @@ resolve_stack_tuning()
             STACK_SNDBUF=2097152
             STACK_RCVBUF=2097152
             ;;
-        zlink)
+        zlink|zlink-len32be)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
             STACK_SNDBUF=8388608
             STACK_RCVBUF=8388608
@@ -851,6 +896,9 @@ try_build_stack()
         zlink)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink -j"$(nproc)" >/dev/null
             ;;
+        zlink-len32be)
+            cmake --build "${BUILD_DIR}" --target test_scenario_stream_zlink_len32be -j"$(nproc)" >/dev/null
+            ;;
         zmq)
             cmake --build "${BUILD_DIR}" --target test_scenario_stream_zmq -j"$(nproc)" >/dev/null
             ;;
@@ -913,6 +961,9 @@ start_server()
             ;;
         zlink)
             cmd=("${ZLINK_BIN}")
+            ;;
+        zlink-len32be)
+            cmd=("${ZLINK_LEN32BE_BIN}")
             ;;
         zmq)
             cmd=("${ZMQ_BIN}")
@@ -1001,12 +1052,15 @@ append_rows_from_client_log()
     local server_resource_log="$8"
     local system_resource_summary="$9"
     local system_resource_log="${10}"
+    local run_override="${11}"
+    local phase_override="${12}"
 
     python3 - "${METRICS_CSV}" "${stack}" "${CCU}" "${INFLIGHT}" "${client_rc}" \
         "${client_log}" "${server_log}" \
         "${client_resource_summary}" "${server_resource_summary}" \
         "${client_resource_log}" "${server_resource_log}" \
-        "${system_resource_summary}" "${system_resource_log}" <<'PY'
+        "${system_resource_summary}" "${system_resource_log}" \
+        "${run_override}" "${phase_override}" <<'PY'
 import csv
 import sys
 
@@ -1024,7 +1078,9 @@ import sys
     server_resource_log,
     system_resource_summary,
     system_resource_log,
-) = sys.argv[1:14]
+    run_override,
+    phase_override,
+) = sys.argv[1:16]
 ccu = int(ccu)
 
 rows = []
@@ -1092,8 +1148,9 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
 
         row = {
             "stack": stack,
+            "phase": phase_override if phase_override else fields.get("phase", ""),
             "size": size_text,
-            "run": fields.get("run", "0"),
+            "run": run_override if run_override and run_override != "0" else fields.get("run", "0"),
             "ccu": str(ccu),
             "inflight": str(inflight),
             "client_rc": str(client_rc),
@@ -1108,6 +1165,7 @@ with open(client_log, encoding="utf-8", errors="replace") as f:
             "send_err": fields.get("send_err", "0"),
             "recv_err": fields.get("recv_err", "0"),
             "timeout": fields.get("timeout", "0"),
+            "size_mismatch": fields.get("size_mismatch", "0"),
             "pass_fail": fields.get("pass_fail", "FAIL"),
             "client_avg_cpu_pct": client_resource["avg_cpu_pct"],
             "client_peak_cpu_pct": client_resource["peak_cpu_pct"],
@@ -1137,11 +1195,11 @@ with open(metrics_csv, "a", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(
         f,
         fieldnames=[
-            "stack", "size", "run", "ccu", "inflight", "client_rc",
+            "stack", "phase", "size", "run", "ccu", "inflight", "client_rc",
             "throughput_bps", "throughput_mib_s", "throughput_tps",
             "p50_us", "p95_us",
             "p99_us", "connect_ok", "connect_fail", "send_err",
-            "recv_err", "timeout", "pass_fail",
+            "recv_err", "timeout", "size_mismatch", "pass_fail",
             "client_avg_cpu_pct", "client_peak_cpu_pct",
             "client_avg_rss_kb", "client_peak_rss_kb", "client_peak_hwm_kb",
             "server_avg_cpu_pct", "server_peak_cpu_pct",
@@ -1160,30 +1218,35 @@ print(len(rows))
 PY
 }
 
-run_stack_once()
+run_stack_phase()
 {
     local stack="$1"
-    local port="$2"
-    local client_log="$3"
+    local phase="$2"
+    local port="$3"
+    local client_log="$4"
+    local sizes_csv="$5"
+    local latency_sample_rate="0"
 
-    local sizes_csv
-    sizes_csv="$(IFS=,; echo "${RUN_SIZES[*]}")"
+    if [[ "${phase}" == "latency" ]]; then
+        latency_sample_rate="${LATENCY_SAMPLE_RATE}"
+    fi
+
     local client_resource_log="${client_log%.log}_resource.csv"
     local client_resource_summary="${client_log%.log}_resource.summary"
     local client_pid=""
     local client_monitor_pid=""
 
-    set +e
     "${CLIENT_BIN}" \
         --host "${HOST}" \
         --port "${port}" \
         --ccu "${CCU}" \
         --sizes "${sizes_csv}" \
-        --runs "${RUNS}" \
+        --runs "1" \
         --warmup "${WARMUP}" \
         --duration "${DURATION}" \
+        --drain-ms "${DRAIN_MS}" \
         --inflight "${INFLIGHT}" \
-        --latency-sample-rate "0" \
+        --latency-sample-rate "${latency_sample_rate}" \
         --io-threads "${CLIENT_IO_THREADS}" \
         >"${client_log}" 2>&1 &
     client_pid="$!"
@@ -1197,12 +1260,11 @@ run_stack_once()
         log "warning: failed to start client resource monitor stack=${stack}"
     fi
 
-    wait "${client_pid}"
-    local client_rc="$?"
+    local client_rc=0
+    wait "${client_pid}" || client_rc="$?"
     if [[ -n "${client_monitor_pid}" ]]; then
         wait "${client_monitor_pid}" >/dev/null 2>&1 || true
     fi
-    set -e
 
     return "${client_rc}"
 }
@@ -1213,7 +1275,7 @@ main()
     : >"${SCENARIO_LOG}"
 
     cat >"${METRICS_CSV}" <<'CSV'
-stack,size,run,ccu,inflight,client_rc,throughput_bps,throughput_mib_s,throughput_tps,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,pass_fail,client_avg_cpu_pct,client_peak_cpu_pct,client_avg_rss_kb,client_peak_rss_kb,client_peak_hwm_kb,server_avg_cpu_pct,server_peak_cpu_pct,server_avg_rss_kb,server_peak_rss_kb,server_peak_hwm_kb,system_avg_cpu_pct,system_peak_cpu_pct,system_avg_mem_used_kb,system_peak_mem_used_kb,system_avg_mem_used_pct,system_peak_mem_used_pct,client_resource_log,server_resource_log,system_resource_log,client_log,server_log
+stack,phase,size,run,ccu,inflight,client_rc,throughput_bps,throughput_mib_s,throughput_tps,p50_us,p95_us,p99_us,connect_ok,connect_fail,send_err,recv_err,timeout,size_mismatch,pass_fail,client_avg_cpu_pct,client_peak_cpu_pct,client_avg_rss_kb,client_peak_rss_kb,client_peak_hwm_kb,server_avg_cpu_pct,server_peak_cpu_pct,server_avg_rss_kb,server_peak_rss_kb,server_peak_hwm_kb,system_avg_cpu_pct,system_peak_cpu_pct,system_avg_mem_used_kb,system_peak_mem_used_kb,system_avg_mem_used_pct,system_peak_mem_used_pct,client_resource_log,server_resource_log,system_resource_log,client_log,server_log
 CSV
 
     cat >"${SKIP_CSV}" <<'CSV'
@@ -1221,7 +1283,7 @@ stack,reason
 CSV
 
     log "scope stacks=$(IFS=,; echo "${RUN_STACKS[*]}") sizes=$(IFS=,; echo "${RUN_SIZES[*]}")"
-    log "settings ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s inflight=${INFLIGHT} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
+    log "settings phases=$(IFS=,; echo "${RUN_PHASES[*]}") ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s drain_ms=${DRAIN_MS} inflight=${INFLIGHT} latency_sample_rate=${LATENCY_SAMPLE_RATE} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
 
     build_selected
 
@@ -1229,6 +1291,9 @@ CSV
         log "no active stacks after build"
         return 1
     fi
+
+    local sizes_csv
+    sizes_csv="$(IFS=,; echo "${RUN_SIZES[*]}")"
 
     local stack
     for stack in "${ACTIVE_STACKS[@]}"; do
@@ -1239,82 +1304,105 @@ CSV
         fi
 
         local port="${ALLOCATED_PORT}"
-        local server_log="${LOG_DIR}/${stack}_server.log"
-        local client_log="${LOG_DIR}/${stack}_client.log"
-        local client_resource_log="${LOG_DIR}/${stack}_client_resource.csv"
-        local client_resource_summary="${LOG_DIR}/${stack}_client_resource.summary"
-        local server_resource_log="${LOG_DIR}/${stack}_server_resource.csv"
-        local server_resource_summary="${LOG_DIR}/${stack}_server_resource.summary"
-        local system_resource_log="${LOG_DIR}/${stack}_system_resource.csv"
-        local system_resource_summary="${LOG_DIR}/${stack}_system_resource.summary"
-        local server_monitor_pid=""
-        local system_monitor_pid=""
+        local stack_failed=0
+        local run_idx
+        for ((run_idx = 1; run_idx <= RUNS; ++run_idx)); do
+            local phase
+            for phase in "${RUN_PHASES[@]}"; do
+                local log_tag="${stack}_run${run_idx}_${phase}"
+                local server_log="${LOG_DIR}/${log_tag}_server.log"
+                local client_log="${LOG_DIR}/${log_tag}_client.log"
+                local client_resource_log="${LOG_DIR}/${log_tag}_client_resource.csv"
+                local client_resource_summary="${LOG_DIR}/${log_tag}_client_resource.summary"
+                local server_resource_log="${LOG_DIR}/${log_tag}_server_resource.csv"
+                local server_resource_summary="${LOG_DIR}/${log_tag}_server_resource.summary"
+                local system_resource_log="${LOG_DIR}/${log_tag}_system_resource.csv"
+                local system_resource_summary="${LOG_DIR}/${log_tag}_system_resource.summary"
+                local server_monitor_pid=""
+                local system_monitor_pid=""
 
-        log "start stack=${stack} port=${port}"
-        if ! start_server "${stack}" "${HOST}" "${port}" "${server_log}" "${MAX_RUN_SIZE}"; then
-            record_skip "${stack}" "server_start_failed"
-            stop_active_server
-            FAILED_CASES="$((FAILED_CASES + 1))"
-            continue
-        fi
+                log "start stack=${stack} phase=${phase} sizes=${sizes_csv} run=${run_idx}/${RUNS} port=${port}"
+                if ! start_server "${stack}" "${HOST}" "${port}" "${server_log}" "${MAX_RUN_SIZE}"; then
+                    log "server start failed stack=${stack} phase=${phase} run=${run_idx}"
+                    stop_active_server
+                    FAILED_CASES="$((FAILED_CASES + 1))"
+                    stack_failed=1
+                    break
+                fi
 
-        set +e
-        MONITOR_PID=""
-        start_process_resource_monitor "${ACTIVE_SERVER_PID}" "${RESOURCE_SAMPLE_MS}" "${server_resource_log}" "${server_resource_summary}"
-        local server_monitor_rc="$?"
-        server_monitor_pid="${MONITOR_PID:-}"
-        set -e
-        if [[ "${server_monitor_rc}" != "0" || -z "${server_monitor_pid}" ]]; then
-            server_monitor_pid=""
-            log "warning: failed to start server resource monitor stack=${stack}"
-        fi
+                set +e
+                MONITOR_PID=""
+                start_process_resource_monitor "${ACTIVE_SERVER_PID}" "${RESOURCE_SAMPLE_MS}" "${server_resource_log}" "${server_resource_summary}"
+                local server_monitor_rc="$?"
+                server_monitor_pid="${MONITOR_PID:-}"
+                set -e
+                if [[ "${server_monitor_rc}" != "0" || -z "${server_monitor_pid}" ]]; then
+                    server_monitor_pid=""
+                    log "warning: failed to start server resource monitor stack=${stack} phase=${phase} run=${run_idx}"
+                fi
 
-        set +e
-        MONITOR_PID=""
-        start_system_resource_monitor "${RESOURCE_SAMPLE_MS}" "${system_resource_log}" "${system_resource_summary}"
-        local system_monitor_rc="$?"
-        system_monitor_pid="${MONITOR_PID:-}"
-        set -e
-        if [[ "${system_monitor_rc}" != "0" || -z "${system_monitor_pid}" ]]; then
-            system_monitor_pid=""
-            log "warning: failed to start system resource monitor stack=${stack}"
-        fi
+                set +e
+                MONITOR_PID=""
+                start_system_resource_monitor "${RESOURCE_SAMPLE_MS}" "${system_resource_log}" "${system_resource_summary}"
+                local system_monitor_rc="$?"
+                system_monitor_pid="${MONITOR_PID:-}"
+                set -e
+                if [[ "${system_monitor_rc}" != "0" || -z "${system_monitor_pid}" ]]; then
+                    system_monitor_pid=""
+                    log "warning: failed to start system resource monitor stack=${stack} phase=${phase} run=${run_idx}"
+                fi
 
-        set +e
-        run_stack_once "${stack}" "${port}" "${client_log}"
-        local client_rc="$?"
-        set -e
+                set +e
+                run_stack_phase "${stack}" "${phase}" "${port}" "${client_log}" "${sizes_csv}"
+                local client_rc="$?"
+                set -e
 
-        stop_active_server
-        if [[ -n "${server_monitor_pid}" ]]; then
-            wait "${server_monitor_pid}" >/dev/null 2>&1 || true
-        fi
-        if [[ -n "${system_monitor_pid}" ]]; then
-            kill -TERM "${system_monitor_pid}" >/dev/null 2>&1 || true
-            wait "${system_monitor_pid}" >/dev/null 2>&1 || true
-        fi
+                stop_active_server
+                if [[ -n "${server_monitor_pid}" ]]; then
+                    wait "${server_monitor_pid}" >/dev/null 2>&1 || true
+                fi
+                if [[ -n "${system_monitor_pid}" ]]; then
+                    kill -TERM "${system_monitor_pid}" >/dev/null 2>&1 || true
+                    wait "${system_monitor_pid}" >/dev/null 2>&1 || true
+                fi
 
-        local row_count
-        row_count="$(append_rows_from_client_log \
-            "${stack}" \
-            "${client_rc}" \
-            "${client_log}" \
-            "${server_log}" \
-            "${client_resource_summary}" \
-            "${server_resource_summary}" \
-            "${client_resource_log}" \
-            "${server_resource_log}" \
-            "${system_resource_summary}" \
-            "${system_resource_log}")"
+                local row_count
+                row_count="$(append_rows_from_client_log \
+                    "${stack}" \
+                    "${client_rc}" \
+                    "${client_log}" \
+                    "${server_log}" \
+                    "${client_resource_summary}" \
+                    "${server_resource_summary}" \
+                    "${client_resource_log}" \
+                    "${server_resource_log}" \
+                    "${system_resource_summary}" \
+                    "${system_resource_log}" \
+                    "${run_idx}" \
+                    "${phase}")"
 
-        if [[ "${client_rc}" != "0" ]]; then
-            log "client failed stack=${stack} rc=${client_rc}"
-            FAILED_CASES="$((FAILED_CASES + 1))"
-        fi
+                if [[ "${client_rc}" != "0" ]]; then
+                    log "client failed stack=${stack} phase=${phase} run=${run_idx} rc=${client_rc}"
+                    FAILED_CASES="$((FAILED_CASES + 1))"
+                    stack_failed=1
+                    break
+                fi
 
-        if [[ "${row_count}" == "0" ]]; then
-            log "no RESULT rows parsed stack=${stack}"
-            FAILED_CASES="$((FAILED_CASES + 1))"
+                if [[ "${row_count}" == "0" ]]; then
+                    log "no RESULT rows parsed stack=${stack} phase=${phase} run=${run_idx}"
+                    FAILED_CASES="$((FAILED_CASES + 1))"
+                    stack_failed=1
+                    break
+                fi
+            done
+
+            if (( stack_failed != 0 )); then
+                break
+            fi
+        done
+
+        if (( stack_failed != 0 )); then
+            record_skip "${stack}" "run_failed"
         fi
 
         if (( STACK_GAP_SEC > 0 )); then
@@ -1329,6 +1417,7 @@ CSV
         --runs "${RUNS}" \
         --stacks "$(IFS=,; echo "${ACTIVE_STACKS[*]}")" \
         --sizes "$(IFS=,; echo "${RUN_SIZES[*]}")" \
+        --phases "$(IFS=,; echo "${RUN_PHASES[*]}")" \
         --skip-file "${SKIP_CSV}"
 
     log "result_dir=${RESULT_DIR}"

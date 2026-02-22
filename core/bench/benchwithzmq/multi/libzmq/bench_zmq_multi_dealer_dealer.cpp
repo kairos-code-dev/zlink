@@ -257,6 +257,25 @@ double measure_dealer_latency_us (void *ctx,
     return latency;
 }
 
+double measure_dealer_latency_live (void *server,
+                                    void *client,
+                                    size_t msg_size)
+{
+    std::vector<char> payload (std::max<size_t> (1, msg_size), 'a');
+    std::vector<char> recv_buf (std::max<size_t> (1, msg_size));
+
+    const int lat_count = resolve_bench_count ("BENCH_LAT_COUNT", 500);
+    return measure_roundtrip_latency_us (lat_count, [&] () {
+        if (zmq_send (client, payload.data (), payload.size (), 0) < 0)
+            return;
+        if (zmq_recv (server, recv_buf.data (), recv_buf.size (), 0) < 0)
+            return;
+        if (zmq_send (server, recv_buf.data (), recv_buf.size (), 0) < 0)
+            return;
+        zmq_recv (client, recv_buf.data (), recv_buf.size (), 0);
+    });
+}
+
 } // namespace
 
 void run_multi_dealer_dealer (const std::string &transport,
@@ -302,7 +321,13 @@ void run_multi_dealer_dealer (const std::string &transport,
 
     std::vector<void *> clients (settings.clients, NULL);
     const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (msg_size);
+    std::vector<double> throughput_values (msg_sizes.size (), 0.0);
+    std::vector<double> latency_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_connect_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_ready_values (msg_sizes.size (), 0.0);
+
     bool ready_wait_done = false;
+    size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
@@ -355,37 +380,83 @@ void run_multi_dealer_dealer (const std::string &transport,
             false);
 
         if (bench.failed) {
-            print_prep_result (lib_name, "MULTI_DEALER_DEALER", transport,
-                               current_size, bench.connect_ms, bench.ready_wait_ms);
             break;
         }
 
-        const double latency = measure_dealer_latency_us (
-          ctx.get (),
-          transport,
-          lib_name,
-          current_size,
-          settings.hwm,
-          settings.connect_ready_timeout_ms);
-
-        const double throughput =
-          !bench.failed && bench.measure_recv > 0
+        prep_connect_values[s] = bench.connect_ms;
+        prep_ready_values[s] = bench.ready_wait_ms;
+        throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
                 / static_cast<double> (std::max (1, settings.measure_seconds))
             : 0.0;
-
-        print_prep_result (lib_name, "MULTI_DEALER_DEALER", transport,
-                           current_size, bench.connect_ms, bench.ready_wait_ms);
-        print_result (lib_name, "MULTI_DEALER_DEALER", transport, current_size,
-                      throughput, latency);
+        completed_sizes = s + 1;
     }
 
     for (size_t i = 0; i < clients.size (); ++i) {
-        if (clients[i])
+        if (clients[i]) {
             zmq_close (clients[i]);
+            clients[i] = NULL;
+        }
     }
     close_connect_monitor (server_monitor);
     zmq_close (server);
+
+    if (completed_sizes > 0) {
+        ctx_guard_t lat_ctx;
+        if (lat_ctx.valid ()) {
+            void *lat_server = zmq_socket (lat_ctx.get (), ZMQ_DEALER);
+            void *lat_client = zmq_socket (lat_ctx.get (), ZMQ_DEALER);
+            connect_monitor_t lat_monitor;
+            bool lat_monitor_open = false;
+            bool lat_ready = false;
+
+            if (lat_server && lat_client) {
+                const int linger_ms = 0;
+                set_sockopt_int (lat_server, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
+                set_sockopt_int (lat_client, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
+                apply_benchmark_hwm (lat_server, settings.hwm);
+                apply_benchmark_hwm (lat_client, settings.hwm);
+
+                const std::string lat_endpoint = bind_and_resolve_endpoint (
+                  lat_server, transport, lib_name + "_multi_dealer_dealer_lat_phase");
+                if (!lat_endpoint.empty ()
+                    && open_connect_monitor (
+                      lat_ctx.get (), lat_client,
+                      lib_name + "_multi_dealer_dealer_lat_phase", 0, lat_monitor)) {
+                    lat_monitor_open = true;
+                    if (connect_checked (lat_client, lat_endpoint)
+                        && wait_connect_ready (
+                          lat_monitor, settings.connect_ready_timeout_ms)) {
+                        lat_ready = true;
+                        settle ();
+                    }
+                }
+            }
+
+            if (lat_ready) {
+                for (size_t s = 0; s < completed_sizes; ++s) {
+                    latency_values[s] = measure_dealer_latency_live (
+                      lat_server, lat_client, msg_sizes[s]);
+                }
+            }
+
+            if (lat_monitor_open)
+                close_connect_monitor (lat_monitor);
+            if (lat_client)
+                zmq_close (lat_client);
+            if (lat_server)
+                zmq_close (lat_server);
+        }
+    }
+
+    for (size_t s = 0; s < msg_sizes.size (); ++s) {
+        print_prep_result (
+          lib_name, "MULTI_DEALER_DEALER", transport, msg_sizes[s],
+          prep_connect_values[s], prep_ready_values[s]);
+        print_result (
+          lib_name, "MULTI_DEALER_DEALER", transport, msg_sizes[s],
+          throughput_values[s], latency_values[s]);
+    }
 }
 
 int main (int argc, char **argv)

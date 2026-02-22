@@ -61,6 +61,17 @@ class socket_base_t : public own_t,
     int send (zlink::msg_t *msg_, int flags_);
     int recv (zlink::msg_t *msg_, int flags_);
     int close ();
+    int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    virtual int stream_dispatch_start (zlink_stream_on_packets_fn callback_,
+                                       int flags_);
+    virtual int stream_dispatch_stop ();
+    virtual bool stream_dispatch_len32be_enabled () const;
+    virtual bool stream_dispatch_active () const;
+    virtual int stream_dispatch_send_from_io (const zlink_routing_id_t *rid_,
+                                              const void *data_,
+                                              size_t size_,
+                                              int flags_,
+                                              bool len32be_);
 
     //  These functions are used by the polling mechanism to determine
     //  which events are to be reported from this socket.
@@ -168,6 +179,7 @@ class socket_base_t : public own_t,
     //  The default implementation assumes that recv in not supported.
     virtual bool xhas_in ();
     virtual int xrecv (zlink::msg_t *msg_);
+    virtual int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
 
     //  i_pipe_events will be forwarded to these functions.
     virtual void xread_activated (pipe_t *pipe_);

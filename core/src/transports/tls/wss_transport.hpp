@@ -112,14 +112,15 @@ class wss_transport_t : public i_asio_transport
     boost::asio::ssl::context &_ssl_ctx;
     std::string _path;
     std::string _host;
-    std::unique_ptr<wss_stream_t> _wss_stream;
+    std::shared_ptr<wss_stream_t> _wss_stream;
     bool _ssl_handshake_complete;
     bool _ws_handshake_complete;
     int _handshake_type;
     std::string _tls_hostname;
 
     //  Internal handshake continuation
-    void continue_ws_handshake (completion_handler_t handler);
+    void continue_ws_handshake (const std::shared_ptr<wss_stream_t> &stream,
+                                completion_handler_t handler);
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (wss_transport_t)
 };

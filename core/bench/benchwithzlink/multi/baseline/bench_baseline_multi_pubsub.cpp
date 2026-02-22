@@ -203,8 +203,6 @@ bool run_pubsub_warmup (void *pub,
             std::this_thread::yield ();
     }
 
-    drain_subscribers_queues (
-      subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 1000));
     return true;
 }
 
@@ -515,10 +513,6 @@ void run_multi_pubsub (const std::string &transport,
 
         pubsub_measure_result_t bench = run_pubsub_measure (
           pub, subs, settings, buffer, recv_buf, measure_poll_timeout_ms);
-        size_t rr_cursor = 0;
-        drain_subscribers_queues (
-          subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 2000));
-
         const double throughput =
           !bench.failed && bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)

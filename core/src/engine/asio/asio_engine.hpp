@@ -341,6 +341,7 @@ class asio_engine_t : public i_engine
 
     //  True if engine is being terminated (prevents callback processing)
     bool _terminating;
+    std::shared_ptr<void> _callback_guard;
 
     //  Buffer pointer for current async read (points to where data was read)
     unsigned char *_read_buffer_ptr;

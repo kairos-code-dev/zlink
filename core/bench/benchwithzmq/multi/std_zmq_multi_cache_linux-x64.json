@@ -1,10 +1,10 @@
 {
   "meta": {
     "arch_tag": "x64",
-    "build_dir": "/home/hep7/project/kairos/zlink/core/build/bin",
+    "build_dir": "/home/hep7/project/kairos/zlink/core/build/linux-x64/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-21T13:43:45.040508+00:00"
+    "updated_at_utc": "2026-02-22T05:46:18.576383+00:00"
   },
   "patterns": {
     "MULTI_DEALER_DEALER": {
@@ -101,17 +101,23 @@
     },
     "MULTI_STREAM": {
       "data": {
-        "tcp|1024|latency": 34.21,
-        "tcp|1024|throughput": 278644.0
+        "tcp|1024|latency": 41.49,
+        "tcp|1024|throughput": 40213.0,
+        "tcp|64|latency": 43.91,
+        "tcp|64|throughput": 40914.4,
+        "tcp|65536|latency": 39.16,
+        "tcp|65536|throughput": 8322.6
       },
       "failures": [],
       "msg_sizes": [
-        1024
+        64,
+        1024,
+        65536
       ],
       "transports": [
         "tcp"
       ],
-      "updated_at_utc": "2026-02-21T13:41:51.575070+00:00"
+      "updated_at_utc": "2026-02-22T05:46:02.945882+00:00"
     }
   }
 }

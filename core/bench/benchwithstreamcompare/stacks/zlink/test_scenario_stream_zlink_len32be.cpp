@@ -6,19 +6,13 @@
 #include <chrono>
 #include <csignal>
 #include <cstdio>
-#include <cstring>
-#include <mutex>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <vector>
 
 namespace {
 
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
-static const size_t k_frame_prefix_size = 4;
-static const size_t k_stash_trim_capacity = 64 * 1024;
 
 bool is_stream_control_event (const unsigned char *payload_, size_t size_)
 {
@@ -27,60 +21,6 @@ bool is_stream_control_event (const unsigned char *payload_, size_t size_)
                && payload_
                && (payload_[0] == 0x00 || payload_[0] == 0x01));
 }
-
-struct stream_buffer_t
-{
-    std::vector<unsigned char> data;
-    size_t offset;
-
-    stream_buffer_t () : data (), offset (0) {}
-
-    size_t available () const { return data.size () - offset; }
-
-    void append (const unsigned char *src_, size_t size_)
-    {
-        if (!src_ || size_ == 0)
-            return;
-        if (offset >= data.size ()) {
-            data.clear ();
-            offset = 0;
-        }
-        const size_t old_size = data.size ();
-        data.resize (old_size + size_);
-        memcpy (&data[old_size], src_, size_);
-    }
-
-    void compact ()
-    {
-        if (offset == 0)
-            return;
-        if (offset >= data.size ()) {
-            data.clear ();
-            offset = 0;
-            if (data.capacity () > k_stash_trim_capacity)
-                std::vector<unsigned char> ().swap (data);
-            return;
-        }
-        if (offset > 4096 || offset * 2 >= data.size ()) {
-            const size_t remain = data.size () - offset;
-            memmove (&data[0], &data[offset], remain);
-            data.resize (remain);
-            offset = 0;
-            if (data.empty () && data.capacity () > k_stash_trim_capacity)
-                std::vector<unsigned char> ().swap (data);
-        }
-    }
-
-    void reset ()
-    {
-        data.clear ();
-        offset = 0;
-        if (data.capacity () > k_stash_trim_capacity)
-            std::vector<unsigned char> ().swap (data);
-    }
-};
-
-typedef std::unordered_map<std::string, stream_buffer_t> stream_stash_map_t;
 
 struct server_options_t
 {
@@ -159,7 +99,7 @@ class zlink_stream_echo_server_t
     {
         ctx = zlink_ctx_new ();
         if (!ctx) {
-            std::fprintf (stderr, "zlink stream: zlink_ctx_new failed: %s\n",
+            std::fprintf (stderr, "zlink-len32be: zlink_ctx_new failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
         }
@@ -168,7 +108,7 @@ class zlink_stream_echo_server_t
 
         server = zlink_socket (ctx, ZLINK_STREAM);
         if (!server) {
-            std::fprintf (stderr, "zlink stream: zlink_socket failed: %s\n",
+            std::fprintf (stderr, "zlink-len32be: zlink_socket failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
         }
@@ -177,17 +117,18 @@ class zlink_stream_echo_server_t
 
         const std::string endpoint = make_endpoint (opt.host, opt.port);
         if (zlink_bind (server, endpoint.c_str ()) != 0) {
-            std::fprintf (
-              stderr, "zlink stream: bind failed: %s endpoint=%s\n",
-              zlink_strerror (zlink_errno ()), endpoint.c_str ());
+            std::fprintf (stderr,
+                          "zlink-len32be: bind failed: %s endpoint=%s\n",
+                          zlink_strerror (zlink_errno ()), endpoint.c_str ());
             return 2;
         }
 
         g_server_instance = this;
         if (zlink_stream_start (server, &zlink_stream_echo_server_t::on_packet_static,
-                                0)
+                                ZLINK_STREAM_DISPATCH_LEN32BE)
             != 0) {
-            std::fprintf (stderr, "zlink stream: dispatch start failed: %s\n",
+            std::fprintf (stderr,
+                          "zlink-len32be: dispatch start failed: %s\n",
                           zlink_strerror (zlink_errno ()));
             return 2;
         }
@@ -203,7 +144,7 @@ class zlink_stream_echo_server_t
 
         std::printf ("%s\n",
                      stream_echo::make_metric_line (
-                       "zlink", opt.size,
+                       "zlink-len32be", opt.size,
                        recv_msgs.load (std::memory_order_relaxed),
                        parse_error.load (std::memory_order_relaxed),
                        protocol_error.load (std::memory_order_relaxed),
@@ -253,74 +194,25 @@ class zlink_stream_echo_server_t
         if (is_stream_control_event (payload, payload_size))
             return 0;
 
-        std::vector<std::vector<unsigned char> > complete_frames;
-        bool invalid_frame = false;
-        bool dropped_non_data = false;
-        {
-            const std::string key (reinterpret_cast<const char *> (rid_->data),
-                                   rid_->size);
-            std::lock_guard<std::mutex> lk (stash_mu);
-            stream_buffer_t &stash = _stashes[key];
-            stash.append (payload, payload_size);
-
-            size_t consumed = 0;
-            const size_t available = stash.available ();
-            while (consumed + k_frame_prefix_size <= available) {
-                const unsigned char *frame = &stash.data[stash.offset + consumed];
-                const size_t body_size = static_cast<size_t> (
-                  stream_echo::load_u32_be (frame));
-                if (body_size < k_min_payload_size || body_size > k_max_payload_size) {
-                    // STREAM transport may deliver non-data notifications on
-                    // the same channel. If the stash is at frame boundary and
-                    // header is invalid, drop the segment without counting it
-                    // as protocol failure.
-                    if (consumed == 0) {
-                        dropped_non_data = true;
-                    } else {
-                        invalid_frame = true;
-                    }
-                    break;
-                }
-
-                const size_t frame_size = k_frame_prefix_size + body_size;
-                if (consumed + frame_size > available)
-                    break;
-
-                record_payload_size (body_size);
-                complete_frames.push_back (std::vector<unsigned char> (frame_size));
-                memcpy (&complete_frames.back ()[0], frame, frame_size);
-                consumed += frame_size;
-            }
-
-            if (invalid_frame || dropped_non_data) {
-                stash.reset ();
-            } else if (consumed > 0) {
-                stash.offset += consumed;
-                stash.compact ();
-            }
-        }
-
-        if (invalid_frame) {
+        if ((!payload && payload_size > 0) || payload_size > k_max_payload_size) {
             mark_parse_error ();
             return 0;
         }
-        if (dropped_non_data)
+        if (payload_size < k_min_payload_size)
             return 0;
 
-        for (size_t i = 0; i < complete_frames.size (); ++i) {
-            const std::vector<unsigned char> &frame = complete_frames[i];
-            if (zlink_stream_send (server, rid_, &frame[0], frame.size (), 0)
-                != static_cast<int> (frame.size ())) {
-                send_error.fetch_add (1, std::memory_order_relaxed);
-            }
+        record_payload_size (payload_size);
+
+        if (zlink_stream_send (server, rid_, payload, payload_size, 0)
+            != static_cast<int> (payload_size)) {
+            send_error.fetch_add (1, std::memory_order_relaxed);
         }
+
         return 0;
     }
 
     void cleanup ()
     {
-        _stashes.clear ();
-
         if (server) {
             zlink_close (server);
             server = NULL;
@@ -341,9 +233,6 @@ class zlink_stream_echo_server_t
     std::atomic<long> parse_error;
     std::atomic<long> protocol_error;
     std::atomic<long> send_error;
-
-    stream_stash_map_t _stashes;
-    std::mutex stash_mu;
     std::atomic<bool> stop;
 };
 
@@ -359,8 +248,9 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
     opt.backlog = args.get_int ("--backlog", opt.backlog, 1);
     opt.tcp_nodelay = args.get_int ("--tcp-nodelay", opt.tcp_nodelay, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
+
     if (opt.size > k_max_payload_size) {
-        std::fprintf (stderr, "zlink stream: size too large %zu\n", opt.size);
+        std::fprintf (stderr, "zlink-len32be: size too large %zu\n", opt.size);
         return false;
     }
     return true;
@@ -371,7 +261,7 @@ bool parse_options (int argc, char **argv, server_options_t &opt)
 int main (int argc, char **argv)
 {
     if (argc <= 1) {
-        std::printf ("test_scenario_stream_zlink: no args -> skip\n");
+        std::printf ("test_scenario_stream_zlink_len32be: no args -> skip\n");
         return 0;
     }
 

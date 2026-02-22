@@ -773,6 +773,22 @@ def get_cached_std_entry(cache_data, pattern_name):
     return std_data, std_fail
 
 
+def has_valid_cached_metrics(std_data):
+    if not isinstance(std_data, dict):
+        return False
+    for tr in TRANSPORTS:
+        for sz in MSG_SIZES:
+            k_t = f"{tr}|{sz}|throughput"
+            k_l = f"{tr}|{sz}|latency"
+            t = metric_or_none(std_data, k_t)
+            l = metric_or_none(std_data, k_l)
+            if t is None or l is None:
+                return False
+            if t <= 0.0 or l <= 0.0:
+                return False
+    return True
+
+
 def update_cached_std_entry(cache_data, pattern_name, std_data, std_fail):
     patterns = cache_data.setdefault("patterns", {})
     patterns[pattern_name] = {
@@ -903,7 +919,7 @@ def parse_args():
         "  BENCH_MULTI_DURATION_SECONDS=5\n"
         "  BENCH_MULTI_MEASURE_SECONDS=5  (legacy alias)\n"
         "  BENCH_MULTI_SETTLE_MS=500\n"
-        "  BENCH_MULTI_DRAIN_MS=300\n"
+        "  BENCH_MULTI_DRAIN_MS=300  (deprecated)\n"
         "  BENCH_MULTI_RECV_BATCH=64\n"
         "  BENCH_MULTI_SEND_WORKERS=2\n"
         "  BENCH_MULTI_SEND_BACKOFF_US=20\n"
@@ -1033,11 +1049,11 @@ def main():
         return 2
 
     selected_comparisons = select_comparisons(comparisons, pattern_req)
-    missing_cache_patterns = [
-        p_name
-        for _, _, p_name in selected_comparisons
-        if get_cached_std_entry(std_cache, p_name) is None
-    ]
+    missing_cache_patterns = []
+    for _, _, p_name in selected_comparisons:
+        cached_entry = get_cached_std_entry(std_cache, p_name)
+        if cached_entry is None or not has_valid_cached_metrics(cached_entry[0]):
+            missing_cache_patterns.append(p_name)
     need_std_baseline = (not zlink_only) or refresh_std_cache or bool(
         missing_cache_patterns
     )
@@ -1104,10 +1120,13 @@ def main():
         zlk_data = {}
         zlk_fail = []
         cached = get_cached_std_entry(std_cache, p_name)
+        cached_valid = cached is not None and has_valid_cached_metrics(cached[0])
         if zlink_only:
-            if refresh_std_cache or cached is None:
+            if refresh_std_cache or not cached_valid:
                 reason = (
-                    "refresh requested" if refresh_std_cache else "baseline missing"
+                    "refresh requested"
+                    if refresh_std_cache
+                    else "baseline missing/invalid"
                 )
                 print(
                     f"  > Cached libzmq {reason} for {p_name}; "

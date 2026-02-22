@@ -1,5 +1,6 @@
 #include "../common/bench_common.hpp"
 #include "../common/bench_common_multi.hpp"
+#include "../common/stream_frame.hpp"
 #include <zmq.h>
 #include <algorithm>
 #include <cerrno>
@@ -9,6 +10,7 @@
 #include <cstring>
 #include <deque>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -43,45 +45,6 @@ namespace {
 static const int STREAM_NOTIFY_ON = 1;
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 static const unsigned char STREAM_EVENT_DISCONNECT = 0x00;
-static const size_t FRAME_PREFIX_SIZE = 4;
-static const size_t MAX_STREAM_FRAME_SIZE = 16 * 1024 * 1024;
-
-struct stream_buffer_t {
-    std::vector<char> data;
-    size_t offset;
-
-    stream_buffer_t () : offset (0) {}
-
-    size_t available () const { return data.size () - offset; }
-
-    void append (const char *buf, size_t len)
-    {
-        if (len == 0)
-            return;
-        data.insert (data.end (), buf, buf + len);
-    }
-
-    void compact ()
-    {
-        if (offset == 0)
-            return;
-        if (offset >= data.size ()) {
-            data.clear ();
-            offset = 0;
-            return;
-        }
-        if (offset > 4096) {
-            data.erase (data.begin (), data.begin () + offset);
-            offset = 0;
-        }
-    }
-
-    void reset ()
-    {
-        data.clear ();
-        offset = 0;
-    }
-};
 
 typedef std::unordered_map<std::string, stream_buffer_t> stream_stash_map_t;
 
@@ -394,8 +357,11 @@ bool read_all (socket_t fd, void *buf, size_t len)
 #else
         const int n = static_cast<int> (recv (fd, cur, left, 0));
 #endif
-        if (n <= 0)
+        if (n <= 0) {
+            if (is_would_block_error ())
+                continue;
             return false;
+        }
         cur += n;
         left -= static_cast<size_t> (n);
     }
@@ -540,62 +506,6 @@ long compute_stream_window_msgs (const multi_bench_settings_t &settings,
     return std::max<long> (1, std::min<long> (configured, std::min<long> (hard_cap, by_bytes)));
 }
 
-int decode_available_frames (stream_buffer_t &stash, int max_frames)
-{
-    int decoded = 0;
-    while (decoded < max_frames) {
-        if (stash.available () < FRAME_PREFIX_SIZE)
-            break;
-
-        uint32_t net_len = 0;
-        std::memcpy (&net_len, &stash.data[stash.offset], sizeof (net_len));
-        const size_t frame_len = static_cast<size_t> (ntohl (net_len));
-        if (frame_len > MAX_STREAM_FRAME_SIZE) {
-            stash.reset ();
-            return decoded;
-        }
-
-        const size_t required = FRAME_PREFIX_SIZE + frame_len;
-        if (stash.available () < required)
-            break;
-
-        stash.offset += required;
-        ++decoded;
-    }
-
-    stash.compact ();
-    return decoded;
-}
-
-bool decode_one_frame (stream_buffer_t &stash, std::vector<char> *payload_out)
-{
-    if (stash.available () < FRAME_PREFIX_SIZE)
-        return false;
-
-    uint32_t net_len = 0;
-    std::memcpy (&net_len, &stash.data[stash.offset], sizeof (net_len));
-    const size_t frame_len = static_cast<size_t> (ntohl (net_len));
-    if (frame_len > MAX_STREAM_FRAME_SIZE) {
-        stash.reset ();
-        return false;
-    }
-
-    const size_t required = FRAME_PREFIX_SIZE + frame_len;
-    if (stash.available () < required)
-        return false;
-
-    payload_out->assign (frame_len, 0);
-    if (frame_len > 0) {
-        std::memcpy (&(*payload_out)[0],
-                     &stash.data[stash.offset + FRAME_PREFIX_SIZE],
-                     frame_len);
-    }
-
-    stash.offset += required;
-    stash.compact ();
-    return true;
-}
-
 bool is_stream_event_payload (const char *data, size_t size)
 {
     return size == 1
@@ -619,7 +529,7 @@ int recv_sender_echoes_nonblocking (tcp_sender_state_t &sender, int max_frames)
 #endif
         if (n > 0) {
             sender.recv_stash.append (buf, static_cast<size_t> (n));
-            completed += decode_available_frames (
+            completed += stream_decode_available_frames (
               sender.recv_stash, max_frames - completed);
             continue;
         }
@@ -1019,7 +929,7 @@ bool recv_one_stream_frame (void *server,
                 std::string routing_id (id_data, id_size);
                 stream_buffer_t &stash = stashes[routing_id];
                 stash.append (payload_data, payload_size);
-                if (decode_one_frame (stash, &payload_out)) {
+                if (stream_decode_one_frame (stash, &payload_out)) {
                     routing_id_out = routing_id;
                     zmq_msg_close (&id_msg);
                     zmq_msg_close (&payload_msg);
@@ -1049,11 +959,8 @@ bool send_stream_reply (void *server,
         < 0)
         return false;
 
-    const uint32_t net_len = htonl (static_cast<uint32_t> (payload.size ()));
-    std::vector<char> framed (FRAME_PREFIX_SIZE + payload.size ());
-    std::memcpy (&framed[0], &net_len, FRAME_PREFIX_SIZE);
-    if (!payload.empty ())
-        std::memcpy (&framed[FRAME_PREFIX_SIZE], &payload[0], payload.size ());
+    std::vector<char> framed;
+    stream_build_framed_payload (payload, &framed);
 
     return zmq_send (server, &framed[0], framed.size (), 0) >= 0;
 }
@@ -1151,6 +1058,74 @@ double measure_stream_latency_us (const std::string &transport,
     return (sw.elapsed_ms () * 1000.0) / (lat_count * 2);
 }
 
+double measure_stream_latency_live (void *server,
+                                    tcp_sender_state_t &sender,
+                                    size_t msg_size,
+                                    int io_timeout_ms)
+{
+    if (!sender.valid ())
+        return 0.0;
+
+    const int lat_count = resolve_bench_count ("BENCH_LAT_COUNT", 500);
+    std::vector<char> payload (std::max<size_t> (1, msg_size), '\xA7');
+    std::vector<char> recv_payload;
+    std::string peer_routing_id;
+    stream_stash_map_t stashes;
+
+    stopwatch_t sw;
+    sw.start ();
+    for (int i = 0; i < lat_count; ++i) {
+        if (payload.size () >= 4) {
+            const uint32_t seq = static_cast<uint32_t> (i + 1);
+            std::memcpy (&payload[0], &seq, sizeof (seq));
+        }
+        if (!send_raw_framed (sender.fd, payload)) {
+            if (bench_debug_enabled ())
+                std::fprintf (stderr, "MULTI_STREAM latency live fail: send_raw\n");
+            return 0.0;
+        }
+
+        bool matched = false;
+        for (int attempt = 0; attempt < lat_count * 4; ++attempt) {
+            if (!recv_one_stream_frame (
+                  server, stashes, io_timeout_ms, peer_routing_id, recv_payload)) {
+                if (bench_debug_enabled ())
+                    std::fprintf (
+                      stderr, "MULTI_STREAM latency live fail: recv_stream\n");
+                return 0.0;
+            }
+            if (recv_payload.size () != payload.size ())
+                continue;
+            if (!std::equal (recv_payload.begin (), recv_payload.end (),
+                             payload.begin ()))
+                continue;
+
+            if (!send_stream_reply (server, peer_routing_id, recv_payload)
+                || !recv_raw_framed (sender.fd, &recv_payload)) {
+                if (bench_debug_enabled ())
+                    std::fprintf (
+                      stderr, "MULTI_STREAM latency live fail: send_or_recv_raw\n");
+                return 0.0;
+            }
+            if (recv_payload.size () != payload.size ())
+                continue;
+            if (!std::equal (recv_payload.begin (), recv_payload.end (),
+                             payload.begin ()))
+                continue;
+            matched = true;
+            break;
+        }
+        if (!matched) {
+            if (bench_debug_enabled ())
+                std::fprintf (
+                  stderr, "MULTI_STREAM latency live fail: no_matching_payload\n");
+            return 0.0;
+        }
+    }
+
+    return (sw.elapsed_ms () * 1000.0) / (lat_count * 2);
+}
+
 } // namespace
 
 void run_multi_stream (const std::string &transport,
@@ -1185,9 +1160,6 @@ void run_multi_stream (const std::string &transport,
       1,
       std::min<int> (
         stream_client_threads, static_cast<int> (std::max<size_t> (1, settings.clients))));
-    stream_settings.drain_ms = std::max (
-      stream_settings.drain_ms,
-      resolve_multi_int_env ("BENCH_MULTI_STREAM_DRAIN_MS", 2000, 0));
     const int stream_hwm = resolve_multi_int_env ("BENCH_STREAM_HWM", 100000, 1);
     if (settings.clients == 0) {
         for (size_t s = 0; s < msg_sizes.size (); ++s) {
@@ -1237,6 +1209,11 @@ void run_multi_stream (const std::string &transport,
     stream_reply_queue_t pending_replies;
     bool ready_wait_done = false;
     bool poller_ready = false;
+    std::vector<double> throughput_values (msg_sizes.size (), 0.0);
+    std::vector<double> latency_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_connect_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_ready_values (msg_sizes.size (), 0.0);
+    size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> payload (std::max<size_t> (1, current_size), 'a');
@@ -1267,38 +1244,75 @@ void run_multi_stream (const std::string &transport,
                     if (!poller_ready)
                         return false;
                 }
-                drain_pending_stream_frames (
-                  server, senders, stream_poller, pending_replies);
                 return true;
             },
             false);
 
         if (bench.failed) {
-            print_prep_result (lib_name, "MULTI_STREAM", transport, current_size,
-                               bench.connect_ms, bench.ready_wait_ms);
             break;
         }
 
-        const double latency = measure_stream_latency_us (
-          transport, lib_name, current_size, stream_hwm,
-          settings.connect_ready_timeout_ms);
-
-        const double throughput =
-          bench.measure_recv > 0
+        prep_connect_values[s] = bench.connect_ms;
+        prep_ready_values[s] = bench.ready_wait_ms;
+        throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
                 / static_cast<double> (std::max (1, settings.measure_seconds))
             : 0.0;
-
-        print_prep_result (lib_name, "MULTI_STREAM", transport, current_size,
-                           bench.connect_ms, bench.ready_wait_ms);
-        print_result (
-          lib_name, "MULTI_STREAM", transport, current_size, throughput, latency);
+        completed_sizes = s + 1;
     }
 
     for (size_t i = 0; i < senders.size (); ++i)
         close_sender (senders[i]);
     close_connect_monitor (server_monitor);
     zmq_close (server);
+
+    if (completed_sizes > 0) {
+        void *lat_server = zmq_socket (ctx.get (), ZMQ_STREAM);
+        if (lat_server) {
+            set_sockopt_int (lat_server, ZMQ_LINGER, linger_ms, "ZMQ_LINGER");
+            apply_benchmark_hwm (lat_server, stream_hwm);
+            apply_stream_server_tuning (lat_server, true);
+            set_sockopt_int (
+              lat_server, ZMQ_SNDTIMEO, io_timeout_ms, "ZMQ_SNDTIMEO");
+            set_sockopt_int (
+              lat_server, ZMQ_RCVTIMEO, io_timeout_ms, "ZMQ_RCVTIMEO");
+
+            const std::string lat_endpoint = bind_and_resolve_endpoint (
+              lat_server, transport, lib_name + "_multi_stream_lat_phase");
+            if (!lat_endpoint.empty ()) {
+                connect_monitor_t lat_monitor;
+                const bool has_lat_monitor = open_connect_monitor (
+                  ctx.get (), lat_server, lib_name + "_multi_stream_lat_phase", 0,
+                  lat_monitor);
+                tcp_sender_state_t latency_sender;
+                if (setup_sender (latency_sender, lat_endpoint)) {
+                    if (has_lat_monitor) {
+                        (void) wait_connect_ready_count (
+                          lat_monitor, 1, settings.connect_ready_timeout_ms);
+                    } else {
+                        std::this_thread::sleep_for (std::chrono::milliseconds (10));
+                    }
+                    for (size_t s = 0; s < completed_sizes; ++s) {
+                        latency_values[s] = measure_stream_latency_live (
+                          lat_server, latency_sender, msg_sizes[s], io_timeout_ms);
+                    }
+                    close_sender (latency_sender);
+                }
+                if (has_lat_monitor)
+                    close_connect_monitor (lat_monitor);
+            }
+            zmq_close (lat_server);
+        }
+    }
+
+    for (size_t s = 0; s < msg_sizes.size (); ++s) {
+        print_prep_result (
+          lib_name, "MULTI_STREAM", transport, msg_sizes[s],
+          prep_connect_values[s], prep_ready_values[s]);
+        print_result (
+          lib_name, "MULTI_STREAM", transport, msg_sizes[s],
+          throughput_values[s], latency_values[s]);
+    }
 }
 
 int main (int argc, char **argv)

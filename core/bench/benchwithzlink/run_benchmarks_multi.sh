@@ -134,7 +134,7 @@ Options:
   --multi-rcvtimeo-ms N   Override BENCH_MULTI_RCVTIMEO_MS (default: 5000).
   --multi-connect-concurrency N
                         Override concurrent connect count.
-  --multi-drain-ms N      Override drain timeout after benchmark (ms).
+  --multi-drain-ms N      Deprecated (kept for compatibility).
 
 Environment:
   BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
@@ -143,6 +143,7 @@ USAGE
 }
 
 HAS_EXPLICIT_TRANSPORT=0
+HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
 HAS_EXPLICIT_REUSE_BUILD=0
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
@@ -166,6 +167,15 @@ while [[ $# -gt 0 ]]; do
       ;;
     --transports|--transport)
       HAS_EXPLICIT_TRANSPORT=1
+      if [[ $# -lt 2 ]]; then
+        echo "Error: ${arg} requires a value." >&2
+        exit 1
+      fi
+      SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
+      ;;
+    --msg-sizes|--size)
+      HAS_EXPLICIT_MSG_SIZES=1
       if [[ $# -lt 2 ]]; then
         echo "Error: ${arg} requires a value." >&2
         exit 1
@@ -298,8 +308,15 @@ RUN_BASE_ARGS=()
 if [[ "${HAS_EXPLICIT_RESULTS_TAG}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--results-tag "multi")
 fi
-if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 && -z "${BENCH_TRANSPORTS:-}" ]]; then
-  RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
+if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
+  if [[ -n "${BENCH_TRANSPORTS:-}" ]]; then
+    RUN_BASE_ARGS+=(--transports "${BENCH_TRANSPORTS}")
+  else
+    RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
+  fi
+fi
+if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 && -n "${BENCH_MSG_SIZES:-}" ]]; then
+  RUN_BASE_ARGS+=(--msg-sizes "${BENCH_MSG_SIZES}")
 fi
 if [[ "${HAS_EXPLICIT_REUSE_BUILD}" -eq 0 && "${BENCH_MULTI_FORCE_CLEAN:-0}" != "1" ]]; then
   RUN_BASE_ARGS+=(--reuse-build)

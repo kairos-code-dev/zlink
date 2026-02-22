@@ -76,7 +76,7 @@ class ssl_transport_t : public i_asio_transport
     typedef boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_stream_t;
 
     boost::asio::ssl::context &_ssl_ctx;
-    std::unique_ptr<ssl_stream_t> _ssl_stream;
+    std::shared_ptr<ssl_stream_t> _ssl_stream;
     bool _handshake_complete;
     std::string _hostname;
 

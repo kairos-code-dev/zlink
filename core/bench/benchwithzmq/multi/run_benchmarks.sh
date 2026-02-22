@@ -167,7 +167,7 @@ Options:
   --sndtimeo-ms N               Override BENCH_MULTI_SNDTIMEO_MS (default: 5000)
   --rcvtimeo-ms N               Override BENCH_MULTI_RCVTIMEO_MS (default: 5000)
   --connect-ready-timeout-ms N Override BENCH_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000)
-  --drain-ms N                  Override BENCH_MULTI_DRAIN_MS
+  --drain-ms N                  Deprecated (kept for compatibility)
   --recv-batch N                Override BENCH_MULTI_RECV_BATCH
   --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: 2)
   --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: 3)
@@ -416,7 +416,7 @@ ensure_nofile_limit "${effective_clients}"
 if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi
-echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${MULTI_DRAIN_MS}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
+echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
 echo "Config: hwm=${MULTI_HWM}, sndtimeo_ms=${MULTI_SNDTIMEO_MS}, rcvtimeo_ms=${MULTI_RCVTIMEO_MS}"
 if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
   echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"

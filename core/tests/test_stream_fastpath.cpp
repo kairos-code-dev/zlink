@@ -212,52 +212,19 @@ void test_stream_fastpath_tcp_basic ()
     void *server = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
-    const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
-
-    char endpoint[MAX_SOCKET_STRING];
-    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-
-    void *monitor = zlink_socket_monitor_open (
-      server, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
-    TEST_ASSERT_NOT_NULL (monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
-
-    const int client_fd = connect_raw_tcp (endpoint);
-    TEST_ASSERT_TRUE (client_fd >= 0);
-
-    const char payload[] = "hello";
-    TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
-                                client_fd, payload, sizeof (payload) - 1));
-
-    unsigned char recv_id[stream_routing_id_size];
     char recv_buf[64];
-    int rc = recv_stream_msg (server, recv_id, recv_buf, sizeof (recv_buf));
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (payload, recv_buf, sizeof (payload) - 1);
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_recv (server, recv_buf, sizeof (recv_buf), ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
 
-    unsigned char server_id[stream_routing_id_size];
-    TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY, server_id, 2000));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
+    zlink_msg_t msg;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, server, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
-    const char reply[] = "world";
-    send_stream_msg (server, recv_id, reply, sizeof (reply) - 1);
-
-    char client_recv_buf[64];
-    rc = recv_stream_packet (client_fd, client_recv_buf, sizeof (client_recv_buf));
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (reply) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (reply, client_recv_buf, sizeof (reply) - 1);
-
-    close_raw_fd (client_fd);
-
-    TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_DISCONNECTED, recv_id, 10000));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }
 

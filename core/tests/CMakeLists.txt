@@ -63,6 +63,7 @@ set(tests
   scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
+  ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink_len32be
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
 
 set(STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT
@@ -346,6 +347,8 @@ set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_zlink PROPERTIES LABELS "scenario;stream;zlink")
+set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES TIMEOUT 120)
+set_tests_properties(test_scenario_stream_zlink_len32be PROPERTIES LABELS "scenario;stream;zlink;len32be")
 set_tests_properties(test_scenario_stream_asio PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_asio PROPERTIES LABELS "scenario;stream;asio")
 if(TARGET test_scenario_stream_zmq)

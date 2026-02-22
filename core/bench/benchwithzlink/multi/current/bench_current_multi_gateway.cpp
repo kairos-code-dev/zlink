@@ -469,8 +469,6 @@ void run_multi_gateway(const std::string &transport,
         const auto measure_end =
           std::chrono::steady_clock::now()
           + std::chrono::seconds(std::max(1, settings.measure_seconds));
-        const auto drain_end =
-          measure_end + std::chrono::milliseconds(std::max(0, settings.drain_ms));
 
         std::vector<std::thread> receiver_threads;
         receiver_threads.reserve(provider_routers.size());
@@ -481,12 +479,6 @@ void run_multi_gateway(const std::string &transport,
                         ++received;
                     else
                         std::this_thread::sleep_for(std::chrono::microseconds(50));
-                }
-                while (std::chrono::steady_clock::now() < drain_end) {
-                    if (recv_one_provider_message_nowait(router))
-                        ++received;
-                    else
-                        std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
             });
         }

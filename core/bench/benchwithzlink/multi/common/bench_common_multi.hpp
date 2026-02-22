@@ -116,10 +116,12 @@ inline void print_prep_result (const std::string &lib_type,
 {
     if (!bench_show_prep ())
         return;
+    const double printed_connect_ms = ready_wait_ms >= 0.01 ? connect_ms : 0.0;
 
     std::cout << "PREP," << lib_type << "," << pattern << "," << transport << ","
               << size << ",connect_ms," << std::fixed << std::setprecision (2)
-              << connect_ms << ",ready_ms," << ready_wait_ms << std::endl;
+              << printed_connect_ms << ",ready_ms," << ready_wait_ms
+              << std::endl;
 }
 
 inline int resolve_multi_int_env (const char *env_name,

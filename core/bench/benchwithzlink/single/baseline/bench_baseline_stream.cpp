@@ -1,7 +1,10 @@
 #include "../common/bench_common.hpp"
 #include <zlink.h>
 #include <atomic>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -29,6 +32,168 @@ namespace {
 static const size_t FRAME_PREFIX = 4;
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 static const unsigned char STREAM_EVENT_DISCONNECT = 0x00;
+
+struct stream_dispatch_packet_t {
+    std::vector<unsigned char> routing_id;
+    std::vector<char> payload;
+};
+
+struct stream_len32be_dispatch_t {
+    void *socket;
+    std::mutex lock;
+    std::condition_variable cv;
+    std::deque<stream_dispatch_packet_t> packets;
+    std::atomic<bool> running;
+
+    stream_len32be_dispatch_t() : socket(NULL), running(false) {}
+};
+
+static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
+static stream_len32be_dispatch_t *g_stream_dispatch_aux = NULL;
+
+zlink_routing_id_t make_routing_id(const std::vector<unsigned char> &rid)
+{
+    zlink_routing_id_t out;
+    std::memset(&out, 0, sizeof(out));
+    const size_t copy_size = std::min<size_t>(rid.size(), sizeof(out.data));
+    out.size = static_cast<uint8_t>(copy_size);
+    if (copy_size > 0)
+        std::memcpy(out.data, rid.data(), copy_size);
+    return out;
+}
+
+int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
+                                   const zlink_routing_id_t *rid_,
+                                   zlink_msg_t *msgs_,
+                                   size_t msg_count_)
+{
+    if (!dispatch || !rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    std::unique_lock<std::mutex> guard(dispatch->lock);
+    for (size_t i = 0; i < msg_count_; ++i) {
+        const char *payload_data =
+          static_cast<const char *>(zlink_msg_data(&msgs_[i]));
+        const size_t payload_size = zlink_msg_size(&msgs_[i]);
+        if (payload_size == 1 && payload_data
+            && (static_cast<unsigned char>(payload_data[0]) == STREAM_EVENT_CONNECT
+                || static_cast<unsigned char>(payload_data[0])
+                     == STREAM_EVENT_DISCONNECT)) {
+            continue;
+        }
+
+        stream_dispatch_packet_t packet;
+        packet.routing_id.assign(rid_->data, rid_->data + rid_->size);
+        packet.payload.assign(payload_size, 0);
+        if (payload_size > 0 && payload_data)
+            std::memcpy(packet.payload.data(), payload_data, payload_size);
+        dispatch->packets.push_back(std::move(packet));
+    }
+    guard.unlock();
+    dispatch->cv.notify_all();
+    return dispatch->running.load(std::memory_order_acquire) ? 0 : 1;
+}
+
+int on_stream_len32be_packets(const zlink_routing_id_t *rid_,
+                              zlink_msg_t *msgs_,
+                              size_t msg_count_)
+{
+    return on_stream_len32be_packets_impl(
+      g_stream_dispatch, rid_, msgs_, msg_count_);
+}
+
+int on_stream_len32be_packets_aux(const zlink_routing_id_t *rid_,
+                                  zlink_msg_t *msgs_,
+                                  size_t msg_count_)
+{
+    return on_stream_len32be_packets_impl(
+      g_stream_dispatch_aux, rid_, msgs_, msg_count_);
+}
+
+bool start_stream_len32be_dispatch_slot(void *socket_,
+                                        stream_len32be_dispatch_t &dispatch,
+                                        stream_len32be_dispatch_t **slot,
+                                        zlink_stream_on_packets_fn callback)
+{
+    dispatch.socket = socket_;
+    dispatch.running.store(true, std::memory_order_release);
+    *slot = &dispatch;
+    if (zlink_stream_start(
+          socket_, callback, ZLINK_STREAM_DISPATCH_LEN32BE)
+        != 0) {
+        dispatch.running.store(false, std::memory_order_release);
+        dispatch.socket = NULL;
+        if (*slot == &dispatch)
+            *slot = NULL;
+        return false;
+    }
+    return true;
+}
+
+void stop_stream_len32be_dispatch_slot(stream_len32be_dispatch_t &dispatch,
+                                       stream_len32be_dispatch_t **slot)
+{
+    if (!dispatch.running.exchange(false, std::memory_order_acq_rel))
+        return;
+    if (dispatch.socket)
+        (void) zlink_stream_stop(dispatch.socket);
+    {
+        std::lock_guard<std::mutex> guard(dispatch.lock);
+        dispatch.packets.clear();
+    }
+    dispatch.cv.notify_all();
+    if (*slot == &dispatch)
+        *slot = NULL;
+    dispatch.socket = NULL;
+}
+
+bool start_stream_len32be_dispatch(void *socket_, stream_len32be_dispatch_t &dispatch)
+{
+    return start_stream_len32be_dispatch_slot(
+      socket_, dispatch, &g_stream_dispatch, &on_stream_len32be_packets);
+}
+
+bool start_stream_len32be_dispatch_aux(void *socket_,
+                                       stream_len32be_dispatch_t &dispatch)
+{
+    return start_stream_len32be_dispatch_slot(
+      socket_, dispatch, &g_stream_dispatch_aux, &on_stream_len32be_packets_aux);
+}
+
+void stop_stream_len32be_dispatch(stream_len32be_dispatch_t &dispatch)
+{
+    stop_stream_len32be_dispatch_slot(dispatch, &g_stream_dispatch);
+}
+
+void stop_stream_len32be_dispatch_aux(stream_len32be_dispatch_t &dispatch)
+{
+    stop_stream_len32be_dispatch_slot(dispatch, &g_stream_dispatch_aux);
+}
+
+bool wait_stream_len32be_packet(stream_len32be_dispatch_t &dispatch,
+                                int timeout_ms,
+                                stream_dispatch_packet_t *out)
+{
+    if (!out)
+        return false;
+
+    std::unique_lock<std::mutex> guard(dispatch.lock);
+    const auto ready = [&]() {
+        return !dispatch.packets.empty()
+               || !dispatch.running.load(std::memory_order_acquire);
+    };
+
+    if (!dispatch.cv.wait_for(
+          guard, std::chrono::milliseconds(std::max(0, timeout_ms)), ready)) {
+        return false;
+    }
+    if (dispatch.packets.empty())
+        return false;
+
+    *out = std::move(dispatch.packets.front());
+    dispatch.packets.pop_front();
+    return true;
+}
 
 #ifdef _WIN32
 void ensure_winsock_initialized()
@@ -516,8 +681,17 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
     if (server_monitor)
         set_sockopt_int(server_monitor, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
 
+    stream_len32be_dispatch_t dispatch;
+    if (!start_stream_len32be_dispatch(server.get(), dispatch)) {
+        if (server_monitor)
+            zlink_close(server_monitor);
+        print_result(lib_name, "STREAM", "tcp", msg_size, 0.0, 0.0);
+        return;
+    }
+
     socket_t raw_client = connect_tcp(endpoint);
     if (raw_client == INVALID_SOCKET_FD) {
+        stop_stream_len32be_dispatch(dispatch);
         if (server_monitor)
             zlink_close(server_monitor);
         print_result(lib_name, "STREAM", "tcp", msg_size, 0.0, 0.0);
@@ -526,6 +700,7 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
     set_socket_timeouts(raw_client, io_timeout_ms);
 
     auto cleanup = [&]() {
+        stop_stream_len32be_dispatch(dispatch);
         close_socket_fd(raw_client);
         if (server_monitor)
             zlink_close(server_monitor);
@@ -544,20 +719,17 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
     std::vector<unsigned char> server_client_id;
     std::vector<char> send_buf(msg_size, 'a');
     std::vector<char> recv_buf;
-    stream_buffer_t stash;
     std::vector<char> probe_payload(1, 'p');
-    std::vector<char> probe_chunk;
+    stream_dispatch_packet_t packet;
 
     if (!send_framed(raw_client, probe_payload)
-        || !recv_stream_chunk(server.get(), &server_client_id, &probe_chunk)
-        || server_client_id.empty()) {
+        || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+        || packet.routing_id.empty()) {
         fail("probe_send_recv");
         return;
     }
-    stash.append(probe_chunk.data(), probe_chunk.size());
-    std::vector<char> probe_recv;
-    if (!recv_framed_stream(server.get(), server_client_id, &stash, &probe_recv)
-        || probe_recv != probe_payload) {
+    server_client_id = packet.routing_id;
+    if (packet.payload != probe_payload) {
         fail("probe_decode");
         return;
     }
@@ -569,20 +741,24 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_framed(raw_client, send_buf)
-            || !recv_framed_stream(server.get(), server_client_id, &stash,
-                                   &recv_buf)) {
+            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+            || packet.routing_id != server_client_id) {
             fail("warmup");
             return;
         }
+        recv_buf = packet.payload;
     }
 
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
+        zlink_routing_id_t server_rid = make_routing_id(server_client_id);
         if (!send_framed(raw_client, send_buf)
-            || !recv_framed_stream(server.get(), server_client_id, &stash, &recv_buf)
-            || !send_stream_frame(server.get(), server_client_id, recv_buf)
+            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+            || packet.routing_id != server_client_id
+            || zlink_stream_send(server.get(), &server_rid, packet.payload.data(),
+                                 packet.payload.size(), 0) < 0
             || !recv_framed(raw_client, &recv_buf)) {
             fail("latency");
             return;
@@ -593,9 +769,10 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
     std::atomic<int> received(0);
     std::atomic<bool> recv_ok(true);
     std::thread receiver([&]() {
-        std::vector<char> recv_tmp;
         for (int i = 0; i < msg_count; ++i) {
-            if (!recv_framed_stream(server.get(), server_client_id, &stash, &recv_tmp)) {
+            stream_dispatch_packet_t pkt;
+            if (!wait_stream_len32be_packet(dispatch, io_timeout_ms, &pkt)
+                || pkt.routing_id != server_client_id) {
                 recv_ok.store(false);
                 break;
             }
@@ -687,6 +864,22 @@ void run_stream_zlink_client(const std::string &transport,
         return;
     }
 
+    stream_len32be_dispatch_t dispatch;
+    if (!start_stream_len32be_dispatch(server.get(), dispatch)) {
+        fail();
+        return;
+    }
+    stream_len32be_dispatch_t client_dispatch;
+    if (!start_stream_len32be_dispatch_aux(client.get(), client_dispatch)) {
+        stop_stream_len32be_dispatch(dispatch);
+        fail();
+        return;
+    }
+    auto stop_dispatch = [&]() {
+        stop_stream_len32be_dispatch_aux(client_dispatch);
+        stop_stream_len32be_dispatch(dispatch);
+    };
+
     void *client_monitor = zlink_socket_monitor_open(
       client.get(), ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
     if (client_monitor)
@@ -695,6 +888,7 @@ void run_stream_zlink_client(const std::string &transport,
     if (!connect_checked(client.get(), endpoint)) {
         if (client_monitor)
             zlink_close(client_monitor);
+        stop_dispatch();
         fail();
         return;
     }
@@ -715,65 +909,66 @@ void run_stream_zlink_client(const std::string &transport,
     client_monitor = NULL;
 
     if (!client_ready || client_server_id.empty()) {
+        stop_dispatch();
         fail();
         return;
     }
 
-    const unsigned char probe = 0x5a;
-    char probe_buf[8];
-    const bool probe_recv =
-      send_stream_msg(client.get(), client_server_id, &probe, sizeof(probe))
-      && recv_stream_msg(server.get(), &server_client_id, probe_buf, sizeof(probe_buf));
-    if (!probe_recv || server_client_id.empty()) {
+    const std::vector<char> probe_payload(1, static_cast<char>(0x5a));
+    stream_dispatch_packet_t packet;
+    if (!send_stream_frame(client.get(), client_server_id, probe_payload)
+        || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+        || packet.routing_id.empty()
+        || packet.payload != probe_payload) {
+        stop_dispatch();
         fail();
         return;
     }
+    server_client_id = packet.routing_id;
 
     std::vector<char> send_buf(msg_size, 'a');
     std::vector<char> recv_buf(msg_size > 256 ? msg_size : 256);
 
     const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
-        const bool ok_send =
-          send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size);
-        const bool ok_recv =
-          ok_send
-          && recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size());
-        if (!ok_recv) {
+        if (!send_stream_frame(client.get(), client_server_id, send_buf)
+            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+            || packet.routing_id != server_client_id) {
+            stop_dispatch();
             fail();
             return;
         }
+        recv_buf = packet.payload;
     }
 
     const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
-        const bool ok_c2s_send =
-          send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size);
-        const bool ok_c2s_recv =
-          ok_c2s_send
-          && recv_stream_msg(server.get(), NULL, recv_buf.data(), recv_buf.size());
-        const bool ok_s2c_send =
-          ok_c2s_recv
-          && send_stream_msg(server.get(), server_client_id, recv_buf.data(), msg_size);
-        const bool ok_s2c_recv =
-          ok_s2c_send
-          && recv_stream_msg(client.get(), NULL, recv_buf.data(), recv_buf.size());
-        if (!ok_s2c_recv) {
+        const zlink_routing_id_t server_rid = make_routing_id(server_client_id);
+        stream_dispatch_packet_t client_pkt;
+        if (!send_stream_frame(client.get(), client_server_id, send_buf)
+            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
+            || packet.routing_id != server_client_id
+            || zlink_stream_send(server.get(), &server_rid, packet.payload.data(),
+                                 packet.payload.size(), 0) < 0
+            || !wait_stream_len32be_packet(client_dispatch, io_timeout_ms, &client_pkt)
+            || client_pkt.routing_id != client_server_id) {
+            stop_dispatch();
             fail();
             return;
         }
+        recv_buf = client_pkt.payload;
     }
     const double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
     std::atomic<int> received(0);
     std::atomic<bool> recv_ok(true);
     std::thread receiver([&]() {
-        std::vector<char> thr_recv_buf(msg_size > 256 ? msg_size : 256);
         for (int i = 0; i < msg_count; ++i) {
-            if (!recv_stream_msg(server.get(), NULL, thr_recv_buf.data(),
-                                 thr_recv_buf.size())) {
+            stream_dispatch_packet_t pkt;
+            if (!wait_stream_len32be_packet(dispatch, io_timeout_ms, &pkt)
+                || pkt.routing_id != server_client_id) {
                 recv_ok.store(false);
                 break;
             }
@@ -784,7 +979,7 @@ void run_stream_zlink_client(const std::string &transport,
     int sent = 0;
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        if (!send_stream_msg(client.get(), client_server_id, send_buf.data(), msg_size))
+        if (!send_stream_frame(client.get(), client_server_id, send_buf))
             break;
         ++sent;
     }
@@ -792,6 +987,7 @@ void run_stream_zlink_client(const std::string &transport,
     receiver.join();
     const int recv_count = received.load();
     if (!recv_ok.load() && recv_count <= 0) {
+        stop_dispatch();
         fail();
         return;
     }
@@ -799,6 +995,7 @@ void run_stream_zlink_client(const std::string &transport,
     const int effective = sent < recv_count ? sent : recv_count;
     if (effective <= 0) {
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, latency);
+        stop_dispatch();
         return;
     }
 
@@ -807,6 +1004,7 @@ void run_stream_zlink_client(const std::string &transport,
       elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
 
     print_result(lib_name, "STREAM", transport, msg_size, throughput, latency);
+    stop_dispatch();
 }
 
 } // namespace

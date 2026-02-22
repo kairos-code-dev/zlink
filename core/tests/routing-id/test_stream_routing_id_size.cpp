@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <atomic>
 
 #if defined(ZLINK_HAVE_WINDOWS)
 #include <winsock2.h>
@@ -19,6 +20,15 @@
 SETUP_TEARDOWN_TESTCONTEXT
 
 static const size_t stream_routing_id_size = 4;
+struct stream_probe_t
+{
+    std::atomic<int> calls;
+    std::atomic<int> rid_size_ok;
+    std::atomic<int> payload_ok;
+    stream_probe_t () : calls (0), rid_size_ok (0), payload_ok (0) {}
+};
+
+static stream_probe_t *g_stream_probe = NULL;
 
 static bool wait_monitor_event (void *monitor_,
                                 void *activity_socket_,
@@ -158,14 +168,44 @@ static void close_raw_fd (int fd_)
 }
 #endif
 
+static int on_stream_packet (const zlink_routing_id_t *rid_,
+                             zlink_msg_t *msgs_,
+                             size_t msg_count_)
+{
+    stream_probe_t *p = g_stream_probe;
+    if (!p || !rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
+        p->calls.fetch_add (1, std::memory_order_release);
+        if (rid_->size == stream_routing_id_size)
+            p->rid_size_ok.store (1, std::memory_order_release);
+
+        const unsigned char *payload =
+          static_cast<const unsigned char *> (zlink_msg_data (msg));
+        const size_t payload_size = zlink_msg_size (msg);
+        if (payload_size == 1 && payload && payload[0] == 'x')
+            p->payload_ok.store (1, std::memory_order_release);
+    }
+
+    return 0;
+}
+
 void test_stream_auto_routing_id_size ()
 {
+    stream_probe_t probe;
+
     void *server = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (server);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    g_stream_probe = &probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_start (server, on_stream_packet, 0));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);
@@ -183,28 +223,23 @@ void test_stream_auto_routing_id_size ()
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
                                 client_fd, payload, sizeof (payload) - 1));
 
-    unsigned char recv_id[255];
-    int rc = zlink_recv (server, recv_id, sizeof (recv_id), 0);
-    TEST_ASSERT_EQUAL_INT (static_cast<int> (stream_routing_id_size), rc);
+    for (int i = 0; i < 200; ++i) {
+        if (probe.calls.load (std::memory_order_acquire) > 0)
+            break;
+#if defined(ZLINK_HAVE_WINDOWS)
+        Sleep (10);
+#else
+        usleep (10000);
+#endif
+    }
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size));
-    TEST_ASSERT_TRUE (more);
-
-    unsigned char recv_payload[8];
-    rc = zlink_recv (server, recv_payload, sizeof (recv_payload), 0);
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (payload) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (payload, reinterpret_cast<char *> (recv_payload),
-                                  sizeof (payload) - 1);
-
-    unsigned char server_id[stream_routing_id_size];
-    TEST_ASSERT_TRUE (wait_monitor_event (
-      monitor, server, ZLINK_EVENT_CONNECTION_READY, server_id, 2000));
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (server_id, recv_id, stream_routing_id_size);
+    TEST_ASSERT_TRUE (probe.calls.load (std::memory_order_acquire) > 0);
+    TEST_ASSERT_EQUAL_INT (1, probe.rid_size_ok.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (1, probe.payload_ok.load (std::memory_order_acquire));
 
     close_raw_fd (client_fd);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_stop (server));
+    g_stream_probe = NULL;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
     test_context_socket_close_zero_linger (server);
 }

@@ -1297,6 +1297,47 @@ int zlink::socket_base_t::recv (msg_t *msg_, int flags_)
     return 0;
 }
 
+int zlink::socket_base_t::stream_dispatch_msg_from_io (msg_t *msg_,
+                                                       pipe_t *pipe_)
+{
+    return xstream_dispatch_msg (msg_, pipe_);
+}
+
+int zlink::socket_base_t::stream_dispatch_start (
+  zlink_stream_on_packets_fn callback_, int flags_)
+{
+    LIBZLINK_UNUSED (callback_);
+    LIBZLINK_UNUSED (flags_);
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::stream_dispatch_stop ()
+{
+    errno = ENOTSUP;
+    return -1;
+}
+
+bool zlink::socket_base_t::stream_dispatch_len32be_enabled () const
+{
+    return false;
+}
+
+bool zlink::socket_base_t::stream_dispatch_active () const
+{
+    return false;
+}
+
+int zlink::socket_base_t::stream_dispatch_send_from_io (
+  const zlink_routing_id_t *,
+  const void *,
+  size_t,
+  int,
+  bool)
+{
+    return 0;
+}
+
 int zlink::socket_base_t::close ()
 {
     if (_mailbox)
@@ -1508,6 +1549,13 @@ int zlink::socket_base_t::xrecv (msg_t *)
 {
     errno = ENOTSUP;
     return -1;
+}
+
+int zlink::socket_base_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
+{
+    LIBZLINK_UNUSED (msg_);
+    LIBZLINK_UNUSED (pipe_);
+    return 0;
 }
 
 void zlink::socket_base_t::xread_activated (pipe_t *)
@@ -2068,8 +2116,23 @@ zlink::routing_socket_base_t::lookup_out_pipe (const blob_t &routing_id_) const
 
 void zlink::routing_socket_base_t::erase_out_pipe (const pipe_t *pipe_)
 {
+    if (!pipe_)
+        return;
+
     const size_t erased = _out_pipes.erase (pipe_->get_routing_id ());
-    zlink_assert (erased);
+    if (erased != 0)
+        return;
+
+    //  Routing id may have been refreshed after attach. Fall back to
+    //  pointer-based lookup to keep teardown idempotent and avoid stale pipes.
+    for (out_pipes_t::iterator it = _out_pipes.begin (),
+                               end = _out_pipes.end ();
+         it != end; ++it) {
+        if (it->second.pipe == pipe_) {
+            _out_pipes.erase (it);
+            return;
+        }
+    }
 }
 
 zlink::routing_socket_base_t::out_pipe_t

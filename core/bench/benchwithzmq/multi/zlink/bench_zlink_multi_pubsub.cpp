@@ -46,7 +46,9 @@ int recv_batch_subscribers (const std::vector<void *> &subs,
         const size_t idx = (rr_cursor + i) % sub_count;
         if ((poll_items[idx].revents & ZLINK_POLLIN) == 0)
             continue;
-        if (zlink_recv (subs[idx], recv_buf.data (), recv_buf.size (), 0) < 0) {
+        if (zlink_recv (
+              subs[idx], recv_buf.data (), recv_buf.size (), ZLINK_DONTWAIT)
+            < 0) {
             const int err = zlink_errno ();
             if (err == EAGAIN || err == EINTR)
                 continue;
@@ -197,8 +199,6 @@ bool run_pubsub_warmup (void *pub,
             std::this_thread::yield ();
     }
 
-    drain_subscribers_queues (
-      subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 1000));
     return true;
 }
 
@@ -483,10 +483,6 @@ void run_multi_pubsub (const std::string &transport,
 
         const pubsub_measure_result_t bench = run_pubsub_measure (
           pub, subs, settings, buffer, recv_buf, measure_poll_timeout_ms);
-
-        size_t rr_cursor = 0;
-        drain_subscribers_queues (
-          subs, recv_buf, rr_cursor, std::max (settings.drain_ms, 2000));
 
         double latency = 0.0;
         ctx_guard_t lat_ctx;

@@ -244,6 +244,7 @@ zlink::asio_engine_t::asio_engine_t (
     _gather_body (NULL),
     _gather_body_size (0),
     _terminating (false),
+    _callback_guard (new int (0)),
     _read_buffer_ptr (NULL),
     _last_read_request_size (0),
     _last_read_had_partial_prefix (false),
@@ -368,6 +369,7 @@ void zlink::asio_engine_t::start_transport_handshake ()
 
     const int handshake_type =
       _endpoint_uri_pair.local_type == endpoint_type_connect ? 0 : 1;
+    const std::weak_ptr<void> callback_guard = _callback_guard;
 
     const bool use_stream_handler_alloc =
       _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
@@ -376,13 +378,19 @@ void zlink::asio_engine_t::start_transport_handshake ()
           handshake_type,
           make_custom_alloc_handler (
             _stream_handshake_handler_allocator,
-            [this] (const boost::system::error_code &ec, std::size_t) {
+            [this, callback_guard] (const boost::system::error_code &ec,
+                                    std::size_t) {
+                if (callback_guard.expired ())
+                    return;
                 on_transport_handshake (ec);
             }));
     } else {
         _transport->async_handshake (
           handshake_type,
-          [this] (const boost::system::error_code &ec, std::size_t) {
+          [this, callback_guard] (const boost::system::error_code &ec,
+                                  std::size_t) {
+              if (callback_guard.expired ())
+                  return;
               on_transport_handshake (ec);
           });
     }
@@ -478,21 +486,23 @@ void zlink::asio_engine_t::terminate ()
 {
     ENGINE_DBG ("terminate called");
 
+    if (_terminating)
+        return;
+
     //  Mark as terminating to prevent callbacks from processing
     _terminating = true;
+    _callback_guard.reset ();
 
     unplug ();
 
-    //  Drain any pending async handlers while the object is still alive.
-    //  The _terminating flag ensures callbacks are no-ops.
-    if (_io_context
-        && (_read_pending || _write_pending || _handshake_pending)) {
-        _io_context->poll ();
+    //  Avoid re-entrant poll() during teardown: SSL/WebSocket callbacks can still
+    //  be completing while close() is in progress. Let io_context serialize final
+    //  callbacks and delete on its queue.
+    if (_io_context) {
+        boost::asio::post (*_io_context, [this] () { delete this; });
+        return;
     }
 
-    //  Engine lifetime is controlled by session/IO ownership, not by stack scope.
-    //  At this point callbacks were drained (or marked no-op), so self-destruction
-    //  is the final ownership handoff for this engine instance.
     delete this;
 }
 
@@ -573,6 +583,7 @@ void zlink::asio_engine_t::start_async_read ()
 
     ENGINE_DBG ("start_async_read: reading up to %zu bytes", read_size);
     if (_transport) {
+        const std::weak_ptr<void> callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
           _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
@@ -580,13 +591,19 @@ void zlink::asio_engine_t::start_async_read ()
               _read_buffer_ptr, read_size,
               make_custom_alloc_handler (
                 _stream_read_handler_allocator,
-                [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                [this, callback_guard] (const boost::system::error_code &ec,
+                                        std::size_t bytes) {
+                    if (callback_guard.expired ())
+                        return;
                     on_read_complete (ec, bytes);
                 }));
         } else {
             _transport->async_read_some (
               _read_buffer_ptr, read_size,
-              [this] (const boost::system::error_code &ec, std::size_t bytes) {
+              [this, callback_guard] (const boost::system::error_code &ec,
+                                      std::size_t bytes) {
+                  if (callback_guard.expired ())
+                      return;
                   on_read_complete (ec, bytes);
               });
         }
@@ -760,6 +777,7 @@ void zlink::asio_engine_t::start_async_write ()
     _async_zero_copy = true;
 
     if (_transport) {
+        const std::weak_ptr<void> callback_guard = _callback_guard;
         const bool use_stream_handler_alloc =
           _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
         if (use_stream_handler_alloc) {
@@ -767,13 +785,19 @@ void zlink::asio_engine_t::start_async_write ()
               _outpos, _outsize,
               make_custom_alloc_handler (
                 _stream_write_handler_allocator,
-                [this] (const boost::system::error_code &ec, std::size_t bytes) {
+                [this, callback_guard] (const boost::system::error_code &ec,
+                                        std::size_t bytes) {
+                    if (callback_guard.expired ())
+                        return;
                     on_write_complete (ec, bytes);
                 }));
         } else {
             _transport->async_write_some (
               _outpos, _outsize,
-              [this] (const boost::system::error_code &ec, std::size_t bytes) {
+              [this, callback_guard] (const boost::system::error_code &ec,
+                                      std::size_t bytes) {
+                  if (callback_guard.expired ())
+                      return;
                   on_write_complete (ec, bytes);
               });
         }
@@ -834,6 +858,7 @@ bool zlink::asio_engine_t::prepare_gather_output ()
     _async_zero_copy = false;
     _output_stopped = false;
 
+    const std::weak_ptr<void> callback_guard = _callback_guard;
     const bool use_stream_handler_alloc =
       _options.type == ZLINK_STREAM && asio_stream_enable_handler_alloc;
     if (use_stream_handler_alloc) {
@@ -841,13 +866,19 @@ bool zlink::asio_engine_t::prepare_gather_output ()
           _gather_header, _gather_header_size, _gather_body, _gather_body_size,
           make_custom_alloc_handler (
             _stream_write_handler_allocator,
-            [this] (const boost::system::error_code &ec, std::size_t bytes) {
+            [this, callback_guard] (const boost::system::error_code &ec,
+                                    std::size_t bytes) {
+                if (callback_guard.expired ())
+                    return;
                 on_write_complete (ec, bytes);
             }));
     } else {
         _transport->async_writev (
           _gather_header, _gather_header_size, _gather_body, _gather_body_size,
-          [this] (const boost::system::error_code &ec, std::size_t bytes) {
+          [this, callback_guard] (const boost::system::error_code &ec,
+                                  std::size_t bytes) {
+              if (callback_guard.expired ())
+                  return;
               on_write_complete (ec, bytes);
           });
     }
@@ -1210,6 +1241,7 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
         if (_outsize > 0) {
             _write_pending = true;
             if (_transport) {
+                const std::weak_ptr<void> callback_guard = _callback_guard;
                 const bool use_stream_handler_alloc =
                   _options.type == ZLINK_STREAM
                   && asio_stream_enable_handler_alloc;
@@ -1218,15 +1250,21 @@ void zlink::asio_engine_t::on_write_complete (const boost::system::error_code &e
                       _outpos, _outsize,
                       make_custom_alloc_handler (
                         _stream_write_handler_allocator,
-                        [this] (const boost::system::error_code &wec,
+                        [this, callback_guard] (
+                          const boost::system::error_code &wec,
                                 std::size_t bytes) {
+                            if (callback_guard.expired ())
+                                return;
                             on_write_complete (wec, bytes);
                         }));
                 } else {
                     _transport->async_write_some (
                       _outpos, _outsize,
-                      [this] (const boost::system::error_code &wec,
+                      [this, callback_guard] (
+                        const boost::system::error_code &wec,
                               std::size_t bytes) {
+                          if (callback_guard.expired ())
+                              return;
                           on_write_complete (wec, bytes);
                       });
                 }
@@ -1939,6 +1977,7 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
     if (_terminating)
         return;
     _terminating = true;
+    _callback_guard.reset ();
 
     zlink_assert (_session);
 
@@ -1969,12 +2008,6 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
     _session->flush ();
     _session->engine_error (!_handshaking, reason_);
     unplug ();
-
-    //  Drain any pending async handlers while the object is still alive.
-    //  The _terminating flag ensures callbacks are no-ops.
-    if (_io_context && (_read_pending || _write_pending)) {
-        _io_context->poll ();
-    }
 
     if (_io_context) {
         //  If we are on (or racing with) the io_context thread, posting deletion
@@ -2013,7 +2046,10 @@ void zlink::asio_engine_t::add_timer (int timeout_, int id_)
     _current_timer_id = id_;
     _timer->expires_after (std::chrono::milliseconds (timeout_));
     _timer->async_wait (
-      [this, id_] (const boost::system::error_code &ec) {
+      [this, id_, callback_guard = std::weak_ptr<void> (_callback_guard)] (
+        const boost::system::error_code &ec) {
+          if (callback_guard.expired ())
+              return;
           on_timer (id_, ec);
       });
 }

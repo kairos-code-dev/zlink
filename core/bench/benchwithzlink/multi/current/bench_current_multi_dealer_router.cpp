@@ -318,6 +318,32 @@ double measure_latency_us (void *ctx,
     return latency;
 }
 
+double measure_latency_live (void *server, void *client, size_t msg_size)
+{
+    std::vector<char> payload (std::max<size_t> (1, msg_size), 'a');
+    std::vector<char> recv_buf (std::max<size_t> (1, msg_size));
+    char id_buf[256];
+
+    const int lat_count = resolve_bench_count ("BENCH_LAT_COUNT", 500);
+    return measure_roundtrip_latency_us (lat_count, [&] () {
+        if (zlink_send (client, payload.data (), payload.size (), 0) < 0)
+            return;
+
+        const int id_len = zlink_recv (server, id_buf, sizeof (id_buf), 0);
+        if (id_len <= 0)
+            return;
+        if (zlink_recv (server, recv_buf.data (), recv_buf.size (), 0) < 0)
+            return;
+
+        if (zlink_send (server, id_buf, id_len, ZLINK_SNDMORE) < 0)
+            return;
+        if (zlink_send (server, recv_buf.data (), recv_buf.size (), 0) < 0)
+            return;
+
+        zlink_recv (client, recv_buf.data (), recv_buf.size (), 0);
+    });
+}
+
 } // namespace
 
 void run_multi_dealer_router (const std::string &transport,
@@ -366,7 +392,13 @@ void run_multi_dealer_router (const std::string &transport,
 
     std::vector<void *> clients (settings.clients, NULL);
     const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (msg_size);
+    std::vector<double> throughput_values (msg_sizes.size (), 0.0);
+    std::vector<double> latency_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_connect_values (msg_sizes.size (), 0.0);
+    std::vector<double> prep_ready_values (msg_sizes.size (), 0.0);
+
     bool ready_wait_done = false;
+    size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
@@ -427,37 +459,89 @@ void run_multi_dealer_router (const std::string &transport,
             false);
 
         if (bench.failed) {
-            print_prep_result (lib_name, "MULTI_DEALER_ROUTER", transport,
-                               current_size, bench.connect_ms, bench.ready_wait_ms);
             break;
         }
 
-        const double latency = measure_latency_us (
-          ctx.get (),
-          transport,
-          lib_name,
-          current_size,
-          settings.hwm,
-          settings.connect_ready_timeout_ms);
-
-        const double throughput =
-          !bench.failed && bench.measure_recv > 0
+        prep_connect_values[s] = bench.connect_ms;
+        prep_ready_values[s] = bench.ready_wait_ms;
+        throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
                 / static_cast<double> (std::max (1, settings.measure_seconds))
             : 0.0;
-
-        print_prep_result (lib_name, "MULTI_DEALER_ROUTER", transport,
-                           current_size, bench.connect_ms, bench.ready_wait_ms);
-        print_result (lib_name, "MULTI_DEALER_ROUTER", transport, current_size,
-                      throughput, latency);
+        completed_sizes = s + 1;
     }
 
     for (size_t i = 0; i < clients.size (); ++i) {
-        if (clients[i])
+        if (clients[i]) {
             zlink_close (clients[i]);
+            clients[i] = NULL;
+        }
     }
     close_connect_monitor (server_monitor);
     zlink_close (server);
+
+    if (completed_sizes > 0) {
+        ctx_guard_t lat_ctx;
+        if (lat_ctx.valid ()) {
+            void *lat_server = zlink_socket (lat_ctx.get (), ZLINK_ROUTER);
+            void *lat_client = zlink_socket (lat_ctx.get (), ZLINK_DEALER);
+            connect_monitor_t lat_monitor;
+            bool lat_monitor_open = false;
+            bool lat_ready = false;
+
+            if (lat_server && lat_client) {
+                const int linger_ms = 0;
+                set_sockopt_int (
+                  lat_server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+                set_sockopt_int (
+                  lat_client, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+                apply_benchmark_hwm (lat_server, settings.hwm);
+                apply_benchmark_hwm (lat_client, settings.hwm);
+                if (setup_tls_server (lat_server, transport)
+                    && setup_tls_client (lat_client, transport)) {
+                    const std::string client_id = "LAT_CLIENT";
+                    zlink_setsockopt (
+                      lat_client, ZLINK_ROUTING_ID,
+                      client_id.c_str (), client_id.size ());
+                    const std::string lat_endpoint = bind_and_resolve_endpoint (
+                      lat_server, transport, lib_name + "_multi_dealer_router_lat_phase");
+                    if (!lat_endpoint.empty ()
+                        && open_connect_monitor (lat_client, lat_monitor)) {
+                        lat_monitor_open = true;
+                        if (connect_checked (lat_client, lat_endpoint, transport)
+                            && wait_connect_ready (
+                              lat_monitor, settings.connect_ready_timeout_ms)) {
+                            lat_ready = true;
+                            settle ();
+                        }
+                    }
+                }
+            }
+
+            if (lat_ready) {
+                for (size_t s = 0; s < completed_sizes; ++s) {
+                    latency_values[s] = measure_latency_live (
+                      lat_server, lat_client, msg_sizes[s]);
+                }
+            }
+
+            if (lat_monitor_open)
+                close_connect_monitor (lat_monitor);
+            if (lat_client)
+                zlink_close (lat_client);
+            if (lat_server)
+                zlink_close (lat_server);
+        }
+    }
+
+    for (size_t s = 0; s < msg_sizes.size (); ++s) {
+        print_prep_result (
+          lib_name, "MULTI_DEALER_ROUTER", transport, msg_sizes[s],
+          prep_connect_values[s], prep_ready_values[s]);
+        print_result (
+          lib_name, "MULTI_DEALER_ROUTER", transport, msg_sizes[s],
+          throughput_values[s], latency_values[s]);
+    }
 }
 
 int main (int argc, char **argv)

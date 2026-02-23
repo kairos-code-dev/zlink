@@ -135,8 +135,8 @@ internal static partial class BenchRunner
         Span<byte> payload = stackalloc byte[16];
         for (int attempt = 0; attempt < 64; attempt++)
         {
-            int idLen = ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
-            int pLen = ReceiveRetry(socket, payload, ReceiveFlags.None);
+            int idLen = ReceiveMessageToSpan(socket, idBuffer, ReceiveFlags.None);
+            int pLen = ReceiveMessageToSpan(socket, payload, ReceiveFlags.None);
             if (pLen == 1 && payload[0] == 0x01)
             {
                 int safeLen = idLen;
@@ -169,8 +169,8 @@ internal static partial class BenchRunner
     internal static void StreamRecv(Zlink.Socket socket, Span<byte> idBuffer,
         Span<byte> payloadBuffer, out int idLength, out int payloadLength)
     {
-        int idLen = ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
-        int n = ReceiveRetry(socket, payloadBuffer, ReceiveFlags.None);
+        int idLen = ReceiveMessageToSpan(socket, idBuffer, ReceiveFlags.None);
+        int n = ReceiveMessageToSpan(socket, payloadBuffer, ReceiveFlags.None);
 
         idLength = idLen;
         if (idLength < 0)
@@ -188,14 +188,26 @@ internal static partial class BenchRunner
     internal static int StreamRecvPayload(Zlink.Socket socket,
         Span<byte> idBuffer, Span<byte> payloadBuffer)
     {
-        ReceiveRetry(socket, idBuffer, ReceiveFlags.None);
-
-        int payloadLen = ReceiveRetry(socket, payloadBuffer, ReceiveFlags.None);
+        ReceiveMessageToSpan(socket, idBuffer, ReceiveFlags.None);
+        int payloadLen = ReceiveMessageToSpan(socket, payloadBuffer, ReceiveFlags.None);
         if (payloadLen < 0)
             return 0;
         if (payloadLen > payloadBuffer.Length)
             return payloadBuffer.Length;
         return payloadLen;
+    }
+
+    private static int ReceiveMessageToSpan(Zlink.Socket socket, Span<byte> buffer,
+        ReceiveFlags flags)
+    {
+        using var msg = socket.ReceiveMessage(flags);
+        int size = msg.Size;
+        if (size <= 0)
+            return 0;
+        int copyLen = Math.Min(size, buffer.Length);
+        if (copyLen > 0)
+            msg.AsReadOnlySpan().Slice(0, copyLen).CopyTo(buffer);
+        return size;
     }
 
     internal static void PrintResult(string pattern, string transport, int size, double thr, double latUs)

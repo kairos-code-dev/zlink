@@ -24,6 +24,7 @@ using socket_t = SOCKET;
 static const socket_t INVALID_SOCKET_FD = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -108,6 +109,73 @@ struct stream_len32be_dispatch_t {
 };
 
 static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
+static std::atomic<bool> g_stream_reply_direct (false);
+
+typedef int (*stream_attach_fn_t) (void *, zlink_stream_on_packets_fn, int);
+typedef int (*stream_detach_fn_t) (void *);
+
+struct stream_dispatch_api_t {
+    stream_attach_fn_t attach_fn;
+    stream_detach_fn_t detach_fn;
+    bool resolved;
+
+    stream_dispatch_api_t () : attach_fn (NULL), detach_fn (NULL), resolved (false) {}
+};
+
+stream_dispatch_api_t &stream_dispatch_api ()
+{
+    static stream_dispatch_api_t api;
+    if (api.resolved)
+        return api;
+
+#ifdef _WIN32
+    HMODULE mod = GetModuleHandleA ("zlink.dll");
+    if (!mod)
+        mod = GetModuleHandleA (NULL);
+    if (mod) {
+        api.attach_fn = reinterpret_cast<stream_attach_fn_t> (
+          GetProcAddress (mod, "zlink_stream_attach"));
+        api.detach_fn = reinterpret_cast<stream_detach_fn_t> (
+          GetProcAddress (mod, "zlink_stream_detach"));
+    }
+#else
+    api.attach_fn = reinterpret_cast<stream_attach_fn_t> (
+      dlsym (RTLD_DEFAULT, "zlink_stream_attach"));
+    api.detach_fn = reinterpret_cast<stream_detach_fn_t> (
+      dlsym (RTLD_DEFAULT, "zlink_stream_detach"));
+#endif
+
+    api.resolved = true;
+    return api;
+}
+
+bool stream_dispatch_supported ()
+{
+    stream_dispatch_api_t &api = stream_dispatch_api ();
+    return api.attach_fn != NULL && api.detach_fn != NULL;
+}
+
+int stream_attach_compat (void *socket_,
+                          zlink_stream_on_packets_fn callback,
+                          int flags)
+{
+    stream_dispatch_api_t &api = stream_dispatch_api ();
+    if (!api.attach_fn) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return api.attach_fn (socket_, callback, flags);
+}
+
+int stream_detach_compat (void *socket_)
+{
+    stream_dispatch_api_t &api = stream_dispatch_api ();
+    if (!api.detach_fn) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return api.detach_fn (socket_);
+}
 
 enum recv_sender_frame_status_t
 {
@@ -142,6 +210,69 @@ const char *recv_sender_frame_status_name (recv_sender_frame_status_t status)
     }
 }
 
+bool send_stream_reply_with_retry (void *socket,
+                                   const zlink_routing_id_t *rid,
+                                   const char *payload_data,
+                                   size_t payload_size)
+{
+    const int retry_limit = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_SEND_RETRIES", 256, 1);
+    const int retry_backoff_us = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_SEND_RETRY_BACKOFF_US", 20, 0);
+    const unsigned char *payload =
+      payload_size > 0 ? reinterpret_cast<const unsigned char *> (payload_data)
+                       : NULL;
+
+    for (int attempt = 0; attempt < retry_limit; ++attempt) {
+        const int rc = zlink_stream_send (socket, rid, payload, payload_size, 0);
+        if (rc == static_cast<int> (payload_size))
+            return true;
+
+        if (rc >= 0) {
+            if (bench_debug_enabled ()) {
+                std::fprintf (
+                  stderr,
+                  "MULTI_STREAM reply send partial: rc=%d expected=%zu attempt=%d/%d\n",
+                  rc,
+                  payload_size,
+                  attempt + 1,
+                  retry_limit);
+            }
+            return false;
+        }
+
+        const int err = zlink_errno ();
+        if (err != EAGAIN && err != EINTR) {
+            if (bench_debug_enabled ()) {
+                std::fprintf (
+                  stderr,
+                  "MULTI_STREAM reply send fail: rc=%d err=%d size=%zu attempt=%d/%d\n",
+                  rc,
+                  err,
+                  payload_size,
+                  attempt + 1,
+                  retry_limit);
+            }
+            return false;
+        }
+        if (retry_backoff_us > 0) {
+            std::this_thread::sleep_for (
+              std::chrono::microseconds (retry_backoff_us));
+        } else {
+            std::this_thread::yield ();
+        }
+    }
+
+    if (bench_debug_enabled ()) {
+        std::fprintf (
+          stderr,
+          "MULTI_STREAM reply send fail: retries_exhausted size=%zu retries=%d\n",
+          payload_size,
+          retry_limit);
+    }
+    return false;
+}
+
 int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
                                zlink_msg_t *msgs_,
                                size_t msg_count_)
@@ -149,6 +280,12 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
     stream_len32be_dispatch_t *dispatch = g_stream_dispatch;
     if (!dispatch || !rid_ || !msgs_ || msg_count_ == 0)
         return 0;
+
+    const bool direct_reply =
+      g_stream_reply_direct.load (std::memory_order_acquire);
+    std::unique_lock<std::mutex> guard;
+    if (!direct_reply)
+        guard = std::unique_lock<std::mutex> (dispatch->lock);
 
     for (size_t i = 0; i < msg_count_; ++i) {
         const char *payload_data =
@@ -162,17 +299,30 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
         }
         if (!payload_data && payload_size > 0)
             continue;
-        const int rc = zlink_stream_send (
-          dispatch->socket,
-          rid_,
-          payload_size > 0
-            ? reinterpret_cast<const unsigned char *> (payload_data)
-            : NULL,
-          payload_size,
-          ZLINK_DONTWAIT);
-        if (rc < 0 && zlink_errno () != EAGAIN && zlink_errno () != EINTR) {
-            return 1;
+        if (direct_reply) {
+            if (!send_stream_reply_with_retry (
+                  dispatch->socket,
+                  rid_,
+                  payload_data,
+                  payload_size)) {
+                return 1;
+            }
+            continue;
         }
+
+        stream_dispatch_packet_t packet;
+        packet.routing_id.assign (
+          reinterpret_cast<const char *> (rid_->data),
+          static_cast<size_t> (rid_->size));
+        packet.payload.assign (payload_size, 0);
+        if (payload_size > 0)
+            std::memcpy (packet.payload.data (), payload_data, payload_size);
+        dispatch->packets.push_back (packet);
+    }
+
+    if (!direct_reply) {
+        guard.unlock ();
+        dispatch->cv.notify_all ();
     }
     return dispatch->running.load (std::memory_order_acquire) ? 0 : 1;
 }
@@ -183,7 +333,7 @@ bool start_stream_len32be_dispatch (void *socket_,
     dispatch.socket = socket_;
     dispatch.running.store (true, std::memory_order_release);
     g_stream_dispatch = &dispatch;
-    if (zlink_stream_attach (
+    if (stream_attach_compat (
           socket_, &on_stream_len32be_packets, ZLINK_STREAM_DISPATCH_LEN32BE)
         != 0) {
         dispatch.running.store (false, std::memory_order_release);
@@ -200,7 +350,7 @@ void stop_stream_len32be_dispatch (stream_len32be_dispatch_t &dispatch)
     if (!dispatch.running.exchange (false, std::memory_order_acq_rel))
         return;
     if (dispatch.socket)
-        (void) zlink_stream_detach (dispatch.socket);
+        (void) stream_detach_compat (dispatch.socket);
     {
         std::lock_guard<std::mutex> guard (dispatch.lock);
         dispatch.packets.clear ();
@@ -311,6 +461,21 @@ struct stream_pending_reply_t {
 };
 
 typedef std::deque<stream_pending_reply_t> stream_reply_queue_t;
+
+bool enqueue_stream_reply_payload (stream_reply_queue_t &pending_replies,
+                                   const std::string &routing_id,
+                                   const std::vector<char> &payload,
+                                   size_t max_pending)
+{
+    if (routing_id.empty () || pending_replies.size () >= max_pending)
+        return false;
+
+    stream_pending_reply_t reply;
+    reply.routing_id = routing_id;
+    reply.payload = payload;
+    pending_replies.push_back (reply);
+    return true;
+}
 
 #ifdef _WIN32
 void ensure_winsock_initialized ()
@@ -741,28 +906,25 @@ int flush_stream_reply_queue (void *server,
     int sent = 0;
     while (sent < send_budget && !pending_replies.empty ()) {
         stream_pending_reply_t &reply = pending_replies.front ();
-
-        if (!reply.id_sent) {
-            const char *rid_ptr =
-              reply.routing_id.empty () ? NULL : &reply.routing_id[0];
-            const int rid_rc =
-              zlink_send (server, rid_ptr, reply.routing_id.size (),
-                          ZLINK_SNDMORE | ZLINK_DONTWAIT);
-            if (rid_rc < 0) {
-                if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
-                    break;
-                return -1;
-            }
-            reply.id_sent = true;
+        if (reply.routing_id.empty ()) {
+            pending_replies.pop_front ();
+            continue;
         }
 
-        const char *payload_ptr =
-          reply.payload.empty () ? NULL : &reply.payload[0];
-        const int payload_rc = zlink_send (
-          server, payload_ptr, reply.payload.size (), ZLINK_DONTWAIT);
-        if (payload_rc < 0) {
-            if (zlink_errno () == EAGAIN || zlink_errno () == EINTR)
-                break;
+        zlink_routing_id_t target;
+        std::memset (&target, 0, sizeof (target));
+        const size_t copy_size =
+          std::min<size_t> (reply.routing_id.size (), sizeof (target.data));
+        if (copy_size == 0) {
+            pending_replies.pop_front ();
+            continue;
+        }
+        target.size = static_cast<uint8_t> (copy_size);
+        std::memcpy (target.data, reply.routing_id.data (), copy_size);
+
+        const char *payload_ptr = reply.payload.empty () ? NULL : &reply.payload[0];
+        if (!send_stream_reply_with_retry (
+              server, &target, payload_ptr, reply.payload.size ())) {
             return -1;
         }
 
@@ -777,10 +939,73 @@ int enqueue_stream_payload_chunks (void *server,
                                   stream_reply_queue_t &pending_replies,
                                   int relay_budget,
                                   long poll_timeout_ms,
-                                  size_t max_pending)
+                                  size_t max_pending,
+                                  size_t expected_payload_size,
+                                  stream_stash_map_t *dispatch_stashes)
 {
     if (relay_budget <= 0 || max_pending == 0 || pending_replies.size () >= max_pending)
         return 0;
+
+    int enqueued = 0;
+    auto enqueue_decoded_payload = [&] (const std::string &routing_id,
+                                        const std::vector<char> &decoded_payload,
+                                        bool send_requires_framed_payload) {
+        if (expected_payload_size > 0
+            && decoded_payload.size () != expected_payload_size) {
+            return;
+        }
+
+        std::vector<char> wire_payload;
+        if (send_requires_framed_payload) {
+            stream_build_framed_payload (decoded_payload, &wire_payload);
+        } else {
+            wire_payload = decoded_payload;
+        }
+
+        if (enqueue_stream_reply_payload (
+              pending_replies, routing_id, wire_payload, max_pending)) {
+            ++enqueued;
+        }
+    };
+
+    auto process_payload_chunk = [&] (const std::string &routing_id,
+                                      const char *payload_data,
+                                      size_t payload_size,
+                                      bool may_be_decoded_payload,
+                                      bool send_requires_framed_payload) {
+        if (routing_id.empty () || !payload_data || payload_size == 0)
+            return;
+
+        std::vector<char> decoded_payload;
+        if (extract_single_framed_payload (
+              payload_data, payload_size, &decoded_payload)) {
+            enqueue_decoded_payload (
+              routing_id, decoded_payload, send_requires_framed_payload);
+            return;
+        }
+
+        if (may_be_decoded_payload
+            && (expected_payload_size == 0
+                || payload_size == expected_payload_size)) {
+            std::vector<char> direct_payload (payload_size, 0);
+            std::memcpy (direct_payload.data (), payload_data, payload_size);
+            enqueue_decoded_payload (
+              routing_id, direct_payload, send_requires_framed_payload);
+            return;
+        }
+
+        if (!dispatch_stashes)
+            return;
+
+        stream_buffer_t &stash = (*dispatch_stashes)[routing_id];
+        stash.append (payload_data, payload_size);
+        while (enqueued < relay_budget
+               && pending_replies.size () < max_pending
+               && stream_decode_one_frame (stash, &decoded_payload)) {
+            enqueue_decoded_payload (
+              routing_id, decoded_payload, send_requires_framed_payload);
+        }
+    };
 
     stream_len32be_dispatch_t *dispatch = g_stream_dispatch;
     const bool dispatch_active =
@@ -793,15 +1018,15 @@ int enqueue_stream_payload_chunks (void *server,
             return 0;
         }
 
-        int enqueued = 0;
         auto push_reply = [&] (const stream_dispatch_packet_t &packet_) {
             if (packet_.routing_id.empty ())
                 return;
-            stream_pending_reply_t reply;
-            reply.routing_id = packet_.routing_id;
-            stream_build_framed_payload (packet_.payload, &reply.payload);
-            pending_replies.push_back (reply);
-            ++enqueued;
+            process_payload_chunk (
+              packet_.routing_id,
+              packet_.payload.empty () ? NULL : packet_.payload.data (),
+              packet_.payload.size (),
+              true,
+              false);
         };
 
         push_reply (dispatch_packet);
@@ -821,7 +1046,6 @@ int enqueue_stream_payload_chunks (void *server,
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return 0;
 
-    int enqueued = 0;
     while (enqueued < relay_budget && pending_replies.size () < max_pending) {
         const int flags = enqueued == 0 ? 0 : ZLINK_DONTWAIT;
 
@@ -865,12 +1089,12 @@ int enqueue_stream_payload_chunks (void *server,
               static_cast<const char *> (zlink_msg_data (&id_frame));
             const size_t id_size = zlink_msg_size (&id_frame);
             if (id_data && id_size > 0) {
-                stream_pending_reply_t reply;
-                reply.routing_id.assign (id_data, id_size);
-                normalize_stream_reply_frame (
-                  payload_data, payload_size, &reply.payload);
-                pending_replies.push_back (reply);
-                ++enqueued;
+                process_payload_chunk (
+                  std::string (id_data, id_size),
+                  payload_data,
+                  payload_size,
+                  true,
+                  false);
             }
         }
 
@@ -908,8 +1132,9 @@ int decode_sender_frames_with_expected_size (stream_buffer_t &stash,
             break;
 
         stash.offset += required;
-        if (frame_len != expected_payload_size)
+        if (frame_len != expected_payload_size) {
             continue;
+        }
         ++completed;
     }
 
@@ -1142,6 +1367,70 @@ int recv_batch_stream_echoes (std::vector<tcp_sender_state_t> &senders,
 {
     return recv_batch_client_echoes (
       senders, poller, recv_batch, poll_timeout_ms, expected_payload_size);
+}
+
+void drain_pending_stream_frames (void *server,
+                                  std::vector<tcp_sender_state_t> &senders,
+                                  stream_client_poller_t &poller,
+                                  stream_reply_queue_t &pending_replies,
+                                  stream_stash_map_t &dispatch_stashes,
+                                  int relay_budget,
+                                  size_t max_pending_replies,
+                                  size_t expected_payload_size,
+                                  int max_wait_ms)
+{
+    const int idle_ms_target = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_DRAIN_IDLE_MS", 10, 1);
+    const int default_wait_ms = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_DRAIN_MAX_MS", 2000, 0);
+    const int drain_wait_ms = max_wait_ms >= 0 ? max_wait_ms : default_wait_ms;
+    const int drain_relay_budget = resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_DRAIN_RELAY_BUDGET",
+      std::max (256, relay_budget),
+      1);
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (0, drain_wait_ms));
+
+    int idle_ms = 0;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const int flushed = flush_stream_reply_queue (
+          server, pending_replies, drain_relay_budget);
+        if (flushed < 0)
+            break;
+
+        const int enqueued = enqueue_stream_payload_chunks (
+          server,
+          pending_replies,
+          drain_relay_budget,
+          0,
+          max_pending_replies,
+          expected_payload_size,
+          &dispatch_stashes);
+        if (enqueued < 0)
+            break;
+
+        const int flushed_tail = flush_stream_reply_queue (
+          server, pending_replies, drain_relay_budget);
+        if (flushed_tail < 0)
+            break;
+
+        const int echoed = recv_batch_stream_echoes (
+          senders, poller, 4096, 0, 0);
+        if (echoed < 0)
+            break;
+
+        if (flushed > 0 || enqueued > 0 || flushed_tail > 0 || echoed > 0
+            || !pending_replies.empty ()) {
+            idle_ms = 0;
+            continue;
+        }
+
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        ++idle_ms;
+        if (idle_ms >= idle_ms_target)
+            break;
+    }
 }
 
 bool is_stream_event_payload (const char *data, size_t size)
@@ -1402,33 +1691,71 @@ void run_multi_stream (const std::string &transport,
 
     stream_len32be_dispatch_t dispatch;
     bool dispatch_started = false;
+    bool dispatch_fallback_logged = false;
     std::vector<tcp_sender_state_t> senders (settings.clients);
     stream_client_poller_t stream_poller;
     bool ready_wait_done = false;
     bool poller_ready = false;
+    stream_reply_queue_t pending_replies;
+    stream_stash_map_t dispatch_stashes;
+    const int relay_budget = std::max (settings.recv_batch, stream_send_batch);
+    const size_t min_pending_replies =
+      static_cast<size_t> (relay_budget) * static_cast<size_t> (8);
     std::vector<double> throughput_values (msg_sizes.size (), 0.0);
     std::vector<double> latency_values (msg_sizes.size (), 0.0);
     std::vector<double> prep_connect_values (msg_sizes.size (), 0.0);
     std::vector<double> prep_ready_values (msg_sizes.size (), 0.0);
     size_t completed_sizes = 0;
+    const bool dispatch_supported = stream_dispatch_supported ();
     auto close_throughput_senders = [&] () {
         for (size_t i = 0; i < senders.size (); ++i)
             close_sender (senders[i]);
         stream_poller.reset ();
+        pending_replies.clear ();
     };
+    g_stream_reply_direct.store (false, std::memory_order_release);
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
+        multi_bench_settings_t round_settings = stream_settings;
+        round_settings.inflight =
+          resolve_multi_stream_inflight_for_size (stream_settings, current_size);
+        const size_t max_pending_replies =
+          std::max<size_t> (
+            min_pending_replies,
+            static_cast<size_t> (std::max<size_t> (1, settings.clients))
+              * static_cast<size_t> (std::max (1, round_settings.inflight))
+              * static_cast<size_t> (2));
         std::vector<char> payload (std::max<size_t> (1, current_size), 'a');
+        pending_replies.clear ();
+        dispatch_stashes.clear ();
+        if (dispatch_started)
+            clear_stream_len32be_dispatch_packets (dispatch);
 
         const multi_bench_result_t bench =
           run_multi_phase_benchmark_with_sender_lifecycle_batched (
-            settings.clients, stream_settings,
+            settings.clients, round_settings,
             stream_send_batch,
             [&] (size_t idx) { return setup_sender (senders[idx], endpoint); },
             [&] (size_t idx) { return send_sender_nonblocking (senders[idx], payload); },
-            [&] (multi_bench_phase_t) {
+            [&] (multi_bench_phase_t phase_) {
+                const long relay_poll_ms =
+                  phase_ == multi_phase_measure ? 10 : 0;
+                const int enqueued = enqueue_stream_payload_chunks (
+                  server,
+                  pending_replies,
+                  relay_budget,
+                  relay_poll_ms,
+                  max_pending_replies,
+                  current_size,
+                  &dispatch_stashes);
+                if (enqueued < 0)
+                    return -1;
+                const int flushed = flush_stream_reply_queue (
+                  server, pending_replies, relay_budget);
+                if (flushed < 0)
+                    return -1;
                 return recv_batch_stream_echoes (
-                  senders, stream_poller, settings.recv_batch, 10, current_size);
+                  senders, stream_poller, round_settings.recv_batch, 10, current_size);
             },
             [&] (size_t) {},
             [&] () {
@@ -1449,7 +1776,7 @@ void run_multi_stream (const std::string &transport,
                         return false;
                     }
                 }
-                if (!dispatch_started) {
+                if (!dispatch_started && dispatch_supported) {
                     if (!start_stream_len32be_dispatch (server, dispatch)) {
                         if (bench_debug_enabled ()) {
                             std::fprintf (
@@ -1459,6 +1786,14 @@ void run_multi_stream (const std::string &transport,
                         return false;
                     }
                     dispatch_started = true;
+                    g_stream_reply_direct.store (
+                      false, std::memory_order_release);
+                } else if (!dispatch_supported && !dispatch_fallback_logged
+                           && bench_debug_enabled ()) {
+                    std::fprintf (
+                      stderr,
+                      "MULTI_STREAM: stream attach unsupported, fallback recv path\n");
+                    dispatch_fallback_logged = true;
                 }
                 if (!poller_ready) {
                     poller_ready = stream_poller.rebuild (senders);
@@ -1478,9 +1813,21 @@ void run_multi_stream (const std::string &transport,
         throughput_values[s] =
           bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
-                / static_cast<double> (std::max (1, settings.measure_seconds))
+                / static_cast<double> (std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
+        if ((s + 1) < msg_sizes.size ()) {
+            drain_pending_stream_frames (
+              server,
+              senders,
+              stream_poller,
+              pending_replies,
+              dispatch_stashes,
+              relay_budget,
+              max_pending_replies,
+              current_size,
+              settings.size_transition_drain_ms);
+        }
     }
 
     close_throughput_senders ();
@@ -1506,8 +1853,16 @@ void run_multi_stream (const std::string &transport,
                 const bool has_lat_monitor =
                   open_connect_monitor (lat_server, lat_monitor);
                 stream_len32be_dispatch_t lat_dispatch;
-                const bool lat_dispatch_started =
-                  start_stream_len32be_dispatch (lat_server, lat_dispatch);
+                bool lat_dispatch_started = false;
+                if (dispatch_supported) {
+                    g_stream_reply_direct.store (true, std::memory_order_release);
+                    lat_dispatch_started =
+                      start_stream_len32be_dispatch (lat_server, lat_dispatch);
+                } else if (bench_debug_enabled ()) {
+                    std::fprintf (
+                      stderr,
+                      "MULTI_STREAM latency live skipped: stream attach unsupported\n");
+                }
 
                 if (lat_dispatch_started) {
                     tcp_sender_state_t latency_sender;
@@ -1533,11 +1888,13 @@ void run_multi_stream (const std::string &transport,
                           "MULTI_STREAM latency live fail: setup_latency_sender\n");
                     }
                     stop_stream_len32be_dispatch (lat_dispatch);
-                } else if (bench_debug_enabled ()) {
+                } else if (dispatch_supported && bench_debug_enabled ()) {
                     std::fprintf (
                       stderr,
                       "MULTI_STREAM latency live fail: start_latency_dispatch\n");
                 }
+                if (lat_dispatch_started)
+                    g_stream_reply_direct.store (false, std::memory_order_release);
                 if (has_lat_monitor)
                     close_connect_monitor (lat_monitor);
             }

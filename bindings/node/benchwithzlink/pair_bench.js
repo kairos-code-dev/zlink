@@ -109,8 +109,8 @@ function streamExpectConnectEvent(socket) {
   const rid = Buffer.alloc(256);
   const payload = Buffer.alloc(16);
   for (let i = 0; i < 64; i++) {
-    const ridLen = socket.recvInto(rid, zlink.ReceiveFlag.NONE);
-    const payloadLen = socket.recvInto(payload, zlink.ReceiveFlag.NONE);
+    const ridLen = socket.recvMsgInto(rid, zlink.ReceiveFlag.NONE);
+    const payloadLen = socket.recvMsgInto(payload, zlink.ReceiveFlag.NONE);
     if (payloadLen === 1 && payload[0] === 0x01) {
       return rid.subarray(0, ridLen);
     }
@@ -124,9 +124,115 @@ function streamSend(socket, rid, payload) {
 }
 
 function streamRecvInto(socket, ridBuffer, dataBuffer) {
-  const ridLen = socket.recvInto(ridBuffer, zlink.ReceiveFlag.NONE);
-  const dataLen = socket.recvInto(dataBuffer, zlink.ReceiveFlag.NONE);
+  const ridLen = socket.recvMsgInto(ridBuffer, zlink.ReceiveFlag.NONE);
+  const dataLen = socket.recvMsgInto(dataBuffer, zlink.ReceiveFlag.NONE);
   return { ridLen, dataLen };
+}
+
+const STREAM_MAX_FRAME_BYTES = 16 * 1024 * 1024;
+
+function encodeLen32BeFrame(payload) {
+  const frame = Buffer.alloc(payload.length + 4);
+  frame.writeUInt32BE(payload.length, 0);
+  payload.copy(frame, 4);
+  return frame;
+}
+
+class StreamLen32BeStash {
+  constructor() {
+    this._buf = Buffer.alloc(512);
+    this._start = 0;
+    this._end = 0;
+  }
+
+  _size() {
+    return this._end - this._start;
+  }
+
+  _ensure(extra) {
+    if ((this._buf.length - this._end) >= extra) return;
+
+    if (this._start > 0) {
+      this._buf.copy(this._buf, 0, this._start, this._end);
+      this._end -= this._start;
+      this._start = 0;
+      if ((this._buf.length - this._end) >= extra) return;
+    }
+
+    let cap = this._buf.length;
+    while ((cap - this._end) < extra) {
+      cap = Math.max(cap * 2, this._end + extra);
+    }
+    const next = Buffer.alloc(cap);
+    this._buf.copy(next, 0, this._start, this._end);
+    this._end -= this._start;
+    this._start = 0;
+    this._buf = next;
+  }
+
+  append(chunk) {
+    if (!chunk || chunk.length === 0) return;
+    this._ensure(chunk.length);
+    chunk.copy(this._buf, this._end);
+    this._end += chunk.length;
+  }
+
+  tryReadPayload(outPayload) {
+    const avail = this._size();
+    if (avail < 4) return -1;
+
+    const bodyLen = this._buf.readUInt32BE(this._start);
+    if (bodyLen > STREAM_MAX_FRAME_BYTES) {
+      this._start = 0;
+      this._end = 0;
+      return -1;
+    }
+
+    const frameLen = 4 + bodyLen;
+    if (avail < frameLen) return -1;
+    if (bodyLen > outPayload.length) {
+      throw new Error('len32be payload buffer too small');
+    }
+
+    if (bodyLen > 0) {
+      this._buf.copy(outPayload, 0, this._start + 4, this._start + frameLen);
+    }
+
+    this._start += frameLen;
+    if (this._start === this._end) {
+      this._start = 0;
+      this._end = 0;
+    } else if (this._start > 4096 && (this._start * 2) >= this._end) {
+      this._buf.copy(this._buf, 0, this._start, this._end);
+      this._end -= this._start;
+      this._start = 0;
+    }
+    return bodyLen;
+  }
+}
+
+function streamRecvLen32BePayload(socket, expectedRid, ridBuffer, chunkBuffer,
+  stash, payloadBuffer) {
+  while (true) {
+    const { ridLen, dataLen: chunkLen } = streamRecvInto(
+      socket, ridBuffer, chunkBuffer
+    );
+    if (expectedRid && expectedRid.length > 0) {
+      if (ridLen !== expectedRid.length) {
+        continue;
+      }
+      if (!ridBuffer.subarray(0, ridLen).equals(expectedRid)) {
+        continue;
+      }
+    }
+    if (chunkLen > 0) {
+      stash.append(chunkBuffer.subarray(0, chunkLen));
+    }
+    const payloadLen = stash.tryReadPayload(payloadBuffer);
+    if (payloadLen >= 0) {
+      return payloadLen;
+    }
+  }
 }
 
 async function runPairLike(pattern, typeA, typeB, transport, size) {
@@ -163,8 +269,12 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    b.sendMany(buf, msgCount, zlink.SendFlag.NONE);
-    a.recvManyInto(recvA, msgCount, zlink.ReceiveFlag.NONE);
+    for (let i = 0; i < msgCount; i++) {
+      b.send(buf, zlink.SendFlag.NONE);
+    }
+    for (let i = 0; i < msgCount; i++) {
+      a.recvInto(recvA, zlink.ReceiveFlag.NONE);
+    }
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
 
@@ -202,8 +312,12 @@ async function runPubSub(transport, size) {
     }
 
     const t0 = process.hrtime.bigint();
-    pub.sendMany(buf, msgCount, zlink.SendFlag.NONE);
-    sub.recvManyInto(recvBuf, msgCount, zlink.ReceiveFlag.NONE);
+    for (let i = 0; i < msgCount; i++) {
+      pub.send(buf, zlink.SendFlag.NONE);
+    }
+    for (let i = 0; i < msgCount; i++) {
+      sub.recvInto(recvBuf, zlink.ReceiveFlag.NONE);
+    }
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
     const latUs = (elapsedSec * 1e6) / msgCount;
@@ -260,8 +374,13 @@ async function runDealerRouter(transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    dealer.sendMany(buf, msgCount, zlink.SendFlag.NONE);
-    router.recvPairManyInto(ridBuf, dataBuf, msgCount, zlink.ReceiveFlag.NONE);
+    for (let i = 0; i < msgCount; i++) {
+      dealer.send(buf, zlink.SendFlag.NONE);
+    }
+    for (let i = 0; i < msgCount; i++) {
+      router.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+      router.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+    }
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = msgCount / elapsedSec;
 
@@ -366,24 +485,29 @@ async function runRouterRouter(transport, size, usePoll) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
-    router2.sendRoutedMany(
-      routingId1,
-      routingId1.length,
-      buf,
-      buf.length,
-      msgCount,
-      zlink.SendFlag.NONE
-    );
+    for (let i = 0; i < msgCount; i++) {
+      router2.send(routingId1, zlink.SendFlag.SNDMORE);
+      router2.send(buf, zlink.SendFlag.NONE);
+    }
     if (usePoll) {
       let received = 0;
       while (received < msgCount) {
         if (!waitForInput(router1, 2000, poller1)) return 2;
-        const drained = router1.recvPairDrainInto(ridBuf, dataBuf, msgCount - received);
-        if (drained <= 0) continue;
-        received += drained;
+        while (received < msgCount) {
+          try {
+            router1.recvInto(ridBuf, zlink.ReceiveFlag.DONTWAIT);
+            router1.recvInto(dataBuf, zlink.ReceiveFlag.DONTWAIT);
+            received++;
+          } catch (_) {
+            break;
+          }
+        }
       }
     } else {
-      router1.recvPairManyInto(ridBuf, dataBuf, msgCount, zlink.ReceiveFlag.NONE);
+      for (let i = 0; i < msgCount; i++) {
+        router1.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
+        router1.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+      }
     }
 
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
@@ -401,64 +525,182 @@ async function runRouterRouter(transport, size, usePoll) {
 }
 
 async function runStream(transport, size) {
+  return runStreamMode(transport, size, false, 'STREAM', 'stream');
+}
+
+async function runStreamLen32Be(transport, size) {
+  return runStreamMode(transport, size, true, 'STREAM_LEN32BE', 'stream-len32be');
+}
+
+async function runStreamMode(transport, size, len32beDispatch, patternName, endpointName) {
   const warmup = parseEnv('BENCH_WARMUP_COUNT', 1000);
   const latCount = parseEnv('BENCH_LAT_COUNT', 500);
-  const msgCount = resolveMsgCount(size);
+  const msgCount = parseEnv('BENCH_MSG_COUNT', 10000);
+  const inflightLimit = Math.max(1, parseEnv('BENCH_STREAM_INFLIGHT', 10));
   const ioTimeoutMs = parseEnv('BENCH_STREAM_TIMEOUT_MS', 5000);
+  const drainTimeoutMs = parseEnv('BENCH_STREAM_DRAIN_TIMEOUT_MS',
+    Math.max(ioTimeoutMs * 6, 30000));
 
   const ctx = new zlink.Context();
   const server = new zlink.Socket(ctx, zlink.SocketType.STREAM);
   const client = new zlink.Socket(ctx, zlink.SocketType.STREAM);
+  let serverAttached = false;
+  let clientAttached = false;
+  let clientServerId = null;
+  let clientSinkCount = 0;
+  const clientRawStash = new StreamLen32BeStash();
+  const clientPayload = Buffer.alloc(Math.max(1, size));
 
   try {
-    const ep = await endpointFor(transport, 'stream');
+    const ep = await endpointFor(transport, endpointName);
     server.setSockOpt(zlink.SocketOption.SNDTIMEO, intSockOpt(ioTimeoutMs));
     server.setSockOpt(zlink.SocketOption.RCVTIMEO, intSockOpt(ioTimeoutMs));
     client.setSockOpt(zlink.SocketOption.SNDTIMEO, intSockOpt(ioTimeoutMs));
     client.setSockOpt(zlink.SocketOption.RCVTIMEO, intSockOpt(ioTimeoutMs));
+
+    server.streamAttach((rid, packets) => {
+      if (!rid || rid.length === 0 || !packets) {
+        return 0;
+      }
+      for (const packet of packets) {
+        if (!packet || packet.length === 0) {
+          continue;
+        }
+        if (packet.length === 1 && (packet[0] === 0x00 || packet[0] === 0x01)) {
+          continue;
+        }
+        server.streamSend(rid, packet, zlink.SendFlag.NONE);
+      }
+      return 0;
+    }, len32beDispatch ? zlink.StreamDispatchMode.LEN32BE : zlink.StreamDispatchMode.NONE);
+    serverAttached = true;
+
+    client.streamAttach((rid, packets) => {
+      if (!clientServerId && rid && rid.length > 0) {
+        clientServerId = Buffer.from(rid);
+      }
+      if (!packets) {
+        return 0;
+      }
+      if (len32beDispatch) {
+        clientSinkCount += packets.length;
+        return 0;
+      }
+
+      for (const packet of packets) {
+        if (!packet || packet.length === 0) {
+          continue;
+        }
+        if (packet.length === 1 && (packet[0] === 0x00 || packet[0] === 0x01)) {
+          continue;
+        }
+        clientRawStash.append(packet);
+        while (true) {
+          const payloadLen = clientRawStash.tryReadPayload(clientPayload);
+          if (payloadLen < 0) {
+            break;
+          }
+          clientSinkCount += 1;
+        }
+      }
+      return 0;
+    }, len32beDispatch ? zlink.StreamDispatchMode.LEN32BE : zlink.StreamDispatchMode.NONE);
+    clientAttached = true;
+
     server.bind(ep);
     client.connect(ep);
     await settle();
 
-    const serverClientId = streamExpectConnectEvent(server);
-    const clientServerId = streamExpectConnectEvent(client);
+    const ridDeadline = Date.now() + ioTimeoutMs;
+    while (Date.now() < ridDeadline) {
+      const rid = client.streamPeerRoutingId(0);
+      if (rid && rid.length > 0) {
+        clientServerId = Buffer.from(rid);
+        break;
+      }
+      if (clientServerId && clientServerId.length > 0) {
+        break;
+      }
+      await sleep(1);
+    }
+    if (!clientServerId) {
+      return 2;
+    }
 
-    const buf = Buffer.alloc(size, 'a');
-    const cap = Math.max(256, size);
-    const serverRid = Buffer.alloc(256);
-    const serverData = Buffer.alloc(cap);
-    const clientRid = Buffer.alloc(256);
-    const clientData = Buffer.alloc(cap);
+    const payload = Buffer.alloc(size, 'a');
+    const sendBuf = len32beDispatch ? payload : encodeLen32BeFrame(payload);
 
+    const waitReceived = async (target, timeoutMs) => {
+      const deadline = Date.now() + Math.max(timeoutMs, 1);
+      while (Date.now() < deadline) {
+        if (clientSinkCount >= target) {
+          return true;
+        }
+        await sleep(1);
+      }
+      return clientSinkCount >= target;
+    };
+
+    let expected = clientSinkCount;
     for (let i = 0; i < warmup; i++) {
-      streamSend(client, clientServerId, buf);
-      streamRecvInto(server, serverRid, serverData);
+      client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
+      expected += 1;
+      if (!(await waitReceived(expected, ioTimeoutMs))) {
+        return 2;
+      }
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
-      streamSend(client, clientServerId, buf);
-      const { dataLen } = streamRecvInto(server, serverRid, serverData);
-      streamSend(server, serverClientId, serverData.subarray(0, dataLen));
-      streamRecvInto(client, clientRid, clientData);
+      client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
+      expected += 1;
+      if (!(await waitReceived(expected, ioTimeoutMs))) {
+        return 2;
+      }
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
+    const recvBegin = clientSinkCount;
+    let sent = 0;
     t0 = process.hrtime.bigint();
     for (let i = 0; i < msgCount; i++) {
-      streamSend(client, clientServerId, buf);
+      try {
+        client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
+      } catch (_) {
+        break;
+      }
+      sent++;
+      const acked = Math.max(0, clientSinkCount - recvBegin);
+      if ((sent - acked) >= inflightLimit) {
+        const target = recvBegin + sent - inflightLimit + 1;
+        if (!(await waitReceived(target, ioTimeoutMs))) {
+          break;
+        }
+      }
     }
-    for (let i = 0; i < msgCount; i++) {
-      streamRecvInto(server, serverRid, serverData);
-    }
-    const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const thr = msgCount / elapsedSec;
 
-    printResult('STREAM', transport, size, thr, latUs);
+    if (sent > 0) {
+      await waitReceived(recvBegin + sent, drainTimeoutMs);
+    }
+
+    const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
+    const recvDelta = Math.max(0, clientSinkCount - recvBegin);
+    const effective = Math.min(sent, recvDelta);
+    const thr = effective > 0 && elapsedSec > 0 ? (effective / elapsedSec) : 0.0;
+    if (effective <= 0) {
+      return 2;
+    }
+    printResult(patternName, transport, size, thr, latUs);
     return 0;
   } catch (_) {
     return 2;
   } finally {
+    if (clientAttached) {
+      try { client.streamDetach(); } catch (_) {}
+    }
+    if (serverAttached) {
+      try { server.streamDetach(); } catch (_) {}
+    }
     try { server.close(); } catch (_) {}
     try { client.close(); } catch (_) {}
     try { ctx.close(); } catch (_) {}
@@ -572,45 +814,30 @@ async function runGateway(transport, size) {
     let recvCount = 0;
     let sent = 0;
     t0 = process.hrtime.bigint();
-    if (typeof gateway.sendManyConst === 'function') {
-      try {
-        sent = gateway.sendManyConst(service, payload, msgCount, zlink.SendFlag.NONE);
-      } catch (_) {
-        sent = 0;
-      }
-      if (sent > 0) {
-        try {
-          recvCount = router.recvPairManyInto(ridBuf, dataBuf, sent, zlink.ReceiveFlag.NONE);
-        } catch (_) {
-          recvCount = 0;
-        }
-      }
-    } else {
-      const receiverLoop = (async () => {
-        for (let i = 0; i < msgCount; i++) {
-          try {
-            await recvIntoWithTimeout(router, ridBuf, 5000);
-            await recvIntoWithTimeout(router, dataBuf, 5000);
-          } catch (_) {
-            break;
-          }
-          recvCount += 1;
-        }
-      })();
-
+    const receiverLoop = (async () => {
       for (let i = 0; i < msgCount; i++) {
         try {
-          gateway.send(service, parts, zlink.SendFlag.NONE);
+          await recvIntoWithTimeout(router, ridBuf, 5000);
+          await recvIntoWithTimeout(router, dataBuf, 5000);
         } catch (_) {
           break;
         }
-        sent += 1;
-        if ((i & 1023) === 0) {
-          await Promise.resolve();
-        }
+        recvCount += 1;
       }
-      await receiverLoop;
+    })();
+
+    for (let i = 0; i < msgCount; i++) {
+      try {
+        gateway.send(service, parts, zlink.SendFlag.NONE);
+      } catch (_) {
+        break;
+      }
+      sent += 1;
+      if ((i & 1023) === 0) {
+        await Promise.resolve();
+      }
     }
+    await receiverLoop;
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = (sent > 0 && recvCount > 0) ? (Math.min(sent, recvCount) / elapsedSec) : 0.0;
     printResult('GATEWAY', transport, size, thr, latUs);
@@ -665,44 +892,29 @@ async function runSpot(transport, size) {
     let recvCount = 0;
     let sent = 0;
     t0 = process.hrtime.bigint();
-    if (typeof spotPub.publishManyConst === 'function' && typeof spotSub.recvMany === 'function') {
-      try {
-        sent = spotPub.publishManyConst('bench', payload, msgCount, zlink.SendFlag.NONE);
-      } catch (_) {
-        sent = 0;
-      }
-      if (sent > 0) {
-        try {
-          recvCount = spotSub.recvMany(sent, zlink.ReceiveFlag.NONE);
-        } catch (_) {
-          recvCount = 0;
-        }
-      }
-    } else {
-      const receiverLoop = (async () => {
-        for (let i = 0; i < msgCount; i++) {
-          try {
-            await spotRecvWithTimeout(spotSub, 5000);
-          } catch (_) {
-            break;
-          }
-          recvCount += 1;
-        }
-      })();
-
+    const spotReceiverLoop = (async () => {
       for (let i = 0; i < msgCount; i++) {
         try {
-          spotPub.publish('bench', parts, zlink.SendFlag.NONE);
+          await spotRecvWithTimeout(spotSub, 5000);
         } catch (_) {
           break;
         }
-        sent += 1;
-        if ((i & 1023) === 0) {
-          await Promise.resolve();
-        }
+        recvCount += 1;
       }
-      await receiverLoop;
+    })();
+
+    for (let i = 0; i < msgCount; i++) {
+      try {
+        spotPub.publish('bench', parts, zlink.SendFlag.NONE);
+      } catch (_) {
+        break;
+      }
+      sent += 1;
+      if ((i & 1023) === 0) {
+        await Promise.resolve();
+      }
     }
+    await spotReceiverLoop;
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
     const thr = (sent > 0 && recvCount > 0) ? (Math.min(sent, recvCount) / elapsedSec) : 0.0;
     printResult('SPOT', transport, size, thr, latUs);
@@ -741,6 +953,9 @@ async function runPattern(pattern, transport, size) {
   if (p === 'STREAM') {
     return runStream(transport, size);
   }
+  if (p === 'STREAM_LEN32BE') {
+    return runStreamLen32Be(transport, size);
+  }
   if (p === 'GATEWAY') {
     return runGateway(transport, size);
   }
@@ -776,6 +991,7 @@ module.exports = {
   runDealerRouter,
   runRouterRouter,
   runStream,
+  runStreamLen32Be,
   runGateway,
   runSpot,
   runPattern,

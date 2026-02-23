@@ -131,6 +131,20 @@ inline int bench_max_sockets()
     return static_cast<int>(required);
 }
 
+inline int bench_ctx_blocky()
+{
+    const char *value = std::getenv("BENCH_CTX_BLOCKY");
+    if (!value || !*value)
+        return 0;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value)
+        return 0;
+    return parsed != 0 ? 1 : 0;
+}
+
 inline void apply_ctx_options(void *ctx_)
 {
     const bool debug = std::getenv("BENCH_DEBUG") != NULL;
@@ -151,6 +165,13 @@ inline void apply_ctx_options(void *ctx_)
                       << zlink_strerror(zlink_errno()) << std::endl;
         }
     }
+
+    const int blocky = bench_ctx_blocky();
+    const int blocky_rc = zlink_ctx_set(ctx_, ZLINK_BLOCKY, blocky);
+    if (blocky_rc != 0 && debug) {
+        std::cerr << "zlink_ctx_set(ZLINK_BLOCKY) failed: "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+    }
 }
 
 class ctx_guard_t {
@@ -162,7 +183,13 @@ public:
     ~ctx_guard_t() {
         if (_ctx) {
             zlink_ctx_shutdown(_ctx);
-            zlink_ctx_term(_ctx);
+
+            //  In high-throughput STREAM benchmarks, blocking ctx_term can hang for
+            //  a long time after metrics are already emitted. Keep shutdown as the
+            //  default and allow explicit full term via BENCH_CTX_TERM=1.
+            const char *term_env = std::getenv("BENCH_CTX_TERM");
+            if (term_env && std::strcmp(term_env, "0") != 0)
+                zlink_ctx_term(_ctx);
         }
     }
 

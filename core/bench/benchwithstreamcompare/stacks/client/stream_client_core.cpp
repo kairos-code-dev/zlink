@@ -43,7 +43,7 @@ struct client_options_t
           ccu (10000),
           size (1024),
           duration (5),
-          inflight (1),
+          inflight (10),
           io_threads (1)
     {
     }

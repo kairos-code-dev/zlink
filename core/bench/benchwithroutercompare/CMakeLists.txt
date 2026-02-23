@@ -9,7 +9,7 @@
 # 1. Copy libzmq to libzmq_dist/linux-x64/ (already included)
 # 2. Run setup_grpc_dist.sh to populate grpc_dist/linux-x64/ or copy manually
 # 3. Build with: cmake -B build -DBUILD_BENCHMARKS=ON && cmake --build build
-# 4. Run: ./core/bench/benchwithroutercompare/run_benchmarks.sh --runs 1
+# 4. Run: ./core/bench/benchwithroutercompare/run_benchmarks.sh --runs 3
 
 # --- zlink include ---
 if(EXISTS "${CMAKE_SOURCE_DIR}/core/include")

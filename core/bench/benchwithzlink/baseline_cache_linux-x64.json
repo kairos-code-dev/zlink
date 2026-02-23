@@ -564,79 +564,39 @@
     "wss|64|latency": 126.51
   },
   "MULTI_DEALER_DEALER": {
-    "tcp|64|throughput": 2337057.0,
-    "tcp|64|latency": 28.76,
-    "tls|64|throughput": 291394.0,
-    "tls|64|latency": 32.21,
-    "ws|64|throughput": 287118.5,
-    "ws|64|latency": 41.5,
-    "wss|64|throughput": 816528.5,
-    "wss|64|latency": 33.99,
-    "inproc|64|throughput": 0.0,
-    "inproc|64|latency": 0.0,
-    "ipc|64|throughput": 2676459.0,
-    "ipc|64|latency": 28.5
+    "tcp|32|throughput": 672691.0,
+    "tcp|32|latency": 33.6,
+    "tcp|64|throughput": 551581.0,
+    "tcp|64|latency": 32.38
   },
   "MULTI_GATEWAY": {
-    "tcp|64|throughput": 2706053.95,
-    "tcp|64|latency": 85.11,
-    "tls|64|throughput": 2851549.3,
-    "tls|64|latency": 93.42,
-    "ws|64|throughput": 2522610.74,
-    "ws|64|latency": 95.13,
-    "wss|64|throughput": 2747048.37,
-    "wss|64|latency": 105.56
+    "tcp|32|throughput": 5667934.72,
+    "tcp|32|latency": 71.13,
+    "tcp|64|throughput": 3950171.92,
+    "tcp|64|latency": 4.41
   },
   "MULTI_SPOT": {
-    "tcp|64|throughput": 1369668.7,
-    "tcp|64|latency": 0.43,
-    "tls|64|throughput": 934771.9,
-    "tls|64|latency": 0.82,
-    "ws|64|throughput": 1510165.3,
-    "ws|64|latency": 2.0,
-    "wss|64|throughput": 799779.6,
-    "wss|64|latency": 0.97
+    "tcp|32|throughput": 5167285.0,
+    "tcp|32|latency": 1.72,
+    "tcp|64|throughput": 6104727.0,
+    "tcp|64|latency": 0.3
   },
   "MULTI_DEALER_ROUTER": {
-    "tcp|64|throughput": 2162283.5,
-    "tcp|64|latency": 34.14,
-    "tls|64|throughput": 321706.0,
-    "tls|64|latency": 45.93,
-    "ws|64|throughput": 310454.5,
-    "ws|64|latency": 36.56,
-    "wss|64|throughput": 512058.0,
-    "wss|64|latency": 39.48,
-    "inproc|64|throughput": 0.0,
-    "inproc|64|latency": 0.0,
-    "ipc|64|throughput": 2231487.5,
-    "ipc|64|latency": 43.97
+    "tcp|32|throughput": 692766.0,
+    "tcp|32|latency": 34.41,
+    "tcp|64|throughput": 535313.0,
+    "tcp|64|latency": 40.22
   },
   "MULTI_ROUTER_ROUTER": {
-    "tcp|64|throughput": 2140023.5,
-    "tcp|64|latency": 32.88,
-    "tls|64|throughput": 718263.0,
-    "tls|64|latency": 37.35,
-    "ws|64|throughput": 293174.0,
-    "ws|64|latency": 32.47,
-    "wss|64|throughput": 546505.5,
-    "wss|64|latency": 46.63,
-    "inproc|64|throughput": 0.0,
-    "inproc|64|latency": 0.0,
-    "ipc|64|throughput": 2327114.5,
-    "ipc|64|latency": 36.76
+    "tcp|32|throughput": 573996.0,
+    "tcp|32|latency": 35.56,
+    "tcp|64|throughput": 539096.0,
+    "tcp|64|latency": 52.8
   },
   "MULTI_PUBSUB": {
-    "tcp|64|throughput": 256950.0,
-    "tcp|64|latency": 33.76,
-    "tls|64|throughput": 199050.0,
-    "tls|64|latency": 40.0,
-    "ws|64|throughput": 223100.0,
-    "ws|64|latency": 35.65,
-    "wss|64|throughput": 189150.0,
-    "wss|64|latency": 40.09,
-    "inproc|64|throughput": 0.0,
-    "inproc|64|latency": 0.0,
-    "ipc|64|throughput": 308450.0,
-    "ipc|64|latency": 35.05
+    "tcp|32|throughput": 264800.0,
+    "tcp|32|latency": 34.66,
+    "tcp|64|throughput": 246180.0,
+    "tcp|64|latency": 32.8
   }
 }

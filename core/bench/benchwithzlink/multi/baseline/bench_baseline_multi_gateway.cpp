@@ -468,7 +468,7 @@ void run_multi_gateway(const std::string &transport,
         std::atomic<int> received(0);
         const auto measure_end =
           std::chrono::steady_clock::now()
-          + std::chrono::seconds(std::max(1, settings.measure_seconds));
+          + std::chrono::seconds(std::max(1, settings.duration_seconds));
 
         std::vector<std::thread> receiver_threads;
         receiver_threads.reserve(provider_routers.size());
@@ -515,6 +515,8 @@ void run_multi_gateway(const std::string &transport,
                      current_size,
                      throughput,
                      latency);
+        run_size_transition_drain_stage(
+          settings, (s + 1) < msg_sizes.size());
         settle();
     }
 

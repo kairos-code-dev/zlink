@@ -11,7 +11,7 @@ Run router compare benchmark: zlink vs libzmq vs gRPC.
 Executes 1:1 echo then N:1 echo and prints combined results.
 
 Options:
-  --runs N              Iterations per configuration (default: 5).
+  --runs N              Iterations per configuration (default: 3).
   --clients N           N:1 test client count (default: 100).
   --build-dir PATH      Override build directory.
   --zlink-only          Run only zlink and compare with cached baselines.
@@ -23,7 +23,7 @@ Options:
 USAGE
 }
 
-RUNS=5
+RUNS=3
 CLIENTS=100
 BUILD_DIR=""
 ZLINK_ONLY=0

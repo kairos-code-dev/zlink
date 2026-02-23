@@ -27,10 +27,10 @@ function loadNative() {
       const coreAltLib = path.join(coreAltDir, 'libzlink.so.5');
       if (!fs.existsSync(addonLib)) {
         let sourceLib = null;
-        if (fs.existsSync(coreLib)) {
-          sourceLib = coreLib;
-        } else if (fs.existsSync(coreAltLib)) {
+        if (fs.existsSync(coreAltLib)) {
           sourceLib = coreAltLib;
+        } else if (fs.existsSync(coreLib)) {
+          sourceLib = coreLib;
         }
         if (sourceLib) {
           try {
@@ -114,6 +114,10 @@ const SendFlag = Object.freeze({
 
 const ReceiveFlag = Object.freeze({
   NONE: 0, DONTWAIT: 1
+});
+
+const StreamDispatchMode = Object.freeze({
+  NONE: 0, LEN32BE: 1
 });
 
 const ErrorCode = Object.freeze({
@@ -251,22 +255,6 @@ class Socket {
     return requireNative().socketSendFrom(this._native, b, length, flags);
   }
 
-  sendMany(buf, count, flags = 0) {
-    const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
-    return requireNative().socketSendMany(this._native, b, count, flags);
-  }
-
-  sendRoutedMany(routingIdBuffer, routingIdLength, payloadBuffer, payloadLength,
-    count, payloadFlags = 0) {
-    const rid = Buffer.isBuffer(routingIdBuffer)
-      ? routingIdBuffer : Buffer.from(routingIdBuffer);
-    const payload = Buffer.isBuffer(payloadBuffer)
-      ? payloadBuffer : Buffer.from(payloadBuffer);
-    return requireNative().socketSendRoutedMany(
-      this._native, rid, routingIdLength, payload, payloadLength, count, payloadFlags
-    );
-  }
-
   recv(size, flags = 0) {
     return requireNative().socketRecv(this._native, size, flags);
   }
@@ -276,21 +264,9 @@ class Socket {
     return requireNative().socketRecvInto(this._native, b, flags);
   }
 
-  recvManyInto(buffer, count, flags = 0) {
+  recvMsgInto(buffer, flags = 0) {
     const b = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-    return requireNative().socketRecvManyInto(this._native, b, count, flags);
-  }
-
-  recvPairManyInto(firstBuffer, secondBuffer, count, flags = 0) {
-    const first = Buffer.isBuffer(firstBuffer) ? firstBuffer : Buffer.from(firstBuffer);
-    const second = Buffer.isBuffer(secondBuffer) ? secondBuffer : Buffer.from(secondBuffer);
-    return requireNative().socketRecvPairManyInto(this._native, first, second, count, flags);
-  }
-
-  recvPairDrainInto(firstBuffer, secondBuffer, maxCount) {
-    const first = Buffer.isBuffer(firstBuffer) ? firstBuffer : Buffer.from(firstBuffer);
-    const second = Buffer.isBuffer(secondBuffer) ? secondBuffer : Buffer.from(secondBuffer);
-    return requireNative().socketRecvPairDrainInto(this._native, first, second, maxCount);
+    return requireNative().socketRecvMsgInto(this._native, b, flags);
   }
 
   setSockOpt(option, value) {
@@ -306,8 +282,32 @@ class Socket {
     return new MonitorSocket(requireNative().monitorOpen(this._native, events));
   }
 
+  streamAttach(handler, mode = 0) {
+    if (typeof handler !== 'function') {
+      throw new TypeError('streamAttach handler must be a function');
+    }
+    requireNative().socketStreamAttach(this._native, handler, mode | 0);
+  }
+
+  streamDetach() {
+    requireNative().socketStreamDetach(this._native);
+  }
+
+  streamPeerRoutingId(index = 0) {
+    return requireNative().socketStreamPeerRoutingId(this._native, index | 0);
+  }
+
+  streamSend(routingId, payload, flags = 0) {
+    const rid = Buffer.isBuffer(routingId) ? routingId : Buffer.from(routingId);
+    const body = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+    return requireNative().socketStreamSend(this._native, rid, body, flags | 0);
+  }
+
   close() {
     if (!this._native) return;
+    try {
+      requireNative().socketStreamDetach(this._native);
+    } catch (_) {}
     if (this._own) {
       requireNative().socketClose(this._native);
     }
@@ -382,10 +382,6 @@ class Gateway {
     this._native = requireNative().gatewayNew(ctx._native, discovery._native, routingId);
   }
   send(service, parts, flags = 0) { requireNative().gatewaySend(this._native, service, parts, flags); }
-  sendManyConst(service, payload, count, flags = 0) {
-    const b = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-    return requireNative().gatewaySendManyConst(this._native, service, b, flags, count);
-  }
   recv(flags = 0) { return requireNative().gatewayRecv(this._native, flags); }
   setLoadBalancing(service, strategy) { requireNative().gatewaySetLbStrategy(this._native, service, strategy); }
   setTlsClient(ca, host, trust) { requireNative().gatewaySetTlsClient(this._native, ca, host, trust); }
@@ -441,15 +437,10 @@ class SpotNode {
 class Spot {
   constructor(node) { this._native = requireNative().spotNew(node._native); }
   publish(topic, parts, flags = 0) { requireNative().spotPublish(this._native, topic, parts, flags); }
-  publishManyConst(topic, payload, count, flags = 0) {
-    const b = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
-    return requireNative().spotPublishManyConst(this._native, topic, b, flags, count);
-  }
   subscribe(topic) { requireNative().spotSubscribe(this._native, topic); }
   subscribePattern(pattern) { requireNative().spotSubscribePattern(this._native, pattern); }
   unsubscribe(topicOrPattern) { requireNative().spotUnsubscribe(this._native, topicOrPattern); }
   recv(flags = 0) { return requireNative().spotRecv(this._native, flags); }
-  recvMany(count, flags = 0) { return requireNative().spotRecvMany(this._native, flags, count); }
   close() { if (!this._native) return; requireNative().spotDestroy(this._native); this._native = null; }
 }
 
@@ -465,6 +456,7 @@ module.exports = {
   SocketOption,
   SendFlag,
   ReceiveFlag,
+  StreamDispatchMode,
   ErrorCode,
   ProtocolError,
   MonitorEvent,

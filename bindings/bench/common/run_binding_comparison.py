@@ -33,6 +33,9 @@ SUPPORTED = {
     "STREAM": {
         "core_bin": "comp_current_stream",
     },
+    "STREAM_LEN32BE": {
+        "core_bin": "comp_current_stream",
+    },
     "GATEWAY": {
         "core_bin": "comp_current_gateway",
     },
@@ -87,7 +90,7 @@ def select_transports():
 def select_pattern_transports(pattern):
     env_t = parse_env_list("BENCH_TRANSPORTS", str)
     # Keep pattern transport matrix aligned with core/current benchmarks.
-    if pattern in ("STREAM", "GATEWAY", "SPOT"):
+    if pattern in ("STREAM", "STREAM_LEN32BE", "GATEWAY", "SPOT"):
         base = ["tcp", "ws"]
     else:
         base = ["tcp", "inproc", "ipc"]
@@ -110,14 +113,14 @@ def parse_args():
         "  --binding NAME          binding name (python|node|dotnet|java|cpp)\n"
         "  --refresh-baseline      Refresh zlink(core) cache\n"
         "  --bindings-only         Run only binding benchmarks\n"
-        "  --runs N                Iterations per configuration (default: 3)\n"
+        "  --runs N                Iterations per configuration (default: 1)\n"
         "  --build-dir PATH        Core bench build directory\n"
         "  --pin-cpu               Pin CPU core via BENCH_TASKSET=1\n"
         "  --allow-core-fallback   Allow core fallback when binding result rows are missing\n"
     )
     refresh = False
     p_req = "ALL"
-    num_runs = 3
+    num_runs = 1
     build_dir = ""
     bindings_only = False
     pin_cpu = False
@@ -208,7 +211,6 @@ def binding_env(binding, env):
             out["ZLINK_LIBRARY_PATH"] = os.path.join(
                 ROOT_DIR, f"bindings/python/src/zlink/native/linux-{arch}/libzlink.so"
             )
-            out.setdefault("BENCH_PY_FASTPATH_CEXT", "1")
         elif binding == "dotnet":
             native_dir = os.path.join(ROOT_DIR, f"bindings/dotnet/runtimes/linux-{a_tag}/native")
             out["ZLINK_LIBRARY_PATH"] = os.path.join(native_dir, "libzlink.so")
@@ -379,10 +381,6 @@ def main():
             return run_and_parse(cmd, env_base)
 
         binding_env_vars = binding_env(binding, env_base)
-        if binding == "python":
-            req = str(binding_env_vars.get("BENCH_PY_FASTPATH_CEXT", "1")).strip().lower()
-            mode = "off" if req in ("0", "false", "off", "no") else "on"
-            print(f"  [python] bench fastpath mode: {mode}")
 
         def run_binding(tr, sz):
             cmd = bind_cmd_prefix + [pattern, tr, str(sz), core_build]

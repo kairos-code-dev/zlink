@@ -58,3 +58,18 @@ zlink provides language bindings for 5 languages based on the C API. All binding
 - Socket types use the same names as C API constants
 - Options are exposed directly as `ZLINK_*` constants
 - Only method names follow language conventions (PascalCase/camelCase)
+
+## 9. STREAM Callback API Mapping
+
+Common STREAM rules:
+- Callback attached: receive in callback dispatch path.
+- Callback detached/not attached: receive with normal `recv` path.
+- There is no dedicated `stream_recv` C API.
+
+| Binding | Attach | Detach | Peer Routing ID | Send |
+|---|---|---|---|---|
+| C++ | `socket_t::stream_attach(...)` | `socket_t::stream_detach()` | `socket_t::peer_routing_id(...)` | `socket_t::stream_send(...)` |
+| .NET | `Socket.AttachStream(...)` | `Socket.DetachStream()` | `Socket.StreamPeerRoutingId(...)` | `Socket.StreamSend(...)` |
+| Java | `Socket.attachStream(...)` | `Socket.detachStream()` | `Socket.streamPeerRoutingId(...)` | `Socket.streamSend(...)` |
+| Node.js | `socket.streamAttach(...)` | `socket.streamDetach()` | `socket.streamPeerRoutingId(...)` | `socket.streamSend(...)` |
+| Python | `socket.stream_attach(...)` | `socket.stream_detach()` | `socket.stream_peer_routing_id(...)` | `socket.stream_send(...)` |

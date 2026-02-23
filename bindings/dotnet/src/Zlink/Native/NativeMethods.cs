@@ -6,6 +6,12 @@ namespace Zlink.Native;
 internal static class NativeMethods
 {
     private const string LibraryName = "zlink";
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int ZlinkStreamOnPacketsDelegate(
+        IntPtr routingId,
+        IntPtr messages,
+        nuint messageCount);
+
     static NativeMethods()
     {
         NativeLibraryLoader.EnsureLoaded();
@@ -87,6 +93,21 @@ internal static class NativeMethods
         nuint len, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_attach(IntPtr socket,
+        ZlinkStreamOnPacketsDelegate onPackets, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_detach(IntPtr socket);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_send(IntPtr socket,
+        ref ZlinkRoutingId routingId, IntPtr data, nuint size, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_peer_routing_id(IntPtr socket,
+        int index, out ZlinkRoutingId routingId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_init(ref ZlinkMsg msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -119,8 +140,16 @@ internal static class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_msg_data(ref ZlinkMsg msg);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_data",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_msg_data(IntPtr msg);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern nuint zlink_msg_size(ref ZlinkMsg msg);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_size",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern nuint zlink_msg_size(IntPtr msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_more(ref ZlinkMsg msg);

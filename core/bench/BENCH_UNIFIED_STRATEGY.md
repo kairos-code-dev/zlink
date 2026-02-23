@@ -1,7 +1,7 @@
 # Unified Benchmark Strategy
 
 > **Reference Standard**: `benchwithzlink/multi`
-> **Date**: 2026-02-22
+> **Date**: 2026-02-23
 > **Scope**: benchwithzlink/multi, benchwithroutercompare, benchwithstreamcompare, benchwithzmq/multi
 > **범위 외**: single 클라이언트 테스트 (benchwithzmq/single, benchwithzlink/single 등)는 이 문서의 범위가 아님
 
@@ -29,7 +29,7 @@
 
 1. **결과 출력 포맷**: 모든 벤치마크가 동일한 `RESULT,` 라인 포맷 사용
 2. **메트릭 항목**: 공통 필수 메트릭 + 선택 확장 메트릭 정의
-3. **테스트 페이즈**: warmup → settle → duration 3단계 통일
+3. **테스트 페이즈**: warmup → settle → duration → drain → size_transition_drain 5단계 통일
 4. **통계 집계**: median 기반 단일 방식 통일 (CV%/gate/confidence 안정성 분석은 사용하지 않음)
 5. **환경 변수**: 네이밍 컨벤션 통일
 
@@ -91,30 +91,31 @@ PREP,<lib>,<pattern>,<transport>,<size>,connect_ms,<value>,ready_ms,<value>
 
 ## 3. 통합 테스트 페이즈
 
-모든 벤치마크는 다음 3단계를 따른다.
+모든 벤치마크는 다음 5단계를 따른다.
 
 ```
-[warmup] → [settle] → [duration]
+[warmup] → [settle] → [duration] → [drain] → [size_transition_drain]
 ```
 
 ### 3.1 페이즈 정의
 
 | 페이즈 | 목적 | 기본값 | 환경 변수 | 구현 레벨 |
 |--------|------|--------|-----------|-----------|
-| **warmup** | 측정 전 워밍업 (기본 단계) | 3s | `BENCH_MULTI_WARMUP_SECONDS` | 패턴별 C++ 워밍업 루프 + 러너 타임아웃 계산 |
+| **warmup** | 측정 전 워밍업 (기본 단계) | 3s | `BENCH_MULTI_WARMUP_SECONDS` | C++ 공통 러너 (`bench_common_multi.hpp`) |
 | **settle** | 연결 후 버퍼 안정화 대기 | 500ms | `BENCH_MULTI_SETTLE_MS` | C++ (`bench_common_multi.hpp`) |
 | **duration** | 실제 측정 구간 | 5s | `BENCH_MULTI_DURATION_SECONDS` | C++ (`bench_common_multi.hpp`) |
 | **drain** | 잔여 in-flight 메시지 정리 (기본 비활성) | 0ms | `BENCH_MULTI_DRAIN_MS` | C++ (`bench_common_multi.hpp`) |
+| **size_transition_drain** | 다음 size 전환 전 잔여 응답/버퍼 정리 | 300ms | `BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS` | C++ (suite별 루프 전환 지점) |
 
 > **참고 — warmup 페이즈의 구현 위치**
 >
-> `warmup`은 표준 페이즈에 포함되지만 구현은 패턴별로 다르다.
+> `warmup`은 공통 러너에서 처리한다.
+> 기본 동작은 **passive warmup**(송신 비활성 상태에서 시간 대기)이며,
+> 필요 시 `BENCH_MULTI_ACTIVE_WARMUP=1`로 **active warmup**(송신/수신 활성)으로 전환한다.
+> active warmup 사용 시에는 `BENCH_MULTI_WARMUP_DRAIN_MS`(기본 `max(BENCH_MULTI_DRAIN_MS, 1000)`)로
+> pre-measure drain 단계를 거친다.
 >
-> - `MULTI_PUBSUB`: `BENCH_MULTI_WARMUP_SECONDS` 기반 time warmup 루프
-> - `MULTI_STREAM`, `MULTI_GATEWAY`, `MULTI_SPOT`: `BENCH_WARMUP_COUNT` 기반 count warmup 루프
-> - `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`: 현재는 settle 중심 pre-flight이며, 통합 시 공통 warmup 루프를 적용
->
-> 또한 쉘 스크립트(`run_benchmarks_multi.sh`)와 Python 비교 러너(`run_comparison.py`)의
+> 쉘 스크립트(`run_benchmarks_multi.sh`)와 Python 비교 러너(`run_comparison.py`)의
 > 프로세스 타임아웃 계산에도 warmup 값을 반영한다:
 >
 > ```
@@ -124,11 +125,16 @@ PREP,<lib>,<pattern>,<transport>,<size>,connect_ms,<value>,ready_ms,<value>
 ### 3.2 페이즈 적용 규칙
 
 - **다중 클라이언트 패턴** (MULTI_*):
-  C++ 바이너리 내부에서 warmup → settle → duration 3단계를 실행한다.
+  C++ 바이너리 내부에서 warmup → settle → duration을 측정 구간으로 실행하고,
+  drain/size_transition_drain을 보조 단계로 적용한다.
   drain은 기본값 `0`으로 비활성화하되, 예외 패턴에서는 활성화할 수 있다.
   예외 패턴(현행 코드 기준): `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`,
   `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`, `MULTI_STREAM`.
+  다중 size(`BENCH_MSG_SIZES`) 실행 시에는 size 경계마다
+  `size_transition_drain` 단계를 공통으로 실행한다.
   duration은 시간 기반 (seconds), settle은 밀리초 기반.
+  warmup은 기본 passive이며, `std_zmq MULTI_STREAM` 경로는 안정성을 위해
+  active warmup을 내부에서 강제한다.
 - **비교 벤치마크** (routercompare, streamcompare, zmq/multi):
   대상 스위트의 페이즈 전략을 따르되, 동일 조건에서 모든 스택을 실행
 
@@ -136,7 +142,7 @@ PREP,<lib>,<pattern>,<transport>,<size>,connect_ms,<value>,ready_ms,<value>
 
 - throughput = duration 구간의 `recv_count / duration_seconds`
 - latency = duration 구간의 roundtrip 평균 (`elapsed_us / (roundtrip_count * 2)`)
-- warmup/drain 구간의 데이터는 최종 메트릭에서 **제외**한다
+- warmup/drain/size_transition_drain 구간의 데이터는 최종 메트릭에서 **제외**한다
 
 ---
 
@@ -246,12 +252,16 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 | 변수 | 설명 | As-is (현행) | To-be (목표) |
 |------|------|-------------|-------------|
 | `BENCH_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (STREAM: 10000) | = |
-| `BENCH_MULTI_INFLIGHT` | 클라이언트당 in-flight 메시지 수 | 30 | = |
+| `BENCH_MULTI_INFLIGHT` | 클라이언트당 in-flight 메시지 수 | 30 (MULTI_STREAM: 10) | = |
+| `BENCH_MULTI_STREAM_MAX_INFLIGHT_BYTES` | MULTI_STREAM size별 inflight auto-cap 윈도우(bytes) | 33554432 (32MiB) | = |
 | `BENCH_MULTI_HWM` | 소켓 HWM (SNDHWM/RCVHWM) | 100000 | = |
 | `BENCH_MULTI_WARMUP_SECONDS` | 측정 전 워밍업 시간 (초) | 3 | = |
-| `BENCH_MULTI_DURATION_SECONDS` | 측정 시간 (초) | **zlink/multi: 10, zmq/multi: 5** | **5** |
+| `BENCH_MULTI_ACTIVE_WARMUP` | warmup 동안 송신 활성화 여부 (0=passive, 1=active) | 0 | = |
+| `BENCH_MULTI_WARMUP_DRAIN_MS` | active warmup 후 pre-measure drain (ms) | `max(BENCH_MULTI_DRAIN_MS,1000)` | = |
+| `BENCH_MULTI_DURATION_SECONDS` | 측정 시간 (초) | 5 | = |
 | `BENCH_MULTI_SETTLE_MS` | settle 대기 (ms) | 500 | = |
 | `BENCH_MULTI_DRAIN_MS` | drain 대기 (ms) | 300 | **0 (기본), 예외 패턴만 >0 허용** |
+| `BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS` | size 전환 drain 대기 (ms) | (없음) | **300 (공통 기본값, 0 허용)** |
 | `BENCH_MULTI_SEND_WORKERS` | 송신 워커 스레드 수 | **zlink/multi: auto¹, zmq/multi: 2** | auto¹ |
 | `BENCH_MULTI_SEND_BACKOFF_US` | 송신 블록 시 backoff (us) | 20 | = |
 | `BENCH_MULTI_RECV_BATCH` | 수신 배치 크기 | 64 | = |
@@ -265,12 +275,16 @@ As-is = To-be인 항목은 To-be에 `=`로 표시한다.
 
 > ¹ auto: `clients >= 10000 ? 4 : 1` (bench_common_multi.hpp 기준)
 > ² 운영 규칙: `BENCH_MULTI_CLIENTS >= 10000`일 때 `BENCH_MULTI_CONNECT_CONCURRENCY=1024`를 적용한다.
+> ³ MULTI_STREAM inflight 규칙:
+> - 기본 inflight는 10
+> - `BENCH_MULTI_STREAM_MAX_INFLIGHT_BYTES`(기본 32MiB)로 size별 inflight를 자동 하향 조정
+> - 단, `clients >= 10000`일 때는 inflight를 자동 하향하지 않고 10(또는 명시 override 값) 유지
 
 #### benchwithzmq/multi 현행 차이 상세
 
 | 항목 | benchwithzlink/multi (기준) | benchwithzmq/multi (현행) | To-be |
 |------|---------------------------|--------------------------|-------|
-| duration 시간 | 10s | **5s** (`BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}`) | 5s로 통일 |
+| duration 시간 | 5s | 5s (`BENCH_MULTI_DURATION_SECONDS`) | = |
 | send_workers | auto¹ | **2** (`BENCH_MULTI_SEND_WORKERS:-2`) | auto¹로 통일 |
 | STREAM send_workers | 4 (auto¹) | 3 (`MULTI_STREAM_SEND_WORKERS:-3`) | auto¹로 통일 |
 | connect_concurrency | 128 (default) | 128 (default) | auto²로 통일 |
@@ -365,60 +379,60 @@ routercompare, streamcompare 등 3개 이상 스택을 비교할 때는 다중 �
 
 ### 9.1 benchwithzlink/multi (기준)
 
-이미 통합 표준을 따르고 있다. 변경 없음.
-
 - RESULT 라인 포맷: 준수
-- C++ 측정 페이즈: warmup → settle → duration (3단계)
+- C++ 측정 페이즈: warmup → settle → duration → drain → size_transition_drain (5단계)
 - 메트릭: throughput, latency (Tier 1)
-- 통계: median (엔트리 `run_benchmarks.sh` 기본 1 run, `run_comparison.py` 직접 실행 시 3 runs)
+- 통계: median (기본 `--runs 3`)
 - 환경 변수: `BENCH_MULTI_*` 네이밍 준수
+- 기본 규칙 반영:
+  - `BENCH_MULTI_DURATION_SECONDS=5`
+  - `BENCH_MULTI_WARMUP_SECONDS=3`
+  - `BENCH_MULTI_DRAIN_MS` 기본 0, 예외 패턴 기본 300
+  - `BENCH_MULTI_CONNECT_CONCURRENCY` 자동 (`clients>=10000 ? 1024 : 128`)
+
+**검증 중 확인된 제약(2026-02-23):**
+- baseline 패키지 버전에 따라 `zlink_stream_attach/detach` 지원 여부가 달라질 수 있다.
+  구 baseline 패키지에서는 `MULTI_STREAM` 메트릭이 0으로 남을 수 있으므로
+  최신 baseline 패키지로 동기화 후 검증한다.
 
 ### 9.2 benchwithroutercompare
 
-**현재 차이점:**
-- 시간 기반 측정 (`BENCH_DURATION_SECONDS`, 기본 5s) — `BENCH_MULTI_DURATION_SECONDS`로 통일 예정
-- 리소스 메트릭(CPU%, RSS)을 Python 스크립트 내부에서 수집하여 별도 포맷으로 출력
-- 3-way 비교 테이블 구조
-- `BENCH_PORT`, `BENCH_DURATION_SECONDS`, `BENCH_SETTLE_MS` 등 독자 환경 변수
-- 기본 runs=5 (`run_benchmarks.sh`)
+**적용 상태:**
+1. `BENCH_DURATION_SECONDS`/`BENCH_SETTLE_MS`/`BENCH_DRAIN_MS` 제거, `BENCH_MULTI_*`로 하드 전환 완료
+2. 기본 runs `3`으로 통일 완료
+3. 3-way 비교 테이블은 유지하되 median 집계/공통 diff 계산 규칙 적용 완료
+4. 리소스 메트릭은 Python 모니터링 집계(테이블 출력) 방식 유지
 
-**통합 방향:**
-1. C++ 바이너리 RESULT 라인은 이미 표준 포맷 → 유지
-2. 리소스 메트릭을 RESULT 라인 확장 포맷(Tier 3)으로 출력하도록 개선
-3. 환경 변수 매핑 추가:
-   - `BENCH_DURATION_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` (통일)
-   - `BENCH_SETTLE_MS` → `BENCH_MULTI_SETTLE_MS` (통일)
-4. 비교 테이블: 3-way 유지하되, 동일 Markdown 포맷 규칙 적용
+**남은 항목:**
+- Tier 3 리소스 메트릭을 C++ `RESULT,` 확장 라인으로 직접 출력하는 작업은 미완료
 
 ### 9.3 benchwithstreamcompare
 
-**현재 차이점:**
-- 독자 CSV/JSON 결과 포맷 (RESULT 라인이 아닌 CSV metrics.csv)
-- CV%, gate, confidence 등 고급 안정성 분석 (삭제 대상)
-- 랭킹 기반 비교 (2-way가 아닌 N-way)
-- BPS(bytes/sec) 단위 throughput
-- p50/p95/p99 레이턴시 백분위수
+**적용 상태:**
+1. 기본 runs/warmup/duration를 `3/3/5`로 통일 완료
+2. `gate/confidence/CV%` 로직 제거 및 `ranking` 단일화 완료
+3. 실행 파라미터를 `BENCH_MULTI_*` 기본값과 정렬 완료
 
-**통합 방향:**
-1. C++ 바이너리에서 표준 RESULT 라인 출력 추가 (기존 CSV 유지 가능)
-2. throughput는 msgs/sec 기준, throughput_bps는 Tier 2 확장 메트릭으로 병행
-3. latency_p95, latency_p99는 Tier 2 확장 메트릭으로 RESULT 라인에 포함
-4. **CV%/gate/confidence 분석 로직 삭제** - median 집계로 단일화
-5. 랭킹 테이블에서 CV%, Gate 컬럼 제거
-6. 환경 변수 네이밍을 `BENCH_MULTI_*` 스타일로 통일
+**남은 항목:**
+- 결과 출력은 여전히 CSV/JSON 중심이며, 표준 `RESULT,` 라인 직접 출력은 미완료
 
 ### 9.4 benchwithzmq (multi만 해당)
 
 > benchwithzmq/single은 이 문서의 범위 밖이다.
 
-**현재 차이점:**
-- libzmq API 직접 호출 (zlink_* wrapper가 아닌 zmq_* 직접)
-- 별도 캐시 파일 (`std_zmq_*_cache_*.json`)
+**적용 상태:**
+1. `BENCH_MULTI_DURATION_SECONDS` 단일 키 사용 (구 키 제거)
+2. 기본 runs `3`, warmup `3`, duration `5` 정렬 완료
+3. drain/connect concurrency 규칙(`0 + 예외`, `10000->1024`) 정렬 완료
+4. 캐시/비교 로직은 유지 (`std_zmq_multi_cache_<platform>-<arch>.json`)
+5. zlink `MULTI_STREAM` 경로는 `LEN32BE dispatch` 우선, 미지원 시 non-dispatch fallback 허용
 
-**통합 방향:**
-1. RESULT 라인 포맷: 이미 표준 → 유지
-2. multi 패턴: `BENCH_MULTI_*` 환경 변수 체계와 정렬
-3. 캐시 파일 네이밍: `<suite>_cache_<platform>-<arch>.json` 통일
+**검증 중 확인된 현상(2026-02-23):**
+- `MULTI_DEALER_ROUTER`에서 간헐적으로 `no_data_rc_-11` 1회 발생
+
+**해결된 이슈(2026-02-23):**
+- `MULTI_STREAM` 대용량 size 전환 시 `throughput=0.00`으로 수렴하던 케이스는
+  stream inflight 기본값(10) + size별 inflight auto-cap(32MiB window) 규칙으로 보정함
 
 ---
 
@@ -426,8 +440,8 @@ routercompare, streamcompare 등 3개 이상 스택을 비교할 때는 다중 �
 
 ### Phase 1: 즉시 적용 (코드 변경 없음)
 
-- [ ] 모든 스위트의 `run_comparison.py`에서 동일 diff% 계산 공식 확인
-- [ ] 환경 변수 문서화 (이 문서로 대체)
+- [x] 모든 스위트의 `run_comparison.py`에서 동일 diff% 계산 공식 확인
+- [x] 환경 변수 문서화 (이 문서로 대체)
 - [ ] 결과 파일 네이밍 컨벤션 통일: `results/YYYYMMDD/bench_<platform>_<pattern>_<timestamp>.txt`
 
 ### Phase 2: 출력 포맷 정렬 및 파서 확장
@@ -440,18 +454,89 @@ routercompare, streamcompare 등 3개 이상 스택을 비교할 때는 다중 �
 
 ### Phase 3: 환경 변수 통일
 
-- [ ] `BENCH_DURATION_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 통일
-- [ ] `BENCH_MULTI_MEASURE_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 하드 전환 (별칭 제거)
-- [ ] `BENCH_SETTLE_MS` → `BENCH_MULTI_SETTLE_MS` 하드 전환 (별칭 제거)
-- [ ] `BENCH_MULTI_CONNECT_CONCURRENCY` 자동 규칙 적용 (`clients>=10000 ? 1024 : 128`)
-- [ ] `BENCH_MULTI_DRAIN_MS` 기본 0 적용 + 예외 패턴만 override 허용
-- [ ] streamcompare 전용 변수를 `BENCH_MULTI_*` 네이밍으로 마이그레이션
+- [x] `BENCH_DURATION_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 통일
+- [x] `BENCH_MULTI_MEASURE_SECONDS` → `BENCH_MULTI_DURATION_SECONDS` 하드 전환 (별칭 제거)
+- [x] `BENCH_SETTLE_MS` → `BENCH_MULTI_SETTLE_MS` 하드 전환 (별칭 제거)
+- [x] `BENCH_MULTI_CONNECT_CONCURRENCY` 자동 규칙 적용 (`clients>=10000 ? 1024 : 128`)
+- [x] `BENCH_MULTI_DRAIN_MS` 기본 0 적용 + 예외 패턴만 override 허용
+- [x] streamcompare 전용 변수를 `BENCH_MULTI_*` 네이밍으로 마이그레이션
 
 ### Phase 4: 공용 유틸리티 추출
 
 - [ ] `core/bench/common/` 디렉토리에 공용 Python 파서/집계 모듈 배치
 - [ ] RESULT 라인 파싱, median 계산, diff% 포맷, 테이블 렌더링 공유
 - [ ] C++ 공용 헤더 정리 (bench_common.hpp 기준)
+
+---
+
+## 11. 실행 검증 결과 (2026-02-23)
+
+### 11.1 스모크 테스트 (순차 실행)
+
+- benchwithzlink/multi(current): PASS
+  (`MULTI_DEALER_DEALER/DEALER_ROUTER/ROUTER_ROUTER/PUBSUB/GATEWAY/SPOT/STREAM`,
+  tcp, `BENCH_MSG_SIZES=32,64`, runs=1)
+- benchwithzlink/multi(baseline+current): PASS
+  (`MULTI_DEALER_DEALER/DEALER_ROUTER/ROUTER_ROUTER/PUBSUB/GATEWAY/SPOT/STREAM`,
+  tcp, `BENCH_MSG_SIZES=32,64`, runs=1)
+- benchwithzmq/multi: PASS
+  (`dealer_dealer/dealer_router/router_router/pubsub/stream`,
+  tcp, `BENCH_MSG_SIZES=32,64`, runs=1)
+- benchwithroutercompare: PASS
+  (`phase=multi`, runs=1, clients=20, `BENCH_MSG_SIZES=32,64`)
+- benchwithstreamcompare: PASS
+  (`stack=zlink-len32be,zmq`, `size=1024`, `phases=both`, runs=1,
+  `results/20260223_181706`)
+
+### 11.2 풀 테스트 (순차 실행)
+
+- benchwithzlink/multi non-stream (current/baseline):
+  - 패턴: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`, `MULTI_ROUTER_ROUTER`,
+    `MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`
+  - size: `64,1024,16384,65536`
+  - 결과: 순차 실행 PASS (gateway의 대용량 throughput 0 현상은 11.4 참고)
+- benchwithzmq/multi non-stream (zlink/libzmq):
+  - 패턴: `MULTI_DEALER_DEALER`, `MULTI_DEALER_ROUTER`,
+    `MULTI_ROUTER_ROUTER`, `MULTI_PUBSUB`
+  - size: `64,1024,16384,65536`
+  - 결과: 순차 실행 PASS
+- stream full:
+  - current/baseline/zlink/libzmq 모두 `64,1024,16384,65536,131072` 순차 실행
+  - 결과:
+    - current: throughput 전 size non-zero
+    - baseline: throughput/latency 전 size non-zero (baseline 최신화 후)
+    - zlink/libzmq: throughput/latency 전 size non-zero
+
+### 11.3 메트릭 산출 검증
+
+- 공통: RESULT 라인에서 throughput/latency가 size별로 누락 없이 출력됨
+- streamcompare: `metrics.csv` (`results/20260223_181706`)에서 stack/phase/size 조합 4건 모두 `PASS`
+- routercompare: `phase=multi`에서 2개 size 모두 3-way(libzmq/zlink/grpc) 비교 표와 리소스 표가 정상 출력됨
+- zmq/multi stream(zlink/libzmq): `size=131072`까지 throughput/latency 정상 산출됨
+- zlink/multi current stream: `size=131072`까지 throughput 정상 산출됨
+
+### 11.4 잔여 이슈 (2026-02-23)
+
+- `MULTI_STREAM` 10000-client 경로의 `throughput=0` 산출 이슈는 해결됨.
+- 현 시점 멀티 표준화 범위(dealer/router/stream)의 재현 가능한 잔여 이슈는 없음.
+- `MULTI_GATEWAY`, `MULTI_SPOT` 대용량 구간은 본 재검증 범위 밖이며 별도 추적 항목으로 유지.
+
+### 11.5 재검증 업데이트 (2026-02-23, 최종)
+
+- 공통 러너(`bench_common_multi.hpp`)에 warmup 표준 단계 반영:
+  - `BENCH_MULTI_WARMUP_SECONDS` 적용
+  - 기본 passive warmup (`BENCH_MULTI_ACTIVE_WARMUP=0`)
+  - active warmup 시 pre-measure drain (`BENCH_MULTI_WARMUP_DRAIN_MS`)
+- `std_zmq MULTI_STREAM`은 내부적으로 active warmup을 사용하도록 정렬.
+- 16개 멀티 바이너리(`current/baseline/zlink/std_zmq` x dealer_dealer/dealer_router/router_router/stream)를
+  `size=131072`, `clients=100` 기준으로 스모크/풀 순차 실행:
+  - 스모크(`warmup=1s`, `duration=1s`): PASS
+  - 풀(`warmup=3s`, `duration=5s`): PASS
+- stream 10000-client(`BENCH_MULTI_INFLIGHT=10`) 순차 실행:
+  - 스모크(`warmup=3s`, `duration=1s`): current/baseline/zlink/std_zmq 모두 throughput/latency non-zero
+  - 풀(`warmup=3s`, `duration=5s`): current/baseline/zlink/std_zmq 모두 throughput/latency non-zero
+- stream 10000-client 스모크 안정성 반복(각 스택 4회):
+  - `throughput=0` 재현 0회.
 
 ---
 
@@ -505,13 +590,13 @@ def compute_diff_pct(base, current, metric_type):
 다중 클라이언트 시간 기반 테스트에서는 `BENCH_MULTI_DURATION_SECONDS`가 기준이며,
 메시지 수는 시스템이 처리하는 만큼 자동 결정된다.
 
-#### 현행 기본값 (As-is)
+#### 현재 기본값 (As-is = To-be)
 
-| 스위트 | duration 기본값 | 현행 환경 변수 | 비고 |
+| 스위트 | duration 기본값 | 환경 변수/옵션 | 비고 |
 |--------|----------------|---------------|------|
-| benchwithzlink/multi | **10s** | `BENCH_MULTI_MEASURE_SECONDS` | To-be에서 5s로 변경 |
-| benchwithzmq/multi | 5s | `BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}` | = |
-| benchwithroutercompare | 5s | `BENCH_DURATION_SECONDS` | = |
-| benchwithstreamcompare | 5s | `DURATION=5` | = |
+| benchwithzlink/multi | 5s | `BENCH_MULTI_DURATION_SECONDS` | 통일 완료 |
+| benchwithzmq/multi | 5s | `BENCH_MULTI_DURATION_SECONDS` | 통일 완료 |
+| benchwithroutercompare | 5s | `BENCH_MULTI_DURATION_SECONDS` | 통일 완료 |
+| benchwithstreamcompare | 5s | `--duration` (기본 5, `BENCH_MULTI_DURATION_SECONDS` 기본값 사용) | 통일 완료 |
 
-> To-be: 모든 스위트의 duration 시간을 **5s**로 통일하고, 환경 변수를 `BENCH_MULTI_DURATION_SECONDS` 단일 키로 통일한다 (`BENCH_MULTI_MEASURE_SECONDS` 제거).
+> 현재: 범위 내 4개 스위트의 duration 기본값은 모두 **5s**로 정렬되어 있다.

@@ -104,6 +104,11 @@ class ReceiveFlag(IntFlag):
     DONTWAIT = 1
 
 
+class StreamDispatchMode(IntFlag):
+    NONE = 0
+    LEN32BE = 0x0001
+
+
 class ErrorCode(IntEnum):
     EFSM = 156384763
     ENOCOMPATPROTO = 156384764

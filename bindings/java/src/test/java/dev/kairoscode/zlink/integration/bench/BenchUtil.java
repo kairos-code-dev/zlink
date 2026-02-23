@@ -3,6 +3,7 @@ package dev.kairoscode.zlink.integration.bench;
 import dev.kairoscode.zlink.*;
 
 import java.lang.foreign.MemorySegment;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.net.ServerSocket;
 import java.util.HashSet;
@@ -36,8 +37,14 @@ final class BenchUtil {
 
     static byte[] streamExpectConnectEvent(Socket socket) {
         for (int i = 0; i < 64; i++) {
-            byte[] rid = socket.recv(256, ReceiveFlag.NONE);
-            byte[] payload = socket.recv(16, ReceiveFlag.NONE);
+            byte[] rid;
+            byte[] payload;
+            try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
+                ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
+                payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+                rid = ridMsg.data();
+                payload = payloadMsg.data();
+            }
             if (payload.length == 1 && payload[0] == 0x01) {
                 return rid;
             }
@@ -69,9 +76,16 @@ final class BenchUtil {
     }
 
     static StreamFrame streamRecv(Socket socket, int cap) {
-        byte[] rid = socket.recv(256, ReceiveFlag.NONE);
-        byte[] payload = socket.recv(cap, ReceiveFlag.NONE);
-        return new StreamFrame(rid, payload);
+        try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
+            ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
+            payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+            byte[] rid = ridMsg.data();
+            byte[] payload = payloadMsg.data();
+            if (payload.length > cap) {
+                payload = Arrays.copyOf(payload, cap);
+            }
+            return new StreamFrame(rid, payload);
+        }
     }
 
     static int streamRecv(Socket socket,
@@ -79,8 +93,29 @@ final class BenchUtil {
                           int ridCap,
                           MemorySegment payload,
                           int payloadCap) {
-        socket.recv(rid, 0, ridCap, ReceiveFlag.NONE);
-        return socket.recv(payload, 0, payloadCap, ReceiveFlag.NONE);
+        try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
+            ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
+            payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+
+            int ridLen = ridMsg.size();
+            if (ridCap > 0 && ridLen > 0) {
+                MemorySegment ridData = ridMsg.dataSegment();
+                long ridCopy = Math.min((long) ridCap, (long) ridLen);
+                if (ridData.address() != 0 && ridCopy > 0) {
+                    MemorySegment.copy(ridData, 0, rid, 0, ridCopy);
+                }
+            }
+
+            int payloadLen = payloadMsg.size();
+            if (payloadCap > 0 && payloadLen > 0) {
+                MemorySegment payloadData = payloadMsg.dataSegment();
+                long payloadCopy = Math.min((long) payloadCap, (long) payloadLen);
+                if (payloadData.address() != 0 && payloadCopy > 0) {
+                    MemorySegment.copy(payloadData, 0, payload, 0, payloadCopy);
+                }
+            }
+            return payloadLen;
+        }
     }
 
     static void printResult(String pattern, String transport, int size, double thr, double latUs) {

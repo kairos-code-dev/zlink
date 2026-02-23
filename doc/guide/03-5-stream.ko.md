@@ -143,6 +143,14 @@ zlink_stream_detach (stream);
 
 > 전체 API 레퍼런스는 [소켓 API — STREAM 콜백 Dispatch](../api/socket.ko.md#stream-콜백-dispatch-api)를 참고한다.
 
+### 4c. STREAM 수신 모드 규칙 (중요)
+
+- 콜백 모드 ON(`zlink_stream_attach`): 수신 경로는 콜백 dispatch이다.
+- 콜백 모드에서는 STREAM 페이로드 수신에 `zlink_recv()`를 혼용하지 않는다.
+- 콜백 모드 OFF(attach 안 함): 기존 `zlink_recv()` 2프레임 패턴을 사용한다.
+- `zlink_stream_detach()` 이후에는 `zlink_recv()` 패턴으로 복귀할 수 있다.
+- `zlink_stream_recv()` API는 제공되지 않는다.
+
 ---
 
 ## 5. 클라이언트 구현 원칙

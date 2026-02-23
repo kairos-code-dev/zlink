@@ -171,7 +171,7 @@ if IS_WINDOWS:
 else:
     BUILD_DIR, BASELINE_LIB_DIR, CURRENT_LIB_DIR = resolve_linux_paths()
 
-DEFAULT_NUM_RUNS = 3
+DEFAULT_NUM_RUNS = 1
 _platform_tag, _arch_tag = platform_arch_tag()
 CACHE_FILE = os.path.join(
     ROOT_DIR,
@@ -246,6 +246,10 @@ else:
     MULTI_STREAM_MSG_SIZES = list(MSG_SIZES)
 
 MULTI_STREAM_ATTEMPTS = parse_env_int("BENCH_MULTI_STREAM_ATTEMPTS", 2)
+MULTI_RUN_ATTEMPTS = max(1, parse_env_int("BENCH_MULTI_ATTEMPTS", 2))
+DEFAULT_RUN_COOLDOWN_MS = max(
+    0, parse_env_int("BENCH_MULTI_RUN_COOLDOWN_MS", 3000)
+)
 
 base_env = os.environ.copy()
 
@@ -283,10 +287,30 @@ def collect_missing_patterns(comparisons, requested, current_only):
     return sorted(set(missing_current)), sorted(set(missing_baseline))
 
 
-def run_cmake_build(cmake_build_dir):
+def collect_missing_build_targets(comparisons, requested, current_only):
+    targets = []
+    for baseline_bin, current_bin, p_name in comparisons:
+        if requested is not None and p_name not in requested:
+            continue
+
+        current_path = os.path.join(BUILD_DIR, current_bin + EXE_SUFFIX)
+        if not os.path.exists(current_path) and current_bin not in targets:
+            targets.append(current_bin)
+
+        if not current_only:
+            baseline_path = os.path.join(BUILD_DIR, baseline_bin + EXE_SUFFIX)
+            if not os.path.exists(baseline_path) and baseline_bin not in targets:
+                targets.append(baseline_bin)
+    return targets
+
+
+def run_cmake_build(cmake_build_dir, targets):
     cmd = ["cmake", "--build", cmake_build_dir]
     if IS_WINDOWS:
         cmd.extend(["--config", "Release"])
+    if targets:
+        cmd.append("--target")
+        cmd.extend(targets)
 
     print(f"  > Auto-building missing benchmark binaries in {cmake_build_dir}",
           flush=True)
@@ -322,17 +346,18 @@ def parse_result_line(line, transport, expected_sizes):
 def run_multi_sizes_test(binary_name, lib_name, transport, sizes, pattern_name):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64
-    duration_seconds = max(1, parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10))
+    duration_seconds = max(1, parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5))
     timeout_sec = max(120, duration_seconds * max(1, len(sizes)) * 8 + 60)
-    attempts = 1
+    attempts = max(1, MULTI_RUN_ATTEMPTS)
     if pattern_name == "MULTI_STREAM":
-        attempts = max(1, MULTI_STREAM_ATTEMPTS)
+        attempts = max(attempts, MULTI_STREAM_ATTEMPTS)
         timeout_sec = max(180, timeout_sec)
 
     expected_sizes = set(sizes)
     for attempt_idx in range(attempts):
         env = get_env_for_lib(lib_name)
         env["BENCH_MSG_SIZES"] = ",".join(str(sz) for sz in sizes)
+        env["BENCH_MULTI_PATTERN"] = pattern_name
         if pattern_name == "MULTI_STREAM":
             env["BENCH_MULTI_STREAM_MSG_SIZES"] = ",".join(str(sz) for sz in sizes)
 
@@ -357,11 +382,21 @@ def run_multi_sizes_test(binary_name, lib_name, transport, sizes, pattern_name):
             )
             stderr = (result.stderr or "").lower()
             if "protocol not supported" in stderr:
-                return {"unsupported": True, "parsed": {}, "timed_out": False}
+                return {
+                    "unsupported": True,
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": result.returncode,
+                }
             if result.returncode != 0:
                 if attempt_idx + 1 < attempts:
                     continue
-                return {"unsupported": False, "parsed": {}, "timed_out": False}
+                return {
+                    "unsupported": False,
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": result.returncode,
+                }
 
             parsed = {}
             for line in result.stdout.splitlines():
@@ -372,20 +407,40 @@ def run_multi_sizes_test(binary_name, lib_name, transport, sizes, pattern_name):
                 parsed[f"{line_transport}|{line_size}|{metric}"] = value
 
             if parsed:
-                return {"unsupported": False, "parsed": parsed, "timed_out": False}
+                return {
+                    "unsupported": False,
+                    "parsed": parsed,
+                    "timed_out": False,
+                    "returncode": 0,
+                }
             if attempt_idx + 1 < attempts:
                 continue
-            return {"unsupported": False, "parsed": {}, "timed_out": False}
+            return {
+                "unsupported": False,
+                "parsed": {},
+                "timed_out": False,
+                "returncode": result.returncode,
+            }
         except subprocess.TimeoutExpired:
             if attempt_idx + 1 < attempts:
                 continue
-            return {"unsupported": False, "parsed": {}, "timed_out": True}
+            return {
+                "unsupported": False,
+                "parsed": {},
+                "timed_out": True,
+                "returncode": -1,
+            }
         except Exception:
             if attempt_idx + 1 < attempts:
                 continue
-            return {"unsupported": False, "parsed": {}, "timed_out": False}
+            return {
+                "unsupported": False,
+                "parsed": {},
+                "timed_out": False,
+                "returncode": -1,
+            }
 
-    return {"unsupported": False, "parsed": {}, "timed_out": False}
+    return {"unsupported": False, "parsed": {}, "timed_out": False, "returncode": -1}
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     """Runs a single binary for one specific config."""
@@ -395,7 +450,7 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
         timeout_sec = max(
             60,
             parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
-            + parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10)
+            + parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5)
             + 30,
         )
     attempts = 1
@@ -404,7 +459,7 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
         timeout_sec = max(
             120,
             parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
-            + parse_env_int("BENCH_MULTI_MEASURE_SECONDS", 10)
+            + parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5)
             + 90,
         )
         attempts = max(1, MULTI_STREAM_ATTEMPTS)
@@ -413,6 +468,8 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     # WS has lower limits (~4K for 1KB+ messages), so use conservative 5000 for all
     for attempt_idx in range(attempts):
         env = get_env_for_lib(lib_name)
+        if pattern_name.startswith("MULTI_"):
+            env["BENCH_MULTI_PATTERN"] = pattern_name
         if pattern_name == "STREAM" and transport in ("tls", "ws", "wss"):
             env["BENCH_MSG_COUNT"] = "5000"
             env["BENCH_WARMUP_COUNT"] = "100"  # Reduce warmup as well
@@ -469,6 +526,10 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
     if transports is None:
         transports = TRANSPORTS
 
+    run_cooldown_ms = max(
+        0, parse_env_int("BENCH_MULTI_RUN_COOLDOWN_MS", DEFAULT_RUN_COOLDOWN_MS)
+    )
+
     for tr in transports:
         sizes = (MULTI_STREAM_MSG_SIZES
                  if pattern_name == "MULTI_STREAM" else MSG_SIZES)
@@ -486,9 +547,18 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
             tr_supported = True
             for i in range(num_runs):
                 print(f"{i+1} ", end="", flush=True)
+                has_next_run = (i + 1) < num_runs
+
+                def maybe_cooldown():
+                    if run_cooldown_ms <= 0 or not has_next_run:
+                        return
+                    print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
+                    time.sleep(run_cooldown_ms / 1000.0)
+
                 outcome = run_multi_sizes_test(
                     binary_name, lib_name, tr, sizes, pattern_name
                 )
+                rc = outcome.get("returncode", 0)
                 if outcome.get("timed_out", False):
                     failed_runs += 1
                     for sz in sizes:
@@ -497,6 +567,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         print(f"(failures={failed_runs}) ", end="", flush=True)
                         print("aborting")
                         return final_stats, failures
+                    maybe_cooldown()
                     continue
 
                 if outcome.get("unsupported", False):
@@ -511,12 +582,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                 parsed = outcome.get("parsed", {})
                 if not parsed:
                     failed_runs += 1
+                    reason = f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
                     for sz in sizes:
-                        failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                        failures.append((pattern_name, lib_name, tr, sz, reason))
                     if FAIL_FAST:
                         print(f"(failures={failed_runs}) ", end="", flush=True)
                         print("aborting")
                         return final_stats, failures
+                    maybe_cooldown()
                     continue
 
                 missing = [key for key in expected_keys if key not in parsed]
@@ -526,8 +599,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         parts = key.split("|")
                         sz = int(parts[1])
                         metric = parts[2]
+                        suffix = f"_rc_{rc}" if rc not in (0, None) else ""
                         failures.append(
-                            (pattern_name, lib_name, tr, sz, f"missing_{metric}")
+                            (pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}")
                         )
                     if FAIL_FAST:
                         print(f"(failures={failed_runs}) ", end="", flush=True)
@@ -538,6 +612,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                     if key not in metrics_raw:
                         metrics_raw[key] = []
                     metrics_raw[key].append(value)
+                maybe_cooldown()
 
             if not tr_supported:
                 print("Done")
@@ -568,6 +643,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
 
             for i in range(num_runs):
                 print(f"{i+1} ", end="", flush=True)
+                has_next_run = (i + 1) < num_runs
+
+                def maybe_cooldown():
+                    if run_cooldown_ms <= 0 or not has_next_run:
+                        return
+                    print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
+                    time.sleep(run_cooldown_ms / 1000.0)
+
                 results = run_single_test(binary_name, lib_name, tr, sz, pattern_name)
                 if results is None:
                     failed_runs += 1
@@ -576,6 +659,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         print(f"(failures={failed_runs}) ", end="", flush=True)
                         print("aborting")
                         return final_stats, failures
+                    maybe_cooldown()
                     continue
                 if not results:
                     failed_runs += 1
@@ -584,6 +668,7 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         print(f"(failures={failed_runs}) ", end="", flush=True)
                         print("aborting")
                         return final_stats, failures
+                    maybe_cooldown()
                     continue
                 if len(results) == 1 and results[0].get("metric") == "_unsupported_transport_":
                     print("unsupported", end=" ", flush=True)
@@ -599,12 +684,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         final_stats[f"{tr}|{next_sz}|unsupported"] = 1
                     if FAIL_FAST:
                         break
+                    maybe_cooldown()
                     continue
                 for r in results:
                     m = r['metric']
                     if m not in metrics_raw:
                         metrics_raw[m] = []
                     metrics_raw[m].append(r['value'])
+                maybe_cooldown()
 
             for m, vals in metrics_raw.items():
                 if vals:
@@ -669,7 +756,7 @@ def parse_args():
         "  --refresh-libzlink        Alias for --refresh-baseline\n"
         "  --current-only          Run only current benchmarks\n"
         "  --zlink-only            Alias for --current-only\n"
-        "  --runs N                Iterations per configuration (default: 3)\n"
+        "  --runs N                Iterations per configuration (default: 1)\n"
         "  --build-dir PATH        Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
         "  -h, --help              Show this help\n"
@@ -683,10 +770,13 @@ def parse_args():
         "  BENCH_MULTI_HWM=100000\n"
         "  BENCH_MULTI_SNDTIMEO_MS=5000\n"
         "  BENCH_MULTI_RCVTIMEO_MS=5000\n"
-        "  BENCH_MULTI_CONNECT_CONCURRENCY=128\n"
+        "  BENCH_MULTI_CONNECT_CONCURRENCY=auto (clients>=10000 ? 1024 : 128)\n"
         "  BENCH_MULTI_WARMUP_SECONDS=3\n"
-        "  BENCH_MULTI_MEASURE_SECONDS=10\n"
-        "  BENCH_MULTI_DRAIN_MS=300  (deprecated)\n"
+        "  BENCH_MULTI_DURATION_SECONDS=5\n"
+        "  BENCH_MULTI_DRAIN_MS=300  (exception patterns) / 0 (default)\n"
+        "  BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS=300\n"
+        "  BENCH_MULTI_RUN_COOLDOWN_MS=3000\n"
+        "  BENCH_MULTI_ATTEMPTS=2\n"
         "  BENCH_MULTI_STREAM_MSG_SIZES=64,256,1024,65536,131072,262144\n"
         "  BENCH_MULTI_STREAM_ATTEMPTS=2\n"
     )
@@ -812,7 +902,10 @@ def main():
                 )
             sys.exit(1)
 
-        build_rc = run_cmake_build(cmake_build_dir)
+        build_targets = collect_missing_build_targets(
+            comparisons, requested, current_only
+        )
+        build_rc = run_cmake_build(cmake_build_dir, build_targets)
         if build_rc != 0:
             print(f"Error: auto-build failed with exit code {build_rc}.",
                   file=sys.stderr)
@@ -842,15 +935,18 @@ def main():
               file=sys.stderr)
         sys.exit(1)
 
-    if missing_baseline:
+    missing_baseline_set = set()
+    if missing_baseline and not current_only:
+        missing_baseline_set = set(missing_baseline)
         print(
-            "Error: baseline benchmark binaries are missing for patterns: "
+            "Warning: baseline binaries are missing for patterns: "
             + ", ".join(missing_baseline),
             file=sys.stderr,
         )
-        print("Auto-build was attempted but baseline binaries are still missing.",
-              file=sys.stderr)
-        sys.exit(1)
+        print(
+            "Warning: those patterns will run in current-only mode.",
+            file=sys.stderr,
+        )
 
     for baseline_bin, current_bin, p_name in comparisons:
         if requested is not None and p_name not in requested:
@@ -864,7 +960,10 @@ def main():
             continue
 
         b_stats = {}  # Initialize for type checker
-        if current_only:
+        pattern_current_only = current_only or (p_name in missing_baseline_set)
+        if pattern_current_only:
+            if p_name in missing_baseline_set and not current_only:
+                print("  [baseline] Missing baseline binary. Running current-only.")
             c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports)
             all_failures.extend(failures)
         else:
@@ -897,7 +996,7 @@ def main():
         diff_w = 9
         for tr in pattern_transports:
             print(f"\n### Transport: {tr}")
-            if current_only:
+            if pattern_current_only:
                 print(
                     f"| {'Size':<{size_w}} | {'Metric':<{metric_w}} | {'current':>{val_w}} |"
                 )
@@ -916,7 +1015,7 @@ def main():
             for sz in sizes:
                 ct = c_stats.get(f"{tr}|{sz}|throughput", 0)
                 cl = c_stats.get(f"{tr}|{sz}|latency", 0)
-                if current_only:
+                if pattern_current_only:
                     ct_s = format_throughput(sz, ct)
                     cl_s = f"{cl:8.2f} us"
                     print(

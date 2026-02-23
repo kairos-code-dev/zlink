@@ -20,6 +20,7 @@ RUNNERS = {
     "ROUTER_ROUTER": pattern_router_router.run,
     "ROUTER_ROUTER_POLL": pattern_router_router_poll.run,
     "STREAM": pattern_stream.run,
+    "STREAM_LEN32BE": pattern_stream.run_len32be,
     "GATEWAY": pattern_gateway.run,
     "SPOT": pattern_spot.run,
 }

@@ -113,7 +113,7 @@ Usage: core/bench/benchwithzlink/run_benchmarks_multi.sh [options]
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
   MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM
-By default, multi-bench keeps warmup at 3s and measure window at 10s.
+By default, multi-bench keeps warmup at 3s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 If a pattern is explicitly passed, it is forwarded as-is to run_benchmarks.sh.
@@ -122,11 +122,12 @@ Options:
   --pattern NAME        Benchmark pattern (default: all MULTI_* patterns above).
   --help                Show this help.
   --result              Write result file under core/bench/benchwithzlink/results/YYYYMMDD/.
-  --runs N              Iterations per configuration (default: 1).
+  --runs N              Iterations per configuration (default: 3).
   --multi-warmup-seconds N
                         Optional override for multi warmup seconds (default 3).
-  --multi-measure-seconds N
-                        Optional override for multi measure seconds (default 10).
+  --multi-duration-seconds N
+                        Optional override for multi duration seconds (default 5).
+  --duration N          Alias for --multi-duration-seconds.
   --multi-clients N       Override number of client sockets per pattern.
   --multi-inflight N      Override max in-flight messages.
   --multi-hwm N           Override BENCH_MULTI_HWM (default: 100000).
@@ -134,7 +135,7 @@ Options:
   --multi-rcvtimeo-ms N   Override BENCH_MULTI_RCVTIMEO_MS (default: 5000).
   --multi-connect-concurrency N
                         Override concurrent connect count.
-  --multi-drain-ms N      Deprecated (kept for compatibility).
+  --multi-drain-ms N      Override BENCH_MULTI_DRAIN_MS.
 
 Environment:
   BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
@@ -142,12 +143,52 @@ Environment:
 USAGE
 }
 
+pattern_uses_default_drain() {
+  local pattern="${1:-}"
+  case "${pattern^^}" in
+    MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_PUBSUB|MULTI_STREAM)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolve_pattern_drain_ms() {
+  local pattern="${1:-}"
+  if [[ -n "${MULTI_DRAIN_MS}" ]]; then
+    echo "${MULTI_DRAIN_MS}"
+    return
+  fi
+
+  if pattern_uses_default_drain "${pattern}"; then
+    echo "${BENCH_MULTI_EXCEPTION_DRAIN_MS:-300}"
+  else
+    echo "0"
+  fi
+}
+
+resolve_pattern_connect_concurrency() {
+  local clients="${1:-}"
+  if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
+    echo "${MULTI_CONNECT_CONCURRENCY}"
+    return
+  fi
+  if [[ "${clients}" =~ ^[0-9]+$ ]] && (( clients >= 10000 )); then
+    echo "1024"
+  else
+    echo "128"
+  fi
+}
+
 HAS_EXPLICIT_TRANSPORT=0
 HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
 HAS_EXPLICIT_REUSE_BUILD=0
+HAS_EXPLICIT_RUNS=0
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
-MULTI_MEASURE_SECONDS="${BENCH_MULTI_MEASURE_SECONDS:-10}"
+MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
 MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
 MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
 MULTI_HWM="${BENCH_MULTI_HWM:-100000}"
@@ -210,6 +251,20 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" )
       shift
       ;;
+    --runs)
+      HAS_EXPLICIT_RUNS=1
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
+      ;;
+    --runs=*)
+      HAS_EXPLICIT_RUNS=1
+      SCRIPT_ARGS+=( "$1" )
+      shift
+      ;;
     --multi-warmup-seconds)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -218,12 +273,12 @@ while [[ $# -gt 0 ]]; do
       MULTI_WARMUP_SECONDS="${2}"
       shift 2
       ;;
-    --multi-measure-seconds)
+    --multi-duration-seconds|--duration)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
-      MULTI_MEASURE_SECONDS="${2}"
+      MULTI_DURATION_SECONDS="${2}"
       shift 2
       ;;
     --multi-clients)
@@ -321,9 +376,12 @@ fi
 if [[ "${HAS_EXPLICIT_REUSE_BUILD}" -eq 0 && "${BENCH_MULTI_FORCE_CLEAN:-0}" != "1" ]]; then
   RUN_BASE_ARGS+=(--reuse-build)
 fi
+if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
+  RUN_BASE_ARGS+=(--runs "3")
+fi
 RUN_ENV=()
 RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
-RUN_ENV+=(BENCH_MULTI_MEASURE_SECONDS="${MULTI_MEASURE_SECONDS}")
+RUN_ENV+=(BENCH_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}")
 if [[ -n "${MULTI_CLIENTS}" ]]; then
   RUN_ENV+=(BENCH_MULTI_CLIENTS="${MULTI_CLIENTS}")
 fi
@@ -338,12 +396,6 @@ if [[ -n "${MULTI_SNDTIMEO_MS}" ]]; then
 fi
 if [[ -n "${MULTI_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
-fi
-if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
-fi
-if [[ -n "${MULTI_DRAIN_MS}" ]]; then
-  RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
 
 SHOW_TOTAL_TIME=1
@@ -368,13 +420,21 @@ for pattern in "${PATTERNS[@]}"; do
 
   ensure_nofile_limit "${pattern_clients}"
 
+  pattern_connect_concurrency="$(resolve_pattern_connect_concurrency "${pattern_clients}")"
+  pattern_drain_ms="$(resolve_pattern_drain_ms "${pattern}")"
+  pattern_env=("${RUN_ENV[@]}")
+  pattern_env+=(BENCH_MULTI_PATTERN="${pattern}")
+  pattern_env+=(BENCH_MULTI_CONNECT_CONCURRENCY="${pattern_connect_concurrency}")
+  pattern_env+=(BENCH_MULTI_DRAIN_MS="${pattern_drain_ms}")
+
   echo "=== Running multi benchmark: ${pattern} ==="
+  echo "    warmup=${MULTI_WARMUP_SECONDS}s duration=${MULTI_DURATION_SECONDS}s clients=${pattern_clients} connect_concurrency=${pattern_connect_concurrency} drain_ms=${pattern_drain_ms}"
   if ! BENCH_ALLOW_MULTI=1 \
     BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/multi/run_comparison.py" \
     BENCH_FAIL_FAST=1 \
     BENCH_SUPPRESS_TOTAL_TIME=1 \
     BENCH_MULTI_CLIENTS="${pattern_clients}" \
-    env "${RUN_ENV[@]}" \
+    env "${pattern_env[@]}" \
     "${SCRIPT_DIR}/run_benchmarks.sh" \
     "${RUN_BASE_ARGS[@]}" \
     "${SCRIPT_ARGS[@]}" \

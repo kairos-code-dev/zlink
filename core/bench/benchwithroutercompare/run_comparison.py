@@ -299,9 +299,12 @@ def run_single_test(build_dir, lib_name, clients, msg_sizes, duration,
     env = get_env_for_lib(base_env, lib_name, build_dir)
     env["BENCH_PORT"] = str(port)
     env["BENCH_CLIENTS"] = str(clients)
-    env["BENCH_DURATION_SECONDS"] = str(duration)
-    env["BENCH_SETTLE_MS"] = str(settle_ms)
-    env["BENCH_DRAIN_MS"] = str(drain_ms)
+    env["BENCH_MULTI_DURATION_SECONDS"] = str(duration)
+    env["BENCH_MULTI_SETTLE_MS"] = str(settle_ms)
+    env["BENCH_MULTI_DRAIN_MS"] = str(drain_ms)
+    env["BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS"] = base_env.get(
+        "BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS", str(drain_ms)
+    )
     env["BENCH_MSG_SIZES"] = ",".join(str(s) for s in msg_sizes)
 
     server_cmd = [os.path.join(build_dir, server_bin + EXE_SUFFIX)]
@@ -395,7 +398,7 @@ def parse_args():
     usage = (
         "Usage: run_comparison.py [options]\n\n"
         "Options:\n"
-        "  --runs N              Iterations per config (default: 1)\n"
+        "  --runs N              Iterations per config (default: 3)\n"
         "  --clients N           N:1 test client count (default: 100)\n"
         "  --build-dir PATH      Build directory\n"
         "  --zlink-only          Run only zlink, use cache for zmq/grpc\n"
@@ -404,7 +407,7 @@ def parse_args():
         "  --phase PHASE         Run only 'single' or 'multi' phase\n"
     )
 
-    num_runs = 1
+    num_runs = 3
     clients = 100
     zlink_only = False
     refresh_cache = False
@@ -620,9 +623,9 @@ def main():
         return 2
 
     msg_sizes = parse_env_list("BENCH_MSG_SIZES", int) or DEFAULT_MSG_SIZES
-    duration = int(os.environ.get("BENCH_DURATION_SECONDS", "5"))
-    settle_ms = int(os.environ.get("BENCH_SETTLE_MS", "500"))
-    drain_ms = int(os.environ.get("BENCH_DRAIN_MS", "300"))
+    duration = int(os.environ.get("BENCH_MULTI_DURATION_SECONDS", "5"))
+    settle_ms = int(os.environ.get("BENCH_MULTI_SETTLE_MS", "500"))
+    drain_ms = int(os.environ.get("BENCH_MULTI_DRAIN_MS", "300"))
 
     cache = load_cache(cache_file)
     base_env = os.environ.copy()

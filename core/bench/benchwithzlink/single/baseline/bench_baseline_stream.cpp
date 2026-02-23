@@ -20,6 +20,7 @@ using socket_t = SOCKET;
 static const socket_t INVALID_SOCKET_FD = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -50,6 +51,74 @@ struct stream_len32be_dispatch_t {
 
 static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
 static stream_len32be_dispatch_t *g_stream_dispatch_aux = NULL;
+
+typedef int (*stream_attach_fn_t) (void *,
+                                   zlink_stream_on_packets_fn,
+                                   int);
+typedef int (*stream_detach_fn_t) (void *);
+
+struct stream_dispatch_api_t {
+    stream_attach_fn_t attach_fn;
+    stream_detach_fn_t detach_fn;
+    bool resolved;
+
+    stream_dispatch_api_t() : attach_fn(NULL), detach_fn(NULL), resolved(false) {}
+};
+
+stream_dispatch_api_t &stream_dispatch_api()
+{
+    static stream_dispatch_api_t api;
+    if (api.resolved)
+        return api;
+
+#ifdef _WIN32
+    HMODULE mod = GetModuleHandleA("zlink.dll");
+    if (!mod)
+        mod = GetModuleHandleA(NULL);
+    if (mod) {
+        api.attach_fn = reinterpret_cast<stream_attach_fn_t>(
+          GetProcAddress(mod, "zlink_stream_attach"));
+        api.detach_fn = reinterpret_cast<stream_detach_fn_t>(
+          GetProcAddress(mod, "zlink_stream_detach"));
+    }
+#else
+    api.attach_fn = reinterpret_cast<stream_attach_fn_t>(
+      dlsym(RTLD_DEFAULT, "zlink_stream_attach"));
+    api.detach_fn = reinterpret_cast<stream_detach_fn_t>(
+      dlsym(RTLD_DEFAULT, "zlink_stream_detach"));
+#endif
+
+    api.resolved = true;
+    return api;
+}
+
+bool stream_dispatch_supported()
+{
+    stream_dispatch_api_t &api = stream_dispatch_api();
+    return api.attach_fn != NULL && api.detach_fn != NULL;
+}
+
+int stream_attach_compat(void *socket_,
+                         zlink_stream_on_packets_fn callback,
+                         int flags)
+{
+    stream_dispatch_api_t &api = stream_dispatch_api();
+    if (!api.attach_fn) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return api.attach_fn(socket_, callback, flags);
+}
+
+int stream_detach_compat(void *socket_)
+{
+    stream_dispatch_api_t &api = stream_dispatch_api();
+    if (!api.detach_fn) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return api.detach_fn(socket_);
+}
 
 zlink_routing_id_t make_routing_id(const std::vector<unsigned char> &rid)
 {
@@ -118,7 +187,7 @@ bool start_stream_len32be_dispatch_slot(void *socket_,
     dispatch.socket = socket_;
     dispatch.running.store(true, std::memory_order_release);
     *slot = &dispatch;
-    if (zlink_stream_attach(
+    if (stream_attach_compat(
           socket_, callback, ZLINK_STREAM_DISPATCH_LEN32BE)
         != 0) {
         dispatch.running.store(false, std::memory_order_release);
@@ -136,7 +205,7 @@ void stop_stream_len32be_dispatch_slot(stream_len32be_dispatch_t &dispatch,
     if (!dispatch.running.exchange(false, std::memory_order_acq_rel))
         return;
     if (dispatch.socket)
-        (void) zlink_stream_detach(dispatch.socket);
+        (void) stream_detach_compat(dispatch.socket);
     {
         std::lock_guard<std::mutex> guard(dispatch.lock);
         dispatch.packets.clear();
@@ -1016,6 +1085,16 @@ void run_stream(const std::string &transport,
 {
     if (!transport_available(transport))
         return;
+
+    if (!stream_dispatch_supported()) {
+        if (bench_debug_enabled()) {
+            std::cerr << "STREAM baseline skip: missing "
+                         "zlink_stream_attach/detach in baseline library"
+                      << std::endl;
+        }
+        print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
+        return;
+    }
 
     if (transport == "tcp") {
         run_stream_tcp_raw(msg_size, msg_count, lib_name);

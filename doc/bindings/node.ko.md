@@ -73,3 +73,29 @@ cd bindings/node && npm test
 ```
 
 node:test 프레임워크 사용.
+
+## 8. STREAM 콜백 API
+
+`Socket` STREAM 헬퍼:
+- `streamAttach((routingId, packets) => { ... }, mode?)`
+- `streamDetach()`
+- `streamPeerRoutingId(index?)`
+- `streamSend(routingId, payload, flags?)`
+- 기존 `streamEchoStart/Stop`, `streamSinkStart/Stop` API는 제거되었습니다.
+
+`mode`는 `StreamDispatchMode.NONE` 또는 `StreamDispatchMode.LEN32BE`를 사용합니다.
+
+모드 규칙:
+- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
+- `streamDetach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
+
+```javascript
+stream.streamAttach((routingId, packets) => {
+  for (const packet of packets) {
+    const copy = Buffer.from(packet);   // echo 전 명시적 복사
+    stream.streamSend(routingId, copy, zlink.SendFlag.NONE);
+  }
+  return 0;
+}, zlink.StreamDispatchMode.LEN32BE);
+```

@@ -57,6 +57,10 @@ export declare const ReceiveFlag: {
   readonly NONE: 0; readonly DONTWAIT: 1;
 };
 
+export declare const StreamDispatchMode: {
+  readonly NONE: 0; readonly LEN32BE: 1;
+};
+
 export declare const ErrorCode: {
   readonly EFSM: 156384763;
   readonly ENOCOMPATPROTO: 156384764;
@@ -166,32 +170,23 @@ export class Socket {
   connect(endpoint: string): void;
   send(buf: Buffer | Uint8Array | string, flags?: number): number;
   sendFrom(buffer: Buffer | Uint8Array, length: number, flags?: number): number;
-  sendMany(buf: Buffer | Uint8Array | string, count: number, flags?: number): number;
-  sendRoutedMany(
-    routingIdBuffer: Buffer | Uint8Array,
-    routingIdLength: number,
-    payloadBuffer: Buffer | Uint8Array,
-    payloadLength: number,
-    count: number,
-    payloadFlags?: number
-  ): number;
   recv(size: number, flags?: number): Buffer;
   recvInto(buffer: Buffer | Uint8Array, flags?: number): number;
-  recvManyInto(buffer: Buffer | Uint8Array, count: number, flags?: number): number;
-  recvPairManyInto(
-    firstBuffer: Buffer | Uint8Array,
-    secondBuffer: Buffer | Uint8Array,
-    count: number,
-    flags?: number
-  ): number;
-  recvPairDrainInto(
-    firstBuffer: Buffer | Uint8Array,
-    secondBuffer: Buffer | Uint8Array,
-    maxCount: number
-  ): number;
+  recvMsgInto(buffer: Buffer | Uint8Array, flags?: number): number;
   setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   getSockOpt(option: number): Buffer;
   monitorOpen(events: number): MonitorSocket;
+  streamAttach(
+    handler: (routingId: Buffer, packets: Buffer[]) => number | void,
+    mode?: number
+  ): void;
+  streamDetach(): void;
+  streamPeerRoutingId(index?: number): Buffer | null;
+  streamSend(
+    routingId: Buffer | Uint8Array,
+    payload: Buffer | Uint8Array,
+    flags?: number
+  ): number;
   close(): void;
 }
 

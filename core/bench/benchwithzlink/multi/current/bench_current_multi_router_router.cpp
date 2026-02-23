@@ -39,7 +39,9 @@ multi_send_result_t send_router_nonblocking(void *socket,
         payload_pending = 1;
     }
 
-    if (zlink_send(socket, payload.data(), payload.size(), ZLINK_DONTWAIT) < 0) {
+    if (zlink_send (
+          socket, payload.data(), payload.size(), ZLINK_DONTWAIT)
+        < 0) {
         const int err = zlink_errno();
         if (err == EAGAIN || err == EINTR)
             return multi_send_would_block;
@@ -188,7 +190,7 @@ int recv_batch_router_rtt(void *server,
 
             if (zlink_send(server, id_buf, id_len, ZLINK_SNDMORE) < 0)
                 return -1;
-            if (zlink_send(server, payload.data(), payload.size(), 0) < 0) {
+            if (zlink_send (server, payload.data(), payload.size(), 0) < 0) {
                 if (zlink_errno() == EINTR)
                     continue;
                 return -1;
@@ -242,7 +244,8 @@ int relay_batch_router_echo(void *server,
         if (zlink_send(server, id_buf, static_cast<size_t>(id_len), ZLINK_SNDMORE)
             < 0)
             return -1;
-        if (zlink_send(server, payload.data(), static_cast<size_t>(payload_len), 0)
+        if (zlink_send (
+              server, payload.data(), static_cast<size_t>(payload_len), 0)
             < 0) {
             if (zlink_errno() == EINTR)
                 continue;
@@ -353,7 +356,7 @@ double measure_latency_us(void *ctx,
               client, server_id.c_str(), server_id.size(), ZLINK_SNDMORE)
             < 0)
             return;
-        if (zlink_send(client, payload.data(), payload.size(), 0) < 0)
+        if (zlink_send (client, payload.data(), payload.size(), 0) < 0)
             return;
 
         const int id_len = zlink_recv(server, id_buf, sizeof(id_buf), 0);
@@ -364,7 +367,7 @@ double measure_latency_us(void *ctx,
 
         if (zlink_send(server, id_buf, id_len, ZLINK_SNDMORE) < 0)
             return;
-        if (zlink_send(server, recv_buf.data(), payload.size(), 0) < 0)
+        if (zlink_send (server, recv_buf.data(), payload.size(), 0) < 0)
             return;
 
         if (zlink_recv(client, peer_id, sizeof(peer_id), 0) <= 0)
@@ -394,7 +397,7 @@ double measure_latency_live(void *server,
               client, server_id.c_str(), server_id.size(), ZLINK_SNDMORE)
             < 0)
             return;
-        if (zlink_send(client, payload.data(), payload.size(), 0) < 0)
+        if (zlink_send (client, payload.data(), payload.size(), 0) < 0)
             return;
 
         const int id_len = zlink_recv(server, id_buf, sizeof(id_buf), 0);
@@ -405,7 +408,7 @@ double measure_latency_live(void *server,
 
         if (zlink_send(server, id_buf, id_len, ZLINK_SNDMORE) < 0)
             return;
-        if (zlink_send(server, recv_buf.data(), payload.size(), 0) < 0)
+        if (zlink_send (server, recv_buf.data(), payload.size(), 0) < 0)
             return;
 
         if (zlink_recv(client, peer_id, sizeof(peer_id), 0) <= 0)
@@ -477,6 +480,9 @@ void run_multi_router_router(const std::string &transport,
     size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size(); ++s) {
         const size_t current_size = msg_sizes[s];
+        multi_bench_settings_t round_settings = settings;
+        round_settings.inflight =
+          resolve_multi_inflight_for_size(settings, current_size);
         std::vector<char> payload(std::max<size_t>(1, current_size), 'a');
         std::vector<char> relay_payload(std::max<size_t>(1, current_size + 256));
         std::vector<char> payload_pending(settings.clients, 0);
@@ -489,7 +495,7 @@ void run_multi_router_router(const std::string &transport,
         const multi_bench_result_t bench =
           run_multi_phase_socket_owned_rtt_benchmark(
             settings.clients,
-            settings,
+            round_settings,
             [&](size_t idx) {
                 if (clients[idx])
                     return true;
@@ -553,9 +559,11 @@ void run_multi_router_router(const std::string &transport,
         prep_ready_values[s] = bench.ready_wait_ms;
         throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double>(bench.measure_recv)
-                / static_cast<double>(std::max(1, settings.measure_seconds))
+                / static_cast<double>(std::max(1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
+        run_size_transition_drain_stage (
+          settings, (s + 1) < msg_sizes.size ());
     }
 
     for (size_t i = 0; i < clients.size(); ++i) {

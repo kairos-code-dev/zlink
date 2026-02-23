@@ -182,6 +182,8 @@ zlink_msg_close(&data);
 ## 7. STREAM 소켓에서 routing_id 사용법
 
 STREAM 소켓은 4B uint32 peer routing_id로 외부 클라이언트를 식별한다.
+이 섹션의 "기본 사용"은 콜백 dispatch OFF
+(`zlink_stream_attach()` 미사용) 기준이다.
 
 ### 기본 사용
 
@@ -217,6 +219,28 @@ if (code == 0x01) {
 ```
 
 > 참고: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+
+### 콜백 Dispatch 사용 (`zlink_stream_attach` ON)
+
+콜백 dispatch를 attach한 경우 STREAM 페이로드는 `zlink_recv()`가 아니라
+콜백에서 소비한다.
+
+```c
+int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        const void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
+
+        /* 동일 peer routing_id로 응답 */
+        zlink_stream_send(stream, rid, data, size, 0);
+    }
+    return 0;
+}
+
+zlink_stream_attach(stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
+/* ... */
+zlink_stream_detach(stream);  /* 필요 시 zlink_recv() 패턴으로 복귀 */
+```
 
 ### ROUTER vs STREAM routing_id 비교
 

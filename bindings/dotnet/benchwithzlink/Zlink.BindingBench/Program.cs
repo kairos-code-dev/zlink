@@ -17,6 +17,7 @@ return pattern switch
     "ROUTER_ROUTER" => BenchRunner.RunRouterRouter(transport, size),
     "ROUTER_ROUTER_POLL" => BenchRunner.RunRouterRouterPoll(transport, size),
     "STREAM" => BenchRunner.RunStream(transport, size),
+    "STREAM_LEN32BE" => BenchRunner.RunStreamLen32Be(transport, size),
     "GATEWAY" => BenchRunner.RunGateway(transport, size),
     "SPOT" => BenchRunner.RunSpot(transport, size),
     _ => 2,

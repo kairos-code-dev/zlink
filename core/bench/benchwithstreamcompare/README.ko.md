@@ -10,7 +10,7 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - 하나의 공통 클라이언트로 라이브러리 성능 비교
 - 순수 stream socket echo에 가까운 측정
 - 동시 실행 방지로 측정 간 간섭 최소화
-- 단순하고 안정적인 부하 모델 유지: `inflight` 설정 가능(기본값 `1`)
+- 단순하고 안정적인 부하 모델 유지: `inflight` 설정 가능(기본값 `10`)
 
 ## 구성 요소
 
@@ -24,7 +24,12 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - `asio`
 - `cppserver`
 - `dotnet`
+- `netzlink`
+- `netzlink-len32be`
+- `jvmzlink`
+- `jvmzlink-len32be`
 - `zlink`
+- `zlink-len32be`
 - `zmq`
 - `netty`
 
@@ -52,8 +57,8 @@ echo 성능을 비교하기 위한 벤치마크입니다.
 - Linux 환경
 - CMake + C++ 컴파일러
 - Python 3
-- .NET SDK (`dotnet` 스택 사용 시)
-- JDK 22 + Gradle 8.8+ (`netty` 스택 사용 시)
+- .NET SDK (`dotnet`, `netzlink`, `netzlink-len32be` 스택 사용 시)
+- JDK 22 + Gradle 8.8+ (`netty`, `jvmzlink`, `jvmzlink-len32be` 스택 사용 시)
 - 선택한 스택에 따른 외부 의존성
 
 고CCU(예: `--ccu 10000`)에서는 OS 튜닝이 중요합니다:
@@ -84,9 +89,9 @@ cat /proc/sys/net/ipv4/ip_local_port_range
   --stack zlink,zmq,dotnet \
   --size 65536 \
   --ccu 10000 \
-  --runs 1 \
-  --warmup 2 \
-  --duration 10
+  --runs 3 \
+  --warmup 3 \
+  --duration 5
 ```
 
 같은 연결에서 멀티 사이즈 순차 측정:
@@ -100,13 +105,13 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 ## 실행 옵션
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    기본값: 10000
---inflight <N>               기본값: 1
+--inflight <N>               기본값: 10
 --runs <N>                   기본값: 1
---warmup <sec>               기본값: 2
---duration <sec>             기본값: 10
+--warmup <sec>               기본값: 3
+--duration <sec>             기본값: 5
 --client-io-threads <N>      기본값: 4
 --server-io-threads <N>      기본값: 4
 --resource-sample-ms <N>     기본값: 500
@@ -119,8 +124,8 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `RESULT_DIR`: 결과 출력 디렉토리 지정
 - `HOST`: 벤치 대상 호스트 (기본값 `127.0.0.1`)
 - `BASE_PORT`: 스택 실행 시작 포트 (기본값 `22000`)
-- `NETTY_JAVA_HOME`: `netty` 스택에서 사용할 JDK 22 경로
-- `NETTY_GRADLE_BIN`: `netty` 스택에서 사용할 Gradle 실행 파일 경로
+- `NETTY_JAVA_HOME`: `netty`, `jvmzlink`, `jvmzlink-len32be` 스택에서 사용할 JDK 22 경로
+- `NETTY_GRADLE_BIN`: `netty`, `jvmzlink`, `jvmzlink-len32be` 스택에서 사용할 Gradle 실행 파일 경로
 
 참고:
 
@@ -131,6 +136,9 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 - `netty`는 Gradle 8.8+가 필요하며 시스템 `gradle`이 오래된 경우
   러너가 `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/` 아래에
   Gradle `8.10.2`를 자동 다운로드해서 사용
+- `jvmzlink`와 `jvmzlink-len32be`는 `netty`와 동일한 Java/Gradle 탐색
+  경로를 사용하고, 실행 전 `bindings/java` jar를 먼저 빌드해 서버 앱을
+  패키징
 - `zlink` 스택은 native STREAM 서버 바이너리를 직접 실행
 
 ## 결과 파일

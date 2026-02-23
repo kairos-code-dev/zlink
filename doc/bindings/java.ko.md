@@ -28,6 +28,7 @@
 try (var ctx = new Context();
      var server = new Socket(ctx, SocketType.PAIR);
      var client = new Socket(ctx, SocketType.PAIR)) {
+    ctx.setOption(ContextOption.IO_THREADS, 4);
     server.bind("tcp://*:5555");
     client.connect("tcp://127.0.0.1:5555");
 
@@ -52,6 +53,8 @@ try (var ctx = new Context();
 - `ByteBuffer` 직접 경로
   - `send(ByteBuffer buffer, SendFlag flags)`
   - `recv(ByteBuffer buffer, ReceiveFlag flags)`
+- 컨텍스트 튜닝
+  - `ctx.setOption(ContextOption.IO_THREADS, n)`
 - 메시지 zero-copy 뷰
   - `Message.fromNativeData(MemorySegment data[, offset, length])`
   - `Message.fromDirectByteBuffer(ByteBuffer direct)`
@@ -82,7 +85,31 @@ try (var ctx = new Context();
   - `sendMove/publishMove`는 메시지 소유권을 이동시키므로 이동된 `Message`는 재사용하면 안 됩니다
   - `sendConst/publishConst`는 native payload 메모리가 네이티브 전송 완료 시점까지 유효해야 합니다
 
-## 5. 빌드
+## 5. STREAM 콜백 API
+
+`Socket` STREAM 헬퍼:
+- `attachStream(StreamPacketHandler handler, StreamDispatchMode mode)`
+- `detachStream()`
+- `streamPeerRoutingId(int index)`
+- `streamSend(byte[]/ByteBuffer/ByteSpan/MemorySegment routingId, ... payload, SendFlag flags)`
+
+모드 규칙:
+- attach 상태에서는 콜백에서 STREAM 페이로드를 수신합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `recv(...)`를 혼용하지 않습니다.
+- `detachStream()` 이후에는 기존 `recv(...)` 경로를 다시 사용할 수 있습니다.
+
+```java
+try (var stream = new Socket(ctx, SocketType.STREAM)) {
+    stream.attachStream((rid, payload) -> {
+        byte[] copy = new byte[payload.length()];
+        payload.asByteBuffer().duplicate().get(copy);
+        stream.streamSend(rid, ByteSpan.of(copy), SendFlag.NONE);
+        return 0;
+    }, StreamDispatchMode.LEN32BE);
+}
+```
+
+## 6. 빌드
 
 ```groovy
 // build.gradle
@@ -91,6 +118,6 @@ dependencies {
 }
 ```
 
-## 6. 네이티브 라이브러리 로드
+## 7. 네이티브 라이브러리 로드
 
 `src/main/resources/native/` 디렉토리에서 플랫폼별 자동 로드.

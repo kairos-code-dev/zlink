@@ -89,3 +89,29 @@ Platform-specific binaries are provided in the `bindings/cpp/native/` directory:
 - `darwin-aarch64/libzlink.dylib`
 - `windows-x86_64/zlink.dll`
 - `windows-aarch64/zlink.dll`
+
+## 7. STREAM Callback API
+
+`socket_t` STREAM helpers:
+- `stream_attach(zlink_stream_on_packets_fn, int flags)`
+- `stream_attach(zlink_stream_on_packets_fn, stream_dispatch_mode mode)`
+- `stream_detach()`
+- `stream_send(...)`
+
+Mode rules:
+- While attached, consume STREAM payloads in the callback.
+- Do not mix `recv()` for STREAM payload consumption while attached.
+- After `stream_detach()`, normal `recv()` use is available again.
+
+```cpp
+int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        const void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
+        stream.stream_send(*rid, data, size, zlink::send_flag::none);
+    }
+    return 0;
+}
+
+stream.stream_attach(on_packets, zlink::stream_dispatch_mode::len32be);
+```

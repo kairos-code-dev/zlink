@@ -73,3 +73,29 @@ cd bindings/node && npm test
 ```
 
 Uses the node:test framework.
+
+## 8. STREAM Callback API
+
+`Socket` STREAM helpers:
+- `streamAttach((routingId, packets) => { ... }, mode?)`
+- `streamDetach()`
+- `streamPeerRoutingId(index?)`
+- `streamSend(routingId, payload, flags?)`
+- Legacy `streamEchoStart/Stop` and `streamSinkStart/Stop` APIs were removed.
+
+`mode` uses `StreamDispatchMode.NONE` or `StreamDispatchMode.LEN32BE`.
+
+Mode rules:
+- While attached, consume STREAM payloads in the callback.
+- Do not mix `recv()` for STREAM payload consumption while attached.
+- After `streamDetach()`, normal `recv()` use is available again.
+
+```javascript
+stream.streamAttach((routingId, packets) => {
+  for (const packet of packets) {
+    const copy = Buffer.from(packet);   // explicit copy before echo
+    stream.streamSend(routingId, copy, zlink.SendFlag.NONE);
+  }
+  return 0;
+}, zlink.StreamDispatchMode.LEN32BE);
+```

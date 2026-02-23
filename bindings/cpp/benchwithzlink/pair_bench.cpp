@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -132,21 +133,26 @@ bool wait_for_input(zlink::socket_t &socket, long timeout_ms)
 
 std::vector<unsigned char> stream_expect_connect_event(zlink::socket_t &socket)
 {
-    zlink::message_t id_frame;
-    int id_len = socket.recv(id_frame);
-    if (id_len <= 0) {
-        return std::vector<unsigned char>();
-    }
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        zlink::message_t id_frame;
+        int id_len = socket.recv(id_frame);
+        if (id_len <= 0)
+            continue;
 
-    const unsigned char *ptr = static_cast<const unsigned char *>(id_frame.data());
-    std::vector<unsigned char> rid(ptr, ptr + id_len);
+        zlink::message_t payload_frame;
+        const int p_len = socket.recv(payload_frame);
+        if (p_len != 1)
+            continue;
+        const unsigned char *payload =
+          static_cast<const unsigned char *>(payload_frame.data());
+        if (!payload || payload[0] != 0x01)
+            continue;
 
-    unsigned char payload[16];
-    int p_len = socket.recv(payload, sizeof(payload));
-    if (p_len != 1 || payload[0] != 0x01) {
-        return std::vector<unsigned char>();
+        const unsigned char *ptr =
+          static_cast<const unsigned char *>(id_frame.data());
+        return std::vector<unsigned char>(ptr, ptr + id_len);
     }
-    return rid;
+    return std::vector<unsigned char>();
 }
 
 int stream_send(zlink::socket_t &socket,
@@ -154,11 +160,7 @@ int stream_send(zlink::socket_t &socket,
                 const void *data,
                 size_t len)
 {
-    if (rid.empty())
-        return -1;
-    if (socket.send(rid.data(), rid.size(), zlink::send_flag::sndmore) < 0)
-        return -1;
-    return socket.send(data, len, zlink::send_flag::none);
+    return socket.stream_send(rid, data, len);
 }
 
 int stream_recv(zlink::socket_t &socket,
@@ -175,7 +177,19 @@ int stream_recv(zlink::socket_t &socket,
         const unsigned char *ptr = static_cast<const unsigned char *>(id_frame.data());
         rid_out->assign(ptr, ptr + id_len);
     }
-    return socket.recv(buf, cap, zlink::recv_flag::none);
+    zlink::message_t payload_frame;
+    const int payload_len = socket.recv(payload_frame);
+    if (payload_len < 0)
+        return -1;
+    if (buf && cap > 0 && payload_len > 0) {
+        const unsigned char *payload_ptr =
+          static_cast<const unsigned char *>(payload_frame.data());
+        if (payload_ptr) {
+            const size_t copy_len = std::min(cap, static_cast<size_t>(payload_len));
+            std::memcpy(buf, payload_ptr, copy_len);
+        }
+    }
+    return payload_len;
 }
 
 int main(int argc, char **argv)
@@ -201,6 +215,8 @@ int main(int argc, char **argv)
         return run_pattern_router_router_poll(transport, size);
     if (pattern == "STREAM")
         return run_pattern_stream(transport, size);
+    if (pattern == "STREAM_LEN32BE")
+        return run_pattern_stream_len32be(transport, size);
     if (pattern == "GATEWAY")
         return run_pattern_gateway(transport, size);
     if (pattern == "SPOT")

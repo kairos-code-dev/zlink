@@ -391,6 +391,9 @@ void run_multi_dealer_router (const std::string &transport,
     size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
+        multi_bench_settings_t round_settings = settings;
+        round_settings.inflight =
+          resolve_multi_inflight_for_size (settings, current_size);
         std::vector<char> buffer (std::max<size_t> (1, current_size), 'a');
         std::vector<char> relay_payload (std::max<size_t> (1, current_size));
         std::vector<std::vector<char> > client_recv_bufs (
@@ -399,7 +402,7 @@ void run_multi_dealer_router (const std::string &transport,
 
         const multi_bench_result_t bench =
           run_multi_phase_socket_owned_rtt_benchmark (
-            settings.clients, settings,
+            settings.clients, round_settings,
             [&] (size_t idx) {
                 if (clients[idx])
                     return true;
@@ -452,9 +455,11 @@ void run_multi_dealer_router (const std::string &transport,
         prep_ready_values[s] = bench.ready_wait_ms;
         throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
-                / static_cast<double> (std::max (1, settings.measure_seconds))
+                / static_cast<double> (std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
+        run_size_transition_drain_stage (
+          settings, (s + 1) < msg_sizes.size ());
     }
 
     for (size_t i = 0; i < clients.size (); ++i) {

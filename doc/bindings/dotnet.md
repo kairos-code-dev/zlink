@@ -46,3 +46,27 @@ Platform-specific native libraries in the `runtimes/` directory:
 ## 5. Testing
 
 Uses the xUnit framework: `bindings/dotnet/tests/`
+
+## 6. STREAM Callback API
+
+`Socket` provides STREAM callback helpers:
+- `AttachStream(StreamPacketsHandler handler, StreamDispatchMode mode = StreamDispatchMode.None)`
+- `DetachStream()`
+- `StreamPeerRoutingId(int index = 0)`
+- `StreamSend(ReadOnlySpan<byte> routingId, ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)`
+
+Mode rules:
+- While attached, consume STREAM payloads in the callback.
+- Do not mix `Receive()`/`TryReceive()` for STREAM payload consumption while attached.
+- After `DetachStream()`, you can return to normal receive calls.
+
+```csharp
+using var stream = new Socket(ctx, SocketType.Stream);
+
+stream.AttachStream((rid, payload) =>
+{
+    var copy = payload.ToArray();   // explicit copy before echo
+    stream.StreamSend(rid, copy, SendFlags.None);
+    return 0;
+}, StreamDispatchMode.Len32Be);
+```

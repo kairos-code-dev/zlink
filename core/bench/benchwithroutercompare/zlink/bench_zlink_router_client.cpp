@@ -198,10 +198,12 @@ int main(int argc, char **argv)
 
     const int clients = static_cast<int>(parse_long_env("BENCH_CLIENTS", 100, 1));
     const int duration_s =
-      static_cast<int>(parse_long_env("BENCH_DURATION_SECONDS", 5, 1));
+      static_cast<int>(parse_long_env("BENCH_MULTI_DURATION_SECONDS", 5, 1));
     const int settle_ms =
-      static_cast<int>(parse_long_env("BENCH_SETTLE_MS", 500, 0));
-    const int drain_ms = static_cast<int>(parse_long_env("BENCH_DRAIN_MS", 300, 0));
+      static_cast<int>(parse_long_env("BENCH_MULTI_SETTLE_MS", 500, 0));
+    const int drain_ms =
+      static_cast<int>(parse_long_env("BENCH_MULTI_DRAIN_MS", 300, 0));
+    const int transition_drain_ms = resolve_size_transition_drain_ms(drain_ms);
     const int io_threads = static_cast<int>(parse_long_env("BENCH_IO_THREADS", 4, 1));
     const int port = static_cast<int>(parse_long_env("BENCH_PORT", 29200, 1));
 
@@ -258,6 +260,8 @@ int main(int argc, char **argv)
             return 2;
         }
         print_result(lib_name, "tcp", msg_sizes[i], throughput, latency);
+        run_size_transition_drain_stage(
+          transition_drain_ms, (i + 1) < msg_sizes.size());
     }
 
     close_all(sockets, ctx);

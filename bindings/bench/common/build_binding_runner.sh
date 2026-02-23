@@ -9,21 +9,21 @@ case "$BINDING" in
     command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 || {
       echo "python is required" >&2; exit 1;
     }
-    py_exec="python3"
-    command -v "${py_exec}" >/dev/null 2>&1 || py_exec="python"
-    fastpath_req="$(printf '%s' "${BENCH_PY_FASTPATH_CEXT:-1}" | tr '[:upper:]' '[:lower:]')"
-    if [[ "${fastpath_req}" != "0" && "${fastpath_req}" != "false" && "${fastpath_req}" != "off" && "${fastpath_req}" != "no" ]]; then
-      if ! (cd "$ROOT_DIR/bindings/python/benchwithzlink" && "${py_exec}" setup_fastpath.py build_ext --inplace >/dev/null 2>&1); then
-        if [[ "${BENCH_PY_FASTPATH_REQUIRE:-0}" == "1" ]]; then
-          echo "Python fastpath build failed and BENCH_PY_FASTPATH_REQUIRE=1" >&2
-          exit 1
-        fi
-        echo "Warning: Python fastpath C-extension build failed; falling back to ctypes path." >&2
-      fi
-    fi
     ;;
   node)
     command -v node >/dev/null 2>&1 || { echo "node is required" >&2; exit 1; }
+    node_lib="${ROOT_DIR}/core/build/linux-x64/lib/libzlink.so"
+    if [[ ! -f "${node_lib}" ]]; then
+      node_lib="${ROOT_DIR}/build_cpp/lib/libzlink.so"
+    fi
+    if command -v node-gyp >/dev/null 2>&1; then
+      (cd "$ROOT_DIR/bindings/node" && ZLINK_LIB_PATH="${node_lib}" node-gyp rebuild) >/dev/null
+    elif command -v npx >/dev/null 2>&1; then
+      (cd "$ROOT_DIR/bindings/node" && ZLINK_LIB_PATH="${node_lib}" npx --yes node-gyp rebuild) >/dev/null
+    else
+      echo "node-gyp (or npx) is required for node binding benchmark build" >&2
+      exit 1
+    fi
     ;;
   dotnet)
     command -v dotnet >/dev/null 2>&1 || { echo "dotnet is required" >&2; exit 1; }

@@ -144,6 +144,14 @@ zlink_stream_detach (stream);
 
 > For the full API reference, see [Socket API — STREAM Callback Dispatch](../api/socket.md#stream-callback-dispatch-api).
 
+### 4c. STREAM Receive Mode Rules (Important)
+
+- Callback mode ON (`zlink_stream_attach`): receive path is callback dispatch.
+- In callback mode, do not mix `zlink_recv()` for STREAM payload consumption.
+- Callback mode OFF (not attached): use normal `zlink_recv()` 2-frame pattern.
+- After `zlink_stream_detach()`, you can return to the `zlink_recv()` pattern.
+- There is no `zlink_stream_recv()` API.
+
 ---
 
 ## 5. Client Implementation Rule

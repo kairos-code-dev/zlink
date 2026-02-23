@@ -16,12 +16,6 @@ namespace {
 static const size_t k_min_payload_size = 16;
 static const size_t k_max_payload_size = 4 * 1024 * 1024;
 
-bool is_stream_control_event (const unsigned char *payload_, size_t size_)
-{
-    (void) payload_;
-    return size_ == 0;
-}
-
 struct server_options_t
 {
     std::string host;
@@ -191,8 +185,6 @@ class zlink_stream_echo_server_t
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg_));
         const size_t payload_size = zlink_msg_size (msg_);
-        if (is_stream_control_event (payload, payload_size))
-            return 0;
 
         if ((!payload && payload_size > 0) || payload_size > k_max_payload_size) {
             mark_parse_error ();

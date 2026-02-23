@@ -818,19 +818,21 @@ int recv_batch_stream (void *server,
 void drain_pending_stream_frames (void *server,
                                   std::vector<tcp_sender_state_t> &senders,
                                   stream_client_poller_t &poller,
-                                  stream_reply_queue_t &pending_replies)
+                                  stream_reply_queue_t &pending_replies,
+                                  int max_wait_ms)
 {
     const int idle_ms_target = resolve_multi_int_env (
       "BENCH_MULTI_STREAM_DRAIN_IDLE_MS", 10, 1);
-    const int max_wait_ms = resolve_multi_int_env (
+    const int default_wait_ms = resolve_multi_int_env (
       "BENCH_MULTI_STREAM_DRAIN_MAX_MS", 2000, 0);
+    const int drain_wait_ms = max_wait_ms >= 0 ? max_wait_ms : default_wait_ms;
     const int drain_relay_budget = resolve_multi_int_env (
       "BENCH_MULTI_STREAM_DRAIN_RELAY_BUDGET", 512, 1);
     const int max_pending = resolve_multi_int_env (
       "BENCH_MULTI_STREAM_MAX_PENDING_REPLIES", 65536, 1);
     const auto deadline =
       std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (0, max_wait_ms));
+      + std::chrono::milliseconds (std::max (0, drain_wait_ms));
 
     int idle_ms = 0;
     while (std::chrono::steady_clock::now () < deadline) {
@@ -1156,6 +1158,7 @@ void run_multi_stream (const std::string &transport,
       1);
     stream_client_threads = std::max (1, std::min (4, stream_client_threads));
     multi_bench_settings_t stream_settings = settings;
+    stream_settings.active_warmup = 1;
     stream_settings.send_workers = std::max (
       1,
       std::min<int> (
@@ -1216,18 +1219,21 @@ void run_multi_stream (const std::string &transport,
     size_t completed_sizes = 0;
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         const size_t current_size = msg_sizes[s];
+        multi_bench_settings_t round_settings = stream_settings;
+        round_settings.inflight =
+          resolve_multi_stream_inflight_for_size (stream_settings, current_size);
         std::vector<char> payload (std::max<size_t> (1, current_size), 'a');
 
         const multi_bench_result_t bench =
           run_multi_phase_benchmark_with_sender_lifecycle_batched (
-            settings.clients, stream_settings,
+            settings.clients, round_settings,
             stream_send_batch,
             [&] (size_t idx) { return setup_sender (senders[idx], endpoint); },
             [&] (size_t idx) { return send_sender_nonblocking (senders[idx], payload); },
             [&] (multi_bench_phase_t) {
                 return recv_batch_stream (
                   server, senders, stream_poller, pending_replies,
-                  settings.recv_batch, 10);
+                  round_settings.recv_batch, 10);
             },
             [&] (size_t) {},
             [&] () {
@@ -1256,9 +1262,17 @@ void run_multi_stream (const std::string &transport,
         prep_ready_values[s] = bench.ready_wait_ms;
         throughput_values[s] = bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
-                / static_cast<double> (std::max (1, settings.measure_seconds))
+                / static_cast<double> (std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
+        if ((s + 1) < msg_sizes.size ()) {
+            drain_pending_stream_frames (
+              server,
+              senders,
+              stream_poller,
+              pending_replies,
+              settings.size_transition_drain_ms);
+        }
     }
 
     for (size_t i = 0; i < senders.size (); ++i)

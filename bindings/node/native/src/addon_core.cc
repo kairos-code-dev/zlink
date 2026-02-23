@@ -1,7 +1,217 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 #include "addon_api.h"
+#include <algorithm>
 #include <errno.h>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <vector>
+
+namespace {
+
+static const size_t k_stream_slot_count = 8;
+
+struct stream_js_payload_t
+{
+    std::vector<unsigned char> routing_id;
+    std::vector<std::vector<unsigned char> > packets;
+};
+
+struct stream_js_state_t
+{
+    stream_js_state_t () :
+        used (false),
+        socket (NULL),
+        env (NULL),
+        tsfn (NULL),
+        stop_requested (0)
+    {
+    }
+
+    bool used;
+    void *socket;
+    napi_env env;
+    napi_threadsafe_function tsfn;
+    std::atomic<int> stop_requested;
+};
+
+static std::mutex g_stream_slots_mu;
+static stream_js_state_t g_stream_slots[k_stream_slot_count];
+
+stream_js_state_t *find_stream_slot_by_socket_unsafe(void *socket)
+{
+    for (size_t i = 0; i < k_stream_slot_count; ++i) {
+        if (g_stream_slots[i].used && g_stream_slots[i].socket == socket)
+            return &g_stream_slots[i];
+    }
+    return NULL;
+}
+
+stream_js_state_t *find_free_stream_slot_unsafe()
+{
+    for (size_t i = 0; i < k_stream_slot_count; ++i) {
+        if (!g_stream_slots[i].used)
+            return &g_stream_slots[i];
+    }
+    return NULL;
+}
+
+void reset_stream_slot_unsafe(stream_js_state_t *state)
+{
+    if (!state)
+        return;
+    state->used = false;
+    state->socket = NULL;
+    state->env = NULL;
+    state->tsfn = NULL;
+    state->stop_requested.store(0, std::memory_order_release);
+}
+
+void stream_tsfn_finalize(napi_env env, void *finalize_data, void *finalize_hint)
+{
+    (void) env;
+    (void) finalize_hint;
+    stream_js_state_t *state = static_cast<stream_js_state_t *>(finalize_data);
+    if (!state)
+        return;
+    std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+    reset_stream_slot_unsafe(state);
+}
+
+void stream_tsfn_call_js(napi_env env,
+                         napi_value js_cb,
+                         void *context,
+                         void *data)
+{
+    std::unique_ptr<stream_js_payload_t> payload(
+      static_cast<stream_js_payload_t *>(data));
+    stream_js_state_t *state = static_cast<stream_js_state_t *>(context);
+    if (!env || !js_cb || !state || !payload)
+        return;
+
+    napi_value argv[2];
+    if (napi_create_buffer_copy(
+          env, payload->routing_id.size (),
+          payload->routing_id.empty () ? NULL : payload->routing_id.data (),
+          NULL, &argv[0])
+        != napi_ok) {
+        return;
+    }
+    if (napi_create_array_with_length(env, payload->packets.size(), &argv[1])
+        != napi_ok) {
+        return;
+    }
+    for (size_t i = 0; i < payload->packets.size(); ++i) {
+        const std::vector<unsigned char> &packet = payload->packets[i];
+        napi_value packet_buf;
+        if (napi_create_buffer_copy(
+              env, packet.size(), packet.empty() ? NULL : packet.data(), NULL,
+              &packet_buf)
+            != napi_ok) {
+            return;
+        }
+        napi_set_element(env, argv[1], static_cast<uint32_t>(i), packet_buf);
+    }
+
+    napi_value recv;
+    napi_value this_arg;
+    napi_get_undefined(env, &this_arg);
+    napi_status call_status =
+      napi_call_function(env, this_arg, js_cb, 2, argv, &recv);
+    if (call_status != napi_ok) {
+        state->stop_requested.store(1, std::memory_order_release);
+        if (state->socket)
+            (void) zlink_stream_detach(state->socket);
+        return;
+    }
+
+    int32_t ret = 0;
+    if (napi_get_value_int32(env, recv, &ret) == napi_ok && ret != 0) {
+        state->stop_requested.store(1, std::memory_order_release);
+        if (state->socket)
+            (void) zlink_stream_detach(state->socket);
+    }
+}
+
+template <size_t Slot>
+int stream_on_packets_slot(const zlink_routing_id_t *rid_,
+                           zlink_msg_t *msgs_,
+                           size_t msg_count_)
+{
+    if (!rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    stream_js_state_t *state = &g_stream_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (!state->used || !state->tsfn)
+            return 0;
+        if (state->stop_requested.load(std::memory_order_acquire) != 0)
+            return 1;
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<stream_js_payload_t> payload(new stream_js_payload_t());
+    payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
+    payload->packets.reserve(msg_count_);
+
+    for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
+        const unsigned char *packet_data =
+          static_cast<const unsigned char *>(zlink_msg_data(msg));
+        const size_t packet_size = zlink_msg_size(msg);
+        std::vector<unsigned char> packet;
+        if (packet_data && packet_size > 0)
+            packet.assign(packet_data, packet_data + packet_size);
+        payload->packets.push_back(packet);
+    }
+
+    napi_status call_status =
+      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking);
+    if (call_status != napi_ok)
+        return 1;
+    payload.release();
+
+    if (state->stop_requested.load(std::memory_order_acquire) != 0)
+        return 1;
+    return 0;
+}
+
+typedef int (*stream_slot_callback_t)(const zlink_routing_id_t *,
+                                      zlink_msg_t *,
+                                      size_t);
+
+#define STREAM_SLOT_CALLBACK(N) &stream_on_packets_slot<N>
+static stream_slot_callback_t g_stream_slot_callbacks[k_stream_slot_count] = {
+    STREAM_SLOT_CALLBACK(0),
+    STREAM_SLOT_CALLBACK(1),
+    STREAM_SLOT_CALLBACK(2),
+    STREAM_SLOT_CALLBACK(3),
+    STREAM_SLOT_CALLBACK(4),
+    STREAM_SLOT_CALLBACK(5),
+    STREAM_SLOT_CALLBACK(6),
+    STREAM_SLOT_CALLBACK(7),
+};
+#undef STREAM_SLOT_CALLBACK
+
+void stream_release_slot(void *socket)
+{
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        stream_js_state_t *state = find_stream_slot_by_socket_unsafe(socket);
+        if (!state)
+            return;
+        tsfn = state->tsfn;
+        reset_stream_slot_unsafe(state);
+    }
+    if (tsfn)
+        (void) napi_release_threadsafe_function(tsfn, napi_tsfn_abort);
+}
+
+} // namespace
 
 napi_value throw_last_error(napi_env env, const char *prefix)
 {
@@ -140,6 +350,8 @@ napi_value socket_close(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
+    (void) zlink_stream_detach(sock);
+    stream_release_slot(sock);
     int rc = zlink_close(sock);
     if (rc != 0)
         return throw_last_error(env, "close failed");
@@ -232,98 +444,6 @@ napi_value socket_send_from(napi_env env, napi_callback_info info)
     return out;
 }
 
-napi_value socket_send_many(napi_env env, napi_callback_info info)
-{
-    napi_value argv[4];
-    size_t argc = 4;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-    void *data = NULL;
-    size_t len = 0;
-    if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "sendMany buffer invalid");
-        return NULL;
-    }
-    int32_t count = 0;
-    napi_get_value_int32(env, argv[2], &count);
-    int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
-    if (count <= 0) {
-        napi_throw_range_error(env, NULL, "sendMany count must be > 0");
-        return NULL;
-    }
-
-    for (int32_t i = 0; i < count; ++i) {
-        int rc = zlink_send(sock, data, len, flags);
-        if (rc < 0)
-            return throw_last_error(env, "sendMany failed");
-    }
-
-    napi_value out;
-    napi_create_int32(env, count, &out);
-    return out;
-}
-
-napi_value socket_send_routed_many(napi_env env, napi_callback_info info)
-{
-    napi_value argv[7];
-    size_t argc = 7;
-    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
-    void *sock = NULL;
-    napi_get_value_external(env, argv[0], &sock);
-
-    void *rid_data = NULL;
-    size_t rid_cap = 0;
-    if (napi_get_buffer_info(env, argv[1], &rid_data, &rid_cap) != napi_ok) {
-        napi_throw_type_error(env, NULL, "sendRoutedMany routingId buffer invalid");
-        return NULL;
-    }
-    int32_t rid_len = 0;
-    napi_get_value_int32(env, argv[2], &rid_len);
-    if (rid_len < 0 || static_cast<size_t>(rid_len) > rid_cap) {
-        napi_throw_range_error(env, NULL, "sendRoutedMany routingId length out of range");
-        return NULL;
-    }
-
-    void *payload_data = NULL;
-    size_t payload_cap = 0;
-    if (napi_get_buffer_info(env, argv[3], &payload_data, &payload_cap) != napi_ok) {
-        napi_throw_type_error(env, NULL, "sendRoutedMany payload buffer invalid");
-        return NULL;
-    }
-    int32_t payload_len = 0;
-    napi_get_value_int32(env, argv[4], &payload_len);
-    if (payload_len < 0 || static_cast<size_t>(payload_len) > payload_cap) {
-        napi_throw_range_error(env, NULL, "sendRoutedMany payload length out of range");
-        return NULL;
-    }
-
-    int32_t count = 0;
-    napi_get_value_int32(env, argv[5], &count);
-    if (count <= 0) {
-        napi_throw_range_error(env, NULL, "sendRoutedMany count must be > 0");
-        return NULL;
-    }
-
-    int32_t payload_flags = 0;
-    napi_get_value_int32(env, argv[6], &payload_flags);
-    int rid_flags = ZLINK_SNDMORE | (payload_flags & ZLINK_DONTWAIT);
-
-    for (int32_t i = 0; i < count; ++i) {
-        int rc = zlink_send(sock, rid_data, static_cast<size_t>(rid_len), rid_flags);
-        if (rc < 0)
-            return throw_last_error(env, "sendRoutedMany routingId send failed");
-        rc = zlink_send(sock, payload_data, static_cast<size_t>(payload_len), payload_flags);
-        if (rc < 0)
-            return throw_last_error(env, "sendRoutedMany payload send failed");
-    }
-
-    napi_value out;
-    napi_create_int32(env, count, &out);
-    return out;
-}
-
 napi_value socket_recv(napi_env env, napi_callback_info info)
 {
     napi_value argv[3];
@@ -377,166 +497,231 @@ napi_value socket_recv_into(napi_env env, napi_callback_info info)
     return out;
 }
 
-napi_value socket_recv_many_into(napi_env env, napi_callback_info info)
+napi_value socket_recv_msg_into(napi_env env, napi_callback_info info)
 {
-    napi_value argv[4];
-    size_t argc = 4;
+    napi_value argv[3];
+    size_t argc = 3;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
     void *data = NULL;
     size_t len = 0;
     if (napi_get_buffer_info(env, argv[1], &data, &len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvManyInto buffer invalid");
+        napi_throw_type_error(env, NULL, "recvMsgInto buffer invalid");
         return NULL;
     }
-    int32_t count = 0;
-    napi_get_value_int32(env, argv[2], &count);
     int32_t flags = 0;
-    napi_get_value_int32(env, argv[3], &flags);
+    napi_get_value_int32(env, argv[2], &flags);
     if (len == 0) {
-        napi_throw_range_error(env, NULL, "recvManyInto buffer must not be empty");
-        return NULL;
-    }
-    if (count <= 0) {
-        napi_throw_range_error(env, NULL, "recvManyInto count must be > 0");
+        napi_throw_range_error(env, NULL, "recvMsgInto buffer must not be empty");
         return NULL;
     }
 
-    for (int32_t i = 0; i < count; ++i) {
-        int rc = zlink_recv(sock, data, len, flags);
-        if (rc < 0)
-            return throw_last_error(env, "recvManyInto failed");
+    zlink_msg_t msg;
+    int rc = zlink_msg_init(&msg);
+    if (rc != 0)
+        return throw_last_error(env, "recvMsgInto msg_init failed");
+
+    rc = zlink_msg_recv(&msg, sock, flags);
+    if (rc < 0) {
+        const int err = zlink_errno();
+        (void) zlink_msg_close(&msg);
+        errno = err;
+        return throw_last_error(env, "recvMsgInto failed");
     }
+
+    const int msg_size = static_cast<int>(zlink_msg_size(&msg));
+    if (msg_size > 0) {
+        void *src = zlink_msg_data(&msg);
+        if (src && data) {
+            const size_t copy_len =
+              std::min(static_cast<size_t>(msg_size), len);
+            if (copy_len > 0)
+                memcpy(data, src, copy_len);
+        }
+    }
+
+    if (zlink_msg_close(&msg) != 0)
+        return throw_last_error(env, "recvMsgInto msg_close failed");
 
     napi_value out;
-    napi_create_int32(env, count, &out);
+    napi_create_int32(env, msg_size, &out);
     return out;
 }
 
-napi_value socket_recv_pair_many_into(napi_env env, napi_callback_info info)
+napi_value socket_stream_attach(napi_env env, napi_callback_info info)
 {
-    napi_value argv[5];
-    size_t argc = 5;
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 2) {
+        napi_throw_type_error(env, NULL,
+                              "streamAttach requires (socket, handler[, mode])");
+        return NULL;
+    }
+
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+
+    napi_valuetype handler_type = napi_undefined;
+    napi_typeof(env, argv[1], &handler_type);
+    if (handler_type != napi_function) {
+        napi_throw_type_error(env, NULL, "streamAttach handler must be a function");
+        return NULL;
+    }
+
+    int32_t mode = 0;
+    if (argc >= 3)
+        napi_get_value_int32(env, argv[2], &mode);
+
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (find_stream_slot_by_socket_unsafe(sock)) {
+            napi_throw_error(env, NULL, "STREAM callback already attached");
+            return NULL;
+        }
+    }
+
+    stream_js_state_t *slot = NULL;
+    size_t slot_index = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        slot = find_free_stream_slot_unsafe();
+        if (!slot) {
+            napi_throw_error(env, NULL,
+                             "no free STREAM callback slot (max 8 attached sockets)");
+            return NULL;
+        }
+        slot_index = static_cast<size_t>(slot - g_stream_slots);
+    }
+
+    napi_value resource_name;
+    napi_create_string_utf8(env, "zlink-stream", NAPI_AUTO_LENGTH,
+                            &resource_name);
+    napi_threadsafe_function tsfn = NULL;
+    napi_status tsfn_status = napi_create_threadsafe_function(
+      env, argv[1], NULL, resource_name, 0, 1, slot, stream_tsfn_finalize, slot,
+      stream_tsfn_call_js, &tsfn);
+    if (tsfn_status != napi_ok) {
+        napi_throw_error(env, NULL, "streamAttach failed to create callback queue");
+        return NULL;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        slot->used = true;
+        slot->socket = sock;
+        slot->env = env;
+        slot->tsfn = tsfn;
+        slot->stop_requested.store(0, std::memory_order_release);
+    }
+
+    const int rc = zlink_stream_attach(sock, g_stream_slot_callbacks[slot_index],
+                                       mode);
+    if (rc != 0) {
+        stream_release_slot(sock);
+        return throw_last_error(env, "streamAttach failed");
+    }
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value socket_stream_detach(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
 
-    void *first_data = NULL;
-    size_t first_len = 0;
-    if (napi_get_buffer_info(env, argv[1], &first_data, &first_len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvPairManyInto first buffer invalid");
-        return NULL;
+    int rc = zlink_stream_detach(sock);
+    if (rc != 0) {
+        int err = zlink_errno();
+        if (err != EINVAL)
+            return throw_last_error(env, "streamDetach failed");
     }
-    if (first_len == 0) {
-        napi_throw_range_error(env, NULL, "recvPairManyInto first buffer must not be empty");
-        return NULL;
-    }
+    stream_release_slot(sock);
 
-    void *second_data = NULL;
-    size_t second_len = 0;
-    if (napi_get_buffer_info(env, argv[2], &second_data, &second_len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvPairManyInto second buffer invalid");
-        return NULL;
-    }
-    if (second_len == 0) {
-        napi_throw_range_error(env, NULL, "recvPairManyInto second buffer must not be empty");
-        return NULL;
-    }
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
 
-    int32_t count = 0;
-    napi_get_value_int32(env, argv[3], &count);
-    if (count <= 0) {
-        napi_throw_range_error(env, NULL, "recvPairManyInto count must be > 0");
-        return NULL;
-    }
+napi_value socket_stream_peer_routing_id(napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *sock = NULL;
+    napi_get_value_external(env, argv[0], &sock);
+    int32_t index = 0;
+    if (argc >= 2)
+        napi_get_value_int32(env, argv[1], &index);
 
-    int32_t flags = 0;
-    napi_get_value_int32(env, argv[4], &flags);
-
-    for (int32_t i = 0; i < count; ++i) {
-        int rc = zlink_recv(sock, first_data, first_len, flags);
-        if (rc < 0)
-            return throw_last_error(env, "recvPairManyInto first frame failed");
-        rc = zlink_recv(sock, second_data, second_len, flags);
-        if (rc < 0)
-            return throw_last_error(env, "recvPairManyInto second frame failed");
+    zlink_routing_id_t rid;
+    memset(&rid, 0, sizeof(rid));
+    const int rc = zlink_socket_peer_routing_id(sock, index, &rid);
+    if (rc != 0 || rid.size == 0) {
+        napi_value none;
+        napi_get_null(env, &none);
+        return none;
     }
 
     napi_value out;
-    napi_create_int32(env, count, &out);
+    napi_create_buffer_copy(env, rid.size, rid.data, NULL, &out);
     return out;
 }
 
-napi_value socket_recv_pair_drain_into(napi_env env, napi_callback_info info)
+napi_value socket_stream_send(napi_env env, napi_callback_info info)
 {
     napi_value argv[4];
     size_t argc = 4;
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 3) {
+        napi_throw_type_error(env, NULL,
+                              "streamSend requires (socket, routingId, payload[, flags])");
+        return NULL;
+    }
     void *sock = NULL;
     napi_get_value_external(env, argv[0], &sock);
 
-    void *first_data = NULL;
-    size_t first_len = 0;
-    if (napi_get_buffer_info(env, argv[1], &first_data, &first_len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvPairDrainInto first buffer invalid");
+    void *rid_data = NULL;
+    size_t rid_len = 0;
+    if (napi_get_buffer_info(env, argv[1], &rid_data, &rid_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "streamSend routingId must be Buffer");
         return NULL;
     }
-    if (first_len == 0) {
-        napi_throw_range_error(env, NULL, "recvPairDrainInto first buffer must not be empty");
-        return NULL;
-    }
-
-    void *second_data = NULL;
-    size_t second_len = 0;
-    if (napi_get_buffer_info(env, argv[2], &second_data, &second_len) != napi_ok) {
-        napi_throw_type_error(env, NULL, "recvPairDrainInto second buffer invalid");
-        return NULL;
-    }
-    if (second_len == 0) {
-        napi_throw_range_error(env, NULL, "recvPairDrainInto second buffer must not be empty");
+    if (rid_len == 0 || rid_len > 255) {
+        napi_throw_range_error(env, NULL,
+                               "streamSend routingId length must be 1..255 bytes");
         return NULL;
     }
 
-    int32_t max_count = 0;
-    napi_get_value_int32(env, argv[3], &max_count);
-    if (max_count <= 0) {
-        napi_throw_range_error(env, NULL, "recvPairDrainInto maxCount must be > 0");
+    void *payload_data = NULL;
+    size_t payload_len = 0;
+    if (napi_get_buffer_info(env, argv[2], &payload_data, &payload_len)
+        != napi_ok) {
+        napi_throw_type_error(env, NULL, "streamSend payload must be Buffer");
         return NULL;
     }
 
-    int drained = 0;
-    for (int32_t i = 0; i < max_count; ++i) {
-        int rc = zlink_recv(sock, first_data, first_len, ZLINK_DONTWAIT);
-        if (rc < 0) {
-            int err = zlink_errno();
-            if (err == EAGAIN
-#ifdef EWOULDBLOCK
-                || err == EWOULDBLOCK
-#endif
-            ) {
-                break;
-            }
-            return throw_last_error(env, "recvPairDrainInto first frame failed");
-        }
-        rc = zlink_recv(sock, second_data, second_len, ZLINK_DONTWAIT);
-        if (rc < 0) {
-            int err = zlink_errno();
-            if (err == EAGAIN
-#ifdef EWOULDBLOCK
-                || err == EWOULDBLOCK
-#endif
-            ) {
-                napi_throw_error(env, NULL, "recvPairDrainInto incomplete multipart frame");
-                return NULL;
-            }
-            return throw_last_error(env, "recvPairDrainInto second frame failed");
-        }
-        drained++;
-    }
+    int32_t flags = 0;
+    if (argc >= 4)
+        napi_get_value_int32(env, argv[3], &flags);
+
+    zlink_routing_id_t rid;
+    memset(&rid, 0, sizeof(rid));
+    rid.size = static_cast<uint8_t>(rid_len);
+    memcpy(rid.data, rid_data, rid_len);
+
+    const int rc = zlink_stream_send(sock, &rid, payload_data, payload_len, flags);
+    if (rc < 0)
+        return throw_last_error(env, "streamSend failed");
 
     napi_value out;
-    napi_create_int32(env, drained, &out);
+    napi_create_int32(env, rc, &out);
     return out;
 }
 

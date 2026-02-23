@@ -28,6 +28,7 @@
 try (var ctx = new Context();
      var server = new Socket(ctx, SocketType.PAIR);
      var client = new Socket(ctx, SocketType.PAIR)) {
+    ctx.setOption(ContextOption.IO_THREADS, 4);
     server.bind("tcp://*:5555");
     client.connect("tcp://127.0.0.1:5555");
 
@@ -52,6 +53,8 @@ try (var ctx = new Context();
 - Direct `ByteBuffer` path
   - `send(ByteBuffer buffer, SendFlag flags)`
   - `recv(ByteBuffer buffer, ReceiveFlag flags)`
+- Context tuning
+  - `ctx.setOption(ContextOption.IO_THREADS, n)`
 - Zero-copy message view
   - `Message.fromNativeData(MemorySegment data[, offset, length])`
   - `Message.fromDirectByteBuffer(ByteBuffer direct)`
@@ -82,7 +85,31 @@ try (var ctx = new Context();
   - `sendMove/publishMove` transfer message ownership (do not reuse moved `Message` instances)
   - `sendConst/publishConst` require native payload memory to stay valid until send is completed by native code
 
-## 5. Build
+## 5. STREAM Callback API
+
+`Socket` STREAM helpers:
+- `attachStream(StreamPacketHandler handler, StreamDispatchMode mode)`
+- `detachStream()`
+- `streamPeerRoutingId(int index)`
+- `streamSend(byte[]/ByteBuffer/ByteSpan/MemorySegment routingId, ... payload, SendFlag flags)`
+
+Mode rules:
+- While attached, receive STREAM payloads in the callback.
+- Do not mix `recv(...)` for STREAM payload consumption while attached.
+- After `detachStream()`, normal `recv(...)` use is available again.
+
+```java
+try (var stream = new Socket(ctx, SocketType.STREAM)) {
+    stream.attachStream((rid, payload) -> {
+        byte[] copy = new byte[payload.length()];
+        payload.asByteBuffer().duplicate().get(copy);
+        stream.streamSend(rid, ByteSpan.of(copy), SendFlag.NONE);
+        return 0;
+    }, StreamDispatchMode.LEN32BE);
+}
+```
+
+## 6. Build
 
 ```groovy
 // build.gradle
@@ -91,6 +118,6 @@ dependencies {
 }
 ```
 
-## 6. Native Library Loading
+## 7. Native Library Loading
 
 Platform-specific libraries are automatically loaded from the `src/main/resources/native/` directory.

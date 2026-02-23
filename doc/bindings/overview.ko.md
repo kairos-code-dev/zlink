@@ -58,3 +58,18 @@ zlink는 C API를 기반으로 5개 언어 바인딩을 제공한다. 모든 바
 - Socket 타입은 C API 상수와 동일 명칭 사용
 - 옵션은 `ZLINK_*` 상수 그대로 노출
 - 메서드명만 언어 관례(파스칼/카멜) 반영
+
+## 9. STREAM 콜백 API 매핑
+
+공통 STREAM 규칙:
+- 콜백 attach 상태: 콜백 dispatch 경로에서 수신한다.
+- 콜백 detach/미사용 상태: 기존 `recv` 경로로 수신한다.
+- 별도 `stream_recv` C API는 없다.
+
+| 바인딩 | Attach | Detach | Peer Routing ID | Send |
+|---|---|---|---|---|
+| C++ | `socket_t::stream_attach(...)` | `socket_t::stream_detach()` | `socket_t::peer_routing_id(...)` | `socket_t::stream_send(...)` |
+| .NET | `Socket.AttachStream(...)` | `Socket.DetachStream()` | `Socket.StreamPeerRoutingId(...)` | `Socket.StreamSend(...)` |
+| Java | `Socket.attachStream(...)` | `Socket.detachStream()` | `Socket.streamPeerRoutingId(...)` | `Socket.streamSend(...)` |
+| Node.js | `socket.streamAttach(...)` | `socket.streamDetach()` | `socket.streamPeerRoutingId(...)` | `socket.streamSend(...)` |
+| Python | `socket.stream_attach(...)` | `socket.stream_detach()` | `socket.stream_peer_routing_id(...)` | `socket.stream_send(...)` |

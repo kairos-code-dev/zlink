@@ -229,7 +229,7 @@ pubsub_measure_result_t run_pubsub_measure (void *pub,
     long measure_recv = 0;
     const auto measure_end =
       std::chrono::steady_clock::now ()
-      + std::chrono::seconds (std::max (1, settings.measure_seconds));
+      + std::chrono::seconds (std::max (1, settings.duration_seconds));
 
     while (std::chrono::steady_clock::now () < measure_end) {
         const multi_send_result_t rc = send_pub_blocking (pub, buffer);
@@ -500,7 +500,7 @@ void run_multi_pubsub (const std::string &transport,
         const double throughput =
           !bench.failed && bench.measure_recv > 0
             ? static_cast<double> (bench.measure_recv)
-                / static_cast<double> (std::max (1, settings.measure_seconds))
+                / static_cast<double> (std::max (1, settings.duration_seconds))
             : 0.0;
 
         const double prep_connect_ms = s == 0 ? connect_prep_ms : 0.0;
@@ -509,6 +509,8 @@ void run_multi_pubsub (const std::string &transport,
                            prep_connect_ms, prep_ready_ms);
         print_result (lib_name, "MULTI_PUBSUB", transport, current_size,
                       throughput, latency);
+        run_size_transition_drain_stage (
+          settings, (s + 1) < msg_sizes.size ());
     }
     cleanup ();
 }

@@ -254,6 +254,7 @@ public sealed class Message : IDisposable
             return Array.Empty<Message>();
         int length = checked((int)count);
         Message[] result = new Message[length];
+        int built = 0;
         try
         {
             unsafe
@@ -263,13 +264,23 @@ public sealed class Message : IDisposable
                 {
                     var msg = new Message(false);
                     msg.Init();
-                    int rc = NativeMethods.zlink_msg_copy(ref msg._msg,
+                    int rc = NativeMethods.zlink_msg_move(ref msg._msg,
                         ref src[i]);
                     if (rc != 0)
+                    {
+                        msg.Dispose();
                         throw ZlinkException.FromLastError();
+                    }
                     result[i] = msg;
+                    built++;
                 }
             }
+        }
+        catch
+        {
+            for (int i = 0; i < built; i++)
+                result[i]?.Dispose();
+            throw;
         }
         finally
         {

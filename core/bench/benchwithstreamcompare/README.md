@@ -10,7 +10,7 @@ Primary goals:
 - Compare library behavior with one common client implementation.
 - Keep the benchmark close to pure stream socket echo.
 - Avoid cross-run interference by running one benchmark process at a time.
-- Keep load model simple and stable: configurable `inflight` (default `1`).
+- Keep load model simple and stable: configurable `inflight` (default `10`).
 
 ## What Is Included
 
@@ -24,7 +24,12 @@ Supported stacks:
 - `asio`
 - `cppserver`
 - `dotnet`
+- `netzlink`
+- `netzlink-len32be`
+- `jvmzlink`
+- `jvmzlink-len32be`
 - `zlink`
+- `zlink-len32be`
 - `zmq`
 - `netty`
 
@@ -52,8 +57,8 @@ Supported payload sizes:
 - Linux environment
 - CMake + C++ toolchain
 - Python 3
-- .NET SDK (for `dotnet` stack)
-- JDK 22 + Gradle 8.8+ (for `netty` stack)
+- .NET SDK (for `dotnet`, `netzlink`, `netzlink-len32be` stacks)
+- JDK 22 + Gradle 8.8+ (for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks)
 - Optional external libs/tools depending on selected stacks
 
 For high CCU (for example `--ccu 10000`), host tuning is important:
@@ -84,9 +89,9 @@ Run selected stacks and size:
   --stack zlink,zmq,dotnet \
   --size 65536 \
   --ccu 10000 \
-  --runs 1 \
-  --warmup 2 \
-  --duration 10
+  --runs 3 \
+  --warmup 3 \
+  --duration 5
 ```
 
 Run one stack with multi-size sequence on the same connected clients:
@@ -100,13 +105,13 @@ Run one stack with multi-size sequence on the same connected clients:
 ## Runner Options
 
 ```text
---stack <asio|cppserver|dotnet|zlink|zmq|netty|all|csv>
+--stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
 --ccu <N>                    default: 10000
---inflight <N>               default: 1
+--inflight <N>               default: 10
 --runs <N>                   default: 1
---warmup <sec>               default: 2
---duration <sec>             default: 10
+--warmup <sec>               default: 3
+--duration <sec>             default: 5
 --client-io-threads <N>      default: 4
 --server-io-threads <N>      default: 4
 --resource-sample-ms <N>     default: 500
@@ -119,8 +124,8 @@ Supported environment variables:
 - `RESULT_DIR`: override output directory
 - `HOST`: benchmark target host (default `127.0.0.1`)
 - `BASE_PORT`: start port for stack runs (default `22000`)
-- `NETTY_JAVA_HOME`: JDK home for `netty` stack (must be Java 22+)
-- `NETTY_GRADLE_BIN`: override Gradle binary for `netty` stack
+- `NETTY_JAVA_HOME`: JDK home for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks (must be Java 22+)
+- `NETTY_GRADLE_BIN`: override Gradle binary for `netty`, `jvmzlink`, `jvmzlink-len32be` stacks
 
 Notes:
 
@@ -132,6 +137,8 @@ Notes:
 - `netty` requires Gradle 8.8+. If system `gradle` is older, the runner
   auto-downloads Gradle `8.10.2` under
   `core/bench/benchwithstreamcompare/stacks/netty/.gradle-tools/`.
+- `jvmzlink` and `jvmzlink-len32be` use the same Java/Gradle resolution path as
+  `netty`, then build `bindings/java` jar before packaging the stack server app.
 - `zlink` stack is run directly as the native STREAM server binary.
 
 ## Output Files

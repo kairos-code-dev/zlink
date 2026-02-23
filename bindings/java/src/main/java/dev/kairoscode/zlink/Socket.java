@@ -3,15 +3,29 @@
 package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
+import dev.kairoscode.zlink.internal.NativeLayouts;
+import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
     private static final int DEFAULT_IO_BUFFER_SIZE = 8192;
+    private static final int STREAM_ROUTING_ID_MAX = 255;
+    private static final int STREAM_ROUTING_ID_LAYOUT_SIZE = 256;
+    private static final Linker LINKER = Linker.nativeLinker();
+    private static final FunctionDescriptor FD_STREAM_CALLBACK =
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+    private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private MemorySegment handle;
     private final boolean own;
@@ -21,6 +35,15 @@ public final class Socket implements AutoCloseable {
     private int sendScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
     private MemorySegment recvScratch = MemorySegment.NULL;
     private int recvScratchCapacity = DEFAULT_IO_BUFFER_SIZE;
+    private StreamPacketHandler streamHandler;
+    private Arena streamCallbackArena;
+    private MemorySegment streamCallbackStub = MemorySegment.NULL;
+    private boolean streamAttached;
+    private final ThreadLocal<StreamSpanScratch> streamSpanScratch =
+      ThreadLocal.withInitial(StreamSpanScratch::new);
+    private final ThreadLocal<MemorySegment> streamRoutingIdScratch =
+      ThreadLocal.withInitial(
+        () -> Arena.ofAuto().allocate(STREAM_ROUTING_ID_LAYOUT_SIZE));
 
     public Socket(Context ctx, SocketType type) {
         this.handle = Native.socket(ctx.handle(), type.getValue());
@@ -83,13 +106,13 @@ public final class Socket implements AutoCloseable {
                 throw new RuntimeException("zlink_setsockopt failed");
             return;
         }
-        ByteBuffer src = value.slice();
+        MemorySegment srcSeg = MemorySegment.ofBuffer(value);
         MemorySegment seg;
-        if (src.isDirect()) {
-            seg = MemorySegment.ofBuffer(src);
+        if (value.isDirect()) {
+            seg = srcSeg;
         } else {
             seg = ensureSendScratch(length);
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, seg, 0, length);
+            MemorySegment.copy(srcSeg, 0, seg, 0, length);
         }
         int rc = Native.setSockOpt(handle, option.getValue(), seg, length);
         if (rc != 0)
@@ -163,13 +186,13 @@ public final class Socket implements AutoCloseable {
         int length = buffer.remaining();
         if (length == 0)
             return 0;
-        ByteBuffer src = buffer.slice();
+        MemorySegment srcSeg = MemorySegment.ofBuffer(buffer);
         MemorySegment seg;
-        if (src.isDirect()) {
-            seg = MemorySegment.ofBuffer(src);
+        if (buffer.isDirect()) {
+            seg = srcSeg;
         } else {
             seg = ensureSendScratch(length);
-            MemorySegment.copy(MemorySegment.ofBuffer(src), 0, seg, 0, length);
+            MemorySegment.copy(srcSeg, 0, seg, 0, length);
         }
         int rc = Native.send(handle, seg, length, flags.getValue());
         if (rc < 0)
@@ -195,8 +218,8 @@ public final class Socket implements AutoCloseable {
         int length = buffer.remaining();
         if (length == 0)
             return 0;
-        ByteBuffer src = buffer.slice();
-        int rc = Native.sendConst(handle, MemorySegment.ofBuffer(src), length, flags.getValue());
+        int rc = Native.sendConst(handle, MemorySegment.ofBuffer(buffer), length,
+          flags.getValue());
         if (rc < 0)
             throw new RuntimeException("zlink_send_const failed");
         buffer.position(buffer.position() + rc);
@@ -261,6 +284,130 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
+    public void attachStream(StreamPacketHandler handler,
+                             StreamDispatchMode mode) {
+        Objects.requireNonNull(handler, "handler");
+        Objects.requireNonNull(mode, "mode");
+        if (streamAttached)
+            throw new IllegalStateException("STREAM callback already attached");
+
+        try {
+            MethodHandle cb = MethodHandles.lookup().findVirtual(
+              Socket.class,
+              "onStreamPackets",
+              MethodType.methodType(int.class, MemorySegment.class,
+                MemorySegment.class, long.class)).bindTo(this);
+            streamCallbackArena = Arena.ofShared();
+            streamCallbackStub =
+              LINKER.upcallStub(cb, FD_STREAM_CALLBACK, streamCallbackArena);
+        } catch (NoSuchMethodException | IllegalAccessException ex) {
+            throw new RuntimeException("stream callback binding failed", ex);
+        }
+
+        int rc = Native.streamAttach(handle, streamCallbackStub, mode.getValue());
+        if (rc != 0) {
+            closeArena(streamCallbackArena);
+            streamCallbackArena = null;
+            streamCallbackStub = MemorySegment.NULL;
+            throw new RuntimeException("zlink_stream_attach failed");
+        }
+        streamHandler = handler;
+        streamAttached = true;
+    }
+
+    public void attachStream(StreamPacketHandler handler) {
+        attachStream(handler, StreamDispatchMode.NONE);
+    }
+
+    public void detachStream() {
+        if (!streamAttached)
+            return;
+        int rc = Native.streamDetach(handle);
+        streamAttached = false;
+        streamHandler = null;
+        closeArena(streamCallbackArena);
+        streamCallbackArena = null;
+        streamCallbackStub = MemorySegment.NULL;
+        if (rc != 0)
+            throw new RuntimeException("zlink_stream_detach failed");
+    }
+
+    public byte[] streamPeerRoutingId(int index) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rid = arena.allocate(STREAM_ROUTING_ID_LAYOUT_SIZE);
+            rid.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);
+            int rc = Native.socketPeerRoutingId(handle, index, rid);
+            if (rc != 0)
+                return null;
+            int ridLen = rid.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
+            if (ridLen <= 0)
+                return null;
+            byte[] out = new byte[ridLen];
+            MemorySegment.copy(rid.asSlice(1, ridLen), 0,
+              MemorySegment.ofArray(out), 0, ridLen);
+            return out;
+        }
+    }
+
+    public byte[] streamPeerRoutingId() {
+        return streamPeerRoutingId(0);
+    }
+
+    public int streamSend(byte[] routingId, byte[] payload, SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        return streamSend(routingId, 0, routingId.length,
+          payload, 0, payload.length, flags);
+    }
+
+    public int streamSend(byte[] routingId, byte[] payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
+    public int streamSend(ByteBuffer routingId, ByteBuffer payload,
+                          SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        int ridLength = routingId.remaining();
+        int payloadLength = payload.remaining();
+        MemorySegment ridSeg = ridLength == 0
+          ? MemorySegment.NULL
+          : MemorySegment.ofBuffer(routingId);
+        MemorySegment bodySeg = payloadLength == 0
+          ? MemorySegment.NULL
+          : MemorySegment.ofBuffer(payload);
+        return streamSend(ridSeg, 0, ridLength, bodySeg, 0, payloadLength,
+          flags);
+    }
+
+    public int streamSend(ByteBuffer routingId, ByteBuffer payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
+    public int streamSend(ByteSpan routingId, ByteSpan payload,
+                          SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        return streamSend(routingId.segment(), 0, routingId.length(),
+          payload.segment(), 0, payload.length(), flags);
+    }
+
+    public int streamSend(ByteSpan routingId, ByteSpan payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
+    public int streamSend(MemorySegment routingId, MemorySegment payload,
+                          SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        return streamSend(routingId, 0, routingId.byteSize(),
+          payload, 0, payload.byteSize(), flags);
+    }
+
+    public int streamSend(MemorySegment routingId, MemorySegment payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
     public byte[] recv(int size, ReceiveFlag flags) {
         if (size < 0)
             throw new IllegalArgumentException("size must be >= 0");
@@ -301,17 +448,15 @@ public final class Socket implements AutoCloseable {
         int writable = buffer.remaining();
         if (writable <= 0)
             return 0;
-        ByteBuffer dst = buffer.slice();
+        MemorySegment dstSeg = MemorySegment.ofBuffer(buffer);
         int rc;
-        if (dst.isDirect()) {
-            rc = Native.recv(handle, MemorySegment.ofBuffer(dst), writable, flags.getValue());
+        if (buffer.isDirect()) {
+            rc = Native.recv(handle, dstSeg, writable, flags.getValue());
         } else {
             MemorySegment seg = ensureRecvScratch(writable);
             rc = Native.recv(handle, seg, writable, flags.getValue());
             if (rc > 0) {
-                ByteBuffer copyDst = buffer.duplicate();
-                copyDst.limit(copyDst.position() + rc);
-                MemorySegment.copy(seg, 0, MemorySegment.ofBuffer(copyDst), 0, rc);
+                MemorySegment.copy(seg, 0, dstSeg, 0, rc);
             }
         }
         if (rc < 0)
@@ -367,11 +512,129 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
+    private int onStreamPackets(MemorySegment rid, MemorySegment msgs,
+                                long msgCount) {
+        StreamPacketHandler handler = streamHandler;
+        if (handler == null || rid == null || msgs == null || msgCount <= 0)
+            return 0;
+
+        StreamSpanScratch scratch = streamSpanScratch.get();
+        MemorySegment ridSeg = rid.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
+        int ridLen = ridSeg.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
+        if (ridLen > STREAM_ROUTING_ID_MAX)
+            ridLen = STREAM_ROUTING_ID_MAX;
+        MemorySegment ridData = ridLen == 0
+          ? MemorySegment.NULL
+          : ridSeg.asSlice(1, ridLen);
+        scratch.routingId.set(ridData, ridLen);
+
+        MemorySegment msgArray = msgs.reinterpret(MSG_SIZE * msgCount);
+        for (int i = 0; i < msgCount; i++) {
+            MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+            long payloadSize = NativeMsg.msgSize(msg);
+            if (payloadSize < 0)
+                payloadSize = 0;
+            if (payloadSize > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException(
+                  "stream payload too large: " + payloadSize);
+            }
+            int payloadLen = (int) payloadSize;
+            MemorySegment payloadData = payloadLen == 0
+              ? MemorySegment.NULL
+              : NativeMsg.msgData(msg).reinterpret(payloadLen);
+            scratch.payload.set(payloadData, payloadLen);
+            int rc = handler.onPacket(scratch.routingId, scratch.payload);
+            if (rc != 0)
+                return rc;
+        }
+
+        return 0;
+    }
+
+    private int streamSend(MemorySegment routingId, long ridOffset, long ridLength,
+                           MemorySegment payload, long payloadOffset,
+                           long payloadLength, SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        validateRange(routingId.byteSize(), ridOffset, ridLength, "routingId");
+        validateRange(payload.byteSize(), payloadOffset, payloadLength, "payload");
+        if (ridLength <= 0 || ridLength > STREAM_ROUTING_ID_MAX) {
+            throw new IllegalArgumentException(
+              "routingId length must be between 1 and 255");
+        }
+
+        MemorySegment payloadSlice;
+        if (payloadLength == 0) {
+            payloadSlice = MemorySegment.NULL;
+        } else if (payload.isNative()) {
+            payloadSlice = payload.asSlice(payloadOffset, payloadLength);
+        } else {
+            payloadSlice = ensureSendScratch(toIntLength(payloadLength));
+            MemorySegment.copy(payload, payloadOffset, payloadSlice, 0,
+              payloadLength);
+        }
+
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) ridLength);
+        MemorySegment.copy(routingId, ridOffset,
+          ridLayout.asSlice(1, ridLength), 0, ridLength);
+        int rc = Native.streamSend(handle, ridLayout, payloadSlice,
+          payloadLength, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_stream_send failed");
+        return rc;
+    }
+
+    private int streamSend(byte[] routingId, int ridOffset, int ridLength,
+                           byte[] payload, int payloadOffset,
+                           int payloadLength, SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        validateRange(routingId.length, ridOffset, ridLength, "routingId");
+        validateRange(payload.length, payloadOffset, payloadLength, "payload");
+        if (ridLength <= 0 || ridLength > STREAM_ROUTING_ID_MAX) {
+            throw new IllegalArgumentException(
+              "routingId length must be between 1 and 255");
+        }
+
+        MemorySegment payloadSlice;
+        if (payloadLength == 0) {
+            payloadSlice = MemorySegment.NULL;
+        } else {
+            payloadSlice = ensureSendScratch(payloadLength);
+            MemorySegment.copy(MemorySegment.ofArray(payload), payloadOffset,
+              payloadSlice, 0, payloadLength);
+        }
+
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) ridLength);
+        MemorySegment.copy(MemorySegment.ofArray(routingId), ridOffset,
+          ridLayout.asSlice(1, ridLength), 0, ridLength);
+        int rc = Native.streamSend(handle, ridLayout, payloadSlice,
+          payloadLength, flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_stream_send failed");
+        return rc;
+    }
+
     public MemorySegment handle() {
         return handle;
     }
 
     public void close() {
+        if (streamAttached) {
+            try {
+                Native.streamDetach(handle);
+            } catch (RuntimeException ignored) {
+            }
+            streamAttached = false;
+            streamHandler = null;
+            closeArena(streamCallbackArena);
+            streamCallbackArena = null;
+            streamCallbackStub = MemorySegment.NULL;
+        }
         if (handle != null && handle.address() != 0) {
             if (own)
                 Native.close(handle);
@@ -429,5 +692,30 @@ public final class Socket implements AutoCloseable {
             throw new IllegalArgumentException("length too large: " + length);
         }
         return (int) length;
+    }
+
+    private static final class MutableByteSpan implements ByteSpan {
+        private MemorySegment segment = MemorySegment.NULL;
+        private int length;
+
+        @Override
+        public MemorySegment segment() {
+            return segment;
+        }
+
+        @Override
+        public int length() {
+            return length;
+        }
+
+        void set(MemorySegment segment, int length) {
+            this.segment = segment == null ? MemorySegment.NULL : segment;
+            this.length = Math.max(length, 0);
+        }
+    }
+
+    private static final class StreamSpanScratch {
+        final MutableByteSpan routingId = new MutableByteSpan();
+        final MutableByteSpan payload = new MutableByteSpan();
     }
 }

@@ -21,9 +21,12 @@ struct multi_bench_settings_t
     size_t clients;
     int inflight;
     int hwm;
+    int warmup_seconds;
+    int active_warmup;
     int duration_seconds;
     int settle_ms;
     int drain_ms;
+    int size_transition_drain_ms;
     int recv_batch;
     int send_workers;
     int send_backoff_us;
@@ -170,6 +173,14 @@ inline int resolve_multi_drain_ms ()
     return 0;
 }
 
+inline int resolve_multi_size_transition_drain_ms (int fallback_drain_ms)
+{
+    return resolve_multi_int_env (
+      "BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS",
+      std::max (0, fallback_drain_ms),
+      0);
+}
+
 inline int resolve_multi_connect_concurrency (size_t clients)
 {
     const int default_concurrency =
@@ -178,17 +189,102 @@ inline int resolve_multi_connect_concurrency (size_t clients)
       "BENCH_MULTI_CONNECT_CONCURRENCY", default_concurrency, 1);
 }
 
+inline int resolve_multi_default_inflight (size_t clients)
+{
+    const char *pattern = std::getenv ("BENCH_MULTI_PATTERN");
+    if (pattern && std::strcmp (pattern, "MULTI_STREAM") == 0) {
+        return 10;
+    }
+    return 30;
+}
+
+inline int resolve_multi_stream_max_inflight_bytes ()
+{
+    return resolve_multi_int_env (
+      "BENCH_MULTI_STREAM_MAX_INFLIGHT_BYTES",
+      32 * 1024 * 1024,
+      1);
+}
+
+inline int resolve_multi_max_inflight_bytes ()
+{
+    return resolve_multi_int_env (
+      "BENCH_MULTI_MAX_INFLIGHT_BYTES",
+      16 * 1024 * 1024,
+      1);
+}
+
+inline int resolve_multi_inflight_by_bytes (
+  const multi_bench_settings_t &settings,
+  size_t msg_size,
+  int max_window_bytes)
+{
+    const int configured_inflight = std::max (1, settings.inflight);
+    const size_t safe_msg_size = std::max<size_t> (1, msg_size);
+    const size_t safe_clients = std::max<size_t> (1, settings.clients);
+    const unsigned long long denom =
+      static_cast<unsigned long long> (safe_msg_size)
+      * static_cast<unsigned long long> (safe_clients);
+    if (denom == 0)
+        return configured_inflight;
+
+    const unsigned long long max_window =
+      static_cast<unsigned long long> (std::max (1, max_window_bytes));
+    unsigned long long inflight_by_bytes = max_window / denom;
+    if (inflight_by_bytes == 0)
+        inflight_by_bytes = 1;
+    if (inflight_by_bytes > static_cast<unsigned long long> (INT_MAX))
+        inflight_by_bytes = static_cast<unsigned long long> (INT_MAX);
+
+    return std::max (
+      1,
+      std::min (
+        configured_inflight, static_cast<int> (inflight_by_bytes)));
+}
+
+inline int resolve_multi_stream_inflight_for_size (
+  const multi_bench_settings_t &settings,
+  size_t msg_size)
+{
+    const int configured_inflight = std::max (1, settings.inflight);
+    if (settings.clients >= static_cast<size_t> (10000))
+        return configured_inflight;
+
+    return resolve_multi_inflight_by_bytes (
+      settings, msg_size, resolve_multi_stream_max_inflight_bytes ());
+}
+
+inline int resolve_multi_inflight_for_size (
+  const multi_bench_settings_t &settings,
+  size_t msg_size)
+{
+    const char *pattern = std::getenv ("BENCH_MULTI_PATTERN");
+    if (pattern && std::strcmp (pattern, "MULTI_STREAM") == 0)
+        return resolve_multi_stream_inflight_for_size (settings, msg_size);
+    return resolve_multi_inflight_by_bytes (
+      settings, msg_size, resolve_multi_max_inflight_bytes ());
+}
+
 inline multi_bench_settings_t resolve_multi_bench_settings ()
 {
     multi_bench_settings_t settings;
     settings.clients = static_cast<size_t> (
       resolve_multi_int_env ("BENCH_MULTI_CLIENTS", 100, 1));
-    settings.inflight = resolve_multi_int_env ("BENCH_MULTI_INFLIGHT", 30, 1);
+    settings.inflight = resolve_multi_int_env (
+      "BENCH_MULTI_INFLIGHT",
+      resolve_multi_default_inflight (settings.clients),
+      1);
     settings.hwm = resolve_multi_int_env ("BENCH_MULTI_HWM", 100000, 1);
+    settings.warmup_seconds =
+      resolve_multi_int_env ("BENCH_MULTI_WARMUP_SECONDS", 3, 0);
+    settings.active_warmup =
+      resolve_multi_int_env ("BENCH_MULTI_ACTIVE_WARMUP", 0, 0);
     settings.duration_seconds =
       resolve_multi_int_env ("BENCH_MULTI_DURATION_SECONDS", 5, 1);
     settings.settle_ms = resolve_multi_int_env ("BENCH_MULTI_SETTLE_MS", 500, 0);
     settings.drain_ms = resolve_multi_drain_ms ();
+    settings.size_transition_drain_ms =
+      resolve_multi_size_transition_drain_ms (settings.drain_ms);
     settings.recv_batch = resolve_multi_int_env ("BENCH_MULTI_RECV_BATCH", 64, 1);
     const int default_workers =
       settings.clients >= static_cast<size_t> (10000) ? 4 : 1;
@@ -207,6 +303,73 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.server_recv_threads =
       resolve_multi_int_env ("BENCH_SERVER_RECV_THREADS", 1, 1);
     return settings;
+}
+
+inline void run_size_transition_drain_stage (
+  const multi_bench_settings_t &settings,
+  bool has_next_size)
+{
+    (void) has_next_size;
+
+    const int drain_ms = std::max (0, settings.size_transition_drain_ms);
+    if (drain_ms <= 0)
+        return;
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (drain_ms));
+}
+
+inline long run_multi_warmup_stage (
+  const multi_bench_settings_t &settings,
+  std::atomic<int> &phase,
+  std::atomic<bool> &fatal_error,
+  std::atomic<long> &send_total,
+  std::atomic<long> &recv_total)
+{
+    const int warmup_seconds = std::max (0, settings.warmup_seconds);
+    if (warmup_seconds <= 0
+        || fatal_error.load (std::memory_order_acquire)) {
+        return 0;
+    }
+
+    if (settings.active_warmup <= 0) {
+        const auto warmup_end = std::chrono::steady_clock::now ()
+                                + std::chrono::seconds (warmup_seconds);
+        while (std::chrono::steady_clock::now () < warmup_end
+               && !fatal_error.load (std::memory_order_acquire)) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        return 0;
+    }
+
+    phase.store (multi_phase_measure, std::memory_order_release);
+    const long warmup_recv_start = recv_total.load (std::memory_order_acquire);
+    const auto warmup_end = std::chrono::steady_clock::now ()
+                            + std::chrono::seconds (warmup_seconds);
+    while (std::chrono::steady_clock::now () < warmup_end
+           && !fatal_error.load (std::memory_order_acquire)) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    const long warmup_recv_end = recv_total.load (std::memory_order_acquire);
+    phase.store (multi_phase_drain, std::memory_order_release);
+
+    const int warmup_drain_ms = resolve_multi_int_env (
+      "BENCH_MULTI_WARMUP_DRAIN_MS",
+      std::max (settings.drain_ms, 1000),
+      0);
+    const auto drain_deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (warmup_drain_ms);
+    while (std::chrono::steady_clock::now () < drain_deadline
+           && !fatal_error.load (std::memory_order_acquire)) {
+        const long inflight =
+          send_total.load (std::memory_order_relaxed)
+          - recv_total.load (std::memory_order_relaxed);
+        if (inflight <= 0)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    return std::max<long> (0, warmup_recv_end - warmup_recv_start);
 }
 
 template <typename ConnectFn>
@@ -270,7 +433,7 @@ inline multi_bench_result_t run_multi_phase_benchmark (
         return result;
     }
 
-    std::atomic<int> phase (multi_phase_measure);
+    std::atomic<int> phase (multi_phase_drain);
     std::atomic<bool> fatal_error (false);
 
     std::atomic<long> warmup_recv (0);
@@ -425,6 +588,14 @@ inline multi_bench_result_t run_multi_phase_benchmark (
         }
     }
 
+    if (!fatal_error.load (std::memory_order_acquire)) {
+        const long warmup_delta = run_multi_warmup_stage (
+          settings, phase, fatal_error, send_total, recv_total);
+        warmup_recv.store (warmup_delta, std::memory_order_relaxed);
+        if (!fatal_error.load (std::memory_order_acquire))
+            phase.store (multi_phase_measure, std::memory_order_release);
+    }
+
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_end =
       std::chrono::steady_clock::now ()
@@ -489,7 +660,7 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
         return result;
     }
 
-    std::atomic<int> phase (multi_phase_measure);
+    std::atomic<int> phase (multi_phase_drain);
     std::atomic<bool> fatal_error (false);
 
     std::atomic<long> warmup_recv (0);
@@ -653,6 +824,7 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     send_start.store (true, std::memory_order_release);
 
     if (!fatal_error.load (std::memory_order_acquire) && require_ready_barrier) {
+        phase.store (multi_phase_measure, std::memory_order_release);
         const auto ready_deadline =
           std::chrono::steady_clock::now ()
           + std::chrono::milliseconds (
@@ -667,6 +839,9 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
             < static_cast<long> (sender_count)) {
             fatal_error.store (true, std::memory_order_release);
         }
+        if (settings.settle_ms > 0) {
+            phase.store (multi_phase_drain, std::memory_order_release);
+        }
     }
 
     if (!fatal_error.load (std::memory_order_acquire)
@@ -678,6 +853,14 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
                && !fatal_error.load (std::memory_order_acquire)) {
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
+    }
+
+    if (!fatal_error.load (std::memory_order_acquire)) {
+        const long warmup_delta = run_multi_warmup_stage (
+          settings, phase, fatal_error, send_total, recv_total);
+        warmup_recv.store (warmup_delta, std::memory_order_relaxed);
+        if (!fatal_error.load (std::memory_order_acquire))
+            phase.store (multi_phase_measure, std::memory_order_release);
     }
 
     const int duration_seconds = std::max (1, settings.duration_seconds);
@@ -749,7 +932,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
         return result;
     }
 
-    std::atomic<int> phase (multi_phase_measure);
+    std::atomic<int> phase (multi_phase_drain);
     std::atomic<bool> fatal_error (false);
 
     std::atomic<long> warmup_recv (0);
@@ -925,6 +1108,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     send_start.store (true, std::memory_order_release);
 
     if (!fatal_error.load (std::memory_order_acquire) && require_ready_barrier) {
+        phase.store (multi_phase_measure, std::memory_order_release);
         const auto ready_deadline =
           std::chrono::steady_clock::now ()
           + std::chrono::milliseconds (
@@ -939,6 +1123,7 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
             < static_cast<long> (sender_count)) {
             fatal_error.store (true, std::memory_order_release);
         }
+        phase.store (multi_phase_drain, std::memory_order_release);
     }
 
     if (!fatal_error.load (std::memory_order_acquire)
@@ -950,6 +1135,14 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
                && !fatal_error.load (std::memory_order_acquire)) {
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
+    }
+
+    if (!fatal_error.load (std::memory_order_acquire)) {
+        const long warmup_delta = run_multi_warmup_stage (
+          settings, phase, fatal_error, send_total, recv_total);
+        warmup_recv.store (warmup_delta, std::memory_order_relaxed);
+        if (!fatal_error.load (std::memory_order_acquire))
+            phase.store (multi_phase_measure, std::memory_order_release);
     }
 
     const int duration_seconds = std::max (1, settings.duration_seconds);
@@ -1073,7 +1266,7 @@ inline multi_bench_result_t run_multi_phase_socket_owned_rtt_benchmark (
         return result;
     }
 
-    std::atomic<int> phase (multi_phase_measure);
+    std::atomic<int> phase (multi_phase_drain);
     std::atomic<bool> fatal_error (false);
     std::atomic<bool> send_start (false);
     std::atomic<bool> send_running (true);
@@ -1263,6 +1456,13 @@ inline multi_bench_result_t run_multi_phase_socket_owned_rtt_benchmark (
 
     phase.store (multi_phase_measure, std::memory_order_release);
     send_start.store (true, std::memory_order_release);
+    if (!fatal_error.load (std::memory_order_acquire)) {
+        const long warmup_delta = run_multi_warmup_stage (
+          settings, phase, fatal_error, send_total, recv_total);
+        warmup_recv.store (warmup_delta, std::memory_order_relaxed);
+        if (!fatal_error.load (std::memory_order_acquire))
+            phase.store (multi_phase_measure, std::memory_order_release);
+    }
 
     const long measure_recv_start = recv_total.load (std::memory_order_acquire);
     const auto measure_deadline =

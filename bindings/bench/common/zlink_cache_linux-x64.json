@@ -304,5 +304,27 @@
     "ws|131072|latency": 1083.91,
     "ws|262144|throughput": 18565.9,
     "ws|262144|latency": 1081.6
+  },
+  "STREAM_LEN32BE": {
+    "tcp|64|throughput": 1776631.46,
+    "tcp|64|latency": 22108.75,
+    "tcp|256|throughput": 1750394.99,
+    "tcp|256|latency": 22047.96,
+    "tcp|1024|throughput": 1475488.07,
+    "tcp|1024|latency": 22114.09,
+    "tcp|65536|throughput": 116745.56,
+    "tcp|65536|latency": 46.77,
+    "tcp|131072|throughput": 28048.04,
+    "tcp|131072|latency": 53.68,
+    "tcp|262144|throughput": 18651.62,
+    "tcp|262144|latency": 70.77,
+    "ws|1024|throughput": 803975.79,
+    "ws|1024|latency": 69.04,
+    "ws|65536|throughput": 52987.59,
+    "ws|65536|latency": 92.15,
+    "ws|131072|throughput": 31653.51,
+    "ws|131072|latency": 119.36,
+    "ws|262144|throughput": 18934.13,
+    "ws|262144|latency": 136.77
   }
 }

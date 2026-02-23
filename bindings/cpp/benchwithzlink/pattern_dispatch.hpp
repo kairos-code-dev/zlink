@@ -13,6 +13,7 @@ int run_pattern_dealer_router(const std::string &transport, size_t size);
 int run_pattern_router_router(const std::string &transport, size_t size);
 int run_pattern_router_router_poll(const std::string &transport, size_t size);
 int run_pattern_stream(const std::string &transport, size_t size);
+int run_pattern_stream_len32be(const std::string &transport, size_t size);
 int run_pattern_gateway(const std::string &transport, size_t size);
 int run_pattern_spot(const std::string &transport, size_t size);
 
@@ -44,6 +45,6 @@ int run_pair_like(const char *pattern,
 int run_pubsub(const std::string &transport, size_t size);
 int run_dealer_router(const std::string &transport, size_t size);
 int run_router_router(const std::string &transport, size_t size, bool use_poll);
-int run_stream(const std::string &transport, size_t size);
+int run_stream(const std::string &transport, size_t size, bool len32be_dispatch);
 int run_gateway(const std::string &transport, size_t size);
 int run_spot(const std::string &transport, size_t size);

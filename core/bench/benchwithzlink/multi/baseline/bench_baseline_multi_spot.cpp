@@ -440,7 +440,7 @@ void run_multi_spot(const std::string &transport,
 
         const auto measure_end =
           std::chrono::steady_clock::now()
-          + std::chrono::seconds(std::max(1, settings.measure_seconds));
+          + std::chrono::seconds(std::max(1, settings.duration_seconds));
         const int measure_recv_timeout_ms =
           resolve_bench_count("BENCH_MULTI_SPOT_RECV_TIMEOUT_MS", 1);
         std::atomic<long> measure_received(0);
@@ -502,7 +502,7 @@ void run_multi_spot(const std::string &transport,
 
         const double throughput =
           static_cast<double>(recv_measure)
-          / static_cast<double>(std::max(1, settings.measure_seconds));
+          / static_cast<double>(std::max(1, settings.duration_seconds));
         (void)total_received;
         print_result(lib_name,
                      "MULTI_SPOT",
@@ -510,6 +510,8 @@ void run_multi_spot(const std::string &transport,
                      current_size,
                      throughput,
                      latency);
+        run_size_transition_drain_stage(
+          settings, (s + 1) < msg_sizes.size());
         settle();
     }
 

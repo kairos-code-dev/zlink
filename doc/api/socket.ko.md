@@ -431,6 +431,12 @@ Context가 종료된 경우 `ETERM`.
 `zlink_recv()`로 폴링하는 대신, I/O 스레드에서 데이터 도착 시 직접 호출되는
 콜백을 등록합니다.
 
+모드 규칙:
+- `zlink_stream_attach()` ON: STREAM 데이터는 콜백 dispatch에서 소비합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `zlink_recv()`를 혼용하지 않습니다.
+- `zlink_stream_detach()` 이후에는 `zlink_recv()` 패턴을 다시 사용할 수 있습니다.
+- `zlink_stream_recv()` API는 제공되지 않습니다.
+
 #### 상수
 
 | 상수 | 값 | 설명 |

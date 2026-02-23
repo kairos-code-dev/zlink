@@ -182,6 +182,8 @@ zlink_msg_close(&data);
 ## 7. Using routing_id with STREAM Sockets
 
 STREAM sockets identify external clients using a 4B uint32 peer routing_id.
+In this section, "Basic Usage" is the callback-dispatch OFF pattern
+(`zlink_stream_attach()` not used).
 
 ### Basic Usage
 
@@ -217,6 +219,28 @@ if (code == 0x01) {
 ```
 
 > Reference: `core/tests/test_stream_socket.cpp` — `recv_stream_event()`, `send_stream_msg()`
+
+### Callback Dispatch Usage (`zlink_stream_attach` ON)
+
+When callback dispatch is attached, consume STREAM payloads in the callback
+instead of `zlink_recv()`.
+
+```c
+int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        const void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
+
+        /* reply with the same peer routing id */
+        zlink_stream_send(stream, rid, data, size, 0);
+    }
+    return 0;
+}
+
+zlink_stream_attach(stream, on_packets, ZLINK_STREAM_DISPATCH_LEN32BE);
+/* ... */
+zlink_stream_detach(stream);  /* optional: return to zlink_recv() pattern */
+```
 
 ### ROUTER vs STREAM routing_id Comparison
 

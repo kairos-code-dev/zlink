@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace bench_rc {
@@ -73,6 +74,25 @@ inline std::string endpoint_from_port(int port)
     char buf[64];
     std::snprintf(buf, sizeof(buf), "tcp://127.0.0.1:%d", port);
     return std::string(buf);
+}
+
+inline int resolve_size_transition_drain_ms(int fallback_ms)
+{
+    return static_cast<int>(
+      parse_long_env("BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS", fallback_ms, 0));
+}
+
+inline void run_size_transition_drain_stage(int transition_drain_ms,
+                                            bool has_next_size)
+{
+    if (!has_next_size)
+        return;
+
+    if (transition_drain_ms <= 0)
+        return;
+
+    std::this_thread::sleep_for(
+      std::chrono::milliseconds(transition_drain_ms));
 }
 
 inline void print_result(const std::string &lib_name,

@@ -57,7 +57,7 @@ class tcp_transport_t : public i_asio_transport
     const char *name () const ZLINK_OVERRIDE { return "tcp"; }
 
   private:
-    std::unique_ptr<boost::asio::ip::tcp::socket> _socket;
+    std::shared_ptr<boost::asio::ip::tcp::socket> _socket;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (tcp_transport_t)
 };

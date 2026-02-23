@@ -146,7 +146,7 @@ Options:
                                          router_router,
                                          pubsub, stream
                                 Also accepts MULTI_* legacy names.
-  --runs N                      Iterations per configuration (default: 1)
+  --runs N                      Iterations per configuration (default: 3)
   --transport NAME              Transport(s), comma-separated allowed
                                 (default: tcp,tls,ws,wss)
   --transports NAME             Alias for --transport
@@ -157,6 +157,7 @@ Options:
   --result                      Write output to core/bench/benchwithzmq/results/YYYYMMDD/
   --refresh-std-cache           Refresh libzmq cache during this run
   --std-cache-file PATH         libzmq cache file path
+  --warmup N                    Override BENCH_MULTI_WARMUP_SECONDS (default: 3)
   --duration N                  Override BENCH_MULTI_DURATION_SECONDS (default: 5)
   --settle-ms N                 Override BENCH_MULTI_SETTLE_MS (default: 500)
   --clients N                   Override BENCH_MULTI_CLIENTS
@@ -167,10 +168,11 @@ Options:
   --sndtimeo-ms N               Override BENCH_MULTI_SNDTIMEO_MS (default: 5000)
   --rcvtimeo-ms N               Override BENCH_MULTI_RCVTIMEO_MS (default: 5000)
   --connect-ready-timeout-ms N Override BENCH_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000)
-  --drain-ms N                  Deprecated (kept for compatibility)
+  --drain-ms N                  Override BENCH_MULTI_DRAIN_MS
+  --connect-concurrency N       Override BENCH_MULTI_CONNECT_CONCURRENCY
   --recv-batch N                Override BENCH_MULTI_RECV_BATCH
-  --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: 2)
-  --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: 3)
+  --send-workers N              Override BENCH_MULTI_SEND_WORKERS (default: auto)
+  --stream-send-workers N       Override BENCH_MULTI_STREAM_SEND_WORKERS (default: auto)
   --stream-send-batch N         Override BENCH_MULTI_STREAM_SEND_BATCH (default: 64)
   --run-cooldown-ms N           Sleep between --runs iterations (default: 3000)
   --cooldown-ms N               Alias for --run-cooldown-ms
@@ -186,7 +188,45 @@ Environment:
 USAGE
 }
 
-RUNS=1
+pattern_uses_default_drain() {
+  local pattern="${1:-}"
+  case "${pattern^^}" in
+    MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_PUBSUB|MULTI_STREAM)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolve_effective_drain_ms() {
+  local pattern="${1:-}"
+  if [[ -n "${MULTI_DRAIN_MS}" ]]; then
+    echo "${MULTI_DRAIN_MS}"
+    return
+  fi
+  if pattern_uses_default_drain "${pattern}"; then
+    echo "${BENCH_MULTI_EXCEPTION_DRAIN_MS:-300}"
+  else
+    echo "0"
+  fi
+}
+
+resolve_effective_connect_concurrency() {
+  local clients="${1:-}"
+  if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
+    echo "${MULTI_CONNECT_CONCURRENCY}"
+    return
+  fi
+  if [[ "${clients}" =~ ^[0-9]+$ && "${clients}" -ge 10000 ]]; then
+    echo "1024"
+  else
+    echo "128"
+  fi
+}
+
+RUNS=3
 TRANSPORT="${BENCH_TRANSPORTS:-${DEFAULT_TRANSPORT}}"
 MSG_SIZES="${BENCH_MSG_SIZES:-}"
 BUILD_DIR=""
@@ -199,7 +239,8 @@ REFRESH_STD_CACHE=0
 STD_CACHE_FILE=""
 PATTERN_RAW="${DEFAULT_PATTERN}"
 
-MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-${BENCH_MULTI_MEASURE_SECONDS:-5}}"
+MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
+MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
 MULTI_SETTLE_MS="${BENCH_MULTI_SETTLE_MS:-500}"
 MULTI_CLIENTS="${BENCH_MULTI_CLIENTS:-}"
 MULTI_INFLIGHT="${BENCH_MULTI_INFLIGHT:-}"
@@ -208,13 +249,14 @@ MULTI_MONITOR_HWM="${BENCH_MULTI_MONITOR_HWM:-}"
 MULTI_SNDTIMEO_MS="${BENCH_MULTI_SNDTIMEO_MS:-5000}"
 MULTI_RCVTIMEO_MS="${BENCH_MULTI_RCVTIMEO_MS:-5000}"
 MULTI_CONNECT_READY_TIMEOUT_MS="${BENCH_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
-MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-300}"
+MULTI_DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-}"
 MULTI_RECV_BATCH="${BENCH_MULTI_RECV_BATCH:-64}"
-MULTI_SEND_WORKERS="${BENCH_MULTI_SEND_WORKERS:-2}"
-MULTI_STREAM_SEND_WORKERS="${BENCH_MULTI_STREAM_SEND_WORKERS:-3}"
+MULTI_SEND_WORKERS="${BENCH_MULTI_SEND_WORKERS:-}"
+MULTI_STREAM_SEND_WORKERS="${BENCH_MULTI_STREAM_SEND_WORKERS:-}"
 MULTI_STREAM_SEND_BATCH="${BENCH_MULTI_STREAM_SEND_BATCH:-64}"
 MULTI_RUN_COOLDOWN_MS="${BENCH_MULTI_RUN_COOLDOWN_MS:-3000}"
 MULTI_SEND_BACKOFF_US="${BENCH_MULTI_SEND_BACKOFF_US:-}"
+MULTI_CONNECT_CONCURRENCY="${BENCH_MULTI_CONNECT_CONCURRENCY:-}"
 MULTI_IO_THREADS="${BENCH_IO_THREADS:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -272,7 +314,11 @@ while [[ $# -gt 0 ]]; do
       PIN_CPU=1
       shift
       ;;
-    --duration)
+    --warmup|--multi-warmup-seconds)
+      MULTI_WARMUP_SECONDS="${2:-}"
+      shift 2
+      ;;
+    --duration|--multi-duration-seconds)
       MULTI_DURATION_SECONDS="${2:-}"
       shift 2
       ;;
@@ -310,6 +356,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --drain-ms|--multi-drain-ms)
       MULTI_DRAIN_MS="${2:-}"
+      shift 2
+      ;;
+    --connect-concurrency|--multi-connect-concurrency)
+      MULTI_CONNECT_CONCURRENCY="${2:-}"
       shift 2
       ;;
     --recv-batch|--multi-recv-batch)
@@ -387,15 +437,13 @@ if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
 fi
 
 export BENCH_TRANSPORTS="${TRANSPORT}"
+export BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}"
 export BENCH_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}"
-export BENCH_MULTI_MEASURE_SECONDS="${MULTI_DURATION_SECONDS}"
 export BENCH_MULTI_SETTLE_MS="${MULTI_SETTLE_MS}"
-export BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}"
 export BENCH_MULTI_RECV_BATCH="${MULTI_RECV_BATCH}"
 export BENCH_MULTI_HWM="${MULTI_HWM}"
 export BENCH_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}"
 export BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}"
-export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
 export BENCH_MULTI_STREAM_SEND_BATCH="${MULTI_STREAM_SEND_BATCH}"
 export BENCH_MULTI_RUN_COOLDOWN_MS="${MULTI_RUN_COOLDOWN_MS}"
 export BENCH_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}"
@@ -412,14 +460,17 @@ if [[ -z "${effective_clients}" ]]; then
   fi
 fi
 effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"
+effective_connect_concurrency="$(resolve_effective_connect_concurrency "${effective_clients}")"
+effective_drain_ms="$(resolve_effective_drain_ms "${PATTERN_INTERNAL}")"
 ensure_nofile_limit "${effective_clients}"
 if [[ "${effective_clients}" =~ ^[0-9]+$ && "${effective_inflight}" =~ ^[0-9]+$ ]]; then
   echo "Config: clients=${effective_clients}, inflight_per_client=${effective_inflight}, global_inflight=$(( effective_clients * effective_inflight ))"
 fi
-echo "Config: duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
+echo "Config: warmup=${MULTI_WARMUP_SECONDS}, duration=${MULTI_DURATION_SECONDS}, settle_ms=${MULTI_SETTLE_MS}, drain_ms=${effective_drain_ms}, run_cooldown_ms=${MULTI_RUN_COOLDOWN_MS}"
+echo "Config: connect_concurrency=${effective_connect_concurrency}"
 echo "Config: hwm=${MULTI_HWM}, sndtimeo_ms=${MULTI_SNDTIMEO_MS}, rcvtimeo_ms=${MULTI_RCVTIMEO_MS}"
 if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
-  echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
+  echo "Config: stream_send_workers=${MULTI_STREAM_SEND_WORKERS:-auto}, stream_send_batch=${MULTI_STREAM_SEND_BATCH}"
 fi
 
 if [[ -n "${MULTI_IO_THREADS}" ]]; then
@@ -434,6 +485,9 @@ if [[ -n "${BENCH_IO_THREADS:-}" ]]; then
 fi
 
 export BENCH_MULTI_CLIENTS="${effective_clients}"
+export BENCH_MULTI_PATTERN="${PATTERN_INTERNAL}"
+export BENCH_MULTI_CONNECT_CONCURRENCY="${effective_connect_concurrency}"
+export BENCH_MULTI_DRAIN_MS="${effective_drain_ms}"
 if [[ -n "${MULTI_INFLIGHT}" ]]; then
   export BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}"
 fi
@@ -442,6 +496,9 @@ if [[ -n "${MULTI_SEND_WORKERS}" ]]; then
 fi
 if [[ -n "${MULTI_SEND_BACKOFF_US}" ]]; then
   export BENCH_MULTI_SEND_BACKOFF_US="${MULTI_SEND_BACKOFF_US}"
+fi
+if [[ -n "${MULTI_STREAM_SEND_WORKERS}" ]]; then
+  export BENCH_MULTI_STREAM_SEND_WORKERS="${MULTI_STREAM_SEND_WORKERS}"
 fi
 if [[ -n "${MSG_SIZES}" ]]; then
   export BENCH_MSG_SIZES="${MSG_SIZES}"

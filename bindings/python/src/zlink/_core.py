@@ -55,6 +55,24 @@ def _send_buffer(data):
     return (ctypes.c_char * size).from_buffer(view), size, view
 
 
+_STREAM_MSG_SIZE = 64
+
+
+class _ZlinkRoutingId(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_ubyte),
+        ("data", ctypes.c_ubyte * 255),
+    ]
+
+
+_STREAM_CB_T = ctypes.CFUNCTYPE(
+    ctypes.c_int,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+)
+
+
 class Context:
     def __init__(self):
         self._handle = lib().zlink_ctx_new()
@@ -89,12 +107,18 @@ class Socket:
         if not self._handle:
             _raise_last_error()
         self._own = True
+        self._stream_handler = None
+        self._stream_callback = None
+        self._stream_attached = False
 
     @classmethod
     def _from_handle(cls, handle, own=False):
         obj = cls.__new__(cls)
         obj._handle = handle
         obj._own = own
+        obj._stream_handler = None
+        obj._stream_callback = None
+        obj._stream_attached = False
         return obj
 
     def bind(self, endpoint: str):
@@ -154,6 +178,60 @@ class Socket:
             _raise_last_error()
         return rc
 
+    def stream_attach(self, handler, mode: int = 0):
+        if handler is None or not callable(handler):
+            raise TypeError("handler must be callable")
+        if self._stream_attached:
+            raise RuntimeError("STREAM callback already attached")
+
+        callback = self._build_stream_callback(handler)
+        rc = lib().zlink_stream_attach(self._handle, callback, int(mode))
+        if rc != 0:
+            _raise_last_error()
+
+        self._stream_handler = handler
+        self._stream_callback = callback
+        self._stream_attached = True
+
+    def stream_detach(self):
+        if not self._stream_attached:
+            return
+        rc = lib().zlink_stream_detach(self._handle)
+        self._stream_attached = False
+        self._stream_handler = None
+        self._stream_callback = None
+        if rc != 0:
+            _raise_last_error()
+
+    def stream_peer_routing_id(self, index: int = 0):
+        rid = _ZlinkRoutingId()
+        rc = lib().zlink_socket_peer_routing_id(
+            self._handle, int(index), ctypes.byref(rid)
+        )
+        if rc != 0 or rid.size == 0:
+            return None
+        return bytes(rid.data[: rid.size])
+
+    def stream_send(self, routing_id, payload, flags: int = 0):
+        rid_view = _as_bytes_view(routing_id)
+        rid_len = rid_view.nbytes
+        if rid_len <= 0 or rid_len > 255:
+            raise ValueError("routing_id length must be between 1 and 255")
+
+        payload_buf, payload_size, keepalive = _send_buffer(payload)
+
+        rid = _ZlinkRoutingId()
+        rid.size = rid_len
+        for i in range(rid_len):
+            rid.data[i] = rid_view[i]
+
+        rc = lib().zlink_stream_send(self._handle, ctypes.byref(rid),
+                                     payload_buf, payload_size, int(flags))
+        if rc < 0:
+            _raise_last_error()
+        _ = keepalive
+        return rc
+
     def setsockopt(self, option: int, value: bytes):
         buf = ctypes.create_string_buffer(value)
         rc = lib().zlink_setsockopt(self._handle, option, buf, len(value))
@@ -168,7 +246,56 @@ class Socket:
             _raise_last_error()
         return buf.raw[: sz.value]
 
+    def _build_stream_callback(self, handler):
+        @_STREAM_CB_T
+        def _on_packets(rid_ptr, msgs_ptr, msg_count):
+            if rid_ptr is None or msgs_ptr is None:
+                return 0
+
+            rid = ctypes.cast(rid_ptr, ctypes.POINTER(_ZlinkRoutingId)).contents
+            rid_size = int(rid.size)
+            if rid_size < 0 or rid_size > 255:
+                rid_size = 0
+            if rid_size > 0:
+                rid_data_ptr = rid_ptr + 1
+                rid_view = memoryview(
+                    (ctypes.c_ubyte * rid_size).from_address(rid_data_ptr)
+                )
+            else:
+                rid_view = memoryview(b"")
+
+            msg_count_int = int(msg_count)
+            for i in range(msg_count_int):
+                msg_addr = msgs_ptr + i * _STREAM_MSG_SIZE
+                payload_ptr = lib().zlink_msg_data(ctypes.c_void_p(msg_addr))
+                payload_size = int(lib().zlink_msg_size(ctypes.c_void_p(msg_addr)))
+                if payload_ptr and payload_size > 0:
+                    payload_view = memoryview(
+                        (ctypes.c_ubyte * payload_size).from_address(payload_ptr)
+                    )
+                else:
+                    payload_view = memoryview(b"")
+
+                rc = handler(rid_view, payload_view)
+                if rc:
+                    try:
+                        return int(rc)
+                    except Exception:
+                        return 1
+
+            return 0
+
+        return _on_packets
+
     def close(self):
+        if self._handle and self._stream_attached:
+            try:
+                lib().zlink_stream_detach(self._handle)
+            except Exception:
+                pass
+            self._stream_attached = False
+            self._stream_handler = None
+            self._stream_callback = None
         if self._handle and self._own:
             lib().zlink_close(self._handle)
         self._handle = None

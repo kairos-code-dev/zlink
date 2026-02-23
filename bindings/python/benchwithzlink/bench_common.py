@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 import atexit
-import ctypes
 import os
-import platform
 import socket
 import struct
-import subprocess
 import sys
 import time
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 sys.path.insert(0, os.path.join(ROOT, "bindings/python/src"))
 import zlink  # noqa: E402
-from zlink._ffi import lib as ffi_lib  # noqa: E402
 
 _IPC_PATHS = set()
 
@@ -45,99 +41,6 @@ def _cleanup_ipc_endpoints() -> None:
 
 
 atexit.register(_cleanup_ipc_endpoints)
-
-
-def _python_native_dir() -> str:
-    sys_name = platform.system().lower()
-    machine = platform.machine().lower()
-    py_native_root = os.path.join(ROOT, "bindings", "python", "src", "zlink", "native")
-    if "windows" in sys_name:
-        arch = "x86_64" if machine in ("x86_64", "amd64") else "aarch64"
-        return os.path.join(py_native_root, f"windows-{arch}")
-    if "darwin" in sys_name:
-        arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
-        return os.path.join(py_native_root, f"darwin-{arch}")
-    arch = "aarch64" if machine in ("arm64", "aarch64") else "x86_64"
-    return os.path.join(py_native_root, f"linux-{arch}")
-
-
-def _preload_native_for_fastpath() -> None:
-    native_dir = _python_native_dir()
-    candidates = []
-    if os.name == "nt":
-        dll = os.path.join(native_dir, "zlink.dll")
-        if os.path.exists(dll):
-            if hasattr(os, "add_dll_directory"):
-                os.add_dll_directory(native_dir)  # type: ignore[attr-defined]
-            ctypes.CDLL(dll)
-        return
-    if platform.system().lower() == "darwin":
-        candidates.append(os.path.join(native_dir, "libzlink.dylib"))
-    candidates.extend(
-        [
-            os.path.join(native_dir, "libzlink.so.5"),
-            os.path.join(native_dir, "libzlink.so"),
-        ]
-    )
-    for candidate in candidates:
-        if not os.path.exists(candidate):
-            continue
-        try:
-            ctypes.CDLL(candidate, mode=getattr(ctypes, "RTLD_GLOBAL", 0))
-            return
-        except OSError:
-            continue
-
-
-FASTPATH_CEXT = None
-
-
-def _env_enabled(name: str, default: str = "1") -> bool:
-    req = os.environ.get(name, default).strip().lower()
-    return req not in ("0", "false", "off", "no")
-
-
-def _build_fastpath_extension() -> bool:
-    setup_py = os.path.join(os.path.dirname(__file__), "setup_fastpath.py")
-    if not os.path.exists(setup_py):
-        return False
-    try:
-        subprocess.run(
-            [sys.executable, setup_py, "build_ext", "--inplace"],
-            cwd=os.path.dirname(__file__),
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        return False
-    return True
-
-
-def _load_fastpath_extension():
-    _preload_native_for_fastpath()
-    import _zlink_fastpath as cext  # type: ignore
-    return cext
-
-
-_fastpath_on = _env_enabled("BENCH_PY_FASTPATH_CEXT", "1")
-_fastpath_build_on = _env_enabled("BENCH_PY_FASTPATH_BUILD", "1")
-if _fastpath_on:
-    load_exc = None
-    try:
-        FASTPATH_CEXT = _load_fastpath_extension()
-    except Exception as exc:
-        load_exc = exc
-        FASTPATH_CEXT = None
-        if _fastpath_build_on and _build_fastpath_extension():
-            try:
-                FASTPATH_CEXT = _load_fastpath_extension()
-                load_exc = None
-            except Exception as exc2:
-                load_exc = exc2
-                FASTPATH_CEXT = None
-    if FASTPATH_CEXT is None and os.environ.get("BENCH_PY_FASTPATH_REQUIRE", "0") == "1":
-        raise RuntimeError(f"BENCH_PY_FASTPATH_REQUIRE=1 but C-extension load failed: {load_exc}")
 
 
 def get_port() -> int:
@@ -189,160 +92,6 @@ def print_result(pattern: str, transport: str, size: int, throughput: float, lat
     print(f"RESULT,current,{pattern},{transport},{size},latency,{latency_us}")
 
 
-def make_raw_send_const(sock, payload: bytes):
-    native = ffi_lib()
-    send_const = native.zlink_send_const
-    handle = sock._handle
-    size = len(payload)
-    storage = ctypes.create_string_buffer(payload)
-
-    def send(flags: int) -> int:
-        rc = send_const(handle, storage, size, int(flags))
-        if rc < 0:
-            raise RuntimeError("send_const failed")
-        return rc
-
-    return send
-
-
-def make_raw_recv_into(sock, buffer):
-    native = ffi_lib()
-    recv = native.zlink_recv
-    handle = sock._handle
-    view = memoryview(buffer)
-    if view.readonly:
-        raise TypeError("buffer must be writable")
-    if view.ndim != 1 or view.format != "B":
-        view = view.cast("B")
-    size = view.nbytes
-    if size <= 0:
-        raise ValueError("buffer must not be empty")
-    storage = (ctypes.c_char * size).from_buffer(view)
-
-    def recv_into(flags: int) -> int:
-        rc = recv(handle, storage, size, int(flags))
-        if rc < 0:
-            raise RuntimeError("recv failed")
-        return rc
-
-    return recv_into
-
-
-def make_cext_send_many_const(sock, payload: bytes):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(sock._handle)
-    const_payload = bytes(payload)
-
-    def send_many(count: int, flags: int) -> int:
-        return int(FASTPATH_CEXT.send_many_const(handle, const_payload, int(flags), int(count)))
-
-    return send_many
-
-
-def make_cext_recv_many_into(sock, buffer):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(sock._handle)
-
-    def recv_many(count: int, flags: int) -> int:
-        return int(FASTPATH_CEXT.recv_many_into(handle, buffer, int(flags), int(count)))
-
-    return recv_many
-
-
-def make_cext_send_routed_many_const(sock, routing_id: bytes, payload: bytes):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(sock._handle)
-    rid = bytes(routing_id)
-    body = bytes(payload)
-
-    def send_routed_many(count: int, payload_flags: int) -> int:
-        return int(
-            FASTPATH_CEXT.send_routed_many_const(
-                handle, rid, body, int(payload_flags), int(count)
-            )
-        )
-
-    return send_routed_many
-
-
-def make_cext_recv_pair_many_into(sock, first_buffer, second_buffer):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(sock._handle)
-
-    def recv_pair_many(count: int, flags: int) -> int:
-        return int(
-            FASTPATH_CEXT.recv_pair_many_into(
-                handle, first_buffer, second_buffer, int(flags), int(count)
-            )
-        )
-
-    return recv_pair_many
-
-
-def make_cext_recv_pair_drain_into(sock, first_buffer, second_buffer):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(sock._handle)
-
-    def recv_pair_drain(max_count: int) -> int:
-        return int(
-            FASTPATH_CEXT.recv_pair_drain_into(
-                handle, first_buffer, second_buffer, int(max_count)
-            )
-        )
-
-    return recv_pair_drain
-
-
-def make_cext_gateway_send_many_const(gateway, service: str, payload: bytes):
-    if FASTPATH_CEXT is None:
-        return None
-    handle = int(gateway._handle)
-    service_name = str(service)
-    body = bytes(payload)
-
-    def send_many(count: int, flags: int) -> int:
-        return int(
-            FASTPATH_CEXT.gateway_send_many_const(
-                handle, service_name, body, int(flags), int(count)
-            )
-        )
-
-    return send_many
-
-
-def make_cext_spot_publish_many_const(spot, topic: str, payload: bytes):
-    if FASTPATH_CEXT is None:
-        return None
-    pub_handle = int(spot._pub_handle)
-    topic_name = str(topic)
-    body = bytes(payload)
-
-    def publish_many(count: int, flags: int) -> int:
-        return int(
-            FASTPATH_CEXT.spot_publish_many_const(
-                pub_handle, topic_name, body, int(flags), int(count)
-            )
-        )
-
-    return publish_many
-
-
-def make_cext_spot_recv_many(spot):
-    if FASTPATH_CEXT is None:
-        return None
-    sub_handle = int(spot._sub_handle)
-
-    def recv_many(count: int, flags: int) -> int:
-        return int(FASTPATH_CEXT.spot_recv_many(sub_handle, int(flags), int(count)))
-
-    return recv_many
-
-
 class SocketWaiter:
     def __init__(self, sock) -> None:
         self._poller = zlink.Poller()
@@ -365,42 +114,136 @@ def recv_exact(sock, size: int, flags: int = 0) -> bytes:
     return sock.recv(size, flags)
 
 
-def stream_expect_connect_event(sock) -> bytes:
-    rid = bytearray(256)
-    payload = bytearray(16)
-    for _ in range(64):
-        rid_len = sock.recv_into(rid, int(zlink.ReceiveFlag.NONE))
-        payload_len = sock.recv_into(payload, int(zlink.ReceiveFlag.NONE))
-        if payload_len == 1 and payload[0] == 0x01:
-            return bytes(memoryview(rid)[:rid_len])
-    raise RuntimeError("invalid STREAM connect event")
+_STREAM_DISPATCH_LEN32BE = 0x0001
+_STREAM_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
+
+class StreamLen32BeStash:
+    def __init__(self) -> None:
+        self._buf = bytearray()
+        self._start = 0
+
+    def append(self, data) -> None:
+        if data:
+            self._buf.extend(data)
+
+    def try_read_into(self, payload_buffer) -> int | None:
+        available = len(self._buf) - self._start
+        if available < 4:
+            return None
+        head = self._start
+        body_len = struct.unpack("!I", self._buf[head:head + 4])[0]
+        if body_len > _STREAM_MAX_FRAME_BYTES:
+            self._buf.clear()
+            self._start = 0
+            return None
+        frame_len = 4 + body_len
+        if available < frame_len:
+            return None
+        if body_len > len(payload_buffer):
+            raise RuntimeError("len32be payload buffer too small")
+        frame_start = head + 4
+        frame_end = frame_start + body_len
+        if body_len > 0:
+            payload_buffer[:body_len] = self._buf[frame_start:frame_end]
+        self._start = frame_end
+        self._compact()
+        return body_len
+
+    def extract_raw_frames(self, chunk) -> List[bytes]:
+        self.append(chunk)
+        frames: List[bytes] = []
+        while (len(self._buf) - self._start) >= 4:
+            head = self._start
+            body_len = struct.unpack("!I", self._buf[head:head + 4])[0]
+            if body_len > _STREAM_MAX_FRAME_BYTES:
+                self._buf.clear()
+                self._start = 0
+                break
+            frame_len = 4 + body_len
+            if (len(self._buf) - self._start) < frame_len:
+                break
+            frame_end = head + frame_len
+            frames.append(bytes(self._buf[head:frame_end]))
+            self._start = frame_end
+        self._compact()
+        return frames
+
+    def _compact(self) -> None:
+        if self._start <= 0:
+            return
+        if self._start >= len(self._buf):
+            self._buf.clear()
+            self._start = 0
+            return
+        if self._start > 4096 and (self._start * 2) >= len(self._buf):
+            self._buf = self._buf[self._start:]
+            self._start = 0
+
+
+def encode_len32be_frame(payload: bytes) -> bytes:
+    return struct.pack("!I", len(payload)) + payload
+
+
+class StreamCallbackEcho:
+    def __init__(self, sock, len32be_dispatch: bool, echo: bool = True) -> None:
+        self._sock = sock
+        self._len32be = bool(len32be_dispatch)
+        self._echo = bool(echo)
+        self._received = 0
+        self._stash = StreamLen32BeStash()
+
+    @property
+    def received(self) -> int:
+        return self._received
+
+    def attach(self) -> None:
+        mode = _STREAM_DISPATCH_LEN32BE if self._len32be else 0
+        self._sock.stream_attach(self._handler, mode)
+
+    def detach(self) -> None:
+        self._sock.stream_detach()
+
+    def close(self) -> None:
+        try:
+            self.detach()
+        except Exception:
+            pass
+
+    def _handler(self, rid_view: memoryview, payload_view: memoryview):
+        payload_size = len(payload_view)
+        if payload_size == 0:
+            return 0
+        if payload_size == 1 and payload_view[0] in (0x00, 0x01):
+            return 0
+
+        if self._echo:
+            self._sock.stream_send(rid_view, payload_view)
+            return 0
+
+        if self._len32be:
+            self._received += 1
+            return 0
+
+        frames = self._stash.extract_raw_frames(payload_view)
+        self._received += len(frames)
+        return 0
 
 
 def stream_send(sock, rid: bytes, payload: bytes) -> None:
-    send_more = int(zlink.SendFlag.SNDMORE)
-    send_none = int(zlink.SendFlag.NONE)
-    if isinstance(rid, bytes):
-        sock.send_const(rid, send_more)
-    else:
-        sock.send(rid, send_more)
-    if isinstance(payload, bytes):
-        sock.send_const(payload, send_none)
-    else:
-        sock.send(payload, send_none)
+    rc = sock.stream_send(rid, payload)
+    if rc < 0:
+        raise RuntimeError("stream_send failed")
 
 
-def stream_recv(sock, max_size: int):
-    rid = bytearray(256)
-    data = bytearray(max(1, max_size))
-    rid_len = sock.recv_into(rid, int(zlink.ReceiveFlag.NONE))
-    data_len = sock.recv_into(data, int(zlink.ReceiveFlag.NONE))
-    return bytes(memoryview(rid)[:rid_len]), bytes(memoryview(data)[:data_len])
-
-
-def stream_recv_into(sock, rid_buffer, data_buffer):
-    rid_len = sock.recv_into(rid_buffer, int(zlink.ReceiveFlag.NONE))
-    data_len = sock.recv_into(data_buffer, int(zlink.ReceiveFlag.NONE))
-    return rid_len, data_len
+def stream_wait_peer_routing_id(sock, timeout_ms: int = 5000) -> bytes:
+    deadline = time.time() + (max(timeout_ms, 1) / 1000.0)
+    while time.time() < deadline:
+        rid = sock.stream_peer_routing_id(0)
+        if rid is not None and len(rid) == 4:
+            return rid
+        time.sleep(0.001)
+    raise RuntimeError("STREAM peer routing id unavailable")
 
 
 def wait_until(fn: Callable[[], bool], timeout_ms: int, interval_ms: int = 10) -> bool:

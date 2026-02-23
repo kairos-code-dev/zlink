@@ -177,6 +177,7 @@ struct client_options_t
     int warmup;
     int duration;
     int drain_ms;
+    int size_transition_drain_ms;
     int inflight;
     int io_threads;
     int latency_sample_rate;
@@ -190,7 +191,8 @@ struct client_options_t
           warmup (2),
           duration (10),
           drain_ms (300),
-          inflight (1),
+          size_transition_drain_ms (300),
+          inflight (10),
           io_threads (4),
           latency_sample_rate (0)
     {
@@ -455,6 +457,8 @@ class bench_client_t
                   m.recv_error, m.timeout_error, m.size_mismatch, pass_text);
                 if (!m.pass)
                     all_pass = false;
+                if ((i + 1) < opt.sizes.size ())
+                    run_size_transition_drain ();
             }
         }
 
@@ -668,6 +672,22 @@ class bench_client_t
         }
 
         return true;
+    }
+
+    void run_size_transition_drain ()
+    {
+        const int drain_ms = std::max (0, opt.size_transition_drain_ms);
+        if (drain_ms <= 0)
+            return;
+
+        const auto drain_deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (drain_ms);
+        while (std::chrono::steady_clock::now () < drain_deadline) {
+            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+                break;
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
     }
 
     void reset_measurement_counters ()
@@ -1172,6 +1192,8 @@ bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.warmup = args.get_int ("--warmup", opt.warmup, 0);
     opt.duration = args.get_int ("--duration", opt.duration, 1);
     opt.drain_ms = args.get_int ("--drain-ms", opt.drain_ms, 0);
+    opt.size_transition_drain_ms = args.get_int (
+      "--size-transition-drain-ms", opt.size_transition_drain_ms, 0);
     opt.inflight = args.get_int ("--inflight", opt.inflight, 1);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
     opt.latency_sample_rate = args.get_int ("--latency-sample-rate",

@@ -26,6 +26,9 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.ADDRESS));
     private static final MethodHandle MH_CTX_TERM = downcall("zlink_ctx_term",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_CTX_SET = downcall("zlink_ctx_set",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+                    ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SOCKET = downcall("zlink_socket",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_CLOSE = downcall("zlink_close",
@@ -40,6 +43,16 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_RECV = downcall("zlink_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SOCKET_PEER_ROUTING_ID =
+      downcall("zlink_socket_peer_routing_id",
+        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+          ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_getsockopt",
@@ -215,6 +228,14 @@ public final class Native {
         }
     }
 
+    public static int ctxSet(MemorySegment ctx, int option, int value) {
+        try {
+            return (int) MH_CTX_SET.invokeExact(ctx, option, value);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_ctx_set failed", t);
+        }
+    }
+
     public static MemorySegment socket(MemorySegment ctx, int type) {
         try {
             return (MemorySegment) MH_SOCKET.invokeExact(ctx, type);
@@ -268,6 +289,43 @@ public final class Native {
             return (int) MH_RECV.invokeExact(socket, buf, len, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_recv failed", t);
+        }
+    }
+
+    public static int streamAttach(MemorySegment socket, MemorySegment callback,
+                                   int flags) {
+        try {
+            return (int) MH_STREAM_ATTACH.invokeExact(socket, callback, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_attach failed", t);
+        }
+    }
+
+    public static int streamDetach(MemorySegment socket) {
+        try {
+            return (int) MH_STREAM_DETACH.invokeExact(socket);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_detach failed", t);
+        }
+    }
+
+    public static int streamSend(MemorySegment socket, MemorySegment rid,
+                                 MemorySegment payload, long len, int flags) {
+        try {
+            return (int) MH_STREAM_SEND.invokeExact(socket, rid, payload, len,
+              flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_send failed", t);
+        }
+    }
+
+    public static int socketPeerRoutingId(MemorySegment socket, int index,
+                                          MemorySegment outRid) {
+        try {
+            return (int) MH_SOCKET_PEER_ROUTING_ID.invokeExact(socket, index,
+              outRid);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_socket_peer_routing_id failed", t);
         }
     }
 

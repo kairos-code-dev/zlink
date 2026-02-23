@@ -23,12 +23,6 @@ static const size_t k_frame_prefix_size = 4;
 static const size_t k_stash_trim_capacity = 64 * 1024;
 static const size_t k_stash_shard_count = 64;
 
-bool is_stream_control_event (const unsigned char *payload_, size_t size_)
-{
-    (void) payload_;
-    return size_ == 0;
-}
-
 struct stream_buffer_t
 {
     std::vector<unsigned char> data;
@@ -268,8 +262,6 @@ class zlink_stream_echo_server_t
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg_));
         const size_t payload_size = zlink_msg_size (msg_);
-        if (is_stream_control_event (payload, payload_size))
-            return 0;
 
         uint32_t routing_id_value = 0;
         if (!try_load_routing_id_u32 (rid_, &routing_id_value)) {

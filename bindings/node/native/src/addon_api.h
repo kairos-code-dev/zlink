@@ -25,13 +25,13 @@ napi_value socket_bind(napi_env env, napi_callback_info info);
 napi_value socket_connect(napi_env env, napi_callback_info info);
 napi_value socket_send(napi_env env, napi_callback_info info);
 napi_value socket_send_from(napi_env env, napi_callback_info info);
-napi_value socket_send_many(napi_env env, napi_callback_info info);
-napi_value socket_send_routed_many(napi_env env, napi_callback_info info);
 napi_value socket_recv(napi_env env, napi_callback_info info);
 napi_value socket_recv_into(napi_env env, napi_callback_info info);
-napi_value socket_recv_many_into(napi_env env, napi_callback_info info);
-napi_value socket_recv_pair_many_into(napi_env env, napi_callback_info info);
-napi_value socket_recv_pair_drain_into(napi_env env, napi_callback_info info);
+napi_value socket_recv_msg_into(napi_env env, napi_callback_info info);
+napi_value socket_stream_attach(napi_env env, napi_callback_info info);
+napi_value socket_stream_detach(napi_env env, napi_callback_info info);
+napi_value socket_stream_peer_routing_id(napi_env env, napi_callback_info info);
+napi_value socket_stream_send(napi_env env, napi_callback_info info);
 napi_value socket_setopt(napi_env env, napi_callback_info info);
 napi_value socket_getopt(napi_env env, napi_callback_info info);
 
@@ -57,7 +57,6 @@ napi_value discovery_setsockopt(napi_env env, napi_callback_info info);
 
 napi_value gateway_new(napi_env env, napi_callback_info info);
 napi_value gateway_send(napi_env env, napi_callback_info info);
-napi_value gateway_send_many_const(napi_env env, napi_callback_info info);
 napi_value gateway_recv(napi_env env, napi_callback_info info);
 napi_value gateway_set_lb(napi_env env, napi_callback_info info);
 napi_value gateway_set_tls(napi_env env, napi_callback_info info);
@@ -93,13 +92,10 @@ napi_value spot_node_setsockopt(napi_env env, napi_callback_info info);
 napi_value spot_new(napi_env env, napi_callback_info info);
 napi_value spot_destroy(napi_env env, napi_callback_info info);
 napi_value spot_publish(napi_env env, napi_callback_info info);
-napi_value spot_publish_many_const(napi_env env, napi_callback_info info);
 napi_value spot_subscribe(napi_env env, napi_callback_info info);
 napi_value spot_subscribe_pattern(napi_env env, napi_callback_info info);
 napi_value spot_unsubscribe(napi_env env, napi_callback_info info);
 napi_value spot_recv(napi_env env, napi_callback_info info);
-napi_value spot_recv_many(napi_env env, napi_callback_info info);
-
 napi_value monitor_open(napi_env env, napi_callback_info info);
 napi_value monitor_recv(napi_env env, napi_callback_info info);
 

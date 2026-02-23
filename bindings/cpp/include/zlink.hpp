@@ -140,6 +140,12 @@ enum class recv_flag : int
     dontwait = ZLINK_DONTWAIT
 };
 
+enum class stream_dispatch_mode : int
+{
+    none = 0,
+    len32be = ZLINK_STREAM_DISPATCH_LEN32BE
+};
+
 enum class error_code : int
 {
     efsm = EFSM,
@@ -619,6 +625,56 @@ class socket_t
         return zlink_msg_recv (msg_.handle (), _socket, static_cast<int> (flags_));
     }
 
+    int stream_attach (zlink_stream_on_packets_fn on_packets_,
+                       int flags_ = 0)
+    {
+        return zlink_stream_attach (_socket, on_packets_, flags_);
+    }
+
+    int stream_attach (zlink_stream_on_packets_fn on_packets_,
+                       stream_dispatch_mode mode_)
+    {
+        return stream_attach (on_packets_, static_cast<int> (mode_));
+    }
+
+    int stream_detach () { return zlink_stream_detach (_socket); }
+
+    int stream_peer_routing_id (int index_, zlink_routing_id_t *out_)
+    {
+        return zlink_socket_peer_routing_id (_socket, index_, out_);
+    }
+
+    int stream_send (const zlink_routing_id_t &routing_id_,
+                     const void *buf_,
+                     size_t len_,
+                     send_flag flags_ = send_flag::none)
+    {
+        return zlink_stream_send (
+          _socket, &routing_id_, buf_, len_, static_cast<int> (flags_));
+    }
+
+    int stream_send (const std::vector<unsigned char> &routing_id_,
+                     const void *buf_,
+                     size_t len_,
+                     send_flag flags_ = send_flag::none)
+    {
+        if (routing_id_.empty () || routing_id_.size () > 255)
+            return -1;
+        zlink_routing_id_t rid;
+        memset (&rid, 0, sizeof (rid));
+        rid.size = static_cast<uint8_t> (routing_id_.size ());
+        memcpy (rid.data, routing_id_.data (), routing_id_.size ());
+        return stream_send (rid, buf_, len_, flags_);
+    }
+
+    int stream_send (const std::vector<unsigned char> &routing_id_,
+                     const std::string &payload_,
+                     send_flag flags_ = send_flag::none)
+    {
+        return stream_send (routing_id_, payload_.data (), payload_.size (),
+                            flags_);
+    }
+
     int set (socket_option option_, const void *optval_, size_t optlen_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (option_), optval_, optlen_);
@@ -737,30 +793,30 @@ class poller_t
 
     int wait (std::vector<poll_event_t> &events_, long timeout_ms_)
     {
-        std::vector<zlink_pollitem_t> pollitems;
-        pollitems.resize (_items.size ());
+        if (_pollitems.size () < _items.size ())
+            _pollitems.resize (_items.size ());
         for (size_t i = 0; i < _items.size (); ++i) {
-            pollitems[i].socket = _items[i].socket
-                                   ? _items[i].socket->handle ()
-                                   : NULL;
-            pollitems[i].fd = _items[i].fd;
-            pollitems[i].events = _items[i].events;
-            pollitems[i].revents = 0;
+            _pollitems[i].socket = _items[i].socket
+                                    ? _items[i].socket->handle ()
+                                    : NULL;
+            _pollitems[i].fd = _items[i].fd;
+            _pollitems[i].events = _items[i].events;
+            _pollitems[i].revents = 0;
         }
         const int rc =
-          zlink_poll (pollitems.data (), static_cast<int> (pollitems.size ()),
+          zlink_poll (_pollitems.data (), static_cast<int> (_items.size ()),
                       timeout_ms_);
         if (rc <= 0)
             return rc;
         events_.clear ();
-        for (size_t i = 0; i < pollitems.size (); ++i) {
-            if (pollitems[i].revents == 0)
+        for (size_t i = 0; i < _items.size (); ++i) {
+            if (_pollitems[i].revents == 0)
                 continue;
             poll_event_t ev;
             ev.socket = _items[i].socket;
             ev.user = _items[i].user;
-            ev.events = pollitems[i].events;
-            ev.revents = pollitems[i].revents;
+            ev.events = _pollitems[i].events;
+            ev.revents = _pollitems[i].revents;
             events_.push_back (ev);
         }
         return static_cast<int> (events_.size ());
@@ -782,6 +838,7 @@ class poller_t
     };
 
     std::vector<item_t> _items;
+    std::vector<zlink_pollitem_t> _pollitems;
 };
 
 class msgv_t

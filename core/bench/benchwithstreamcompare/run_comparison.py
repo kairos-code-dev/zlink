@@ -146,8 +146,7 @@ def main():
         "skipped_stacks": skips,
         "warnings": [],
         "metrics": {},
-        "official_ranking": {},
-        "reference_ranking": {},
+        "ranking": {},
     }
 
     for phase in selected_phases:
@@ -216,30 +215,6 @@ def main():
 
                 pass_rate = (len(pass_rows) / total) if total > 0 else 0.0
 
-                if args.runs <= 1:
-                    if phase == "throughput":
-                        gate_pass = (
-                            pass_rate == 1.0
-                            and median is not None
-                            and median_tps is not None
-                        )
-                    else:
-                        gate_pass = pass_rate == 1.0 and median_p95 is not None
-                    confidence = "LOW_SINGLE_RUN"
-                else:
-                    if phase == "throughput":
-                        gate_pass = (
-                            pass_rate == 1.0
-                            and median is not None
-                            and median_tps is not None
-                        )
-                    else:
-                        gate_pass = (
-                            pass_rate == 1.0
-                            and median_p95 is not None
-                        )
-                    confidence = "STABLE_CHECKED" if gate_pass else "UNSTABLE"
-
                 metric_key = f"{phase}:{stack}:{size}"
                 summary["metrics"][metric_key] = {
                     "phase": phase,
@@ -260,8 +235,6 @@ def main():
                     "median_client_peak_rss_kb": median_or_none(client_peak_rss_kb),
                     "median_system_avg_cpu_pct": median_or_none(system_avg_cpu),
                     "median_system_peak_mem_used_pct": median_or_none(system_peak_mem_used_pct),
-                    "gate_pass": gate_pass,
-                    "confidence": confidence,
                 }
 
                 if mismatch_total_all > 0:
@@ -277,8 +250,7 @@ def main():
 
     for phase in selected_phases:
         for size in selected_sizes:
-            official = []
-            ref = []
+            ranking = []
             for stack in selected_stacks:
                 item = summary["metrics"].get(f"{phase}:{stack}:{size}")
                 if not item:
@@ -295,17 +267,12 @@ def main():
                     "peak_tps": item.get("peak_tps"),
                     "median_p95_us": item.get("median_p95_us"),
                     "mismatch_total_all": item.get("mismatch_total_all", 0),
-                    "gate_pass": item.get("gate_pass"),
                 }
-                ref.append(entry)
-                if item.get("gate_pass"):
-                    official.append(entry)
+                ranking.append(entry)
 
-            official.sort(key=lambda x: ranking_sort_key(phase, x))
-            ref.sort(key=lambda x: ranking_sort_key(phase, x))
+            ranking.sort(key=lambda x: ranking_sort_key(phase, x))
 
-            summary["official_ranking"][f"{phase}:{size}"] = official
-            summary["reference_ranking"][f"{phase}:{size}"] = ref
+            summary["ranking"][f"{phase}:{size}"] = ranking
 
     os.makedirs(os.path.dirname(args.summary), exist_ok=True)
     with open(args.summary, "w", encoding="utf-8") as f:
@@ -339,13 +306,13 @@ def main():
     for phase in selected_phases:
         lines.append(f"## Metrics (phase={phase})")
         lines.append("")
-        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(us) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) | gate | confidence |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
+        lines.append("| stack | size | pass/total | peak bps | peak tps | median bps | median tps | p95(us) | mismatch | srv cpu% | srv rss(MiB) | cli cpu% | cli rss(MiB) | sys cpu% | sys mem%(peak) |")
+        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
         for size in selected_sizes:
             for stack in selected_stacks:
                 item = summary["metrics"].get(f"{phase}:{stack}:{size}")
                 if not item:
-                    lines.append(f"| {stack} | {size} | 0/0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | FAIL | n/a |")
+                    lines.append(f"| {stack} | {size} | 0/0 | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
                     continue
                 srv_cpu = item.get("median_server_avg_cpu_pct")
                 srv_rss_kb = item.get("median_server_peak_rss_kb")
@@ -354,7 +321,7 @@ def main():
                 sys_cpu = item.get("median_system_avg_cpu_pct")
                 sys_mem_peak = item.get("median_system_peak_mem_used_pct")
                 lines.append(
-                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_tps} | {median} | {median_tps} | {p95} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} | {gate} | {confidence} |".format(
+                    "| {stack} | {size} | {pass_runs}/{total_runs} | {peak} | {peak_tps} | {median} | {median_tps} | {p95} | {mismatch} | {srv_cpu} | {srv_rss} | {cli_cpu} | {cli_rss} | {sys_cpu} | {sys_mem_peak} |".format(
                         stack=stack,
                         size=size,
                         pass_runs=item.get("pass_runs", 0),
@@ -371,22 +338,20 @@ def main():
                         cli_rss=(f"{(cli_rss_kb / 1024.0):.2f}" if cli_rss_kb is not None else "n/a"),
                         sys_cpu=(f"{sys_cpu:.2f}" if sys_cpu is not None else "n/a"),
                         sys_mem_peak=(f"{sys_mem_peak:.2f}" if sys_mem_peak is not None else "n/a"),
-                        gate=("PASS" if item.get("gate_pass") else "FAIL"),
-                        confidence=item.get("confidence", "n/a"),
                     )
                 )
 
         for size in selected_sizes:
             lines.append("")
-            lines.append(f"## Official Ranking (phase={phase}, size={size})")
+            lines.append(f"## Ranking (phase={phase}, size={size})")
             lines.append("")
             lines.append("| rank | stack | median bps | median tps | p95(us) | mismatch |")
             lines.append("|---:|---|---:|---:|---:|---:|")
-            official = summary["official_ranking"].get(f"{phase}:{size}", [])
-            if not official:
+            ranking = summary["ranking"].get(f"{phase}:{size}", [])
+            if not ranking:
                 lines.append("| 1 | n/a | n/a | n/a | n/a | n/a |")
             else:
-                for idx, entry in enumerate(official, 1):
+                for idx, entry in enumerate(ranking, 1):
                     median_tps = entry.get("median_tps")
                     median_tps_text = (
                         f"{median_tps:.2f}" if median_tps is not None else "n/a"

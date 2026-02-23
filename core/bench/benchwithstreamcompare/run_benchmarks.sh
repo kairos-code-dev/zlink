@@ -20,15 +20,16 @@ Usage:
   run_benchmarks.sh [options]
 
 Options:
-  --stack <asio|cppserver|dotnet|zlink|zlink-len32be|zmq|netty|all|csv>
+  --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
   --phases <both|throughput|latency|csv>  default: both
   --ccu <N>                    default: 10000
-  --inflight <N>               default: 1
+  --inflight <N>               default: 10
   --runs <N>                   default: 1
-  --warmup <sec>               default: 2
+  --warmup <sec>               default: 3
   --duration <sec>             default: 5
   --drain-ms <N>               default: 300
+  --size-transition-drain-ms <N> default: drain-ms value
   --latency-sample-rate <N>    default: 100
   --client-io-threads <N>      default: 4
   --server-io-threads <N>      default: 4
@@ -43,19 +44,20 @@ Examples:
 USAGE
 }
 
-STACKS_ALL=(zlink zlink-len32be asio cppserver dotnet zmq netty)
+STACKS_ALL=(zlink zlink-len32be netzlink netzlink-len32be jvmzlink jvmzlink-len32be asio cppserver dotnet zmq netty)
 SIZES_ALL=(64 1024 65536)
 PHASES_ALL=(throughput latency)
 
 TARGET_STACK="all"
 TARGET_SIZE="all"
 TARGET_PHASES="both"
-CCU=10000
-INFLIGHT=1
+CCU="${BENCH_MULTI_CLIENTS:-10000}"
+INFLIGHT="${BENCH_MULTI_INFLIGHT:-10}"
 RUNS=1
-WARMUP=2
-DURATION=5
-DRAIN_MS=300
+WARMUP="${BENCH_MULTI_WARMUP_SECONDS:-3}"
+DURATION="${BENCH_MULTI_DURATION_SECONDS:-5}"
+DRAIN_MS="${BENCH_MULTI_DRAIN_MS:-300}"
+SIZE_TRANSITION_DRAIN_MS="${BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS:-${DRAIN_MS}}"
 LATENCY_SAMPLE_RATE=100
 CLIENT_IO_THREADS=4
 SERVER_IO_THREADS=4
@@ -99,6 +101,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --drain-ms)
             DRAIN_MS="${2:-}"
+            shift 2
+            ;;
+        --size-transition-drain-ms)
+            SIZE_TRANSITION_DRAIN_MS="${2:-}"
             shift 2
             ;;
         --latency-sample-rate)
@@ -153,6 +159,7 @@ validate_int "--runs" "${RUNS}"
 validate_int "--warmup" "${WARMUP}"
 validate_int "--duration" "${DURATION}"
 validate_int "--drain-ms" "${DRAIN_MS}"
+validate_int "--size-transition-drain-ms" "${SIZE_TRANSITION_DRAIN_MS}"
 validate_int "--latency-sample-rate" "${LATENCY_SAMPLE_RATE}"
 validate_int "--client-io-threads" "${CLIENT_IO_THREADS}"
 validate_int "--server-io-threads" "${SERVER_IO_THREADS}"
@@ -197,7 +204,7 @@ fi
 
 for s in "${RUN_STACKS[@]}"; do
     case "${s}" in
-        asio|cppserver|dotnet|zlink|zlink-len32be|zmq|netty)
+        asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty)
             ;;
         *)
             echo "invalid stack: ${s}" >&2
@@ -260,6 +267,23 @@ DOTNET_PROJECT="${STACKS_ROOT_DIR}/dotnet/StreamServer.csproj"
 DOTNET_OUT_DIR="${STACKS_ROOT_DIR}/dotnet/bin/Release/stream-bench"
 DOTNET_DLL="${DOTNET_OUT_DIR}/StreamServer.dll"
 
+NETZLINK_PROJECT="${STACKS_ROOT_DIR}/netzlink/NetZlinkStreamServer.csproj"
+NETZLINK_OUT_DIR="${STACKS_ROOT_DIR}/netzlink/bin/Release/stream-bench"
+NETZLINK_DLL="${NETZLINK_OUT_DIR}/NetZlinkStreamServer.dll"
+NETZLINK_LEN32BE_PROJECT="${STACKS_ROOT_DIR}/netzlink-len32be/NetZlinkStreamLen32BeServer.csproj"
+NETZLINK_LEN32BE_OUT_DIR="${STACKS_ROOT_DIR}/netzlink-len32be/bin/Release/stream-bench"
+NETZLINK_LEN32BE_DLL="${NETZLINK_LEN32BE_OUT_DIR}/NetZlinkStreamLen32BeServer.dll"
+
+JVMZLINK_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzlink"
+JVMZLINK_BUILD_DIR="${JVMZLINK_PROJECT_DIR}/build"
+JVMZLINK_BIN="${JVMZLINK_BUILD_DIR}/install/jvmzlink-stream-server/bin/jvmzlink-stream-server"
+JVMZLINK_LEN32BE_PROJECT_DIR="${STACKS_ROOT_DIR}/jvmzlink-len32be"
+JVMZLINK_LEN32BE_BUILD_DIR="${JVMZLINK_LEN32BE_PROJECT_DIR}/build"
+JVMZLINK_LEN32BE_BIN="${JVMZLINK_LEN32BE_BUILD_DIR}/install/jvmzlink-len32be-stream-server/bin/jvmzlink-len32be-stream-server"
+
+BINDINGS_JAVA_PROJECT_DIR="${ROOT_DIR}/bindings/java"
+ZLINK_CORE_LIBRARY="${BUILD_DIR}/lib/libzlink.so"
+
 NETTY_PROJECT_DIR="${STACKS_ROOT_DIR}/netty"
 NETTY_BUILD_DIR="${NETTY_PROJECT_DIR}/build"
 NETTY_BIN="${NETTY_BUILD_DIR}/install/netty-stream-server/bin/netty-stream-server"
@@ -283,6 +307,7 @@ ALLOCATED_PORT=""
 ACTIVE_STACKS=()
 FAILED_CASES=0
 MONITOR_PID=""
+JAVA_BINDINGS_JAR_BUILT=0
 
 resolve_stack_tuning()
 {
@@ -308,6 +333,23 @@ resolve_stack_tuning()
             STACK_RCVBUF=32768
             STACK_BACKLOG=32768
             STACK_TCP_NODELAY=0
+            ;;
+        netzlink|netzlink-len32be)
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
+            STACK_SNDBUF=8388608
+            STACK_RCVBUF=8388608
+            STACK_BACKLOG=65535
+            STACK_ENV_VARS+=("ZLINK_LIBRARY_PATH=${ZLINK_CORE_LIBRARY}")
+            STACK_ENV_VARS+=("LD_LIBRARY_PATH=$(dirname "${ZLINK_CORE_LIBRARY}"):${LD_LIBRARY_PATH:-}")
+            ;;
+        jvmzlink|jvmzlink-len32be)
+            STACK_IO_THREADS="${SERVER_IO_THREADS}"
+            STACK_SNDBUF=8388608
+            STACK_RCVBUF=8388608
+            STACK_BACKLOG=65535
+            STACK_ENV_VARS+=("ZLINK_LIBRARY_PATH=${ZLINK_CORE_LIBRARY}")
+            STACK_ENV_VARS+=("LD_LIBRARY_PATH=$(dirname "${ZLINK_CORE_LIBRARY}"):${LD_LIBRARY_PATH:-}")
+            STACK_ENV_VARS+=("JAVA_OPTS=${JAVA_OPTS:-} --enable-native-access=ALL-UNNAMED")
             ;;
         netty)
             STACK_IO_THREADS="${SERVER_IO_THREADS}"
@@ -912,6 +954,40 @@ CPP
         dotnet)
             dotnet build "${DOTNET_PROJECT}" -c Release -o "${DOTNET_OUT_DIR}" >/dev/null
             ;;
+        netzlink)
+            dotnet build "${NETZLINK_PROJECT}" -c Release -o "${NETZLINK_OUT_DIR}" >/dev/null
+            [[ -f "${NETZLINK_DLL}" ]]
+            ;;
+        netzlink-len32be)
+            dotnet build "${NETZLINK_LEN32BE_PROJECT}" -c Release -o "${NETZLINK_LEN32BE_OUT_DIR}" >/dev/null
+            [[ -f "${NETZLINK_LEN32BE_DLL}" ]]
+            ;;
+        jvmzlink)
+            resolve_netty_java || return 1
+            resolve_netty_gradle || return 1
+            log "jvmzlink using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
+            if [[ "${JAVA_BINDINGS_JAR_BUILT}" == "0" ]]; then
+                JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                    "${BINDINGS_JAVA_PROJECT_DIR}/gradlew" -p "${BINDINGS_JAVA_PROJECT_DIR}" --no-daemon jar >/dev/null
+                JAVA_BINDINGS_JAR_BUILT=1
+            fi
+            JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                "${NETTY_GRADLE_BIN}" -p "${JVMZLINK_PROJECT_DIR}" --no-daemon installDist >/dev/null
+            [[ -x "${JVMZLINK_BIN}" ]]
+            ;;
+        jvmzlink-len32be)
+            resolve_netty_java || return 1
+            resolve_netty_gradle || return 1
+            log "jvmzlink-len32be using java major=${NETTY_JAVA_VERSION} home=${NETTY_JAVA_HOME} gradle=${NETTY_GRADLE_VERSION}"
+            if [[ "${JAVA_BINDINGS_JAR_BUILT}" == "0" ]]; then
+                JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                    "${BINDINGS_JAVA_PROJECT_DIR}/gradlew" -p "${BINDINGS_JAVA_PROJECT_DIR}" --no-daemon jar >/dev/null
+                JAVA_BINDINGS_JAR_BUILT=1
+            fi
+            JAVA_HOME="${NETTY_JAVA_HOME}" PATH="${NETTY_JAVA_HOME}/bin:${PATH}" \
+                "${NETTY_GRADLE_BIN}" -p "${JVMZLINK_LEN32BE_PROJECT_DIR}" --no-daemon installDist >/dev/null
+            [[ -x "${JVMZLINK_LEN32BE_BIN}" ]]
+            ;;
         netty)
             resolve_netty_java || return 1
             resolve_netty_gradle || return 1
@@ -974,6 +1050,18 @@ start_server()
         dotnet)
             cmd=(dotnet "${DOTNET_DLL}")
             ;;
+        netzlink)
+            cmd=(dotnet "${NETZLINK_DLL}")
+            ;;
+        netzlink-len32be)
+            cmd=(dotnet "${NETZLINK_LEN32BE_DLL}")
+            ;;
+        jvmzlink)
+            cmd=("${JVMZLINK_BIN}")
+            ;;
+        jvmzlink-len32be)
+            cmd=("${JVMZLINK_LEN32BE_BIN}")
+            ;;
         netty)
             cmd=("${NETTY_BIN}")
             ;;
@@ -1010,7 +1098,7 @@ start_server()
                 exec "${cmd[@]}" >"${server_log}" 2>&1
             fi
         ) &
-    elif [[ "${stack}" == "netty" ]]; then
+    elif [[ "${stack}" == "netty" || "${stack}" == "jvmzlink" || "${stack}" == "jvmzlink-len32be" ]]; then
         (
             export JAVA_HOME="${NETTY_JAVA_HOME}"
             export PATH="${NETTY_JAVA_HOME}/bin:${PATH}"
@@ -1245,6 +1333,7 @@ run_stack_phase()
         --warmup "${WARMUP}" \
         --duration "${DURATION}" \
         --drain-ms "${DRAIN_MS}" \
+        --size-transition-drain-ms "${SIZE_TRANSITION_DRAIN_MS}" \
         --inflight "${INFLIGHT}" \
         --latency-sample-rate "${latency_sample_rate}" \
         --io-threads "${CLIENT_IO_THREADS}" \
@@ -1283,7 +1372,7 @@ stack,reason
 CSV
 
     log "scope stacks=$(IFS=,; echo "${RUN_STACKS[*]}") sizes=$(IFS=,; echo "${RUN_SIZES[*]}")"
-    log "settings phases=$(IFS=,; echo "${RUN_PHASES[*]}") ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s drain_ms=${DRAIN_MS} inflight=${INFLIGHT} latency_sample_rate=${LATENCY_SAMPLE_RATE} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
+    log "settings phases=$(IFS=,; echo "${RUN_PHASES[*]}") ccu=${CCU} runs=${RUNS} warmup=${WARMUP}s duration=${DURATION}s drain_ms=${DRAIN_MS} size_transition_drain_ms=${SIZE_TRANSITION_DRAIN_MS} inflight=${INFLIGHT} latency_sample_rate=${LATENCY_SAMPLE_RATE} server_size=${MAX_RUN_SIZE} resource_sample_ms=${RESOURCE_SAMPLE_MS}"
 
     build_selected
 

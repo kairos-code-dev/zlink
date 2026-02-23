@@ -56,6 +56,14 @@ class _Lib:
         L.zlink_send_const.restype = ctypes.c_int
         L.zlink_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_recv.restype = ctypes.c_int
+        L.zlink_stream_attach.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
+        L.zlink_stream_attach.restype = ctypes.c_int
+        L.zlink_stream_detach.argtypes = [ctypes.c_void_p]
+        L.zlink_stream_detach.restype = ctypes.c_int
+        L.zlink_stream_send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_stream_send.restype = ctypes.c_int
+        L.zlink_socket_peer_routing_id.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        L.zlink_socket_peer_routing_id.restype = ctypes.c_int
         L.zlink_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
         L.zlink_setsockopt.restype = ctypes.c_int
         L.zlink_getsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]

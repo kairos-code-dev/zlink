@@ -210,6 +210,7 @@ if [[ "${RESULTS}" -eq 1 ]]; then
 fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
+ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
 
 if [[ "${REUSE_BUILD}" -eq 1 && ! -d "${BUILD_DIR}" ]]; then
   FALLBACK_BUILD_DIR="$(realpath -m "${ROOT_DIR}/core/build")"
@@ -219,21 +220,59 @@ if [[ "${REUSE_BUILD}" -eq 1 && ! -d "${BUILD_DIR}" ]]; then
   fi
 fi
 
+NEED_CONFIGURE=0
+BUILD_BENCHMARKS_FLAG="ON"
+if [[ "${BINDINGS_ONLY}" -eq 1 ]]; then
+  BUILD_BENCHMARKS_FLAG="OFF"
+fi
+
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then
-  echo "Preparing core benchmark binaries in ${BUILD_DIR}"
+  echo "Preparing core build in ${BUILD_DIR}"
   rm -rf "${BUILD_DIR}"
+  NEED_CONFIGURE=1
+else
+  if [[ ! -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+    echo "Info: CMake cache missing in ${BUILD_DIR}; configuring build directory." >&2
+    NEED_CONFIGURE=1
+  else
+    CACHE_CMAKE_SOURCE="$(
+      sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
+        | tail -n 1
+    )"
+    if [[ -n "${CACHE_CMAKE_SOURCE}" ]]; then
+      CACHE_CMAKE_SOURCE="$(realpath -m "${CACHE_CMAKE_SOURCE}")"
+    fi
+    if [[ -n "${CACHE_CMAKE_SOURCE}" && "${CACHE_CMAKE_SOURCE}" != "${ROOT_DIR}" ]]; then
+      echo "Info: build cache source mismatch; resetting ${BUILD_DIR}" >&2
+      echo "  cache source: ${CACHE_CMAKE_SOURCE}" >&2
+      echo "  expected: ${ROOT_DIR}" >&2
+      rm -rf "${BUILD_DIR}"
+      NEED_CONFIGURE=1
+    fi
+  fi
+fi
+
+if [[ "${NEED_CONFIGURE}" -eq 1 ]]; then
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
     CMAKE_ARCH="${CMAKE_ARCH:-x64}"
-    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -A "${CMAKE_ARCH}" -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS=ON -DZLINK_BUILD_BENCH_ZMQ=OFF -DZLINK_BUILD_BENCH_BEAST=OFF -DZLINK_CXX_STANDARD=17
+    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -A "${CMAKE_ARCH}" -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS="${BUILD_BENCHMARKS_FLAG}" -DZLINK_BUILD_BENCH_ZMQ=OFF -DZLINK_BUILD_BENCH_BEAST=OFF -DZLINK_CXX_STANDARD=17
   else
-    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS=ON -DZLINK_BUILD_BENCH_ZMQ=OFF -DZLINK_BUILD_BENCH_BEAST=OFF -DZLINK_CXX_STANDARD=17
+    cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS="${BUILD_BENCHMARKS_FLAG}" -DZLINK_BUILD_BENCH_ZMQ=OFF -DZLINK_BUILD_BENCH_BEAST=OFF -DZLINK_CXX_STANDARD=17
   fi
 fi
-if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  cmake --build "${BUILD_DIR}" --config Release
+if [[ "${BINDINGS_ONLY}" -eq 1 ]]; then
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    cmake --build "${BUILD_DIR}" --config Release --target libzlink
+  else
+    cmake --build "${BUILD_DIR}" --target libzlink
+  fi
 else
-  cmake --build "${BUILD_DIR}"
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    cmake --build "${BUILD_DIR}" --config Release
+  else
+    cmake --build "${BUILD_DIR}"
+  fi
 fi
 
 if command -v python3 >/dev/null 2>&1; then

@@ -438,6 +438,12 @@ for STREAM sockets. Instead of polling with `zlink_recv()`, the application
 attaches a callback that is invoked directly on the I/O thread when data
 arrives.
 
+Mode rules:
+- `zlink_stream_attach()` ON: consume STREAM data in callback dispatch.
+- While attached, do not mix `zlink_recv()` for STREAM payload consumption.
+- After `zlink_stream_detach()`, `zlink_recv()` pattern is available again.
+- There is no `zlink_stream_recv()` API.
+
 #### Constants
 
 | Constant | Value | Description |

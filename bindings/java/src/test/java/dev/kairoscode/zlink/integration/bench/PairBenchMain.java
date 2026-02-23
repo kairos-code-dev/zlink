@@ -33,6 +33,9 @@ public final class PairBenchMain {
             case "STREAM":
                 rc = BenchStream.run(transport, size);
                 break;
+            case "STREAM_LEN32BE":
+                rc = BenchStream.runLen32be(transport, size);
+                break;
             case "GATEWAY":
                 rc = BenchGateway.run(transport, size);
                 break;

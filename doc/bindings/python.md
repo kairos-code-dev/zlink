@@ -87,3 +87,25 @@ Manual build:
 cd bindings/python/benchwithzlink
 python3 setup_fastpath.py build_ext --inplace
 ```
+
+## 9. STREAM Callback API
+
+`Socket` STREAM helpers:
+- `stream_attach(handler, mode=StreamDispatchMode.NONE)`
+- `stream_detach()`
+- `stream_peer_routing_id(index=0)`
+- `stream_send(routing_id, payload, flags=0)`
+
+Mode rules:
+- While attached, consume STREAM payloads in the callback.
+- Do not mix `recv()` for STREAM payload consumption while attached.
+- After `stream_detach()`, normal `recv()` use is available again.
+
+```python
+def on_packets(routing_id, payload):
+    copy = bytes(payload)            # explicit copy before echo
+    stream.stream_send(routing_id, copy)
+    return 0
+
+stream.stream_attach(on_packets, zlink.StreamDispatchMode.LEN32BE)
+```

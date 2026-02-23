@@ -192,7 +192,7 @@ if IS_WINDOWS:
 else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
-DEFAULT_NUM_RUNS = 1
+DEFAULT_NUM_RUNS = 3
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
     SCRIPT_DIR, f"std_zmq_multi_cache_{_platform_tag}-{_arch_tag}.json"
@@ -242,6 +242,22 @@ def parse_nonnegative_int_env(name, default_value):
 DEFAULT_RUN_COOLDOWN_MS = parse_nonnegative_int_env(
     "BENCH_MULTI_RUN_COOLDOWN_MS", 3000
 )
+DEFAULT_RETRY_COOLDOWN_MS = parse_nonnegative_int_env(
+    "BENCH_MULTI_RETRY_COOLDOWN_MS", 500
+)
+DEFAULT_RUN_ATTEMPTS = max(1, parse_nonnegative_int_env("BENCH_MULTI_ATTEMPTS", 2))
+DEFAULT_STREAM_RUN_ATTEMPTS = max(
+    DEFAULT_RUN_ATTEMPTS,
+    parse_nonnegative_int_env(
+        "BENCH_MULTI_STREAM_ATTEMPTS", DEFAULT_RUN_ATTEMPTS
+    ),
+)
+
+
+def attempts_for_pattern(pattern_name):
+    if pattern_name == "MULTI_STREAM":
+        return DEFAULT_STREAM_RUN_ATTEMPTS
+    return DEFAULT_RUN_ATTEMPTS
 
 
 def select_comparisons(comparisons, pattern_req):
@@ -399,28 +415,29 @@ def parse_prep_line(line, transport, expected_sizes):
 
 
 def run_single_test(
-    binary_name, lib_name, transport, progress_cb=None, metric_cb=None
+    binary_name, lib_name, transport, pattern_name, progress_cb=None, metric_cb=None
 ):
     binary_path = os.path.join(BUILD_DIR, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(lib_name)
+    env["BENCH_MULTI_PATTERN"] = pattern_name
     fallback_size = MSG_SIZES[0] if MSG_SIZES else 64
-    timeout_override = int(os.environ.get("BENCH_MULTI_TIMEOUT_SECONDS", "0"))
+    timeout_override = parse_nonnegative_int_env("BENCH_MULTI_TIMEOUT_SECONDS", 0)
     duration_seconds = 5
-    for key in ("BENCH_MULTI_DURATION_SECONDS", "BENCH_MULTI_MEASURE_SECONDS"):
-        value = os.environ.get(key)
-        if value is None:
-            continue
-        try:
-            duration_seconds = max(1, int(value))
-            break
-        except ValueError:
-            continue
+    warmup_seconds = 3
+    try:
+        duration_seconds = max(1, int(os.environ.get("BENCH_MULTI_DURATION_SECONDS", "5")))
+    except ValueError:
+        duration_seconds = 5
+    try:
+        warmup_seconds = max(0, int(os.environ.get("BENCH_MULTI_WARMUP_SECONDS", "3")))
+    except ValueError:
+        warmup_seconds = 3
     if timeout_override > 0:
         timeout_sec = timeout_override
     else:
         timeout_sec = max(
             600,
-            duration_seconds * max(1, len(MSG_SIZES)) * 8 + 120,
+            (warmup_seconds + duration_seconds) * max(1, len(MSG_SIZES)) * 8 + 120,
         )
 
     try:
@@ -610,6 +627,9 @@ def collect_data(
             expected_keys.append(f"{tr}|{sz}|throughput")
             expected_keys.append(f"{tr}|{sz}|latency")
 
+        attempts = attempts_for_pattern(pattern_name)
+        retry_cooldown_ms = DEFAULT_RETRY_COOLDOWN_MS
+
         for i in range(num_runs):
             print(f"{i+1} ", end="", flush=True)
             seen_sizes = set()
@@ -653,9 +673,41 @@ def collect_data(
                     )
                     reported_sizes.add(size)
 
-            run_outcome = run_single_test(
-                binary_name, lib_name, tr, on_size_done, on_metric
-            )
+            run_outcome = {
+                "parsed": {},
+                "timed_out": False,
+                "returncode": -1,
+                "error": "",
+            }
+            missing = list(expected_keys)
+            for attempt_idx in range(attempts):
+                if attempt_idx > 0:
+                    print(
+                        f"[retry={attempt_idx + 1}/{attempts}] ",
+                        end="",
+                        flush=True,
+                    )
+                    if retry_cooldown_ms > 0:
+                        print(
+                            f"[retry-cooldown={retry_cooldown_ms}ms] ",
+                            end="",
+                            flush=True,
+                        )
+                        time.sleep(retry_cooldown_ms / 1000.0)
+
+                run_outcome = run_single_test(
+                    binary_name, lib_name, tr, pattern_name, on_size_done, on_metric
+                )
+                results = run_outcome.get("parsed", {})
+                timed_out = bool(run_outcome.get("timed_out", False))
+                run_error = run_outcome.get("error", "")
+                if timed_out or run_error or not results:
+                    continue
+
+                missing = [key for key in expected_keys if key not in results]
+                if not missing:
+                    break
+
             results = run_outcome.get("parsed", {})
             rc = run_outcome.get("returncode", 0)
             timed_out = bool(run_outcome.get("timed_out", False))
@@ -689,7 +741,6 @@ def collect_data(
                 maybe_cooldown()
                 continue
 
-            missing = [key for key in expected_keys if key not in results]
             if missing:
                 failed_runs += 1
                 for key in missing:
@@ -895,7 +946,7 @@ def parse_args():
         "  --zlink-only            Re-measure only zlink (use cached libzmq when available)\n"
         "  --refresh-std-cache     Refresh libzmq cache with current measurements\n"
         "  --std-cache-file PATH   libzmq cache file path (default: platform cache in multi/)\n"
-        "  --runs N                Iterations per configuration (default: 1)\n"
+        "  --runs N                Iterations per configuration (default: 3)\n"
         "  --run-cooldown-ms N     Sleep between runs (default: BENCH_MULTI_RUN_COOLDOWN_MS)\n"
         "  --build-dir PATH        Build directory\n"
         "  --pin-cpu               Pin CPU core during benchmarks (Linux taskset)\n"
@@ -916,14 +967,18 @@ def parse_args():
         "  BENCH_MULTI_RCVTIMEO_MS=5000\n"
         "  BENCH_MULTI_MONITOR_HWM=100000\n"
         "  BENCH_MULTI_CONNECT_READY_TIMEOUT_MS=5000\n"
+        "  BENCH_MULTI_WARMUP_SECONDS=3\n"
         "  BENCH_MULTI_DURATION_SECONDS=5\n"
-        "  BENCH_MULTI_MEASURE_SECONDS=5  (legacy alias)\n"
         "  BENCH_MULTI_SETTLE_MS=500\n"
-        "  BENCH_MULTI_DRAIN_MS=300  (deprecated)\n"
+        "  BENCH_MULTI_DRAIN_MS=300  (pattern exceptions) / 0 (default)\n"
+        "  BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS=300\n"
         "  BENCH_MULTI_RECV_BATCH=64\n"
-        "  BENCH_MULTI_SEND_WORKERS=2\n"
+        "  BENCH_MULTI_SEND_WORKERS=auto\n"
         "  BENCH_MULTI_SEND_BACKOFF_US=20\n"
         "  BENCH_MULTI_RUN_COOLDOWN_MS=3000\n"
+        "  BENCH_MULTI_RETRY_COOLDOWN_MS=500\n"
+        "  BENCH_MULTI_ATTEMPTS=2\n"
+        "  BENCH_MULTI_STREAM_ATTEMPTS=2\n"
         "  BENCH_IO_THREADS=4\n"
         "  BENCH_MULTI_TIMEOUT_SECONDS=600\n"
     )

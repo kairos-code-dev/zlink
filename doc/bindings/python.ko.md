@@ -87,3 +87,25 @@ unittest 프레임워크 사용.
 cd bindings/python/benchwithzlink
 python3 setup_fastpath.py build_ext --inplace
 ```
+
+## 9. STREAM 콜백 API
+
+`Socket` STREAM 헬퍼:
+- `stream_attach(handler, mode=StreamDispatchMode.NONE)`
+- `stream_detach()`
+- `stream_peer_routing_id(index=0)`
+- `stream_send(routing_id, payload, flags=0)`
+
+모드 규칙:
+- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
+- `stream_detach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
+
+```python
+def on_packets(routing_id, payload):
+    copy = bytes(payload)            # echo 전 명시적 복사
+    stream.stream_send(routing_id, copy)
+    return 0
+
+stream.stream_attach(on_packets, zlink.StreamDispatchMode.LEN32BE)
+```

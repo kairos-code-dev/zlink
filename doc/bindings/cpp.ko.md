@@ -89,3 +89,29 @@ target_include_directories(myapp PRIVATE path/to/zlink.hpp)
 - `darwin-aarch64/libzlink.dylib`
 - `windows-x86_64/zlink.dll`
 - `windows-aarch64/zlink.dll`
+
+## 7. STREAM 콜백 API
+
+`socket_t` STREAM 헬퍼:
+- `stream_attach(zlink_stream_on_packets_fn, int flags)`
+- `stream_attach(zlink_stream_on_packets_fn, stream_dispatch_mode mode)`
+- `stream_detach()`
+- `stream_send(...)`
+
+모드 규칙:
+- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `recv()`를 혼용하지 않습니다.
+- `stream_detach()` 이후에는 기존 `recv()` 경로를 다시 사용할 수 있습니다.
+
+```cpp
+int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        const void *data = zlink_msg_data(&msgs[i]);
+        size_t size = zlink_msg_size(&msgs[i]);
+        stream.stream_send(*rid, data, size, zlink::send_flag::none);
+    }
+    return 0;
+}
+
+stream.stream_attach(on_packets, zlink::stream_dispatch_mode::len32be);
+```

@@ -102,7 +102,7 @@ gRPC가 설정되지 않은 경우 `bench_rc_grpc_*` 타겟은 등록되지 않�
 ### Shell 래퍼 (권장)
 
 ```bash
-# 기본 실행 (5회 반복, 100 클라이언트)
+# 기본 실행 (3회 반복, 100 클라이언트)
 ./core/bench/benchwithroutercompare/run_benchmarks.sh
 
 # 빠른 테스트 (1회 반복)
@@ -125,7 +125,7 @@ gRPC가 설정되지 않은 경우 `bench_rc_grpc_*` 타겟은 등록되지 않�
 
 ```bash
 python3 core/bench/benchwithroutercompare/run_comparison.py \
-  --runs 5 --clients 100
+  --runs 3 --clients 100
 ```
 
 ### 개별 바이너리 수동 실행
@@ -138,7 +138,7 @@ python3 core/bench/benchwithroutercompare/run_comparison.py \
 LD_LIBRARY_PATH=core/build/lib \
   BENCH_PORT=29200 ./core/build/bin/bench_rc_zlink_server &
 LD_LIBRARY_PATH=core/build/lib \
-  BENCH_PORT=29200 BENCH_CLIENTS=1 BENCH_DURATION_SECONDS=5 \
+  BENCH_PORT=29200 BENCH_CLIENTS=1 BENCH_MULTI_DURATION_SECONDS=5 \
   ./core/build/bin/bench_rc_zlink_client zlink
 
 # libzmq
@@ -146,7 +146,7 @@ LIBZMQ_LIB=core/bench/benchwithroutercompare/libzmq/libzmq_dist/linux-x64/lib
 LD_LIBRARY_PATH=${LIBZMQ_LIB} \
   BENCH_PORT=29200 ./core/build/bin/bench_rc_zmq_server &
 LD_LIBRARY_PATH=${LIBZMQ_LIB} \
-  BENCH_PORT=29200 BENCH_CLIENTS=1 BENCH_DURATION_SECONDS=5 \
+  BENCH_PORT=29200 BENCH_CLIENTS=1 BENCH_MULTI_DURATION_SECONDS=5 \
   ./core/build/bin/bench_rc_zmq_client libzmq
 ```
 
@@ -156,7 +156,7 @@ LD_LIBRARY_PATH=${LIBZMQ_LIB} \
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `--runs N` | 5 | 설정당 반복 횟수 (중앙값 선택) |
+| `--runs N` | 3 | 설정당 반복 횟수 (중앙값 선택) |
 | `--clients N` | 100 | N:1 테스트 클라이언트 수 |
 | `--build-dir PATH` | 자동 탐색 | 빌드 디렉토리 경로 |
 | `--zlink-only` | off | zlink만 실행, zmq/grpc는 캐시 사용 |
@@ -170,9 +170,9 @@ LD_LIBRARY_PATH=${LIBZMQ_LIB} \
 | `BENCH_PORT` | 29200 | 서버 바인드 포트 |
 | `BENCH_CLIENTS` | 100 | 클라이언트 수 |
 | `BENCH_MSG_SIZES` | `64,256,1024,65536,131072,262144` | 메시지 크기 리스트 (콤마 구분) |
-| `BENCH_DURATION_SECONDS` | 5 | 측정 기간 (초) |
-| `BENCH_SETTLE_MS` | 500 | 연결 안정화 대기 (ms) |
-| `BENCH_DRAIN_MS` | 300 | 잔여 메시지 수신 대기 (ms) |
+| `BENCH_MULTI_DURATION_SECONDS` | 5 | 측정 기간 (초) |
+| `BENCH_MULTI_SETTLE_MS` | 500 | 연결 안정화 대기 (ms) |
+| `BENCH_MULTI_DRAIN_MS` | 300 | 잔여 메시지 수신 대기 (ms) |
 | `BENCH_INFLIGHT` | 1 | 클라이언트당 동시 전송 메시지 수 |
 | `BENCH_IO_THREADS` | 4 | zmq/zlink IO 스레드 수 |
 | `BENCH_HWM` | 300000 | zmq/zlink 고수위선 (HWM) |

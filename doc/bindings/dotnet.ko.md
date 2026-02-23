@@ -46,3 +46,27 @@ Console.WriteLine(Encoding.UTF8.GetString(reply));
 ## 5. 테스트
 
 xUnit 프레임워크 사용: `bindings/dotnet/tests/`
+
+## 6. STREAM 콜백 API
+
+`Socket`에서 STREAM 콜백 헬퍼를 제공합니다.
+- `AttachStream(StreamPacketsHandler handler, StreamDispatchMode mode = StreamDispatchMode.None)`
+- `DetachStream()`
+- `StreamPeerRoutingId(int index = 0)`
+- `StreamSend(ReadOnlySpan<byte> routingId, ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)`
+
+모드 규칙:
+- attach 상태에서는 콜백에서 STREAM 페이로드를 소비합니다.
+- attach 상태에서 STREAM 페이로드 수신에 `Receive()`/`TryReceive()`를 혼용하지 않습니다.
+- `DetachStream()` 이후에는 기존 receive 호출로 복귀할 수 있습니다.
+
+```csharp
+using var stream = new Socket(ctx, SocketType.Stream);
+
+stream.AttachStream((rid, payload) =>
+{
+    var copy = payload.ToArray();   // echo 전 명시적 복사
+    stream.StreamSend(rid, copy, SendFlags.None);
+    return 0;
+}, StreamDispatchMode.Len32Be);
+```

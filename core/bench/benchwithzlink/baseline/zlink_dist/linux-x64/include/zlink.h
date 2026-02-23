@@ -5,7 +5,7 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 1
-#define ZLINK_VERSION_MINOR 3
+#define ZLINK_VERSION_MINOR 4
 #define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
@@ -373,8 +373,6 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_TCP_MAXRT 80
 #define ZLINK_MULTICAST_MAXTPDU 84
 #define ZLINK_USE_FD 89
-#define ZLINK_REQUEST_TIMEOUT 90
-#define ZLINK_REQUEST_CORRELATE 91
 #define ZLINK_BINDTODEVICE 92
 #define ZLINK_XPUB_MANUAL_LAST_VALUE 98
 #define ZLINK_ONLY_FIRST_SUBSCRIBE 108
@@ -502,6 +500,88 @@ zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
  * @return Number of bytes received, or -1 on failure (errno is set).
  */
 ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
+
+/**
+ * @brief Callback type for STREAM packet/chunk dispatch.
+ *
+ * Callback is invoked on the owning STREAM I/O thread.
+ * Returning non-zero requests dispatcher shutdown.
+ *
+ * @param rid_   Routing id for the peer that produced this data.
+ * @param msgs_  Message payload array. In LEN32BE mode each item is a complete
+ *               payload; otherwise each item may be a raw stream chunk.
+ *               Ownership is kept by zlink; the callback must not close items
+ *               and must not retain pointers from them after callback return.
+ * @param msg_count_ Number of entries in @p msgs_.
+ * @return 0 to continue dispatch, non-zero to stop.
+ */
+typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
+                                           zlink_msg_t *msgs_,
+                                           size_t msg_count_);
+
+/** @brief zlink_stream_attach() flag: decode LEN32BE frames before callback. */
+#define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
+
+/**
+ * @brief Attach STREAM callback dispatch.
+ *
+ * Valid only for ZLINK_STREAM sockets.
+ * If already attached for the socket, returns -1 with errno=EBUSY.
+ *
+ * @param s_         STREAM socket.
+ * @param on_packets_ Callback for received stream data.
+ * @param flags_     Dispatch flags (e.g. ZLINK_STREAM_DISPATCH_LEN32BE).
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_attach (void *s_,
+                                      zlink_stream_on_packets_fn on_packets_,
+                                      int flags_);
+
+/**
+ * @brief Detach STREAM callback dispatch from a socket.
+ *
+ * @param s_ STREAM socket.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_detach (void *s_);
+
+/**
+ * @brief Send STREAM payload to a specific peer by routing id.
+ *
+ * Sends routing id as the first STREAM frame and payload as the second frame.
+ * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
+ * as 4-byte big-endian length + payload before sending.
+ *
+ * @param s_    STREAM socket.
+ * @param rid_  Target peer routing id.
+ * @param data_ Payload data buffer (may be NULL when size_ == 0).
+ * @param size_ Payload size in bytes.
+ * @param flags_ Send flags (0 or ZLINK_DONTWAIT).
+ * @return Number of payload bytes accepted (size_), or -1 on failure.
+ */
+ZLINK_EXPORT int zlink_stream_send (void *s_,
+                                    const zlink_routing_id_t *rid_,
+                                    const void *data_,
+                                    size_t size_,
+                                    int flags_);
+
+/**
+ * @brief Send STREAM payload message to a specific peer by routing id.
+ *
+ * This API consumes @p msg_ and reinitializes it before returning.
+ * If dispatcher was attached in LEN32BE mode for this socket, payload is framed
+ * as 4-byte big-endian length + payload before sending.
+ *
+ * @param s_    STREAM socket.
+ * @param rid_  Target peer routing id.
+ * @param msg_  Payload message to send (consumed by this call).
+ * @param flags_ Send flags (0 or ZLINK_DONTWAIT).
+ * @return Number of payload bytes accepted, or -1 on failure.
+ */
+ZLINK_EXPORT int zlink_stream_send_msg (void *s_,
+                                        const zlink_routing_id_t *rid_,
+                                        zlink_msg_t *msg_,
+                                        int flags_);
 
 /**
  * @brief Start a socket monitor via an inproc address (legacy).

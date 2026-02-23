@@ -35,14 +35,20 @@ build_runners() {
   cmake --build "${BUILD_DIR}" --target test_scenario_router_router_zlink_connect -j"$(nproc)"
 
   if [[ ! -f "${LIBZMQ_INCLUDE}/zmq.h" ]]; then
-    local fallback_include="${ROOT_DIR}/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/include"
+    local fallback_include="${ROOT_DIR}/core/bench/with_zmq/libzmq/libzmq_dist/linux-x64/include"
+    if [[ ! -f "${fallback_include}/zmq.h" ]]; then
+      fallback_include="${ROOT_DIR}/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/include"
+    fi
     if [[ -f "${fallback_include}/zmq.h" ]]; then
       LIBZMQ_INCLUDE="${fallback_include}"
     fi
   fi
 
   if [[ ! -f "${LIBZMQ_LIBDIR}/libzmq.so" ]]; then
-    local fallback_libdir="${ROOT_DIR}/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib"
+    local fallback_libdir="${ROOT_DIR}/core/bench/with_zmq/libzmq/libzmq_dist/linux-x64/lib"
+    if [[ ! -f "${fallback_libdir}/libzmq.so" ]]; then
+      fallback_libdir="${ROOT_DIR}/core/bench/benchwithzmq/libzmq/libzmq_dist/linux-x64/lib"
+    fi
     if [[ -f "${fallback_libdir}/libzmq.so" ]]; then
       LIBZMQ_LIBDIR="${fallback_libdir}"
     fi

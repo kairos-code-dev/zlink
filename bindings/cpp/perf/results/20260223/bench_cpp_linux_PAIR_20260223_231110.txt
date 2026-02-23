@@ -1,0 +1,10 @@
+
+## PATTERN: PAIR
+  > Benchmarking binding (cpp)...
+    Testing tcp | 1024B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 1024B | Throughput |    869.77 Kmsg/s |
+| 1024B | Latency    |         30.96 us |

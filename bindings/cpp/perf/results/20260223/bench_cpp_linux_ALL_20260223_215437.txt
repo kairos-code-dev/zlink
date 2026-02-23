@@ -1,0 +1,656 @@
+
+## PATTERN: PAIR
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6076.41 Kmsg/s | 5567.16 Kmsg/s |   -8.38% |
+| 64B | Latency    |       33.96 us |       39.35 us |  -15.87% |
+| 256B | Throughput | 2788.98 Kmsg/s | 2561.64 Kmsg/s |   -8.15% |
+| 256B | Latency    |       27.18 us |       30.30 us |  -11.49% |
+| 1024B | Throughput |  986.11 Kmsg/s |  862.62 Kmsg/s |  -12.52% |
+| 1024B | Latency    |       34.21 us |       31.05 us |   +9.23% |
+| 65536B | Throughput |   64.31 Kmsg/s |   71.53 Kmsg/s |  +11.23% |
+| 65536B | Latency    |       76.50 us |      131.41 us |  -71.78% |
+| 131072B | Throughput |   46.84 Kmsg/s |   39.28 Kmsg/s |  -16.15% |
+| 131072B | Latency    |       97.24 us |       97.25 us |   -0.01% |
+| 262144B | Throughput |   24.68 Kmsg/s |   21.84 Kmsg/s |  -11.49% |
+| 262144B | Latency    |      100.61 us |      163.59 us |  -62.60% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5931.46 Kmsg/s | 5658.41 Kmsg/s |   -4.60% |
+| 64B | Latency    |        0.07 us |        0.11 us |  -60.00% |
+| 256B | Throughput | 5463.34 Kmsg/s | 4871.46 Kmsg/s |  -10.83% |
+| 256B | Latency    |        0.09 us |        0.08 us |   +7.78% |
+| 1024B | Throughput | 2379.06 Kmsg/s | 1870.52 Kmsg/s |  -21.38% |
+| 1024B | Latency    |        0.08 us |        0.10 us |  -25.00% |
+| 65536B | Throughput |  176.61 Kmsg/s |  140.10 Kmsg/s |  -20.67% |
+| 65536B | Latency    |        1.87 us |        1.93 us |   -3.37% |
+| 131072B | Throughput |   89.63 Kmsg/s |   78.89 Kmsg/s |  -11.98% |
+| 131072B | Latency    |        3.47 us |        3.73 us |   -7.58% |
+| 262144B | Throughput |   51.68 Kmsg/s |   45.81 Kmsg/s |  -11.36% |
+| 262144B | Latency    |        6.66 us |        6.92 us |   -3.93% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6050.70 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |       26.09 us |        0.00 us | +100.00% |
+| 256B | Throughput | 2899.51 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |       25.00 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1195.96 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |       35.27 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   69.34 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |      114.72 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   45.23 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       51.15 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   23.91 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |      182.92 us |        0.00 us | +100.00% |
+
+## PATTERN: PUBSUB
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5710.30 Kmsg/s | 5403.90 Kmsg/s |   -5.37% |
+| 64B | Latency    |        0.18 us |        0.19 us |   -2.81% |
+| 256B | Throughput | 2764.43 Kmsg/s | 2396.05 Kmsg/s |  -13.33% |
+| 256B | Latency    |        0.36 us |        0.42 us |  -15.93% |
+| 1024B | Throughput | 1097.42 Kmsg/s |  974.23 Kmsg/s |  -11.23% |
+| 1024B | Latency    |        0.91 us |        1.03 us |  -12.80% |
+| 65536B | Throughput |   72.89 Kmsg/s |   68.40 Kmsg/s |   -6.17% |
+| 65536B | Latency    |       13.72 us |       14.62 us |   -6.56% |
+| 131072B | Throughput |   46.57 Kmsg/s |   41.45 Kmsg/s |  -11.00% |
+| 131072B | Latency    |       21.47 us |       24.13 us |  -12.37% |
+| 262144B | Throughput |   27.49 Kmsg/s |   23.47 Kmsg/s |  -14.62% |
+| 262144B | Latency    |       36.38 us |       42.61 us |  -17.14% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5858.54 Kmsg/s | 5653.76 Kmsg/s |   -3.50% |
+| 64B | Latency    |        0.17 us |        0.18 us |   -4.04% |
+| 256B | Throughput | 4842.72 Kmsg/s | 4190.76 Kmsg/s |  -13.46% |
+| 256B | Latency    |        0.21 us |        0.24 us |  -13.63% |
+| 1024B | Throughput | 2210.54 Kmsg/s | 2038.71 Kmsg/s |   -7.77% |
+| 1024B | Latency    |        0.45 us |        0.49 us |   -9.00% |
+| 65536B | Throughput |  165.40 Kmsg/s |  144.27 Kmsg/s |  -12.77% |
+| 65536B | Latency    |        6.05 us |        6.93 us |  -14.57% |
+| 131072B | Throughput |   99.78 Kmsg/s |   81.15 Kmsg/s |  -18.67% |
+| 131072B | Latency    |       10.02 us |       12.32 us |  -22.98% |
+| 262144B | Throughput |   53.79 Kmsg/s |   47.36 Kmsg/s |  -11.95% |
+| 262144B | Latency    |       18.59 us |       21.11 us |  -13.58% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5787.80 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |        0.17 us |        0.00 us | +100.00% |
+| 256B | Throughput | 2801.04 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |        0.36 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1240.49 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |        0.81 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   80.35 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       12.45 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   47.56 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       21.03 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   26.35 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |       37.96 us |        0.00 us | +100.00% |
+
+## PATTERN: DEALER_DEALER
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6196.46 Kmsg/s | 5357.04 Kmsg/s |  -13.55% |
+| 64B | Latency    |       27.62 us |       40.34 us |  -46.06% |
+| 256B | Throughput | 2696.53 Kmsg/s | 2451.58 Kmsg/s |   -9.08% |
+| 256B | Latency    |       27.77 us |       32.27 us |  -16.22% |
+| 1024B | Throughput | 1120.20 Kmsg/s | 1035.30 Kmsg/s |   -7.58% |
+| 1024B | Latency    |       28.55 us |       29.97 us |   -4.98% |
+| 65536B | Throughput |   77.88 Kmsg/s |   69.17 Kmsg/s |  -11.18% |
+| 65536B | Latency    |       43.34 us |       89.73 us | -107.04% |
+| 131072B | Throughput |   48.80 Kmsg/s |   41.33 Kmsg/s |  -15.32% |
+| 131072B | Latency    |      104.07 us |       74.88 us |  +28.05% |
+| 262144B | Throughput |   27.25 Kmsg/s |   23.36 Kmsg/s |  -14.28% |
+| 262144B | Latency    |       89.38 us |      133.93 us |  -49.84% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 6173.48 Kmsg/s | 5619.32 Kmsg/s |   -8.98% |
+| 64B | Latency    |        0.09 us |        0.09 us |   +4.44% |
+| 256B | Throughput | 5205.85 Kmsg/s | 4608.72 Kmsg/s |  -11.47% |
+| 256B | Latency    |        0.08 us |        0.09 us |   -6.25% |
+| 1024B | Throughput | 2190.35 Kmsg/s | 1896.20 Kmsg/s |  -13.43% |
+| 1024B | Latency    |        0.12 us |        0.10 us |  +20.00% |
+| 65536B | Throughput |  150.27 Kmsg/s |  139.10 Kmsg/s |   -7.43% |
+| 65536B | Latency    |        1.92 us |        2.10 us |   -9.17% |
+| 131072B | Throughput |   89.14 Kmsg/s |   80.48 Kmsg/s |   -9.71% |
+| 131072B | Latency    |        3.47 us |        3.55 us |   -2.22% |
+| 262144B | Throughput |   53.82 Kmsg/s |   46.55 Kmsg/s |  -13.50% |
+| 262144B | Latency    |        6.60 us |        6.81 us |   -3.15% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5949.92 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |       26.51 us |        0.00 us | +100.00% |
+| 256B | Throughput | 3068.70 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |       26.80 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1239.19 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |       26.77 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   75.79 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       41.26 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   42.18 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       60.84 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   26.09 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |      127.82 us |        0.00 us | +100.00% |
+
+## PATTERN: DEALER_ROUTER
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5351.57 Kmsg/s | 5147.34 Kmsg/s |   -3.82% |
+| 64B | Latency    |       36.87 us |       38.51 us |   -4.44% |
+| 256B | Throughput | 2553.11 Kmsg/s | 2462.18 Kmsg/s |   -3.56% |
+| 256B | Latency    |       42.95 us |       39.30 us |   +8.49% |
+| 1024B | Throughput | 1165.27 Kmsg/s |  995.61 Kmsg/s |  -14.56% |
+| 1024B | Latency    |       36.12 us |       47.01 us |  -30.16% |
+| 65536B | Throughput |   72.82 Kmsg/s |   71.33 Kmsg/s |   -2.05% |
+| 65536B | Latency    |      119.28 us |       58.32 us |  +51.10% |
+| 131072B | Throughput |   44.01 Kmsg/s |   40.37 Kmsg/s |   -8.25% |
+| 131072B | Latency    |      156.25 us |       95.83 us |  +38.67% |
+| 262144B | Throughput |   26.59 Kmsg/s |   22.57 Kmsg/s |  -15.11% |
+| 262144B | Latency    |      188.57 us |       84.61 us |  +55.13% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5833.92 Kmsg/s | 4737.25 Kmsg/s |  -18.80% |
+| 64B | Latency    |        0.11 us |        0.11 us |   -0.91% |
+| 256B | Throughput | 4027.87 Kmsg/s | 3589.86 Kmsg/s |  -10.87% |
+| 256B | Latency    |        0.11 us |        0.11 us |   -0.45% |
+| 1024B | Throughput | 2041.80 Kmsg/s | 1817.22 Kmsg/s |  -11.00% |
+| 1024B | Latency    |        0.11 us |        0.13 us |  -19.55% |
+| 65536B | Throughput |  155.37 Kmsg/s |  134.24 Kmsg/s |  -13.60% |
+| 65536B | Latency    |        1.90 us |        1.98 us |   -4.03% |
+| 131072B | Throughput |   85.51 Kmsg/s |   74.26 Kmsg/s |  -13.16% |
+| 131072B | Latency    |        3.46 us |        3.64 us |   -5.16% |
+| 262144B | Throughput |   62.21 Kmsg/s |   51.43 Kmsg/s |  -17.32% |
+| 262144B | Latency    |        6.63 us |        7.03 us |   -5.97% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5570.67 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |       46.92 us |        0.00 us | +100.00% |
+| 256B | Throughput | 2791.09 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |       39.94 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1242.03 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |       40.62 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   71.40 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       84.62 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   42.60 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |      164.94 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   25.59 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |       71.03 us |        0.00 us | +100.00% |
+
+## PATTERN: ROUTER_ROUTER
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5014.47 Kmsg/s | 5186.28 Kmsg/s |   +3.43% |
+| 64B | Latency    |       15.63 us |       17.25 us |  -10.37% |
+| 256B | Throughput | 2483.73 Kmsg/s | 2296.68 Kmsg/s |   -7.53% |
+| 256B | Latency    |       16.34 us |       17.50 us |   -7.07% |
+| 1024B | Throughput | 1090.00 Kmsg/s |  862.73 Kmsg/s |  -20.85% |
+| 1024B | Latency    |       15.79 us |       18.49 us |  -17.09% |
+| 65536B | Throughput |   80.36 Kmsg/s |   69.85 Kmsg/s |  -13.07% |
+| 65536B | Latency    |       26.27 us |       31.25 us |  -18.95% |
+| 131072B | Throughput |   46.74 Kmsg/s |   39.64 Kmsg/s |  -15.18% |
+| 131072B | Latency    |       49.12 us |       43.61 us |  +11.22% |
+| 262144B | Throughput |   25.85 Kmsg/s |   23.75 Kmsg/s |   -8.11% |
+| 262144B | Latency    |       85.55 us |      103.66 us |  -21.17% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 4233.53 Kmsg/s | 4250.15 Kmsg/s |   +0.39% |
+| 64B | Latency    |        0.15 us |        0.17 us |  -13.67% |
+| 256B | Throughput | 3360.62 Kmsg/s | 3040.34 Kmsg/s |   -9.53% |
+| 256B | Latency    |        0.15 us |        0.18 us |  -17.33% |
+| 1024B | Throughput | 1937.21 Kmsg/s | 1758.07 Kmsg/s |   -9.25% |
+| 1024B | Latency    |        0.18 us |        0.19 us |   -3.61% |
+| 65536B | Throughput |  174.58 Kmsg/s |  161.10 Kmsg/s |   -7.72% |
+| 65536B | Latency    |        1.94 us |        2.15 us |  -11.03% |
+| 131072B | Throughput |   94.10 Kmsg/s |   87.48 Kmsg/s |   -7.03% |
+| 131072B | Latency    |        3.56 us |        3.75 us |   -5.25% |
+| 262144B | Throughput |  102.78 Kmsg/s |   78.05 Kmsg/s |  -24.06% |
+| 262144B | Latency    |        7.35 us |        7.58 us |   -3.13% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 4328.93 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |       13.88 us |        0.00 us | +100.00% |
+| 256B | Throughput | 2437.44 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |       17.16 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1244.35 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |       14.64 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   77.46 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       26.06 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   46.41 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       94.26 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   25.01 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |       54.32 us |        0.00 us | +100.00% |
+
+## PATTERN: ROUTER_ROUTER_POLL
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing inproc | 64B: 1 Done
+    Testing inproc | 256B: 1 Done
+    Testing inproc | 1024B: 1 Done
+    Testing inproc | 65536B: 1 Done
+    Testing inproc | 131072B: 1 Done
+    Testing inproc | 262144B: 1 Done
+    Testing ipc | 64B: 1 (failures=1) Done
+    Testing ipc | 256B: 1 (failures=1) Done
+    Testing ipc | 1024B: 1 (failures=1) Done
+    Testing ipc | 65536B: 1 (failures=1) Done
+    Testing ipc | 131072B: 1 (failures=1) Done
+    Testing ipc | 262144B: 1 (failures=1) Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 2551.91 Kmsg/s | 2271.82 Kmsg/s |  -10.98% |
+| 64B | Latency    |       16.64 us |       18.16 us |   -9.14% |
+| 256B | Throughput | 1911.25 Kmsg/s | 1688.73 Kmsg/s |  -11.64% |
+| 256B | Latency    |       15.89 us |       20.90 us |  -31.53% |
+| 1024B | Throughput | 1160.31 Kmsg/s | 1029.23 Kmsg/s |  -11.30% |
+| 1024B | Latency    |       16.28 us |       19.92 us |  -22.33% |
+| 65536B | Throughput |   82.54 Kmsg/s |   65.25 Kmsg/s |  -20.95% |
+| 65536B | Latency    |       26.36 us |       64.32 us | -143.99% |
+| 131072B | Throughput |   48.84 Kmsg/s |   41.78 Kmsg/s |  -14.44% |
+| 131072B | Latency    |       37.02 us |       42.09 us |  -13.71% |
+| 262144B | Throughput |   25.75 Kmsg/s |   23.24 Kmsg/s |   -9.76% |
+| 262144B | Latency    |      108.32 us |      134.80 us |  -24.45% |
+
+### Transport: inproc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 2619.37 Kmsg/s | 2346.00 Kmsg/s |  -10.44% |
+| 64B | Latency    |        0.46 us |        0.51 us |   -9.89% |
+| 256B | Throughput | 1718.33 Kmsg/s | 1530.26 Kmsg/s |  -10.94% |
+| 256B | Latency    |        0.45 us |        0.53 us |  -17.00% |
+| 1024B | Throughput | 1215.11 Kmsg/s | 1084.62 Kmsg/s |  -10.74% |
+| 1024B | Latency    |        0.48 us |        0.55 us |  -15.21% |
+| 65536B | Throughput |  129.52 Kmsg/s |  121.67 Kmsg/s |   -6.06% |
+| 65536B | Latency    |        2.23 us |        2.53 us |  -13.39% |
+| 131072B | Throughput |   98.53 Kmsg/s |   83.89 Kmsg/s |  -14.86% |
+| 131072B | Latency    |        3.90 us |        4.08 us |   -4.64% |
+| 262144B | Throughput |   43.46 Kmsg/s |   43.15 Kmsg/s |   -0.72% |
+| 262144B | Latency    |        7.49 us |        7.45 us |   +0.60% |
+
+### Transport: ipc
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 2559.75 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 64B | Latency    |       21.25 us |        0.00 us | +100.00% |
+| 256B | Throughput | 1987.27 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 256B | Latency    |       14.80 us |        0.00 us | +100.00% |
+| 1024B | Throughput | 1000.29 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 1024B | Latency    |       20.97 us |        0.00 us | +100.00% |
+| 65536B | Throughput |   71.56 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       25.99 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   43.75 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       35.59 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   25.40 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |      162.12 us |        0.00 us | +100.00% |
+
+## PATTERN: STREAM
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 5094.87 Kmsg/s |    8.92 Kmsg/s |  -99.82% |
+| 64B | Latency    |       30.48 us |      558.25 us | -1731.53% |
+| 256B | Throughput | 3262.83 Kmsg/s |    8.92 Kmsg/s |  -99.73% |
+| 256B | Latency    |       36.80 us |      560.20 us | -1422.27% |
+| 1024B | Throughput | 1524.42 Kmsg/s |    8.93 Kmsg/s |  -99.41% |
+| 1024B | Latency    |       29.64 us |      559.23 us | -1786.73% |
+| 65536B | Throughput |   66.02 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |      147.28 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   37.47 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |      148.44 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   22.15 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |      171.57 us |        0.00 us | +100.00% |
+
+### Transport: ws
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 3645.38 Kmsg/s |    8.93 Kmsg/s |  -99.76% |
+| 64B | Latency    |       29.95 us |      557.71 us | -1762.14% |
+| 256B | Throughput | 3197.41 Kmsg/s |    8.92 Kmsg/s |  -99.72% |
+| 256B | Latency    |       40.77 us |      559.37 us | -1272.00% |
+| 1024B | Throughput | 1342.32 Kmsg/s |    8.90 Kmsg/s |  -99.34% |
+| 1024B | Latency    |       32.37 us |      559.01 us | -1626.94% |
+| 65536B | Throughput |   47.72 Kmsg/s |    7.99 Kmsg/s |  -83.26% |
+| 65536B | Latency    |      127.43 us |      562.03 us | -341.05% |
+| 131072B | Throughput |   24.17 Kmsg/s |    7.70 Kmsg/s |  -68.15% |
+| 131072B | Latency    |      154.85 us |      564.63 us | -264.63% |
+| 262144B | Throughput |   14.25 Kmsg/s |    5.66 Kmsg/s |  -60.29% |
+| 262144B | Latency    |      112.96 us |      563.16 us | -398.55% |
+
+## PATTERN: STREAM_LEN32BE
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 (failures=1) Done
+    Testing tcp | 131072B: 1 (failures=1) Done
+    Testing tcp | 262144B: 1 (failures=1) Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 1776.63 Kmsg/s |    8.94 Kmsg/s |  -99.50% |
+| 64B | Latency    |    22108.75 us |      559.73 us |  +97.47% |
+| 256B | Throughput | 1750.39 Kmsg/s |    8.92 Kmsg/s |  -99.49% |
+| 256B | Latency    |    22047.96 us |      559.67 us |  +97.46% |
+| 1024B | Throughput | 1475.49 Kmsg/s |    8.92 Kmsg/s |  -99.40% |
+| 1024B | Latency    |    22114.09 us |      560.27 us |  +97.47% |
+| 65536B | Throughput |  116.75 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 65536B | Latency    |       46.77 us |        0.00 us | +100.00% |
+| 131072B | Throughput |   28.05 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 131072B | Latency    |       53.68 us |        0.00 us | +100.00% |
+| 262144B | Throughput |   18.65 Kmsg/s |    0.00 Kmsg/s | -100.00% |
+| 262144B | Latency    |       70.77 us |        0.00 us | +100.00% |
+
+### Transport: ws
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput |    0.00 Kmsg/s |    8.92 Kmsg/s |   +0.00% |
+| 64B | Latency    |        0.00 us |      559.57 us |   +0.00% |
+| 256B | Throughput |    0.00 Kmsg/s |    8.92 Kmsg/s |   +0.00% |
+| 256B | Latency    |        0.00 us |      560.22 us |   +0.00% |
+| 1024B | Throughput |  803.98 Kmsg/s |    8.90 Kmsg/s |  -98.89% |
+| 1024B | Latency    |       69.04 us |      558.99 us | -709.66% |
+| 65536B | Throughput |   52.99 Kmsg/s |    7.88 Kmsg/s |  -85.13% |
+| 65536B | Latency    |       92.15 us |      561.05 us | -508.84% |
+| 131072B | Throughput |   31.65 Kmsg/s |    5.95 Kmsg/s |  -81.19% |
+| 131072B | Latency    |      119.36 us |      562.96 us | -371.64% |
+| 262144B | Throughput |   18.93 Kmsg/s |    7.73 Kmsg/s |  -59.19% |
+| 262144B | Latency    |      136.77 us |      563.94 us | -312.33% |
+
+## PATTERN: GATEWAY
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 4303.83 Kmsg/s | 3384.34 Kmsg/s |  -21.36% |
+| 64B | Latency    |       27.36 us |       35.03 us |  -28.05% |
+| 256B | Throughput | 2313.82 Kmsg/s | 1914.61 Kmsg/s |  -17.25% |
+| 256B | Latency    |       28.77 us |       45.58 us |  -58.43% |
+| 1024B | Throughput | 1043.61 Kmsg/s |  912.67 Kmsg/s |  -12.55% |
+| 1024B | Latency    |       30.71 us |       32.52 us |   -5.88% |
+| 65536B | Throughput |   74.49 Kmsg/s |   67.76 Kmsg/s |   -9.03% |
+| 65536B | Latency    |       38.20 us |       67.50 us |  -76.69% |
+| 131072B | Throughput |   51.82 Kmsg/s |   41.42 Kmsg/s |  -20.06% |
+| 131072B | Latency    |       52.77 us |       66.18 us |  -25.41% |
+| 262144B | Throughput |   29.58 Kmsg/s |   21.65 Kmsg/s |  -26.83% |
+| 262144B | Latency    |       74.30 us |       92.58 us |  -24.60% |
+
+### Transport: ws
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 2997.48 Kmsg/s | 2519.27 Kmsg/s |  -15.95% |
+| 64B | Latency    |       32.90 us |       39.09 us |  -18.81% |
+| 256B | Throughput | 3289.09 Kmsg/s | 2799.17 Kmsg/s |  -14.90% |
+| 256B | Latency    |       35.49 us |       36.84 us |   -3.82% |
+| 1024B | Throughput | 1357.22 Kmsg/s | 1224.83 Kmsg/s |   -9.75% |
+| 1024B | Latency    |       30.06 us |       54.70 us |  -81.97% |
+| 65536B | Throughput |   49.88 Kmsg/s |   43.03 Kmsg/s |  -13.73% |
+| 65536B | Latency    |       59.01 us |       71.43 us |  -21.05% |
+| 131072B | Throughput |   26.01 Kmsg/s |   22.23 Kmsg/s |  -14.55% |
+| 131072B | Latency    |       85.42 us |       93.88 us |   -9.90% |
+| 262144B | Throughput |   16.49 Kmsg/s |   14.08 Kmsg/s |  -14.61% |
+| 262144B | Latency    |       99.51 us |      127.61 us |  -28.24% |
+
+## PATTERN: SPOT
+  [zlink] Using cached reference.
+  > Benchmarking binding (cpp)...
+    Testing tcp | 64B: 1 Done
+    Testing tcp | 256B: 1 Done
+    Testing tcp | 1024B: 1 Done
+    Testing tcp | 65536B: 1 Done
+    Testing tcp | 131072B: 1 Done
+    Testing tcp | 262144B: 1 Done
+    Testing ws | 64B: 1 Done
+    Testing ws | 256B: 1 Done
+    Testing ws | 1024B: 1 Done
+    Testing ws | 65536B: 1 Done
+    Testing ws | 131072B: 1 Done
+    Testing ws | 262144B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 1836.07 Kmsg/s | 1753.36 Kmsg/s |   -4.50% |
+| 64B | Latency    |     1091.64 us |     1147.71 us |   -5.14% |
+| 256B | Throughput | 1436.10 Kmsg/s | 1342.70 Kmsg/s |   -6.50% |
+| 256B | Latency    |     1086.71 us |     1152.57 us |   -6.06% |
+| 1024B | Throughput |  872.64 Kmsg/s |  806.24 Kmsg/s |   -7.61% |
+| 1024B | Latency    |     1084.79 us |     1248.72 us |  -15.11% |
+| 65536B | Throughput |   51.02 Kmsg/s |   66.72 Kmsg/s |  +30.79% |
+| 65536B | Latency    |     1087.64 us |     1155.04 us |   -6.20% |
+| 131072B | Throughput |   36.63 Kmsg/s |   38.01 Kmsg/s |   +3.78% |
+| 131072B | Latency    |     1082.76 us |     1151.16 us |   -6.32% |
+| 262144B | Throughput |   21.77 Kmsg/s |   19.73 Kmsg/s |   -9.36% |
+| 262144B | Latency    |     1089.23 us |     1166.21 us |   -7.07% |
+
+### Transport: ws
+| Size   | Metric     |          zlink |        binding |  Diff (%) |
+|--------|------------|----------------|----------------|-----------|
+| 64B | Throughput | 1903.29 Kmsg/s | 1716.43 Kmsg/s |   -9.82% |
+| 64B | Latency    |     1085.86 us |     1155.12 us |   -6.38% |
+| 256B | Throughput | 1546.14 Kmsg/s | 1596.65 Kmsg/s |   +3.27% |
+| 256B | Latency    |     1081.75 us |     1150.89 us |   -6.39% |
+| 1024B | Throughput |  997.86 Kmsg/s |  971.35 Kmsg/s |   -2.66% |
+| 1024B | Latency    |     1088.06 us |     1388.04 us |  -27.57% |
+| 65536B | Throughput |   50.64 Kmsg/s |   49.58 Kmsg/s |   -2.09% |
+| 65536B | Latency    |     1082.32 us |     1323.29 us |  -22.26% |
+| 131072B | Throughput |   29.98 Kmsg/s |   27.67 Kmsg/s |   -7.71% |
+| 131072B | Latency    |     1083.91 us |     1237.38 us |  -14.16% |
+| 262144B | Throughput |   18.57 Kmsg/s |   16.20 Kmsg/s |  -12.74% |
+| 262144B | Latency    |     1081.60 us |     1177.16 us |   -8.84% |
+
+## Failures
+- PAIR cpp ipc 64B: no_data
+- PAIR cpp ipc 256B: no_data
+- PAIR cpp ipc 1024B: no_data
+- PAIR cpp ipc 65536B: no_data
+- PAIR cpp ipc 131072B: no_data
+- PAIR cpp ipc 262144B: no_data
+- PUBSUB cpp ipc 64B: no_data
+- PUBSUB cpp ipc 256B: no_data
+- PUBSUB cpp ipc 1024B: no_data
+- PUBSUB cpp ipc 65536B: no_data
+- PUBSUB cpp ipc 131072B: no_data
+- PUBSUB cpp ipc 262144B: no_data
+- DEALER_DEALER cpp ipc 64B: no_data
+- DEALER_DEALER cpp ipc 256B: no_data
+- DEALER_DEALER cpp ipc 1024B: no_data
+- DEALER_DEALER cpp ipc 65536B: no_data
+- DEALER_DEALER cpp ipc 131072B: no_data
+- DEALER_DEALER cpp ipc 262144B: no_data
+- DEALER_ROUTER cpp ipc 64B: no_data
+- DEALER_ROUTER cpp ipc 256B: no_data
+- DEALER_ROUTER cpp ipc 1024B: no_data
+- DEALER_ROUTER cpp ipc 65536B: no_data
+- DEALER_ROUTER cpp ipc 131072B: no_data
+- DEALER_ROUTER cpp ipc 262144B: no_data
+- ROUTER_ROUTER cpp ipc 64B: no_data
+- ROUTER_ROUTER cpp ipc 256B: no_data
+- ROUTER_ROUTER cpp ipc 1024B: no_data
+- ROUTER_ROUTER cpp ipc 65536B: no_data
+- ROUTER_ROUTER cpp ipc 131072B: no_data
+- ROUTER_ROUTER cpp ipc 262144B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 64B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 256B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 1024B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 65536B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 131072B: no_data
+- ROUTER_ROUTER_POLL cpp ipc 262144B: no_data
+- STREAM cpp tcp 65536B: timeout
+- STREAM cpp tcp 131072B: timeout
+- STREAM cpp tcp 262144B: timeout
+- STREAM_LEN32BE cpp tcp 65536B: timeout
+- STREAM_LEN32BE cpp tcp 131072B: timeout
+- STREAM_LEN32BE cpp tcp 262144B: timeout

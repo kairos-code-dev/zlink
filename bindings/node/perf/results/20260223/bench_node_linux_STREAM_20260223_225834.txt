@@ -1,0 +1,10 @@
+
+## PATTERN: STREAM
+  > Benchmarking binding (node)...
+    Testing tcp | 1024B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 1024B | Throughput |      7.99 Kmsg/s |
+| 1024B | Latency    |        615.11 us |

@@ -11,7 +11,7 @@ if [[ "${BENCH_PRESERVE_TOOLCHAIN_ENV:-0}" != "1" ]]; then
 fi
 SUPPORTED_BINDINGS=(python node dotnet java cpp)
 DEFAULT_BINDINGS=(node dotnet java cpp)
-ALL_BINDINGS=("${DEFAULT_BINDINGS[@]}")
+ALL_BINDINGS=("${SUPPORTED_BINDINGS[@]}")
 
 IS_WINDOWS=0
 PLATFORM="linux"
@@ -93,7 +93,7 @@ Options:
   --petterns NAME       Typo-compatible alias of --pattern.
   --build-dir PATH      Core benchmark build directory (default: core/build/<platform>-<arch>).
   --output PATH         Tee results to a file.
-  --result              Write results under bindings/<binding>/benchwithzlink/results/YYYYMMDD/.
+  --result              Write results under bindings/<binding>/perf/results/YYYYMMDD/.
   --results-dir PATH    Override results root directory.
   --results-tag NAME    Optional tag appended to the results filename.
   --runs N              Iterations per configuration (default: 1).
@@ -293,11 +293,17 @@ BASELINE_REFRESHED=0
 
 if [[ "${BINDINGS_ONLY}" -eq 0 && "${WITH_BASELINE}" -eq 0 && ! -f "${COMMON_CACHE_FILE}" ]]; then
   for b in python node dotnet java cpp; do
-    LEGACY_CACHE_FILE="${ROOT_DIR}/bindings/${b}/benchwithzlink/zlink_cache_${PLATFORM}-${ARCH}.json"
-    if [[ -f "${LEGACY_CACHE_FILE}" ]]; then
+    PERF_CACHE_FILE="${ROOT_DIR}/bindings/${b}/perf/single/zlink_cache_${PLATFORM}-${ARCH}.json"
+    LEGACY_PERF_CACHE_FILE="${ROOT_DIR}/bindings/${b}/perf/zlink_cache_${PLATFORM}-${ARCH}.json"
+    if [[ -f "${PERF_CACHE_FILE}" ]]; then
       mkdir -p "$(dirname "${COMMON_CACHE_FILE}")"
-      cp "${LEGACY_CACHE_FILE}" "${COMMON_CACHE_FILE}"
-      echo "Migrated baseline cache: ${LEGACY_CACHE_FILE} -> ${COMMON_CACHE_FILE}"
+      cp "${PERF_CACHE_FILE}" "${COMMON_CACHE_FILE}"
+      echo "Migrated baseline cache: ${PERF_CACHE_FILE} -> ${COMMON_CACHE_FILE}"
+      break
+    elif [[ -f "${LEGACY_PERF_CACHE_FILE}" ]]; then
+      mkdir -p "$(dirname "${COMMON_CACHE_FILE}")"
+      cp "${LEGACY_PERF_CACHE_FILE}" "${COMMON_CACHE_FILE}"
+      echo "Migrated baseline cache: ${LEGACY_PERF_CACHE_FILE} -> ${COMMON_CACHE_FILE}"
       break
     fi
   done
@@ -342,7 +348,7 @@ for binding in "${SELECTED_BINDINGS[@]}"; do
   elif [[ "${RESULTS}" -eq 1 ]]; then
     local_results_dir="${RESULTS_DIR}"
     if [[ -z "${local_results_dir}" ]]; then
-      local_results_dir="${ROOT_DIR}/bindings/${binding}/benchwithzlink/results"
+      local_results_dir="${ROOT_DIR}/bindings/${binding}/perf/results"
     fi
     DATE_DIR="$(date +%Y%m%d)"
     TS="$(date +%Y%m%d_%H%M%S)"

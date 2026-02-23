@@ -4,8 +4,11 @@ cmake_minimum_required(VERSION 3.10)
 # On Windows: solution file will be called tests.sln
 project(tests)
 
-set(STREAM_SCENARIO_ROOT
-    "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
+set(STREAM_SCENARIO_ROOT "${CMAKE_SOURCE_DIR}/core/bench/with_stream/stacks")
+if(NOT EXISTS "${STREAM_SCENARIO_ROOT}")
+  set(STREAM_SCENARIO_ROOT
+      "${CMAKE_SOURCE_DIR}/core/bench/benchwithstreamcompare/stacks")
+endif()
 
 set(tests
   test_ancillaries

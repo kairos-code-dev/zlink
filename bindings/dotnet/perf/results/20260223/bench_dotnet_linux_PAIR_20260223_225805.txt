@@ -1,0 +1,10 @@
+
+## PATTERN: PAIR
+  > Benchmarking binding (dotnet)...
+    Testing tcp | 1024B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 1024B | Throughput |    822.73 Kmsg/s |
+| 1024B | Latency    |         80.61 us |

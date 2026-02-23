@@ -1,0 +1,10 @@
+
+## PATTERN: PAIR
+  > Benchmarking binding (java)...
+    Testing tcp | 1024B: 1 Done
+
+### Transport: tcp
+| Size   | Metric     |          current |
+|--------|------------|------------------|
+| 1024B | Throughput |    685.53 Kmsg/s |
+| 1024B | Latency    |         46.70 us |

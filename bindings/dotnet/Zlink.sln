@@ -11,9 +11,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{4C4C058E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.Tests", "tests\Zlink.Tests\Zlink.Tests.csproj", "{07984CD3-7F20-4142-9CE4-26EF32C64DDE}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchwithzlink", "benchwithzlink", "{137D8739-34B2-4F97-A553-288F6E9E0937}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "perf", "perf", "{137D8739-34B2-4F97-A553-288F6E9E0937}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.BindingBench", "benchwithzlink\Zlink.BindingBench\Zlink.BindingBench.csproj", "{25780C41-42D3-4DD5-8291-4D4B867DE126}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zlink.BindingBench", "perf\single\Zlink.BindingBench\Zlink.BindingBench.csproj", "{25780C41-42D3-4DD5-8291-4D4B867DE126}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

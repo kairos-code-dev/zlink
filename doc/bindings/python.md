@@ -75,7 +75,7 @@ Uses the unittest framework.
 
 ## 8. Benchmark Fast Path
 
-`bindings/python/benchwithzlink` supports an optional C-extension fast path (`_zlink_fastpath`).
+`bindings/python/perf/single` supports an optional C-extension fast path (`_zlink_fastpath`).
 
 - Default: enabled for benchmarks (`BENCH_PY_FASTPATH_CEXT=1`).
 - Disable: `BENCH_PY_FASTPATH_CEXT=0`
@@ -84,7 +84,7 @@ Uses the unittest framework.
 Manual build:
 
 ```bash
-cd bindings/python/benchwithzlink
+cd bindings/python/perf/single
 python3 setup_fastpath.py build_ext --inplace
 ```
 

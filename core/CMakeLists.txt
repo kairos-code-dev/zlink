@@ -1493,30 +1493,35 @@ if(BUILD_BENCHMARKS AND BUILD_SHARED)
          "Build stream compare benchmarks" ON)
   option(ZLINK_BUILD_BENCH_ROUTER_COMPARE
          "Build router compare benchmarks (zlink vs zmq vs gRPC)" ON)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithzmq/CMakeLists.txt")
-    if(ZLINK_BUILD_BENCH_ZMQ)
-      add_subdirectory(bench/benchwithzmq)
+
+  function(zlink_add_optional_bench option_var preferred_subdir legacy_subdir)
+    if(NOT ${option_var})
+      return()
     endif()
-  endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithzlink/CMakeLists.txt")
-    if(ZLINK_BUILD_BENCH_ZLINK)
-      add_subdirectory(bench/benchwithzlink)
+
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${preferred_subdir}/CMakeLists.txt")
+      add_subdirectory(${preferred_subdir})
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${legacy_subdir}/CMakeLists.txt")
+      add_subdirectory(${legacy_subdir})
     endif()
-  endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")
-    if(ZLINK_BUILD_BENCH_BEAST)
-      add_subdirectory(bench/benchwithbeast)
-    endif()
-  endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithstreamcompare/CMakeLists.txt")
-    if(ZLINK_BUILD_BENCH_STREAMCOMPARE)
-      add_subdirectory(bench/benchwithstreamcompare)
-    endif()
-  endif()
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithroutercompare/CMakeLists.txt")
-    if(ZLINK_BUILD_BENCH_ROUTER_COMPARE)
-      add_subdirectory(bench/benchwithroutercompare)
-    endif()
+  endfunction()
+
+  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZMQ
+                           "bench/with_zmq"
+                           "bench/benchwithzmq")
+  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ZLINK
+                           "perf"
+                           "bench/benchwithzlink")
+  zlink_add_optional_bench(ZLINK_BUILD_BENCH_STREAMCOMPARE
+                           "bench/with_stream"
+                           "bench/benchwithstreamcompare")
+  zlink_add_optional_bench(ZLINK_BUILD_BENCH_ROUTER_COMPARE
+                           "bench/with_routing"
+                           "bench/benchwithroutercompare")
+
+  if(ZLINK_BUILD_BENCH_BEAST
+     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/benchwithbeast/CMakeLists.txt")
+    add_subdirectory(bench/benchwithbeast)
   endif()
 endif()
 

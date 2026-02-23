@@ -82,32 +82,32 @@
 
 ```bash
 # Node
-BENCH_MSG_COUNT=200000 node bindings/node/benchwithzlink/pattern_router_router_poll.js tcp 64
+BENCH_MSG_COUNT=200000 node bindings/node/perf/single/pattern_router_router_poll.js tcp 64
 
 # Python fastpath on (기본)
-BENCH_MSG_COUNT=200000 python3 bindings/python/benchwithzlink/pattern_router_router_poll.py tcp 64
+BENCH_MSG_COUNT=200000 python3 bindings/python/perf/single/pattern_router_router_poll.py tcp 64
 
 # Python fastpath off
 BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
-  python3 bindings/python/benchwithzlink/pattern_router_router_poll.py tcp 64
+  python3 bindings/python/perf/single/pattern_router_router_poll.py tcp 64
 ```
 
 Gateway/Spot 추가 측정:
 
 ```bash
 # Node
-BENCH_MSG_COUNT=200000 node bindings/node/benchwithzlink/pattern_gateway.js tcp 64
-BENCH_MSG_COUNT=200000 node bindings/node/benchwithzlink/pattern_spot.js tcp 64
+BENCH_MSG_COUNT=200000 node bindings/node/perf/single/pattern_gateway.js tcp 64
+BENCH_MSG_COUNT=200000 node bindings/node/perf/single/pattern_spot.js tcp 64
 
 # Python fastpath on (기본)
-BENCH_MSG_COUNT=200000 python3 bindings/python/benchwithzlink/pattern_gateway.py tcp 64
-BENCH_MSG_COUNT=200000 python3 bindings/python/benchwithzlink/pattern_spot.py tcp 64
+BENCH_MSG_COUNT=200000 python3 bindings/python/perf/single/pattern_gateway.py tcp 64
+BENCH_MSG_COUNT=200000 python3 bindings/python/perf/single/pattern_spot.py tcp 64
 
 # Python fastpath off
 BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
-  python3 bindings/python/benchwithzlink/pattern_gateway.py tcp 64
+  python3 bindings/python/perf/single/pattern_gateway.py tcp 64
 BENCH_MSG_COUNT=200000 BENCH_PY_FASTPATH_CEXT=0 \
-  python3 bindings/python/benchwithzlink/pattern_spot.py tcp 64
+  python3 bindings/python/perf/single/pattern_spot.py tcp 64
 ```
 
 ## 6) 해석 노트

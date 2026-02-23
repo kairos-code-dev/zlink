@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PY_SRC = ROOT / "bindings" / "python" / "src"
-BENCH_DIR = ROOT / "bindings" / "python" / "benchwithzlink"
+BENCH_DIR = ROOT / "bindings" / "python" / "perf" / "single"
 sys.path.insert(0, str(PY_SRC))
 sys.path.insert(0, str(BENCH_DIR))
 

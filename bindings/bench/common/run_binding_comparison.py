@@ -179,15 +179,15 @@ def binding_runner_cmd(binding, pattern):
     p = pattern.lower()
     if binding == "python":
         py = "python3" if shutil_which("python3") else "python"
-        runner = os.path.join(ROOT_DIR, f"bindings/python/benchwithzlink/pattern_{p}.py")
+        runner = os.path.join(ROOT_DIR, f"bindings/python/perf/single/pattern_{p}.py")
         return [py, runner]
     if binding == "node":
-        runner = os.path.join(ROOT_DIR, f"bindings/node/benchwithzlink/pattern_{p}.js")
+        runner = os.path.join(ROOT_DIR, f"bindings/node/perf/single/pattern_{p}.js")
         return ["node", runner]
     if binding == "dotnet":
         dll = os.path.join(
             ROOT_DIR,
-            "bindings/dotnet/benchwithzlink/Zlink.BindingBench/bin/Release/net8.0/Zlink.BindingBench.dll",
+            "bindings/dotnet/perf/single/Zlink.BindingBench/bin/Release/net8.0/Zlink.BindingBench.dll",
         )
         return ["dotnet", dll]
     if binding == "java":
@@ -198,7 +198,7 @@ def binding_runner_cmd(binding, pattern):
         ])
         return ["java", "-cp", cp, "dev.kairoscode.zlink.integration.bench.PairBenchMain"]
     if binding == "cpp":
-        return [os.path.join(ROOT_DIR, "bindings/cpp/benchwithzlink/build/pair_bench")]
+        return [os.path.join(ROOT_DIR, "bindings/cpp/perf/single/build/pair_bench")]
     raise ValueError(f"Unsupported binding: {binding}")
 
 
@@ -338,12 +338,15 @@ def main():
     cache_file = os.path.join(
         ROOT_DIR, "bindings", "bench", "common", f"zlink_cache_{platform_tag}-{arch_tag}.json"
     )
-    legacy_cache_file = os.path.join(
-        ROOT_DIR, "bindings", binding, "benchwithzlink", f"zlink_cache_{platform_tag}-{arch_tag}.json"
+    binding_cache_file = os.path.join(
+        ROOT_DIR, "bindings", binding, "perf", "single", f"zlink_cache_{platform_tag}-{arch_tag}.json"
     )
     cache = {}
     if not bindings_only:
-        load_target = cache_file if os.path.exists(cache_file) else legacy_cache_file
+        if os.path.exists(cache_file):
+            load_target = cache_file
+        else:
+            load_target = binding_cache_file
         if os.path.exists(load_target):
             try:
                 with open(load_target, "r", encoding="utf-8") as f:

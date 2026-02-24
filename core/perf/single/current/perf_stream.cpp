@@ -1038,8 +1038,12 @@ void run_stream(const std::string &transport,
     if (!transport_available(transport))
         return;
 
-    if (transport != "tcp" && transport != "tls" && transport != "ws"
-        && transport != "wss") {
+    if (transport == "tcp") {
+        run_stream_tcp_raw(msg_size, msg_count, lib_name);
+        return;
+    }
+
+    if (transport != "tls" && transport != "ws" && transport != "wss") {
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
         return;
     }

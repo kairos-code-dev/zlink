@@ -125,7 +125,7 @@ static size_t resolve_stream_dispatch_capacity()
 {
     const int default_capacity = 1024;
     const int configured =
-      resolve_bench_count("BENCH_STREAM_DISPATCH_CAPACITY", default_capacity);
+      resolve_bench_count("PERF_STREAM_DISPATCH_CAPACITY", default_capacity);
     return static_cast<size_t>(std::max(32, configured));
 }
 
@@ -897,7 +897,7 @@ static bool wait_monitor_ready_count(void *monitor_socket,
 static int resolve_stream_hwm(const std::string &transport)
 {
     const int default_hwm = transport == "tcp" ? 100000 : 300000;
-    return resolve_bench_count("BENCH_STREAM_HWM", default_hwm);
+    return resolve_bench_count("PERF_STREAM_HWM", default_hwm);
 }
 
 static int resolve_stream_drain_timeout_ms(int io_timeout_ms)
@@ -910,13 +910,13 @@ static int resolve_stream_drain_timeout_ms(int io_timeout_ms)
     }
     if (base > std::numeric_limits<int>::max())
         base = std::numeric_limits<int>::max();
-    return resolve_bench_count("BENCH_STREAM_DRAIN_TIMEOUT_MS",
+    return resolve_bench_count("PERF_STREAM_DRAIN_TIMEOUT_MS",
                                static_cast<int>(base));
 }
 
 static void apply_stream_server_ctx_threads(void *ctx)
 {
-    const int io_threads = resolve_bench_count("BENCH_STREAM_SERVER_IO_THREADS", 4);
+    const int io_threads = resolve_bench_count("PERF_STREAM_SERVER_IO_THREADS", 4);
     if (io_threads <= 0)
         return;
     (void)zlink_ctx_set(ctx, ZLINK_IO_THREADS, io_threads);

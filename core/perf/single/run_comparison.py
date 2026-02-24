@@ -79,6 +79,7 @@ THROUGHPUT_WARN_PCT = -10.0
 THROUGHPUT_FAIL_PCT = -15.0
 LATENCY_WARN_PCT = 10.0
 LATENCY_FAIL_PCT = 15.0
+PATTERN_SEPARATOR = "==============================================================================="
 
 MetricKey = Tuple[str, str, str, int, str]  # lib, pattern, transport, size, metric
 
@@ -1361,11 +1362,17 @@ def main() -> int:
             if FAIL_FAST and all_failures:
                 break
 
-        pattern_table_lines = build_pattern_table_lines(pattern, transports, sizes, combo_results)
+        pattern_table_lines = build_pattern_table_lines(
+            pattern, transports, sizes, combo_results
+        )
         if table_lines:
-            table_lines.append("")
+            table_lines.extend(["", PATTERN_SEPARATOR, ""])
+            print("")
+            print(PATTERN_SEPARATOR)
+            print("")
+        else:
+            print("")
         table_lines.extend(pattern_table_lines)
-        print("")
         for line in pattern_table_lines:
             print(line)
 

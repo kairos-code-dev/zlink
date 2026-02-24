@@ -190,6 +190,7 @@ else:
     BUILD_DIR, LIBZMQ_LIB_DIR, ZLINK_LIB_DIR = resolve_linux_paths()
 
 DEFAULT_NUM_RUNS = 3
+PATTERN_SEPARATOR = "==============================================================================="
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
     SCRIPT_DIR, f"std_zmq_multi_cache_{_platform_tag}-{_arch_tag}.json"
@@ -1108,11 +1109,19 @@ def main():
     all_failures = []
     cache_updated = False
 
+    printed_pattern = False
     for std_bin, zlk_bin, p_name in comparisons:
         if pattern_req != "ALL" and p_name != pattern_req:
             continue
 
-        print(f"\n## PATTERN: {p_name}")
+        if printed_pattern:
+            print("")
+            print(PATTERN_SEPARATOR)
+            print("")
+        else:
+            print("")
+        print(f"## PATTERN: {p_name}")
+        printed_pattern = True
 
         std_data = {}
         std_fail = []

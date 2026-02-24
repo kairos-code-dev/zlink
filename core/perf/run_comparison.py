@@ -33,6 +33,7 @@ DEFAULT_WARN_THROUGHPUT_PCT = 10.0
 DEFAULT_FAIL_THROUGHPUT_PCT = 15.0
 DEFAULT_WARN_LATENCY_PCT = 10.0
 DEFAULT_FAIL_LATENCY_PCT = 15.0
+PATTERN_SEPARATOR = "==============================================================================="
 DEFAULT_THRESHOLDS_FILE = os.path.join(SCRIPT_DIR, "thresholds.json")
 STREAM_VARIANT_PATTERNS = (
     "MULTI_STREAM",
@@ -2916,11 +2917,14 @@ def main():
     pattern_transition_ms = args["pattern_transition_ms"] if multi_only_run else 0
 
     for pattern_idx, (current_bin, p_name) in enumerate(selected_comparisons):
+        if table_lines:
+            print("")
+            print(PATTERN_SEPARATOR)
+            print("")
+            table_lines.extend(["", PATTERN_SEPARATOR, ""])
 
         pattern_header = f"## PATTERN: {p_name} ({pattern_direction_label(p_name)})"
-        print(f"\n{pattern_header}")
-        if table_lines:
-            table_lines.append("")
+        print(pattern_header)
         table_lines.append(pattern_header)
 
         pattern_transports = select_transports(p_name)

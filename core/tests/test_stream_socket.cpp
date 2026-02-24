@@ -11,6 +11,7 @@
 #include <string.h>
 #include <atomic>
 #include <map>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -411,6 +412,191 @@ static bool is_stream_control_chunk (const unsigned char *data_, size_t size_)
 {
     (void) data_;
     return size_ == 0;
+}
+
+static std::string make_routing_id_key (const unsigned char *data_, size_t size_)
+{
+    if (!data_ || size_ == 0)
+        return std::string ();
+
+    return std::string (reinterpret_cast<const char *> (data_), size_);
+}
+
+struct stream_monitor_probe_t
+{
+    stream_monitor_probe_t () :
+        accepted (0),
+        connection_ready (0),
+        disconnected (0),
+        bad_ready_routing_id (0),
+        bad_disconnected_routing_id (0),
+        ready_routing_ids (),
+        disconnected_routing_ids ()
+    {
+    }
+
+    int accepted;
+    int connection_ready;
+    int disconnected;
+    int bad_ready_routing_id;
+    int bad_disconnected_routing_id;
+    std::set<std::string> ready_routing_ids;
+    std::set<std::string> disconnected_routing_ids;
+};
+
+static void record_stream_monitor_event (stream_monitor_probe_t *probe_,
+                                         const zlink_monitor_event_t *event_)
+{
+    if (!probe_ || !event_)
+        return;
+
+    switch (event_->event) {
+        case ZLINK_EVENT_ACCEPTED:
+            ++probe_->accepted;
+            break;
+        case ZLINK_EVENT_CONNECTION_READY:
+            ++probe_->connection_ready;
+            if (event_->routing_id.size != stream_routing_id_size) {
+                ++probe_->bad_ready_routing_id;
+                break;
+            }
+            probe_->ready_routing_ids.insert (
+              make_routing_id_key (event_->routing_id.data,
+                                   event_->routing_id.size));
+            break;
+        case ZLINK_EVENT_DISCONNECTED:
+            ++probe_->disconnected;
+            if (event_->routing_id.size != stream_routing_id_size) {
+                ++probe_->bad_disconnected_routing_id;
+                break;
+            }
+            probe_->disconnected_routing_ids.insert (
+              make_routing_id_key (event_->routing_id.data,
+                                   event_->routing_id.size));
+            break;
+        default:
+            break;
+    }
+}
+
+static void collect_stream_monitor_events (void *monitor_,
+                                           stream_monitor_probe_t *probe_,
+                                           int poll_timeout_ms_)
+{
+    if (!monitor_ || !probe_)
+        return;
+
+    zlink_pollitem_t items[] = {{monitor_, 0, ZLINK_POLLIN, 0}};
+    const int rc = zlink_poll (items, 1, poll_timeout_ms_);
+    if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+        return;
+
+    for (;;) {
+        zlink_monitor_event_t event;
+        if (zlink_monitor_recv (monitor_, &event, ZLINK_DONTWAIT) != 0)
+            break;
+        record_stream_monitor_event (probe_, &event);
+    }
+}
+
+static bool wait_stream_monitor_progress (void *monitor_,
+                                          stream_monitor_probe_t *probe_,
+                                          int expected_accepted_,
+                                          size_t expected_ready_,
+                                          size_t expected_disconnected_,
+                                          int timeout_ms_)
+{
+    const int slice_ms = 20;
+    const int loops = timeout_ms_ > 0 ? timeout_ms_ / slice_ms + 1 : 1;
+    for (int i = 0; i < loops; ++i) {
+        collect_stream_monitor_events (monitor_, probe_, slice_ms);
+        if (probe_->accepted >= expected_accepted_
+            && probe_->ready_routing_ids.size () >= expected_ready_
+            && probe_->disconnected_routing_ids.size ()
+                 >= expected_disconnected_) {
+            return true;
+        }
+    }
+
+    collect_stream_monitor_events (monitor_, probe_, 0);
+    return probe_->accepted >= expected_accepted_
+           && probe_->ready_routing_ids.size () >= expected_ready_
+           && probe_->disconnected_routing_ids.size () >= expected_disconnected_;
+}
+
+struct stream_monitor_callback_probe_t
+{
+    stream_monitor_callback_probe_t () :
+        socket (NULL),
+        expected_payload_size (0),
+        echoed_msgs (0),
+        bad_payload (0),
+        send_fail (0),
+        routing_ids (),
+        routing_id_mu ()
+    {
+    }
+
+    void *socket;
+    size_t expected_payload_size;
+    std::atomic<int> echoed_msgs;
+    std::atomic<int> bad_payload;
+    std::atomic<int> send_fail;
+    std::set<std::string> routing_ids;
+    std::mutex routing_id_mu;
+};
+
+static stream_monitor_callback_probe_t *g_stream_monitor_callback_probe = NULL;
+
+static int stream_monitor_len32be_echo_callback (const zlink_routing_id_t *rid_,
+                                                 zlink_msg_t *msgs_,
+                                                 size_t msg_count_)
+{
+    stream_monitor_callback_probe_t *probe = g_stream_monitor_callback_probe;
+    if (!probe || !rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    if (rid_->size == stream_routing_id_size) {
+        std::lock_guard<std::mutex> lk (probe->routing_id_mu);
+        probe->routing_ids.insert (make_routing_id_key (rid_->data, rid_->size));
+    }
+
+    for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
+        const unsigned char *data =
+          static_cast<const unsigned char *> (zlink_msg_data (msg));
+        const size_t size = zlink_msg_size (msg);
+        if (is_stream_control_chunk (data, size))
+            continue;
+
+        if (probe->expected_payload_size > 0
+            && size != probe->expected_payload_size) {
+            probe->bad_payload.fetch_add (1, std::memory_order_release);
+            continue;
+        }
+
+        const int send_rc = zlink_stream_send_msg (probe->socket, rid_, msg, 0);
+        if (send_rc != static_cast<int> (size)) {
+            probe->send_fail.fetch_add (1, std::memory_order_release);
+            continue;
+        }
+
+        probe->echoed_msgs.fetch_add (1, std::memory_order_release);
+    }
+
+    return 0;
+}
+
+static void fill_monitor_test_payload (std::vector<unsigned char> *payload_,
+                                       uint32_t client_id_)
+{
+    if (!payload_ || payload_->size () < 8)
+        return;
+
+    store_u32_be (&(*payload_)[0], client_id_);
+    store_u32_be (&(*payload_)[4], 1);
+    for (size_t i = 8; i < payload_->size (); ++i)
+        (*payload_)[i] = static_cast<unsigned char> ((client_id_ + i) & 0xFF);
 }
 
 static int stream_echo_callback (const zlink_routing_id_t *rid_,
@@ -1418,6 +1604,132 @@ static void run_stream_raw_client_load (const char *endpoint_,
     }
 }
 
+void test_stream_monitor_len32be_multiclient_connect_disconnect ()
+{
+    const int client_count = 6;
+    const size_t payload_size = 32;
+    const int expected_msgs = client_count;
+
+    void *server = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (server);
+
+    const int zero = 0;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    char endpoint[MAX_SOCKET_STRING];
+    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+
+    void *monitor = zlink_socket_monitor_open (server, ZLINK_EVENT_ALL);
+    TEST_ASSERT_NOT_NULL (monitor);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_setsockopt (monitor, ZLINK_LINGER, &zero, sizeof (zero)));
+
+    stream_monitor_callback_probe_t callback_probe;
+    callback_probe.socket = server;
+    callback_probe.expected_payload_size = payload_size;
+    g_stream_monitor_callback_probe = &callback_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (
+      server, stream_monitor_len32be_echo_callback,
+      ZLINK_STREAM_DISPATCH_LEN32BE));
+
+    stream_monitor_probe_t monitor_probe;
+    std::vector<unsigned char> payload (payload_size);
+
+    for (int i = 0; i < client_count; ++i) {
+        const int expected = i + 1;
+        const int fd = connect_raw_tcp (endpoint);
+        TEST_ASSERT_TRUE (fd >= 0);
+        TEST_ASSERT_EQUAL_INT (0, set_raw_fd_timeout (fd, 5000));
+
+        // In callback mode, ACCEPTED must be observed for each new peer.
+        TEST_ASSERT_TRUE (wait_stream_monitor_progress (
+          monitor, &monitor_probe, expected, i, i, 5000));
+
+        fill_monitor_test_payload (&payload, static_cast<uint32_t> (expected));
+        TEST_ASSERT_EQUAL_INT (
+          0, send_len32be_frame (fd, &payload[0], payload.size ()));
+
+        std::vector<unsigned char> echoed;
+        TEST_ASSERT_EQUAL_INT (0, recv_len32be_frame (fd, &echoed));
+        TEST_ASSERT_EQUAL_UINT (static_cast<unsigned int> (payload.size ()),
+                                static_cast<unsigned int> (echoed.size ()));
+        TEST_ASSERT_EQUAL_UINT8_ARRAY (&payload[0], &echoed[0],
+                                       static_cast<unsigned int> (payload.size ()));
+
+        // After first payload dispatch, CONNECTION_READY should be observable.
+        TEST_ASSERT_TRUE (wait_stream_monitor_progress (
+          monitor, &monitor_probe, expected, expected, i, 5000));
+
+        close_raw_fd (fd);
+
+        TEST_ASSERT_TRUE (wait_stream_monitor_progress (
+          monitor, &monitor_probe, expected, expected, expected, 5000));
+    }
+
+    TEST_ASSERT_TRUE (
+      wait_counter_at_least (&callback_probe.echoed_msgs, expected_msgs, 5000));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.bad_payload.load (std::memory_order_acquire));
+    TEST_ASSERT_EQUAL_INT (
+      0, callback_probe.send_fail.load (std::memory_order_acquire));
+
+    int callback_routing_id_count = 0;
+    bool callback_routing_ids_match = true;
+    {
+        std::lock_guard<std::mutex> lk (callback_probe.routing_id_mu);
+        callback_routing_id_count =
+          static_cast<int> (callback_probe.routing_ids.size ());
+        callback_routing_ids_match = callback_routing_id_count == client_count;
+
+        for (std::set<std::string>::const_iterator
+               it = callback_probe.routing_ids.begin ();
+             it != callback_probe.routing_ids.end (); ++it) {
+            if (monitor_probe.ready_routing_ids.find (*it)
+                  == monitor_probe.ready_routing_ids.end ()
+                || monitor_probe.disconnected_routing_ids.find (*it)
+                     == monitor_probe.disconnected_routing_ids.end ()) {
+                callback_routing_ids_match = false;
+                break;
+            }
+        }
+    }
+
+    char monitor_summary[256];
+    snprintf (
+      monitor_summary, sizeof (monitor_summary),
+      "monitor events mismatch: accepted=%d ready=%d(discrete=%d bad_rid=%d) disconnected=%d(discrete=%d bad_rid=%d)",
+      monitor_probe.accepted, monitor_probe.connection_ready,
+      static_cast<int> (monitor_probe.ready_routing_ids.size ()),
+      monitor_probe.bad_ready_routing_id, monitor_probe.disconnected,
+      static_cast<int> (monitor_probe.disconnected_routing_ids.size ()),
+      monitor_probe.bad_disconnected_routing_id);
+
+    TEST_ASSERT_TRUE_MESSAGE (wait_stream_monitor_progress (
+                                monitor, &monitor_probe, client_count,
+                                client_count, client_count, 1000),
+                              monitor_summary);
+    TEST_ASSERT_TRUE (monitor_probe.accepted >= client_count);
+    TEST_ASSERT_TRUE (monitor_probe.connection_ready >= client_count);
+    TEST_ASSERT_TRUE (monitor_probe.disconnected >= client_count);
+    TEST_ASSERT_EQUAL_INT (0, monitor_probe.bad_ready_routing_id);
+    TEST_ASSERT_EQUAL_INT (0, monitor_probe.bad_disconnected_routing_id);
+    TEST_ASSERT_EQUAL_INT (
+      client_count, static_cast<int> (monitor_probe.ready_routing_ids.size ()));
+    TEST_ASSERT_EQUAL_INT (
+      client_count,
+      static_cast<int> (monitor_probe.disconnected_routing_ids.size ()));
+    TEST_ASSERT_TRUE_MESSAGE (
+      callback_routing_ids_match,
+      "callback routing_ids do not fully match monitor ready/disconnected ids");
+    TEST_ASSERT_EQUAL_INT (client_count, callback_routing_id_count);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (server));
+    g_stream_monitor_callback_probe = NULL;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (monitor));
+    test_context_socket_close_zero_linger (server);
+}
+
 void test_stream_raw_multiclient_load_integrity ()
 {
     const int client_count = 48;
@@ -1728,6 +2040,7 @@ int main (void)
     RUN_TEST (test_stream_len32be_multi_frame_single_read);
     RUN_TEST (test_stream_len32be_callback_lifecycle_contract);
 #if !defined(ZLINK_HAVE_WINDOWS)
+    RUN_TEST (test_stream_monitor_len32be_multiclient_connect_disconnect);
     RUN_TEST (test_stream_raw_multiclient_load_integrity);
     RUN_TEST (test_stream_len32be_multiclient_load_integrity);
 #endif

@@ -63,7 +63,6 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
                                 uint32_t routing_id_value_,
                                 metadata_t *metadata_);
     void emit_connect_event (pipe_t *pipe_);
-    void emit_disconnect_event (pipe_t *pipe_);
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_)
       ZLINK_OVERRIDE;
     int dispatch_len32be (zlink::msg_t *msg_, zlink::pipe_t *pipe_);

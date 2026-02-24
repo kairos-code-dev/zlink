@@ -54,6 +54,15 @@ int apply_headroom (int base_, int headroom_)
 
 const size_t stream_len32be_max_payload = 4 * 1024 * 1024;
 const size_t stream_len32be_inline_batch_capacity = 16;
+std::atomic<unsigned long long> g_len32be_dispatch_frames (0);
+std::atomic<unsigned long long> g_len32be_dispatch_callbacks (0);
+std::atomic<unsigned long long> g_len32be_dispatch_controls (0);
+
+bool stream_bench_debug_enabled ()
+{
+    const char *env = std::getenv ("BENCH_DEBUG");
+    return env && *env && *env != '0';
+}
 
 uint32_t load_u32_be (const unsigned char *src_)
 {
@@ -279,12 +288,14 @@ void zlink::stream_t::xattach_pipe (pipe_t *pipe_,
 
     zlink_assert (pipe_);
 
+    const bool had_routing_id = pipe_->get_server_socket_routing_id () != 0;
     identify_peer (pipe_, locally_initiated_);
     pipe_->reset_stream_reassembly_state ();
     pipe_->set_stream_reassembly_epoch (0);
     _fq.attach (pipe_);
 
-    emit_connect_event (pipe_);
+    if (!had_routing_id)
+        emit_connect_event (pipe_);
 
     if (options.stream_notify)
         queue_notify_event (pipe_->get_server_socket_routing_id ());
@@ -293,8 +304,6 @@ void zlink::stream_t::xattach_pipe (pipe_t *pipe_,
 void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
 {
     zlink_assert (pipe_);
-
-    emit_disconnect_event (pipe_);
 
     const uint32_t server_routing_id = pipe_->get_server_socket_routing_id ();
 
@@ -413,8 +422,15 @@ int zlink::stream_t::xsend (msg_t *msg_)
         }
 
         const bool ok = _current_out->write_no_hwm_check (msg_);
-        if (likely (ok))
+        if (likely (ok)) {
             _current_out->flush ();
+        } else {
+            _current_out = NULL;
+            const int rc = msg_->close ();
+            errno_assert (rc == 0);
+            errno = EAGAIN;
+            return -1;
+        }
         _current_out = NULL;
     } else {
         const int rc = msg_->close ();
@@ -813,6 +829,14 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
     memcpy (rid.data, rid_buf, 4);
 
     if (is_stream_control_event (payload, payload_size)) {
+        const unsigned long long controls =
+          g_len32be_dispatch_controls.fetch_add (1, std::memory_order_relaxed) + 1;
+        if (stream_bench_debug_enabled ()) {
+            fprintf (stderr,
+                     "[stream dispatch_len32be] control event payload_size=%zu "
+                     "rid=%u controls=%llu\n",
+                     payload_size, routing_id_value, controls);
+        }
         pipe_->reset_stream_reassembly_state ();
         return 1;
     }
@@ -836,6 +860,12 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
         if (!state.active && state.header_written == 0
             && payload_size - cursor >= 4) {
             const uint32_t frame_len = load_u32_be (payload + cursor);
+            if (stream_bench_debug_enabled () && frame_len > 8192) {
+                fprintf (stderr,
+                         "[stream dispatch_len32be] large fast frame_len=%u "
+                         "cursor=%zu payload_size=%zu rid=%u\n",
+                         frame_len, cursor, payload_size, routing_id_value);
+            }
             if (frame_len > stream_len32be_max_payload) {
                 state.reset ();
                 cursor = payload_size;
@@ -886,6 +916,13 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
         if (!state.active) {
             state.payload_len = load_u32_be (state.header);
             state.written = 0;
+            if (stream_bench_debug_enabled () && state.payload_len > 8192) {
+                fprintf (stderr,
+                         "[stream dispatch_len32be] large assembled payload_len=%u "
+                         "header_written=%zu cursor=%zu payload_size=%zu rid=%u\n",
+                         state.payload_len, state.header_written, cursor,
+                         payload_size, routing_id_value);
+            }
             if (state.payload_len > stream_len32be_max_payload) {
                 state.reset ();
                 cursor = payload_size;
@@ -956,8 +993,33 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
     }
 
     const stream_dispatch_tls_scope_t tls_scope (this, pipe_, routing_id_value);
+    if (batch_count > 0) {
+        const unsigned long long callbacks =
+          g_len32be_dispatch_callbacks.fetch_add (1, std::memory_order_relaxed)
+          + 1;
+        const unsigned long long frames =
+          g_len32be_dispatch_frames.fetch_add (
+          static_cast<unsigned long long> (batch_count),
+          std::memory_order_relaxed)
+          + static_cast<unsigned long long> (batch_count);
+        if (stream_bench_debug_enabled () && (frames % 10000ull) < batch_count) {
+            fprintf (stderr,
+                     "[stream dispatch_len32be] frames=%llu callbacks=%llu "
+                     "batch=%zu rid=%u\n",
+                     frames, callbacks, batch_count, routing_id_value);
+        }
+    }
     const int cb_rc =
       callback (&rid, reinterpret_cast<zlink_msg_t *> (batch), batch_count);
+    if (unlikely (cb_rc != 0) && stream_bench_debug_enabled ()) {
+        fprintf (stderr,
+                 "[stream dispatch_len32be] callback stop rc=%d batch=%zu "
+                 "frames=%llu callbacks=%llu rid=%u\n",
+                 cb_rc, batch_count,
+                 g_len32be_dispatch_frames.load (std::memory_order_relaxed),
+                 g_len32be_dispatch_callbacks.load (std::memory_order_relaxed),
+                 routing_id_value);
+    }
     close_msg_batch (batch, batch_count);
     if (heap_batch)
         std::free (heap_batch);
@@ -974,8 +1036,15 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     if (!msg_ || !pipe_)
         return 1;
 
-    if (_dispatch_len32be.load (std::memory_order_acquire))
-        return dispatch_len32be (msg_, pipe_);
+    if (_dispatch_len32be.load (std::memory_order_acquire)) {
+        const int rc = dispatch_len32be (msg_, pipe_);
+        if (unlikely (rc < 0) && stream_bench_debug_enabled ()) {
+            fprintf (stderr,
+                     "[stream dispatch_len32be] dispatch error rc=%d errno=%d\n",
+                     rc, errno);
+        }
+        return rc;
+    }
 
     zlink_stream_on_packets_fn callback =
       _dispatch_callback.load (std::memory_order_acquire);
@@ -1030,6 +1099,14 @@ uint32_t zlink::stream_t::ensure_dispatch_routing_id (pipe_t *pipe_)
     routing_id.set (routing_buf, sizeof routing_buf);
     target->set_router_socket_routing_id (routing_id);
     target->set_server_socket_routing_id (routing_id_value);
+    if (pipe_ != target) {
+        pipe_->set_router_socket_routing_id (routing_id);
+        pipe_->set_server_socket_routing_id (routing_id_value);
+    }
+
+    // Callback dispatch may run before attach commands are drained; emit
+    // CONNECTION_READY when routing id is assigned for the first time.
+    emit_connect_event (pipe_);
 
     return routing_id_value;
 }
@@ -1049,6 +1126,11 @@ void zlink::stream_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
 
     pipe_->set_router_socket_routing_id (routing_id);
     pipe_->set_server_socket_routing_id (routing_id_value);
+    pipe_t *peer = pipe_->get_peer ();
+    if (peer) {
+        peer->set_router_socket_routing_id (routing_id);
+        peer->set_server_socket_routing_id (routing_id_value);
+    }
 
     const size_t idx = static_cast<size_t> (routing_id_value);
     if (idx >= _out_by_id.size ())
@@ -1136,14 +1218,4 @@ void zlink::stream_t::emit_connect_event (pipe_t *pipe_)
       routing_id.size () ? routing_id.data () : NULL;
     event_connection_ready (pipe_->get_endpoint_pair (), routing_id_data,
                             routing_id.size ());
-}
-
-void zlink::stream_t::emit_disconnect_event (pipe_t *pipe_)
-{
-    zlink_assert (pipe_);
-    const blob_t &routing_id = pipe_->get_routing_id ();
-    const unsigned char *routing_id_data =
-      routing_id.size () ? routing_id.data () : NULL;
-    event_disconnected (pipe_->get_endpoint_pair (), ZLINK_DISCONNECT_UNKNOWN,
-                        routing_id_data, routing_id.size ());
 }

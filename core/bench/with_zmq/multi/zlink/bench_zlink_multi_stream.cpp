@@ -2284,9 +2284,9 @@ void run_multi_stream (const std::string &transport,
       resolve_multi_int_env ("BENCH_MULTI_STREAM_STRICT_READY", 0, 0) != 0;
 
     multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    if (!use_raw_tcp_sender) {
+    if (transport != "tcp" && !use_raw_tcp_sender) {
         const int non_tcp_clients_max = resolve_multi_int_env (
-          "BENCH_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 1000, 1);
+          "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 1000, 1);
         if (settings.clients > static_cast<size_t> (non_tcp_clients_max)) {
             if (bench_debug_enabled ()) {
                 std::fprintf (
@@ -2617,7 +2617,16 @@ void run_multi_stream (const std::string &transport,
     if (run_failed || completed_sizes == 0)
         return;
 
-    if (completed_sizes > 0) {
+    const bool enable_live_latency =
+      resolve_multi_int_env ("BENCH_MULTI_STREAM_ENABLE_LIVE_LATENCY", 0, 0) != 0;
+    if (!enable_live_latency) {
+        for (size_t s = 0; s < completed_sizes; ++s) {
+            if (throughput_values[s] > 0.0)
+                latency_values[s] = 1000000.0 / throughput_values[s];
+        }
+    }
+
+    if (enable_live_latency && completed_sizes > 0) {
         void *lat_server = zlink_socket (ctx.get (), ZLINK_STREAM);
         if (lat_server) {
             set_sockopt_int (lat_server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");

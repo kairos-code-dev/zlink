@@ -748,6 +748,9 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|    52.10 us  |  52.1  |  135.2   |  38.5  |   66.8   |
 | 65536B   |    35.50 Kmsg/s  |2326.5 MB/s|   180.44 us  |  61.3  |  256.8   |  42.0  |   72.1   |
 
+
+===============================================================================
+
 ## PATTERN: MULTI_STREAM (echo)
 
 ### Transport: tcp
@@ -757,6 +760,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | 1024B    |   280.50 Kops/s  | 574.5 MB/s|    38.40 us  |  45.3  |  115.8   |  33.2  |   60.1   |
 ```
 
+- **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
 - throughput 단위: echo 패턴 `Kops/s` (ops/sec / 1000), one-way 패턴 `Kmsg/s` (msg/sec / 1000) — 섹션 8.1 참조
 - bandwidth 단위: `MB/s` (메가바이트/초) — 섹션 8.3 참조
 - latency 단위: `us` (마이크로초)
@@ -1158,8 +1162,8 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
-| `PERF_MULTI_ATTEMPTS` | 실패 시 재시도 횟수 | 2 |
-| `PERF_MULTI_STREAM_ATTEMPTS` | STREAM 재시도 횟수 | 2 |
+| ~~`PERF_MULTI_ATTEMPTS`~~ | ~~실패 시 재시도 횟수~~ | **삭제됨** — 재시도 기능은 제거되었다. 실패 시 원인을 조사해야 하며, 재시도로 문제를 숨기지 않는다. 구현에서 `PERF_MULTI_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS` 양쪽 모두 제거해야 한다. |
+| ~~`PERF_MULTI_STREAM_ATTEMPTS`~~ | ~~STREAM 재시도 횟수~~ | **삭제됨** — 위와 동일. 구현에서 `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_STREAM_ATTEMPTS` 양쪽 모두 제거해야 한다. |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
 | `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
 | `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |

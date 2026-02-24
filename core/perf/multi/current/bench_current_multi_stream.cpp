@@ -1,1 +1,1 @@
-#include "../../../bench/with_zmq/multi/zlink/bench_zlink_multi_stream.cpp"
+#include "perf_multi_stream_client.cpp"

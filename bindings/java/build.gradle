@@ -4,12 +4,20 @@ plugins {
 }
 
 group = 'dev.kairoscode'
-version = '1.4.0'
+version = '1.6.1'
 description = 'zlink Java bindings — high-performance async messaging library'
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(22)
+    }
+}
+
+sourceSets {
+    test {
+        java {
+            srcDir 'perf/single/Zlink.PerfBench/src/main/java'
+        }
     }
 }
 

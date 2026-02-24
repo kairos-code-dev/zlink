@@ -21,6 +21,7 @@ static const socket_t INVALID_SOCKET_FD = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 using socket_t = int;
@@ -238,6 +239,20 @@ void set_socket_timeouts(socket_t fd, int timeout_ms)
 #endif
 }
 
+void set_socket_nodelay(socket_t fd)
+{
+    if (fd == INVALID_SOCKET_FD)
+        return;
+#ifdef _WIN32
+    const BOOL on = TRUE;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
+               reinterpret_cast<const char *>(&on), sizeof(on));
+#else
+    const int on = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
+#endif
+}
+
 bool write_all(socket_t fd, const void *buf, size_t len)
 {
     const char *cur = static_cast<const char *>(buf);
@@ -327,6 +342,7 @@ socket_t connect_tcp(const std::string &endpoint)
         close_socket_fd(fd);
         return INVALID_SOCKET_FD;
     }
+    set_socket_nodelay(fd);
     return fd;
 }
 
@@ -816,6 +832,7 @@ void run_stream_zlink_client(const std::string &transport,
                              int msg_count,
                              const std::string &lib_name)
 {
+    const bool ws_family = transport == "ws" || transport == "wss";
     ctx_guard_t server_ctx;
     ctx_guard_t client_ctx;
     if (!server_ctx.valid() || !client_ctx.valid()) {
@@ -929,7 +946,8 @@ void run_stream_zlink_client(const std::string &transport,
     std::vector<char> send_buf(msg_size, 'a');
     std::vector<char> recv_buf(msg_size > 256 ? msg_size : 256);
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    const int warmup_count =
+      resolve_bench_count("BENCH_WARMUP_COUNT", ws_family ? 100 : 1000);
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_stream_frame(client.get(), client_server_id, send_buf)
             || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
@@ -941,7 +959,8 @@ void run_stream_zlink_client(const std::string &transport,
         recv_buf = packet.payload;
     }
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
+    const int lat_count =
+      resolve_bench_count("BENCH_LAT_COUNT", ws_family ? 100 : 500);
     stopwatch_t sw;
     sw.start();
     for (int i = 0; i < lat_count; ++i) {
@@ -1004,6 +1023,8 @@ void run_stream_zlink_client(const std::string &transport,
       elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
 
     print_result(lib_name, "STREAM", transport, msg_size, throughput, latency);
+    if (ws_family)
+        settle();
     stop_dispatch();
 }
 
@@ -1017,17 +1038,20 @@ void run_stream(const std::string &transport,
     if (!transport_available(transport))
         return;
 
-    if (transport == "tcp") {
-        run_stream_tcp_raw(msg_size, msg_count, lib_name);
-        return;
-    }
-
-    if (transport != "tls" && transport != "ws" && transport != "wss") {
+    if (transport != "tcp" && transport != "tls" && transport != "ws"
+        && transport != "wss") {
         print_result(lib_name, "STREAM", transport, msg_size, 0.0, 0.0);
         return;
     }
 
-    run_stream_zlink_client(transport, msg_size, msg_count, lib_name);
+    int effective_msg_count = msg_count;
+    if (transport == "ws" || transport == "wss") {
+        const int ws_cap =
+          resolve_bench_count("BENCH_STREAM_WS_MSG_COUNT", 5000);
+        if (effective_msg_count > ws_cap)
+            effective_msg_count = ws_cap;
+    }
+    run_stream_zlink_client(transport, msg_size, effective_msg_count, lib_name);
 }
 
 int main(int argc, char **argv)

@@ -2,11 +2,7 @@
 set -euo pipefail
 set -o pipefail
 
-# core/perf - zlink benchmark runner
-# Default mode measures current zlink only.
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# repo root (two levels above: core/perf)
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 SECONDS=0
@@ -28,7 +24,7 @@ print_total_time() {
   if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
     return
   fi
-  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+  if [[ "${PERF_SUPPRESS_TOTAL_TIME:-${BENCH_SUPPRESS_TOTAL_TIME:-0}}" == "1" ]]; then
     return
   fi
   local status="${1:-0}"
@@ -70,46 +66,65 @@ if [[ "${IS_WINDOWS}" -eq 1 ]]; then
 else
   BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
 fi
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM,GATEWAY,SPOT"
+
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM,STREAM_CALLBACK,STREAM_LEN32BE,GATEWAY,SPOT"
 PATTERN="ALL"
 OUTPUT_FILE=""
-RUNS=1
-REUSE_BUILD=0
-PIN_CPU=0
-BENCH_IO_THREADS=""
-BENCH_MSG_SIZES=""
-BENCH_TRANSPORTS=""
-RESULTS=1
+SAVE_REPORT=0
+SAVE_BASELINE=0
+SAVE_BASELINE_VERSION=""
 RESULTS_DIR=""
 RESULTS_TAG=""
-ALLOW_MULTI="${BENCH_ALLOW_MULTI:-0}"
-BENCH_COMPARISON_SCRIPT="${BENCH_COMPARISON_SCRIPT:-${SCRIPT_DIR}/run_comparison.py}"
+RESULT_FILE=""
+RUNS=""
+RUNS_EXPLICIT=0
+REUSE_BUILD=0
+PIN_CPU=0
+PERF_IO_THREADS="${PERF_IO_THREADS:-${BENCH_IO_THREADS:-}}"
+PERF_MSG_SIZES="${PERF_MSG_SIZES:-${BENCH_MSG_SIZES:-}}"
+PERF_TRANSPORTS="${PERF_TRANSPORTS:-${BENCH_TRANSPORTS:-}}"
+MODE="observe"
+BASELINE_FILE=""
+ROLLING_N="${PERF_ROLLING_N:-${BENCH_ROLLING_N:-10}}"
+BENCH_ALLOW_MULTI="${PERF_ALLOW_MULTI:-${BENCH_ALLOW_MULTI:-0}}"
+if [[ "${BENCH_ALLOW_MULTI}" == "1" ]]; then
+  BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
+else
+  BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
+fi
 
 usage() {
   cat <<'USAGE'
 Usage: core/perf/run_benchmarks.sh [options]
 
-Measure current zlink performance.
-  Note: PATTERN=ALL (default) runs single-pattern benchmarks
-  (PAIR/PUBSUB/DEALER/ROUTER/STREAM/GATEWAY/SPOT).
-  Multi-socket benchmarks are excluded from this script.
-  Use run_benchmarks_multi.sh for MULTI_* patterns.
+Measure current zlink single-pattern performance.
 
 Options:
-  -h, --help            Show this help.
-  --pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER).
-                       Use comma-separated patterns.
-  --build-dir PATH      Build directory (default: core/build/<platform>-<arch>).
-  --output PATH         Tee results to a file.
-  --result              Write results under core/perf/results/YYYYMMDD/.
-  --results-dir PATH    Override results root directory.
-  --results-tag NAME    Optional tag appended to the results filename.
-  --runs N              Iterations per configuration (default: 1).
-  --reuse-build         Reuse existing build dir without re-running CMake.
-  --pin-cpu             Pin CPU core during benchmarks (Linux taskset).
-  --io-threads N        Set BENCH_IO_THREADS for the benchmark run.
-  --msg-sizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
-  --transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
+  -h, --help                  Show this help.
+  --pattern NAME              Pattern list (comma-separated) or ALL.
+  --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
+  --output PATH               Tee console logs to a file.
+  --result                    Save report result file under results/single/report/ (complete only).
+  --save [VERSION]            Save baseline under results/single/baseline/ (complete only).
+  --results-dir PATH          Override result root directory.
+  --results-tag NAME          Optional tag in saved result filename.
+  --runs N                    Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
+  --reuse-build               Reuse existing build dir without cleaning.
+  --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
+  --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
+  --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
+  --transports LIST           Comma-separated transports.
+
+Policy options (single runner):
+  --mode MODE                 observe|trend|gate (default: observe).
+  --baseline-file PATH        Baseline file for gate mode.
+  --rolling-n N               Rolling baseline window for trend mode (default: 10).
+
+Notes:
+  - tmp result is always saved under results/single/tmp/.
+  - --output and --result can be used together.
+  - --save-baseline is removed. Use --save [VERSION].
+  - MULTI_* patterns are rejected by this script.
 USAGE
 }
 
@@ -131,7 +146,14 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --result)
-      RESULTS=1
+      SAVE_REPORT=1
+      ;;
+    --save)
+      SAVE_BASELINE=1
+      if [[ $# -ge 2 && "${2:-}" != --* ]]; then
+        SAVE_BASELINE_VERSION="${2:-}"
+        shift
+      fi
       ;;
     --results-dir)
       RESULTS_DIR="${2:-}"
@@ -143,21 +165,34 @@ while [[ $# -gt 0 ]]; do
       ;;
     --runs)
       RUNS="${2:-}"
+      RUNS_EXPLICIT=1
       shift
       ;;
     --pin-cpu)
       PIN_CPU=1
       ;;
     --io-threads)
-      BENCH_IO_THREADS="${2:-}"
+      PERF_IO_THREADS="${2:-}"
       shift
       ;;
     --msg-sizes)
-      BENCH_MSG_SIZES="${2:-}"
+      PERF_MSG_SIZES="${2:-}"
       shift
       ;;
     --transports)
-      BENCH_TRANSPORTS="${2:-}"
+      PERF_TRANSPORTS="${2:-}"
+      shift
+      ;;
+    --mode)
+      MODE="${2:-}"
+      shift
+      ;;
+    --baseline-file)
+      BASELINE_FILE="${2:-}"
+      shift
+      ;;
+    --rolling-n)
+      ROLLING_N="${2:-}"
       shift
       ;;
     -h|--help)
@@ -187,12 +222,6 @@ if [[ -z "${PATTERN}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${BENCH_COMPARISON_SCRIPT}" ]]; then
-  echo "Error: comparison script not found: ${BENCH_COMPARISON_SCRIPT}" >&2
-  exit 1
-fi
-
-# Normalize pattern list
 if [[ "${PATTERN}" != "ALL" ]]; then
   PATTERN="$(printf '%s' "${PATTERN}" | tr '[:lower:]' '[:upper:]')"
 else
@@ -213,68 +242,140 @@ for i in "${!PATTERN_LIST[@]}"; do
   fi
 done
 
+MULTI_PATTERN_COUNT=0
+SINGLE_PATTERN_COUNT=0
 for p in "${PATTERN_LIST[@]}"; do
-  if [[ "${p}" == *"MULTI_"* && "${ALLOW_MULTI}" -ne 1 ]]; then
-    echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
-    echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
-    exit 1
+  if [[ "${p}" == MULTI_* ]]; then
+    MULTI_PATTERN_COUNT=$((MULTI_PATTERN_COUNT + 1))
+    if [[ "${BENCH_ALLOW_MULTI}" != "1" ]]; then
+      echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
+      echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
+      exit 1
+    fi
+  else
+    SINGLE_PATTERN_COUNT=$((SINGLE_PATTERN_COUNT + 1))
   fi
 done
 
+if (( MULTI_PATTERN_COUNT > 0 && SINGLE_PATTERN_COUNT > 0 )); then
+  echo "Error: cannot mix single and multi patterns in one run." >&2
+  exit 1
+fi
+
+if [[ ! -f "${BENCH_COMPARISON_SCRIPT}" ]]; then
+  echo "Error: comparison script not found: ${BENCH_COMPARISON_SCRIPT}" >&2
+  exit 1
+fi
+
+if [[ -n "${PERF_IO_THREADS}" && ! "${PERF_IO_THREADS}" =~ ^[0-9]+$ ]]; then
+  echo "PERF_IO_THREADS must be a non-negative integer." >&2
+  exit 1
+fi
+
+if [[ -n "${PERF_MSG_SIZES}" && ! "${PERF_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+  echo "PERF_MSG_SIZES must be a comma-separated list of integers." >&2
+  exit 1
+fi
+
+if [[ -n "${PERF_TRANSPORTS}" && ! "${PERF_TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
+  echo "PERF_TRANSPORTS must be a comma-separated list of names." >&2
+  exit 1
+fi
+
+MODE="$(printf '%s' "${MODE}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${MODE}" != "observe" && "${MODE}" != "trend" && "${MODE}" != "gate" ]]; then
+  echo "Mode must be one of: observe, trend, gate." >&2
+  exit 1
+fi
+
+if [[ "${RUNS_EXPLICIT}" -eq 0 ]]; then
+  case "${MODE}" in
+    observe) RUNS=1 ;;
+    trend) RUNS=3 ;;
+    gate) RUNS=5 ;;
+  esac
+fi
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
-  usage >&2
   exit 1
 fi
 
-if [[ -n "${BENCH_IO_THREADS}" && ! "${BENCH_IO_THREADS}" =~ ^[0-9]+$ ]]; then
-  echo "BENCH_IO_THREADS must be a positive integer." >&2
-  usage >&2
+if [[ -z "${ROLLING_N}" || ! "${ROLLING_N}" =~ ^[0-9]+$ || "${ROLLING_N}" -lt 1 ]]; then
+  echo "rolling-n must be a positive integer." >&2
   exit 1
-fi
-
-if [[ -n "${BENCH_MSG_SIZES}" && ! "${BENCH_MSG_SIZES}" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
-  echo "BENCH_MSG_SIZES must be a comma-separated list of integers." >&2
-  usage >&2
-  exit 1
-fi
-
-if [[ -n "${BENCH_TRANSPORTS}" && ! "${BENCH_TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
-  echo "BENCH_TRANSPORTS must be a comma-separated list of names." >&2
-  usage >&2
-  exit 1
-fi
-
-if [[ "${RESULTS}" -eq 1 ]]; then
-  if [[ -n "${OUTPUT_FILE}" ]]; then
-    echo "Error: --result cannot be used with --output." >&2
-    exit 1
-  fi
-  if [[ -z "${RESULTS_DIR}" ]]; then
-    RESULTS_DIR="${SCRIPT_DIR}/results"
-  fi
-  DATE_DIR="$(date +%Y%m%d)"
-  TS="$(date +%Y%m%d_%H%M%S)"
-  NAME="bench_${PLATFORM}_${TS}"
-  if [[ -n "${RESULTS_TAG}" ]]; then
-    NAME="${NAME}_${RESULTS_TAG}"
-  fi
-  OUTPUT_FILE="${RESULTS_DIR}/${DATE_DIR}/${NAME}.txt"
 fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
+BENCH_COMPARISON_SCRIPT="$(realpath -m "${BENCH_COMPARISON_SCRIPT}")"
 
 if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
   echo "Build directory must be inside repo root: ${ROOT_DIR}" >&2
   exit 1
 fi
 
+if [[ -z "${RESULTS_DIR}" ]]; then
+  RESULTS_DIR="${SCRIPT_DIR}/results"
+fi
+if [[ -n "${RESULTS_DIR}" ]]; then
+  RESULTS_DIR="$(realpath -m "${RESULTS_DIR}")"
+fi
+
+TS="$(date +%Y%m%d_%H%M%S)"
+NAME="perf_${PLATFORM}_${TS}"
+if [[ -n "${RESULTS_TAG}" ]]; then
+  NAME="${NAME}_${RESULTS_TAG}"
+fi
+RESULT_SUITE="single"
+if (( MULTI_PATTERN_COUNT > 0 )); then
+  RESULT_SUITE="multi"
+fi
+RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/tmp/${NAME}.txt"
+
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
+fi
+
+if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" && "${RESULT_FILE}" == "${OUTPUT_FILE}" ]]; then
+  echo "Error: --output and --result cannot point to the same file." >&2
+  exit 1
+fi
+
+cleanup_old_results_dirs() {
+  local root="${1:-}"
+  local retention="${PERF_RESULTS_RETENTION_DAYS:-${BENCH_RESULTS_RETENTION_DAYS:-90}}"
+  if [[ -z "${root}" || ! -d "${root}" ]]; then
+    return
+  fi
+  if [[ -z "${retention}" || ! "${retention}" =~ ^[0-9]+$ || "${retention}" -le 0 ]]; then
+    return
+  fi
+
+  local cutoff
+  cutoff="$(date -u -d "-${retention} days" +%Y%m%d 2>/dev/null || true)"
+  if [[ -z "${cutoff}" ]]; then
+    return
+  fi
+
+  local dir base
+  for dir in "${root}"/*; do
+    [[ -d "${dir}" ]] || continue
+    base="$(basename "${dir}")"
+    if [[ ! "${base}" =~ ^[0-9]{8}$ ]]; then
+      continue
+    fi
+    if [[ "${base}" < "${cutoff}" ]]; then
+      rm -rf "${dir}"
+    fi
+  done
+}
+
 if [[ "${REUSE_BUILD}" -eq 1 ]]; then
   if [[ -d "${BUILD_DIR}" ]]; then
     echo "Reusing build directory: ${BUILD_DIR}"
   else
-    echo "Build directory not found. Creating: ${BUILD_DIR}"
+    echo "Error: --reuse-build requires existing build dir: ${BUILD_DIR}" >&2
+    exit 1
   fi
 else
   echo "Cleaning build directory: ${BUILD_DIR}"
@@ -282,7 +383,7 @@ else
 fi
 
 CMAKE_SOURCE_DIR="${ROOT_DIR}"
-if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+if [[ "${REUSE_BUILD}" -ne 1 && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
       | tail -n 1
@@ -295,40 +396,43 @@ if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
     rm -rf "${BUILD_DIR}"
   fi
 fi
+
 echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
 
-if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
-  CMAKE_ARCH="${CMAKE_ARCH:-x64}"
-  cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
-    -G "${CMAKE_GENERATOR}" \
-    -A "${CMAKE_ARCH}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_BENCHMARKS=ON \
-    -DZLINK_BUILD_TESTS=OFF \
-    -DZLINK_BUILD_BENCH_ZMQ=OFF \
-    -DZLINK_BUILD_BENCH_ZLINK=ON \
-    -DZLINK_BUILD_BENCH_BEAST=OFF \
-    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-    -DZLINK_CXX_STANDARD=17
-else
-  cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_BENCHMARKS=ON \
-    -DZLINK_BUILD_TESTS=OFF \
-    -DZLINK_BUILD_BENCH_ZMQ=OFF \
-    -DZLINK_BUILD_BENCH_ZLINK=ON \
-    -DZLINK_BUILD_BENCH_BEAST=OFF \
-    -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
-    -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
-    -DZLINK_CXX_STANDARD=17
-fi
+if [[ "${REUSE_BUILD}" -ne 1 ]]; then
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
+    CMAKE_ARCH="${CMAKE_ARCH:-x64}"
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
+      -G "${CMAKE_GENERATOR}" \
+      -A "${CMAKE_ARCH}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_TESTS=OFF \
+      -DZLINK_BUILD_BENCH_ZMQ=OFF \
+      -DZLINK_BUILD_BENCH_ZLINK=ON \
+      -DZLINK_BUILD_BENCH_BEAST=OFF \
+      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_CXX_STANDARD=17
+  else
+    cmake -S "${CMAKE_SOURCE_DIR}" -B "${BUILD_DIR}" \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_BENCHMARKS=ON \
+      -DZLINK_BUILD_TESTS=OFF \
+      -DZLINK_BUILD_BENCH_ZMQ=OFF \
+      -DZLINK_BUILD_BENCH_ZLINK=ON \
+      -DZLINK_BUILD_BENCH_BEAST=OFF \
+      -DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF \
+      -DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF \
+      -DZLINK_CXX_STANDARD=17
+  fi
 
-if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-  cmake --build "${BUILD_DIR}" --config Release
-else
-  cmake --build "${BUILD_DIR}"
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    cmake --build "${BUILD_DIR}" --config Release
+  else
+    cmake --build "${BUILD_DIR}"
+  fi
 fi
 
 PYTHON_BIN=()
@@ -354,43 +458,59 @@ else
   fi
 fi
 
-RUN_CMD_BASE=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
-RUN_ENV=()
-if [[ -n "${BENCH_IO_THREADS}" ]]; then
-  RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")
-fi
-if [[ -n "${BENCH_MSG_SIZES}" ]]; then
-  RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")
-fi
-if [[ -n "${BENCH_TRANSPORTS}" ]]; then
-  RUN_ENV+=(BENCH_TRANSPORTS="${BENCH_TRANSPORTS}")
-fi
-if [[ "${PIN_CPU}" -eq 1 ]]; then
-  RUN_CMD_BASE+=(--pin-cpu)
+if [[ -n "${RESULTS_DIR}" ]]; then
+  cleanup_old_results_dirs "${RESULTS_DIR}"
 fi
 
-RUN_CMD=("${RUN_CMD_BASE[@]}")
-SHOW_TOTAL_TIME=1
-if [[ "${#PATTERN_LIST[@]}" -eq 1 ]]; then
-  if [[ -n "${OUTPUT_FILE}" ]]; then
-    mkdir -p "$(dirname "${OUTPUT_FILE}")"
-    env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${PATTERN_LIST[0]}" | tee "${OUTPUT_FILE}"
-  else
-    env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${PATTERN_LIST[0]}"
+PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
+RUN_CMD=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")
+if [[ "${PIN_CPU}" -eq 1 ]]; then
+  RUN_CMD+=("--pin-cpu")
+fi
+
+RUN_CMD+=("--mode" "${MODE}" "--rolling-n" "${ROLLING_N}")
+if [[ -n "${RESULTS_DIR}" ]]; then
+  RUN_CMD+=("--results-dir" "${RESULTS_DIR}")
+fi
+if [[ -n "${BASELINE_FILE}" ]]; then
+  RUN_CMD+=("--baseline-file" "${BASELINE_FILE}")
+fi
+if [[ -n "${RESULTS_TAG}" ]]; then
+  RUN_CMD+=("--results-tag" "${RESULTS_TAG}")
+fi
+RUN_CMD+=("--result-file" "${RESULT_FILE}")
+if [[ "${SAVE_REPORT}" -eq 1 ]]; then
+  RUN_CMD+=("--result")
+fi
+if [[ "${SAVE_BASELINE}" -eq 1 ]]; then
+  RUN_CMD+=("--save")
+  if [[ -n "${SAVE_BASELINE_VERSION}" ]]; then
+    RUN_CMD+=("${SAVE_BASELINE_VERSION}")
   fi
+fi
+
+RUN_ENV=()
+if [[ -n "${PERF_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
+  RUN_ENV+=(BENCH_IO_THREADS="${PERF_IO_THREADS}")
+fi
+if [[ -n "${PERF_MSG_SIZES}" ]]; then
+  RUN_ENV+=(PERF_MSG_SIZES="${PERF_MSG_SIZES}")
+  RUN_ENV+=(BENCH_MSG_SIZES="${PERF_MSG_SIZES}")
+fi
+if [[ -n "${PERF_TRANSPORTS}" ]]; then
+  RUN_ENV+=(PERF_TRANSPORTS="${PERF_TRANSPORTS}")
+  RUN_ENV+=(BENCH_TRANSPORTS="${PERF_TRANSPORTS}")
+fi
+if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+  RUN_ENV+=(PERF_NO_AUTOBUILD=1)
+  RUN_ENV+=(BENCH_NO_AUTOBUILD=1)
+fi
+
+SHOW_TOTAL_TIME=1
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  mkdir -p "$(dirname "${OUTPUT_FILE}")"
+  env "${RUN_ENV[@]}" "${RUN_CMD[@]}" | tee "${OUTPUT_FILE}"
 else
-  for p in "${PATTERN_LIST[@]}"; do
-    if [[ -n "${OUTPUT_FILE}" ]]; then
-      SAFE_PATTERN="${p//,/\\_}"
-      PATTERN_OUTPUT="${RESULTS_DIR}/${DATE_DIR}/bench_${PLATFORM}_${SAFE_PATTERN}_${TS}"
-      if [[ -n "${RESULTS_TAG}" ]]; then
-        PATTERN_OUTPUT="${PATTERN_OUTPUT}_${RESULTS_TAG}"
-      fi
-      PATTERN_OUTPUT="${PATTERN_OUTPUT}.txt"
-      mkdir -p "$(dirname "${PATTERN_OUTPUT}")"
-      env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${p}" | tee "${PATTERN_OUTPUT}"
-    else
-      env "${RUN_ENV[@]}" "${RUN_CMD[@]}" "${p}"
-    fi
-  done
+  env "${RUN_ENV[@]}" "${RUN_CMD[@]}"
 fi

@@ -174,8 +174,12 @@ inline void print_result(const std::string& lib_type,
                          size_t size,
                          double throughput,
                          double latency) {
+    const double bandwidth_mb_s =
+      (throughput * static_cast<double>(size)) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
               << ",throughput," << std::fixed << std::setprecision(2) << throughput << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
               << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
 }
@@ -467,6 +471,9 @@ inline std::string bind_and_resolve_endpoint(void *socket_,
 
 inline bool transport_available(const std::string& transport) {
     if (transport == "ipc") return zlink_has("ipc") != 0;
+    if (transport == "tls") return zlink_has("tls") != 0;
+    if (transport == "ws") return zlink_has("ws") != 0;
+    if (transport == "wss") return zlink_has("wss") != 0;
     return true;
 }
 

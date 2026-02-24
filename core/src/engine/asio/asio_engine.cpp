@@ -2073,15 +2073,13 @@ void zlink::asio_engine_t::error (error_reason_t reason_)
         disconnect_reason = ZLINK_DISCONNECT_TRANSPORT_ERROR;
     }
 
-    if (_options.type != ZLINK_STREAM) {
-        const zlink::blob_t *routing_id = _session ? &_session->peer_routing_id ()
-                                                 : NULL;
-        const unsigned char *routing_id_data =
-          routing_id ? routing_id->data () : NULL;
-        const size_t routing_id_size = routing_id ? routing_id->size () : 0;
-        _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
-                                     routing_id_data, routing_id_size);
-    }
+    const zlink::blob_t *routing_id = _session ? &_session->peer_routing_id ()
+                                                : NULL;
+    const unsigned char *routing_id_data =
+      routing_id ? routing_id->data () : NULL;
+    const size_t routing_id_size = routing_id ? routing_id->size () : 0;
+    _socket->event_disconnected (_endpoint_uri_pair, disconnect_reason,
+                                 routing_id_data, routing_id_size);
     _session->flush ();
     _session->engine_error (!_handshaking, reason_);
     unplug ();

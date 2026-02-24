@@ -1305,7 +1305,17 @@ int flush_stream_reply_queue (void *server,
         const char *payload_ptr = reply.payload.empty () ? NULL : &reply.payload[0];
         if (!send_stream_reply_with_retry (
               server, &target, payload_ptr, reply.payload.size ())) {
-            return -1;
+            if (bench_debug_enabled ()) {
+                std::fprintf (
+                  stderr,
+                  "MULTI_STREAM reply dropped: err=%d rid_size=%zu payload=%zu\n",
+                  zlink_errno (),
+                  reply.routing_id.size (),
+                  reply.payload.size ());
+            }
+            // A single disconnected peer must not block the whole relay queue.
+            pending_replies.pop_front ();
+            continue;
         }
 
         pending_replies.pop_front ();

@@ -1,4 +1,4 @@
-#include "../common/bench_common_zlink.hpp"
+#include "../../../../perf/multi/common/bench_common.hpp"
 #include "../common/bench_common_multi.hpp"
 #include "../common/stream_frame.hpp"
 #include <zlink.h>
@@ -42,7 +42,50 @@ static const socket_t INVALID_SOCKET_FD = -1;
 #define ZLINK_TCP_NODELAY 26
 #endif
 
+
 namespace {
+
+#ifndef BENCH_MULTI_STREAM_PATTERN_NAME
+#define BENCH_MULTI_STREAM_PATTERN_NAME "MULTI_STREAM"
+#endif
+
+#ifndef BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE
+#define BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE 0
+#endif
+
+inline const char *multi_stream_pattern_name ()
+{
+    return BENCH_MULTI_STREAM_PATTERN_NAME;
+}
+
+enum multi_stream_dispatch_mode_t
+{
+    multi_stream_dispatch_recv = 0,
+    multi_stream_dispatch_callback = 1,
+    multi_stream_dispatch_len32be = 2
+};
+
+multi_stream_dispatch_mode_t resolve_multi_stream_dispatch_mode ()
+{
+    const int mode_value = BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE;
+    if (mode_value <= 0)
+        return multi_stream_dispatch_recv;
+    if (mode_value == 1)
+        return multi_stream_dispatch_callback;
+    return multi_stream_dispatch_len32be;
+}
+
+bool multi_stream_dispatch_enabled (multi_stream_dispatch_mode_t mode)
+{
+    return mode != multi_stream_dispatch_recv;
+}
+
+int multi_stream_dispatch_flags (multi_stream_dispatch_mode_t mode)
+{
+    if (mode == multi_stream_dispatch_len32be)
+        return ZLINK_STREAM_DISPATCH_LEN32BE;
+    return 0;
+}
 
 static const unsigned char STREAM_EVENT_CONNECT = 0x01;
 static const unsigned char STREAM_EVENT_DISCONNECT = 0x00;
@@ -109,6 +152,7 @@ struct stream_len32be_dispatch_t {
 };
 
 static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
+static stream_len32be_dispatch_t *g_stream_dispatch_aux = NULL;
 static std::atomic<bool> g_stream_reply_direct (false);
 
 typedef int (*stream_attach_fn_t) (void *, zlink_stream_on_packets_fn, int);
@@ -151,30 +195,19 @@ stream_dispatch_api_t &stream_dispatch_api ()
 
 bool stream_dispatch_supported ()
 {
-    stream_dispatch_api_t &api = stream_dispatch_api ();
-    return api.attach_fn != NULL && api.detach_fn != NULL;
+    return true;
 }
 
 int stream_attach_compat (void *socket_,
                           zlink_stream_on_packets_fn callback,
                           int flags)
 {
-    stream_dispatch_api_t &api = stream_dispatch_api ();
-    if (!api.attach_fn) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return api.attach_fn (socket_, callback, flags);
+    return zlink_stream_attach (socket_, callback, flags);
 }
 
 int stream_detach_compat (void *socket_)
 {
-    stream_dispatch_api_t &api = stream_dispatch_api ();
-    if (!api.detach_fn) {
-        errno = ENOTSUP;
-        return -1;
-    }
-    return api.detach_fn (socket_);
+    return zlink_stream_detach (socket_);
 }
 
 enum recv_sender_frame_status_t
@@ -327,25 +360,64 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
     return dispatch->running.load (std::memory_order_acquire) ? 0 : 1;
 }
 
-bool start_stream_len32be_dispatch (void *socket_,
-                                    stream_len32be_dispatch_t &dispatch)
+int on_stream_len32be_packets_aux (const zlink_routing_id_t *rid_,
+                                   zlink_msg_t *msgs_,
+                                   size_t msg_count_)
+{
+    stream_len32be_dispatch_t *dispatch = g_stream_dispatch_aux;
+    if (!dispatch || !rid_ || !msgs_ || msg_count_ == 0)
+        return 0;
+
+    std::unique_lock<std::mutex> guard (dispatch->lock);
+    for (size_t i = 0; i < msg_count_; ++i) {
+        const char *payload_data =
+          static_cast<const char *> (zlink_msg_data (&msgs_[i]));
+        const size_t payload_size = zlink_msg_size (&msgs_[i]);
+        if (payload_size == 1 && payload_data
+            && (static_cast<unsigned char> (payload_data[0]) == STREAM_EVENT_CONNECT
+                || static_cast<unsigned char> (payload_data[0])
+                     == STREAM_EVENT_DISCONNECT)) {
+            continue;
+        }
+        if (!payload_data && payload_size > 0)
+            continue;
+
+        stream_dispatch_packet_t packet;
+        packet.routing_id.assign (
+          reinterpret_cast<const char *> (rid_->data),
+          static_cast<size_t> (rid_->size));
+        packet.payload.assign (payload_size, 0);
+        if (payload_size > 0)
+            std::memcpy (packet.payload.data (), payload_data, payload_size);
+        dispatch->packets.push_back (packet);
+    }
+    guard.unlock ();
+    dispatch->cv.notify_all ();
+    return dispatch->running.load (std::memory_order_acquire) ? 0 : 1;
+}
+
+bool start_stream_len32be_dispatch_slot (void *socket_,
+                                         stream_len32be_dispatch_t &dispatch,
+                                         stream_len32be_dispatch_t **slot,
+                                         zlink_stream_on_packets_fn callback,
+                                         int dispatch_flags)
 {
     dispatch.socket = socket_;
     dispatch.running.store (true, std::memory_order_release);
-    g_stream_dispatch = &dispatch;
-    if (stream_attach_compat (
-          socket_, &on_stream_len32be_packets, ZLINK_STREAM_DISPATCH_LEN32BE)
+    *slot = &dispatch;
+    if (stream_attach_compat (socket_, callback, dispatch_flags)
         != 0) {
         dispatch.running.store (false, std::memory_order_release);
         dispatch.socket = NULL;
-        if (g_stream_dispatch == &dispatch)
-            g_stream_dispatch = NULL;
+        if (*slot == &dispatch)
+            *slot = NULL;
         return false;
     }
     return true;
 }
 
-void stop_stream_len32be_dispatch (stream_len32be_dispatch_t &dispatch)
+void stop_stream_len32be_dispatch_slot (stream_len32be_dispatch_t &dispatch,
+                                        stream_len32be_dispatch_t **slot)
 {
     if (!dispatch.running.exchange (false, std::memory_order_acq_rel))
         return;
@@ -356,9 +428,37 @@ void stop_stream_len32be_dispatch (stream_len32be_dispatch_t &dispatch)
         dispatch.packets.clear ();
     }
     dispatch.cv.notify_all ();
-    if (g_stream_dispatch == &dispatch)
-        g_stream_dispatch = NULL;
+    if (*slot == &dispatch)
+        *slot = NULL;
     dispatch.socket = NULL;
+}
+
+bool start_stream_len32be_dispatch (void *socket_,
+                                    stream_len32be_dispatch_t &dispatch,
+                                    int dispatch_flags)
+{
+    return start_stream_len32be_dispatch_slot (
+      socket_, dispatch, &g_stream_dispatch, &on_stream_len32be_packets,
+      dispatch_flags);
+}
+
+bool start_stream_len32be_dispatch_aux (void *socket_,
+                                        stream_len32be_dispatch_t &dispatch,
+                                        int dispatch_flags)
+{
+    return start_stream_len32be_dispatch_slot (
+      socket_, dispatch, &g_stream_dispatch_aux, &on_stream_len32be_packets_aux,
+      dispatch_flags);
+}
+
+void stop_stream_len32be_dispatch (stream_len32be_dispatch_t &dispatch)
+{
+    stop_stream_len32be_dispatch_slot (dispatch, &g_stream_dispatch);
+}
+
+void stop_stream_len32be_dispatch_aux (stream_len32be_dispatch_t &dispatch)
+{
+    stop_stream_len32be_dispatch_slot (dispatch, &g_stream_dispatch_aux);
 }
 
 void clear_stream_len32be_dispatch_packets (stream_len32be_dispatch_t &dispatch)
@@ -402,14 +502,77 @@ bool pop_stream_len32be_packet (void *socket_,
     return true;
 }
 
-struct tcp_sender_state_t {
+bool pop_stream_len32be_packet_aux (void *socket_,
+                                    int timeout_ms,
+                                    bool dontwait,
+                                    stream_dispatch_packet_t &packet_out)
+{
+    stream_len32be_dispatch_t *dispatch = g_stream_dispatch_aux;
+    if (!dispatch || dispatch->socket != socket_
+        || !dispatch->running.load (std::memory_order_acquire)) {
+        return false;
+    }
+
+    const int wait_ms = dontwait ? 0 : std::max (0, timeout_ms);
+    std::unique_lock<std::mutex> guard (dispatch->lock);
+    const auto ready = [&] {
+        return !dispatch->packets.empty ()
+               || !dispatch->running.load (std::memory_order_acquire);
+    };
+
+    if (wait_ms == 0) {
+        if (!ready ())
+            return false;
+    } else {
+        if (!dispatch->cv.wait_for (
+              guard, std::chrono::milliseconds (wait_ms), ready)) {
+            return false;
+        }
+    }
+    if (dispatch->packets.empty ())
+        return false;
+
+    packet_out = std::move (dispatch->packets.front ());
+    dispatch->packets.pop_front ();
+    return true;
+}
+
+enum stream_sender_mode_t
+{
+    stream_sender_raw_tcp = 0,
+    stream_sender_zlink = 1
+};
+
+struct stream_sender_state_t {
     socket_t fd;
+    void *socket;
+    stream_sender_mode_t mode;
+    bool multipart_id_sent;
+    std::vector<unsigned char> routing_id;
     std::vector<char> frame;
     size_t sent_bytes;
     stream_buffer_t recv_stash;
 
-    tcp_sender_state_t () : fd (INVALID_SOCKET_FD), sent_bytes (0) {}
-    bool valid () const { return fd != INVALID_SOCKET_FD; }
+    stream_sender_state_t () :
+        fd (INVALID_SOCKET_FD),
+        socket (NULL),
+        mode (stream_sender_raw_tcp),
+        multipart_id_sent (false),
+        sent_bytes (0)
+    {
+    }
+
+    bool valid () const
+    {
+        if (mode == stream_sender_raw_tcp)
+            return fd != INVALID_SOCKET_FD;
+        return socket != NULL;
+    }
+
+    bool is_raw_tcp () const
+    {
+        return mode == stream_sender_raw_tcp;
+    }
 };
 
 struct stream_client_poller_t {
@@ -426,7 +589,7 @@ struct stream_client_poller_t {
         cursor = 0;
     }
 
-    bool rebuild (const std::vector<tcp_sender_state_t> &senders)
+    bool rebuild (const std::vector<stream_sender_state_t> &senders)
     {
         reset ();
         items.reserve (senders.size ());
@@ -438,8 +601,13 @@ struct stream_client_poller_t {
 
             zlink_pollitem_t item;
             std::memset (&item, 0, sizeof (item));
-            item.socket = NULL;
-            item.fd = senders[i].fd;
+            if (senders[i].is_raw_tcp ()) {
+                item.socket = NULL;
+                item.fd = senders[i].fd;
+            } else {
+                item.socket = senders[i].socket;
+                item.fd = 0;
+            }
             item.events = ZLINK_POLLIN;
             item.revents = 0;
             items.push_back (item);
@@ -756,27 +924,84 @@ bool recv_raw_framed (socket_t fd, std::vector<char> *payload_out)
     return read_all (fd, &(*payload_out)[0], len);
 }
 
-void close_sender (tcp_sender_state_t &sender)
+bool wait_monitor_connect_event (void *monitor_socket,
+                                 std::vector<unsigned char> &routing_id_out,
+                                 int timeout_ms)
 {
-    if (sender.valid ())
-        close_socket_fd (sender.fd);
-    sender.fd = INVALID_SOCKET_FD;
+    if (!monitor_socket)
+        return false;
+
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (std::max (0, timeout_ms));
+    while (true) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            return false;
+
+        const long remain_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ();
+        zlink_pollitem_t items[] = {{monitor_socket, 0, ZLINK_POLLIN, 0}};
+        const int rc = zlink_poll (items, 1, remain_ms > 0 ? remain_ms : 0);
+        if (rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return false;
+        }
+        if (rc <= 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        for (;;) {
+            zlink_monitor_event_t event;
+            std::memset (&event, 0, sizeof (event));
+            if (zlink_monitor_recv (monitor_socket, &event, ZLINK_DONTWAIT) != 0)
+                break;
+            if (event.event != ZLINK_EVENT_CONNECTION_READY
+                || event.routing_id.size == 0) {
+                continue;
+            }
+
+            routing_id_out.assign (
+              event.routing_id.data,
+              event.routing_id.data + event.routing_id.size);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void reset_sender_runtime_state (stream_sender_state_t &sender)
+{
     sender.frame.clear ();
     sender.sent_bytes = 0;
+    sender.multipart_id_sent = false;
     sender.recv_stash.reset ();
 }
 
-bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
+void close_sender (stream_sender_state_t &sender)
 {
     if (sender.valid ()) {
-        //  Keep connection alive across message-size rounds, but reset any
-        //  partially staged frame from a previous round.
-        sender.frame.clear ();
-        sender.sent_bytes = 0;
-        sender.recv_stash.reset ();
-        return true;
+        if (sender.is_raw_tcp ())
+            close_socket_fd (sender.fd);
+        else if (sender.socket)
+            zlink_close (sender.socket);
     }
+    sender.fd = INVALID_SOCKET_FD;
+    sender.socket = NULL;
+    sender.routing_id.clear ();
+    sender.mode = stream_sender_raw_tcp;
+    reset_sender_runtime_state (sender);
+}
 
+bool setup_sender_raw_tcp (stream_sender_state_t &sender,
+                           const std::string &endpoint)
+{
+    if (sender.valid ())
+        return true;
+
+    sender.mode = stream_sender_raw_tcp;
     socket_t fd = connect_tcp_socket (endpoint, true);
     if (fd == INVALID_SOCKET_FD)
         return false;
@@ -786,17 +1011,141 @@ bool setup_sender (tcp_sender_state_t &sender, const std::string &endpoint)
     }
 
     sender.fd = fd;
-    sender.frame.clear ();
-    sender.sent_bytes = 0;
-    sender.recv_stash.reset ();
+    sender.socket = NULL;
+    sender.routing_id.clear ();
+    reset_sender_runtime_state (sender);
     return true;
 }
 
-multi_send_result_t send_sender_nonblocking (tcp_sender_state_t &sender,
+bool setup_sender_zlink (stream_sender_state_t &sender,
+                         void *ctx,
+                         const std::string &transport,
+                         const std::string &endpoint,
+                         int stream_hwm,
+                         int io_timeout_ms,
+                         int connect_ready_timeout_ms)
+{
+    if (sender.valid ())
+        return true;
+
+    sender.mode = stream_sender_zlink;
+    void *client = zlink_socket (ctx, ZLINK_STREAM);
+    if (!client)
+        return false;
+
+    const int linger_ms = 0;
+    set_sockopt_int (client, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    apply_benchmark_hwm (client, stream_hwm);
+    set_sockopt_int (client, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int (client, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
+    if (!setup_tls_client (client, transport)) {
+        zlink_close (client);
+        return false;
+    }
+
+    connect_monitor_t monitor;
+    if (!open_connect_monitor (client, monitor)) {
+        zlink_close (client);
+        return false;
+    }
+
+    std::vector<unsigned char> routing_id;
+    const bool connected =
+      connect_checked (client, endpoint, transport)
+      && wait_monitor_connect_event (
+        monitor.monitor, routing_id, connect_ready_timeout_ms);
+    close_connect_monitor (monitor);
+    zlink_routing_id_t routing_id_max;
+    if (!connected || routing_id.empty ()
+        || routing_id.size () > sizeof (routing_id_max.data)) {
+        if (bench_debug_enabled ()) {
+            std::fprintf (
+              stderr,
+              "MULTI_STREAM zlink sender setup failed: connected=%d rid_size=%zu\n",
+              connected ? 1 : 0,
+              routing_id.size ());
+        }
+        zlink_close (client);
+        return false;
+    }
+
+    sender.fd = INVALID_SOCKET_FD;
+    sender.socket = client;
+    sender.routing_id.swap (routing_id);
+    reset_sender_runtime_state (sender);
+    return true;
+}
+
+bool setup_sender (stream_sender_state_t &sender,
+                   void *ctx,
+                   const std::string &transport,
+                   const std::string &endpoint,
+                   int stream_hwm,
+                   int io_timeout_ms,
+                   int connect_ready_timeout_ms,
+                   bool use_raw_tcp)
+{
+    if (sender.valid ()) {
+        // Keep connection alive across message-size rounds, but reset any
+        // partially staged frame from a previous round.
+        reset_sender_runtime_state (sender);
+        return true;
+    }
+
+    return use_raw_tcp
+             ? setup_sender_raw_tcp (sender, endpoint)
+             : setup_sender_zlink (
+                 sender, ctx, transport, endpoint, stream_hwm, io_timeout_ms,
+                 connect_ready_timeout_ms);
+}
+
+multi_send_result_t send_sender_nonblocking (stream_sender_state_t &sender,
                                              const std::vector<char> &payload)
 {
     if (!sender.valid ())
         return multi_send_error;
+
+    if (!sender.is_raw_tcp ()) {
+        if (sender.routing_id.empty ())
+            return multi_send_error;
+
+        if (sender.frame.empty ()) {
+            stream_build_framed_payload (payload, &sender.frame);
+            sender.sent_bytes = 0;
+        }
+
+        zlink_routing_id_t rid;
+        std::memset (&rid, 0, sizeof (rid));
+        if (sender.routing_id.size () > sizeof (rid.data))
+            return multi_send_error;
+        rid.size = static_cast<uint8_t> (sender.routing_id.size ());
+        std::memcpy (rid.data, sender.routing_id.data (), sender.routing_id.size ());
+        const int payload_rc = zlink_stream_send (
+          sender.socket,
+          &rid,
+          sender.frame.empty () ? NULL : sender.frame.data (),
+          sender.frame.size (),
+          ZLINK_DONTWAIT);
+        if (payload_rc == static_cast<int> (sender.frame.size ())) {
+            sender.frame.clear ();
+            sender.sent_bytes = 0;
+            sender.multipart_id_sent = false;
+            return multi_send_ok;
+        }
+
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return multi_send_would_block;
+        if (bench_debug_enabled ()) {
+            std::fprintf (
+              stderr,
+              "MULTI_STREAM zlink send error: err=%d rid_size=%zu frame=%zu\n",
+              err,
+              sender.routing_id.size (),
+              sender.frame.size ());
+        }
+        return multi_send_error;
+    }
 
     if (sender.frame.empty ()) {
         stream_build_framed_payload (payload, &sender.frame);
@@ -873,27 +1222,58 @@ bool wait_stream_ready_count (connect_monitor_t &monitor,
         return true;
     }
 
-    size_t ready_events = 0;
-    size_t observed_ready = 0;
+    if (!monitor.monitor) {
+        if (observed_ready_out)
+            *observed_ready_out = 0;
+        return false;
+    }
+
+    size_t ready_events = static_cast<size_t> (
+      std::max (0, poll_connect_ready_count (monitor)));
+    size_t observed_ready = ready_events;
+    if (ready_events >= expected_ready) {
+        if (observed_ready_out)
+            *observed_ready_out = observed_ready;
+        return true;
+    }
+
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (std::max (0, timeout_ms));
 
-    while (std::chrono::steady_clock::now () < deadline) {
-        ready_events +=
-          static_cast<size_t> (std::max (0, poll_connect_ready_count (monitor)));
+    while (ready_events < expected_ready) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            break;
+
+        const long remain_ms =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now)
+            .count ();
+        zlink_pollitem_t items[] = {{monitor.monitor, 0, ZLINK_POLLIN, 0}};
+        const int rc = zlink_poll (items, 1, remain_ms > 0 ? remain_ms : 0);
+        if (rc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            if (observed_ready_out)
+                *observed_ready_out = observed_ready;
+            return false;
+        }
+        if (rc == 0 || (items[0].revents & ZLINK_POLLIN) == 0)
+            continue;
+
+        ready_events += static_cast<size_t> (
+          std::max (0, poll_connect_ready_count (monitor)));
         observed_ready = std::max<size_t> (observed_ready, ready_events);
-        if (observed_ready >= expected_ready) {
+        if (ready_events >= expected_ready) {
             if (observed_ready_out)
                 *observed_ready_out = observed_ready;
             return true;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
     if (observed_ready_out)
         *observed_ready_out = observed_ready;
-    return false;
+    return ready_events >= expected_ready;
 }
 
 int flush_stream_reply_queue (void *server,
@@ -941,6 +1321,7 @@ int enqueue_stream_payload_chunks (void *server,
                                   long poll_timeout_ms,
                                   size_t max_pending,
                                   size_t expected_payload_size,
+                                  bool send_requires_framed_payload,
                                   stream_stash_map_t *dispatch_stashes)
 {
     if (relay_budget <= 0 || max_pending == 0 || pending_replies.size () >= max_pending)
@@ -1026,7 +1407,7 @@ int enqueue_stream_payload_chunks (void *server,
               packet_.payload.empty () ? NULL : packet_.payload.data (),
               packet_.payload.size (),
               true,
-              false);
+              send_requires_framed_payload);
         };
 
         push_reply (dispatch_packet);
@@ -1094,7 +1475,7 @@ int enqueue_stream_payload_chunks (void *server,
                   payload_data,
                   payload_size,
                   true,
-                  false);
+                  send_requires_framed_payload);
             }
         }
 
@@ -1142,12 +1523,112 @@ int decode_sender_frames_with_expected_size (stream_buffer_t &stash,
     return completed;
 }
 
-int recv_sender_echoes_nonblocking (tcp_sender_state_t &sender,
+int recv_sender_stream_chunk_nonblocking (stream_sender_state_t &sender,
+                                          std::vector<char> *chunk_out,
+                                          bool *peer_match_out)
+{
+    if (!chunk_out || !peer_match_out || !sender.valid () || sender.is_raw_tcp ())
+        return -1;
+
+    unsigned char routing_frame[255];
+    const int routing_len = zlink_recv (
+      sender.socket, routing_frame, sizeof (routing_frame), ZLINK_DONTWAIT);
+    if (routing_len < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (sender.socket, ZLINK_RCVMORE, &more, &more_size) != 0
+        || !more) {
+        return -1;
+    }
+
+    std::vector<char> payload_buf (512 * 1024, 0);
+    const int payload_len = zlink_recv (
+      sender.socket, payload_buf.data (), payload_buf.size (), ZLINK_DONTWAIT);
+    if (payload_len < 0) {
+        const int err = zlink_errno ();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    }
+
+    if (payload_len > 0)
+        chunk_out->assign (payload_buf.begin (), payload_buf.begin () + payload_len);
+    else
+        chunk_out->clear ();
+
+    *peer_match_out =
+      sender.routing_id.empty ()
+      || (sender.routing_id.size () == static_cast<size_t> (routing_len)
+          && std::memcmp (
+               sender.routing_id.data (), routing_frame, sender.routing_id.size ())
+               == 0);
+    return 1;
+}
+
+int recv_sender_echoes_nonblocking (stream_sender_state_t &sender,
                                     int max_frames,
                                     size_t expected_payload_size)
 {
     if (!sender.valid () || max_frames <= 0)
         return 0;
+
+    if (!sender.is_raw_tcp ()) {
+        int completed = 0;
+        for (int i = 0; i < 8 && completed < max_frames; ++i) {
+            std::vector<char> payload_chunk;
+            bool peer_match = false;
+            const int recv_rc = recv_sender_stream_chunk_nonblocking (
+              sender, &payload_chunk, &peer_match);
+            if (recv_rc == 0)
+                break;
+            if (recv_rc < 0) {
+                if (bench_debug_enabled ()) {
+                    std::fprintf (
+                      stderr,
+                      "MULTI_STREAM zlink recv_batch chunk_recv error: err=%d\n",
+                      zlink_errno ());
+                }
+                return -1;
+            }
+
+            const char *payload_data =
+              payload_chunk.empty () ? NULL : payload_chunk.data ();
+            const size_t payload_size = payload_chunk.size ();
+            if (peer_match
+                && payload_size > 0
+                && payload_data
+                && !is_stream_event_payload (payload_data, payload_size)) {
+                std::vector<char> decoded_payload;
+                if (extract_single_framed_payload (
+                      payload_data, payload_size, &decoded_payload)) {
+                    if (expected_payload_size == 0
+                        || decoded_payload.size () == expected_payload_size) {
+                        ++completed;
+                    }
+                } else if (expected_payload_size > 0
+                           && payload_size == expected_payload_size) {
+                    ++completed;
+                } else {
+                    sender.recv_stash.append (
+                      payload_data,
+                      payload_size);
+                    const int decoded = decode_sender_frames_with_expected_size (
+                      sender.recv_stash, max_frames - completed, expected_payload_size);
+                    if (decoded < 0) {
+                        return -1;
+                    }
+                    completed += decoded;
+                }
+            }
+        }
+        return completed;
+    }
 
     int completed = 0;
     char buf[64 * 1024];
@@ -1177,7 +1658,7 @@ int recv_sender_echoes_nonblocking (tcp_sender_state_t &sender,
     return completed;
 }
 
-void drain_sender_echoes (tcp_sender_state_t &sender)
+void drain_sender_echoes (stream_sender_state_t &sender)
 {
     if (!sender.valid ())
         return;
@@ -1207,7 +1688,7 @@ bool has_invalid_frame_prefix (const stream_buffer_t &stash,
 }
 
 recv_sender_frame_status_t recv_sender_framed_payload (
-  tcp_sender_state_t &sender,
+  stream_sender_state_t &sender,
   int timeout_ms,
   std::vector<char> *payload_out,
   size_t *invalid_prefix_len_out)
@@ -1235,6 +1716,76 @@ recv_sender_frame_status_t recv_sender_framed_payload (
     const auto deadline =
       std::chrono::steady_clock::now ()
       + std::chrono::milliseconds (std::max (0, timeout_ms));
+
+    if (!sender.is_raw_tcp ()) {
+        while (std::chrono::steady_clock::now () < deadline) {
+            const auto now = std::chrono::steady_clock::now ();
+            const long remain_ms =
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                deadline - now)
+                .count ();
+
+            zlink_pollitem_t item;
+            std::memset (&item, 0, sizeof (item));
+            item.socket = sender.socket;
+            item.fd = 0;
+            item.events = ZLINK_POLLIN;
+            item.revents = 0;
+
+            const int prc = zlink_poll (&item, 1, remain_ms > 0 ? remain_ms : 0);
+            if (prc < 0) {
+                if (zlink_errno () == EINTR)
+                    continue;
+                return recv_sender_frame_poll_error;
+            }
+            if (prc == 0 || (item.revents & ZLINK_POLLIN) == 0)
+                continue;
+
+            while (true) {
+                std::vector<char> payload_chunk;
+                bool peer_match = false;
+                const int recv_rc = recv_sender_stream_chunk_nonblocking (
+                  sender, &payload_chunk, &peer_match);
+                if (recv_rc == 0)
+                    break;
+                if (recv_rc < 0) {
+                    if (bench_debug_enabled ()) {
+                        std::fprintf (
+                          stderr,
+                          "MULTI_STREAM zlink recv_one chunk_recv error: err=%d\n",
+                          zlink_errno ());
+                    }
+                    return recv_sender_frame_recv_error;
+                }
+
+                const char *payload_data =
+                  payload_chunk.empty () ? NULL : payload_chunk.data ();
+                const size_t payload_size = payload_chunk.size ();
+                if (peer_match
+                    && payload_size > 0
+                    && payload_data
+                    && !is_stream_event_payload (payload_data, payload_size)) {
+                    if (extract_single_framed_payload (
+                          payload_data, payload_size, payload_out)) {
+                        return recv_sender_frame_ok;
+                    }
+
+                    sender.recv_stash.append (payload_data, payload_size);
+                    if (has_invalid_frame_prefix (sender.recv_stash, &invalid_len)) {
+                        if (invalid_prefix_len_out)
+                            *invalid_prefix_len_out = invalid_len;
+                        sender.recv_stash.reset ();
+                        return recv_sender_frame_invalid_prefix;
+                    }
+                    if (stream_decode_one_frame (sender.recv_stash, payload_out)) {
+                        return recv_sender_frame_ok;
+                    }
+                }
+            }
+        }
+        return recv_sender_frame_timeout;
+    }
+
     char buf[64 * 1024];
     while (std::chrono::steady_clock::now () < deadline) {
         const auto now = std::chrono::steady_clock::now ();
@@ -1302,7 +1853,7 @@ int poll_sender_ready (stream_client_poller_t &poller, long timeout_ms)
     return rc;
 }
 
-int recv_batch_client_echoes (std::vector<tcp_sender_state_t> &senders,
+int recv_batch_client_echoes (std::vector<stream_sender_state_t> &senders,
                               stream_client_poller_t &poller,
                               int recv_batch,
                               long poll_timeout_ms,
@@ -1359,7 +1910,7 @@ int recv_batch_client_echoes (std::vector<tcp_sender_state_t> &senders,
     return received;
 }
 
-int recv_batch_stream_echoes (std::vector<tcp_sender_state_t> &senders,
+int recv_batch_stream_echoes (std::vector<stream_sender_state_t> &senders,
                               stream_client_poller_t &poller,
                               int recv_batch,
                               long poll_timeout_ms,
@@ -1370,7 +1921,7 @@ int recv_batch_stream_echoes (std::vector<tcp_sender_state_t> &senders,
 }
 
 void drain_pending_stream_frames (void *server,
-                                  std::vector<tcp_sender_state_t> &senders,
+                                  std::vector<stream_sender_state_t> &senders,
                                   stream_client_poller_t &poller,
                                   stream_reply_queue_t &pending_replies,
                                   stream_stash_map_t &dispatch_stashes,
@@ -1406,6 +1957,7 @@ void drain_pending_stream_frames (void *server,
           0,
           max_pending_replies,
           expected_payload_size,
+          true,
           &dispatch_stashes);
         if (enqueued < 0)
             break;
@@ -1561,7 +2113,7 @@ bool send_stream_reply (void *server,
 }
 
 double measure_stream_latency_live (void *server,
-                                    tcp_sender_state_t &sender,
+                                    stream_sender_state_t &sender,
                                     size_t msg_size,
                                     int io_timeout_ms)
 {
@@ -1580,9 +2132,25 @@ double measure_stream_latency_live (void *server,
             const uint32_t seq = static_cast<uint32_t> (i + 1);
             std::memcpy (&payload[0], &seq, sizeof (seq));
         }
-        if (!send_raw_framed (sender.fd, payload)) {
+        const auto deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (std::max (1, io_timeout_ms));
+        bool sent_ok = false;
+        while (std::chrono::steady_clock::now () < deadline) {
+            const multi_send_result_t send_rc =
+              send_sender_nonblocking (sender, payload);
+            if (send_rc == multi_send_ok) {
+                sent_ok = true;
+                break;
+            }
+            if (send_rc == multi_send_error)
+                break;
+
+            std::this_thread::sleep_for (std::chrono::microseconds (50));
+        }
+        if (!sent_ok) {
             if (bench_debug_enabled ())
-                std::fprintf (stderr, "MULTI_STREAM latency live fail: send_raw\n");
+                std::fprintf (stderr, "MULTI_STREAM latency live fail: send\n");
             return 0.0;
         }
 
@@ -1616,6 +2184,68 @@ double measure_stream_latency_live (void *server,
     return (sw.elapsed_ms () * 1000.0) / std::max (1, lat_count * 2);
 }
 
+double measure_stream_latency_live_zlink_dispatch (stream_sender_state_t &sender,
+                                                   size_t msg_size,
+                                                   int io_timeout_ms)
+{
+    if (!sender.valid () || sender.is_raw_tcp () || sender.routing_id.size () != 4)
+        return 0.0;
+
+    const int lat_count = resolve_bench_count ("BENCH_LAT_COUNT", 500);
+    std::vector<char> payload (std::max<size_t> (1, msg_size), '\xA7');
+    stream_dispatch_packet_t packet;
+
+    stopwatch_t sw;
+    sw.start ();
+    for (int i = 0; i < lat_count; ++i) {
+        if (payload.size () >= 4) {
+            const uint32_t seq = static_cast<uint32_t> (i + 1);
+            std::memcpy (&payload[0], &seq, sizeof (seq));
+        }
+
+        zlink_routing_id_t rid;
+        std::memset (&rid, 0, sizeof (rid));
+        rid.size = static_cast<uint8_t> (sender.routing_id.size ());
+        std::memcpy (rid.data, sender.routing_id.data (), sender.routing_id.size ());
+
+        const auto deadline =
+          std::chrono::steady_clock::now ()
+          + std::chrono::milliseconds (std::max (1, io_timeout_ms));
+        bool sent_ok = false;
+        while (std::chrono::steady_clock::now () < deadline) {
+            const int rc = zlink_stream_send (
+              sender.socket,
+              &rid,
+              payload.empty () ? NULL : payload.data (),
+              payload.size (),
+              ZLINK_DONTWAIT);
+            if (rc == static_cast<int> (payload.size ())) {
+                sent_ok = true;
+                break;
+            }
+            if (rc >= 0)
+                break;
+
+            const int err = zlink_errno ();
+            if (err != EAGAIN && err != EINTR)
+                break;
+            std::this_thread::sleep_for (std::chrono::microseconds (50));
+        }
+        if (!sent_ok)
+            return 0.0;
+
+        if (!pop_stream_len32be_packet_aux (
+              sender.socket, io_timeout_ms, false, packet)
+            || packet.payload.size () != payload.size ()
+            || !std::equal (
+              packet.payload.begin (), packet.payload.end (), payload.begin ())) {
+            return 0.0;
+        }
+    }
+
+    return (sw.elapsed_ms () * 1000.0) / std::max (1, lat_count * 2);
+}
+
 } // namespace
 
 void run_multi_stream (const std::string &transport,
@@ -1623,18 +2253,41 @@ void run_multi_stream (const std::string &transport,
                        int /*msg_count*/,
                        const std::string &lib_name)
 {
+    if (!transport_available (transport))
+        return;
+
     const std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (msg_size);
-    if (transport != "tcp") {
+    if (transport != "tcp" && transport != "tls" && transport != "ws"
+        && transport != "wss") {
         for (size_t s = 0; s < msg_sizes.size (); ++s) {
             print_prep_result (
-              lib_name, "MULTI_STREAM", transport, msg_sizes[s], 0.0, 0.0);
+              lib_name, multi_stream_pattern_name (), transport, msg_sizes[s], 0.0, 0.0);
             print_result (
-              lib_name, "MULTI_STREAM", transport, msg_sizes[s], 0.0, 0.0);
+              lib_name, multi_stream_pattern_name (), transport, msg_sizes[s], 0.0, 0.0);
         }
         return;
     }
+    const bool use_raw_tcp_sender =
+      transport == "tcp"
+      && resolve_multi_int_env ("BENCH_MULTI_STREAM_USE_RAW_TCP", 0, 0) != 0;
+    const bool strict_ready_wait =
+      resolve_multi_int_env ("BENCH_MULTI_STREAM_STRICT_READY", 0, 0) != 0;
 
-    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
+    multi_bench_settings_t settings = resolve_multi_bench_settings ();
+    if (!use_raw_tcp_sender) {
+        const int non_tcp_clients_max = resolve_multi_int_env (
+          "BENCH_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 1000, 1);
+        if (settings.clients > static_cast<size_t> (non_tcp_clients_max)) {
+            if (bench_debug_enabled ()) {
+                std::fprintf (
+                  stderr,
+                  "MULTI_STREAM non-tcp clients capped: requested=%zu capped=%d\n",
+                  settings.clients,
+                  non_tcp_clients_max);
+            }
+            settings.clients = static_cast<size_t> (non_tcp_clients_max);
+        }
+    }
     const int stream_send_batch =
       resolve_multi_int_env ("BENCH_MULTI_STREAM_SEND_BATCH", 64, 1);
     const int stream_client_threads_default =
@@ -1654,7 +2307,7 @@ void run_multi_stream (const std::string &transport,
     if (settings.clients == 0) {
         for (size_t s = 0; s < msg_sizes.size (); ++s) {
             print_result (
-              lib_name, "MULTI_STREAM", transport, msg_sizes[s], 0.0, 0.0);
+              lib_name, multi_stream_pattern_name (), transport, msg_sizes[s], 0.0, 0.0);
         }
         return;
     }
@@ -1671,6 +2324,10 @@ void run_multi_stream (const std::string &transport,
     set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
     apply_benchmark_hwm (server, stream_hwm);
     apply_stream_server_tuning (server, true);
+    if (!setup_tls_server (server, transport)) {
+        zlink_close (server);
+        return;
+    }
 
     const int io_timeout_ms = resolve_bench_count ("BENCH_STREAM_TIMEOUT_MS", 5000);
     set_sockopt_int (server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
@@ -1692,7 +2349,7 @@ void run_multi_stream (const std::string &transport,
     stream_len32be_dispatch_t dispatch;
     bool dispatch_started = false;
     bool dispatch_fallback_logged = false;
-    std::vector<tcp_sender_state_t> senders (settings.clients);
+    std::vector<stream_sender_state_t> senders (settings.clients);
     stream_client_poller_t stream_poller;
     bool ready_wait_done = false;
     bool poller_ready = false;
@@ -1701,12 +2358,19 @@ void run_multi_stream (const std::string &transport,
     const int relay_budget = std::max (settings.recv_batch, stream_send_batch);
     const size_t min_pending_replies =
       static_cast<size_t> (relay_budget) * static_cast<size_t> (8);
+    const multi_stream_dispatch_mode_t dispatch_mode =
+      resolve_multi_stream_dispatch_mode ();
+    const int dispatch_flags = multi_stream_dispatch_flags (dispatch_mode);
+    const bool dispatch_requested =
+      multi_stream_dispatch_enabled (dispatch_mode);
     std::vector<double> throughput_values (msg_sizes.size (), 0.0);
     std::vector<double> latency_values (msg_sizes.size (), 0.0);
     std::vector<double> prep_connect_values (msg_sizes.size (), 0.0);
     std::vector<double> prep_ready_values (msg_sizes.size (), 0.0);
     size_t completed_sizes = 0;
-    const bool dispatch_supported = stream_dispatch_supported ();
+    bool run_failed = false;
+    const bool dispatch_supported =
+      dispatch_requested && stream_dispatch_supported ();
     auto close_throughput_senders = [&] () {
         for (size_t i = 0; i < senders.size (); ++i)
             close_sender (senders[i]);
@@ -1731,36 +2395,10 @@ void run_multi_stream (const std::string &transport,
         if (dispatch_started)
             clear_stream_len32be_dispatch_packets (dispatch);
 
-        const multi_bench_result_t bench =
-          run_multi_phase_benchmark_with_sender_lifecycle_batched (
-            settings.clients, round_settings,
-            stream_send_batch,
-            [&] (size_t idx) { return setup_sender (senders[idx], endpoint); },
-            [&] (size_t idx) { return send_sender_nonblocking (senders[idx], payload); },
-            [&] (multi_bench_phase_t phase_) {
-                const long relay_poll_ms =
-                  phase_ == multi_phase_measure ? 10 : 0;
-                const int enqueued = enqueue_stream_payload_chunks (
-                  server,
-                  pending_replies,
-                  relay_budget,
-                  relay_poll_ms,
-                  max_pending_replies,
-                  current_size,
-                  &dispatch_stashes);
-                if (enqueued < 0)
-                    return -1;
-                const int flushed = flush_stream_reply_queue (
-                  server, pending_replies, relay_budget);
-                if (flushed < 0)
-                    return -1;
-                return recv_batch_stream_echoes (
-                  senders, stream_poller, round_settings.recv_batch, 10, current_size);
-            },
-            [&] (size_t) {},
-            [&] () {
-                if (!ready_wait_done) {
-                    ready_wait_done = true;
+        const auto pre_start = [&] () {
+            if (!ready_wait_done) {
+                ready_wait_done = true;
+                if (strict_ready_wait) {
                     size_t observed_ready = 0;
                     const bool ready_ok =
                       wait_stream_ready_count (server_monitor, settings.clients,
@@ -1770,42 +2408,173 @@ void run_multi_stream (const std::string &transport,
                         if (bench_debug_enabled ()) {
                             std::fprintf (
                               stderr,
-                              "MULTI_STREAM: connect_ready wait timeout (expected=%zu observed=%zu)\n",
+                              "%s: connect_ready wait timeout (expected=%zu observed=%zu)\n",
+                              multi_stream_pattern_name (),
                               settings.clients, observed_ready);
                         }
                         return false;
                     }
                 }
-                if (!dispatch_started && dispatch_supported) {
-                    if (!start_stream_len32be_dispatch (server, dispatch)) {
-                        if (bench_debug_enabled ()) {
-                            std::fprintf (
-                              stderr,
-                              "MULTI_STREAM: zlink_stream_attach_len32be failed\n");
-                        }
-                        return false;
+            }
+            if (!dispatch_started && dispatch_supported) {
+                if (!start_stream_len32be_dispatch (
+                      server, dispatch, dispatch_flags)) {
+                    if (bench_debug_enabled ()) {
+                        std::fprintf (
+                          stderr,
+                          "%s: zlink_stream_attach_len32be failed\n",
+                          multi_stream_pattern_name ());
                     }
-                    dispatch_started = true;
-                    g_stream_reply_direct.store (
-                      false, std::memory_order_release);
-                } else if (!dispatch_supported && !dispatch_fallback_logged
-                           && bench_debug_enabled ()) {
-                    std::fprintf (
-                      stderr,
-                      "MULTI_STREAM: stream attach unsupported, fallback recv path\n");
-                    dispatch_fallback_logged = true;
+                    return false;
                 }
-                if (!poller_ready) {
-                    poller_ready = stream_poller.rebuild (senders);
-                    if (!poller_ready)
-                        return false;
-                }
-                return true;
-            },
-            false);
+                dispatch_started = true;
+                g_stream_reply_direct.store (
+                  false, std::memory_order_release);
+            } else if (dispatch_requested && !dispatch_supported
+                       && !dispatch_fallback_logged
+                       && bench_debug_enabled ()) {
+                std::fprintf (
+                  stderr,
+                  "%s: stream attach unsupported, fallback recv path\n",
+                  multi_stream_pattern_name ());
+                dispatch_fallback_logged = true;
+            }
+            if (use_raw_tcp_sender && !poller_ready) {
+                poller_ready = stream_poller.rebuild (senders);
+                if (!poller_ready)
+                    return false;
+            }
+            return true;
+        };
+
+        multi_bench_result_t bench;
+        if (use_raw_tcp_sender) {
+            bench = run_multi_phase_benchmark_with_sender_lifecycle_batched (
+              settings.clients,
+              round_settings,
+              stream_send_batch,
+              [&] (size_t idx) {
+                  return setup_sender (
+                    senders[idx],
+                    ctx.get (),
+                    transport,
+                    endpoint,
+                    stream_hwm,
+                    io_timeout_ms,
+                    settings.connect_ready_timeout_ms,
+                    use_raw_tcp_sender);
+              },
+              [&] (size_t idx) {
+                  return send_sender_nonblocking (senders[idx], payload);
+              },
+              [&] (multi_bench_phase_t phase_) {
+                  const long relay_poll_ms =
+                    phase_ == multi_phase_measure ? 10 : 0;
+                  const int enqueued = enqueue_stream_payload_chunks (
+                    server,
+                    pending_replies,
+                    relay_budget,
+                    relay_poll_ms,
+                    max_pending_replies,
+                    current_size,
+                    true,
+                    &dispatch_stashes);
+                  if (enqueued < 0)
+                      return -1;
+                  const int flushed = flush_stream_reply_queue (
+                    server, pending_replies, relay_budget);
+                  if (flushed < 0)
+                      return -1;
+                  const int echoed = recv_batch_stream_echoes (
+                    senders, stream_poller, round_settings.recv_batch, 10, current_size);
+                  if (bench_debug_enabled ()
+                      && (enqueued > 0 || flushed > 0 || echoed > 0)) {
+                      std::fprintf (
+                        stderr,
+                        "%s relay raw size=%zu enqueued=%d flushed=%d echoed=%d pending=%zu\n",
+                        multi_stream_pattern_name (),
+                        current_size,
+                        enqueued,
+                        flushed,
+                        echoed,
+                        pending_replies.size ());
+                  }
+                  return echoed;
+              },
+              [&] (size_t) {},
+              pre_start,
+              false);
+        } else {
+            bench = run_multi_phase_benchmark_with_sender_lifecycle_batched (
+              settings.clients,
+              round_settings,
+              stream_send_batch,
+              [&] (size_t idx) {
+                  return setup_sender (
+                    senders[idx],
+                    ctx.get (),
+                    transport,
+                    endpoint,
+                    stream_hwm,
+                    io_timeout_ms,
+                    settings.connect_ready_timeout_ms,
+                    use_raw_tcp_sender);
+              },
+              [&] (size_t idx) {
+                  return send_sender_nonblocking (senders[idx], payload);
+              },
+              [&] (multi_bench_phase_t phase_) {
+                  const long relay_poll_ms =
+                    phase_ == multi_phase_measure ? 10 : 0;
+                  const int enqueued = enqueue_stream_payload_chunks (
+                    server,
+                    pending_replies,
+                    relay_budget,
+                    relay_poll_ms,
+                    max_pending_replies,
+                    current_size,
+                    false,
+                    &dispatch_stashes);
+                  if (enqueued < 0)
+                      return -1;
+                  const int flushed = flush_stream_reply_queue (
+                    server, pending_replies, relay_budget);
+                  if (flushed < 0)
+                      return -1;
+                  if (bench_debug_enabled () && (enqueued > 0 || flushed > 0)) {
+                      std::fprintf (
+                        stderr,
+                        "%s relay zlink size=%zu enqueued=%d flushed=%d pending=%zu\n",
+                        multi_stream_pattern_name (),
+                        current_size,
+                        enqueued,
+                        flushed,
+                        pending_replies.size ());
+                  }
+                  return enqueued;
+              },
+              [&] (size_t idx) { close_sender (senders[idx]); },
+              pre_start,
+              false);
+        }
 
         if (bench.failed) {
+            run_failed = true;
             break;
+        }
+
+        if (bench_debug_enabled ()) {
+            std::fprintf (
+              stderr,
+              "%s round size=%zu connect_ms=%.2f ready_ms=%.2f warmup_recv=%ld measure_recv=%ld send_ok=%ld drain_recv=%ld\n",
+              multi_stream_pattern_name (),
+              current_size,
+              bench.connect_ms,
+              bench.ready_wait_ms,
+              bench.warmup_recv,
+              bench.measure_recv,
+              bench.measure_send_ok,
+              bench.drain_recv);
         }
 
         prep_connect_values[s] = bench.connect_ms;
@@ -1816,7 +2585,7 @@ void run_multi_stream (const std::string &transport,
                 / static_cast<double> (std::max (1, round_settings.duration_seconds))
             : 0.0;
         completed_sizes = s + 1;
-        if ((s + 1) < msg_sizes.size ()) {
+        if (use_raw_tcp_sender && (s + 1) < msg_sizes.size ()) {
             drain_pending_stream_frames (
               server,
               senders,
@@ -1835,6 +2604,9 @@ void run_multi_stream (const std::string &transport,
     close_connect_monitor (server_monitor);
     zlink_close (server);
 
+    if (run_failed || completed_sizes == 0)
+        return;
+
     if (completed_sizes > 0) {
         void *lat_server = zlink_socket (ctx.get (), ZLINK_STREAM);
         if (lat_server) {
@@ -1845,10 +2617,19 @@ void run_multi_stream (const std::string &transport,
               lat_server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
             set_sockopt_int (
               lat_server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
+            if (!setup_tls_server (lat_server, transport)) {
+                zlink_close (lat_server);
+                lat_server = NULL;
+            }
 
-            const std::string lat_endpoint = bind_and_resolve_endpoint (
-              lat_server, transport, lib_name + "_multi_stream_lat_phase");
-            if (!lat_endpoint.empty ()) {
+            const std::string lat_endpoint = lat_server
+                                               ? bind_and_resolve_endpoint (
+                                                   lat_server,
+                                                   transport,
+                                                   lib_name
+                                                     + "_multi_stream_lat_phase")
+                                               : std::string ();
+            if (lat_server && !lat_endpoint.empty ()) {
                 connect_monitor_t lat_monitor;
                 const bool has_lat_monitor =
                   open_connect_monitor (lat_server, lat_monitor);
@@ -1856,8 +2637,8 @@ void run_multi_stream (const std::string &transport,
                 bool lat_dispatch_started = false;
                 if (dispatch_supported) {
                     g_stream_reply_direct.store (true, std::memory_order_release);
-                    lat_dispatch_started =
-                      start_stream_len32be_dispatch (lat_server, lat_dispatch);
+                    lat_dispatch_started = start_stream_len32be_dispatch (
+                      lat_server, lat_dispatch, dispatch_flags);
                 } else if (bench_debug_enabled ()) {
                     std::fprintf (
                       stderr,
@@ -1865,33 +2646,108 @@ void run_multi_stream (const std::string &transport,
                 }
 
                 if (lat_dispatch_started) {
-                    tcp_sender_state_t latency_sender;
-                    if (setup_sender (latency_sender, lat_endpoint)) {
-                        if (has_lat_monitor) {
-                            size_t observed_ready = 0;
-                            (void) wait_stream_ready_count (
+                    stream_sender_state_t latency_sender;
+                    if (setup_sender (
+                          latency_sender,
+                          ctx.get (),
+                          transport,
+                          lat_endpoint,
+                          stream_hwm,
+                          io_timeout_ms,
+                          settings.connect_ready_timeout_ms,
+                          use_raw_tcp_sender)) {
+                        if (!has_lat_monitor) {
+                            if (bench_debug_enabled ()) {
+                                std::fprintf (
+                                  stderr,
+                                  "MULTI_STREAM latency live fail: open_connect_monitor\n");
+                            }
+                            close_sender (latency_sender);
+                            stop_stream_len32be_dispatch (lat_dispatch);
+                            if (lat_dispatch_started) {
+                                g_stream_reply_direct.store (
+                                  false, std::memory_order_release);
+                            }
+                            zlink_close (lat_server);
+                            return;
+                        }
+
+                        size_t observed_ready = 0;
+                        const bool ready_ok =
+                          !strict_ready_wait
+                            || wait_stream_ready_count (
                               lat_monitor, 1, settings.connect_ready_timeout_ms,
                               &observed_ready);
-                        } else {
-                            std::this_thread::sleep_for (
-                              std::chrono::milliseconds (10));
+                        if (!ready_ok && bench_debug_enabled ()) {
+                            std::fprintf (
+                              stderr,
+                              "MULTI_STREAM latency connect_ready timeout: expected=1 observed=%zu\n",
+                              observed_ready);
                         }
-                        drain_sender_echoes (latency_sender);
-                        for (size_t s = 0; s < completed_sizes; ++s) {
-                            latency_values[s] = measure_stream_latency_live (
-                              lat_server, latency_sender, msg_sizes[s], io_timeout_ms);
+                        if (!ready_ok) {
+                            close_sender (latency_sender);
+                            close_connect_monitor (lat_monitor);
+                            stop_stream_len32be_dispatch (lat_dispatch);
+                            if (lat_dispatch_started) {
+                                g_stream_reply_direct.store (
+                                  false, std::memory_order_release);
+                            }
+                            zlink_close (lat_server);
+                            return;
+                        }
+                        if (use_raw_tcp_sender) {
+                            drain_sender_echoes (latency_sender);
+                            for (size_t s = 0; s < completed_sizes; ++s) {
+                                latency_values[s] = measure_stream_latency_live (
+                                  lat_server, latency_sender, msg_sizes[s], io_timeout_ms);
+                            }
+                        } else {
+                            stream_len32be_dispatch_t lat_client_dispatch;
+                            if (start_stream_len32be_dispatch_aux (
+                                  latency_sender.socket, lat_client_dispatch,
+                                  dispatch_flags)) {
+                                clear_stream_len32be_dispatch_packets (
+                                  lat_client_dispatch);
+                                for (size_t s = 0; s < completed_sizes; ++s) {
+                                    latency_values[s] =
+                                      measure_stream_latency_live_zlink_dispatch (
+                                        latency_sender, msg_sizes[s], io_timeout_ms);
+                                }
+                                stop_stream_len32be_dispatch_aux (lat_client_dispatch);
+                            } else if (bench_debug_enabled ()) {
+                                std::fprintf (
+                                  stderr,
+                                  "MULTI_STREAM latency live fail: start_client_dispatch\n");
+                            }
                         }
                         close_sender (latency_sender);
-                    } else if (bench_debug_enabled ()) {
-                        std::fprintf (
-                          stderr,
-                          "MULTI_STREAM latency live fail: setup_latency_sender\n");
+                    } else {
+                        if (bench_debug_enabled ()) {
+                            std::fprintf (
+                              stderr,
+                              "MULTI_STREAM latency live fail: setup_latency_sender\n");
+                        }
+                        if (has_lat_monitor)
+                            close_connect_monitor (lat_monitor);
+                        stop_stream_len32be_dispatch (lat_dispatch);
+                        if (lat_dispatch_started) {
+                            g_stream_reply_direct.store (
+                              false, std::memory_order_release);
+                        }
+                        zlink_close (lat_server);
+                        return;
                     }
                     stop_stream_len32be_dispatch (lat_dispatch);
-                } else if (dispatch_supported && bench_debug_enabled ()) {
-                    std::fprintf (
-                      stderr,
-                      "MULTI_STREAM latency live fail: start_latency_dispatch\n");
+                } else if (dispatch_supported) {
+                    if (bench_debug_enabled ()) {
+                        std::fprintf (
+                          stderr,
+                          "MULTI_STREAM latency live fail: start_latency_dispatch\n");
+                    }
+                    if (has_lat_monitor)
+                        close_connect_monitor (lat_monitor);
+                    zlink_close (lat_server);
+                    return;
                 }
                 if (lat_dispatch_started)
                     g_stream_reply_direct.store (false, std::memory_order_release);
@@ -1904,10 +2760,10 @@ void run_multi_stream (const std::string &transport,
 
     for (size_t s = 0; s < msg_sizes.size (); ++s) {
         print_prep_result (
-          lib_name, "MULTI_STREAM", transport, msg_sizes[s],
+          lib_name, multi_stream_pattern_name (), transport, msg_sizes[s],
           prep_connect_values[s], prep_ready_values[s]);
         print_result (
-          lib_name, "MULTI_STREAM", transport, msg_sizes[s],
+          lib_name, multi_stream_pattern_name (), transport, msg_sizes[s],
           throughput_values[s], latency_values[s]);
     }
 }

@@ -239,22 +239,6 @@ def parse_nonnegative_int_env(name, default_value):
 DEFAULT_RUN_COOLDOWN_MS = parse_nonnegative_int_env(
     "BENCH_MULTI_RUN_COOLDOWN_MS", 3000
 )
-DEFAULT_RETRY_COOLDOWN_MS = parse_nonnegative_int_env(
-    "BENCH_MULTI_RETRY_COOLDOWN_MS", 500
-)
-DEFAULT_RUN_ATTEMPTS = max(1, parse_nonnegative_int_env("BENCH_MULTI_ATTEMPTS", 2))
-DEFAULT_STREAM_RUN_ATTEMPTS = max(
-    DEFAULT_RUN_ATTEMPTS,
-    parse_nonnegative_int_env(
-        "BENCH_MULTI_STREAM_ATTEMPTS", DEFAULT_RUN_ATTEMPTS
-    ),
-)
-
-
-def attempts_for_pattern(pattern_name):
-    if pattern_name == "MULTI_STREAM":
-        return DEFAULT_STREAM_RUN_ATTEMPTS
-    return DEFAULT_RUN_ATTEMPTS
 
 
 def select_comparisons(comparisons, pattern_req):
@@ -624,9 +608,6 @@ def collect_data(
             expected_keys.append(f"{tr}|{sz}|throughput")
             expected_keys.append(f"{tr}|{sz}|latency")
 
-        attempts = attempts_for_pattern(pattern_name)
-        retry_cooldown_ms = DEFAULT_RETRY_COOLDOWN_MS
-
         for i in range(num_runs):
             print(f"{i+1} ", end="", flush=True)
             seen_sizes = set()
@@ -670,45 +651,14 @@ def collect_data(
                     )
                     reported_sizes.add(size)
 
-            run_outcome = {
-                "parsed": {},
-                "timed_out": False,
-                "returncode": -1,
-                "error": "",
-            }
-            missing = list(expected_keys)
-            for attempt_idx in range(attempts):
-                if attempt_idx > 0:
-                    print(
-                        f"[retry={attempt_idx + 1}/{attempts}] ",
-                        end="",
-                        flush=True,
-                    )
-                    if retry_cooldown_ms > 0:
-                        print(
-                            f"[retry-cooldown={retry_cooldown_ms}ms] ",
-                            end="",
-                            flush=True,
-                        )
-                        time.sleep(retry_cooldown_ms / 1000.0)
-
-                run_outcome = run_single_test(
-                    binary_name, lib_name, tr, pattern_name, on_size_done, on_metric
-                )
-                results = run_outcome.get("parsed", {})
-                timed_out = bool(run_outcome.get("timed_out", False))
-                run_error = run_outcome.get("error", "")
-                if timed_out or run_error or not results:
-                    continue
-
-                missing = [key for key in expected_keys if key not in results]
-                if not missing:
-                    break
-
+            run_outcome = run_single_test(
+                binary_name, lib_name, tr, pattern_name, on_size_done, on_metric
+            )
             results = run_outcome.get("parsed", {})
             rc = run_outcome.get("returncode", 0)
             timed_out = bool(run_outcome.get("timed_out", False))
             run_error = run_outcome.get("error", "")
+            missing = [key for key in expected_keys if key not in results]
 
             if timed_out:
                 failed_runs += 1
@@ -973,9 +923,6 @@ def parse_args():
         "  BENCH_MULTI_SEND_WORKERS=auto\n"
         "  BENCH_MULTI_SEND_BACKOFF_US=20\n"
         "  BENCH_MULTI_RUN_COOLDOWN_MS=3000\n"
-        "  BENCH_MULTI_RETRY_COOLDOWN_MS=500\n"
-        "  BENCH_MULTI_ATTEMPTS=2\n"
-        "  BENCH_MULTI_STREAM_ATTEMPTS=2\n"
         "  BENCH_IO_THREADS=4\n"
         "  BENCH_MULTI_TIMEOUT_SECONDS=600\n"
     )

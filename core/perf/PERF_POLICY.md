@@ -102,6 +102,13 @@ perf/                                       # bindings/<lang>/perf/
 
 - 컴파일 언어 바인딩(C++/.NET/Java)은 소스 트리 분리 대신 단일 runner에서 `--multi-server`/`--multi-client` role 분기를 제공해도 된다. 이 경우에도 결과 형식, 운영 모드, server/client 프로세스 모델은 동일하게 준수해야 한다.
 
+### 2.0.3 STREAM 소켓 테스트 모델 (공통 필수)
+
+- STREAM 계열(`STREAM`, `STREAM_CALLBACK`, `STREAM_LEN32BE`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
+- zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
+- STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
+- 모델 위반/불일치가 발생하면 `UNSUPPORTED`/`SKIP`으로 처리하지 않고 **즉시 fail** 처리한다.
+
 ### 2.1 결과 저장 규칙
 
 | 항목 | 규칙 |

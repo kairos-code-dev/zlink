@@ -462,6 +462,26 @@ public sealed class Socket : IDisposable
         return new MonitorSocket(Socket.Adopt(handle, true));
     }
 
+    private static void CloseStreamPacket(IntPtr msg)
+    {
+        if (msg == IntPtr.Zero)
+            return;
+        try
+        {
+            NativeMethods.zlink_msg_close(msg);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void CloseStreamPacketRange(IntPtr messages, int start,
+        int count, int msgSize)
+    {
+        for (int i = start; i < count; i++)
+            CloseStreamPacket(IntPtr.Add(messages, i * msgSize));
+    }
+
     private unsafe int OnStreamPackets(IntPtr routingId, IntPtr messages,
         nuint messageCount)
     {
@@ -483,17 +503,32 @@ public sealed class Socket : IDisposable
         for (int i = 0; i < count; i++)
         {
             IntPtr msg = IntPtr.Add(messages, i * zlinkMsgSize);
-            IntPtr payloadPtr = NativeMethods.zlink_msg_data(msg);
-            int payloadSize = checked((int)NativeMethods.zlink_msg_size(msg));
+            int rc;
+            try
+            {
+                IntPtr payloadPtr = NativeMethods.zlink_msg_data(msg);
+                int payloadSize = checked((int)NativeMethods.zlink_msg_size(msg));
+                ReadOnlySpan<byte> payload = payloadSize > 0
+                    && payloadPtr != IntPtr.Zero
+                    ? new ReadOnlySpan<byte>((void*)payloadPtr, payloadSize)
+                    : ReadOnlySpan<byte>.Empty;
+                rc = handler(ridSpan, payload);
+            }
+            catch
+            {
+                CloseStreamPacketRange(messages, i + 1, count, zlinkMsgSize);
+                return 1;
+            }
+            finally
+            {
+                CloseStreamPacket(msg);
+            }
 
-            ReadOnlySpan<byte> payload = payloadSize > 0
-                && payloadPtr != IntPtr.Zero
-                ? new ReadOnlySpan<byte>((void*)payloadPtr, payloadSize)
-                : ReadOnlySpan<byte>.Empty;
-
-            int rc = handler(ridSpan, payload);
             if (rc != 0)
+            {
+                CloseStreamPacketRange(messages, i + 1, count, zlinkMsgSize);
                 return rc;
+            }
         }
         return 0;
     }

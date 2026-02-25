@@ -1020,7 +1020,6 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
                  g_len32be_dispatch_callbacks.load (std::memory_order_relaxed),
                  routing_id_value);
     }
-    close_msg_batch (batch, batch_count);
     if (heap_batch)
         std::free (heap_batch);
     if (cb_rc != 0)
@@ -1073,8 +1072,18 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
 
     const stream_dispatch_tls_scope_t tls_scope (this, pipe_,
                                                  routing_id_value);
+    // Transfer message ownership to callback-visible storage. Source message is
+    // reinitialized for decoder/session reuse.
+    msg_t callback_msg;
+    const int init_rc = callback_msg.init ();
+    errno_assert (init_rc == 0);
+    const int move_rc = callback_msg.move (*msg_);
+    errno_assert (move_rc == 0);
+    const int src_init_rc = msg_->init ();
+    errno_assert (src_init_rc == 0);
+
     const int cb_rc =
-      callback (&rid, reinterpret_cast<zlink_msg_t *> (msg_), 1);
+      callback (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1);
     if (cb_rc != 0)
         stop_dispatch_from_callback ();
 

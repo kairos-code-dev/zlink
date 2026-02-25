@@ -109,6 +109,7 @@ int on_packets(const zlink_routing_id_t *rid, zlink_msg_t *msgs, size_t count) {
         const void *data = zlink_msg_data(&msgs[i]);
         size_t size = zlink_msg_size(&msgs[i]);
         stream.stream_send(*rid, data, size, zlink::send_flag::none);
+        zlink_msg_close(&msgs[i]);
     }
     return 0;
 }

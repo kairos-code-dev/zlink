@@ -512,11 +512,28 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
+    private static void closeStreamPacket(MemorySegment msg) {
+        try {
+            NativeMsg.msgClose(msg);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private static void closeStreamPacketRange(MemorySegment msgArray,
+                                               int fromIndex, int count) {
+        for (int i = fromIndex; i < count; i++) {
+            MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+            closeStreamPacket(msg);
+        }
+    }
+
     private int onStreamPackets(MemorySegment rid, MemorySegment msgs,
                                 long msgCount) {
         StreamPacketHandler handler = streamHandler;
         if (handler == null || rid == null || msgs == null || msgCount <= 0)
             return 0;
+        if (msgCount > Integer.MAX_VALUE)
+            return 1;
 
         StreamSpanScratch scratch = streamSpanScratch.get();
         MemorySegment ridSeg = rid.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
@@ -528,24 +545,36 @@ public final class Socket implements AutoCloseable {
           : ridSeg.asSlice(1, ridLen);
         scratch.routingId.set(ridData, ridLen);
 
-        MemorySegment msgArray = msgs.reinterpret(MSG_SIZE * msgCount);
-        for (int i = 0; i < msgCount; i++) {
+        int msgCountInt = (int) msgCount;
+        MemorySegment msgArray =
+          msgs.reinterpret((long) MSG_SIZE * msgCountInt);
+        for (int i = 0; i < msgCountInt; i++) {
             MemorySegment msg = msgArray.asSlice((long) i * MSG_SIZE, MSG_SIZE);
-            long payloadSize = NativeMsg.msgSize(msg);
-            if (payloadSize < 0)
-                payloadSize = 0;
-            if (payloadSize > Integer.MAX_VALUE) {
-                throw new IllegalArgumentException(
-                  "stream payload too large: " + payloadSize);
+            int rc;
+            try {
+                long payloadSize = NativeMsg.msgSize(msg);
+                if (payloadSize < 0)
+                    payloadSize = 0;
+                if (payloadSize > Integer.MAX_VALUE) {
+                    closeStreamPacketRange(msgArray, i + 1, msgCountInt);
+                    return 1;
+                }
+                int payloadLen = (int) payloadSize;
+                MemorySegment payloadData = payloadLen == 0
+                  ? MemorySegment.NULL
+                  : NativeMsg.msgData(msg).reinterpret(payloadLen);
+                scratch.payload.set(payloadData, payloadLen);
+                rc = handler.onPacket(scratch.routingId, scratch.payload);
+            } catch (Throwable t) {
+                closeStreamPacketRange(msgArray, i + 1, msgCountInt);
+                return 1;
+            } finally {
+                closeStreamPacket(msg);
             }
-            int payloadLen = (int) payloadSize;
-            MemorySegment payloadData = payloadLen == 0
-              ? MemorySegment.NULL
-              : NativeMsg.msgData(msg).reinterpret(payloadLen);
-            scratch.payload.set(payloadData, payloadLen);
-            int rc = handler.onPacket(scratch.routingId, scratch.payload);
-            if (rc != 0)
+            if (rc != 0) {
+                closeStreamPacketRange(msgArray, i + 1, msgCountInt);
                 return rc;
+            }
         }
 
         return 0;

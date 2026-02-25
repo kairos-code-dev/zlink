@@ -5,8 +5,8 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 1
-#define ZLINK_VERSION_MINOR 1
-#define ZLINK_VERSION_PATCH 0
+#define ZLINK_VERSION_MINOR 6
+#define ZLINK_VERSION_PATCH 1
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -509,8 +509,10 @@ ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
  * @param rid_   Routing id for the peer that produced this data.
  * @param msgs_  Message payload array. In LEN32BE mode each item is a complete
  *               payload; otherwise each item may be a raw stream chunk.
- *               Ownership is kept by zlink; the callback must not close items
- *               and must not retain pointers from them after callback return.
+ *               Ownership is transferred to the callback. The callback must
+ *               release each item exactly once (e.g. zlink_msg_close() or
+ *               consume via zlink_stream_send_msg()) before return, and must
+ *               not retain pointers to message structs after callback return.
  * @param msg_count_ Number of entries in @p msgs_.
  * @return 0 to continue dispatch, non-zero to stop.
  */

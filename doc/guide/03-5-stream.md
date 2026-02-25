@@ -122,6 +122,7 @@ int on_packets (const zlink_routing_id_t *rid,
             /* echo reply */
             zlink_stream_send (stream, rid, data, size, 0);
         }
+        zlink_msg_close (&msgs[i]); /* callback owns each msg */
     }
     return 0;  /* 0 = continue, non-zero = stop */
 }

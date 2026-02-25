@@ -414,6 +414,12 @@ static bool is_stream_control_chunk (const unsigned char *data_, size_t size_)
     return size_ == 0;
 }
 
+static void release_stream_callback_msg (zlink_msg_t *msg_)
+{
+    if (msg_)
+        (void) zlink_msg_close (msg_);
+}
+
 static std::string make_routing_id_key (const unsigned char *data_, size_t size_)
 {
     if (!data_ || size_ == 0)
@@ -566,22 +572,27 @@ static int stream_monitor_len32be_echo_callback (const zlink_routing_id_t *rid_,
         const unsigned char *data =
           static_cast<const unsigned char *> (zlink_msg_data (msg));
         const size_t size = zlink_msg_size (msg);
-        if (is_stream_control_chunk (data, size))
+        if (is_stream_control_chunk (data, size)) {
+            release_stream_callback_msg (msg);
             continue;
+        }
 
         if (probe->expected_payload_size > 0
             && size != probe->expected_payload_size) {
             probe->bad_payload.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
         const int send_rc = zlink_stream_send_msg (probe->socket, rid_, msg, 0);
         if (send_rc != static_cast<int> (size)) {
             probe->send_fail.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
         probe->echoed_msgs.fetch_add (1, std::memory_order_release);
+        release_stream_callback_msg (msg);
     }
 
     return 0;
@@ -614,14 +625,20 @@ static int stream_echo_callback (const zlink_routing_id_t *rid_,
         const unsigned char *data =
           static_cast<const unsigned char *> (zlink_msg_data (msg));
         const size_t size = zlink_msg_size (msg);
-        if (is_stream_control_chunk (data, size))
+        if (is_stream_control_chunk (data, size)) {
+            release_stream_callback_msg (msg);
             continue;
+        }
 
-        if (!probe->expected_payload || size != probe->expected_size)
+        if (!probe->expected_payload || size != probe->expected_size) {
+            release_stream_callback_msg (msg);
             continue;
+        }
 
-        if (memcmp (data, probe->expected_payload, size) != 0)
+        if (memcmp (data, probe->expected_payload, size) != 0) {
+            release_stream_callback_msg (msg);
             continue;
+        }
 
         if (rid_->size == stream_routing_id_size) {
             memcpy (probe->routing_id, rid_->data, stream_routing_id_size);
@@ -636,6 +653,7 @@ static int stream_echo_callback (const zlink_routing_id_t *rid_,
             probe->send_errno.store (errno, std::memory_order_release);
 
         probe->matched.fetch_add (1, std::memory_order_release);
+        release_stream_callback_msg (msg);
     }
     return 0;
 }
@@ -655,6 +673,7 @@ static int stream_load_echo_callback (const zlink_routing_id_t *rid_,
         const size_t size = zlink_msg_size (msg);
         if (is_stream_control_chunk (data, size)) {
             probe->control_chunks.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
@@ -662,16 +681,19 @@ static int stream_load_echo_callback (const zlink_routing_id_t *rid_,
             || (probe->expected_payload_size > 0
                 && size != probe->expected_payload_size)) {
             probe->invalid_payload.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
         const int send_rc = zlink_stream_send_msg (probe->socket, rid_, msg, 0);
         if (send_rc != static_cast<int> (size)) {
             probe->send_fail.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
         probe->echoed_msgs.fetch_add (1, std::memory_order_release);
+        release_stream_callback_msg (msg);
     }
 
     return 0;
@@ -693,11 +715,13 @@ static int stream_raw_load_echo_callback (const zlink_routing_id_t *rid_,
 
         if (is_stream_control_chunk (payload, payload_size)) {
             probe->control_chunks.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
         if ((!payload && payload_size > 0) || payload_size == 0) {
             probe->parse_error.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
@@ -743,6 +767,7 @@ static int stream_raw_load_echo_callback (const zlink_routing_id_t *rid_,
 
         if (invalid) {
             probe->parse_error.fetch_add (1, std::memory_order_release);
+            release_stream_callback_msg (msg);
             continue;
         }
 
@@ -756,6 +781,8 @@ static int stream_raw_load_echo_callback (const zlink_routing_id_t *rid_,
             }
             probe->echoed_msgs.fetch_add (1, std::memory_order_release);
         }
+
+        release_stream_callback_msg (msg);
     }
 
     return 0;
@@ -1150,6 +1177,7 @@ static int stream_len32be_probe_callback (const zlink_routing_id_t *rid_,
             probe->send_fail.fetch_add (1, std::memory_order_release);
 
         probe->packets.fetch_add (1, std::memory_order_release);
+        release_stream_callback_msg (msg);
     }
 
     return 0;

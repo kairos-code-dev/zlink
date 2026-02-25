@@ -267,21 +267,36 @@ class Socket:
             msg_count_int = int(msg_count)
             for i in range(msg_count_int):
                 msg_addr = msgs_ptr + i * _STREAM_MSG_SIZE
-                payload_ptr = lib().zlink_msg_data(ctypes.c_void_p(msg_addr))
-                payload_size = int(lib().zlink_msg_size(ctypes.c_void_p(msg_addr)))
-                if payload_ptr and payload_size > 0:
-                    payload_view = memoryview(
-                        (ctypes.c_ubyte * payload_size).from_address(payload_ptr)
-                    )
-                else:
-                    payload_view = memoryview(b"")
+                msg_ptr = ctypes.c_void_p(msg_addr)
+                stop_rc = 0
+                try:
+                    payload_ptr = lib().zlink_msg_data(msg_ptr)
+                    payload_size = int(lib().zlink_msg_size(msg_ptr))
+                    if payload_ptr and payload_size > 0:
+                        payload_view = memoryview(
+                            (ctypes.c_ubyte * payload_size).from_address(payload_ptr)
+                        )
+                    else:
+                        payload_view = memoryview(b"")
 
-                rc = handler(rid_view, payload_view)
-                if rc:
                     try:
-                        return int(rc)
+                        rc = handler(rid_view, payload_view)
                     except Exception:
-                        return 1
+                        stop_rc = 1
+                    else:
+                        if rc:
+                            try:
+                                stop_rc = int(rc)
+                            except Exception:
+                                stop_rc = 1
+                finally:
+                    lib().zlink_msg_close(msg_ptr)
+
+                if stop_rc:
+                    for j in range(i + 1, msg_count_int):
+                        rem_addr = msgs_ptr + j * _STREAM_MSG_SIZE
+                        lib().zlink_msg_close(ctypes.c_void_p(rem_addr))
+                    return stop_rc
 
             return 0
 

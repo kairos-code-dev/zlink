@@ -187,13 +187,19 @@ int on_stream_packets (const zlink_routing_id_t *rid,
         const unsigned char *payload =
           static_cast<const unsigned char *> (zlink_msg_data (msg));
         const size_t payload_size = zlink_msg_size (msg);
-        if (is_stream_event_payload (payload, payload_size))
+        if (is_stream_event_payload (payload, payload_size)) {
+            (void) zlink_msg_close (msg);
             continue;
+        }
         if (!enqueue_reply (rid, payload, payload_size)) {
             g_callback_failed.store (true, std::memory_order_release);
             g_pending_cv.notify_all ();
+            (void) zlink_msg_close (msg);
+            for (size_t j = i + 1; j < msg_count; ++j)
+                (void) zlink_msg_close (&msgs[j]);
             return 1;
         }
+        (void) zlink_msg_close (msg);
     }
 
     return 0;

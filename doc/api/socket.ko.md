@@ -455,9 +455,11 @@ typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
 
 STREAM I/O 스레드에서 데이터 도착 시 호출되는 콜백. `rid_`는 피어를 식별합니다.
 `msgs_`는 `msg_count_`개의 메시지 배열이며, LEN32BE 모드에서는 각 항목이 완성된
-페이로드이고, 그렇지 않으면 raw 스트림 청크일 수 있습니다. 콜백은 반환 후
-`msgs_`의 포인터를 유지하거나 닫아서는 안 됩니다. 0을 반환하면 dispatch 계속,
-0이 아니면 종료를 요청합니다.
+페이로드이고, 그렇지 않으면 raw 스트림 청크일 수 있습니다. 각 `msgs_` 항목의
+소유권은 콜백으로 이전되며, 콜백은 반환 전에 각 항목을 정확히 1회 해제해야
+합니다(예: `zlink_msg_close()` 또는 `zlink_stream_send_msg()`로 소비). 반환 후
+메시지 구조체 포인터를 유지하면 안 됩니다. 0을 반환하면 dispatch 계속, 0이
+아니면 종료를 요청합니다.
 
 ---
 

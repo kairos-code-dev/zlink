@@ -240,8 +240,10 @@ class zlink_stream_echo_server_t
                     size_t msg_count_)
     {
         int rc = 0;
-        for (size_t i = 0; i < msg_count_; ++i)
+        for (size_t i = 0; i < msg_count_; ++i) {
             rc = on_packet (rid_, &msgs_[i]);
+            (void) zlink_msg_close (&msgs_[i]);
+        }
         return rc;
     }
 

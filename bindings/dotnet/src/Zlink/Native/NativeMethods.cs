@@ -129,6 +129,10 @@ internal static class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_close(ref ZlinkMsg msg);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_msg_close",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_msg_close(IntPtr msg);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_move(ref ZlinkMsg dest,
         ref ZlinkMsg src);

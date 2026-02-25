@@ -463,7 +463,10 @@ typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
 Callback invoked on the STREAM I/O thread when data arrives. `rid_` identifies
 the peer. `msgs_` is an array of `msg_count_` messages — in LEN32BE mode each
 entry is a complete payload; otherwise each entry may be a raw stream chunk.
-The callback must not close or retain pointers from `msgs_` after returning.
+Ownership of each `msgs_` item is transferred to the callback. The callback
+must release each item exactly once (for example, `zlink_msg_close()` or
+consume via `zlink_stream_send_msg()`) before returning, and must not retain
+pointers to message structs after returning.
 Return 0 to continue dispatch, non-zero to request shutdown.
 
 ---

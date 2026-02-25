@@ -104,11 +104,15 @@ int stream_callback_process (stream_callback_state_t *state,
           static_cast<const unsigned char *> (zlink_msg_data (msg));
         const size_t payload_size = zlink_msg_size (msg);
 
-        if (payload_size == 0 || !payload)
+        if (payload_size == 0 || !payload) {
+            (void) zlink_msg_close (msg);
             continue;
+        }
         if (payload_size == 1
-            && (payload[0] == 0x00 || payload[0] == 0x01))
+            && (payload[0] == 0x00 || payload[0] == 0x01)) {
+            (void) zlink_msg_close (msg);
             continue;
+        }
 
         if (state->echo) {
             if (state->socket->stream_send (*rid_, payload, payload_size)
@@ -117,11 +121,13 @@ int stream_callback_process (stream_callback_state_t *state,
                     state->received.fetch_add (1, std::memory_order_relaxed);
                 }
             }
+            (void) zlink_msg_close (msg);
             continue;
         }
 
         if (state->len32be) {
             state->received.fetch_add (1, std::memory_order_relaxed);
+            (void) zlink_msg_close (msg);
             continue;
         }
 
@@ -132,6 +138,8 @@ int stream_callback_process (stream_callback_state_t *state,
             (void) frame_size;
             state->received.fetch_add (1, std::memory_order_relaxed);
         }
+
+        (void) zlink_msg_close (msg);
     }
 
     return 0;

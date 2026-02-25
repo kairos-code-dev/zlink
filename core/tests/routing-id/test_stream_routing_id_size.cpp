@@ -187,6 +187,7 @@ static int on_stream_packet (const zlink_routing_id_t *rid_,
         const size_t payload_size = zlink_msg_size (msg);
         if (payload_size == 1 && payload && payload[0] == 'x')
             p->payload_ok.store (1, std::memory_order_release);
+        (void) zlink_msg_close (msg);
     }
 
     return 0;

@@ -121,6 +121,7 @@ int on_packets (const zlink_routing_id_t *rid,
             /* 에코 응답 */
             zlink_stream_send (stream, rid, data, size, 0);
         }
+        zlink_msg_close (&msgs[i]); /* 콜백이 각 msg 소유 */
     }
     return 0;  /* 0 = 계속, 0이 아니면 = 중지 */
 }

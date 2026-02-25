@@ -80,13 +80,15 @@ int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
     std::unique_lock<std::mutex> guard;
     bool queued_any = false;
     for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
         const char *payload_data =
-          static_cast<const char *>(zlink_msg_data(&msgs_[i]));
-        const size_t payload_size = zlink_msg_size(&msgs_[i]);
+          static_cast<const char *>(zlink_msg_data(msg));
+        const size_t payload_size = zlink_msg_size(msg);
         if (payload_size == 1 && payload_data
             && (static_cast<unsigned char>(payload_data[0]) == STREAM_EVENT_CONNECT
                 || static_cast<unsigned char>(payload_data[0])
                      == STREAM_EVENT_DISCONNECT)) {
+            (void) zlink_msg_close(msg);
             continue;
         }
 
@@ -95,6 +97,7 @@ int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
         if (direct_mode) {
             ++direct_received;
             direct_bytes += static_cast<int64_t>(payload_size);
+            (void) zlink_msg_close(msg);
             continue;
         }
 
@@ -108,6 +111,7 @@ int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
             std::memcpy(packet.payload.data(), payload_data, payload_size);
         dispatch->packets.push_back(std::move(packet));
         queued_any = true;
+        (void) zlink_msg_close(msg);
     }
 
     if (guard.owns_lock())

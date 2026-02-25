@@ -142,14 +142,23 @@ int stream_on_packets_slot(const zlink_routing_id_t *rid_,
     if (!rid_ || !msgs_ || msg_count_ == 0)
         return 0;
 
+    const auto close_msgs = [msgs_, msg_count_]() {
+        for (size_t i = 0; i < msg_count_; ++i)
+            (void) zlink_msg_close(&msgs_[i]);
+    };
+
     stream_js_state_t *state = &g_stream_slots[Slot];
     napi_threadsafe_function tsfn = NULL;
     {
         std::lock_guard<std::mutex> lock(g_stream_slots_mu);
-        if (!state->used || !state->tsfn)
+        if (!state->used || !state->tsfn) {
+            close_msgs();
             return 0;
-        if (state->stop_requested.load(std::memory_order_acquire) != 0)
+        }
+        if (state->stop_requested.load(std::memory_order_acquire) != 0) {
+            close_msgs();
             return 1;
+        }
         tsfn = state->tsfn;
     }
 
@@ -166,6 +175,7 @@ int stream_on_packets_slot(const zlink_routing_id_t *rid_,
         if (packet_data && packet_size > 0)
             packet.assign(packet_data, packet_data + packet_size);
         payload->packets.push_back(packet);
+        (void) zlink_msg_close(msg);
     }
 
     napi_status call_status =

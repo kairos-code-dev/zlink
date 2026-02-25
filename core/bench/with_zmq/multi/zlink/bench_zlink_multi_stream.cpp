@@ -321,25 +321,33 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
         guard = std::unique_lock<std::mutex> (dispatch->lock);
 
     for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
         const char *payload_data =
-          static_cast<const char *> (zlink_msg_data (&msgs_[i]));
-        const size_t payload_size = zlink_msg_size (&msgs_[i]);
+          static_cast<const char *> (zlink_msg_data (msg));
+        const size_t payload_size = zlink_msg_size (msg);
         if (payload_size == 1 && payload_data
             && (static_cast<unsigned char> (payload_data[0]) == STREAM_EVENT_CONNECT
                 || static_cast<unsigned char> (payload_data[0])
                      == STREAM_EVENT_DISCONNECT)) {
+            (void) zlink_msg_close (msg);
             continue;
         }
-        if (!payload_data && payload_size > 0)
+        if (!payload_data && payload_size > 0) {
+            (void) zlink_msg_close (msg);
             continue;
+        }
         if (direct_reply) {
             if (!send_stream_reply_with_retry (
                   dispatch->socket,
                   rid_,
                   payload_data,
                   payload_size)) {
+                (void) zlink_msg_close (msg);
+                for (size_t j = i + 1; j < msg_count_; ++j)
+                    (void) zlink_msg_close (&msgs_[j]);
                 return 1;
             }
+            (void) zlink_msg_close (msg);
             continue;
         }
 
@@ -351,6 +359,7 @@ int on_stream_len32be_packets (const zlink_routing_id_t *rid_,
         if (payload_size > 0)
             std::memcpy (packet.payload.data (), payload_data, payload_size);
         dispatch->packets.push_back (packet);
+        (void) zlink_msg_close (msg);
     }
 
     if (!direct_reply) {
@@ -370,17 +379,21 @@ int on_stream_len32be_packets_aux (const zlink_routing_id_t *rid_,
 
     std::unique_lock<std::mutex> guard (dispatch->lock);
     for (size_t i = 0; i < msg_count_; ++i) {
+        zlink_msg_t *msg = &msgs_[i];
         const char *payload_data =
-          static_cast<const char *> (zlink_msg_data (&msgs_[i]));
-        const size_t payload_size = zlink_msg_size (&msgs_[i]);
+          static_cast<const char *> (zlink_msg_data (msg));
+        const size_t payload_size = zlink_msg_size (msg);
         if (payload_size == 1 && payload_data
             && (static_cast<unsigned char> (payload_data[0]) == STREAM_EVENT_CONNECT
                 || static_cast<unsigned char> (payload_data[0])
                      == STREAM_EVENT_DISCONNECT)) {
+            (void) zlink_msg_close (msg);
             continue;
         }
-        if (!payload_data && payload_size > 0)
+        if (!payload_data && payload_size > 0) {
+            (void) zlink_msg_close (msg);
             continue;
+        }
 
         stream_dispatch_packet_t packet;
         packet.routing_id.assign (
@@ -390,6 +403,7 @@ int on_stream_len32be_packets_aux (const zlink_routing_id_t *rid_,
         if (payload_size > 0)
             std::memcpy (packet.payload.data (), payload_data, payload_size);
         dispatch->packets.push_back (packet);
+        (void) zlink_msg_close (msg);
     }
     guard.unlock ();
     dispatch->cv.notify_all ();

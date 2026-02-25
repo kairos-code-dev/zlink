@@ -6,10 +6,13 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <cstring>
+#include <deque>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -25,12 +28,26 @@
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
+static const int k_dispatch_flags = 0;
+
 static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
+
+struct pending_reply_t
+{
+    zlink_routing_id_t rid;
+    std::vector<unsigned char> payload;
+};
+
+static std::mutex g_pending_mu;
+static std::condition_variable g_pending_cv;
+static std::deque<pending_reply_t> g_pending_replies;
 
 inline void on_signal (int)
 {
     g_stop_requested.store (true, std::memory_order_release);
+    g_pending_cv.notify_all ();
 }
 
 inline void install_signal_handlers ()
@@ -99,25 +116,29 @@ inline void print_server_metrics (
     }
 }
 
-inline bool send_stream_msg_with_retry (const zlink_routing_id_t *rid,
-                                        zlink_msg_t *msg)
+inline bool send_stream_with_retry (const zlink_routing_id_t *rid,
+                                    const unsigned char *payload,
+                                    size_t payload_size)
 {
-    if (!g_server_socket || !rid || !msg)
+    if (!g_server_socket || !rid)
         return false;
 
-    const size_t msg_size = zlink_msg_size (msg);
     const int retry_limit =
       resolve_multi_int_env ("PERF_MULTI_STREAM_SEND_RETRIES", 256, 1);
     const int retry_backoff_us =
       resolve_multi_int_env ("PERF_MULTI_SEND_BACKOFF_US", 20, 0);
 
     for (int attempt = 0; attempt < retry_limit; ++attempt) {
-        const int rc = zlink_stream_send_msg (g_server_socket, rid, msg, 0);
-        if (rc == static_cast<int> (msg_size))
+        const int rc =
+          zlink_stream_send (g_server_socket, rid, payload, payload_size, 0);
+        if (rc == static_cast<int> (payload_size))
             return true;
 
         if (rc < 0) {
             const int err = zlink_errno ();
+            if (err == ECONNRESET || err == EHOSTUNREACH || err == ENOTCONN
+                || err == EPIPE)
+                return true;
             if (err == EAGAIN || err == EINTR) {
                 if (retry_backoff_us > 0) {
                     std::this_thread::sleep_for (
@@ -132,68 +153,50 @@ inline bool send_stream_msg_with_retry (const zlink_routing_id_t *rid,
     return false;
 }
 
-inline bool extract_routing_id (zlink_msg_t *frame,
-                                zlink_routing_id_t *rid_out)
+inline bool enqueue_reply (const zlink_routing_id_t *rid,
+                           const unsigned char *payload,
+                           size_t payload_size)
 {
-    if (!frame || !rid_out)
+    if (!rid || rid->size == 0 || rid->size > sizeof (rid->data))
         return false;
 
-    const unsigned char *data =
-      static_cast<const unsigned char *> (zlink_msg_data (frame));
-    const size_t size = zlink_msg_size (frame);
-    if (!data || size == 0 || size > sizeof (rid_out->data))
-        return false;
+    pending_reply_t reply;
+    std::memset (&reply.rid, 0, sizeof (reply.rid));
+    reply.rid.size = rid->size;
+    std::memcpy (reply.rid.data, rid->data, rid->size);
+    if (payload_size > 0 && payload)
+        reply.payload.assign (payload, payload + payload_size);
 
-    std::memset (rid_out, 0, sizeof (*rid_out));
-    rid_out->size = static_cast<uint8_t> (size);
-    std::memcpy (rid_out->data, data, size);
+    {
+        std::lock_guard<std::mutex> lk (g_pending_mu);
+        g_pending_replies.push_back (std::move (reply));
+    }
+    g_pending_cv.notify_one ();
     return true;
 }
 
-inline bool recv_stream_id_and_payload (void *server,
-                                        zlink_routing_id_t *rid_out,
-                                        zlink_msg_t *payload_out)
+int on_stream_packets (const zlink_routing_id_t *rid,
+                       zlink_msg_t *msgs,
+                       size_t msg_count)
 {
-    if (!server || !rid_out || !payload_out)
-        return false;
+    if (!rid || !msgs || msg_count == 0 || !g_server_socket)
+        return 0;
 
-    zlink_msg_t id_frame;
-    zlink_msg_init (&id_frame);
-    const int id_len = zlink_msg_recv (&id_frame, server, 0);
-    if (id_len < 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&id_frame);
-        errno = err;
-        return false;
+    for (size_t i = 0; i < msg_count; ++i) {
+        zlink_msg_t *msg = &msgs[i];
+        const unsigned char *payload =
+          static_cast<const unsigned char *> (zlink_msg_data (msg));
+        const size_t payload_size = zlink_msg_size (msg);
+        if (is_stream_event_payload (payload, payload_size))
+            continue;
+        if (!enqueue_reply (rid, payload, payload_size)) {
+            g_callback_failed.store (true, std::memory_order_release);
+            g_pending_cv.notify_all ();
+            return 1;
+        }
     }
 
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
-        zlink_msg_close (&id_frame);
-        errno = EPROTO;
-        return false;
-    }
-
-    zlink_msg_init (payload_out);
-    const int payload_len = zlink_msg_recv (payload_out, server, 0);
-    if (payload_len < 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (payload_out);
-        zlink_msg_close (&id_frame);
-        errno = err;
-        return false;
-    }
-
-    if (!extract_routing_id (&id_frame, rid_out)) {
-        zlink_msg_close (payload_out);
-        zlink_msg_close (&id_frame);
-        errno = EPROTO;
-        return false;
-    }
-
-    zlink_msg_close (&id_frame);
-    return true;
+    return 0;
 }
 
 } // namespace
@@ -246,19 +249,32 @@ int main (int argc, char **argv)
         return 1;
     }
 
+    {
+        std::lock_guard<std::mutex> lk (g_pending_mu);
+        g_pending_replies.clear ();
+    }
     g_stop_requested.store (false, std::memory_order_release);
+    g_callback_failed.store (false, std::memory_order_release);
     g_server_socket = server;
     install_signal_handlers ();
+
+    if (zlink_stream_attach (server, on_stream_packets, k_dispatch_flags) != 0) {
+        g_server_socket = NULL;
+        zlink_close (server);
+        return 1;
+    }
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
+                g_pending_cv.notify_all ();
                 return;
             }
         }
         g_stop_requested.store (true, std::memory_order_release);
+        g_pending_cv.notify_all ();
     });
     stdin_watcher.detach ();
 
@@ -266,32 +282,35 @@ int main (int argc, char **argv)
 
     int rc = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        zlink_routing_id_t rid;
-        std::memset (&rid, 0, sizeof (rid));
-        zlink_msg_t payload;
-        if (!recv_stream_id_and_payload (server, &rid, &payload)) {
-            const int err = errno;
-            if (err == EAGAIN || err == EINTR)
-                continue;
+        if (g_callback_failed.load (std::memory_order_acquire)) {
             rc = 1;
             break;
         }
 
-        const unsigned char *payload_data =
-          static_cast<const unsigned char *> (zlink_msg_data (&payload));
-        const size_t payload_size = zlink_msg_size (&payload);
-        if (is_stream_event_payload (payload_data, payload_size)) {
-            zlink_msg_close (&payload);
+        pending_reply_t reply;
+        bool has_reply = false;
+        {
+            std::unique_lock<std::mutex> lk (g_pending_mu);
+            if (g_pending_replies.empty ()) {
+                g_pending_cv.wait_for (lk, std::chrono::milliseconds (1));
+            }
+            if (!g_pending_replies.empty ()) {
+                reply = std::move (g_pending_replies.front ());
+                g_pending_replies.pop_front ();
+                has_reply = true;
+            }
+        }
+
+        if (!has_reply)
             continue;
-        }
 
-        if (!send_stream_msg_with_retry (&rid, &payload)) {
-            zlink_msg_close (&payload);
+        const unsigned char *reply_data =
+          reply.payload.empty () ? NULL : &reply.payload[0];
+        if (!send_stream_with_retry (&reply.rid, reply_data, reply.payload.size ())) {
+            g_callback_failed.store (true, std::memory_order_release);
             rc = 1;
             break;
         }
-
-        zlink_msg_close (&payload);
     }
 
     g_server_socket = NULL;

@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 import os
-import time
 import sys
 
 from perf_common import (
     StreamCallbackEcho,
-    encode_len32be_frame,
     endpoint_for,
     int_sockopt,
     parse_env,
     parse_pattern_args,
-    print_result,
     settle,
-    stream_send,
-    stream_wait_peer_routing_id,
     zlink,
 )
+from perf_stream_client_common import emit_perf_lines, run_client
 
 
 def run(transport: str, size: int) -> int:
@@ -68,105 +64,63 @@ def parse_perf_env_int(name: str, default: int) -> int:
 
 
 def run_mode(transport: str, size: int, len32be_dispatch: bool, pattern: str) -> int:
-    if transport.lower() == "tcp" and size >= 65536:
-        print(f"SKIP,python,{pattern},tcp,stream_large_size_guard")
-        return 0
+    transport = transport.lower()
 
     warmup = parse_env("PERF_WARMUP_COUNT", default_warmup_count(size))
     lat_count = parse_env("PERF_LAT_COUNT", default_lat_count(size))
     msg_count = parse_env("PERF_MSG_COUNT", default_msg_count(size))
-    inflight_limit = 10
-    timeout_default = 15000 if size >= 65536 else 5000
-    io_timeout_ms = parse_perf_env_int("PERF_STREAM_TIMEOUT_MS", timeout_default)
-    drain_timeout_ms = parse_perf_env_int(
-        "PERF_STREAM_DRAIN_TIMEOUT_MS", max(io_timeout_ms * 6, 30000)
-    )
+    io_timeout_ms = parse_perf_env_int("PERF_STREAM_TIMEOUT_MS", 5000)
 
     ctx = zlink.Context()
     server = zlink.Socket(ctx, int(zlink.SocketType.STREAM))
-    client = zlink.Socket(ctx, int(zlink.SocketType.STREAM))
-    endpoint = endpoint_for(
-        transport, "stream-len32be" if len32be_dispatch else "stream"
-    )
+    endpoint = endpoint_for(transport, "stream-len32be" if len32be_dispatch else "stream")
     echo = StreamCallbackEcho(server, len32be_dispatch, echo=True)
-    sink = StreamCallbackEcho(client, len32be_dispatch, echo=False)
 
     try:
         linger_zero = int_sockopt(0)
         server.setsockopt(int(zlink.SocketOption.LINGER), linger_zero)
-        client.setsockopt(int(zlink.SocketOption.LINGER), linger_zero)
         server.setsockopt(int(zlink.SocketOption.SNDTIMEO), int_sockopt(io_timeout_ms))
         server.setsockopt(int(zlink.SocketOption.RCVTIMEO), int_sockopt(io_timeout_ms))
-        client.setsockopt(int(zlink.SocketOption.SNDTIMEO), int_sockopt(io_timeout_ms))
-        client.setsockopt(int(zlink.SocketOption.RCVTIMEO), int_sockopt(io_timeout_ms))
-
         echo.attach()
-        sink.attach()
-
         server.bind(endpoint)
-        client.connect(endpoint)
         settle()
-
-        client_server_id = stream_wait_peer_routing_id(client, io_timeout_ms)
-
-        buf = b"a" * size
-        send_buf = buf if len32be_dispatch else encode_len32be_frame(buf)
-
-        def wait_received(target: int, timeout_ms: int) -> bool:
-            deadline = time.time() + (max(timeout_ms, 1) / 1000.0)
-            while time.time() < deadline:
-                if sink.received >= target:
-                    return True
-                time.sleep(0.001)
-            return sink.received >= target
-
-        expected = sink.received
-        for _ in range(warmup):
-            stream_send(client, client_server_id, send_buf)
-            expected += 1
-            if not wait_received(expected, io_timeout_ms):
-                raise RuntimeError("warmup receive timeout")
-
-        start = time.perf_counter()
-        for _ in range(lat_count):
-            stream_send(client, client_server_id, send_buf)
-            expected += 1
-            if not wait_received(expected, io_timeout_ms):
-                raise RuntimeError("latency receive timeout")
-        lat_us = ((time.perf_counter() - start) * 1_000_000.0) / (lat_count * 2)
-
-        recv_begin = sink.received
-        start = time.perf_counter()
-        sent = 0
-        for _ in range(msg_count):
-            try:
-                stream_send(client, client_server_id, send_buf)
-            except Exception:
-                break
-            sent += 1
-            acked = max(0, sink.received - recv_begin)
-            if sent - acked >= inflight_limit:
-                target = recv_begin + sent - inflight_limit + 1
-                if not wait_received(target, io_timeout_ms):
-                    break
-
-        if sent > 0:
-            wait_received(recv_begin + sent, drain_timeout_ms)
-
-        elapsed = time.perf_counter() - start
-        recv_delta = max(0, sink.received - recv_begin)
-        effective = min(sent, recv_delta)
-        throughput = (effective / elapsed) if elapsed > 0 and effective > 0 else 0.0
-        print_result(pattern, transport, size, throughput, lat_us)
+        rc, stdout_text, stderr_text = run_client(
+            [
+                "--pattern",
+                pattern,
+                "--transport",
+                transport,
+                "--endpoint",
+                endpoint,
+                "--sizes",
+                str(size),
+                "--runs",
+                "1",
+                "--warmup-count",
+                str(warmup),
+                "--lat-count",
+                str(lat_count),
+                "--msg-count",
+                str(msg_count),
+                "--print-perf-result",
+                "2",
+            ]
+        )
+        emit_perf_lines(stdout_text)
+        has_perf_result = any(
+            line.startswith("RESULT,current,") for line in stdout_text.splitlines()
+        )
+        if rc != 0 or not has_perf_result:
+            if stderr_text:
+                print(stderr_text.strip(), file=sys.stderr, flush=True)
+            return 2
         return 0
     except Exception:
         return 2
     finally:
         try:
-            sink.close()
             echo.close()
             server.close()
-            client.close()
             ctx.close()
         except Exception:
             pass

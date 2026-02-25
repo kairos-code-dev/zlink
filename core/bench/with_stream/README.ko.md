@@ -107,7 +107,7 @@ cat /proc/sys/net/ipv4/ip_local_port_range
 ```text
 --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
---ccu <N>                    기본값: 10000
+--ccu <N>                    기본값: 1000
 --inflight <N>               기본값: 10
 --runs <N>                   기본값: 1
 --warmup <sec>               기본값: 3

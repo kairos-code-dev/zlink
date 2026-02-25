@@ -43,9 +43,18 @@ inline void print_result(const std::string &lib_type,
                          double throughput,
                          double latency)
 {
+    const bool is_echo_pattern =
+      pattern == "MULTI_DEALER_DEALER" || pattern == "MULTI_DEALER_ROUTER"
+      || pattern == "MULTI_ROUTER_ROUTER";
+    const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
+    const double bandwidth_mb_s =
+      (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",throughput," << std::fixed
               << std::setprecision(2) << throughput << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
+              << "," << size << ",bandwidth," << std::fixed
+              << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",latency," << std::fixed
               << std::setprecision(2) << latency << std::endl;

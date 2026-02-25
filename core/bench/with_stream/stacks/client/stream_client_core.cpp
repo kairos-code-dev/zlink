@@ -40,7 +40,7 @@ struct client_options_t
     client_options_t ()
         : host ("127.0.0.1"),
           port (38001),
-          ccu (10000),
+          ccu (1000),
           size (1024),
           duration (5),
           inflight (10),

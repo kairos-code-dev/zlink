@@ -2,6 +2,4 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-export BINDING="cpp"
-exec "${ROOT_DIR}/bindings/bench/common/run_benchmarks.sh" \
-  --pattern ALL --runs 1 "$@"
+exec "${ROOT_DIR}/bindings/perf/run_policy_bench.py" --binding cpp --suite single "$@"

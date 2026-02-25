@@ -1,0 +1,6 @@
+## PATTERN: STREAM (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     15.01 Kmsg/s |      1.0 MB/s |     35.39 us |  1.9 |   19.4 |

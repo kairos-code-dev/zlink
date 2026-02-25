@@ -10,7 +10,7 @@ sys.path.insert(0, str(PY_SRC))
 sys.path.insert(0, str(BENCH_DIR))
 
 import zlink
-import bench_common
+import perf_bench_common as bench_common
 
 
 class BenchFastpathTests(unittest.TestCase):

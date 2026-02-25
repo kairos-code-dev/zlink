@@ -1,0 +1,21 @@
+## PATTERN: STREAM (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      8.30 Kmsg/s |      0.5 MB/s |    609.68 us |  0.5 |   59.1 |
+
+### Transport: tls
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B | N/A | N/A | N/A | N/A | N/A |
+
+### Transport: ws
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      8.34 Kmsg/s |      0.5 MB/s |    600.77 us |  0.5 |   60.0 |
+
+### Transport: wss
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B | N/A | N/A | N/A | N/A | N/A |

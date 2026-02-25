@@ -1,0 +1,24 @@
+META,os,Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39
+META,cpu,x86_64
+META,cores,20
+META,build,Release
+META,commit,3724119d
+META,utc,2026-02-24T05:26:56Z
+META,load_avg,1.85 1.47 1.02
+META,mode,observe
+META,runs,1
+META,status,complete
+META,expected,3
+META,actual,3
+RESULT,current,PAIR,tcp,64,throughput,5057730.00
+RESULT,current,PAIR,tcp,64,bandwidth,647.39
+RESULT,current,PAIR,tcp,64,latency,47.91
+RESULT,current,PAIR,tcp,64,cpu_pct,1.28
+RESULT,current,PAIR,tcp,64,mem_mb,21.71
+TABLE
+## PATTERN: PAIR (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |   5057.73 Kops/s |    647.4 MB/s |     47.91 us |  1.3 |   21.7 |

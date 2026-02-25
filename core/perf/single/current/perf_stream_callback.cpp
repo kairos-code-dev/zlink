@@ -1,7 +1,9 @@
 #include "../common/bench_common.hpp"
+#include "perf_stream_common.hpp"
 #include <zlink.h>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -16,16 +18,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
-using socket_t = SOCKET;
-static const socket_t INVALID_SOCKET_FD = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-#include <unistd.h>
-using socket_t = int;
-static const socket_t INVALID_SOCKET_FD = -1;
 #endif
 
 namespace {
@@ -45,8 +39,18 @@ struct stream_len32be_dispatch_t {
     std::condition_variable cv;
     std::deque<stream_dispatch_packet_t> packets;
     std::atomic<bool> running;
+    std::atomic<bool> direct_count_mode;
+    std::atomic<int64_t> direct_count;
+    std::atomic<int64_t> direct_payload_bytes;
 
-    stream_len32be_dispatch_t() : socket(NULL), running(false) {}
+    stream_len32be_dispatch_t()
+        : socket(NULL),
+          running(false),
+          direct_count_mode(false),
+          direct_count(0),
+          direct_payload_bytes(0)
+    {
+    }
 };
 
 static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
@@ -71,7 +75,10 @@ int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
     if (!dispatch || !rid_ || !msgs_ || msg_count_ == 0)
         return 0;
 
-    std::unique_lock<std::mutex> guard(dispatch->lock);
+    int64_t direct_received = 0;
+    int64_t direct_bytes = 0;
+    std::unique_lock<std::mutex> guard;
+    bool queued_any = false;
     for (size_t i = 0; i < msg_count_; ++i) {
         const char *payload_data =
           static_cast<const char *>(zlink_msg_data(&msgs_[i]));
@@ -83,15 +90,36 @@ int on_stream_len32be_packets_impl(stream_len32be_dispatch_t *dispatch,
             continue;
         }
 
+        const bool direct_mode =
+          dispatch->direct_count_mode.load(std::memory_order_acquire);
+        if (direct_mode) {
+            ++direct_received;
+            direct_bytes += static_cast<int64_t>(payload_size);
+            continue;
+        }
+
+        if (!guard.owns_lock())
+            guard = std::unique_lock<std::mutex>(dispatch->lock);
+
         stream_dispatch_packet_t packet;
         packet.routing_id.assign(rid_->data, rid_->data + rid_->size);
         packet.payload.assign(payload_size, 0);
         if (payload_size > 0 && payload_data)
             std::memcpy(packet.payload.data(), payload_data, payload_size);
         dispatch->packets.push_back(std::move(packet));
+        queued_any = true;
     }
-    guard.unlock();
-    dispatch->cv.notify_all();
+
+    if (guard.owns_lock())
+        guard.unlock();
+    if (direct_received > 0) {
+        dispatch->direct_count.fetch_add(direct_received,
+                                         std::memory_order_release);
+        dispatch->direct_payload_bytes.fetch_add(direct_bytes,
+                                                 std::memory_order_release);
+    }
+    if (queued_any)
+        dispatch->cv.notify_all();
     return dispatch->running.load(std::memory_order_acquire) ? 0 : 1;
 }
 
@@ -118,6 +146,9 @@ bool start_stream_len32be_dispatch_slot(void *socket_,
 {
     dispatch.socket = socket_;
     dispatch.running.store(true, std::memory_order_release);
+    dispatch.direct_count_mode.store(false, std::memory_order_release);
+    dispatch.direct_count.store(0, std::memory_order_release);
+    dispatch.direct_payload_bytes.store(0, std::memory_order_release);
     *slot = &dispatch;
     if (zlink_stream_attach(
           socket_, callback, ZLINK_STREAM_DISPATCH_LEN32BE)
@@ -196,178 +227,6 @@ bool wait_stream_len32be_packet(stream_len32be_dispatch_t &dispatch,
     return true;
 }
 
-#ifdef _WIN32
-void ensure_winsock_initialized()
-{
-    static bool initialized = false;
-    if (initialized)
-        return;
-
-    WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) == 0)
-        initialized = true;
-}
-#endif
-
-void close_socket_fd(socket_t fd)
-{
-    if (fd == INVALID_SOCKET_FD)
-        return;
-#ifdef _WIN32
-    closesocket(fd);
-#else
-    close(fd);
-#endif
-}
-
-void set_socket_timeouts(socket_t fd, int timeout_ms)
-{
-    if (timeout_ms <= 0)
-        return;
-#ifdef _WIN32
-    const DWORD timeout = static_cast<DWORD>(timeout_ms);
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout),
-               sizeof(timeout));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char *>(&timeout),
-               sizeof(timeout));
-#else
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
-}
-
-void set_socket_nodelay(socket_t fd)
-{
-    if (fd == INVALID_SOCKET_FD)
-        return;
-#ifdef _WIN32
-    const BOOL on = TRUE;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY,
-               reinterpret_cast<const char *>(&on), sizeof(on));
-#else
-    const int on = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(on));
-#endif
-}
-
-bool write_all(socket_t fd, const void *buf, size_t len)
-{
-    const char *cur = static_cast<const char *>(buf);
-    size_t left = len;
-    while (left > 0) {
-#ifdef _WIN32
-        const int n = send(fd, cur, static_cast<int>(left), 0);
-#else
-#ifdef MSG_NOSIGNAL
-        const int n = static_cast<int>(send(fd, cur, left, MSG_NOSIGNAL));
-#else
-        const int n = static_cast<int>(send(fd, cur, left, 0));
-#endif
-#endif
-        if (n <= 0)
-            return false;
-        cur += n;
-        left -= static_cast<size_t>(n);
-    }
-    return true;
-}
-
-bool read_all(socket_t fd, void *buf, size_t len)
-{
-    char *cur = static_cast<char *>(buf);
-    size_t left = len;
-    while (left > 0) {
-#ifdef _WIN32
-        const int n = recv(fd, cur, static_cast<int>(left), 0);
-#else
-        const int n = static_cast<int>(recv(fd, cur, left, 0));
-#endif
-        if (n <= 0)
-            return false;
-        cur += n;
-        left -= static_cast<size_t>(n);
-    }
-    return true;
-}
-
-socket_t connect_tcp(const std::string &endpoint)
-{
-#ifdef _WIN32
-    ensure_winsock_initialized();
-#endif
-
-    std::string host_port = endpoint;
-    const std::string prefix = "tcp://";
-    if (host_port.find(prefix) == 0)
-        host_port = host_port.substr(prefix.size());
-
-    const size_t colon = host_port.find_last_of(':');
-    if (colon == std::string::npos)
-        return INVALID_SOCKET_FD;
-
-    std::string host = host_port.substr(0, colon);
-    if (!host.empty() && host[0] == '[' && host[host.size() - 1] == ']')
-        host = host.substr(1, host.size() - 2);
-
-    const int port = std::atoi(host_port.substr(colon + 1).c_str());
-    if (host.empty() || port <= 0)
-        return INVALID_SOCKET_FD;
-
-    socket_t fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == INVALID_SOCKET_FD)
-        return INVALID_SOCKET_FD;
-
-    struct sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(port));
-
-#ifdef _WIN32
-    addr.sin_addr.s_addr = inet_addr(host.c_str());
-    if (addr.sin_addr.s_addr == INADDR_NONE) {
-        close_socket_fd(fd);
-        return INVALID_SOCKET_FD;
-    }
-#else
-    if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-        close_socket_fd(fd);
-        return INVALID_SOCKET_FD;
-    }
-#endif
-
-    if (connect(fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) != 0) {
-        close_socket_fd(fd);
-        return INVALID_SOCKET_FD;
-    }
-    set_socket_nodelay(fd);
-    return fd;
-}
-
-bool send_framed(socket_t fd, const std::vector<char> &payload)
-{
-    const uint32_t net_len = htonl(static_cast<uint32_t>(payload.size()));
-    if (!write_all(fd, &net_len, sizeof(net_len)))
-        return false;
-    if (payload.empty())
-        return true;
-    return write_all(fd, payload.data(), payload.size());
-}
-
-bool recv_framed(socket_t fd, std::vector<char> *payload)
-{
-    uint32_t net_len = 0;
-    if (!read_all(fd, &net_len, sizeof(net_len)))
-        return false;
-    const size_t len = static_cast<size_t>(ntohl(net_len));
-    payload->assign(len, 0);
-    if (len == 0)
-        return true;
-    return read_all(fd, payload->data(), len);
-}
-
 bool wait_monitor_connect_event(void *monitor_socket,
                                 void *activity_socket,
                                 std::vector<unsigned char> &routing_id,
@@ -440,64 +299,21 @@ bool wait_monitor_ready_count(void *monitor_socket,
     return ready >= expected_ready;
 }
 
-bool send_stream_msg(void *socket,
-                     const std::vector<unsigned char> &routing_id,
-                     const void *data,
-                     size_t len)
-{
-    if (routing_id.empty())
-        return false;
-    if (zlink_send(socket, routing_id.data(), routing_id.size(), ZLINK_SNDMORE)
-        < 0)
-        return false;
-    return zlink_send(socket, data, len, 0) >= 0;
-}
-
-bool recv_stream_msg(void *socket,
-                     std::vector<unsigned char> *routing_id,
-                     void *buf,
-                     size_t buf_size)
-{
-    zlink_msg_t id_frame;
-    zlink_msg_init(&id_frame);
-    const int id_len = zlink_msg_recv(&id_frame, socket, 0);
-    if (id_len <= 0) {
-        zlink_msg_close(&id_frame);
-        return false;
-    }
-
-    int more = 0;
-    size_t more_size = sizeof(more);
-    if (zlink_getsockopt(socket, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
-        zlink_msg_close(&id_frame);
-        return false;
-    }
-
-    if (routing_id) {
-        routing_id->assign(
-          static_cast<const unsigned char *>(zlink_msg_data(&id_frame)),
-          static_cast<const unsigned char *>(zlink_msg_data(&id_frame)) + id_len);
-    }
-    zlink_msg_close(&id_frame);
-
-    return zlink_recv(socket, buf, buf_size, 0) >= 0;
-}
-
 bool send_stream_frame(void *socket_,
                        const std::vector<unsigned char> &routing_id,
                        const std::vector<char> &payload)
 {
-    if (routing_id.empty())
-        return false;
-    if (zlink_send(socket_, routing_id.data(), routing_id.size(), ZLINK_SNDMORE) < 0)
+    if (routing_id.size() != 4)
         return false;
 
-    const uint32_t len = htonl(static_cast<uint32_t>(payload.size()));
-    std::vector<char> frame(sizeof(len) + payload.size());
-    std::memcpy(frame.data(), &len, sizeof(len));
-    if (!payload.empty())
-        std::memcpy(frame.data() + sizeof(len), payload.data(), payload.size());
-    return zlink_send(socket_, frame.data(), frame.size(), 0) >= 0;
+    zlink_routing_id_t rid;
+    std::memset(&rid, 0, sizeof(rid));
+    rid.size = 4;
+    std::memcpy(rid.data, routing_id.data(), 4);
+    return zlink_stream_send(socket_, &rid,
+                             payload.empty() ? NULL : payload.data(),
+                             payload.size(), 0)
+           >= 0;
 }
 
 struct stream_buffer_t {
@@ -654,179 +470,6 @@ void apply_stream_server_ctx_threads(void *ctx)
     (void)zlink_ctx_set(ctx, ZLINK_IO_THREADS, io_threads);
 }
 
-void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_name)
-{
-    ctx_guard_t server_ctx;
-    if (!server_ctx.valid()) {
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        return;
-    }
-    apply_stream_server_ctx_threads(server_ctx.get());
-
-    socket_guard_t server(server_ctx.get(), ZLINK_STREAM);
-    if (!server.valid()) {
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        return;
-    }
-
-    const int linger_ms = 0;
-    set_sockopt_int(server.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    const int hwm = resolve_stream_hwm("tcp");
-    set_sockopt_int(server.get(), ZLINK_SNDHWM, hwm, "ZLINK_SNDHWM");
-    set_sockopt_int(server.get(), ZLINK_RCVHWM, hwm, "ZLINK_RCVHWM");
-
-    const int io_timeout_ms = resolve_bench_count("BENCH_STREAM_TIMEOUT_MS", 5000);
-    set_sockopt_int(server.get(), ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
-    set_sockopt_int(server.get(), ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
-
-    const std::string endpoint =
-      bind_and_resolve_endpoint(server.get(), "tcp", lib_name + "_stream");
-    if (endpoint.empty()) {
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        return;
-    }
-
-    int monitor_events = ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED;
-#ifdef ZLINK_EVENT_CONNECTED
-    monitor_events |= ZLINK_EVENT_CONNECTED;
-#endif
-#ifdef ZLINK_EVENT_ACCEPTED
-    monitor_events |= ZLINK_EVENT_ACCEPTED;
-#endif
-    void *server_monitor = zlink_socket_monitor_open(server.get(), monitor_events);
-    if (server_monitor)
-        set_sockopt_int(server_monitor, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-
-    stream_len32be_dispatch_t dispatch;
-    if (!start_stream_len32be_dispatch(server.get(), dispatch)) {
-        if (server_monitor)
-            zlink_close(server_monitor);
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        return;
-    }
-
-    socket_t raw_client = connect_tcp(endpoint);
-    if (raw_client == INVALID_SOCKET_FD) {
-        stop_stream_len32be_dispatch(dispatch);
-        if (server_monitor)
-            zlink_close(server_monitor);
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        return;
-    }
-    set_socket_timeouts(raw_client, io_timeout_ms);
-
-    auto cleanup = [&]() {
-        stop_stream_len32be_dispatch(dispatch);
-        close_socket_fd(raw_client);
-        if (server_monitor)
-            zlink_close(server_monitor);
-    };
-    auto fail = [&](const char *stage) {
-        if (bench_debug_enabled()) {
-            std::cerr << "STREAM tcp raw fail at stage=" << stage << std::endl;
-        }
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, 0.0);
-        cleanup();
-    };
-
-    const int connect_timeout_ms =
-      resolve_bench_count("BENCH_STREAM_CONNECT_TIMEOUT_MS", 5000);
-
-    std::vector<unsigned char> server_client_id;
-    std::vector<char> send_buf(msg_size, 'a');
-    std::vector<char> recv_buf;
-    std::vector<char> probe_payload(1, 'p');
-    stream_dispatch_packet_t packet;
-
-    if (!send_framed(raw_client, probe_payload)
-        || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
-        || packet.routing_id.empty()) {
-        fail("probe_send_recv");
-        return;
-    }
-    server_client_id = packet.routing_id;
-    if (packet.payload != probe_payload) {
-        fail("probe_decode");
-        return;
-    }
-    if (!wait_monitor_ready_count(server_monitor, 1, connect_timeout_ms)) {
-        fail("monitor_ready");
-        return;
-    }
-
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_framed(raw_client, send_buf)
-            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
-            || packet.routing_id != server_client_id) {
-            fail("warmup");
-            return;
-        }
-        recv_buf = packet.payload;
-    }
-
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
-    stopwatch_t sw;
-    sw.start();
-    for (int i = 0; i < lat_count; ++i) {
-        zlink_routing_id_t server_rid = make_routing_id(server_client_id);
-        if (!send_framed(raw_client, send_buf)
-            || !wait_stream_len32be_packet(dispatch, io_timeout_ms, &packet)
-            || packet.routing_id != server_client_id
-            || zlink_stream_send(server.get(), &server_rid, packet.payload.data(),
-                                 packet.payload.size(), 0) < 0
-            || !recv_framed(raw_client, &recv_buf)) {
-            fail("latency");
-            return;
-        }
-    }
-    const double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
-
-    std::atomic<int> received(0);
-    std::atomic<bool> recv_ok(true);
-    std::thread receiver([&]() {
-        for (int i = 0; i < msg_count; ++i) {
-            stream_dispatch_packet_t pkt;
-            if (!wait_stream_len32be_packet(dispatch, io_timeout_ms, &pkt)
-                || pkt.routing_id != server_client_id) {
-                recv_ok.store(false);
-                break;
-            }
-            ++received;
-        }
-    });
-
-    int sent = 0;
-    sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        if (!send_framed(raw_client, send_buf))
-            break;
-        ++sent;
-    }
-
-    receiver.join();
-    if (!recv_ok.load()) {
-        fail("measure_recv");
-        return;
-    }
-
-    const int recv_count = received.load();
-    const int effective = sent < recv_count ? sent : recv_count;
-    if (effective <= 0) {
-        print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, 0.0, latency);
-        cleanup();
-        return;
-    }
-
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? static_cast<double>(effective) / (elapsed_ms / 1000.0)
-                     : 0.0;
-
-    print_result(lib_name, "STREAM_CALLBACK", "tcp", msg_size, throughput, latency);
-    cleanup();
-}
-
 void run_stream_zlink_client(const std::string &transport,
                              size_t msg_size,
                              int msg_count,
@@ -944,7 +587,7 @@ void run_stream_zlink_client(const std::string &transport,
     server_client_id = packet.routing_id;
 
     std::vector<char> send_buf(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size > 256 ? msg_size : 256);
+    std::vector<char> recv_buf;
 
     const int warmup_count =
       resolve_bench_count("BENCH_WARMUP_COUNT", ws_family ? 100 : 1000);
@@ -981,48 +624,56 @@ void run_stream_zlink_client(const std::string &transport,
     }
     const double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
 
-    std::atomic<int> received(0);
-    std::atomic<bool> recv_ok(true);
-    std::thread receiver([&]() {
-        for (int i = 0; i < msg_count; ++i) {
-            stream_dispatch_packet_t pkt;
-            if (!wait_stream_len32be_packet(dispatch, io_timeout_ms, &pkt)
-                || pkt.routing_id != server_client_id) {
-                recv_ok.store(false);
-                break;
-            }
-            ++received;
-        }
-    });
+    {
+        std::lock_guard<std::mutex> guard(dispatch.lock);
+        dispatch.packets.clear();
+    }
+    dispatch.direct_count.store(0, std::memory_order_release);
+    dispatch.direct_payload_bytes.store(0, std::memory_order_release);
+    dispatch.direct_count_mode.store(true, std::memory_order_release);
 
     int sent = 0;
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
-        if (!send_stream_frame(client.get(), client_server_id, send_buf))
+        if (!send_stream_frame(client.get(), client_server_id, send_buf)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "send_stream_frame failed at i=" << i
+                          << " errno=" << errno << " (" << zlink_strerror(errno)
+                          << ")" << std::endl;
+            }
             break;
+        }
         ++sent;
     }
 
-    receiver.join();
-    const int recv_count = received.load();
-    if (!recv_ok.load() && recv_count <= 0) {
-        stop_dispatch();
-        fail();
-        return;
+    const auto recv_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(100, io_timeout_ms));
+    int recv_count = 0;
+    for (;;) {
+        recv_count = static_cast<int>(
+          dispatch.direct_count.load(std::memory_order_acquire));
+        if (recv_count >= sent || std::chrono::steady_clock::now() >= recv_deadline)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    dispatch.direct_count_mode.store(false, std::memory_order_release);
+    if (bench_debug_enabled()) {
+        const int64_t recv_bytes =
+          dispatch.direct_payload_bytes.load(std::memory_order_acquire);
+        const double avg_payload =
+          recv_count > 0 ? static_cast<double>(recv_bytes) / recv_count : 0.0;
+        std::cerr << "STREAM_CALLBACK summary sent=" << sent
+                  << " recv=" << recv_count
+                  << " recv_bytes=" << recv_bytes
+                  << " avg_payload=" << avg_payload
+                  << " msg_count=" << msg_count << std::endl;
     }
 
-    const int effective = sent < recv_count ? sent : recv_count;
-    if (effective <= 0) {
-        print_result(lib_name, "STREAM_CALLBACK", transport, msg_size, 0.0, latency);
-        stop_dispatch();
-        return;
-    }
-
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
-
-    print_result(lib_name, "STREAM_CALLBACK", transport, msg_size, throughput, latency);
+    stream_single_common::print_stream_metrics(
+      lib_name, "STREAM_CALLBACK", transport, msg_size,
+      stream_single_common::stream_metrics_t(sent, recv_count, sw.elapsed_ms()),
+      latency);
     if (ws_family)
         settle();
     stop_dispatch();

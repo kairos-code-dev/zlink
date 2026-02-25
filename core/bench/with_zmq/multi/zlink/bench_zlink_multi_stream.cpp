@@ -1376,6 +1376,7 @@ int enqueue_stream_payload_chunks (void *server,
         }
 
         if (may_be_decoded_payload
+            && !send_requires_framed_payload
             && (expected_payload_size == 0
                 || payload_size == expected_payload_size)) {
             std::vector<char> direct_payload (payload_size, 0);
@@ -2258,6 +2259,125 @@ double measure_stream_latency_live_zlink_dispatch (stream_sender_state_t &sender
 
 } // namespace
 
+int run_multi_stream_server_only (const std::string &transport,
+                                  size_t msg_size,
+                                  const std::string &lib_name)
+{
+    (void) msg_size;
+
+    if (!transport_available (transport))
+        return 1;
+    if (transport != "tcp" && transport != "tls" && transport != "ws"
+        && transport != "wss")
+        return 1;
+
+    ctx_guard_t ctx;
+    if (!ctx.valid ())
+        return 1;
+
+    void *server = zlink_socket (ctx.get (), ZLINK_STREAM);
+    if (!server)
+        return 1;
+
+    const int linger_ms = 0;
+    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    const int stream_hwm = resolve_multi_int_env ("BENCH_STREAM_HWM", 100000, 1);
+    apply_benchmark_hwm (server, stream_hwm);
+    apply_stream_server_tuning (server, true);
+    if (!setup_tls_server (server, transport)) {
+        zlink_close (server);
+        return 1;
+    }
+
+    const int io_timeout_ms = resolve_bench_count ("BENCH_STREAM_TIMEOUT_MS", 5000);
+    set_sockopt_int (server, ZLINK_SNDTIMEO, io_timeout_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int (server, ZLINK_RCVTIMEO, io_timeout_ms, "ZLINK_RCVTIMEO");
+
+    const std::string endpoint = bind_and_resolve_endpoint (
+      server, transport, lib_name + "_multi_stream_server");
+    if (endpoint.empty ()) {
+        zlink_close (server);
+        return 1;
+    }
+
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
+    const int stream_send_batch =
+      resolve_multi_int_env ("BENCH_MULTI_STREAM_SEND_BATCH", 64, 1);
+    const int relay_budget = std::max (settings.recv_batch, stream_send_batch);
+    const size_t max_pending_replies =
+      std::max<size_t> (static_cast<size_t> (relay_budget) * static_cast<size_t> (16),
+                        static_cast<size_t> (1024));
+
+    stream_len32be_dispatch_t dispatch;
+    bool dispatch_started = false;
+    const multi_stream_dispatch_mode_t dispatch_mode =
+      resolve_multi_stream_dispatch_mode ();
+    const int dispatch_flags = multi_stream_dispatch_flags (dispatch_mode);
+    const bool dispatch_requested =
+      multi_stream_dispatch_enabled (dispatch_mode);
+    const bool dispatch_supported =
+      dispatch_requested && stream_dispatch_supported ();
+    const bool send_requires_framed_payload =
+      dispatch_mode != multi_stream_dispatch_len32be;
+    if (dispatch_requested && dispatch_supported) {
+        if (!start_stream_len32be_dispatch (server, dispatch, dispatch_flags)) {
+            zlink_close (server);
+            return 1;
+        }
+        dispatch_started = true;
+        g_stream_reply_direct.store (false, std::memory_order_release);
+    }
+
+    std::atomic<bool> stop_requested (false);
+    std::thread stdin_watcher ([&stop_requested] () {
+        std::string line;
+        while (std::getline (std::cin, line)) {
+            if (line == "STOP" || line == "QUIT") {
+                stop_requested.store (true, std::memory_order_release);
+                return;
+            }
+        }
+        stop_requested.store (true, std::memory_order_release);
+    });
+    stdin_watcher.detach ();
+
+    std::cout << "READY," << endpoint << std::endl;
+
+    stream_reply_queue_t pending_replies;
+    stream_stash_map_t dispatch_stashes;
+    int rc = 0;
+    while (!stop_requested.load (std::memory_order_acquire)) {
+        const int enqueued = enqueue_stream_payload_chunks (
+          server,
+          pending_replies,
+          relay_budget,
+          10,
+          max_pending_replies,
+          0,
+          send_requires_framed_payload,
+          &dispatch_stashes);
+        if (enqueued < 0) {
+            rc = 1;
+            break;
+        }
+
+        const int flushed =
+          flush_stream_reply_queue (server, pending_replies, relay_budget);
+        if (flushed < 0) {
+            rc = 1;
+            break;
+        }
+    }
+
+    if (dispatch_started) {
+        stop_stream_len32be_dispatch (dispatch);
+        g_stream_reply_direct.store (false, std::memory_order_release);
+    }
+
+    zlink_close (server);
+    return rc;
+}
+
 void run_multi_stream (const std::string &transport,
                        size_t msg_size,
                        int /*msg_count*/,
@@ -2789,5 +2909,16 @@ void run_multi_stream (const std::string &transport,
 
 int main (int argc, char **argv)
 {
+    for (int i = 4; i < argc; ++i) {
+        if (std::strcmp (argv[i], "--server-only") == 0) {
+            if (argc < 4)
+                return 1;
+            char *end = NULL;
+            const unsigned long parsed = std::strtoul (argv[3], &end, 10);
+            const size_t msg_size =
+              (end != argv[3] && parsed > 0) ? static_cast<size_t> (parsed) : 64;
+            return run_multi_stream_server_only (argv[2], msg_size, argv[1]);
+        }
+    }
     return run_standard_bench_main (argc, argv, run_multi_stream);
 }

@@ -1,0 +1,6 @@
+## PATTERN: PAIR (one-way)
+
+### Transport: ipc
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |   4501.00 Kmsg/s |    288.1 MB/s |     56.79 us |  1.1 |   17.5 |

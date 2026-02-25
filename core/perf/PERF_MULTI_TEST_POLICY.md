@@ -186,7 +186,7 @@ latency 예시: (52.0 - 45.0) / 45.0 × 100 = +15.56%
 | 임계치 | — | thresholds.json (2.2) | 섹션 2.1 기본값 |
 | msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 6종 |
 | transports | `--transports` | `PERF_TRANSPORTS` | `tcp,tls,ws,wss` |
-| clients | `--multi-clients` | `PERF_MULTI_CLIENTS` | 100 (STREAM: 10000) |
+| clients | `--multi-clients` | `PERF_MULTI_CLIENTS` | 1000 |
 
 - **CLI 인자 > 환경 변수 > 모드 기본값** 순으로 적용한다.
 - `--runs`를 생략하면 현재 모드의 기본 runs를 사용한다. `--runs`를 명시하면 모드 기본값을 무시한다.
@@ -220,6 +220,7 @@ latency 예시: (52.0 - 45.0) / 45.0 × 100 = +15.56%
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
 - MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
+- **UNSUPPORTED 오용 금지**: §11.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.3](PERF_POLICY.md)을 참조한다.
 
 ### 3.2 유효성 규칙
 
@@ -254,7 +255,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 | transport 전환 | 3000ms | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | 이전 transport 소켓 정리 (TIME_WAIT 해소) |
 | pattern 전환 | 3000ms | `PERF_MULTI_PATTERN_TRANSITION_MS` | 이전 패턴의 전체 클라이언트 소켓 정리 |
 
-- Multi 벤치마크는 대량의 클라이언트 소켓(100~10000)을 사용하므로, transport/pattern 전환 시 OS 소켓 리소스 해제를 위한 충분한 대기가 필요하다.
+- Multi 벤치마크는 대량의 클라이언트 소켓(1000~10000)을 사용하므로, transport/pattern 전환 시 OS 소켓 리소스 해제를 위한 충분한 대기가 필요하다.
 - 전환 cooldown은 이전 server/client 프로세스 종료 후 다음 server 실행 전에 **스크립트 레벨**에서 `sleep`으로 수행한다.
 
 ### 3.4 종료 코드
@@ -268,6 +269,10 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 - Observe/Trend 모드에서는 임계치 초과가 종료 코드에 영향을 주지 않는다 (항상 0 또는 1).
 - partial 상태 자체는 종료 코드 0이다 (`--save` 미사용 시). `--save`과 함께 partial이면 종료 코드 1.
 - 여러 오류 조건이 동시에 발생하면 가장 높은 종료 코드를 반환한다.
+
+### 3.5 실패 처리: Retry 금지
+
+실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
 ---
 
@@ -577,8 +582,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 | `--baseline-file PATH` | Gate 모드 비교 대상 baseline 파일 | `latest.txt` |
 | `--multi-warmup-seconds N` | warmup 시간(초) | 3 |
 | `--multi-duration-seconds N` | 측정 시간(초) | 5 |
-| `--multi-clients N` | 클라이언트 소켓 수 | 100 (STREAM: 10000) |
-| `--multi-inflight N` | 클라이언트당 in-flight 메시지 수 | 1 (추후 테스트 후 재결정) |
+| `--multi-clients N` | 클라이언트 소켓 수 | 1000 |
 | `--multi-hwm N` | 소켓 HWM | 100000 |
 | `--multi-sndtimeo-ms N` | 송신 타임아웃(ms) | 5000 |
 | `--multi-rcvtimeo-ms N` | 수신 타임아웃(ms) | 5000 |
@@ -896,7 +900,7 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 | pattern 전환 | 3000ms | `PERF_MULTI_PATTERN_TRANSITION_MS` | 패턴 변경 시 전체 클라이언트 소켓 정리 대기 |
 
 - 전환 cooldown은 이전 run의 server/client 프로세스 양쪽 종료 후 다음 run의 server 실행 전에 스크립트에서 `sleep`으로 수행한다.
-- Multi는 대량의 클라이언트 소켓(100~10000)을 사용하므로 OS의 TIME_WAIT 소켓 해제를 위해 전환 cooldown이 필수적이다.
+- Multi는 대량의 클라이언트 소켓(1000~10000)을 사용하므로 OS의 TIME_WAIT 소켓 해제를 위해 전환 cooldown이 필수적이다.
 - 마지막 transport/pattern 이후에는 전환 cooldown을 수행하지 않는다 (불필요).
 
 ### 7.3 drain 패턴별 기본값
@@ -1067,13 +1071,14 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 #### MULTI_STREAM 계열 패턴
 
-| 패턴 | 수신 방식 | 설명 |
-|------|-----------|------|
+| 패턴 | server 수신 방식 | 설명 |
+|------|-----------------|------|
 | MULTI_STREAM | 기본 recv | `zmq_recv`로 메시지 수신 |
 | MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
 | MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 32-bit big-endian length-prefixed framing |
 
-- 세 패턴은 동일한 transport, size, clients, inflight 설정을 공유한다.
+- 세 패턴은 동일한 transport, size, clients 설정을 공유한다.
+- **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - MULTI_STREAM 계열의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
@@ -1088,7 +1093,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM / MULTI_STREAM_CALLBACK / MULTI_STREAM_LEN32BE | `[64, 256, 1024, 65536]` |
 | MULTI_GATEWAY / MULTI_SPOT | `[64, 256, 1024, 65536, 131072, 262144]` |
 
-- STREAM 계열은 대규모 동시 연결(10000 CCU) 환경에서 테스트하므로 65536B까지만 측정한다.
+- STREAM 계열은 대량 동시 연결 환경에서 테스트하므로 65536B까지만 측정한다.
 
 ### 11.3 transport
 
@@ -1129,19 +1134,17 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (STREAM: 10000) |
-| `PERF_MULTI_INFLIGHT` | 클라이언트당 in-flight 메시지 수 | 1 (추후 테스트 후 재결정) |
+| `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 1000 |
 | `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 | `64,256,1024,65536` |
-| `PERF_MULTI_STREAM_MAX_INFLIGHT_BYTES` | STREAM size별 inflight auto-cap(bytes) | 33554432 (32MiB) |
 | `PERF_MULTI_HWM` | 소켓 HWM | 100000 |
-| `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (`clients>=10000 ? 1024 : 128`) |
+| `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | 128 |
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 
 ### 12.4 송수신 제어
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_SEND_WORKERS` | 송신 워커 스레드 수 | auto (`clients>=10000 ? 4 : 1`) |
+| `PERF_MULTI_SEND_WORKERS` | 송신 워커 스레드 수 | 1 |
 | `PERF_MULTI_SEND_BACKOFF_US` | 송신 블록 시 backoff(us) | 20 |
 | `PERF_MULTI_RECV_BATCH` | 수신 배치 크기 | 64 |
 | `PERF_MULTI_BLOCKING_SEND` | 블로킹 전송 모드 | 0 |
@@ -1168,9 +1171,9 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
-| ~~`PERF_MULTI_ATTEMPTS`~~ | ~~실패 시 재시도 횟수~~ | **삭제됨** — 재시도 기능은 제거되었다. 실패 시 원인을 조사해야 하며, 재시도로 문제를 숨기지 않는다. 구현에서 `PERF_MULTI_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS` 양쪽 모두 제거해야 한다. |
-| ~~`PERF_MULTI_STREAM_ATTEMPTS`~~ | ~~STREAM 재시도 횟수~~ | **삭제됨** — 위와 동일. 구현에서 `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_STREAM_ATTEMPTS` 양쪽 모두 제거해야 한다. |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
+
+> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS`, `BENCH_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 | `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
 | `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |
 
@@ -1191,7 +1194,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - **dispatch callback 패턴 (MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE)**: I/O 스레드에서 호출되는 dispatch callback과 측정 스레드 간 데이터 전달에 lock 대신 `std::atomic` 카운터 또는 lock-free queue를 사용한다.
 - throughput 측정 시 callback에서 `atomic_fetch_add`로 카운트만 증가시키고, 패킷 복사/큐잉을 하지 않는 **direct count mode**를 기본으로 한다.
 - latency 측정 등 패킷 내용이 필요한 경우에만 큐잉을 허용하되, lock-free 자료구조를 사용한다.
-- **Multi의 sender/receiver 스레드 간 동기화**: inflight 윈도우 제어는 `std::atomic` 카운터로 구현하며, blocking lock을 사용하지 않는다.
+- **Multi의 sender/receiver 스레드 간 동기화**: 카운터·플래그 등은 `std::atomic`으로 구현하며, blocking lock을 사용하지 않는다.
 
 ### 13.2 불필요한 메모리 할당/복사 금지
 
@@ -1209,7 +1212,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - **원칙**: duration phase에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
 - warmup phase 이전(setup/connect)과 drain 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
-- Multi의 대량 클라이언트(100~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
+- Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.
 
 ### 13.3 연결 준비 확인: MONITOR 소켓 전용
 

@@ -66,11 +66,20 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_dealer_router single/current/perf_dealer_router.cpp)
     add_current_bench_single(perf_router_router single/current/perf_router_router.cpp)
     add_current_bench_single(perf_router_router_poll single/current/perf_router_router_poll.cpp)
-    add_current_bench_single(perf_stream single/current/perf_stream.cpp)
-    add_current_bench_single(perf_stream_callback single/current/perf_stream_callback.cpp)
-    add_current_bench_single(perf_stream_len32be single/current/perf_stream_len32be.cpp)
     add_current_bench_single(perf_gateway single/current/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/current/perf_spot.cpp)
+
+    # Shared raw STREAM client for standalone stream-client validation.
+    add_executable(
+        perf_stream_shared_client
+        common/streamclient/bench_stream_client.cpp)
+    target_link_libraries(
+        perf_stream_shared_client PRIVATE
+        Threads::Threads
+        OpenSSL::SSL
+        OpenSSL::Crypto)
+    target_compile_options(perf_stream_shared_client PRIVATE ${BENCH_CXX_FLAGS})
+    target_compile_features(perf_stream_shared_client PRIVATE cxx_std_17)
 
     add_current_bench_multi(comp_current_multi_dealer_dealer_server
                            ../bench/with_zmq/multi/zlink/bench_zlink_multi_dealer_dealer_server.cpp)
@@ -97,39 +106,11 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_multi(comp_current_multi_spot_client
                            ../bench/with_zmq/multi/zlink/bench_zlink_multi_spot_client.cpp)
     add_current_bench_multi(comp_current_multi_stream_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_server.cpp)
-    add_current_bench_multi(comp_current_multi_stream_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_client.cpp)
+                           multi/current/perf_multi_stream_server.cpp)
     add_current_bench_multi(comp_current_multi_stream_callback_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_callback_server.cpp)
-    add_current_bench_multi(comp_current_multi_stream_callback_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_callback_client.cpp)
+                           multi/current/perf_multi_stream_callback_server.cpp)
     add_current_bench_multi(comp_current_multi_stream_len32be_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_len32be_server.cpp)
-    add_current_bench_multi(comp_current_multi_stream_len32be_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream_len32be_client.cpp)
-
-    # STREAM variants keep a dedicated high-throughput implementation.
-    add_current_bench_multi(comp_current_multi_stream_mono
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream.cpp)
-    target_compile_definitions(
-        comp_current_multi_stream_mono PRIVATE
-        BENCH_MULTI_STREAM_PATTERN_NAME=\"MULTI_STREAM\"
-        BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE=1)
-
-    add_current_bench_multi(comp_current_multi_stream_callback_mono
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream.cpp)
-    target_compile_definitions(
-        comp_current_multi_stream_callback_mono PRIVATE
-        BENCH_MULTI_STREAM_PATTERN_NAME=\"MULTI_STREAM_CALLBACK\"
-        BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE=1)
-
-    add_current_bench_multi(comp_current_multi_stream_len32be_mono
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_stream.cpp)
-    target_compile_definitions(
-        comp_current_multi_stream_len32be_mono PRIVATE
-        BENCH_MULTI_STREAM_PATTERN_NAME=\"MULTI_STREAM_LEN32BE\"
-        BENCH_MULTI_STREAM_DISPATCH_MODE_VALUE=2)
+                           multi/current/perf_multi_stream_len32be_server.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

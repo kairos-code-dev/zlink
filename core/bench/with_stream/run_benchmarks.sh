@@ -23,7 +23,7 @@ Options:
   --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
   --size <64|1024|65536|all|csv>
   --phases <both|throughput|latency|csv>  default: both
-  --ccu <N>                    default: 10000
+  --ccu <N>                    default: 1000
   --inflight <N>               default: 10
   --runs <N>                   default: 1
   --warmup <sec>               default: 3
@@ -51,7 +51,7 @@ PHASES_ALL=(throughput latency)
 TARGET_STACK="all"
 TARGET_SIZE="all"
 TARGET_PHASES="both"
-CCU="${BENCH_MULTI_CLIENTS:-10000}"
+CCU="${BENCH_MULTI_CLIENTS:-1000}"
 INFLIGHT="${BENCH_MULTI_INFLIGHT:-10}"
 RUNS=1
 WARMUP="${BENCH_MULTI_WARMUP_SECONDS:-3}"

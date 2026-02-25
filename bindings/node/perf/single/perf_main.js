@@ -2,6 +2,10 @@
 
 const fs = require('fs');
 const net = require('net');
+const path = require('path');
+const readline = require('readline');
+const tls = require('tls');
+const { spawn } = require('child_process');
 const zlink = require('../../src/index');
 
 const ipcPaths = new Set();
@@ -151,6 +155,7 @@ function streamRecvInto(socket, ridBuffer, dataBuffer) {
 }
 
 const STREAM_MAX_FRAME_BYTES = 16 * 1024 * 1024;
+const STOP_TOKEN = Buffer.from('__zlink_perf_stop__', 'utf8');
 
 function encodeLen32BeFrame(payload) {
   const frame = Buffer.alloc(payload.length + 4);
@@ -545,195 +550,450 @@ async function runRouterRouter(transport, size, usePoll) {
   }
 }
 
+function parseRawEndpoint(endpoint) {
+  const url = new URL(endpoint);
+  const transport = String(url.protocol || '').replace(/:$/, '').toLowerCase();
+  const host = String(url.hostname || '127.0.0.1');
+  const port = parseInt(url.port || '0', 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`invalid endpoint: ${endpoint}`);
+  }
+  return { transport, host, port, url };
+}
+
+function maybeBuffer(data) {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (typeof data === 'string') return Buffer.from(data, 'utf8');
+  return null;
+}
+
+class RawTransportStreamClient {
+  constructor(endpoint, timeoutMs) {
+    this._target = parseRawEndpoint(endpoint);
+    this._timeoutMs = Math.max(1, timeoutMs | 0);
+    this._socket = null;
+    this._ws = null;
+    this._recvBuf = Buffer.alloc(0);
+    this._wsFrames = [];
+    this._closed = false;
+    this._error = null;
+  }
+
+  async connect() {
+    if (this._target.transport === 'ws' || this._target.transport === 'wss') {
+      return this._connectWs();
+    }
+    return this._connectTcpLike();
+  }
+
+  async sendPayload(payload) {
+    const frame = encodeLen32BeFrame(payload);
+    if (this._ws) {
+      if (this._ws.readyState !== this._ws.OPEN) {
+        throw new Error('websocket is not open');
+      }
+      this._ws.send(frame);
+      return;
+    }
+
+    const sock = this._socket;
+    if (!sock || this._closed) {
+      throw new Error('socket is closed');
+    }
+    const ok = sock.write(frame);
+    if (!ok) {
+      await this._waitForSocketDrain();
+    }
+  }
+
+  async recvPayload(timeoutMs) {
+    if (this._ws) {
+      return this._recvPayloadWs(timeoutMs);
+    }
+    return this._recvPayloadTcpLike(timeoutMs);
+  }
+
+  close() {
+    this._closed = true;
+    try {
+      if (this._ws) {
+        this._ws.close();
+      }
+    } catch (_) {}
+    try {
+      if (this._socket) {
+        this._socket.destroy();
+      }
+    } catch (_) {}
+  }
+
+  async _connectTcpLike() {
+    const { transport, host, port } = this._target;
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      let timer = null;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (err) reject(err);
+        else resolve();
+      };
+
+      const connectHandler = () => finish(null);
+      const opts = { host, port };
+      const sock = transport === 'tls'
+        ? tls.connect({ ...opts, rejectUnauthorized: false, servername: host }, connectHandler)
+        : net.createConnection(opts, connectHandler);
+
+      this._socket = sock;
+      sock.setNoDelay(true);
+      sock.on('data', (chunk) => {
+        if (!chunk || chunk.length === 0) return;
+        this._recvBuf = this._recvBuf.length === 0
+          ? Buffer.from(chunk)
+          : Buffer.concat([this._recvBuf, chunk]);
+      });
+      sock.on('close', () => {
+        this._closed = true;
+      });
+      sock.on('end', () => {
+        this._closed = true;
+      });
+      sock.on('error', (err) => {
+        this._error = err || new Error('socket error');
+        finish(this._error);
+      });
+
+      timer = setTimeout(() => {
+        this._error = new Error('connect timeout');
+        try { sock.destroy(); } catch (_) {}
+        finish(this._error);
+      }, this._timeoutMs);
+    });
+  }
+
+  async _connectWs() {
+    const WS = globalThis.WebSocket;
+    if (typeof WS !== 'function') {
+      throw new Error('WebSocket client is unavailable');
+    }
+
+    const { transport, url } = this._target;
+    if (transport === 'wss') {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      let timer = null;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        if (err) reject(err);
+        else resolve();
+      };
+
+      const ws = new WS(url.toString());
+      this._ws = ws;
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = () => finish(null);
+      ws.onmessage = (event) => {
+        const buf = maybeBuffer(event.data);
+        if (buf && buf.length > 0) {
+          this._wsFrames.push(buf);
+        }
+      };
+      ws.onerror = () => {
+        const err = new Error('websocket error');
+        this._error = err;
+        finish(err);
+      };
+      ws.onclose = () => {
+        this._closed = true;
+      };
+
+      timer = setTimeout(() => {
+        const err = new Error('websocket connect timeout');
+        this._error = err;
+        try { ws.close(); } catch (_) {}
+        finish(err);
+      }, this._timeoutMs);
+    });
+  }
+
+  async _waitForSocketDrain() {
+    const sock = this._socket;
+    if (!sock) return;
+    await new Promise((resolve, reject) => {
+      let timer = null;
+      const onDrain = () => {
+        cleanup();
+        resolve();
+      };
+      const onErr = (err) => {
+        cleanup();
+        reject(err || new Error('socket write error'));
+      };
+      const cleanup = () => {
+        sock.off('drain', onDrain);
+        sock.off('error', onErr);
+        if (timer) clearTimeout(timer);
+      };
+
+      sock.on('drain', onDrain);
+      sock.on('error', onErr);
+      timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('socket drain timeout'));
+      }, this._timeoutMs);
+    });
+  }
+
+  async _recvPayloadWs(timeoutMs) {
+    const deadline = Date.now() + Math.max(1, timeoutMs | 0);
+    while (Date.now() < deadline) {
+      if (this._error) throw this._error;
+      if (this._wsFrames.length > 0) {
+        const frame = this._wsFrames.shift();
+        return decodeLen32BeFrame(frame);
+      }
+      if (this._closed) break;
+      await sleep(1);
+    }
+    throw new Error('recv timeout');
+  }
+
+  async _recvPayloadTcpLike(timeoutMs) {
+    const deadline = Date.now() + Math.max(1, timeoutMs | 0);
+    while (Date.now() < deadline) {
+      if (this._error) throw this._error;
+      if (this._recvBuf.length >= 4) {
+        const declared = this._recvBuf.readUInt32BE(0);
+        if (!Number.isFinite(declared) || declared < 0 || declared > STREAM_MAX_FRAME_BYTES) {
+          throw new Error('invalid stream frame length');
+        }
+        const frameLen = 4 + declared;
+        if (this._recvBuf.length >= frameLen) {
+          const frame = this._recvBuf.subarray(0, frameLen);
+          this._recvBuf = this._recvBuf.subarray(frameLen);
+          return decodeLen32BeFrame(frame);
+        }
+      }
+      if (this._closed) break;
+      await sleep(1);
+    }
+    throw new Error('recv timeout');
+  }
+}
+
+function decodeLen32BeFrame(frame) {
+  if (!frame || frame.length < 4) {
+    throw new Error('invalid stream frame');
+  }
+  const declared = frame.readUInt32BE(0);
+  if (!Number.isFinite(declared) || declared < 0 || declared > STREAM_MAX_FRAME_BYTES) {
+    throw new Error('invalid stream frame size');
+  }
+  if (frame.length !== (4 + declared)) {
+    throw new Error('stream frame size mismatch');
+  }
+  return frame.subarray(4);
+}
+
+function singleStreamServerScript(mode) {
+  if (mode === 'recv') {
+    return 'perf_multi_stream_server.js';
+  }
+  if (mode === 'callback') {
+    return 'perf_multi_stream_callback_server.js';
+  }
+  return 'perf_multi_stream_len32be_server.js';
+}
+
+async function spawnSingleStreamServer(mode, transport, size, timeoutMs) {
+  const script = path.resolve(
+    __dirname,
+    '..',
+    'multi',
+    singleStreamServerScript(mode)
+  );
+  const child = spawn(
+    process.execPath,
+    [script, transport, String(size)],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+
+  let endpoint = '';
+  let stderrText = '';
+  let exited = false;
+  let exitCode = null;
+
+  const rl = readline.createInterface({ input: child.stdout });
+  child.stderr.on('data', (chunk) => {
+    if (!chunk) return;
+    stderrText += chunk.toString();
+  });
+  child.on('exit', (code) => {
+    exited = true;
+    exitCode = code;
+  });
+
+  const deadline = Date.now() + Math.max(1, timeoutMs | 0);
+  while (Date.now() < deadline) {
+    if (endpoint) break;
+    if (exited) break;
+
+    const line = await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        rl.removeAllListeners('line');
+        resolve('');
+      }, 50);
+      rl.once('line', (value) => {
+        clearTimeout(timer);
+        resolve(String(value || ''));
+      });
+    });
+
+    const raw = line.trim();
+    if (!raw) continue;
+    if (raw.startsWith('READY,')) {
+      endpoint = raw.slice('READY,'.length).trim();
+      break;
+    }
+  }
+
+  if (!endpoint) {
+    try { rl.close(); } catch (_) {}
+    if (!exited) {
+      try { child.kill('SIGTERM'); } catch (_) {}
+    }
+    throw new Error(
+      exited
+        ? `stream server exited before READY (code=${exitCode})`
+        : `stream server READY timeout: ${stderrText.trim()}`
+    );
+  }
+
+  return { child, endpoint, rl };
+}
+
+async function waitChildExit(child, timeoutMs) {
+  if (!child) return true;
+  if (child.exitCode !== null) return true;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(false);
+    }, Math.max(1, timeoutMs | 0));
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
 async function runStream(transport, size) {
-  return runStreamMode(transport, size, false, 'STREAM', 'stream');
+  return runStreamMode(transport, size, 'recv', 'STREAM', 'stream');
 }
 
 async function runStreamCallback(transport, size) {
-  return runStreamMode(transport, size, false, 'STREAM_CALLBACK', 'stream-callback');
+  return runStreamMode(transport, size, 'callback', 'STREAM_CALLBACK', 'stream-callback');
 }
 
 async function runStreamLen32Be(transport, size) {
-  return runStreamMode(transport, size, true, 'STREAM_LEN32BE', 'stream-len32be');
+  return runStreamMode(transport, size, 'len32be', 'STREAM_LEN32BE', 'stream-len32be');
 }
 
-async function runStreamMode(transport, size, len32beDispatch, patternName, endpointName) {
-  if (transport === 'tcp' && size >= 65536) {
-    console.log(`SKIP,node,${patternName},${transport},stream_large_size_guard`);
-    return 0;
-  }
-
+async function runStreamMode(transport, size, mode, patternName, endpointName) {
   const warmup = parseEnv('PERF_WARMUP_COUNT', 1000);
   const latCount = parseEnv('PERF_LAT_COUNT', 500);
   const msgCount = parseEnv('PERF_MSG_COUNT', 10000);
-  const inflightLimit = 10;
   const ioTimeoutMs = parsePerfEnv('PERF_STREAM_TIMEOUT_MS', 5000);
-  const drainTimeoutMs = parsePerfEnv('PERF_STREAM_DRAIN_TIMEOUT_MS',
-    Math.max(ioTimeoutMs * 6, 30000));
-
-  const ctx = new zlink.Context();
-  const server = new zlink.Socket(ctx, zlink.SocketType.STREAM);
-  const client = new zlink.Socket(ctx, zlink.SocketType.STREAM);
-  let serverAttached = false;
-  let clientAttached = false;
-  let clientServerId = null;
-  let clientSinkCount = 0;
-  const clientRawStash = new StreamLen32BeStash();
-  const clientPayload = Buffer.alloc(Math.max(1, size));
+  let rawClient = null;
+  let serverProc = null;
+  let serverReadline = null;
 
   try {
-    const ep = await endpointFor(transport, endpointName);
-    server.setSockOpt(zlink.SocketOption.SNDTIMEO, intSockOpt(ioTimeoutMs));
-    server.setSockOpt(zlink.SocketOption.RCVTIMEO, intSockOpt(ioTimeoutMs));
-    client.setSockOpt(zlink.SocketOption.SNDTIMEO, intSockOpt(ioTimeoutMs));
-    client.setSockOpt(zlink.SocketOption.RCVTIMEO, intSockOpt(ioTimeoutMs));
+    const readyTimeoutMs = parsePerfEnv('PERF_MULTI_SERVER_READY_TIMEOUT_MS', 10000);
+    const launched = await spawnSingleStreamServer(
+      mode,
+      transport,
+      size,
+      readyTimeoutMs
+    );
+    serverProc = launched.child;
+    serverReadline = launched.rl;
 
-    server.streamAttach((rid, packets) => {
-      if (!rid || rid.length === 0 || !packets) {
-        return 0;
-      }
-      for (const packet of packets) {
-        if (!packet || packet.length === 0) {
-          continue;
-        }
-        if (packet.length === 1 && (packet[0] === 0x00 || packet[0] === 0x01)) {
-          continue;
-        }
-        server.streamSend(rid, packet, zlink.SendFlag.NONE);
-      }
-      return 0;
-    }, len32beDispatch ? zlink.StreamDispatchMode.LEN32BE : zlink.StreamDispatchMode.NONE);
-    serverAttached = true;
-
-    client.streamAttach((rid, packets) => {
-      if (!clientServerId && rid && rid.length > 0) {
-        clientServerId = Buffer.from(rid);
-      }
-      if (!packets) {
-        return 0;
-      }
-      if (len32beDispatch) {
-        clientSinkCount += packets.length;
-        return 0;
-      }
-
-      for (const packet of packets) {
-        if (!packet || packet.length === 0) {
-          continue;
-        }
-        if (packet.length === 1 && (packet[0] === 0x00 || packet[0] === 0x01)) {
-          continue;
-        }
-        clientRawStash.append(packet);
-        while (true) {
-          const payloadLen = clientRawStash.tryReadPayload(clientPayload);
-          if (payloadLen < 0) {
-            break;
-          }
-          clientSinkCount += 1;
-        }
-      }
-      return 0;
-    }, len32beDispatch ? zlink.StreamDispatchMode.LEN32BE : zlink.StreamDispatchMode.NONE);
-    clientAttached = true;
-
-    server.bind(ep);
-    client.connect(ep);
+    rawClient = new RawTransportStreamClient(launched.endpoint, ioTimeoutMs);
+    await rawClient.connect();
     await settle();
 
-    const ridDeadline = Date.now() + ioTimeoutMs;
-    while (Date.now() < ridDeadline) {
-      const rid = client.streamPeerRoutingId(0);
-      if (rid && rid.length > 0) {
-        clientServerId = Buffer.from(rid);
-        break;
-      }
-      if (clientServerId && clientServerId.length > 0) {
-        break;
-      }
-      await sleep(1);
-    }
-    if (!clientServerId) {
-      return 2;
-    }
-
     const payload = Buffer.alloc(size, 'a');
-    const sendBuf = len32beDispatch ? payload : encodeLen32BeFrame(payload);
+    let echoed = Buffer.alloc(0);
 
-    const waitReceived = async (target, timeoutMs) => {
-      const deadline = Date.now() + Math.max(timeoutMs, 1);
-      while (Date.now() < deadline) {
-        if (clientSinkCount >= target) {
-          return true;
-        }
-        await sleep(1);
-      }
-      return clientSinkCount >= target;
-    };
-
-    let expected = clientSinkCount;
     for (let i = 0; i < warmup; i++) {
-      client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
-      expected += 1;
-      if (!(await waitReceived(expected, ioTimeoutMs))) {
+      await rawClient.sendPayload(payload);
+      echoed = await rawClient.recvPayload(ioTimeoutMs);
+      if (!echoed || echoed.length !== payload.length) {
         return 2;
       }
     }
 
     let t0 = process.hrtime.bigint();
     for (let i = 0; i < latCount; i++) {
-      client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
-      expected += 1;
-      if (!(await waitReceived(expected, ioTimeoutMs))) {
+      await rawClient.sendPayload(payload);
+      echoed = await rawClient.recvPayload(ioTimeoutMs);
+      if (!echoed || echoed.length !== payload.length) {
         return 2;
       }
     }
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
-    const recvBegin = clientSinkCount;
     let sent = 0;
     t0 = process.hrtime.bigint();
     for (let i = 0; i < msgCount; i++) {
-      try {
-        client.streamSend(clientServerId, sendBuf, zlink.SendFlag.NONE);
-      } catch (_) {
+      await rawClient.sendPayload(payload);
+      echoed = await rawClient.recvPayload(ioTimeoutMs);
+      if (!echoed || echoed.length !== payload.length) {
         break;
       }
-      sent++;
-      const acked = Math.max(0, clientSinkCount - recvBegin);
-      if ((sent - acked) >= inflightLimit) {
-        const target = recvBegin + sent - inflightLimit + 1;
-        if (!(await waitReceived(target, ioTimeoutMs))) {
-          break;
-        }
-      }
+      sent += 1;
     }
-
-    if (sent > 0) {
-      await waitReceived(recvBegin + sent, drainTimeoutMs);
-    }
-
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const recvDelta = Math.max(0, clientSinkCount - recvBegin);
-    const effective = Math.min(sent, recvDelta);
-    const thr = effective > 0 && elapsedSec > 0 ? (effective / elapsedSec) : 0.0;
-    if (effective <= 0) {
+    const thr = sent > 0 && elapsedSec > 0 ? (sent / elapsedSec) : 0.0;
+    if (sent <= 0) {
       return 2;
     }
+
+    await rawClient.sendPayload(STOP_TOKEN);
+    const stopTimeoutMs = parsePerfEnv('PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS', 5000);
+    const exited = await waitChildExit(serverProc, stopTimeoutMs);
+    if (!exited || (serverProc.exitCode !== null && serverProc.exitCode !== 0)) {
+      return 2;
+    }
+
     printResult(patternName, transport, size, thr, latUs);
     return 0;
   } catch (_) {
     return 2;
   } finally {
-    if (clientAttached) {
-      try { client.streamDetach(); } catch (_) {}
+    try {
+      if (rawClient) rawClient.close();
+    } catch (_) {}
+    if (serverReadline) {
+      try { serverReadline.close(); } catch (_) {}
     }
-    if (serverAttached) {
-      try { server.streamDetach(); } catch (_) {}
+    if (serverProc && serverProc.exitCode === null) {
+      try { serverProc.kill('SIGTERM'); } catch (_) {}
+      await waitChildExit(serverProc, 1000);
+      if (serverProc.exitCode === null) {
+        try { serverProc.kill('SIGKILL'); } catch (_) {}
+      }
     }
-    try { server.close(); } catch (_) {}
-    try { client.close(); } catch (_) {}
-    try { ctx.close(); } catch (_) {}
   }
 }
 
@@ -1019,7 +1279,8 @@ function printUnsupported(pattern, transport) {
 async function runWithSecureFallback(pattern, transport, size) {
   const p = String(pattern).toUpperCase();
   const t = String(transport).toLowerCase();
-  if (t === 'tls' || t === 'wss') {
+  const isStreamFamily = p === 'STREAM' || p === 'STREAM_CALLBACK' || p === 'STREAM_LEN32BE';
+  if ((t === 'tls' || t === 'wss') && !isStreamFamily) {
     printUnsupported(p, t);
     return 0;
   }

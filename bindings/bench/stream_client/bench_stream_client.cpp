@@ -256,7 +256,7 @@ struct client_options_t
           pattern ("STREAM"),
           host ("127.0.0.1"),
           port (38001),
-          ccu (10000),
+          ccu (1000),
           sizes (),
           runs (1),
           warmup (2),

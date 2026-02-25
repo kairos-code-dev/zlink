@@ -115,6 +115,24 @@ MULTI_STREAM_PATTERNS = {
     "MULTI_STREAM_LEN32BE",
 }
 
+STREAM_SINGLE_PATTERNS = {
+    "STREAM",
+    "STREAM_CALLBACK",
+    "STREAM_LEN32BE",
+}
+
+SINGLE_TO_MULTI_STREAM_PATTERN = {
+    "STREAM": "MULTI_STREAM",
+    "STREAM_CALLBACK": "MULTI_STREAM_CALLBACK",
+    "STREAM_LEN32BE": "MULTI_STREAM_LEN32BE",
+}
+
+STREAM_CLIENT_DIR = BINDINGS_DIR / "bench" / "stream_client"
+STREAM_CLIENT_BUILD_SCRIPT = STREAM_CLIENT_DIR / "build.sh"
+STREAM_CLIENT_BIN = STREAM_CLIENT_DIR / "build" / (
+    "bench_stream_client.exe" if IS_WINDOWS else "bench_stream_client"
+)
+
 DEFAULT_THRESHOLDS = {
     "throughput": {"warning": -10.0, "fail": -15.0},
     "bandwidth": {"warning": -10.0, "fail": -15.0},
@@ -198,7 +216,6 @@ class SuiteConfig:
     multi_warmup_seconds: int
     multi_duration_seconds: int
     multi_clients: int
-    multi_inflight: int
     multi_hwm: int
     multi_sndtimeo_ms: int
     multi_rcvtimeo_ms: int
@@ -284,7 +301,8 @@ def platform_tag() -> str:
 
 
 def utc_file_stamp() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
+    # Policy requires result filename timestamps in local time.
+    return dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def local_offset_iso() -> str:
@@ -459,13 +477,55 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
 
     artifact_exists = True
     if cfg.binding == "cpp":
-        artifact = perf_dir / "single" / "build" / ("perf_main.exe" if IS_WINDOWS else "perf_main")
+        if cfg.suite == "multi":
+            artifact = perf_dir / "multi" / "build" / (
+                "perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main"
+            )
+        else:
+            artifact = perf_dir / "single" / "build" / (
+                "perf_main.exe" if IS_WINDOWS else "perf_main"
+            )
         artifact_exists = artifact.exists()
     elif cfg.binding == "dotnet":
-        artifact = perf_dir / "single" / "Zlink.BindingBench" / "bin" / "Release" / "net8.0" / "Zlink.BindingBench.dll"
+        if cfg.suite == "multi":
+            artifact = (
+                perf_dir
+                / "multi"
+                / "Zlink.BindingBench.Multi"
+                / "bin"
+                / "Release"
+                / "net8.0"
+                / "Zlink.BindingBench.Multi.dll"
+            )
+        else:
+            artifact = (
+                perf_dir
+                / "single"
+                / "Zlink.BindingBench"
+                / "bin"
+                / "Release"
+                / "net8.0"
+                / "Zlink.BindingBench.dll"
+            )
         artifact_exists = artifact.exists()
     elif cfg.binding == "java":
-        artifact = BINDINGS_DIR / "java" / "build" / "classes" / "java" / "test" / "dev" / "kairoscode" / "zlink" / "integration" / "bench" / "PerfMain.class"
+        java_class = "PerfMain.class"
+        if cfg.suite == "multi":
+            java_class = "PerfMultiMain.class"
+        artifact = (
+            BINDINGS_DIR
+            / "java"
+            / "build"
+            / "classes"
+            / "java"
+            / "test"
+            / "dev"
+            / "kairoscode"
+            / "zlink"
+            / "integration"
+            / "bench"
+            / java_class
+        )
         artifact_exists = artifact.exists()
     elif cfg.binding == "node":
         artifact = BINDINGS_DIR / "node" / "prebuilds" / ("win32-" + ARCH_FAMILY if IS_WINDOWS else ("darwin-" + ARCH_FAMILY if IS_MACOS else "linux-" + ARCH_FAMILY)) / "zlink.node"
@@ -473,51 +533,90 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
     else:
         artifact_exists = True
 
-    if cfg.reuse_build:
-        if not artifact_exists:
-            raise RuntimeError("--reuse-build enabled but required binding runner artifact is missing")
+    if cfg.reuse_build and artifact_exists:
         return
+
+    if cfg.reuse_build and not artifact_exists:
+        logger.print(
+            "  > Reuse-build is enabled but artifact is missing; building once."
+        )
 
     logger.print(f"  > Building binding runner for {cfg.binding}...")
 
     if cfg.binding == "cpp":
-        out = perf_dir / "single" / "build"
+        out = perf_dir / cfg.suite / "build"
         out.mkdir(parents=True, exist_ok=True)
         cpp_native = binding_native_dir("cpp")
-        cmd = [
-            "c++",
-            "-O3",
-            "-std=c++17",
-            f"-I{ROOT_DIR / 'core' / 'include'}",
-            f"-I{BINDINGS_DIR / 'cpp' / 'include'}",
-            str(perf_dir / "single" / "perf_main.cpp"),
-            str(perf_dir / "single" / "perf_pair.cpp"),
-            str(perf_dir / "single" / "perf_pubsub.cpp"),
-            str(perf_dir / "single" / "perf_dealer_dealer.cpp"),
-            str(perf_dir / "single" / "perf_dealer_router.cpp"),
-            str(perf_dir / "single" / "perf_router_router.cpp"),
-            str(perf_dir / "single" / "perf_router_router_poll.cpp"),
-            str(perf_dir / "single" / "perf_stream.cpp"),
-            str(perf_dir / "single" / "perf_stream_callback.cpp"),
-            str(perf_dir / "single" / "perf_gateway.cpp"),
-            str(perf_dir / "single" / "perf_spot.cpp"),
-            f"-L{cpp_native}",
-            "-lzlink",
-            f"-Wl,-rpath,{cpp_native}",
-            "-o",
-            str(out / ("perf_main.exe" if IS_WINDOWS else "perf_main")),
-        ]
+        if cfg.suite == "multi":
+            multi_sources = [
+                perf_dir / "multi" / "perf_multi_main.cpp",
+                perf_dir / "multi" / "perf_multi_dealer_dealer_server.cpp",
+                perf_dir / "multi" / "perf_multi_dealer_dealer_client.cpp",
+                perf_dir / "multi" / "perf_multi_dealer_router_server.cpp",
+                perf_dir / "multi" / "perf_multi_dealer_router_client.cpp",
+                perf_dir / "multi" / "perf_multi_router_router_server.cpp",
+                perf_dir / "multi" / "perf_multi_router_router_client.cpp",
+                perf_dir / "multi" / "perf_multi_pubsub_server.cpp",
+                perf_dir / "multi" / "perf_multi_pubsub_client.cpp",
+                perf_dir / "multi" / "perf_multi_gateway_server.cpp",
+                perf_dir / "multi" / "perf_multi_gateway_client.cpp",
+                perf_dir / "multi" / "perf_multi_spot_server.cpp",
+                perf_dir / "multi" / "perf_multi_spot_client.cpp",
+                perf_dir / "multi" / "perf_multi_stream_server.cpp",
+                perf_dir / "multi" / "perf_multi_stream_client.cpp",
+                perf_dir / "multi" / "perf_multi_stream_callback_server.cpp",
+                perf_dir / "multi" / "perf_multi_stream_callback_client.cpp",
+                perf_dir / "multi" / "perf_multi_stream_len32be_server.cpp",
+                perf_dir / "multi" / "perf_multi_stream_len32be_client.cpp",
+            ]
+            cmd = [
+                "c++",
+                "-O3",
+                "-std=c++17",
+                f"-I{ROOT_DIR / 'core' / 'include'}",
+                f"-I{BINDINGS_DIR / 'cpp' / 'include'}",
+                f"-L{cpp_native}",
+                "-lzlink",
+                f"-Wl,-rpath,{cpp_native}",
+                "-o",
+                str(out / ("perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main")),
+            ]
+            cmd[5:5] = [str(src) for src in multi_sources]
+        else:
+            cmd = [
+                "c++",
+                "-O3",
+                "-std=c++17",
+                f"-I{ROOT_DIR / 'core' / 'include'}",
+                f"-I{BINDINGS_DIR / 'cpp' / 'include'}",
+                str(perf_dir / "single" / "perf_main.cpp"),
+                str(perf_dir / "single" / "perf_pair.cpp"),
+                str(perf_dir / "single" / "perf_pubsub.cpp"),
+                str(perf_dir / "single" / "perf_dealer_dealer.cpp"),
+                str(perf_dir / "single" / "perf_dealer_router.cpp"),
+                str(perf_dir / "single" / "perf_router_router.cpp"),
+                str(perf_dir / "single" / "perf_router_router_poll.cpp"),
+                str(perf_dir / "single" / "perf_stream.cpp"),
+                str(perf_dir / "single" / "perf_stream_callback.cpp"),
+                str(perf_dir / "single" / "perf_gateway.cpp"),
+                str(perf_dir / "single" / "perf_spot.cpp"),
+                f"-L{cpp_native}",
+                "-lzlink",
+                f"-Wl,-rpath,{cpp_native}",
+                "-o",
+                str(out / ("perf_main.exe" if IS_WINDOWS else "perf_main")),
+            ]
         run_checked(cmd)
     elif cfg.binding == "dotnet":
-        run_checked(
-            [
-                "dotnet",
-                "build",
-                str(perf_dir / "single" / "Zlink.BindingBench" / "Zlink.BindingBench.csproj"),
-                "-c",
-                "Release",
-            ]
-        )
+        dotnet_project = perf_dir / "single" / "Zlink.BindingBench" / "Zlink.BindingBench.csproj"
+        if cfg.suite == "multi":
+            dotnet_project = (
+                perf_dir
+                / "multi"
+                / "Zlink.BindingBench.Multi"
+                / "Zlink.BindingBench.Multi.csproj"
+            )
+        run_checked(["dotnet", "build", str(dotnet_project), "-c", "Release"])
     elif cfg.binding == "java":
         run_checked(["./gradlew", "-q", "classes", "testClasses"], cwd=BINDINGS_DIR / "java")
     elif cfg.binding == "node":
@@ -669,8 +768,8 @@ def binding_multi_role_command(
             transport,
         ]
     elif cfg.binding == "cpp":
-        runner = BINDINGS_DIR / "cpp" / "perf" / "single" / "build" / (
-            "perf_main.exe" if IS_WINDOWS else "perf_main"
+        runner = BINDINGS_DIR / "cpp" / "perf" / "multi" / "build" / (
+            "perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main"
         )
         if role == "server":
             cmd = [
@@ -696,12 +795,12 @@ def binding_multi_role_command(
             BINDINGS_DIR
             / "dotnet"
             / "perf"
-            / "single"
-            / "Zlink.BindingBench"
+            / "multi"
+            / "Zlink.BindingBench.Multi"
             / "bin"
             / "Release"
             / "net8.0"
-            / "Zlink.BindingBench.dll"
+            / "Zlink.BindingBench.Multi.dll"
         )
         if role == "server":
             cmd = [
@@ -737,7 +836,7 @@ def binding_multi_role_command(
                 java,
                 "-cp",
                 cp,
-                "dev.kairoscode.zlink.integration.bench.PerfMain",
+                "dev.kairoscode.zlink.integration.bench.PerfMultiMain",
                 "--multi-server",
                 pattern,
                 transport,
@@ -748,7 +847,7 @@ def binding_multi_role_command(
                 java,
                 "-cp",
                 cp,
-                "dev.kairoscode.zlink.integration.bench.PerfMain",
+                "dev.kairoscode.zlink.integration.bench.PerfMultiMain",
                 "--multi-client",
                 pattern,
                 transport,
@@ -802,7 +901,6 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             "PERF_MULTI_DURATION_SECONDS", str(cfg.multi_duration_seconds)
         )
         set_perf_env("PERF_MULTI_CLIENTS", str(cfg.multi_clients))
-        set_perf_env("PERF_MULTI_INFLIGHT", str(cfg.multi_inflight))
         set_perf_env("PERF_MULTI_HWM", str(cfg.multi_hwm))
         set_perf_env("PERF_MULTI_SNDTIMEO_MS", str(cfg.multi_sndtimeo_ms))
         set_perf_env("PERF_MULTI_RCVTIMEO_MS", str(cfg.multi_rcvtimeo_ms))
@@ -829,6 +927,130 @@ def prepare_runtime_env(cfg: SuiteConfig, native_dir: Path) -> Dict[str, str]:
             set_perf_env("PERF_MULTI_DRAIN_MS", str(cfg.multi_drain_ms))
 
     return env
+
+
+def env_int_from_map(env: Dict[str, str], name: str, default: int) -> int:
+    raw = env.get(name)
+    if raw is None or raw == "":
+        raw = os.environ.get(name, "")
+    try:
+        parsed = int(str(raw).strip())
+    except Exception:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def ensure_stream_client_bin() -> Path:
+    if STREAM_CLIENT_BIN.exists():
+        return STREAM_CLIENT_BIN
+    if IS_WINDOWS:
+        raise RuntimeError(
+            f"shared stream client is missing: {STREAM_CLIENT_BIN}"
+        )
+    proc = subprocess.run(
+        [str(STREAM_CLIENT_BUILD_SCRIPT)],
+        cwd=str(STREAM_CLIENT_DIR),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "failed to build shared stream client:\n"
+            + (proc.stdout or "")
+            + (proc.stderr or "")
+        )
+    if not STREAM_CLIENT_BIN.exists():
+        raise RuntimeError(f"shared stream client binary not found: {STREAM_CLIENT_BIN}")
+    return STREAM_CLIENT_BIN
+
+
+def stream_shared_client_cmd(
+    cfg: SuiteConfig,
+    env: Dict[str, str],
+    pattern: str,
+    transport: str,
+    size: int,
+    endpoint: str,
+    suite: str,
+) -> List[str]:
+    client_bin = ensure_stream_client_bin()
+    cmd: List[str] = [
+        str(client_bin),
+        "--pattern",
+        pattern,
+        "--transport",
+        transport,
+        "--endpoint",
+        endpoint,
+        "--sizes",
+        str(size),
+        "--runs",
+        "1",
+    ]
+
+    if suite == "single":
+        warmup_count = env_int_from_map(env, "PERF_WARMUP_COUNT", 1000)
+        lat_count = env_int_from_map(env, "PERF_LAT_COUNT", 500)
+        msg_count = env_int_from_map(env, "PERF_MSG_COUNT", 10000)
+        io_threads = env_int_from_map(
+            env, "PERF_IO_THREADS", cfg.io_threads if cfg.io_threads else 1
+        )
+        cmd.extend(
+            [
+                "--warmup-count",
+                str(warmup_count),
+                "--lat-count",
+                str(lat_count),
+                "--msg-count",
+                str(msg_count),
+                "--io-threads",
+                str(io_threads),
+                "--print-perf-result",
+                "2",
+                "--send-stop-token",
+                "1",
+                "--stop-token",
+                "__zlink_perf_stop__",
+            ]
+        )
+        return cmd
+
+    clients = env_int_from_map(env, "PERF_MULTI_CLIENTS", cfg.multi_clients)
+    warmup_seconds = env_int_from_map(
+        env, "PERF_MULTI_WARMUP_SECONDS", cfg.multi_warmup_seconds
+    )
+    duration_seconds = env_int_from_map(
+        env, "PERF_MULTI_DURATION_SECONDS", cfg.multi_duration_seconds
+    )
+    lat_count = env_int_from_map(env, "PERF_LAT_COUNT", 200)
+    io_threads = env_int_from_map(
+        env, "PERF_IO_THREADS", cfg.io_threads if cfg.io_threads else 1
+    )
+    latency_sample_rate = env_int_from_map(env, "PERF_MULTI_LATENCY_SAMPLE_RATE", 1)
+    cmd.extend(
+        [
+            "--ccu",
+            str(clients),
+            "--warmup",
+            str(warmup_seconds),
+            "--duration",
+            str(duration_seconds),
+            "--lat-count",
+            str(lat_count),
+            "--io-threads",
+            str(io_threads),
+            "--latency-sample-rate",
+            str(latency_sample_rate),
+            "--print-perf-result",
+            "2",
+            "--send-stop-token",
+            "1",
+            "--stop-token",
+            "__zlink_perf_stop__",
+        ]
+    )
+    return cmd
 
 
 def parse_result_line(line: str) -> Optional[Tuple[str, str, str, int, str, float]]:
@@ -1834,7 +2056,6 @@ def make_parser() -> argparse.ArgumentParser:
     ap.add_argument("--multi-warmup-seconds", type=int, default=3)
     ap.add_argument("--multi-duration-seconds", type=int, default=5)
     ap.add_argument("--multi-clients", type=int, default=0)
-    ap.add_argument("--multi-inflight", type=int, default=1)
     ap.add_argument("--multi-hwm", type=int, default=100000)
     ap.add_argument("--multi-sndtimeo-ms", type=int, default=5000)
     ap.add_argument("--multi-rcvtimeo-ms", type=int, default=5000)
@@ -1898,14 +2119,7 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
 
     multi_clients = args.multi_clients
     if multi_clients <= 0:
-        has_multi_stream_family = any(
-            p in {"MULTI_STREAM", "MULTI_STREAM_CALLBACK", "MULTI_STREAM_LEN32BE"}
-            for p in patterns
-        )
-        if args.suite == "multi" and has_multi_stream_family:
-            multi_clients = int(env_first("PERF_MULTI_CLIENTS") or "100")
-        else:
-            multi_clients = int(env_first("PERF_MULTI_CLIENTS") or "100")
+        multi_clients = int(env_first("PERF_MULTI_CLIENTS") or "1000")
 
     def env_int_if_default(cli_value: int, default_value: int, env_name: str) -> int:
         raw = env_first(env_name)
@@ -1930,9 +2144,6 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         env_int_if_default(
             args.multi_duration_seconds, 5, "PERF_MULTI_DURATION_SECONDS"
         ),
-    )
-    multi_inflight = max(
-        1, env_int_if_default(args.multi_inflight, 1, "PERF_MULTI_INFLIGHT")
     )
     multi_hwm = max(
         1, env_int_if_default(args.multi_hwm, 100000, "PERF_MULTI_HWM")
@@ -2033,7 +2244,6 @@ def resolve_config(args: argparse.Namespace) -> Tuple[SuiteConfig, List[str]]:
         multi_warmup_seconds=multi_warmup_seconds,
         multi_duration_seconds=multi_duration_seconds,
         multi_clients=max(1, multi_clients),
-        multi_inflight=multi_inflight,
         multi_hwm=multi_hwm,
         multi_sndtimeo_ms=multi_sndtimeo_ms,
         multi_rcvtimeo_ms=multi_rcvtimeo_ms,
@@ -2067,11 +2277,117 @@ def run_single_pattern_transport(
         outcomes: List[RunOutcome] = []
         for run_idx in range(cfg.runs):
             logger.print(f"{run_idx + 1} ", end="", flush=True)
-            cmd_prefix, out_pattern = binding_cmd_prefix(cfg, pattern)
-            cmd = cmd_prefix + [transport, str(size)]
             timeout = int(env_first("PERF_SINGLE_TIMEOUT_SECONDS") or "120")
-            sampled = run_command_with_metrics(cmd, env, timeout)
-            outcome = parse_run_outcome(pattern, out_pattern, transport, size, sampled)
+            if (
+                pattern in STREAM_SINGLE_PATTERNS
+                and supports_split_multi(cfg.binding)
+                and cfg.binding != "dotnet"
+            ):
+                server_pattern = SINGLE_TO_MULTI_STREAM_PATTERN.get(pattern, pattern)
+                server_cmd = binding_multi_role_command(
+                    cfg,
+                    "server",
+                    server_pattern,
+                    transport,
+                    size=size,
+                )
+                server_cap = spawn_capture_process(server_cmd, env)
+                ready_ok, endpoint = wait_for_server_ready(
+                    server_cap, cfg.multi_server_ready_timeout_ms
+                )
+                if not ready_ok or not endpoint:
+                    if server_cap.poll() is None:
+                        server_cap.terminate()
+                        try:
+                            server_cap.wait(timeout=0.5)
+                        except subprocess.TimeoutExpired:
+                            server_cap.kill()
+                    server_cap.join_readers()
+                    server_stdout = server_cap.stdout_text()
+                    status_token = detect_status_token(server_stdout)
+                    if status_token == "unsupported":
+                        outcome = RunOutcome(
+                            status="unsupported",
+                            metrics={},
+                            reason="unsupported",
+                        )
+                    elif status_token == "skip":
+                        outcome = RunOutcome(status="skip", metrics={}, reason="skip")
+                    else:
+                        outcome = RunOutcome(
+                            status="fail",
+                            metrics={},
+                            reason="server_ready_timeout",
+                        )
+                    if status_token == "unsupported":
+                        warnings.append(
+                            f"server reported unsupported before READY: pattern={pattern} transport={transport} size={size}"
+                        )
+                    elif status_token == "skip":
+                        warnings.append(
+                            f"server reported skip before READY: pattern={pattern} transport={transport} size={size}"
+                        )
+                    else:
+                        warnings.append(
+                            f"server READY timeout: pattern={pattern} transport={transport} size={size}"
+                        )
+                else:
+                    client_cmd = stream_shared_client_cmd(
+                        cfg=cfg,
+                        env=env,
+                        pattern=pattern,
+                        transport=transport,
+                        size=size,
+                        endpoint=endpoint,
+                        suite="single",
+                    )
+                    sampled = run_command_with_metrics(client_cmd, env, timeout)
+                    outcome = parse_run_outcome(
+                        pattern,
+                        pattern,
+                        transport,
+                        size,
+                        sampled,
+                        process_role="single",
+                    )
+
+                    server_shutdown_timeout = max(
+                        1, cfg.multi_server_shutdown_timeout_ms
+                    ) / 1000.0
+                    server_timed_out = False
+                    try:
+                        server_cap.wait(timeout=server_shutdown_timeout)
+                    except subprocess.TimeoutExpired:
+                        server_timed_out = True
+                        server_cap.terminate()
+                        try:
+                            server_cap.wait(timeout=0.5)
+                        except subprocess.TimeoutExpired:
+                            server_cap.kill()
+                    server_cap.join_readers()
+                    if server_timed_out and outcome.status == "success":
+                        outcome = RunOutcome(
+                            status="fail",
+                            metrics=outcome.metrics,
+                            reason="server_shutdown_timeout",
+                        )
+                    elif (
+                        server_cap.returncode is not None
+                        and server_cap.returncode != 0
+                        and outcome.status == "success"
+                    ):
+                        outcome = RunOutcome(
+                            status="fail",
+                            metrics=outcome.metrics,
+                            reason=f"server_non_zero_exit_{server_cap.returncode}",
+                        )
+            else:
+                cmd_prefix, out_pattern = binding_cmd_prefix(cfg, pattern)
+                cmd = cmd_prefix + [transport, str(size)]
+                sampled = run_command_with_metrics(cmd, env, timeout)
+                outcome = parse_run_outcome(
+                    pattern, out_pattern, transport, size, sampled
+                )
             outcomes.append(outcome)
             if outcome.warnings:
                 warnings.extend(outcome.warnings)
@@ -2163,14 +2479,25 @@ def run_multi_pattern_transport(
                         )
                     continue
 
-                client_cmd = binding_multi_role_command(
-                    cfg,
-                    "client",
-                    pattern,
-                    transport,
-                    size=size,
-                    endpoint=endpoint,
-                )
+                if pattern in MULTI_STREAM_PATTERNS and cfg.binding != "dotnet":
+                    client_cmd = stream_shared_client_cmd(
+                        cfg=cfg,
+                        env=env,
+                        pattern=pattern,
+                        transport=transport,
+                        size=size,
+                        endpoint=endpoint,
+                        suite="multi",
+                    )
+                else:
+                    client_cmd = binding_multi_role_command(
+                        cfg,
+                        "client",
+                        pattern,
+                        transport,
+                        size=size,
+                        endpoint=endpoint,
+                    )
                 sampled = run_command_with_metrics(client_cmd, env, timeout)
                 outcome = parse_run_outcome(
                     pattern,

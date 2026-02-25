@@ -49,16 +49,17 @@ if(ZLINK_CPP_BUILD_BENCHMARKS)
 
   find_package(Threads REQUIRED)
   add_executable(cpp_pair_bench
-    perf/single/pair_bench.cpp
-    perf/single/bench_pattern_pair.cpp
-    perf/single/bench_pattern_pubsub.cpp
-    perf/single/bench_pattern_dealer_dealer.cpp
-    perf/single/bench_pattern_dealer_router.cpp
-    perf/single/bench_pattern_router_router.cpp
-    perf/single/bench_pattern_router_router_poll.cpp
-    perf/single/bench_pattern_stream.cpp
-    perf/single/bench_pattern_gateway.cpp
-    perf/single/bench_pattern_spot.cpp
+    perf/single/perf_main.cpp
+    perf/single/perf_pair.cpp
+    perf/single/perf_pubsub.cpp
+    perf/single/perf_dealer_dealer.cpp
+    perf/single/perf_dealer_router.cpp
+    perf/single/perf_router_router.cpp
+    perf/single/perf_router_router_poll.cpp
+    perf/single/perf_stream.cpp
+    perf/single/perf_stream_callback.cpp
+    perf/single/perf_gateway.cpp
+    perf/single/perf_spot.cpp
   )
   target_link_libraries(cpp_pair_bench PRIVATE libzlink zlink-cpp Threads::Threads)
   target_compile_features(cpp_pair_bench PRIVATE cxx_std_17)

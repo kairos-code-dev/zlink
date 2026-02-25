@@ -1,4 +1,5 @@
 #include "../common/bench_common.hpp"
+#include "perf_stream_common.hpp"
 #include <zlink.h>
 #include <atomic>
 #include <condition_variable>
@@ -440,56 +441,14 @@ bool wait_monitor_ready_count(void *monitor_socket,
     return ready >= expected_ready;
 }
 
-bool send_stream_msg(void *socket,
-                     const std::vector<unsigned char> &routing_id,
-                     const void *data,
-                     size_t len)
-{
-    if (routing_id.empty())
-        return false;
-    if (zlink_send(socket, routing_id.data(), routing_id.size(), ZLINK_SNDMORE)
-        < 0)
-        return false;
-    return zlink_send(socket, data, len, 0) >= 0;
-}
-
-bool recv_stream_msg(void *socket,
-                     std::vector<unsigned char> *routing_id,
-                     void *buf,
-                     size_t buf_size)
-{
-    zlink_msg_t id_frame;
-    zlink_msg_init(&id_frame);
-    const int id_len = zlink_msg_recv(&id_frame, socket, 0);
-    if (id_len <= 0) {
-        zlink_msg_close(&id_frame);
-        return false;
-    }
-
-    int more = 0;
-    size_t more_size = sizeof(more);
-    if (zlink_getsockopt(socket, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
-        zlink_msg_close(&id_frame);
-        return false;
-    }
-
-    if (routing_id) {
-        routing_id->assign(
-          static_cast<const unsigned char *>(zlink_msg_data(&id_frame)),
-          static_cast<const unsigned char *>(zlink_msg_data(&id_frame)) + id_len);
-    }
-    zlink_msg_close(&id_frame);
-
-    return zlink_recv(socket, buf, buf_size, 0) >= 0;
-}
-
 bool send_stream_frame(void *socket_,
                        const std::vector<unsigned char> &routing_id,
                        const std::vector<char> &payload)
 {
     if (routing_id.empty())
         return false;
-    if (zlink_send(socket_, routing_id.data(), routing_id.size(), ZLINK_SNDMORE) < 0)
+    if (zlink_send(socket_, routing_id.data(), routing_id.size(), ZLINK_SNDMORE)
+        < 0)
         return false;
 
     const uint32_t len = htonl(static_cast<uint32_t>(payload.size()));
@@ -810,20 +769,11 @@ void run_stream_tcp_raw(size_t msg_size, int msg_count, const std::string &lib_n
         return;
     }
 
-    const int recv_count = received.load();
-    const int effective = sent < recv_count ? sent : recv_count;
-    if (effective <= 0) {
-        print_result(lib_name, "STREAM", "tcp", msg_size, 0.0, latency);
-        cleanup();
-        return;
-    }
-
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? static_cast<double>(effective) / (elapsed_ms / 1000.0)
-                     : 0.0;
-
-    print_result(lib_name, "STREAM", "tcp", msg_size, throughput, latency);
+    stream_single_common::print_stream_metrics(
+      lib_name, "STREAM", "tcp", msg_size,
+      stream_single_common::stream_metrics_t(sent, received.load(),
+                                             sw.elapsed_ms()),
+      latency);
     cleanup();
 }
 
@@ -944,7 +894,7 @@ void run_stream_zlink_client(const std::string &transport,
     server_client_id = packet.routing_id;
 
     std::vector<char> send_buf(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size > 256 ? msg_size : 256);
+    std::vector<char> recv_buf;
 
     const int warmup_count =
       resolve_bench_count("BENCH_WARMUP_COUNT", ws_family ? 100 : 1000);
@@ -1011,18 +961,10 @@ void run_stream_zlink_client(const std::string &transport,
         return;
     }
 
-    const int effective = sent < recv_count ? sent : recv_count;
-    if (effective <= 0) {
-        print_result(lib_name, "STREAM", transport, msg_size, 0.0, latency);
-        stop_dispatch();
-        return;
-    }
-
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
-
-    print_result(lib_name, "STREAM", transport, msg_size, throughput, latency);
+    stream_single_common::print_stream_metrics(
+      lib_name, "STREAM", transport, msg_size,
+      stream_single_common::stream_metrics_t(sent, recv_count, sw.elapsed_ms()),
+      latency);
     if (ws_family)
         settle();
     stop_dispatch();

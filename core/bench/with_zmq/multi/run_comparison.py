@@ -908,7 +908,7 @@ def parse_args():
         "Env:\n"
         "  BENCH_TRANSPORTS=tcp\n"
         "  BENCH_MSG_SIZES=1024\n"
-        "  BENCH_MULTI_CLIENTS=100\n"
+        "  BENCH_MULTI_CLIENTS=1000\n"
         "  BENCH_MULTI_INFLIGHT=30  (per-client, global=clients*inflight)\n"
         "  BENCH_MULTI_HWM=100000\n"
         "  BENCH_MULTI_SNDTIMEO_MS=5000\n"

@@ -151,9 +151,9 @@ for pattern in "${PATTERNS[@]}"; do
   pattern_clients="${MULTI_CLIENTS:-}"
   if [[ -z "${pattern_clients}" && "${HAS_EXPLICIT_CLIENTS}" -eq 0 ]]; then
     if [[ "${pattern^^}" == "MULTI_STREAM" ]]; then
-      pattern_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+      pattern_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
     else
-      pattern_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-100}"
+      pattern_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-1000}"
     fi
   fi
 

@@ -111,6 +111,7 @@ def parse_args():
         "Usage: run_binding_comparison.py [PATTERN] [options]\n\n"
         "Options:\n"
         "  --binding NAME          binding name (python|node|dotnet|java|cpp)\n"
+        "  --legacy                acknowledge legacy/non-policy runner usage\n"
         "  --refresh-baseline      Refresh zlink(core) cache\n"
         "  --bindings-only         Run only binding benchmarks\n"
         "  --runs N                Iterations per configuration (default: 1)\n"
@@ -126,6 +127,7 @@ def parse_args():
     pin_cpu = False
     allow_core_fallback = False
     binding = ""
+    legacy = False
 
     i = 1
     while i < len(sys.argv):
@@ -133,7 +135,9 @@ def parse_args():
         if arg in ("-h", "--help"):
             print(usage)
             sys.exit(0)
-        if arg == "--refresh-baseline":
+        if arg == "--legacy":
+            legacy = True
+        elif arg == "--refresh-baseline":
             refresh = True
         elif arg == "--bindings-only":
             bindings_only = True
@@ -169,6 +173,13 @@ def parse_args():
     if not binding:
         print("Error: --binding is required", file=sys.stderr)
         sys.exit(1)
+    if not legacy:
+        print(
+            "Error: run_binding_comparison.py is deprecated and non-policy. "
+            "Pass --legacy to acknowledge legacy usage.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     if num_runs < 1:
         print("Error: --runs must be >= 1", file=sys.stderr)
         sys.exit(1)

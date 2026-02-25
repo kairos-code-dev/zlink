@@ -42,9 +42,18 @@ inline void print_result(const std::string &lib_type,
                          double throughput,
                          double latency)
 {
+    const bool is_echo_pattern =
+      pattern == "MULTI_DEALER_DEALER" || pattern == "MULTI_DEALER_ROUTER"
+      || pattern == "MULTI_ROUTER_ROUTER";
+    const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
+    const double bandwidth_mb_s =
+      (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",throughput," << std::fixed
               << std::setprecision(2) << throughput << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
+              << "," << size << ",bandwidth," << std::fixed
+              << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport
               << "," << size << ",latency," << std::fixed
               << std::setprecision(2) << latency << std::endl;
@@ -194,12 +203,6 @@ inline int bench_monitor_hwm()
 inline bool open_connect_monitor(void *socket_, connect_monitor_t &out_)
 {
     int events = ZLINK_EVENT_CONNECTION_READY;
-#ifdef ZLINK_EVENT_CONNECTED
-    events |= ZLINK_EVENT_CONNECTED;
-#endif
-#ifdef ZLINK_EVENT_ACCEPTED
-    events |= ZLINK_EVENT_ACCEPTED;
-#endif
     void *monitor = zlink_socket_monitor_open(socket_, events);
     if (!monitor)
         return false;
@@ -261,14 +264,7 @@ inline int poll_connect_ready_count(connect_monitor_t &monitor_)
         zlink_monitor_event_t ev;
         if (zlink_monitor_recv(monitor_.monitor, &ev, ZLINK_DONTWAIT) != 0)
             break;
-        if (ev.event == ZLINK_EVENT_CONNECTION_READY
-#ifdef ZLINK_EVENT_CONNECTED
-            || ev.event == ZLINK_EVENT_CONNECTED
-#endif
-#ifdef ZLINK_EVENT_ACCEPTED
-            || ev.event == ZLINK_EVENT_ACCEPTED
-#endif
-        ) {
+        if (ev.event == ZLINK_EVENT_CONNECTION_READY) {
             ++ready;
         }
     }
@@ -281,15 +277,37 @@ inline bool wait_connect_ready_count(connect_monitor_t &monitor_,
 {
     if (expected_ready_ == 0)
         return true;
+    if (!monitor_.monitor)
+        return false;
 
-    size_t ready = 0;
+    size_t ready = static_cast<size_t>(poll_connect_ready_count(monitor_));
+    if (ready >= expected_ready_)
+        return true;
+
+    const int bounded_timeout = timeout_ms_ > 0 ? timeout_ms_ : 0;
     const auto deadline = std::chrono::steady_clock::now()
-                          + std::chrono::milliseconds(std::max(0, timeout_ms_));
-    while (std::chrono::steady_clock::now() < deadline && ready < expected_ready_) {
+                          + std::chrono::milliseconds(bounded_timeout);
+    while (ready < expected_ready_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline)
+            break;
+
+        const long remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 deadline - now)
+                                 .count();
+        zlink_pollitem_t item[] = {{monitor_.monitor, 0, ZLINK_POLLIN, 0}};
+        const int rc = zlink_poll(item, 1, remain_ms > 0 ? remain_ms : 0);
+        if (rc < 0) {
+            if (zlink_errno() == EINTR)
+                continue;
+            return false;
+        }
+        if (rc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
+            continue;
+
         ready += static_cast<size_t>(poll_connect_ready_count(monitor_));
         if (ready >= expected_ready_)
             return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     return ready >= expected_ready_;
 }

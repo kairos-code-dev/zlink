@@ -71,6 +71,7 @@ RESULTS=1
 RESULTS_DIR=""
 RESULTS_TAG=""
 BINDINGS_CSV="${BINDING:-DEFAULT}"
+LEGACY_MODE=0
 
 usage() {
   cat <<USAGE
@@ -102,6 +103,7 @@ Options:
   --no-reuse-build      Force clean configure/build of core benchmark binaries.
   --pin-cpu             Pin CPU core during benchmarks (Linux taskset).
   --allow-core-fallback Allow core fallback if binding runner returns no RESULT rows.
+  --legacy              Acknowledge this script is deprecated and non-policy.
   --io-threads N        Set BENCH_IO_THREADS for the benchmark run.
   --msg-sizes LIST      Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
   --size N              Convenience alias for --msg-sizes N.
@@ -129,6 +131,7 @@ while [[ $# -gt 0 ]]; do
     --bindings-only) BINDINGS_ONLY=1 ;;
     --pin-cpu) PIN_CPU=1 ;;
     --allow-core-fallback) ALLOW_CORE_FALLBACK=1 ;;
+    --legacy) LEGACY_MODE=1 ;;
     --io-threads) BENCH_IO_THREADS="${2:-}"; shift ;;
     --msg-sizes) BENCH_MSG_SIZES="${2:-}"; shift ;;
     --size) BENCH_MSG_SIZES="${2:-}"; shift ;;
@@ -150,6 +153,17 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "${LEGACY_MODE}" -ne 1 ]]; then
+  cat >&2 <<'MSG'
+bindings/bench/common/run_benchmarks.sh is deprecated and not perf-policy compliant.
+Use policy runners instead:
+  bindings/<binding>/perf/single/run_benchmarks.sh
+  bindings/<binding>/perf/multi/run_benchmarks.sh
+If you still need this legacy compare flow, re-run with --legacy.
+MSG
+  exit 2
+fi
 
 declare -a SELECTED_BINDINGS=()
 if [[ -z "${BINDINGS_CSV}" || "${BINDINGS_CSV^^}" == "DEFAULT" ]]; then
@@ -315,7 +329,7 @@ for binding in "${SELECTED_BINDINGS[@]}"; do
 
   "${SCRIPT_DIR}/build_binding_runner.sh" "${binding}" "${ROOT_DIR}"
 
-  RUN_CMD=("${PYTHON_BIN[@]}" "${SCRIPT_DIR}/run_binding_comparison.py" "${PATTERN}" --binding "${binding}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
+  RUN_CMD=("${PYTHON_BIN[@]}" "${SCRIPT_DIR}/run_binding_comparison.py" --legacy "${PATTERN}" --binding "${binding}" --build-dir "${BUILD_DIR}" --runs "${RUNS}")
   RUN_ENV=()
   [[ -n "${BENCH_IO_THREADS}" ]] && RUN_ENV+=(BENCH_IO_THREADS="${BENCH_IO_THREADS}")
   [[ -n "${BENCH_MSG_SIZES}" ]] && RUN_ENV+=(BENCH_MSG_SIZES="${BENCH_MSG_SIZES}")

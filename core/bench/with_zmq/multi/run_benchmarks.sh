@@ -454,9 +454,9 @@ fi
 effective_clients="${MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}"
 if [[ -z "${effective_clients}" ]]; then
   if [[ "${PATTERN_INTERNAL}" == "MULTI_STREAM" ]]; then
-    effective_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+    effective_clients="${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
   else
-    effective_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-100}"
+    effective_clients="${BENCH_MULTI_DEFAULT_CLIENTS:-1000}"
   fi
 fi
 effective_inflight="${MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-30}}"

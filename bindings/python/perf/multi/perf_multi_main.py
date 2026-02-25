@@ -351,8 +351,7 @@ def run_client_stream_common(pattern: str, transport: str, endpoint: str, size: 
     warmup_s = max(0, parse_env("PERF_MULTI_WARMUP_SECONDS", 3))
     duration_s = max(1, parse_env("PERF_MULTI_DURATION_SECONDS", 5))
     lat_count = max(1, parse_env("PERF_LAT_COUNT", 200))
-    clients = max(1, parse_env("PERF_MULTI_CLIENTS", 100))
-    inflight = max(1, parse_env("PERF_MULTI_INFLIGHT", 1))
+    clients = max(1, parse_env("PERF_MULTI_CLIENTS", 1000))
     io_threads = max(1, parse_env("PERF_IO_THREADS", 4))
     latency_sample_rate = max(1, parse_env("PERF_MULTI_LATENCY_SAMPLE_RATE", 1))
 
@@ -376,8 +375,6 @@ def run_client_stream_common(pattern: str, transport: str, endpoint: str, size: 
             str(duration_s),
             "--lat-count",
             str(lat_count),
-            "--inflight",
-            str(inflight),
             "--io-threads",
             str(io_threads),
             "--latency-sample-rate",

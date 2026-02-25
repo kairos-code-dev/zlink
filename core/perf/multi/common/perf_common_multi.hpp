@@ -200,18 +200,10 @@ inline int resolve_multi_default_hwm ()
     return 100000;
 }
 
-inline bool is_multi_stream_variant_pattern (const char *pattern)
-{
-    if (!pattern || !*pattern)
-        return false;
-    return std::strcmp (pattern, "MULTI_STREAM") == 0
-           || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-           || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
-}
-
 inline int resolve_multi_default_clients (const char *pattern)
 {
-    return is_multi_stream_variant_pattern (pattern) ? 10000 : 100;
+    (void) pattern;
+    return 1000;
 }
 
 inline int resolve_multi_default_inflight ()

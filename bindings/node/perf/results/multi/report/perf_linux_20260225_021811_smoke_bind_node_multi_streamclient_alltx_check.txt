@@ -1,0 +1,21 @@
+## PATTERN: MULTI_STREAM (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      8.98 Kops/s |      1.1 MB/s |     57.64 us |    1.4 |     55.0 |    1.4 |     59.0 |
+
+### Transport: tls
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+
+### Transport: ws
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      8.10 Kops/s |      1.0 MB/s |     60.82 us |    1.4 |     55.8 |    1.4 |     59.1 |
+
+### Transport: wss
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |

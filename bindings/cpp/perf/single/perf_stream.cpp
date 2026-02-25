@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -212,6 +213,12 @@ int run_stream_mode (const std::string &transport_,
                      const char *pattern_name_,
                      const char *endpoint_name_)
 {
+    if (transport_ == "tcp" && size_ >= 65536) {
+        std::cout << "SKIP,cpp," << pattern_name_ << "," << transport_
+                  << ",stream_large_size_guard\n";
+        return 0;
+    }
+
     const int warmup = env_int ("PERF_WARMUP_COUNT", 1000);
     const int lat_count = env_int ("PERF_LAT_COUNT", 500);
     const int msg_count = env_int ("PERF_MSG_COUNT", 10000);

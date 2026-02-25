@@ -44,7 +44,7 @@ inline multi_bench_settings_t resolve_multi_bench_settings()
 {
     multi_bench_settings_t settings;
     settings.clients =
-      static_cast<size_t>(resolve_multi_int_env("BENCH_MULTI_CLIENTS", 100, 1));
+      static_cast<size_t>(resolve_multi_int_env("BENCH_MULTI_CLIENTS", 1000, 1));
     settings.inflight = resolve_multi_int_env("BENCH_MULTI_INFLIGHT", 30, 1);
     settings.connect_concurrency =
       resolve_multi_int_env("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1);

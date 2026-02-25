@@ -167,6 +167,7 @@ latency 예시: (14.0 - 12.0) / 12.0 × 100 = +16.67%
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
 - STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
+- **UNSUPPORTED 오용 금지**: §10.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.3](PERF_POLICY.md)을 참조한다.
 
 ### 3.2 유효성 규칙
 
@@ -205,6 +206,10 @@ for pattern in [PAIR, PUBSUB, STREAM, ...]:
 - Observe/Trend 모드에서는 임계치 초과가 종료 코드에 영향을 주지 않는다 (항상 0 또는 1).
 - partial 상태 자체는 종료 코드 0이다 (`--save` 미사용 시). `--save`와 함께 partial이면 종료 코드 1.
 - 여러 오류 조건이 동시에 발생하면 가장 높은 종료 코드를 반환한다.
+
+### 3.5 실패 처리: Retry 금지
+
+실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
 ---
 
@@ -849,8 +854,8 @@ PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, S
 
 #### STREAM 계열 패턴
 
-| 패턴 | 수신 방식 | 소스 파일 | 바이너리 |
-|------|-----------|-----------|----------|
+| 패턴 | server 수신 방식 | 소스 파일 | 바이너리 |
+|------|-----------------|-----------|----------|
 | STREAM | 기본 recv | `perf_stream.cpp` | `perf_stream` |
 | STREAM_CALLBACK | callback dispatch | `perf_stream_callback.cpp` | `perf_stream_callback` |
 | STREAM_LEN32BE | callback + len32be framing | `perf_stream_len32be.cpp` | `perf_stream_len32be` |
@@ -859,6 +864,7 @@ PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, S
 - bindings는 동일 동작을 보장하는 범위에서 단일 runner 내부의 패턴별 분기 구현을 허용한다.
 - 소스 경로: `perf/single/current/`
 - 세 패턴은 동일한 transport, size 설정을 공유한다.
+- **Wire protocol**: client는 `[4B length (big-endian)][payload]` (len32be framing)으로 통일한다. server 수신 방식만 패턴별로 다르다. 상세는 [PERF_POLICY.md § 2.0.3 Wire Protocol](PERF_POLICY.md)을 참조한다.
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - STREAM 계열의 서버는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등으로 대체할 수 없다.
 - 클라이언트는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.

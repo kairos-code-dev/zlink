@@ -1,0 +1,41 @@
+## PATTERN: MULTI_DEALER_DEALER (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      6.36 Kmsg/s |      0.4 MB/s |     78.29 us |    1.8 |     73.2 |    1.7 |   1536.0 |
+| 256B |      5.85 Kmsg/s |      1.5 MB/s |     75.99 us |    1.9 |     72.7 |    1.8 |   1536.0 |
+| 1024B |      8.77 Kmsg/s |      9.0 MB/s |     52.80 us |    1.7 |     71.5 |    1.6 |   1536.0 |
+| 65536B |      5.75 Kmsg/s |    377.0 MB/s |     76.83 us |    2.0 |     75.5 |    2.0 |   1536.0 |
+| 131072B |      4.42 Kmsg/s |    579.2 MB/s |    103.82 us |    2.2 |     73.1 |    2.2 |   1536.0 |
+| 262144B |      3.68 Kmsg/s |    965.9 MB/s |    136.80 us |    2.5 |     76.3 |    2.4 |   1536.0 |
+
+### Transport: tls
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 256B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 1024B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 65536B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 131072B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 262144B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+
+### Transport: ws
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      6.10 Kmsg/s |      0.4 MB/s |     93.42 us |    2.0 |     74.3 |    1.8 |   1536.0 |
+| 256B |      5.89 Kmsg/s |      1.5 MB/s |     84.61 us |    1.9 |     74.1 |    1.8 |   1536.0 |
+| 1024B |      5.80 Kmsg/s |      5.9 MB/s |     62.98 us |    1.9 |     74.0 |    1.8 |   1536.0 |
+| 65536B |      3.83 Kmsg/s |    250.7 MB/s |    134.70 us |    2.3 |     74.3 |    2.1 |   1536.0 |
+| 131072B |      3.17 Kmsg/s |    415.1 MB/s |    171.57 us |    2.5 |     74.9 |    2.4 |   1536.0 |
+| 262144B |      2.52 Kmsg/s |    660.5 MB/s |    199.61 us |    2.7 |     80.4 |    2.6 |   1536.0 |
+
+### Transport: wss
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 256B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 1024B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 65536B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 131072B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| 262144B | N/A | N/A | N/A | N/A | N/A | N/A | N/A |

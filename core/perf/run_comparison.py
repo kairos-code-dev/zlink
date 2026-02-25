@@ -858,7 +858,7 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 def multi_pattern_default_clients(pattern_name, transport=None):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        base = max(1, parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 10000))
+        base = max(1, parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 1000))
         tr = (transport or "").strip().lower()
         if tr in ("tls", "ws", "wss"):
             non_tcp_cap = max(
@@ -866,7 +866,7 @@ def multi_pattern_default_clients(pattern_name, transport=None):
             )
             return min(base, non_tcp_cap)
         return base
-    return max(1, parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 100))
+    return max(1, parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 1000))
 
 
 def multi_pattern_default_drain_ms(pattern_name):
@@ -2300,11 +2300,11 @@ def resolve_clients_meta(selected_patterns):
 
     stream_default = parse_env_int(
         "PERF_MULTI_DEFAULT_STREAM_CLIENTS",
-        parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 10000),
+        parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 1000),
     )
     general_default = parse_env_int(
         "PERF_MULTI_DEFAULT_CLIENTS",
-        parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 100),
+        parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 1000),
     )
     if len(selected_patterns) == 1 and selected_patterns[0] in STREAM_VARIANT_PATTERNS:
         return str(stream_default)

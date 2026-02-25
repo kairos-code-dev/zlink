@@ -4,46 +4,54 @@ param(
     [string]$OutputFile = "",
     [int]$Runs = 1,
     [switch]$ReuseBuild,
-    [switch]$Result = $true,
+    [switch]$Result,
+    [switch]$Save,
+    [string]$SaveVersion = "",
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
     [switch]$PinCpu,
+    [ValidateSet("observe", "trend", "gate")]
+    [string]$Mode = "observe",
+    [string]$BaselineFile = "",
+    [int]$RollingN = 10,
     [switch]$Help
 )
 
+$ErrorActionPreference = "Stop"
+
 function Show-Usage {
     Write-Host @"
-Usage: core\bench\benchwithzlink\run_benchmarks.ps1 [options]
+Usage: core\perf\run_benchmarks.ps1 [options]
 
-Measure current zlink performance.
-Note: PATTERN=ALL includes STREAM by default.
-
-IMPORTANT: Use PowerShell parameter syntax with '-', not bash '--' syntax.
+Measure current zlink single-pattern performance.
 
 Options:
-  -Help                Show this help.
-  -Pattern NAME        Benchmark pattern (e.g., PAIR, PUBSUB, DEALER_DEALER, ALL) [default: ALL].
-  -BuildDir PATH       Build directory (default: core/build/windows-x64).
-  -OutputFile PATH     Tee results to a file.
-  -Result              Write results under core\bench\benchwithzlink\results\YYYYMMDD\.
-  -ResultsDir PATH     Override results root directory.
-  -ResultsTag NAME     Optional tag appended to the results filename.
-  -Runs N              Iterations per configuration (default: 1).
-  -ReuseBuild          Reuse existing build dir without re-running CMake.
-  -IoThreads N         Set BENCH_IO_THREADS for the benchmark run.
-  -MsgSizes LIST       Comma-separated message sizes (e.g., 1024 or 64,1024,65536).
-  -Transports LIST     Comma-separated transports (e.g., tcp,tls,ws,wss).
-  -PinCpu              Pin CPU core during benchmarks (Linux taskset).
+  -Help                        Show this help.
+  -Pattern NAME                Pattern list (comma-separated) or ALL.
+  -BuildDir PATH               Build directory (default: core\build\windows-x64).
+  -OutputFile PATH             Tee console logs to a file.
+  -Result                      Save report result file under results\single\report\ (complete only).
+  -Save                        Save baseline under results\single\baseline\ (complete only, timestamp version).
+  -SaveVersion VERSION         Baseline version to use with -Save (e.g., v1.5.0).
+  -ResultsDir PATH             Override result root directory.
+  -ResultsTag NAME             Optional tag in saved result filename.
+  -Runs N                      Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
+  -ReuseBuild                  Reuse existing build dir without cleaning.
+  -IoThreads N                 Set PERF_IO_THREADS.
+  -MsgSizes LIST               Comma-separated message sizes.
+  -Transports LIST             Comma-separated transports.
+  -PinCpu                      Enable PERF_TASKSET=1.
+  -Mode MODE                   observe|trend|gate (default: observe).
+  -BaselineFile PATH           Baseline file for gate mode.
+  -RollingN N                  Rolling baseline window for trend mode (default: 10).
 
-Examples:
-  .\core\bench\benchwithzlink\run_benchmarks.ps1
-  .\core\bench\benchwithzlink\run_benchmarks.ps1 -Pattern PAIR
-  .\core\bench\benchwithzlink\run_benchmarks.ps1 -Pattern DEALER_DEALER -Runs 5
-  .\core\bench\benchwithzlink\run_benchmarks.ps1 -Pattern ALL -Result
-  .\core\bench\benchwithzlink\run_benchmarks.ps1 -Runs 10 -Result -ResultsTag "nightly"
+Notes:
+  - tmp result is always saved under results\single\tmp\.
+  - -OutputFile and -Result can be used together.
+  - -save-baseline is removed. Use -Save [-SaveVersion VERSION].
 "@
 }
 
@@ -52,61 +60,53 @@ if ($Help) {
     exit 0
 }
 
-# Check for common mistakes (bash-style parameters)
-if ($Pattern -like "--*") {
-    Write-Error "Invalid parameter syntax detected: '$Pattern'"
-    Write-Host ""
-    Write-Host "PowerShell uses '-Parameter' syntax, not '--parameter' (bash style)." -ForegroundColor Yellow
-    Write-Host "Example: Use '-Runs 10' instead of '--runs 10'" -ForegroundColor Yellow
-    Write-Host ""
-    Show-Usage
-    exit 1
+$RollingNExplicit = $PSBoundParameters.ContainsKey("RollingN")
+if (-not $RollingNExplicit) {
+    $rollingEnv = $env:PERF_ROLLING_N
+    if (-not $rollingEnv) {
+        $rollingEnv = $env:BENCH_ROLLING_N
+    }
+    if ($rollingEnv) {
+        $parsedRolling = 0
+        if ([int]::TryParse($rollingEnv, [ref]$parsedRolling) -and $parsedRolling -ge 1) {
+            $RollingN = $parsedRolling
+        }
+    }
 }
-
-# Validate parameters
-if ($Runs -lt 1) {
-    Write-Error "Runs must be a positive integer."
-    Show-Usage
-    exit 1
+if ($RollingN -lt 1) {
+    throw "RollingN must be >= 1."
 }
-
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') {
-    Write-Error "IoThreads must be a positive integer."
-    Show-Usage
-    exit 1
+    throw "IoThreads must be a non-negative integer."
 }
-
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
-    Write-Error "MsgSizes must be a comma-separated list of integers."
-    Show-Usage
-    exit 1
+    throw "MsgSizes must be a comma-separated list of integers."
 }
-
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') {
-    Write-Error "Transports must be a comma-separated list of names."
-    Show-Usage
-    exit 1
+    throw "Transports must be a comma-separated list of names."
+}
+if ($SaveVersion) {
+    $Save = $true
+}
+if (-not $ResultsTag) {
+    $ResultsTag = if ($env:PERF_RESULTS_TAG) { $env:PERF_RESULTS_TAG } else { $env:BENCH_RESULTS_TAG }
+}
+$AllowMulti = (($env:PERF_ALLOW_MULTI -eq "1") -or ($env:BENCH_ALLOW_MULTI -eq "1"))
+$MultiPatternCount = 0
+$SinglePatternCount = 0
+
+$RunsExplicit = $PSBoundParameters.ContainsKey("Runs")
+if (-not $RunsExplicit) {
+    switch ($Mode) {
+        "observe" { $Runs = 1 }
+        "trend" { $Runs = 3 }
+        "gate" { $Runs = 5 }
+    }
+}
+if ($Runs -lt 1) {
+    throw "Runs must be >= 1."
 }
 
-# Results save logic
-if ($Result) {
-    if ($OutputFile) {
-        Write-Error "Error: -Result cannot be used with -OutputFile."
-        exit 1
-    }
-    if (-not $ResultsDir) {
-        $ResultsDir = Join-Path $PSScriptRoot "results"
-    }
-    $DateDir = Get-Date -Format "yyyyMMdd"
-    $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $Name = "bench_windows_${Pattern}_${Timestamp}"
-    if ($ResultsTag) {
-        $Name = "${Name}_${ResultsTag}"
-    }
-    $OutputFile = Join-Path (Join-Path $ResultsDir $DateDir) "${Name}.txt"
-}
-
-# Determine script and repo root directories
 $ScriptDir = $PSScriptRoot
 $RootDir = $null
 $ProbeDir = $ScriptDir
@@ -116,40 +116,133 @@ while ($ProbeDir) {
         break
     }
     $Parent = Split-Path $ProbeDir -Parent
-    if ($Parent -eq $ProbeDir) {
-        break
-    }
+    if ($Parent -eq $ProbeDir) { break }
     $ProbeDir = $Parent
 }
 if (-not $RootDir) {
-    # Fallback: assume repo root is two levels above script dir
     $RootDir = Split-Path (Split-Path $ScriptDir -Parent) -Parent
-}
-
-# Set default build directory
-if (-not $BuildDir) {
-    $BuildDir = Join-Path $RootDir "core\build\windows-x64"
-}
-
-# Convert to absolute paths
-try {
-    $BuildDir = [System.IO.Path]::GetFullPath($BuildDir)
-} catch {
-    # Path doesn't exist yet, which is okay for build dir
 }
 $RootDir = [System.IO.Path]::GetFullPath($RootDir)
 
-# Validate build directory is inside repo
-if (-not $BuildDir.StartsWith($RootDir)) {
-    Write-Error "Build directory must be inside repo root: $RootDir"
-    exit 1
+if (-not $BuildDir) {
+    $BuildDir = Join-Path $RootDir "core\build\windows-x64"
+}
+$BuildDir = [System.IO.Path]::GetFullPath($BuildDir)
+if (-not $BuildDir.StartsWith($RootDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Build directory must be inside repo root: $RootDir"
 }
 
-# Build or reuse
-function Resolve-BenchmarkBinDir {
+$BenchComparisonScript = if ($AllowMulti) {
+    Join-Path $ScriptDir "run_comparison.py"
+} else {
+    Join-Path $ScriptDir "single\run_comparison.py"
+}
+$BenchComparisonScript = [System.IO.Path]::GetFullPath($BenchComparisonScript)
+if (-not (Test-Path $BenchComparisonScript)) {
+    throw "comparison script not found: $BenchComparisonScript"
+}
+
+if (-not $Pattern) {
+    throw "Pattern name is required."
+}
+
+$PatternList = @()
+if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
+    $PatternList = @("ALL")
+    $SinglePatternCount = 1
+} else {
+    $PatternList = $Pattern.Split(",") | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ -ne "" }
+    if ($PatternList.Count -eq 0) {
+        throw "Error: no valid pattern specified."
+    }
+    foreach ($p in $PatternList) {
+        if ($p.StartsWith("MULTI_")) {
+            $MultiPatternCount += 1
+            if (-not $AllowMulti) {
+                throw "run_benchmarks.ps1 is single-pattern mode only. Use run_benchmarks_multi.ps1 for MULTI_* patterns."
+            }
+        } else {
+            $SinglePatternCount += 1
+        }
+    }
+    $Pattern = ($PatternList -join ",")
+}
+
+if ($MultiPatternCount -gt 0 -and $SinglePatternCount -gt 0) {
+    throw "cannot mix single and multi patterns in one run."
+}
+
+$NeedResultsDir = $true
+if ($NeedResultsDir -and -not $ResultsDir) {
+    $ResultsDir = Join-Path $ScriptDir "results"
+}
+if ($ResultsDir) {
+    $ResultsDir = [System.IO.Path]::GetFullPath($ResultsDir)
+}
+
+$ResultFile = ""
+$Timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
+$Name = "perf_windows_${Timestamp}"
+if ($ResultsTag) {
+    $Name = "${Name}_${ResultsTag}"
+}
+$ResultSuite = if ($MultiPatternCount -gt 0) { "multi" } else { "single" }
+$ResultFile = Join-Path (Join-Path (Join-Path $ResultsDir $ResultSuite) "tmp") "${Name}.txt"
+if ($OutputFile) {
+    $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)
+}
+
+if ($ResultFile -and $OutputFile -and ($ResultFile -ieq $OutputFile)) {
+    throw "-OutputFile and -Result cannot point to the same file."
+}
+
+function Cleanup-OldResultDirs {
     param(
-        [string]$BuildRoot
+        [string]$RootPath
     )
+
+    if (-not $RootPath -or -not (Test-Path $RootPath)) {
+        return
+    }
+
+    $RetentionRaw = $env:PERF_RESULTS_RETENTION_DAYS
+    if (-not $RetentionRaw) {
+        $RetentionRaw = $env:BENCH_RESULTS_RETENTION_DAYS
+    }
+    if (-not $RetentionRaw) {
+        $RetentionRaw = "90"
+    }
+
+    $Retention = 0
+    if (-not [int]::TryParse($RetentionRaw, [ref]$Retention)) {
+        return
+    }
+    if ($Retention -le 0) {
+        return
+    }
+
+    $Cutoff = (Get-Date).ToUniversalTime().AddDays(-$Retention)
+
+    Get-ChildItem -Path $RootPath -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^\d{8}$' } |
+        ForEach-Object {
+            $dirDate = $null
+            if ([datetime]::TryParseExact($_.Name, "yyyyMMdd", $null,
+                                          [System.Globalization.DateTimeStyles]::AssumeUniversal,
+                                          [ref]$dirDate)) {
+                if ($dirDate -lt $Cutoff) {
+                    Remove-Item -Recurse -Force $_.FullName
+                }
+            }
+        }
+}
+
+if ($ResultsDir) {
+    Cleanup-OldResultDirs -RootPath $ResultsDir
+}
+
+function Resolve-BenchmarkBinDir {
+    param([string]$BuildRoot)
 
     $Candidates = @(
         (Join-Path $BuildRoot "bin\Release"),
@@ -159,7 +252,7 @@ function Resolve-BenchmarkBinDir {
     )
 
     foreach ($Candidate in $Candidates) {
-        if (Test-Path (Join-Path $Candidate "comp_current_pair.exe")) {
+        if (Test-Path (Join-Path $Candidate "perf_pair.exe")) {
             return $Candidate
         }
     }
@@ -170,17 +263,15 @@ $NeedConfigureBuild = -not $ReuseBuild
 if ($ReuseBuild) {
     Write-Host "Reusing build directory: $BuildDir"
     if (-not (Test-Path $BuildDir)) {
-        Write-Error "Error: build directory $BuildDir does not exist"
-        exit 1
+        throw "build directory does not exist: $BuildDir"
     }
 
     $BenchBinDir = Resolve-BenchmarkBinDir -BuildRoot $BuildDir
-    if (-not (Test-Path (Join-Path $BenchBinDir "comp_current_pair.exe"))) {
-        Write-Error "Error: current benchmark binaries not found in reused build: $BenchBinDir"
-        Write-Error "Run without -ReuseBuild to configure/build benchmark targets."
-        exit 1
+    $HasSingle = Test-Path (Join-Path $BenchBinDir "perf_pair.exe")
+    $HasMulti = Test-Path (Join-Path $BenchBinDir "comp_current_multi_dealer_dealer.exe")
+    if (-not $HasSingle -and -not $HasMulti) {
+        throw "current benchmark binaries not found in reused build: $BenchBinDir"
     }
-
 }
 
 if ($NeedConfigureBuild) {
@@ -189,48 +280,10 @@ if ($NeedConfigureBuild) {
         Remove-Item -Recurse -Force $BuildDir
     }
 
-    $CMakeGenerator = $env:CMAKE_GENERATOR
-    if (-not $CMakeGenerator) {
-        $CMakeGenerator = "Visual Studio 17 2022"
-    }
-
-    $CMakeArch = $env:CMAKE_ARCH
-    if (-not $CMakeArch) {
-        $CMakeArch = "x64"
-    }
+    $CMakeGenerator = if ($env:CMAKE_GENERATOR) { $env:CMAKE_GENERATOR } else { "Visual Studio 17 2022" }
+    $CMakeArch = if ($env:CMAKE_ARCH) { $env:CMAKE_ARCH } else { "x64" }
 
     Write-Host "Configuring CMake..."
-
-    # Set dependency paths (OpenSSL via vcpkg; Boost headers via vcpkg or bundled)
-    $VcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-    $CoreVcpkgRoot = Join-Path $RootDir "core\deps\vcpkg"
-    $LegacyVcpkgRoot = Join-Path $RootDir "deps\vcpkg"
-    if (Test-Path $CoreVcpkgRoot) {
-        $VcpkgRoot = $CoreVcpkgRoot
-    } elseif (-not $VcpkgRoot -and (Test-Path $LegacyVcpkgRoot)) {
-        $VcpkgRoot = $LegacyVcpkgRoot
-    }
-    if (-not $VcpkgRoot) {
-        Write-Error "Error: vcpkg root not found. Expected core\\deps\\vcpkg or deps\\vcpkg, or set VCPKG_INSTALLATION_ROOT."
-        exit 1
-    }
-    $VcpkgInstalled = Join-Path $VcpkgRoot "installed\x64-windows-static"
-    $VcpkgInclude = Join-Path $VcpkgInstalled "include"
-    $BundledBoost = Join-Path $RootDir "core\external\boost"
-
-    $BoostIncludeDir = $null
-    if ((Test-Path (Join-Path $VcpkgInclude "boost\asio.hpp")) -and
-        (Test-Path (Join-Path $VcpkgInclude "boost\beast.hpp"))) {
-        $BoostIncludeDir = $VcpkgInclude
-    } elseif ((Test-Path (Join-Path $BundledBoost "boost\asio.hpp")) -and
-              (Test-Path (Join-Path $BundledBoost "boost\beast.hpp"))) {
-        $BoostIncludeDir = $BundledBoost
-    }
-
-    if (-not $BoostIncludeDir) {
-        Write-Error "Error: Boost headers not found. Checked $VcpkgInclude and $BundledBoost."
-        exit 1
-    }
 
     $CMakeArgs = @(
         "-S", "$RootDir",
@@ -238,31 +291,28 @@ if ($NeedConfigureBuild) {
         "-G", "$CMakeGenerator",
         "-A", "$CMakeArch",
         "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_PREFIX_PATH=$VcpkgInstalled",
         "-DBUILD_BENCHMARKS=ON",
-        "-DBUILD_TESTS=OFF",
+        "-DZLINK_BUILD_TESTS=OFF",
         "-DZLINK_BUILD_BENCH_ZMQ=OFF",
+        "-DZLINK_BUILD_BENCH_ZLINK=ON",
+        "-DZLINK_BUILD_BENCH_BEAST=OFF",
+        "-DZLINK_BUILD_BENCH_STREAMCOMPARE=OFF",
+        "-DZLINK_BUILD_BENCH_ROUTER_COMPARE=OFF",
         "-DZLINK_CXX_STANDARD=17"
     )
-    $CMakeArgs += "-DZLINK_BOOST_INCLUDE_DIR=$BoostIncludeDir"
 
-    cmake @CMakeArgs
-
+    & cmake @CMakeArgs
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "CMake configuration failed"
-        exit 1
+        throw "CMake configuration failed"
     }
 
     Write-Host "Building..."
-    cmake --build $BuildDir --config Release
-
+    & cmake --build $BuildDir --config Release
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Build failed"
-        exit 1
+        throw "Build failed"
     }
 }
 
-# Find Python
 function Resolve-PythonExecutable {
     if ($env:PYTHON -and (Test-Path $env:PYTHON)) {
         return $env:PYTHON
@@ -303,68 +353,91 @@ function Resolve-PythonExecutable {
 
 $PythonExe = Resolve-PythonExecutable
 if (-not $PythonExe) {
-    Write-Error "Python not found. Install Python 3 or ensure it is on PATH."
-    exit 1
+    throw "Python not found. Install Python 3 or ensure it is on PATH."
 }
 
 Write-Host "Using Python: $PythonExe"
 
-# Build run command
-$RunScript = Join-Path $ScriptDir "run_comparison.py"
 $RunArgs = @($Pattern, "--build-dir", $BuildDir, "--runs", $Runs.ToString())
+if ($PinCpu) {
+    $RunArgs += "--pin-cpu"
+}
 
-# Environment variables
+$RunArgs += @("--mode", $Mode, "--rolling-n", $RollingN.ToString())
+if ($ResultsDir) {
+    $RunArgs += @("--results-dir", $ResultsDir)
+}
+if ($ResultsTag) {
+    $RunArgs += @("--results-tag", $ResultsTag)
+}
+if ($BaselineFile) {
+    $RunArgs += @("--baseline-file", $BaselineFile)
+}
+$RunArgs += @("--result-file", $ResultFile)
+if ($Result) {
+    $RunArgs += "--result"
+}
+if ($Save) {
+    $RunArgs += "--save"
+    if ($SaveVersion) {
+        $RunArgs += $SaveVersion
+    }
+}
+
 $RunEnv = @{}
+if (-not $IoThreads) { $IoThreads = if ($env:PERF_IO_THREADS) { $env:PERF_IO_THREADS } else { $env:BENCH_IO_THREADS } }
+if (-not $MsgSizes) { $MsgSizes = if ($env:PERF_MSG_SIZES) { $env:PERF_MSG_SIZES } else { $env:BENCH_MSG_SIZES } }
+if (-not $Transports) { $Transports = if ($env:PERF_TRANSPORTS) { $env:PERF_TRANSPORTS } else { $env:BENCH_TRANSPORTS } }
+
 if ($IoThreads) {
+    $RunEnv["PERF_IO_THREADS"] = $IoThreads
     $RunEnv["BENCH_IO_THREADS"] = $IoThreads
 }
 if ($MsgSizes) {
+    $RunEnv["PERF_MSG_SIZES"] = $MsgSizes
     $RunEnv["BENCH_MSG_SIZES"] = $MsgSizes
 }
 if ($Transports) {
+    $RunEnv["PERF_TRANSPORTS"] = $Transports
     $RunEnv["BENCH_TRANSPORTS"] = $Transports
 }
 if ($PinCpu) {
+    $RunEnv["PERF_TASKSET"] = "1"
     $RunEnv["BENCH_TASKSET"] = "1"
 }
+if ($ReuseBuild) {
+    $RunEnv["PERF_NO_AUTOBUILD"] = "1"
+    $RunEnv["BENCH_NO_AUTOBUILD"] = "1"
+}
 
-# Execute
 Write-Host ""
 Write-Host "Running benchmarks..."
 Write-Host "Pattern: $Pattern"
 Write-Host "Build Directory: $BuildDir"
 Write-Host "Runs: $Runs"
+Write-Host "Mode: $Mode"
+Write-Host "Comparison Script: $BenchComparisonScript"
 Write-Host ""
 
-if ($OutputFile -and $OutputFile -ne "") {
-    $OutputDir = Split-Path $OutputFile -Parent
-    if ($OutputDir -and $OutputDir -ne "" -and -not (Test-Path $OutputDir)) {
-        New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+foreach ($key in $RunEnv.Keys) {
+    Set-Item -Path "env:$key" -Value $RunEnv[$key]
+}
+
+try {
+    if ($OutputFile) {
+        $OutputDir = Split-Path $OutputFile -Parent
+        if ($OutputDir -and -not (Test-Path $OutputDir)) {
+            New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+        }
+        & $PythonExe $BenchComparisonScript @RunArgs | Tee-Object -FilePath $OutputFile
+    } else {
+        & $PythonExe $BenchComparisonScript @RunArgs
     }
-
-    # Set environment variables and run with tee
-    foreach ($key in $RunEnv.Keys) {
-        Set-Item -Path "env:$key" -Value $RunEnv[$key]
-    }
-
-    & $PythonExe $RunScript @RunArgs | Tee-Object -FilePath $OutputFile
-
-    # Clean up environment variables
-    foreach ($key in $RunEnv.Keys) {
-        Remove-Item -Path "env:$key" -ErrorAction SilentlyContinue
-    }
-} else {
-    # Set environment variables and run
-    foreach ($key in $RunEnv.Keys) {
-        Set-Item -Path "env:$key" -Value $RunEnv[$key]
-    }
-
-    & $PythonExe $RunScript @RunArgs
-
-    # Clean up environment variables
+    $ExitCode = $LASTEXITCODE
+} finally {
     foreach ($key in $RunEnv.Keys) {
         Remove-Item -Path "env:$key" -ErrorAction SilentlyContinue
     }
 }
 
-exit $LASTEXITCODE
+exit $ExitCode

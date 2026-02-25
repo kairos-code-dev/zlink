@@ -1,0 +1,62 @@
+## PATTERN: MULTI_DEALER_DEALER (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.79 Kops/s |      0.6 MB/s |    110.15 us |    1.4 |     19.8 |    1.4 |     24.8 |
+
+## PATTERN: MULTI_DEALER_ROUTER (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.65 Kops/s |      0.6 MB/s |    121.36 us |    1.3 |     19.8 |    1.4 |     24.8 |
+
+## PATTERN: MULTI_ROUTER_ROUTER (echo)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.79 Kops/s |      0.6 MB/s |    102.33 us |    1.4 |     19.8 |    1.5 |     24.8 |
+
+## PATTERN: MULTI_PUBSUB (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.62 Kmsg/s |      0.3 MB/s |    107.10 us |    1.4 |     19.8 |    1.4 |     24.8 |
+
+## PATTERN: MULTI_GATEWAY (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.80 Kmsg/s |      0.3 MB/s |    110.70 us |    1.4 |     19.8 |    1.4 |     24.8 |
+
+## PATTERN: MULTI_SPOT (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.76 Kmsg/s |      0.3 MB/s |     85.59 us |    1.3 |     19.8 |    1.3 |     24.8 |
+
+## PATTERN: MULTI_STREAM (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      4.94 Kmsg/s |      0.3 MB/s |    100.99 us |    1.4 |     19.8 |    1.4 |     24.8 |
+
+## PATTERN: MULTI_STREAM_CALLBACK (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      6.21 Kmsg/s |      0.4 MB/s |     72.40 us |    1.3 |     19.8 |    1.3 |     24.8 |
+
+## PATTERN: MULTI_STREAM_LEN32BE (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      5.26 Kmsg/s |      0.3 MB/s |     79.31 us |    1.4 |     19.8 |    1.4 |     24.8 |

@@ -4,17 +4,17 @@
     "build_dir": "/home/hep7/project/kairos/zlink/core/build/linux-x64/bin",
     "libzmq_lib_dir": "/home/hep7/project/kairos/zlink/core/bench/with_zmq/libzmq/libzmq_dist/linux-x64/lib",
     "platform_tag": "linux",
-    "updated_at_utc": "2026-02-23T13:59:12.331918+00:00"
+    "updated_at_utc": "2026-02-24T11:07:09.909458+00:00"
   },
   "patterns": {
     "DEALER_DEALER": {
       "data": {
         "inproc|64|latency": 0.09,
-        "inproc|64|throughput": 3872404.28,
-        "ipc|64|latency": 29.87,
-        "ipc|64|throughput": 3590786.76,
-        "tcp|64|latency": 32.37,
-        "tcp|64|throughput": 3749925.0
+        "inproc|64|throughput": 5386467.89,
+        "ipc|64|latency": 47.49,
+        "ipc|64|throughput": 5308352.93,
+        "tcp|64|latency": 35.26,
+        "tcp|64|throughput": 5253567.23
       },
       "failures": [],
       "msg_sizes": [
@@ -25,16 +25,16 @@
         "inproc",
         "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:08:32.258416+00:00"
+      "updated_at_utc": "2026-02-24T11:06:20.111926+00:00"
     },
     "DEALER_ROUTER": {
       "data": {
-        "inproc|64|latency": 0.12,
-        "inproc|64|throughput": 3783600.74,
-        "ipc|64|latency": 29.17,
-        "ipc|64|throughput": 2927306.21,
-        "tcp|64|latency": 50.38,
-        "tcp|64|throughput": 3742430.93
+        "inproc|64|latency": 0.11,
+        "inproc|64|throughput": 4129128.76,
+        "ipc|64|latency": 51.01,
+        "ipc|64|throughput": 5174005.29,
+        "tcp|64|latency": 60.7,
+        "tcp|64|throughput": 4987255.07
       },
       "failures": [],
       "msg_sizes": [
@@ -45,30 +45,36 @@
         "inproc",
         "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:08:35.029121+00:00"
+      "updated_at_utc": "2026-02-24T11:06:20.704143+00:00"
     },
     "PAIR": {
       "data": {
-        "tcp|64|latency": 42.66,
-        "tcp|64|throughput": 5591156.94
+        "inproc|64|latency": 0.08,
+        "inproc|64|throughput": 5612526.13,
+        "ipc|64|latency": 46.2,
+        "ipc|64|throughput": 5079791.46,
+        "tcp|64|latency": 43.01,
+        "tcp|64|throughput": 5105784.19
       },
       "failures": [],
       "msg_sizes": [
         64
       ],
       "transports": [
-        "tcp"
+        "tcp",
+        "inproc",
+        "ipc"
       ],
-      "updated_at_utc": "2026-02-23T13:59:11.926377+00:00"
+      "updated_at_utc": "2026-02-24T11:05:37.068580+00:00"
     },
     "PUBSUB": {
       "data": {
-        "inproc|64|latency": 0.48,
-        "inproc|64|throughput": 2079637.64,
-        "ipc|64|latency": 30.38,
-        "ipc|64|throughput": 32913.65,
-        "tcp|64|latency": 41.58,
-        "tcp|64|throughput": 24048.95
+        "inproc|64|latency": 17.39,
+        "inproc|64|throughput": 57492.14,
+        "ipc|64|latency": 45.39,
+        "ipc|64|throughput": 22029.23,
+        "tcp|64|latency": 51.89,
+        "tcp|64|throughput": 19270.9
       },
       "failures": [],
       "msg_sizes": [
@@ -79,16 +85,16 @@
         "inproc",
         "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:08:30.181324+00:00"
+      "updated_at_utc": "2026-02-24T11:05:59.583219+00:00"
     },
     "ROUTER_ROUTER": {
       "data": {
-        "inproc|64|latency": 0.17,
-        "inproc|64|throughput": 3062093.12,
-        "ipc|64|latency": 16.0,
-        "ipc|64|throughput": 3561944.89,
-        "tcp|64|latency": 20.96,
-        "tcp|64|throughput": 3461375.38
+        "inproc|64|latency": 0.18,
+        "inproc|64|throughput": 3853879.54,
+        "ipc|64|latency": 30.98,
+        "ipc|64|throughput": 4279639.34,
+        "tcp|64|latency": 37.25,
+        "tcp|64|throughput": 4226819.41
       },
       "failures": [],
       "msg_sizes": [
@@ -99,16 +105,16 @@
         "inproc",
         "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:08:37.784427+00:00"
+      "updated_at_utc": "2026-02-24T11:06:24.038280+00:00"
     },
     "ROUTER_ROUTER_POLL": {
       "data": {
-        "inproc|64|latency": 0.54,
-        "inproc|64|throughput": 1698350.82,
-        "ipc|64|latency": 15.73,
-        "ipc|64|throughput": 1664277.04,
-        "tcp|64|latency": 17.6,
-        "tcp|64|throughput": 1486560.01
+        "inproc|64|latency": 0.56,
+        "inproc|64|throughput": 1915252.0,
+        "ipc|64|latency": 30.47,
+        "ipc|64|throughput": 1795547.54,
+        "tcp|64|latency": 34.27,
+        "tcp|64|throughput": 1874676.38
       },
       "failures": [],
       "msg_sizes": [
@@ -119,18 +125,16 @@
         "inproc",
         "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:08:39.843115+00:00"
+      "updated_at_utc": "2026-02-24T11:06:26.637711+00:00"
     },
     "STREAM": {
       "data": {
-        "tcp|64|latency": 22183.01,
-        "tcp|64|throughput": 1741949.23,
-        "tls|64|latency": 0.0,
-        "tls|64|throughput": 0.0,
-        "wss|64|latency": 0.0,
-        "wss|64|throughput": 0.0,
-        "ws|64|latency": 0.0,
-        "ws|64|throughput": 0.0
+        "inproc|64|latency": 0.0,
+        "inproc|64|throughput": 0.0,
+        "ipc|64|latency": 0.0,
+        "ipc|64|throughput": 0.0,
+        "tcp|64|latency": 22144.94,
+        "tcp|64|throughput": 1672680.36
       },
       "failures": [],
       "msg_sizes": [
@@ -138,11 +142,10 @@
       ],
       "transports": [
         "tcp",
-        "tls",
-        "ws",
-        "wss"
+        "inproc",
+        "ipc"
       ],
-      "updated_at_utc": "2026-02-22T08:10:41.368042+00:00"
+      "updated_at_utc": "2026-02-24T11:06:47.580073+00:00"
     }
   }
 }

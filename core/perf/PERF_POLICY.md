@@ -110,6 +110,29 @@ perf/                                       # bindings/<lang>/perf/
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
 - 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
 
+#### Wire Protocol
+
+STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
+
+```text
+┌──────────────────────┬──────────────────────────────┐
+│  4 bytes (big-endian) │         payload              │
+│   payload length      │    (length bytes)            │
+└──────────────────────┴──────────────────────────────┘
+```
+
+- **client**: 모든 STREAM 패턴에서 동일한 공통 raw client를 사용하며, `[4B length (big-endian)][payload]` 형식으로 송신한다. 수신(echo)도 동일한 framing으로 읽는다.
+- **server**: zlink STREAM 소켓으로 bind한 뒤, 수신 방식에 따라 3가지 패턴으로 분기한다:
+
+| 패턴 | server 수신 방식 | 설명 |
+|------|-----------------|------|
+| STREAM / MULTI_STREAM | `zmq_recv` 호출 | 기본 recv API로 메시지 수신 |
+| STREAM_CALLBACK / MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
+| STREAM_LEN32BE / MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 4B big-endian length-prefixed framing 인식 |
+
+- client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
+- 이 프로토콜은 single/multi 양쪽에 동일하게 적용된다.
+
 ### 2.1 결과 저장 규칙
 
 | 항목 | 규칙 |
@@ -431,7 +454,50 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ---
 
-## 8. 환경 변수 (공통)
+## 8. 실패 처리 정책 (공통 필수)
+
+### 8.1 Retry(재시도) 금지
+
+벤치마크 실행 스크립트 및 바이너리에 **retry/재시도 로직을 구현하지 않는다**.
+
+| 항목 | 규칙 |
+|------|------|
+| 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
+| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다 |
+| 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS`, `BENCH_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
+
+- **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
+
+### 8.2 실패 시 대응 절차
+
+| 단계 | 행동 |
+|------|------|
+| 1. 실패 기록 | 실패한 조합을 `## Failures` 섹션에 기록하고 결과 파일에 `status=partial`로 저장한다 |
+| 2. 원인 파악 | 로그, 종료 코드, timeout 여부를 확인하여 실패 원인을 빠르게 파악한다 |
+| 3-a. 벤치마크 코드 이슈 | 벤치마크 구현 버그이면 수정 후 재실행한다 |
+| 3-b. core zlink 라이브러리 이슈 | 라이브러리 자체 결함이면 이슈를 리포팅하고 수정될 때까지 대기한다. 벤치마크 코드에서 우회(workaround)하지 않는다 |
+| 3-c. 환경 이슈 | OS 리소스(fd limit, port 고갈 등)이면 환경을 수정한 뒤 재실행한다 |
+
+- 재시도로 문제를 숨기지 않는다. 실패는 반드시 원인을 파악한 뒤 근본 원인을 해결해야 한다.
+
+### 8.3 UNSUPPORTED 오용 금지
+
+정책 문서(§10.3 / §11.3)에 **정의된 transport**가 실행 시 실패하면 반드시 `fail`로 보고해야 한다. `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 **금지**한다.
+
+| 상황 | 올바른 상태 | 설명 |
+|------|------------|------|
+| 정의된 transport가 정상 동작 | `success` | RESULT line 출력 |
+| 정의된 transport가 실패 (timeout, crash, no_data 등) | `fail` | 원인 파악 후 수정 필요 |
+| 정책에 정의되지 않은 transport 조합 | `unsupported` | 결과 제외 |
+| 플랫폼 제약으로 실행 불가 (예: Windows에서 ipc) | `skip` | reason 명시 필수 |
+
+- `UNSUPPORTED`는 **정책에 정의되지 않은** pattern-transport 조합에만 사용한다.
+- 정책에 정의된 transport가 동작하지 않으면 **라이브러리 또는 환경 결함**이다. §8.2 대응 절차를 따른다.
+- 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
+
+---
+
+## 9. 환경 변수 (공통)
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|

@@ -1,0 +1,6 @@
+## PATTERN: PAIR (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |   5327.38 Kmsg/s |    341.0 MB/s |     33.54 us |  1.2 |   19.7 |

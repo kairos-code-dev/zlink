@@ -107,7 +107,7 @@ Run one stack with multi-size sequence on the same connected clients:
 ```text
 --stack <asio|cppserver|dotnet|netzlink|netzlink-len32be|jvmzlink|jvmzlink-len32be|zlink|zlink-len32be|zmq|netty|all|csv>
 --size <64|1024|65536|all|csv>
---ccu <N>                    default: 10000
+--ccu <N>                    default: 1000
 --inflight <N>               default: 10
 --runs <N>                   default: 1
 --warmup <sec>               default: 3

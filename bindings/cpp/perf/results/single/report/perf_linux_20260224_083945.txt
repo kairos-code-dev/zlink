@@ -1,0 +1,131 @@
+## PATTERN: PAIR (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     40.09 Kmsg/s |      2.6 MB/s |     70.50 us |  0.0 |    6.6 |
+| 256B |     22.81 Kmsg/s |      5.8 MB/s |    167.00 us |  0.0 |    6.6 |
+| 1024B |     23.92 Kmsg/s |     24.5 MB/s |     82.50 us |  0.0 |    6.6 |
+| 65536B |     15.29 Kmsg/s |   1002.2 MB/s |     77.00 us |  0.0 |    6.6 |
+| 131072B |      8.26 Kmsg/s |   1083.0 MB/s |    121.00 us |  0.0 |    6.6 |
+| 262144B |      5.52 Kmsg/s |   1446.1 MB/s |    340.50 us |  0.0 |    6.6 |
+
+## PATTERN: PUBSUB (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     21.73 Kmsg/s |      1.4 MB/s |     46.02 us |  0.0 |    6.6 |
+| 256B |     39.21 Kmsg/s |     10.0 MB/s |     25.50 us |  0.0 |    6.6 |
+| 1024B |     24.96 Kmsg/s |     25.6 MB/s |     40.07 us |  0.0 |    6.6 |
+| 65536B |     11.41 Kmsg/s |    747.9 MB/s |     87.63 us |  0.0 |    6.6 |
+| 131072B |      8.83 Kmsg/s |   1157.9 MB/s |    113.20 us |  0.0 |    6.6 |
+| 262144B |      7.44 Kmsg/s |   1951.6 MB/s |    134.32 us |  0.0 |    6.6 |
+
+## PATTERN: DEALER_DEALER (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     16.95 Kmsg/s |      1.1 MB/s |    116.00 us |  0.0 |    6.6 |
+| 256B |     17.88 Kmsg/s |      4.6 MB/s |     40.50 us |  0.0 |    6.6 |
+| 1024B |     48.48 Kmsg/s |     49.6 MB/s |     63.00 us |  0.0 |    6.6 |
+| 65536B |     11.33 Kmsg/s |    742.7 MB/s |    136.00 us |  0.0 |    6.6 |
+| 131072B |     12.16 Kmsg/s |   1593.7 MB/s |    232.50 us |  0.0 |    6.6 |
+| 262144B |      8.06 Kmsg/s |   2114.2 MB/s |    235.50 us |  0.0 |    6.4 |
+
+## PATTERN: DEALER_ROUTER (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     11.81 Kmsg/s |      0.8 MB/s |     79.50 us |  0.0 |    6.6 |
+| 256B |     19.68 Kmsg/s |      5.0 MB/s |     33.50 us |  0.0 |    6.6 |
+| 1024B |     40.35 Kmsg/s |     41.3 MB/s |     44.00 us |  0.0 |    6.6 |
+| 65536B |     12.57 Kmsg/s |    824.0 MB/s |    123.50 us |  0.0 |    7.2 |
+| 131072B |      7.09 Kmsg/s |    929.9 MB/s |    187.50 us |  0.0 |    6.6 |
+| 262144B |      3.95 Kmsg/s |   1036.0 MB/s |    217.50 us |  0.0 |    6.6 |
+
+## PATTERN: ROUTER_ROUTER (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     30.17 Kmsg/s |      1.9 MB/s |     60.50 us |  0.0 |    6.6 |
+| 256B |     16.76 Kmsg/s |      4.3 MB/s |     43.50 us |  0.0 |    6.6 |
+| 1024B |     26.49 Kmsg/s |     27.1 MB/s |     81.50 us |  0.0 |    6.6 |
+| 65536B |     14.22 Kmsg/s |    932.0 MB/s |    136.50 us |  0.0 |    6.6 |
+| 131072B |     11.81 Kmsg/s |   1548.4 MB/s |    177.00 us |  0.0 |    6.6 |
+| 262144B |      5.24 Kmsg/s |   1373.2 MB/s |    370.00 us |  0.0 |    6.6 |
+
+## PATTERN: ROUTER_ROUTER_POLL (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     30.14 Kmsg/s |      1.9 MB/s |     79.00 us |  0.0 |    6.6 |
+| 256B |     35.42 Kmsg/s |      9.1 MB/s |     26.00 us |  0.0 |    6.6 |
+| 1024B |     13.05 Kmsg/s |     13.4 MB/s |     68.00 us |  0.0 |    6.6 |
+| 65536B |     11.04 Kmsg/s |    723.7 MB/s |    184.00 us |  0.0 |    6.6 |
+| 131072B |     10.91 Kmsg/s |   1430.6 MB/s |    236.50 us |  0.0 |    6.6 |
+| 262144B |      7.77 Kmsg/s |   2035.8 MB/s |    357.00 us |  0.0 |    6.6 |
+
+## PATTERN: STREAM (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      4.14 Kmsg/s |      0.3 MB/s |    599.50 us |  0.0 |    6.6 |
+| 256B |      4.19 Kmsg/s |      1.1 MB/s |    558.50 us |  0.0 |    6.6 |
+| 1024B |      4.20 Kmsg/s |      4.3 MB/s |    591.00 us |  0.0 |    6.6 |
+| 65536B |      3.69 Kmsg/s |    242.0 MB/s |    602.50 us |  0.0 |    7.0 |
+| 131072B |      3.69 Kmsg/s |    483.5 MB/s |    636.00 us |  0.0 |    7.8 |
+| 262144B |      3.29 Kmsg/s |    862.5 MB/s |    656.00 us |  0.0 |    6.6 |
+
+## PATTERN: STREAM_CALLBACK (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      4.21 Kmsg/s |      0.3 MB/s |    589.50 us |  0.0 |    6.6 |
+| 256B |      4.18 Kmsg/s |      1.1 MB/s |    597.50 us |  0.0 |    6.6 |
+| 1024B |      4.17 Kmsg/s |      4.3 MB/s |    600.00 us |  0.0 |    6.6 |
+| 65536B |      4.18 Kmsg/s |    273.7 MB/s |    588.50 us |  0.0 |    6.6 |
+| 131072B |      3.69 Kmsg/s |    483.8 MB/s |    659.50 us |  0.0 |    7.5 |
+| 262144B |      1.92 Kmsg/s |    502.1 MB/s |    631.50 us |  0.0 |    6.6 |
+
+## PATTERN: STREAM_LEN32BE (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      4.18 Kmsg/s |      0.3 MB/s |    594.00 us |  0.0 |    6.6 |
+| 256B |      4.19 Kmsg/s |      1.1 MB/s |    599.50 us |  0.0 |    6.6 |
+| 1024B |      4.22 Kmsg/s |      4.3 MB/s |    596.00 us |  0.0 |    6.6 |
+| 65536B |      3.86 Kmsg/s |    252.8 MB/s |    604.50 us |  0.0 |    6.6 |
+| 131072B |      3.70 Kmsg/s |    484.6 MB/s |    660.50 us |  0.0 |    6.6 |
+| 262144B |      3.37 Kmsg/s |    882.4 MB/s |    618.50 us |  0.0 |    8.5 |
+
+## PATTERN: GATEWAY (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     52.72 Kmsg/s |      3.4 MB/s |    123.00 us |  0.0 |    6.6 |
+| 256B |     37.21 Kmsg/s |      9.5 MB/s |    110.00 us |  0.0 |    6.7 |
+| 1024B |     27.49 Kmsg/s |     28.2 MB/s |    117.00 us |  0.0 |    6.7 |
+| 65536B |     10.52 Kmsg/s |    689.6 MB/s |     58.00 us |  0.0 |    7.0 |
+| 131072B |      8.75 Kmsg/s |   1147.5 MB/s |    187.00 us |  0.0 |    7.0 |
+| 262144B |      4.73 Kmsg/s |   1239.8 MB/s |    439.00 us |  0.0 |    7.1 |
+
+## PATTERN: SPOT (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |      4.04 Kmsg/s |      0.3 MB/s |   1178.00 us |  0.0 |    6.6 |
+| 256B |      3.68 Kmsg/s |      0.9 MB/s |   1183.00 us |  0.0 |    6.7 |
+| 1024B |      3.95 Kmsg/s |      4.0 MB/s |   1118.00 us |  0.0 |    6.6 |
+| 65536B |      3.63 Kmsg/s |    238.0 MB/s |   1124.00 us |  0.0 |    6.9 |
+| 131072B |      3.56 Kmsg/s |    466.9 MB/s |   1278.00 us |  0.0 |    6.6 |
+| 262144B |      2.02 Kmsg/s |    529.3 MB/s |   1259.00 us |  0.0 |    7.0 |

@@ -64,7 +64,11 @@ esac
 if [[ "${IS_WINDOWS}" -eq 1 ]]; then
   BUILD_DIR="${ROOT_DIR}/core/build/windows-x64"
 else
-  BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
+  if [[ -d "${ROOT_DIR}/core/build/bin" ]]; then
+    BUILD_DIR="${ROOT_DIR}/core/build"
+  else
+    BUILD_DIR="${ROOT_DIR}/core/build/${PLATFORM}-${ARCH}"
+  fi
 fi
 
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM,STREAM_CALLBACK,STREAM_LEN32BE,GATEWAY,SPOT"

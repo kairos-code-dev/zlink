@@ -107,7 +107,8 @@ perf/                                       # bindings/<lang>/perf/
 - STREAM 계열(`STREAM`, `STREAM_CALLBACK`, `STREAM_LEN32BE`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
 - zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
-- 모델 위반/불일치가 발생하면 `UNSUPPORTED`/`SKIP`으로 처리하지 않고 **즉시 fail** 처리한다.
+- 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
+- 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
 
 ### 2.1 결과 저장 규칙
 

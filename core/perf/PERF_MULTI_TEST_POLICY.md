@@ -218,7 +218,8 @@ latency 예시: (52.0 - 45.0) / 45.0 × 100 = +15.56%
 - `UNSUPPORTED` 토큰 형식: `UNSUPPORTED,<lib>,<pattern>,<transport>`
 - `SKIP` 토큰 형식: `SKIP,<lib>,<pattern>,<transport>,<reason>`
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
-- MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니며 **fail**로 처리한다.
+- MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
+- 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
 
 ### 3.2 유효성 규칙
 
@@ -1076,7 +1077,8 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - MULTI_STREAM 계열의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
-- 위 모델을 위반한 실행 결과는 정책상 무효이며, 구현은 즉시 fail 처리해야 한다.
+- 위 모델을 위반한 구현은 정책 위반이므로 해당 코드를 삭제하고 정책 모델로 다시 구현해야 한다.
+- 위반 구현에서 나온 실행 결과는 정책 산출물로 인정하지 않는다.
 
 ### 11.2 표준 메시지 크기
 

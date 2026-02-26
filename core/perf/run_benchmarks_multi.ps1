@@ -62,7 +62,7 @@ Usage: core\perf\run_benchmarks_multi.ps1 [options]
 Run only multi-socket benchmark patterns.
 
 Options:
-  -Pattern NAME                MULTI_* pattern list (comma-separated) or ALL.
+  -Pattern NAME                Pattern list (comma-separated) or ALL. MULTI_ prefix is optional.
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
   -Runs N                      Iterations per configuration (default: observe/trend=3, gate=5).
@@ -125,35 +125,38 @@ if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') { throw "MsgSizes must be
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') { throw "Transports must be a comma-separated list of names." }
 if ($SaveVersion) { $Save = $true }
 $DefaultPatterns = @(
-    "MULTI_DEALER_DEALER",
-    "MULTI_DEALER_ROUTER",
-    "MULTI_ROUTER_ROUTER",
-    "MULTI_PUBSUB",
-    "MULTI_GATEWAY",
-    "MULTI_SPOT",
-    "MULTI_STREAM",
-    "MULTI_STREAM_CALLBACK",
-    "MULTI_STREAM_LEN32BE"
+    "DEALER_DEALER",
+    "DEALER_ROUTER",
+    "ROUTER_ROUTER",
+    "PUBSUB",
+    "GATEWAY",
+    "SPOT",
+    "STREAM",
+    "STREAM_CALLBACK",
+    "STREAM_LEN32BE"
 )
 
-$PatternList = @()
+$RawPatterns = @()
 if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
-    $PatternList = $DefaultPatterns
+    $RawPatterns = $DefaultPatterns
 } else {
     foreach ($part in $Pattern.Split(",")) {
         $p = $part.Trim().ToUpperInvariant()
-        if (-not $p) { continue }
-        if ($p -eq "MULTI_ROUTER_ROUTER_POLL") {
-            throw "MULTI_ROUTER_ROUTER_POLL is removed from multi benchmarks."
-        }
-        if (-not $p.StartsWith("MULTI_")) {
-            throw "run_benchmarks_multi.ps1 accepts only MULTI_* patterns."
-        }
-        $PatternList += $p
+        if ($p) { $RawPatterns += $p }
     }
 }
+$PatternList = @()
+foreach ($p in $RawPatterns) {
+    if (-not $p.StartsWith("MULTI_")) {
+        $p = "MULTI_$p"
+    }
+    if ($p -eq "MULTI_ROUTER_ROUTER_POLL") {
+        throw "ROUTER_ROUTER_POLL is removed from multi benchmarks."
+    }
+    $PatternList += $p
+}
 if ($PatternList.Count -eq 0) {
-    throw "No valid MULTI_* pattern specified."
+    throw "No valid pattern specified."
 }
 $PatternCsv = ($PatternList -join ",")
 

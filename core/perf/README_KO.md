@@ -3,7 +3,7 @@
 zlink 벤치마크 스위트를 구동하는 두 개의 셸 스크립트:
 
 - `run_benchmarks.sh`: 단일 패턴 실행기 (PAIR, PUBSUB, DEALER_DEALER 등)
-- `run_benchmarks_multi.sh`: 다중 패턴 래퍼 (MULTI_* 패턴 전용)
+- `run_benchmarks_multi.sh`: 다중 패턴 래퍼 (다중 소켓 패턴)
 
 ## run_benchmarks.sh
 
@@ -91,9 +91,9 @@ results/
 ### 기본 패턴
 
 ```
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER,
-MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT,
-MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE
+DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER,
+PUBSUB, GATEWAY, SPOT,
+STREAM, STREAM_CALLBACK, STREAM_LEN32BE
 ```
 
 기본 트랜스포트: `tcp,tls,ws,wss`
@@ -104,7 +104,7 @@ MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE
 
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
-| `--pattern NAME` | 전체 MULTI_* | 패턴 목록 (쉼표 구분) 또는 `ALL` |
+| `--pattern NAME` | 전체 패턴 | 패턴 목록 (쉼표 구분) 또는 `ALL`. `MULTI_` 접두어 생략 가능 |
 | `--build` | 비활성 | 클린 빌드 강제 |
 | `--build-dir PATH` | 자동 | 빌드 디렉터리 지정 |
 | `--output PATH` | — | 결과를 파일로 tee |
@@ -165,7 +165,7 @@ Multi 전용 옵션:
 
 ```
 1. CLI 옵션 파싱 및 검증
-2. 패턴 목록 결정 (기본: 9개 MULTI_* 패턴 전체)
+2. 패턴 목록 결정 (기본: 9개 패턴 전체, MULTI_ 접두어 자동 부여)
 3. 각 패턴에 대해:
    a. 클라이언트 수 결정 (--clients 또는 패턴 기본값 1000)
    b. nofile 제한 사전 검사 → 실패 시 스킵
@@ -217,7 +217,7 @@ CLI 옵션이 우선한다.
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern MULTI_STREAM \
+  --pattern STREAM \
   --clients 5000 \
   --duration 10 \
   --transports tcp

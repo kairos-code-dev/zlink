@@ -220,7 +220,7 @@ latency 예시: (52.0 - 45.0) / 45.0 × 100 = +15.56%
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
 - MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
-- **UNSUPPORTED 오용 금지**: §11.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.3](PERF_POLICY.md)을 참조한다.
+- **UNSUPPORTED 오용 금지**: §11.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)을 참조한다.
 
 ### 3.2 유효성 규칙
 
@@ -276,7 +276,7 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 ### 3.6 코어 로직 인라인 원칙
 
-각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 공통 함수 한 줄로 위임하는 것을 금지한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)를 참조한다.
+각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 외부 공통 함수 한 줄로 위임하는 것을 금지한다. 단, **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
 
 예외: STREAM client(`core/perf/common/streamclient/`)는 검증 인프라 코드로
 분류하며 공통 모듈화를 허용한다. 단, multi 실행 경로/phase 정책 준수는
@@ -1045,7 +1045,7 @@ active warmup 시 pre-measure drain: `PERF_MULTI_WARMUP_DRAIN_MS` (기본 `max(P
 | one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
-- one-way 패턴: client가 send → server relay → receiver recv. 1 msg = 1 message hop. receiver가 수신한 메시지 수를 카운트한다.
+- one-way 패턴: sender가 송신한 메시지를 receiver가 수신한다(서버 relay 또는 server push 포함). 1 msg = 1 message hop으로 보고, receiver 수신 수를 카운트한다.
 - 동일 단위의 패턴 간에만 throughput을 직접 비교할 수 있다.
 
 ### 8.2 계산
@@ -1173,7 +1173,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `perf_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
-> STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.4](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
+> STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
 
 #### MULTI_STREAM 계열 패턴
 
@@ -1253,14 +1253,16 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_SEND_WORKERS` | 송신 워커 스레드 수 | 1 |
+| `PERF_MULTI_CLIENT_WORKERS` | 클라이언트 thread-pool 워커 수 (소켓 소유 스레드 수) | 4 |
+| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 워커 poll 타임아웃(ms) | 1 |
+| `PERF_MULTI_CLIENT_IDLE_SLEEP_US` | 클라이언트 워커 유휴 backoff(us) | 0 |
 | `PERF_MULTI_SEND_BACKOFF_US` | 송신 블록 시 backoff(us) | 20 |
-| `PERF_MULTI_RECV_BATCH` | 수신 배치 크기 | 64 |
 | `PERF_MULTI_BLOCKING_SEND` | 블로킹 전송 모드 | 0 |
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 5000 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 5000 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 200000 |
-| `PERF_SERVER_RECV_THREADS` | 서버 수신 스레드 수 | 1 |
+
+- `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 소켓 소유 thread-pool 루프에서 readiness 기반으로 즉시 drain한다.
 
 ### 12.5 프로세스 조정
 

@@ -457,7 +457,14 @@ def read_windows_mem_mb(handle):
     return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
 
 
-def run_command_with_metrics(cmd, env, timeout_sec):
+def run_command_with_metrics(
+    cmd,
+    env,
+    timeout_sec,
+    on_stdout_line=None,
+    on_stderr_line=None,
+    on_sample=None,
+):
     started = time.monotonic()
     proc = subprocess.Popen(
         cmd,
@@ -465,7 +472,58 @@ def run_command_with_metrics(cmd, env, timeout_sec):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        bufsize=1,
     )
+    out_queue = queue.Queue()
+    stdout_chunks = []
+    stderr_chunks = []
+    stream_done = {"stdout": False, "stderr": False}
+
+    def _reader(pipe, stream_name):
+        try:
+            for line in iter(pipe.readline, ""):
+                out_queue.put((stream_name, line))
+        except Exception:
+            pass
+        finally:
+            out_queue.put((stream_name, None))
+
+    reader_threads = [
+        threading.Thread(target=_reader, args=(proc.stdout, "stdout"), daemon=True),
+        threading.Thread(target=_reader, args=(proc.stderr, "stderr"), daemon=True),
+    ]
+    for t in reader_threads:
+        t.start()
+
+    def _drain_output_queue(block_timeout=0.0):
+        while True:
+            try:
+                if block_timeout and block_timeout > 0:
+                    stream_name, line = out_queue.get(timeout=block_timeout)
+                    block_timeout = 0.0
+                else:
+                    stream_name, line = out_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            if line is None:
+                stream_done[stream_name] = True
+                continue
+
+            if stream_name == "stdout":
+                stdout_chunks.append(line)
+                if on_stdout_line is not None:
+                    try:
+                        on_stdout_line(line)
+                    except Exception:
+                        pass
+            else:
+                stderr_chunks.append(line)
+                if on_stderr_line is not None:
+                    try:
+                        on_stderr_line(line)
+                    except Exception:
+                        pass
 
     sample_mode = ""
     if linux_proc_metrics_supported():
@@ -486,9 +544,30 @@ def run_command_with_metrics(cmd, env, timeout_sec):
         end_ticks = start_ticks
 
     timed_out = False
+    last_sample_cpu = None
+    last_sample_mem = None
+
+    def _compute_cpu_pct(now_elapsed, start_ticks_value, end_ticks_value, mode):
+        if start_ticks_value is None or end_ticks_value is None:
+            return None
+        nproc = max(1.0, float(os.cpu_count() or 1))
+        if mode == "linux":
+            try:
+                hz = float(os.sysconf("SC_CLK_TCK"))
+            except (OSError, ValueError):
+                hz = 100.0
+            cpu_delta = max(0.0, float(end_ticks_value - start_ticks_value)) / max(
+                1.0, hz
+            )
+            return (cpu_delta / (max(1e-6, now_elapsed) * nproc)) * 100.0
+        if mode == "windows":
+            cpu_delta = max(0.0, float(end_ticks_value - start_ticks_value)) / 10000000.0
+            return (cpu_delta / (max(1e-6, now_elapsed) * nproc)) * 100.0
+        return None
 
     try:
         while True:
+            _drain_output_queue()
             rc = proc.poll()
             if sample_mode == "linux":
                 ticks = read_proc_cpu_ticks(proc.pid)
@@ -505,7 +584,27 @@ def run_command_with_metrics(cmd, env, timeout_sec):
                 if mem is not None:
                     end_mem_mb = mem
 
-            if rc is not None:
+            if on_sample is not None:
+                sample_cpu = _compute_cpu_pct(
+                    time.monotonic() - started, start_ticks, end_ticks, sample_mode
+                )
+                sample_mem = end_mem_mb
+                changed = False
+                if sample_cpu is not None and sample_cpu != last_sample_cpu:
+                    changed = True
+                if sample_mem is not None and sample_mem != last_sample_mem:
+                    changed = True
+                if changed:
+                    try:
+                        on_sample(sample_cpu, sample_mem)
+                    except Exception:
+                        pass
+                    if sample_cpu is not None:
+                        last_sample_cpu = sample_cpu
+                    if sample_mem is not None:
+                        last_sample_mem = sample_mem
+
+            if rc is not None and stream_done["stdout"] and stream_done["stderr"]:
                 break
             if (time.monotonic() - started) > timeout_sec:
                 timed_out = True
@@ -514,11 +613,17 @@ def run_command_with_metrics(cmd, env, timeout_sec):
             time.sleep(0.02)
 
         try:
-            stdout, stderr = proc.communicate(timeout=5)
+            proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-            stdout, stderr = proc.communicate()
             timed_out = True
+
+        for t in reader_threads:
+            try:
+                t.join(timeout=1.0)
+            except Exception:
+                pass
+        _drain_output_queue(block_timeout=0.01)
 
         if sample_mode == "linux":
             ticks = read_proc_cpu_ticks(proc.pid)
@@ -538,24 +643,12 @@ def run_command_with_metrics(cmd, env, timeout_sec):
         close_windows_process_handle(proc_handle)
 
     elapsed = max(1e-6, time.monotonic() - started)
-    cpu_pct = None
-    if start_ticks is not None and end_ticks is not None:
-        nproc = max(1.0, float(os.cpu_count() or 1))
-        if sample_mode == "linux":
-            try:
-                hz = float(os.sysconf("SC_CLK_TCK"))
-            except (OSError, ValueError):
-                hz = 100.0
-            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / max(1.0, hz)
-            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
-        elif sample_mode == "windows":
-            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / 10000000.0
-            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
+    cpu_pct = _compute_cpu_pct(elapsed, start_ticks, end_ticks, sample_mode)
 
     return {
         "returncode": proc.returncode,
-        "stdout": stdout or "",
-        "stderr": stderr or "",
+        "stdout": "".join(stdout_chunks),
+        "stderr": "".join(stderr_chunks),
         "timed_out": timed_out,
         "cpu_pct": cpu_pct,
         "mem_mb": end_mem_mb,
@@ -640,15 +733,15 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_CONNECT_CONCURRENCY",
     "PERF_MULTI_DRAIN_MS",
     "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
-    "PERF_MULTI_RECV_BATCH",
-    "PERF_MULTI_SEND_WORKERS",
+    "PERF_MULTI_CLIENT_WORKERS",
+    "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS",
+    "PERF_MULTI_CLIENT_IDLE_SLEEP_US",
     "PERF_MULTI_SEND_BACKOFF_US",
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
     "PERF_MULTI_MONITOR_HWM",
     "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
     "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
     "PERF_MULTI_SERVER_BIND_PORT",
-    "PERF_SERVER_RECV_THREADS",
     "PERF_IO_THREADS",
     "PERF_MAX_SOCKETS",
     "PERF_LAT_COUNT",
@@ -807,6 +900,52 @@ def parse_result_connect_line(line, transport, expected_sizes):
     return (line_transport, line_size, ok_value, fail_value, target_value), None
 
 
+def _emit_multi_result_metric_callback(
+    result_line_callback, line_transport, line_size, metric_name, value
+):
+    if result_line_callback is None:
+        return
+    try:
+        result_line_callback(line_transport, line_size, metric_name, value)
+    except Exception:
+        pass
+
+
+def emit_multi_result_metrics_from_line(
+    line, transport, expected_sizes, result_line_callback
+):
+    if result_line_callback is None:
+        return
+
+    parsed_line, _ = parse_result_line(line, transport, expected_sizes)
+    if parsed_line:
+        line_transport, line_size, metric, value = parsed_line
+        metric_name = normalize_multi_metric_name(metric)
+        _emit_multi_result_metric_callback(
+            result_line_callback, line_transport, line_size, metric_name, value
+        )
+        return
+
+    connect_line, _ = parse_result_connect_line(line, transport, expected_sizes)
+    if not connect_line:
+        return
+
+    line_transport, line_size, ok_value, fail_value, target_value = connect_line
+    _emit_multi_result_metric_callback(
+        result_line_callback, line_transport, line_size, "connect_ok", ok_value
+    )
+    _emit_multi_result_metric_callback(
+        result_line_callback, line_transport, line_size, "connect_fail", fail_value
+    )
+    _emit_multi_result_metric_callback(
+        result_line_callback,
+        line_transport,
+        line_size,
+        "connect_target",
+        target_value,
+    )
+
+
 def parse_special_token(line):
     stripped = line.strip()
     if stripped.startswith("UNSUPPORTED,"):
@@ -929,7 +1068,14 @@ def build_bench_cmd(binary_path, args):
     return [binary_path] + list(args)
 
 
-def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, sizes, pattern_name):
+def run_multi_sizes_test_stream_shared(
+    server_binary_name,
+    lib_name,
+    transport,
+    sizes,
+    pattern_name,
+    result_line_callback=None,
+):
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     shared_client_path = os.path.join(BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX)
     if not os.path.exists(server_binary_path) or not os.path.exists(shared_client_path):
@@ -949,6 +1095,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
+    expected_sizes = set(sizes)
 
     for _ in range(1):
         env = get_env_for_lib(lib_name)
@@ -1044,6 +1191,12 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
         out_queue = queue.Queue()
         reader_threads = []
 
+        def append_server_stdout_line(line):
+            server_stdout_lines.append(line)
+            emit_multi_result_metrics_from_line(
+                line, transport, expected_sizes, result_line_callback
+            )
+
         def stop_server():
             nonlocal server_proc
             if not server_proc:
@@ -1099,7 +1252,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                 if line is None:
                     continue
                 if stream_name == "stdout":
-                    server_stdout_lines.append(line)
+                    append_server_stdout_line(line)
                 else:
                     server_stderr_lines.append(line)
 
@@ -1142,7 +1295,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                 if line is None:
                     continue
                 if stream_name == "stdout":
-                    server_stdout_lines.append(line)
+                    append_server_stdout_line(line)
                     token = parse_special_token(line)
                     if token:
                         token_status = token[0]
@@ -1194,8 +1347,39 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "warnings": [],
                 }
 
+            line_transport = transport.lower()
+
+            def emit_live_client_metrics(sample_cpu, sample_mem):
+                if result_line_callback is None:
+                    return
+                if sample_cpu is None and sample_mem is None:
+                    return
+                for sz in sizes:
+                    if sample_cpu is not None:
+                        _emit_multi_result_metric_callback(
+                            result_line_callback,
+                            line_transport,
+                            sz,
+                            "client_cpu_pct",
+                            float(sample_cpu),
+                        )
+                    if sample_mem is not None:
+                        _emit_multi_result_metric_callback(
+                            result_line_callback,
+                            line_transport,
+                            sz,
+                            "client_mem_mb",
+                            float(sample_mem),
+                        )
+
             sampled = run_command_with_metrics(
-                client_cmd + ["--endpoint", endpoint], env, timeout_sec
+                client_cmd + ["--endpoint", endpoint],
+                env,
+                timeout_sec,
+                on_stdout_line=lambda line: emit_multi_result_metrics_from_line(
+                    line, transport, expected_sizes, result_line_callback
+                ),
+                on_sample=emit_live_client_metrics,
             )
             client_stdout = sampled.get("stdout", "") or ""
             client_stderr = sampled.get("stderr", "") or ""
@@ -1249,7 +1433,6 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     **progress_meta,
                 }
 
-            expected_sizes = set(sizes)
             parsed = {}
             warnings = []
             for line in combined_stdout.splitlines():
@@ -1388,7 +1571,15 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
     }
 
 
-def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name, transport, sizes, pattern_name):
+def run_multi_sizes_test_split(
+    server_binary_name,
+    client_binary_name,
+    lib_name,
+    transport,
+    sizes,
+    pattern_name,
+    result_line_callback=None,
+):
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64
@@ -1461,6 +1652,12 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
         out_queue = queue.Queue()
         reader_threads = []
 
+        def append_server_stdout_line(line):
+            server_stdout_lines.append(line)
+            emit_multi_result_metrics_from_line(
+                line, transport, expected_sizes, result_line_callback
+            )
+
         def stop_server():
             nonlocal server_proc
             if not server_proc:
@@ -1516,7 +1713,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 if line is None:
                     continue
                 if stream_name == "stdout":
-                    server_stdout_lines.append(line)
+                    append_server_stdout_line(line)
                 else:
                     server_stderr_lines.append(line)
 
@@ -1559,7 +1756,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 if line is None:
                     continue
                 if stream_name == "stdout":
-                    server_stdout_lines.append(line)
+                    append_server_stdout_line(line)
                     token = parse_special_token(line)
                     if token:
                         token_status = token[0]
@@ -1612,7 +1809,14 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 }
 
             client_cmd = client_cmd + ["--endpoint", endpoint]
-            sampled = run_command_with_metrics(client_cmd, env, timeout_sec)
+            sampled = run_command_with_metrics(
+                client_cmd,
+                env,
+                timeout_sec,
+                on_stdout_line=lambda line: emit_multi_result_metrics_from_line(
+                    line, transport, expected_sizes, result_line_callback
+                ),
+            )
             client_stdout = sampled.get("stdout", "") or ""
             client_stderr = sampled.get("stderr", "") or ""
             progress_meta = {
@@ -1685,6 +1889,21 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
 
             client_cpu = sampled.get("cpu_pct")
             client_mem = sampled.get("mem_mb")
+            server_cpu = None
+            server_mem = None
+            for sz in sizes:
+                existing_server_cpu = parsed.get(f"{transport}|{sz}|server_cpu_pct")
+                if existing_server_cpu is not None:
+                    server_cpu = existing_server_cpu
+                existing_server_mem = parsed.get(f"{transport}|{sz}|server_mem_mb")
+                if existing_server_mem is not None:
+                    server_mem = existing_server_mem
+
+            if server_cpu is None:
+                server_cpu = float(client_cpu) if client_cpu is not None else 0.0
+            if server_mem is None:
+                server_mem = float(client_mem) if client_mem is not None else 0.0
+
             if client_cpu is not None:
                 for sz in sizes:
                     key = f"{transport}|{sz}|client_cpu_pct"
@@ -1693,6 +1912,11 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 for sz in sizes:
                     key = f"{transport}|{sz}|client_mem_mb"
                     parsed.setdefault(key, float(client_mem))
+            for sz in sizes:
+                server_cpu_key = f"{transport}|{sz}|server_cpu_pct"
+                server_mem_key = f"{transport}|{sz}|server_mem_mb"
+                parsed.setdefault(server_cpu_key, float(server_cpu))
+                parsed.setdefault(server_mem_key, float(server_mem))
 
             token_status, token_reason = detect_special_status(
                 combined_stdout, lib_name, pattern_name, transport
@@ -1770,7 +1994,14 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
     }
 
 
-def run_multi_sizes_test(_binary_name, lib_name, transport, sizes, pattern_name):
+def run_multi_sizes_test(
+    _binary_name,
+    lib_name,
+    transport,
+    sizes,
+    pattern_name,
+    result_line_callback=None,
+):
     if pattern_name in STREAM_VARIANT_PATTERNS:
         server_binary = resolve_stream_server_binary(pattern_name)
         if not server_binary:
@@ -1785,7 +2016,12 @@ def run_multi_sizes_test(_binary_name, lib_name, transport, sizes, pattern_name)
                 "warnings": [],
             }
         return run_multi_sizes_test_stream_shared(
-            server_binary, lib_name, transport, sizes, pattern_name
+            server_binary,
+            lib_name,
+            transport,
+            sizes,
+            pattern_name,
+            result_line_callback=result_line_callback,
         )
 
     names = resolve_multi_binary_names(pattern_name)
@@ -1794,7 +2030,13 @@ def run_multi_sizes_test(_binary_name, lib_name, transport, sizes, pattern_name)
         client_path = os.path.join(BUILD_DIR, names["client"] + EXE_SUFFIX)
         if os.path.exists(server_path) and os.path.exists(client_path):
             return run_multi_sizes_test_split(
-                names["server"], names["client"], lib_name, transport, sizes, pattern_name
+                names["server"],
+                names["client"],
+                lib_name,
+                transport,
+                sizes,
+                pattern_name,
+                result_line_callback=result_line_callback,
             )
         return {
             "status": "fail",
@@ -2057,13 +2299,141 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 else:
                     row_indent = "      "
 
-                outcome = run_multi_sizes_test(binary_name, lib_name, tr, sizes, pattern_name)
+                live_metrics = {}
+                live_emitted_sizes = set()
+
+                def maybe_emit_live_row(sz):
+                    if sz in live_emitted_sizes:
+                        return
+                    tp_key = f"{tr}|{sz}|throughput"
+                    bw_key = f"{tr}|{sz}|bandwidth"
+                    lat_key = f"{tr}|{sz}|latency"
+                    client_cpu_key = f"{tr}|{sz}|client_cpu_pct"
+                    client_mem_key = f"{tr}|{sz}|client_mem_mb"
+                    tp_value = live_metrics.get(tp_key)
+                    bw_value = live_metrics.get(bw_key)
+                    lat_value = live_metrics.get(lat_key)
+                    client_cpu_value = live_metrics.get(client_cpu_key)
+                    client_mem_value = live_metrics.get(client_mem_key)
+                    if (
+                        tp_value is None
+                        or bw_value is None
+                        or lat_value is None
+                    ):
+                        return
+                    if client_cpu_value is None or client_mem_value is None:
+                        return
+
+                    if pattern_name in STREAM_VARIANT_PATTERNS:
+                        connect_ok_key = f"{tr}|{sz}|connect_ok"
+                        connect_target_key = f"{tr}|{sz}|connect_target"
+                        connect_ok_value = live_metrics.get(connect_ok_key)
+                        connect_target_value = live_metrics.get(connect_target_key)
+                        if connect_ok_value is None or connect_target_value is None:
+                            return
+                        connect_ok_int = int(round(float(connect_ok_value)))
+                        connect_target_int = int(round(float(connect_target_value)))
+                        if connect_target_int <= 0:
+                            connect_target_int = multi_pattern_default_clients(
+                                pattern_name, tr
+                            )
+                        connect_required_int = max(1, connect_target_int)
+                        if connect_ok_int < connect_required_int:
+                            return
+
+                    server_cpu_value = live_metrics.get(f"{tr}|{sz}|server_cpu_pct")
+                    server_mem_value = live_metrics.get(f"{tr}|{sz}|server_mem_mb")
+                    if server_cpu_value is None:
+                        server_cpu_value = client_cpu_value
+                    if server_mem_value is None:
+                        server_mem_value = client_mem_value
+
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        True,
+                        row_indent,
+                        sz,
+                        "success",
+                        throughput=tp_value,
+                        bandwidth=bw_value,
+                        latency=lat_value,
+                        client_cpu=client_cpu_value,
+                        client_mem=client_mem_value,
+                        server_cpu=server_cpu_value,
+                        server_mem=server_mem_value,
+                    )
+                    live_emitted_sizes.add(sz)
+
+                def on_result_metric(line_transport, line_size, metric_name, value):
+                    if line_transport != tr.lower() or line_size not in sizes:
+                        return
+                    key = f"{line_transport}|{line_size}|{metric_name}"
+                    live_metrics[key] = value
+                    maybe_emit_live_row(line_size)
+
+                outcome = run_multi_sizes_test(
+                    binary_name,
+                    lib_name,
+                    tr,
+                    sizes,
+                    pattern_name,
+                    result_line_callback=on_result_metric,
+                )
                 rc = outcome.get("returncode", 0)
                 for warning in outcome.get("warnings", []) or []:
                     print(f"warning: {warning}", file=sys.stderr)
 
+                outcome_status = outcome.get("status", "fail")
+                if outcome_status == "unsupported":
+                    tr_unsupported = True
+                    for sz in sizes:
+                        if sz in live_emitted_sizes:
+                            continue
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "unsupported",
+                        )
+                    break
+
+                if outcome_status == "skip":
+                    tr_skipped = True
+                    skip_reason = outcome.get("reason", "skip")
+                    for sz in sizes:
+                        if sz in live_emitted_sizes:
+                            continue
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "fail",
+                        )
+                    break
+
+                parsed = outcome.get("parsed", {}) or {}
+                for key, value in parsed.items():
+                    metrics_raw.setdefault(key, []).append(value)
+
+                cpu_sample = outcome.get("cpu_pct")
+                mem_sample = outcome.get("mem_mb")
+                for sz in sizes:
+                    cpu_key = f"{tr}|{sz}|client_cpu_pct"
+                    mem_key = f"{tr}|{sz}|client_mem_mb"
+                    if cpu_sample is not None and cpu_key not in parsed:
+                        metrics_raw.setdefault(cpu_key, []).append(float(cpu_sample))
+                    if mem_sample is not None and mem_key not in parsed:
+                        metrics_raw.setdefault(mem_key, []).append(float(mem_sample))
+
                 if outcome.get("timed_out", False):
                     for sz in sizes:
+                        if sz in live_emitted_sizes:
+                            continue
                         failures.append((pattern_name, lib_name, tr, sz, "timeout"))
                         run_failed_sizes.add(sz)
                         _emit_table_row(
@@ -2079,41 +2449,14 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     maybe_cooldown()
                     continue
 
-                outcome_status = outcome.get("status", "fail")
-                if outcome_status == "unsupported":
-                    tr_unsupported = True
-                    for sz in sizes:
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "unsupported",
-                        )
-                    break
-
-                if outcome_status == "skip":
-                    tr_skipped = True
-                    skip_reason = outcome.get("reason", "skip")
-                    for sz in sizes:
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "fail",
-                        )
-                    break
-
-                parsed = outcome.get("parsed", {}) or {}
                 if not parsed:
                     base_reason = outcome.get("reason", "")
                     reason = base_reason if base_reason else (
                         f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
                     )
                     for sz in sizes:
+                        if sz in live_emitted_sizes:
+                            continue
                         failures.append((pattern_name, lib_name, tr, sz, reason))
                         run_failed_sizes.add(sz)
                         _emit_table_row(
@@ -2129,27 +2472,15 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     maybe_cooldown()
                     continue
 
-                for key, value in parsed.items():
-                    metrics_raw.setdefault(key, []).append(value)
-
-                cpu_sample = outcome.get("cpu_pct")
-                mem_sample = outcome.get("mem_mb")
-                for sz in sizes:
-                    cpu_key = f"{tr}|{sz}|client_cpu_pct"
-                    mem_key = f"{tr}|{sz}|client_mem_mb"
-                    if cpu_sample is not None and cpu_key not in parsed:
-                        metrics_raw.setdefault(cpu_key, []).append(float(cpu_sample))
-                    if mem_sample is not None and mem_key not in parsed:
-                        metrics_raw.setdefault(mem_key, []).append(float(mem_sample))
-
-                run_has_missing = False
                 for sz in sizes:
                     tp_key = f"{tr}|{sz}|throughput"
                     bw_key = f"{tr}|{sz}|bandwidth"
                     lat_key = f"{tr}|{sz}|latency"
+                    cpu_key = f"{tr}|{sz}|client_cpu_pct"
+                    mem_key = f"{tr}|{sz}|client_mem_mb"
                     connect_ok_key = f"{tr}|{sz}|connect_ok"
-                    connect_fail_key = f"{tr}|{sz}|connect_fail"
                     connect_target_key = f"{tr}|{sz}|connect_target"
+
                     missing = []
                     if tp_key not in parsed:
                         missing.append("throughput")
@@ -2159,28 +2490,29 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         missing.append("latency")
 
                     if missing:
-                        run_has_missing = True
                         run_failed_sizes.add(sz)
                         for metric in missing:
                             suffix = f"_rc_{rc}" if rc not in (0, None) else ""
                             failures.append(
                                 (pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}")
                             )
-                        _emit_table_row(
-                            emit,
-                            pattern_name,
-                            True,
-                            row_indent,
-                            sz,
-                            "fail",
-                        )
+                        if sz not in live_emitted_sizes:
+                            _emit_table_row(
+                                emit,
+                                pattern_name,
+                                True,
+                                row_indent,
+                                sz,
+                                "fail",
+                            )
+                        if FAIL_FAST:
+                            return final_stats, failures
                         continue
 
                     if pattern_name in STREAM_VARIANT_PATTERNS:
                         connect_ok_value = parsed.get(connect_ok_key)
                         connect_target_value = parsed.get(connect_target_key)
                         if connect_ok_value is None or connect_target_value is None:
-                            run_has_missing = True
                             run_failed_sizes.add(sz)
                             failures.append(
                                 (
@@ -2191,14 +2523,17 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                     "missing_connect_stats",
                                 )
                             )
-                            _emit_table_row(
-                                emit,
-                                pattern_name,
-                                True,
-                                row_indent,
-                                sz,
-                                "fail",
-                            )
+                            if sz not in live_emitted_sizes:
+                                _emit_table_row(
+                                    emit,
+                                    pattern_name,
+                                    True,
+                                    row_indent,
+                                    sz,
+                                    "fail",
+                                )
+                            if FAIL_FAST:
+                                return final_stats, failures
                             continue
 
                         connect_ok_int = int(round(float(connect_ok_value)))
@@ -2209,7 +2544,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             )
                         connect_required_int = max(1, connect_target_int)
                         if connect_ok_int < connect_required_int:
-                            run_has_missing = True
                             run_failed_sizes.add(sz)
                             reason = (
                                 "connect_not_enough_ok_"
@@ -2217,16 +2551,21 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                 f"_min_{connect_required_int}"
                             )
                             failures.append((pattern_name, lib_name, tr, sz, reason))
-                            _emit_table_row(
-                                emit,
-                                pattern_name,
-                                True,
-                                row_indent,
-                                sz,
-                                "fail",
-                            )
+                            if sz not in live_emitted_sizes:
+                                _emit_table_row(
+                                    emit,
+                                    pattern_name,
+                                    True,
+                                    row_indent,
+                                    sz,
+                                    "fail",
+                                )
+                            if FAIL_FAST:
+                                return final_stats, failures
                             continue
 
+                    if sz in live_emitted_sizes:
+                        continue
                     _emit_table_row(
                         emit,
                         pattern_name,
@@ -2238,19 +2577,20 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         bandwidth=parsed.get(bw_key, 0.0),
                         latency=parsed.get(lat_key, 0.0),
                         client_cpu=parsed.get(
-                            f"{tr}|{sz}|client_cpu_pct",
+                            cpu_key,
                             float(cpu_sample) if cpu_sample is not None else None,
                         ),
                         client_mem=parsed.get(
-                            f"{tr}|{sz}|client_mem_mb",
+                            mem_key,
                             float(mem_sample) if mem_sample is not None else None,
                         ),
                         server_cpu=parsed.get(f"{tr}|{sz}|server_cpu_pct"),
                         server_mem=parsed.get(f"{tr}|{sz}|server_mem_mb"),
                     )
+                    live_emitted_sizes.add(sz)
 
-                if FAIL_FAST and run_has_missing:
-                    return final_stats, failures
+                if tr_unsupported or tr_skipped:
+                    break
                 maybe_cooldown()
 
             if tr_unsupported:

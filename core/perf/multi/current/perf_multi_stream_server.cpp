@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -26,7 +27,6 @@ namespace {
 static const char *k_pattern = "MULTI_STREAM";
 
 static std::atomic<bool> g_stop_requested (false);
-static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
 
 inline void on_signal (int)
@@ -150,27 +150,99 @@ inline bool send_stream_once (const zlink_routing_id_t *rid,
     return false;
 }
 
-int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+inline bool extract_stream_routing_id (const zlink_msg_t *id_frame,
+                                       zlink_routing_id_t *rid_out)
 {
-    if (!rid || !msg || !g_server_socket)
-        return 0;
+    if (!id_frame || !rid_out)
+        return false;
 
-    const unsigned char *payload =
-      static_cast<const unsigned char *> (zlink_msg_data (msg));
-    const size_t payload_size = zlink_msg_size (msg);
-    if (is_stream_event_payload (payload, payload_size)) {
-        (void) zlink_msg_close (msg);
-        return 0;
+    const size_t id_size = zlink_msg_size (const_cast<zlink_msg_t *> (id_frame));
+    if (id_size == 0 || id_size > sizeof (rid_out->data))
+        return false;
+
+    const unsigned char *id_data = static_cast<const unsigned char *> (
+      zlink_msg_data (const_cast<zlink_msg_t *> (id_frame)));
+    if (!id_data)
+        return false;
+
+    rid_out->size = static_cast<uint8_t> (id_size);
+    std::memcpy (rid_out->data, id_data, id_size);
+    return true;
+}
+
+inline bool relay_stream_once (void *server, int poll_timeout_ms)
+{
+    if (!server)
+        return false;
+
+    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
+    const int prc = zlink_poll (item, 1, poll_timeout_ms);
+    if (prc < 0)
+        return zlink_errno () == EINTR;
+    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
+        return true;
+
+    zlink_msg_t id_frame;
+    zlink_msg_t payload_frame;
+    zlink_msg_init (&id_frame);
+    zlink_msg_init (&payload_frame);
+
+    const int id_len = zlink_msg_recv (&id_frame, server, 0);
+    if (id_len < 0) {
+        const int err = zlink_errno ();
+        (void) zlink_msg_close (&id_frame);
+        (void) zlink_msg_close (&payload_frame);
+        return err == EAGAIN || err == EINTR;
     }
 
-    if (!send_stream_once (rid, payload, payload_size)) {
-        g_callback_failed.store (true, std::memory_order_release);
-        (void) zlink_msg_close (msg);
-        return 1;
+    int more = 0;
+    size_t more_size = sizeof (more);
+    if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
+        (void) zlink_msg_close (&id_frame);
+        (void) zlink_msg_close (&payload_frame);
+        return false;
     }
 
-    (void) zlink_msg_close (msg);
-    return 0;
+    const int payload_len = zlink_msg_recv (&payload_frame, server, 0);
+    if (payload_len < 0) {
+        const int err = zlink_errno ();
+        (void) zlink_msg_close (&id_frame);
+        (void) zlink_msg_close (&payload_frame);
+        return err == EAGAIN || err == EINTR;
+    }
+
+    // STREAM recv loop expects 2-part message (routing id + payload); drain extras.
+    while (true) {
+        more = 0;
+        more_size = sizeof (more);
+        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more)
+            break;
+
+        zlink_msg_t extra;
+        zlink_msg_init (&extra);
+        const int extra_len = zlink_msg_recv (&extra, server, 0);
+        (void) zlink_msg_close (&extra);
+        if (extra_len < 0) {
+            const int err = zlink_errno ();
+            (void) zlink_msg_close (&id_frame);
+            (void) zlink_msg_close (&payload_frame);
+            return err == EAGAIN || err == EINTR;
+        }
+    }
+
+    zlink_routing_id_t rid;
+    const bool rid_ok = extract_stream_routing_id (&id_frame, &rid);
+    const unsigned char *payload = static_cast<const unsigned char *> (
+      zlink_msg_data (&payload_frame));
+    const size_t payload_size = zlink_msg_size (&payload_frame);
+
+    bool ok = rid_ok;
+    if (ok && !is_stream_event_payload (payload, payload_size))
+        ok = send_stream_once (&rid, payload, payload_size);
+
+    (void) zlink_msg_close (&id_frame);
+    (void) zlink_msg_close (&payload_frame);
+    return ok;
 }
 
 } // namespace
@@ -229,15 +301,8 @@ int main (int argc, char **argv)
     }
 
     g_stop_requested.store (false, std::memory_order_release);
-    g_callback_failed.store (false, std::memory_order_release);
     g_server_socket = server;
     install_signal_handlers ();
-
-    if (zlink_stream_attach_raw (server, on_stream_packet) != 0) {
-        g_server_socket = NULL;
-        zlink_close (server);
-        return 1;
-    }
 
     std::thread stdin_watcher ([] () {
         std::string line;
@@ -255,14 +320,12 @@ int main (int argc, char **argv)
 
     int rc = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        if (g_callback_failed.load (std::memory_order_acquire)) {
+        if (!relay_stream_once (server, 50)) {
             rc = 1;
             break;
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
 
-    (void) zlink_stream_detach (server);
     g_server_socket = NULL;
 
     const bench_multi_resource_metrics_t metrics =

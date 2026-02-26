@@ -165,7 +165,7 @@ latency 예시: (14.0 - 12.0) / 12.0 × 100 = +16.67%
 - `UNSUPPORTED` 토큰 형식: `UNSUPPORTED,<lib>,<pattern>,<transport>`
 - `SKIP` 토큰 형식: `SKIP,<lib>,<pattern>,<transport>,<reason>`
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
-- **UNSUPPORTED 오용 금지**: §10.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.3](PERF_POLICY.md)을 참조한다.
+- **UNSUPPORTED 오용 금지**: §10.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)을 참조한다.
 
 ### 3.2 유효성 규칙
 
@@ -211,7 +211,7 @@ for pattern in [PAIR, PUBSUB, DEALER_DEALER, ...]:
 
 ### 3.6 코어 로직 인라인 원칙
 
-각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 공통 함수 한 줄로 위임하는 것을 금지한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)를 참조한다.
+각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 외부 공통 함수 한 줄로 위임하는 것을 금지한다. 단, **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
 
 STREAM 계열은 single suite에서 테스트하지 않으므로 STREAM client 예외 규칙은 해당 없다. STREAM client 인프라(`core/perf/common/streamclient/`)는 multi suite에서만 사용된다.
 

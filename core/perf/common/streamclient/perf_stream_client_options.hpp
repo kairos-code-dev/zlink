@@ -182,6 +182,7 @@ inline void print_perf_result_line (const client_options_t &opt,
                  opt.pattern.c_str (), opt.transport.c_str (), size, bandwidth);
     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                  opt.pattern.c_str (), opt.transport.c_str (), size, latency);
+    std::fflush (stdout);
 }
 
 // Open a one-shot connection and send the stop token to the echo server.

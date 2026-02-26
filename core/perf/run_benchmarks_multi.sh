@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MULTI_PATTERNS="MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM,MULTI_STREAM_CALLBACK,MULTI_STREAM_LEN32BE"
+MULTI_PATTERNS="DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE"
 MULTI_TRANSPORTS="tcp,tls,ws,wss"
 IFS=',' read -r -a MULTI_PATTERN_LIST <<< "${MULTI_PATTERNS}"
 
@@ -110,7 +110,8 @@ Usage: core/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,MULTI_GATEWAY,MULTI_SPOT,MULTI_STREAM,MULTI_STREAM_CALLBACK,MULTI_STREAM_LEN32BE
+  DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
+The MULTI_ prefix is auto-prepended internally; you may omit it.
 By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 3s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -121,7 +122,7 @@ Modes:
   gate                   Compare against fixed baseline (warning + fail)
 
 Options:
-  --pattern NAME         Benchmark pattern (default: all MULTI_* patterns above).
+  --pattern NAME         Benchmark pattern (default: all patterns above). MULTI_ prefix is optional.
   --help                 Show this help.
   --build                Force clean build (disables default reuse-build behavior).
   --save [VER]           Save baseline file under core/perf/results/multi/baseline/ (complete only).
@@ -677,12 +678,11 @@ SKIPPED_PATTERNS=()
 RUN_PATTERNS=()
 for raw_pattern in "${PATTERNS[@]}"; do
   pattern="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
-  if [[ "${pattern}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
-    echo "Error: MULTI_ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
-    exit 1
-  fi
   if [[ "${pattern}" != MULTI_* ]]; then
-    echo "Error: run_benchmarks_multi.sh accepts only MULTI_* patterns." >&2
+    pattern="MULTI_${pattern}"
+  fi
+  if [[ "${pattern}" == "MULTI_ROUTER_ROUTER_POLL" ]]; then
+    echo "Error: ROUTER_ROUTER_POLL is removed from multi benchmarks." >&2
     exit 1
   fi
 

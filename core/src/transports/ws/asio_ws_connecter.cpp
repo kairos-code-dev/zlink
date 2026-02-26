@@ -533,11 +533,12 @@ void zlink::asio_ws_connecter_t::create_engine (
         transport.reset (ws_transport.release ());
     }
 
-    const options_t engine_options = adjust_ws_options (options);
+    const bool is_stream = options.type == ZLINK_STREAM;
+    const options_t engine_options = is_stream ? options : adjust_ws_options (options);
     i_engine *engine = NULL;
 #if defined ZLINK_HAVE_WSS
     if (_secure) {
-        if (options.type == ZLINK_STREAM) {
+        if (is_stream) {
             engine = new (std::nothrow) asio_raw_engine_t (
               fd_, engine_options, endpoint_pair, std::move (transport),
               std::move (ssl_context));
@@ -549,7 +550,7 @@ void zlink::asio_ws_connecter_t::create_engine (
     } else
 #endif
     {
-        if (options.type == ZLINK_STREAM) {
+        if (is_stream) {
             engine = new (std::nothrow) asio_raw_engine_t (
               fd_, engine_options, endpoint_pair, std::move (transport));
         } else {

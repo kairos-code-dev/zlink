@@ -20,7 +20,7 @@ static const char *k_pattern = "MULTI_GATEWAY";
 static const char *k_token = "gateway";
 static const int k_server_socket_type = ZLINK_DEALER;
 static const bool k_server_router_echo = false;
-static const bool k_pubsub_mode = false;
+static const bool k_pubsub_mode = true;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 
@@ -262,15 +262,43 @@ inline void print_server_metrics (
     }
 }
 
-} // namespace
-
-int main (int argc, char **argv)
+inline bool run_server_loop (void *server,
+                             const multi_bench_settings_t &settings,
+                             std::vector<char> *payload,
+                             std::vector<char> *router_id_buf,
+                             std::vector<char> *router_payload_buf)
 {
-    if (argc < 3)
-        return 1;
+    if (!server || !payload || !router_id_buf || !router_payload_buf)
+        return false;
 
-    const std::string lib_name = argv[1];
-    const std::string transport = argv[2];
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        if (k_pubsub_mode) {
+            if (!publish_once (server, *payload, settings.send_backoff_us))
+                return false;
+            continue;
+        }
+
+        if (k_server_router_echo) {
+            if (!relay_router_once (
+                  server,
+                  *router_id_buf,
+                  *router_payload_buf,
+                  50)) {
+                return false;
+            }
+            continue;
+        }
+
+        if (!relay_dealer_once (server, *payload, 50))
+            return false;
+    }
+
+    return true;
+}
+
+inline int run_server_benchmark (const std::string &lib_name,
+                                 const std::string &transport)
+{
     set_perf_multi_pattern_env (k_pattern);
 
     if (!is_supported_transport (transport)) {
@@ -370,33 +398,12 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    bool loop_ok = true;
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        if (k_pubsub_mode) {
-            if (!publish_once (server, payload, settings.send_backoff_us)) {
-                loop_ok = false;
-                break;
-            }
-            continue;
-        }
-
-        if (k_server_router_echo) {
-            if (!relay_router_once (
-                  server,
-                  router_id_buf,
-                  router_payload_buf,
-                  50)) {
-                loop_ok = false;
-                break;
-            }
-            continue;
-        }
-
-        if (!relay_dealer_once (server, payload, 50)) {
-            loop_ok = false;
-            break;
-        }
-    }
+    const bool loop_ok = run_server_loop (
+      server,
+      settings,
+      &payload,
+      &router_id_buf,
+      &router_payload_buf);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);
@@ -406,4 +413,16 @@ int main (int argc, char **argv)
     zlink_close (server);
 
     return loop_ok ? 0 : 1;
+}
+
+} // namespace
+
+int main (int argc, char **argv)
+{
+    if (argc < 3)
+        return 1;
+
+    const std::string lib_name = argv[1];
+    const std::string transport = argv[2];
+    return run_server_benchmark (lib_name, transport);
 }

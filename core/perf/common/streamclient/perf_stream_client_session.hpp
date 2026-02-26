@@ -34,8 +34,7 @@
 // --- Benchmark tuning constants ---
 
 inline constexpr int k_connect_batch = 1024;           // max concurrent connect() calls
-inline constexpr int k_connect_timeout_s = 90;         // per-session connect deadline
-inline constexpr int k_connect_retry_delay_ms = 25;    // delay between connect retries
+inline constexpr int k_connect_timeout_s = 90;         // connect phase timeout budget
 inline constexpr int k_resize_timeout_s = 30;          // chunk-size barrier wait limit
 inline constexpr int k_socket_sndbuf = 1024 * 1024;    // SO_SNDBUF (1 MiB)
 inline constexpr int k_socket_rcvbuf = 1024 * 1024;    // SO_RCVBUF (1 MiB)
@@ -86,7 +85,7 @@ parse_transport_mode (const std::string &transport)
 // Single async transport connection that runs a len32be echo loop.
 //
 // Lifecycle:
-//   begin_connect() → do_connect() → on_connect() [retry on failure]
+//   begin_connect() → do_connect() → on_connect()
 //       → start_traffic() → maybe_send_more() → send_one() [async_write]
 //       → on_write() → start_read_header() → on_read_header()
 //       → start_read_payload() → on_read_payload() → maybe_send_more() [loop]
@@ -110,7 +109,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           wss_socket (),
           ws_read_buffer (),
           ws_pending_frame (),
-          connect_retry_timer (io_),
           strand (boost::asio::make_strand (io_)),
           closed (false),
           connected_flag (false),
@@ -120,7 +118,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           read_pending (false),
           outstanding (0),
           chunk_size (64),
-          connect_deadline (),
           endpoint (),
           source_bind_ep (source_bind_ep_),
           write_buf (),
@@ -188,7 +185,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     }
 
   private:
-    // --- Connect with retry ---
+    // --- Connect ---
 
     std::string websocket_host_header () const
     {
@@ -307,10 +304,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         using boost::asio::ip::tcp;
 
         connect_started = true;
-        if (connect_deadline.time_since_epoch ().count () == 0) {
-            connect_deadline = std::chrono::steady_clock::now ()
-                               + std::chrono::seconds (k_connect_timeout_s);
-        }
 
         close_transport_socket ();
 
@@ -391,8 +384,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
             }));
     }
 
-    // Handle connect result: apply tuning on success, retry on failure,
-    // or report permanent failure if the deadline has elapsed.
+    // Handle connect result: apply tuning on success or fail immediately.
     void on_connect (const boost::system::error_code &ec)
     {
         if (closed || connect_reported)
@@ -401,22 +393,8 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         if (!ec) {
             connected_flag = true;
             connect_reported = true;
-            connect_retry_timer.cancel ();
             apply_socket_tuning ();
             owner.on_connect_result (true, shared_from_this ());
-            return;
-        }
-
-        if (std::chrono::steady_clock::now () < connect_deadline) {
-            connect_retry_timer.expires_after (
-              std::chrono::milliseconds (k_connect_retry_delay_ms));
-            const std::shared_ptr<client_session_t> self = shared_from_this ();
-            connect_retry_timer.async_wait (boost::asio::bind_executor (
-              strand, [self] (const boost::system::error_code &wait_ec) {
-                  if (wait_ec || self->closed)
-                      return;
-                  self->do_connect ();
-              }));
             return;
         }
 
@@ -820,7 +798,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         }
 
         boost::system::error_code ec;
-        connect_retry_timer.cancel ();
         close_transport_socket ();
     }
 
@@ -908,7 +885,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     boost::beast::flat_buffer ws_read_buffer;
     std::vector<unsigned char> ws_pending_frame;
 
-    boost::asio::steady_timer connect_retry_timer;   // connect retry delay
     boost::asio::strand<boost::asio::io_context::executor_type> strand; // serializes all callbacks
 
     bool closed;            // permanently shut down
@@ -920,7 +896,6 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
     size_t outstanding;     // un-echoed messages (0 or 1)
 
     size_t chunk_size;      // current payload size
-    std::chrono::steady_clock::time_point connect_deadline;
     boost::asio::ip::tcp::endpoint endpoint;         // server address
     boost::asio::ip::tcp::endpoint source_bind_ep;   // loopback shard bind address
 

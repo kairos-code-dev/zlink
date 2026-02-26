@@ -12,7 +12,7 @@
 // bench_client_t manages the full async benchmark lifecycle:
 //   1. Spin up io_context + worker threads
 //   2. Create CCU client_session_t instances
-//   3. Batched connect with retry
+//   3. Batched connect scheduling
 //   4. For each size: resize → warmup → measure → drain → report
 //   5. Shutdown and join
 
@@ -232,6 +232,7 @@ class bench_client_t : public bench_client_iface_t
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, latency);
                 }
+                std::fflush (stdout);
                 if (!m.pass)
                     all_pass = false;
                 if ((i + 1) < opt.sizes.size ())
@@ -602,6 +603,7 @@ class bench_client_t : public bench_client_iface_t
 
         out.pass = window_ok && out.connect_ok >= required_connect
                    && out.send_error == 0 && out.recv_error == 0
+                   && out.timeout_error == 0 && out.size_mismatch == 0
                    && out.throughput_bps > 0.0;
         return out;
     }

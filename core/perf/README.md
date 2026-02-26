@@ -3,7 +3,7 @@
 Two shell scripts drive the zlink benchmark suite:
 
 - `run_benchmarks.sh`: single-pattern runner (PAIR, PUBSUB, DEALER_DEALER, etc.)
-- `run_benchmarks_multi.sh`: multi-pattern wrapper (MULTI_* patterns only)
+- `run_benchmarks_multi.sh`: multi-pattern wrapper (multi-socket patterns)
 
 ## run_benchmarks.sh
 
@@ -92,9 +92,9 @@ environment variables and delegates to `run_benchmarks.sh` with
 ### Default Patterns
 
 ```
-MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER,
-MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT,
-MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE
+DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER,
+PUBSUB, GATEWAY, SPOT,
+STREAM, STREAM_CALLBACK, STREAM_LEN32BE
 ```
 
 Default transports: `tcp,tls,ws,wss`
@@ -105,7 +105,7 @@ Shared options (forwarded to `run_benchmarks.sh`):
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--pattern NAME` | all MULTI_* | Pattern list (comma-separated) or `ALL` |
+| `--pattern NAME` | all patterns | Pattern list (comma-separated) or `ALL`. `MULTI_` prefix is optional |
 | `--build` | off | Force clean build |
 | `--build-dir PATH` | auto | Override build directory |
 | `--output PATH` | — | Tee results to a file |
@@ -166,7 +166,7 @@ Disable with `PERF_SKIP_NOFILE_CHECK=1`.
 
 ```
 1. Parse CLI options and validate
-2. Resolve pattern list (default: all 9 MULTI_* patterns)
+2. Resolve pattern list (default: all 9 patterns, MULTI_ prefix auto-prepended)
 3. For each pattern:
    a. Determine client count (--clients or pattern default 1000)
    b. Preflight nofile limit check → skip on failure
@@ -218,7 +218,7 @@ Run specific pattern with custom clients and duration:
 
 ```bash
 ./core/perf/run_benchmarks_multi.sh \
-  --pattern MULTI_STREAM \
+  --pattern STREAM \
   --clients 5000 \
   --duration 10 \
   --transports tcp

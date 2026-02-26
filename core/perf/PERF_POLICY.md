@@ -545,7 +545,21 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
 
-### 8.2 실패 시 대응 절차
+### 8.2 Inflight/Outstanding 옵션 금지
+
+벤치마크 바이너리 및 스크립트에 **inflight, outstanding, in-flight 제한 옵션**을 두지 않는다.
+
+| 항목 | 규칙 |
+|------|------|
+| CLI 옵션 | `--inflight`, `--outstanding`, `--max-in-flight` 등 inflight 깊이를 조절하는 옵션을 제공하지 않는다 |
+| 환경 변수 | `PERF_INFLIGHT`, `PERF_MULTI_INFLIGHT`, `PERF_OUTSTANDING` 등 inflight 관련 환경 변수는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
+| 하드코딩 flow control | `outstanding_limit`, `window_exhausted` 등 send/recv 차이 기반의 인위적 흐름 제어는 제거한다. 소켓 HWM(`PERF_MULTI_HWM`)이 이미 send 큐 backpressure를 제공한다 |
+
+- **이유**: inflight 제한은 벤치마크 결과를 인위적으로 왜곡한다. 라이브러리의 실제 처리 능력을 측정해야 하며, 벤치마크 인프라가 추가 병목을 도입하면 안 된다.
+- one-way 패턴에서는 응답이 없으므로 outstanding 개념 자체가 성립하지 않는다.
+- echo 패턴에서는 클라이언트 측 per-socket pending 제어(1:1 send-recv)와 소켓 HWM이 자연 backpressure를 제공하므로 별도의 outstanding 제한이 불필요하다.
+
+### 8.3 실패 시 대응 절차
 
 | 단계 | 행동 |
 |------|------|
@@ -557,7 +571,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 - 재시도로 문제를 숨기지 않는다. 실패는 반드시 원인을 파악한 뒤 근본 원인을 해결해야 한다.
 
-### 8.3 UNSUPPORTED 오용 금지
+### 8.4 UNSUPPORTED 오용 금지
 
 정책 문서(§10.3 / §11.3)에 **정의된 transport**가 실행 시 실패하면 반드시 `fail`로 보고해야 한다. `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 **금지**한다.
 
@@ -572,7 +586,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - 정책에 정의된 transport가 동작하지 않으면 **라이브러리 또는 환경 결함**이다. §8.2 대응 절차를 따른다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
 
-### 8.4 코어 로직 인라인 원칙
+### 8.5 코어 로직 인라인 원칙
 
 각 벤치마크 소스 파일은 해당 패턴의 **zlink API 사용법을 명시적으로 보여주는 샘플** 역할을 해야 한다. 테스트 파일 하나만 열면 해당 패턴의 소켓 사용 흐름을 이해할 수 있어야 한다.
 
@@ -605,7 +619,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 #### 인라인 필수 (코어 로직)
 
-아래 항목은 **반드시 각 테스트 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더의 함수 한 줄로 위임하는 것을 금지한다.
+아래 항목은 **반드시 각 테스트 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더/공통 소스의 함수 한 줄로 위임하여 코어 로직을 숨기는 것을 금지한다.
 
 | 항목 | 설명 |
 |------|------|
@@ -614,6 +628,12 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | bind / connect | 서버의 bind, 클라이언트의 connect 호출 |
 | send / recv 루프 | 메시지 교환 흐름 (echo, relay, one-way 등) |
 | phase 제어 | warmup → measure → drain 시퀀스 |
+
+#### 동일 파일 Extract Method 허용
+
+- 가독성과 유지보수를 위해 **동일 파일 안에서 함수 분리(extract method)** 를 수행하는 것은 허용되며 권장한다.
+- 예: `run_client_benchmark()`, `run_single_size_case()`, `run_echo_duration()`처럼 의미 단위로 분리.
+- 단, 파일을 열었을 때 패턴별 코어 흐름(소켓 생성/연결/송수신/phase)이 추적 가능해야 하며 외부 공용 함수 한 줄 호출로 숨기면 안 된다.
 
 #### 위반 예시
 

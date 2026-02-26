@@ -6,14 +6,11 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
-#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 #ifndef ZLINK_STREAM
@@ -27,20 +24,10 @@
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM_CALLBACK";
-static const uint32_t k_max_stream_payload = 4u * 1024u * 1024u;
 
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
-struct stream_reassembly_state_t
-{
-    std::vector<unsigned char> bytes;
-    size_t offset;
-
-    stream_reassembly_state_t () : bytes (), offset (0) {}
-};
-static std::unordered_map<std::string, stream_reassembly_state_t> g_stream_reassembly;
-static std::mutex g_stream_reassembly_mutex;
 
 inline void on_signal (int)
 {
@@ -58,22 +45,6 @@ inline void install_signal_handlers ()
 inline bool is_stream_event_payload (const unsigned char *data, size_t size)
 {
     return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
-}
-
-inline uint32_t load_u32_be (const unsigned char *p)
-{
-    return (static_cast<uint32_t> (p[0]) << 24)
-           | (static_cast<uint32_t> (p[1]) << 16)
-           | (static_cast<uint32_t> (p[2]) << 8)
-           | static_cast<uint32_t> (p[3]);
-}
-
-inline std::string routing_id_key (const zlink_routing_id_t *rid)
-{
-    if (!rid || rid->size == 0)
-        return std::string ();
-    const char *data = reinterpret_cast<const char *> (&rid->data[0]);
-    return std::string (data, data + rid->size);
 }
 
 inline bool is_supported_transport (const std::string &transport)
@@ -179,60 +150,6 @@ inline bool send_stream_once (const zlink_routing_id_t *rid,
     return false;
 }
 
-inline bool append_and_echo_len32be_frames (const zlink_routing_id_t *rid,
-                                            const unsigned char *payload,
-                                            size_t payload_size)
-{
-    if (!rid || !payload || payload_size == 0)
-        return true;
-
-    const std::string key = routing_id_key (rid);
-    if (key.empty ())
-        return false;
-
-    std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
-    stream_reassembly_state_t &state = g_stream_reassembly[key];
-    state.bytes.insert (state.bytes.end (), payload, payload + payload_size);
-
-    while (true) {
-        const size_t available = state.bytes.size () - state.offset;
-        if (available < 4)
-            break;
-
-        const unsigned char *frame = &state.bytes[state.offset];
-        const uint32_t declared = load_u32_be (frame);
-        if (declared > k_max_stream_payload) {
-            g_stream_reassembly.erase (key);
-            return false;
-        }
-
-        const size_t total = static_cast<size_t> (4 + declared);
-        if (available < total)
-            break;
-
-        if (!send_stream_once (rid, frame, total)) {
-            g_stream_reassembly.erase (key);
-            return false;
-        }
-
-        state.offset += total;
-    }
-
-    if (state.offset > 0) {
-        if (state.offset >= state.bytes.size ()) {
-            state.bytes.clear ();
-            state.offset = 0;
-        } else if (state.offset >= 4096 || state.offset * 2 >= state.bytes.size ()) {
-            state.bytes.erase (state.bytes.begin (),
-                               state.bytes.begin ()
-                                 + static_cast<std::ptrdiff_t> (state.offset));
-            state.offset = 0;
-        }
-    }
-
-    return true;
-}
-
 int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
 {
     if (!rid || !msg || !g_server_socket)
@@ -242,16 +159,11 @@ int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
       static_cast<const unsigned char *> (zlink_msg_data (msg));
     const size_t payload_size = zlink_msg_size (msg);
     if (is_stream_event_payload (payload, payload_size)) {
-        const std::string key = routing_id_key (rid);
-        if (!key.empty ()) {
-            std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
-            g_stream_reassembly.erase (key);
-        }
         (void) zlink_msg_close (msg);
         return 0;
     }
 
-    if (!append_and_echo_len32be_frames (rid, payload, payload_size)) {
+    if (!send_stream_once (rid, payload, payload_size)) {
         g_callback_failed.store (true, std::memory_order_release);
         (void) zlink_msg_close (msg);
         return 1;
@@ -352,10 +264,6 @@ int main (int argc, char **argv)
 
     (void) zlink_stream_detach (server);
     g_server_socket = NULL;
-    {
-        std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
-        g_stream_reassembly.clear ();
-    }
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (cpu_start);

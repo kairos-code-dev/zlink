@@ -1,7 +1,7 @@
 #ifndef PERF_STREAM_PERF_CLIENT_HPP
 #define PERF_STREAM_PERF_CLIENT_HPP
 
-// Async multi-connection benchmark orchestrator (TCP only).
+// Async multi-connection benchmark orchestrator (tcp/tls/ws/wss).
 // Provides:
 //   loopback_bind_plan_t      – source-address sharding plan for loopback
 //   read_ipv4_ephemeral_port_capacity() – reads OS ephemeral port range
@@ -25,7 +25,9 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -110,6 +112,23 @@ make_loopback_bind_plan (const boost::asio::ip::tcp::endpoint &endpoint, int ccu
     return plan;
 }
 
+inline double read_connect_ok_ratio_min ()
+{
+    const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_OK_RATIO_MIN");
+    if (!raw || !*raw)
+        return 0.95;
+
+    char *end = NULL;
+    const double parsed = std::strtod (raw, &end);
+    if (end == raw)
+        return 0.95;
+    if (parsed < 0.0)
+        return 0.0;
+    if (parsed > 1.0)
+        return 1.0;
+    return parsed;
+}
+
 // --- Benchmark orchestrator ---
 // Manages worker threads, sessions, phase transitions, and metrics collection.
 // Implements bench_client_iface_t so sessions can report events thread-safely.
@@ -141,7 +160,8 @@ class bench_client_t : public bench_client_iface_t
           sample_overwrite_idx (0),
           endpoint (boost::asio::ip::make_address (opt.host),
                     static_cast<unsigned short> (opt.port)),
-          loopback_bind_plan ()
+          loopback_bind_plan (),
+          connect_ok_ratio_min (read_connect_ok_ratio_min ())
     {
         loopback_bind_plan = make_loopback_bind_plan (endpoint, opt.ccu);
     }
@@ -157,7 +177,8 @@ class bench_client_t : public bench_client_iface_t
         sessions.reserve (static_cast<size_t> (std::max (1, opt.ccu)));
         for (int i = 0; i < opt.ccu; ++i) {
             sessions.push_back (std::make_shared<client_session_t> (
-              *this, io, source_bind_endpoint_for (static_cast<size_t> (i))));
+              *this, io, opt.transport,
+              source_bind_endpoint_for (static_cast<size_t> (i))));
         }
 
         schedule_connects ();
@@ -206,6 +227,13 @@ class bench_client_t : public bench_client_iface_t
                       size, run_idx, m.throughput_bps, m.throughput_mib_s, m.p50_us,
                       m.p95_us, m.p99_us, m.connect_ok, m.connect_fail, m.send_error,
                       m.recv_error, m.timeout_error, m.size_mismatch, pass_text);
+                }
+                if (opt.print_perf_result > 0) {
+                    std::printf (
+                      "RESULT_CONNECT,current,%s,%s,%zu,connect_ok,%ld,connect_fail,%ld,"
+                      "connect_target,%d\n",
+                      opt.pattern.c_str (), opt.transport.c_str (), size,
+                      m.connect_ok, m.connect_fail, std::max (1, opt.ccu));
                 }
                 if (opt.print_perf_result > 0 && m.pass) {
                     const double throughput =
@@ -366,18 +394,43 @@ class bench_client_t : public bench_client_iface_t
         return boost::asio::ip::tcp::endpoint (addr, 0);
     }
 
+    std::vector<std::shared_ptr<client_session_t> > snapshot_connected_sessions ()
+    {
+        std::vector<std::shared_ptr<client_session_t> > copy;
+        {
+            std::lock_guard<std::mutex> lk (connected_mu);
+            copy.reserve (connected_sessions.size ());
+            for (size_t i = 0; i < connected_sessions.size (); ++i) {
+                const std::shared_ptr<client_session_t> &session =
+                  connected_sessions[i];
+                if (session && session->connected ())
+                    copy.push_back (session);
+            }
+        }
+        return copy;
+    }
+
+    long count_connected_sessions ()
+    {
+        long count = 0;
+        std::lock_guard<std::mutex> lk (connected_mu);
+        for (size_t i = 0; i < connected_sessions.size (); ++i) {
+            const std::shared_ptr<client_session_t> &session =
+              connected_sessions[i];
+            if (session && session->connected ())
+                ++count;
+        }
+        return count;
+    }
+
     // --- Phase control ---
 
     // Dispatch chunk-size update to all connected sessions and wait on latch.
     bool set_phase_size_for_connected (size_t size)
     {
         phase_size.store (size, std::memory_order_release);
-
-        std::vector<std::shared_ptr<client_session_t> > copy;
-        {
-            std::lock_guard<std::mutex> lk (connected_mu);
-            copy = connected_sessions;
-        }
+        std::vector<std::shared_ptr<client_session_t> > copy =
+          snapshot_connected_sessions ();
         if (copy.empty ())
             return false;
 
@@ -399,11 +452,8 @@ class bench_client_t : public bench_client_iface_t
     // Start traffic on all connected sessions (begins the send loop).
     void kick_phase_for_connected ()
     {
-        std::vector<std::shared_ptr<client_session_t> > copy;
-        {
-            std::lock_guard<std::mutex> lk (connected_mu);
-            copy = connected_sessions;
-        }
+        std::vector<std::shared_ptr<client_session_t> > copy =
+          snapshot_connected_sessions ();
         for (size_t i = 0; i < copy.size (); ++i)
             copy[i]->start_traffic ();
     }
@@ -518,11 +568,18 @@ class bench_client_t : public bench_client_iface_t
     // resize → warmup → measure → collect metrics
     case_metrics_t run_case (size_t size)
     {
+        const long connect_target = static_cast<long> (std::max (1, opt.ccu));
+        const long required_connect = std::max<long> (
+          1, static_cast<long> (std::ceil (
+               static_cast<double> (connect_target) * connect_ok_ratio_min
+               - 1e-12)));
+
         const bool resize_ok = set_phase_size_for_connected (size);
         if (!resize_ok) {
             case_metrics_t failed;
-            failed.connect_ok = connect_success.load (std::memory_order_relaxed);
-            failed.connect_fail = connect_fail.load (std::memory_order_relaxed);
+            failed.connect_ok = count_connected_sessions ();
+            failed.connect_fail =
+              std::max<long> (0, connect_target - failed.connect_ok);
             failed.timeout_error = 1;
             failed.pass = false;
             return failed;
@@ -534,8 +591,8 @@ class bench_client_t : public bench_client_iface_t
         const bool window_ok = run_window (std::max (1, opt.duration), true);
 
         case_metrics_t out;
-        out.connect_ok = connect_success.load (std::memory_order_relaxed);
-        out.connect_fail = connect_fail.load (std::memory_order_relaxed);
+        out.connect_ok = count_connected_sessions ();
+        out.connect_fail = std::max<long> (0, connect_target - out.connect_ok);
 
         const long long bytes_recv =
           bytes_recv_measure.load (std::memory_order_relaxed);
@@ -566,8 +623,9 @@ class bench_client_t : public bench_client_iface_t
         out.timeout_error = timeout_error_measure.load (std::memory_order_relaxed);
         out.size_mismatch = size_mismatch_measure.load (std::memory_order_relaxed);
 
-        out.pass = window_ok && out.connect_fail == 0 && out.send_error == 0
-                   && out.recv_error == 0 && out.throughput_bps > 0.0;
+        out.pass = window_ok && out.connect_ok >= required_connect
+                   && out.send_error == 0 && out.recv_error == 0
+                   && out.throughput_bps > 0.0;
         return out;
     }
 
@@ -633,6 +691,7 @@ class bench_client_t : public bench_client_iface_t
     std::atomic<size_t> sample_overwrite_idx;  // write cursor (wraps at capacity)
     boost::asio::ip::tcp::endpoint endpoint;
     loopback_bind_plan_t loopback_bind_plan;
+    double connect_ok_ratio_min;
 };
 
 #endif

@@ -4,6 +4,7 @@ core/perf - zlink benchmark runner
 """
 import datetime
 import json
+import math
 import os
 import platform
 import queue
@@ -772,6 +773,41 @@ def parse_result_line(line, transport, expected_sizes):
     return (line_transport, line_size, metric, value), None
 
 
+def parse_result_connect_line(line, transport, expected_sizes):
+    if not line.startswith("RESULT_CONNECT,"):
+        return None, None
+
+    parts = line.strip().split(",")
+    if len(parts) != 11:
+        return (
+            None,
+            f"ignored malformed RESULT_CONNECT line (field_count={len(parts)}): {line.strip()}",
+        )
+
+    try:
+        line_transport = parts[3].strip().lower()
+        line_size = int(parts[4].strip())
+        ok_label = parts[5].strip().lower()
+        ok_value = float(parts[6].strip())
+        fail_label = parts[7].strip().lower()
+        fail_value = float(parts[8].strip())
+        target_label = parts[9].strip().lower()
+        target_value = float(parts[10].strip())
+    except ValueError:
+        return None, f"ignored malformed RESULT_CONNECT numeric field: {line.strip()}"
+
+    if ok_label != "connect_ok" or fail_label != "connect_fail" or target_label != "connect_target":
+        return (
+            None,
+            f"ignored malformed RESULT_CONNECT labels: {line.strip()}",
+        )
+
+    if line_transport != transport.lower() or line_size not in expected_sizes:
+        return None, None
+
+    return (line_transport, line_size, ok_value, fail_value, target_value), None
+
+
 def parse_special_token(line):
     stripped = line.strip()
     if stripped.startswith("UNSUPPORTED,"):
@@ -1222,7 +1258,19 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                 if warning:
                     warnings.append(warning)
                 if not parsed_line:
+                    connect_line, connect_warning = parse_result_connect_line(
+                        line, transport, expected_sizes
+                    )
+                    if connect_warning:
+                        warnings.append(connect_warning)
+                    if not connect_line:
+                        continue
+                    line_transport, line_size, ok_value, fail_value, target_value = connect_line
+                    parsed[f"{line_transport}|{line_size}|connect_ok"] = ok_value
+                    parsed[f"{line_transport}|{line_size}|connect_fail"] = fail_value
+                    parsed[f"{line_transport}|{line_size}|connect_target"] = target_value
                     continue
+
                 line_transport, line_size, metric, value = parsed_line
                 metric_name = normalize_multi_metric_name(metric)
                 key = f"{line_transport}|{line_size}|{metric_name}"
@@ -1255,6 +1303,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                 client_mem_key = f"{transport}|{sz}|client_mem_mb"
                 server_cpu_key = f"{transport}|{sz}|server_cpu_pct"
                 server_mem_key = f"{transport}|{sz}|server_mem_mb"
+                connect_target_key = f"{transport}|{sz}|connect_target"
 
                 if client_cpu is not None:
                     parsed.setdefault(client_cpu_key, float(client_cpu))
@@ -1262,6 +1311,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     parsed.setdefault(client_mem_key, float(client_mem))
                 parsed.setdefault(server_cpu_key, float(server_cpu))
                 parsed.setdefault(server_mem_key, float(server_mem))
+                parsed.setdefault(connect_target_key, float(clients_int))
 
             token_status, token_reason = detect_special_status(
                 combined_stdout, lib_name, pattern_name, transport

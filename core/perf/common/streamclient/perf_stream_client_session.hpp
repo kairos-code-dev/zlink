@@ -28,6 +28,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 // --- Benchmark tuning constants ---

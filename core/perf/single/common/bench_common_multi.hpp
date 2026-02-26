@@ -1,5 +1,5 @@
-#ifndef BENCH_COMMON_MULTI_HPP
-#define BENCH_COMMON_MULTI_HPP
+#ifndef PERF_COMMON_MULTI_HPP
+#define PERF_COMMON_MULTI_HPP
 
 #include <chrono>
 #include <vector>
@@ -13,7 +13,6 @@
 struct multi_bench_settings_t
 {
     size_t clients;
-    int inflight;
     int connect_concurrency;
     int warmup_seconds;
     int measure_seconds;
@@ -44,13 +43,12 @@ inline multi_bench_settings_t resolve_multi_bench_settings()
 {
     multi_bench_settings_t settings;
     settings.clients =
-      static_cast<size_t>(resolve_multi_int_env("BENCH_MULTI_CLIENTS", 1000, 1));
-    settings.inflight = resolve_multi_int_env("BENCH_MULTI_INFLIGHT", 30, 1);
+      static_cast<size_t>(resolve_multi_int_env("PERF_MULTI_CLIENTS", 1000, 1));
     settings.connect_concurrency =
-      resolve_multi_int_env("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1);
-    settings.warmup_seconds = resolve_multi_int_env("BENCH_MULTI_WARMUP_SECONDS", 3, 0);
-    settings.measure_seconds = resolve_multi_int_env("BENCH_MULTI_MEASURE_SECONDS", 10, 1);
-    settings.drain_ms = resolve_multi_int_env("BENCH_MULTI_DRAIN_MS", 300, 0);
+      resolve_multi_int_env("PERF_MULTI_CONNECT_CONCURRENCY", 128, 1);
+    settings.warmup_seconds = resolve_multi_int_env("PERF_MULTI_WARMUP_SECONDS", 3, 0);
+    settings.measure_seconds = resolve_multi_int_env("PERF_MULTI_MEASURE_SECONDS", 10, 1);
+    settings.drain_ms = resolve_multi_int_env("PERF_MULTI_DRAIN_MS", 300, 0);
     return settings;
 }
 

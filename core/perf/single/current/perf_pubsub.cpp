@@ -21,7 +21,7 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     int poll_timeout_ms = 0;
     if (is_pgm) {
         poll_timeout_ms =
-          resolve_bench_count("BENCH_PGM_POLL_TIMEOUT_MS", 50);
+          resolve_bench_count("PERF_PGM_POLL_TIMEOUT_MS", 50);
         const int linger_ms = 0;
         set_sockopt_int(pub.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
         set_sockopt_int(sub.get(), ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
@@ -43,21 +43,22 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
 
-    int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
     if (is_pgm) {
         const int max_count = resolve_bench_count(
-          msg_size >= 65536 ? "BENCH_PGM_MSG_COUNT_LARGE"
-                            : "BENCH_PGM_MSG_COUNT",
+          msg_size >= 65536 ? "PERF_PGM_MSG_COUNT_LARGE"
+                            : "PERF_PGM_MSG_COUNT",
           msg_size >= 65536 ? 100 : 500);
         const int max_warmup = resolve_bench_count(
-          msg_size >= 65536 ? "BENCH_PGM_WARMUP_COUNT_LARGE"
-                            : "BENCH_PGM_WARMUP_COUNT",
+          msg_size >= 65536 ? "PERF_PGM_WARMUP_COUNT_LARGE"
+                            : "PERF_PGM_WARMUP_COUNT",
           msg_size >= 65536 ? 10 : 50);
         if (msg_count > max_count)
             msg_count = max_count;
         if (warmup_count > max_warmup)
             warmup_count = max_warmup;
     }
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
 
     if (is_pgm) {
         repeat_n(warmup_count, [&]() {
@@ -69,8 +70,29 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
             }
         });
 
-        stopwatch_t sw;
-        sw.start();
+        stopwatch_t lat_sw;
+        lat_sw.start();
+        const auto latency_deadline =
+          std::chrono::steady_clock::now()
+          + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+        int latency_received = 0;
+        while (std::chrono::steady_clock::now() < latency_deadline) {
+            zlink_send(pub.get(), buffer.data(), msg_size, 0);
+            zlink_pollitem_t items[] = {{sub.get(), 0, ZLINK_POLLIN, 0}};
+            if (zlink_poll(items, 1, poll_timeout_ms) > 0
+                && (items[0].revents & ZLINK_POLLIN)) {
+                if (zlink_recv(sub.get(), recv_buf.data(), msg_size, 0)
+                    >= 0) {
+                    ++latency_received;
+                }
+            }
+        }
+        const double latency =
+          latency_received > 0 ? lat_sw.elapsed_ms() * 1000.0 / latency_received
+                               : 0.0;
+
+        stopwatch_t tp_sw;
+        tp_sw.start();
         int received = 0;
         for (int i = 0; i < msg_count; ++i) {
             zlink_send(pub.get(), buffer.data(), msg_size, 0);
@@ -82,10 +104,9 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
                     ++received;
             }
         }
-        double elapsed_ms = sw.elapsed_ms();
+        double elapsed_ms = tp_sw.elapsed_ms();
         double throughput =
           received > 0 ? (double)received / (elapsed_ms / 1000.0) : 0.0;
-        double latency = received > 0 ? elapsed_ms * 1000.0 / received : 0.0;
         print_result(lib_name, "PUBSUB", transport, msg_size, throughput, latency);
         return;
     }
@@ -94,6 +115,21 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
         zlink_send(pub.get(), buffer.data(), msg_size, 0);
         zlink_recv(sub.get(), recv_buf.data(), msg_size, 0);
     });
+
+    stopwatch_t lat_sw;
+    lat_sw.start();
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    int latency_received = 0;
+    while (std::chrono::steady_clock::now() < latency_deadline) {
+        zlink_send(pub.get(), buffer.data(), msg_size, 0);
+        if (zlink_recv(sub.get(), recv_buf.data(), msg_size, 0) >= 0)
+            ++latency_received;
+    }
+    const double latency =
+      latency_received > 0 ? lat_sw.elapsed_ms() * 1000.0 / latency_received
+                           : 0.0;
 
     std::thread receiver([&]() {
         repeat_n(msg_count, [&]() {
@@ -111,7 +147,6 @@ void run_pubsub(const std::string& transport, size_t msg_size, int msg_count, co
     const double elapsed_ms = sw.elapsed_ms();
     const double throughput =
       elapsed_ms > 0 ? (double)msg_count / (elapsed_ms / 1000.0) : 0.0;
-    const double latency = elapsed_ms * 1000.0 / msg_count;
     print_result(lib_name, "PUBSUB", transport, msg_size, throughput, latency);
 }
 

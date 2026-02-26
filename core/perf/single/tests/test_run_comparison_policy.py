@@ -51,22 +51,18 @@ class RunComparisonPolicyTests(unittest.TestCase):
             [64, 256, 1024, 65536, 131072, 262144],
         )
         self.assertEqual(
-            RC.default_msg_sizes_for_pattern("STREAM"),
-            [64, 256, 1024, 65536],
+            RC.default_msg_sizes_for_pattern("GATEWAY"),
+            [64, 256, 1024, 65536, 131072, 262144],
         )
         self.assertEqual(
-            RC.default_msg_sizes_for_pattern("STREAM_CALLBACK"),
-            [64, 256, 1024, 65536],
-        )
-        self.assertEqual(
-            RC.default_msg_sizes_for_pattern("STREAM_LEN32BE"),
-            [64, 256, 1024, 65536],
+            RC.default_msg_sizes_for_pattern("SPOT"),
+            [64, 256, 1024, 65536, 131072, 262144],
         )
 
     def test_default_transports_follow_policy_matrix(self):
-        with EnvPatch(remove=["PERF_TRANSPORTS", "BENCH_TRANSPORTS"]):
+        with EnvPatch(remove=["PERF_TRANSPORTS"]):
             pair_transports = RC.select_transports("PAIR")
-            stream_transports = RC.select_transports("STREAM")
+            stream_transports = RC.select_transports("SPOT")
 
         self.assertEqual(pair_transports[:5], ["tcp", "tls", "ws", "wss", "inproc"])
         if RC.IS_WINDOWS:
@@ -74,6 +70,10 @@ class RunComparisonPolicyTests(unittest.TestCase):
         else:
             self.assertIn("ipc", pair_transports)
         self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
+
+    def test_stream_patterns_removed_from_single_runner(self):
+        with self.assertRaises(ValueError):
+            RC.parse_pattern_arg("STREAM")
 
     def test_threshold_rules_reject_bandwidth_metric(self):
         rules_data = {
@@ -86,7 +86,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
         try:
             with EnvPatch(
                 updates={"PERF_THRESHOLDS_FILE": path},
-                remove=["BENCH_THRESHOLDS_FILE"],
             ):
                 rules, warnings = RC.load_threshold_rules()
         finally:

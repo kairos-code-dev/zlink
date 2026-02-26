@@ -4,14 +4,11 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <climits>
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <condition_variable>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -19,7 +16,6 @@
 struct multi_bench_settings_t
 {
     size_t clients;
-    int inflight;
     int hwm;
     int warmup_seconds;
     int active_warmup;
@@ -69,37 +65,6 @@ struct multi_bench_result_t
           failed (false)
     {
     }
-};
-
-class simple_counter_semaphore_t
-{
-public:
-    explicit simple_counter_semaphore_t (int max_inflight)
-        : _max_count (max_inflight > 0 ? max_inflight : 1), _count (0)
-    {
-    }
-
-    void acquire ()
-    {
-        std::unique_lock<std::mutex> lock (_mutex);
-        _cv.wait (lock, [this] () { return _count < _max_count; });
-        ++_count;
-    }
-
-    void release ()
-    {
-        {
-            std::lock_guard<std::mutex> lock (_mutex);
-            --_count;
-        }
-        _cv.notify_one ();
-    }
-
-private:
-    const int _max_count;
-    int _count;
-    std::mutex _mutex;
-    std::condition_variable _cv;
 };
 
 inline bool bench_show_prep ()
@@ -206,77 +171,6 @@ inline int resolve_multi_default_clients (const char *pattern)
     return 1000;
 }
 
-inline int resolve_multi_default_inflight ()
-{
-    return 1;
-}
-
-inline int resolve_multi_stream_max_inflight_bytes ()
-{
-    return resolve_multi_int_env (
-      "PERF_MULTI_STREAM_MAX_INFLIGHT_BYTES",
-      32 * 1024 * 1024,
-      1);
-}
-
-inline int resolve_multi_max_inflight_bytes ()
-{
-    return resolve_multi_int_env (
-      "PERF_MULTI_MAX_INFLIGHT_BYTES",
-      16 * 1024 * 1024,
-      1);
-}
-
-inline int resolve_multi_inflight_by_bytes (
-  const multi_bench_settings_t &settings,
-  size_t msg_size,
-  int max_window_bytes)
-{
-    const int configured_inflight = std::max (1, settings.inflight);
-    const size_t safe_msg_size = std::max<size_t> (1, msg_size);
-    const size_t safe_clients = std::max<size_t> (1, settings.clients);
-    const unsigned long long denom =
-      static_cast<unsigned long long> (safe_msg_size)
-      * static_cast<unsigned long long> (safe_clients);
-    if (denom == 0)
-        return configured_inflight;
-
-    const unsigned long long max_window =
-      static_cast<unsigned long long> (std::max (1, max_window_bytes));
-    unsigned long long inflight_by_bytes = max_window / denom;
-    if (inflight_by_bytes == 0)
-        inflight_by_bytes = 1;
-    if (inflight_by_bytes > static_cast<unsigned long long> (INT_MAX))
-        inflight_by_bytes = static_cast<unsigned long long> (INT_MAX);
-
-    return std::max (
-      1,
-      std::min (
-        configured_inflight, static_cast<int> (inflight_by_bytes)));
-}
-
-inline int resolve_multi_stream_inflight_for_size (
-  const multi_bench_settings_t &settings,
-  size_t msg_size)
-{
-    return resolve_multi_inflight_by_bytes (
-      settings, msg_size, resolve_multi_stream_max_inflight_bytes ());
-}
-
-inline int resolve_multi_inflight_for_size (
-  const multi_bench_settings_t &settings,
-  size_t msg_size)
-{
-    const char *pattern = std::getenv ("PERF_MULTI_PATTERN");
-    if (pattern
-        && (std::strcmp (pattern, "MULTI_STREAM") == 0
-            || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-            || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0))
-        return resolve_multi_stream_inflight_for_size (settings, msg_size);
-    return resolve_multi_inflight_by_bytes (
-      settings, msg_size, resolve_multi_max_inflight_bytes ());
-}
-
 inline multi_bench_settings_t resolve_multi_bench_settings ()
 {
     multi_bench_settings_t settings;
@@ -286,10 +180,6 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
         "PERF_MULTI_CLIENTS",
         resolve_multi_default_clients (pattern),
         1));
-    settings.inflight = resolve_multi_int_env (
-      "PERF_MULTI_INFLIGHT",
-      resolve_multi_default_inflight (),
-      1);
     settings.hwm = resolve_multi_int_env (
       "PERF_MULTI_HWM", resolve_multi_default_hwm (), 1);
     settings.warmup_seconds =
@@ -377,10 +267,10 @@ inline long run_multi_warmup_stage (
       + std::chrono::milliseconds (warmup_drain_ms);
     while (std::chrono::steady_clock::now () < drain_deadline
            && !fatal_error.load (std::memory_order_acquire)) {
-        const long inflight =
+        const long outstanding =
           send_total.load (std::memory_order_relaxed)
           - recv_total.load (std::memory_order_relaxed);
-        if (inflight <= 0)
+        if (outstanding <= 0)
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -458,14 +348,13 @@ inline multi_bench_result_t run_multi_phase_benchmark (
     std::atomic<long> recv_total (0);
     std::atomic<long> send_total (0);
 
-    const long inflight_limit =
-      static_cast<long> (std::max<size_t> (1, senders.size ()))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const long outstanding_limit =
+      static_cast<long> (std::max<size_t> (1, senders.size ()));
 
     auto window_exhausted = [&] () -> bool {
         const long in_flight = send_total.load (std::memory_order_relaxed)
                                - recv_total.load (std::memory_order_relaxed);
-        return in_flight >= inflight_limit;
+        return in_flight >= outstanding_limit;
     };
 
     auto send_backoff = [&] () {
@@ -634,10 +523,10 @@ inline multi_bench_result_t run_multi_phase_benchmark (
       + std::chrono::milliseconds (std::max (0, settings.drain_ms));
     while (std::chrono::steady_clock::now () < drain_deadline
            && !fatal_error.load (std::memory_order_acquire)) {
-        const long inflight =
+        const long outstanding =
           send_total.load (std::memory_order_relaxed)
           - recv_total.load (std::memory_order_relaxed);
-        if (inflight <= 0)
+        if (outstanding <= 0)
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -686,14 +575,13 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
     std::atomic<long> send_total (0);
     std::atomic<long> send_success (0);
 
-    const long inflight_limit =
-      static_cast<long> (std::max<size_t> (1, sender_count))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const long outstanding_limit =
+      static_cast<long> (std::max<size_t> (1, sender_count));
 
     auto window_exhausted = [&] () -> bool {
         const long in_flight = send_total.load (std::memory_order_relaxed)
                                - recv_total.load (std::memory_order_relaxed);
-        return in_flight >= inflight_limit;
+        return in_flight >= outstanding_limit;
     };
 
     auto send_backoff = [&] () {
@@ -902,10 +790,10 @@ inline multi_bench_result_t run_multi_phase_benchmark_with_sender_lifecycle (
       + std::chrono::milliseconds (std::max (0, settings.drain_ms));
     while (std::chrono::steady_clock::now () < drain_deadline
            && !fatal_error.load (std::memory_order_acquire)) {
-        const long inflight =
+        const long outstanding =
           send_total.load (std::memory_order_relaxed)
           - recv_total.load (std::memory_order_relaxed);
-        if (inflight <= 0)
+        if (outstanding <= 0)
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -959,14 +847,13 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
     std::atomic<long> send_success (0);
 
     const int effective_send_batch = std::max (1, send_batch);
-    const long inflight_limit =
-      static_cast<long> (std::max<size_t> (1, sender_count))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const long outstanding_limit =
+      static_cast<long> (std::max<size_t> (1, sender_count));
 
     auto window_exhausted = [&] () -> bool {
         const long in_flight = send_total.load (std::memory_order_relaxed)
                                - recv_total.load (std::memory_order_relaxed);
-        return in_flight >= inflight_limit;
+        return in_flight >= outstanding_limit;
     };
 
     auto send_backoff = [&] () {
@@ -1184,10 +1071,10 @@ run_multi_phase_benchmark_with_sender_lifecycle_batched (
       + std::chrono::milliseconds (std::max (0, settings.drain_ms));
     while (std::chrono::steady_clock::now () < drain_deadline
            && !fatal_error.load (std::memory_order_acquire)) {
-        const long inflight =
+        const long outstanding =
           send_total.load (std::memory_order_relaxed)
           - recv_total.load (std::memory_order_relaxed);
-        if (inflight <= 0)
+        if (outstanding <= 0)
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -1294,14 +1181,13 @@ inline multi_bench_result_t run_multi_phase_socket_owned_rtt_benchmark (
     std::atomic<long> send_total (0);
     std::atomic<long> send_success (0);
 
-    const long inflight_limit =
-      static_cast<long> (std::max<size_t> (1, sender_count))
-      * static_cast<long> (std::max (1, settings.inflight));
+    const long outstanding_limit =
+      static_cast<long> (std::max<size_t> (1, sender_count));
 
     auto window_exhausted = [&] () -> bool {
         const long in_flight = send_total.load (std::memory_order_relaxed)
                                - recv_total.load (std::memory_order_relaxed);
-        return in_flight >= inflight_limit;
+        return in_flight >= outstanding_limit;
     };
 
     auto send_backoff = [&] () {
@@ -1498,10 +1384,10 @@ inline multi_bench_result_t run_multi_phase_socket_owned_rtt_benchmark (
       + std::chrono::milliseconds (std::max (0, settings.drain_ms));
     while (!fatal_error.load (std::memory_order_acquire)
            && std::chrono::steady_clock::now () < drain_deadline) {
-        const long inflight =
+        const long outstanding =
           send_total.load (std::memory_order_relaxed)
           - recv_total.load (std::memory_order_relaxed);
-        if (inflight <= 0)
+        if (outstanding <= 0)
             break;
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }

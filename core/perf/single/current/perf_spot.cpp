@@ -13,6 +13,15 @@
 typedef int (*spot_set_tls_server_fn)(void *, const char *, const char *);
 typedef int (*spot_set_tls_client_fn)(void *, const char *, const char *, int);
 
+static void configure_spot_idle_sleep_for_bench()
+{
+#if defined(_WIN32)
+    _putenv_s("ZLINK_SPOT_IDLE_SLEEP_MS", "0");
+#else
+    setenv("ZLINK_SPOT_IDLE_SLEEP_MS", "0", 1);
+#endif
+}
+
 static const std::string &tls_ca_path()
 {
     static std::string path =
@@ -89,10 +98,25 @@ static bool send_spot(void *spot_pub,
     return zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0;
 }
 
-static bool recv_spot_with_timeout(void *spot_sub, int timeout_ms)
+static bool recv_spot_blocking(void *spot_sub)
+{
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    char topic_out[256];
+    size_t topic_len = 0;
+    const int rc =
+      zlink_spot_sub_recv(spot_sub, &parts, &count, 0, topic_out, &topic_len);
+    if (rc != 0)
+        return false;
+    if (parts)
+        zlink_msgv_close(parts, count);
+    return true;
+}
+
+static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
 {
     const int poll_sleep_us =
-      resolve_bench_count("BENCH_SPOT_POLL_SLEEP_US", 0);
+      resolve_bench_count("PERF_SPOT_POLL_SLEEP_US", 0);
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
 
@@ -129,6 +153,8 @@ void run_spot(const std::string &transport,
               int msg_count,
               const std::string &lib_name)
 {
+    configure_spot_idle_sleep_for_bench();
+
     if (!transport_available(transport))
         return;
 
@@ -139,7 +165,7 @@ void run_spot(const std::string &transport,
     }
 
     const int spot_msg_count_max =
-      resolve_bench_count("BENCH_SPOT_MSG_COUNT_MAX", 50000);
+      resolve_bench_count("PERF_SPOT_MSG_COUNT_MAX", 50000);
     if (msg_count > spot_msg_count_max)
         msg_count = spot_msg_count_max;
 
@@ -204,36 +230,54 @@ void run_spot(const std::string &transport,
         return;
     }
 
+    const int recv_timeout_ms = 5000;
+    bool use_blocking_recv = false;
+    if (zlink_spot_sub_setsockopt(spot_sub, ZLINK_RCVTIMEO, &recv_timeout_ms,
+                                  sizeof(recv_timeout_ms))
+        == 0) {
+        use_blocking_recv = true;
+    }
+    auto recv_one = [&]() {
+        return use_blocking_recv ? recv_spot_blocking(spot_sub)
+                                 : recv_spot_with_timeout_polling(spot_sub,
+                                                                  recv_timeout_ms);
+    };
+
     const std::string topic = "bench";
     zlink_spot_sub_subscribe(spot_sub, topic.c_str());
     settle();
 
-    const int recv_timeout_ms = 5000;
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_spot_with_timeout(spot_sub, recv_timeout_ms)) {
+            || !recv_one()) {
             fail();
             return;
         }
     }
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    int latency_count = 0;
     stopwatch_t sw;
     sw.start();
-    for (int i = 0; i < lat_count; ++i) {
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    while (std::chrono::steady_clock::now() < latency_deadline) {
         if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_spot_with_timeout(spot_sub, recv_timeout_ms)) {
+            || !recv_one()) {
             fail();
             return;
         }
+        ++latency_count;
     }
-    const double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
+    const double latency =
+      latency_count > 0 ? (sw.elapsed_ms() * 1000.0) / latency_count : 0.0;
 
     std::atomic<int> recv_count(0);
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
-            if (!recv_spot_with_timeout(spot_sub, recv_timeout_ms))
+            if (!recv_one())
                 break;
             ++recv_count;
         }

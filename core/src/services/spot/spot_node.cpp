@@ -13,6 +13,7 @@
 #include "utils/random.hpp"
 
 #include <algorithm>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined ZLINK_HAVE_WINDOWS
@@ -35,6 +36,24 @@ static void sleep_ms (int ms_)
 #else
     usleep (static_cast<useconds_t> (ms_) * 1000);
 #endif
+}
+
+static int resolve_spot_idle_sleep_ms ()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached;
+
+    int value = 1;
+    const char *env = getenv ("ZLINK_SPOT_IDLE_SLEEP_MS");
+    if (env && *env) {
+        char *end = NULL;
+        const long parsed = strtol (env, &end, 10);
+        if (end != env && parsed >= 0 && parsed <= 1000)
+            value = static_cast<int> (parsed);
+    }
+    cached = value;
+    return cached;
 }
 
 static void close_parts (std::vector<msg_t> *parts_)
@@ -1578,6 +1597,7 @@ void spot_node_t::run (void *arg_)
 void spot_node_t::loop ()
 {
     zlink::clock_t clock;
+    const int idle_sleep_ms = resolve_spot_idle_sleep_ms ();
     while (_stop.get () == 0) {
         bool handled = false;
 
@@ -1617,7 +1637,7 @@ void spot_node_t::loop ()
         }
 
         if (!handled)
-            sleep_ms (1);
+            sleep_ms (idle_sleep_ms);
     }
 }
 

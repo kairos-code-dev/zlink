@@ -35,6 +35,10 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void xpipe_terminated (zlink::pipe_t *pipe_) ZLINK_FINAL;
     int xsetsockopt (int option_, const void *optval_, size_t optvallen_)
       ZLINK_FINAL;
+    int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
+      ZLINK_OVERRIDE;
+    int stream_dispatch_start_len32be (
+      zlink_stream_on_packets_fn callback_) ZLINK_OVERRIDE;
     int stream_dispatch_start (zlink_stream_on_packets_fn callback_,
                                int flags_) ZLINK_OVERRIDE;
     int stream_dispatch_stop () ZLINK_OVERRIDE;
@@ -90,7 +94,8 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
 
     std::atomic<bool> _dispatch_active;
     std::atomic<bool> _dispatch_len32be;
-    std::atomic<zlink_stream_on_packets_fn> _dispatch_callback;
+    std::atomic<zlink_stream_on_raw_fn> _dispatch_raw_callback;
+    std::atomic<zlink_stream_on_packets_fn> _dispatch_packets_callback;
     std::atomic<uint32_t> _dispatch_reassembly_epoch;
     mutable std::mutex _dispatch_control_mu;
 

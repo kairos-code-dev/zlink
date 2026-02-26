@@ -254,7 +254,8 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _next_integral_routing_id (1),
     _dispatch_active (false),
     _dispatch_len32be (false),
-    _dispatch_callback (NULL),
+    _dispatch_raw_callback (NULL),
+    _dispatch_packets_callback (NULL),
     _dispatch_reassembly_epoch (1)
 {
     options.type = ZLINK_STREAM;
@@ -534,8 +535,7 @@ int zlink::stream_t::xsetsockopt (int option_,
     return routing_socket_base_t::xsetsockopt (option_, optval_, optvallen_);
 }
 
-int zlink::stream_t::stream_dispatch_start (zlink_stream_on_packets_fn callback_,
-                                            int flags_)
+int zlink::stream_t::stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_)
 {
     if (!callback_) {
         errno = EINVAL;
@@ -557,11 +557,53 @@ int zlink::stream_t::stream_dispatch_start (zlink_stream_on_packets_fn callback_
     }
 
     bump_dispatch_reassembly_epoch (_dispatch_reassembly_epoch);
-    _dispatch_callback.store (callback_, std::memory_order_release);
-    _dispatch_len32be.store ((flags_ & ZLINK_STREAM_DISPATCH_LEN32BE) != 0,
-                             std::memory_order_release);
+    _dispatch_raw_callback.store (callback_, std::memory_order_release);
+    _dispatch_packets_callback.store (NULL, std::memory_order_release);
+    _dispatch_len32be.store (false, std::memory_order_release);
     _dispatch_active.store (true, std::memory_order_release);
     return 0;
+}
+
+int zlink::stream_t::stream_dispatch_start_len32be (
+  zlink_stream_on_packets_fn callback_)
+{
+    if (!callback_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    std::lock_guard<std::mutex> lk (_dispatch_control_mu);
+    if (_dispatch_active.load (std::memory_order_acquire)) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    if (options.stream_notify) {
+        // Dispatch callback mode consumes application payloads directly.
+        // STREAM_NOTIFY injects control frames into recv path and is not
+        // compatible with dispatch mode semantics.
+        errno = EOPNOTSUPP;
+        return -1;
+    }
+
+    bump_dispatch_reassembly_epoch (_dispatch_reassembly_epoch);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_packets_callback.store (callback_, std::memory_order_release);
+    _dispatch_len32be.store (true, std::memory_order_release);
+    _dispatch_active.store (true, std::memory_order_release);
+    return 0;
+}
+
+int zlink::stream_t::stream_dispatch_start (zlink_stream_on_packets_fn callback_,
+                                            int flags_)
+{
+    if ((flags_ & ~ZLINK_STREAM_DISPATCH_LEN32BE) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    // Legacy wrapper: always LEN32BE callback mode.
+    return stream_dispatch_start_len32be (callback_);
 }
 
 int zlink::stream_t::stream_dispatch_stop ()
@@ -574,7 +616,8 @@ int zlink::stream_t::stream_dispatch_stop ()
 
     _dispatch_active.store (false, std::memory_order_release);
     _dispatch_len32be.store (false, std::memory_order_release);
-    _dispatch_callback.store (NULL, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_packets_callback.store (NULL, std::memory_order_release);
     bump_dispatch_reassembly_epoch (_dispatch_reassembly_epoch);
     return 0;
 }
@@ -781,7 +824,8 @@ void zlink::stream_t::stop_dispatch_from_callback ()
     std::lock_guard<std::mutex> lk (_dispatch_control_mu);
     _dispatch_active.store (false, std::memory_order_release);
     _dispatch_len32be.store (false, std::memory_order_release);
-    _dispatch_callback.store (NULL, std::memory_order_release);
+    _dispatch_raw_callback.store (NULL, std::memory_order_release);
+    _dispatch_packets_callback.store (NULL, std::memory_order_release);
     bump_dispatch_reassembly_epoch (_dispatch_reassembly_epoch);
 }
 
@@ -814,7 +858,7 @@ int zlink::stream_t::dispatch_len32be (msg_t *msg_, pipe_t *pipe_)
         return 1;
 
     zlink_stream_on_packets_fn callback =
-      _dispatch_callback.load (std::memory_order_acquire);
+      _dispatch_packets_callback.load (std::memory_order_acquire);
     if (!callback)
         return 1;
 
@@ -1045,8 +1089,8 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
         return rc;
     }
 
-    zlink_stream_on_packets_fn callback =
-      _dispatch_callback.load (std::memory_order_acquire);
+    zlink_stream_on_raw_fn callback =
+      _dispatch_raw_callback.load (std::memory_order_acquire);
     if (!callback)
         return 1;
 
@@ -1082,8 +1126,8 @@ int zlink::stream_t::xstream_dispatch_msg (msg_t *msg_, pipe_t *pipe_)
     const int src_init_rc = msg_->init ();
     errno_assert (src_init_rc == 0);
 
-    const int cb_rc =
-      callback (&rid, reinterpret_cast<zlink_msg_t *> (&callback_msg), 1);
+    const int cb_rc = callback (&rid,
+                                reinterpret_cast<zlink_msg_t *> (&callback_msg));
     if (cb_rc != 0)
         stop_dispatch_from_callback ();
 

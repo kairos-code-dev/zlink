@@ -25,7 +25,7 @@ print_total_time() {
   if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
     return
   fi
-  if [[ "${BENCH_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
+  if [[ "${PERF_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
     return
   fi
   local status="${1:-0}"
@@ -49,7 +49,7 @@ ensure_nofile_limit() {
   local clients="${1:-}"
   NOFILE_SKIP_REASON=""
 
-  if [[ "${BENCH_SKIP_NOFILE_CHECK:-0}" == "1" ]]; then
+  if [[ "${PERF_SKIP_NOFILE_CHECK:-0}" == "1" ]]; then
     return 0
   fi
   if ! is_uint "${clients}"; then
@@ -123,16 +123,15 @@ Modes:
 Options:
   --pattern NAME         Benchmark pattern (default: all MULTI_* patterns above).
   --help                 Show this help.
-  --result               Save report result file under core/perf/results/multi/report/ (complete only).
+  --build                Force clean build (disables default reuse-build behavior).
   --save [VER]           Save baseline file under core/perf/results/multi/baseline/ (complete only).
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
   --build-dir PATH       Override build directory.
   --output PATH          Tee results to a file.
-  --runs N               Iterations per configuration (default: 3, gate: 5).
-  --reuse-build          Reuse existing build dir without re-running CMake.
+  --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
-  --io-threads N         Set BENCH_IO_THREADS for the benchmark run.
+  --io-threads N         Set PERF_IO_THREADS for the benchmark run.
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --mode MODE            observe | trend | gate (default: observe).
@@ -142,37 +141,35 @@ Options:
   --fail-throughput-pct N  Throughput fail drop threshold (default: 15).
   --warn-latency-pct N     Latency warning increase threshold (default: 10).
   --fail-latency-pct N     Latency fail increase threshold (default: 15).
-  --multi-warmup-seconds N
-                         Optional override for multi warmup seconds (default 3).
-  --multi-duration-seconds N
-                         Optional override for multi duration seconds (default 5).
-  --multi-clients N      Override number of client sockets per pattern.
-  --multi-inflight N     Override max in-flight messages.
-  --multi-hwm N          Override BENCH_MULTI_HWM (default: pattern-specific in binary).
-  --multi-sndtimeo-ms N  Override BENCH_MULTI_SNDTIMEO_MS (default: 5000).
-  --multi-rcvtimeo-ms N  Override BENCH_MULTI_RCVTIMEO_MS (default: 5000).
-  --multi-connect-concurrency N
+  --warmup N             Optional override for multi warmup seconds (default 3).
+  --duration N           Optional override for multi duration seconds (default 5).
+  --clients N            Override number of client sockets per pattern.
+  --hwm N                Override PERF_MULTI_HWM (default: pattern-specific in binary).
+  --send-timeout-ms N    Override PERF_MULTI_SNDTIMEO_MS (default: 5000).
+  --recv-timeout-ms N    Override PERF_MULTI_RCVTIMEO_MS (default: 5000).
+  --connect-concurrency N
                          Override concurrent connect count.
-  --multi-drain-ms N     Override BENCH_MULTI_DRAIN_MS.
-  --multi-transport-transition-ms N
-                         Override BENCH_MULTI_TRANSPORT_TRANSITION_MS (default: 3000).
-  --multi-pattern-transition-ms N
-                         Override BENCH_MULTI_PATTERN_TRANSITION_MS (default: 3000).
-  --multi-server-ready-timeout-ms N
-                         Override BENCH_MULTI_SERVER_READY_TIMEOUT_MS (default: 10000).
-  --multi-connect-ready-timeout-ms N
-                         Override BENCH_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
-  --multi-monitor-hwm N  Override BENCH_MULTI_MONITOR_HWM (default: 200000).
-  --multi-server-shutdown-timeout-ms N
-                         Override BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
-  --multi-server-bind-port N
-                         Override BENCH_MULTI_SERVER_BIND_PORT (default: 0=auto).
+  --drain-ms N           Override PERF_MULTI_DRAIN_MS.
+  --transport-transition-ms N
+                         Override PERF_MULTI_TRANSPORT_TRANSITION_MS (default: 3000).
+  --pattern-transition-ms N
+                         Override PERF_MULTI_PATTERN_TRANSITION_MS (default: 3000).
+  --server-ready-timeout-ms N
+                         Override PERF_MULTI_SERVER_READY_TIMEOUT_MS (default: 10000).
+  --connect-ready-timeout-ms N
+                         Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
+  --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 200000).
+  --server-shutdown-timeout-ms N
+                         Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
+  --server-bind-port N
+                         Override PERF_MULTI_SERVER_BIND_PORT (default: 0=auto).
 
 Environment:
-  BENCH_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
-  BENCH_MULTI_FORCE_CLEAN=1   Disable default --reuse-build behavior
+  PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
 Notes:
   - tmp result is always saved under results/multi/tmp/.
+  - report result save is always enabled.
+  - reuse-build is always enabled unless --build is provided.
   - --save-baseline is removed. Use --save [VER].
 USAGE
 }
@@ -197,7 +194,7 @@ resolve_pattern_drain_ms() {
   fi
 
   if pattern_uses_default_drain "${pattern}"; then
-    echo "${BENCH_MULTI_EXCEPTION_DRAIN_MS:-300}"
+    echo "${PERF_MULTI_EXCEPTION_DRAIN_MS:-300}"
   else
     echo "0"
   fi
@@ -219,33 +216,32 @@ resolve_pattern_connect_concurrency() {
 HAS_EXPLICIT_TRANSPORT=0
 HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
-HAS_EXPLICIT_REUSE_BUILD=0
 HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
-MODE="${PERF_MODE:-${BENCH_MODE:-observe}}"
-ROLLING_N="${PERF_ROLLING_N:-${BENCH_ROLLING_N:-10}}"
-BASELINE_FILE="${PERF_BASELINE_FILE:-${BENCH_BASELINE_FILE:-}}"
-WARN_THROUGHPUT_PCT="${PERF_WARN_THROUGHPUT_PCT:-${BENCH_WARN_THROUGHPUT_PCT:-10}}"
-FAIL_THROUGHPUT_PCT="${PERF_FAIL_THROUGHPUT_PCT:-${BENCH_FAIL_THROUGHPUT_PCT:-15}}"
-WARN_LATENCY_PCT="${PERF_WARN_LATENCY_PCT:-${BENCH_WARN_LATENCY_PCT:-10}}"
-FAIL_LATENCY_PCT="${PERF_FAIL_LATENCY_PCT:-${BENCH_FAIL_LATENCY_PCT:-15}}"
-MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-${BENCH_MULTI_WARMUP_SECONDS:-3}}"
-MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-${BENCH_MULTI_DURATION_SECONDS:-5}}"
-MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}"
-MULTI_INFLIGHT="${PERF_MULTI_INFLIGHT:-${BENCH_MULTI_INFLIGHT:-}}"
-MULTI_HWM="${PERF_MULTI_HWM:-${BENCH_MULTI_HWM:-}}"
-MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-${BENCH_MULTI_SNDTIMEO_MS:-5000}}"
-MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-${BENCH_MULTI_RCVTIMEO_MS:-5000}}"
-MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-${BENCH_MULTI_CONNECT_CONCURRENCY:-}}"
-MULTI_DRAIN_MS="${PERF_MULTI_DRAIN_MS:-${BENCH_MULTI_DRAIN_MS:-}}"
-MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${BENCH_MULTI_TRANSPORT_TRANSITION_MS:-3000}}"
-MULTI_PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${BENCH_MULTI_PATTERN_TRANSITION_MS:-3000}}"
-MULTI_SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-${BENCH_MULTI_SERVER_READY_TIMEOUT_MS:-10000}}"
-MULTI_CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-${BENCH_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}}"
-MULTI_MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-${BENCH_MULTI_MONITOR_HWM:-200000}}"
-MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-${BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}}"
-MULTI_SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-${BENCH_MULTI_SERVER_BIND_PORT:-0}}"
-RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-${BENCH_RESULTS_DIR:-}}"
+FORCE_BUILD=0
+MODE="${PERF_MODE:-observe}"
+ROLLING_N="${PERF_ROLLING_N:-10}"
+BASELINE_FILE="${PERF_BASELINE_FILE:-}"
+WARN_THROUGHPUT_PCT="${PERF_WARN_THROUGHPUT_PCT:-10}"
+FAIL_THROUGHPUT_PCT="${PERF_FAIL_THROUGHPUT_PCT:-15}"
+WARN_LATENCY_PCT="${PERF_WARN_LATENCY_PCT:-10}"
+FAIL_LATENCY_PCT="${PERF_FAIL_LATENCY_PCT:-15}"
+MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-3}"
+MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
+MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
+MULTI_HWM="${PERF_MULTI_HWM:-}"
+MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-5000}"
+MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-5000}"
+MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
+MULTI_DRAIN_MS="${PERF_MULTI_DRAIN_MS:-}"
+MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
+MULTI_PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
+MULTI_SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
+MULTI_CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
+MULTI_MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-200000}"
+MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
+MULTI_SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-0}"
+RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
 
@@ -357,9 +353,8 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --reuse-build)
-      HAS_EXPLICIT_REUSE_BUILD=1
-      SCRIPT_ARGS+=( "$1" )
+    --build)
+      FORCE_BUILD=1
       shift
       ;;
     --runs)
@@ -376,7 +371,7 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" )
       shift
       ;;
-    --multi-warmup-seconds)
+    --warmup)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -384,7 +379,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_WARMUP_SECONDS="${2}"
       shift 2
       ;;
-    --multi-duration-seconds)
+    --duration)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -392,7 +387,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_DURATION_SECONDS="${2}"
       shift 2
       ;;
-    --result|--pin-cpu)
+    --pin-cpu)
       SCRIPT_ARGS+=( "$1" )
       shift
       ;;
@@ -423,7 +418,7 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --multi-clients)
+    --clients)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -431,15 +426,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_CLIENTS="${2}"
       shift 2
       ;;
-    --multi-inflight)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      MULTI_INFLIGHT="${2}"
-      shift 2
-      ;;
-    --multi-hwm)
+    --hwm)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -447,7 +434,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_HWM="${2}"
       shift 2
       ;;
-    --multi-sndtimeo-ms)
+    --send-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -455,7 +442,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_SNDTIMEO_MS="${2}"
       shift 2
       ;;
-    --multi-rcvtimeo-ms)
+    --recv-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -463,7 +450,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_RCVTIMEO_MS="${2}"
       shift 2
       ;;
-    --multi-connect-concurrency)
+    --connect-concurrency)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -471,7 +458,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_CONNECT_CONCURRENCY="${2}"
       shift 2
       ;;
-    --multi-drain-ms)
+    --drain-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -479,7 +466,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_DRAIN_MS="${2}"
       shift 2
       ;;
-    --multi-transport-transition-ms)
+    --transport-transition-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -487,7 +474,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_TRANSPORT_TRANSITION_MS="${2}"
       shift 2
       ;;
-    --multi-pattern-transition-ms)
+    --pattern-transition-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -495,7 +482,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_PATTERN_TRANSITION_MS="${2}"
       shift 2
       ;;
-    --multi-server-ready-timeout-ms)
+    --server-ready-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -503,7 +490,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_SERVER_READY_TIMEOUT_MS="${2}"
       shift 2
       ;;
-    --multi-connect-ready-timeout-ms)
+    --connect-ready-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -511,7 +498,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_CONNECT_READY_TIMEOUT_MS="${2}"
       shift 2
       ;;
-    --multi-monitor-hwm)
+    --monitor-hwm)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -519,7 +506,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_MONITOR_HWM="${2}"
       shift 2
       ;;
-    --multi-server-shutdown-timeout-ms)
+    --server-shutdown-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -527,7 +514,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${2}"
       shift 2
       ;;
-    --multi-server-bind-port)
+    --server-bind-port)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -580,31 +567,31 @@ if ! is_nonnegative_number "${FAIL_LATENCY_PCT}"; then
   exit 1
 fi
 if ! is_uint "${MULTI_TRANSPORT_TRANSITION_MS}"; then
-  echo "Error: --multi-transport-transition-ms must be a non-negative integer." >&2
+  echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_PATTERN_TRANSITION_MS}"; then
-  echo "Error: --multi-pattern-transition-ms must be a non-negative integer." >&2
+  echo "Error: --pattern-transition-ms must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_SERVER_READY_TIMEOUT_MS}"; then
-  echo "Error: --multi-server-ready-timeout-ms must be a non-negative integer." >&2
+  echo "Error: --server-ready-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_CONNECT_READY_TIMEOUT_MS}"; then
-  echo "Error: --multi-connect-ready-timeout-ms must be a non-negative integer." >&2
+  echo "Error: --connect-ready-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_MONITOR_HWM}"; then
-  echo "Error: --multi-monitor-hwm must be a non-negative integer." >&2
+  echo "Error: --monitor-hwm must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"; then
-  echo "Error: --multi-server-shutdown-timeout-ms must be a non-negative integer." >&2
+  echo "Error: --server-shutdown-timeout-ms must be a non-negative integer." >&2
   exit 1
 fi
 if ! is_uint "${MULTI_SERVER_BIND_PORT}" || (( MULTI_SERVER_BIND_PORT > 65535 )); then
-  echo "Error: --multi-server-bind-port must be an integer in range 0..65535." >&2
+  echo "Error: --server-bind-port must be an integer in range 0..65535." >&2
   exit 1
 fi
 
@@ -621,8 +608,6 @@ RUN_BASE_ARGS=()
 if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
   if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
     RUN_BASE_ARGS+=(--transports "${PERF_TRANSPORTS}")
-  elif [[ -n "${BENCH_TRANSPORTS:-}" ]]; then
-    RUN_BASE_ARGS+=(--transports "${BENCH_TRANSPORTS}")
   else
     RUN_BASE_ARGS+=(--transports "${MULTI_TRANSPORTS}")
   fi
@@ -630,19 +615,13 @@ fi
 if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 ]]; then
   if [[ -n "${PERF_MSG_SIZES:-}" ]]; then
     RUN_BASE_ARGS+=(--msg-sizes "${PERF_MSG_SIZES}")
-  elif [[ -n "${BENCH_MSG_SIZES:-}" ]]; then
-    RUN_BASE_ARGS+=(--msg-sizes "${BENCH_MSG_SIZES}")
   fi
 fi
-if [[ "${HAS_EXPLICIT_REUSE_BUILD}" -eq 0 && "${PERF_MULTI_FORCE_CLEAN:-${BENCH_MULTI_FORCE_CLEAN:-0}}" != "1" ]]; then
-  RUN_BASE_ARGS+=(--reuse-build)
+if [[ "${FORCE_BUILD}" -eq 1 ]]; then
+  RUN_BASE_ARGS+=(--build)
 fi
 if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
-  if [[ "${MODE}" == "gate" ]]; then
-    RUN_BASE_ARGS+=(--runs "5")
-  else
-    RUN_BASE_ARGS+=(--runs "3")
-  fi
+  RUN_BASE_ARGS+=(--runs "1")
 fi
 RUN_BASE_ARGS+=(--mode "${MODE}" --rolling-n "${ROLLING_N}")
 if [[ -n "${BASELINE_FILE}" ]]; then
@@ -672,51 +651,24 @@ RUN_ENV+=(PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}
 RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
 RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
-RUN_ENV+=(BENCH_MULTI_POLICY="1")
-RUN_ENV+=(BENCH_MODE="${MODE}")
-RUN_ENV+=(BENCH_ROLLING_N="${ROLLING_N}")
-RUN_ENV+=(BENCH_WARN_THROUGHPUT_PCT="${WARN_THROUGHPUT_PCT}")
-RUN_ENV+=(BENCH_FAIL_THROUGHPUT_PCT="${FAIL_THROUGHPUT_PCT}")
-RUN_ENV+=(BENCH_WARN_LATENCY_PCT="${WARN_LATENCY_PCT}")
-RUN_ENV+=(BENCH_FAIL_LATENCY_PCT="${FAIL_LATENCY_PCT}")
-RUN_ENV+=(BENCH_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
-RUN_ENV+=(BENCH_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
-RUN_ENV+=(BENCH_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}")
-RUN_ENV+=(BENCH_MULTI_TRANSPORT_TRANSITION_MS="${MULTI_TRANSPORT_TRANSITION_MS}")
-RUN_ENV+=(BENCH_MULTI_PATTERN_TRANSITION_MS="${MULTI_PATTERN_TRANSITION_MS}")
-RUN_ENV+=(BENCH_MULTI_SERVER_READY_TIMEOUT_MS="${MULTI_SERVER_READY_TIMEOUT_MS}")
-RUN_ENV+=(BENCH_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}")
-RUN_ENV+=(BENCH_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
-RUN_ENV+=(BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
-RUN_ENV+=(BENCH_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
 if [[ -n "${BASELINE_FILE}" ]]; then
   RUN_ENV+=(PERF_BASELINE_FILE="${BASELINE_FILE}")
-  RUN_ENV+=(BENCH_BASELINE_FILE="${BASELINE_FILE}")
 fi
 if [[ -n "${MULTI_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${MULTI_CLIENTS}")
-  RUN_ENV+=(BENCH_MULTI_CLIENTS="${MULTI_CLIENTS}")
-fi
-if [[ -n "${MULTI_INFLIGHT}" ]]; then
-  RUN_ENV+=(PERF_MULTI_INFLIGHT="${MULTI_INFLIGHT}")
-  RUN_ENV+=(BENCH_MULTI_INFLIGHT="${MULTI_INFLIGHT}")
 fi
 if [[ -n "${MULTI_HWM}" ]]; then
   RUN_ENV+=(PERF_MULTI_HWM="${MULTI_HWM}")
-  RUN_ENV+=(BENCH_MULTI_HWM="${MULTI_HWM}")
 fi
 if [[ -n "${MULTI_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}")
-  RUN_ENV+=(BENCH_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}")
 fi
 if [[ -n "${MULTI_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
-  RUN_ENV+=(BENCH_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
 fi
 
-if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-${BENCH_RESULTS_DIR:-}}" ]]; then
-  RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-${BENCH_RESULTS_DIR:-}}")
-  RUN_ENV+=(BENCH_RESULTS_DIR="${PERF_RESULTS_DIR:-${BENCH_RESULTS_DIR:-}}")
+if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-}" ]]; then
+  RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-}")
 fi
 
 SHOW_TOTAL_TIME=1
@@ -734,12 +686,12 @@ for raw_pattern in "${PATTERNS[@]}"; do
     exit 1
   fi
 
-  pattern_clients="${MULTI_CLIENTS:-${PERF_MULTI_CLIENTS:-${BENCH_MULTI_CLIENTS:-}}}"
+  pattern_clients="${MULTI_CLIENTS:-${PERF_MULTI_CLIENTS:-}}"
   if [[ -z "${pattern_clients}" ]]; then
     if [[ "${pattern}" == "MULTI_STREAM" || "${pattern}" == "MULTI_STREAM_CALLBACK" || "${pattern}" == "MULTI_STREAM_LEN32BE" ]]; then
-      pattern_clients="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${BENCH_MULTI_DEFAULT_STREAM_CLIENTS:-1000}}"
+      pattern_clients="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
     else
-      pattern_clients="${PERF_MULTI_DEFAULT_CLIENTS:-${BENCH_MULTI_DEFAULT_CLIENTS:-1000}}"
+      pattern_clients="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
     fi
   fi
 
@@ -765,20 +717,16 @@ fi
 
 if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
-  RUN_ENV+=(BENCH_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
 fi
 if [[ -n "${MULTI_DRAIN_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
-  RUN_ENV+=(BENCH_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"
 echo "=== Running multi benchmark: ${PATTERN_CSV} ==="
 echo "    mode=${MODE} warmup=${MULTI_WARMUP_SECONDS}s duration=${MULTI_DURATION_SECONDS}s"
 RUN_EXIT_CODE=0
-if BENCH_ALLOW_MULTI=1 \
-  PERF_ALLOW_MULTI=1 \
-  BENCH_SUPPRESS_TOTAL_TIME=1 \
+if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \
   env "${RUN_ENV[@]}" \
   "${SCRIPT_DIR}/run_benchmarks.sh" \

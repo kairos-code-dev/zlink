@@ -3,12 +3,13 @@ param(
     [string]$BuildDir = "",
     [string]$OutputFile = "",
     [int]$Runs = 1,
-    [switch]$ReuseBuild,
-    [switch]$Result,
+    [switch]$Build,
     [switch]$Save,
     [string]$SaveVersion = "",
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
+    [Alias("duration")]
+    [string]$Duration = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -32,14 +33,14 @@ Options:
   -Help                        Show this help.
   -Pattern NAME                Pattern list (comma-separated) or ALL.
   -BuildDir PATH               Build directory (default: core\build\windows-x64).
+  -Build                       Force clean build (default is reuse-build).
   -OutputFile PATH             Tee console logs to a file.
-  -Result                      Save report result file under results\single\report\ (complete only).
   -Save                        Save baseline under results\single\baseline\ (complete only, timestamp version).
   -SaveVersion VERSION         Baseline version to use with -Save (e.g., v1.5.0).
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag in saved result filename.
   -Runs N                      Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
-  -ReuseBuild                  Reuse existing build dir without cleaning.
+  -Duration N                  Override single duration seconds (default: 5).
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
@@ -50,7 +51,9 @@ Options:
 
 Notes:
   - tmp result is always saved under results\single\tmp\.
-  - -OutputFile and -Result can be used together.
+  - report result save is always enabled.
+  - reuse-build is always enabled unless -Build is provided.
+  - -OutputFile and report save can be used together.
   - -save-baseline is removed. Use -Save [-SaveVersion VERSION].
 "@
 }
@@ -60,12 +63,12 @@ if ($Help) {
     exit 0
 }
 
+$UseReuseBuild = -not $Build.IsPresent
+$SaveReport = $true
+
 $RollingNExplicit = $PSBoundParameters.ContainsKey("RollingN")
 if (-not $RollingNExplicit) {
     $rollingEnv = $env:PERF_ROLLING_N
-    if (-not $rollingEnv) {
-        $rollingEnv = $env:BENCH_ROLLING_N
-    }
     if ($rollingEnv) {
         $parsedRolling = 0
         if ([int]::TryParse($rollingEnv, [ref]$parsedRolling) -and $parsedRolling -ge 1) {
@@ -79,6 +82,12 @@ if ($RollingN -lt 1) {
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') {
     throw "IoThreads must be a non-negative integer."
 }
+if ($Duration -and $Duration -notmatch '^\d+$') {
+    throw "Duration must be a positive integer."
+}
+if ($Duration -and [int]$Duration -lt 1) {
+    throw "Duration must be >= 1."
+}
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     throw "MsgSizes must be a comma-separated list of integers."
 }
@@ -89,9 +98,9 @@ if ($SaveVersion) {
     $Save = $true
 }
 if (-not $ResultsTag) {
-    $ResultsTag = if ($env:PERF_RESULTS_TAG) { $env:PERF_RESULTS_TAG } else { $env:BENCH_RESULTS_TAG }
+    $ResultsTag = $env:PERF_RESULTS_TAG
 }
-$AllowMulti = (($env:PERF_ALLOW_MULTI -eq "1") -or ($env:BENCH_ALLOW_MULTI -eq "1"))
+$AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
 
@@ -193,7 +202,7 @@ if ($OutputFile) {
 }
 
 if ($ResultFile -and $OutputFile -and ($ResultFile -ieq $OutputFile)) {
-    throw "-OutputFile and -Result cannot point to the same file."
+    throw "-OutputFile cannot point to the same file as report result output."
 }
 
 function Cleanup-OldResultDirs {
@@ -206,9 +215,6 @@ function Cleanup-OldResultDirs {
     }
 
     $RetentionRaw = $env:PERF_RESULTS_RETENTION_DAYS
-    if (-not $RetentionRaw) {
-        $RetentionRaw = $env:BENCH_RESULTS_RETENTION_DAYS
-    }
     if (-not $RetentionRaw) {
         $RetentionRaw = "90"
     }
@@ -259,18 +265,17 @@ function Resolve-BenchmarkBinDir {
     return $Candidates[0]
 }
 
-$NeedConfigureBuild = -not $ReuseBuild
-if ($ReuseBuild) {
-    Write-Host "Reusing build directory: $BuildDir"
-    if (-not (Test-Path $BuildDir)) {
-        throw "build directory does not exist: $BuildDir"
-    }
-
+$NeedConfigureBuild = -not $UseReuseBuild
+if ($UseReuseBuild) {
     $BenchBinDir = Resolve-BenchmarkBinDir -BuildRoot $BuildDir
     $HasSingle = Test-Path (Join-Path $BenchBinDir "perf_pair.exe")
     $HasMulti = Test-Path (Join-Path $BenchBinDir "comp_current_multi_dealer_dealer.exe")
-    if (-not $HasSingle -and -not $HasMulti) {
-        throw "current benchmark binaries not found in reused build: $BenchBinDir"
+    if ((Test-Path $BuildDir) -and ($HasSingle -or $HasMulti)) {
+        Write-Host "Reusing build directory: $BuildDir"
+    } else {
+        Write-Host "Reusable build not found. Configuring/building: $BuildDir"
+        $NeedConfigureBuild = $true
+        $UseReuseBuild = $false
     }
 }
 
@@ -374,7 +379,7 @@ if ($BaselineFile) {
     $RunArgs += @("--baseline-file", $BaselineFile)
 }
 $RunArgs += @("--result-file", $ResultFile)
-if ($Result) {
+if ($SaveReport) {
     $RunArgs += "--result"
 }
 if ($Save) {
@@ -385,29 +390,33 @@ if ($Save) {
 }
 
 $RunEnv = @{}
-if (-not $IoThreads) { $IoThreads = if ($env:PERF_IO_THREADS) { $env:PERF_IO_THREADS } else { $env:BENCH_IO_THREADS } }
-if (-not $MsgSizes) { $MsgSizes = if ($env:PERF_MSG_SIZES) { $env:PERF_MSG_SIZES } else { $env:BENCH_MSG_SIZES } }
-if (-not $Transports) { $Transports = if ($env:PERF_TRANSPORTS) { $env:PERF_TRANSPORTS } else { $env:BENCH_TRANSPORTS } }
+if (-not $IoThreads) { $IoThreads = $env:PERF_IO_THREADS }
+if (-not $MsgSizes) { $MsgSizes = $env:PERF_MSG_SIZES }
+if (-not $Transports) { $Transports = $env:PERF_TRANSPORTS }
+if (-not $Duration) { $Duration = $env:PERF_SINGLE_DURATION_SECONDS }
+if (-not $Duration) { $Duration = "5" }
 
 if ($IoThreads) {
     $RunEnv["PERF_IO_THREADS"] = $IoThreads
-    $RunEnv["BENCH_IO_THREADS"] = $IoThreads
 }
 if ($MsgSizes) {
     $RunEnv["PERF_MSG_SIZES"] = $MsgSizes
-    $RunEnv["BENCH_MSG_SIZES"] = $MsgSizes
 }
 if ($Transports) {
     $RunEnv["PERF_TRANSPORTS"] = $Transports
-    $RunEnv["BENCH_TRANSPORTS"] = $Transports
+}
+if ($Duration) {
+    if ($Duration -notmatch '^\d+$' -or [int]$Duration -lt 1) {
+        throw "Duration must be a positive integer."
+    }
+    $RunArgs += @("--duration", $Duration)
+    $RunEnv["PERF_SINGLE_DURATION_SECONDS"] = $Duration
 }
 if ($PinCpu) {
     $RunEnv["PERF_TASKSET"] = "1"
-    $RunEnv["BENCH_TASKSET"] = "1"
 }
-if ($ReuseBuild) {
+if ($UseReuseBuild) {
     $RunEnv["PERF_NO_AUTOBUILD"] = "1"
-    $RunEnv["BENCH_NO_AUTOBUILD"] = "1"
 }
 
 Write-Host ""
@@ -415,6 +424,7 @@ Write-Host "Running benchmarks..."
 Write-Host "Pattern: $Pattern"
 Write-Host "Build Directory: $BuildDir"
 Write-Host "Runs: $Runs"
+if ($Duration) { Write-Host "Duration: $Duration s" }
 Write-Host "Mode: $Mode"
 Write-Host "Comparison Script: $BenchComparisonScript"
 Write-Host ""

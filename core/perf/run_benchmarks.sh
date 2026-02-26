@@ -24,7 +24,7 @@ print_total_time() {
   if [[ "${SHOW_TOTAL_TIME}" -ne 1 ]]; then
     return
   fi
-  if [[ "${PERF_SUPPRESS_TOTAL_TIME:-${BENCH_SUPPRESS_TOTAL_TIME:-0}}" == "1" ]]; then
+  if [[ "${PERF_SUPPRESS_TOTAL_TIME:-0}" == "1" ]]; then
     return
   fi
   local status="${1:-0}"
@@ -71,10 +71,10 @@ else
   fi
 fi
 
-STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,STREAM,STREAM_CALLBACK,STREAM_LEN32BE,GATEWAY,SPOT"
+STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT"
 PATTERN="ALL"
 OUTPUT_FILE=""
-SAVE_REPORT=0
+SAVE_REPORT=1
 SAVE_BASELINE=0
 SAVE_BASELINE_VERSION=""
 RESULTS_DIR=""
@@ -82,19 +82,20 @@ RESULTS_TAG=""
 RESULT_FILE=""
 RUNS=""
 RUNS_EXPLICIT=0
-REUSE_BUILD=0
+REUSE_BUILD=1
 PIN_CPU=0
-PERF_IO_THREADS="${PERF_IO_THREADS:-${BENCH_IO_THREADS:-}}"
-PERF_MSG_SIZES="${PERF_MSG_SIZES:-${BENCH_MSG_SIZES:-}}"
-PERF_TRANSPORTS="${PERF_TRANSPORTS:-${BENCH_TRANSPORTS:-}}"
+PERF_IO_THREADS="${PERF_IO_THREADS:-}"
+PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
+PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
+SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 MODE="observe"
 BASELINE_FILE=""
-ROLLING_N="${PERF_ROLLING_N:-${BENCH_ROLLING_N:-10}}"
-BENCH_ALLOW_MULTI="${PERF_ALLOW_MULTI:-${BENCH_ALLOW_MULTI:-0}}"
-if [[ "${BENCH_ALLOW_MULTI}" == "1" ]]; then
-  BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
+ROLLING_N="${PERF_ROLLING_N:-10}"
+PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
+if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
+  PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
 else
-  BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
+  PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
 fi
 
 usage() {
@@ -107,13 +108,13 @@ Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
   --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
+  --build                     Force clean build (default is reuse-build).
   --output PATH               Tee console logs to a file.
-  --result                    Save report result file under results/single/report/ (complete only).
   --save [VERSION]            Save baseline under results/single/baseline/ (complete only).
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
-  --reuse-build               Reuse existing build dir without cleaning.
+  --duration N                Override single duration seconds (default: 5).
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
@@ -126,7 +127,9 @@ Policy options (single runner):
 
 Notes:
   - tmp result is always saved under results/single/tmp/.
-  - --output and --result can be used together.
+  - report result save is always enabled.
+  - reuse-build is always enabled unless --build is provided.
+  - --output and report save can be used together.
   - --save-baseline is removed. Use --save [VERSION].
   - MULTI_* patterns are rejected by this script.
 USAGE
@@ -138,8 +141,8 @@ while [[ $# -gt 0 ]]; do
       PATTERN="${2:-}"
       shift
       ;;
-    --reuse-build)
-      REUSE_BUILD=1
+    --build)
+      REUSE_BUILD=0
       ;;
     --build-dir)
       BUILD_DIR="${2:-}"
@@ -148,9 +151,6 @@ while [[ $# -gt 0 ]]; do
     --output)
       OUTPUT_FILE="${2:-}"
       shift
-      ;;
-    --result)
-      SAVE_REPORT=1
       ;;
     --save)
       SAVE_BASELINE=1
@@ -170,6 +170,10 @@ while [[ $# -gt 0 ]]; do
     --runs)
       RUNS="${2:-}"
       RUNS_EXPLICIT=1
+      shift
+      ;;
+    --duration)
+      SINGLE_DURATION_SECONDS="${2:-}"
       shift
       ;;
     --pin-cpu)
@@ -251,7 +255,7 @@ SINGLE_PATTERN_COUNT=0
 for p in "${PATTERN_LIST[@]}"; do
   if [[ "${p}" == MULTI_* ]]; then
     MULTI_PATTERN_COUNT=$((MULTI_PATTERN_COUNT + 1))
-    if [[ "${BENCH_ALLOW_MULTI}" != "1" ]]; then
+    if [[ "${PERF_ALLOW_MULTI}" != "1" ]]; then
       echo "Error: run_benchmarks.sh is single-pattern mode only." >&2
       echo "Use run_benchmarks_multi.sh for MULTI_* patterns." >&2
       exit 1
@@ -266,8 +270,8 @@ if (( MULTI_PATTERN_COUNT > 0 && SINGLE_PATTERN_COUNT > 0 )); then
   exit 1
 fi
 
-if [[ ! -f "${BENCH_COMPARISON_SCRIPT}" ]]; then
-  echo "Error: comparison script not found: ${BENCH_COMPARISON_SCRIPT}" >&2
+if [[ ! -f "${PERF_COMPARISON_SCRIPT}" ]]; then
+  echo "Error: comparison script not found: ${PERF_COMPARISON_SCRIPT}" >&2
   exit 1
 fi
 
@@ -283,6 +287,11 @@ fi
 
 if [[ -n "${PERF_TRANSPORTS}" && ! "${PERF_TRANSPORTS}" =~ ^[a-z]+(,[a-z]+)*$ ]]; then
   echo "PERF_TRANSPORTS must be a comma-separated list of names." >&2
+  exit 1
+fi
+
+if [[ -n "${SINGLE_DURATION_SECONDS}" && ( ! "${SINGLE_DURATION_SECONDS}" =~ ^[0-9]+$ || "${SINGLE_DURATION_SECONDS}" -lt 1 ) ]]; then
+  echo "duration must be a positive integer." >&2
   exit 1
 fi
 
@@ -311,7 +320,7 @@ fi
 
 BUILD_DIR="$(realpath -m "${BUILD_DIR}")"
 ROOT_DIR="$(realpath -m "${ROOT_DIR}")"
-BENCH_COMPARISON_SCRIPT="$(realpath -m "${BENCH_COMPARISON_SCRIPT}")"
+PERF_COMPARISON_SCRIPT="$(realpath -m "${PERF_COMPARISON_SCRIPT}")"
 
 if [[ "${BUILD_DIR}" != "${ROOT_DIR}/"* ]]; then
   echo "Build directory must be inside repo root: ${ROOT_DIR}" >&2
@@ -341,13 +350,13 @@ if [[ -n "${OUTPUT_FILE}" ]]; then
 fi
 
 if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" && "${RESULT_FILE}" == "${OUTPUT_FILE}" ]]; then
-  echo "Error: --output and --result cannot point to the same file." >&2
+  echo "Error: --output cannot point to the same file as report result output." >&2
   exit 1
 fi
 
 cleanup_old_results_dirs() {
   local root="${1:-}"
-  local retention="${PERF_RESULTS_RETENTION_DAYS:-${BENCH_RESULTS_RETENTION_DAYS:-90}}"
+  local retention="${PERF_RESULTS_RETENTION_DAYS:-90}"
   if [[ -z "${root}" || ! -d "${root}" ]]; then
     return
   fi
@@ -375,11 +384,25 @@ cleanup_old_results_dirs() {
 }
 
 if [[ "${REUSE_BUILD}" -eq 1 ]]; then
-  if [[ -d "${BUILD_DIR}" ]]; then
+  PERF_EXT=""
+  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
+    PERF_EXT=".exe"
+  fi
+  HAS_SINGLE_BIN=0
+  if [[ -f "${BUILD_DIR}/bin/perf_pair${PERF_EXT}" || -f "${BUILD_DIR}/perf_pair${PERF_EXT}" ]]; then
+    HAS_SINGLE_BIN=1
+  fi
+  HAS_MULTI_BIN=0
+  if [[ -f "${BUILD_DIR}/bin/comp_current_multi_dealer_dealer${PERF_EXT}" || -f "${BUILD_DIR}/comp_current_multi_dealer_dealer${PERF_EXT}" ]]; then
+    HAS_MULTI_BIN=1
+  fi
+
+  if [[ -d "${BUILD_DIR}" && ( "${HAS_SINGLE_BIN}" -eq 1 || "${HAS_MULTI_BIN}" -eq 1 ) ]]; then
     echo "Reusing build directory: ${BUILD_DIR}"
   else
-    echo "Error: --reuse-build requires existing build dir: ${BUILD_DIR}" >&2
-    exit 1
+    echo "Reusable build not found. Configuring/building: ${BUILD_DIR}"
+    REUSE_BUILD=0
+    rm -rf "${BUILD_DIR}"
   fi
 else
   echo "Cleaning build directory: ${BUILD_DIR}"
@@ -467,9 +490,12 @@ if [[ -n "${RESULTS_DIR}" ]]; then
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${PATTERN_LIST[*]}")"
-RUN_CMD=("${PYTHON_BIN[@]}" "${BENCH_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")
+RUN_CMD=("${PYTHON_BIN[@]}" "${PERF_COMPARISON_SCRIPT}" "${PATTERN_CSV}" "--build-dir" "${BUILD_DIR}" "--runs" "${RUNS}")
 if [[ "${PIN_CPU}" -eq 1 ]]; then
   RUN_CMD+=("--pin-cpu")
+fi
+if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
+  RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
 fi
 
 RUN_CMD+=("--mode" "${MODE}" "--rolling-n" "${ROLLING_N}")
@@ -496,19 +522,18 @@ fi
 RUN_ENV=()
 if [[ -n "${PERF_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
-  RUN_ENV+=(BENCH_IO_THREADS="${PERF_IO_THREADS}")
 fi
 if [[ -n "${PERF_MSG_SIZES}" ]]; then
   RUN_ENV+=(PERF_MSG_SIZES="${PERF_MSG_SIZES}")
-  RUN_ENV+=(BENCH_MSG_SIZES="${PERF_MSG_SIZES}")
 fi
 if [[ -n "${PERF_TRANSPORTS}" ]]; then
   RUN_ENV+=(PERF_TRANSPORTS="${PERF_TRANSPORTS}")
-  RUN_ENV+=(BENCH_TRANSPORTS="${PERF_TRANSPORTS}")
+fi
+if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
 if [[ "${REUSE_BUILD}" -eq 1 ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
-  RUN_ENV+=(BENCH_NO_AUTOBUILD=1)
 fi
 
 SHOW_TOTAL_TIME=1

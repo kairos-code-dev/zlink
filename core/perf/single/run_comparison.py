@@ -13,10 +13,12 @@ import shutil
 import statistics
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
 IS_WINDOWS = os.name == "nt"
+IS_LINUX = (os.name != "nt") and platform.system().lower().startswith("linux")
 EXE_SUFFIX = ".exe" if IS_WINDOWS else ""
 
 SCRIPT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -31,9 +33,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_POLL",
-    "STREAM",
-    "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
     "GATEWAY",
     "SPOT",
 ]
@@ -45,9 +44,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER": "perf_dealer_router",
     "ROUTER_ROUTER": "perf_router_router",
     "ROUTER_ROUTER_POLL": "perf_router_router_poll",
-    "STREAM": "perf_stream",
-    "STREAM_CALLBACK": "perf_stream_callback",
-    "STREAM_LEN32BE": "perf_stream_len32be",
     "GATEWAY": "perf_gateway",
     "SPOT": "perf_spot",
 }
@@ -59,17 +55,10 @@ if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 STREAM_TRANSPORT_PATTERNS = {
-    "STREAM",
-    "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
     "GATEWAY",
     "SPOT",
 }
-STREAM_SIZE_PATTERNS = {
-    "STREAM",
-    "STREAM_CALLBACK",
-    "STREAM_LEN32BE",
-}
+STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
 DEFAULT_MAX_RESULT_FILES = 100
@@ -94,6 +83,7 @@ class RunOutcome:
     mem_mb: Optional[float] = None
     reason: str = ""
     warnings: Optional[List[str]] = None
+    stderr: str = ""
 
 
 @dataclass
@@ -158,7 +148,261 @@ def parse_env_int(name: str, default: int, legacy_name: Optional[str] = None) ->
         return default
 
 
-FAIL_FAST = env_flag_enabled("PERF_FAIL_FAST", "BENCH_FAIL_FAST")
+def linux_proc_metrics_supported() -> bool:
+    return IS_LINUX and hasattr(os, "sysconf") and os.path.exists("/proc")
+
+
+def read_proc_cpu_ticks(pid: int) -> Optional[int]:
+    stat_path = f"/proc/{pid}/stat"
+    try:
+        with open(stat_path, "r", encoding="utf-8", errors="ignore") as fh:
+            data = fh.read().strip()
+    except OSError:
+        return None
+    if not data:
+        return None
+    parts = data.split()
+    if len(parts) < 15:
+        return None
+    try:
+        utime = int(parts[13])
+        stime = int(parts[14])
+    except ValueError:
+        return None
+    return utime + stime
+
+
+def read_proc_mem_mb(pid: int) -> Optional[float]:
+    status_path = f"/proc/{pid}/status"
+    try:
+        with open(status_path, "r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                if not line.startswith("VmRSS:"):
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    break
+                return float(parts[1]) / 1024.0
+    except OSError:
+        return None
+    return None
+
+
+if IS_WINDOWS:
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    PROCESS_VM_READ = 0x0010
+
+    class FILETIME(ctypes.Structure):
+        _fields_ = [
+            ("dwLowDateTime", wintypes.DWORD),
+            ("dwHighDateTime", wintypes.DWORD),
+        ]
+
+    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    _kernel32.OpenProcess.argtypes = [
+        wintypes.DWORD,
+        wintypes.BOOL,
+        wintypes.DWORD,
+    ]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+    _kernel32.GetProcessTimes.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+        ctypes.POINTER(FILETIME),
+    ]
+    _kernel32.GetProcessTimes.restype = wintypes.BOOL
+    _psapi.GetProcessMemoryInfo.argtypes = [
+        wintypes.HANDLE,
+        ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+        wintypes.DWORD,
+    ]
+    _psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+
+def windows_proc_metrics_supported() -> bool:
+    return IS_WINDOWS
+
+
+def open_windows_process_for_metrics(pid: int):
+    if not windows_proc_metrics_supported():
+        return None
+    access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ
+    handle = _kernel32.OpenProcess(access, False, int(pid))
+    if not handle:
+        return None
+    return handle
+
+
+def close_windows_process_handle(handle) -> None:
+    if handle:
+        _kernel32.CloseHandle(handle)
+
+
+def _filetime_to_uint64(filetime_obj) -> int:
+    return (int(filetime_obj.dwHighDateTime) << 32) | int(
+        filetime_obj.dwLowDateTime
+    )
+
+
+def read_windows_cpu_ticks_100ns(handle) -> Optional[int]:
+    if not handle:
+        return None
+    creation = FILETIME()
+    exit_ft = FILETIME()
+    kernel = FILETIME()
+    user = FILETIME()
+    ok = _kernel32.GetProcessTimes(
+        handle,
+        ctypes.byref(creation),
+        ctypes.byref(exit_ft),
+        ctypes.byref(kernel),
+        ctypes.byref(user),
+    )
+    if not ok:
+        return None
+    return _filetime_to_uint64(kernel) + _filetime_to_uint64(user)
+
+
+def read_windows_mem_mb(handle) -> Optional[float]:
+    if not handle:
+        return None
+    counters = PROCESS_MEMORY_COUNTERS()
+    counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+    ok = _psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb)
+    if not ok:
+        return None
+    return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
+
+
+def run_command_with_metrics(
+    cmd: List[str], env: Dict[str, str], timeout_sec: int
+) -> Dict[str, object]:
+    started = time.monotonic()
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    sample_mode = ""
+    if linux_proc_metrics_supported():
+        sample_mode = "linux"
+    elif windows_proc_metrics_supported():
+        sample_mode = "windows"
+
+    proc_handle = None
+    start_ticks = None
+    end_ticks = None
+    end_mem_mb = None
+    if sample_mode == "linux":
+        start_ticks = read_proc_cpu_ticks(proc.pid)
+        end_ticks = start_ticks
+    elif sample_mode == "windows":
+        proc_handle = open_windows_process_for_metrics(proc.pid)
+        start_ticks = read_windows_cpu_ticks_100ns(proc_handle)
+        end_ticks = start_ticks
+
+    timed_out = False
+    try:
+        while True:
+            rc = proc.poll()
+            if sample_mode == "linux":
+                ticks = read_proc_cpu_ticks(proc.pid)
+                if ticks is not None:
+                    end_ticks = ticks
+                mem = read_proc_mem_mb(proc.pid)
+                if mem is not None:
+                    end_mem_mb = mem
+            elif sample_mode == "windows":
+                ticks = read_windows_cpu_ticks_100ns(proc_handle)
+                if ticks is not None:
+                    end_ticks = ticks
+                mem = read_windows_mem_mb(proc_handle)
+                if mem is not None:
+                    end_mem_mb = mem
+
+            if rc is not None:
+                break
+            if (time.monotonic() - started) > timeout_sec:
+                timed_out = True
+                proc.kill()
+                break
+            time.sleep(0.02)
+
+        try:
+            stdout, stderr = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            timed_out = True
+
+        if sample_mode == "linux":
+            ticks = read_proc_cpu_ticks(proc.pid)
+            if ticks is not None:
+                end_ticks = ticks
+            mem = read_proc_mem_mb(proc.pid)
+            if mem is not None:
+                end_mem_mb = mem
+        elif sample_mode == "windows":
+            ticks = read_windows_cpu_ticks_100ns(proc_handle)
+            if ticks is not None:
+                end_ticks = ticks
+            mem = read_windows_mem_mb(proc_handle)
+            if mem is not None:
+                end_mem_mb = mem
+    finally:
+        close_windows_process_handle(proc_handle)
+
+    elapsed = max(1e-6, time.monotonic() - started)
+    cpu_pct = None
+    if start_ticks is not None and end_ticks is not None:
+        nproc = max(1.0, float(os.cpu_count() or 1))
+        if sample_mode == "linux":
+            try:
+                hz = float(os.sysconf("SC_CLK_TCK"))
+            except (OSError, ValueError):
+                hz = 100.0
+            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / max(1.0, hz)
+            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
+        elif sample_mode == "windows":
+            cpu_delta = max(0.0, float(end_ticks - start_ticks)) / 10000000.0
+            cpu_pct = (cpu_delta / (elapsed * nproc)) * 100.0
+
+    return {
+        "returncode": proc.returncode,
+        "stdout": stdout or "",
+        "stderr": stderr or "",
+        "timed_out": timed_out,
+        "cpu_pct": cpu_pct,
+        "mem_mb": end_mem_mb,
+    }
+
+
+FAIL_FAST = env_flag_enabled("PERF_FAIL_FAST")
 
 
 def platform_tag() -> str:
@@ -352,7 +596,7 @@ def select_transports(pattern: str) -> List[str]:
         if pattern in STREAM_TRANSPORT_PATTERNS
         else DEFAULT_SOCKET_TRANSPORTS
     )
-    env_transports = parse_env_list("PERF_TRANSPORTS", str, "BENCH_TRANSPORTS")
+    env_transports = parse_env_list("PERF_TRANSPORTS", str)
     if not env_transports:
         return list(base)
     return [t for t in base if t in env_transports]
@@ -365,7 +609,7 @@ def default_msg_sizes_for_pattern(pattern: str) -> List[int]:
 
 
 def msg_sizes_for_pattern(pattern: str) -> List[int]:
-    env_sizes = parse_env_list("PERF_MSG_SIZES", int, "BENCH_MSG_SIZES")
+    env_sizes = parse_env_list("PERF_MSG_SIZES", int)
     if env_sizes:
         return env_sizes
     return default_msg_sizes_for_pattern(pattern)
@@ -449,6 +693,51 @@ def detect_special_status(
     return None
 
 
+def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[str]:
+    if IS_WINDOWS:
+        return [binary_path] + list(args)
+    if (
+        pin_cpu
+        or env_flag_enabled("PERF_TASKSET")
+        or os.environ.get("PERF_TASKSET") == "1"
+    ):
+        return ["taskset", "-c", "1", binary_path] + list(args)
+    return [binary_path] + list(args)
+
+
+def single_table_header_line() -> str:
+    return "| Size     |       Throughput |    Bandwidth |      Latency | CPU% | Mem MB |"
+
+
+def single_table_separator_line() -> str:
+    return "|----------|------------------|--------------|--------------|------|--------|"
+
+
+def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] = None) -> str:
+    if status == "success" and record is not None:
+        tp_s = format_throughput("", record.throughput)
+        bw_s = format_bandwidth(record.bandwidth)
+        lat_s = format_latency_us(record.latency)
+        cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
+        mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
+    elif status == "unsupported":
+        tp_s = "UNSUPPORTED"
+        bw_s = "UNSUPPORTED"
+        lat_s = "UNSUPPORTED"
+        cpu_s = "N/A"
+        mem_s = "N/A"
+    else:
+        tp_s = "FAIL"
+        bw_s = "FAIL"
+        lat_s = "FAIL"
+        cpu_s = "N/A"
+        mem_s = "N/A"
+    return (
+        f"| {f'{size}B':<8} | {tp_s:>16} | {bw_s:>12} | {lat_s:>12} | "
+        f"{cpu_s:>4} | {mem_s:>6} |"
+    )
+
+
 def run_single_test(
     build_dir: str,
     current_lib_dir: str,
@@ -462,29 +751,16 @@ def run_single_test(
 ) -> RunOutcome:
     binary_path = os.path.join(build_dir, binary_name + EXE_SUFFIX)
     env = get_env_for_lib(current_lib_dir)
-
-    if IS_WINDOWS:
-        cmd = [binary_path, lib_name, transport, str(size)]
-    elif pin_cpu or env_flag_enabled("PERF_TASKSET", "BENCH_TASKSET"):
-        cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
-    else:
-        cmd = [binary_path, lib_name, transport, str(size)]
-
+    cmd = build_bench_cmd(binary_path, [lib_name, transport, str(size)], pin_cpu)
     try:
-        proc = subprocess.run(
-            cmd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-        )
-    except subprocess.TimeoutExpired:
-        return RunOutcome(status="fail", reason="timeout")
+        sampled = run_command_with_metrics(cmd, env, timeout_sec)
     except Exception as exc:  # pragma: no cover - defensive
         return RunOutcome(status="fail", reason=f"exception:{exc}")
+    if sampled.get("timed_out"):
+        return RunOutcome(status="fail", reason="timeout")
 
-    stdout = proc.stdout or ""
-    stderr = proc.stderr or ""
+    stdout = str(sampled.get("stdout") or "")
+    stderr = str(sampled.get("stderr") or "")
 
     metrics: Dict[str, float] = {}
     warnings: List[str] = []
@@ -505,35 +781,57 @@ def run_single_test(
         metrics[metric] = value
 
     special = detect_special_status(stdout, lib_name, pattern, transport)
-    if proc.returncode != 0:
+    return_code = int(sampled.get("returncode") or 0)
+    if return_code != 0:
         return RunOutcome(
             status="fail",
-            reason=f"non_zero_exit_{proc.returncode}",
+            reason=f"non_zero_exit_{return_code}",
             warnings=warnings or None,
+            stderr=stderr,
         )
 
     if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
+        cpu_pct = metrics.get("cpu_pct")
+        mem_mb = metrics.get("mem_mb")
+        if cpu_pct is None:
+            sampled_cpu = sampled.get("cpu_pct")
+            if isinstance(sampled_cpu, (int, float)):
+                cpu_pct = float(sampled_cpu)
+        if mem_mb is None:
+            sampled_mem = sampled.get("mem_mb")
+            if isinstance(sampled_mem, (int, float)):
+                mem_mb = float(sampled_mem)
         return RunOutcome(
             status="success",
             throughput=metrics["throughput"],
             bandwidth=metrics["bandwidth"],
             latency=metrics["latency"],
-            cpu_pct=metrics.get("cpu_pct"),
-            mem_mb=metrics.get("mem_mb"),
+            cpu_pct=cpu_pct,
+            mem_mb=mem_mb,
             warnings=warnings or None,
+            stderr=stderr,
         )
 
     if special == "unsupported" and not metrics:
         return RunOutcome(
-            status="unsupported", reason="unsupported", warnings=warnings or None
+            status="unsupported",
+            reason="unsupported",
+            warnings=warnings or None,
+            stderr=stderr,
         )
     if special == "skip" and not metrics:
-        return RunOutcome(status="skip", reason="skip", warnings=warnings or None)
+        return RunOutcome(
+            status="skip",
+            reason="skip",
+            warnings=warnings or None,
+            stderr=stderr,
+        )
 
     return RunOutcome(
         status="fail",
         reason="no_data",
         warnings=warnings or None,
+        stderr=stderr,
     )
 
 
@@ -782,7 +1080,7 @@ def normalize_threshold_value(metric: str, field: str, value: float) -> Tuple[fl
 
 def load_threshold_rules() -> Tuple[List[ThresholdRule], List[str]]:
     path = (
-        env_get("PERF_THRESHOLDS_FILE", "BENCH_THRESHOLDS_FILE").strip()
+        env_get("PERF_THRESHOLDS_FILE").strip()
         or DEFAULT_THRESHOLD_FILE
     )
     warnings: List[str] = []
@@ -1126,6 +1424,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("pattern", nargs="?", default="ALL")
     parser.add_argument("--runs", type=int, default=None)
+    parser.add_argument("--duration", type=int, default=None)
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--pin-cpu", action="store_true")
     parser.add_argument("--mode", choices=["observe", "trend", "gate"], default="observe")
@@ -1146,7 +1445,7 @@ def main() -> int:
     args = parse_args()
 
     if not args.results_tag:
-        args.results_tag = env_get("PERF_RESULTS_TAG", "BENCH_RESULTS_TAG").strip()
+        args.results_tag = env_get("PERF_RESULTS_TAG").strip()
 
     if args.runs is None:
         mode_default_runs = {"observe": 1, "trend": 3, "gate": 5}
@@ -1154,6 +1453,11 @@ def main() -> int:
     if args.runs < 1:
         print("Error: --runs must be >= 1.", file=sys.stderr)
         return 1
+    if args.duration is not None and args.duration < 1:
+        print("Error: --duration must be >= 1.", file=sys.stderr)
+        return 1
+    if args.duration is not None:
+        os.environ["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
     if args.save_baseline is not None:
         print(
             "Error: --save-baseline is removed. Use --save [VERSION].",
@@ -1161,7 +1465,7 @@ def main() -> int:
         )
         return 1
     if args.rolling_n is None:
-        args.rolling_n = parse_env_int("PERF_ROLLING_N", 10, "BENCH_ROLLING_N")
+        args.rolling_n = parse_env_int("PERF_ROLLING_N", 10)
     if args.rolling_n < 1:
         print("Error: --rolling-n must be >= 1.", file=sys.stderr)
         return 1
@@ -1185,13 +1489,13 @@ def main() -> int:
     timeout_sec = max(
         1,
         parse_env_int(
-            "PERF_SINGLE_TIMEOUT_SECONDS", 120, "BENCH_SINGLE_TIMEOUT_SECONDS"
+            "PERF_SINGLE_TIMEOUT_SECONDS", 120
         ),
     )
 
     no_autobuild = (
-        env_flag_enabled("PERF_NO_AUTOBUILD", "BENCH_NO_AUTOBUILD")
-        or env_flag_enabled("PERF_SKIP_AUTO_BUILD", "BENCH_SKIP_AUTO_BUILD")
+        env_flag_enabled("PERF_NO_AUTOBUILD")
+        or env_flag_enabled("PERF_SKIP_AUTO_BUILD")
     )
 
     missing_patterns = collect_missing_patterns(build_dir, patterns)
@@ -1257,30 +1561,74 @@ def main() -> int:
         transports = pattern_transports.get(pattern, [])
         sizes = pattern_sizes.get(pattern, [])
 
-        print(f"\n## RUN: {pattern} ({pattern_direction_label(pattern)})")
+        if table_lines:
+            table_lines.extend(["", PATTERN_SEPARATOR, ""])
+            print("")
+            print(PATTERN_SEPARATOR)
+            print("")
+
+        pattern_header = f"## PATTERN: {pattern} ({pattern_direction_label(pattern)})"
+        print(pattern_header)
+        table_lines.append(pattern_header)
+
         if not transports:
-            print(f"  Skipping {pattern}: no matching transports.")
+            line = f"  Skipping {pattern}: no matching transports."
+            print(line)
+            table_lines.append(line)
             continue
         if not sizes:
-            print(f"  Skipping {pattern}: no message sizes configured.")
+            line = f"  Skipping {pattern}: no message sizes configured."
+            print(line)
+            table_lines.append(line)
             continue
 
-        print(f"  > Benchmarking current for {pattern}...")
+        bench_line = f"  > Benchmarking current for {pattern}..."
+        print(bench_line)
+        table_lines.append(bench_line)
 
         for transport in transports:
-            for size in sizes:
-                print(f"    Testing {transport} | {size}B: ", end="", flush=True)
+            testing_line = f"    Testing {transport}:"
+            print(testing_line)
+            table_lines.append(testing_line)
 
-                t_vals: List[float] = []
-                b_vals: List[float] = []
-                l_vals: List[float] = []
-                cpu_vals: List[float] = []
-                mem_vals: List[float] = []
-                combo_status = "success"
-                combo_reason = ""
+            show_run_labels = args.runs > 1
+            if not show_run_labels:
+                header = f"      {single_table_header_line()}"
+                separator = f"      {single_table_separator_line()}"
+                print(header)
+                print(separator)
+                table_lines.append(header)
+                table_lines.append(separator)
 
-                for run_idx in range(args.runs):
-                    print(f"{run_idx + 1} ", end="", flush=True)
+            t_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            b_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            l_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            cpu_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            mem_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            failed_sizes: Dict[int, str] = {}
+            transport_unsupported = False
+            transport_skip = False
+
+            abort_pattern = False
+            for run_idx in range(args.runs):
+                if transport_unsupported or transport_skip:
+                    break
+                run_no = run_idx + 1
+                if show_run_labels:
+                    run_line = f"      run {run_no}/{args.runs}:"
+                    print(run_line)
+                    table_lines.append(run_line)
+                    header = f"        {single_table_header_line()}"
+                    separator = f"        {single_table_separator_line()}"
+                    print(header)
+                    print(separator)
+                    table_lines.append(header)
+                    table_lines.append(separator)
+                    row_indent = "        "
+                else:
+                    row_indent = "      "
+
+                for size_idx, size in enumerate(sizes):
                     outcome = run_single_test(
                         build_dir,
                         current_lib_dir,
@@ -1292,89 +1640,148 @@ def main() -> int:
                         timeout_sec,
                         args.pin_cpu,
                     )
+
                     if outcome.warnings:
                         for warning in outcome.warnings:
                             run_warnings.append(
-                                f"{pattern} {transport} {size}B run#{run_idx + 1}: {warning}"
+                                f"{pattern} {transport} {size}B run#{run_no}: {warning}"
                             )
 
                     if outcome.status == "success":
-                        t_vals.append(outcome.throughput)
-                        b_vals.append(outcome.bandwidth)
-                        l_vals.append(outcome.latency)
+                        t_samples[size].append(outcome.throughput)
+                        b_samples[size].append(outcome.bandwidth)
+                        l_samples[size].append(outcome.latency)
                         if outcome.cpu_pct is not None:
-                            cpu_vals.append(outcome.cpu_pct)
+                            cpu_samples[size].append(outcome.cpu_pct)
                         if outcome.mem_mb is not None:
-                            mem_vals.append(outcome.mem_mb)
+                            mem_samples[size].append(outcome.mem_mb)
+                        row = single_table_row_line(
+                            size,
+                            "success",
+                            ComboRecord(
+                                status="success",
+                                throughput=outcome.throughput,
+                                bandwidth=outcome.bandwidth,
+                                latency=outcome.latency,
+                                cpu_pct=outcome.cpu_pct,
+                                mem_mb=outcome.mem_mb,
+                            ),
+                        )
+                        line = f"{row_indent}{row}"
+                        print(line)
+                        table_lines.append(line)
                         continue
 
-                    combo_status = outcome.status
-                    combo_reason = outcome.reason or outcome.status
-                    if combo_status == "fail":
-                        all_failures.append((pattern, transport, size, combo_reason))
+                    if outcome.status == "unsupported":
+                        transport_unsupported = True
+                        for remain_size in sizes[size_idx:]:
+                            row = single_table_row_line(remain_size, "unsupported", None)
+                            line = f"{row_indent}{row}"
+                            print(line)
+                            table_lines.append(line)
+                        break
+
+                    if outcome.status == "skip":
+                        transport_skip = True
+                        reason = outcome.reason or "skip"
+                        for remain_size in sizes[size_idx:]:
+                            failed_sizes[remain_size] = reason
+                            row = single_table_row_line(remain_size, "fail", None)
+                            line = f"{row_indent}{row}"
+                            print(line)
+                            table_lines.append(line)
+                        break
+
+                    reason = outcome.reason or "fail"
+                    failed_sizes[size] = reason
+                    all_failures.append((pattern, transport, size, reason))
+                    row = single_table_row_line(size, "fail", None)
+                    line = f"{row_indent}{row}"
+                    print(line)
+                    table_lines.append(line)
+                    if FAIL_FAST:
+                        abort_pattern = True
+                        break
+
+                if abort_pattern:
                     break
 
-                if combo_status == "unsupported":
+            if transport_unsupported:
+                for size in sizes:
                     combo_results[(pattern, transport, size)] = ComboRecord(status="unsupported")
-                    print("unsupported Done", flush=True)
-                    continue
-                if combo_status == "skip":
+            elif transport_skip:
+                for size in sizes:
                     combo_results[(pattern, transport, size)] = ComboRecord(status="skip")
-                    print("skip Done", flush=True)
-                    continue
-                if combo_status == "fail" or not t_vals or not b_vals or not l_vals:
-                    combo_results[(pattern, transport, size)] = ComboRecord(status="fail")
-                    if combo_status != "fail":
-                        all_failures.append((pattern, transport, size, combo_reason or "no_data"))
-                    print("fail Done", flush=True)
-                    if FAIL_FAST:
-                        break
-                    continue
+            else:
+                for size in sizes:
+                    if (
+                        size in failed_sizes
+                        or not t_samples[size]
+                        or not b_samples[size]
+                        or not l_samples[size]
+                    ):
+                        combo_results[(pattern, transport, size)] = ComboRecord(status="fail")
+                        if size not in failed_sizes:
+                            all_failures.append((pattern, transport, size, "no_data"))
+                        continue
 
-                throughput = statistics.median(t_vals) if len(t_vals) > 1 else t_vals[0]
-                bandwidth = statistics.median(b_vals) if len(b_vals) > 1 else b_vals[0]
-                latency = statistics.median(l_vals) if len(l_vals) > 1 else l_vals[0]
-                cpu_pct = statistics.median(cpu_vals) if cpu_vals else None
-                mem_mb = statistics.median(mem_vals) if mem_vals else None
+                    throughput = statistics.median(t_samples[size])
+                    bandwidth = statistics.median(b_samples[size])
+                    latency = statistics.median(l_samples[size])
+                    cpu_pct = statistics.median(cpu_samples[size]) if cpu_samples[size] else None
+                    mem_mb = statistics.median(mem_samples[size]) if mem_samples[size] else None
 
-                combo_results[(pattern, transport, size)] = ComboRecord(
-                    status="success",
-                    throughput=throughput,
-                    bandwidth=bandwidth,
-                    latency=latency,
-                    cpu_pct=cpu_pct,
-                    mem_mb=mem_mb,
-                )
-                tp_key = ("current", pattern, transport, size, "throughput")
-                bw_key = ("current", pattern, transport, size, "bandwidth")
-                lat_key = ("current", pattern, transport, size, "latency")
-                result_metrics[tp_key] = throughput
-                result_metrics[bw_key] = bandwidth
-                result_metrics[lat_key] = latency
-                compare_metrics[tp_key] = throughput
-                compare_metrics[lat_key] = latency
-                if cpu_pct is not None:
-                    result_metrics[("current", pattern, transport, size, "cpu_pct")] = cpu_pct
-                if mem_mb is not None:
-                    result_metrics[("current", pattern, transport, size, "mem_mb")] = mem_mb
-                print("Done", flush=True)
+                    combo_results[(pattern, transport, size)] = ComboRecord(
+                        status="success",
+                        throughput=throughput,
+                        bandwidth=bandwidth,
+                        latency=latency,
+                        cpu_pct=cpu_pct,
+                        mem_mb=mem_mb,
+                    )
+
+                    tp_key = ("current", pattern, transport, size, "throughput")
+                    bw_key = ("current", pattern, transport, size, "bandwidth")
+                    lat_key = ("current", pattern, transport, size, "latency")
+                    result_metrics[tp_key] = throughput
+                    result_metrics[bw_key] = bandwidth
+                    result_metrics[lat_key] = latency
+                    compare_metrics[tp_key] = throughput
+                    compare_metrics[lat_key] = latency
+                    if cpu_pct is not None:
+                        result_metrics[("current", pattern, transport, size, "cpu_pct")] = cpu_pct
+                    if mem_mb is not None:
+                        result_metrics[("current", pattern, transport, size, "mem_mb")] = mem_mb
+
+            if show_run_labels:
+                median_line = "      median:"
+                print(median_line)
+                table_lines.append(median_line)
+                header = f"        {single_table_header_line()}"
+                separator = f"        {single_table_separator_line()}"
+                print(header)
+                print(separator)
+                table_lines.append(header)
+                table_lines.append(separator)
+
+                for size in sizes:
+                    record = combo_results.get((pattern, transport, size))
+                    if record and record.status == "success":
+                        row = single_table_row_line(size, "success", record)
+                    elif record and record.status == "unsupported":
+                        row = single_table_row_line(size, "unsupported", None)
+                    else:
+                        row = single_table_row_line(size, "fail", None)
+                    line = f"        {row}"
+                    print(line)
+                    table_lines.append(line)
+
+            done_line = f"    Testing {transport}: Done"
+            print(done_line)
+            table_lines.append(done_line)
 
             if FAIL_FAST and all_failures:
                 break
-
-        pattern_table_lines = build_pattern_table_lines(
-            pattern, transports, sizes, combo_results
-        )
-        if table_lines:
-            table_lines.extend(["", PATTERN_SEPARATOR, ""])
-            print("")
-            print(PATTERN_SEPARATOR)
-            print("")
-        else:
-            print("")
-        table_lines.extend(pattern_table_lines)
-        for line in pattern_table_lines:
-            print(line)
 
         if FAIL_FAST and all_failures:
             break
@@ -1488,14 +1895,11 @@ def main() -> int:
     if save_report_requested and not save_report_path:
         save_report_path = os.path.join(report_dir, build_result_filename(args.results_tag))
     if save_report_requested and save_report_path:
-        if completion_status == "complete":
-            write_result_file(
-                save_report_path, meta, result_metrics, table_text=table_text, table_only=True
-            )
-            enforce_file_retention(report_dir)
-            print(f"Saved report file: {save_report_path}")
-        else:
-            print("Skipped report save: run status is partial")
+        write_result_file(
+            save_report_path, meta, result_metrics, table_text=table_text, table_only=True
+        )
+        enforce_file_retention(report_dir)
+        print(f"Saved report file: {save_report_path} (status={completion_status})")
 
     if save_baseline_requested:
         if completion_status != "complete":

@@ -89,11 +89,15 @@ void run_router_router_poll(const std::string &transport,
     std::vector<char> recv_buf(msg_size + 256);
     char id[256];
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
     bool latency_ok = true;
+    int latency_roundtrips = 0;
     stopwatch_t sw;
     sw.start();
-    for (int i = 0; i < lat_count; ++i) {
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    while (std::chrono::steady_clock::now() < latency_deadline) {
         zlink_send(router2.get(), "ROUTER1", 7, ZLINK_SNDMORE);
         zlink_send(router2.get(), buffer.data(), msg_size, 0);
 
@@ -115,14 +119,16 @@ void run_router_router_poll(const std::string &transport,
 
         zlink_recv(router2.get(), id, 256, 0);
         zlink_recv(router2.get(), recv_buf.data(), msg_size, 0);
+        ++latency_roundtrips;
     }
-    if (!latency_ok) {
+    if (!latency_ok || latency_roundtrips <= 0) {
         print_result(lib_name, "ROUTER_ROUTER_POLL", transport, msg_size,
                      0.0, 0.0);
         return;
     }
 
-    const double latency = (sw.elapsed_ms() * 1000.0) / (lat_count * 2);
+    const double latency =
+      (sw.elapsed_ms() * 1000.0) / (latency_roundtrips * 2);
 
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {

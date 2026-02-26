@@ -293,7 +293,7 @@ void run_gateway(const std::string &transport,
 
     settle();
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 200);
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_one_gateway(gateway, service_name, msg_size)
             || !recv_one_provider_message(provider_router)) {
@@ -302,17 +302,23 @@ void run_gateway(const std::string &transport,
         }
     }
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 200);
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    int latency_count = 0;
     stopwatch_t sw;
     sw.start();
-    for (int i = 0; i < lat_count; ++i) {
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    while (std::chrono::steady_clock::now() < latency_deadline) {
         if (!send_one_gateway(gateway, service_name, msg_size)
             || !recv_one_provider_message(provider_router)) {
             fail();
             return;
         }
+        ++latency_count;
     }
-    const double latency = (sw.elapsed_ms() * 1000.0) / lat_count;
+    const double latency =
+      latency_count > 0 ? (sw.elapsed_ms() * 1000.0) / latency_count : 0.0;
 
     std::atomic<int> received(0);
     std::thread receiver([&]() {

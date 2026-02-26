@@ -340,7 +340,7 @@ perf/results/
     │   ├── perf_linux_20260224_081152.txt
     │   ├── perf_linux_20260224_093000_mytag.txt
     │   └── ...
-    ├── report/                                           # 레포트 (--result, complete만)
+    ├── report/                                           # 레포트 (--result, complete/partial)
     │   ├── perf_linux_20260224_091530.txt
     │   ├── perf_linux_20260224_143000_release.txt
     │   └── ...
@@ -363,7 +363,7 @@ perf/results/
 | 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
 |------|------|-----------|-----------|------|
 | 임시 저장 | (항상) | `tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete만 |
+| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete/partial 무관 |
 | baseline 저장 | `--save [VER]` | `baseline/` | META + RESULT + TABLE | complete만 (Gate 비교 대상) |
 
 ### 4.4 결과 저장 흐름
@@ -382,14 +382,12 @@ perf/results/
 
 ```text
 실행 완료
-    → status 판정 (expected == actual ?)
-    → complete → results/single/report/ 에 실행 옵션 헤더 + TABLE 저장
-    → partial  → 저장하지 않음 (stdout 출력만)
+    → results/single/report/ 에 실행 옵션 헤더 + TABLE 저장 (complete/partial 무관)
 ```
 
 - 용도: 사람이 결과를 확인하기 위한 레포트
 - `report/`에는 **실행 옵션 헤더 + TABLE**을 저장한다 (META/RESULT 라인 미포함).
-- `status=complete`인 경우에만 `report/`에 저장한다.
+- `status=partial`인 경우에도 저장한다. 실패한 조합의 결과가 누락된 채로 저장되며, 실패 요약(§ 6.4)이 포함된다.
 
 #### `--save [VER]` (baseline 저장)
 
@@ -411,8 +409,9 @@ perf/results/
 ```text
 실행 완료
     → tmp/ 에 항상 저장
-    → complete → report/ + baseline/ 에도 저장
-    → partial  → report/, baseline/ 에는 저장하지 않음
+    → report/ 에 항상 저장 (complete/partial 무관)
+    → complete → baseline/ 에도 저장
+    → partial  → baseline/ 에는 저장하지 않음
 ```
 
 - `--result`과 `--save`는 동시 사용 가능.
@@ -422,9 +421,9 @@ perf/results/
 | 옵션 조합 | status=complete | status=partial |
 |-----------|-----------------|----------------|
 | (없음) | tmp/ 저장 | tmp/ 저장 |
-| `--result` | tmp/ + report/ 저장 | tmp/ 저장 (report/ 미저장, warning) |
+| `--result` | tmp/ + report/ 저장 | tmp/ + report/ 저장 |
 | `--save [V]` | tmp/ + baseline/ 저장 | tmp/ 저장 (baseline/ 에러, exit code 1) |
-| `--result --save [V]` | tmp/ + report/ + baseline/ 저장 | tmp/ 저장 (report/ 미저장, baseline/ 에러, exit code 1) |
+| `--result --save [V]` | tmp/ + report/ + baseline/ 저장 | tmp/ + report/ 저장 (baseline/ 에러, exit code 1) |
 
 ### 4.5 Baseline 관리
 
@@ -436,7 +435,7 @@ perf/results/
 
 #### 완료 판정
 
-`--result` 및 `--save` 시 실행 종료 시점에 아래 기준으로 완료 여부를 판정한다. **complete인 경우에만** `report/` 또는 `baseline/`에 저장한다.
+`--result` 및 `--save` 시 실행 종료 시점에 아래 기준으로 완료 여부를 판정한다. `--result`는 complete/partial 무관하게 `report/`에 저장한다. `--save`는 **complete인 경우에만** `baseline/`에 저장한다.
 
 ```text
 expected = 요청된 전체 조합 수 - unsupported 수 - skip 수
@@ -452,7 +451,7 @@ status = (expected == actual) ? "complete" : "partial"
 
 - `unsupported`와 `skip`은 `expected`에서 제외한다 (fail이 아니므로).
 - `expected`와 `actual`은 RESULT 라인 수 기준이다 (throughput + bandwidth + latency = 조합당 3줄).
-- `partial`인 경우 `--result`는 report/에 저장하지 않고, `--save`는 에러로 중단한다.
+- `partial`인 경우 `--result`는 report/에 그대로 저장하고, `--save`는 에러로 중단한다.
 
 #### Rolling baseline (Trend 모드)
 
@@ -539,7 +538,7 @@ run_benchmarks.sh / .ps1                   # 진입점: 옵션 파싱, 빌드/�
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분) | `64,256,1024,65536,131072,262144` |
 | `--transports LIST` | transport 목록 (쉼표 구분) | 패턴별 기본값 |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
-| `--result` | 완료 시 `results/single/report/`에 TABLE 레포트 저장 | off |
+| `--result` | `results/single/report/`에 TABLE 레포트 저장 (complete/partial 무관) | off |
 | `--save [VER]` | 완료 시 `results/single/baseline/`에 baseline 저장 | — |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override (`PATH/single/` 하위 사용) | `perf/results` |
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
@@ -549,7 +548,7 @@ run_benchmarks.sh / .ps1                   # 진입점: 옵션 파싱, 빌드/�
 
 - `--output`: 임의 경로에 stdout을 tee. 저장 구조와 무관.
 - 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete인 경우에만** 저장.
+- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete/partial 무관**하게 저장.
 - `--save [VER]`: `baseline/`에 저장. **complete인 경우에만** 저장. partial이면 에러.
 - `--result`과 `--save`는 동시 사용 가능.
 
@@ -694,18 +693,72 @@ RESULT,current,PAIR,tcp,1024,mem_mb,12.30
 
 ### 6.3 진행 로그
 
-실행 중 각 조합의 진행 상황이 출력된다.
+실행 중 **사이즈별 결과 테이블 행을 즉시 출력**하여 진행 상황과 측정 데이터를 동시에 제공한다. 공통 규칙은 [PERF_POLICY.md § 5.2](PERF_POLICY.md)를 참조한다.
+
+#### 실행 순서
+
+runs > 1 일 때 스크립트는 **run-first** 순서로 실행한다:
+
+```text
+for run in 1..N:
+    for size in sizes:
+        execute binary → RESULT lines
+    → run 테이블 출력
+→ median 테이블 출력
+```
+
+#### runs=1 출력 형식
+
+`run N/M:` 및 `median:` 레이블 없이 테이블만 출력한다. 각 행은 해당 size 바이너리 실행 완료 즉시 출력된다.
 
 ```text
   > Benchmarking current for PAIR...
-    Testing tcp | 64B: 1 Done
-    Testing tcp | 256B: 1 Done
-    Testing inproc | 64B: 1 Done
+    Testing tcp:
+      | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+      |----------|------------------|------------|--------------|------|--------|
+      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   | 48.2 |   12.3 |
+      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   | 49.8 |   12.5 |
+      | 1024B    |   312.50 Kmsg/s  | 320.0 MB/s |   18.44 us   | 52.1 |   14.1 |
+    Testing tcp: Done
+    Testing inproc:
+      | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+      |----------|------------------|------------|--------------|------|--------|
+      | 64B      |   ...
 ```
 
-- `--runs 3` 시: `1 2 3 Done`
-- 실패 발생 시: `(failures=1) Done`
-- timeout 발생 시: failure로 기록
+#### runs > 1 출력 형식
+
+각 run마다 테이블을 출력하고, 마지막에 `median:` 테이블을 출력한다.
+
+```text
+  > Benchmarking current for PAIR...
+    Testing tcp:
+      run 1/3:
+        | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+        |----------|------------------|------------|--------------|------|--------|
+        | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   | 48.2 |   12.3 |
+        | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   | 49.8 |   12.5 |
+      run 2/3:
+        | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+        |----------|------------------|------------|--------------|------|--------|
+        | 64B      |   530.10 Kmsg/s  | 34.0 MB/s  |   12.10 us   | 47.5 |   12.3 |
+        | 256B     |   485.50 Kmsg/s  | 124.3 MB/s |   14.05 us   | 50.1 |   12.5 |
+      run 3/3:
+        | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+        |----------|------------------|------------|--------------|------|--------|
+        | 64B      |   528.00 Kmsg/s  | 33.8 MB/s  |   12.20 us   | 47.8 |   12.3 |
+        | 256B     |   482.30 Kmsg/s  | 123.5 MB/s |   14.10 us   | 49.5 |   12.5 |
+      median:
+        | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+        |----------|------------------|------------|--------------|------|--------|
+        | 64B      |   528.00 Kmsg/s  | 33.8 MB/s  |   12.20 us   | 47.8 |   12.3 |
+        | 256B     |   482.30 Kmsg/s  | 123.5 MB/s |   14.10 us   | 49.5 |   12.5 |
+    Testing tcp: Done
+```
+
+- 각 run 내에서 행은 size별 바이너리 완료 즉시 출력 (점진적)
+- `median:` 테이블은 모든 run 완료 후 metric별 median 값
+- 실패 발생 시: `(failures=N) Done`
 - transport 미지원 시: `unsupported Done`
 
 ### 6.4 실패 요약
@@ -865,12 +918,12 @@ PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, G
 
 | 언어 | 파일 명명 패턴 | 예시 |
 |------|--------------|------|
-| Core (C++) | `perf_<pattern>.cpp` | `perf_stream.cpp`, `perf_pair.cpp` |
-| C++ binding | `perf_<pattern>.cpp` | `perf_stream.cpp`, `perf_pair.cpp` |
-| .NET | `Perf<Pattern>.cs` (PascalCase) | `PerfStream.cs`, `PerfPair.cs` |
-| Java | `Perf<Pattern>.java` (PascalCase) | `PerfStream.java`, `PerfPair.java` |
-| Node | `perf_<pattern>.js` (snake_case) | `perf_stream.js`, `perf_pair.js` |
-| Python | `perf_<pattern>.py` (snake_case) | `perf_stream.py`, `perf_pair.py` |
+| Core (C++) | `perf_<pattern>.cpp` | `perf_pair.cpp`, `perf_gateway.cpp` |
+| C++ binding | `perf_<pattern>.cpp` | `perf_pair.cpp`, `perf_gateway.cpp` |
+| .NET | `Perf<Pattern>.cs` (PascalCase) | `PerfPair.cs`, `PerfGateway.cs` |
+| Java | `Perf<Pattern>.java` (PascalCase) | `PerfPair.java`, `PerfGateway.java` |
+| Node | `perf_<pattern>.js` (snake_case) | `perf_pair.js`, `perf_gateway.js` |
+| Python | `perf_<pattern>.py` (snake_case) | `perf_pair.py`, `perf_gateway.py` |
 
 - 모든 언어는 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf`).
 - 실행 스크립트: `run_benchmarks.sh` / `.ps1` (모든 언어 동일)

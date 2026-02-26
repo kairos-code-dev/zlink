@@ -62,6 +62,9 @@ class socket_base_t : public own_t,
     int recv (zlink::msg_t *msg_, int flags_);
     int close ();
     int stream_dispatch_msg_from_io (zlink::msg_t *msg_, zlink::pipe_t *pipe_);
+    virtual int stream_dispatch_start_raw (zlink_stream_on_raw_fn callback_);
+    virtual int
+    stream_dispatch_start_len32be (zlink_stream_on_packets_fn callback_);
     virtual int stream_dispatch_start (zlink_stream_on_packets_fn callback_,
                                        int flags_);
     virtual int stream_dispatch_stop ();

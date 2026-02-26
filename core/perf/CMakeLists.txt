@@ -11,11 +11,17 @@ if(NOT EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     set(ZLINK_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/include")
 endif()
 
+# Resolve external include root (supports root-level and core-level builds)
+set(PERF_EXTERNAL_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external")
+if(NOT EXISTS "${PERF_EXTERNAL_INCLUDE_DIR}")
+    set(PERF_EXTERNAL_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/core/external")
+endif()
+
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     if(MSVC)
-        set(BENCH_CXX_FLAGS "/O2")
+        set(PERF_CXX_FLAGS "/O2")
     else()
-        set(BENCH_CXX_FLAGS "-O3")
+        set(PERF_CXX_FLAGS "-O3")
     endif()
 
     function(add_current_bench_single name source)
@@ -25,8 +31,9 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
             target_link_libraries(${name} PRIVATE dl)
         endif()
         target_include_directories(${name} PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/single/common)
-        target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
+            ${CMAKE_CURRENT_SOURCE_DIR}/single/common
+            ${PERF_EXTERNAL_INCLUDE_DIR})
+        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
         target_compile_features(${name} PRIVATE cxx_std_11)
 
         if(WIN32)
@@ -47,7 +54,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
         endif()
         target_include_directories(${name} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/multi/common)
-        target_compile_options(${name} PRIVATE ${BENCH_CXX_FLAGS})
+        target_compile_options(${name} PRIVATE ${PERF_CXX_FLAGS})
         target_compile_features(${name} PRIVATE cxx_std_11)
 
         if(WIN32)
@@ -69,42 +76,42 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_current_bench_single(perf_gateway single/current/perf_gateway.cpp)
     add_current_bench_single(perf_spot single/current/perf_spot.cpp)
 
-    # Shared raw STREAM client for standalone stream-client validation.
+    # Standalone STREAM client (multi-only).
     add_executable(
-        perf_stream_shared_client
-        common/streamclient/bench_stream_client.cpp)
+        perf_stream_client
+        common/streamclient/perf_stream_client.cpp)
     target_link_libraries(
-        perf_stream_shared_client PRIVATE
+        perf_stream_client PRIVATE
         Threads::Threads
         OpenSSL::SSL
         OpenSSL::Crypto)
-    target_compile_options(perf_stream_shared_client PRIVATE ${BENCH_CXX_FLAGS})
-    target_compile_features(perf_stream_shared_client PRIVATE cxx_std_17)
+    target_compile_options(perf_stream_client PRIVATE ${PERF_CXX_FLAGS})
+    target_compile_features(perf_stream_client PRIVATE cxx_std_17)
 
     add_current_bench_multi(comp_current_multi_dealer_dealer_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_dealer_dealer_server.cpp)
+                           multi/current/perf_multi_dealer_dealer_server.cpp)
     add_current_bench_multi(comp_current_multi_dealer_dealer_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_dealer_dealer_client.cpp)
+                           multi/current/perf_multi_dealer_dealer_client.cpp)
     add_current_bench_multi(comp_current_multi_dealer_router_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_dealer_router_server.cpp)
+                           multi/current/perf_multi_dealer_router_server.cpp)
     add_current_bench_multi(comp_current_multi_dealer_router_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_dealer_router_client.cpp)
+                           multi/current/perf_multi_dealer_router_client.cpp)
     add_current_bench_multi(comp_current_multi_router_router_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_router_router_server.cpp)
+                           multi/current/perf_multi_router_router_server.cpp)
     add_current_bench_multi(comp_current_multi_router_router_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_router_router_client.cpp)
+                           multi/current/perf_multi_router_router_client.cpp)
     add_current_bench_multi(comp_current_multi_pubsub_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_pubsub_server.cpp)
+                           multi/current/perf_multi_pubsub_server.cpp)
     add_current_bench_multi(comp_current_multi_pubsub_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_pubsub_client.cpp)
+                           multi/current/perf_multi_pubsub_client.cpp)
     add_current_bench_multi(comp_current_multi_gateway_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_gateway_server.cpp)
+                           multi/current/perf_multi_gateway_server.cpp)
     add_current_bench_multi(comp_current_multi_gateway_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_gateway_client.cpp)
+                           multi/current/perf_multi_gateway_client.cpp)
     add_current_bench_multi(comp_current_multi_spot_server
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_spot_server.cpp)
+                           multi/current/perf_multi_spot_server.cpp)
     add_current_bench_multi(comp_current_multi_spot_client
-                           ../bench/with_zmq/multi/zlink/bench_zlink_multi_spot_client.cpp)
+                           multi/current/perf_multi_spot_client.cpp)
     add_current_bench_multi(comp_current_multi_stream_server
                            multi/current/perf_multi_stream_server.cpp)
     add_current_bench_multi(comp_current_multi_stream_callback_server

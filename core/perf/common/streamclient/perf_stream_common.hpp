@@ -1,0 +1,191 @@
+#ifndef PERF_STREAM_COMMON_HPP
+#define PERF_STREAM_COMMON_HPP
+
+// Shared utilities for the perf stream client.
+// Provides: len32be wire encoding/decoding, nanosecond clock, string helpers,
+// percentile calculation, and CLI parsing for --sizes and --endpoint.
+// Used by both async (bench_client_t) and sync (stream_client_t) paths.
+
+#include <algorithm>
+#include <chrono>
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace perf_stream_common {
+
+// Payload size constraints enforced on both send and receive.
+inline constexpr size_t k_stream_min_chunk_size = 16;
+inline constexpr size_t k_stream_max_chunk_size = 4 * 1024 * 1024;
+
+// Monotonic nanosecond timestamp for latency measurement.
+inline uint64_t perf_stream_now_ns ()
+{
+    const std::chrono::steady_clock::time_point now =
+      std::chrono::steady_clock::now ();
+    return static_cast<uint64_t> (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+        now.time_since_epoch ())
+        .count ());
+}
+
+// Big-endian wire encoding helpers for the len32be framing protocol.
+// Wire format: [4-byte BE length][payload]
+inline uint32_t perf_stream_load_u32_be (const unsigned char *p)
+{
+    return (static_cast<uint32_t> (p[0]) << 24)
+           | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8)
+           | static_cast<uint32_t> (p[3]);
+}
+
+inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 24) & 0xFF);
+    p[1] = static_cast<unsigned char> ((v >> 16) & 0xFF);
+    p[2] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[3] = static_cast<unsigned char> (v & 0xFF);
+}
+
+// 64-bit BE helpers for embedding seq/timestamp in latency-sampled payloads.
+// Payload layout: [8B seq][8B sent_ns][remaining...]
+inline uint64_t perf_stream_load_u64_be (const unsigned char *p)
+{
+    return (static_cast<uint64_t> (p[0]) << 56)
+           | (static_cast<uint64_t> (p[1]) << 48)
+           | (static_cast<uint64_t> (p[2]) << 40)
+           | (static_cast<uint64_t> (p[3]) << 32)
+           | (static_cast<uint64_t> (p[4]) << 24)
+           | (static_cast<uint64_t> (p[5]) << 16)
+           | (static_cast<uint64_t> (p[6]) << 8)
+           | static_cast<uint64_t> (p[7]);
+}
+
+inline void perf_stream_store_u64_be (unsigned char *p, uint64_t v)
+{
+    p[0] = static_cast<unsigned char> ((v >> 56) & 0xFF);
+    p[1] = static_cast<unsigned char> ((v >> 48) & 0xFF);
+    p[2] = static_cast<unsigned char> ((v >> 40) & 0xFF);
+    p[3] = static_cast<unsigned char> ((v >> 32) & 0xFF);
+    p[4] = static_cast<unsigned char> ((v >> 24) & 0xFF);
+    p[5] = static_cast<unsigned char> ((v >> 16) & 0xFF);
+    p[6] = static_cast<unsigned char> ((v >> 8) & 0xFF);
+    p[7] = static_cast<unsigned char> (v & 0xFF);
+}
+
+inline std::string lower_copy (const std::string &text)
+{
+    std::string out = text;
+    std::transform (
+      out.begin (), out.end (), out.begin (),
+      [](unsigned char c) { return static_cast<char> (std::tolower (c)); });
+    return out;
+}
+
+// Linear-interpolation percentile from a pre-sorted sample vector.
+// q in [0.0, 1.0]: 0.5 = p50, 0.95 = p95, 0.99 = p99.
+inline double percentile_from_sorted (const std::vector<double> &samples, double q)
+{
+    if (samples.empty ())
+        return 0.0;
+
+    if (q < 0.0)
+        q = 0.0;
+    if (q > 1.0)
+        q = 1.0;
+
+    const size_t last = samples.size () - 1;
+    const double idx = q * static_cast<double> (last);
+    const size_t lo = static_cast<size_t> (idx);
+    const size_t hi = std::min<size_t> (last, lo + 1);
+    const double frac = idx - static_cast<double> (lo);
+    if (lo == hi)
+        return samples[lo];
+    return samples[lo] + (samples[hi] - samples[lo]) * frac;
+}
+
+// Parse comma-separated size list (e.g. "64,1024,65536").
+// Each value must be within [k_stream_min_chunk_size, k_stream_max_chunk_size].
+inline bool perf_stream_parse_size_list (const std::string &text,
+                                         std::vector<size_t> &out)
+{
+    out.clear ();
+    std::stringstream ss (text);
+    std::string item;
+    while (std::getline (ss, item, ',')) {
+        if (item.empty ())
+            continue;
+        char *end = NULL;
+        const unsigned long parsed = std::strtoul (item.c_str (), &end, 10);
+        if (end == item.c_str ())
+            return false;
+        const size_t size = static_cast<size_t> (parsed);
+        if (size < k_stream_min_chunk_size || size > k_stream_max_chunk_size)
+            return false;
+        out.push_back (size);
+    }
+    return !out.empty ();
+}
+
+// Parse endpoint URI "scheme://host:port" into components.
+// Supports IPv6 bracket notation: "tcp://[::1]:5555".
+inline bool perf_stream_parse_endpoint (const std::string &endpoint,
+                                        std::string *transport_out,
+                                        std::string *host_out,
+                                        int *port_out)
+{
+    const size_t scheme_pos = endpoint.find ("://");
+    if (scheme_pos == std::string::npos)
+        return false;
+
+    const std::string scheme = lower_copy (endpoint.substr (0, scheme_pos));
+    std::string rest = endpoint.substr (scheme_pos + 3);
+    if (rest.empty ())
+        return false;
+
+    const size_t slash_pos = rest.find ('/');
+    if (slash_pos != std::string::npos)
+        rest = rest.substr (0, slash_pos);
+    if (rest.empty ())
+        return false;
+
+    std::string host;
+    std::string port_text;
+    if (!rest.empty () && rest[0] == '[') {
+        const size_t close = rest.find (']');
+        if (close == std::string::npos || close + 2 > rest.size ()
+            || rest[close + 1] != ':')
+            return false;
+        host = rest.substr (1, close - 1);
+        port_text = rest.substr (close + 2);
+    } else {
+        const size_t colon = rest.rfind (':');
+        if (colon == std::string::npos)
+            return false;
+        host = rest.substr (0, colon);
+        port_text = rest.substr (colon + 1);
+    }
+    if (host.empty () || port_text.empty ())
+        return false;
+
+    char *end = NULL;
+    const long port = std::strtol (port_text.c_str (), &end, 10);
+    if (!end || *end != '\0' || port <= 0 || port > 65535)
+        return false;
+
+    if (transport_out)
+        *transport_out = scheme;
+    if (host_out)
+        *host_out = host;
+    if (port_out)
+        *port_out = static_cast<int> (port);
+    return true;
+}
+
+} // namespace perf_stream_common
+
+#endif

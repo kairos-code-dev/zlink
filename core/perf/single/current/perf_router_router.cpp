@@ -62,8 +62,9 @@ void run_router_router(const std::string &transport,
     std::vector<char> recv_buf(msg_size + 256);
     char id[256];
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
-    const double latency = measure_roundtrip_latency_us(lat_count, [&]() {
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    const double latency = measure_roundtrip_latency_us_for_duration(
+      latency_duration_s, [&]() {
         zlink_send(router2.get(), "ROUTER1", 7, ZLINK_SNDMORE);
         zlink_send(router2.get(), buffer.data(), msg_size, 0);
 

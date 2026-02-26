@@ -788,6 +788,18 @@ static int stream_raw_load_echo_callback (const zlink_routing_id_t *rid_,
     return 0;
 }
 
+static int stream_echo_raw_callback (const zlink_routing_id_t *rid_,
+                                     zlink_msg_t *msg_)
+{
+    return stream_echo_callback (rid_, msg_, 1);
+}
+
+static int stream_raw_load_echo_raw_callback (const zlink_routing_id_t *rid_,
+                                              zlink_msg_t *msg_)
+{
+    return stream_raw_load_echo_callback (rid_, msg_, 1);
+}
+
 void test_stream_callback_lifecycle ()
 {
     void *pair = test_context_socket (ZLINK_PAIR);
@@ -795,7 +807,8 @@ void test_stream_callback_lifecycle ()
 
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_stream_attach (pair, stream_echo_callback, 0));
+                           zlink_stream_attach_raw (pair,
+                                                    stream_echo_raw_callback));
     TEST_ASSERT_EQUAL_INT (EINVAL, errno);
     test_context_socket_close_zero_linger (pair);
 
@@ -807,10 +820,11 @@ void test_stream_callback_lifecycle ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach (stream, stream_echo_callback, 0));
+      zlink_stream_attach_raw (stream, stream_echo_raw_callback));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1,
-                           zlink_stream_attach (stream, stream_echo_callback, 0));
+                           zlink_stream_attach_raw (stream,
+                                                    stream_echo_raw_callback));
     TEST_ASSERT_EQUAL_INT (EBUSY, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
     g_stream_callback_probe = NULL;
@@ -821,7 +835,7 @@ void test_stream_callback_lifecycle ()
     test_context_socket_close_zero_linger (stream);
 }
 
-void test_stream_recv_api_not_supported ()
+void test_stream_recv_api_dispatch_conflict ()
 {
     void *stream = test_context_socket (ZLINK_STREAM);
     TEST_ASSERT_NOT_NULL (stream);
@@ -830,14 +844,27 @@ void test_stream_recv_api_not_supported ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_recv (stream, buf, sizeof (buf),
                                            ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (stream, stream_echo_raw_callback));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_recv (stream, buf, sizeof (buf),
+                                           ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, stream, ZLINK_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EBUSY, errno);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
 
     test_context_socket_close_zero_linger (stream);
 }
@@ -852,13 +879,15 @@ void test_stream_dispatch_start_rejects_stream_notify ()
       zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &enable, sizeof (enable)));
 
     errno = 0;
-    TEST_ASSERT_EQUAL_INT (-1, zlink_stream_attach (stream, stream_echo_callback, 0));
+    TEST_ASSERT_EQUAL_INT (
+      -1, zlink_stream_attach_raw (stream, stream_echo_raw_callback));
     TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, errno);
 
     const int disable = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (stream, ZLINK_STREAM_NOTIFY, &disable, sizeof (disable)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_attach (stream, stream_echo_callback, 0));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_stream_attach_raw (stream, stream_echo_raw_callback));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_stream_detach (stream));
 
     test_context_socket_close_zero_linger (stream);
@@ -929,7 +958,7 @@ void test_stream_callback_echo_raw ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach (server, stream_echo_callback, 0));
+      zlink_stream_attach_raw (server, stream_echo_raw_callback));
     TEST_ASSERT_EQUAL_INT (0, send_stream_packet (
                                 client_fd, payload, sizeof (payload) - 1));
 
@@ -1045,7 +1074,7 @@ void test_stream_callback_echo_single_zero_byte ()
 
     g_stream_callback_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach (server, stream_echo_callback, 0));
+      zlink_stream_attach_raw (server, stream_echo_raw_callback));
     TEST_ASSERT_EQUAL_INT (
       0, send_stream_packet (client_fd, payload, sizeof (payload)));
 
@@ -1781,7 +1810,7 @@ void test_stream_raw_multiclient_load_integrity ()
     probe.expected_payload_size = payload_size;
     g_stream_raw_load_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach (server, stream_raw_load_echo_callback, 0));
+      zlink_stream_attach_raw (server, stream_raw_load_echo_raw_callback));
 
     std::atomic<int> client_failures (0);
     std::vector<std::thread> clients;
@@ -2057,7 +2086,7 @@ int main (void)
     setup_test_environment ();
 
     RUN_TEST (test_stream_callback_lifecycle);
-    RUN_TEST (test_stream_recv_api_not_supported);
+    RUN_TEST (test_stream_recv_api_dispatch_conflict);
     RUN_TEST (test_stream_dispatch_start_rejects_stream_notify);
     RUN_TEST (test_stream_callback_echo_raw);
     RUN_TEST (test_stream_callback_echo_len32be);

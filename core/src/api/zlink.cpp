@@ -216,13 +216,18 @@ static bool is_stream_type (socket_handle_t handle_)
     return type == ZLINK_STREAM;
 }
 
-static bool stream_dispatch_len32be_enabled (void *socket_,
-                                             socket_handle_t handle_)
+static bool stream_dispatch_len32be_enabled (socket_handle_t handle_)
 {
-    LIBZLINK_UNUSED (socket_);
     if (!handle_.socket)
         return false;
     return handle_.socket->stream_dispatch_len32be_enabled ();
+}
+
+static bool stream_dispatch_active (socket_handle_t handle_)
+{
+    if (!handle_.socket)
+        return false;
+    return handle_.socket->stream_dispatch_active ();
 }
 
 static bool parse_stream_routing_id (const zlink_routing_id_t *rid_,
@@ -1534,8 +1539,8 @@ int zlink_recv (void *s_, void *buf_, size_t len_, int flags_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (is_stream_type (handle)) {
-        errno = ENOTSUP;
+    if (is_stream_type (handle) && stream_dispatch_active (handle)) {
+        errno = EBUSY;
         return -1;
     }
     zlink_msg_t msg;
@@ -1563,11 +1568,20 @@ int zlink_stream_attach (void *s_,
                         zlink_stream_on_packets_fn on_packet_,
                         int flags_)
 {
+    if ((flags_ & ~ZLINK_STREAM_DISPATCH_LEN32BE) != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    return zlink_stream_attach_len32be (s_, on_packet_);
+}
+
+int zlink_stream_attach_raw (void *s_, zlink_stream_on_raw_fn on_raw_)
+{
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
 
-    if (!on_packet_) {
+    if (!on_raw_) {
         errno = EINVAL;
         return -1;
     }
@@ -1577,7 +1591,27 @@ int zlink_stream_attach (void *s_,
         return -1;
     }
 
-    return handle.socket->stream_dispatch_start (on_packet_, flags_);
+    return handle.socket->stream_dispatch_start_raw (on_raw_);
+}
+
+int zlink_stream_attach_len32be (void *s_,
+                                 zlink_stream_on_packets_fn on_packets_)
+{
+    socket_handle_t handle = as_socket_handle (s_);
+    if (!handle.socket)
+        return -1;
+
+    if (!on_packets_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (!is_stream_type (handle)) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return handle.socket->stream_dispatch_start_len32be (on_packets_);
 }
 
 int zlink_stream_detach (void *s_)
@@ -1626,7 +1660,7 @@ int zlink_stream_send (void *s_,
       | (static_cast<uint32_t> (rid_->data[2]) << 8)
       | static_cast<uint32_t> (rid_->data[3]);
 
-    const bool len32be = stream_dispatch_len32be_enabled (s_, handle);
+    const bool len32be = stream_dispatch_len32be_enabled (handle);
     if (len32be && size_ > static_cast<size_t> (0xFFFFFFFFu)) {
         errno = EMSGSIZE;
         return -1;
@@ -1714,7 +1748,7 @@ int zlink_stream_send_msg (void *s_,
     }
 
     const size_t payload_size = core_msg->size ();
-    const bool len32be = stream_dispatch_len32be_enabled (s_, handle);
+    const bool len32be = stream_dispatch_len32be_enabled (handle);
     if (len32be && payload_size > static_cast<size_t> (0xFFFFFFFFu)) {
         errno = EMSGSIZE;
         release_stream_send_msg (core_msg);
@@ -1834,8 +1868,8 @@ int zlink_msg_recv (zlink_msg_t *msg_, void *s_, int flags_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return -1;
-    if (is_stream_type (handle)) {
-        errno = ENOTSUP;
+    if (is_stream_type (handle) && stream_dispatch_active (handle)) {
+        errno = EBUSY;
         return -1;
     }
     return s_recvmsg (handle, msg_, flags_);

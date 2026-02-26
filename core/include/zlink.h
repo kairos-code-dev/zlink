@@ -502,18 +502,33 @@ zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
 ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
 
 /**
- * @brief Callback type for STREAM packet/chunk dispatch.
+ * @brief Callback type for raw STREAM chunk dispatch.
  *
  * Callback is invoked on the owning STREAM I/O thread.
  * Returning non-zero requests dispatcher shutdown.
  *
- * @param rid_   Routing id for the peer that produced this data.
- * @param msgs_  Message payload array. In LEN32BE mode each item is a complete
- *               payload; otherwise each item may be a raw stream chunk.
- *               Ownership is transferred to the callback. The callback must
- *               release each item exactly once (e.g. zlink_msg_close() or
- *               consume via zlink_stream_send_msg()) before return, and must
- *               not retain pointers to message structs after callback return.
+ * @param rid_ Routing id for the peer that produced this chunk.
+ * @param msg_ Raw stream chunk. Ownership is transferred to the callback.
+ *             The callback must release it exactly once
+ *             (e.g. zlink_msg_close() or consume via zlink_stream_send_msg())
+ *             before return, and must not retain this pointer after return.
+ * @return 0 to continue dispatch, non-zero to stop.
+ */
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
+                                       zlink_msg_t *msg_);
+
+/**
+ * @brief Callback type for LEN32BE STREAM packet dispatch.
+ *
+ * Callback is invoked on the owning STREAM I/O thread.
+ * Returning non-zero requests dispatcher shutdown.
+ *
+ * @param rid_ Routing id for the peer that produced these packets.
+ * @param msgs_ Message payload array. Each item is one complete LEN32BE packet.
+ *              Ownership is transferred to the callback. The callback must
+ *              release each item exactly once (e.g. zlink_msg_close() or
+ *              consume via zlink_stream_send_msg()) before return, and must
+ *              not retain pointers to message structs after callback return.
  * @param msg_count_ Number of entries in @p msgs_.
  * @return 0 to continue dispatch, non-zero to stop.
  */
@@ -525,14 +540,42 @@ typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
 #define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
 
 /**
- * @brief Attach STREAM callback dispatch.
+ * @brief Attach raw STREAM callback dispatch.
  *
  * Valid only for ZLINK_STREAM sockets.
- * If already attached for the socket, returns -1 with errno=EBUSY.
+ * If a callback is already attached for the socket, returns -1 with
+ * errno=EBUSY.
  *
- * @param s_         STREAM socket.
- * @param on_packets_ Callback for received stream data.
- * @param flags_     Dispatch flags (e.g. ZLINK_STREAM_DISPATCH_LEN32BE).
+ * @param s_ STREAM socket.
+ * @param on_raw_ Callback for raw stream chunks.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_attach_raw (void *s_,
+                                          zlink_stream_on_raw_fn on_raw_);
+
+/**
+ * @brief Attach LEN32BE STREAM callback dispatch.
+ *
+ * Valid only for ZLINK_STREAM sockets.
+ * If a callback is already attached for the socket, returns -1 with
+ * errno=EBUSY.
+ *
+ * @param s_ STREAM socket.
+ * @param on_packets_ Callback for decoded LEN32BE packets.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_attach_len32be (
+  void *s_, zlink_stream_on_packets_fn on_packets_);
+
+/**
+ * @brief Attach STREAM callback dispatch (legacy wrapper).
+ *
+ * This wrapper now registers LEN32BE packet dispatch. `flags_` must be 0 or
+ * include only `ZLINK_STREAM_DISPATCH_LEN32BE`.
+ *
+ * @param s_ STREAM socket.
+ * @param on_packets_ Callback for decoded LEN32BE packets.
+ * @param flags_ Legacy flags value.
  * @return 0 on success, -1 on failure (errno is set).
  */
 ZLINK_EXPORT int zlink_stream_attach (void *s_,

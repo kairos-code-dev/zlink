@@ -6,11 +6,14 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #ifndef ZLINK_STREAM
@@ -24,11 +27,20 @@
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM_CALLBACK";
-static const int k_dispatch_flags = 0;
+static const uint32_t k_max_stream_payload = 4u * 1024u * 1024u;
 
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
+struct stream_reassembly_state_t
+{
+    std::vector<unsigned char> bytes;
+    size_t offset;
+
+    stream_reassembly_state_t () : bytes (), offset (0) {}
+};
+static std::unordered_map<std::string, stream_reassembly_state_t> g_stream_reassembly;
+static std::mutex g_stream_reassembly_mutex;
 
 inline void on_signal (int)
 {
@@ -48,6 +60,22 @@ inline bool is_stream_event_payload (const unsigned char *data, size_t size)
     return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
 }
 
+inline uint32_t load_u32_be (const unsigned char *p)
+{
+    return (static_cast<uint32_t> (p[0]) << 24)
+           | (static_cast<uint32_t> (p[1]) << 16)
+           | (static_cast<uint32_t> (p[2]) << 8)
+           | static_cast<uint32_t> (p[3]);
+}
+
+inline std::string routing_id_key (const zlink_routing_id_t *rid)
+{
+    if (!rid || rid->size == 0)
+        return std::string ();
+    const char *data = reinterpret_cast<const char *> (&rid->data[0]);
+    return std::string (data, data + rid->size);
+}
+
 inline bool is_supported_transport (const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
@@ -60,8 +88,39 @@ inline std::string bind_server_endpoint (void *server,
 {
     const int bind_port =
       resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0)
-        return bind_and_resolve_endpoint (server, transport, token);
+    if (bind_port <= 0) {
+        std::string endpoint_any = make_endpoint (transport, token);
+        if (endpoint_any.empty ()) {
+            std::cerr << "No endpoint available for transport " << transport
+                      << std::endl;
+            return std::string ();
+        }
+        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
+            std::cerr << "bind failed for " << endpoint_any << ": "
+                      << zlink_strerror (zlink_errno ()) << std::endl;
+            return std::string ();
+        }
+
+        char last_endpoint[MAX_SOCKET_STRING] = "";
+        size_t size = sizeof (last_endpoint);
+        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+            == 0) {
+            endpoint_any.assign (last_endpoint);
+            const std::string any_v4 = "://0.0.0.0:";
+            const std::string any_v6 = "://[::]:";
+            size_t pos = endpoint_any.find (any_v4);
+            if (pos != std::string::npos) {
+                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
+            } else {
+                pos = endpoint_any.find (any_v6);
+                if (pos != std::string::npos)
+                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
+            }
+        }
+
+        apply_debug_timeouts (server, transport);
+        return endpoint_any;
+    }
 
     std::string endpoint = make_fixed_endpoint (transport, bind_port);
     if (zlink_bind (server, endpoint.c_str ()) != 0) {
@@ -114,38 +173,91 @@ inline bool send_stream_once (const zlink_routing_id_t *rid,
     if (rc < 0) {
         const int err = zlink_errno ();
         if (err == ECONNRESET || err == EHOSTUNREACH || err == ENOTCONN
-            || err == EPIPE)
+            || err == EPIPE || err == EAGAIN || err == EINTR)
             return true;
     }
     return false;
 }
 
-int on_stream_packets (const zlink_routing_id_t *rid,
-                       zlink_msg_t *msgs,
-                       size_t msg_count)
+inline bool append_and_echo_len32be_frames (const zlink_routing_id_t *rid,
+                                            const unsigned char *payload,
+                                            size_t payload_size)
 {
-    if (!rid || !msgs || msg_count == 0 || !g_server_socket)
-        return 0;
+    if (!rid || !payload || payload_size == 0)
+        return true;
 
-    for (size_t i = 0; i < msg_count; ++i) {
-        zlink_msg_t *msg = &msgs[i];
-        const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (msg));
-        const size_t payload_size = zlink_msg_size (msg);
-        if (is_stream_event_payload (payload, payload_size)) {
-            (void) zlink_msg_close (msg);
-            continue;
+    const std::string key = routing_id_key (rid);
+    if (key.empty ())
+        return false;
+
+    std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
+    stream_reassembly_state_t &state = g_stream_reassembly[key];
+    state.bytes.insert (state.bytes.end (), payload, payload + payload_size);
+
+    while (true) {
+        const size_t available = state.bytes.size () - state.offset;
+        if (available < 4)
+            break;
+
+        const unsigned char *frame = &state.bytes[state.offset];
+        const uint32_t declared = load_u32_be (frame);
+        if (declared > k_max_stream_payload) {
+            g_stream_reassembly.erase (key);
+            return false;
         }
-        if (!send_stream_once (rid, payload, payload_size)) {
-            g_callback_failed.store (true, std::memory_order_release);
-            (void) zlink_msg_close (msg);
-            for (size_t j = i + 1; j < msg_count; ++j)
-                (void) zlink_msg_close (&msgs[j]);
-            return 1;
+
+        const size_t total = static_cast<size_t> (4 + declared);
+        if (available < total)
+            break;
+
+        if (!send_stream_once (rid, frame, total)) {
+            g_stream_reassembly.erase (key);
+            return false;
         }
-        (void) zlink_msg_close (msg);
+
+        state.offset += total;
     }
 
+    if (state.offset > 0) {
+        if (state.offset >= state.bytes.size ()) {
+            state.bytes.clear ();
+            state.offset = 0;
+        } else if (state.offset >= 4096 || state.offset * 2 >= state.bytes.size ()) {
+            state.bytes.erase (state.bytes.begin (),
+                               state.bytes.begin ()
+                                 + static_cast<std::ptrdiff_t> (state.offset));
+            state.offset = 0;
+        }
+    }
+
+    return true;
+}
+
+int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    if (!rid || !msg || !g_server_socket)
+        return 0;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg));
+    const size_t payload_size = zlink_msg_size (msg);
+    if (is_stream_event_payload (payload, payload_size)) {
+        const std::string key = routing_id_key (rid);
+        if (!key.empty ()) {
+            std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
+            g_stream_reassembly.erase (key);
+        }
+        (void) zlink_msg_close (msg);
+        return 0;
+    }
+
+    if (!append_and_echo_len32be_frames (rid, payload, payload_size)) {
+        g_callback_failed.store (true, std::memory_order_release);
+        (void) zlink_msg_close (msg);
+        return 1;
+    }
+
+    (void) zlink_msg_close (msg);
     return 0;
 }
 
@@ -160,10 +272,15 @@ int main (int argc, char **argv)
     const std::string transport = argv[2];
     set_perf_multi_pattern_env (k_pattern);
 
-    if (!transport_available (transport) || !is_supported_transport (transport)) {
+    if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
                   << transport << std::endl;
         return 0;
+    }
+
+    if (!transport_available (transport)) {
+        std::cerr << "transport unavailable: " << transport << std::endl;
+        return 1;
     }
 
     ctx_guard_t ctx;
@@ -204,7 +321,7 @@ int main (int argc, char **argv)
     g_server_socket = server;
     install_signal_handlers ();
 
-    if (zlink_stream_attach (server, on_stream_packets, k_dispatch_flags) != 0) {
+    if (zlink_stream_attach_raw (server, on_stream_packet) != 0) {
         g_server_socket = NULL;
         zlink_close (server);
         return 1;
@@ -235,6 +352,10 @@ int main (int argc, char **argv)
 
     (void) zlink_stream_detach (server);
     g_server_socket = NULL;
+    {
+        std::lock_guard<std::mutex> lock (g_stream_reassembly_mutex);
+        g_stream_reassembly.clear ();
+    }
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (cpu_start);

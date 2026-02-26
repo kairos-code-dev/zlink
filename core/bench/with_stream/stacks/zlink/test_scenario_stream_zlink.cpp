@@ -196,8 +196,8 @@ class zlink_stream_echo_server_t
         }
 
         g_server_instance = this;
-        if (zlink_stream_attach (server, &zlink_stream_echo_server_t::on_packet_static,
-                                0)
+        if (zlink_stream_attach_raw (
+              server, &zlink_stream_echo_server_t::on_raw_packet_static)
             != 0) {
             std::fprintf (stderr, "zlink stream: dispatch attach failed: %s\n",
                           zlink_strerror (zlink_errno ()));
@@ -225,6 +225,15 @@ class zlink_stream_echo_server_t
     }
 
   private:
+    static int on_raw_packet_static (const zlink_routing_id_t *rid_,
+                                     zlink_msg_t *msg_)
+    {
+        zlink_stream_echo_server_t *self = g_server_instance;
+        if (!self || !rid_ || !msg_)
+            return 0;
+        return self->on_packet (rid_, msg_);
+    }
+
     static int on_packet_static (const zlink_routing_id_t *rid_,
                                  zlink_msg_t *msgs_,
                                  size_t msg_count_)

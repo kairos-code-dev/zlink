@@ -1,5 +1,5 @@
-#ifndef BENCH_COMMON_HPP
-#define BENCH_COMMON_HPP
+#ifndef PERF_COMMON_HPP
+#define PERF_COMMON_HPP
 
 #include <chrono>
 #include <vector>
@@ -82,18 +82,41 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
+inline int parse_positive_env_pair(const char *primary_name_,
+                                   const char *legacy_name_,
+                                   int default_value_)
+{
+    const int primary = parse_positive_env(primary_name_, 0);
+    if (primary > 0)
+        return primary;
+    return parse_positive_env(legacy_name_, default_value_);
+}
+
+inline int resolve_single_duration_seconds()
+{
+    return parse_positive_env_pair("PERF_SINGLE_DURATION_SECONDS",
+                                   "PERF_SINGLE_DURATION_SECONDS", 5);
+}
+
+inline int resolve_single_latency_duration_seconds()
+{
+    const int base = resolve_single_duration_seconds();
+    return parse_positive_env_pair("PERF_SINGLE_LATENCY_SECONDS",
+                                   "PERF_SINGLE_LATENCY_SECONDS", base);
+}
+
 inline int bench_io_threads()
 {
-    return parse_positive_env("BENCH_IO_THREADS", 0);
+    return parse_positive_env("PERF_IO_THREADS", 0);
 }
 
 inline int bench_max_sockets()
 {
-    const int explicit_max = parse_positive_env("BENCH_MAX_SOCKETS", 0);
+    const int explicit_max = parse_positive_env("PERF_MAX_SOCKETS", 0);
     if (explicit_max > 0)
         return explicit_max;
 
-    const int clients = parse_positive_env("BENCH_MULTI_CLIENTS", 0);
+    const int clients = parse_positive_env("PERF_MULTI_CLIENTS", 0);
     if (clients <= 0)
         return 0;
 
@@ -105,7 +128,7 @@ inline int bench_max_sockets()
 
 inline void apply_ctx_options(void *ctx_)
 {
-    const bool debug = std::getenv("BENCH_DEBUG") != NULL;
+    const bool debug = std::getenv("PERF_DEBUG") != NULL;
     const int io_threads = bench_io_threads();
     if (io_threads > 0) {
         const int rc = zlink_ctx_set(ctx_, ZLINK_IO_THREADS, io_threads);
@@ -185,7 +208,7 @@ inline void print_result(const std::string& lib_type,
 }
 
 inline bool bench_debug_enabled() {
-    static const bool enabled = std::getenv("BENCH_DEBUG") != nullptr;
+    static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
     return enabled;
 }
 
@@ -220,12 +243,12 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
 inline std::string make_endpoint(const std::string& transport, const std::string& id) {
     if (transport == "pgm" || transport == "epgm") {
         if (transport == "pgm") {
-            if (const char *env = std::getenv("BENCH_PGM_ENDPOINT")) {
+            if (const char *env = std::getenv("PERF_PGM_ENDPOINT")) {
                 if (*env)
                     return std::string(env);
             }
         } else {
-            if (const char *env = std::getenv("BENCH_EPGM_ENDPOINT")) {
+            if (const char *env = std::getenv("PERF_EPGM_ENDPOINT")) {
                 if (*env)
                     return std::string(env);
             }
@@ -527,6 +550,24 @@ inline double measure_roundtrip_latency_us(int roundtrip_count_,
     return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
 }
 
+template <typename RoundTripFn>
+inline double measure_roundtrip_latency_us_for_duration(
+  int duration_seconds_, RoundTripFn roundtrip_) {
+    const int duration = duration_seconds_ > 0 ? duration_seconds_ : 1;
+    const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(duration);
+    int roundtrip_count = 0;
+    stopwatch_t sw;
+    sw.start();
+    while (std::chrono::steady_clock::now() < deadline) {
+        roundtrip_();
+        ++roundtrip_count;
+    }
+    if (roundtrip_count <= 0)
+        return 0.0;
+    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count * 2);
+}
+
 template <typename SendOneFn, typename RecvOneFn>
 inline double measure_throughput_msgs_per_sec(int msg_count_,
                                               SendOneFn send_one_,
@@ -542,7 +583,7 @@ inline double measure_throughput_msgs_per_sec(int msg_count_,
 
 inline int resolve_msg_count(size_t size) {
     int count = (size <= 1024) ? 200000 : 20000;
-    if (const char *env = std::getenv("BENCH_MSG_COUNT")) {
+    if (const char *env = std::getenv("PERF_MSG_COUNT")) {
         errno = 0;
         const long override = std::strtol(env, NULL, 10);
         if (errno == 0 && override > 0)

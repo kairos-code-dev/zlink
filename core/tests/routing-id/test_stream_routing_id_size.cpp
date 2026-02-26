@@ -169,26 +169,22 @@ static void close_raw_fd (int fd_)
 #endif
 
 static int on_stream_packet (const zlink_routing_id_t *rid_,
-                             zlink_msg_t *msgs_,
-                             size_t msg_count_)
+                             zlink_msg_t *msg_)
 {
     stream_probe_t *p = g_stream_probe;
-    if (!p || !rid_ || !msgs_ || msg_count_ == 0)
+    if (!p || !rid_ || !msg_)
         return 0;
 
-    for (size_t i = 0; i < msg_count_; ++i) {
-        zlink_msg_t *msg = &msgs_[i];
-        p->calls.fetch_add (1, std::memory_order_release);
-        if (rid_->size == stream_routing_id_size)
-            p->rid_size_ok.store (1, std::memory_order_release);
+    p->calls.fetch_add (1, std::memory_order_release);
+    if (rid_->size == stream_routing_id_size)
+        p->rid_size_ok.store (1, std::memory_order_release);
 
-        const unsigned char *payload =
-          static_cast<const unsigned char *> (zlink_msg_data (msg));
-        const size_t payload_size = zlink_msg_size (msg);
-        if (payload_size == 1 && payload && payload[0] == 'x')
-            p->payload_ok.store (1, std::memory_order_release);
-        (void) zlink_msg_close (msg);
-    }
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg_));
+    const size_t payload_size = zlink_msg_size (msg_);
+    if (payload_size == 1 && payload && payload[0] == 'x')
+        p->payload_ok.store (1, std::memory_order_release);
+    (void) zlink_msg_close (msg_);
 
     return 0;
 }
@@ -206,7 +202,7 @@ void test_stream_auto_routing_id_size ()
 
     g_stream_probe = &probe;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_stream_attach (server, on_stream_packet, 0));
+      zlink_stream_attach_raw (server, on_stream_packet));
 
     char endpoint[MAX_SOCKET_STRING];
     bind_loopback_ipv4 (server, endpoint, sizeof endpoint);

@@ -420,13 +420,13 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     return rc == 0;
 }
 
-inline void apply_benchmark_hwm(void *socket_, int inflight_)
+inline void apply_benchmark_hwm(void *socket_, int hwm_value)
 {
-    if (inflight_ <= 0)
+    if (hwm_value <= 0)
         return;
 
-    set_sockopt_int(socket_, ZLINK_SNDHWM, inflight_, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, inflight_, "ZLINK_RCVHWM");
+    set_sockopt_int(socket_, ZLINK_SNDHWM, hwm_value, "ZLINK_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_RCVHWM, hwm_value, "ZLINK_RCVHWM");
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)

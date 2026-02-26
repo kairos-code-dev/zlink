@@ -423,7 +423,7 @@ perf/results/
     │   ├── perf_linux_20260224_081152.txt
     │   ├── perf_linux_20260224_093000_mytag.txt
     │   └── ...
-    ├── report/                                           # 레포트 (--result, complete만)
+    ├── report/                                           # 레포트 (--result, complete/partial)
     │   ├── perf_linux_20260224_091530.txt
     │   ├── perf_linux_20260224_143000_release.txt
     │   └── ...
@@ -446,7 +446,7 @@ perf/results/
 | 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
 |------|------|-----------|-----------|------|
 | 임시 저장 | (항상) | `tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete만 |
+| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete/partial 무관 |
 | baseline 저장 | `--save [VER]` | `baseline/` | META + RESULT + TABLE | complete만 (Gate 비교 대상) |
 
 ### 4.4 결과 저장 흐름
@@ -465,14 +465,12 @@ perf/results/
 
 ```text
 실행 완료
-    → status 판정 (expected == actual ?)
-    → complete → results/multi/report/ 에 실행 옵션 헤더 + TABLE 저장
-    → partial  → 저장하지 않음 (stdout 출력만)
+    → results/multi/report/ 에 실행 옵션 헤더 + TABLE 저장 (complete/partial 무관)
 ```
 
 - 용도: 사람이 결과를 확인하기 위한 레포트
 - `report/`에는 **실행 옵션 헤더 + TABLE**을 저장한다 (META/RESULT 라인 미포함).
-- `status=complete`인 경우에만 `report/`에 저장한다.
+- `status=partial`인 경우에도 저장한다. 실패한 조합의 결과가 누락된 채로 저장되며, 실패 요약(§ 6.4)이 포함된다.
 
 #### `--save [VER]` (baseline 저장)
 
@@ -494,8 +492,9 @@ perf/results/
 ```text
 실행 완료
     → tmp/ 에 항상 저장
-    → complete → report/ + baseline/ 에도 저장
-    → partial  → report/, baseline/ 에는 저장하지 않음
+    → report/ 에 항상 저장 (complete/partial 무관)
+    → complete → baseline/ 에도 저장
+    → partial  → baseline/ 에는 저장하지 않음
 ```
 
 - `--result`과 `--save`는 동시 사용 가능.
@@ -505,9 +504,9 @@ perf/results/
 | 옵션 조합 | status=complete | status=partial |
 |-----------|-----------------|----------------|
 | (없음) | tmp/ 저장 | tmp/ 저장 |
-| `--result` | tmp/ + report/ 저장 | tmp/ 저장 (report/ 미저장, warning) |
+| `--result` | tmp/ + report/ 저장 | tmp/ + report/ 저장 |
 | `--save [V]` | tmp/ + baseline/ 저장 | tmp/ 저장 (baseline/ 에러, exit code 1) |
-| `--result --save [V]` | tmp/ + report/ + baseline/ 저장 | tmp/ 저장 (report/ 미저장, baseline/ 에러, exit code 1) |
+| `--result --save [V]` | tmp/ + report/ + baseline/ 저장 | tmp/ + report/ 저장 (baseline/ 에러, exit code 1) |
 
 ### 4.5 Baseline 관리
 
@@ -519,7 +518,7 @@ perf/results/
 
 #### 완료 판정
 
-`--result` 및 `--save` 시 실행 종료 시점에 아래 기준으로 완료 여부를 판정한다. **complete인 경우에만** `report/` 또는 `baseline/`에 저장한다.
+`--result` 및 `--save` 시 실행 종료 시점에 아래 기준으로 완료 여부를 판정한다. `--result`는 complete/partial 무관하게 `report/`에 저장한다. `--save`는 **complete인 경우에만** `baseline/`에 저장한다.
 
 ```text
 expected = 요청된 전체 조합 수 - unsupported 수 - skip 수
@@ -535,7 +534,7 @@ status = (expected == actual) ? "complete" : "partial"
 
 - `unsupported`와 `skip`은 `expected`에서 제외한다 (fail이 아니므로).
 - `expected`와 `actual`은 RESULT 라인 수 기준이다 (throughput + bandwidth + latency = 조합당 3줄).
-- `partial`인 경우 `--result`는 report/에 저장하지 않고, `--save`는 에러로 중단한다.
+- `partial`인 경우 `--result`는 report/에 그대로 저장하고, `--save`는 에러로 중단한다.
 
 #### Rolling baseline (Trend 모드)
 
@@ -626,7 +625,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 11.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
-| `--result` | 완료 시 `results/multi/report/`에 TABLE 레포트 저장 | off |
+| `--result` | `results/multi/report/`에 TABLE 레포트 저장 (complete/partial 무관) | off |
 | `--save [VER]` | 완료 시 `results/multi/baseline/`에 baseline 저장 | — |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override (`PATH/multi/` 하위 사용) | `perf/results` |
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
@@ -646,7 +645,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 
 - `--output`: 임의 경로에 stdout을 tee. 저장 구조와 무관.
 - 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete인 경우에만** 저장.
+- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete/partial 무관**하게 저장.
 - `--save [VER]`: `baseline/`에 저장. **complete인 경우에만** 저장. partial이면 에러.
 - `--result`과 `--save`는 동시 사용 가능.
 
@@ -828,15 +827,70 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 ### 6.3 진행 로그
 
-실행 중 각 조합의 진행 상황이 출력된다.
+실행 중 **사이즈별 결과 테이블 행을 즉시 출력**하여 진행 상황과 측정 데이터를 동시에 제공한다. 공통 규칙은 [PERF_POLICY.md § 5.2](PERF_POLICY.md)를 참조한다.
+
+#### runs=1 출력 형식
+
+`run N/M:` 및 `median:` 레이블 없이 테이블만 출력한다. 각 행은 client가 해당 size 측정을 완료한 즉시 출력된다.
 
 ```text
   > Benchmarking current for MULTI_DEALER_DEALER...
-    Testing tcp | 64B,1024B,65536B: 1 2 3 Done
-    Testing tls | 64B,1024B,65536B: 1 2 3 Done
+    Testing tcp | 64B,256B,1024B,65536B,131072B,262144B:
+      | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+      |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+      | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.00 us |   13.0 |    228.8 |    4.2 |    331.1 |
+      | 256B     |    234.56 Kops/s |    60.05 MB/s |      0.00 us |   15.2 |    230.1 |    5.1 |    332.0 |
+      | 1024B    |    ...
+      | 65536B   |    ...
+      | 131072B  |    ...
+      | 262144B  |    ...
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+    Testing tls | 64B,256B,1024B,65536B,131072B,262144B:
+      | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+      |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+      | 64B      |    ...
 ```
 
-- 실패 발생 시: `(failures=1) Done`
+#### runs > 1 출력 형식
+
+각 run마다 테이블을 출력하고, 마지막에 `median:` 테이블을 출력한다.
+
+```text
+  > Benchmarking current for MULTI_DEALER_DEALER...
+    Testing tcp | 64B,256B,1024B:
+      run 1/3:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.00 us |   13.0 |    228.8 |    4.2 |    331.1 |
+        | 256B     |    ...
+        | 1024B    |    ...
+      [cooldown 3000ms]
+      run 2/3:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    ...
+        | 256B     |    ...
+        | 1024B    |    ...
+      [cooldown 3000ms]
+      run 3/3:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    ...
+        | 256B     |    ...
+        | 1024B    |    ...
+      median:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    ...
+        | 256B     |    ...
+        | 1024B    |    ...
+    Testing tcp: Done
+    [transport cooldown 3000ms]
+```
+
+- run 간 `[cooldown Nms]`, transport 간 `[transport cooldown Nms]` 표시
+- 실패 발생 시: `(failures=N) Done`
 - transport 미지원 시: `unsupported Done`
 
 ### 6.4 실패 요약
@@ -1104,7 +1158,7 @@ MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB, MUL
 
 #### 패턴별 소스 파일 / 바이너리 매핑 (Core)
 
-server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성한다. 소스 경로: `perf/multi/current/`
+server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로 작성하는 것을 원칙으로 한다. 기본 소스 경로: `perf/multi/current/`
 
 | 패턴 | server 소스 | server 바이너리 | client 소스 | client 바이너리 |
 |------|------------|----------------|------------|----------------|
@@ -1114,11 +1168,12 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | MULTI_PUBSUB | `*_pubsub_server.cpp` | `perf_multi_pubsub_server` | `*_pubsub_client.cpp` | `perf_multi_pubsub_client` |
 | MULTI_GATEWAY | `*_gateway_server.cpp` | `perf_multi_gateway_server` | `*_gateway_client.cpp` | `perf_multi_gateway_client` |
 | MULTI_SPOT | `*_spot_server.cpp` | `perf_multi_spot_server` | `*_spot_client.cpp` | `perf_multi_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `perf_multi_stream_server` | `*_stream_client.cpp` | `perf_multi_stream_client` |
-| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `perf_multi_stream_callback_server` | `*_stream_callback_client.cpp` | `perf_multi_stream_callback_client` |
-| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `perf_multi_stream_len32be_server` | `*_stream_len32be_client.cpp` | `perf_multi_stream_len32be_client` |
+| MULTI_STREAM | `*_stream_server.cpp` | `perf_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `perf_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `perf_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
+> STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.4](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
 
 #### MULTI_STREAM 계열 패턴
 
@@ -1126,7 +1181,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|
-| MULTI_STREAM | 기본 recv | `zmq_recv`로 메시지 수신 |
+| MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
 | MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
 | MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 32-bit big-endian length-prefixed framing |
 
@@ -1226,7 +1281,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
 
-> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS`, `BENCH_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
+> **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 | `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
 | `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |
 

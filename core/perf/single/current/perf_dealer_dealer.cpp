@@ -23,14 +23,15 @@ void run_dealer_dealer(const std::string& transport, size_t msg_size, int msg_co
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size);
 
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
     repeat_n(warmup_count, [&]() {
         zlink_send(s2.get(), buffer.data(), msg_size, 0);
         zlink_recv(s1.get(), recv_buf.data(), msg_size, 0);
     });
 
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 500);
-    const double latency = measure_roundtrip_latency_us(lat_count, [&]() {
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    const double latency = measure_roundtrip_latency_us_for_duration(
+      latency_duration_s, [&]() {
         zlink_send(s2.get(), buffer.data(), msg_size, 0);
         zlink_recv(s1.get(), recv_buf.data(), msg_size, 0);
         zlink_send(s1.get(), recv_buf.data(), msg_size, 0);

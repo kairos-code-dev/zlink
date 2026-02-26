@@ -154,59 +154,43 @@ struct stream_len32be_dispatch_t {
 static stream_len32be_dispatch_t *g_stream_dispatch = NULL;
 static stream_len32be_dispatch_t *g_stream_dispatch_aux = NULL;
 static std::atomic<bool> g_stream_reply_direct (false);
-
-typedef int (*stream_attach_fn_t) (void *, zlink_stream_on_packets_fn, int);
-typedef int (*stream_detach_fn_t) (void *);
-
-struct stream_dispatch_api_t {
-    stream_attach_fn_t attach_fn;
-    stream_detach_fn_t detach_fn;
-    bool resolved;
-
-    stream_dispatch_api_t () : attach_fn (NULL), detach_fn (NULL), resolved (false) {}
-};
-
-stream_dispatch_api_t &stream_dispatch_api ()
-{
-    static stream_dispatch_api_t api;
-    if (api.resolved)
-        return api;
-
-#ifdef _WIN32
-    HMODULE mod = GetModuleHandleA ("zlink.dll");
-    if (!mod)
-        mod = GetModuleHandleA (NULL);
-    if (mod) {
-        api.attach_fn = reinterpret_cast<stream_attach_fn_t> (
-          GetProcAddress (mod, "zlink_stream_attach"));
-        api.detach_fn = reinterpret_cast<stream_detach_fn_t> (
-          GetProcAddress (mod, "zlink_stream_detach"));
-    }
-#else
-    api.attach_fn = reinterpret_cast<stream_attach_fn_t> (
-      dlsym (RTLD_DEFAULT, "zlink_stream_attach"));
-    api.detach_fn = reinterpret_cast<stream_detach_fn_t> (
-      dlsym (RTLD_DEFAULT, "zlink_stream_detach"));
-#endif
-
-    api.resolved = true;
-    return api;
-}
+static zlink_stream_on_packets_fn g_stream_attach_bridge_callback = NULL;
 
 bool stream_dispatch_supported ()
 {
     return true;
 }
 
+int on_stream_attach_bridge (const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+{
+    zlink_stream_on_packets_fn callback = g_stream_attach_bridge_callback;
+    if (!callback || !rid_ || !msg_)
+        return 0;
+    return callback (rid_, msg_, 1);
+}
+
 int stream_attach_compat (void *socket_,
                           zlink_stream_on_packets_fn callback,
                           int flags)
 {
-    return zlink_stream_attach (socket_, callback, flags);
+    if (!socket_ || !callback) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if ((flags & ZLINK_STREAM_DISPATCH_LEN32BE) != 0)
+        return zlink_stream_attach_len32be (socket_, callback);
+
+    g_stream_attach_bridge_callback = callback;
+    const int rc = zlink_stream_attach_raw (socket_, on_stream_attach_bridge);
+    if (rc != 0)
+        g_stream_attach_bridge_callback = NULL;
+    return rc;
 }
 
 int stream_detach_compat (void *socket_)
 {
+    g_stream_attach_bridge_callback = NULL;
     return zlink_stream_detach (socket_);
 }
 

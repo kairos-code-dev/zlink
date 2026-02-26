@@ -40,7 +40,7 @@ perf/
 └── results/                                # 결과 저장 루트
     ├── single/
     │   ├── tmp/                            # 항상 저장 (임시)
-    │   ├── report/                         # --result (누적, complete만)
+    │   ├── report/                         # --result (누적, complete/partial)
     │   └── baseline/                       # --save [VER] (고정)
     └── multi/
         ├── tmp/
@@ -127,7 +127,7 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|
-| STREAM / MULTI_STREAM | `zmq_recv` 호출 | 기본 recv API로 메시지 수신 |
+| STREAM / MULTI_STREAM | 기본 recv 루프 | 기존 소켓 recv API(`zlink_recv`/`zmq_recv` 계열)로 메시지 수신 |
 | STREAM_CALLBACK / MULTI_STREAM_CALLBACK | callback dispatch | stream dispatch callback API로 수신 |
 | STREAM_LEN32BE / MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 4B big-endian length-prefixed framing 인식 |
 
@@ -242,7 +242,7 @@ perf/multi/run_benchmarks.sh --pattern ALL
 | `--reuse-build` | 기존 빌드 재사용 | single: off, multi: on |
 | `--pin-cpu` | CPU pinning (Linux: taskset, Windows: processor affinity) | off |
 | `--output PATH` | stdout tee 출력 | stdout만 |
-| `--result` | `report/`에 TABLE 레포트 저장 (complete만) | off |
+| `--result` | `report/`에 TABLE 레포트 저장 (complete/partial) | off |
 | `--save [VER]` | `baseline/`에 baseline 저장 (complete만) | — |
 | `--results-dir PATH` | 결과 저장 루트 override | `perf/results` |
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
@@ -296,7 +296,7 @@ TABLE
 |------------|------------------------------------|
 | mode       | observe                            |
 | runs       | 1                                  |
-| patterns   | PAIR, STREAM                       |
+| patterns   | PAIR, GATEWAY                      |
 | transports | tcp, tls, ws, wss                  |
 | msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
 | pin_cpu    | off                                |
@@ -344,7 +344,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
 |------|------|-----------|-----------|------|
 | 임시 저장 | (항상) | `<suite>/tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `<suite>/report/` | **실행 옵션 헤더 + TABLE** | complete만 |
+| 레포트 생성 | `--result` | `<suite>/report/` | **실행 옵션 헤더 + TABLE** | complete/partial 무관 |
 | baseline 저장 | `--save [VER]` | `<suite>/baseline/<VER>.txt` | META + RESULT + TABLE | complete만 (partial 시 에러) |
 
 - 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
@@ -368,7 +368,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------------|------------------------------------|
 | mode       | observe                            |
 | runs       | 1                                  |
-| patterns   | PAIR, STREAM                       |
+| patterns   | PAIR, GATEWAY                      |
 | transports | tcp, tls, ws, wss                  |
 | msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
 | pin_cpu    | off                                |
@@ -409,20 +409,62 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 
 ### 5.2 진행 로그
 
-실행 중 진행 상황이 stdout에 출력된다. 형식은 suite별로 다르다.
+벤치마크 실행 중 **사이즈별 결과 테이블 행을 즉시 출력**하여 진행 상황과 측정 데이터를 동시에 제공한다.
 
-**Single:**
+#### 출력 규칙
+
+| 항목 | 규칙 |
+|------|------|
+| 테이블 header | transport당 1회 출력 (header + separator) |
+| 결과 행 | 사이즈별 결과 확정 즉시 출력 |
+| `runs=1` | `run N/M:` 및 `median:` 레이블 없이 테이블만 출력 |
+| `runs>1` | `run N/M:` 레이블 + 각 run 테이블 + `median:` 최종 테이블 |
+| median 테이블 | 모든 run 완료 후 metric별 median 값으로 구성 |
+| 실패 행 | metric 컬럼에 `FAIL` 표시 |
+| 미지원 행 | metric 컬럼에 `UNSUPPORTED` 표시 |
+| cooldown 표시 | `[cooldown Nms]`, `[transport cooldown Nms]` (multi) |
+| 실패 표시 | `(failures=N) Done` |
+| 조건 | 항상 출력 (`PERF_DEBUG`와 무관) |
+
+- 컬럼 순서 및 형식은 § 5.1 결과 테이블과 동일하다.
+- 바이너리 stderr를 캡처하여 통합하는 방식은 사용하지 않는다.
+
+상세 형식은 suite별 정책 문서를 참조한다:
+- Single: [PERF_SINGLE_TEST_POLICY.md § 6.3](PERF_SINGLE_TEST_POLICY.md)
+- Multi: [PERF_MULTI_TEST_POLICY.md § 6.3](PERF_MULTI_TEST_POLICY.md)
+
+**Single (runs=1):**
 ```text
   > Benchmarking current for PAIR...
-    Testing tcp | 64B: 1 Done
-    Testing tcp | 256B: 1 Done
+    Testing tcp:
+      | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
+      |----------|------------------|------------|--------------|------|--------|
+      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   | 48.2 |   12.3 |
+      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   | 49.8 |   12.5 |
+    Testing tcp: Done
 ```
 
-**Multi:**
+**Multi (runs=3):**
 ```text
   > Benchmarking current for MULTI_DEALER_DEALER...
-    Testing tcp | 64B: 1 Done
-    Testing tcp | 1024B: 1 Done
+    Testing tcp | 64B,256B:
+      run 1/3:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.00 us |   13.0 |    228.8 |    4.2 |    331.1 |
+        | 256B     |    ...
+      [cooldown 3000ms]
+      run 2/3:
+        ...
+      [cooldown 3000ms]
+      run 3/3:
+        ...
+      median:
+        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | 64B      |    ...
+        | 256B     |    ...
+    Testing tcp: Done
 ```
 
 ### 5.3 실패 요약
@@ -498,7 +540,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|
 | 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
 | 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다 |
-| 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `BENCH_MULTI_ATTEMPTS`, `BENCH_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
+| 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
 

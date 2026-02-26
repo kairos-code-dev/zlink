@@ -6,14 +6,14 @@ BUILD_DIR="${SCRIPT_DIR}/build"
 mkdir -p "${BUILD_DIR}"
 
 CXX_BIN="${CXX:-g++}"
-OUT="${BUILD_DIR}/bench_stream_client"
+OUT="${BUILD_DIR}/perf_stream_client"
 
 "${CXX_BIN}" \
   -O2 \
   -std=c++17 \
   -Wall \
   -Wextra \
-  "${SCRIPT_DIR}/bench_stream_client.cpp" \
+  "${SCRIPT_DIR}/perf_stream_client.cpp" \
   -o "${OUT}" \
   -pthread \
   -lssl \

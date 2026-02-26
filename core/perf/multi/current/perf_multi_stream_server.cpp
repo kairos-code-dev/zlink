@@ -24,7 +24,10 @@
 namespace {
 
 static const char *k_pattern = "MULTI_STREAM";
+
 static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_callback_failed (false);
+static void *g_server_socket = NULL;
 
 inline void on_signal (int)
 {
@@ -56,8 +59,39 @@ inline std::string bind_server_endpoint (void *server,
 {
     const int bind_port =
       resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0)
-        return bind_and_resolve_endpoint (server, transport, token);
+    if (bind_port <= 0) {
+        std::string endpoint_any = make_endpoint (transport, token);
+        if (endpoint_any.empty ()) {
+            std::cerr << "No endpoint available for transport " << transport
+                      << std::endl;
+            return std::string ();
+        }
+        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
+            std::cerr << "bind failed for " << endpoint_any << ": "
+                      << zlink_strerror (zlink_errno ()) << std::endl;
+            return std::string ();
+        }
+
+        char last_endpoint[MAX_SOCKET_STRING] = "";
+        size_t size = sizeof (last_endpoint);
+        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
+            == 0) {
+            endpoint_any.assign (last_endpoint);
+            const std::string any_v4 = "://0.0.0.0:";
+            const std::string any_v6 = "://[::]:";
+            size_t pos = endpoint_any.find (any_v4);
+            if (pos != std::string::npos) {
+                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
+            } else {
+                pos = endpoint_any.find (any_v6);
+                if (pos != std::string::npos)
+                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
+            }
+        }
+
+        apply_debug_timeouts (server, transport);
+        return endpoint_any;
+    }
 
     std::string endpoint = make_fixed_endpoint (transport, bind_port);
     if (zlink_bind (server, endpoint.c_str ()) != 0) {
@@ -96,74 +130,14 @@ inline void print_server_metrics (
     }
 }
 
-inline bool read_stream_frame (void *server,
-                               zlink_routing_id_t *rid,
-                               std::vector<unsigned char> *payload,
-                               bool *timed_out)
-{
-    if (!server || !rid || !payload || !timed_out)
-        return false;
-
-    *timed_out = false;
-
-    zlink_msg_t id_msg;
-    zlink_msg_init (&id_msg);
-    const int id_size = zlink_msg_recv (&id_msg, server, 0);
-    if (id_size <= 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&id_msg);
-        if (err == EAGAIN || err == EINTR)
-            *timed_out = true;
-        return false;
-    }
-
-    int more = 0;
-    size_t more_size = sizeof (more);
-    if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0 || !more) {
-        zlink_msg_close (&id_msg);
-        return false;
-    }
-
-    zlink_msg_t payload_msg;
-    zlink_msg_init (&payload_msg);
-    const int payload_size = zlink_msg_recv (&payload_msg, server, 0);
-    if (payload_size < 0) {
-        const int err = zlink_errno ();
-        zlink_msg_close (&payload_msg);
-        zlink_msg_close (&id_msg);
-        if (err == EAGAIN || err == EINTR)
-            *timed_out = true;
-        return false;
-    }
-
-    std::memset (rid, 0, sizeof (*rid));
-    rid->size = static_cast<uint8_t> (
-      std::min<int> (id_size, static_cast<int> (sizeof (rid->data))));
-    if (rid->size > 0) {
-        std::memcpy (rid->data, zlink_msg_data (&id_msg), rid->size);
-    }
-
-    payload->clear ();
-    if (payload_size > 0) {
-        const unsigned char *data =
-          static_cast<const unsigned char *> (zlink_msg_data (&payload_msg));
-        payload->assign (data, data + payload_size);
-    }
-
-    zlink_msg_close (&payload_msg);
-    zlink_msg_close (&id_msg);
-    return true;
-}
-
-inline bool send_stream_once (void *server,
-                              const zlink_routing_id_t *rid,
+inline bool send_stream_once (const zlink_routing_id_t *rid,
                               const unsigned char *payload,
                               size_t payload_size)
 {
-    if (!server || !rid || rid->size == 0)
+    if (!g_server_socket || !rid || rid->size == 0)
         return false;
 
-    const int rc = zlink_stream_send (server, rid, payload, payload_size, 0);
+    const int rc = zlink_stream_send (g_server_socket, rid, payload, payload_size, 0);
     if (rc == static_cast<int> (payload_size))
         return true;
 
@@ -174,6 +148,29 @@ inline bool send_stream_once (void *server,
             return true;
     }
     return false;
+}
+
+int on_stream_packet (const zlink_routing_id_t *rid, zlink_msg_t *msg)
+{
+    if (!rid || !msg || !g_server_socket)
+        return 0;
+
+    const unsigned char *payload =
+      static_cast<const unsigned char *> (zlink_msg_data (msg));
+    const size_t payload_size = zlink_msg_size (msg);
+    if (is_stream_event_payload (payload, payload_size)) {
+        (void) zlink_msg_close (msg);
+        return 0;
+    }
+
+    if (!send_stream_once (rid, payload, payload_size)) {
+        g_callback_failed.store (true, std::memory_order_release);
+        (void) zlink_msg_close (msg);
+        return 1;
+    }
+
+    (void) zlink_msg_close (msg);
+    return 0;
 }
 
 } // namespace
@@ -187,10 +184,15 @@ int main (int argc, char **argv)
     const std::string transport = argv[2];
     set_perf_multi_pattern_env (k_pattern);
 
-    if (!transport_available (transport) || !is_supported_transport (transport)) {
+    if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
                   << transport << std::endl;
         return 0;
+    }
+
+    if (!transport_available (transport)) {
+        std::cerr << "transport unavailable: " << transport << std::endl;
+        return 1;
     }
 
     ctx_guard_t ctx;
@@ -219,15 +221,23 @@ int main (int argc, char **argv)
         return 1;
     }
 
-    const std::string endpoint =
-      bind_server_endpoint (server, transport, lib_name + "_multi_stream_server");
+    const std::string endpoint = bind_server_endpoint (
+      server, transport, lib_name + "_multi_stream_server");
     if (endpoint.empty ()) {
         zlink_close (server);
         return 1;
     }
 
     g_stop_requested.store (false, std::memory_order_release);
+    g_callback_failed.store (false, std::memory_order_release);
+    g_server_socket = server;
     install_signal_handlers ();
+
+    if (zlink_stream_attach_raw (server, on_stream_packet) != 0) {
+        g_server_socket = NULL;
+        zlink_close (server);
+        return 1;
+    }
 
     std::thread stdin_watcher ([] () {
         std::string line;
@@ -245,27 +255,15 @@ int main (int argc, char **argv)
 
     int rc = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        zlink_routing_id_t rid;
-        std::vector<unsigned char> payload;
-        bool timed_out = false;
-        if (!read_stream_frame (server, &rid, &payload, &timed_out)) {
-            if (timed_out)
-                continue;
+        if (g_callback_failed.load (std::memory_order_acquire)) {
             rc = 1;
             break;
         }
-
-        if (is_stream_event_payload (payload.empty () ? NULL : &payload[0],
-                                     payload.size ())) {
-            continue;
-        }
-
-        const unsigned char *reply_data = payload.empty () ? NULL : &payload[0];
-        if (!send_stream_once (server, &rid, reply_data, payload.size ())) {
-            rc = 1;
-            break;
-        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
+
+    (void) zlink_stream_detach (server);
+    g_server_socket = NULL;
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (cpu_start);

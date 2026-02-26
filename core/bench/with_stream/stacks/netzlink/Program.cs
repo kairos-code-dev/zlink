@@ -104,21 +104,19 @@ internal sealed class StreamEchoServer : IDisposable
     private const int FramePrefixSize = 4;
     private readonly Zlink.Socket _socket;
     private readonly Metrics _metrics;
-    private readonly StreamOnPacketsDelegate _callback;
+    private readonly StreamOnRawDelegate _callback;
     private readonly StashShard[] _shards;
     private bool _attached;
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int StreamOnPacketsDelegate(
+    private delegate int StreamOnRawDelegate(
         IntPtr routingId,
-        IntPtr messages,
-        nuint messageCount);
+        IntPtr message);
 
     [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int zlink_stream_attach(
+    private static extern int zlink_stream_attach_raw(
         IntPtr socket,
-        StreamOnPacketsDelegate onPackets,
-        int flags);
+        StreamOnRawDelegate onRaw);
 
     [DllImport("zlink", CallingConvention = CallingConvention.Cdecl)]
     private static extern int zlink_stream_detach(IntPtr socket);
@@ -200,7 +198,7 @@ internal sealed class StreamEchoServer : IDisposable
     {
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
         _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
-        _callback = OnPackets;
+        _callback = OnRawPacket;
         _shards = new StashShard[64];
         for (int i = 0; i < _shards.Length; i++)
             _shards[i] = new StashShard();
@@ -210,14 +208,14 @@ internal sealed class StreamEchoServer : IDisposable
     {
         if (_attached)
             return;
-        int rc = zlink_stream_attach(_socket.Handle, _callback, 0);
+        int rc = zlink_stream_attach_raw(_socket.Handle, _callback);
         if (rc != 0)
             throw ZlinkException.FromLastError();
         _attached = true;
     }
 
-    private int OnPackets(IntPtr rid, IntPtr msgs, nuint msgCount)
-        => OnPacketsRaw(rid, msgs, msgCount);
+    private int OnRawPacket(IntPtr rid, IntPtr msg)
+        => OnPacketsRaw(rid, msg, 1);
 
     private int OnPacketsRaw(IntPtr rid, IntPtr msgs, nuint msgCount)
     {

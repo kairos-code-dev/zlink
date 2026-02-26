@@ -31,7 +31,7 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
     char id[256];
 
     // --- Warmup (1,000 roundtrips) ---
-    const int warmup_count = resolve_bench_count("BENCH_WARMUP_COUNT", 1000);
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
     repeat_n(warmup_count, [&]() {
         zlink_send(dealer.get(), buffer.data(), msg_size, 0);
         
@@ -48,9 +48,10 @@ void run_dealer_router(const std::string& transport, size_t msg_size, int msg_co
         zlink_recv(dealer.get(), recv_buf.data(), msg_size, 0);
     });
 
-    // --- Latency (1,000 roundtrips) ---
-    const int lat_count = resolve_bench_count("BENCH_LAT_COUNT", 1000);
-    const double latency = measure_roundtrip_latency_us(lat_count, [&]() {
+    // --- Latency (duration window) ---
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    const double latency = measure_roundtrip_latency_us_for_duration(
+      latency_duration_s, [&]() {
         zlink_send(dealer.get(), buffer.data(), msg_size, 0);
         
         int id_len = zlink_recv(router.get(), id, 256, 0);

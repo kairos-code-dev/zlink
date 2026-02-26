@@ -40,7 +40,7 @@ STREAM_VARIANT_PATTERNS = (
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
 )
-STREAM_SHARED_CLIENT_BINARY = "perf_stream_shared_client"
+STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
     "MULTI_STREAM": "comp_current_multi_stream_server",
     "MULTI_STREAM_CALLBACK": "comp_current_multi_stream_callback_server",
@@ -58,9 +58,11 @@ MULTI_PATTERN_SUFFIX = {
     "MULTI_STREAM_LEN32BE": "stream_len32be",
 }
 MULTI_ECHO_PATTERNS = {
-    "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
+    "MULTI_STREAM",
+    "MULTI_STREAM_CALLBACK",
+    "MULTI_STREAM_LEN32BE",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -561,7 +563,7 @@ def run_command_with_metrics(cmd, env, timeout_sec):
 
 
 # Settings for loop
-_env_transports = parse_env_list("PERF_TRANSPORTS", str, "BENCH_TRANSPORTS")
+_env_transports = parse_env_list("PERF_TRANSPORTS", str)
 
 # Default transports for ZMP sockets (non-STREAM)
 TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
@@ -570,7 +572,7 @@ if not IS_WINDOWS:
 
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-FAIL_FAST = os.environ.get("BENCH_FAIL_FAST", "0") == "1"
+FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
 
 
 def is_multi_pattern(pattern_name):
@@ -582,9 +584,6 @@ def select_transports(pattern_name):
         STREAM_TRANSPORTS
         if pattern_name
         in (
-            "STREAM",
-            "STREAM_CALLBACK",
-            "STREAM_LEN32BE",
             "MULTI_STREAM",
             "MULTI_STREAM_CALLBACK",
             "MULTI_STREAM_LEN32BE",
@@ -600,7 +599,7 @@ def select_transports(pattern_name):
     return [t for t in base if t in _env_transports]
 
 
-_env_sizes = parse_env_list("PERF_MSG_SIZES", int, "BENCH_MSG_SIZES")
+_env_sizes = parse_env_list("PERF_MSG_SIZES", int)
 if _env_sizes:
     MSG_SIZES = _env_sizes
 else:
@@ -609,7 +608,6 @@ else:
 _env_multi_stream_sizes = parse_env_list(
     "PERF_MULTI_STREAM_MSG_SIZES",
     int,
-    "BENCH_MULTI_STREAM_MSG_SIZES",
 )
 if _env_multi_stream_sizes:
     MULTI_STREAM_MSG_SIZES = _env_multi_stream_sizes
@@ -623,97 +621,58 @@ DEFAULT_RUN_COOLDOWN_MS = max(
     parse_env_int(
         "PERF_MULTI_RUN_COOLDOWN_MS",
         3000,
-        "BENCH_MULTI_RUN_COOLDOWN_MS",
     ),
 )
 
 base_env = os.environ.copy()
 
-ENV_ALIAS_PAIRS = (
-    ("PERF_TRANSPORTS", "BENCH_TRANSPORTS"),
-    ("PERF_MSG_SIZES", "BENCH_MSG_SIZES"),
-    ("PERF_MULTI_STREAM_MSG_SIZES", "BENCH_MULTI_STREAM_MSG_SIZES"),
-    ("PERF_MULTI_PATTERN", "BENCH_MULTI_PATTERN"),
-    ("PERF_MULTI_CLIENTS", "BENCH_MULTI_CLIENTS"),
-    ("PERF_MULTI_INFLIGHT", "BENCH_MULTI_INFLIGHT"),
-    ("PERF_MULTI_HWM", "BENCH_MULTI_HWM"),
-    ("PERF_MULTI_WARMUP_SECONDS", "BENCH_MULTI_WARMUP_SECONDS"),
-    ("PERF_MULTI_DURATION_SECONDS", "BENCH_MULTI_DURATION_SECONDS"),
-    ("PERF_MULTI_SNDTIMEO_MS", "BENCH_MULTI_SNDTIMEO_MS"),
-    ("PERF_MULTI_RCVTIMEO_MS", "BENCH_MULTI_RCVTIMEO_MS"),
-    ("PERF_MULTI_CONNECT_CONCURRENCY", "BENCH_MULTI_CONNECT_CONCURRENCY"),
-    ("PERF_MULTI_DRAIN_MS", "BENCH_MULTI_DRAIN_MS"),
-    (
-        "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
-        "BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS",
-    ),
-    ("PERF_MULTI_RECV_BATCH", "BENCH_MULTI_RECV_BATCH"),
-    ("PERF_MULTI_SEND_WORKERS", "BENCH_MULTI_SEND_WORKERS"),
-    ("PERF_MULTI_SEND_BACKOFF_US", "BENCH_MULTI_SEND_BACKOFF_US"),
-    ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", "BENCH_MULTI_CONNECT_READY_TIMEOUT_MS"),
-    ("PERF_MULTI_MONITOR_HWM", "BENCH_MULTI_MONITOR_HWM"),
-    ("PERF_MULTI_SERVER_READY_TIMEOUT_MS", "BENCH_MULTI_SERVER_READY_TIMEOUT_MS"),
-    (
-        "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-        "BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-    ),
-    ("PERF_MULTI_SERVER_BIND_PORT", "BENCH_MULTI_SERVER_BIND_PORT"),
-    ("PERF_SERVER_RECV_THREADS", "BENCH_SERVER_RECV_THREADS"),
-    ("PERF_IO_THREADS", "BENCH_IO_THREADS"),
-    ("PERF_MAX_SOCKETS", "BENCH_MAX_SOCKETS"),
-    ("PERF_LAT_COUNT", "BENCH_LAT_COUNT"),
-    ("PERF_MULTI_LAT_TIMEOUT_MS", "BENCH_MULTI_LAT_TIMEOUT_MS"),
-    ("PERF_MULTI_LAT_RETRIES", "BENCH_MULTI_LAT_RETRIES"),
-    ("PERF_MULTI_LAT_RETRY_DRAIN_MS", "BENCH_MULTI_LAT_RETRY_DRAIN_MS"),
-    (
-        "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX",
-        "BENCH_MULTI_STREAM_NON_TCP_CLIENTS_MAX",
-    ),
-    ("PERF_MULTI_STREAM_SEND_BATCH", "BENCH_MULTI_STREAM_SEND_BATCH"),
-    ("PERF_MULTI_STREAM_SEND_WORKERS", "BENCH_MULTI_STREAM_SEND_WORKERS"),
-    (
-        "PERF_MULTI_STREAM_MAX_INFLIGHT_MSGS",
-        "BENCH_MULTI_STREAM_MAX_INFLIGHT_MSGS",
-    ),
-    (
-        "PERF_MULTI_STREAM_MAX_INFLIGHT_BYTES",
-        "BENCH_MULTI_STREAM_MAX_INFLIGHT_BYTES",
-    ),
-    ("PERF_MULTI_STREAM_SEND_RETRIES", "BENCH_MULTI_STREAM_SEND_RETRIES"),
-    (
-        "PERF_MULTI_STREAM_SEND_RETRY_BACKOFF_US",
-        "BENCH_MULTI_STREAM_SEND_RETRY_BACKOFF_US",
-    ),
-    ("PERF_MULTI_STREAM_DRAIN_IDLE_MS", "BENCH_MULTI_STREAM_DRAIN_IDLE_MS"),
-    ("PERF_MULTI_STREAM_DRAIN_MAX_MS", "BENCH_MULTI_STREAM_DRAIN_MAX_MS"),
-    (
-        "PERF_MULTI_STREAM_DRAIN_RELAY_BUDGET",
-        "BENCH_MULTI_STREAM_DRAIN_RELAY_BUDGET",
-    ),
+ENV_ALIAS_KEYS = (
+    "PERF_TRANSPORTS",
+    "PERF_MSG_SIZES",
+    "PERF_MULTI_STREAM_MSG_SIZES",
+    "PERF_MULTI_PATTERN",
+    "PERF_MULTI_CLIENTS",
+    "PERF_MULTI_HWM",
+    "PERF_MULTI_WARMUP_SECONDS",
+    "PERF_MULTI_DURATION_SECONDS",
+    "PERF_MULTI_SNDTIMEO_MS",
+    "PERF_MULTI_RCVTIMEO_MS",
+    "PERF_MULTI_CONNECT_CONCURRENCY",
+    "PERF_MULTI_DRAIN_MS",
+    "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
+    "PERF_MULTI_RECV_BATCH",
+    "PERF_MULTI_SEND_WORKERS",
+    "PERF_MULTI_SEND_BACKOFF_US",
+    "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
+    "PERF_MULTI_MONITOR_HWM",
+    "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
+    "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
+    "PERF_MULTI_SERVER_BIND_PORT",
+    "PERF_SERVER_RECV_THREADS",
+    "PERF_IO_THREADS",
+    "PERF_MAX_SOCKETS",
+    "PERF_LAT_COUNT",
+    "PERF_MULTI_LAT_TIMEOUT_MS",
+    "PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX",
+    "PERF_MULTI_STREAM_SEND_BATCH",
+    "PERF_MULTI_STREAM_SEND_WORKERS",
+    "PERF_MULTI_STREAM_DRAIN_IDLE_MS",
+    "PERF_MULTI_STREAM_DRAIN_MAX_MS",
+    "PERF_MULTI_STREAM_DRAIN_RELAY_BUDGET",
 )
 
 
 def sync_perf_bench_aliases(env):
-    for perf_key, bench_key in ENV_ALIAS_PAIRS:
-        perf_value = env.get(perf_key, "").strip()
-        bench_value = env.get(bench_key, "").strip()
-        if perf_value and not bench_value:
-            env[bench_key] = perf_value
-        elif bench_value and not perf_value:
-            env[perf_key] = bench_value
+    """No-op after BENCH_ -> PERF_ rename; kept for call-site compatibility."""
+    pass
 
 
-def env_pair_value(env, perf_key, bench_key):
-    value = env.get(perf_key, "").strip()
-    if value:
-        return value
-    return env.get(bench_key, "").strip()
+def env_pair_value(env, key):
+    return env.get(key, "").strip()
 
 
-def set_env_pair(env, perf_key, bench_key, value):
-    string_value = str(value)
-    env[perf_key] = string_value
-    env[bench_key] = string_value
+def set_env_pair(env, key, value):
+    env[key] = str(value)
 
 
 def get_env_for_lib(_lib_name):
@@ -858,15 +817,15 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 def multi_pattern_default_clients(pattern_name, transport=None):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        base = max(1, parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 1000))
+        base = max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 1000))
         tr = (transport or "").strip().lower()
         if tr in ("tls", "ws", "wss"):
             non_tcp_cap = max(
-                1, parse_env_int("BENCH_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 1000)
+                1, parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 1000)
             )
             return min(base, non_tcp_cap)
         return base
-    return max(1, parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 1000))
+    return max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 1000))
 
 
 def multi_pattern_default_drain_ms(pattern_name):
@@ -930,7 +889,7 @@ def _pipe_reader(pipe, stream_name, out_queue):
 def build_bench_cmd(binary_path, args):
     if IS_WINDOWS:
         return [binary_path] + list(args)
-    if os.environ.get("BENCH_TASKSET") == "1" or os.environ.get("PERF_TASKSET") == "1":
+    if os.environ.get("PERF_TASKSET") == "1":
         return ["taskset", "-c", "1", binary_path] + list(args)
     return [binary_path] + list(args)
 
@@ -950,101 +909,47 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
             "warnings": [],
         }
 
-    duration_seconds = max(
-        1,
-        parse_env_int(
-            "PERF_MULTI_DURATION_SECONDS",
-            parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5),
-        ),
-    )
+    duration_seconds = max(1, parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))
     timeout_sec = max(180, duration_seconds * max(1, len(sizes)) * 10 + 120)
-    ready_timeout_ms = max(
-        0,
-        parse_env_int(
-            "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-            parse_env_int("BENCH_MULTI_SERVER_READY_TIMEOUT_MS", 10000),
-        ),
-    )
-    shutdown_timeout_ms = max(
-        0,
-        parse_env_int(
-            "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-            parse_env_int("BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000),
-        ),
-    )
-    bind_port = max(
-        0,
-        parse_env_int(
-            "PERF_MULTI_SERVER_BIND_PORT",
-            parse_env_int("BENCH_MULTI_SERVER_BIND_PORT", 0),
-        ),
-    )
+    ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
+    shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
 
     for _ in range(1):
         env = get_env_for_lib(lib_name)
         size_csv = ",".join(str(sz) for sz in sizes)
-        set_env_pair(env, "PERF_MSG_SIZES", "BENCH_MSG_SIZES", size_csv)
-        set_env_pair(env, "PERF_MULTI_PATTERN", "BENCH_MULTI_PATTERN", pattern_name)
-        set_env_pair(
-            env,
-            "PERF_MULTI_STREAM_MSG_SIZES",
-            "BENCH_MULTI_STREAM_MSG_SIZES",
-            size_csv,
-        )
+        set_env_pair(env, "PERF_MSG_SIZES", size_csv)
+        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
+        set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
 
-        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS", "BENCH_MULTI_CLIENTS")
+        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
         if not clients_value:
             clients_value = str(multi_pattern_default_clients(pattern_name, transport))
-        set_env_pair(env, "PERF_MULTI_CLIENTS", "BENCH_MULTI_CLIENTS", clients_value)
+        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
 
-        connect_value = env_pair_value(
-            env,
-            "PERF_MULTI_CONNECT_CONCURRENCY",
-            "BENCH_MULTI_CONNECT_CONCURRENCY",
-        )
+        connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
         if not connect_value:
             try:
                 clients = int(clients_value)
             except ValueError:
                 clients = multi_pattern_default_clients(pattern_name, transport)
             connect_value = str(resolve_pattern_connect_concurrency(max(1, clients)))
-        set_env_pair(
-            env,
-            "PERF_MULTI_CONNECT_CONCURRENCY",
-            "BENCH_MULTI_CONNECT_CONCURRENCY",
-            connect_value,
-        )
+        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
-        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS", "BENCH_MULTI_DRAIN_MS")
+        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
         if not drain_value:
             drain_value = str(multi_pattern_default_drain_ms(pattern_name))
-        set_env_pair(env, "PERF_MULTI_DRAIN_MS", "BENCH_MULTI_DRAIN_MS", drain_value)
+        set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
 
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-            "BENCH_MULTI_SERVER_READY_TIMEOUT_MS",
-            ready_timeout_ms,
-        )
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-            "BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-            shutdown_timeout_ms,
-        )
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_BIND_PORT",
-            "BENCH_MULTI_SERVER_BIND_PORT",
-            bind_port,
-        )
+        set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+        set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+        set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
 
         size_transition_drain_ms = parse_env_int(
-            "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
-            parse_env_int("BENCH_MULTI_SIZE_TRANSITION_DRAIN_MS", 300),
+            "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS", 300
         )
 
-        io_threads_value = env_pair_value(env, "PERF_IO_THREADS", "BENCH_IO_THREADS")
+        io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
         if not io_threads_value:
             io_threads_value = "4"
         try:
@@ -1061,18 +966,10 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
             drain_int = multi_pattern_default_drain_ms(pattern_name)
 
         latency_sample_rate = max(
-            1,
-            parse_env_int(
-                "PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE",
-                parse_env_int("BENCH_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64),
-            ),
+            1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
         )
         warmup_seconds = max(
-            0,
-            parse_env_int(
-                "PERF_MULTI_WARMUP_SECONDS",
-                parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3),
-            ),
+            0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
         )
 
         server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
@@ -1267,6 +1164,10 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
             )
             client_stdout = sampled.get("stdout", "") or ""
             client_stderr = sampled.get("stderr", "") or ""
+            progress_meta = {
+                "server_endpoint": endpoint,
+                "client_stderr": client_stderr,
+            }
 
             stop_server()
             drain_server_output()
@@ -1286,6 +1187,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "timeout",
                     "warnings": [],
+                    **progress_meta,
                 }
             if sampled.get("returncode", 0) != 0:
                 return {
@@ -1297,6 +1199,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
                     "warnings": [],
+                    **progress_meta,
                 }
             if server_rc not in (0, None):
                 return {
@@ -1308,6 +1211,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": f"server_non_zero_exit_{server_rc}",
                     "warnings": [],
+                    **progress_meta,
                 }
 
             expected_sizes = set(sizes)
@@ -1373,6 +1277,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "",
                     "warnings": warnings,
+                    **progress_meta,
                 }
             if token_status in ("unsupported", "skip"):
                 return {
@@ -1384,6 +1289,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": token_reason if token_reason else token_status,
                     "warnings": warnings,
+                    **progress_meta,
                 }
             if "protocol not supported" in stderr_lower:
                 return {
@@ -1395,6 +1301,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "unsupported",
                     "warnings": warnings,
+                    **progress_meta,
                 }
             return {
                 "status": "fail",
@@ -1405,6 +1312,7 @@ def run_multi_sizes_test_stream_shared(server_binary_name, lib_name, transport, 
                 "mem_mb": sampled.get("mem_mb"),
                 "reason": "no_data",
                 "warnings": warnings,
+                **progress_meta,
             }
         except Exception:
             stop_server()
@@ -1435,74 +1343,45 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
     server_binary_path = os.path.join(BUILD_DIR, server_binary_name + EXE_SUFFIX)
     client_binary_path = os.path.join(BUILD_DIR, client_binary_name + EXE_SUFFIX)
     fallback_size = sizes[0] if sizes else 64
-    duration_seconds = max(1, parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5))
+    duration_seconds = max(1, parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))
     timeout_sec = max(120, duration_seconds * max(1, len(sizes)) * 8 + 60)
     if pattern_name in STREAM_VARIANT_PATTERNS:
         timeout_sec = max(180, timeout_sec)
 
-    ready_timeout_ms = max(0, parse_env_int("BENCH_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
-    shutdown_timeout_ms = max(0, parse_env_int("BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    bind_port = max(0, parse_env_int("BENCH_MULTI_SERVER_BIND_PORT", 0))
+    ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
+    shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
     for _ in range(1):
         env = get_env_for_lib(lib_name)
         size_csv = ",".join(str(sz) for sz in sizes)
-        set_env_pair(env, "PERF_MSG_SIZES", "BENCH_MSG_SIZES", size_csv)
-        set_env_pair(env, "PERF_MULTI_PATTERN", "BENCH_MULTI_PATTERN", pattern_name)
+        set_env_pair(env, "PERF_MSG_SIZES", size_csv)
+        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
         if pattern_name in STREAM_VARIANT_PATTERNS:
-            set_env_pair(
-                env,
-                "PERF_MULTI_STREAM_MSG_SIZES",
-                "BENCH_MULTI_STREAM_MSG_SIZES",
-                size_csv,
-            )
+            set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
 
-        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS", "BENCH_MULTI_CLIENTS")
+        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
         if not clients_value:
             clients_value = str(multi_pattern_default_clients(pattern_name, transport))
-        set_env_pair(env, "PERF_MULTI_CLIENTS", "BENCH_MULTI_CLIENTS", clients_value)
+        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
 
-        connect_value = env_pair_value(
-            env,
-            "PERF_MULTI_CONNECT_CONCURRENCY",
-            "BENCH_MULTI_CONNECT_CONCURRENCY",
-        )
+        connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
         if not connect_value:
             try:
                 clients = int(clients_value)
             except ValueError:
                 clients = multi_pattern_default_clients(pattern_name, transport)
             connect_value = str(resolve_pattern_connect_concurrency(max(1, clients)))
-        set_env_pair(
-            env,
-            "PERF_MULTI_CONNECT_CONCURRENCY",
-            "BENCH_MULTI_CONNECT_CONCURRENCY",
-            connect_value,
-        )
+        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
-        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS", "BENCH_MULTI_DRAIN_MS")
+        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
         if not drain_value:
             drain_value = str(multi_pattern_default_drain_ms(pattern_name))
-        set_env_pair(env, "PERF_MULTI_DRAIN_MS", "BENCH_MULTI_DRAIN_MS", drain_value)
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
-            "BENCH_MULTI_SERVER_READY_TIMEOUT_MS",
-            ready_timeout_ms,
-        )
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-            "BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
-            shutdown_timeout_ms,
-        )
-        set_env_pair(
-            env,
-            "PERF_MULTI_SERVER_BIND_PORT",
-            "BENCH_MULTI_SERVER_BIND_PORT",
-            bind_port,
-        )
+        set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
+        set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+        set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+        set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
 
         if IS_WINDOWS:
             server_cmd = [server_binary_path, lib_name, transport]
@@ -1512,7 +1391,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 transport,
                 str(fallback_size),
             ]
-        elif os.environ.get("BENCH_TASKSET") == "1":
+        elif os.environ.get("PERF_TASKSET") == "1":
             server_cmd = ["taskset", "-c", "1", server_binary_path, lib_name, transport]
             client_cmd = [
                 "taskset",
@@ -1687,6 +1566,10 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
             sampled = run_command_with_metrics(client_cmd, env, timeout_sec)
             client_stdout = sampled.get("stdout", "") or ""
             client_stderr = sampled.get("stderr", "") or ""
+            progress_meta = {
+                "server_endpoint": endpoint,
+                "client_stderr": client_stderr,
+            }
 
             stop_server()
             drain_server_output()
@@ -1706,6 +1589,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "timeout",
                     "warnings": [],
+                    **progress_meta,
                 }
             if sampled.get("returncode", 0) != 0:
                 return {
@@ -1717,6 +1601,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
                     "warnings": [],
+                    **progress_meta,
                 }
             if server_rc not in (0, None):
                 return {
@@ -1728,6 +1613,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": f"server_non_zero_exit_{server_rc}",
                     "warnings": [],
+                    **progress_meta,
                 }
 
             parsed = {}
@@ -1773,6 +1659,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "",
                     "warnings": warnings,
+                    **progress_meta,
                 }
             if token_status in ("unsupported", "skip"):
                 return {
@@ -1784,6 +1671,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": token_reason if token_reason else token_status,
                     "warnings": warnings,
+                    **progress_meta,
                 }
             if "protocol not supported" in stderr_lower:
                 return {
@@ -1795,6 +1683,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                     "mem_mb": sampled.get("mem_mb"),
                     "reason": "unsupported",
                     "warnings": warnings,
+                    **progress_meta,
                 }
             return {
                 "status": "fail",
@@ -1805,6 +1694,7 @@ def run_multi_sizes_test_split(server_binary_name, client_binary_name, lib_name,
                 "mem_mb": sampled.get("mem_mb"),
                 "reason": "no_data",
                 "warnings": warnings,
+                **progress_meta,
             }
         except Exception:
             stop_server()
@@ -1886,29 +1776,25 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     if pattern_name.startswith("MULTI_"):
         timeout_sec = max(
             60,
-            parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
-            + parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5)
+            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
+            + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
             + 30,
         )
     if pattern_name in STREAM_VARIANT_PATTERNS:
         timeout_sec = max(
             120,
-            parse_env_int("BENCH_MULTI_WARMUP_SECONDS", 3)
-            + parse_env_int("BENCH_MULTI_DURATION_SECONDS", 5)
+            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
+            + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
             + 90,
         )
 
     env = get_env_for_lib(lib_name)
     if pattern_name.startswith("MULTI_"):
-        set_env_pair(env, "PERF_MULTI_PATTERN", "BENCH_MULTI_PATTERN", pattern_name)
-    if pattern_name == "STREAM" and transport in ("tls", "ws", "wss"):
-        env["BENCH_MSG_COUNT"] = "5000"
-        env["BENCH_WARMUP_COUNT"] = "100"
-
+        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
     try:
         if IS_WINDOWS:
             cmd = [binary_path, lib_name, transport, str(size)]
-        elif os.environ.get("BENCH_TASKSET") == "1" or os.environ.get("PERF_TASKSET") == "1":
+        elif os.environ.get("PERF_TASKSET") == "1":
             cmd = ["taskset", "-c", "1", binary_path, lib_name, transport, str(size)]
         else:
             cmd = [binary_path, lib_name, transport, str(size)]
@@ -1947,144 +1833,256 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
         return []
 
 
-def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None):
-    print(f"  > Benchmarking {lib_name} for {pattern_name}...")
-    final_stats = {}  # (tr, size, metric) -> median value
+def _table_header_line(is_multi):
+    size_w = 8
+    tp_w = 16
+    bw_w = 12
+    lat_w = 12
+    cpu_w = 6
+    mem_w = 8
+    if is_multi:
+        return (
+            f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
+            f"{'Latency':>{lat_w}} | {'C.CPU%':>{cpu_w}} | {'C.Mem MB':>{mem_w}} | "
+            f"{'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} |"
+        )
+    return (
+        f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
+        f"{'Latency':>{lat_w}} | {'CPU%':>{cpu_w}} | {'Mem MB':>{mem_w}} |"
+    )
+
+
+def _table_separator_line(is_multi):
+    size_w = 8
+    tp_w = 16
+    bw_w = 12
+    lat_w = 12
+    cpu_w = 6
+    mem_w = 8
+    if is_multi:
+        return (
+            f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
+            f"{'-' * (lat_w + 2)}|{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
+            f"{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
+        )
+    return (
+        f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
+        f"{'-' * (lat_w + 2)}|{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
+    )
+
+
+def _emit_table_header(emit, is_multi, indent):
+    emit(f"{indent}{_table_header_line(is_multi)}")
+    emit(f"{indent}{_table_separator_line(is_multi)}")
+
+
+def _emit_table_row(
+    emit,
+    pattern_name,
+    is_multi,
+    indent,
+    size,
+    status,
+    throughput=None,
+    bandwidth=None,
+    latency=None,
+    client_cpu=None,
+    client_mem=None,
+    server_cpu=None,
+    server_mem=None,
+):
+    size_w = 8
+    tp_w = 16
+    bw_w = 12
+    lat_w = 12
+    cpu_w = 6
+    mem_w = 8
+    if status == "success":
+        tp_s = format_throughput(pattern_name, throughput if throughput is not None else 0.0)
+        bw_s = format_bandwidth(bandwidth if bandwidth is not None else 0.0)
+        lat_s = f"{(latency if latency is not None else 0.0):8.2f} us"
+        cpu_s = f"{float(client_cpu):4.1f}" if client_cpu is not None else "N/A"
+        mem_s = f"{float(client_mem):6.1f}" if client_mem is not None else "N/A"
+        server_cpu_s = f"{float(server_cpu):4.1f}" if server_cpu is not None else "N/A"
+        server_mem_s = f"{float(server_mem):6.1f}" if server_mem is not None else "N/A"
+    else:
+        token = "UNSUPPORTED" if status == "unsupported" else "FAIL"
+        tp_s = token
+        bw_s = token
+        lat_s = token
+        cpu_s = "N/A"
+        mem_s = "N/A"
+        server_cpu_s = "N/A"
+        server_mem_s = "N/A"
+
+    if is_multi:
+        row_line = (
+            f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
+            f"{lat_s:>{lat_w}} | {cpu_s:>{cpu_w}} | {mem_s:>{mem_w}} | "
+            f"{server_cpu_s:>{cpu_w}} | {server_mem_s:>{mem_w}} |"
+        )
+    else:
+        row_line = (
+            f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
+            f"{lat_s:>{lat_w}} | {cpu_s:>{cpu_w}} | {mem_s:>{mem_w}} |"
+        )
+    emit(f"{indent}{row_line}")
+
+
+def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None, table_lines=None):
+    def emit(line):
+        print(line)
+        if table_lines is not None:
+            table_lines.append(line)
+
+    emit(f"  > Benchmarking {lib_name} for {pattern_name}...")
+    final_stats = {}
     failures = []
 
     if transports is None:
         transports = TRANSPORTS
 
     run_cooldown_ms = max(
-        0, parse_env_int("BENCH_MULTI_RUN_COOLDOWN_MS", DEFAULT_RUN_COOLDOWN_MS)
+        0, parse_env_int("PERF_MULTI_RUN_COOLDOWN_MS", DEFAULT_RUN_COOLDOWN_MS)
     )
     transport_transition_ms = max(
-        0, parse_env_int("BENCH_MULTI_TRANSPORT_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
     )
+
+    is_multi = pattern_name.startswith("MULTI_")
+    sizes = MULTI_STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
 
     for tr_idx, tr in enumerate(transports):
         has_next_transport = (tr_idx + 1) < len(transports)
 
         def maybe_transport_cooldown():
-            if (
-                not pattern_name.startswith("MULTI_")
-                or transport_transition_ms <= 0
-                or not has_next_transport
-            ):
+            if not is_multi or transport_transition_ms <= 0 or not has_next_transport:
                 return
-            print(
-                f"[transport-cooldown={transport_transition_ms}ms] ",
-                end="",
-                flush=True,
-            )
+            emit(f"    [transport cooldown {transport_transition_ms}ms]")
             time.sleep(transport_transition_ms / 1000.0)
 
-        sizes = MULTI_STREAM_MSG_SIZES if pattern_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
-
-        if pattern_name.startswith("MULTI_"):
+        if is_multi:
             pattern_runs = num_runs
             if pattern_name in STREAM_VARIANT_PATTERNS:
                 stream_runs_limit = max(
                     1,
                     parse_env_int(
                         "PERF_MULTI_STREAM_RUNS",
-                        parse_env_int("BENCH_MULTI_STREAM_RUNS", 1),
+                        parse_env_int("PERF_MULTI_STREAM_RUNS", 1),
                     ),
                 )
                 pattern_runs = min(num_runs, stream_runs_limit)
+
             size_tag = ",".join(f"{sz}B" for sz in sizes)
-            print(f"    Testing {tr} | {size_tag}: ", end="", flush=True)
-            metrics_raw = {}
-            failed_runs = 0
+            emit(f"    Testing {tr} | {size_tag}:")
+            show_run_labels = pattern_runs > 1
+            if not show_run_labels:
+                _emit_table_header(emit, True, "      ")
+
             expected_keys = []
             for sz in sizes:
                 expected_keys.append(f"{tr}|{sz}|throughput")
                 expected_keys.append(f"{tr}|{sz}|bandwidth")
                 expected_keys.append(f"{tr}|{sz}|latency")
 
-            tr_supported = True
-            for i in range(pattern_runs):
-                print(f"{i+1} ", end="", flush=True)
-                has_next_run = (i + 1) < pattern_runs
+            metrics_raw = {}
+            run_failed_sizes = set()
+            tr_unsupported = False
+            tr_skipped = False
+            skip_reason = "skip"
+
+            for run_idx in range(pattern_runs):
+                run_no = run_idx + 1
+                has_next_run = (run_idx + 1) < pattern_runs
 
                 def maybe_cooldown():
                     if run_cooldown_ms <= 0 or not has_next_run:
                         return
-                    print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
+                    emit(f"      [cooldown {run_cooldown_ms}ms]")
                     time.sleep(run_cooldown_ms / 1000.0)
+
+                if show_run_labels:
+                    emit(f"      run {run_no}/{pattern_runs}:")
+                    _emit_table_header(emit, True, "        ")
+                    row_indent = "        "
+                else:
+                    row_indent = "      "
 
                 outcome = run_multi_sizes_test(binary_name, lib_name, tr, sizes, pattern_name)
                 rc = outcome.get("returncode", 0)
                 for warning in outcome.get("warnings", []) or []:
                     print(f"warning: {warning}", file=sys.stderr)
 
-                outcome_status = outcome.get("status", "fail")
                 if outcome.get("timed_out", False):
-                    failed_runs += 1
                     for sz in sizes:
                         failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                        run_failed_sizes.add(sz)
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "fail",
+                        )
                     if FAIL_FAST:
-                        print(f"(failures={failed_runs}) ", end="", flush=True)
-                        print("aborting")
                         return final_stats, failures
                     maybe_cooldown()
                     continue
 
+                outcome_status = outcome.get("status", "fail")
                 if outcome_status == "unsupported":
-                    tr_supported = False
+                    tr_unsupported = True
                     for sz in sizes:
-                        final_stats[f"{tr}|{sz}|throughput"] = 0
-                        final_stats[f"{tr}|{sz}|bandwidth"] = 0
-                        final_stats[f"{tr}|{sz}|latency"] = 0
-                        final_stats[f"{tr}|{sz}|unsupported"] = 1
-                    print("unsupported ", end="", flush=True)
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "unsupported",
+                        )
                     break
 
                 if outcome_status == "skip":
-                    tr_supported = False
+                    tr_skipped = True
                     skip_reason = outcome.get("reason", "skip")
                     for sz in sizes:
-                        final_stats[f"{tr}|{sz}|throughput"] = 0
-                        final_stats[f"{tr}|{sz}|bandwidth"] = 0
-                        final_stats[f"{tr}|{sz}|latency"] = 0
-                        final_stats[f"{tr}|{sz}|skip"] = 1
-                        final_stats[f"{tr}|{sz}|skip_reason"] = skip_reason
-                    print("skip ", end="", flush=True)
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "fail",
+                        )
                     break
 
-                parsed = outcome.get("parsed", {})
+                parsed = outcome.get("parsed", {}) or {}
                 if not parsed:
-                    failed_runs += 1
                     base_reason = outcome.get("reason", "")
-                    if base_reason:
-                        reason = base_reason
-                    else:
-                        reason = f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
+                    reason = base_reason if base_reason else (
+                        f"no_data_rc_{rc}" if rc not in (0, None) else "no_data"
+                    )
                     for sz in sizes:
                         failures.append((pattern_name, lib_name, tr, sz, reason))
+                        run_failed_sizes.add(sz)
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "fail",
+                        )
                     if FAIL_FAST:
-                        print(f"(failures={failed_runs}) ", end="", flush=True)
-                        print("aborting")
                         return final_stats, failures
                     maybe_cooldown()
                     continue
 
-                missing = [key for key in expected_keys if key not in parsed]
-                if missing:
-                    failed_runs += 1
-                    for key in missing:
-                        parts = key.split("|")
-                        sz = int(parts[1])
-                        metric = parts[2]
-                        suffix = f"_rc_{rc}" if rc not in (0, None) else ""
-                        failures.append((pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}"))
-                    if FAIL_FAST:
-                        print(f"(failures={failed_runs}) ", end="", flush=True)
-                        print("aborting")
-                        return final_stats, failures
-
                 for key, value in parsed.items():
                     metrics_raw.setdefault(key, []).append(value)
+
                 cpu_sample = outcome.get("cpu_pct")
                 mem_sample = outcome.get("mem_mb")
                 for sz in sizes:
@@ -2094,10 +2092,106 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                         metrics_raw.setdefault(cpu_key, []).append(float(cpu_sample))
                     if mem_sample is not None and mem_key not in parsed:
                         metrics_raw.setdefault(mem_key, []).append(float(mem_sample))
+
+                run_has_missing = False
+                for sz in sizes:
+                    tp_key = f"{tr}|{sz}|throughput"
+                    bw_key = f"{tr}|{sz}|bandwidth"
+                    lat_key = f"{tr}|{sz}|latency"
+                    missing = []
+                    if tp_key not in parsed:
+                        missing.append("throughput")
+                    if bw_key not in parsed:
+                        missing.append("bandwidth")
+                    if lat_key not in parsed:
+                        missing.append("latency")
+
+                    if missing:
+                        run_has_missing = True
+                        run_failed_sizes.add(sz)
+                        for metric in missing:
+                            suffix = f"_rc_{rc}" if rc not in (0, None) else ""
+                            failures.append(
+                                (pattern_name, lib_name, tr, sz, f"missing_{metric}{suffix}")
+                            )
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            row_indent,
+                            sz,
+                            "fail",
+                        )
+                        continue
+
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        True,
+                        row_indent,
+                        sz,
+                        "success",
+                        throughput=parsed.get(tp_key, 0.0),
+                        bandwidth=parsed.get(bw_key, 0.0),
+                        latency=parsed.get(lat_key, 0.0),
+                        client_cpu=parsed.get(
+                            f"{tr}|{sz}|client_cpu_pct",
+                            float(cpu_sample) if cpu_sample is not None else None,
+                        ),
+                        client_mem=parsed.get(
+                            f"{tr}|{sz}|client_mem_mb",
+                            float(mem_sample) if mem_sample is not None else None,
+                        ),
+                        server_cpu=parsed.get(f"{tr}|{sz}|server_cpu_pct"),
+                        server_mem=parsed.get(f"{tr}|{sz}|server_mem_mb"),
+                    )
+
+                if FAIL_FAST and run_has_missing:
+                    return final_stats, failures
                 maybe_cooldown()
 
-            if not tr_supported:
-                print("Done")
+            if tr_unsupported:
+                for sz in sizes:
+                    final_stats[f"{tr}|{sz}|throughput"] = 0
+                    final_stats[f"{tr}|{sz}|bandwidth"] = 0
+                    final_stats[f"{tr}|{sz}|latency"] = 0
+                    final_stats[f"{tr}|{sz}|unsupported"] = 1
+                if show_run_labels:
+                    emit("      median:")
+                    _emit_table_header(emit, True, "        ")
+                    for sz in sizes:
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            "        ",
+                            sz,
+                            "unsupported",
+                        )
+                emit(f"    Testing {tr}: Done")
+                maybe_transport_cooldown()
+                continue
+
+            if tr_skipped:
+                for sz in sizes:
+                    final_stats[f"{tr}|{sz}|throughput"] = 0
+                    final_stats[f"{tr}|{sz}|bandwidth"] = 0
+                    final_stats[f"{tr}|{sz}|latency"] = 0
+                    final_stats[f"{tr}|{sz}|skip"] = 1
+                    final_stats[f"{tr}|{sz}|skip_reason"] = skip_reason
+                if show_run_labels:
+                    emit("      median:")
+                    _emit_table_header(emit, True, "        ")
+                    for sz in sizes:
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            "        ",
+                            sz,
+                            "fail",
+                        )
+                emit(f"    Testing {tr}: Done")
                 maybe_transport_cooldown()
                 continue
 
@@ -2116,88 +2210,218 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None)
                     if vals:
                         final_stats[optional_key] = statistics.median(vals)
 
-            if failed_runs:
-                print(f"(failures={failed_runs}) ", end="", flush=True)
-            print("Done")
+            if show_run_labels:
+                emit("      median:")
+                _emit_table_header(emit, True, "        ")
+                for sz in sizes:
+                    tp_key = f"{tr}|{sz}|throughput"
+                    bw_key = f"{tr}|{sz}|bandwidth"
+                    lat_key = f"{tr}|{sz}|latency"
+                    if sz in run_failed_sizes or not (
+                        metrics_raw.get(tp_key)
+                        and metrics_raw.get(bw_key)
+                        and metrics_raw.get(lat_key)
+                    ):
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            True,
+                            "        ",
+                            sz,
+                            "fail",
+                        )
+                        continue
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        True,
+                        "        ",
+                        sz,
+                        "success",
+                        throughput=final_stats.get(tp_key, 0.0),
+                        bandwidth=final_stats.get(bw_key, 0.0),
+                        latency=final_stats.get(lat_key, 0.0),
+                        client_cpu=final_stats.get(f"{tr}|{sz}|client_cpu_pct"),
+                        client_mem=final_stats.get(f"{tr}|{sz}|client_mem_mb"),
+                        server_cpu=final_stats.get(f"{tr}|{sz}|server_cpu_pct"),
+                        server_mem=final_stats.get(f"{tr}|{sz}|server_mem_mb"),
+                    )
+
+            emit(f"    Testing {tr}: Done")
             maybe_transport_cooldown()
             continue
 
-        tr_supported = True
-        for idx, sz in enumerate(sizes):
-            print(f"    Testing {tr} | {sz}B: ", end="", flush=True)
-            metrics_raw = {}  # metric_name -> list of values
-            failed_runs = 0
+        emit(f"    Testing {tr}:")
+        show_run_labels = num_runs > 1
+        if not show_run_labels:
+            _emit_table_header(emit, False, "      ")
 
-            if not tr_supported:
+        metrics_raw = {}
+        tr_unsupported = False
+        run_failed_sizes = set()
+
+        for run_idx in range(num_runs):
+            run_no = run_idx + 1
+            if tr_unsupported:
+                break
+
+            if show_run_labels:
+                emit(f"      run {run_no}/{num_runs}:")
+                _emit_table_header(emit, False, "        ")
+                row_indent = "        "
+            else:
+                row_indent = "      "
+
+            for sz_idx, sz in enumerate(sizes):
+                results = run_single_test(binary_name, lib_name, tr, sz, pattern_name)
+                if results is None:
+                    failures.append((pattern_name, lib_name, tr, sz, "timeout"))
+                    run_failed_sizes.add(sz)
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        False,
+                        row_indent,
+                        sz,
+                        "fail",
+                    )
+                    if FAIL_FAST:
+                        return final_stats, failures
+                    continue
+
+                if not results:
+                    failures.append((pattern_name, lib_name, tr, sz, "no_data"))
+                    run_failed_sizes.add(sz)
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        False,
+                        row_indent,
+                        sz,
+                        "fail",
+                    )
+                    if FAIL_FAST:
+                        return final_stats, failures
+                    continue
+
+                if len(results) == 1 and results[0].get("metric") == "_unsupported_transport_":
+                    tr_unsupported = True
+                    for rem_sz in sizes[sz_idx:]:
+                        _emit_table_row(
+                            emit,
+                            pattern_name,
+                            False,
+                            row_indent,
+                            rem_sz,
+                            "unsupported",
+                        )
+                    break
+
+                result_by_metric = {}
+                for r in results:
+                    metric = r.get("metric", "").strip().lower()
+                    try:
+                        value = float(r.get("value"))
+                    except (TypeError, ValueError):
+                        continue
+                    result_by_metric[metric] = value
+                    metrics_raw.setdefault(f"{tr}|{sz}|{metric}", []).append(value)
+
+                missing = []
+                for metric in ("throughput", "bandwidth", "latency"):
+                    if metric not in result_by_metric:
+                        missing.append(metric)
+                if missing:
+                    run_failed_sizes.add(sz)
+                    for metric in missing:
+                        failures.append((pattern_name, lib_name, tr, sz, f"missing_{metric}"))
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        False,
+                        row_indent,
+                        sz,
+                        "fail",
+                    )
+                    if FAIL_FAST:
+                        return final_stats, failures
+                    continue
+
+                _emit_table_row(
+                    emit,
+                    pattern_name,
+                    False,
+                    row_indent,
+                    sz,
+                    "success",
+                    throughput=result_by_metric.get("throughput"),
+                    bandwidth=result_by_metric.get("bandwidth"),
+                    latency=result_by_metric.get("latency"),
+                    client_cpu=result_by_metric.get("cpu_pct"),
+                    client_mem=result_by_metric.get("mem_mb"),
+                )
+
+        if tr_unsupported:
+            for sz in sizes:
                 final_stats[f"{tr}|{sz}|throughput"] = 0
                 final_stats[f"{tr}|{sz}|bandwidth"] = 0
                 final_stats[f"{tr}|{sz}|latency"] = 0
                 final_stats[f"{tr}|{sz}|unsupported"] = 1
-                print("unsupported", end=" ", flush=True)
-                print("Done")
-                continue
+            if show_run_labels:
+                emit("      median:")
+                _emit_table_header(emit, False, "        ")
+                for sz in sizes:
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        False,
+                        "        ",
+                        sz,
+                        "unsupported",
+                    )
+            emit(f"    Testing {tr}: Done")
+            continue
 
-            for i in range(num_runs):
-                print(f"{i+1} ", end="", flush=True)
-                has_next_run = (i + 1) < num_runs
+        for key, vals in metrics_raw.items():
+            if vals:
+                final_stats[key] = statistics.median(vals)
 
-                def maybe_cooldown():
-                    if run_cooldown_ms <= 0 or not has_next_run:
-                        return
-                    print(f"[cooldown={run_cooldown_ms}ms] ", end="", flush=True)
-                    time.sleep(run_cooldown_ms / 1000.0)
-
-                results = run_single_test(binary_name, lib_name, tr, sz, pattern_name)
-                if results is None:
-                    failed_runs += 1
-                    failures.append((pattern_name, lib_name, tr, sz, "timeout"))
-                    if FAIL_FAST:
-                        print(f"(failures={failed_runs}) ", end="", flush=True)
-                        print("aborting")
-                        return final_stats, failures
-                    maybe_cooldown()
+        if show_run_labels:
+            emit("      median:")
+            _emit_table_header(emit, False, "        ")
+            for sz in sizes:
+                tp_key = f"{tr}|{sz}|throughput"
+                bw_key = f"{tr}|{sz}|bandwidth"
+                lat_key = f"{tr}|{sz}|latency"
+                if sz in run_failed_sizes or not (
+                    tp_key in final_stats and bw_key in final_stats and lat_key in final_stats
+                ):
+                    _emit_table_row(
+                        emit,
+                        pattern_name,
+                        False,
+                        "        ",
+                        sz,
+                        "fail",
+                    )
                     continue
-                if not results:
-                    failed_runs += 1
-                    failures.append((pattern_name, lib_name, tr, sz, "no_data"))
-                    if FAIL_FAST:
-                        print(f"(failures={failed_runs}) ", end="", flush=True)
-                        print("aborting")
-                        return final_stats, failures
-                    maybe_cooldown()
-                    continue
-                if len(results) == 1 and results[0].get("metric") == "_unsupported_transport_":
-                    print("unsupported", end=" ", flush=True)
-                    print("Done")
-                    tr_supported = False
-                    final_stats[f"{tr}|{sz}|throughput"] = 0
-                    final_stats[f"{tr}|{sz}|bandwidth"] = 0
-                    final_stats[f"{tr}|{sz}|latency"] = 0
-                    final_stats[f"{tr}|{sz}|unsupported"] = 1
-                    for next_idx in range(idx + 1, len(sizes)):
-                        next_sz = sizes[next_idx]
-                        final_stats[f"{tr}|{next_sz}|throughput"] = 0
-                        final_stats[f"{tr}|{next_sz}|bandwidth"] = 0
-                        final_stats[f"{tr}|{next_sz}|latency"] = 0
-                        final_stats[f"{tr}|{next_sz}|unsupported"] = 1
-                    if FAIL_FAST:
-                        break
-                    maybe_cooldown()
-                    continue
-                for r in results:
-                    m = r["metric"]
-                    metrics_raw.setdefault(m, []).append(r["value"])
-                maybe_cooldown()
+                _emit_table_row(
+                    emit,
+                    pattern_name,
+                    False,
+                    "        ",
+                    sz,
+                    "success",
+                    throughput=final_stats.get(tp_key),
+                    bandwidth=final_stats.get(bw_key),
+                    latency=final_stats.get(lat_key),
+                    client_cpu=final_stats.get(f"{tr}|{sz}|cpu_pct"),
+                    client_mem=final_stats.get(f"{tr}|{sz}|mem_mb"),
+                )
 
-            for m, vals in metrics_raw.items():
-                final_stats[f"{tr}|{sz}|{m}"] = statistics.median(vals) if vals else 0
-            if failed_runs:
-                print(f"(failures={failed_runs}) ", end="", flush=True)
-            print("Done")
-        maybe_transport_cooldown()
+        emit(f"    Testing {tr}: Done")
+
     return final_stats, failures
-
-
 def format_throughput(pattern_name, throughput_per_sec):
     unit = "Kops/s" if is_echo_pattern(pattern_name) else "Kmsg/s"
     return f"{throughput_per_sec/1e3:6.2f} {unit}"
@@ -2291,7 +2515,7 @@ def detect_build_type(build_dir):
 def resolve_clients_meta(selected_patterns):
     env_clients = os.environ.get("PERF_MULTI_CLIENTS", "").strip()
     if not env_clients:
-        env_clients = os.environ.get("BENCH_MULTI_CLIENTS", "").strip()
+        env_clients = os.environ.get("PERF_MULTI_CLIENTS", "").strip()
     if env_clients.isdigit():
         return env_clients
 
@@ -2300,11 +2524,11 @@ def resolve_clients_meta(selected_patterns):
 
     stream_default = parse_env_int(
         "PERF_MULTI_DEFAULT_STREAM_CLIENTS",
-        parse_env_int("BENCH_MULTI_DEFAULT_STREAM_CLIENTS", 1000),
+        parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 1000),
     )
     general_default = parse_env_int(
         "PERF_MULTI_DEFAULT_CLIENTS",
-        parse_env_int("BENCH_MULTI_DEFAULT_CLIENTS", 1000),
+        parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 1000),
     )
     if len(selected_patterns) == 1 and selected_patterns[0] in STREAM_VARIANT_PATTERNS:
         return str(stream_default)
@@ -2341,7 +2565,7 @@ def print_meta_lines(meta_items):
 def resolve_results_root(configured=""):
     if configured:
         return os.path.abspath(configured)
-    env_configured = os.environ.get("BENCH_RESULTS_DIR", "").strip()
+    env_configured = os.environ.get("PERF_RESULTS_DIR", "").strip()
     if env_configured:
         return os.path.abspath(env_configured)
     return os.path.join(SCRIPT_DIR, "results")
@@ -2358,7 +2582,7 @@ def resolve_multi_results_dirs(results_root):
 
 
 def resolve_results_max_files():
-    raw = os.environ.get("BENCH_RESULTS_MAX_FILES", "").strip()
+    raw = os.environ.get("PERF_RESULTS_MAX_FILES", "").strip()
     if not raw:
         return 100
     try:
@@ -2487,7 +2711,7 @@ def resolve_fixed_baseline_path(baseline_dir, explicit_path):
 
 
 def load_threshold_rules():
-    path = os.environ.get("BENCH_THRESHOLDS_FILE", "").strip() or DEFAULT_THRESHOLDS_FILE
+    path = os.environ.get("PERF_THRESHOLDS_FILE", "").strip() or DEFAULT_THRESHOLDS_FILE
     if not os.path.isfile(path):
         return [], []
 
@@ -2765,9 +2989,10 @@ def parse_args():
     usage = (
         "Usage: run_comparison.py [PATTERN] [options]\n\n"
         "Measure current zlink benchmarks.\n\n"
-        "Note: PATTERN=ALL includes STREAM and MULTI_* patterns by default.\n\n"
+        "Note: PATTERN=ALL includes single (non-STREAM) and MULTI_* patterns by default.\n\n"
         "Options:\n"
         "  --runs N                     Iterations per configuration (default: 1)\n"
+        "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
         "  --build-dir PATH             Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
         "  --mode MODE                  observe|trend|gate (default: observe)\n"
@@ -2775,7 +3000,7 @@ def parse_args():
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit tmp result file path\n"
-        "  --result                     Save report result when status is complete\n"
+        "  --result                     Save report result table (saved even on partial/fail)\n"
         "  --save [VERSION]             Save fixed baseline (VERSION omitted => timestamp filename)\n"
         "  --baseline-file PATH         Fixed baseline override path for gate mode\n"
         "  --warn-throughput-pct N      Throughput warning drop threshold (default: 10)\n"
@@ -2792,39 +3017,40 @@ def parse_args():
     )
     p_req = "ALL"
     num_runs = DEFAULT_NUM_RUNS
+    single_duration_seconds = None
     build_dir = ""
     pin_cpu = False
 
-    mode = os.environ.get("BENCH_MODE", MODE_OBSERVE).strip().lower()
-    rolling_n = max(1, parse_env_int("BENCH_ROLLING_N", 10))
-    results_dir = os.environ.get("BENCH_RESULTS_DIR", "").strip()
-    results_tag = os.environ.get("BENCH_RESULTS_TAG", "").strip()
+    mode = os.environ.get("PERF_MODE", MODE_OBSERVE).strip().lower()
+    rolling_n = max(1, parse_env_int("PERF_ROLLING_N", 10))
+    results_dir = os.environ.get("PERF_RESULTS_DIR", "").strip()
+    results_tag = os.environ.get("PERF_RESULTS_TAG", "").strip()
     result_file = ""
     save_report = False
-    save_baseline_version = os.environ.get("BENCH_SAVE_BASELINE", "").strip()
+    save_baseline_version = os.environ.get("PERF_SAVE_BASELINE", "").strip()
     save_baseline_requested = bool(save_baseline_version)
-    baseline_file = os.environ.get("BENCH_BASELINE_FILE", "").strip()
+    baseline_file = os.environ.get("PERF_BASELINE_FILE", "").strip()
     warn_throughput_pct = parse_env_float(
-        "BENCH_WARN_THROUGHPUT_PCT", DEFAULT_WARN_THROUGHPUT_PCT
+        "PERF_WARN_THROUGHPUT_PCT", DEFAULT_WARN_THROUGHPUT_PCT
     )
     fail_throughput_pct = parse_env_float(
-        "BENCH_FAIL_THROUGHPUT_PCT", DEFAULT_FAIL_THROUGHPUT_PCT
+        "PERF_FAIL_THROUGHPUT_PCT", DEFAULT_FAIL_THROUGHPUT_PCT
     )
-    warn_latency_pct = parse_env_float("BENCH_WARN_LATENCY_PCT", DEFAULT_WARN_LATENCY_PCT)
-    fail_latency_pct = parse_env_float("BENCH_FAIL_LATENCY_PCT", DEFAULT_FAIL_LATENCY_PCT)
+    warn_latency_pct = parse_env_float("PERF_WARN_LATENCY_PCT", DEFAULT_WARN_LATENCY_PCT)
+    fail_latency_pct = parse_env_float("PERF_FAIL_LATENCY_PCT", DEFAULT_FAIL_LATENCY_PCT)
     transport_transition_ms = max(
-        0, parse_env_int("BENCH_MULTI_TRANSPORT_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
     )
     pattern_transition_ms = max(
-        0, parse_env_int("BENCH_MULTI_PATTERN_TRANSITION_MS", 3000)
+        0, parse_env_int("PERF_MULTI_PATTERN_TRANSITION_MS", 3000)
     )
     server_ready_timeout_ms = max(
-        0, parse_env_int("BENCH_MULTI_SERVER_READY_TIMEOUT_MS", 10000)
+        0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000)
     )
     server_shutdown_timeout_ms = max(
-        0, parse_env_int("BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
+        0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000)
     )
-    server_bind_port = max(0, parse_env_int("BENCH_MULTI_SERVER_BIND_PORT", 0))
+    server_bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
 
     i = 1
     while i < len(sys.argv):
@@ -2849,6 +3075,22 @@ def parse_args():
                 num_runs = int(arg.split("=", 1)[1])
             except ValueError:
                 print("Error: --runs must be an integer.", file=sys.stderr)
+                sys.exit(1)
+        elif arg == "--duration":
+            if i + 1 >= len(sys.argv):
+                print("Error: --duration requires a value.", file=sys.stderr)
+                sys.exit(1)
+            try:
+                single_duration_seconds = int(sys.argv[i + 1])
+            except ValueError:
+                print("Error: --duration must be an integer.", file=sys.stderr)
+                sys.exit(1)
+            i += 1
+        elif arg.startswith("--duration="):
+            try:
+                single_duration_seconds = int(arg.split("=", 1)[1])
+            except ValueError:
+                print("Error: --duration must be an integer.", file=sys.stderr)
                 sys.exit(1)
         elif arg == "--build-dir":
             if i + 1 >= len(sys.argv):
@@ -3049,6 +3291,9 @@ def parse_args():
     if num_runs < 1:
         print("Error: --runs must be >= 1.", file=sys.stderr)
         sys.exit(1)
+    if single_duration_seconds is not None and single_duration_seconds < 1:
+        print("Error: --duration must be >= 1.", file=sys.stderr)
+        sys.exit(1)
     if rolling_n < 1:
         print("Error: --rolling-n must be >= 1.", file=sys.stderr)
         sys.exit(1)
@@ -3081,6 +3326,7 @@ def parse_args():
     return {
         "pattern_request": p_req,
         "num_runs": num_runs,
+        "single_duration_seconds": single_duration_seconds,
         "build_dir": build_dir,
         "pin_cpu": pin_cpu,
         "mode": mode,
@@ -3120,20 +3366,17 @@ def main():
 
     CURRENT_LIB_DIR = derive_current_lib_dir(BUILD_DIR)
     if pin_cpu:
-        base_env["BENCH_TASKSET"] = "1"
         base_env["PERF_TASKSET"] = "1"
-        os.environ["BENCH_TASKSET"] = "1"
         os.environ["PERF_TASKSET"] = "1"
+    if args["single_duration_seconds"] is not None:
+        duration_seconds = str(args["single_duration_seconds"])
+        base_env["PERF_SINGLE_DURATION_SECONDS"] = duration_seconds
+        os.environ["PERF_SINGLE_DURATION_SECONDS"] = duration_seconds
     timeout_env_values = {
-        "BENCH_MULTI_SERVER_READY_TIMEOUT_MS": str(args["server_ready_timeout_ms"]),
         "PERF_MULTI_SERVER_READY_TIMEOUT_MS": str(args["server_ready_timeout_ms"]),
-        "BENCH_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS": str(
-            args["server_shutdown_timeout_ms"]
-        ),
         "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS": str(
             args["server_shutdown_timeout_ms"]
         ),
-        "BENCH_MULTI_SERVER_BIND_PORT": str(args["server_bind_port"]),
         "PERF_MULTI_SERVER_BIND_PORT": str(args["server_bind_port"]),
     }
     for env_key, env_value in timeout_env_values.items():
@@ -3148,18 +3391,15 @@ def main():
         ("perf_dealer_router", "DEALER_ROUTER"),
         ("perf_router_router", "ROUTER_ROUTER"),
         ("perf_router_router_poll", "ROUTER_ROUTER_POLL"),
-        ("perf_stream", "STREAM"),
-        ("perf_stream_callback", "STREAM_CALLBACK"),
-        ("perf_stream_len32be", "STREAM_LEN32BE"),
         ("comp_current_multi_dealer_dealer_client", "MULTI_DEALER_DEALER"),
         ("comp_current_multi_dealer_router_client", "MULTI_DEALER_ROUTER"),
         ("comp_current_multi_router_router_client", "MULTI_ROUTER_ROUTER"),
         ("comp_current_multi_pubsub_client", "MULTI_PUBSUB"),
         ("comp_current_multi_gateway_client", "MULTI_GATEWAY"),
         ("comp_current_multi_spot_client", "MULTI_SPOT"),
-        ("comp_current_multi_stream_client", "MULTI_STREAM"),
-        ("comp_current_multi_stream_callback_client", "MULTI_STREAM_CALLBACK"),
-        ("comp_current_multi_stream_len32be_client", "MULTI_STREAM_LEN32BE"),
+        ("perf_stream_client", "MULTI_STREAM"),
+        ("perf_stream_client", "MULTI_STREAM_CALLBACK"),
+        ("perf_stream_client", "MULTI_STREAM_LEN32BE"),
         ("perf_gateway", "GATEWAY"),
         ("perf_spot", "SPOT"),
     ]
@@ -3170,6 +3410,16 @@ def main():
         requested = {p.strip().upper() for p in p_req.split(",") if p.strip()}
         if not requested:
             print("Error: --pattern requires at least one value.", file=sys.stderr)
+            sys.exit(1)
+
+    known_patterns = {p_name for _, p_name in comparisons}
+    if requested is not None:
+        unknown_patterns = sorted(requested - known_patterns)
+        if unknown_patterns:
+            print(
+                "Error: unsupported patterns: " + ", ".join(unknown_patterns),
+                file=sys.stderr,
+            )
             sys.exit(1)
 
     selected_patterns = [
@@ -3195,8 +3445,8 @@ def main():
 
     missing_current = collect_missing_patterns(comparisons, requested)
     skip_auto_build = (
-        os.environ.get("BENCH_SKIP_AUTO_BUILD", "0") == "1"
-        or os.environ.get("BENCH_NO_AUTOBUILD", "0") == "1"
+        os.environ.get("PERF_SKIP_AUTO_BUILD", "0") == "1"
+        or os.environ.get("PERF_NO_AUTOBUILD", "0") == "1"
     )
     if missing_current and not skip_auto_build:
         cmake_build_dir = derive_cmake_build_dir(BUILD_DIR)
@@ -3225,7 +3475,7 @@ def main():
         if skip_auto_build:
             print(
                 "Error: benchmark binaries are missing and auto-build is disabled "
-                "(BENCH_SKIP_AUTO_BUILD=1 or BENCH_NO_AUTOBUILD=1).",
+                "(PERF_SKIP_AUTO_BUILD=1 or PERF_NO_AUTOBUILD=1).",
                 file=sys.stderr,
             )
         print(
@@ -3274,43 +3524,15 @@ def main():
             continue
 
         c_stats, failures = collect_data(
-            current_bin, "current", p_name, num_runs, pattern_transports
+            current_bin, "current", p_name, num_runs, pattern_transports, table_lines
         )
         all_failures.extend(failures)
         failure_lookup = build_failure_lookup(failures, p_name)
 
-        # Print table and classify statuses.
-        size_w = 8
-        tp_w = 16
-        bw_w = 12
-        lat_w = 12
-        cpu_w = 6
-        mem_w = 8
+        # Classify statuses and collect RESULT lines.
         is_multi = is_multi_pattern(p_name)
         sizes = MULTI_STREAM_MSG_SIZES if p_name in STREAM_VARIANT_PATTERNS else MSG_SIZES
         for tr in pattern_transports:
-            transport_header = f"### Transport: {tr}"
-            print(f"\n{transport_header}")
-            table_lines.append("")
-            table_lines.append(transport_header)
-            if is_multi:
-                table_header = (
-                    f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | {'Latency':>{lat_w}} | {'C.CPU%':>{cpu_w}} | {'C.Mem MB':>{mem_w}} | {'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} |"
-                )
-                table_sep = (
-                    f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|{'-' * (lat_w + 2)}|{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
-                )
-            else:
-                table_header = (
-                    f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | {'Latency':>{lat_w}} | {'CPU%':>{cpu_w}} | {'Mem MB':>{mem_w}} |"
-                )
-                table_sep = (
-                    f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|{'-' * (lat_w + 2)}|{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
-                )
-            print(table_header)
-            print(table_sep)
-            table_lines.append(table_header)
-            table_lines.append(table_sep)
             for sz in sizes:
                 unsupported = bool(c_stats.get(f"{tr}|{sz}|unsupported", 0))
                 skipped = bool(c_stats.get(f"{tr}|{sz}|skip", 0))
@@ -3331,33 +3553,12 @@ def main():
 
                 if unsupported:
                     status = "unsupported"
-                    tp_s = "N/A"
-                    bw_s = "N/A"
-                    lat_s = "N/A"
-                    cpu_s = "N/A"
-                    mem_s = "N/A"
-                    server_cpu_s = "N/A"
-                    server_mem_s = "N/A"
                 elif skipped:
                     status = "skip"
-                    tp_s = "N/A"
-                    bw_s = "N/A"
-                    lat_s = "N/A"
-                    cpu_s = "N/A"
-                    mem_s = "N/A"
-                    server_cpu_s = "N/A"
-                    server_mem_s = "N/A"
                     skip_reason = c_stats.get(f"{tr}|{sz}|skip_reason", "skip")
                     all_skips.append((f"{p_name} {tr} {sz}B", str(skip_reason)))
                 elif reasons:
                     status = "fail"
-                    tp_s = "FAIL"
-                    bw_s = "FAIL"
-                    lat_s = "FAIL"
-                    cpu_s = "N/A"
-                    mem_s = "N/A"
-                    server_cpu_s = "N/A"
-                    server_mem_s = "N/A"
                     expected_result_lines += 3
                 else:
                     status = "success"
@@ -3367,9 +3568,6 @@ def main():
                     current_results[(p_name, tr, sz, "throughput")] = ct
                     current_results[(p_name, tr, sz, "bandwidth")] = cb
                     current_results[(p_name, tr, sz, "latency")] = cl
-                    tp_s = format_throughput(p_name, ct)
-                    bw_s = format_bandwidth(cb)
-                    lat_s = f"{cl:8.2f} us"
                     expected_result_lines += 3
                     actual_result_lines += 3
 
@@ -3377,45 +3575,23 @@ def main():
                         cpu_v = c_stats[cpu_key]
                         current_metric = "client_cpu_pct" if is_multi else "cpu_pct"
                         current_results[(p_name, tr, sz, current_metric)] = cpu_v
-                        cpu_s = f"{cpu_v:4.1f}"
-                    else:
-                        cpu_s = "N/A"
 
                     if mem_key in c_stats:
                         mem_v = c_stats[mem_key]
                         current_metric = "client_mem_mb" if is_multi else "mem_mb"
                         current_results[(p_name, tr, sz, current_metric)] = mem_v
-                        mem_s = f"{mem_v:6.1f}"
-                    else:
-                        mem_s = "N/A"
 
                     if is_multi and server_cpu_key in c_stats:
                         server_cpu_v = c_stats[server_cpu_key]
                         current_results[(p_name, tr, sz, "server_cpu_pct")] = server_cpu_v
-                        server_cpu_s = f"{server_cpu_v:4.1f}"
-                    else:
-                        server_cpu_s = "N/A"
                     if is_multi and server_mem_key in c_stats:
                         server_mem_v = c_stats[server_mem_key]
                         current_results[(p_name, tr, sz, "server_mem_mb")] = server_mem_v
-                        server_mem_s = f"{server_mem_v:6.1f}"
-                    else:
-                        server_mem_s = "N/A"
 
                 status_counts[status] += 1
-                if is_multi:
-                    row_line = (
-                        f"| {f'{sz}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | {lat_s:>{lat_w}} | {cpu_s:>{cpu_w}} | {mem_s:>{mem_w}} | {server_cpu_s:>{cpu_w}} | {server_mem_s:>{mem_w}} |"
-                    )
-                else:
-                    row_line = (
-                        f"| {f'{sz}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | {lat_s:>{lat_w}} | {cpu_s:>{cpu_w}} | {mem_s:>{mem_w}} |"
-                    )
-                print(row_line)
-                table_lines.append(row_line)
 
         if pattern_transition_ms > 0 and (pattern_idx + 1) < len(selected_comparisons):
-            print(f"[pattern-cooldown={pattern_transition_ms}ms]")
+            print(f"[pattern cooldown {pattern_transition_ms}ms]")
             time.sleep(pattern_transition_ms / 1000.0)
 
     if current_results:
@@ -3522,14 +3698,11 @@ def main():
 
     if args["save_report"]:
         print("\n## Save Report")
-        if run_status != "complete":
-            print("- skipped: status is partial")
-        else:
-            tag = args["results_tag"]
-            report_file = os.path.join(results_layout["report"], build_result_filename(tag))
-            write_report_table_file(report_file, table_lines)
-            prune_result_files(results_layout["report"], max_files)
-            print(f"- saved: {report_file}")
+        tag = args["results_tag"]
+        report_file = os.path.join(results_layout["report"], build_result_filename(tag))
+        write_report_table_file(report_file, table_lines)
+        prune_result_files(results_layout["report"], max_files)
+        print(f"- saved: {report_file} (status={run_status})")
 
     if args["save_baseline_requested"]:
         print("\n## Save Baseline")

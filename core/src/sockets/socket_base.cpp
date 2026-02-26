@@ -1312,6 +1312,22 @@ int zlink::socket_base_t::stream_dispatch_start (
     return -1;
 }
 
+int zlink::socket_base_t::stream_dispatch_start_raw (
+  zlink_stream_on_raw_fn callback_)
+{
+    LIBZLINK_UNUSED (callback_);
+    errno = ENOTSUP;
+    return -1;
+}
+
+int zlink::socket_base_t::stream_dispatch_start_len32be (
+  zlink_stream_on_packets_fn callback_)
+{
+    LIBZLINK_UNUSED (callback_);
+    errno = ENOTSUP;
+    return -1;
+}
+
 int zlink::socket_base_t::stream_dispatch_stop ()
 {
     errno = ENOTSUP;
@@ -2060,7 +2076,10 @@ void zlink::routing_socket_base_t::xwrite_activated (pipe_t *pipe_)
             break;
 
     zlink_assert (it != end);
-    zlink_assert (!it->second.active);
+    // Duplicate write-activation notifications can race with async flush
+    // cycles under high STREAM load. Keep activation idempotent.
+    if (it->second.active)
+        return;
     it->second.active = true;
 }
 

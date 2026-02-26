@@ -4,7 +4,6 @@ core/perf - zlink benchmark runner
 """
 import datetime
 import json
-import math
 import os
 import platform
 import queue
@@ -2148,6 +2147,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     tp_key = f"{tr}|{sz}|throughput"
                     bw_key = f"{tr}|{sz}|bandwidth"
                     lat_key = f"{tr}|{sz}|latency"
+                    connect_ok_key = f"{tr}|{sz}|connect_ok"
+                    connect_fail_key = f"{tr}|{sz}|connect_fail"
+                    connect_target_key = f"{tr}|{sz}|connect_target"
                     missing = []
                     if tp_key not in parsed:
                         missing.append("throughput")
@@ -2173,6 +2175,57 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             "fail",
                         )
                         continue
+
+                    if pattern_name in STREAM_VARIANT_PATTERNS:
+                        connect_ok_value = parsed.get(connect_ok_key)
+                        connect_target_value = parsed.get(connect_target_key)
+                        if connect_ok_value is None or connect_target_value is None:
+                            run_has_missing = True
+                            run_failed_sizes.add(sz)
+                            failures.append(
+                                (
+                                    pattern_name,
+                                    lib_name,
+                                    tr,
+                                    sz,
+                                    "missing_connect_stats",
+                                )
+                            )
+                            _emit_table_row(
+                                emit,
+                                pattern_name,
+                                True,
+                                row_indent,
+                                sz,
+                                "fail",
+                            )
+                            continue
+
+                        connect_ok_int = int(round(float(connect_ok_value)))
+                        connect_target_int = int(round(float(connect_target_value)))
+                        if connect_target_int <= 0:
+                            connect_target_int = multi_pattern_default_clients(
+                                pattern_name, tr
+                            )
+                        connect_required_int = max(1, connect_target_int)
+                        if connect_ok_int < connect_required_int:
+                            run_has_missing = True
+                            run_failed_sizes.add(sz)
+                            reason = (
+                                "connect_not_enough_ok_"
+                                f"{connect_ok_int}_target_{connect_target_int}"
+                                f"_min_{connect_required_int}"
+                            )
+                            failures.append((pattern_name, lib_name, tr, sz, reason))
+                            _emit_table_row(
+                                emit,
+                                pattern_name,
+                                True,
+                                row_indent,
+                                sz,
+                                "fail",
+                            )
+                            continue
 
                     _emit_table_row(
                         emit,
@@ -2254,6 +2307,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     "client_mem_mb",
                     "server_cpu_pct",
                     "server_mem_mb",
+                    "connect_ok",
+                    "connect_fail",
+                    "connect_target",
                 ):
                     optional_key = f"{tr}|{sz}|{optional_metric}"
                     vals = metrics_raw.get(optional_key, [])

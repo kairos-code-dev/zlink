@@ -1190,6 +1190,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 - 수신 방식만 다르므로 throughput/latency 차이를 직접 비교할 수 있다.
 - MULTI_STREAM 계열의 server 프로세스는 반드시 zlink STREAM 소켓으로 `bind`해야 하며, DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체할 수 없다.
 - client 프로세스는 raw transport(`tcp`,`tls`,`ws`,`wss`)로 `connect`해야 하며, zlink STREAM 소켓의 client `connect()` 경로를 사용하지 않는다.
+- 각 size 측정에서 `connect_ok`는 `target clients`와 동일해야 한다(100%). 하나라도 미달하면 해당 조합은 `fail`이다.
 - 위 모델을 위반한 구현은 정책 위반이므로 해당 코드를 삭제하고 정책 모델로 다시 구현해야 한다.
 - 위반 구현에서 나온 실행 결과는 정책 산출물로 인정하지 않는다.
 

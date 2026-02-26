@@ -25,9 +25,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cmath>
 #include <cstring>
-#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -112,23 +110,6 @@ make_loopback_bind_plan (const boost::asio::ip::tcp::endpoint &endpoint, int ccu
     return plan;
 }
 
-inline double read_connect_ok_ratio_min ()
-{
-    const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_OK_RATIO_MIN");
-    if (!raw || !*raw)
-        return 0.95;
-
-    char *end = NULL;
-    const double parsed = std::strtod (raw, &end);
-    if (end == raw)
-        return 0.95;
-    if (parsed < 0.0)
-        return 0.0;
-    if (parsed > 1.0)
-        return 1.0;
-    return parsed;
-}
-
 // --- Benchmark orchestrator ---
 // Manages worker threads, sessions, phase transitions, and metrics collection.
 // Implements bench_client_iface_t so sessions can report events thread-safely.
@@ -160,8 +141,7 @@ class bench_client_t : public bench_client_iface_t
           sample_overwrite_idx (0),
           endpoint (boost::asio::ip::make_address (opt.host),
                     static_cast<unsigned short> (opt.port)),
-          loopback_bind_plan (),
-          connect_ok_ratio_min (read_connect_ok_ratio_min ())
+          loopback_bind_plan ()
     {
         loopback_bind_plan = make_loopback_bind_plan (endpoint, opt.ccu);
     }
@@ -569,10 +549,7 @@ class bench_client_t : public bench_client_iface_t
     case_metrics_t run_case (size_t size)
     {
         const long connect_target = static_cast<long> (std::max (1, opt.ccu));
-        const long required_connect = std::max<long> (
-          1, static_cast<long> (std::ceil (
-               static_cast<double> (connect_target) * connect_ok_ratio_min
-               - 1e-12)));
+        const long required_connect = std::max<long> (1, connect_target);
 
         const bool resize_ok = set_phase_size_for_connected (size);
         if (!resize_ok) {
@@ -691,7 +668,6 @@ class bench_client_t : public bench_client_iface_t
     std::atomic<size_t> sample_overwrite_idx;  // write cursor (wraps at capacity)
     boost::asio::ip::tcp::endpoint endpoint;
     loopback_bind_plan_t loopback_bind_plan;
-    double connect_ok_ratio_min;
 };
 
 #endif

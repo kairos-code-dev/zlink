@@ -110,6 +110,7 @@ perf/                                       # bindings/<lang>/perf/
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
 - 모델 위반 구현에서 나온 결과는 `UNSUPPORTED`/`SKIP`으로 우회할 수 없으며 정책 산출물로 인정하지 않는다.
+- STREAM multi 측정에서는 각 size마다 `connect_ok == target clients`(100%)를 충족해야 하며, 미달 시 반드시 `fail`로 처리한다.
 
 #### Wire Protocol
 

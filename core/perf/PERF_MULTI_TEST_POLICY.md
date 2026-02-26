@@ -274,6 +274,14 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
+### 3.6 코어 로직 인라인 원칙
+
+각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 공통 함수 한 줄로 위임하는 것을 금지한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)를 참조한다.
+
+예외: STREAM client(`core/perf/common/streamclient/`)는 검증 인프라 코드로
+분류하며 공통 모듈화를 허용한다. 단, multi 실행 경로/phase 정책 준수는
+`multi` suite에서 보장해야 한다.
+
 ---
 
 ## 4. 결과 산출물
@@ -294,7 +302,13 @@ META,timestamp,2026-02-23T23:30:00+09:00
 META,load_avg,0.52 0.48 0.45
 META,mode,observe
 META,runs,3
-META,clients,100
+META,patterns,MULTI_DEALER_DEALER
+META,transports,tcp
+META,msg_sizes,64,256
+META,clients,1000
+META,pin_cpu,off
+META,warmup_seconds,3
+META,duration_seconds,5
 META,status,complete
 META,expected,6
 META,actual,6
@@ -313,6 +327,21 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,256,client_mem_mb,135.20
 RESULT,current,MULTI_DEALER_DEALER,tcp,256,server_cpu_pct,38.50
 RESULT,current,MULTI_DEALER_DEALER,tcp,256,server_mem_mb,66.80
 TABLE
+## Execution Options
+| Option           | Value                              |
+|------------------|------------------------------------|
+| mode             | observe                            |
+| runs             | 3                                  |
+| patterns         | MULTI_DEALER_DEALER                |
+| transports       | tcp                                |
+| msg_sizes        | 64, 256                            |
+| clients          | 1000                               |
+| pin_cpu          | off                                |
+| warmup_seconds   | 3                                  |
+| duration_seconds | 5                                  |
+
+===============================================================================
+
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 ### Transport: tcp
 | Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
@@ -322,12 +351,27 @@ TABLE
 ```
 
 - META → RESULT → TABLE 세 영역으로 구성된다.
-- `TABLE` 마커 이후의 내용은 RESULT 데이터를 사람이 읽을 수 있는 형식으로 포맷한 것이다 (섹션 6.2 참조).
+- `TABLE` 마커 이후에 `## Execution Options` 헤더(실행 옵션 테이블)를 먼저 출력하고, 이어서 패턴별 결과 테이블을 출력한다 (섹션 6.2 참조).
 - 기계 파싱 시 `META,`와 `RESULT,`로 시작하는 라인만 처리하면 TABLE 영역은 자연히 무시된다.
 
 #### report/ (사람이 읽는 용도)
 
 ```text
+## Execution Options
+| Option           | Value                              |
+|------------------|------------------------------------|
+| mode             | observe                            |
+| runs             | 3                                  |
+| patterns         | MULTI_DEALER_DEALER                |
+| transports       | tcp                                |
+| msg_sizes        | 64, 256                            |
+| clients          | 1000                               |
+| pin_cpu          | off                                |
+| warmup_seconds   | 3                                  |
+| duration_seconds | 5                                  |
+
+===============================================================================
+
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
@@ -337,7 +381,8 @@ TABLE
 | 256B     |   135.00 Kmsg/s  | 34.6 MB/s |    52.10 us  |  52.1  |  135.2   |  38.5  |   66.8   |
 ```
 
-- **TABLE만** 저장한다. META/RESULT 라인은 포함하지 않는다. `TABLE` 마커도 생략한다.
+- **실행 옵션 헤더 + TABLE**을 저장한다. META/RESULT 라인은 포함하지 않는다. `TABLE` 마커도 생략한다.
+- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다.
 - 기계 파싱용 데이터가 필요하면 동일 실행의 `tmp/` 파일을 참조한다.
 
 | 라인 유형 | 형식 | 설명 |
@@ -358,7 +403,13 @@ TABLE
 | `load_avg` | SHOULD | 실행 시점 load average |
 | `mode` | MUST | 운영 모드 (observe/trend/gate) |
 | `runs` | MUST | 반복 횟수 |
+| `patterns` | MUST | 실행된 패턴 목록 (쉼표 구분) |
+| `transports` | MUST | 실행된 transport 목록 (쉼표 구분) |
+| `msg_sizes` | MUST | 메시지 크기 목록 (쉼표 구분) |
 | `clients` | MUST | 클라이언트 소켓 수 |
+| `pin_cpu` | MUST | CPU pinning 사용 여부 (`on`/`off`) |
+| `warmup_seconds` | MUST | warmup 시간(초) |
+| `duration_seconds` | MUST | 측정 시간(초) |
 | `status` | MUST | 완료 상태: `complete` 또는 `partial` |
 | `expected` | MUST | 예상 RESULT 라인 수 (unsupported/skip 제외) |
 | `actual` | MUST | 실제 RESULT 라인 수 |
@@ -395,7 +446,7 @@ perf/results/
 | 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
 |------|------|-----------|-----------|------|
 | 임시 저장 | (항상) | `tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `report/` | **TABLE만** | complete만 |
+| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete만 |
 | baseline 저장 | `--save [VER]` | `baseline/` | META + RESULT + TABLE | complete만 (Gate 비교 대상) |
 
 ### 4.4 결과 저장 흐름
@@ -415,12 +466,12 @@ perf/results/
 ```text
 실행 완료
     → status 판정 (expected == actual ?)
-    → complete → results/multi/report/ 에 TABLE만 저장
+    → complete → results/multi/report/ 에 실행 옵션 헤더 + TABLE 저장
     → partial  → 저장하지 않음 (stdout 출력만)
 ```
 
 - 용도: 사람이 결과를 확인하기 위한 레포트
-- `report/`에는 **TABLE만** 저장한다 (META/RESULT 라인 미포함).
+- `report/`에는 **실행 옵션 헤더 + TABLE**을 저장한다 (META/RESULT 라인 미포함).
 - `status=complete`인 경우에만 `report/`에 저장한다.
 
 #### `--save [VER]` (baseline 저장)
@@ -595,7 +646,7 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 
 - `--output`: 임의 경로에 stdout을 tee. 저장 구조와 무관.
 - 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `--result`: `report/`에 TABLE만 저장. **complete인 경우에만** 저장.
+- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete인 경우에만** 저장.
 - `--save [VER]`: `baseline/`에 저장. **complete인 경우에만** 저장. partial이면 에러.
 - `--result`과 `--save`는 동시 사용 가능.
 
@@ -741,7 +792,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | 디렉터리 | TABLE 기록 방식 |
 |-----------|----------------|
 | `tmp/` | META + RESULT 이후 `TABLE` 마커와 함께 기록 |
-| `report/` | **TABLE만** 기록 (META/RESULT 없음, `TABLE` 마커도 생략) |
+| `report/` | **실행 옵션 헤더 + TABLE** 기록 (META/RESULT 없음, `TABLE` 마커도 생략) |
 | `baseline/` | META + RESULT 이후 `TABLE` 마커와 함께 기록 |
 
 ```text
@@ -1070,6 +1121,8 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
 
 #### MULTI_STREAM 계열 패턴
+
+> **STREAM 소켓은 multi suite에서만 테스트한다.** single suite에서는 STREAM 테스트를 수행하지 않는다. STREAM의 성능 특성은 대량 동시 연결 환경(multi)에서 평가하는 것이 의미 있으므로, 모든 STREAM 벤치마크는 multi suite에 집중한다.
 
 | 패턴 | server 수신 방식 | 설명 |
 |------|-----------------|------|

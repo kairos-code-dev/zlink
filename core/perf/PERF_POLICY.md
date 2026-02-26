@@ -104,7 +104,8 @@ perf/                                       # bindings/<lang>/perf/
 
 ### 2.0.3 STREAM 소켓 테스트 모델 (공통 필수)
 
-- STREAM 계열(`STREAM`, `STREAM_CALLBACK`, `STREAM_LEN32BE`, `MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
+- **STREAM 계열은 multi suite에서만 테스트한다.** single suite에서는 STREAM 소켓 테스트를 수행하지 않는다.
+- STREAM 계열(`MULTI_STREAM`, `MULTI_STREAM_CALLBACK`, `MULTI_STREAM_LEN32BE`)은 반드시 **zlink STREAM server(bind only)** + **raw transport client(connect)** 모델로 측정한다.
 - zlink STREAM 소켓의 client `connect()` 경로를 벤치마크 클라이언트로 사용하지 않는다.
 - STREAM 테스트에서 server를 DEALER/ROUTER/PUBSUB 등 non-STREAM 소켓으로 대체하면 정책 위반이며 결과는 무효다.
 - 모델 위반/불일치 구현은 정책 위반으로 간주하며, 해당 코드 경로를 삭제한 뒤 정책 모델로 재구현해야 한다.
@@ -131,7 +132,7 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 | STREAM_LEN32BE / MULTI_STREAM_LEN32BE | callback + len32be framing | callback dispatch + 4B big-endian length-prefixed framing 인식 |
 
 - client의 wire protocol을 len32be로 통일하는 이유: 서버 수신 방식만 다르고 client는 동일한 공통 바이너리를 사용하므로, 테스트 용이성과 비교 공정성을 위해 client 측 framing을 len32be로 고정한다.
-- 이 프로토콜은 single/multi 양쪽에 동일하게 적용된다.
+- 이 프로토콜은 multi suite에 적용된다. single suite에서는 STREAM 테스트를 수행하지 않는다.
 
 ### 2.1 결과 저장 규칙
 
@@ -208,7 +209,7 @@ perf/run_benchmarks.sh --pattern ALL
 perf/run_benchmarks_multi.sh --pattern ALL
 
 # core: 특정 패턴만
-perf/run_benchmarks.sh --pattern PAIR,STREAM
+perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
 # core: 레포트 저장 (report/)
 perf/run_benchmarks.sh --result
@@ -269,6 +270,14 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ...
 TABLE
+## Execution Options
+| Option     | Value                              |
+|------------|------------------------------------|
+| mode       | observe                            |
+| ...        | ...                                |
+
+===============================================================================
+
 ## PATTERN: PAIR (one-way)
 ### Transport: tcp
 | Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
@@ -282,6 +291,18 @@ TABLE
 #### report/ (사람이 읽는 용도)
 
 ```text
+## Execution Options
+| Option     | Value                              |
+|------------|------------------------------------|
+| mode       | observe                            |
+| runs       | 1                                  |
+| patterns   | PAIR, STREAM                       |
+| transports | tcp, tls, ws, wss                  |
+| msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
+| pin_cpu    | off                                |
+
+===============================================================================
+
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
@@ -291,7 +312,8 @@ TABLE
 | 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   | 52.1 |   14.1 |
 ```
 
-- **TABLE만** 저장한다. META/RESULT 라인은 포함하지 않는다.
+- **실행 옵션 헤더 + TABLE**을 저장한다. META/RESULT 라인은 포함하지 않는다.
+- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout TABLE 영역 모두에 포함해야 한다.
 - 기계 파싱용 데이터가 필요하면 동일 실행의 `tmp/` 파일을 참조한다.
 
 ### 4.2 RESULT line 형식
@@ -322,11 +344,11 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
 |------|------|-----------|-----------|------|
 | 임시 저장 | (항상) | `<suite>/tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `<suite>/report/` | **TABLE만** | complete만 |
+| 레포트 생성 | `--result` | `<suite>/report/` | **실행 옵션 헤더 + TABLE** | complete만 |
 | baseline 저장 | `--save [VER]` | `<suite>/baseline/<VER>.txt` | META + RESULT + TABLE | complete만 (partial 시 에러) |
 
 - 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `report/`에는 TABLE만 저장한다. 기계 파싱용 데이터(META/RESULT)는 동일 실행의 `tmp/` 파일을 참조한다.
+- `report/`에는 실행 옵션 헤더(`## Execution Options` 테이블)와 TABLE을 저장한다. META/RESULT 라인은 포함하지 않는다. 기계 파싱용 데이터는 동일 실행의 `tmp/` 파일을 참조한다.
 - `--result`과 `--save`는 동시 사용 가능.
 - `--save` 버전 미지정 시 타임스탬프 기반 파일명으로 저장. 지정 시 `<VER>.txt`로 저장.
 - `--save` 동일 버전 덮어쓰기: 기존 파일이 있으면 전체 교체. 부분 갱신 불가.
@@ -341,6 +363,18 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 > **구현 필수**: 모든 실행 스크립트는 RESULT line 외에 아래 형식의 사람이 읽을 수 있는 테이블을 **반드시 stdout에 출력하고, 결과 파일에도 TABLE 영역으로 기록**해야 한다. RESULT line만 출력하고 테이블을 생략하면 안 된다.
 
 ```text
+## Execution Options
+| Option     | Value                              |
+|------------|------------------------------------|
+| mode       | observe                            |
+| runs       | 1                                  |
+| patterns   | PAIR, STREAM                       |
+| transports | tcp, tls, ws, wss                  |
+| msg_sizes  | 64, 256, 1024, 65536, 131072, 262144 |
+| pin_cpu    | off                                |
+
+===============================================================================
+
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
@@ -494,6 +528,93 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - `UNSUPPORTED`는 **정책에 정의되지 않은** pattern-transport 조합에만 사용한다.
 - 정책에 정의된 transport가 동작하지 않으면 **라이브러리 또는 환경 결함**이다. §8.2 대응 절차를 따른다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
+
+### 8.4 코어 로직 인라인 원칙
+
+각 벤치마크 소스 파일은 해당 패턴의 **zlink API 사용법을 명시적으로 보여주는 샘플** 역할을 해야 한다. 테스트 파일 하나만 열면 해당 패턴의 소켓 사용 흐름을 이해할 수 있어야 한다.
+
+#### 공유 허용 (유틸리티/인프라)
+
+아래 항목은 공통 헤더로 분리하여 공유할 수 있다.
+
+| 항목 | 설명 |
+|------|------|
+| CLI 인자 파싱 | `argc`/`argv` 해석, 옵션 추출 |
+| 환경 변수 해석 | `resolve_bench_msg_sizes`, `resolve_multi_bench_settings` 등 |
+| RESULT line 포맷팅/출력 | `RESULT,<lib>,<pattern>,...` 형식 출력 |
+| 메트릭 수집/보고 | CPU%, 메모리 측정 및 RESULT line 출력 |
+| TLS 설정 | `setup_tls_client`, `setup_tls_server` |
+| Context RAII | `ctx_guard_t` 등 리소스 관리 wrapper |
+| 타이머/스톱워치 | `stopwatch_t`, 시간 측정 유틸리티 |
+| Monitor 유틸리티 | connect-ready 감지, `wait_connect_ready_count` |
+| transport 가용성 검사 | `transport_available()` |
+
+#### STREAM client 예외 (검증 인프라)
+
+`core/perf/common/streamclient/`의 STREAM raw/multi client 코드는
+**벤치마크 대상 라이브러리 자체가 아니라 검증 인프라**로 간주한다.
+
+- STREAM client 공통 구현은 `common/streamclient/`에 모아둘 수 있다.
+- 각 pattern 소스(`multi/current`)는 해당 client를 호출하는
+  엔트리/실행 흐름을 유지해야 한다.
+- 이 예외는 STREAM 계열 client 인프라에만 적용한다.
+- STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
+
+#### 인라인 필수 (코어 로직)
+
+아래 항목은 **반드시 각 테스트 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더의 함수 한 줄로 위임하는 것을 금지한다.
+
+| 항목 | 설명 |
+|------|------|
+| 소켓 생성 | 어떤 소켓 타입을 몇 개 생성하는지 명시 |
+| 소켓 옵션 설정 | `ROUTING_ID`, `SUBSCRIBE` 등 패턴 고유 옵션 |
+| bind / connect | 서버의 bind, 클라이언트의 connect 호출 |
+| send / recv 루프 | 메시지 교환 흐름 (echo, relay, one-way 등) |
+| phase 제어 | warmup → measure → drain 시퀀스 |
+
+#### 위반 예시
+
+```cpp
+// 금지: 9줄 stub — 코어 로직이 전혀 보이지 않음
+int main (int argc, char **argv)
+{
+    const auto cfg = multi_pattern_config_for_name ("MULTI_DEALER_DEALER");
+    return run_multi_client_main (argc, argv, cfg);  // 모든 로직이 숨어있음
+}
+```
+
+#### 준수 예시 (구조)
+
+```cpp
+// 권장: 소켓 생성, 연결, send/recv 루프가 파일 내에 명시적으로 존재
+int main (int argc, char **argv)
+{
+    // ... CLI 파싱 (공유 유틸 사용 가능) ...
+
+    // 소켓 생성 — DEALER 타입 명시
+    void *socket = zlink_socket (ctx, ZLINK_DEALER);
+    zlink_setsockopt (socket, ZLINK_ROUTING_ID, id, id_len);
+    zlink_connect (socket, endpoint);
+
+    // warmup phase
+    for (...) { zlink_send (...); zlink_recv (...); }
+
+    // measure phase — throughput 측정
+    stopwatch.start ();
+    for (...) { zlink_send (...); zlink_recv (...); count++; }
+    double throughput = count / elapsed;
+
+    // drain phase
+    // ...
+
+    // 결과 출력 (공유 유틸 사용 가능)
+    print_result (lib, pattern, transport, size, throughput, latency);
+}
+```
+
+- **이유**: 벤치마크 소스 파일은 zlink API의 패턴별 사용법을 보여주는 레퍼런스 샘플 역할을 한다. 코어 로직이 공통 헤더에 숨어있으면 파일을 열어도 해당 패턴의 동작 방식을 이해할 수 없다.
+- config 플래그 기반 분기로 모든 패턴을 하나의 공통 함수에서 처리하는 방식을 금지한다.
+- 패턴 간 코드 중복이 발생하더라도 각 파일의 **가독성과 독립성**을 우선한다.
 
 ---
 

@@ -124,25 +124,30 @@ bool run_throughput_poll(void *router1,
       std::chrono::steady_clock::now()
       + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
                                                        : 1);
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    const auto drain_idle_limit =
+      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
     std::atomic<bool> sender_done(false);
-    std::atomic<int> sent_count(0);
     std::atomic<bool> recv_failed(false);
-    std::atomic<int> recv_total(0);
     std::atomic<int> recv_in_window(0);
 
     std::thread receiver_thread([&]() {
         zlink_pollitem_t poll_r1[] = {{router1, 0, ZLINK_POLLIN, 0}};
         auto account_recv = [&]() {
-            recv_total.fetch_add(1, std::memory_order_release);
             if (std::chrono::steady_clock::now() < throughput_deadline)
                 recv_in_window.fetch_add(1, std::memory_order_release);
             queue_probe.sample_recv_if_due();
         };
+        auto last_recv_at = std::chrono::steady_clock::now();
         queue_probe.force_sample_recv();
-        while (!sender_done.load(std::memory_order_acquire)
-               || recv_total.load(std::memory_order_acquire)
-                    < sent_count.load(std::memory_order_acquire)) {
+        while (true) {
+            const bool done = sender_done.load(std::memory_order_acquire);
             if (!wait_for_input(poll_r1, 0)) {
+                if (done
+                    && std::chrono::steady_clock::now() - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
                 std::this_thread::yield();
                 continue;
             }
@@ -154,6 +159,7 @@ bool run_throughput_poll(void *router1,
                 recv_failed.store(true, std::memory_order_release);
                 break;
             }
+            last_recv_at = std::chrono::steady_clock::now();
             account_recv();
 
             // Drain immediately available messages in a non-blocking burst.
@@ -161,6 +167,7 @@ bool run_throughput_poll(void *router1,
                 const int burst_rc =
                   recv_two_part_msg_flags(router1, msg_size, NULL, ZLINK_DONTWAIT);
                 if (burst_rc > 0) {
+                    last_recv_at = std::chrono::steady_clock::now();
                     account_recv();
                     continue;
                 }
@@ -185,7 +192,6 @@ bool run_throughput_poll(void *router1,
             send_failed = true;
             break;
         }
-        sent_count.fetch_add(1, std::memory_order_release);
         queue_probe.sample_send_if_due();
     }
     queue_probe.force_sample_send();

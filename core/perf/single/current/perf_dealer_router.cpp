@@ -155,23 +155,23 @@ bool run_throughput_router_recv(void *dealer,
       std::chrono::steady_clock::now()
       + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
                                                        : 1);
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    const auto drain_idle_limit =
+      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
     std::atomic<bool> sender_done(false);
-    std::atomic<int> sent_count(0);
     std::atomic<bool> recv_failed(false);
-    std::atomic<int> recv_total(0);
     std::atomic<int> recv_in_window(0);
 
     std::thread receiver_thread([&]() {
+        auto last_recv_at = std::chrono::steady_clock::now();
         queue_probe.force_sample_recv();
-        while (!sender_done.load(std::memory_order_acquire)
-               || recv_total.load(std::memory_order_acquire)
-                    < sent_count.load(std::memory_order_acquire)) {
+        while (true) {
             const bool done = sender_done.load(std::memory_order_acquire);
             const int flags = done ? ZLINK_DONTWAIT : 0;
             const int recv_rc =
               recv_two_part_msg_flags(router, msg_size, NULL, flags);
             if (recv_rc > 0) {
-                recv_total.fetch_add(1, std::memory_order_release);
+                last_recv_at = std::chrono::steady_clock::now();
                 if (std::chrono::steady_clock::now() < throughput_deadline)
                     recv_in_window.fetch_add(1, std::memory_order_release);
                 queue_probe.sample_recv_if_due();
@@ -181,7 +181,7 @@ bool run_throughput_router_recv(void *dealer,
                     const int burst_rc = recv_two_part_msg_flags(
                       router, msg_size, NULL, ZLINK_DONTWAIT);
                     if (burst_rc > 0) {
-                        recv_total.fetch_add(1, std::memory_order_release);
+                        last_recv_at = std::chrono::steady_clock::now();
                         if (std::chrono::steady_clock::now()
                             < throughput_deadline) {
                             recv_in_window.fetch_add(
@@ -200,6 +200,11 @@ bool run_throughput_router_recv(void *dealer,
                 continue;
             }
             if (recv_rc == 0) {
+                if (done
+                    && std::chrono::steady_clock::now() - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
                 std::this_thread::yield();
                 continue;
             }
@@ -216,7 +221,6 @@ bool run_throughput_router_recv(void *dealer,
             send_failed = true;
             break;
         }
-        sent_count.fetch_add(1, std::memory_order_release);
         queue_probe.sample_send_if_due();
     }
     queue_probe.force_sample_send();

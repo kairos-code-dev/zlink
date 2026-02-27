@@ -240,6 +240,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
                                          const std::string &topic,
                                          size_t msg_size,
                                          queue_probe_t *queue_probe,
+                                         int recv_timeout_ms,
                                          int throughput_duration_s,
                                          int *out_received)
 {
@@ -253,6 +254,8 @@ static bool run_spot_throughput_parallel(void *spot_pub,
       std::chrono::steady_clock::now()
       + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
                                                        : 1);
+    const auto drain_idle_limit =
+      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
     auto recv_one_flags = [&](int flags) {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
@@ -273,6 +276,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
     };
 
     std::thread receiver([&]() {
+        auto last_recv_at = std::chrono::steady_clock::now();
         if (queue_probe)
             queue_probe->force_sample_recv();
         while (true) {
@@ -280,6 +284,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
             const int flags = use_blocking_recv && !done ? 0 : ZLINK_DONTWAIT;
             const int recv_rc = recv_one_flags(flags);
             if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now();
                 if (std::chrono::steady_clock::now() < throughput_deadline) {
                     recv_count.fetch_add(1, std::memory_order_release);
                 }
@@ -290,6 +295,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
                 for (;;) {
                     const int burst_rc = recv_one_flags(ZLINK_DONTWAIT);
                     if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now();
                         if (std::chrono::steady_clock::now()
                             < throughput_deadline) {
                             recv_count.fetch_add(1, std::memory_order_release);
@@ -309,8 +315,11 @@ static bool run_spot_throughput_parallel(void *spot_pub,
             }
 
             if (recv_rc == 0) {
-                if (done)
+                if (done
+                    && std::chrono::steady_clock::now() - last_recv_at
+                         >= drain_idle_limit) {
                     break;
+                }
                 std::this_thread::yield();
                 continue;
             }
@@ -537,6 +546,7 @@ void run_spot(const std::string &transport,
     int received = 0;
     if (!run_spot_throughput_parallel(spot_pub, spot_sub, use_blocking_recv,
                                       topic, msg_size, queue_probe,
+                                      recv_timeout_ms,
                                       throughput_duration_s,
                                       &received)) {
         fail();

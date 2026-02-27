@@ -2232,9 +2232,5 @@ int zlink_has (const char *capability_)
     if (strcmp (capability_, "wss") == 0)
         return true;
 #endif
-#if defined(ZLINK_HAVE_OPENPGM)
-    if (strcmp (capability_, "pgm") == 0 || strcmp (capability_, "epgm") == 0)
-        return true;
-#endif
     return false;
 }

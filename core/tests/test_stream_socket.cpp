@@ -1997,72 +1997,20 @@ void test_stream_maxmsgsize ()
     test_context_socket_close_zero_linger (server);
 }
 
-void test_stream_tcp_connect_basic ()
+void test_stream_connect_rejected ()
 {
-    void *server = test_context_socket (ZLINK_STREAM);
-    TEST_ASSERT_NOT_NULL (server);
-    void *client = test_context_socket (ZLINK_STREAM);
-    TEST_ASSERT_NOT_NULL (client);
+    void *stream = test_context_socket (ZLINK_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
 
     const int zero = 0;
     TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (server, ZLINK_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client, ZLINK_LINGER, &zero, sizeof (zero)));
+      zlink_setsockopt (stream, ZLINK_LINGER, &zero, sizeof (zero)));
 
-    const int io_timeout_ms = 5000;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server, ZLINK_RCVTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      server, ZLINK_SNDTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_RCVTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (
-      client, ZLINK_SNDTIMEO, &io_timeout_ms, sizeof (io_timeout_ms)));
+    errno = 0;
+    TEST_ASSERT_EQUAL_INT (-1, zlink_connect (stream, "tcp://127.0.0.1:5555"));
+    TEST_ASSERT_EQUAL_INT (EOPNOTSUPP, errno);
 
-    char endpoint[MAX_SOCKET_STRING];
-    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-
-    void *client_monitor = zlink_socket_monitor_open (
-      client, ZLINK_EVENT_CONNECTION_READY | ZLINK_EVENT_DISCONNECTED);
-    TEST_ASSERT_NOT_NULL (client_monitor);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_setsockopt (client_monitor, ZLINK_LINGER, &zero, sizeof (zero)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
-
-    unsigned char client_peer_id[stream_routing_id_size];
-    TEST_ASSERT_TRUE (wait_monitor_event (
-      client_monitor, client, ZLINK_EVENT_CONNECTION_READY, client_peer_id, 5000));
-
-    const char req_payload[] = "hello";
-    send_stream_msg (client, client_peer_id, req_payload, sizeof (req_payload) - 1);
-
-    unsigned char server_peer_id[stream_routing_id_size];
-    char server_recv_buf[64];
-    int rc = recv_stream_msg (
-      server, server_peer_id, server_recv_buf, sizeof (server_recv_buf));
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (req_payload) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (
-      req_payload, server_recv_buf, sizeof (req_payload) - 1);
-
-    const char resp_payload[] = "world";
-    send_stream_msg (
-      server, server_peer_id, resp_payload, sizeof (resp_payload) - 1);
-
-    unsigned char client_recv_id[stream_routing_id_size];
-    char client_recv_buf[64];
-    rc = recv_stream_msg (
-      client, client_recv_id, client_recv_buf, sizeof (client_recv_buf));
-    TEST_ASSERT_EQUAL_INT ((int) sizeof (resp_payload) - 1, rc);
-    TEST_ASSERT_EQUAL_STRING_LEN (
-      resp_payload, client_recv_buf, sizeof (resp_payload) - 1);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY (
-      client_peer_id, client_recv_id, stream_routing_id_size);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_close (client_monitor));
-    test_context_socket_close_zero_linger (server);
-    test_context_socket_close_zero_linger (client);
+    test_context_socket_close_zero_linger (stream);
 }
 
 #if defined ZLINK_HAVE_WS
@@ -2101,6 +2049,7 @@ int main (void)
     RUN_TEST (test_stream_raw_multiclient_load_integrity);
     RUN_TEST (test_stream_len32be_multiclient_load_integrity);
 #endif
+    RUN_TEST (test_stream_connect_rejected);
 
 #if defined ZLINK_HAVE_WS
     RUN_TEST (test_stream_ws_basic);

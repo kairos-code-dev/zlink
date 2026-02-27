@@ -135,7 +135,7 @@ static int do_setsockopt_set (const void *const optval_,
 }
 
 const int default_hwm = 1000;
-const int default_batch_size = 8192;
+const int default_batch_size = 16384 ;//8192;
 
 zlink::options_t::options_t () :
     sndhwm (default_hwm),

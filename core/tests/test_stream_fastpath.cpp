@@ -216,13 +216,13 @@ void test_stream_fastpath_tcp_basic ()
     errno = 0;
     TEST_ASSERT_EQUAL_INT (
       -1, zlink_recv (server, recv_buf, sizeof (recv_buf), ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
 
     zlink_msg_t msg;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
     errno = 0;
     TEST_ASSERT_EQUAL_INT (-1, zlink_msg_recv (&msg, server, ZLINK_DONTWAIT));
-    TEST_ASSERT_EQUAL_INT (ENOTSUP, errno);
+    TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
 
     test_context_socket_close_zero_linger (server);

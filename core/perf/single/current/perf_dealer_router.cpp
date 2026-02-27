@@ -192,6 +192,29 @@ bool run_throughput_router_recv(void *dealer,
     return true;
 }
 
+bool setup_dealer_router_session(void *router,
+                                 void *dealer,
+                                 const std::string &transport,
+                                 const std::string &pair_id,
+                                 int recv_timeout_ms)
+{
+    if (!router || !dealer)
+        return false;
+
+    // Set Routing ID for Dealer.
+    zlink_setsockopt(dealer, ZLINK_ROUTING_ID, "CLIENT", 6);
+
+    if (!setup_connected_pair(router, dealer, transport, pair_id))
+        return false;
+
+    // Give it time to connect.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    set_sockopt_int(router, ZLINK_RCVTIMEO, recv_timeout_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(dealer, ZLINK_RCVTIMEO, recv_timeout_ms, "ZLINK_RCVTIMEO");
+    return true;
+}
+
 } // namespace
 
 void run_dealer_router(const std::string& transport,
@@ -217,17 +240,13 @@ void run_dealer_router(const std::string& transport,
         return;
     }
 
-    // Set Routing ID for Dealer
-    zlink_setsockopt(dealer.get(), ZLINK_ROUTING_ID, "CLIENT", 6);
-
-    if (!setup_connected_pair(router.get(), dealer.get(), transport,
-                              lib_name + "_dealer_router")) {
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    if (!setup_dealer_router_session(router.get(), dealer.get(), transport,
+                                     lib_name + "_dealer_router",
+                                     recv_timeout_ms)) {
         print_fail_no_queue();
         return;
     }
-
-    // Give it time to connect
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size + 256);
@@ -237,12 +256,6 @@ void run_dealer_router(const std::string& transport,
         print_fail_result(
           lib_name, "DEALER_ROUTER", transport, msg_size, &queue_probe);
     };
-
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    set_sockopt_int(router.get(), ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
-    set_sockopt_int(dealer.get(), ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
 
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
     if (!run_warmup_router_echo(dealer.get(), router.get(), buffer, recv_buf,

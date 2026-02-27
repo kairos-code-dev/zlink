@@ -32,6 +32,8 @@ project, invokes the Python comparison script, and saves results.
 | `--msg-sizes LIST` | — | Comma-separated payload sizes (e.g., `64,1024,65536`) |
 | `--transports LIST` | — | Comma-separated transports (e.g., `tcp,tls`) |
 
+Note: `pgm`/`epgm` transports are currently temporarily disabled and unsupported in zlink perf.
+
 ### Policy Options
 
 | Option | Default | Description |

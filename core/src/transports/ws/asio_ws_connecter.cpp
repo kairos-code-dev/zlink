@@ -95,39 +95,6 @@ create_wss_client_context (const zlink::options_t &options_,
 
 namespace
 {
-size_t parse_size_env (const char *name_)
-{
-    const char *env = std::getenv (name_);
-    if (!env || !*env)
-        return 0;
-    errno = 0;
-    char *end = NULL;
-    const unsigned long long value = std::strtoull (env, &end, 10);
-    if (errno != 0 || end == env || value == 0)
-        return 0;
-    return static_cast<size_t> (value);
-}
-
-zlink::options_t adjust_ws_options (const zlink::options_t &options_)
-{
-    zlink::options_t adjusted = options_;
-    const size_t ws_out = parse_size_env ("ZLINK_WS_OUT_BATCH_SIZE");
-    const size_t ws_in = parse_size_env ("ZLINK_WS_IN_BATCH_SIZE");
-    const int default_ws_batch = 65536;
-
-    if (ws_out > 0)
-        adjusted.out_batch_size = static_cast<int> (ws_out);
-    else if (adjusted.out_batch_size < default_ws_batch)
-        adjusted.out_batch_size = default_ws_batch;
-
-    if (ws_in > 0)
-        adjusted.in_batch_size = static_cast<int> (ws_in);
-    else if (adjusted.in_batch_size < default_ws_batch)
-        adjusted.in_batch_size = default_ws_batch;
-
-    return adjusted;
-}
-
 int connect_delayed_errno_value ()
 {
 #ifdef ZLINK_HAVE_WINDOWS
@@ -534,7 +501,7 @@ void zlink::asio_ws_connecter_t::create_engine (
     }
 
     const bool is_stream = options.type == ZLINK_STREAM;
-    const options_t engine_options = is_stream ? options : adjust_ws_options (options);
+    const options_t &engine_options = options;
     i_engine *engine = NULL;
 #if defined ZLINK_HAVE_WSS
     if (_secure) {

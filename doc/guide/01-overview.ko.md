@@ -16,6 +16,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 | **Transport** | 10종+ (PGM, TIPC, VMCI 등) | **6종** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
 | **의존성** | libsodium, libbsd 등 | **OpenSSL만** |
 
+참고: `pgm://`, `epgm://`는 현재 zlink에서 임시 비활성화 상태이며 지원하지 않는다.
+
 ## 2. 아키텍처 개요
 
 ```

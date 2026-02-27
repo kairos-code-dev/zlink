@@ -426,10 +426,9 @@ int zlink::socket_base_t::check_protocol (const std::string &protocol_) const
     }
 
 #ifdef ZLINK_HAVE_OPENPGM
-    if ((protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm)
-        && options.type != ZLINK_PUB && options.type != ZLINK_SUB
-        && options.type != ZLINK_XPUB && options.type != ZLINK_XSUB) {
-        errno = ENOCOMPATPROTO;
+    //  PGM/EPGM is temporarily disabled for PUB/SUB family in zlink.
+    if (protocol_ == protocol_name::pgm || protocol_ == protocol_name::epgm) {
+        errno = EPROTONOSUPPORT;
         return -1;
     }
 #endif
@@ -760,6 +759,12 @@ int zlink::socket_base_t::connect_internal (const char *endpoint_uri_)
     std::string address;
     if (parse_uri (endpoint_uri_, protocol, address)
         || check_protocol (protocol)) {
+        return -1;
+    }
+
+    // STREAM is server-side only; outbound connect is intentionally disabled.
+    if (options.type == ZLINK_STREAM) {
+        errno = EOPNOTSUPP;
         return -1;
     }
 

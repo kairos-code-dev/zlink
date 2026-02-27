@@ -944,6 +944,8 @@ PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, G
 | PAIR / PUBSUB / DEALER / ROUTER | tcp, tls, ws, wss, inproc, ipc (Windows: ipc 제외) |
 | GATEWAY / SPOT | tcp, tls, ws, wss |
 
+> 참고: `pgm`, `epgm` transport는 현재 zlink/perf single에서 임시 비활성화 상태이며 지원하지 않는다.
+
 ---
 
 ## 11. Environment Variables

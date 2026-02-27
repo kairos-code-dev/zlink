@@ -13,6 +13,13 @@
 typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
 typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
 
+enum gateway_send_status_t
+{
+    gateway_send_ok = 0,
+    gateway_send_would_block = 1,
+    gateway_send_error = 2
+};
+
 static const std::string &tls_ca_path()
 {
     static std::string path =
@@ -112,17 +119,20 @@ static bool wait_for_gateway(void *gateway,
     }
 }
 
-static bool recv_one_provider_message(void *router)
+static int recv_one_provider_message_flags(void *router, int flags)
 {
     zlink_msg_t rid;
     zlink_msg_init(&rid);
-    if (zlink_msg_recv(&rid, router, 0) < 0) {
+    if (zlink_msg_recv(&rid, router, flags) < 0) {
+        const int err = zlink_errno();
         zlink_msg_close(&rid);
-        return false;
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
     }
     if (!zlink_msg_more(&rid)) {
         zlink_msg_close(&rid);
-        return false;
+        return -1;
     }
 
     zlink_msg_t payload;
@@ -130,7 +140,7 @@ static bool recv_one_provider_message(void *router)
     if (zlink_msg_recv(&payload, router, 0) < 0) {
         zlink_msg_close(&rid);
         zlink_msg_close(&payload);
-        return false;
+        return -1;
     }
 
     while (zlink_msg_more(&payload)) {
@@ -140,14 +150,19 @@ static bool recv_one_provider_message(void *router)
             zlink_msg_close(&part);
             zlink_msg_close(&rid);
             zlink_msg_close(&payload);
-            return false;
+            return -1;
         }
         zlink_msg_close(&part);
     }
 
     zlink_msg_close(&rid);
     zlink_msg_close(&payload);
-    return true;
+    return 1;
+}
+
+static bool recv_one_provider_message(void *router)
+{
+    return recv_one_provider_message_flags(router, 0) > 0;
 }
 
 static bool send_one_gateway(void *gateway,
@@ -163,6 +178,165 @@ static bool send_one_gateway(void *gateway,
     if (rc != 0)
         zlink_msg_close(&msg);
     return rc == 0;
+}
+
+static gateway_send_status_t send_one_gateway_nonblocking(void *gateway,
+                                                          const char *service,
+                                                          size_t msg_size)
+{
+    zlink_msg_t msg;
+    zlink_msg_init_size(&msg, msg_size);
+    if (msg_size > 0)
+        memset(zlink_msg_data(&msg), 'a', msg_size);
+
+    const int rc = zlink_gateway_send(gateway, service, &msg, 1, ZLINK_DONTWAIT);
+    if (rc == 0)
+        return gateway_send_ok;
+
+    const int err = zlink_errno();
+    zlink_msg_close(&msg);
+    if (err == EAGAIN || err == EINTR)
+        return gateway_send_would_block;
+    return gateway_send_error;
+}
+
+static bool run_gateway_warmup_and_latency(void *gateway,
+                                           const char *service_name,
+                                           void *provider_router,
+                                           size_t msg_size,
+                                           latency_stats_t *out_stats)
+{
+    if (!out_stats)
+        return false;
+
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
+    for (int i = 0; i < warmup_count; ++i) {
+        if (!send_one_gateway(gateway, service_name, msg_size)
+            || !recv_one_provider_message(provider_router)) {
+            return false;
+        }
+    }
+
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    latency_stats_builder_t latency_builder;
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    while (std::chrono::steady_clock::now() < latency_deadline) {
+        stopwatch_t per_message;
+        per_message.start();
+        if (!send_one_gateway(gateway, service_name, msg_size)
+            || !recv_one_provider_message(provider_router)) {
+            return false;
+        }
+        latency_builder.add(per_message.elapsed_ms() * 1000.0);
+    }
+
+    if (latency_builder.count() == 0)
+        return false;
+
+    *out_stats = latency_builder.snapshot();
+    return true;
+}
+
+static bool run_gateway_throughput_parallel(void *gateway,
+                                            const char *service_name,
+                                            void *provider_router,
+                                            size_t msg_size,
+                                            int recv_timeout_ms,
+                                            int throughput_duration_s,
+                                            int *out_received)
+{
+    if (!out_received)
+        return false;
+
+    std::atomic<bool> sender_done(false);
+    std::atomic<bool> send_failed(false);
+    std::atomic<bool> recv_failed(false);
+    std::atomic<int> received(0);
+    const auto throughput_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
+                                                       : 1);
+    const auto drain_idle_limit =
+      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
+
+    std::thread receiver([&]() {
+        auto last_recv_at = std::chrono::steady_clock::now();
+        while (true) {
+            const bool done = sender_done.load(std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int recv_rc =
+              recv_one_provider_message_flags(provider_router, flags);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now();
+                if (std::chrono::steady_clock::now() < throughput_deadline)
+                    received.fetch_add(1, std::memory_order_release);
+
+                // Drain immediately available messages in a non-blocking burst.
+                for (;;) {
+                    const int burst_rc =
+                      recv_one_provider_message_flags(provider_router,
+                                                      ZLINK_DONTWAIT);
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now();
+                        if (std::chrono::steady_clock::now() < throughput_deadline)
+                            received.fetch_add(1, std::memory_order_release);
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+                    recv_failed.store(true, std::memory_order_release);
+                    break;
+                }
+                if (recv_failed.load(std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done
+                    && std::chrono::steady_clock::now() - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
+                std::this_thread::yield();
+                continue;
+            }
+
+            recv_failed.store(true, std::memory_order_release);
+            break;
+        }
+    });
+
+    std::thread sender([&]() {
+        while (std::chrono::steady_clock::now() < throughput_deadline) {
+            const gateway_send_status_t send_rc =
+              send_one_gateway_nonblocking(gateway, service_name, msg_size);
+            if (send_rc == gateway_send_error) {
+                send_failed.store(true, std::memory_order_release);
+                break;
+            }
+            if (send_rc != gateway_send_ok)
+                continue;
+        }
+        sender_done.store(true, std::memory_order_release);
+    });
+
+    sender.join();
+    receiver.join();
+
+    if (send_failed.load(std::memory_order_acquire)
+        || recv_failed.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    const int recv_count = received.load(std::memory_order_acquire);
+    if (recv_count <= 0)
+        return false;
+
+    *out_received = recv_count;
+    return true;
 }
 
 void run_gateway(const std::string &transport,
@@ -294,75 +468,19 @@ void run_gateway(const std::string &transport,
     }
 
     settle();
-
-    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_one_gateway(gateway, service_name, msg_size)
-            || !recv_one_provider_message(provider_router)) {
-            fail();
-            return;
-        }
-    }
-
-    const int latency_duration_s = resolve_single_latency_duration_seconds();
     const int throughput_duration_s = resolve_single_duration_seconds();
-    latency_stats_builder_t latency_builder;
-    const auto latency_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
-    while (std::chrono::steady_clock::now() < latency_deadline) {
-        stopwatch_t per_message;
-        per_message.start();
-        if (!send_one_gateway(gateway, service_name, msg_size)
-            || !recv_one_provider_message(provider_router)) {
-            fail();
-            return;
-        }
-        latency_builder.add(per_message.elapsed_ms() * 1000.0);
-    }
-    const latency_stats_t latency_stats = latency_builder.snapshot();
-
-    std::atomic<bool> sender_done(false);
-    std::atomic<bool> recv_failed(false);
-    std::atomic<int> received(0);
-    std::thread receiver([&]() {
-        while (!sender_done.load(std::memory_order_acquire)) {
-            if (recv_one_provider_message(provider_router)) {
-                received.fetch_add(1, std::memory_order_release);
-                continue;
-            }
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR)
-                continue;
-            recv_failed.store(true, std::memory_order_release);
-            break;
-        }
-    });
-
-    const auto throughput_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
-                                                       : 1);
-    bool send_failed = false;
-    while (std::chrono::steady_clock::now() < throughput_deadline) {
-        if (!send_one_gateway(gateway, service_name, msg_size)) {
-            send_failed = true;
-            break;
-        }
-    }
-    sender_done.store(true, std::memory_order_release);
-    receiver.join();
-
-    if (send_failed || recv_failed.load(std::memory_order_acquire)) {
-        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
-        cleanup();
+    latency_stats_t latency_stats;
+    if (!run_gateway_warmup_and_latency(gateway, service_name, provider_router,
+                                        msg_size, &latency_stats)) {
+        fail();
         return;
     }
 
-    const int recv_count = received.load(std::memory_order_acquire);
-    if (recv_count <= 0) {
-        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
-        cleanup();
+    int recv_count = 0;
+    if (!run_gateway_throughput_parallel(gateway, service_name, provider_router,
+                                         msg_size, recv_timeout_ms,
+                                         throughput_duration_s, &recv_count)) {
+        fail();
         return;
     }
 

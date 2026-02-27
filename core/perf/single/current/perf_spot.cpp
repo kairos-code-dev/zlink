@@ -148,6 +148,149 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
     }
 }
 
+static bool run_spot_warmup_and_latency(void *spot_pub,
+                                        void *spot_sub,
+                                        const std::string &topic,
+                                        size_t msg_size,
+                                        bool use_blocking_recv,
+                                        int recv_timeout_ms,
+                                        latency_stats_t *out_stats)
+{
+    if (!out_stats)
+        return false;
+
+    auto recv_one = [&]() {
+        return use_blocking_recv ? recv_spot_blocking(spot_sub)
+                                 : recv_spot_with_timeout_polling(spot_sub,
+                                                                  recv_timeout_ms);
+    };
+
+    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
+    for (int i = 0; i < warmup_count; ++i) {
+        if (!send_spot(spot_pub, topic, msg_size) || !recv_one())
+            return false;
+    }
+
+    const int latency_duration_s = resolve_single_latency_duration_seconds();
+    latency_stats_builder_t latency_builder;
+    const auto latency_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
+    while (std::chrono::steady_clock::now() < latency_deadline) {
+        stopwatch_t per_message;
+        per_message.start();
+        if (!send_spot(spot_pub, topic, msg_size) || !recv_one())
+            return false;
+        latency_builder.add(per_message.elapsed_ms() * 1000.0);
+    }
+
+    if (latency_builder.count() == 0)
+        return false;
+
+    *out_stats = latency_builder.snapshot();
+    return true;
+}
+
+static bool run_spot_throughput_parallel(void *spot_pub,
+                                         void *spot_sub,
+                                         bool use_blocking_recv,
+                                         const std::string &topic,
+                                         size_t msg_size,
+                                         int throughput_duration_s,
+                                         int *out_received)
+{
+    if (!out_received)
+        return false;
+
+    std::atomic<bool> sender_done(false);
+    std::atomic<bool> recv_failed(false);
+    std::atomic<int> recv_count(0);
+    const auto throughput_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
+                                                       : 1);
+    auto recv_one_flags = [&](int flags) {
+        zlink_msg_t *parts = NULL;
+        size_t count = 0;
+        char topic_out[256];
+        size_t topic_len = 0;
+        const int rc = zlink_spot_sub_recv(
+          spot_sub, &parts, &count, flags, topic_out, &topic_len);
+        if (rc == 0) {
+            if (parts)
+                zlink_msgv_close(parts, count);
+            return 1;
+        }
+
+        const int err = zlink_errno();
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
+    };
+
+    std::thread receiver([&]() {
+        while (true) {
+            const bool done = sender_done.load(std::memory_order_acquire);
+            const int flags = use_blocking_recv && !done ? 0 : ZLINK_DONTWAIT;
+            const int recv_rc = recv_one_flags(flags);
+            if (recv_rc > 0) {
+                if (std::chrono::steady_clock::now() < throughput_deadline) {
+                    recv_count.fetch_add(1, std::memory_order_release);
+                }
+
+                // Drain immediately available messages without batch limits.
+                for (;;) {
+                    const int burst_rc = recv_one_flags(ZLINK_DONTWAIT);
+                    if (burst_rc > 0) {
+                        if (std::chrono::steady_clock::now()
+                            < throughput_deadline) {
+                            recv_count.fetch_add(1, std::memory_order_release);
+                        }
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+                    recv_failed.store(true, std::memory_order_release);
+                    break;
+                }
+                if (recv_failed.load(std::memory_order_acquire))
+                    break;
+                continue;
+            }
+
+            if (recv_rc == 0) {
+                if (done)
+                    break;
+                std::this_thread::yield();
+                continue;
+            }
+
+            recv_failed.store(true, std::memory_order_release);
+            break;
+        }
+    });
+
+    bool send_failed = false;
+    while (std::chrono::steady_clock::now() < throughput_deadline) {
+        if (!send_spot(spot_pub, topic, msg_size)) {
+            send_failed = true;
+            break;
+        }
+    }
+    sender_done.store(true, std::memory_order_release);
+    receiver.join();
+
+    if (send_failed || recv_failed.load(std::memory_order_acquire))
+        return false;
+
+    const int received = recv_count.load(std::memory_order_acquire);
+    if (received <= 0)
+        return false;
+
+    *out_received = received;
+    return true;
+}
+
 void run_spot(const std::string &transport,
               size_t msg_size,
               const std::string &lib_name)
@@ -231,84 +374,24 @@ void run_spot(const std::string &transport,
         == 0) {
         use_blocking_recv = true;
     }
-    auto recv_one = [&]() {
-        return use_blocking_recv ? recv_spot_blocking(spot_sub)
-                                 : recv_spot_with_timeout_polling(spot_sub,
-                                                                  recv_timeout_ms);
-    };
 
     const std::string topic = "bench";
     zlink_spot_sub_subscribe(spot_sub, topic.c_str());
     settle();
-
-    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_one()) {
-            fail();
-            return;
-        }
-    }
-
-    const int latency_duration_s = resolve_single_latency_duration_seconds();
     const int throughput_duration_s = resolve_single_duration_seconds();
-    latency_stats_builder_t latency_builder;
-    const auto latency_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
-    while (std::chrono::steady_clock::now() < latency_deadline) {
-        stopwatch_t per_message;
-        per_message.start();
-        if (!send_spot(spot_pub, topic, msg_size)
-            || !recv_one()) {
-            fail();
-            return;
-        }
-        latency_builder.add(per_message.elapsed_ms() * 1000.0);
-    }
-    const latency_stats_t latency_stats = latency_builder.snapshot();
-
-    std::atomic<bool> sender_done(false);
-    std::atomic<bool> recv_failed(false);
-    std::atomic<int> recv_count(0);
-    std::thread receiver([&]() {
-        while (!sender_done.load(std::memory_order_acquire)) {
-            if (recv_one()) {
-                recv_count.fetch_add(1, std::memory_order_release);
-                continue;
-            }
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR)
-                continue;
-            recv_failed.store(true, std::memory_order_release);
-            break;
-        }
-    });
-
-    const auto throughput_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
-                                                       : 1);
-    bool send_failed = false;
-    while (std::chrono::steady_clock::now() < throughput_deadline) {
-        if (!send_spot(spot_pub, topic, msg_size)) {
-            send_failed = true;
-            break;
-        }
-    }
-    sender_done.store(true, std::memory_order_release);
-    receiver.join();
-
-    if (send_failed || recv_failed.load(std::memory_order_acquire)) {
-        print_fail_result(lib_name, "SPOT", transport, msg_size);
-        cleanup();
+    latency_stats_t latency_stats;
+    if (!run_spot_warmup_and_latency(spot_pub, spot_sub, topic, msg_size,
+                                     use_blocking_recv, recv_timeout_ms,
+                                     &latency_stats)) {
+        fail();
         return;
     }
 
-    const int received = recv_count.load(std::memory_order_acquire);
-    if (received <= 0) {
-        print_fail_result(lib_name, "SPOT", transport, msg_size);
-        cleanup();
+    int received = 0;
+    if (!run_spot_throughput_parallel(spot_pub, spot_sub, use_blocking_recv,
+                                      topic, msg_size, throughput_duration_s,
+                                      &received)) {
+        fail();
         return;
     }
 

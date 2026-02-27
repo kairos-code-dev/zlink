@@ -194,6 +194,36 @@ bool run_router_router_throughput(void *router1,
     return true;
 }
 
+bool setup_router_router_session(void *router1,
+                                 void *router2,
+                                 const std::string &transport,
+                                 const std::string &pair_id,
+                                 int recv_timeout_ms)
+{
+    if (!router1 || !router2)
+        return false;
+
+    zlink_setsockopt(router1, ZLINK_ROUTING_ID, "ROUTER1", 7);
+    zlink_setsockopt(router2, ZLINK_ROUTING_ID, "ROUTER2", 7);
+
+    int mandatory = 1;
+    zlink_setsockopt(router1, ZLINK_ROUTER_MANDATORY, &mandatory,
+                     sizeof(mandatory));
+    zlink_setsockopt(router2, ZLINK_ROUTER_MANDATORY, &mandatory,
+                     sizeof(mandatory));
+
+    if (!setup_connected_pair(router1, router2, transport, pair_id)
+        || !perform_router_router_handshake(router1, router2)) {
+        return false;
+    }
+
+    set_sockopt_int(router1, ZLINK_RCVTIMEO, recv_timeout_ms,
+                    "ZLINK_RCVTIMEO");
+    set_sockopt_int(router2, ZLINK_RCVTIMEO, recv_timeout_ms,
+                    "ZLINK_RCVTIMEO");
+    return true;
+}
+
 } // namespace
 
 void run_router_router(const std::string &transport,
@@ -220,27 +250,13 @@ void run_router_router(const std::string &transport,
         return;
     }
 
-    zlink_setsockopt(router1.get(), ZLINK_ROUTING_ID, "ROUTER1", 7);
-    zlink_setsockopt(router2.get(), ZLINK_ROUTING_ID, "ROUTER2", 7);
-
-    int mandatory = 1;
-    zlink_setsockopt(router1.get(), ZLINK_ROUTER_MANDATORY, &mandatory,
-                     sizeof(mandatory));
-    zlink_setsockopt(router2.get(), ZLINK_ROUTER_MANDATORY, &mandatory,
-                     sizeof(mandatory));
-
-    if (!setup_connected_pair(router1.get(), router2.get(), transport,
-                              lib_name + "_router_router")
-        || !perform_router_router_handshake(router1.get(), router2.get())) {
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    if (!setup_router_router_session(router1.get(), router2.get(), transport,
+                                     lib_name + "_router_router",
+                                     recv_timeout_ms)) {
         print_fail_no_queue();
         return;
     }
-
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    set_sockopt_int(router1.get(), ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
-    set_sockopt_int(router2.get(), ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
 
     std::vector<char> buffer(msg_size, 'a');
     std::vector<char> recv_buf(msg_size + 256);

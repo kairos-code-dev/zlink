@@ -16,6 +16,8 @@ zlink is a modern messaging library based on [libzmq](https://github.com/zeromq/
 | **Transport** | 10+ (PGM, TIPC, VMCI, etc.) | **6** — `tcp`, `ipc`, `inproc`, `ws`, `wss`, `tls` |
 | **Dependencies** | libsodium, libbsd, etc. | **OpenSSL only** |
 
+Note: `pgm://` and `epgm://` are currently disabled and unsupported in zlink.
+
 ## 2. Architecture Overview
 
 ```

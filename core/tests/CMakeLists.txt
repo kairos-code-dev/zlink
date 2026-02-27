@@ -14,6 +14,7 @@ set(tests
   test_ancillaries
   test_system
   test_pair_inproc
+  test_pair_send_blocking_wakeup
   test_pair_tcp
   test_hwm_pubsub
   test_sub_forward

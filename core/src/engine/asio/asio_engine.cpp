@@ -557,10 +557,11 @@ bool zlink::asio_engine_t::build_gather_header (const msg_t &msg_,
 
 void zlink::asio_engine_t::start_async_read ()
 {
-    //  True Proactor Pattern: We no longer check _input_stopped here.
-    //  Async reads continue even during backpressure, with data being buffered
-    //  in _pending_buffers. This eliminates unnecessary recvfrom() EAGAIN calls.
-    if (_read_pending || _io_error)
+    //  For non-stream sockets keep classic flow-control semantics:
+    //  once input is stopped, do not arm new reads until restart_input().
+    //  Stream sockets keep proactor-style buffering under backpressure.
+    if (_read_pending || _io_error
+        || (_input_stopped && _options.type != ZLINK_STREAM))
         return;
 
     ENGINE_DBG ("start_async_read: insize=%zu", _insize);
@@ -573,7 +574,7 @@ void zlink::asio_engine_t::start_async_read ()
     //  Get buffer from decoder if available
     size_t read_size;
 
-    if (_decoder && _input_stopped) {
+    if (_decoder && _input_stopped && _options.type == ZLINK_STREAM) {
         read_size = _stream_decoder_read_target_size;
         if (read_size == 0) {
             read_size = _options.in_batch_size;
@@ -1116,10 +1117,21 @@ void zlink::asio_engine_t::on_read_complete (const boost::system::error_code &ec
         return;
     }
 
-    //  True Proactor Pattern: If backpressure is active, buffer the data
-    //  instead of processing it. This keeps async_read always pending,
-    //  eliminating unnecessary recvfrom() EAGAIN calls when backpressure clears.
+    //  During backpressure, STREAM keeps proactor-style buffering, while
+    //  non-stream keeps bytes in decoder buffer and waits for restart_input().
     if (_input_stopped) {
+        if (_options.type != ZLINK_STREAM) {
+            if (_decoder && _insize > 0) {
+                const size_t partial_size = _insize;
+                _insize = partial_size + bytes_transferred;
+            } else {
+                _inpos = _read_buffer_ptr;
+                _insize = bytes_transferred;
+            }
+            _input_in_decoder_buffer = (_decoder != NULL);
+            return;
+        }
+
         if (_read_from_pending_pool) {
             const size_t total_pending = _total_pending_bytes + _insize;
 
@@ -1981,7 +1993,7 @@ bool zlink::asio_engine_t::restart_input_internal ()
 
     //  Speculative read (libzlink pattern): drain immediately available data
     //  before re-arming async read. This avoids missed wakeups on IPC.
-    if (speculative_read ())
+    if (_options.type == ZLINK_STREAM && speculative_read ())
         return true;
 
     start_async_read ();

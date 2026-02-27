@@ -10,24 +10,22 @@ namespace {
 bool run_roundtrip_once(void *sender,
                         void *receiver,
                         const std::vector<char> &buffer,
-                        std::vector<char> &recv_buf,
                         size_t msg_size)
 {
     return send_exact(sender, buffer.data(), msg_size, 0)
-           && recv_exact(receiver, recv_buf.data(), msg_size, 0)
-           && send_exact(receiver, recv_buf.data(), msg_size, 0)
-           && recv_exact(sender, recv_buf.data(), msg_size, 0);
+           && recv_single_part_msg_flags(receiver, msg_size, 0) > 0
+           && send_exact(receiver, buffer.data(), msg_size, 0)
+           && recv_single_part_msg_flags(sender, msg_size, 0) > 0;
 }
 
 bool run_warmup_roundtrip(void *sender,
                           void *receiver,
                           const std::vector<char> &buffer,
-                          std::vector<char> &recv_buf,
                           size_t msg_size,
                           int warmup_count)
 {
     for (int i = 0; i < warmup_count; ++i) {
-        if (!run_roundtrip_once(sender, receiver, buffer, recv_buf, msg_size)) {
+        if (!run_roundtrip_once(sender, receiver, buffer, msg_size)) {
             return false;
         }
     }
@@ -37,7 +35,6 @@ bool run_warmup_roundtrip(void *sender,
 bool run_latency_roundtrip(void *sender,
                            void *receiver,
                            const std::vector<char> &buffer,
-                           std::vector<char> &recv_buf,
                            size_t msg_size,
                            latency_stats_t *out_stats)
 {
@@ -52,7 +49,7 @@ bool run_latency_roundtrip(void *sender,
     while (std::chrono::steady_clock::now() < latency_deadline) {
         stopwatch_t sw;
         sw.start();
-        if (!run_roundtrip_once(sender, receiver, buffer, recv_buf, msg_size)) {
+        if (!run_roundtrip_once(sender, receiver, buffer, msg_size)) {
             return false;
         }
         latency_builder.add((sw.elapsed_ms() * 1000.0) * 0.5);
@@ -68,7 +65,6 @@ bool run_latency_roundtrip(void *sender,
 bool run_throughput_parallel(void *sender,
                              void *receiver,
                              const std::vector<char> &buffer,
-                             std::vector<char> &recv_buf,
                              size_t msg_size,
                              queue_probe_t &queue_probe,
                              double *out_throughput)
@@ -92,10 +88,10 @@ bool run_throughput_parallel(void *sender,
         while (!sender_done.load(std::memory_order_acquire)
                || recv_total.load(std::memory_order_acquire)
                     < sent_count.load(std::memory_order_acquire)) {
-            const int rc = zlink_recv(receiver, recv_buf.data(), msg_size, 0);
-            if (rc != static_cast<int>(msg_size)) {
-                const int err = zlink_errno();
-                if (err == EAGAIN || err == EINTR) {
+            const int recv_rc =
+              recv_single_part_msg_flags(receiver, msg_size, 0);
+            if (recv_rc <= 0) {
+                if (recv_rc == 0) {
                     continue;
                 }
                 recv_failed.store(true, std::memory_order_release);
@@ -109,19 +105,16 @@ bool run_throughput_parallel(void *sender,
 
             // Drain immediately available messages in a non-blocking burst.
             for (;;) {
-                const int burst_rc =
-                  zlink_recv(receiver, recv_buf.data(), msg_size,
-                             ZLINK_DONTWAIT);
-                if (burst_rc == static_cast<int>(msg_size)) {
+                const int burst_rc = recv_single_part_msg_flags(
+                  receiver, msg_size, ZLINK_DONTWAIT);
+                if (burst_rc > 0) {
                     recv_total.fetch_add(1, std::memory_order_release);
                     if (std::chrono::steady_clock::now() < throughput_deadline)
                         recv_in_window.fetch_add(1, std::memory_order_release);
                     queue_probe.sample_recv_if_due();
                     continue;
                 }
-
-                const int burst_err = zlink_errno();
-                if (burst_err == EAGAIN || burst_err == EINTR) {
+                if (burst_rc == 0) {
                     break;
                 }
 
@@ -193,7 +186,6 @@ void run_dealer_dealer(const std::string& transport,
     }
 
     std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size);
     queue_probe_t queue_probe(s2.get(), s1.get());
 
     auto print_fail_with_queue = [&]() {
@@ -208,22 +200,22 @@ void run_dealer_dealer(const std::string& transport,
                     "ZLINK_RCVTIMEO");
 
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
-    if (!run_warmup_roundtrip(s2.get(), s1.get(), buffer, recv_buf, msg_size,
+    if (!run_warmup_roundtrip(s2.get(), s1.get(), buffer, msg_size,
                               warmup_count)) {
         print_fail_with_queue();
         return;
     }
 
     latency_stats_t latency_stats;
-    if (!run_latency_roundtrip(s2.get(), s1.get(), buffer, recv_buf, msg_size,
+    if (!run_latency_roundtrip(s2.get(), s1.get(), buffer, msg_size,
                                &latency_stats)) {
         print_fail_with_queue();
         return;
     }
 
     double throughput = 0.0;
-    if (!run_throughput_parallel(s2.get(), s1.get(), buffer, recv_buf,
-                                 msg_size, queue_probe, &throughput)) {
+    if (!run_throughput_parallel(s2.get(), s1.get(), buffer, msg_size,
+                                 queue_probe, &throughput)) {
         print_fail_with_queue();
         return;
     }

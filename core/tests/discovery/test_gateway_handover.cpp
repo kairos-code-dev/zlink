@@ -145,7 +145,7 @@ void test_gateway_handover_provider_restart ()
     TEST_ASSERT_NOT_NULL (provider1);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_bind (provider1, "tcp://127.0.0.1:*"));
-    void *router1 = zlink_receiver_router (provider1);
+    void *router1 = zlink_receiver_router_socket_unsafe(provider1);
     TEST_ASSERT_NOT_NULL (router1);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -197,7 +197,7 @@ void test_gateway_handover_provider_restart ()
     TEST_ASSERT_NOT_NULL (provider2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_bind (provider2, "tcp://127.0.0.1:*"));
-    void *router2 = zlink_receiver_router (provider2);
+    void *router2 = zlink_receiver_router_socket_unsafe(provider2);
     TEST_ASSERT_NOT_NULL (router2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (router2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
@@ -265,7 +265,7 @@ void test_provider_handover_gateway_reconnect ()
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_setsockopt (

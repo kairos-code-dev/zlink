@@ -82,8 +82,8 @@ struct registry_state_t {
 
 ## 5. Receiver Internal Implementation
 
-> **Note**: The public C API is named `zlink_receiver_*`, but the internal C++ implementation class
-> is maintained as `provider_t` (`core/src/services/gateway/receiver.hpp`).
+> **Note**: The public C API and internal C++ implementation are aligned on
+> `receiver` naming (`receiver_t` in `core/src/services/gateway/receiver.hpp`).
 
 ### 5.1 State Machine
 ```

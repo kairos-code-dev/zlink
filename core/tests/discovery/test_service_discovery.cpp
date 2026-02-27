@@ -108,7 +108,7 @@ static void test_discovery_provider_registration ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router (provider);
+    void *router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
@@ -202,7 +202,7 @@ static void test_discovery_service_filtering ()
 
     char advertise_a[256] = {0};
     size_t advertise_len = sizeof (advertise_a);
-    void *router_a = zlink_receiver_router (provider_a);
+    void *router_a = zlink_receiver_router_socket_unsafe(provider_a);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router_a, ZLINK_LAST_ENDPOINT, advertise_a,
                         &advertise_len));
@@ -225,7 +225,7 @@ static void test_discovery_service_filtering ()
 
     char advertise_b[256] = {0};
     advertise_len = sizeof (advertise_b);
-    void *router_b = zlink_receiver_router (provider_b);
+    void *router_b = zlink_receiver_router_socket_unsafe(provider_b);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router_b, ZLINK_LAST_ENDPOINT, advertise_b,
                         &advertise_len));
@@ -341,7 +341,7 @@ static void test_discovery_heartbeat_timeout ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router (provider);
+    void *router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
                         &advertise_len));
@@ -434,7 +434,7 @@ static void test_discovery_weight_update ()
 
     char advertise_ep[256] = {0};
     size_t advertise_len = sizeof (advertise_ep);
-    void *router = zlink_receiver_router (provider);
+    void *router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (router);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,

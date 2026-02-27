@@ -1108,72 +1108,88 @@ class gateway_t
 class receiver_t
 {
   public:
-    explicit receiver_t (context_t &ctx_) : _prov (zlink_receiver_new (ctx_.handle (), NULL)) {}
+    explicit receiver_t (context_t &ctx_)
+        : _receiver (zlink_receiver_new (ctx_.handle (), NULL))
+    {
+    }
     receiver_t (context_t &ctx_, const char *routing_id_)
-        : _prov (zlink_receiver_new (ctx_.handle (), routing_id_))
+        : _receiver (zlink_receiver_new (ctx_.handle (), routing_id_))
     {
     }
     ~receiver_t () { destroy (); }
 
-    receiver_t (receiver_t &&other) noexcept : _prov (other._prov) { other._prov = NULL; }
+    receiver_t (receiver_t &&other) noexcept : _receiver (other._receiver)
+    {
+        other._receiver = NULL;
+    }
     receiver_t &operator= (receiver_t &&other) noexcept
     {
         if (this == &other)
             return *this;
         destroy ();
-        _prov = other._prov;
-        other._prov = NULL;
+        _receiver = other._receiver;
+        other._receiver = NULL;
         return *this;
     }
 
     receiver_t (const receiver_t &) = delete;
     receiver_t &operator= (const receiver_t &) = delete;
 
-    int bind (const char *endpoint_) { return zlink_receiver_bind (_prov, endpoint_); }
+    int bind (const char *endpoint_)
+    {
+        return zlink_receiver_bind (_receiver, endpoint_);
+    }
     int connect_registry (const char *endpoint_)
     {
-        return zlink_receiver_connect_registry (_prov, endpoint_);
+        return zlink_receiver_connect_registry (_receiver, endpoint_);
     }
     int set_sockopt (receiver_socket_role role_, socket_option option_, const void *value_, size_t len_)
     {
-        return zlink_receiver_setsockopt (_prov, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
+        return zlink_receiver_setsockopt (
+          _receiver, static_cast<int> (role_), static_cast<int> (option_),
+          value_, len_);
     }
     int register_service (const char *service_, const char *advertise_, uint32_t weight_)
     {
-        return zlink_receiver_register (_prov, service_, advertise_, weight_);
+        return zlink_receiver_register (_receiver, service_, advertise_,
+                                        weight_);
     }
     int update_weight (const char *service_, uint32_t weight_)
     {
-        return zlink_receiver_update_weight (_prov, service_, weight_);
+        return zlink_receiver_update_weight (_receiver, service_, weight_);
     }
     int unregister_service (const char *service_)
     {
-        return zlink_receiver_unregister (_prov, service_);
+        return zlink_receiver_unregister (_receiver, service_);
     }
     int register_result (const char *service_, int *status_, char *resolved_, char *err_)
     {
-        return zlink_receiver_register_result (_prov, service_, status_, resolved_, err_);
+        return zlink_receiver_register_result (_receiver, service_, status_,
+                                              resolved_, err_);
     }
     int set_tls_server (const char *cert_, const char *key_)
     {
-        return zlink_receiver_set_tls_server (_prov, cert_, key_);
+        return zlink_receiver_set_tls_server (_receiver, cert_, key_);
     }
 
-    void *router_handle () const { return zlink_receiver_router (_prov); }
+    void *router_handle () const
+    {
+        return zlink_receiver_router_socket_unsafe (_receiver);
+    }
 
     int destroy ()
     {
-        if (!_prov)
+        if (!_receiver)
             return 0;
-        void *tmp = _prov;
-        _prov = NULL;
+        void *tmp = _receiver;
+        _receiver = NULL;
         return zlink_receiver_destroy (&tmp);
     }
 
-    void *handle () const { return _prov; }
+    void *handle () const { return _receiver; }
 
   private:
-    void *_prov;
+    void *_receiver;
 };
 
 class spot_node_t

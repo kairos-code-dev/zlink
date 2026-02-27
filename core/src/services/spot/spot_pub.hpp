@@ -23,10 +23,6 @@ class spot_pub_t
                  size_t part_count_,
                  int flags_);
 
-    int set_socket_option (int option_,
-                           const void *optval_,
-                           size_t optvallen_);
-
     int destroy ();
 
   private:

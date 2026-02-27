@@ -441,8 +441,8 @@ def _load_lib():
     ]
     _lib.zlink_receiver_set_tls_server.restype = ctypes.c_int
 
-    _lib.zlink_receiver_router.argtypes = [ctypes.c_void_p]
-    _lib.zlink_receiver_router.restype = ctypes.c_void_p
+    _lib.zlink_receiver_router_socket_unsafe.argtypes = [ctypes.c_void_p]
+    _lib.zlink_receiver_router_socket_unsafe.restype = ctypes.c_void_p
 
     _lib.zlink_receiver_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
     _lib.zlink_receiver_destroy.restype = ctypes.c_int

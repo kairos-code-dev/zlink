@@ -236,7 +236,7 @@ class Receiver:
             _raise_last_error()
 
     def router_socket(self):
-        handle = lib().zlink_receiver_router(self._handle)
+        handle = lib().zlink_receiver_router_socket_unsafe(self._handle)
         if not handle:
             _raise_last_error()
         from ._core import Socket

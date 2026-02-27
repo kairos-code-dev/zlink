@@ -4,44 +4,15 @@
 #include <vector>
 #include <cstring>
 
-enum send_status_t
-{
-    send_ok = 0,
-    send_would_block = 1,
-    send_error = 2
-};
-
-inline send_status_t send_pub_nonblocking (void *pub_socket,
-                                           const std::vector<char> &buffer,
-                                           size_t msg_size)
-{
-    const int rc = zlink_send (
-      pub_socket, buffer.data (), msg_size, ZLINK_DONTWAIT);
-    if (rc >= 0)
-        return send_ok;
-    const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR)
-        return send_would_block;
-    return send_error;
-}
-
 inline int recv_sub_blocking_with_timeout (void *sub_socket,
-                                           std::vector<char> &recv_buf,
                                            size_t msg_size)
 {
-    const int rc = zlink_recv (sub_socket, recv_buf.data (), msg_size, 0);
-    if (rc >= 0)
-        return 1;
-    const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR)
-        return 0;
-    return -1;
+    return recv_single_part_msg_flags(sub_socket, msg_size, 0);
 }
 
 static bool run_pubsub_warmup_and_latency(void *pub_socket,
                                           void *sub_socket,
                                           const std::vector<char> &buffer,
-                                          std::vector<char> &recv_buf,
                                           size_t msg_size,
                                           latency_stats_t *out_stats)
 {
@@ -50,13 +21,9 @@ static bool run_pubsub_warmup_and_latency(void *pub_socket,
 
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
     for (int i = 0; i < warmup_count; ++i) {
-        const send_status_t send_rc =
-          send_pub_nonblocking(pub_socket, buffer, msg_size);
-        if (send_rc == send_error)
+        if (!send_exact(pub_socket, buffer.data(), msg_size, 0))
             return false;
-        if (send_rc != send_ok)
-            continue;
-        if (recv_sub_blocking_with_timeout(sub_socket, recv_buf, msg_size) < 0)
+        if (recv_sub_blocking_with_timeout(sub_socket, msg_size) < 0)
             return false;
     }
 
@@ -68,14 +35,9 @@ static bool run_pubsub_warmup_and_latency(void *pub_socket,
     while (std::chrono::steady_clock::now() < latency_deadline) {
         stopwatch_t per_message;
         per_message.start();
-        const send_status_t send_rc =
-          send_pub_nonblocking(pub_socket, buffer, msg_size);
-        if (send_rc == send_error)
+        if (!send_exact(pub_socket, buffer.data(), msg_size, 0))
             return false;
-        if (send_rc != send_ok)
-            continue;
-        const int recv_rc =
-          recv_sub_blocking_with_timeout(sub_socket, recv_buf, msg_size);
+        const int recv_rc = recv_sub_blocking_with_timeout(sub_socket, msg_size);
         if (recv_rc < 0)
             return false;
         if (recv_rc > 0)
@@ -92,7 +54,6 @@ static bool run_pubsub_warmup_and_latency(void *pub_socket,
 static bool run_pubsub_throughput_parallel(void *pub_socket,
                                            void *sub_socket,
                                            const std::vector<char> &buffer,
-                                           std::vector<char> &recv_buf,
                                            size_t msg_size,
                                            int recv_timeout_ms,
                                            int throughput_duration_s,
@@ -118,8 +79,8 @@ static bool run_pubsub_throughput_parallel(void *pub_socket,
             const bool done = sender_done.load(std::memory_order_acquire);
             const int flags = done ? ZLINK_DONTWAIT : 0;
             const int recv_rc =
-              zlink_recv(sub_socket, recv_buf.data(), msg_size, flags);
-            if (recv_rc >= 0) {
+              recv_single_part_msg_flags(sub_socket, msg_size, flags);
+            if (recv_rc > 0) {
                 last_recv_at = std::chrono::steady_clock::now();
                 if (std::chrono::steady_clock::now() < throughput_deadline) {
                     recv_count.fetch_add(1, std::memory_order_release);
@@ -129,9 +90,9 @@ static bool run_pubsub_throughput_parallel(void *pub_socket,
                 // Drain immediately available messages in a non-blocking burst.
                 for (;;) {
                     const int burst_rc =
-                      zlink_recv(sub_socket, recv_buf.data(), msg_size,
-                                 ZLINK_DONTWAIT);
-                    if (burst_rc >= 0) {
+                      recv_single_part_msg_flags(sub_socket, msg_size,
+                                                 ZLINK_DONTWAIT);
+                    if (burst_rc > 0) {
                         last_recv_at = std::chrono::steady_clock::now();
                         if (std::chrono::steady_clock::now()
                             < throughput_deadline) {
@@ -140,9 +101,7 @@ static bool run_pubsub_throughput_parallel(void *pub_socket,
                         queue_probe.sample_recv_if_due();
                         continue;
                     }
-
-                    const int burst_err = zlink_errno();
-                    if (burst_err == EAGAIN || burst_err == EINTR)
+                    if (burst_rc == 0)
                         break;
 
                     recv_failed.store(true, std::memory_order_release);
@@ -153,8 +112,7 @@ static bool run_pubsub_throughput_parallel(void *pub_socket,
                 continue;
             }
 
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR) {
+            if (recv_rc == 0) {
                 if (done
                     && std::chrono::steady_clock::now() - last_recv_at
                          >= drain_idle_limit) {
@@ -173,14 +131,11 @@ static bool run_pubsub_throughput_parallel(void *pub_socket,
     queue_probe.force_sample_send();
     bool send_failed = false;
     while (std::chrono::steady_clock::now() < throughput_deadline) {
-        const send_status_t send_rc =
-          send_pub_nonblocking(pub_socket, buffer, msg_size);
-        if (send_rc == send_error) {
+        if (!send_exact(pub_socket, buffer.data(), msg_size, 0)) {
             send_failed = true;
             break;
         }
-        if (send_rc == send_ok)
-            queue_probe.sample_send_if_due();
+        queue_probe.sample_send_if_due();
     }
     queue_probe.force_sample_send();
     sender_done.store(true, std::memory_order_release);
@@ -233,7 +188,6 @@ void run_pubsub(const std::string& transport,
       sub.get(), ZLINK_RCVTIMEO, recv_timeout_ms, "ZLINK_RCVTIMEO");
 
     std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size);
     queue_probe_t queue_probe(pub.get(), sub.get());
 
     auto print_fail_with_queue = [&]() {
@@ -242,15 +196,15 @@ void run_pubsub(const std::string& transport,
 
     const int throughput_duration_s = resolve_single_duration_seconds();
     latency_stats_t latency_stats;
-    if (!run_pubsub_warmup_and_latency(pub.get(), sub.get(), buffer, recv_buf,
-                                       msg_size, &latency_stats)) {
+    if (!run_pubsub_warmup_and_latency(pub.get(), sub.get(), buffer, msg_size,
+                                       &latency_stats)) {
         print_fail_with_queue();
         return;
     }
 
     double throughput = 0.0;
-    if (!run_pubsub_throughput_parallel(pub.get(), sub.get(), buffer, recv_buf,
-                                        msg_size, recv_timeout_ms,
+    if (!run_pubsub_throughput_parallel(pub.get(), sub.get(), buffer, msg_size,
+                                        recv_timeout_ms,
                                         throughput_duration_s, queue_probe,
                                         &throughput)) {
         print_fail_with_queue();

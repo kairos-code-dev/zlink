@@ -35,7 +35,7 @@ if (status != 0) {
 }
 
 /* 비즈니스 메시지 처리 */
-void *router = zlink_receiver_router(receiver);
+void *router = zlink_receiver_router_socket_unsafe(receiver);
 /* router에서 [routing_id][msgId][payload...] 수신/응답 */
 
 zlink_receiver_destroy(&receiver);
@@ -93,7 +93,7 @@ if (rc != -1) {
 
 ```c
 /* Receiver의 ROUTER 소켓에서 수신 및 응답 */
-void *router = zlink_receiver_router(receiver);
+void *router = zlink_receiver_router_socket_unsafe(receiver);
 /* [routing_id][msgId][payload...] 수신 후 응답 처리 */
 ```
 
@@ -246,7 +246,7 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
 | `zlink_gateway_setsockopt(...)` | 소켓 옵션 설정 |
 | `zlink_gateway_set_tls_client(...)` | TLS 클라이언트 설정 |
-| `zlink_gateway_router(...)` | ROUTER 소켓 획득 |
+| `zlink_gateway_router_socket_unsafe(...)` | ROUTER 소켓 획득 |
 | `zlink_gateway_connection_count(...)` | 연결 Receiver 수 |
 | `zlink_gateway_destroy(...)` | 종료 |
 
@@ -262,7 +262,7 @@ zlink_ctx_term(ctx);
 | `zlink_receiver_unregister(...)` | 서비스 해제 |
 | `zlink_receiver_set_tls_server(...)` | TLS 서버 설정 |
 | `zlink_receiver_setsockopt(...)` | 소켓 옵션 설정 |
-| `zlink_receiver_router(...)` | ROUTER 소켓 획득 |
+| `zlink_receiver_router_socket_unsafe(...)` | ROUTER 소켓 획득 |
 | `zlink_receiver_destroy(...)` | 종료 |
 
 ---

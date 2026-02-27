@@ -168,9 +168,9 @@ static void test_gateway_provider_setsockopt ()
       zlink_receiver_setsockopt (provider, ZLINK_RECEIVER_SOCKET_ROUTER,
                                  ZLINK_RCVHWM, &hwm, sizeof (hwm)));
 
-    void *gateway_router = zlink_gateway_router (gateway);
+    void *gateway_router = zlink_gateway_router_socket_unsafe(gateway);
     TEST_ASSERT_NOT_NULL (gateway_router);
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
 
     int out = 0;
@@ -375,7 +375,7 @@ void test_gateway_single_service_tcp ()
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -508,7 +508,7 @@ void test_gateway_send_rid_tcp ()
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -623,7 +623,7 @@ void test_gateway_multi_service_tcp ()
     void *provider_a = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_a);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_a, "tcp://127.0.0.1:*"));
-    void *router_a = zlink_receiver_router (provider_a);
+    void *router_a = zlink_receiver_router_socket_unsafe(provider_a);
     TEST_ASSERT_NOT_NULL (router_a);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -645,7 +645,7 @@ void test_gateway_multi_service_tcp ()
     void *provider_b = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_b);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_b, "tcp://127.0.0.1:*"));
-    void *router_b = zlink_receiver_router (provider_b);
+    void *router_b = zlink_receiver_router_socket_unsafe(provider_b);
     TEST_ASSERT_NOT_NULL (router_b);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (router_b, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
@@ -797,7 +797,7 @@ void test_gateway_refresh_on_update ()
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router (provider_1);
+    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
     TEST_ASSERT_NOT_NULL (router_1);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -852,7 +852,7 @@ void test_gateway_refresh_on_update ()
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router (provider_2);
+    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
     TEST_ASSERT_NOT_NULL (router_2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
@@ -940,7 +940,7 @@ void test_gateway_protocol_ws ()
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "ws://127.0.0.1:*"));
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1064,7 +1064,7 @@ void test_gateway_protocol_tls ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tls://127.0.0.1:*"));
 
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
 
     int probe = 1;
@@ -1196,7 +1196,7 @@ void test_gateway_protocol_wss ()
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "wss://127.0.0.1:*"));
 
-    void *provider_router = zlink_receiver_router (provider);
+    void *provider_router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (provider_router);
 
     int probe = 1;
@@ -1313,7 +1313,7 @@ void test_gateway_load_balancing ()
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router (provider_1);
+    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
     TEST_ASSERT_NOT_NULL (router_1);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1335,7 +1335,7 @@ void test_gateway_load_balancing ()
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router (provider_2);
+    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
     TEST_ASSERT_NOT_NULL (router_2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
@@ -1484,7 +1484,7 @@ void test_gateway_weighted_load_balancing ()
     void *provider_1 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_1);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_1, "tcp://127.0.0.1:*"));
-    void *router_1 = zlink_receiver_router (provider_1);
+    void *router_1 = zlink_receiver_router_socket_unsafe(provider_1);
     TEST_ASSERT_NOT_NULL (router_1);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (
@@ -1505,7 +1505,7 @@ void test_gateway_weighted_load_balancing ()
     void *provider_2 = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider_2);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider_2, "tcp://127.0.0.1:*"));
-    void *router_2 = zlink_receiver_router (provider_2);
+    void *router_2 = zlink_receiver_router_socket_unsafe(provider_2);
     TEST_ASSERT_NOT_NULL (router_2);
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_setsockopt (router_2, ZLINK_PROBE_ROUTER, &probe, sizeof (probe)));
@@ -1627,7 +1627,7 @@ void test_gateway_concurrent_send_and_updates ()
     void *provider = zlink_receiver_new (ctx, NULL);
     TEST_ASSERT_NOT_NULL (provider);
     TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, "tcp://127.0.0.1:*"));
-    void *router = zlink_receiver_router (provider);
+    void *router = zlink_receiver_router_socket_unsafe(provider);
     TEST_ASSERT_NOT_NULL (router);
     int probe = 1;
     TEST_ASSERT_SUCCESS_ERRNO (

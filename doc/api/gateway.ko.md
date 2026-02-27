@@ -172,6 +172,11 @@ int zlink_gateway_setsockopt(void *gateway,
 
 Gateway의 내부 ROUTER 소켓에 저수준 소켓 옵션을 적용합니다. 일반적으로
 송수신 하이워터마크, 타임아웃 또는 keep-alive 설정을 구성하는 데 사용됩니다.
+기본값:
+- `ZLINK_SNDHWM = 300000`
+- `ZLINK_RCVHWM = 300000`
+- `ZLINK_SNDTIMEO = -1`
+- `ZLINK_RCVTIMEO = -1`
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
@@ -209,12 +214,12 @@ Receiver 인증서를 검증하는 데 사용되는 CA 인증서 파일 경로�
 
 ---
 
-### zlink_gateway_router
+### zlink_gateway_router_socket_unsafe
 
 내부 ROUTER 소켓 핸들을 반환합니다.
 
 ```c
-void *zlink_gateway_router(void *gateway);
+void *zlink_gateway_router_socket_unsafe(void *gateway);
 ```
 
 Gateway가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환합니다. 이는
@@ -226,6 +231,28 @@ Gateway가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환합
 **스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
 
 **참고:** `zlink_gateway_new`
+
+---
+
+### zlink_gateway_router_peers
+
+Gateway ROUTER 소켓의 peer queue 정보를 조회합니다.
+
+```c
+int zlink_gateway_router_peers(void *gateway,
+                               zlink_peer_info_t *peers,
+                               size_t *count);
+```
+
+내부 ROUTER 소켓의 peer 단위 queue 통계(송신/수신 pending 메시지 수 포함)를
+반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를 할당하여
+다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`, `zlink_gateway_router_socket_unsafe`
 
 ---
 

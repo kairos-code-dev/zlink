@@ -20,7 +20,7 @@
 
 namespace zlink
 {
-static const uint32_t provider_tag_value = 0x1e6700d8;
+static const uint32_t receiver_tag_value = 0x1e6700d8;
 
 static void sleep_ms (int ms_)
 {
@@ -126,9 +126,9 @@ static int recv_register_ack (socket_base_t *socket_,
     return 0;
 }
 
-provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
+receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     _ctx (ctx_),
-    _tag (provider_tag_value),
+    _tag (receiver_tag_value),
     _router (NULL),
     _dealer (NULL),
     _routing_id_override (routing_id_ ? routing_id_ : ""),
@@ -154,9 +154,6 @@ provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
     } else {
         zlink::discovery::set_socket_routing_id (_router, &_routing_id_override,
                                                  NULL);
-    int hwm = 1000000;
-        _router->setsockopt (ZLINK_SNDHWM, &hwm, sizeof (hwm));
-        _router->setsockopt (ZLINK_RCVHWM, &hwm, sizeof (hwm));
         // Allow a reconnecting gateway with the same routing id to take over.
         int handover = 1;
         _router->setsockopt (ZLINK_ROUTER_HANDOVER, &handover,
@@ -164,14 +161,14 @@ provider_t::provider_t (ctx_t *ctx_, const char *routing_id_) :
     }
 }
 
-provider_t::~provider_t ()
+receiver_t::~receiver_t ()
 {
     _tag = 0xdeadbeef;
 }
 
-bool provider_t::check_tag () const
+bool receiver_t::check_tag () const
 {
-    return _tag == provider_tag_value;
+    return _tag == receiver_tag_value;
 }
 
 static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
@@ -182,7 +179,7 @@ static int create_socket (ctx_t *ctx_, int type_, socket_base_t **socket_)
     return 0;
 }
 
-int provider_t::bind (const char *endpoint_)
+int receiver_t::bind (const char *endpoint_)
 {
     if (!endpoint_) {
         errno = EINVAL;
@@ -208,7 +205,7 @@ int provider_t::bind (const char *endpoint_)
     return _router->bind (endpoint_);
 }
 
-bool provider_t::ensure_routing_id ()
+bool receiver_t::ensure_routing_id ()
 {
     if (!_router)
         return false;
@@ -231,7 +228,7 @@ bool provider_t::ensure_routing_id ()
     return true;
 }
 
-int provider_t::connect_registry (const char *registry_router_endpoint_)
+int receiver_t::connect_registry (const char *registry_router_endpoint_)
 {
     if (!registry_router_endpoint_) {
         errno = EINVAL;
@@ -264,7 +261,7 @@ int provider_t::connect_registry (const char *registry_router_endpoint_)
     return _dealer->connect (registry_router_endpoint_);
 }
 
-std::string provider_t::resolve_advertise (const char *advertise_endpoint_)
+std::string receiver_t::resolve_advertise (const char *advertise_endpoint_)
 {
     if (advertise_endpoint_ && advertise_endpoint_[0] != '\0')
         return advertise_endpoint_;
@@ -287,7 +284,7 @@ std::string provider_t::resolve_advertise (const char *advertise_endpoint_)
     return endpoint;
 }
 
-int provider_t::register_service (const char *service_name_,
+int receiver_t::register_service (const char *service_name_,
                                   const char *advertise_endpoint_,
                                   uint32_t weight_)
 {
@@ -335,13 +332,13 @@ int provider_t::register_service (const char *service_name_,
 
     if (!_heartbeat_thread.get_started ()) {
         _stop.set (0);
-        _heartbeat_thread.start (heartbeat_worker, this, "provbeat");
+        _heartbeat_thread.start (heartbeat_worker, this, "recvbeat");
     }
 
     return 0;
 }
 
-int provider_t::update_weight (const char *service_name_, uint32_t weight_)
+int receiver_t::update_weight (const char *service_name_, uint32_t weight_)
 {
     if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
@@ -377,7 +374,7 @@ int provider_t::update_weight (const char *service_name_, uint32_t weight_)
     return 0;
 }
 
-int provider_t::unregister_service (const char *service_name_)
+int receiver_t::unregister_service (const char *service_name_)
 {
     if (!service_name_ || service_name_[0] == '\0') {
         errno = EINVAL;
@@ -402,7 +399,7 @@ int provider_t::unregister_service (const char *service_name_)
     return 0;
 }
 
-int provider_t::register_result (const char *service_name_,
+int receiver_t::register_result (const char *service_name_,
                                  int *status_,
                                  char *resolved_endpoint_,
                                  char *error_message_)
@@ -426,7 +423,7 @@ int provider_t::register_result (const char *service_name_,
     return 0;
 }
 
-int provider_t::set_tls_server (const char *cert_, const char *key_)
+int receiver_t::set_tls_server (const char *cert_, const char *key_)
 {
     if (!cert_ || !key_) {
         errno = EINVAL;
@@ -455,7 +452,7 @@ int provider_t::set_tls_server (const char *cert_, const char *key_)
     return 0;
 }
 
-int provider_t::set_socket_option (int socket_role_,
+int receiver_t::set_socket_option (int socket_role_,
                                    int option_,
                                    const void *optval_,
                                    size_t optvallen_)
@@ -484,7 +481,7 @@ int provider_t::set_socket_option (int socket_role_,
     return target->setsockopt (option_, optval_, optvallen_);
 }
 
-void *provider_t::router ()
+void *receiver_t::router ()
 {
     scoped_lock_t lock (_sync);
     if (!_router)
@@ -492,13 +489,13 @@ void *provider_t::router ()
     return static_cast<void *> (_router);
 }
 
-void provider_t::heartbeat_worker (void *arg_)
+void receiver_t::heartbeat_worker (void *arg_)
 {
-    provider_t *self = static_cast<provider_t *> (arg_);
+    receiver_t *self = static_cast<receiver_t *> (arg_);
     self->send_heartbeat ();
 }
 
-void provider_t::send_heartbeat ()
+void receiver_t::send_heartbeat ()
 {
     socket_base_t *dealer = NULL;
     std::string last_registry;
@@ -556,7 +553,7 @@ void provider_t::send_heartbeat ()
     }
 }
 
-int provider_t::destroy ()
+int receiver_t::destroy ()
 {
     _stop.set (1);
     if (_heartbeat_thread.get_started ())

@@ -74,9 +74,6 @@ fi
 STANDARD_PATTERNS="PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL,GATEWAY,SPOT"
 PATTERN="ALL"
 OUTPUT_FILE=""
-SAVE_REPORT=1
-SAVE_BASELINE=0
-SAVE_BASELINE_VERSION=""
 RESULTS_DIR=""
 RESULTS_TAG=""
 RESULT_FILE=""
@@ -94,9 +91,6 @@ SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_SINGLE_PUBSUB_RCVTIMEO_MS:-}}"
-MODE="observe"
-BASELINE_FILE=""
-ROLLING_N="${PERF_ROLLING_N:-10}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
 if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
   PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
@@ -117,10 +111,9 @@ Options:
   --reuse-build               Reuse existing build directory as-is (skip configure/build).
   --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
-  --save [VERSION]            Save baseline under results/single/baseline/ (complete only).
   --results-dir PATH          Override result root directory.
   --results-tag NAME          Optional tag in saved result filename.
-  --runs N                    Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
+  --runs N                    Iterations per pattern/transport/size (default: 1).
   --duration N                Override single duration seconds (default: 5).
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
@@ -132,17 +125,11 @@ Options:
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
 
-Policy options (single runner):
-  --mode MODE                 observe|trend|gate (default: observe).
-  --baseline-file PATH        Baseline file for gate mode.
-  --rolling-n N               Rolling baseline window for trend mode (default: 10).
-
 Notes:
   - tmp result is always saved under results/single/tmp/.
   - report result save is always enabled.
   - default build mode is incremental (configure/build without deleting build dir).
   - --output and report save can be used together.
-  - --save-baseline is removed. Use --save [VERSION].
   - MULTI_* patterns are rejected by this script.
 USAGE
 }
@@ -180,13 +167,6 @@ while [[ $# -gt 0 ]]; do
     --output)
       OUTPUT_FILE="${2:-}"
       shift
-      ;;
-    --save)
-      SAVE_BASELINE=1
-      if [[ $# -ge 2 && "${2:-}" != --* ]]; then
-        SAVE_BASELINE_VERSION="${2:-}"
-        shift
-      fi
       ;;
     --results-dir)
       RESULTS_DIR="${2:-}"
@@ -238,18 +218,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --transports)
       PERF_TRANSPORTS="${2:-}"
-      shift
-      ;;
-    --mode)
-      MODE="${2:-}"
-      shift
-      ;;
-    --baseline-file)
-      BASELINE_FILE="${2:-}"
-      shift
-      ;;
-    --rolling-n)
-      ROLLING_N="${2:-}"
       shift
       ;;
     -h|--help)
@@ -364,26 +332,11 @@ if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "
   exit 1
 fi
 
-MODE="$(printf '%s' "${MODE}" | tr '[:upper:]' '[:lower:]')"
-if [[ "${MODE}" != "observe" && "${MODE}" != "trend" && "${MODE}" != "gate" ]]; then
-  echo "Mode must be one of: observe, trend, gate." >&2
-  exit 1
-fi
-
 if [[ "${RUNS_EXPLICIT}" -eq 0 ]]; then
-  case "${MODE}" in
-    observe) RUNS=1 ;;
-    trend) RUNS=3 ;;
-    gate) RUNS=5 ;;
-  esac
+  RUNS=1
 fi
 if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
   echo "Runs must be a positive integer." >&2
-  exit 1
-fi
-
-if [[ -z "${ROLLING_N}" || ! "${ROLLING_N}" =~ ^[0-9]+$ || "${ROLLING_N}" -lt 1 ]]; then
-  echo "rolling-n must be a positive integer." >&2
   exit 1
 fi
 
@@ -566,26 +519,13 @@ if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_CMD+=("--duration" "${SINGLE_DURATION_SECONDS}")
 fi
 
-RUN_CMD+=("--mode" "${MODE}" "--rolling-n" "${ROLLING_N}")
 if [[ -n "${RESULTS_DIR}" ]]; then
   RUN_CMD+=("--results-dir" "${RESULTS_DIR}")
-fi
-if [[ -n "${BASELINE_FILE}" ]]; then
-  RUN_CMD+=("--baseline-file" "${BASELINE_FILE}")
 fi
 if [[ -n "${RESULTS_TAG}" ]]; then
   RUN_CMD+=("--results-tag" "${RESULTS_TAG}")
 fi
 RUN_CMD+=("--result-file" "${RESULT_FILE}")
-if [[ "${SAVE_REPORT}" -eq 1 ]]; then
-  RUN_CMD+=("--result")
-fi
-if [[ "${SAVE_BASELINE}" -eq 1 ]]; then
-  RUN_CMD+=("--save")
-  if [[ -n "${SAVE_BASELINE_VERSION}" ]]; then
-    RUN_CMD+=("${SAVE_BASELINE_VERSION}")
-  fi
-fi
 
 RUN_ENV=()
 RUN_ENV+=(PYTHONUNBUFFERED=1)

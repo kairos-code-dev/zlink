@@ -1,1 +1,27 @@
-smoke_python_multi_baseline.txt
+META,os,Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39
+META,cpu,x86_64
+META,cores,20
+META,build,Release
+META,commit,3724119d
+META,timestamp,2026-02-24T18:12:30+09:00
+META,load_avg,0.35 0.49 0.46
+META,mode,observe
+META,runs,1
+META,clients,50
+META,status,complete
+META,expected,3
+META,actual,3
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,8253.26
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,0.53
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,58.06
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,client_cpu_pct,1.48
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,client_mem_mb,19.38
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,server_cpu_pct,1.55
+RESULT,current,MULTI_DEALER_DEALER,tcp,64,server_mem_mb,24.77
+TABLE
+## PATTERN: MULTI_DEALER_DEALER (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------|----------|--------|----------|
+| 64B |      8.25 Kmsg/s |      0.5 MB/s |     58.06 us |    1.5 |     19.4 |    1.6 |     24.8 |

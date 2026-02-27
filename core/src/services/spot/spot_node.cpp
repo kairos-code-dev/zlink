@@ -811,6 +811,22 @@ int spot_node_t::set_socket_option (int socket_role_,
     return 0;
 }
 
+void *spot_node_t::pub_socket_unsafe ()
+{
+    scoped_lock_t lock (_sync);
+    if (!_pub)
+        return NULL;
+    return static_cast<void *> (_pub);
+}
+
+void *spot_node_t::sub_socket_unsafe ()
+{
+    scoped_lock_t lock (_sync);
+    if (!_sub)
+        return NULL;
+    return static_cast<void *> (_sub);
+}
+
 spot_pub_t *spot_node_t::create_spot_pub ()
 {
     spot_pub_t *pub = new (std::nothrow) spot_pub_t (this);

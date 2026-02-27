@@ -219,7 +219,7 @@ cmake --build build
 
 - **gateway_t::recv() 버그**: zlink 코어 라이브러리의 `gateway.cpp`에서
   `zlink_msg_recv()` 반환값(성공 시 메시지 크기, 양수)을 `rc != 0`으로 검사하여
-  정상 수신이 실패로 처리됩니다. 이 샘플에서는 `zlink_gateway_router()` C API로
+  정상 수신이 실패로 처리됩니다. 이 샘플에서는 `zlink_gateway_router_socket_unsafe()` C API로
   ROUTER 소켓에 직접 접근하는 방식으로 우회합니다.
 
 - **Gateway 연결 풀 초기화**: Gateway의 서비스 풀은 첫 `send()` 또는

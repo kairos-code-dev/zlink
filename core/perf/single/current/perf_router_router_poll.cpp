@@ -60,7 +60,6 @@ bool perform_handshake_poll(void *router1, void *router2)
 bool run_latency_poll(void *router1,
                       void *router2,
                       const std::vector<char> &buffer,
-                      std::vector<char> &recv_buf,
                       size_t msg_size,
                       int recv_timeout_ms,
                       latency_stats_t *out_stats)
@@ -70,7 +69,6 @@ bool run_latency_poll(void *router1,
 
     zlink_pollitem_t poll_r1[] = {{router1, 0, ZLINK_POLLIN, 0}};
     zlink_pollitem_t poll_r2[] = {{router2, 0, ZLINK_POLLIN, 0}};
-    char id[256];
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
     latency_stats_builder_t latency_builder;
@@ -87,18 +85,17 @@ bool run_latency_poll(void *router1,
 
         if (!wait_for_input(poll_r1, recv_timeout_ms))
             return false;
-        const int id_len = zlink_recv(router1, id, sizeof(id), 0);
-        if (id_len <= 0
-            || !recv_exact(router1, recv_buf.data(), msg_size, 0)
-            || !send_exact(router1, id, static_cast<size_t>(id_len), ZLINK_SNDMORE)
+        std::vector<char> routing_id;
+        if (recv_two_part_msg_flags(router1, msg_size, &routing_id, 0) <= 0
+            || !send_exact(router1, routing_id.data(), routing_id.size(),
+                           ZLINK_SNDMORE)
             || !send_exact(router1, buffer.data(), msg_size, 0)) {
             return false;
         }
 
         if (!wait_for_input(poll_r2, recv_timeout_ms))
             return false;
-        if (zlink_recv(router2, id, sizeof(id), 0) <= 0
-            || !recv_exact(router2, recv_buf.data(), msg_size, 0)) {
+        if (recv_two_part_msg_flags(router2, msg_size, NULL, 0) <= 0) {
             return false;
         }
 
@@ -135,8 +132,6 @@ bool run_throughput_poll(void *router1,
 
     std::thread receiver_thread([&]() {
         zlink_pollitem_t poll_r1[] = {{router1, 0, ZLINK_POLLIN, 0}};
-        std::vector<char> recv_buf(msg_size + 256);
-        char id[256];
         auto account_recv = [&]() {
             recv_total.fetch_add(1, std::memory_order_release);
             if (std::chrono::steady_clock::now() < throughput_deadline)
@@ -152,15 +147,10 @@ bool run_throughput_poll(void *router1,
                 continue;
             }
 
-            const int id_len = zlink_recv(router1, id, sizeof(id), 0);
-            if (id_len <= 0) {
-                const int err = zlink_errno();
-                if (err == EAGAIN || err == EINTR)
+            const int recv_rc = recv_two_part_msg_flags(router1, msg_size, NULL, 0);
+            if (recv_rc <= 0) {
+                if (recv_rc == 0)
                     continue;
-                recv_failed.store(true, std::memory_order_release);
-                break;
-            }
-            if (!recv_exact(router1, recv_buf.data(), msg_size, 0)) {
                 recv_failed.store(true, std::memory_order_release);
                 break;
             }
@@ -168,19 +158,13 @@ bool run_throughput_poll(void *router1,
 
             // Drain immediately available messages in a non-blocking burst.
             for (;;) {
-                const int burst_id_len =
-                  zlink_recv(router1, id, sizeof(id), ZLINK_DONTWAIT);
-                if (burst_id_len > 0) {
-                    if (!recv_exact(router1, recv_buf.data(), msg_size, 0)) {
-                        recv_failed.store(true, std::memory_order_release);
-                        break;
-                    }
+                const int burst_rc =
+                  recv_two_part_msg_flags(router1, msg_size, NULL, ZLINK_DONTWAIT);
+                if (burst_rc > 0) {
                     account_recv();
                     continue;
                 }
-
-                const int burst_err = zlink_errno();
-                if (burst_err == EAGAIN || burst_err == EINTR)
+                if (burst_rc == 0)
                     break;
 
                 recv_failed.store(true, std::memory_order_release);
@@ -286,7 +270,6 @@ void run_router_router_poll(const std::string &transport,
     }
 
     std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size + 256);
     queue_probe_t queue_probe(router2.get(), router1.get());
 
     auto print_fail_with_queue = [&]() {
@@ -295,8 +278,8 @@ void run_router_router_poll(const std::string &transport,
     };
 
     latency_stats_t latency_stats;
-    if (!run_latency_poll(router1.get(), router2.get(), buffer, recv_buf,
-                          msg_size, recv_timeout_ms, &latency_stats)) {
+    if (!run_latency_poll(router1.get(), router2.get(), buffer, msg_size,
+                          recv_timeout_ms, &latency_stats)) {
         print_fail_with_queue();
         return;
     }

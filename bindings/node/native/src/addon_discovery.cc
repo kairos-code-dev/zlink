@@ -595,7 +595,7 @@ napi_value provider_router(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     void *p = NULL;
     napi_get_value_external(env, argv[0], &p);
-    void *sock = zlink_receiver_router(p);
+    void *sock = zlink_receiver_router_socket_unsafe(p);
     if (!sock)
         return throw_last_error(env, "provider_router failed");
     napi_value ext;

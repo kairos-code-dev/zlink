@@ -301,6 +301,90 @@ parameter sets the expected server name for certificate verification. If
 
 ---
 
+### zlink_spot_node_pub_socket_unsafe
+
+Return the internal SPOT PUB socket handle.
+
+```c
+void *zlink_spot_node_pub_socket_unsafe(void *node);
+```
+
+Returns the raw PUB socket handle used internally by the SPOT node. This
+is intended for diagnostics and advanced use cases such as custom polling.
+The caller must not close or modify the socket.
+
+**Returns:** The PUB socket handle, or `NULL` on failure.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_spot_node_sub_socket_unsafe`
+
+---
+
+### zlink_spot_node_sub_socket_unsafe
+
+Return the internal SPOT SUB socket handle.
+
+```c
+void *zlink_spot_node_sub_socket_unsafe(void *node);
+```
+
+Returns the raw SUB socket handle used internally by the SPOT node. This
+is intended for diagnostics and advanced use cases such as custom polling.
+The caller must not close or modify the socket.
+
+**Returns:** The SUB socket handle, or `NULL` on failure.
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_spot_node_pub_socket_unsafe`
+
+---
+
+### zlink_spot_node_pub_peers
+
+Enumerate peer queue info from the internal SPOT PUB socket.
+
+```c
+int zlink_spot_node_pub_peers(void *node,
+                              zlink_peer_info_t *peers,
+                              size_t *count);
+```
+
+Returns peer-level queue stats (including send/receive pending message
+counts) from the SPOT node PUB socket. Use `peers = NULL` to query required
+count first, then call again with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`, `zlink_spot_node_pub_socket_unsafe`
+
+---
+
+### zlink_spot_node_sub_peers
+
+Enumerate peer queue info from the internal SPOT SUB socket.
+
+```c
+int zlink_spot_node_sub_peers(void *node,
+                              zlink_peer_info_t *peers,
+                              size_t *count);
+```
+
+Returns peer-level queue stats (including send/receive pending message
+counts) from the SPOT node SUB socket. Use `peers = NULL` to query required
+count first, then call again with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`, `zlink_spot_node_sub_socket_unsafe`
+
+---
+
 ### zlink_spot_node_setsockopt
 
 Set a SPOT node internal option.
@@ -319,6 +403,8 @@ Applies either:
   `ZLINK_SPOT_NODE_OPT_*`, or
 - A low-level socket option to one of the internal sockets
   (`ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER`).
+
+This is the only SPOT API for low-level socket option configuration.
 
 For async publish mode:
 
@@ -410,30 +496,6 @@ message parts is transferred.
 `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`.
 
 **See also:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
-
----
-
-### zlink_spot_pub_setsockopt
-
-Set a socket option on the SPOT publisher.
-
-```c
-int zlink_spot_pub_setsockopt(void *pub,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
-```
-
-Applies a low-level socket option to the Publisher's underlying socket.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EINVAL` -- unknown option.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_spot_pub_new`
 
 ---
 
@@ -613,33 +675,13 @@ the actual topic length. Must not be called when a handler is active.
 
 ---
 
-### zlink_spot_sub_setsockopt
-
-Set a socket option on the SPOT subscriber.
-
-```c
-int zlink_spot_sub_setsockopt(void *sub,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
-```
-
-Applies a low-level socket option to the Subscriber's underlying socket.
-
-**Returns:** `0` on success, or `-1` on failure (errno is set).
-
-**Errors:**
-- `EINVAL` -- unknown option.
-
-**Thread safety:** Not thread-safe.
-
-**See also:** `zlink_spot_sub_new`
-
----
-
 ### Raw Socket Exposure
 
-SPOT internal sockets are intentionally not exposed. Use:
+SPOT internal sockets are exposed only via explicit unsafe APIs. Use:
+- `zlink_spot_node_setsockopt` for low-level PUB/SUB/DEALER socket options
+- `zlink_spot_node_pub_socket_unsafe` / `zlink_spot_node_sub_socket_unsafe`
+  for advanced polling/integration
+- `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers` for peer queue stats
 - `zlink_spot_pub_publish` for publishing
 - `zlink_spot_sub_set_handler` for callback-driven consumption
 - `zlink_spot_sub_recv` for polling-style consumption from the SPOT subscriber queue

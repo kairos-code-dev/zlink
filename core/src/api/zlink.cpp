@@ -880,7 +880,7 @@ int zlink_gateway_set_tls_client (void *gateway_,
     return gateway->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
-void *zlink_gateway_router (void *gateway_)
+void *zlink_gateway_router_socket_unsafe (void *gateway_)
 {
     if (!gateway_)
         return NULL;
@@ -890,6 +890,29 @@ void *zlink_gateway_router (void *gateway_)
         return NULL;
     }
     return gateway->router ();
+}
+
+int zlink_gateway_router_peers (void *gateway_,
+                                zlink_peer_info_t *peers_,
+                                size_t *count_)
+{
+    if (!gateway_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    void *router_socket = gateway->router ();
+    if (!router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peers (router_socket, peers_, count_);
 }
 
 int zlink_gateway_connection_count (void *gateway_, const char *service_name_)
@@ -927,157 +950,180 @@ void *zlink_receiver_new (void *ctx_, const char *routing_id_)
         errno = EFAULT;
         return NULL;
     }
-    zlink::provider_t *provider =
-      new (std::nothrow) zlink::provider_t (static_cast<zlink::ctx_t *> (ctx_),
+    zlink::receiver_t *receiver =
+      new (std::nothrow) zlink::receiver_t (static_cast<zlink::ctx_t *> (ctx_),
                                             routing_id_);
-    if (!provider) {
+    if (!receiver) {
         errno = ENOMEM;
         return NULL;
     }
-    return static_cast<void *> (provider);
+    return static_cast<void *> (receiver);
 }
 
-int zlink_receiver_bind (void *provider_, const char *bind_endpoint_)
+int zlink_receiver_bind (void *receiver_, const char *bind_endpoint_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->bind (bind_endpoint_);
+    return receiver->bind (bind_endpoint_);
 }
 
-int zlink_receiver_connect_registry (void *provider_,
+int zlink_receiver_connect_registry (void *receiver_,
                                    const char *registry_endpoint_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->connect_registry (registry_endpoint_);
+    return receiver->connect_registry (registry_endpoint_);
 }
 
-int zlink_receiver_register (void *provider_,
+int zlink_receiver_register (void *receiver_,
                            const char *service_name_,
                            const char *advertise_endpoint_,
                            uint32_t weight_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->register_service (service_name_, advertise_endpoint_,
+    return receiver->register_service (service_name_, advertise_endpoint_,
                                        weight_);
 }
 
-int zlink_receiver_update_weight (void *provider_,
+int zlink_receiver_update_weight (void *receiver_,
                                 const char *service_name_,
                                 uint32_t weight_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->update_weight (service_name_, weight_);
+    return receiver->update_weight (service_name_, weight_);
 }
 
-int zlink_receiver_unregister (void *provider_, const char *service_name_)
+int zlink_receiver_unregister (void *receiver_, const char *service_name_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->unregister_service (service_name_);
+    return receiver->unregister_service (service_name_);
 }
 
-int zlink_receiver_register_result (void *provider_,
+int zlink_receiver_register_result (void *receiver_,
                                   const char *service_name_,
                                   int *status_,
                                   char *resolved_endpoint_,
                                   char *error_message_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->register_result (service_name_, status_, resolved_endpoint_,
+    return receiver->register_result (service_name_, status_, resolved_endpoint_,
                                       error_message_);
 }
 
-int zlink_receiver_set_tls_server (void *provider_,
+int zlink_receiver_set_tls_server (void *receiver_,
                                    const char *cert_,
                                    const char *key_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->set_tls_server (cert_, key_);
+    return receiver->set_tls_server (cert_, key_);
 }
 
-int zlink_receiver_setsockopt (void *provider_,
+int zlink_receiver_setsockopt (void *receiver_,
                                int socket_role_,
                                int option_,
                                const void *optval_,
                                size_t optvallen_)
 {
-    if (!provider_)
+    if (!receiver_)
         return -1;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    return provider->set_socket_option (socket_role_, option_, optval_,
+    return receiver->set_socket_option (socket_role_, option_, optval_,
                                         optvallen_);
 }
 
-void *zlink_receiver_router (void *provider_)
+void *zlink_receiver_router_socket_unsafe (void *receiver_)
 {
-    if (!provider_)
+    if (!receiver_)
         return NULL;
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (provider_);
-    if (!provider->check_tag ()) {
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return NULL;
     }
-    return provider->router ();
+    return receiver->router ();
 }
 
-int zlink_receiver_destroy (void **provider_p_)
+int zlink_receiver_router_peers (void *receiver_,
+                                 zlink_peer_info_t *peers_,
+                                 size_t *count_)
 {
-    if (!provider_p_ || !*provider_p_) {
+    if (!receiver_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (receiver_);
+    if (!receiver->check_tag ()) {
         errno = EFAULT;
         return -1;
     }
-    zlink::provider_t *provider = static_cast<zlink::provider_t *> (*provider_p_);
-    *provider_p_ = NULL;
-    if (!provider->check_tag ()) {
+    void *router_socket = receiver->router ();
+    if (!router_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peers (router_socket, peers_, count_);
+}
+
+int zlink_receiver_destroy (void **receiver_p_)
+{
+    if (!receiver_p_ || !*receiver_p_) {
         errno = EFAULT;
         return -1;
     }
-    provider->destroy ();
-    delete provider;
+    zlink::receiver_t *receiver = static_cast<zlink::receiver_t *> (*receiver_p_);
+    *receiver_p_ = NULL;
+    if (!receiver->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    receiver->destroy ();
+    delete receiver;
     return 0;
 }
 
@@ -1238,6 +1284,76 @@ int zlink_spot_node_set_tls_client (void *node_,
     return node->set_tls_client (ca_cert_, hostname_, trust_system_);
 }
 
+void *zlink_spot_node_pub_socket_unsafe (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return node->pub_socket_unsafe ();
+}
+
+void *zlink_spot_node_sub_socket_unsafe (void *node_)
+{
+    if (!node_)
+        return NULL;
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    return node->sub_socket_unsafe ();
+}
+
+int zlink_spot_node_pub_peers (void *node_,
+                               zlink_peer_info_t *peers_,
+                               size_t *count_)
+{
+    if (!node_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    void *pub_socket = node->pub_socket_unsafe ();
+    if (!pub_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peers (pub_socket, peers_, count_);
+}
+
+int zlink_spot_node_sub_peers (void *node_,
+                               zlink_peer_info_t *peers_,
+                               size_t *count_)
+{
+    if (!node_)
+        return -1;
+    if (!count_) {
+        errno = EINVAL;
+        return -1;
+    }
+    zlink::spot_node_t *node = static_cast<zlink::spot_node_t *> (node_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+    void *sub_socket = node->sub_socket_unsafe ();
+    if (!sub_socket) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return zlink_socket_peers (sub_socket, peers_, count_);
+}
+
 void *zlink_spot_pub_new (void *node_)
 {
     if (!node_)
@@ -1284,21 +1400,6 @@ int zlink_spot_pub_publish (void *pub_,
         return -1;
     }
     return pub->publish (topic_id_, parts_, part_count_, flags_);
-}
-
-int zlink_spot_pub_setsockopt (void *pub_,
-                               int option_,
-                               const void *optval_,
-                               size_t optvallen_)
-{
-    if (!pub_)
-        return -1;
-    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
-    if (!pub->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return pub->set_socket_option (option_, optval_, optvallen_);
 }
 
 void *zlink_spot_sub_new (void *node_)
@@ -1416,21 +1517,6 @@ int zlink_spot_node_setsockopt (void *node_,
         return -1;
     }
     return node->set_socket_option (socket_role_, option_, optval_, optvallen_);
-}
-
-int zlink_spot_sub_setsockopt (void *sub_,
-                               int option_,
-                               const void *optval_,
-                               size_t optvallen_)
-{
-    if (!sub_)
-        return -1;
-    zlink::spot_sub_t *sub = static_cast<zlink::spot_sub_t *> (sub_);
-    if (!sub->check_tag ()) {
-        errno = EFAULT;
-        return -1;
-    }
-    return sub->set_socket_option (option_, optval_, optvallen_);
 }
 
 int zlink_bind (void *s_, const char *addr_)

@@ -39,11 +39,6 @@ is_uint() {
   [[ "${value}" =~ ^[0-9]+$ ]]
 }
 
-is_nonnegative_number() {
-  local value="${1:-}"
-  [[ "${value}" =~ ^[0-9]+([.][0-9]+)?$ ]]
-}
-
 NOFILE_SKIP_REASON=""
 ensure_nofile_limit() {
   local clients="${1:-}"
@@ -116,17 +111,11 @@ By default, this wrapper runs current zlink only.
 By default, multi-bench keeps warmup at 3s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
-Modes:
-  observe (default)      Collect numbers only (no baseline compare)
-  trend                  Compare against rolling baseline (warning only)
-  gate                   Compare against fixed baseline (warning + fail)
-
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above). MULTI_ prefix is optional.
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
   --clean-build          Remove build directory and do a clean build.
-  --save [VER]           Save baseline file under core/perf/results/multi/baseline/ (complete only).
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
   --build-dir PATH       Override build directory.
@@ -136,13 +125,6 @@ Options:
   --io-threads N         Set PERF_IO_THREADS for the benchmark run.
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
-  --mode MODE            observe | trend | gate (default: observe).
-  --rolling-n N          Rolling baseline window size (default: 10).
-  --baseline-file PATH   Use explicit fixed baseline file for gate mode.
-  --warn-throughput-pct N  Throughput warning drop threshold (default: 10).
-  --fail-throughput-pct N  Throughput fail drop threshold (default: 15).
-  --warn-latency-pct N     Latency warning increase threshold (default: 10).
-  --fail-latency-pct N     Latency fail increase threshold (default: 15).
   --warmup N             Optional override for multi warmup seconds (default 3).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern.
@@ -174,7 +156,6 @@ Notes:
   - tmp result is always saved under results/multi/tmp/.
   - report result save is always enabled.
   - default build mode is incremental (configure/build without deleting build dir).
-  - --save-baseline is removed. Use --save [VER].
 USAGE
 }
 
@@ -224,13 +205,6 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-MODE="${PERF_MODE:-observe}"
-ROLLING_N="${PERF_ROLLING_N:-10}"
-BASELINE_FILE="${PERF_BASELINE_FILE:-}"
-WARN_THROUGHPUT_PCT="${PERF_WARN_THROUGHPUT_PCT:-10}"
-FAIL_THROUGHPUT_PCT="${PERF_FAIL_THROUGHPUT_PCT:-15}"
-WARN_LATENCY_PCT="${PERF_WARN_LATENCY_PCT:-10}"
-FAIL_LATENCY_PCT="${PERF_FAIL_LATENCY_PCT:-15}"
 MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-3}"
 MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
 MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
@@ -310,62 +284,6 @@ while [[ $# -gt 0 ]]; do
       done
       shift 2
       ;;
-    --mode)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --mode requires a value." >&2
-        exit 1
-      fi
-      MODE="${2}"
-      shift 2
-      ;;
-    --rolling-n)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --rolling-n requires a value." >&2
-        exit 1
-      fi
-      ROLLING_N="${2}"
-      shift 2
-      ;;
-    --baseline-file)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --baseline-file requires a value." >&2
-        exit 1
-      fi
-      BASELINE_FILE="${2}"
-      shift 2
-      ;;
-    --warn-throughput-pct)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --warn-throughput-pct requires a value." >&2
-        exit 1
-      fi
-      WARN_THROUGHPUT_PCT="${2}"
-      shift 2
-      ;;
-    --fail-throughput-pct)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --fail-throughput-pct requires a value." >&2
-        exit 1
-      fi
-      FAIL_THROUGHPUT_PCT="${2}"
-      shift 2
-      ;;
-    --warn-latency-pct)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --warn-latency-pct requires a value." >&2
-        exit 1
-      fi
-      WARN_LATENCY_PCT="${2}"
-      shift 2
-      ;;
-    --fail-latency-pct)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: --fail-latency-pct requires a value." >&2
-        exit 1
-      fi
-      FAIL_LATENCY_PCT="${2}"
-      shift 2
-      ;;
     --results-tag)
       HAS_EXPLICIT_RESULTS_TAG=1
       if [[ $# -lt 2 ]]; then
@@ -416,15 +334,6 @@ while [[ $# -gt 0 ]]; do
     --pin-cpu)
       SCRIPT_ARGS+=( "$1" )
       shift
-      ;;
-    --save)
-      SCRIPT_ARGS+=( "$1" )
-      if [[ $# -ge 2 && "${2:-}" != --* ]]; then
-        SCRIPT_ARGS+=( "$2" )
-        shift 2
-      else
-        shift
-      fi
       ;;
     --results-dir)
       HAS_EXPLICIT_RESULTS_DIR=1
@@ -577,37 +486,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-MODE="$(printf '%s' "${MODE}" | tr '[:upper:]' '[:lower:]')"
-case "${MODE}" in
-  observe|trend|gate)
-    ;;
-  *)
-    echo "Error: --mode must be one of observe|trend|gate." >&2
-    exit 1
-    ;;
-esac
-
-if ! is_uint "${ROLLING_N}" || (( ROLLING_N < 1 )); then
-  echo "Error: --rolling-n must be a positive integer." >&2
-  exit 1
-fi
-
-if ! is_nonnegative_number "${WARN_THROUGHPUT_PCT}"; then
-  echo "Error: --warn-throughput-pct must be a non-negative number." >&2
-  exit 1
-fi
-if ! is_nonnegative_number "${FAIL_THROUGHPUT_PCT}"; then
-  echo "Error: --fail-throughput-pct must be a non-negative number." >&2
-  exit 1
-fi
-if ! is_nonnegative_number "${WARN_LATENCY_PCT}"; then
-  echo "Error: --warn-latency-pct must be a non-negative number." >&2
-  exit 1
-fi
-if ! is_nonnegative_number "${FAIL_LATENCY_PCT}"; then
-  echo "Error: --fail-latency-pct must be a non-negative number." >&2
-  exit 1
-fi
 if ! is_uint "${MULTI_TRANSPORT_TRANSITION_MS}"; then
   echo "Error: --transport-transition-ms must be a non-negative integer." >&2
   exit 1
@@ -649,10 +527,6 @@ if ! is_uint "${MULTI_SERVER_BIND_PORT}" || (( MULTI_SERVER_BIND_PORT > 65535 ))
   exit 1
 fi
 
-if [[ -n "${BASELINE_FILE}" && "${MODE}" != "gate" ]]; then
-  echo "Warning: --baseline-file is used only in gate mode; current mode=${MODE}." >&2
-fi
-
 PATTERNS=("${MULTI_PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
@@ -680,10 +554,6 @@ fi
 if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--runs "1")
 fi
-RUN_BASE_ARGS+=(--mode "${MODE}" --rolling-n "${ROLLING_N}")
-if [[ -n "${BASELINE_FILE}" ]]; then
-  RUN_BASE_ARGS+=(--baseline-file "${BASELINE_FILE}")
-fi
 
 if [[ -z "${RESULTS_DIR_OVERRIDE}" ]]; then
   RESULTS_DIR_OVERRIDE="${SCRIPT_DIR}/results"
@@ -692,12 +562,6 @@ fi
 RUN_ENV=()
 RUN_ENV+=(PERF_ALLOW_MULTI="1")
 RUN_ENV+=(PERF_MULTI_POLICY="1")
-RUN_ENV+=(PERF_MODE="${MODE}")
-RUN_ENV+=(PERF_ROLLING_N="${ROLLING_N}")
-RUN_ENV+=(PERF_WARN_THROUGHPUT_PCT="${WARN_THROUGHPUT_PCT}")
-RUN_ENV+=(PERF_FAIL_THROUGHPUT_PCT="${FAIL_THROUGHPUT_PCT}")
-RUN_ENV+=(PERF_WARN_LATENCY_PCT="${WARN_LATENCY_PCT}")
-RUN_ENV+=(PERF_FAIL_LATENCY_PCT="${FAIL_LATENCY_PCT}")
 RUN_ENV+=(PERF_RESULTS_DIR="${RESULTS_DIR_OVERRIDE}")
 RUN_ENV+=(PERF_MULTI_WARMUP_SECONDS="${MULTI_WARMUP_SECONDS}")
 RUN_ENV+=(PERF_MULTI_DURATION_SECONDS="${MULTI_DURATION_SECONDS}")
@@ -709,9 +573,6 @@ RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
 RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
 RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
-if [[ -n "${BASELINE_FILE}" ]]; then
-  RUN_ENV+=(PERF_BASELINE_FILE="${BASELINE_FILE}")
-fi
 if [[ -n "${MULTI_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${MULTI_CLIENTS}")
 fi
@@ -787,7 +648,7 @@ fi
 
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"
 echo "=== Running multi benchmark: ${PATTERN_CSV} ==="
-echo "    mode=${MODE} warmup=${MULTI_WARMUP_SECONDS}s duration=${MULTI_DURATION_SECONDS}s"
+echo "    warmup=${MULTI_WARMUP_SECONDS}s duration=${MULTI_DURATION_SECONDS}s"
 RUN_EXIT_CODE=0
 if PERF_ALLOW_MULTI=1 \
   PERF_SUPPRESS_TOTAL_TIME=1 \
@@ -816,8 +677,5 @@ if [[ "${#FAILED_PATTERNS[@]}" -gt 0 ]]; then
   for pattern in "${FAILED_PATTERNS[@]}"; do
     echo "- ${pattern}"
   done
-  if [[ "${RUN_EXIT_CODE}" -eq 2 ]]; then
-    exit 2
-  fi
   exit 1
 fi

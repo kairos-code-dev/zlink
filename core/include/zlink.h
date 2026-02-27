@@ -905,8 +905,13 @@ ZLINK_EXPORT int zlink_gateway_set_tls_client (void *gateway,
                                            const char *hostname,
                                            int trust_system);
 
-/** @brief Return the internal ROUTER socket handle (for diagnostics). */
-ZLINK_EXPORT void *zlink_gateway_router (void *gateway);
+/** @brief Return the internal ROUTER socket handle (unsafe borrowed handle). */
+ZLINK_EXPORT void *zlink_gateway_router_socket_unsafe (void *gateway);
+
+/** @brief Enumerate peer queue info from the Gateway ROUTER socket. */
+ZLINK_EXPORT int zlink_gateway_router_peers (void *gateway,
+                                             zlink_peer_info_t *peers,
+                                             size_t *count);
 
 /** @brief Return the number of receivers connected for a service. */
 ZLINK_EXPORT int zlink_gateway_connection_count (void *gateway,
@@ -929,11 +934,11 @@ ZLINK_EXPORT int zlink_gateway_destroy (void **gateway_p);
 ZLINK_EXPORT void *zlink_receiver_new (void *ctx, const char *routing_id);
 
 /** @brief Bind the ROUTER socket to an endpoint. */
-ZLINK_EXPORT int zlink_receiver_bind (void *provider,
+ZLINK_EXPORT int zlink_receiver_bind (void *receiver,
                                   const char *bind_endpoint);
 
 /** @brief Connect to a Registry ROUTER endpoint (for registration/heartbeat). */
-ZLINK_EXPORT int zlink_receiver_connect_registry (void *provider,
+ZLINK_EXPORT int zlink_receiver_connect_registry (void *receiver,
                                               const char *registry_endpoint);
 
 /**
@@ -942,18 +947,18 @@ ZLINK_EXPORT int zlink_receiver_connect_registry (void *provider,
  * @param advertise_endpoint  Endpoint that Gateways will connect to.
  * @param weight              Load-balancing weight.
  */
-ZLINK_EXPORT int zlink_receiver_register (void *provider,
+ZLINK_EXPORT int zlink_receiver_register (void *receiver,
                                       const char *service_name,
                                       const char *advertise_endpoint,
                                       uint32_t weight);
 
 /** @brief Update the weight of a registered service. */
-ZLINK_EXPORT int zlink_receiver_update_weight (void *provider,
+ZLINK_EXPORT int zlink_receiver_update_weight (void *receiver,
                                            const char *service_name,
                                            uint32_t weight);
 
 /** @brief Unregister a service. */
-ZLINK_EXPORT int zlink_receiver_unregister (void *provider,
+ZLINK_EXPORT int zlink_receiver_unregister (void *receiver,
                                         const char *service_name);
 
 /**
@@ -962,33 +967,38 @@ ZLINK_EXPORT int zlink_receiver_unregister (void *provider,
  * @param[out] resolved_endpoint  Endpoint resolved by the Registry (256-byte buffer).
  * @param[out] error_message      Error message (256-byte buffer).
  */
-ZLINK_EXPORT int zlink_receiver_register_result (void *provider,
+ZLINK_EXPORT int zlink_receiver_register_result (void *receiver,
                                              const char *service_name,
                                              int *status,
                                              char *resolved_endpoint,
                                              char *error_message);
 
 /** @brief Set TLS server certificate. */
-ZLINK_EXPORT int zlink_receiver_set_tls_server (void *provider,
+ZLINK_EXPORT int zlink_receiver_set_tls_server (void *receiver,
                                             const char *cert,
                                             const char *key);
 
-/* Provider socket roles */
+/* Receiver socket roles */
 #define ZLINK_RECEIVER_SOCKET_ROUTER 1
 #define ZLINK_RECEIVER_SOCKET_DEALER 2
 
 /** @brief Set a socket option on an internal Receiver socket. */
-ZLINK_EXPORT int zlink_receiver_setsockopt (void *provider,
+ZLINK_EXPORT int zlink_receiver_setsockopt (void *receiver,
                                         int socket_role,
                                         int option,
                                         const void *optval,
                                         size_t optvallen);
 
-/** @brief Return the internal ROUTER socket handle (for diagnostics). */
-ZLINK_EXPORT void *zlink_receiver_router (void *provider);
+/** @brief Return the internal ROUTER socket handle (unsafe borrowed handle). */
+ZLINK_EXPORT void *zlink_receiver_router_socket_unsafe (void *receiver);
+
+/** @brief Enumerate peer queue info from the Receiver ROUTER socket. */
+ZLINK_EXPORT int zlink_receiver_router_peers (void *receiver,
+                                              zlink_peer_info_t *peers,
+                                              size_t *count);
 
 /** @brief Destroy the Receiver and release all resources. */
-ZLINK_EXPORT int zlink_receiver_destroy (void **provider_p);
+ZLINK_EXPORT int zlink_receiver_destroy (void **receiver_p);
 
 /******************************************************************************/
 /*  SPOT PUB/SUB API                                                          */
@@ -1050,6 +1060,22 @@ ZLINK_EXPORT int zlink_spot_node_set_tls_client (void *node,
                                              const char *hostname,
                                              int trust_system);
 
+/** @brief Return SPOT node internal PUB socket (unsafe borrowed handle). */
+ZLINK_EXPORT void *zlink_spot_node_pub_socket_unsafe (void *node);
+
+/** @brief Return SPOT node internal SUB socket (unsafe borrowed handle). */
+ZLINK_EXPORT void *zlink_spot_node_sub_socket_unsafe (void *node);
+
+/** @brief Enumerate peer queue info from SPOT node PUB socket. */
+ZLINK_EXPORT int zlink_spot_node_pub_peers (void *node,
+                                            zlink_peer_info_t *peers,
+                                            size_t *count);
+
+/** @brief Enumerate peer queue info from SPOT node SUB socket. */
+ZLINK_EXPORT int zlink_spot_node_sub_peers (void *node,
+                                            zlink_peer_info_t *peers,
+                                            size_t *count);
+
 /* Spot Node socket roles */
 #define ZLINK_SPOT_NODE_SOCKET_NODE 0
 #define ZLINK_SPOT_NODE_SOCKET_PUB 1
@@ -1110,12 +1136,6 @@ ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
                                          zlink_msg_t *parts,
                                          size_t part_count,
                                          int flags);
-
-/** @brief Set a socket option on the SPOT publisher. */
-ZLINK_EXPORT int zlink_spot_pub_setsockopt (void *pub,
-                                            int option,
-                                            const void *optval,
-                                            size_t optvallen);
 
 /* SPOT Sub ---------------------------------------------------------------- */
 
@@ -1184,12 +1204,6 @@ ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       int flags,
                                       char *topic_id_out,
                                       size_t *topic_id_len);
-
-/** @brief Set a socket option on the SPOT subscriber. */
-ZLINK_EXPORT int zlink_spot_sub_setsockopt (void *sub,
-                                            int option,
-                                            const void *optval,
-                                            size_t optvallen);
 
 #if defined _WIN32
 #if defined _WIN64

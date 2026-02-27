@@ -43,7 +43,7 @@ int OutgameGateway::poll_responses() {
     // which returns message size (positive) on success.
     // We read directly from the gateway's ROUTER socket instead.
     int count = 0;
-    void *router = zlink_gateway_router(gateway_.handle());
+    void *router = zlink_gateway_router_socket_unsafe(gateway_.handle());
     if (!router)
         return 0;
 

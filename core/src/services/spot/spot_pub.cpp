@@ -37,18 +37,6 @@ int spot_pub_t::publish (const char *topic_,
     return _node->publish (topic_, parts_, part_count_, flags_);
 }
 
-int spot_pub_t::set_socket_option (int option_,
-                                   const void *optval_,
-                                   size_t optvallen_)
-{
-    if (!_node) {
-        errno = EFAULT;
-        return -1;
-    }
-    return _node->set_socket_option (ZLINK_SPOT_NODE_SOCKET_PUB, option_,
-                                     optval_, optvallen_);
-}
-
 int spot_pub_t::destroy ()
 {
     if (_node)

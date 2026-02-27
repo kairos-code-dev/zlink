@@ -333,42 +333,42 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string? routingId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_bind(IntPtr provider,
+    internal static extern int zlink_receiver_bind(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string bindEndpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_connect_registry(IntPtr provider,
+    internal static extern int zlink_receiver_connect_registry(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string registryEndpoint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_register(IntPtr provider,
+    internal static extern int zlink_receiver_register(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string advertiseEndpoint,
         uint weight);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_update_weight(IntPtr provider,
+    internal static extern int zlink_receiver_update_weight(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName, uint weight);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_unregister(IntPtr provider,
+    internal static extern int zlink_receiver_unregister(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static unsafe extern int zlink_receiver_register_result(
-        IntPtr provider, [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
+        IntPtr receiver, [MarshalAs(UnmanagedType.LPUTF8Str)] string serviceName,
         out int status, byte* resolvedEndpoint, byte* errorMessage);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_set_tls_server(IntPtr provider,
+    internal static extern int zlink_receiver_set_tls_server(IntPtr receiver,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string cert,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string key);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_receiver_router(IntPtr provider);
+    internal static extern IntPtr zlink_receiver_router_socket_unsafe(IntPtr receiver);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_setsockopt(IntPtr provider, int role,
+    internal static extern int zlink_receiver_setsockopt(IntPtr receiver, int role,
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
@@ -380,7 +380,7 @@ internal static class NativeMethods
         int option, IntPtr value, nuint length);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_receiver_destroy(ref IntPtr provider);
+    internal static extern int zlink_receiver_destroy(ref IntPtr receiver);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_node_new(IntPtr ctx);

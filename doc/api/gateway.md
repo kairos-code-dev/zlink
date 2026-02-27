@@ -180,6 +180,12 @@ Applies a low-level socket option to the Gateway's internal ROUTER socket.
 Commonly used to configure send/receive high-water marks, timeouts, or
 keep-alive settings.
 
+Defaults:
+- `ZLINK_SNDHWM = 300000`
+- `ZLINK_RCVHWM = 300000`
+- `ZLINK_SNDTIMEO = -1`
+- `ZLINK_RCVTIMEO = -1`
+
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
 **Errors:**
@@ -216,12 +222,12 @@ system trust store is used in addition to `ca_cert`.
 
 ---
 
-### zlink_gateway_router
+### zlink_gateway_router_socket_unsafe
 
 Return the internal ROUTER socket handle.
 
 ```c
-void *zlink_gateway_router(void *gateway);
+void *zlink_gateway_router_socket_unsafe(void *gateway);
 ```
 
 Returns the raw ROUTER socket handle used internally by the Gateway. This
@@ -233,6 +239,28 @@ The caller must not close or modify the socket.
 **Thread safety:** Safe to call from any thread.
 
 **See also:** `zlink_gateway_new`
+
+---
+
+### zlink_gateway_router_peers
+
+Enumerate peer queue info from the Gateway ROUTER socket.
+
+```c
+int zlink_gateway_router_peers(void *gateway,
+                               zlink_peer_info_t *peers,
+                               size_t *count);
+```
+
+Returns peer-level queue stats (including send/receive pending message
+counts) from the internal ROUTER socket. Use `peers = NULL` to query
+required count first, then call again with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`, `zlink_gateway_router_socket_unsafe`
 
 ---
 

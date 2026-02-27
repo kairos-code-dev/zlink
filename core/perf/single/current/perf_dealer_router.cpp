@@ -10,22 +10,19 @@ namespace {
 bool run_warmup_router_echo(void *dealer,
                             void *router,
                             const std::vector<char> &buffer,
-                            std::vector<char> &dealer_recv_buf,
                             size_t msg_size,
                             int warmup_count)
 {
     std::atomic<bool> worker_failed(false);
     std::thread worker([&]() {
-        std::vector<char> router_recv_buf(msg_size + 256);
-        char router_id[256];
         for (int i = 0; i < warmup_count; ++i) {
-            const int id_len =
-              zlink_recv(router, router_id, sizeof(router_id), 0);
-            if (id_len <= 0
-                || !recv_exact(router, router_recv_buf.data(), msg_size, 0)
-                || !send_exact(router, router_id,
-                               static_cast<size_t>(id_len), ZLINK_SNDMORE)
-                || !send_exact(router, router_recv_buf.data(), msg_size, 0)) {
+            std::vector<char> routing_id;
+            const int recv_rc =
+              recv_two_part_msg_flags(router, msg_size, &routing_id, 0);
+            if (recv_rc <= 0
+                || !send_exact(router, routing_id.data(), routing_id.size(),
+                               ZLINK_SNDMORE)
+                || !send_exact(router, buffer.data(), msg_size, 0)) {
                 worker_failed.store(true, std::memory_order_release);
                 break;
             }
@@ -35,7 +32,7 @@ bool run_warmup_router_echo(void *dealer,
     bool main_failed = false;
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_exact(dealer, buffer.data(), msg_size, 0)
-            || !recv_exact(dealer, dealer_recv_buf.data(), msg_size, 0)) {
+            || recv_single_part_msg_flags(dealer, msg_size, 0) <= 0) {
             main_failed = true;
             break;
         }
@@ -48,7 +45,6 @@ bool run_warmup_router_echo(void *dealer,
 bool run_latency_router_echo(void *dealer,
                              void *router,
                              const std::vector<char> &buffer,
-                             std::vector<char> &dealer_recv_buf,
                              size_t msg_size,
                              latency_stats_t *out_stats)
 {
@@ -57,26 +53,57 @@ bool run_latency_router_echo(void *dealer,
 
     std::atomic<bool> worker_stop(false);
     std::atomic<bool> worker_failed(false);
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    const auto drain_idle_limit =
+      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
     std::thread worker([&]() {
-        std::vector<char> router_recv_buf(msg_size + 256);
-        char router_id[256];
-        while (!worker_stop.load(std::memory_order_acquire)) {
-            const int id_len =
-              zlink_recv(router, router_id, sizeof(router_id), ZLINK_DONTWAIT);
-            if (id_len > 0) {
-                if (!recv_exact(router, router_recv_buf.data(), msg_size, 0)
-                    || !send_exact(router, router_id,
-                                   static_cast<size_t>(id_len), ZLINK_SNDMORE)
-                    || !send_exact(router, router_recv_buf.data(), msg_size,
-                                   0)) {
+        auto last_recv_at = std::chrono::steady_clock::now();
+        while (true) {
+            const bool stop = worker_stop.load(std::memory_order_acquire);
+            const int flags = stop ? ZLINK_DONTWAIT : 0;
+            std::vector<char> routing_id;
+            const int recv_rc =
+              recv_two_part_msg_flags(router, msg_size, &routing_id, flags);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now();
+                if (!send_exact(router, routing_id.data(), routing_id.size(),
+                                ZLINK_SNDMORE)
+                    || !send_exact(router, buffer.data(), msg_size, 0)) {
                     worker_failed.store(true, std::memory_order_release);
                     break;
                 }
+
+                // Drain immediately available messages in a non-blocking burst.
+                for (;;) {
+                    std::vector<char> burst_routing_id;
+                    const int burst_rc = recv_two_part_msg_flags(
+                      router, msg_size, &burst_routing_id, ZLINK_DONTWAIT);
+                    if (burst_rc > 0) {
+                        last_recv_at = std::chrono::steady_clock::now();
+                        if (!send_exact(router, burst_routing_id.data(),
+                                        burst_routing_id.size(), ZLINK_SNDMORE)
+                            || !send_exact(
+                              router, buffer.data(), msg_size, 0)) {
+                            worker_failed.store(true, std::memory_order_release);
+                            break;
+                        }
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+                    worker_failed.store(true, std::memory_order_release);
+                    break;
+                }
+                if (worker_failed.load(std::memory_order_acquire))
+                    break;
                 continue;
             }
-
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR) {
+            if (recv_rc == 0) {
+                if (stop
+                    && std::chrono::steady_clock::now() - last_recv_at
+                         >= drain_idle_limit) {
+                    break;
+                }
                 std::this_thread::yield();
                 continue;
             }
@@ -95,7 +122,7 @@ bool run_latency_router_echo(void *dealer,
         stopwatch_t sw;
         sw.start();
         if (!send_exact(dealer, buffer.data(), msg_size, 0)
-            || !recv_exact(dealer, dealer_recv_buf.data(), msg_size, 0)) {
+            || recv_single_part_msg_flags(dealer, msg_size, 0) <= 0) {
             main_failed = true;
             break;
         }
@@ -135,28 +162,44 @@ bool run_throughput_router_recv(void *dealer,
     std::atomic<int> recv_in_window(0);
 
     std::thread receiver_thread([&]() {
-        std::vector<char> router_recv_buf(msg_size + 256);
-        char router_id[256];
         queue_probe.force_sample_recv();
         while (!sender_done.load(std::memory_order_acquire)
                || recv_total.load(std::memory_order_acquire)
                     < sent_count.load(std::memory_order_acquire)) {
-            const int id_len =
-              zlink_recv(router, router_id, sizeof(router_id), ZLINK_DONTWAIT);
-            if (id_len > 0) {
-                if (!recv_exact(router, router_recv_buf.data(), msg_size, 0)) {
-                    recv_failed.store(true, std::memory_order_release);
-                    break;
-                }
+            const bool done = sender_done.load(std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int recv_rc =
+              recv_two_part_msg_flags(router, msg_size, NULL, flags);
+            if (recv_rc > 0) {
                 recv_total.fetch_add(1, std::memory_order_release);
                 if (std::chrono::steady_clock::now() < throughput_deadline)
                     recv_in_window.fetch_add(1, std::memory_order_release);
                 queue_probe.sample_recv_if_due();
+
+                // Drain immediately available messages in a non-blocking burst.
+                for (;;) {
+                    const int burst_rc = recv_two_part_msg_flags(
+                      router, msg_size, NULL, ZLINK_DONTWAIT);
+                    if (burst_rc > 0) {
+                        recv_total.fetch_add(1, std::memory_order_release);
+                        if (std::chrono::steady_clock::now()
+                            < throughput_deadline) {
+                            recv_in_window.fetch_add(
+                              1, std::memory_order_release);
+                        }
+                        queue_probe.sample_recv_if_due();
+                        continue;
+                    }
+                    if (burst_rc == 0)
+                        break;
+                    recv_failed.store(true, std::memory_order_release);
+                    break;
+                }
+                if (recv_failed.load(std::memory_order_acquire))
+                    break;
                 continue;
             }
-
-            const int err = zlink_errno();
-            if (err == EAGAIN || err == EINTR) {
+            if (recv_rc == 0) {
                 std::this_thread::yield();
                 continue;
             }
@@ -249,7 +292,6 @@ void run_dealer_router(const std::string& transport,
     }
 
     std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size + 256);
     queue_probe_t queue_probe(dealer.get(), router.get());
 
     auto print_fail_with_queue = [&]() {
@@ -258,15 +300,15 @@ void run_dealer_router(const std::string& transport,
     };
 
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
-    if (!run_warmup_router_echo(dealer.get(), router.get(), buffer, recv_buf,
-                                msg_size, warmup_count)) {
+    if (!run_warmup_router_echo(dealer.get(), router.get(), buffer, msg_size,
+                                warmup_count)) {
         print_fail_with_queue();
         return;
     }
 
     latency_stats_t latency_stats;
-    if (!run_latency_router_echo(dealer.get(), router.get(), buffer, recv_buf,
-                                 msg_size, &latency_stats)) {
+    if (!run_latency_router_echo(dealer.get(), router.get(), buffer, msg_size,
+                                 &latency_stats)) {
         print_fail_with_queue();
         return;
     }

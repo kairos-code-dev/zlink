@@ -46,6 +46,8 @@ class spot_node_t
                            int option_,
                            const void *optval_,
                            size_t optvallen_);
+    void *pub_socket_unsafe ();
+    void *sub_socket_unsafe ();
 
     spot_pub_t *create_spot_pub ();
     spot_sub_t *create_spot_sub ();

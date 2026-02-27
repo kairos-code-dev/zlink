@@ -193,14 +193,14 @@ public:
 
 ---
 
-## discovery/gateway/provider/spot (요약)
+## discovery/gateway/receiver/spot (요약)
 ```cpp
 namespace zlink {
 
 class registry_t { /* zlink_registry_* */ };
 class discovery_t { /* zlink_discovery_* */ };
 class gateway_t { /* zlink_gateway_* */ };
-class provider_t { /* zlink_provider_* */ };
+class receiver_t { /* zlink_receiver_* */ };
 class spot_node_t { /* zlink_spot_node_* */ };
 class spot_t { /* zlink_spot_* */ };
 

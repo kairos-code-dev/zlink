@@ -3,12 +3,10 @@
 core/perf - zlink benchmark runner
 """
 import datetime
-import json
 import os
 import platform
 import queue
 import re
-import shutil
 import statistics
 import subprocess
 import sys
@@ -24,15 +22,6 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 BUILD_CONFIG_DIRS = ("Release", "Debug", "RelWithDebInfo", "MinSizeRel")
 RUN_STARTED_AT = time.time()
 
-MODE_OBSERVE = "observe"
-MODE_TREND = "trend"
-MODE_GATE = "gate"
-VALID_MODES = {MODE_OBSERVE, MODE_TREND, MODE_GATE}
-
-DEFAULT_WARN_THROUGHPUT_PCT = 10.0
-DEFAULT_FAIL_THROUGHPUT_PCT = 15.0
-DEFAULT_WARN_LATENCY_PCT = 10.0
-DEFAULT_FAIL_LATENCY_PCT = 15.0
 LATENCY_P95_METRIC = "latency_p95"
 LATENCY_P99_METRIC = "latency_p99"
 REQUIRED_RESULT_METRICS = (
@@ -44,7 +33,6 @@ REQUIRED_RESULT_METRICS = (
 )
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
-DEFAULT_THRESHOLDS_FILE = os.path.join(SCRIPT_DIR, "thresholds.json")
 STREAM_VARIANT_PATTERNS = (
     "MULTI_STREAM",
     "MULTI_STREAM_CALLBACK",
@@ -81,6 +69,21 @@ SINGLE_ECHO_PATTERNS = {
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_POLL",
 }
+
+
+class TeeStream:
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, data):
+        for stream in self._streams:
+            stream.write(data)
+            stream.flush()
+        return len(data)
+
+    def flush(self):
+        for stream in self._streams:
+            stream.flush()
 
 
 def is_echo_pattern(pattern_name):
@@ -138,34 +141,6 @@ def resolve_latency_triplet(latency, latency_p95, latency_p99):
     if p99 is None:
         p99 = p95 if p95 is not None else mean
     return mean, p95, p99
-
-
-def normalize_threshold_value(metric, field, value):
-    if metric in ("throughput", "bandwidth") and value > 0:
-        adjusted = -abs(value)
-        warning = (
-            f"{metric} threshold should be <= 0; "
-            f"auto-negated {field}={value} -> {adjusted}"
-        )
-        return adjusted, warning
-    if metric == "latency" and value < 0:
-        adjusted = abs(value)
-        warning = (
-            f"{metric} threshold should be >= 0; "
-            f"auto-abs {field}={value} -> {adjusted}"
-        )
-        return adjusted, warning
-    return value, ""
-
-
-def threshold_rank(pattern, transport):
-    if pattern != "*" and transport != "*":
-        return 1
-    if pattern != "*" and transport == "*":
-        return 2
-    if pattern == "*" and transport != "*":
-        return 3
-    return 4
 
 
 def resolve_linux_paths():
@@ -319,16 +294,6 @@ def parse_env_int(name, default, *fallback_names):
         return default
     try:
         return int(val)
-    except ValueError:
-        return default
-
-
-def parse_env_float(name, default, *fallback_names):
-    val = _read_env_value(name, *fallback_names)
-    if not val:
-        return default
-    try:
-        return float(val)
     except ValueError:
         return default
 
@@ -3245,7 +3210,7 @@ def resolve_clients_meta(selected_patterns):
     return str(general_default)
 
 
-def build_meta_items(mode, num_runs, selected_patterns):
+def build_meta_items(num_runs, selected_patterns):
     meta_items = []
     meta_items.append(("os", get_os_label()))
     meta_items.append(("cpu", get_cpu_model()))
@@ -3257,7 +3222,6 @@ def build_meta_items(mode, num_runs, selected_patterns):
     load_avg = get_load_avg()
     if load_avg:
         meta_items.append(("load_avg", load_avg))
-    meta_items.append(("mode", mode))
     meta_items.append(("runs", str(num_runs)))
     clients = resolve_clients_meta(selected_patterns)
     if clients:
@@ -3282,14 +3246,12 @@ def build_effective_option_items(args, selected_patterns):
 
     unique_transports = sorted(set(transports))
     unique_sizes = sorted(set(sizes))
-    mode = args["mode"]
     num_runs = args["num_runs"]
     multi_only = bool(selected_patterns) and all(
         is_multi_pattern(pattern) for pattern in selected_patterns
     )
 
     items = [
-        ("mode", mode),
         ("runs", str(num_runs)),
         ("patterns", ",".join(selected_patterns) if selected_patterns else "none"),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
@@ -3362,7 +3324,6 @@ def resolve_multi_results_dirs(results_root):
         "root": multi_root,
         "tmp": os.path.join(multi_root, "tmp"),
         "report": os.path.join(multi_root, "report"),
-        "baseline": os.path.join(multi_root, "baseline"),
     }
 
 
@@ -3408,278 +3369,6 @@ def prune_result_files(dir_path, max_files, exclude_names=None):
             continue
 
 
-def parse_result_file(path, multi_only=False):
-    meta = {}
-    results = {}
-    try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                if line.startswith("META,"):
-                    parts = line.split(",", 2)
-                    if len(parts) == 3:
-                        meta[parts[1]] = parts[2]
-                    continue
-                if not line.startswith("RESULT,"):
-                    continue
-                parts = line.split(",")
-                if len(parts) < 7:
-                    continue
-                pattern = parts[2].strip().upper()
-                if multi_only and not is_multi_pattern(pattern):
-                    continue
-                transport = parts[3].strip()
-                metric = parts[5].strip().lower()
-                if metric not in ("throughput", "bandwidth", "latency"):
-                    continue
-                try:
-                    size = int(parts[4])
-                    value = float(parts[6])
-                except ValueError:
-                    continue
-                results[(pattern, transport, size, metric)] = value
-    except OSError:
-        pass
-    return meta, results
-
-
-def collect_result_files(result_dir):
-    files = []
-    if not os.path.isdir(result_dir):
-        return files
-
-    for entry in os.listdir(result_dir):
-        if not entry.endswith(".txt"):
-            continue
-        path = os.path.join(result_dir, entry)
-        if not os.path.isfile(path):
-            continue
-        files.append(path)
-
-    files.sort(reverse=True)
-    return files
-
-
-def load_rolling_baseline(tmp_dir, rolling_n, keys_of_interest):
-    samples = {key: [] for key in keys_of_interest}
-    if not samples:
-        return {}, {}
-
-    result_files = collect_result_files(tmp_dir)[: max(1, int(rolling_n))]
-    for path in result_files:
-        meta, results = parse_result_file(path, multi_only=True)
-        if meta.get("status", "").strip().lower() != "complete":
-            continue
-        if not results:
-            continue
-        for key, value in results.items():
-            if key not in samples:
-                continue
-            samples[key].append(value)
-
-    baseline = {}
-    counts = {}
-    for key, vals in samples.items():
-        if vals:
-            baseline[key] = statistics.median(vals)
-        if vals:
-            counts[key] = len(vals)
-    return baseline, counts
-
-
-def resolve_fixed_baseline_path(baseline_dir, explicit_path):
-    if explicit_path:
-        return os.path.abspath(explicit_path)
-    return os.path.join(baseline_dir, "latest.txt")
-
-
-def load_threshold_rules():
-    path = os.environ.get("PERF_THRESHOLDS_FILE", "").strip() or DEFAULT_THRESHOLDS_FILE
-    if not os.path.isfile(path):
-        return [], []
-
-    warnings = []
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
-        warnings.append(f"threshold file parse failed ({path}): {exc}; using defaults")
-        return [], warnings
-
-    if not isinstance(data, dict):
-        warnings.append(f"threshold file must be a JSON object: {path}; using defaults")
-        return [], warnings
-
-    rules = []
-    for order, (raw_key, raw_value) in enumerate(data.items()):
-        if not isinstance(raw_key, str):
-            warnings.append(f"ignored invalid threshold key (non-string): {raw_key!r}")
-            continue
-        parts = raw_key.split("/")
-        if len(parts) != 3:
-            warnings.append(f"ignored invalid threshold key format: {raw_key}")
-            continue
-        pattern = parts[0].strip().upper()
-        transport = parts[1].strip().lower()
-        metric = parts[2].strip().lower()
-        if metric not in ("throughput", "bandwidth", "latency"):
-            warnings.append(f"ignored invalid threshold metric: {raw_key}")
-            continue
-        if pattern != "*" and not pattern.replace("_", "").isalnum():
-            warnings.append(f"ignored invalid threshold pattern segment: {raw_key}")
-            continue
-        if transport != "*" and not transport.isalpha():
-            warnings.append(f"ignored invalid threshold transport segment: {raw_key}")
-            continue
-        if not isinstance(raw_value, dict):
-            warnings.append(f"ignored threshold value (must be object): {raw_key}")
-            continue
-
-        warn_value = None
-        fail_value = None
-        if "warning" in raw_value:
-            try:
-                warn_value = float(raw_value["warning"])
-            except (TypeError, ValueError):
-                warnings.append(f"ignored threshold key due to non-numeric warning: {raw_key}")
-                continue
-            warn_value, sign_warning = normalize_threshold_value(metric, "warning", warn_value)
-            if sign_warning:
-                warnings.append(f"{raw_key}: {sign_warning}")
-        if "fail" in raw_value:
-            try:
-                fail_value = float(raw_value["fail"])
-            except (TypeError, ValueError):
-                warnings.append(f"ignored threshold key due to non-numeric fail: {raw_key}")
-                continue
-            fail_value, sign_warning = normalize_threshold_value(metric, "fail", fail_value)
-            if sign_warning:
-                warnings.append(f"{raw_key}: {sign_warning}")
-
-        if warn_value is None and fail_value is None:
-            continue
-        rules.append(
-            {
-                "pattern": pattern,
-                "transport": transport,
-                "metric": metric,
-                "warning": warn_value,
-                "fail": fail_value,
-                "rank": threshold_rank(pattern, transport),
-                "order": order,
-            }
-        )
-
-    rules.sort(key=lambda item: (item["rank"], item["order"]))
-    return rules, warnings
-
-
-def resolve_threshold_for_key(rules, pattern, transport, metric, defaults):
-    if metric in ("throughput", "bandwidth"):
-        warning = defaults["warn_throughput"]
-        fail = defaults["fail_throughput"]
-    else:
-        warning = defaults["warn_latency"]
-        fail = defaults["fail_latency"]
-
-    p = pattern.upper()
-    t = transport.lower()
-    for rule in rules:
-        if rule["metric"] != metric:
-            continue
-        if rule["pattern"] not in (p, "*"):
-            continue
-        if rule["transport"] not in (t, "*"):
-            continue
-        if rule["warning"] is not None:
-            warning = rule["warning"]
-        if rule["fail"] is not None:
-            fail = rule["fail"]
-        return warning, fail
-    return warning, fail
-
-
-def compare_against_baseline(current_results, baseline_results, mode, thresholds, threshold_rules):
-    warnings = []
-    failures = []
-    missing = []
-
-    for key in sorted(current_results.keys()):
-        current_value = current_results[key]
-        baseline_value = baseline_results.get(key)
-        metric = key[3]
-        if metric not in ("throughput", "bandwidth", "latency"):
-            continue
-        if baseline_value is None or baseline_value <= 0:
-            missing.append(key)
-            continue
-
-        pattern, transport, size, metric = key
-        delta_pct = ((current_value - baseline_value) / baseline_value) * 100.0
-        warn_limit, fail_limit = resolve_threshold_for_key(
-            threshold_rules, pattern, transport, metric, thresholds
-        )
-
-        if metric in ("throughput", "bandwidth"):
-            warn_hit = delta_pct <= warn_limit
-            fail_hit = delta_pct <= fail_limit
-            regression_pct = -delta_pct
-        else:
-            warn_hit = delta_pct >= warn_limit
-            fail_hit = delta_pct >= fail_limit
-            regression_pct = delta_pct
-
-        if not warn_hit:
-            continue
-
-        row = {
-            "pattern": pattern,
-            "transport": transport,
-            "size": size,
-            "metric": metric,
-            "current": current_value,
-            "baseline": baseline_value,
-            "regression_pct": regression_pct,
-            "warn_limit": warn_limit,
-            "fail_limit": fail_limit,
-        }
-
-        if mode == MODE_GATE and fail_hit:
-            failures.append(row)
-        else:
-            warnings.append(row)
-
-    return warnings, failures, missing
-
-
-def sanitize_baseline_version(version):
-    clean = version.strip()
-    clean = clean.replace("/", "_")
-    clean = clean.replace("\\", "_")
-    clean = clean.replace(" ", "_")
-    return clean
-
-
-def write_machine_result_file(path, meta_items, result_map, table_lines):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        for key, value in meta_items:
-            f.write(f"META,{key},{value}\n")
-        for key in sorted(result_map.keys()):
-            pattern, transport, size, metric = key
-            value = result_map[key]
-            f.write(
-                f"RESULT,current,{pattern},{transport},{size},{metric},{value:.2f}\n"
-            )
-        f.write("TABLE\n")
-        for line in table_lines:
-            f.write(f"{line}\n")
-    os.replace(tmp_path, path)
-
-
 def write_report_table_file(path, table_lines):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp_path = f"{path}.tmp"
@@ -3689,39 +3378,6 @@ def write_report_table_file(path, table_lines):
     os.replace(tmp_path, path)
 
 
-def update_latest_baseline_pointer(target_path, baseline_dir):
-    os.makedirs(baseline_dir, exist_ok=True)
-    latest_path = os.path.join(baseline_dir, "latest.txt")
-
-    if IS_WINDOWS:
-        shutil.copyfile(target_path, latest_path)
-        return
-
-    rel_name = os.path.basename(target_path)
-    tmp_link = f"{latest_path}.tmp"
-    try:
-        if os.path.lexists(tmp_link):
-            os.unlink(tmp_link)
-        os.symlink(rel_name, tmp_link)
-        os.replace(tmp_link, latest_path)
-    except OSError:
-        # Fallback for filesystems without symlink support.
-        if os.path.lexists(tmp_link):
-            os.unlink(tmp_link)
-        shutil.copyfile(target_path, latest_path)
-
-
-def save_fixed_baseline(baseline_dir, version, meta_items, current_results, table_lines):
-    clean_version = sanitize_baseline_version(version)
-    if not clean_version:
-        raise ValueError("baseline version is empty")
-
-    baseline_path = os.path.join(baseline_dir, f"{clean_version}.txt")
-    write_machine_result_file(baseline_path, meta_items, current_results, table_lines)
-    update_latest_baseline_pointer(baseline_path, baseline_dir)
-    return baseline_path, len(current_results)
-
-
 def build_failure_lookup(failures, pattern_name):
     lookup = {}
     for pattern, _lib_name, transport, size, reason in failures:
@@ -3729,15 +3385,6 @@ def build_failure_lookup(failures, pattern_name):
             continue
         lookup.setdefault((transport, size), set()).add(reason)
     return lookup
-
-
-def format_compare_row(row):
-    return (
-        f"- {row['pattern']} {row['transport']} {row['size']}B {row['metric']}: "
-        f"current={row['current']:.2f}, baseline={row['baseline']:.2f}, "
-        f"regression={row['regression_pct']:.2f}% "
-        f"(warn={row['warn_limit']:.2f}%, fail={row['fail_limit']:.2f}%)"
-    )
 
 
 def build_result_filename(tag=""):
@@ -3754,13 +3401,6 @@ def build_result_filename(tag=""):
     if clean_tag:
         name = f"{name}_{clean_tag}"
     return f"{name}.txt"
-
-
-def build_result_basename(tag=""):
-    filename = build_result_filename(tag)
-    if filename.endswith(".txt"):
-        return filename[:-4]
-    return filename
 
 
 def emit_result_lines(result_map):
@@ -3780,18 +3420,9 @@ def parse_args():
         "  --duration N                 Override PERF_SINGLE_DURATION_SECONDS (single patterns)\n"
         "  --build-dir PATH             Build directory (default: core/build/<platform>-<arch>)\n"
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
-        "  --mode MODE                  observe|trend|gate (default: observe)\n"
-        "  --rolling-n N                Rolling baseline window (default: 10)\n"
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
         "  --result-file PATH           Explicit tmp result file path\n"
-        "  --result                     Save report result table (saved even on partial/fail)\n"
-        "  --save [VERSION]             Save fixed baseline (VERSION omitted => timestamp filename)\n"
-        "  --baseline-file PATH         Fixed baseline override path for gate mode\n"
-        "  --warn-throughput-pct N      Throughput warning drop threshold (default: 10)\n"
-        "  --fail-throughput-pct N      Throughput fail drop threshold (default: 15)\n"
-        "  --warn-latency-pct N         Latency warning increase threshold (default: 10)\n"
-        "  --fail-latency-pct N         Latency fail increase threshold (default: 15)\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
         "  --multi-pattern-transition-ms N    Pattern transition cooldown (ms)\n"
         "  --multi-server-ready-timeout-ms N  Server READY wait timeout (ms)\n"
@@ -3806,23 +3437,9 @@ def parse_args():
     build_dir = ""
     pin_cpu = False
 
-    mode = os.environ.get("PERF_MODE", MODE_OBSERVE).strip().lower()
-    rolling_n = max(1, parse_env_int("PERF_ROLLING_N", 10))
     results_dir = os.environ.get("PERF_RESULTS_DIR", "").strip()
     results_tag = os.environ.get("PERF_RESULTS_TAG", "").strip()
     result_file = ""
-    save_report = False
-    save_baseline_version = os.environ.get("PERF_SAVE_BASELINE", "").strip()
-    save_baseline_requested = bool(save_baseline_version)
-    baseline_file = os.environ.get("PERF_BASELINE_FILE", "").strip()
-    warn_throughput_pct = parse_env_float(
-        "PERF_WARN_THROUGHPUT_PCT", DEFAULT_WARN_THROUGHPUT_PCT
-    )
-    fail_throughput_pct = parse_env_float(
-        "PERF_FAIL_THROUGHPUT_PCT", DEFAULT_FAIL_THROUGHPUT_PCT
-    )
-    warn_latency_pct = parse_env_float("PERF_WARN_LATENCY_PCT", DEFAULT_WARN_LATENCY_PCT)
-    fail_latency_pct = parse_env_float("PERF_FAIL_LATENCY_PCT", DEFAULT_FAIL_LATENCY_PCT)
     transport_transition_ms = max(
         0, parse_env_int("PERF_MULTI_TRANSPORT_TRANSITION_MS", 3000)
     )
@@ -3883,22 +3500,6 @@ def parse_args():
                 sys.exit(1)
             build_dir = sys.argv[i + 1]
             i += 1
-        elif arg == "--mode":
-            if i + 1 >= len(sys.argv):
-                print("Error: --mode requires a value.", file=sys.stderr)
-                sys.exit(1)
-            mode = sys.argv[i + 1].strip().lower()
-            i += 1
-        elif arg == "--rolling-n":
-            if i + 1 >= len(sys.argv):
-                print("Error: --rolling-n requires a value.", file=sys.stderr)
-                sys.exit(1)
-            try:
-                rolling_n = int(sys.argv[i + 1])
-            except ValueError:
-                print("Error: --rolling-n must be an integer.", file=sys.stderr)
-                sys.exit(1)
-            i += 1
         elif arg == "--results-dir":
             if i + 1 >= len(sys.argv):
                 print("Error: --results-dir requires a value.", file=sys.stderr)
@@ -3918,68 +3519,6 @@ def parse_args():
                 print("Error: --result-file requires a value.", file=sys.stderr)
                 sys.exit(1)
             result_file = sys.argv[i + 1].strip()
-            i += 1
-        elif arg == "--result" or arg == "--save-report":
-            save_report = True
-        elif arg == "--save":
-            save_baseline_requested = True
-            if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--"):
-                save_baseline_version = sys.argv[i + 1].strip()
-                i += 1
-        elif arg.startswith("--save="):
-            save_baseline_requested = True
-            save_baseline_version = arg.split("=", 1)[1].strip()
-        elif arg == "--save-baseline":
-            print(
-                "Error: --save-baseline is removed. Use --save [VERSION].",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        elif arg == "--baseline-file":
-            if i + 1 >= len(sys.argv):
-                print("Error: --baseline-file requires a value.", file=sys.stderr)
-                sys.exit(1)
-            baseline_file = sys.argv[i + 1].strip()
-            i += 1
-        elif arg == "--warn-throughput-pct":
-            if i + 1 >= len(sys.argv):
-                print("Error: --warn-throughput-pct requires a value.", file=sys.stderr)
-                sys.exit(1)
-            try:
-                warn_throughput_pct = float(sys.argv[i + 1])
-            except ValueError:
-                print("Error: --warn-throughput-pct must be a number.", file=sys.stderr)
-                sys.exit(1)
-            i += 1
-        elif arg == "--fail-throughput-pct":
-            if i + 1 >= len(sys.argv):
-                print("Error: --fail-throughput-pct requires a value.", file=sys.stderr)
-                sys.exit(1)
-            try:
-                fail_throughput_pct = float(sys.argv[i + 1])
-            except ValueError:
-                print("Error: --fail-throughput-pct must be a number.", file=sys.stderr)
-                sys.exit(1)
-            i += 1
-        elif arg == "--warn-latency-pct":
-            if i + 1 >= len(sys.argv):
-                print("Error: --warn-latency-pct requires a value.", file=sys.stderr)
-                sys.exit(1)
-            try:
-                warn_latency_pct = float(sys.argv[i + 1])
-            except ValueError:
-                print("Error: --warn-latency-pct must be a number.", file=sys.stderr)
-                sys.exit(1)
-            i += 1
-        elif arg == "--fail-latency-pct":
-            if i + 1 >= len(sys.argv):
-                print("Error: --fail-latency-pct requires a value.", file=sys.stderr)
-                sys.exit(1)
-            try:
-                fail_latency_pct = float(sys.argv[i + 1])
-            except ValueError:
-                print("Error: --fail-latency-pct must be a number.", file=sys.stderr)
-                sys.exit(1)
             i += 1
         elif arg == "--multi-transport-transition-ms":
             if i + 1 >= len(sys.argv):
@@ -4079,22 +3618,6 @@ def parse_args():
     if single_duration_seconds is not None and single_duration_seconds < 1:
         print("Error: --duration must be >= 1.", file=sys.stderr)
         sys.exit(1)
-    if rolling_n < 1:
-        print("Error: --rolling-n must be >= 1.", file=sys.stderr)
-        sys.exit(1)
-    if mode not in VALID_MODES:
-        print("Error: --mode must be one of observe|trend|gate.", file=sys.stderr)
-        sys.exit(1)
-
-    for key, value in (
-        ("warn-throughput-pct", warn_throughput_pct),
-        ("fail-throughput-pct", fail_throughput_pct),
-        ("warn-latency-pct", warn_latency_pct),
-        ("fail-latency-pct", fail_latency_pct),
-    ):
-        if value < 0:
-            print(f"Error: --{key} must be >= 0.", file=sys.stderr)
-            sys.exit(1)
     for key, value in (
         ("multi-transport-transition-ms", transport_transition_ms),
         ("multi-pattern-transition-ms", pattern_transition_ms),
@@ -4114,19 +3637,9 @@ def parse_args():
         "single_duration_seconds": single_duration_seconds,
         "build_dir": build_dir,
         "pin_cpu": pin_cpu,
-        "mode": mode,
-        "rolling_n": rolling_n,
         "results_dir": results_dir,
         "results_tag": results_tag,
         "result_file": result_file,
-        "save_report": save_report,
-        "save_baseline_requested": save_baseline_requested,
-        "save_baseline_version": save_baseline_version,
-        "baseline_file": baseline_file,
-        "warn_throughput_pct": warn_throughput_pct,
-        "fail_throughput_pct": fail_throughput_pct,
-        "warn_latency_pct": warn_latency_pct,
-        "fail_latency_pct": fail_latency_pct,
         "transport_transition_ms": transport_transition_ms,
         "pattern_transition_ms": pattern_transition_ms,
         "server_ready_timeout_ms": server_ready_timeout_ms,
@@ -4210,25 +3723,14 @@ def main():
     selected_patterns = [
         p_name for _, p_name in comparisons if requested is None or p_name in requested
     ]
-    multi_only_run = bool(selected_patterns) and all(
-        is_multi_pattern(p) for p in selected_patterns
-    )
-
-    mode = args["mode"]
-    if not multi_only_run and mode != MODE_OBSERVE:
-        print(
-            f"Warning: mode={mode} applies to MULTI_* runs only. Falling back to observe.",
-            file=sys.stderr,
-        )
-        mode = MODE_OBSERVE
+    multi_only_run = bool(selected_patterns) and all(is_multi_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])
     results_layout = resolve_multi_results_dirs(results_root)
-    results_dir = results_layout["root"]
-    meta_items = build_meta_items(mode, num_runs, selected_patterns)
-    print_meta_lines(meta_items)
-    effective_options = build_effective_option_items(args, selected_patterns)
-    print_effective_options("start", effective_options)
+    tmp_result_file = args["result_file"]
+    if not tmp_result_file:
+        tag = args["results_tag"]
+        tmp_result_file = os.path.join(results_layout["tmp"], build_result_filename(tag))
 
     missing_current = collect_missing_patterns(comparisons, requested)
     skip_auto_build = (
@@ -4276,6 +3778,20 @@ def main():
                 file=sys.stderr,
             )
         sys.exit(1)
+
+    tmp_parent = os.path.dirname(tmp_result_file)
+    if tmp_parent:
+        os.makedirs(tmp_parent, exist_ok=True)
+    tmp_log_fh = open(tmp_result_file, "w", encoding="utf-8", buffering=1)
+    orig_stdout = sys.stdout
+    orig_stderr = sys.stderr
+    sys.stdout = TeeStream(orig_stdout, tmp_log_fh)
+    sys.stderr = TeeStream(orig_stderr, tmp_log_fh)
+
+    meta_items = build_meta_items(num_runs, selected_patterns)
+    print_meta_lines(meta_items)
+    effective_options = build_effective_option_items(args, selected_patterns)
+    print_effective_options("start", effective_options)
 
     all_failures = []
     all_skips = []
@@ -4388,145 +3904,17 @@ def main():
         print("\n## Result Data")
         emit_result_lines(current_results)
 
-    thresholds = {
-        "warn_throughput": -abs(args["warn_throughput_pct"]),
-        "fail_throughput": -abs(args["fail_throughput_pct"]),
-        "warn_latency": abs(args["warn_latency_pct"]),
-        "fail_latency": abs(args["fail_latency_pct"]),
-    }
-    threshold_rules, threshold_warnings = load_threshold_rules()
-    if threshold_warnings:
-        print("\n## Threshold Overrides")
-        for warning in threshold_warnings:
-            print(f"- {warning}")
-
-    compare_results = {
-        key: value
-        for key, value in current_results.items()
-        if key[3] in ("throughput", "bandwidth", "latency")
-    }
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
-
-    compare_warnings = []
-    compare_failures = []
-    compare_missing = []
-    gate_blockers = []
-    save_baseline_errors = []
-
-    if multi_only_run and mode in (MODE_TREND, MODE_GATE):
-        baseline_results = {}
-        if mode == MODE_TREND:
-            baseline_results, counts = load_rolling_baseline(
-                results_layout["tmp"], args["rolling_n"], set(compare_results.keys())
-            )
-            print("\n## Baseline")
-            print(f"- mode: {mode}")
-            print(
-                f"- source: rolling median from results/multi/tmp (window={args['rolling_n']})"
-            )
-            if not baseline_results:
-                print("- baseline: unavailable (no historical samples)")
-            else:
-                print(f"- baseline keys: {len(baseline_results)}")
-                if counts:
-                    min_count = min(counts.values())
-                    max_count = max(counts.values())
-                    print(f"- sample count range: {min_count}..{max_count}")
-        else:
-            baseline_path = resolve_fixed_baseline_path(
-                results_layout["baseline"], args["baseline_file"]
-            )
-            print("\n## Baseline")
-            print(f"- mode: {mode}")
-            print(f"- source: {baseline_path}")
-            if not os.path.isfile(baseline_path):
-                gate_blockers.append(f"baseline_file_missing:{baseline_path}")
-                print("- baseline: missing")
-            else:
-                _, baseline_results = parse_result_file(baseline_path, multi_only=True)
-                print(f"- baseline keys: {len(baseline_results)}")
-
-        if baseline_results and compare_results:
-            compare_warnings, compare_failures, compare_missing = compare_against_baseline(
-                compare_results, baseline_results, mode, thresholds, threshold_rules
-            )
-        elif mode == MODE_GATE and compare_results:
-            compare_missing = sorted(compare_results.keys())
-
-        if compare_warnings or compare_failures or compare_missing:
-            print("\n## Baseline Comparison")
-            if compare_warnings:
-                print("### Warnings")
-                for row in compare_warnings:
-                    print(format_compare_row(row))
-            if compare_failures:
-                print("### Failures")
-                for row in compare_failures:
-                    print(format_compare_row(row))
-            if compare_missing:
-                print("### Missing Baseline Keys")
-                for pattern, transport, size, metric in compare_missing:
-                    print(f"- {pattern} {transport} {size}B {metric}")
-
-        if mode == MODE_GATE:
-            if compare_failures:
-                gate_blockers.append(f"threshold_failures:{len(compare_failures)}")
-
-    final_meta_items = list(meta_items)
-    final_meta_items.append(("status", run_status))
-    final_meta_items.append(("expected", str(expected_result_lines)))
-    final_meta_items.append(("actual", str(actual_result_lines)))
-
-    tmp_result_file = args["result_file"]
-    if not tmp_result_file:
-        tag = args["results_tag"]
-        tmp_result_file = os.path.join(results_layout["tmp"], build_result_filename(tag))
-    write_machine_result_file(tmp_result_file, final_meta_items, current_results, table_lines)
     max_files = resolve_results_max_files()
     prune_result_files(os.path.dirname(tmp_result_file), max_files)
     print(f"\nSaved tmp result file: {tmp_result_file}")
 
-    if args["save_report"]:
-        print("\n## Save Report")
-        tag = args["results_tag"]
-        report_file = os.path.join(results_layout["report"], build_result_filename(tag))
-        write_report_table_file(report_file, table_lines)
-        prune_result_files(results_layout["report"], max_files)
-        print(f"- saved: {report_file} (status={run_status})")
-
-    if args["save_baseline_requested"]:
-        print("\n## Save Baseline")
-        try:
-            if run_status != "complete":
-                raise ValueError("partial run cannot be saved as baseline")
-            baseline_version = args["save_baseline_version"].strip()
-            if not baseline_version:
-                baseline_version = build_result_basename(args["results_tag"])
-            baseline_path, saved_count = save_fixed_baseline(
-                results_layout["baseline"],
-                baseline_version,
-                final_meta_items,
-                current_results,
-                table_lines,
-            )
-            prune_result_files(
-                results_layout["baseline"],
-                max_files,
-                exclude_names={"latest.txt"},
-            )
-            print(f"- saved: {baseline_path}")
-            print(f"- saved keys: {saved_count}")
-            print(
-                f"- latest pointer: {os.path.join(results_layout['baseline'], 'latest.txt')}"
-            )
-        except ValueError as exc:
-            print(f"- error: {exc}", file=sys.stderr)
-            gate_blockers.append(f"save_baseline_error:{exc}")
-            save_baseline_errors.append(str(exc))
-        except OSError as exc:
-            print(f"- error: failed to save baseline: {exc}", file=sys.stderr)
-            gate_blockers.append(f"save_baseline_error:{exc}")
-            save_baseline_errors.append(str(exc))
+    print("\n## Save Report")
+    tag = args["results_tag"]
+    report_file = os.path.join(results_layout["report"], build_result_filename(tag))
+    write_report_table_file(report_file, table_lines)
+    prune_result_files(results_layout["report"], max_files)
+    print(f"- saved: {report_file} (status={run_status})")
 
     print("\n## Status Summary")
     print(f"- success: {status_counts['success']}")
@@ -4548,26 +3936,12 @@ def main():
         for pattern, lib_name, tr, sz, reason in unique_failures:
             print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
 
-    if gate_blockers:
-        print("\n## Gate Blockers")
-        for blocker in gate_blockers:
-            print(f"- {blocker}")
-
-    runtime_errors = bool(save_baseline_errors)
-    gate_failures = False
-    for blocker in gate_blockers:
-        if blocker.startswith("threshold_failures:"):
-            gate_failures = True
-        else:
-            runtime_errors = True
-
-    exit_code = 0
-    if runtime_errors:
-        exit_code = 1
-    if gate_failures:
-        exit_code = max(exit_code, 2)
-
-    raise SystemExit(exit_code)
+    sys.stdout = orig_stdout
+    sys.stderr = orig_stderr
+    tmp_log_fh.close()
+    if run_status != "complete":
+        raise SystemExit(1)
+    raise SystemExit(0)
 
 
 if __name__ == "__main__":

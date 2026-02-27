@@ -428,18 +428,6 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
     return 0;
 }
 
-int spot_sub_t::set_socket_option (int option_,
-                                   const void *optval_,
-                                   size_t optvallen_)
-{
-    if (!_node) {
-        errno = EFAULT;
-        return -1;
-    }
-    return _node->set_socket_option (ZLINK_SPOT_NODE_SOCKET_SUB, option_,
-                                     optval_, optvallen_);
-}
-
 int spot_sub_t::destroy ()
 {
     spot_node_t *node = _node;

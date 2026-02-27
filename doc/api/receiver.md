@@ -45,7 +45,7 @@ handle must remain valid for the lifetime of the Receiver.
 Bind the ROUTER socket to an endpoint.
 
 ```c
-int zlink_receiver_bind(void *provider,
+int zlink_receiver_bind(void *receiver,
                         const char *bind_endpoint);
 ```
 
@@ -69,7 +69,7 @@ typically a TCP address (e.g. `tcp://*:5555`).
 Connect to a Registry ROUTER endpoint.
 
 ```c
-int zlink_receiver_connect_registry(void *provider,
+int zlink_receiver_connect_registry(void *receiver,
                                     const char *registry_endpoint);
 ```
 
@@ -90,7 +90,7 @@ heartbeat, and weight-update messages to the Registry.
 Register a service with the Registry.
 
 ```c
-int zlink_receiver_register(void *provider,
+int zlink_receiver_register(void *receiver,
                             const char *service_name,
                             const char *advertise_endpoint,
                             uint32_t weight);
@@ -115,7 +115,7 @@ Receiver may register multiple service names.
 Update the weight of a registered service.
 
 ```c
-int zlink_receiver_update_weight(void *provider,
+int zlink_receiver_update_weight(void *receiver,
                                  const char *service_name,
                                  uint32_t weight);
 ```
@@ -137,7 +137,7 @@ after the next broadcast cycle.
 Unregister a service.
 
 ```c
-int zlink_receiver_unregister(void *provider,
+int zlink_receiver_unregister(void *receiver,
                               const char *service_name);
 ```
 
@@ -158,7 +158,7 @@ for the specified service.
 Query the registration result.
 
 ```c
-int zlink_receiver_register_result(void *provider,
+int zlink_receiver_register_result(void *receiver,
                                    const char *service_name,
                                    int *status,
                                    char *resolved_endpoint,
@@ -185,7 +185,7 @@ failed.
 Set TLS server certificate.
 
 ```c
-int zlink_receiver_set_tls_server(void *provider,
+int zlink_receiver_set_tls_server(void *receiver,
                                   const char *cert,
                                   const char *key);
 ```
@@ -208,7 +208,7 @@ called before `zlink_receiver_bind`.
 Set a socket option on an internal Receiver socket.
 
 ```c
-int zlink_receiver_setsockopt(void *provider,
+int zlink_receiver_setsockopt(void *receiver,
                               int socket_role,
                               int option,
                               const void *optval,
@@ -219,6 +219,12 @@ Applies a low-level socket option to one of the Receiver's internal sockets
 identified by `socket_role`. Use `ZLINK_RECEIVER_SOCKET_ROUTER` for the
 request/reply socket or `ZLINK_RECEIVER_SOCKET_DEALER` for the Registry
 communication socket.
+
+Defaults:
+- `ZLINK_SNDHWM = 300000`
+- `ZLINK_RCVHWM = 300000`
+- `ZLINK_SNDTIMEO = -1`
+- `ZLINK_RCVTIMEO = -1`
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).
 
@@ -231,12 +237,12 @@ communication socket.
 
 ---
 
-### zlink_receiver_router
+### zlink_receiver_router_socket_unsafe
 
 Return the internal ROUTER socket handle.
 
 ```c
-void *zlink_receiver_router(void *provider);
+void *zlink_receiver_router_socket_unsafe(void *receiver);
 ```
 
 Returns the raw ROUTER socket handle used internally by the Receiver. This
@@ -251,16 +257,38 @@ The caller must not close or modify the socket.
 
 ---
 
+### zlink_receiver_router_peers
+
+Enumerate peer queue info from the Receiver ROUTER socket.
+
+```c
+int zlink_receiver_router_peers(void *receiver,
+                                zlink_peer_info_t *peers,
+                                size_t *count);
+```
+
+Returns peer-level queue stats (including send/receive pending message
+counts) from the internal ROUTER socket. Use `peers = NULL` to query
+required count first, then call again with an allocated array.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Thread safety:** Safe to call from any thread.
+
+**See also:** `zlink_socket_peers`, `zlink_receiver_router_socket_unsafe`
+
+---
+
 ### zlink_receiver_destroy
 
 Destroy the Receiver and release all resources.
 
 ```c
-int zlink_receiver_destroy(void **provider_p);
+int zlink_receiver_destroy(void **receiver_p);
 ```
 
 Closes all sockets, frees internal state, and releases the Receiver. The
-pointer at `*provider_p` is set to `NULL` after destruction. Any registered
+pointer at `*receiver_p` is set to `NULL` after destruction. Any registered
 services are implicitly unregistered when the Receiver is destroyed.
 
 **Returns:** `0` on success, or `-1` on failure (errno is set).

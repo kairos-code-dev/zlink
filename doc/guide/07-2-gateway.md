@@ -35,7 +35,7 @@ if (status != 0) {
 }
 
 /* Process business messages */
-void *router = zlink_receiver_router(receiver);
+void *router = zlink_receiver_router_socket_unsafe(receiver);
 /* Receive/reply [routing_id][msgId][payload...] from router */
 
 zlink_receiver_destroy(&receiver);
@@ -93,7 +93,7 @@ if (rc != -1) {
 
 ```c
 /* Receive and reply on the Receiver's ROUTER socket */
-void *router = zlink_receiver_router(receiver);
+void *router = zlink_receiver_router_socket_unsafe(receiver);
 /* Receive [routing_id][msgId][payload...] and process reply */
 ```
 
@@ -246,7 +246,7 @@ zlink_ctx_term(ctx);
 | `zlink_gateway_set_lb_strategy(...)` | Set LB strategy |
 | `zlink_gateway_setsockopt(...)` | Set socket options |
 | `zlink_gateway_set_tls_client(...)` | Set TLS client configuration |
-| `zlink_gateway_router(...)` | Get ROUTER socket |
+| `zlink_gateway_router_socket_unsafe(...)` | Get ROUTER socket |
 | `zlink_gateway_connection_count(...)` | Get connected Receiver count |
 | `zlink_gateway_destroy(...)` | Destroy |
 
@@ -262,7 +262,7 @@ zlink_ctx_term(ctx);
 | `zlink_receiver_unregister(...)` | Unregister service |
 | `zlink_receiver_set_tls_server(...)` | Set TLS server configuration |
 | `zlink_receiver_setsockopt(...)` | Set socket options |
-| `zlink_receiver_router(...)` | Get ROUTER socket |
+| `zlink_receiver_router_socket_unsafe(...)` | Get ROUTER socket |
 | `zlink_receiver_destroy(...)` | Destroy |
 
 ---

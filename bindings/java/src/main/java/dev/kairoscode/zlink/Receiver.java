@@ -117,7 +117,7 @@ public class Receiver implements AutoCloseable {
     public Socket routerSocket() {
         MemorySegment sock = Native.providerRouter(handle);
         if (sock == null || sock.address() == 0)
-            throw new RuntimeException("zlink_receiver_router failed");
+            throw new RuntimeException("zlink_receiver_router_socket_unsafe failed");
         return Socket.adopt(sock, false);
     }
 

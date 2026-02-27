@@ -45,10 +45,6 @@ class spot_sub_t
               char *topic_out_,
               size_t *topic_len_);
 
-    int set_socket_option (int option_,
-                           const void *optval_,
-                           size_t optvallen_);
-
     int destroy ();
 
   private:

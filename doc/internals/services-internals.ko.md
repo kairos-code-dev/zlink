@@ -82,8 +82,8 @@ struct registry_state_t {
 
 ## 5. Receiver 내부 구현
 
-> **참고**: 공개 C API는 `zlink_receiver_*`로 명명되어 있으나, 내부 C++ 구현 클래스는
-> `provider_t` (`core/src/services/gateway/receiver.hpp`)로 유지되고 있다.
+> **참고**: 공개 C API와 내부 C++ 구현의 네이밍을 `receiver`로 통일했다
+> (`core/src/services/gateway/receiver.hpp`의 `receiver_t`).
 
 ### 5.1 상태 머신
 ```

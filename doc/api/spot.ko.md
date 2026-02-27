@@ -293,6 +293,90 @@ CA 인증서 파일 경로를 지정합니다. `hostname` 매개변수는 인증
 
 ---
 
+### zlink_spot_node_pub_socket_unsafe
+
+SPOT 노드 내부 PUB 소켓 핸들을 반환합니다.
+
+```c
+void *zlink_spot_node_pub_socket_unsafe(void *node);
+```
+
+SPOT 노드가 내부적으로 사용하는 원시 PUB 소켓 핸들을 반환합니다. 이는 진단
+및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나
+수정해서는 안 됩니다.
+
+**반환값:** PUB 소켓 핸들, 실패 시 `NULL`.
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_spot_node_sub_socket_unsafe`
+
+---
+
+### zlink_spot_node_sub_socket_unsafe
+
+SPOT 노드 내부 SUB 소켓 핸들을 반환합니다.
+
+```c
+void *zlink_spot_node_sub_socket_unsafe(void *node);
+```
+
+SPOT 노드가 내부적으로 사용하는 원시 SUB 소켓 핸들을 반환합니다. 이는 진단
+및 커스텀 폴링과 같은 고급 사용 사례를 위한 것입니다. 호출자는 소켓을 닫거나
+수정해서는 안 됩니다.
+
+**반환값:** SUB 소켓 핸들, 실패 시 `NULL`.
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_spot_node_pub_socket_unsafe`
+
+---
+
+### zlink_spot_node_pub_peers
+
+SPOT 노드 내부 PUB 소켓의 peer queue 정보를 조회합니다.
+
+```c
+int zlink_spot_node_pub_peers(void *node,
+                              zlink_peer_info_t *peers,
+                              size_t *count);
+```
+
+SPOT 노드 PUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메시지 수
+포함)를 반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를
+할당하여 다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`, `zlink_spot_node_pub_socket_unsafe`
+
+---
+
+### zlink_spot_node_sub_peers
+
+SPOT 노드 내부 SUB 소켓의 peer queue 정보를 조회합니다.
+
+```c
+int zlink_spot_node_sub_peers(void *node,
+                              zlink_peer_info_t *peers,
+                              size_t *count);
+```
+
+SPOT 노드 SUB 소켓에서 peer 단위 queue 통계(송신/수신 pending 메시지 수
+포함)를 반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를
+할당하여 다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`, `zlink_spot_node_sub_socket_unsafe`
+
+---
+
 ### zlink_spot_node_setsockopt
 
 SPOT 노드 내부 옵션을 설정합니다.
@@ -312,6 +396,8 @@ int zlink_spot_node_setsockopt(void *node,
   `ZLINK_SPOT_NODE_OPT_*` 사용
 - 내부 소켓 저수준 옵션:
   `ZLINK_SPOT_NODE_SOCKET_PUB/SUB/DEALER` 대상
+
+SPOT의 저수준 소켓 옵션 설정은 이 API만 지원합니다.
 
 async publish 모드 관련 옵션:
 
@@ -401,30 +487,6 @@ int zlink_spot_pub_publish(void *pub,
 `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`인 경우 `EAGAIN`이 반환될 수 있습니다.
 
 **참고:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
-
----
-
-### zlink_spot_pub_setsockopt
-
-SPOT publisher의 소켓 옵션을 설정합니다.
-
-```c
-int zlink_spot_pub_setsockopt(void *pub,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
-```
-
-Publisher의 기본 소켓에 저수준 소켓 옵션을 적용합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EINVAL` -- 알 수 없는 옵션.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_spot_pub_new`
 
 ---
 
@@ -599,33 +661,12 @@ int zlink_spot_sub_recv(void *sub,
 
 ---
 
-### zlink_spot_sub_setsockopt
-
-SPOT subscriber의 소켓 옵션을 설정합니다.
-
-```c
-int zlink_spot_sub_setsockopt(void *sub,
-                              int option,
-                              const void *optval,
-                              size_t optvallen);
-```
-
-Subscriber의 기본 소켓에 저수준 소켓 옵션을 적용합니다.
-
-**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
-
-**에러:**
-- `EINVAL` -- 알 수 없는 옵션.
-
-**스레드 안전성:** 스레드 안전하지 않음.
-
-**참고:** `zlink_spot_sub_new`
-
----
-
 ### Raw 소켓 노출
 
-SPOT 내부 소켓은 의도적으로 노출하지 않습니다. 다음 API를 사용하세요.
+SPOT 내부 소켓은 unsafe API를 통해서만 제한적으로 노출됩니다. 다음 API를 사용하세요.
+- 저수준 PUB/SUB/DEALER 소켓 옵션 설정: `zlink_spot_node_setsockopt`
+- 고급 폴링/통합: `zlink_spot_node_pub_socket_unsafe` / `zlink_spot_node_sub_socket_unsafe`
+- peer queue 통계: `zlink_spot_node_pub_peers` / `zlink_spot_node_sub_peers`
 - 발행: `zlink_spot_pub_publish`
 - 콜백 기반 수신: `zlink_spot_sub_set_handler`
 - 폴링 기반 수신: `zlink_spot_sub_recv` (SPOT subscriber 내부 큐에서 소비)

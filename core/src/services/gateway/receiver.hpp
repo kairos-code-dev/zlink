@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-#ifndef __ZLINK_DISCOVERY_PROVIDER_HPP_INCLUDED__
-#define __ZLINK_DISCOVERY_PROVIDER_HPP_INCLUDED__
+#ifndef __ZLINK_DISCOVERY_RECEIVER_HPP_INCLUDED__
+#define __ZLINK_DISCOVERY_RECEIVER_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
 #include "core/thread.hpp"
@@ -13,11 +13,11 @@
 
 namespace zlink
 {
-class provider_t
+class receiver_t
 {
   public:
-    explicit provider_t (ctx_t *ctx_, const char *routing_id_ = NULL);
-    ~provider_t ();
+    explicit receiver_t (ctx_t *ctx_, const char *routing_id_ = NULL);
+    ~receiver_t ();
 
     bool check_tag () const;
 
@@ -75,7 +75,7 @@ class provider_t
     std::string _tls_cert;
     std::string _tls_key;
 
-    ZLINK_NON_COPYABLE_NOR_MOVABLE (provider_t)
+    ZLINK_NON_COPYABLE_NOR_MOVABLE (receiver_t)
 };
 }
 

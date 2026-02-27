@@ -144,7 +144,7 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_PROVIDER_TLS = downcall("zlink_receiver_set_tls_server",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_PROVIDER_ROUTER = downcall("zlink_receiver_router",
+    private static final MethodHandle MH_PROVIDER_ROUTER = downcall("zlink_receiver_router_socket_unsafe",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_PROVIDER_DESTROY = downcall("zlink_receiver_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
@@ -683,7 +683,7 @@ public final class Native {
         try {
             return (MemorySegment) MH_PROVIDER_ROUTER.invokeExact(p);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_receiver_router failed", t);
+            throw new RuntimeException("zlink_receiver_router_socket_unsafe failed", t);
         }
     }
 

@@ -117,7 +117,7 @@ public sealed class Receiver : IDisposable
     public Socket CreateRouterSocket()
     {
         EnsureNotDisposed();
-        IntPtr handle = NativeMethods.zlink_receiver_router(_handle);
+        IntPtr handle = NativeMethods.zlink_receiver_router_socket_unsafe(_handle);
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);

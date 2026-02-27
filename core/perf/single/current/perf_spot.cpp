@@ -196,6 +196,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
                                          bool use_blocking_recv,
                                          const std::string &topic,
                                          size_t msg_size,
+                                         queue_probe_t *queue_probe,
                                          int throughput_duration_s,
                                          int *out_received)
 {
@@ -229,6 +230,8 @@ static bool run_spot_throughput_parallel(void *spot_pub,
     };
 
     std::thread receiver([&]() {
+        if (queue_probe)
+            queue_probe->force_sample_recv();
         while (true) {
             const bool done = sender_done.load(std::memory_order_acquire);
             const int flags = use_blocking_recv && !done ? 0 : ZLINK_DONTWAIT;
@@ -237,6 +240,8 @@ static bool run_spot_throughput_parallel(void *spot_pub,
                 if (std::chrono::steady_clock::now() < throughput_deadline) {
                     recv_count.fetch_add(1, std::memory_order_release);
                 }
+                if (queue_probe)
+                    queue_probe->sample_recv_if_due();
 
                 // Drain immediately available messages without batch limits.
                 for (;;) {
@@ -246,6 +251,8 @@ static bool run_spot_throughput_parallel(void *spot_pub,
                             < throughput_deadline) {
                             recv_count.fetch_add(1, std::memory_order_release);
                         }
+                        if (queue_probe)
+                            queue_probe->sample_recv_if_due();
                         continue;
                     }
                     if (burst_rc == 0)
@@ -268,15 +275,23 @@ static bool run_spot_throughput_parallel(void *spot_pub,
             recv_failed.store(true, std::memory_order_release);
             break;
         }
+        if (queue_probe)
+            queue_probe->force_sample_recv();
     });
 
     bool send_failed = false;
+    if (queue_probe)
+        queue_probe->force_sample_send();
     while (std::chrono::steady_clock::now() < throughput_deadline) {
         if (!send_spot(spot_pub, topic, msg_size)) {
             send_failed = true;
             break;
         }
+        if (queue_probe)
+            queue_probe->sample_send_if_due();
     }
+    if (queue_probe)
+        queue_probe->force_sample_send();
     sender_done.store(true, std::memory_order_release);
     receiver.join();
 
@@ -291,6 +306,21 @@ static bool run_spot_throughput_parallel(void *spot_pub,
     return true;
 }
 
+static queue_stats_t ensure_queue_metrics_visible(const queue_stats_t &input_)
+{
+    queue_stats_t out = input_;
+    if (!out.has_snd_pending) {
+        out.has_snd_pending = true;
+        out.snd_pending_max = 0.0;
+    }
+    if (!out.has_rcv_pending) {
+        out.has_rcv_pending = true;
+        out.rcv_pending_max = 0.0;
+        out.rcv_pending_end = 0.0;
+    }
+    return out;
+}
+
 void run_spot(const std::string &transport,
               size_t msg_size,
               const std::string &lib_name)
@@ -302,7 +332,9 @@ void run_spot(const std::string &transport,
 
     if ((transport == "tls" || transport == "wss")
         && !resolve_symbol("zlink_spot_node_set_tls_server")) {
-        print_fail_result(lib_name, "SPOT", transport, msg_size);
+        const queue_stats_t queue_stats =
+          ensure_queue_metrics_visible(queue_stats_t());
+        print_queue_metrics(lib_name, "SPOT", transport, msg_size, queue_stats);
         return;
     }
 
@@ -326,19 +358,21 @@ void run_spot(const std::string &transport,
             zlink_spot_node_destroy(&node_sub);
     };
 
-    auto fail = [&]() {
-        print_fail_result(lib_name, "SPOT", transport, msg_size);
+    auto fail_no_queue = [&]() {
+        const queue_stats_t queue_stats =
+          ensure_queue_metrics_visible(queue_stats_t());
+        print_queue_metrics(lib_name, "SPOT", transport, msg_size, queue_stats);
         cleanup();
     };
 
     if (!node_pub || !node_sub) {
-        cleanup();
+        fail_no_queue();
         return;
     }
 
     if (!configure_spot_tls_server(node_pub, transport)
         || !configure_spot_tls_client(node_sub, transport)) {
-        fail();
+        fail_no_queue();
         return;
     }
 
@@ -351,26 +385,51 @@ void run_spot(const std::string &transport,
 
     std::string endpoint = bind_spot_node(node_pub, transport, base_port);
     if (endpoint.empty()) {
-        fail();
+        fail_no_queue();
         return;
     }
 
     if (zlink_spot_node_connect_peer_pub(node_sub, endpoint.c_str()) != 0) {
-        fail();
+        fail_no_queue();
         return;
     }
 
     spot_pub = zlink_spot_pub_new(node_pub);
     spot_sub = zlink_spot_sub_new(node_sub);
     if (!spot_pub || !spot_sub) {
-        cleanup();
+        fail_no_queue();
         return;
     }
+    void *pub_socket_unsafe = zlink_spot_node_pub_socket_unsafe(node_pub);
+    void *sub_socket_unsafe = zlink_spot_node_sub_socket_unsafe(node_sub);
+    if (!pub_socket_unsafe || !sub_socket_unsafe) {
+        fail_no_queue();
+        return;
+    }
+    queue_probe_t queue_probe(pub_socket_unsafe, sub_socket_unsafe);
+    auto fail = [&]() {
+        const queue_stats_t queue_stats =
+          ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
+        print_queue_metrics(lib_name, "SPOT", transport, msg_size, queue_stats);
+        cleanup();
+    };
 
-    const int recv_timeout_ms = 5000;
+    const int sndhwm = resolve_single_socket_hwm(true);
+    const int rcvhwm = resolve_single_socket_hwm(false);
+    const int send_timeout_ms = resolve_single_send_timeout_ms();
+    (void) zlink_spot_node_setsockopt(node_pub, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
+    (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    (void) zlink_spot_node_setsockopt(
+      node_pub, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &send_timeout_ms,
+      sizeof(send_timeout_ms));
+
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
     bool use_blocking_recv = false;
-    if (zlink_spot_sub_setsockopt(spot_sub, ZLINK_RCVTIMEO, &recv_timeout_ms,
-                                  sizeof(recv_timeout_ms))
+    if (zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                   ZLINK_RCVTIMEO, &recv_timeout_ms,
+                                   sizeof(recv_timeout_ms))
         == 0) {
         use_blocking_recv = true;
     }
@@ -389,7 +448,8 @@ void run_spot(const std::string &transport,
 
     int received = 0;
     if (!run_spot_throughput_parallel(spot_pub, spot_sub, use_blocking_recv,
-                                      topic, msg_size, throughput_duration_s,
+                                      topic, msg_size, &queue_probe,
+                                      throughput_duration_s,
                                       &received)) {
         fail();
         return;
@@ -397,10 +457,12 @@ void run_spot(const std::string &transport,
 
     const double throughput = static_cast<double>(received)
                               / static_cast<double>(throughput_duration_s);
+    const queue_stats_t queue_stats =
+      ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput,
                  latency_stats.mean_us, latency_stats.p95_us,
-                 latency_stats.p99_us);
+                 latency_stats.p99_us, queue_stats);
     cleanup();
 }
 

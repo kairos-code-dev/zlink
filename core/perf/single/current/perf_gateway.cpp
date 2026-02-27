@@ -13,13 +13,6 @@
 typedef int (*gateway_set_tls_client_fn)(void *, const char *, const char *, int);
 typedef int (*provider_set_tls_server_fn)(void *, const char *, const char *);
 
-enum gateway_send_status_t
-{
-    gateway_send_ok = 0,
-    gateway_send_would_block = 1,
-    gateway_send_error = 2
-};
-
 static const std::string &tls_ca_path()
 {
     static std::string path =
@@ -180,26 +173,6 @@ static bool send_one_gateway(void *gateway,
     return rc == 0;
 }
 
-static gateway_send_status_t send_one_gateway_nonblocking(void *gateway,
-                                                          const char *service,
-                                                          size_t msg_size)
-{
-    zlink_msg_t msg;
-    zlink_msg_init_size(&msg, msg_size);
-    if (msg_size > 0)
-        memset(zlink_msg_data(&msg), 'a', msg_size);
-
-    const int rc = zlink_gateway_send(gateway, service, &msg, 1, ZLINK_DONTWAIT);
-    if (rc == 0)
-        return gateway_send_ok;
-
-    const int err = zlink_errno();
-    zlink_msg_close(&msg);
-    if (err == EAGAIN || err == EINTR)
-        return gateway_send_would_block;
-    return gateway_send_error;
-}
-
 static bool run_gateway_warmup_and_latency(void *gateway,
                                            const char *service_name,
                                            void *provider_router,
@@ -243,6 +216,7 @@ static bool run_gateway_throughput_parallel(void *gateway,
                                             const char *service_name,
                                             void *provider_router,
                                             size_t msg_size,
+                                            queue_probe_t *queue_probe,
                                             int recv_timeout_ms,
                                             int throughput_duration_s,
                                             int *out_received)
@@ -263,6 +237,8 @@ static bool run_gateway_throughput_parallel(void *gateway,
 
     std::thread receiver([&]() {
         auto last_recv_at = std::chrono::steady_clock::now();
+        if (queue_probe)
+            queue_probe->force_sample_recv();
         while (true) {
             const bool done = sender_done.load(std::memory_order_acquire);
             const int flags = done ? ZLINK_DONTWAIT : 0;
@@ -272,6 +248,8 @@ static bool run_gateway_throughput_parallel(void *gateway,
                 last_recv_at = std::chrono::steady_clock::now();
                 if (std::chrono::steady_clock::now() < throughput_deadline)
                     received.fetch_add(1, std::memory_order_release);
+                if (queue_probe)
+                    queue_probe->sample_recv_if_due();
 
                 // Drain immediately available messages in a non-blocking burst.
                 for (;;) {
@@ -282,6 +260,8 @@ static bool run_gateway_throughput_parallel(void *gateway,
                         last_recv_at = std::chrono::steady_clock::now();
                         if (std::chrono::steady_clock::now() < throughput_deadline)
                             received.fetch_add(1, std::memory_order_release);
+                        if (queue_probe)
+                            queue_probe->sample_recv_if_due();
                         continue;
                     }
                     if (burst_rc == 0)
@@ -307,19 +287,23 @@ static bool run_gateway_throughput_parallel(void *gateway,
             recv_failed.store(true, std::memory_order_release);
             break;
         }
+        if (queue_probe)
+            queue_probe->force_sample_recv();
     });
 
     std::thread sender([&]() {
+        if (queue_probe)
+            queue_probe->force_sample_send();
         while (std::chrono::steady_clock::now() < throughput_deadline) {
-            const gateway_send_status_t send_rc =
-              send_one_gateway_nonblocking(gateway, service_name, msg_size);
-            if (send_rc == gateway_send_error) {
+            if (!send_one_gateway(gateway, service_name, msg_size)) {
                 send_failed.store(true, std::memory_order_release);
                 break;
             }
-            if (send_rc != gateway_send_ok)
-                continue;
+            if (queue_probe)
+                queue_probe->sample_send_if_due();
         }
+        if (queue_probe)
+            queue_probe->force_sample_send();
         sender_done.store(true, std::memory_order_release);
     });
 
@@ -337,6 +321,21 @@ static bool run_gateway_throughput_parallel(void *gateway,
 
     *out_received = recv_count;
     return true;
+}
+
+static queue_stats_t ensure_queue_metrics_visible(const queue_stats_t &input_)
+{
+    queue_stats_t out = input_;
+    if (!out.has_snd_pending) {
+        out.has_snd_pending = true;
+        out.snd_pending_max = 0.0;
+    }
+    if (!out.has_rcv_pending) {
+        out.has_rcv_pending = true;
+        out.rcv_pending_max = 0.0;
+        out.rcv_pending_end = 0.0;
+    }
+    return out;
 }
 
 void run_gateway(const std::string &transport,
@@ -372,6 +371,7 @@ void run_gateway(const std::string &transport,
     void *gateway = NULL;
     void *provider = NULL;
     void *provider_router = NULL;
+    void *gateway_router = NULL;
 
     auto cleanup = [&]() {
         if (provider)
@@ -384,7 +384,7 @@ void run_gateway(const std::string &transport,
             zlink_registry_destroy(&registry);
     };
 
-    auto fail = [&]() {
+    auto fail_no_queue = [&]() {
         print_fail_result(lib_name, "GATEWAY", transport, msg_size);
         cleanup();
     };
@@ -422,7 +422,7 @@ void run_gateway(const std::string &transport,
     }
 
     if (!configure_provider_tls(provider, transport)) {
-        fail();
+        fail_no_queue();
         return;
     }
 
@@ -435,7 +435,7 @@ void run_gateway(const std::string &transport,
 
     std::string provider_endpoint = bind_provider(provider, transport, base_port);
     if (provider_endpoint.empty()) {
-        fail();
+        fail_no_queue();
         return;
     }
 
@@ -443,18 +443,57 @@ void run_gateway(const std::string &transport,
         || zlink_receiver_register(provider, service_name,
                                   provider_endpoint.c_str(), 1)
              != 0) {
-        fail();
+        fail_no_queue();
         return;
     }
 
-    provider_router = zlink_receiver_router(provider);
+    provider_router = zlink_receiver_router_socket_unsafe(provider);
     if (!provider_router) {
-        fail();
+        fail_no_queue();
         return;
     }
+    const int gateway_sndhwm = resolve_single_socket_hwm(true);
+    const int receiver_rcvhwm = resolve_single_socket_hwm(false);
+    const int send_timeout_ms = resolve_single_send_timeout_ms();
     const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    set_sockopt_int(provider_router, ZLINK_RCVTIMEO, recv_timeout_ms,
-                    "ZLINK_RCVTIMEO");
+
+    // Apply benchmark options by service role:
+    // gateway(sender): SNDHWM + SNDTIMEO
+    // receiver(router): RCVHWM + RCVTIMEO
+    (void) zlink_gateway_setsockopt(gateway, ZLINK_SNDHWM,
+                                    &gateway_sndhwm,
+                                    sizeof(gateway_sndhwm));
+    (void) zlink_gateway_setsockopt(gateway, ZLINK_SNDTIMEO,
+                                    &send_timeout_ms,
+                                    sizeof(send_timeout_ms));
+    if (zlink_receiver_setsockopt(provider,
+                                  ZLINK_RECEIVER_SOCKET_ROUTER,
+                                  ZLINK_RCVHWM,
+                                  &receiver_rcvhwm,
+                                  sizeof(receiver_rcvhwm))
+        != 0) {
+        set_sockopt_int(provider_router, ZLINK_RCVHWM, receiver_rcvhwm,
+                        "ZLINK_RCVHWM");
+    }
+    if (zlink_receiver_setsockopt(provider,
+                                  ZLINK_RECEIVER_SOCKET_ROUTER,
+                                  ZLINK_RCVTIMEO,
+                                  &recv_timeout_ms,
+                                  sizeof(recv_timeout_ms))
+        != 0) {
+        set_sockopt_int(provider_router, ZLINK_RCVTIMEO, recv_timeout_ms,
+                        "ZLINK_RCVTIMEO");
+    }
+
+    gateway_router = zlink_gateway_router_socket_unsafe(gateway);
+    queue_probe_t queue_probe(gateway_router, provider_router);
+
+    auto fail = [&]() {
+        const queue_stats_t queue_stats =
+          ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
+        print_queue_metrics(lib_name, "GATEWAY", transport, msg_size, queue_stats);
+        cleanup();
+    };
 
     if (!configure_gateway_tls(gateway, transport)) {
         fail();
@@ -478,7 +517,8 @@ void run_gateway(const std::string &transport,
 
     int recv_count = 0;
     if (!run_gateway_throughput_parallel(gateway, service_name, provider_router,
-                                         msg_size, recv_timeout_ms,
+                                         msg_size, &queue_probe,
+                                         recv_timeout_ms,
                                          throughput_duration_s, &recv_count)) {
         fail();
         return;
@@ -486,10 +526,12 @@ void run_gateway(const std::string &transport,
 
     const double throughput = static_cast<double>(recv_count)
                               / static_cast<double>(throughput_duration_s);
+    const queue_stats_t queue_stats =
+      ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
 
     print_result(lib_name, "GATEWAY", transport, msg_size, throughput,
                  latency_stats.mean_us, latency_stats.p95_us,
-                 latency_stats.p99_us);
+                 latency_stats.p99_us, queue_stats);
     cleanup();
 }
 

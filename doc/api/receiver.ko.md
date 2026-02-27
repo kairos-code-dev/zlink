@@ -45,7 +45,7 @@ Receiver의 수명 동안 유효해야 합니다.
 ROUTER 소켓을 엔드포인트에 바인딩합니다.
 
 ```c
-int zlink_receiver_bind(void *provider,
+int zlink_receiver_bind(void *receiver,
                         const char *bind_endpoint);
 ```
 
@@ -69,7 +69,7 @@ Receiver의 내부 ROUTER 소켓을 지정된 엔드포인트에 바인딩합니
 Registry ROUTER 엔드포인트에 연결합니다.
 
 ```c
-int zlink_receiver_connect_registry(void *provider,
+int zlink_receiver_connect_registry(void *receiver,
                                     const char *registry_endpoint);
 ```
 
@@ -90,7 +90,7 @@ Receiver의 내부 DEALER 소켓을 Registry의 ROUTER 엔드포인트에 연결
 Registry에 서비스를 등록합니다.
 
 ```c
-int zlink_receiver_register(void *provider,
+int zlink_receiver_register(void *receiver,
                             const char *service_name,
                             const char *advertise_endpoint,
                             uint32_t weight);
@@ -115,7 +115,7 @@ int zlink_receiver_register(void *provider,
 등록된 서비스의 가중치를 업데이트합니다.
 
 ```c
-int zlink_receiver_update_weight(void *provider,
+int zlink_receiver_update_weight(void *receiver,
                                  const char *service_name,
                                  uint32_t weight);
 ```
@@ -137,7 +137,7 @@ int zlink_receiver_update_weight(void *provider,
 서비스 등록을 해제합니다.
 
 ```c
-int zlink_receiver_unregister(void *provider,
+int zlink_receiver_unregister(void *receiver,
                               const char *service_name);
 ```
 
@@ -158,7 +158,7 @@ int zlink_receiver_unregister(void *provider,
 등록 결과를 조회합니다.
 
 ```c
-int zlink_receiver_register_result(void *provider,
+int zlink_receiver_register_result(void *receiver,
                                    const char *service_name,
                                    int *status,
                                    char *resolved_endpoint,
@@ -183,7 +183,7 @@ Registry가 확인한 엔드포인트를 수신합니다. `error_message` 출력
 TLS 서버 인증서를 설정합니다.
 
 ```c
-int zlink_receiver_set_tls_server(void *provider,
+int zlink_receiver_set_tls_server(void *receiver,
                                   const char *cert,
                                   const char *key);
 ```
@@ -205,7 +205,7 @@ Receiver의 ROUTER 소켓이 지정된 서버 인증서 및 개인 키를 사용
 내부 Receiver 소켓의 소켓 옵션을 설정합니다.
 
 ```c
-int zlink_receiver_setsockopt(void *provider,
+int zlink_receiver_setsockopt(void *receiver,
                               int socket_role,
                               int option,
                               const void *optval,
@@ -215,6 +215,11 @@ int zlink_receiver_setsockopt(void *provider,
 `socket_role`로 식별되는 Receiver 내부 소켓 중 하나에 저수준 소켓 옵션을
 적용합니다. 요청/응답 소켓에는 `ZLINK_RECEIVER_SOCKET_ROUTER`를, Registry
 통신 소켓에는 `ZLINK_RECEIVER_SOCKET_DEALER`를 사용합니다.
+기본값:
+- `ZLINK_SNDHWM = 300000`
+- `ZLINK_RCVHWM = 300000`
+- `ZLINK_SNDTIMEO = -1`
+- `ZLINK_RCVTIMEO = -1`
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
 
@@ -227,12 +232,12 @@ int zlink_receiver_setsockopt(void *provider,
 
 ---
 
-### zlink_receiver_router
+### zlink_receiver_router_socket_unsafe
 
 내부 ROUTER 소켓 핸들을 반환합니다.
 
 ```c
-void *zlink_receiver_router(void *provider);
+void *zlink_receiver_router_socket_unsafe(void *receiver);
 ```
 
 Receiver가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환합니다. 이는
@@ -247,16 +252,38 @@ Receiver가 내부적으로 사용하는 원시 ROUTER 소켓 핸들을 반환�
 
 ---
 
+### zlink_receiver_router_peers
+
+Receiver ROUTER 소켓의 peer queue 정보를 조회합니다.
+
+```c
+int zlink_receiver_router_peers(void *receiver,
+                                zlink_peer_info_t *peers,
+                                size_t *count);
+```
+
+내부 ROUTER 소켓의 peer 단위 queue 통계(송신/수신 pending 메시지 수 포함)를
+반환합니다. 먼저 `peers = NULL`로 필요한 개수를 조회한 뒤, 버퍼를 할당하여
+다시 호출합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**스레드 안전성:** 모든 스레드에서 호출할 수 있습니다.
+
+**참고:** `zlink_socket_peers`, `zlink_receiver_router_socket_unsafe`
+
+---
+
 ### zlink_receiver_destroy
 
 Receiver를 파괴하고 모든 리소스를 해제합니다.
 
 ```c
-int zlink_receiver_destroy(void **provider_p);
+int zlink_receiver_destroy(void **receiver_p);
 ```
 
 모든 소켓을 닫고, 내부 상태를 해제하며, Receiver를 해제합니다. 파괴 후
-`*provider_p`의 포인터는 `NULL`로 설정됩니다. 등록된 모든 서비스는
+`*receiver_p`의 포인터는 `NULL`로 설정됩니다. 등록된 모든 서비스는
 Receiver가 파괴될 때 암묵적으로 등록 해제됩니다.
 
 **반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).

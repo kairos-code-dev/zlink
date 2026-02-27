@@ -12,48 +12,25 @@
 
 namespace {
 
-enum send_status_t
-{
-    send_ok = 0,
-    send_would_block = 1,
-    send_error = 2
-};
-
-send_status_t send_pair_nonblocking(void *sender,
-                                    const std::vector<char> &buffer,
-                                    size_t msg_size)
-{
-    const int rc =
-      zlink_send(sender, buffer.data(), msg_size, ZLINK_DONTWAIT);
-    if (rc >= 0)
-        return send_ok;
-    const int err = zlink_errno();
-    if (err == EAGAIN || err == EINTR)
-        return send_would_block;
-    return send_error;
-}
-
 bool run_roundtrip_once(void *sender,
                         void *receiver,
                         const std::vector<char> &buffer,
-                        std::vector<char> &recv_buf,
                         size_t msg_size)
 {
     return send_exact(sender, buffer.data(), msg_size, 0)
-           && recv_exact(receiver, recv_buf.data(), msg_size, 0)
-           && send_exact(receiver, recv_buf.data(), msg_size, 0)
-           && recv_exact(sender, recv_buf.data(), msg_size, 0);
+           && recv_single_part_msg_flags(receiver, msg_size, 0) > 0
+           && send_exact(receiver, buffer.data(), msg_size, 0)
+           && recv_single_part_msg_flags(sender, msg_size, 0) > 0;
 }
 
 bool run_warmup_roundtrip(void *sender,
                           void *receiver,
                           const std::vector<char> &buffer,
-                          std::vector<char> &recv_buf,
                           size_t msg_size,
                           int warmup_count)
 {
     for (int i = 0; i < warmup_count; ++i) {
-        if (!run_roundtrip_once(sender, receiver, buffer, recv_buf, msg_size)) {
+        if (!run_roundtrip_once(sender, receiver, buffer, msg_size)) {
             return false;
         }
     }
@@ -63,7 +40,6 @@ bool run_warmup_roundtrip(void *sender,
 bool run_latency_roundtrip(void *sender,
                            void *receiver,
                            const std::vector<char> &buffer,
-                           std::vector<char> &recv_buf,
                            size_t msg_size,
                            latency_stats_t *out_stats)
 {
@@ -78,7 +54,7 @@ bool run_latency_roundtrip(void *sender,
     while (std::chrono::steady_clock::now() < latency_deadline) {
         stopwatch_t sw;
         sw.start();
-        if (!run_roundtrip_once(sender, receiver, buffer, recv_buf, msg_size)) {
+        if (!run_roundtrip_once(sender, receiver, buffer, msg_size)) {
             return false;
         }
         latency_builder.add((sw.elapsed_ms() * 1000.0) * 0.5);
@@ -94,7 +70,6 @@ bool run_latency_roundtrip(void *sender,
 bool run_throughput_parallel(void *sender,
                              void *receiver,
                              const std::vector<char> &buffer,
-                             std::vector<char> &recv_buf,
                              size_t msg_size,
                              queue_probe_t &queue_probe,
                              double *out_throughput)
@@ -121,10 +96,10 @@ bool run_throughput_parallel(void *sender,
         while (true) {
             const bool done = sender_done.load(std::memory_order_acquire);
             const int flags = done ? ZLINK_DONTWAIT : 0;
-            const int rc = zlink_recv(receiver, recv_buf.data(), msg_size, flags);
-            if (rc != static_cast<int>(msg_size)) {
-                const int err = zlink_errno();
-                if (err == EAGAIN || err == EINTR) {
+            const int recv_rc =
+              recv_single_part_msg_flags(receiver, msg_size, flags);
+            if (recv_rc <= 0) {
+                if (recv_rc == 0) {
                     if (done
                         && std::chrono::steady_clock::now() - last_recv_at
                              >= drain_idle_limit) {
@@ -144,19 +119,16 @@ bool run_throughput_parallel(void *sender,
 
             // Drain immediately available messages in a non-blocking burst.
             for (;;) {
-                const int burst_rc =
-                  zlink_recv(receiver, recv_buf.data(), msg_size,
-                             ZLINK_DONTWAIT);
-                if (burst_rc == static_cast<int>(msg_size)) {
+                const int burst_rc = recv_single_part_msg_flags(
+                  receiver, msg_size, ZLINK_DONTWAIT);
+                if (burst_rc > 0) {
                     last_recv_at = std::chrono::steady_clock::now();
                     if (std::chrono::steady_clock::now() < throughput_deadline)
                         recv_in_window.fetch_add(1, std::memory_order_release);
                     queue_probe.sample_recv_if_due();
                     continue;
                 }
-
-                const int burst_err = zlink_errno();
-                if (burst_err == EAGAIN || burst_err == EINTR) {
+                if (burst_rc == 0) {
                     break;
                 }
 
@@ -173,14 +145,11 @@ bool run_throughput_parallel(void *sender,
     bool send_failed = false;
     queue_probe.force_sample_send();
     while (std::chrono::steady_clock::now() < throughput_deadline) {
-        const send_status_t send_rc =
-          send_pair_nonblocking(sender, buffer, msg_size);
-        if (send_rc == send_error) {
+        if (!send_exact(sender, buffer.data(), msg_size, 0)) {
             send_failed = true;
             break;
         }
-        if (send_rc == send_ok)
-            queue_probe.sample_send_if_due();
+        queue_probe.sample_send_if_due();
     }
     queue_probe.force_sample_send();
     sender_done.store(true, std::memory_order_release);
@@ -236,7 +205,6 @@ void run_pair(const std::string& transport,
     }
 
     std::vector<char> buffer(msg_size, 'a');
-    std::vector<char> recv_buf(msg_size);
     queue_probe_t queue_probe(s_conn.get(), s_bind.get());
 
     auto print_fail_with_queue = [&]() {
@@ -250,22 +218,22 @@ void run_pair(const std::string& transport,
                     "ZLINK_RCVTIMEO");
 
     const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 1000);
-    if (!run_warmup_roundtrip(s_conn.get(), s_bind.get(), buffer, recv_buf,
-                              msg_size, warmup_count)) {
+    if (!run_warmup_roundtrip(s_conn.get(), s_bind.get(), buffer, msg_size,
+                              warmup_count)) {
         print_fail_with_queue();
         return;
     }
 
     latency_stats_t latency_stats;
-    if (!run_latency_roundtrip(s_conn.get(), s_bind.get(), buffer, recv_buf,
-                               msg_size, &latency_stats)) {
+    if (!run_latency_roundtrip(s_conn.get(), s_bind.get(), buffer, msg_size,
+                               &latency_stats)) {
         print_fail_with_queue();
         return;
     }
 
     double throughput = 0.0;
-    if (!run_throughput_parallel(s_conn.get(), s_bind.get(), buffer, recv_buf,
-                                 msg_size, queue_probe, &throughput)) {
+    if (!run_throughput_parallel(s_conn.get(), s_bind.get(), buffer, msg_size,
+                                 queue_probe, &throughput)) {
         print_fail_with_queue();
         return;
     }

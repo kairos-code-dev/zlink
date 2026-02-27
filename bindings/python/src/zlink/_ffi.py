@@ -184,8 +184,8 @@ class _Lib:
         L.zlink_receiver_register_result.restype = ctypes.c_int
         L.zlink_receiver_set_tls_server.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
         L.zlink_receiver_set_tls_server.restype = ctypes.c_int
-        L.zlink_receiver_router.argtypes = [ctypes.c_void_p]
-        L.zlink_receiver_router.restype = ctypes.c_void_p
+        L.zlink_receiver_router_socket_unsafe.argtypes = [ctypes.c_void_p]
+        L.zlink_receiver_router_socket_unsafe.restype = ctypes.c_void_p
         L.zlink_receiver_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
         L.zlink_receiver_destroy.restype = ctypes.c_int
 

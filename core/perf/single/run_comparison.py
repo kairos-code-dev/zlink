@@ -5,11 +5,9 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import os
 import platform
 import re
-import shutil
 import statistics
 import subprocess
 import sys
@@ -62,12 +60,6 @@ STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
 DEFAULT_MAX_RESULT_FILES = 100
-DEFAULT_THRESHOLD_FILE = os.path.join(PERF_DIR, "thresholds.json")
-
-THROUGHPUT_WARN_PCT = -10.0
-THROUGHPUT_FAIL_PCT = -15.0
-LATENCY_WARN_PCT = 10.0
-LATENCY_FAIL_PCT = 15.0
 LATENCY_P95_METRIC = "latency_p95"
 LATENCY_P99_METRIC = "latency_p99"
 SND_PENDING_MAX_METRIC = "snd_pending_max"
@@ -119,15 +111,19 @@ class ComboRecord:
     rcv_pending_end: Optional[float] = None
 
 
-@dataclass
-class ThresholdRule:
-    pattern: str
-    transport: str
-    metric: str
-    warning: Optional[float]
-    fail: Optional[float]
-    rank: int
-    order: int
+class TeeStream:
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, data: str) -> int:
+        for stream in self._streams:
+            stream.write(data)
+            stream.flush()
+        return len(data)
+
+    def flush(self) -> None:
+        for stream in self._streams:
+            stream.flush()
 
 
 def env_get(primary_name: str, legacy_name: Optional[str] = None) -> str:
@@ -477,10 +473,6 @@ def single_tmp_dir(results_root: str) -> str:
 
 def single_report_dir(results_root: str) -> str:
     return os.path.join(results_root, "single", "report")
-
-
-def single_baseline_dir(results_root: str) -> str:
-    return os.path.join(results_root, "single", "baseline")
 
 
 def enforce_file_retention(
@@ -1092,323 +1084,6 @@ def build_pattern_table_lines(
     return lines
 
 
-def parse_result_line_generic(line: str) -> Optional[Tuple[MetricKey, float]]:
-    if not line.startswith("RESULT,"):
-        return None
-    parts = line.strip().split(",")
-    if len(parts) != 7:
-        return None
-    lib = parts[1].strip()
-    pattern = parts[2].strip().upper()
-    transport = parts[3].strip().lower()
-    try:
-        size = int(parts[4].strip())
-        metric = parts[5].strip().lower()
-        value = float(parts[6].strip())
-    except ValueError:
-        return None
-
-    if metric not in (
-        "throughput",
-        "bandwidth",
-        "latency",
-        LATENCY_P95_METRIC,
-        LATENCY_P99_METRIC,
-        "cpu_pct",
-        "mem_mb",
-        SND_PENDING_MAX_METRIC,
-        RCV_PENDING_MAX_METRIC,
-        RCV_PENDING_END_METRIC,
-    ):
-        return None
-
-    return (lib, pattern, transport, size, metric), value
-
-
-def parse_result_file(path: str) -> Optional[Tuple[Dict[str, str], Dict[MetricKey, float]]]:
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return None
-
-    meta: Dict[str, str] = {}
-    results: Dict[MetricKey, float] = {}
-    saw_meta = False
-
-    for raw in lines:
-        line = raw.strip()
-        if not line:
-            continue
-
-        if line.startswith("META,"):
-            parts = line.split(",", 2)
-            if len(parts) == 3:
-                saw_meta = True
-                meta[parts[1].strip()] = parts[2].strip()
-            continue
-
-        parsed = parse_result_line_generic(line)
-        if parsed:
-            key, value = parsed
-            results[key] = value
-    if not saw_meta or not results:
-        return None
-
-    return meta, results
-
-
-def sorted_result_files(report_dir: str) -> List[str]:
-    if not os.path.isdir(report_dir):
-        return []
-
-    files = [
-        os.path.join(report_dir, name)
-        for name in os.listdir(report_dir)
-        if (
-            name.endswith(".txt")
-            and (name.startswith("perf_") or name.startswith("bench_"))
-        )
-    ]
-
-    files.sort(key=lambda p: os.path.basename(p), reverse=True)
-    return files
-
-
-def load_rolling_baseline(
-    results_dir: str,
-    rolling_n: int,
-    keys_of_interest: Iterable[MetricKey],
-) -> Tuple[Dict[MetricKey, float], Dict[MetricKey, int]]:
-    files = sorted_result_files(results_dir)
-    wanted = list(keys_of_interest)
-    samples: Dict[MetricKey, List[float]] = {key: [] for key in wanted}
-
-    if rolling_n <= 0:
-        rolling_n = 1
-
-    complete_files = 0
-    for path in files:
-        parsed = parse_result_file(path)
-        if not parsed:
-            continue
-        file_meta, file_results = parsed
-        if file_meta.get("status", "").strip().lower() != "complete":
-            continue
-
-        for key in wanted:
-            if key in file_results:
-                samples[key].append(file_results[key])
-        complete_files += 1
-        if complete_files >= rolling_n:
-            break
-
-    baseline: Dict[MetricKey, float] = {}
-    counts: Dict[MetricKey, int] = {}
-    for key, values in samples.items():
-        if values:
-            baseline[key] = statistics.median(values)
-        if values:
-            counts[key] = len(values)
-
-    return baseline, counts
-
-
-def load_fixed_baseline(path: str) -> Dict[MetricKey, float]:
-    parsed = parse_result_file(path)
-    if not parsed:
-        return {}
-    _, results = parsed
-    return results
-
-
-def threshold_defaults(metric: str) -> Tuple[float, float]:
-    if metric == "throughput":
-        return THROUGHPUT_WARN_PCT, THROUGHPUT_FAIL_PCT
-    return LATENCY_WARN_PCT, LATENCY_FAIL_PCT
-
-
-def threshold_rank(pattern: str, transport: str) -> int:
-    if pattern != "*" and transport != "*":
-        return 1
-    if pattern != "*" and transport == "*":
-        return 2
-    if pattern == "*" and transport != "*":
-        return 3
-    return 4
-
-
-def normalize_threshold_value(metric: str, field: str, value: float) -> Tuple[float, Optional[str]]:
-    if metric == "throughput" and value > 0:
-        return -abs(value), (
-            f"{metric} threshold should be <= 0; "
-            f"auto-negated key field '{field}' to {-abs(value):.2f}"
-        )
-    if metric == "latency" and value < 0:
-        return abs(value), (
-            "latency threshold should be >= 0; "
-            f"auto-abs key field '{field}' to {abs(value):.2f}"
-        )
-    return value, None
-
-
-def load_threshold_rules() -> Tuple[List[ThresholdRule], List[str]]:
-    path = (
-        env_get("PERF_THRESHOLDS_FILE").strip()
-        or DEFAULT_THRESHOLD_FILE
-    )
-    warnings: List[str] = []
-
-    if not os.path.isfile(path):
-        return [], warnings
-
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except (OSError, json.JSONDecodeError) as exc:
-        warnings.append(f"threshold file parse failed ({path}): {exc}; using defaults")
-        return [], warnings
-
-    if not isinstance(raw, dict):
-        warnings.append(f"threshold file must be a JSON object: {path}; using defaults")
-        return [], warnings
-
-    rules: List[ThresholdRule] = []
-    for order, (raw_key, raw_value) in enumerate(raw.items()):
-        if not isinstance(raw_key, str):
-            warnings.append(f"ignored invalid threshold key (non-string): {raw_key!r}")
-            continue
-        parts = raw_key.split("/")
-        if len(parts) != 3:
-            warnings.append(f"ignored invalid threshold key format: {raw_key}")
-            continue
-        pattern, transport, metric = parts[0].strip(), parts[1].strip(), parts[2].strip().lower()
-        if not pattern or not transport or metric not in ("throughput", "latency"):
-            warnings.append(f"ignored invalid threshold key: {raw_key}")
-            continue
-        if pattern != "*" and not pattern.replace("_", "").isalnum():
-            warnings.append(f"ignored invalid threshold pattern segment: {raw_key}")
-            continue
-        if transport != "*" and not transport.isalpha():
-            warnings.append(f"ignored invalid threshold transport segment: {raw_key}")
-            continue
-        if not isinstance(raw_value, dict):
-            warnings.append(f"ignored threshold value (must be object): {raw_key}")
-            continue
-
-        warn_val: Optional[float] = None
-        fail_val: Optional[float] = None
-        if "warning" in raw_value:
-            try:
-                warn_val = float(raw_value["warning"])
-            except (TypeError, ValueError):
-                warnings.append(f"ignored threshold key due to non-numeric warning: {raw_key}")
-                continue
-            warn_val, sign_warn = normalize_threshold_value(metric, "warning", warn_val)
-            if sign_warn:
-                warnings.append(f"{raw_key}: {sign_warn}")
-        if "fail" in raw_value:
-            try:
-                fail_val = float(raw_value["fail"])
-            except (TypeError, ValueError):
-                warnings.append(f"ignored threshold key due to non-numeric fail: {raw_key}")
-                continue
-            fail_val, sign_warn = normalize_threshold_value(metric, "fail", fail_val)
-            if sign_warn:
-                warnings.append(f"{raw_key}: {sign_warn}")
-        if warn_val is None and fail_val is None:
-            continue
-
-        rules.append(
-            ThresholdRule(
-                pattern=pattern.upper(),
-                transport=transport.lower(),
-                metric=metric,
-                warning=warn_val,
-                fail=fail_val,
-                rank=threshold_rank(pattern, transport),
-                order=order,
-            )
-        )
-
-    return rules, warnings
-
-
-def resolve_threshold(
-    rules: List[ThresholdRule], pattern: str, transport: str, metric: str
-) -> Tuple[float, float]:
-    warning, fail = threshold_defaults(metric)
-    pattern = pattern.upper()
-    transport = transport.lower()
-    for rank in (1, 2, 3, 4):
-        for rule in rules:
-            if rule.rank != rank or rule.metric != metric:
-                continue
-            if rule.pattern not in (pattern, "*"):
-                continue
-            if rule.transport not in (transport, "*"):
-                continue
-            if rule.warning is not None:
-                warning = rule.warning
-            if rule.fail is not None:
-                fail = rule.fail
-            return warning, fail
-    return warning, fail
-
-
-def compare_against_baseline(
-    mode: str,
-    current: Dict[MetricKey, float],
-    baseline: Dict[MetricKey, float],
-    threshold_rules: List[ThresholdRule],
-) -> Tuple[List[str], List[str], int]:
-    warnings: List[str] = []
-    fails: List[str] = []
-    skipped = 0
-
-    for key in sorted(current.keys()):
-        _, pattern, transport, size, metric = key
-        if metric not in ("throughput", "latency"):
-            continue
-
-        cur = current[key]
-        base = baseline.get(key)
-        if base is None:
-            warnings.append(
-                f"{pattern} {transport} {size}B {metric}: baseline missing; comparison skipped"
-            )
-            skipped += 1
-            continue
-        if base <= 0:
-            warnings.append(
-                f"{pattern} {transport} {size}B {metric}: baseline <= 0; comparison skipped"
-            )
-            skipped += 1
-            continue
-
-        delta_pct = ((cur - base) / base) * 100.0
-
-        warn_limit, fail_limit = resolve_threshold(threshold_rules, pattern, transport, metric)
-        if metric == "throughput":
-            warn = delta_pct <= warn_limit
-            fail = delta_pct <= fail_limit
-        else:
-            warn = delta_pct >= warn_limit
-            fail = delta_pct >= fail_limit
-
-        msg = (
-            f"{pattern} {transport} {size}B {metric}: "
-            f"current={cur:.2f}, baseline={base:.2f}, delta={delta_pct:+.2f}%"
-        )
-
-        if warn:
-            warnings.append(msg)
-        if mode == "gate" and fail:
-            fails.append(msg)
-
-    return warnings, fails, skipped
-
-
 def detect_cpu_model() -> str:
     if not IS_WINDOWS and os.path.isfile("/proc/cpuinfo"):
         try:
@@ -1463,7 +1138,7 @@ def git_commit_short() -> str:
     return out or "unknown"
 
 
-def gather_meta(mode: str, runs: int, build_dir: str) -> Dict[str, str]:
+def gather_meta(runs: int, build_dir: str) -> Dict[str, str]:
     local_now = datetime.datetime.now().astimezone()
     meta = {
         "os": platform.platform(),
@@ -1472,7 +1147,6 @@ def gather_meta(mode: str, runs: int, build_dir: str) -> Dict[str, str]:
         "build": read_build_type(build_dir),
         "commit": git_commit_short(),
         "timestamp": local_now.replace(microsecond=0).isoformat(),
-        "mode": mode,
         "runs": str(runs),
     }
 
@@ -1505,7 +1179,6 @@ def build_single_option_items(
     sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
     rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
     items: List[Tuple[str, str]] = [
-        ("mode", args.mode),
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("latency_seconds", str(parse_env_int("PERF_SINGLE_LATENCY_SECONDS", parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5)))),
@@ -1581,7 +1254,6 @@ def write_result_file(
         "commit",
         "timestamp",
         "load_avg",
-        "mode",
         "runs",
         "status",
         "expected",
@@ -1607,38 +1279,6 @@ def write_result_file(
             fh.write(cleaned_table + "\n")
 
 
-def save_baseline(
-    results_dir: str,
-    version: str,
-    meta: Dict[str, str],
-    metrics: Dict[MetricKey, float],
-    table_text: str,
-) -> str:
-    clean_version = sanitize_suffix(version)
-    if not clean_version:
-        raise ValueError("baseline version is empty")
-
-    baseline_dir = single_baseline_dir(results_dir)
-    os.makedirs(baseline_dir, exist_ok=True)
-
-    baseline_path = os.path.join(baseline_dir, f"{clean_version}.txt")
-    write_result_file(baseline_path, meta, metrics, table_text=table_text)
-
-    latest_path = os.path.join(baseline_dir, "latest.txt")
-    if os.path.lexists(latest_path):
-        os.remove(latest_path)
-
-    try:
-        os.symlink(os.path.basename(baseline_path), latest_path)
-    except OSError:
-        shutil.copy2(baseline_path, latest_path)
-
-    enforce_file_retention(
-        baseline_dir, DEFAULT_MAX_RESULT_FILES, exclude_names=("latest.txt",)
-    )
-    return baseline_path
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Measure current zlink single-pattern benchmarks."
@@ -1648,14 +1288,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=int, default=None)
     parser.add_argument("--build-dir", default="")
     parser.add_argument("--pin-cpu", action="store_true")
-    parser.add_argument("--mode", choices=["observe", "trend", "gate"], default="observe")
-    parser.add_argument("--baseline-file", default="")
-    parser.add_argument("--result", action="store_true", dest="save_report")
-    parser.add_argument("--save", nargs="?", const="", default=None)
-    parser.add_argument("--save-report", action="store_true", dest="save_report_legacy")
-    parser.add_argument("--save-baseline", default=None)
-    parser.add_argument("--save-file", default="")
-    parser.add_argument("--rolling-n", type=int, default=None)
     parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
     parser.add_argument("--results-tag", default="")
     parser.add_argument("--result-file", default="")
@@ -1669,8 +1301,7 @@ def main() -> int:
         args.results_tag = env_get("PERF_RESULTS_TAG").strip()
 
     if args.runs is None:
-        mode_default_runs = {"observe": 1, "trend": 3, "gate": 5}
-        args.runs = mode_default_runs.get(args.mode, 1)
+        args.runs = 1
     if args.runs < 1:
         print("Error: --runs must be >= 1.", file=sys.stderr)
         return 1
@@ -1679,17 +1310,6 @@ def main() -> int:
         return 1
     if args.duration is not None:
         os.environ["PERF_SINGLE_DURATION_SECONDS"] = str(args.duration)
-    if args.save_baseline is not None:
-        print(
-            "Error: --save-baseline is removed. Use --save [VERSION].",
-            file=sys.stderr,
-        )
-        return 1
-    if args.rolling_n is None:
-        args.rolling_n = parse_env_int("PERF_ROLLING_N", 10)
-    if args.rolling_n < 1:
-        print("Error: --rolling-n must be >= 1.", file=sys.stderr)
-        return 1
 
     try:
         patterns = parse_pattern_arg(args.pattern)
@@ -1760,6 +1380,17 @@ def main() -> int:
     results_root = os.path.abspath(args.results_dir)
     tmp_dir = single_tmp_dir(results_root)
     report_dir = single_report_dir(results_root)
+    tmp_result_file = args.result_file
+    if not tmp_result_file:
+        tmp_result_file = os.path.join(tmp_dir, build_result_filename(args.results_tag))
+    tmp_parent = os.path.dirname(tmp_result_file)
+    if tmp_parent:
+        os.makedirs(tmp_parent, exist_ok=True)
+    tmp_log_fh = open(tmp_result_file, "w", encoding="utf-8", buffering=1)
+    orig_stdout = sys.stdout
+    orig_stderr = sys.stderr
+    sys.stdout = TeeStream(orig_stdout, tmp_log_fh)
+    sys.stderr = TeeStream(orig_stderr, tmp_log_fh)
 
     pattern_transports: Dict[str, List[str]] = {}
     pattern_sizes: Dict[str, List[int]] = {}
@@ -1783,12 +1414,8 @@ def main() -> int:
     all_failures: List[Tuple[str, str, int, str]] = []
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
     result_metrics: Dict[MetricKey, float] = {}
-    compare_metrics: Dict[MetricKey, float] = {}
     run_warnings: List[str] = []
     table_lines: List[str] = []
-
-    threshold_rules, threshold_load_warnings = load_threshold_rules()
-    run_warnings.extend(threshold_load_warnings)
 
     for pattern in patterns:
         binary_name = PATTERN_TO_BINARY[pattern]
@@ -2053,8 +1680,6 @@ def main() -> int:
                     result_metrics[lat_key] = latency
                     result_metrics[lat95_key] = latency_p95
                     result_metrics[lat99_key] = latency_p99
-                    compare_metrics[tp_key] = throughput
-                    compare_metrics[lat_key] = latency
                     if cpu_pct is not None:
                         result_metrics[("current", pattern, transport, size, "cpu_pct")] = cpu_pct
                     if mem_mb is not None:
@@ -2152,69 +1777,12 @@ def main() -> int:
     print(f"- expected_result_lines: {expected_result_lines}")
     print(f"- actual_result_lines: {actual_result_lines}")
 
-    baseline: Dict[MetricKey, float] = {}
-    baseline_info = ""
-    exec_errors: List[str] = []
-
-    if args.mode == "trend":
-        baseline, sample_counts = load_rolling_baseline(
-            tmp_dir, args.rolling_n, compare_metrics.keys()
-        )
-        if baseline:
-            baseline_info = (
-                f"rolling median from recent up to {args.rolling_n} runs "
-                f"(matched keys: {len(baseline)})"
-            )
-        else:
-            observed = sum(1 for count in sample_counts.values() if count > 0)
-            if observed > 0:
-                baseline_info = (
-                    "rolling baseline unavailable (insufficient history); "
-                    "comparison skipped"
-                )
-            else:
-                baseline_info = "rolling baseline unavailable; comparison skipped"
-
-    elif args.mode == "gate":
-        baseline_file = args.baseline_file
-        if not baseline_file:
-            baseline_file = os.path.join(single_baseline_dir(results_root), "latest.txt")
-        if os.path.isfile(baseline_file):
-            baseline = load_fixed_baseline(baseline_file)
-            if baseline:
-                baseline_info = f"fixed baseline: {baseline_file}"
-            else:
-                baseline_info = f"baseline parse failed: {baseline_file}"
-                exec_errors.append(f"baseline parse failed: {baseline_file}")
-        else:
-            baseline_info = f"baseline missing: {baseline_file}"
-            exec_errors.append(f"baseline missing: {baseline_file}")
-
-    warnings: List[str] = list(run_warnings)
-    gate_fails: List[str] = []
-    skipped_compares = 0
-    if args.mode in ("trend", "gate") and baseline:
-        warnings, gate_fails, skipped_compares = compare_against_baseline(
-            args.mode, compare_metrics, baseline, threshold_rules
-        )
-        warnings = list(run_warnings) + warnings
-
-    if baseline_info:
-        print(f"\n## Baseline\n- {baseline_info}")
-        if skipped_compares > 0:
-            print(f"- skipped comparisons (missing/zero baseline): {skipped_compares}")
-
-    if warnings:
+    if run_warnings:
         print("\n## Warnings")
-        for item in warnings:
+        for item in run_warnings:
             print(f"- {item}")
 
-    if gate_fails:
-        print("\n## Gate Failures")
-        for item in gate_fails:
-            print(f"- {item}")
-
-    meta = gather_meta(args.mode, args.runs, build_dir)
+    meta = gather_meta(args.runs, build_dir)
     meta["status"] = completion_status
     meta["expected"] = str(expected_result_lines)
     meta["actual"] = str(actual_result_lines)
@@ -2222,50 +1790,20 @@ def main() -> int:
     if table_lines:
         table_text = "\n".join(table_lines).rstrip() + "\n"
 
-    save_report_requested = bool(args.save_report or args.save_report_legacy)
-    save_baseline_requested = args.save is not None
-    save_baseline_version = (args.save or "").strip() if save_baseline_requested else ""
-
-    tmp_result_file = args.result_file
-    if not tmp_result_file:
-        tmp_result_file = os.path.join(tmp_dir, build_result_filename(args.results_tag))
-    write_result_file(tmp_result_file, meta, result_metrics, table_text=table_text)
     enforce_file_retention(os.path.dirname(tmp_result_file))
     print(f"\nSaved tmp result file: {tmp_result_file}")
 
-    save_report_path = args.save_file
-    if save_report_requested and not save_report_path:
-        save_report_path = os.path.join(report_dir, build_result_filename(args.results_tag))
-    if save_report_requested and save_report_path:
-        write_result_file(
-            save_report_path, meta, result_metrics, table_text=table_text, table_only=True
-        )
-        enforce_file_retention(report_dir)
-        print(f"Saved report file: {save_report_path} (status={completion_status})")
+    report_path = os.path.join(report_dir, build_result_filename(args.results_tag))
+    write_result_file(report_path, meta, result_metrics, table_text=table_text, table_only=True)
+    enforce_file_retention(report_dir)
+    print(f"Saved report file: {report_path} (status={completion_status})")
 
-    if save_baseline_requested:
-        if completion_status != "complete":
-            print(
-                "Error: --save requires complete run "
-                f"(expected={expected_result_lines}, actual={actual_result_lines})",
-                file=sys.stderr,
-            )
-            exec_errors.append("partial run cannot be saved as baseline")
-        else:
-            if not save_baseline_version:
-                save_baseline_version = build_result_filename(args.results_tag)
-                if save_baseline_version.endswith(".txt"):
-                    save_baseline_version = save_baseline_version[:-4]
-            baseline_path = save_baseline(
-                results_root, save_baseline_version, meta, result_metrics, table_text
-            )
-            print(f"Saved baseline: {baseline_path}")
-    exit_code = 0
-    if exec_errors:
-        exit_code = max(exit_code, 1)
-    if completion_status == "complete" and gate_fails:
-        exit_code = max(exit_code, 2)
-    return exit_code
+    sys.stdout = orig_stdout
+    sys.stderr = orig_stderr
+    tmp_log_fh.close()
+    if completion_status != "complete":
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

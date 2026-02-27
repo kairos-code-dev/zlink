@@ -98,6 +98,19 @@ static bool send_spot(void *spot_pub,
     return zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0;
 }
 
+// Return codes: 1=sent, 0=transient backpressure/interruption, -1=fatal.
+static int send_spot_try(void *spot_pub,
+                         const std::string &topic,
+                         size_t msg_size)
+{
+    if (send_spot(spot_pub, topic, msg_size))
+        return 1;
+    const int err = zlink_errno();
+    if (err == EAGAIN || err == EINTR)
+        return 0;
+    return -1;
+}
+
 static bool recv_spot_blocking(void *spot_sub)
 {
     zlink_msg_t *parts = NULL;
@@ -165,7 +178,9 @@ static bool run_spot_warmup_and_latency(void *spot_pub,
                                                                   recv_timeout_ms);
     };
 
-    const int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
+    int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
+    if (msg_size >= 65536 && warmup_count > 20)
+        warmup_count = 20;
     for (int i = 0; i < warmup_count; ++i) {
         if (!send_spot(spot_pub, topic, msg_size) || !recv_one())
             return false;
@@ -189,6 +204,34 @@ static bool run_spot_warmup_and_latency(void *spot_pub,
 
     *out_stats = latency_builder.snapshot();
     return true;
+}
+
+static bool ensure_spot_subscription_ready(void *spot_pub,
+                                           void *spot_sub,
+                                           const std::string &topic,
+                                           int recv_timeout_ms)
+{
+    const int ready_timeout_ms =
+      resolve_bench_count("PERF_SPOT_READY_TIMEOUT_MS", 2000);
+    const int per_try_timeout_ms =
+      recv_timeout_ms > 0 ? std::min(recv_timeout_ms, 50) : 50;
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(ready_timeout_ms > 0 ? ready_timeout_ms
+                                                       : 2000);
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        const int send_rc = send_spot_try(spot_pub, topic, 1);
+        if (send_rc > 0
+            && recv_spot_with_timeout_polling(spot_sub, per_try_timeout_ms)) {
+            return true;
+        }
+        if (send_rc < 0)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    return false;
 }
 
 static bool run_spot_throughput_parallel(void *spot_pub,
@@ -283,12 +326,20 @@ static bool run_spot_throughput_parallel(void *spot_pub,
     if (queue_probe)
         queue_probe->force_sample_send();
     while (std::chrono::steady_clock::now() < throughput_deadline) {
-        if (!send_spot(spot_pub, topic, msg_size)) {
+        const int send_rc = send_spot_try(spot_pub, topic, msg_size);
+        if (send_rc > 0) {
+            if (queue_probe)
+                queue_probe->sample_send_if_due();
+            continue;
+        }
+        if (send_rc == 0) {
+            std::this_thread::yield();
+            continue;
+        }
+        if (send_rc < 0) {
             send_failed = true;
             break;
         }
-        if (queue_probe)
-            queue_probe->sample_send_if_due();
     }
     if (queue_probe)
         queue_probe->force_sample_send();
@@ -299,10 +350,7 @@ static bool run_spot_throughput_parallel(void *spot_pub,
         return false;
 
     const int received = recv_count.load(std::memory_order_acquire);
-    if (received <= 0)
-        return false;
-
-    *out_received = received;
+    *out_received = received > 0 ? received : 0;
     return true;
 }
 
@@ -346,8 +394,13 @@ void run_spot(const std::string &transport,
     void *node_sub = zlink_spot_node_new(ctx.get());
     void *spot_pub = NULL;
     void *spot_sub = NULL;
+    queue_probe_t *queue_probe = NULL;
 
     auto cleanup = [&]() {
+        if (queue_probe) {
+            delete queue_probe;
+            queue_probe = NULL;
+        }
         if (spot_pub)
             zlink_spot_pub_destroy(&spot_pub);
         if (spot_sub)
@@ -376,6 +429,32 @@ void run_spot(const std::string &transport,
         return;
     }
 
+    const int sndhwm = resolve_single_socket_hwm(true);
+    const int rcvhwm = resolve_single_socket_hwm(false);
+    const int send_timeout_ms = resolve_single_send_timeout_ms();
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    const int linger_ms = 0;
+    bool use_blocking_recv = false;
+
+    // Configure socket options before bind/connect so newly created pipes
+    // inherit the benchmark policy deterministically.
+    (void) zlink_spot_node_setsockopt(node_pub, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
+    (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    (void) zlink_spot_node_setsockopt(node_pub, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_LINGER, &linger_ms,
+                                      sizeof(linger_ms));
+    (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_LINGER, &linger_ms,
+                                      sizeof(linger_ms));
+    (void) zlink_spot_node_setsockopt(
+      node_pub, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &send_timeout_ms,
+      sizeof(send_timeout_ms));
+    (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_RCVTIMEO, &recv_timeout_ms,
+                                      sizeof(recv_timeout_ms));
+
     int base_port = 32000;
 #if !defined(_WIN32)
     base_port += (getpid() % 2000);
@@ -400,43 +479,52 @@ void run_spot(const std::string &transport,
         fail_no_queue();
         return;
     }
-    void *pub_socket_unsafe = zlink_spot_node_pub_socket_unsafe(node_pub);
-    void *sub_socket_unsafe = zlink_spot_node_sub_socket_unsafe(node_sub);
-    if (!pub_socket_unsafe || !sub_socket_unsafe) {
-        fail_no_queue();
-        return;
-    }
-    queue_probe_t queue_probe(pub_socket_unsafe, sub_socket_unsafe);
+
+    auto snapshot_queue_stats = [&]() {
+        if (!queue_probe)
+            return ensure_queue_metrics_visible(queue_stats_t());
+        return ensure_queue_metrics_visible(sample_queue_stats(queue_probe));
+    };
+
     auto fail = [&]() {
-        const queue_stats_t queue_stats =
-          ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
+        const queue_stats_t queue_stats = snapshot_queue_stats();
         print_queue_metrics(lib_name, "SPOT", transport, msg_size, queue_stats);
         cleanup();
     };
 
-    const int sndhwm = resolve_single_socket_hwm(true);
-    const int rcvhwm = resolve_single_socket_hwm(false);
-    const int send_timeout_ms = resolve_single_send_timeout_ms();
-    (void) zlink_spot_node_setsockopt(node_pub, ZLINK_SPOT_NODE_SOCKET_PUB,
-                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
-    (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
-    (void) zlink_spot_node_setsockopt(
-      node_pub, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &send_timeout_ms,
-      sizeof(send_timeout_ms));
-
-    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
-    bool use_blocking_recv = false;
-    if (zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
-                                   ZLINK_RCVTIMEO, &recv_timeout_ms,
-                                   sizeof(recv_timeout_ms))
-        == 0) {
-        use_blocking_recv = true;
-    }
-
     const std::string topic = "bench";
     zlink_spot_sub_subscribe(spot_sub, topic.c_str());
     settle();
+    if (!ensure_spot_subscription_ready(spot_pub, spot_sub, topic,
+                                        recv_timeout_ms)) {
+        fail();
+        return;
+    }
+
+    void *pub_socket_unsafe = zlink_spot_node_pub_socket_unsafe(node_pub);
+    void *sub_socket_unsafe = zlink_spot_node_sub_socket_unsafe(node_sub);
+    if (pub_socket_unsafe && sub_socket_unsafe) {
+        // Enforce benchmark socket options on active transport sockets.
+        set_sockopt_int(pub_socket_unsafe, ZLINK_SNDHWM, sndhwm,
+                        "ZLINK_SNDHWM");
+        set_sockopt_int(sub_socket_unsafe, ZLINK_RCVHWM, rcvhwm,
+                        "ZLINK_RCVHWM");
+        set_sockopt_int(pub_socket_unsafe, ZLINK_LINGER, linger_ms,
+                        "ZLINK_LINGER");
+        set_sockopt_int(sub_socket_unsafe, ZLINK_LINGER, linger_ms,
+                        "ZLINK_LINGER");
+        set_sockopt_int(pub_socket_unsafe, ZLINK_SNDTIMEO, send_timeout_ms,
+                        "ZLINK_SNDTIMEO");
+        set_sockopt_int(sub_socket_unsafe, ZLINK_RCVTIMEO, recv_timeout_ms,
+                        "ZLINK_RCVTIMEO");
+        queue_probe = new (std::nothrow) queue_probe_t(pub_socket_unsafe,
+                                                       sub_socket_unsafe);
+        if (!queue_probe) {
+            fail();
+            return;
+        }
+    }
+
     const int throughput_duration_s = resolve_single_duration_seconds();
     latency_stats_t latency_stats;
     if (!run_spot_warmup_and_latency(spot_pub, spot_sub, topic, msg_size,
@@ -448,7 +536,7 @@ void run_spot(const std::string &transport,
 
     int received = 0;
     if (!run_spot_throughput_parallel(spot_pub, spot_sub, use_blocking_recv,
-                                      topic, msg_size, &queue_probe,
+                                      topic, msg_size, queue_probe,
                                       throughput_duration_s,
                                       &received)) {
         fail();
@@ -457,8 +545,7 @@ void run_spot(const std::string &transport,
 
     const double throughput = static_cast<double>(received)
                               / static_cast<double>(throughput_duration_s);
-    const queue_stats_t queue_stats =
-      ensure_queue_metrics_visible(sample_queue_stats(&queue_probe));
+    const queue_stats_t queue_stats = snapshot_queue_stats();
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput,
                  latency_stats.mean_us, latency_stats.p95_us,

@@ -621,6 +621,13 @@ private:
             .count());
     }
 
+    static unsigned long long peer_activity_score(
+      const zlink_peer_info_t &info_)
+    {
+        return static_cast<unsigned long long>(info_.msgs_sent)
+               + static_cast<unsigned long long>(info_.msgs_received);
+    }
+
     static bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
     {
         if (!socket_ || !info_)
@@ -630,11 +637,26 @@ private:
         if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
             return false;
 
-        memset(info_, 0, sizeof(*info_));
-        size_t to_copy = 1;
-        if (zlink_socket_peers(socket_, info_, &to_copy) != 0 || to_copy == 0)
+        std::vector<zlink_peer_info_t> peers(peer_count);
+        size_t to_copy = peer_count;
+        if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
             return false;
 
+        size_t best = 0;
+        for (size_t i = 1; i < to_copy; ++i) {
+            const zlink_peer_info_t &cand = peers[i];
+            const zlink_peer_info_t &cur = peers[best];
+            if (cand.connected_time > cur.connected_time) {
+                best = i;
+                continue;
+            }
+            if (cand.connected_time == cur.connected_time
+                && peer_activity_score(cand) > peer_activity_score(cur)) {
+                best = i;
+            }
+        }
+
+        *info_ = peers[best];
         return true;
     }
 

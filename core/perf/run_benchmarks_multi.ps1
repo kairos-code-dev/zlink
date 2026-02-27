@@ -28,6 +28,10 @@ param(
     [string]$Clients = "",
     [Alias("MultiHwm")]
     [string]$Hwm = "",
+    [Alias("MultiSndHwm")]
+    [string]$SendHwm = "",
+    [Alias("MultiRcvHwm")]
+    [string]$RecvHwm = "",
     [Alias("MultiSndtimeoMs")]
     [string]$SendTimeoutMs = "5000",
     [Alias("MultiRcvtimeoMs")]
@@ -45,7 +49,7 @@ param(
     [Alias("MultiConnectReadyTimeoutMs")]
     [int]$ConnectReadyTimeoutMs = 5000,
     [Alias("MultiMonitorHwm")]
-    [int]$MonitorHwm = 200000,
+    [int]$MonitorHwm = 1000,
     [Alias("MultiServerShutdownTimeoutMs")]
     [int]$ServerShutdownTimeoutMs = 5000,
     [Alias("MultiServerBindPort")]
@@ -85,7 +89,9 @@ Options:
   -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS.
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
   -Clients N                   Override PERF_MULTI_CLIENTS.
-  -Hwm N                       Override PERF_MULTI_HWM (default: pattern-specific in binary).
+  -Hwm N                       Override PERF_MULTI_HWM (default: 1000 in binary).
+  -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
+  -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
   -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.
   -RecvTimeoutMs N             Override PERF_MULTI_RCVTIMEO_MS.
   -ConnectConcurrency N        Override PERF_MULTI_CONNECT_CONCURRENCY.
@@ -94,7 +100,7 @@ Options:
   -PatternTransitionMs N       Pattern transition cooldown(ms).
   -ServerReadyTimeoutMs N      Server READY wait timeout(ms).
   -ConnectReadyTimeoutMs N     Client/server connect-ready wait timeout(ms).
-  -MonitorHwm N                Monitor socket HWM (default: 200000).
+  -MonitorHwm N                Monitor socket HWM (default: 1000).
   -ServerShutdownTimeoutMs N   Server shutdown wait timeout(ms).
   -ServerBindPort N            Server bind port (0=auto).
 "@
@@ -121,6 +127,9 @@ if ($WarnThroughputPct -lt 0 -or $FailThroughputPct -lt 0 -or $WarnLatencyPct -l
     throw "Threshold values must be >= 0."
 }
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') { throw "IoThreads must be a non-negative integer." }
+if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) { throw "Hwm must be a positive integer." }
+if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) { throw "SendHwm must be a positive integer." }
+if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) { throw "RecvHwm must be a positive integer." }
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') { throw "MsgSizes must be a comma-separated list of integers." }
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') { throw "Transports must be a comma-separated list of names." }
 if ($SaveVersion) { $Save = $true }
@@ -212,6 +221,8 @@ $RunEnv["PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS"] = $ServerShutdownTimeoutMs.ToSt
 $RunEnv["PERF_MULTI_SERVER_BIND_PORT"] = $ServerBindPort.ToString()
 if ($Clients) { $RunEnv["PERF_MULTI_CLIENTS"] = $Clients }
 if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
+if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
+if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
 if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
 if ($DrainMs) { $RunEnv["PERF_MULTI_DRAIN_MS"] = $DrainMs }
 

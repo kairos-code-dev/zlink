@@ -10,6 +10,9 @@ param(
     [string]$ResultsTag = "",
     [Alias("duration")]
     [string]$Duration = "",
+    [string]$Hwm = "",
+    [string]$SendHwm = "",
+    [string]$RecvHwm = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -41,6 +44,9 @@ Options:
   -ResultsTag NAME             Optional tag in saved result filename.
   -Runs N                      Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
   -Duration N                  Override single duration seconds (default: 5).
+  -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
+  -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
+  -RecvHwm N                   Override PERF_SINGLE_RCVHWM (fallback: -Hwm).
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
@@ -87,6 +93,15 @@ if ($Duration -and $Duration -notmatch '^\d+$') {
 }
 if ($Duration -and [int]$Duration -lt 1) {
     throw "Duration must be >= 1."
+}
+if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) {
+    throw "Hwm must be a positive integer."
+}
+if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) {
+    throw "SendHwm must be a positive integer."
+}
+if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) {
+    throw "RecvHwm must be a positive integer."
 }
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     throw "MsgSizes must be a comma-separated list of integers."
@@ -394,6 +409,9 @@ if (-not $IoThreads) { $IoThreads = $env:PERF_IO_THREADS }
 if (-not $MsgSizes) { $MsgSizes = $env:PERF_MSG_SIZES }
 if (-not $Transports) { $Transports = $env:PERF_TRANSPORTS }
 if (-not $Duration) { $Duration = $env:PERF_SINGLE_DURATION_SECONDS }
+if (-not $Hwm) { $Hwm = $env:PERF_SINGLE_HWM }
+if (-not $SendHwm) { $SendHwm = $env:PERF_SINGLE_SNDHWM }
+if (-not $RecvHwm) { $RecvHwm = $env:PERF_SINGLE_RCVHWM }
 if (-not $Duration) { $Duration = "5" }
 
 if ($IoThreads) {
@@ -411,6 +429,15 @@ if ($Duration) {
     }
     $RunArgs += @("--duration", $Duration)
     $RunEnv["PERF_SINGLE_DURATION_SECONDS"] = $Duration
+}
+if ($Hwm) {
+    $RunEnv["PERF_SINGLE_HWM"] = $Hwm
+}
+if ($SendHwm) {
+    $RunEnv["PERF_SINGLE_SNDHWM"] = $SendHwm
+}
+if ($RecvHwm) {
+    $RunEnv["PERF_SINGLE_RCVHWM"] = $RecvHwm
 }
 if ($PinCpu) {
     $RunEnv["PERF_TASKSET"] = "1"

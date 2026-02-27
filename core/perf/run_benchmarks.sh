@@ -88,6 +88,9 @@ PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
 PERF_TRANSPORTS="${PERF_TRANSPORTS:-}"
 SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
+SINGLE_HWM="${PERF_SINGLE_HWM:-}"
+SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
+SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
 MODE="observe"
 BASELINE_FILE=""
 ROLLING_N="${PERF_ROLLING_N:-10}"
@@ -115,6 +118,9 @@ Options:
   --results-tag NAME          Optional tag in saved result filename.
   --runs N                    Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
   --duration N                Override single duration seconds (default: 5).
+  --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
+  --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
+  --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
@@ -174,6 +180,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --duration)
       SINGLE_DURATION_SECONDS="${2:-}"
+      shift
+      ;;
+    --hwm)
+      SINGLE_HWM="${2:-}"
+      shift
+      ;;
+    --send-hwm)
+      SINGLE_SNDHWM="${2:-}"
+      shift
+      ;;
+    --recv-hwm)
+      SINGLE_RCVHWM="${2:-}"
       shift
       ;;
     --pin-cpu)
@@ -292,6 +310,18 @@ fi
 
 if [[ -n "${SINGLE_DURATION_SECONDS}" && ( ! "${SINGLE_DURATION_SECONDS}" =~ ^[0-9]+$ || "${SINGLE_DURATION_SECONDS}" -lt 1 ) ]]; then
   echo "duration must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_HWM}" && ( ! "${SINGLE_HWM}" =~ ^[0-9]+$ || "${SINGLE_HWM}" -lt 1 ) ]]; then
+  echo "hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_SNDHWM}" && ( ! "${SINGLE_SNDHWM}" =~ ^[0-9]+$ || "${SINGLE_SNDHWM}" -lt 1 ) ]]; then
+  echo "send-hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_RCVHWM}" && ( ! "${SINGLE_RCVHWM}" =~ ^[0-9]+$ || "${SINGLE_RCVHWM}" -lt 1 ) ]]; then
+  echo "recv-hwm must be a positive integer." >&2
   exit 1
 fi
 
@@ -520,6 +550,7 @@ if [[ "${SAVE_BASELINE}" -eq 1 ]]; then
 fi
 
 RUN_ENV=()
+RUN_ENV+=(PYTHONUNBUFFERED=1)
 if [[ -n "${PERF_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_IO_THREADS="${PERF_IO_THREADS}")
 fi
@@ -532,8 +563,20 @@ fi
 if [[ -n "${SINGLE_DURATION_SECONDS}" ]]; then
   RUN_ENV+=(PERF_SINGLE_DURATION_SECONDS="${SINGLE_DURATION_SECONDS}")
 fi
+if [[ -n "${SINGLE_HWM}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_HWM="${SINGLE_HWM}")
+fi
+if [[ -n "${SINGLE_SNDHWM}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_SNDHWM="${SINGLE_SNDHWM}")
+fi
+if [[ -n "${SINGLE_RCVHWM}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
+fi
 if [[ "${REUSE_BUILD}" -eq 1 ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
+fi
+if [[ -n "${PERF_DISABLE_RESOURCE_METRICS:-}" ]]; then
+  RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS}")
 fi
 
 SHOW_TOTAL_TIME=1

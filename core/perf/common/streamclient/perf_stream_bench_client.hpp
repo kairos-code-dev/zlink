@@ -24,8 +24,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <climits>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <mutex>
@@ -200,11 +203,11 @@ class bench_client_t : public bench_client_iface_t
                 if (opt.print_perf_result <= 1) {
                     std::printf (
                       "RESULT size=%zu run=%d throughput_bps=%.2f throughput_mib_s=%.2f "
-                      "p50_us=%.2f p95_us=%.2f p99_us=%.2f connect_ok=%ld "
+                      "mean_us=%.2f p50_us=%.2f p95_us=%.2f p99_us=%.2f connect_ok=%ld "
                       "connect_fail=%ld send_err=%ld recv_err=%ld timeout=%ld "
                       "size_mismatch=%ld "
                       "pass_fail=%s\n",
-                      size, run_idx, m.throughput_bps, m.throughput_mib_s, m.p50_us,
+                      size, run_idx, m.throughput_bps, m.throughput_mib_s, m.mean_us, m.p50_us,
                       m.p95_us, m.p99_us, m.connect_ok, m.connect_fail, m.send_error,
                       m.recv_error, m.timeout_error, m.size_mismatch, pass_text);
                 }
@@ -221,7 +224,15 @@ class bench_client_t : public bench_client_iface_t
                         ? (m.throughput_bps / static_cast<double> (size))
                         : 0.0;
                     const double bandwidth = m.throughput_bps / 1000000.0;
-                    const double latency = m.p50_us * 0.5;
+                    const double latency_mean_rtt =
+                      m.mean_us > 0.0 ? m.mean_us : m.p50_us;
+                    const double latency_p95_rtt =
+                      m.p95_us > 0.0 ? m.p95_us : latency_mean_rtt;
+                    const double latency_p99_rtt =
+                      m.p99_us > 0.0 ? m.p99_us : latency_p95_rtt;
+                    const double latency = latency_mean_rtt * 0.5;
+                    const double latency_p95 = latency_p95_rtt * 0.5;
+                    const double latency_p99 = latency_p99_rtt * 0.5;
                     std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, throughput);
@@ -231,6 +242,12 @@ class bench_client_t : public bench_client_iface_t
                     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, latency);
+                    std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
+                                 opt.pattern.c_str (), opt.transport.c_str (),
+                                 size, latency_p95);
+                    std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
+                                 opt.pattern.c_str (), opt.transport.c_str (),
+                                 size, latency_p99);
                 }
                 std::fflush (stdout);
                 if (!m.pass)
@@ -348,13 +365,34 @@ class bench_client_t : public bench_client_iface_t
     }
 
   private:
+    int resolve_connect_batch_limit () const
+    {
+        const char *raw = std::getenv ("PERF_MULTI_STREAM_CONNECT_BATCH");
+        if (raw && *raw) {
+            char *end = NULL;
+            errno = 0;
+            const long parsed = std::strtol (raw, &end, 10);
+            if (errno == 0 && end != raw && parsed > 0) {
+                if (parsed > INT_MAX)
+                    return INT_MAX;
+                return static_cast<int> (parsed);
+            }
+        }
+
+        const std::string transport = perf_stream_common::lower_copy (opt.transport);
+        if (transport == "tcp")
+            return k_connect_batch;
+        return std::min (k_connect_batch, 128);
+    }
+
     // --- Connection management ---
 
     // Launch up to k_connect_batch concurrent connect() calls.
     void schedule_connects ()
     {
         std::lock_guard<std::mutex> lk (connect_sched_mu);
-        while (connect_active.load (std::memory_order_relaxed) < k_connect_batch) {
+        const int batch_limit = resolve_connect_batch_limit ();
+        while (connect_active.load (std::memory_order_relaxed) < batch_limit) {
             const size_t idx =
               next_connect_idx.fetch_add (1, std::memory_order_relaxed);
             if (idx >= sessions.size ())
@@ -590,6 +628,11 @@ class bench_client_t : public bench_client_iface_t
                 snapshot.push_back (decode_double_bits (
                   rtt_samples_bits[i].load (std::memory_order_acquire)));
             }
+            double sum_us = 0.0;
+            for (size_t i = 0; i < snapshot.size (); ++i)
+                sum_us += snapshot[i];
+            if (!snapshot.empty ())
+                out.mean_us = sum_us / static_cast<double> (snapshot.size ());
             std::sort (snapshot.begin (), snapshot.end ());
             out.p50_us = perf_stream_common::percentile_from_sorted (snapshot, 0.50);
             out.p95_us = perf_stream_common::percentile_from_sorted (snapshot, 0.95);

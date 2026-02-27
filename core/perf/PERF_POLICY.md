@@ -1,8 +1,8 @@
 # zlink Performance Test Policy (통합)
 
 > **적용 범위**: zlink 전체 (core + bindings)
-> **Policy Version**: 1.5
-> **Date**: 2026-02-24
+> **Policy Version**: 1.6
+> **Date**: 2026-02-27
 > **Scope**: zlink 성능 테스트 통합 정책 — 공통 구조, 통합 실행, 비교 스크립트
 >
 > 본 정책은 `perf/`의 C++ 벤치마크뿐 아니라 모든 바인딩 라이브러리(`bindings/cpp`, `bindings/dotnet`, `bindings/java`, `bindings/node`, `bindings/python`)의 성능 테스트에도 동일하게 적용된다. 각 바인딩은 언어별 구현 차이가 있을 수 있으나, 측정 기준·결과 형식·운영 모드·임계치 등 본 정책에서 정의하는 규칙을 준수해야 한다.
@@ -281,7 +281,7 @@ TABLE
 
 ## PATTERN: PAIR (one-way)
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
 ...
 ```
 
@@ -307,10 +307,10 @@ TABLE
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|------|--------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   | 48.2 |   12.3 |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   | 52.1 |   14.1 |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|--------------|--------------|------|--------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
+| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   |   70.55 us   |   92.10 us   | 52.1 |   14.1 |
 ```
 
 - **실행 옵션 헤더 + TABLE**을 저장한다. META/RESULT 라인은 포함하지 않는다.
@@ -328,6 +328,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | `throughput` | echo 패턴: 왕복 완료 수 (`ops/s`), one-way 패턴: 단방향 수신 수 (`msg/s`) | MUST |
 | `bandwidth` | 네트워크 전송량 (MB/s) — echo: `throughput × size × 2 / 1,000,000`, one-way: `throughput × size / 1,000,000` | MUST |
 | `latency` | 레이턴시 (us) | MUST |
+| `latency_p95` | 레이턴시 95th percentile (us) | MUST |
+| `latency_p99` | 레이턴시 99th percentile (us) | MUST |
 | `cpu_pct` | 프로세스 CPU 사용률 (%) — single용 | Linux/Windows |
 | `mem_mb` | 프로세스 메모리 (MB, RSS/WorkingSet 기준) — single용 | Linux/Windows |
 | `client_cpu_pct` | client 프로세스 CPU (%) — multi용 | Linux/Windows |
@@ -353,7 +355,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - `--result`과 `--save`는 동시 사용 가능.
 - `--save` 버전 미지정 시 타임스탬프 기반 파일명으로 저장. 지정 시 `<VER>.txt`로 저장.
 - `--save` 동일 버전 덮어쓰기: 기존 파일이 있으면 전체 교체. 부분 갱신 불가.
-- 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency RESULT line 기준, 조합당 3줄).
+- 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
 
 ---
 
@@ -379,10 +381,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: PAIR (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|------|--------|
-| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   | 48.2 |   12.3 |
-| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|   18.44 us   | 52.1 |   14.1 |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|--------------|--------------|------|--------|
+| 64B      |   523.40 Kmsg/s  | 33.5 MB/s |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
+| 1024B    |   312.50 Kmsg/s  | 320.0 MB/s|   18.44 us   |   27.55 us   |   33.10 us   | 52.1 |   14.1 |
 
 
 ===============================================================================
@@ -390,10 +392,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
 
 ### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------|----------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |   45.23 us   | 48.2   |  128.4   | 35.1   |   64.2   |
-| 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   | 52.1   |  135.2   | 38.5   |   66.8   |
+| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
+|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
+| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |   45.23 us   |   61.40 us   |   79.85 us   | 35.1   |   64.2   |
+| 1024B    |   120.30 Kmsg/s  |123.2 MB/s |   52.10 us   |   70.55 us   |   92.10 us   | 38.5   |   66.8   |
 ```
 
 - **패턴 간 구분선**: 패턴이 바뀔 때 `===============================================================================` 구분선을 출력한다 (첫 번째 패턴 앞에는 출력하지 않음).
@@ -402,10 +404,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 |------|------|------|
 | Throughput | echo: `Kops/s`, one-way: `Kmsg/s` | 패턴 방향별 단위 — 개별 정책 문서 섹션 8.1 참조 |
 | Bandwidth | `MB/s` | 네트워크 전송량 — 개별 정책 문서 섹션 8.3 참조 |
-| Latency | `us` | 마이크로초 |
+| Lat.Mean / Lat.P95 / Lat.P99 | `us` | 마이크로초 (평균/95th/99th) |
 | CPU% | `%` | single 리소스 메트릭, 수집 실패 시 `N/A` |
 | Mem MB | `MB` | single 리소스 메트릭, 수집 실패 시 `N/A` |
-| C.CPU% / C.Mem MB | `%` / `MB` | multi client 리소스 메트릭 |
 | S.CPU% / S.Mem MB | `%` / `MB` | multi server 리소스 메트릭 |
 
 ### 5.2 진행 로그
@@ -438,10 +439,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```text
   > Benchmarking current for PAIR...
     Testing tcp:
-      | Size     |       Throughput |  Bandwidth |      Latency | CPU% | Mem MB |
-      |----------|------------------|------------|--------------|------|--------|
-      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   | 48.2 |   12.3 |
-      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   | 49.8 |   12.5 |
+      | Size     |       Throughput |  Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
+      |----------|------------------|------------|--------------|--------------|--------------|------|--------|
+      | 64B      |   523.40 Kmsg/s  | 33.5 MB/s  |   12.35 us   |   18.20 us   |   21.40 us   | 48.2 |   12.3 |
+      | 256B     |   480.12 Kmsg/s  | 122.9 MB/s |   14.20 us   |   20.30 us   |   24.10 us   | 49.8 |   12.5 |
     Testing tcp: Done
 ```
 
@@ -450,9 +451,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
   > Benchmarking current for MULTI_DEALER_DEALER...
     Testing tcp | 64B,256B:
       run 1/3:
-        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
-        | 64B      |    121.98 Kops/s |    15.61 MB/s |      0.00 us |   13.0 |    228.8 |    4.2 |    331.1 |
+        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
+        | 64B      |    121.98 Kmsg/s |    15.61 MB/s |    812.10 us |   1012.22 us |   1258.44 us |    N/A |      N/A |
         | 256B     |    ...
       [cooldown 3000ms]
       run 2/3:
@@ -461,8 +462,8 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
       run 3/3:
         ...
       median:
-        | Size     |       Throughput |    Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-        |----------|------------------|--------------|--------------|--------|----------|--------|----------|
+        | Size     |       Throughput |    Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
+        |----------|------------------|--------------|--------------|--------------|--------------|--------|----------|
         | 64B      |    ...
         | 256B     |    ...
     Testing tcp: Done

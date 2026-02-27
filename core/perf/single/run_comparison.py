@@ -68,6 +68,16 @@ THROUGHPUT_WARN_PCT = -10.0
 THROUGHPUT_FAIL_PCT = -15.0
 LATENCY_WARN_PCT = 10.0
 LATENCY_FAIL_PCT = 15.0
+LATENCY_P95_METRIC = "latency_p95"
+LATENCY_P99_METRIC = "latency_p99"
+REQUIRED_RESULT_METRICS = (
+    "throughput",
+    "bandwidth",
+    "latency",
+    LATENCY_P95_METRIC,
+    LATENCY_P99_METRIC,
+)
+REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 
 MetricKey = Tuple[str, str, str, int, str]  # lib, pattern, transport, size, metric
@@ -79,6 +89,8 @@ class RunOutcome:
     throughput: float = 0.0
     bandwidth: float = 0.0
     latency: float = 0.0
+    latency_p95: float = 0.0
+    latency_p99: float = 0.0
     cpu_pct: Optional[float] = None
     mem_mb: Optional[float] = None
     reason: str = ""
@@ -92,6 +104,8 @@ class ComboRecord:
     throughput: float = 0.0
     bandwidth: float = 0.0
     latency: float = 0.0
+    latency_p95: float = 0.0
+    latency_p99: float = 0.0
     cpu_pct: Optional[float] = None
     mem_mb: Optional[float] = None
 
@@ -146,6 +160,25 @@ def parse_env_int(name: str, default: int, legacy_name: Optional[str] = None) ->
         return int(val)
     except ValueError:
         return default
+
+
+def resource_metrics_enabled() -> bool:
+    return os.environ.get("PERF_DISABLE_RESOURCE_METRICS", "0") != "1"
+
+
+def resolve_latency_triplet(
+    latency: Optional[float],
+    latency_p95: Optional[float],
+    latency_p99: Optional[float],
+) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+    mean = latency
+    p95 = latency_p95 if latency_p95 is not None else mean
+    if p95 is None:
+        p95 = mean
+    p99 = latency_p99 if latency_p99 is not None else p95
+    if p99 is None:
+        p99 = p95 if p95 is not None else mean
+    return mean, p95, p99
 
 
 def linux_proc_metrics_supported() -> bool:
@@ -309,10 +342,11 @@ def run_command_with_metrics(
     )
 
     sample_mode = ""
-    if linux_proc_metrics_supported():
-        sample_mode = "linux"
-    elif windows_proc_metrics_supported():
-        sample_mode = "windows"
+    if resource_metrics_enabled():
+        if linux_proc_metrics_supported():
+            sample_mode = "linux"
+        elif windows_proc_metrics_supported():
+            sample_mode = "windows"
 
     proc_handle = None
     start_ticks = None
@@ -649,7 +683,15 @@ def parse_metric_from_result_line(
         return None, None
     if transport != expected_transport or size != expected_size:
         return None, None
-    if metric not in ("throughput", "bandwidth", "latency", "cpu_pct", "mem_mb"):
+    if metric not in (
+        "throughput",
+        "bandwidth",
+        "latency",
+        LATENCY_P95_METRIC,
+        LATENCY_P99_METRIC,
+        "cpu_pct",
+        "mem_mb",
+    ):
         return None, f"ignored unknown RESULT metric '{metric}': {line}"
     return (metric, value), None
 
@@ -706,34 +748,49 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 
 
 def single_table_header_line() -> str:
-    return "| Size     |       Throughput |    Bandwidth |      Latency | CPU% | Mem MB |"
+    return (
+        "| Size     |       Throughput |    Bandwidth |     Lat.Mean |"
+        "      Lat.P95 |      Lat.P99 | CPU% | Mem MB |"
+    )
 
 
 def single_table_separator_line() -> str:
-    return "|----------|------------------|--------------|--------------|------|--------|"
+    return "|----------|------------------|--------------|--------------|--------------|--------------|------|--------|"
 
 
 def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] = None) -> str:
     if status == "success" and record is not None:
+        _, lat_p95, lat_p99 = resolve_latency_triplet(
+            record.latency,
+            record.latency_p95,
+            record.latency_p99,
+        )
         tp_s = format_throughput("", record.throughput)
         bw_s = format_bandwidth(record.bandwidth)
         lat_s = format_latency_us(record.latency)
+        lat95_s = format_latency_us(lat_p95 if lat_p95 is not None else 0.0)
+        lat99_s = format_latency_us(lat_p99 if lat_p99 is not None else 0.0)
         cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
         mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
     elif status == "unsupported":
         tp_s = "UNSUPPORTED"
         bw_s = "UNSUPPORTED"
         lat_s = "UNSUPPORTED"
+        lat95_s = "UNSUPPORTED"
+        lat99_s = "UNSUPPORTED"
         cpu_s = "N/A"
         mem_s = "N/A"
     else:
         tp_s = "FAIL"
         bw_s = "FAIL"
         lat_s = "FAIL"
+        lat95_s = "FAIL"
+        lat99_s = "FAIL"
         cpu_s = "N/A"
         mem_s = "N/A"
     return (
         f"| {f'{size}B':<8} | {tp_s:>16} | {bw_s:>12} | {lat_s:>12} | "
+        f"{lat95_s:>12} | {lat99_s:>12} | "
         f"{cpu_s:>4} | {mem_s:>6} |"
     )
 
@@ -791,6 +848,11 @@ def run_single_test(
         )
 
     if "throughput" in metrics and "bandwidth" in metrics and "latency" in metrics:
+        latency_mean, latency_p95, latency_p99 = resolve_latency_triplet(
+            metrics.get("latency"),
+            metrics.get(LATENCY_P95_METRIC),
+            metrics.get(LATENCY_P99_METRIC),
+        )
         cpu_pct = metrics.get("cpu_pct")
         mem_mb = metrics.get("mem_mb")
         if cpu_pct is None:
@@ -805,7 +867,9 @@ def run_single_test(
             status="success",
             throughput=metrics["throughput"],
             bandwidth=metrics["bandwidth"],
-            latency=metrics["latency"],
+            latency=latency_mean if latency_mean is not None else metrics["latency"],
+            latency_p95=latency_p95 if latency_p95 is not None else metrics["latency"],
+            latency_p99=latency_p99 if latency_p99 is not None else metrics["latency"],
             cpu_pct=cpu_pct,
             mem_mb=mem_mb,
             warnings=warnings or None,
@@ -902,18 +966,30 @@ def build_pattern_table_lines(
     lines: List[str] = [f"## PATTERN: {pattern} ({pattern_direction_label(pattern)})", ""]
     for transport in transports:
         lines.append(f"### Transport: {transport}")
-        lines.append("| Size   |       Throughput |    Bandwidth |     Latency | CPU% |  Mem MB |")
-        lines.append("|--------|------------------|--------------|-------------|------|---------|")
+        lines.append(
+            "| Size   |       Throughput |    Bandwidth |    Lat.Mean |"
+            "     Lat.P95 |     Lat.P99 | CPU% |  Mem MB |"
+        )
+        lines.append(
+            "|--------|------------------|--------------|-------------|-------------|-------------|------|---------|"
+        )
         for size in sizes:
             record = combo_results.get((pattern, transport, size))
             if not record or record.status != "success":
                 lines.append(
-                    f"| {size}B  |              N/A |          N/A |         N/A |  N/A |     N/A |"
+                    f"| {size}B  |              N/A |          N/A |         N/A |         N/A |         N/A |  N/A |     N/A |"
                 )
                 continue
             tp_s = format_throughput(pattern, record.throughput)
             bw_s = format_bandwidth(record.bandwidth)
             lat_s = format_latency_us(record.latency)
+            _, lat95_value, lat99_value = resolve_latency_triplet(
+                record.latency,
+                record.latency_p95,
+                record.latency_p99,
+            )
+            lat95_s = format_latency_us(lat95_value if lat95_value is not None else 0.0)
+            lat99_s = format_latency_us(lat99_value if lat99_value is not None else 0.0)
             cpu_s = "N/A"
             mem_s = "N/A"
             if record.cpu_pct is not None:
@@ -921,7 +997,8 @@ def build_pattern_table_lines(
             if record.mem_mb is not None:
                 mem_s = f"{record.mem_mb:.1f}"
             lines.append(
-                f"| {size}B  | {tp_s:>16} | {bw_s:>12} | {lat_s:>11} | {cpu_s:>4} | {mem_s:>7} |"
+                f"| {size}B  | {tp_s:>16} | {bw_s:>12} | {lat_s:>11} | {lat95_s:>11} | "
+                f"{lat99_s:>11} | {cpu_s:>4} | {mem_s:>7} |"
             )
         lines.append("")
     while lines and lines[-1] == "":
@@ -945,7 +1022,15 @@ def parse_result_line_generic(line: str) -> Optional[Tuple[MetricKey, float]]:
     except ValueError:
         return None
 
-    if metric not in ("throughput", "bandwidth", "latency", "cpu_pct", "mem_mb"):
+    if metric not in (
+        "throughput",
+        "bandwidth",
+        "latency",
+        LATENCY_P95_METRIC,
+        LATENCY_P99_METRIC,
+        "cpu_pct",
+        "mem_mb",
+    ):
         return None
 
     return (lib, pattern, transport, size, metric), value
@@ -1312,6 +1397,48 @@ def gather_meta(mode: str, runs: int, build_dir: str) -> Dict[str, str]:
     return meta
 
 
+def build_single_option_items(
+    args: argparse.Namespace,
+    timeout_sec: int,
+    patterns: List[str],
+    pattern_transports: Dict[str, List[str]],
+    pattern_sizes: Dict[str, List[int]],
+) -> List[Tuple[str, str]]:
+    transports: List[str] = []
+    sizes: List[int] = []
+    for pattern in patterns:
+        transports.extend(pattern_transports.get(pattern, []))
+        sizes.extend(pattern_sizes.get(pattern, []))
+
+    unique_transports = sorted(set(transports))
+    unique_sizes = sorted(set(sizes))
+    base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
+    sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
+    rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
+    items: List[Tuple[str, str]] = [
+        ("mode", args.mode),
+        ("runs", str(args.runs)),
+        ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
+        ("latency_seconds", str(parse_env_int("PERF_SINGLE_LATENCY_SECONDS", parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5)))),
+        ("timeout_seconds", str(timeout_sec)),
+        ("sndtimeo_ms", str(parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200))),
+        ("pubsub_rcvtimeo_ms", str(parse_env_int("PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200))),
+        ("hwm", str(base_hwm)),
+        ("sndhwm", str(sndhwm)),
+        ("rcvhwm", str(rcvhwm)),
+        ("patterns", ",".join(patterns)),
+        ("transports", ",".join(unique_transports) if unique_transports else "none"),
+        ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),
+    ]
+    return items
+
+
+def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
+    print(f"\n## Effective Options ({label})")
+    for key, value in items:
+        print(f"- {key}: {value}")
+
+
 def result_sort_key(key: MetricKey):
     lib, pattern, transport, size, metric = key
     pattern_order = {name: idx for idx, name in enumerate(DEFAULT_PATTERNS)}
@@ -1327,8 +1454,10 @@ def result_sort_key(key: MetricKey):
         "throughput": 0,
         "bandwidth": 1,
         "latency": 2,
-        "cpu_pct": 3,
-        "mem_mb": 4,
+        LATENCY_P95_METRIC: 3,
+        LATENCY_P99_METRIC: 4,
+        "cpu_pct": 5,
+        "mem_mb": 6,
     }
     return (
         pattern_order.get(pattern, 999),
@@ -1486,10 +1615,14 @@ def main() -> int:
         build_dir = normalize_build_dir(args.build_dir or auto_build_dir)
 
     current_lib_dir = derive_current_lib_dir(build_dir)
+    default_timeout_sec = max(
+        30,
+        parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5) * 6 + 15,
+    )
     timeout_sec = max(
         1,
         parse_env_int(
-            "PERF_SINGLE_TIMEOUT_SECONDS", 120
+            "PERF_SINGLE_TIMEOUT_SECONDS", default_timeout_sec
         ),
     )
 
@@ -1545,6 +1678,15 @@ def main() -> int:
         pattern_transports[pattern] = transports
         pattern_sizes[pattern] = sizes
         requested_combo_count += len(transports) * len(sizes)
+
+    effective_options = build_single_option_items(
+        args,
+        timeout_sec,
+        patterns,
+        pattern_transports,
+        pattern_sizes,
+    )
+    print_effective_options("start", effective_options)
 
     all_failures: List[Tuple[str, str, int, str]] = []
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
@@ -1603,6 +1745,8 @@ def main() -> int:
             t_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             b_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             l_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            l95_samples: Dict[int, List[float]] = {size: [] for size in sizes}
+            l99_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             cpu_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             mem_samples: Dict[int, List[float]] = {size: [] for size in sizes}
             failed_sizes: Dict[int, str] = {}
@@ -1651,6 +1795,8 @@ def main() -> int:
                         t_samples[size].append(outcome.throughput)
                         b_samples[size].append(outcome.bandwidth)
                         l_samples[size].append(outcome.latency)
+                        l95_samples[size].append(outcome.latency_p95)
+                        l99_samples[size].append(outcome.latency_p99)
                         if outcome.cpu_pct is not None:
                             cpu_samples[size].append(outcome.cpu_pct)
                         if outcome.mem_mb is not None:
@@ -1663,6 +1809,8 @@ def main() -> int:
                                 throughput=outcome.throughput,
                                 bandwidth=outcome.bandwidth,
                                 latency=outcome.latency,
+                                latency_p95=outcome.latency_p95,
+                                latency_p99=outcome.latency_p99,
                                 cpu_pct=outcome.cpu_pct,
                                 mem_mb=outcome.mem_mb,
                             ),
@@ -1719,6 +1867,8 @@ def main() -> int:
                         or not t_samples[size]
                         or not b_samples[size]
                         or not l_samples[size]
+                        or not l95_samples[size]
+                        or not l99_samples[size]
                     ):
                         combo_results[(pattern, transport, size)] = ComboRecord(status="fail")
                         if size not in failed_sizes:
@@ -1728,6 +1878,8 @@ def main() -> int:
                     throughput = statistics.median(t_samples[size])
                     bandwidth = statistics.median(b_samples[size])
                     latency = statistics.median(l_samples[size])
+                    latency_p95 = statistics.median(l95_samples[size])
+                    latency_p99 = statistics.median(l99_samples[size])
                     cpu_pct = statistics.median(cpu_samples[size]) if cpu_samples[size] else None
                     mem_mb = statistics.median(mem_samples[size]) if mem_samples[size] else None
 
@@ -1736,6 +1888,8 @@ def main() -> int:
                         throughput=throughput,
                         bandwidth=bandwidth,
                         latency=latency,
+                        latency_p95=latency_p95,
+                        latency_p99=latency_p99,
                         cpu_pct=cpu_pct,
                         mem_mb=mem_mb,
                     )
@@ -1743,9 +1897,13 @@ def main() -> int:
                     tp_key = ("current", pattern, transport, size, "throughput")
                     bw_key = ("current", pattern, transport, size, "bandwidth")
                     lat_key = ("current", pattern, transport, size, "latency")
+                    lat95_key = ("current", pattern, transport, size, LATENCY_P95_METRIC)
+                    lat99_key = ("current", pattern, transport, size, LATENCY_P99_METRIC)
                     result_metrics[tp_key] = throughput
                     result_metrics[bw_key] = bandwidth
                     result_metrics[lat_key] = latency
+                    result_metrics[lat95_key] = latency_p95
+                    result_metrics[lat99_key] = latency_p99
                     compare_metrics[tp_key] = throughput
                     compare_metrics[lat_key] = latency
                     if cpu_pct is not None:
@@ -1796,15 +1954,20 @@ def main() -> int:
     )
     skip_combo_count = sum(1 for record in combo_results.values() if record.status == "skip")
     expected_result_lines = max(
-        0, (requested_combo_count - unsupported_combo_count - skip_combo_count) * 3
+        0,
+        (requested_combo_count - unsupported_combo_count - skip_combo_count)
+        * REQUIRED_RESULT_METRIC_COUNT,
     )
     actual_result_lines = sum(
-        3 for record in combo_results.values() if record.status == "success"
+        REQUIRED_RESULT_METRIC_COUNT
+        for record in combo_results.values()
+        if record.status == "success"
     )
     completion_status = (
         "complete" if expected_result_lines == actual_result_lines else "partial"
     )
 
+    print_effective_options("result", effective_options)
     print("\n## Completion")
     print(f"- status: {completion_status}")
     print(f"- expected_result_lines: {expected_result_lines}")

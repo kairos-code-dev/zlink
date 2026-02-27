@@ -91,13 +91,13 @@ void run_router_router_poll(const std::string &transport,
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
     bool latency_ok = true;
-    int latency_roundtrips = 0;
-    stopwatch_t sw;
-    sw.start();
+    latency_stats_builder_t latency_builder;
     const auto latency_deadline =
       std::chrono::steady_clock::now()
       + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
     while (std::chrono::steady_clock::now() < latency_deadline) {
+        stopwatch_t per_roundtrip;
+        per_roundtrip.start();
         zlink_send(router2.get(), "ROUTER1", 7, ZLINK_SNDMORE);
         zlink_send(router2.get(), buffer.data(), msg_size, 0);
 
@@ -119,16 +119,15 @@ void run_router_router_poll(const std::string &transport,
 
         zlink_recv(router2.get(), id, 256, 0);
         zlink_recv(router2.get(), recv_buf.data(), msg_size, 0);
-        ++latency_roundtrips;
+        latency_builder.add((per_roundtrip.elapsed_ms() * 1000.0) * 0.5);
     }
-    if (!latency_ok || latency_roundtrips <= 0) {
+    if (!latency_ok || latency_builder.count() == 0) {
         print_result(lib_name, "ROUTER_ROUTER_POLL", transport, msg_size,
                      0.0, 0.0);
         return;
     }
 
-    const double latency =
-      (sw.elapsed_ms() * 1000.0) / (latency_roundtrips * 2);
+    const latency_stats_t latency_stats = latency_builder.snapshot();
 
     std::thread receiver([&]() {
         for (int i = 0; i < msg_count; ++i) {
@@ -139,6 +138,7 @@ void run_router_router_poll(const std::string &transport,
         }
     });
 
+    stopwatch_t sw;
     sw.start();
     repeat_n(msg_count, [&]() {
         zlink_send(router2.get(), "ROUTER1", 7, ZLINK_SNDMORE);
@@ -151,7 +151,8 @@ void run_router_router_poll(const std::string &transport,
       elapsed_ms > 0 ? (double)msg_count / (elapsed_ms / 1000.0) : 0.0;
 
     print_result(lib_name, "ROUTER_ROUTER_POLL", transport, msg_size,
-                 throughput, latency);
+                 throughput, latency_stats.mean_us, latency_stats.p95_us,
+                 latency_stats.p99_us);
 }
 
 int main(int argc, char **argv)

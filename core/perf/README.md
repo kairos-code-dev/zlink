@@ -23,6 +23,9 @@ project, invokes the Python comparison script, and saves results.
 | `--results-tag NAME` | — | Optional tag appended to result filename |
 | `--runs N` | mode-dependent | Iterations per pattern/transport/size. Default: observe=1, trend=3, gate=5 |
 | `--duration N` | `5` | Measurement duration in seconds |
+| `--hwm N` | — | Set both `PERF_SINGLE_SNDHWM`/`PERF_SINGLE_RCVHWM` fallback via `PERF_SINGLE_HWM` |
+| `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` (send queue HWM) |
+| `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` (receive queue HWM) |
 | `--pin-cpu` | off | Pin to CPU core via Linux `taskset` |
 | `--io-threads N` | — | Set `PERF_IO_THREADS` for benchmark binaries |
 | `--msg-sizes LIST` | — | Comma-separated payload sizes (e.g., `64,1024,65536`) |
@@ -57,7 +60,8 @@ project, invokes the Python comparison script, and saves results.
    - result-file (tmp output)
 6. Environment variables forwarded:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
-   PERF_SINGLE_DURATION_SECONDS, PERF_NO_AUTOBUILD
+   PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD
 7. Print total elapsed time on exit
 ```
 
@@ -137,7 +141,9 @@ Multi-specific options:
 | `--warmup N` | `3` | Warmup duration (seconds) |
 | `--duration N` | `5` | Measurement duration (seconds) |
 | `--clients N` | `1000` | Client sockets per pattern |
-| `--hwm N` | pattern-specific | High water mark (send/recv queue depth) |
+| `--hwm N` | `1000` | High water mark (send/recv queue depth) |
+| `--send-hwm N` | `--hwm` | Send queue high water mark (`PERF_MULTI_SNDHWM`) |
+| `--recv-hwm N` | `--hwm` | Receive queue high water mark (`PERF_MULTI_RCVHWM`) |
 | `--send-timeout-ms N` | `5000` | Send timeout (ms) |
 | `--recv-timeout-ms N` | `5000` | Receive timeout (ms) |
 | `--connect-concurrency N` | auto | Concurrent connection count. Auto: 128 (< 10K clients), 1024 (>= 10K) |
@@ -146,7 +152,7 @@ Multi-specific options:
 | `--pattern-transition-ms N` | `3000` | Pause between pattern transitions (ms) |
 | `--server-ready-timeout-ms N` | `10000` | Wait for server readiness (ms) |
 | `--connect-ready-timeout-ms N` | `5000` | Wait for connection readiness (ms) |
-| `--monitor-hwm N` | `200000` | Monitor high water mark |
+| `--monitor-hwm N` | `1000` | Monitor high water mark |
 | `--server-shutdown-timeout-ms N` | `5000` | Server shutdown grace period (ms) |
 | `--server-bind-port N` | `0` (auto) | Fixed server bind port (0 = OS-assigned) |
 
@@ -188,6 +194,8 @@ CLI options take precedence.
 |---------------------|----------------|
 | `PERF_MULTI_CLIENTS` | `--clients` |
 | `PERF_MULTI_HWM` | `--hwm` |
+| `PERF_MULTI_SNDHWM` | `--send-hwm` |
+| `PERF_MULTI_RCVHWM` | `--recv-hwm` |
 | `PERF_MULTI_SNDTIMEO_MS` | `--send-timeout-ms` |
 | `PERF_MULTI_RCVTIMEO_MS` | `--recv-timeout-ms` |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | `--connect-concurrency` |
@@ -201,6 +209,7 @@ CLI options take precedence.
 | `PERF_MULTI_MONITOR_HWM` | `--monitor-hwm` |
 | `PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS` | `--server-shutdown-timeout-ms` |
 | `PERF_MULTI_SERVER_BIND_PORT` | `--server-bind-port` |
+| `PERF_MULTI_TIMEOUT_SECONDS` | — (env-only override for client process timeout) |
 | `PERF_MULTI_DEFAULT_CLIENTS` | — (default client count when `--clients` not set) |
 | `PERF_MULTI_DEFAULT_STREAM_CLIENTS` | — (default client count for STREAM patterns) |
 | `PERF_SKIP_NOFILE_CHECK` | — (disable nofile preflight) |

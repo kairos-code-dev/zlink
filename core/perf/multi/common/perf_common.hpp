@@ -4,6 +4,7 @@
 #include <chrono>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
@@ -81,6 +82,107 @@ inline int parse_positive_env(const char *name_, int default_value_)
         return INT_MAX;
     return static_cast<int>(parsed);
 }
+
+inline size_t resolve_multi_latency_sample_cap()
+{
+    const int cap =
+      parse_positive_env("PERF_MULTI_LATENCY_SAMPLE_CAP", 200000);
+    return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
+}
+
+struct bench_latency_stats_t {
+    bench_latency_stats_t() : mean_us(0.0), p95_us(0.0), p99_us(0.0) {}
+    double mean_us;
+    double p95_us;
+    double p99_us;
+};
+
+class bench_latency_sampler_t {
+public:
+    explicit bench_latency_sampler_t(
+      size_t sample_cap_ = resolve_multi_latency_sample_cap()) :
+      _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
+      _count(0),
+      _sum_us(0.0),
+      _rng_state(0x9e3779b97f4a7c15ULL)
+    {}
+
+    void add(double latency_us_)
+    {
+        const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
+        ++_count;
+        _sum_us += sample;
+
+        if (_samples.capacity() == 0)
+            _samples.reserve(_sample_cap);
+
+        if (_samples.size() < _sample_cap) {
+            _samples.push_back(sample);
+            return;
+        }
+
+        const unsigned long long slot = next_rand_u64() % _count;
+        if (slot < static_cast<unsigned long long>(_sample_cap))
+            _samples[static_cast<size_t>(slot)] = sample;
+    }
+
+    unsigned long long count() const { return _count; }
+
+    bench_latency_stats_t snapshot()
+    {
+        bench_latency_stats_t out;
+        if (_count == 0)
+            return out;
+
+        out.mean_us = _sum_us / static_cast<double>(_count);
+        if (_samples.empty()) {
+            out.p95_us = out.mean_us;
+            out.p99_us = out.mean_us;
+            return out;
+        }
+
+        std::sort(_samples.begin(), _samples.end());
+        out.p95_us = percentile_from_sorted(_samples, 0.95);
+        out.p99_us = percentile_from_sorted(_samples, 0.99);
+        return out;
+    }
+
+private:
+    static double percentile_from_sorted(const std::vector<double> &sorted_,
+                                         double q_)
+    {
+        if (sorted_.empty())
+            return 0.0;
+        if (q_ <= 0.0)
+            return sorted_.front();
+        if (q_ >= 1.0)
+            return sorted_.back();
+
+        const double pos = (sorted_.size() - 1) * q_;
+        const size_t lo = static_cast<size_t>(pos);
+        const size_t hi = lo + 1 < sorted_.size() ? lo + 1 : lo;
+        const double frac = pos - static_cast<double>(lo);
+        return sorted_[lo] + (sorted_[hi] - sorted_[lo]) * frac;
+    }
+
+    unsigned long long next_rand_u64()
+    {
+        if (_rng_state == 0)
+            _rng_state = 0x9e3779b97f4a7c15ULL;
+        unsigned long long x = _rng_state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        _rng_state = x;
+        return x;
+    }
+
+    size_t _sample_cap;
+    unsigned long long _count;
+    double _sum_us;
+    unsigned long long _rng_state;
+    std::vector<double> _samples;
+};
 
 inline bool bench_blocking_send_enabled()
 {
@@ -239,7 +341,7 @@ inline int bench_monitor_hwm()
 
     const char *env = std::getenv("PERF_MULTI_MONITOR_HWM");
     if (!env || !*env) {
-        monitor_hwm = 200000;
+        monitor_hwm = 1000;
         return monitor_hwm;
     }
 
@@ -382,7 +484,9 @@ inline void print_result(const std::string& lib_type,
                          const std::string& transport,
                          size_t size,
                          double throughput,
-                         double latency) {
+                         double latency,
+                         double latency_p95,
+                         double latency_p99) {
     const bool is_echo_pattern =
       pattern == "MULTI_DEALER_ROUTER" || pattern == "MULTI_ROUTER_ROUTER";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
@@ -394,6 +498,20 @@ inline void print_result(const std::string& lib_type,
               << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
               << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
+}
+
+inline void print_result(const std::string& lib_type,
+                         const std::string& pattern,
+                         const std::string& transport,
+                         size_t size,
+                         double throughput,
+                         double latency) {
+    print_result(
+      lib_type, pattern, transport, size, throughput, latency, latency, latency);
 }
 
 inline bool bench_debug_enabled() {
@@ -419,13 +537,36 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
     return rc == 0;
 }
 
+inline int bench_hwm_from_env(const char *name_, int default_hwm_)
+{
+    if (!name_ || !*name_)
+        return default_hwm_;
+
+    const char *value = std::getenv(name_);
+    if (!value || !*value)
+        return default_hwm_;
+
+    errno = 0;
+    char *end = NULL;
+    const long parsed = std::strtol(value, &end, 10);
+    if (errno != 0 || end == value || parsed <= 0)
+        return default_hwm_;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int>(parsed);
+}
+
 inline void apply_benchmark_hwm(void *socket_, int hwm_value)
 {
     if (hwm_value <= 0)
         return;
 
-    set_sockopt_int(socket_, ZLINK_SNDHWM, hwm_value, "ZLINK_SNDHWM");
-    set_sockopt_int(socket_, ZLINK_RCVHWM, hwm_value, "ZLINK_RCVHWM");
+    const int sndhwm =
+      bench_hwm_from_env("PERF_MULTI_SNDHWM", hwm_value);
+    const int rcvhwm =
+      bench_hwm_from_env("PERF_MULTI_RCVHWM", hwm_value);
+    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
 }
 
 inline int bench_timeout_ms_from_env(const char *name_, int default_ms_)

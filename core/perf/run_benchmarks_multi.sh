@@ -145,7 +145,9 @@ Options:
   --warmup N             Optional override for multi warmup seconds (default 3).
   --duration N           Optional override for multi duration seconds (default 5).
   --clients N            Override number of client sockets per pattern.
-  --hwm N                Override PERF_MULTI_HWM (default: pattern-specific in binary).
+  --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
+  --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
+  --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
   --send-timeout-ms N    Override PERF_MULTI_SNDTIMEO_MS (default: 5000).
   --recv-timeout-ms N    Override PERF_MULTI_RCVTIMEO_MS (default: 5000).
   --connect-concurrency N
@@ -159,7 +161,7 @@ Options:
                          Override PERF_MULTI_SERVER_READY_TIMEOUT_MS (default: 10000).
   --connect-ready-timeout-ms N
                          Override PERF_MULTI_CONNECT_READY_TIMEOUT_MS (default: 5000).
-  --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 200000).
+  --monitor-hwm N        Override PERF_MULTI_MONITOR_HWM (default: 1000).
   --server-shutdown-timeout-ms N
                          Override PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS (default: 5000).
   --server-bind-port N
@@ -231,6 +233,8 @@ MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-3}"
 MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
 MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
 MULTI_HWM="${PERF_MULTI_HWM:-}"
+MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
+MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
 MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-5000}"
 MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-5000}"
 MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
@@ -239,9 +243,10 @@ MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 MULTI_PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 MULTI_SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
 MULTI_CONNECT_READY_TIMEOUT_MS="${PERF_MULTI_CONNECT_READY_TIMEOUT_MS:-5000}"
-MULTI_MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-200000}"
+MULTI_MONITOR_HWM="${PERF_MULTI_MONITOR_HWM:-1000}"
 MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS:-5000}"
 MULTI_SERVER_BIND_PORT="${PERF_MULTI_SERVER_BIND_PORT:-0}"
+DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
@@ -435,6 +440,22 @@ while [[ $# -gt 0 ]]; do
       MULTI_HWM="${2}"
       shift 2
       ;;
+    --send-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_SNDHWM="${2}"
+      shift 2
+      ;;
+    --recv-hwm)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_RCVHWM="${2}"
+      shift 2
+      ;;
     --send-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
@@ -587,6 +608,18 @@ if ! is_uint "${MULTI_MONITOR_HWM}"; then
   echo "Error: --monitor-hwm must be a non-negative integer." >&2
   exit 1
 fi
+if [[ -n "${MULTI_HWM}" ]] && ( ! is_uint "${MULTI_HWM}" || (( MULTI_HWM < 1 )) ); then
+  echo "Error: --hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${MULTI_SNDHWM}" ]] && ( ! is_uint "${MULTI_SNDHWM}" || (( MULTI_SNDHWM < 1 )) ); then
+  echo "Error: --send-hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${MULTI_RCVHWM}" ]] && ( ! is_uint "${MULTI_RCVHWM}" || (( MULTI_RCVHWM < 1 )) ); then
+  echo "Error: --recv-hwm must be a positive integer." >&2
+  exit 1
+fi
 if ! is_uint "${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"; then
   echo "Error: --server-shutdown-timeout-ms must be a non-negative integer." >&2
   exit 1
@@ -606,6 +639,7 @@ if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
 fi
 
 RUN_BASE_ARGS=()
+RUN_BASE_ARGS+=(--duration "${MULTI_DURATION_SECONDS}")
 if [[ "${HAS_EXPLICIT_TRANSPORT}" -eq 0 ]]; then
   if [[ -n "${PERF_TRANSPORTS:-}" ]]; then
     RUN_BASE_ARGS+=(--transports "${PERF_TRANSPORTS}")
@@ -652,6 +686,7 @@ RUN_ENV+=(PERF_MULTI_CONNECT_READY_TIMEOUT_MS="${MULTI_CONNECT_READY_TIMEOUT_MS}
 RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
 RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
+RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
 if [[ -n "${BASELINE_FILE}" ]]; then
   RUN_ENV+=(PERF_BASELINE_FILE="${BASELINE_FILE}")
 fi
@@ -660,6 +695,12 @@ if [[ -n "${MULTI_CLIENTS}" ]]; then
 fi
 if [[ -n "${MULTI_HWM}" ]]; then
   RUN_ENV+=(PERF_MULTI_HWM="${MULTI_HWM}")
+fi
+if [[ -n "${MULTI_SNDHWM}" ]]; then
+  RUN_ENV+=(PERF_MULTI_SNDHWM="${MULTI_SNDHWM}")
+fi
+if [[ -n "${MULTI_RCVHWM}" ]]; then
+  RUN_ENV+=(PERF_MULTI_RCVHWM="${MULTI_RCVHWM}")
 fi
 if [[ -n "${MULTI_SNDTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SNDTIMEO_MS="${MULTI_SNDTIMEO_MS}")

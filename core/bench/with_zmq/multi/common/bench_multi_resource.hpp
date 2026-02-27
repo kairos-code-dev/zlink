@@ -2,6 +2,7 @@
 #define BENCH_MULTI_RESOURCE_HPP
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -45,6 +46,20 @@ struct bench_multi_cpu_sample_t
     {
     }
 };
+
+inline bool bench_multi_resource_metrics_enabled ()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached == 1;
+
+    const char *disabled = std::getenv ("PERF_DISABLE_RESOURCE_METRICS");
+    if (disabled && std::strcmp (disabled, "1") == 0)
+        cached = 0;
+    else
+        cached = 1;
+    return cached == 1;
+}
 
 #if defined(_WIN32)
 inline bool bench_multi_read_self_cpu_ticks (unsigned long long *ticks_out_)
@@ -161,6 +176,8 @@ inline bool bench_multi_read_self_mem_mb (double *mem_mb_out_)
 inline bench_multi_cpu_sample_t bench_multi_capture_cpu_sample ()
 {
     bench_multi_cpu_sample_t sample;
+    if (!bench_multi_resource_metrics_enabled ())
+        return sample;
     if (!bench_multi_read_self_cpu_ticks (&sample.ticks))
         return sample;
     sample.timestamp = std::chrono::steady_clock::now ();
@@ -218,6 +235,8 @@ inline bench_multi_resource_metrics_t bench_multi_finish_resource_probe (
   const bench_multi_cpu_sample_t &start_)
 {
     bench_multi_resource_metrics_t metrics;
+    if (!bench_multi_resource_metrics_enabled ())
+        return metrics;
     const bench_multi_cpu_sample_t end = bench_multi_capture_cpu_sample ();
     bench_multi_fill_cpu_pct (start_, end, &metrics);
 

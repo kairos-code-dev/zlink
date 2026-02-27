@@ -11,6 +11,26 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+void test_default_socket_hwm_is_1000 ()
+{
+    void *socket = test_context_socket (ZLINK_PAIR);
+    TEST_ASSERT_NOT_NULL (socket);
+
+    int sndhwm = 0;
+    size_t sndhwm_size = sizeof (sndhwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (socket, ZLINK_SNDHWM, &sndhwm, &sndhwm_size));
+    TEST_ASSERT_EQUAL_INT (1000, sndhwm);
+
+    int rcvhwm = 0;
+    size_t rcvhwm_size = sizeof (rcvhwm);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (socket, ZLINK_RCVHWM, &rcvhwm, &rcvhwm_size));
+    TEST_ASSERT_EQUAL_INT (1000, rcvhwm);
+
+    test_context_socket_close (socket);
+}
+
 int test_defaults (int send_hwm_, int msg_cnt_, const char *endpoint_)
 {
     char pub_endpoint[SOCKET_STRING_LEN];
@@ -269,6 +289,7 @@ int main ()
 
     UNITY_BEGIN ();
 
+    RUN_TEST (test_default_socket_hwm_is_1000);
     RUN_REGULAR_TEST_CASES (tcp);
     RUN_REGULAR_TEST_CASES (inproc);
 

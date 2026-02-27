@@ -134,7 +134,8 @@ static int do_setsockopt_set (const void *const optval_,
     return sockopt_invalid ();
 }
 
-const int default_hwm = 300000;
+const int default_hwm = 1000;
+const int default_batch_size = 8192;
 
 zlink::options_t::options_t () :
     sndhwm (default_hwm),
@@ -178,8 +179,8 @@ zlink::options_t::options_t () :
     heartbeat_interval (0),
     heartbeat_timeout (-1),
     use_fd (-1),
-    in_batch_size (8192),
-    out_batch_size (8192),
+    in_batch_size (default_batch_size),
+    out_batch_size (default_batch_size),
     zero_copy (true),
     monitor_event_version (1),
     busy_poll (0),

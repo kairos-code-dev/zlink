@@ -257,22 +257,21 @@ void run_spot(const std::string &transport,
     }
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
-    int latency_count = 0;
-    stopwatch_t sw;
-    sw.start();
+    latency_stats_builder_t latency_builder;
     const auto latency_deadline =
       std::chrono::steady_clock::now()
       + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
     while (std::chrono::steady_clock::now() < latency_deadline) {
+        stopwatch_t per_message;
+        per_message.start();
         if (!send_spot(spot_pub, topic, msg_size)
             || !recv_one()) {
             fail();
             return;
         }
-        ++latency_count;
+        latency_builder.add(per_message.elapsed_ms() * 1000.0);
     }
-    const double latency =
-      latency_count > 0 ? (sw.elapsed_ms() * 1000.0) / latency_count : 0.0;
+    const latency_stats_t latency_stats = latency_builder.snapshot();
 
     std::atomic<int> recv_count(0);
     std::thread receiver([&]() {
@@ -284,6 +283,7 @@ void run_spot(const std::string &transport,
     });
 
     int sent = 0;
+    stopwatch_t sw;
     sw.start();
     for (int i = 0; i < msg_count; ++i) {
         if (!send_spot(spot_pub, topic, msg_size))
@@ -295,7 +295,9 @@ void run_spot(const std::string &transport,
     const int received = recv_count.load();
     const int effective = sent < received ? sent : received;
     if (effective <= 0) {
-        print_result(lib_name, "SPOT", transport, msg_size, 0.0, latency);
+        print_result(lib_name, "SPOT", transport, msg_size, 0.0,
+                     latency_stats.mean_us, latency_stats.p95_us,
+                     latency_stats.p99_us);
         cleanup();
         return;
     }
@@ -304,7 +306,9 @@ void run_spot(const std::string &transport,
     const double throughput =
       elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
 
-    print_result(lib_name, "SPOT", transport, msg_size, throughput, latency);
+    print_result(lib_name, "SPOT", transport, msg_size, throughput,
+                 latency_stats.mean_us, latency_stats.p95_us,
+                 latency_stats.p99_us);
     cleanup();
 }
 

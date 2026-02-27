@@ -4,6 +4,7 @@
 #include <chrono>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
@@ -105,6 +106,107 @@ inline int resolve_single_latency_duration_seconds()
                                    "PERF_SINGLE_LATENCY_SECONDS", base);
 }
 
+inline size_t resolve_single_latency_sample_cap()
+{
+    const int cap =
+      parse_positive_env("PERF_SINGLE_LATENCY_SAMPLE_CAP", 200000);
+    return cap > 0 ? static_cast<size_t>(cap) : static_cast<size_t>(200000);
+}
+
+struct latency_stats_t {
+    latency_stats_t() : mean_us(0.0), p95_us(0.0), p99_us(0.0) {}
+    double mean_us;
+    double p95_us;
+    double p99_us;
+};
+
+class latency_stats_builder_t {
+public:
+    explicit latency_stats_builder_t(
+      size_t sample_cap_ = resolve_single_latency_sample_cap()) :
+      _sample_cap(sample_cap_ > 0 ? sample_cap_ : 1),
+      _count(0),
+      _sum_us(0.0),
+      _rng_state(0x9e3779b97f4a7c15ULL)
+    {
+        _samples.reserve(_sample_cap);
+    }
+
+    void add(double latency_us_)
+    {
+        const double sample = latency_us_ >= 0.0 ? latency_us_ : 0.0;
+        ++_count;
+        _sum_us += sample;
+
+        if (_samples.size() < _sample_cap) {
+            _samples.push_back(sample);
+            return;
+        }
+
+        const unsigned long long slot = next_rand_u64() % _count;
+        if (slot < static_cast<unsigned long long>(_sample_cap)) {
+            _samples[static_cast<size_t>(slot)] = sample;
+        }
+    }
+
+    unsigned long long count() const { return _count; }
+
+    latency_stats_t snapshot()
+    {
+        latency_stats_t out;
+        if (_count == 0)
+            return out;
+
+        out.mean_us = _sum_us / static_cast<double>(_count);
+        if (_samples.empty()) {
+            out.p95_us = out.mean_us;
+            out.p99_us = out.mean_us;
+            return out;
+        }
+
+        std::sort(_samples.begin(), _samples.end());
+        out.p95_us = percentile_from_sorted(_samples, 0.95);
+        out.p99_us = percentile_from_sorted(_samples, 0.99);
+        return out;
+    }
+
+private:
+    static double percentile_from_sorted(const std::vector<double> &sorted_,
+                                         double q_)
+    {
+        if (sorted_.empty())
+            return 0.0;
+        if (q_ <= 0.0)
+            return sorted_.front();
+        if (q_ >= 1.0)
+            return sorted_.back();
+
+        const double pos = (sorted_.size() - 1) * q_;
+        const size_t lo = static_cast<size_t>(pos);
+        const size_t hi = lo + 1 < sorted_.size() ? lo + 1 : lo;
+        const double frac = pos - static_cast<double>(lo);
+        return sorted_[lo] + (sorted_[hi] - sorted_[lo]) * frac;
+    }
+
+    unsigned long long next_rand_u64()
+    {
+        if (_rng_state == 0)
+            _rng_state = 0x9e3779b97f4a7c15ULL;
+        unsigned long long x = _rng_state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        _rng_state = x;
+        return x;
+    }
+
+    size_t _sample_cap;
+    unsigned long long _count;
+    double _sum_us;
+    unsigned long long _rng_state;
+    std::vector<double> _samples;
+};
+
 inline int bench_io_threads()
 {
     return parse_positive_env("PERF_IO_THREADS", 0);
@@ -196,7 +298,9 @@ inline void print_result(const std::string& lib_type,
                          const std::string& transport,
                          size_t size,
                          double throughput,
-                         double latency) {
+                         double latency,
+                         double latency_p95,
+                         double latency_p99) {
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size)) / 1000000.0;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
@@ -205,6 +309,20 @@ inline void print_result(const std::string& lib_type,
               << ",bandwidth," << std::fixed << std::setprecision(2) << bandwidth_mb_s << std::endl;
     std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
               << ",latency," << std::fixed << std::setprecision(2) << latency << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",latency_p95," << std::fixed << std::setprecision(2) << latency_p95 << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << "," << transport << "," << size
+              << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
+}
+
+inline void print_result(const std::string& lib_type,
+                         const std::string& pattern,
+                         const std::string& transport,
+                         size_t size,
+                         double throughput,
+                         double latency) {
+    print_result(
+      lib_type, pattern, transport, size, throughput, latency, latency, latency);
 }
 
 inline bool bench_debug_enabled() {
@@ -228,6 +346,46 @@ inline bool set_sockopt_int(void *socket_, int option_, int value_,
         }
     }
     return rc == 0;
+}
+
+inline int resolve_single_send_timeout_ms()
+{
+    return parse_positive_env("PERF_SINGLE_SNDTIMEO_MS", 200);
+}
+
+inline int resolve_single_pubsub_recv_timeout_ms()
+{
+    return parse_positive_env("PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+}
+
+inline int resolve_single_socket_hwm(bool send_)
+{
+    const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);
+    return send_ ? parse_positive_env("PERF_SINGLE_SNDHWM", base_hwm)
+                 : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
+}
+
+inline void apply_single_hwm(void *socket_)
+{
+    if (!socket_)
+        return;
+
+    const int sndhwm = resolve_single_socket_hwm(true);
+    const int rcvhwm = resolve_single_socket_hwm(false);
+    set_sockopt_int(socket_, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
+    set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+}
+
+inline void apply_single_send_timeout(void *socket_,
+                                      const std::string &transport_)
+{
+    if (!socket_)
+        return;
+    if (transport_ == "pgm" || transport_ == "epgm")
+        return;
+
+    const int timeout_ms = resolve_single_send_timeout_ms();
+    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
@@ -524,12 +682,18 @@ inline bool setup_connected_pair(void *bind_socket_,
         || !setup_tls_client(connect_socket_, transport_))
         return false;
 
+    apply_single_hwm(bind_socket_);
+    apply_single_hwm(connect_socket_);
+
     std::string endpoint =
       bind_and_resolve_endpoint(bind_socket_, transport_, id_);
     if (endpoint.empty())
         return false;
     if (!connect_checked(connect_socket_, endpoint))
         return false;
+
+    apply_single_send_timeout(bind_socket_, transport_);
+    apply_single_send_timeout(connect_socket_, transport_);
 
     settle();
     return true;
@@ -551,21 +715,32 @@ inline double measure_roundtrip_latency_us(int roundtrip_count_,
 }
 
 template <typename RoundTripFn>
+inline latency_stats_t measure_roundtrip_latency_stats_us_for_duration(
+  int duration_seconds_, RoundTripFn roundtrip_);
+
+template <typename RoundTripFn>
 inline double measure_roundtrip_latency_us_for_duration(
+  int duration_seconds_, RoundTripFn roundtrip_) {
+    const latency_stats_t stats =
+      measure_roundtrip_latency_stats_us_for_duration(
+        duration_seconds_, roundtrip_);
+    return stats.mean_us;
+}
+
+template <typename RoundTripFn>
+inline latency_stats_t measure_roundtrip_latency_stats_us_for_duration(
   int duration_seconds_, RoundTripFn roundtrip_) {
     const int duration = duration_seconds_ > 0 ? duration_seconds_ : 1;
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(duration);
-    int roundtrip_count = 0;
-    stopwatch_t sw;
-    sw.start();
+    latency_stats_builder_t stats_builder;
     while (std::chrono::steady_clock::now() < deadline) {
+        stopwatch_t sw;
+        sw.start();
         roundtrip_();
-        ++roundtrip_count;
+        stats_builder.add((sw.elapsed_ms() * 1000.0) * 0.5);
     }
-    if (roundtrip_count <= 0)
-        return 0.0;
-    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count * 2);
+    return stats_builder.snapshot();
 }
 
 template <typename SendOneFn, typename RecvOneFn>

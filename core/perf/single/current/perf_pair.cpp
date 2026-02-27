@@ -41,7 +41,8 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
     });
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
-    const double latency = measure_roundtrip_latency_us_for_duration(
+    const latency_stats_t latency_stats =
+      measure_roundtrip_latency_stats_us_for_duration(
       latency_duration_s, [&]() {
         zlink_send(s_conn.get(), buffer.data(), msg_size, 0);
         zlink_recv(s_bind.get(), recv_buf.data(), msg_size, 0);
@@ -58,7 +59,9 @@ void run_pair(const std::string& transport, size_t msg_size, int msg_count, cons
           zlink_recv(s_bind.get(), recv_buf.data(), msg_size, 0);
       });
 
-    print_result(lib_name, "PAIR", transport, msg_size, throughput, latency);
+    print_result(lib_name, "PAIR", transport, msg_size, throughput,
+                 latency_stats.mean_us, latency_stats.p95_us,
+                 latency_stats.p99_us);
 }
 
 int main(int argc, char** argv) {

@@ -22,9 +22,12 @@
 #include <boost/beast/websocket.hpp>
 
 #include <chrono>
+#include <cerrno>
+#include <climits>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -36,11 +39,44 @@
 inline constexpr int k_connect_batch = 1024;           // max concurrent connect() calls
 inline constexpr int k_connect_timeout_s = 90;         // connect phase timeout budget
 inline constexpr int k_resize_timeout_s = 30;          // chunk-size barrier wait limit
-inline constexpr int k_socket_sndbuf = 1024 * 1024;    // SO_SNDBUF (1 MiB)
-inline constexpr int k_socket_rcvbuf = 1024 * 1024;    // SO_RCVBUF (1 MiB)
+inline constexpr int k_socket_sndbuf_default = 64 * 1024; // SO_SNDBUF default (64 KiB)
+inline constexpr int k_socket_rcvbuf_default = 64 * 1024; // SO_RCVBUF default (64 KiB)
 inline constexpr int k_socket_tcp_nodelay = 1;         // TCP_NODELAY on
 inline constexpr size_t k_rtt_sample_capacity = 1024 * 1024; // max RTT samples (1M)
 inline constexpr size_t k_loopback_port_headroom = 64; // ports reserved for OS use
+
+inline int resolve_stream_sockbuf_env (const char *name, int default_bytes)
+{
+    if (!name || !*name)
+        return default_bytes;
+
+    const char *raw = std::getenv (name);
+    if (!raw || !*raw)
+        return default_bytes;
+
+    char *end = NULL;
+    errno = 0;
+    const long parsed = std::strtol (raw, &end, 10);
+    if (errno != 0 || end == raw || parsed <= 0)
+        return default_bytes;
+    if (parsed > INT_MAX)
+        return INT_MAX;
+    return static_cast<int> (parsed);
+}
+
+inline int resolve_stream_sndbuf_bytes ()
+{
+    static const int value = resolve_stream_sockbuf_env (
+      "PERF_MULTI_STREAM_SOCKET_SNDBUF", k_socket_sndbuf_default);
+    return value;
+}
+
+inline int resolve_stream_rcvbuf_bytes ()
+{
+    static const int value = resolve_stream_sockbuf_env (
+      "PERF_MULTI_STREAM_SOCKET_RCVBUF", k_socket_rcvbuf_default);
+    return value;
+}
 
 // Benchmark phase: controls whether sessions send traffic and collect metrics.
 enum phase_mode_t
@@ -862,9 +898,11 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         boost::system::error_code ec;
         socket->set_option (
           boost::asio::ip::tcp::no_delay (k_socket_tcp_nodelay != 0), ec);
-        boost::asio::socket_base::send_buffer_size snd (k_socket_sndbuf);
+        boost::asio::socket_base::send_buffer_size snd (
+          resolve_stream_sndbuf_bytes ());
         socket->set_option (snd, ec);
-        boost::asio::socket_base::receive_buffer_size rcv (k_socket_rcvbuf);
+        boost::asio::socket_base::receive_buffer_size rcv (
+          resolve_stream_rcvbuf_bytes ());
         socket->set_option (rcv, ec);
     }
 

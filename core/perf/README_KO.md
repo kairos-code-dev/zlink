@@ -23,6 +23,9 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 | `--results-tag NAME` | — | 결과 파일명에 추가될 태그 |
 | `--runs N` | 모드별 | 패턴/트랜스포트/크기별 반복 횟수. 기본: observe=1, trend=3, gate=5 |
 | `--duration N` | `5` | 측정 시간 (초) |
+| `--hwm N` | — | `PERF_SINGLE_HWM`으로 송수신 HWM 공통 fallback 설정 |
+| `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 (송신 큐 HWM) |
+| `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 (수신 큐 HWM) |
 | `--pin-cpu` | 비활성 | Linux `taskset`으로 CPU 코어 고정 |
 | `--io-threads N` | — | 벤치마크 바이너리의 `PERF_IO_THREADS` 설정 |
 | `--msg-sizes LIST` | — | 페이로드 크기 목록 (쉼표 구분, 예: `64,1024,65536`) |
@@ -57,7 +60,8 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
    - result-file (tmp 출력)
 6. 환경 변수 전달:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
-   PERF_SINGLE_DURATION_SECONDS, PERF_NO_AUTOBUILD
+   PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD
 7. 종료 시 총 경과 시간 출력
 ```
 
@@ -136,7 +140,9 @@ Multi 전용 옵션:
 | `--warmup N` | `3` | 워밍업 시간 (초) |
 | `--duration N` | `5` | 측정 시간 (초) |
 | `--clients N` | `1000` | 패턴당 클라이언트 소켓 수 |
-| `--hwm N` | 패턴별 | HWM (송수신 큐 깊이) |
+| `--hwm N` | `1000` | HWM (송수신 큐 깊이) |
+| `--send-hwm N` | `--hwm` | 송신 큐 HWM (`PERF_MULTI_SNDHWM`) |
+| `--recv-hwm N` | `--hwm` | 수신 큐 HWM (`PERF_MULTI_RCVHWM`) |
 | `--send-timeout-ms N` | `5000` | 송신 타임아웃 (ms) |
 | `--recv-timeout-ms N` | `5000` | 수신 타임아웃 (ms) |
 | `--connect-concurrency N` | 자동 | 동시 연결 수. 자동: 128 (< 1만 클라이언트), 1024 (>= 1만) |
@@ -145,7 +151,7 @@ Multi 전용 옵션:
 | `--pattern-transition-ms N` | `3000` | 패턴 전환 간 대기 (ms) |
 | `--server-ready-timeout-ms N` | `10000` | 서버 준비 대기 (ms) |
 | `--connect-ready-timeout-ms N` | `5000` | 연결 준비 대기 (ms) |
-| `--monitor-hwm N` | `200000` | 모니터 HWM |
+| `--monitor-hwm N` | `1000` | 모니터 HWM |
 | `--server-shutdown-timeout-ms N` | `5000` | 서버 종료 유예 (ms) |
 | `--server-bind-port N` | `0` (자동) | 서버 바인드 포트 (0 = OS 자동 할당) |
 
@@ -187,6 +193,8 @@ CLI 옵션이 우선한다.
 |-----------|----------|
 | `PERF_MULTI_CLIENTS` | `--clients` |
 | `PERF_MULTI_HWM` | `--hwm` |
+| `PERF_MULTI_SNDHWM` | `--send-hwm` |
+| `PERF_MULTI_RCVHWM` | `--recv-hwm` |
 | `PERF_MULTI_SNDTIMEO_MS` | `--send-timeout-ms` |
 | `PERF_MULTI_RCVTIMEO_MS` | `--recv-timeout-ms` |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | `--connect-concurrency` |
@@ -200,6 +208,7 @@ CLI 옵션이 우선한다.
 | `PERF_MULTI_MONITOR_HWM` | `--monitor-hwm` |
 | `PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS` | `--server-shutdown-timeout-ms` |
 | `PERF_MULTI_SERVER_BIND_PORT` | `--server-bind-port` |
+| `PERF_MULTI_TIMEOUT_SECONDS` | — (env 전용 client timeout override) |
 | `PERF_MULTI_DEFAULT_CLIENTS` | — (--clients 미설정 시 기본 클라이언트 수) |
 | `PERF_MULTI_DEFAULT_STREAM_CLIENTS` | — (STREAM 패턴의 기본 클라이언트 수) |
 | `PERF_SKIP_NOFILE_CHECK` | — (nofile 사전 검사 비활성화) |

@@ -268,10 +268,9 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     const int stream_in_batch_base = stream_batch_size;
     const int stream_read_batch_size =
       apply_headroom (stream_in_batch_base, stream_batch_read_headroom);
-    if (options.in_batch_size < stream_read_batch_size)
-        options.in_batch_size = stream_read_batch_size;
-    if (options.out_batch_size < stream_batch_size)
-        options.out_batch_size = stream_batch_size;
+    // Keep STREAM defaults independent from non-STREAM global batch defaults.
+    options.in_batch_size = stream_read_batch_size;
+    options.out_batch_size = stream_batch_size;
 
     _prefetched_msg.init ();
 }
@@ -671,8 +670,15 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         return 0;
 
     pipe_t *out = g_stream_dispatch_tls.pipe->get_peer ();
-    if (!out)
-        return 0;
+    if (!out) {
+        const size_t routing_index = static_cast<size_t> (routing_id);
+        if (routing_index < _out_by_id.size ())
+            out = _out_by_id[routing_index];
+        if (!out) {
+            errno = EHOSTUNREACH;
+            return -1;
+        }
+    }
 
     if (!len32be_ && size_ == 0) {
         out->terminate (false);
@@ -683,9 +689,6 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         errno = EMSGSIZE;
         return -1;
     }
-
-    if (!out->check_write ())
-        return 0;
 
     if (len32be_) {
         msg_t out_msg;
@@ -700,7 +703,8 @@ int zlink::stream_t::stream_dispatch_send_from_io (
         if (!out->write_no_hwm_check (&out_msg)) {
             const int close_rc = out_msg.close ();
             errno_assert (close_rc == 0);
-            return 0;
+            errno = EAGAIN;
+            return -1;
         }
         const int init_rc = out_msg.init ();
         errno_assert (init_rc == 0);
@@ -714,7 +718,8 @@ int zlink::stream_t::stream_dispatch_send_from_io (
     if (!out->write_no_hwm_check (&out_msg)) {
         const int close_rc = out_msg.close ();
         errno_assert (close_rc == 0);
-        return 0;
+        errno = EAGAIN;
+        return -1;
     }
     const int init_rc = out_msg.init ();
     errno_assert (init_rc == 0);
@@ -754,8 +759,15 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         return 0;
 
     pipe_t *out = g_stream_dispatch_tls.pipe->get_peer ();
-    if (!out)
-        return 0;
+    if (!out) {
+        const size_t routing_index = static_cast<size_t> (routing_id);
+        if (routing_index < _out_by_id.size ())
+            out = _out_by_id[routing_index];
+    }
+    if (!out) {
+        errno = EHOSTUNREACH;
+        return -1;
+    }
 
     const size_t payload_size = msg_->size ();
     if (len32be_ && payload_size > static_cast<size_t> (0xFFFFFFFFu)) {
@@ -769,12 +781,11 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
         return 1;
     }
 
-    if (!out->check_write ())
-        return 0;
-
     if (!len32be_) {
-        if (!out->write_no_hwm_check (msg_))
-            return 0;
+        if (!out->write_no_hwm_check (msg_)) {
+            errno = EAGAIN;
+            return -1;
+        }
         const int init_rc = msg_->init ();
         errno_assert (init_rc == 0);
         queue_stream_dispatch_flush (out);
@@ -790,7 +801,8 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
     if (payload_size == 0) {
         if (!out->write_no_hwm_check (&header)) {
             close_and_reinit_msg (&header);
-            return 0;
+            errno = EAGAIN;
+            return -1;
         }
         const int header_init_rc = header.init ();
         errno_assert (header_init_rc == 0);
@@ -802,7 +814,8 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
     header.set_flags (msg_t::more);
     if (!out->write_no_hwm_check (&header)) {
         close_and_reinit_msg (&header);
-        return 0;
+        errno = EAGAIN;
+        return -1;
     }
     const int header_init_rc = header.init ();
     errno_assert (header_init_rc == 0);
@@ -810,7 +823,8 @@ int zlink::stream_t::stream_dispatch_send_msg_from_io (
     msg_->reset_flags (msg_t::more);
     if (!out->write_no_hwm_check (msg_)) {
         out->rollback ();
-        return 0;
+        errno = EAGAIN;
+        return -1;
     }
 
     const int init_rc = msg_->init ();

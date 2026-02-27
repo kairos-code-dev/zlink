@@ -37,6 +37,7 @@ struct pubsub_worker_stats_t
     long recv_count;
     double lat_sum;
     long lat_count;
+    bench_latency_sampler_t lat_samples;
     bool failed;
 
     pubsub_worker_stats_t ()
@@ -323,7 +324,8 @@ inline bool drain_socket_non_blocking (void *socket,
                                        std::vector<char> &scratch,
                                        long *recv_count,
                                        double *lat_sum,
-                                       long *lat_count)
+                                       long *lat_count,
+                                       bench_latency_sampler_t *lat_samples)
 {
     if (!socket)
         return false;
@@ -346,8 +348,11 @@ inline bool drain_socket_non_blocking (void *socket,
                 std::chrono::system_clock::now ().time_since_epoch ())
                 .count ());
             if (now_us >= sent_us) {
-                *lat_sum += static_cast<double> (now_us - sent_us);
+                const double sample_us = static_cast<double> (now_us - sent_us);
+                *lat_sum += sample_us;
                 (*lat_count)++;
+                if (lat_samples)
+                    lat_samples->add (sample_us);
             }
         }
     }
@@ -393,7 +398,8 @@ inline void run_echo_worker_loop (
         bool progressed = false;
 
         if (allow_send) {
-            const size_t send_attempts = std::max<size_t> (1, owned.size ());
+            const size_t send_attempts =
+              resolve_multi_send_attempts (owned.size (), payload_size);
             for (size_t a = 0; a < send_attempts; ++a) {
                 const size_t idx = owned[rr % owned.size ()];
                 ++rr;
@@ -439,6 +445,7 @@ inline void run_echo_worker_loop (
                       sockets[owned[i]],
                       scratch,
                       &recv_now,
+                      NULL,
                       NULL,
                       NULL)) {
                     fatal_error->store (true, std::memory_order_release);
@@ -584,7 +591,8 @@ inline void run_pubsub_worker_loop (
                       scratch,
                       &recv_now,
                       collect_latency ? &stats->lat_sum : NULL,
-                      collect_latency ? &stats->lat_count : NULL)) {
+                      collect_latency ? &stats->lat_count : NULL,
+                      collect_latency ? &stats->lat_samples : NULL)) {
                     fatal_error->store (true, std::memory_order_release);
                     stats->failed = true;
                     break;
@@ -612,7 +620,8 @@ inline bool run_pubsub_window_thread_pool (
   bool collect_latency,
   long *recv_total,
   double *lat_sum,
-  long *lat_count)
+  long *lat_count,
+  bench_latency_stats_t *latency_stats)
 {
     if (sockets.empty ())
         return false;
@@ -623,10 +632,13 @@ inline bool run_pubsub_window_thread_pool (
             *lat_sum = 0.0;
         if (lat_count)
             *lat_count = 0;
+        if (latency_stats)
+            *latency_stats = bench_latency_stats_t ();
         return true;
     }
 
-    const size_t worker_count = resolve_worker_count (settings, sockets.size ());
+    const size_t worker_count =
+      collect_latency ? 1 : resolve_worker_count (settings, sockets.size ());
     std::vector<std::vector<size_t> > worker_assign;
     build_worker_assignments (sockets.size (), worker_count, &worker_assign);
 
@@ -681,35 +693,41 @@ inline bool run_pubsub_window_thread_pool (
         *lat_sum = lat_sum_local;
     if (lat_count)
         *lat_count = lat_count_local;
+    if (latency_stats) {
+        if (collect_latency && !worker_stats.empty ())
+            *latency_stats = worker_stats[0].lat_samples.snapshot ();
+        else
+            *latency_stats = bench_latency_stats_t ();
+    }
 
     return !failed;
 }
 
-inline double measure_echo_latency_us (
+inline bench_latency_stats_t measure_echo_latency_stats_us (
   const std::vector<void *> &sockets,
   const std::string &server_id,
   const std::vector<char> &payload,
   size_t payload_size,
   std::vector<char> &scratch)
 {
+    bench_latency_stats_t empty;
     if (sockets.empty ())
-        return 0.0;
+        return empty;
 
     void *send_socket = sockets[0];
     if (!send_socket)
-        return 0.0;
+        return empty;
 
     zlink_pollitem_t item = {send_socket, 0, ZLINK_POLLIN, 0};
 
     const int lat_count = std::max (1, resolve_bench_count ("PERF_LAT_COUNT", 200));
     const int lat_timeout_ms =
       std::max (1, resolve_bench_count ("PERF_MULTI_LAT_TIMEOUT_MS", 5000));
-    int completed = 0;
-
-    stopwatch_t sw;
-    sw.start ();
+    bench_latency_sampler_t lat_samples;
 
     for (int i = 0; i < lat_count; ++i) {
+        stopwatch_t per_roundtrip;
+        per_roundtrip.start ();
         const send_status_t send_rc = send_echo_message (
           send_socket,
           server_id,
@@ -730,7 +748,7 @@ inline double measure_echo_latency_us (
             if (prc < 0) {
                 if (zlink_errno () == EINTR)
                     continue;
-                return 0.0;
+                return empty;
             }
             if (prc == 0)
                 continue;
@@ -739,7 +757,7 @@ inline double measure_echo_latency_us (
 
             const int rc = recv_one_message (send_socket, scratch, ZLINK_DONTWAIT);
             if (rc < 0)
-                return 0.0;
+                return empty;
             if (rc > 0) {
                 got_reply = true;
                 break;
@@ -748,16 +766,11 @@ inline double measure_echo_latency_us (
 
         if (!got_reply)
             break;
-        ++completed;
+        const double divisor = k_one_way_latency ? 1.0 : 2.0;
+        lat_samples.add ((per_roundtrip.elapsed_ms () * 1000.0) / divisor);
     }
 
-    if (completed <= 0)
-        return 0.0;
-
-    const double divisor =
-      k_one_way_latency ? static_cast<double> (completed)
-                        : static_cast<double> (completed) * 2.0;
-    return (sw.elapsed_ms () * 1000.0) / divisor;
+    return lat_samples.snapshot ();
 }
 
 inline bool run_pubsub_duration (
@@ -765,14 +778,14 @@ inline bool run_pubsub_duration (
   const multi_bench_settings_t &settings,
   size_t scratch_capacity,
   double *throughput_out,
-  double *latency_out,
+  bench_latency_stats_t *latency_out,
   bench_multi_resource_metrics_t *metrics_out)
 {
     if (!throughput_out || !latency_out || !metrics_out)
         return false;
 
     *throughput_out = 0.0;
-    *latency_out = 0.0;
+    *latency_out = bench_latency_stats_t ();
 
     if (subs.empty ())
         return false;
@@ -785,6 +798,7 @@ inline bool run_pubsub_duration (
           false,
           NULL,
           NULL,
+          NULL,
           NULL)) {
         return false;
     }
@@ -795,22 +809,36 @@ inline bool run_pubsub_duration (
     }
 
     long recv_count = 0;
-    double lat_sum = 0.0;
-    long lat_count = 0;
-
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     if (!run_pubsub_window_thread_pool (
           subs,
           settings,
           scratch_capacity,
           static_cast<double> (std::max (1, settings.duration_seconds)),
-          true,
+          false,
           &recv_count,
-          &lat_sum,
-          &lat_count)) {
+          NULL,
+          NULL,
+          NULL)) {
         return false;
     }
     *metrics_out = bench_multi_finish_resource_probe (sample_start);
+
+    double lat_sum = 0.0;
+    long lat_count = 0;
+    bench_latency_stats_t latency_stats;
+    if (!run_pubsub_window_thread_pool (
+          subs,
+          settings,
+          scratch_capacity,
+          static_cast<double> (std::max (1, settings.duration_seconds)),
+          true,
+          NULL,
+          &lat_sum,
+          &lat_count,
+          &latency_stats)) {
+        return false;
+    }
 
     const double drain_seconds =
       static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
@@ -823,6 +851,7 @@ inline bool run_pubsub_duration (
               false,
               NULL,
               NULL,
+              NULL,
               NULL)) {
             return false;
         }
@@ -833,7 +862,17 @@ inline bool run_pubsub_duration (
     if (recv_count <= 0 || lat_count <= 0)
         return false;
 
-    *latency_out = lat_sum / static_cast<double> (lat_count);
+    if (latency_stats.mean_us <= 0.0 && lat_count > 0)
+        latency_stats.mean_us = lat_sum / static_cast<double> (lat_count);
+    if (latency_stats.p95_us <= 0.0)
+        latency_stats.p95_us = latency_stats.mean_us;
+    if (latency_stats.p99_us <= 0.0)
+        latency_stats.p99_us = latency_stats.p95_us;
+    if (latency_stats.p95_us < latency_stats.mean_us)
+        latency_stats.p95_us = latency_stats.mean_us;
+    if (latency_stats.p99_us < latency_stats.p95_us)
+        latency_stats.p99_us = latency_stats.p95_us;
+    *latency_out = latency_stats;
     return true;
 }
 
@@ -846,14 +885,14 @@ inline bool run_echo_duration (
   const std::string &server_id,
   std::vector<char> &lat_scratch,
   double *throughput_out,
-  double *latency_out,
+  bench_latency_stats_t *latency_out,
   bench_multi_resource_metrics_t *metrics_out)
 {
     if (!throughput_out || !latency_out || !metrics_out)
         return false;
 
     *throughput_out = 0.0;
-    *latency_out = 0.0;
+    *latency_out = bench_latency_stats_t ();
 
     if (sockets.empty ())
         return false;
@@ -914,14 +953,31 @@ inline bool run_echo_duration (
     if (recv_count <= 0)
         return false;
 
-    *latency_out = measure_echo_latency_us (
+    *latency_out = measure_echo_latency_stats_us (
       sockets,
       server_id,
       payload,
       payload_size,
       lat_scratch);
-    if (*latency_out <= 0.0)
-        *latency_out = 0.0;
+    bool estimated_from_throughput = false;
+    if (latency_out->mean_us <= 0.0 && *throughput_out > 0.0) {
+        latency_out->mean_us = 1000000.0 / *throughput_out;
+        estimated_from_throughput = true;
+    }
+    if (latency_out->p95_us <= 0.0) {
+        latency_out->p95_us = estimated_from_throughput
+                                ? latency_out->mean_us * 1.25
+                                : latency_out->mean_us;
+    }
+    if (latency_out->p99_us <= 0.0) {
+        latency_out->p99_us = estimated_from_throughput
+                                ? latency_out->mean_us * 1.50
+                                : latency_out->p95_us;
+    }
+    if (latency_out->p95_us < latency_out->mean_us)
+        latency_out->p95_us = latency_out->mean_us;
+    if (latency_out->p99_us < latency_out->p95_us)
+        latency_out->p99_us = latency_out->p95_us;
 
     return true;
 }
@@ -931,7 +987,7 @@ inline void print_client_result_lines (
   const std::string &transport,
   size_t msg_size,
   double throughput,
-  double latency,
+  const bench_latency_stats_t &latency,
   const bench_multi_resource_metrics_t &metrics)
 {
     print_result (
@@ -940,7 +996,9 @@ inline void print_client_result_lines (
       transport,
       msg_size,
       throughput,
-      latency);
+      latency.mean_us,
+      latency.p95_us,
+      latency.p99_us);
 
     if (metrics.has_cpu_pct) {
         std::cout << "RESULT," << lib_name << "," << k_pattern << ","
@@ -993,7 +1051,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     const size_t payload_size = std::max<size_t> (msg_size, 64);
 
     double throughput = 0.0;
-    double latency = 0.0;
+    bench_latency_stats_t latency;
     bench_multi_resource_metrics_t metrics;
     bool ok = false;
 
@@ -1111,7 +1169,6 @@ inline int run_client_benchmark (const std::string &lib_name,
         run_size_transition_drain_stage (
           base_settings, (si + 1) < msg_sizes.size ());
     }
-
     close_client_sockets (&sockets);
     return 0;
 }

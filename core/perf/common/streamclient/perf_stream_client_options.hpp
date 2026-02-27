@@ -70,6 +70,7 @@ struct case_metrics_t
     long connect_fail;       // failed connections
     double throughput_bps;   // bytes per second
     double throughput_mib_s; // MiB per second
+    double mean_us;          // mean RTT (microseconds)
     double p50_us;           // 50th percentile RTT (microseconds)
     double p95_us;           // 95th percentile RTT
     double p99_us;           // 99th percentile RTT
@@ -84,6 +85,7 @@ struct case_metrics_t
           connect_fail (0),
           throughput_bps (0.0),
           throughput_mib_s (0.0),
+          mean_us (0.0),
           p50_us (0.0),
           p95_us (0.0),
           p99_us (0.0),
@@ -166,6 +168,8 @@ inline void print_perf_result_line (const client_options_t &opt,
                                     size_t size,
                                     double throughput_bps,
                                     double p50_us,
+                                    double p95_us,
+                                    double p99_us,
                                     bool pass)
 {
     if (opt.print_perf_result <= 0 || !pass)
@@ -175,6 +179,8 @@ inline void print_perf_result_line (const client_options_t &opt,
       size > 0 ? (throughput_bps / static_cast<double> (size)) : 0.0;
     const double bandwidth = throughput_bps / 1000000.0;
     const double latency = p50_us * 0.5;
+    const double latency_p95 = p95_us * 0.5;
+    const double latency_p99 = p99_us * 0.5;
 
     std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
                  opt.pattern.c_str (), opt.transport.c_str (), size, throughput);
@@ -182,6 +188,10 @@ inline void print_perf_result_line (const client_options_t &opt,
                  opt.pattern.c_str (), opt.transport.c_str (), size, bandwidth);
     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                  opt.pattern.c_str (), opt.transport.c_str (), size, latency);
+    std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
+                 opt.pattern.c_str (), opt.transport.c_str (), size, latency_p95);
+    std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
+                 opt.pattern.c_str (), opt.transport.c_str (), size, latency_p99);
     std::fflush (stdout);
 }
 

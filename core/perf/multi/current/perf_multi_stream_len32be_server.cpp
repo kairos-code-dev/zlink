@@ -44,7 +44,8 @@ inline void install_signal_handlers ()
 
 inline bool is_stream_event_payload (const unsigned char *data, size_t size)
 {
-    return data && size == 1 && (data[0] == 0x00 || data[0] == 0x01);
+    (void) data;
+    return size == 0;
 }
 
 inline bool is_supported_transport (const std::string &transport)

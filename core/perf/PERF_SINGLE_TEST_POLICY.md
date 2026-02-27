@@ -971,7 +971,10 @@ PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, G
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout | 120 |
+| `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, PERF_SINGLE_DURATION_SECONDS*6+15)` |
+| `PERF_SINGLE_HWM` | 소켓 HWM 공통 fallback | 1000 |
+| `PERF_SINGLE_SNDHWM` | 소켓 송신 HWM (우선) | `PERF_SINGLE_HWM` |
+| `PERF_SINGLE_RCVHWM` | 소켓 수신 HWM (우선) | `PERF_SINGLE_HWM` |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
 | `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |

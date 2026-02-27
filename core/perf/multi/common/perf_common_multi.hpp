@@ -113,9 +113,33 @@ inline int resolve_multi_size_transition_drain_ms (int fallback_drain_ms)
       0);
 }
 
-inline int resolve_multi_default_hwm ()
+inline size_t resolve_multi_send_attempts (size_t owned_size, size_t payload_size)
 {
-    return 100000;
+    const size_t safe_owned = std::max<size_t> (1, owned_size);
+    const int explicit_batch =
+      resolve_multi_int_env ("PERF_MULTI_SEND_BATCH", 0, 0);
+    if (explicit_batch > 0) {
+        return std::max<size_t> (
+          1,
+          std::min<size_t> (safe_owned, static_cast<size_t> (explicit_batch)));
+    }
+
+    size_t capped = safe_owned;
+    if (payload_size >= 262144)
+        capped = std::min<size_t> (safe_owned, 8);
+    else if (payload_size >= 131072)
+        capped = std::min<size_t> (safe_owned, 16);
+    else if (payload_size >= 65536)
+        capped = std::min<size_t> (safe_owned, 32);
+
+    return std::max<size_t> (1, capped);
+}
+
+inline int resolve_multi_default_hwm (const char *pattern, int clients)
+{
+    (void) pattern;
+    (void) clients;
+    return 1000;
 }
 
 inline int resolve_multi_default_client_workers ()
@@ -133,13 +157,11 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
 {
     multi_bench_settings_t settings;
     const char *pattern = std::getenv ("PERF_MULTI_PATTERN");
-    settings.clients = static_cast<size_t> (
-      resolve_multi_int_env (
-        "PERF_MULTI_CLIENTS",
-        resolve_multi_default_clients (pattern),
-        1));
+    const int resolved_clients = resolve_multi_int_env (
+      "PERF_MULTI_CLIENTS", resolve_multi_default_clients (pattern), 1);
+    settings.clients = static_cast<size_t> (resolved_clients);
     settings.hwm = resolve_multi_int_env (
-      "PERF_MULTI_HWM", resolve_multi_default_hwm (), 1);
+      "PERF_MULTI_HWM", resolve_multi_default_hwm (pattern, resolved_clients), 1);
     settings.warmup_seconds =
       resolve_multi_int_env ("PERF_MULTI_WARMUP_SECONDS", 3, 0);
     settings.active_warmup =

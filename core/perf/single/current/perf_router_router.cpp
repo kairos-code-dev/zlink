@@ -63,7 +63,8 @@ void run_router_router(const std::string &transport,
     char id[256];
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
-    const double latency = measure_roundtrip_latency_us_for_duration(
+    const latency_stats_t latency_stats =
+      measure_roundtrip_latency_stats_us_for_duration(
       latency_duration_s, [&]() {
         zlink_send(router2.get(), "ROUTER1", 7, ZLINK_SNDMORE);
         zlink_send(router2.get(), buffer.data(), msg_size, 0);
@@ -91,7 +92,8 @@ void run_router_router(const std::string &transport,
       });
 
     print_result(lib_name, "ROUTER_ROUTER", transport, msg_size, throughput,
-                 latency);
+                 latency_stats.mean_us, latency_stats.p95_us,
+                 latency_stats.p99_us);
 }
 
 int main(int argc, char **argv)

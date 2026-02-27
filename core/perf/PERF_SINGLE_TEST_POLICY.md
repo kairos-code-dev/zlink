@@ -532,7 +532,8 @@ run_benchmarks.sh / .ps1                   # 진입점: 옵션 파싱, 빌드/�
 | `--mode MODE` | 운영 모드: `observe`, `trend`, `gate` (§ 2 참조) | `observe` |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
 | `--runs N` | 패턴/transport/size 조합당 반복 횟수 (모드별 기본값: § 2 참조) | 1 (Observe), 3 (Trend), 5 (Gate) |
-| `--reuse-build` | 기존 빌드 디렉터리 재사용 (CMake 재실행 생략) | off |
+| `--reuse-build` | 기존 빌드 디렉터리 재사용 (configure/build 생략) | off |
+| `--clean-build` | 빌드 디렉터리 삭제 후 클린 configure/build 수행 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU 고정 (Linux: taskset, Windows: processor affinity) | off |
 | `--io-threads N` | context I/O threads 수 | 0 |
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분) | `64,256,1024,65536,131072,262144` |
@@ -552,17 +553,18 @@ run_benchmarks.sh / .ps1                   # 진입점: 옵션 파싱, 빌드/�
 - `--save [VER]`: `baseline/`에 저장. **complete인 경우에만** 저장. partial이면 에러.
 - `--result`과 `--save`는 동시 사용 가능.
 
-#### `--reuse-build` 동작
+#### 빌드 모드 동작
 
-| 항목 | `--reuse-build` off (기본) | `--reuse-build` on |
-|------|---------------------------|---------------------|
-| CMake configure | 실행 | 생략 |
-| CMake build | 실행 | 생략 |
-| 바이너리 존재 확인 | build 후 자동 보장 | **실행 전 검증** |
-| 바이너리 미존재 시 | — | 에러 메시지 출력 후 중단 (exit code 1) |
+| 항목 | 기본 (증분 빌드) | `--reuse-build` | `--clean-build` |
+|------|------------------|-----------------|-----------------|
+| 빌드 디렉터리 삭제 | 생략 | 생략 | 실행 |
+| CMake configure | 실행 | 생략 | 실행 |
+| CMake build | 실행 | 생략 | 실행 |
+| 빌드 디렉터리 미존재 시 | 생성 후 진행 | 에러 후 중단 | 생성 후 진행 |
 
-- `--reuse-build`는 이미 빌드된 바이너리를 그대로 사용할 때 지정한다.
-- 빌드 디렉터리가 존재하지 않거나 필요한 바이너리가 누락된 경우 에러로 중단한다.
+- 기본 모드는 증분 빌드다. 기존 빌드 디렉터리가 있으면 그대로 사용해 configure/build를 다시 수행한다.
+- `--reuse-build`는 이미 빌드된 결과를 그대로 재사용할 때 지정한다.
+- `--clean-build`는 빌드 디렉터리를 초기화한 뒤 완전 재빌드가 필요할 때 지정한다.
 
 ### 5.3 실행 예시
 

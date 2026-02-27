@@ -120,6 +120,22 @@ struct latency_stats_t {
     double p99_us;
 };
 
+struct queue_stats_t {
+    queue_stats_t() :
+        snd_pending_max(0.0),
+        rcv_pending_max(0.0),
+        rcv_pending_end(0.0),
+        has_snd_pending(false),
+        has_rcv_pending(false)
+    {}
+
+    double snd_pending_max;
+    double rcv_pending_max;
+    double rcv_pending_end;
+    bool has_snd_pending;
+    bool has_rcv_pending;
+};
+
 class latency_stats_builder_t {
 public:
     explicit latency_stats_builder_t(
@@ -315,6 +331,45 @@ inline void print_result(const std::string& lib_type,
               << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
 }
 
+inline void print_queue_metrics(const std::string &lib_type,
+                                const std::string &pattern,
+                                const std::string &transport,
+                                size_t size,
+                                const queue_stats_t &queue_stats)
+{
+    if (queue_stats.has_snd_pending) {
+        std::cout << "RESULT," << lib_type << "," << pattern << ","
+                  << transport << "," << size << ",snd_pending_max,"
+                  << std::fixed << std::setprecision(2)
+                  << queue_stats.snd_pending_max << std::endl;
+    }
+    if (queue_stats.has_rcv_pending) {
+        std::cout << "RESULT," << lib_type << "," << pattern << ","
+                  << transport << "," << size << ",rcv_pending_max,"
+                  << std::fixed << std::setprecision(2)
+                  << queue_stats.rcv_pending_max << std::endl;
+        std::cout << "RESULT," << lib_type << "," << pattern << ","
+                  << transport << "," << size << ",rcv_pending_end,"
+                  << std::fixed << std::setprecision(2)
+                  << queue_stats.rcv_pending_end << std::endl;
+    }
+}
+
+inline void print_result(const std::string& lib_type,
+                         const std::string& pattern,
+                         const std::string& transport,
+                         size_t size,
+                         double throughput,
+                         double latency,
+                         double latency_p95,
+                         double latency_p99,
+                         const queue_stats_t &queue_stats) {
+    print_result(
+      lib_type, pattern, transport, size, throughput, latency, latency_p95,
+      latency_p99);
+    print_queue_metrics(lib_type, pattern, transport, size, queue_stats);
+}
+
 inline void print_result(const std::string& lib_type,
                          const std::string& pattern,
                          const std::string& transport,
@@ -323,6 +378,61 @@ inline void print_result(const std::string& lib_type,
                          double latency) {
     print_result(
       lib_type, pattern, transport, size, throughput, latency, latency, latency);
+}
+
+inline bool send_exact(void *socket_,
+                       const void *data_,
+                       size_t size_,
+                       int flags_ = 0)
+{
+    if (!socket_)
+        return false;
+    return zlink_send(socket_, data_, size_, flags_) == static_cast<int>(size_);
+}
+
+inline bool recv_exact(void *socket_,
+                       void *data_,
+                       size_t size_,
+                       int flags_ = 0)
+{
+    if (!socket_)
+        return false;
+    return zlink_recv(socket_, data_, size_, flags_) == static_cast<int>(size_);
+}
+
+inline bool drain_socket_nonblocking(void *socket_)
+{
+    if (!socket_)
+        return true;
+
+    char discard[256];
+    int frame_guard = 0;
+    const int frame_limit = 65536;
+    while (frame_guard < frame_limit) {
+        const int rc = zlink_recv(
+          socket_, discard, sizeof(discard), ZLINK_DONTWAIT);
+        if (rc < 0) {
+            const int err = zlink_errno();
+            return err == EAGAIN || err == EINTR;
+        }
+
+        ++frame_guard;
+        int more = 0;
+        size_t more_size = sizeof(more);
+        if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0)
+            return false;
+        while (more != 0 && frame_guard < frame_limit) {
+            if (zlink_recv(socket_, discard, sizeof(discard), 0) < 0)
+                return false;
+            ++frame_guard;
+            more_size = sizeof(more);
+            if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size)
+                != 0) {
+                return false;
+            }
+        }
+    }
+    return false;
 }
 
 inline bool bench_debug_enabled() {
@@ -353,9 +463,15 @@ inline int resolve_single_send_timeout_ms()
     return parse_positive_env("PERF_SINGLE_SNDTIMEO_MS", 200);
 }
 
+inline int resolve_single_recv_timeout_ms()
+{
+    return parse_positive_env_pair("PERF_SINGLE_RCVTIMEO_MS",
+                                   "PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+}
+
 inline int resolve_single_pubsub_recv_timeout_ms()
 {
-    return parse_positive_env("PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+    return resolve_single_recv_timeout_ms();
 }
 
 inline int resolve_single_socket_hwm(bool send_)
@@ -363,6 +479,163 @@ inline int resolve_single_socket_hwm(bool send_)
     const int base_hwm = parse_positive_env("PERF_SINGLE_HWM", 1000);
     return send_ ? parse_positive_env("PERF_SINGLE_SNDHWM", base_hwm)
                  : parse_positive_env("PERF_SINGLE_RCVHWM", base_hwm);
+}
+
+inline int resolve_single_queue_sample_ms()
+{
+    return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
+}
+
+class queue_probe_t {
+public:
+    queue_probe_t(void *send_socket_, void *recv_socket_) :
+        _send_socket(send_socket_),
+        _recv_socket(recv_socket_),
+        _sample_interval_ns(resolve_sample_interval_ns()),
+        _send_last_sample_ns(0),
+        _recv_last_sample_ns(0),
+        _snd_pending_max(0),
+        _rcv_pending_max(0),
+        _rcv_pending_end(0),
+        _snd_seen(false),
+        _rcv_seen(false)
+    {}
+
+    void sample_send_if_due() { maybe_sample_send(false); }
+    void sample_recv_if_due() { maybe_sample_recv(false); }
+    void force_sample_send() { maybe_sample_send(true); }
+    void force_sample_recv() { maybe_sample_recv(true); }
+
+    queue_stats_t snapshot() const
+    {
+        queue_stats_t out;
+        if (_snd_seen) {
+            out.has_snd_pending = true;
+            out.snd_pending_max = static_cast<double>(_snd_pending_max);
+        }
+        if (_rcv_seen) {
+            out.has_rcv_pending = true;
+            out.rcv_pending_max = static_cast<double>(_rcv_pending_max);
+            out.rcv_pending_end = static_cast<double>(_rcv_pending_end);
+        }
+        return out;
+    }
+
+private:
+    static unsigned long long resolve_sample_interval_ns()
+    {
+        const int sample_ms = resolve_single_queue_sample_ms();
+        const unsigned long long clamped_ms =
+          static_cast<unsigned long long>(sample_ms > 0 ? sample_ms : 100);
+        return clamped_ms * 1000000ULL;
+    }
+
+    static unsigned long long now_ns()
+    {
+        return static_cast<unsigned long long>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+    }
+
+    static bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
+    {
+        if (!socket_ || !info_)
+            return false;
+
+        size_t peer_count = 0;
+        if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
+            return false;
+
+        memset(info_, 0, sizeof(*info_));
+        size_t to_copy = 1;
+        if (zlink_socket_peers(socket_, info_, &to_copy) != 0 || to_copy == 0)
+            return false;
+
+        return true;
+    }
+
+    void maybe_sample_send(bool force_)
+    {
+        if (!_send_socket)
+            return;
+
+        const unsigned long long now = now_ns();
+        if (!force_ && _send_last_sample_ns > 0
+            && now - _send_last_sample_ns < _sample_interval_ns) {
+            return;
+        }
+        _send_last_sample_ns = now;
+
+        zlink_peer_info_t info;
+        if (!read_first_peer_info(_send_socket, &info))
+            return;
+
+        const unsigned long long pending =
+          static_cast<unsigned long long>(info.snd_pending_msgs);
+        if (!_snd_seen || pending > _snd_pending_max)
+            _snd_pending_max = pending;
+        _snd_seen = true;
+    }
+
+    void maybe_sample_recv(bool force_)
+    {
+        if (!_recv_socket)
+            return;
+
+        const unsigned long long now = now_ns();
+        if (!force_ && _recv_last_sample_ns > 0
+            && now - _recv_last_sample_ns < _sample_interval_ns) {
+            return;
+        }
+        _recv_last_sample_ns = now;
+
+        zlink_peer_info_t info;
+        if (!read_first_peer_info(_recv_socket, &info))
+            return;
+
+        const unsigned long long pending =
+          static_cast<unsigned long long>(info.rcv_pending_msgs);
+        if (!_rcv_seen || pending > _rcv_pending_max)
+            _rcv_pending_max = pending;
+        _rcv_pending_end = pending;
+        _rcv_seen = true;
+    }
+
+    void *_send_socket;
+    void *_recv_socket;
+    unsigned long long _sample_interval_ns;
+    unsigned long long _send_last_sample_ns;
+    unsigned long long _recv_last_sample_ns;
+    unsigned long long _snd_pending_max;
+    unsigned long long _rcv_pending_max;
+    unsigned long long _rcv_pending_end;
+    bool _snd_seen;
+    bool _rcv_seen;
+
+    queue_probe_t(const queue_probe_t &);
+    queue_probe_t &operator=(const queue_probe_t &);
+};
+
+inline queue_stats_t sample_queue_stats(queue_probe_t *queue_probe_)
+{
+    if (!queue_probe_)
+        return queue_stats_t();
+    queue_probe_->force_sample_send();
+    queue_probe_->force_sample_recv();
+    return queue_probe_->snapshot();
+}
+
+inline void print_fail_result(const std::string &lib_type,
+                              const std::string &pattern,
+                              const std::string &transport,
+                              size_t size,
+                              queue_probe_t *queue_probe_ = NULL)
+{
+    if (!queue_probe_)
+        return;
+    const queue_stats_t queue_stats = sample_queue_stats(queue_probe_);
+    print_queue_metrics(lib_type, pattern, transport, size, queue_stats);
 }
 
 inline void apply_single_hwm(void *socket_)
@@ -699,74 +972,6 @@ inline bool setup_connected_pair(void *bind_socket_,
     return true;
 }
 
-template <typename StepFn>
-inline void repeat_n(int count_, StepFn step_) {
-    for (int i = 0; i < count_; ++i)
-        step_();
-}
-
-template <typename RoundTripFn>
-inline double measure_roundtrip_latency_us(int roundtrip_count_,
-                                           RoundTripFn roundtrip_) {
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(roundtrip_count_, roundtrip_);
-    return (sw.elapsed_ms() * 1000.0) / (roundtrip_count_ * 2);
-}
-
-template <typename RoundTripFn>
-inline latency_stats_t measure_roundtrip_latency_stats_us_for_duration(
-  int duration_seconds_, RoundTripFn roundtrip_);
-
-template <typename RoundTripFn>
-inline double measure_roundtrip_latency_us_for_duration(
-  int duration_seconds_, RoundTripFn roundtrip_) {
-    const latency_stats_t stats =
-      measure_roundtrip_latency_stats_us_for_duration(
-        duration_seconds_, roundtrip_);
-    return stats.mean_us;
-}
-
-template <typename RoundTripFn>
-inline latency_stats_t measure_roundtrip_latency_stats_us_for_duration(
-  int duration_seconds_, RoundTripFn roundtrip_) {
-    const int duration = duration_seconds_ > 0 ? duration_seconds_ : 1;
-    const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(duration);
-    latency_stats_builder_t stats_builder;
-    while (std::chrono::steady_clock::now() < deadline) {
-        stopwatch_t sw;
-        sw.start();
-        roundtrip_();
-        stats_builder.add((sw.elapsed_ms() * 1000.0) * 0.5);
-    }
-    return stats_builder.snapshot();
-}
-
-template <typename SendOneFn, typename RecvOneFn>
-inline double measure_throughput_msgs_per_sec(int msg_count_,
-                                              SendOneFn send_one_,
-                                              RecvOneFn recv_one_) {
-    std::thread receiver([&]() { repeat_n(msg_count_, recv_one_); });
-    stopwatch_t sw;
-    sw.start();
-    repeat_n(msg_count_, send_one_);
-    receiver.join();
-    const double elapsed_ms = sw.elapsed_ms();
-    return elapsed_ms > 0 ? (double)msg_count_ / (elapsed_ms / 1000.0) : 0.0;
-}
-
-inline int resolve_msg_count(size_t size) {
-    int count = (size <= 1024) ? 200000 : 20000;
-    if (const char *env = std::getenv("PERF_MSG_COUNT")) {
-        errno = 0;
-        const long override = std::strtol(env, NULL, 10);
-        if (errno == 0 && override > 0)
-            count = static_cast<int>(override);
-    }
-    return count;
-}
-
 inline int resolve_bench_count(const char *env_name, int default_value) {
     if (const char *env = std::getenv(env_name)) {
         errno = 0;
@@ -784,8 +989,7 @@ inline int run_standard_bench_main(int argc_, char **argv_, RunFn run_) {
     std::string lib_name = argv_[1];
     std::string transport = argv_[2];
     size_t size = std::stoul(argv_[3]);
-    int count = resolve_msg_count(size);
-    run_(transport, size, count, lib_name);
+    run_(transport, size, lib_name);
     return 0;
 }
 

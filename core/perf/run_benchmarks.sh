@@ -82,7 +82,8 @@ RESULTS_TAG=""
 RESULT_FILE=""
 RUNS=""
 RUNS_EXPLICIT=0
-REUSE_BUILD=1
+BUILD_MODE="incremental"
+BUILD_MODE_EXPLICIT=0
 PIN_CPU=0
 PERF_IO_THREADS="${PERF_IO_THREADS:-}"
 PERF_MSG_SIZES="${PERF_MSG_SIZES:-}"
@@ -91,6 +92,8 @@ SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
+SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-}"
+SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_SINGLE_PUBSUB_RCVTIMEO_MS:-}}"
 MODE="observe"
 BASELINE_FILE=""
 ROLLING_N="${PERF_ROLLING_N:-10}"
@@ -111,7 +114,8 @@ Options:
   -h, --help                  Show this help.
   --pattern NAME              Pattern list (comma-separated) or ALL.
   --build-dir PATH            Build directory (default: core/build/<platform>-<arch>).
-  --build                     Force clean build (default is reuse-build).
+  --reuse-build               Reuse existing build directory as-is (skip configure/build).
+  --clean-build               Remove build directory and do a clean build.
   --output PATH               Tee console logs to a file.
   --save [VERSION]            Save baseline under results/single/baseline/ (complete only).
   --results-dir PATH          Override result root directory.
@@ -121,6 +125,8 @@ Options:
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
+  --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
+  --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
@@ -134,11 +140,25 @@ Policy options (single runner):
 Notes:
   - tmp result is always saved under results/single/tmp/.
   - report result save is always enabled.
-  - reuse-build is always enabled unless --build is provided.
+  - default build mode is incremental (configure/build without deleting build dir).
   - --output and report save can be used together.
   - --save-baseline is removed. Use --save [VERSION].
   - MULTI_* patterns are rejected by this script.
 USAGE
+}
+
+set_build_mode() {
+  local next_mode="${1:-}"
+  if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
+    echo "Error: invalid build mode: ${next_mode}" >&2
+    exit 1
+  fi
+  if [[ "${BUILD_MODE_EXPLICIT}" -eq 1 && "${BUILD_MODE}" != "${next_mode}" ]]; then
+    echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+    exit 1
+  fi
+  BUILD_MODE="${next_mode}"
+  BUILD_MODE_EXPLICIT=1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -147,8 +167,11 @@ while [[ $# -gt 0 ]]; do
       PATTERN="${2:-}"
       shift
       ;;
-    --build)
-      REUSE_BUILD=0
+    --reuse-build)
+      set_build_mode "reuse"
+      ;;
+    --clean-build)
+      set_build_mode "clean"
       ;;
     --build-dir)
       BUILD_DIR="${2:-}"
@@ -192,6 +215,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --sndtimeo|--sndtimeo-ms)
+      SINGLE_SNDTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --rcvtimeo|--rcvtimeo-ms)
+      SINGLE_RCVTIMEO_MS="${2:-}"
       shift
       ;;
     --pin-cpu)
@@ -324,6 +355,14 @@ if [[ -n "${SINGLE_RCVHWM}" && ( ! "${SINGLE_RCVHWM}" =~ ^[0-9]+$ || "${SINGLE_R
   echo "recv-hwm must be a positive integer." >&2
   exit 1
 fi
+if [[ -n "${SINGLE_SNDTIMEO_MS}" && ( ! "${SINGLE_SNDTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_SNDTIMEO_MS}" -lt 1 ) ]]; then
+  echo "sndtimeo must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_RCVTIMEO_MS}" -lt 1 ) ]]; then
+  echo "rcvtimeo must be a positive integer." >&2
+  exit 1
+fi
 
 MODE="$(printf '%s' "${MODE}" | tr '[:upper:]' '[:lower:]')"
 if [[ "${MODE}" != "observe" && "${MODE}" != "trend" && "${MODE}" != "gate" ]]; then
@@ -413,34 +452,33 @@ cleanup_old_results_dirs() {
   done
 }
 
-if [[ "${REUSE_BUILD}" -eq 1 ]]; then
-  PERF_EXT=""
-  if [[ "${IS_WINDOWS}" -eq 1 ]]; then
-    PERF_EXT=".exe"
-  fi
-  HAS_SINGLE_BIN=0
-  if [[ -f "${BUILD_DIR}/bin/perf_pair${PERF_EXT}" || -f "${BUILD_DIR}/perf_pair${PERF_EXT}" ]]; then
-    HAS_SINGLE_BIN=1
-  fi
-  HAS_MULTI_BIN=0
-  if [[ -f "${BUILD_DIR}/bin/comp_current_multi_dealer_dealer${PERF_EXT}" || -f "${BUILD_DIR}/comp_current_multi_dealer_dealer${PERF_EXT}" ]]; then
-    HAS_MULTI_BIN=1
-  fi
-
-  if [[ -d "${BUILD_DIR}" && ( "${HAS_SINGLE_BIN}" -eq 1 || "${HAS_MULTI_BIN}" -eq 1 ) ]]; then
+case "${BUILD_MODE}" in
+  reuse)
+    if [[ ! -d "${BUILD_DIR}" ]]; then
+      echo "Error: --reuse-build requires an existing build directory: ${BUILD_DIR}" >&2
+      exit 1
+    fi
     echo "Reusing build directory: ${BUILD_DIR}"
-  else
-    echo "Reusable build not found. Configuring/building: ${BUILD_DIR}"
-    REUSE_BUILD=0
+    ;;
+  clean)
+    echo "Cleaning build directory: ${BUILD_DIR}"
     rm -rf "${BUILD_DIR}"
-  fi
-else
-  echo "Cleaning build directory: ${BUILD_DIR}"
-  rm -rf "${BUILD_DIR}"
-fi
+    ;;
+  incremental)
+    if [[ -d "${BUILD_DIR}" ]]; then
+      echo "Using incremental build directory: ${BUILD_DIR}"
+    else
+      echo "Creating build directory: ${BUILD_DIR}"
+    fi
+    ;;
+  *)
+    echo "Error: invalid build mode: ${BUILD_MODE}" >&2
+    exit 1
+    ;;
+esac
 
 CMAKE_SOURCE_DIR="${ROOT_DIR}"
-if [[ "${REUSE_BUILD}" -ne 1 && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+if [[ "${BUILD_MODE}" != "reuse" && -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
   CACHE_CMAKE_SOURCE="$(
     sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${BUILD_DIR}/CMakeCache.txt" \
       | tail -n 1
@@ -456,7 +494,7 @@ fi
 
 echo "Using CMake source directory: ${CMAKE_SOURCE_DIR}"
 
-if [[ "${REUSE_BUILD}" -ne 1 ]]; then
+if [[ "${BUILD_MODE}" != "reuse" ]]; then
   if [[ "${IS_WINDOWS}" -eq 1 ]]; then
     CMAKE_GENERATOR="${CMAKE_GENERATOR:-Visual Studio 17 2022}"
     CMAKE_ARCH="${CMAKE_ARCH:-x64}"
@@ -572,7 +610,13 @@ fi
 if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
-if [[ "${REUSE_BUILD}" -eq 1 ]]; then
+if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
+fi
+if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
+fi
+if [[ "${BUILD_MODE}" == "reuse" ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
 fi
 if [[ -n "${PERF_DISABLE_RESOURCE_METRICS:-}" ]]; then

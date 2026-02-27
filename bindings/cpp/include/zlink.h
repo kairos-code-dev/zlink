@@ -622,6 +622,10 @@ typedef struct {
     uint64_t connected_time;
     uint64_t msgs_sent;
     uint64_t msgs_received;
+    /* Local outbound queue backlog (messages not yet consumed by peer). */
+    uint64_t snd_pending_msgs;
+    /* Approximate local inbound backlog snapshot (peer-written - local-read). */
+    uint64_t rcv_pending_msgs;
 } zlink_peer_info_t;
 
 /** @brief Get peer info by routing_id. */

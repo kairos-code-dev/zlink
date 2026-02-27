@@ -210,6 +210,24 @@ uint64_t zlink::pipe_t::get_msgs_read () const
     return _msgs_read;
 }
 
+uint64_t zlink::pipe_t::get_snd_pending_msgs () const
+{
+    if (_msgs_written <= _peers_msgs_read)
+        return 0;
+    return _msgs_written - _peers_msgs_read;
+}
+
+uint64_t zlink::pipe_t::get_rcv_pending_msgs_approx () const
+{
+    if (!_peer)
+        return 0;
+
+    const uint64_t peer_written = _peer->get_msgs_written ();
+    if (peer_written <= _msgs_read)
+        return 0;
+    return peer_written - _msgs_read;
+}
+
 uint64_t zlink::pipe_t::get_connected_time () const
 {
     return _connected_time;

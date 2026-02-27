@@ -15,7 +15,8 @@ project, invokes the Python comparison script, and saves results.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--pattern NAME` | `ALL` | Pattern list (comma-separated) or `ALL`. ALL expands to: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT |
-| `--build` | off | Force clean CMake build. Default is reuse-build (skip if binaries exist) |
+| `--reuse-build` | off | Reuse existing build directory as-is (skip configure/build). Errors if build dir does not exist |
+| `--clean-build` | off | Remove build directory, then run a clean configure/build |
 | `--build-dir PATH` | auto | Override build directory. Auto-detected as `core/build/<platform>-<arch>` |
 | `--output PATH` | — | Tee console output to a file |
 | `--save [VERSION]` | off | Save baseline under `results/<suite>/baseline/`. Optional version tag |
@@ -52,7 +53,7 @@ project, invokes the Python comparison script, and saves results.
 ```
 1. Detect platform (linux/macos/windows) and architecture (x64/arm64)
 2. Resolve build directory
-3. Build or reuse existing build (CMake Release, benchmarks ON)
+3. Build using selected mode (default incremental, optional `--reuse-build` / `--clean-build`)
 4. Clean up old result directories (>90 days retention)
 5. Invoke Python comparison script with:
    - pattern list, build dir, runs, duration
@@ -61,7 +62,7 @@ project, invokes the Python comparison script, and saves results.
 6. Environment variables forwarded:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
    PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
-   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD (reuse mode only)
 7. Print total elapsed time on exit
 ```
 
@@ -110,7 +111,8 @@ Shared options (forwarded to `run_benchmarks.sh`):
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--pattern NAME` | all patterns | Pattern list (comma-separated) or `ALL`. `MULTI_` prefix is optional |
-| `--build` | off | Force clean build |
+| `--reuse-build` | off | Reuse existing build directory as-is (skip configure/build) |
+| `--clean-build` | off | Remove build directory, then run a clean configure/build |
 | `--build-dir PATH` | auto | Override build directory |
 | `--output PATH` | — | Tee results to a file |
 | `--save [VER]` | off | Save baseline under `results/multi/baseline/` |

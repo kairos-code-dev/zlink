@@ -70,6 +70,8 @@ class pipe_t ZLINK_FINAL : public object_t,
     void set_peer_routing_id (const unsigned char *data_, size_t size_);
     uint64_t get_msgs_written () const;
     uint64_t get_msgs_read () const;
+    uint64_t get_snd_pending_msgs () const;
+    uint64_t get_rcv_pending_msgs_approx () const;
     uint64_t get_connected_time () const;
     struct stream_reassembly_state_t
     {

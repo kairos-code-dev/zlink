@@ -124,7 +124,8 @@ Modes:
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above). MULTI_ prefix is optional.
   --help                 Show this help.
-  --build                Force clean build (disables default reuse-build behavior).
+  --reuse-build          Reuse existing build directory as-is (skip configure/build).
+  --clean-build          Remove build directory and do a clean build.
   --save [VER]           Save baseline file under core/perf/results/multi/baseline/ (complete only).
   --results-dir PATH     Override results root directory.
   --results-tag NAME     Optional tag appended to the results filename.
@@ -172,7 +173,7 @@ Environment:
 Notes:
   - tmp result is always saved under results/multi/tmp/.
   - report result save is always enabled.
-  - reuse-build is always enabled unless --build is provided.
+  - default build mode is incremental (configure/build without deleting build dir).
   - --save-baseline is removed. Use --save [VER].
 USAGE
 }
@@ -221,7 +222,8 @@ HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
 HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
-FORCE_BUILD=0
+BUILD_MODE="incremental"
+BUILD_MODE_EXPLICIT=0
 MODE="${PERF_MODE:-observe}"
 ROLLING_N="${PERF_ROLLING_N:-10}"
 BASELINE_FILE="${PERF_BASELINE_FILE:-}"
@@ -250,6 +252,20 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
+
+set_build_mode() {
+  local next_mode="${1:-}"
+  if [[ "${next_mode}" != "incremental" && "${next_mode}" != "reuse" && "${next_mode}" != "clean" ]]; then
+    echo "Error: invalid build mode: ${next_mode}" >&2
+    exit 1
+  fi
+  if [[ "${BUILD_MODE_EXPLICIT}" -eq 1 && "${BUILD_MODE}" != "${next_mode}" ]]; then
+    echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+    exit 1
+  fi
+  BUILD_MODE="${next_mode}"
+  BUILD_MODE_EXPLICIT=1
+}
 
 while [[ $# -gt 0 ]]; do
   arg="$1"
@@ -359,8 +375,12 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --build)
-      FORCE_BUILD=1
+    --reuse-build)
+      set_build_mode "reuse"
+      shift
+      ;;
+    --clean-build)
+      set_build_mode "clean"
       shift
       ;;
     --runs)
@@ -652,8 +672,10 @@ if [[ "${HAS_EXPLICIT_MSG_SIZES}" -eq 0 ]]; then
     RUN_BASE_ARGS+=(--msg-sizes "${PERF_MSG_SIZES}")
   fi
 fi
-if [[ "${FORCE_BUILD}" -eq 1 ]]; then
-  RUN_BASE_ARGS+=(--build)
+if [[ "${BUILD_MODE}" == "reuse" ]]; then
+  RUN_BASE_ARGS+=(--reuse-build)
+elif [[ "${BUILD_MODE}" == "clean" ]]; then
+  RUN_BASE_ARGS+=(--clean-build)
 fi
 if [[ "${HAS_EXPLICIT_RUNS}" -eq 0 ]]; then
   RUN_BASE_ARGS+=(--runs "1")

@@ -150,7 +150,6 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
 
 void run_spot(const std::string &transport,
               size_t msg_size,
-              int msg_count,
               const std::string &lib_name)
 {
     configure_spot_idle_sleep_for_bench();
@@ -160,14 +159,9 @@ void run_spot(const std::string &transport,
 
     if ((transport == "tls" || transport == "wss")
         && !resolve_symbol("zlink_spot_node_set_tls_server")) {
-        print_result(lib_name, "SPOT", transport, msg_size, 0.0, 0.0);
+        print_fail_result(lib_name, "SPOT", transport, msg_size);
         return;
     }
-
-    const int spot_msg_count_max =
-      resolve_bench_count("PERF_SPOT_MSG_COUNT_MAX", 50000);
-    if (msg_count > spot_msg_count_max)
-        msg_count = spot_msg_count_max;
 
     ctx_guard_t ctx;
     if (!ctx.valid())
@@ -190,7 +184,7 @@ void run_spot(const std::string &transport,
     };
 
     auto fail = [&]() {
-        print_result(lib_name, "SPOT", transport, msg_size, 0.0, 0.0);
+        print_fail_result(lib_name, "SPOT", transport, msg_size);
         cleanup();
     };
 
@@ -257,6 +251,7 @@ void run_spot(const std::string &transport,
     }
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
+    const int throughput_duration_s = resolve_single_duration_seconds();
     latency_stats_builder_t latency_builder;
     const auto latency_deadline =
       std::chrono::steady_clock::now()
@@ -273,38 +268,52 @@ void run_spot(const std::string &transport,
     }
     const latency_stats_t latency_stats = latency_builder.snapshot();
 
+    std::atomic<bool> sender_done(false);
+    std::atomic<bool> recv_failed(false);
     std::atomic<int> recv_count(0);
     std::thread receiver([&]() {
-        for (int i = 0; i < msg_count; ++i) {
-            if (!recv_one())
-                break;
-            ++recv_count;
+        while (!sender_done.load(std::memory_order_acquire)) {
+            if (recv_one()) {
+                recv_count.fetch_add(1, std::memory_order_release);
+                continue;
+            }
+            const int err = zlink_errno();
+            if (err == EAGAIN || err == EINTR)
+                continue;
+            recv_failed.store(true, std::memory_order_release);
+            break;
         }
     });
 
-    int sent = 0;
-    stopwatch_t sw;
-    sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        if (!send_spot(spot_pub, topic, msg_size))
+    const auto throughput_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
+                                                       : 1);
+    bool send_failed = false;
+    while (std::chrono::steady_clock::now() < throughput_deadline) {
+        if (!send_spot(spot_pub, topic, msg_size)) {
+            send_failed = true;
             break;
-        ++sent;
+        }
     }
+    sender_done.store(true, std::memory_order_release);
     receiver.join();
 
-    const int received = recv_count.load();
-    const int effective = sent < received ? sent : received;
-    if (effective <= 0) {
-        print_result(lib_name, "SPOT", transport, msg_size, 0.0,
-                     latency_stats.mean_us, latency_stats.p95_us,
-                     latency_stats.p99_us);
+    if (send_failed || recv_failed.load(std::memory_order_acquire)) {
+        print_fail_result(lib_name, "SPOT", transport, msg_size);
         cleanup();
         return;
     }
 
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
+    const int received = recv_count.load(std::memory_order_acquire);
+    if (received <= 0) {
+        print_fail_result(lib_name, "SPOT", transport, msg_size);
+        cleanup();
+        return;
+    }
+
+    const double throughput = static_cast<double>(received)
+                              / static_cast<double>(throughput_duration_s);
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput,
                  latency_stats.mean_us, latency_stats.p95_us,

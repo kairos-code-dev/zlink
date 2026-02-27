@@ -273,6 +273,8 @@ int zlink::socket_base_t::socket_peer_info (const zlink_routing_id_t *routing_id
             info_->connected_time = pipe->get_connected_time ();
             info_->msgs_sent = pipe->get_msgs_written ();
             info_->msgs_received = pipe->get_msgs_read ();
+            info_->snd_pending_msgs = pipe->get_snd_pending_msgs ();
+            info_->rcv_pending_msgs = pipe->get_rcv_pending_msgs_approx ();
             return 0;
         }
     }
@@ -340,6 +342,8 @@ int zlink::socket_base_t::socket_peers (zlink_peer_info_t *peers_,
         info->connected_time = pipe->get_connected_time ();
         info->msgs_sent = pipe->get_msgs_written ();
         info->msgs_received = pipe->get_msgs_read ();
+        info->snd_pending_msgs = pipe->get_snd_pending_msgs ();
+        info->rcv_pending_msgs = pipe->get_rcv_pending_msgs_approx ();
     }
 
     *count_ = to_copy;

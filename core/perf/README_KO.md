@@ -15,7 +15,8 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--pattern NAME` | `ALL` | 패턴 목록 (쉼표 구분) 또는 `ALL`. ALL 확장: PAIR, PUBSUB, DEALER_DEALER, DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT |
-| `--build` | 비활성 | CMake 클린 빌드 강제. 기본은 reuse-build (바이너리가 있으면 스킵) |
+| `--reuse-build` | 비활성 | 기존 빌드 디렉터리를 그대로 재사용 (configure/build 생략). 빌드 디렉터리가 없으면 에러 |
+| `--clean-build` | 비활성 | 빌드 디렉터리를 삭제한 뒤 클린 configure/build 수행 |
 | `--build-dir PATH` | 자동 | 빌드 디렉터리 지정. 자동 감지: `core/build/<platform>-<arch>` |
 | `--output PATH` | — | 콘솔 출력을 파일로 tee |
 | `--save [VERSION]` | 비활성 | `results/<suite>/baseline/`에 베이스라인 저장. 선택적 버전 태그 |
@@ -52,7 +53,7 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 ```
 1. 플랫폼 (linux/macos/windows) 및 아키텍처 (x64/arm64) 감지
 2. 빌드 디렉터리 결정
-3. 빌드 또는 기존 빌드 재사용 (CMake Release, 벤치마크 ON)
+3. 선택한 빌드 모드로 실행 (기본 증분 빌드, `--reuse-build` / `--clean-build` 선택 가능)
 4. 오래된 결과 디렉터리 정리 (90일 보존)
 5. Python 비교 스크립트 호출:
    - 패턴 목록, 빌드 디렉터리, 반복 횟수, 측정 시간
@@ -61,7 +62,7 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 6. 환경 변수 전달:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
    PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
-   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD (reuse 모드에서만)
 7. 종료 시 총 경과 시간 출력
 ```
 
@@ -109,7 +110,8 @@ STREAM, STREAM_CALLBACK, STREAM_LEN32BE
 | 옵션 | 기본값 | 설명 |
 |------|--------|------|
 | `--pattern NAME` | 전체 패턴 | 패턴 목록 (쉼표 구분) 또는 `ALL`. `MULTI_` 접두어 생략 가능 |
-| `--build` | 비활성 | 클린 빌드 강제 |
+| `--reuse-build` | 비활성 | 기존 빌드 디렉터리 재사용 (configure/build 생략) |
+| `--clean-build` | 비활성 | 빌드 디렉터리를 삭제한 뒤 클린 configure/build 수행 |
 | `--build-dir PATH` | 자동 | 빌드 디렉터리 지정 |
 | `--output PATH` | — | 결과를 파일로 tee |
 | `--save [VER]` | 비활성 | `results/multi/baseline/`에 베이스라인 저장 |

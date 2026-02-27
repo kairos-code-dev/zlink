@@ -167,7 +167,6 @@ static bool send_one_gateway(void *gateway,
 
 void run_gateway(const std::string &transport,
                  size_t msg_size,
-                 int msg_count,
                  const std::string &lib_name)
 {
     if (!transport_available(transport))
@@ -175,7 +174,7 @@ void run_gateway(const std::string &transport,
 
     if ((transport == "tls" || transport == "wss")
         && !resolve_symbol("zlink_gateway_set_tls_client")) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, 0.0);
+        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
         return;
     }
 
@@ -211,8 +210,8 @@ void run_gateway(const std::string &transport,
             zlink_registry_destroy(&registry);
     };
 
-    auto fail = [&](double latency = 0.0) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0, latency);
+    auto fail = [&]() {
+        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
         cleanup();
     };
 
@@ -279,6 +278,9 @@ void run_gateway(const std::string &transport,
         fail();
         return;
     }
+    const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    set_sockopt_int(provider_router, ZLINK_RCVTIMEO, recv_timeout_ms,
+                    "ZLINK_RCVTIMEO");
 
     if (!configure_gateway_tls(gateway, transport)) {
         fail();
@@ -303,6 +305,7 @@ void run_gateway(const std::string &transport,
     }
 
     const int latency_duration_s = resolve_single_latency_duration_seconds();
+    const int throughput_duration_s = resolve_single_duration_seconds();
     latency_stats_builder_t latency_builder;
     const auto latency_deadline =
       std::chrono::steady_clock::now()
@@ -319,38 +322,52 @@ void run_gateway(const std::string &transport,
     }
     const latency_stats_t latency_stats = latency_builder.snapshot();
 
+    std::atomic<bool> sender_done(false);
+    std::atomic<bool> recv_failed(false);
     std::atomic<int> received(0);
     std::thread receiver([&]() {
-        for (int i = 0; i < msg_count; ++i) {
-            if (!recv_one_provider_message(provider_router))
-                break;
-            ++received;
+        while (!sender_done.load(std::memory_order_acquire)) {
+            if (recv_one_provider_message(provider_router)) {
+                received.fetch_add(1, std::memory_order_release);
+                continue;
+            }
+            const int err = zlink_errno();
+            if (err == EAGAIN || err == EINTR)
+                continue;
+            recv_failed.store(true, std::memory_order_release);
+            break;
         }
     });
 
-    int sent = 0;
-    stopwatch_t sw;
-    sw.start();
-    for (int i = 0; i < msg_count; ++i) {
-        if (!send_one_gateway(gateway, service_name, msg_size))
+    const auto throughput_deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
+                                                       : 1);
+    bool send_failed = false;
+    while (std::chrono::steady_clock::now() < throughput_deadline) {
+        if (!send_one_gateway(gateway, service_name, msg_size)) {
+            send_failed = true;
             break;
-        ++sent;
+        }
     }
+    sender_done.store(true, std::memory_order_release);
     receiver.join();
 
-    const int recv_count = received.load();
-    const int effective = sent < recv_count ? sent : recv_count;
-    if (effective <= 0) {
-        print_result(lib_name, "GATEWAY", transport, msg_size, 0.0,
-                     latency_stats.mean_us, latency_stats.p95_us,
-                     latency_stats.p99_us);
+    if (send_failed || recv_failed.load(std::memory_order_acquire)) {
+        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
         cleanup();
         return;
     }
 
-    const double elapsed_ms = sw.elapsed_ms();
-    const double throughput =
-      elapsed_ms > 0 ? (double)effective / (elapsed_ms / 1000.0) : 0.0;
+    const int recv_count = received.load(std::memory_order_acquire);
+    if (recv_count <= 0) {
+        print_fail_result(lib_name, "GATEWAY", transport, msg_size);
+        cleanup();
+        return;
+    }
+
+    const double throughput = static_cast<double>(recv_count)
+                              / static_cast<double>(throughput_duration_s);
 
     print_result(lib_name, "GATEWAY", transport, msg_size, throughput,
                  latency_stats.mean_us, latency_stats.p95_us,

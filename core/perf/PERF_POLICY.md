@@ -240,7 +240,8 @@ perf/multi/run_benchmarks.sh --pattern ALL
 | `--mode MODE` | 운영 모드: `observe`, `trend`, `gate` | `observe` |
 | `--runs N` | 반복 횟수 | suite별 기본값 |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
-| `--reuse-build` | 기존 빌드 재사용 | single: off, multi: on |
+| `--reuse-build` | 기존 빌드 재사용 (configure/build 생략) | off |
+| `--clean-build` | 빌드 디렉터리 삭제 후 클린 빌드 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU pinning (Linux: taskset, Windows: processor affinity) | off |
 | `--output PATH` | stdout tee 출력 | stdout만 |
 | `--result` | `report/`에 TABLE 레포트 저장 (complete/partial) | off |

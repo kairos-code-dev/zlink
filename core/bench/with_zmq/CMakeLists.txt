@@ -122,7 +122,6 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_zlink_bench_single(comp_zlink_dealer_router single/zlink/bench_zlink_dealer_router.cpp)
     add_zlink_bench_single(comp_zlink_router_router single/zlink/bench_zlink_router_router.cpp)
     add_zlink_bench_single(comp_zlink_router_router_poll single/zlink/bench_zlink_router_router_poll.cpp)
-    add_zlink_bench_single(comp_zlink_stream single/zlink/bench_zlink_stream.cpp)
     add_zlink_bench_multi(comp_zlink_multi_dealer_dealer
                     multi/zlink/bench_zlink_multi_dealer_dealer.cpp)
     add_zlink_bench_multi(comp_zlink_multi_dealer_router
@@ -147,7 +146,6 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND STD_LIBZMQ_LIBRARY)
     add_std_zmq_bench_single(comp_std_zmq_dealer_router single/libzmq/bench_zmq_dealer_router.cpp)
     add_std_zmq_bench_single(comp_std_zmq_router_router single/libzmq/bench_zmq_router_router.cpp)
     add_std_zmq_bench_single(comp_std_zmq_router_router_poll single/libzmq/bench_zmq_router_router_poll.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_stream single/libzmq/bench_zmq_stream.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_dealer_dealer
                       multi/libzmq/bench_zmq_multi_dealer_dealer.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_dealer_router

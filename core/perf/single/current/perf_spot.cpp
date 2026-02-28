@@ -443,6 +443,7 @@ void run_spot(const std::string &transport,
     const int send_timeout_ms = resolve_single_send_timeout_ms();
     const int recv_timeout_ms = resolve_single_recv_timeout_ms();
     const int linger_ms = 0;
+    const int xpub_nodrop = 1;
     bool use_blocking_recv = false;
 
     // Configure socket options before bind/connect so newly created pipes
@@ -460,6 +461,9 @@ void run_spot(const std::string &transport,
     (void) zlink_spot_node_setsockopt(
       node_pub, ZLINK_SPOT_NODE_SOCKET_PUB, ZLINK_SNDTIMEO, &send_timeout_ms,
       sizeof(send_timeout_ms));
+    (void) zlink_spot_node_setsockopt(node_pub, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
+                                      sizeof(xpub_nodrop));
     (void) zlink_spot_node_setsockopt(node_sub, ZLINK_SPOT_NODE_SOCKET_SUB,
                                       ZLINK_RCVTIMEO, &recv_timeout_ms,
                                       sizeof(recv_timeout_ms));
@@ -524,6 +528,8 @@ void run_spot(const std::string &transport,
                         "ZLINK_LINGER");
         set_sockopt_int(pub_socket_unsafe, ZLINK_SNDTIMEO, send_timeout_ms,
                         "ZLINK_SNDTIMEO");
+        set_sockopt_int(pub_socket_unsafe, ZLINK_XPUB_NODROP, xpub_nodrop,
+                        "ZLINK_XPUB_NODROP");
         set_sockopt_int(sub_socket_unsafe, ZLINK_RCVTIMEO, recv_timeout_ms,
                         "ZLINK_RCVTIMEO");
         queue_probe = new (std::nothrow) queue_probe_t(pub_socket_unsafe,

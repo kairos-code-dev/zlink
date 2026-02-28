@@ -551,9 +551,6 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
     MULTI_PUBSUB)
       SINGLE_PATTERN="pubsub"
       ;;
-    MULTI_STREAM)
-      SINGLE_PATTERN="stream"
-      ;;
     *)
       SINGLE_PATTERN=""
       ;;

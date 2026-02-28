@@ -3,6 +3,26 @@
 #include <atomic>
 #include <vector>
 #include <cstring>
+#include <cstdlib>
+
+inline int resolve_pubsub_xpub_nodrop_opt()
+{
+    const char *env = std::getenv("PERF_SINGLE_PUBSUB_XPUB_NODROP");
+    if (!env || !*env)
+        return 1;
+
+    if (strcmp(env, "1") == 0 || strcmp(env, "true") == 0
+        || strcmp(env, "TRUE") == 0 || strcmp(env, "on") == 0
+        || strcmp(env, "ON") == 0) {
+        return 1;
+    }
+    if (strcmp(env, "0") == 0 || strcmp(env, "false") == 0
+        || strcmp(env, "FALSE") == 0 || strcmp(env, "off") == 0
+        || strcmp(env, "OFF") == 0) {
+        return 0;
+    }
+    return 1;
+}
 
 inline int recv_sub_blocking_with_timeout (void *sub_socket,
                                            size_t msg_size)
@@ -175,6 +195,10 @@ void run_pubsub(const std::string& transport,
         print_fail_no_queue();
         return;
     }
+
+    const int xpub_nodrop_opt = resolve_pubsub_xpub_nodrop_opt();
+    set_sockopt_int(pub.get(), ZLINK_XPUB_NODROP, xpub_nodrop_opt,
+                    "ZLINK_XPUB_NODROP");
 
     zlink_setsockopt(sub.get(), ZLINK_SUBSCRIBE, "", 0);
 

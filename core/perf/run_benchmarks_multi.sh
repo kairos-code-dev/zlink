@@ -99,6 +99,86 @@ ensure_nofile_limit() {
   return 1
 }
 
+MEMORY_SKIP_REASON=""
+memory_available_kb() {
+  if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" ]]; then
+    echo ""
+    return
+  fi
+  if [[ ! -r /proc/meminfo ]]; then
+    echo ""
+    return
+  fi
+  awk '/^MemAvailable:/ { print $2; found=1; exit } END { if (!found) print "" }' /proc/meminfo 2>/dev/null || true
+}
+
+resolve_memory_max_clients() {
+  local available_kb
+  available_kb="$(memory_available_kb)"
+  if ! is_uint "${available_kb}"; then
+    echo ""
+    return
+  fi
+
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  if ! is_uint "${budget_pct}" || (( budget_pct < 1 || budget_pct > 95 )); then
+    echo ""
+    return
+  fi
+  if ! is_uint "${base_mb}"; then
+    echo ""
+    return
+  fi
+  if ! is_uint "${per_client_kb}" || (( per_client_kb < 1 )); then
+    echo ""
+    return
+  fi
+
+  local usable_kb=$(( available_kb * budget_pct / 100 ))
+  local base_kb=$(( base_mb * 1024 ))
+  if (( usable_kb <= base_kb )); then
+    echo "1"
+    return
+  fi
+
+  local max_clients=$(( (usable_kb - base_kb) / per_client_kb ))
+  if (( max_clients < 1 )); then
+    max_clients=1
+  fi
+  echo "${max_clients}"
+}
+
+ensure_memory_budget() {
+  local clients="${1:-}"
+  MEMORY_SKIP_REASON=""
+
+  if [[ "${PERF_SKIP_MEMORY_CHECK:-0}" == "1" ]]; then
+    return 0
+  fi
+  if ! is_uint "${clients}"; then
+    return 0
+  fi
+
+  local max_clients
+  max_clients="$(resolve_memory_max_clients)"
+  if ! is_uint "${max_clients}"; then
+    return 0
+  fi
+  if (( clients <= max_clients )); then
+    return 0
+  fi
+
+  local available_kb
+  available_kb="$(memory_available_kb)"
+  local budget_pct="${PERF_MULTI_MEMORY_BUDGET_PCT:-70}"
+  local base_mb="${PERF_MULTI_MEMORY_BASE_MB:-512}"
+  local per_client_kb="${PERF_MULTI_MEMORY_PER_CLIENT_KB:-1024}"
+  MEMORY_SKIP_REASON="clients=${clients},max_clients=${max_clients},mem_available_kb=${available_kb},budget_pct=${budget_pct},base_mb=${base_mb},per_client_kb=${per_client_kb}"
+  return 1
+}
+
 usage() {
   cat <<'USAGE'
 Usage: core/perf/run_benchmarks_multi.sh [options]
@@ -152,6 +232,13 @@ Options:
 
 Environment:
   PERF_SKIP_NOFILE_CHECK=1   Disable preflight nofile(limit) check
+  PERF_SKIP_MEMORY_CHECK=1   Disable preflight memory guard check
+  PERF_MULTI_MEMORY_BUDGET_PCT=70
+                            Percent of MemAvailable reserved for multi benchmark sockets
+  PERF_MULTI_MEMORY_BASE_MB=512
+                            Fixed memory reserve before per-client estimate
+  PERF_MULTI_MEMORY_PER_CLIENT_KB=1024
+                            Estimated memory per client socket for guard
 Notes:
   - tmp result is always saved under results/multi/tmp/.
   - report result save is always enabled.
@@ -226,6 +313,8 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
+EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -527,6 +616,28 @@ if ! is_uint "${MULTI_SERVER_BIND_PORT}" || (( MULTI_SERVER_BIND_PORT > 65535 ))
   exit 1
 fi
 
+if [[ -z "${MULTI_CLIENTS}" && -z "${PERF_MULTI_CLIENTS:-}" ]]; then
+  memory_max_clients="$(resolve_memory_max_clients)"
+  if is_uint "${memory_max_clients}"; then
+    default_clients_before="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}"
+    default_stream_clients_before="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
+    if is_uint "${EFFECTIVE_DEFAULT_MULTI_CLIENTS}" && (( EFFECTIVE_DEFAULT_MULTI_CLIENTS > memory_max_clients )); then
+      EFFECTIVE_DEFAULT_MULTI_CLIENTS="${memory_max_clients}"
+    fi
+    if is_uint "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" && (( EFFECTIVE_DEFAULT_STREAM_CLIENTS > memory_max_clients )); then
+      EFFECTIVE_DEFAULT_STREAM_CLIENTS="${memory_max_clients}"
+    fi
+    if [[ "${EFFECTIVE_DEFAULT_MULTI_CLIENTS}" != "${default_clients_before}" || "${EFFECTIVE_DEFAULT_STREAM_CLIENTS}" != "${default_stream_clients_before}" ]]; then
+      mem_kb_now="$(memory_available_kb)"
+      mem_mb_now=""
+      if is_uint "${mem_kb_now}"; then
+        mem_mb_now="$(( mem_kb_now / 1024 ))"
+      fi
+      echo "Info: memory guard capped default clients (general ${default_clients_before}->${EFFECTIVE_DEFAULT_MULTI_CLIENTS}, stream ${default_stream_clients_before}->${EFFECTIVE_DEFAULT_STREAM_CLIENTS}, mem_available_mb=${mem_mb_now:-unknown})."
+    fi
+  fi
+fi
+
 PATTERNS=("${MULTI_PATTERN_LIST[@]}")
 if [[ "${#EXPLICIT_PATTERNS[@]}" -gt 0 ]]; then
   PATTERNS=("${EXPLICIT_PATTERNS[@]}")
@@ -573,6 +684,8 @@ RUN_ENV+=(PERF_MULTI_MONITOR_HWM="${MULTI_MONITOR_HWM}")
 RUN_ENV+=(PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS="${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}")
 RUN_ENV+=(PERF_MULTI_SERVER_BIND_PORT="${MULTI_SERVER_BIND_PORT}")
 RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${DISABLE_RESOURCE_METRICS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_CLIENTS="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}")
+RUN_ENV+=(PERF_MULTI_DEFAULT_STREAM_CLIENTS="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}")
 if [[ -n "${MULTI_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${MULTI_CLIENTS}")
 fi
@@ -591,7 +704,6 @@ fi
 if [[ -n "${MULTI_RCVTIMEO_MS}" ]]; then
   RUN_ENV+=(PERF_MULTI_RCVTIMEO_MS="${MULTI_RCVTIMEO_MS}")
 fi
-
 if [[ "${HAS_EXPLICIT_RESULTS_DIR}" -eq 0 && -n "${PERF_RESULTS_DIR:-}" ]]; then
   RUN_ENV+=(PERF_RESULTS_DIR="${PERF_RESULTS_DIR:-}")
 fi
@@ -599,6 +711,7 @@ fi
 SHOW_TOTAL_TIME=1
 FAILED_PATTERNS=()
 SKIPPED_PATTERNS=()
+SKIP_REASONS=()
 RUN_PATTERNS=()
 for raw_pattern in "${PATTERNS[@]}"; do
   pattern="$(printf '%s' "${raw_pattern}" | tr '[:lower:]' '[:upper:]')"
@@ -613,15 +726,23 @@ for raw_pattern in "${PATTERNS[@]}"; do
   pattern_clients="${MULTI_CLIENTS:-${PERF_MULTI_CLIENTS:-}}"
   if [[ -z "${pattern_clients}" ]]; then
     if [[ "${pattern}" == "MULTI_STREAM" || "${pattern}" == "MULTI_STREAM_CALLBACK" || "${pattern}" == "MULTI_STREAM_LEN32BE" ]]; then
-      pattern_clients="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
+      pattern_clients="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}"
     else
-      pattern_clients="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
+      pattern_clients="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}"
     fi
   fi
 
   if ! ensure_nofile_limit "${pattern_clients}"; then
-    echo "SKIP,current,${pattern},all,${NOFILE_SKIP_REASON}" >&2
+    echo "SKIP,current,${pattern},all,nofile:${NOFILE_SKIP_REASON}" >&2
     SKIPPED_PATTERNS+=("${pattern}")
+    SKIP_REASONS+=("nofile preflight unmet (${NOFILE_SKIP_REASON})")
+    continue
+  fi
+
+  if ! ensure_memory_budget "${pattern_clients}"; then
+    echo "SKIP,current,${pattern},all,memory:${MEMORY_SKIP_REASON}" >&2
+    SKIPPED_PATTERNS+=("${pattern}")
+    SKIP_REASONS+=("memory preflight unmet (${MEMORY_SKIP_REASON})")
     continue
   fi
 
@@ -632,8 +753,8 @@ if [[ "${#RUN_PATTERNS[@]}" -eq 0 ]]; then
   if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
     echo
     echo "## Skips"
-    for pattern in "${SKIPPED_PATTERNS[@]}"; do
-      echo "- ${pattern}: nofile preflight unmet"
+    for i in "${!SKIPPED_PATTERNS[@]}"; do
+      echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
     done
   fi
   exit 0
@@ -666,8 +787,8 @@ fi
 if [[ "${#SKIPPED_PATTERNS[@]}" -gt 0 ]]; then
   echo
   echo "## Skips"
-  for pattern in "${SKIPPED_PATTERNS[@]}"; do
-    echo "- ${pattern}: nofile preflight unmet"
+  for i in "${!SKIPPED_PATTERNS[@]}"; do
+    echo "- ${SKIPPED_PATTERNS[i]}: ${SKIP_REASONS[i]}"
   done
 fi
 

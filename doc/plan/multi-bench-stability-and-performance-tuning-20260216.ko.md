@@ -11,15 +11,15 @@
 ### A. 공통 러너 경계 안정화
 - 파일: `core/bench/benchwithzmq/multi/common/bench_common_multi.hpp`
 - 변경:
-  - drain 단계를 단순 sleep에서 `in-flight(send_total - recv_total) == 0` 또는 timeout까지 대기하는 방식으로 변경.
-  - 경계 전환 시 이전 단계 in-flight 잔류가 다음 사이즈 측정에 섞이는 문제를 줄임.
+  - drain 단계를 단순 sleep에서 `미수신 잔여량(send_total - recv_total) == 0` 또는 timeout까지 대기하는 방식으로 변경.
+  - 경계 전환 시 이전 단계의 잔여 메시지가 다음 사이즈 측정에 섞이는 문제를 줄임.
 
 ### B. STREAM 멀티 안정화/튜닝
 - 파일:
   - `core/bench/benchwithzmq/multi/zlink/bench_zlink_multi_stream.cpp`
   - `core/bench/benchwithzmq/multi/libzmq/bench_zmq_multi_stream.cpp`
 - 변경:
-  - stream 기본값 튜닝: `BENCH_MULTI_STREAM_SEND_WORKERS=3`, `BENCH_MULTI_STREAM_SEND_BATCH=64`
+  - stream 기본값 튜닝: `BENCH_MULTI_STREAM_SEND_WORKERS=3`
   - stream 전용 drain 최소값 추가: `BENCH_MULTI_STREAM_DRAIN_MS` (기본 2000ms)
   - sender partial-frame 정합성 깨짐 이슈(사이즈 전환 시 바이트열 손상) 제거를 위해 송신 경로를 안전 동작으로 복귀.
 
@@ -34,27 +34,25 @@
 ### D. 스크립트 기본값/UX 정리
 - 파일: `core/bench/benchwithzmq/multi/run_benchmarks.sh`
 - 변경:
-  - stream 튜닝 기본값 반영:
-    - `--stream-send-workers` 기본 3
-    - `--stream-send-batch` 기본 64
+  - stream 튜닝 기본값 반영: `--stream-send-workers` 기본 3
 
 ## 3) 재현/검증 명령
 
 ### STREAM 시나리오 기준 측정
 ```bash
 LD_LIBRARY_PATH=core/build/linux-x64/lib ./core/build/linux-x64/bin/test_scenario_stream_zlink \
-  --scenario s2 --transport tcp --ccu 10000 --size 64 --inflight 30 --warmup 1 --measure 3 \
-  --io-threads 4 --send-batch 30 --port 28170
+  --scenario s2 --transport tcp --ccu 10000 --size 64 --warmup 1 --measure 3 \
+  --io-threads 4 --port 28170
 
 LD_LIBRARY_PATH=core/build/linux-x64/lib ./core/build/linux-x64/bin/test_scenario_stream_zlink \
-  --scenario s2 --transport tcp --ccu 10000 --size 1024 --inflight 30 --warmup 1 --measure 3 \
-  --io-threads 4 --send-batch 30 --port 28171
+  --scenario s2 --transport tcp --ccu 10000 --size 1024 --warmup 1 --measure 3 \
+  --io-threads 4 --port 28171
 ```
 
 ### STREAM multi(zlink-only) 측정
 ```bash
 cd core/bench/benchwithzmq/multi
-./run_benchmarks.sh --pattern stream --transport tcp --clients 10000 --inflight 30 \
+./run_benchmarks.sh --pattern stream --transport tcp --clients 10000 \
   --duration 3 --io-threads 4 --msg-sizes 64,1024 --runs 1 --zlink-only --hwm 1000000
 ```
 
@@ -70,10 +68,10 @@ cd core/bench/benchwithzmq/multi
 ## 4) 결과 요약
 
 ### STREAM (zlink)
-- 시나리오(s2, ccu=10000, inflight=30, 3s)
+- 시나리오(s2, ccu=10000, 3s)
   - 64B: `3,056,480 msg/s`
   - 1024B: `1,397,550 msg/s`
-- 멀티 벤치(zlink-only, 동일 ccu/inflight, 3s)
+- 멀티 벤치(zlink-only, 동일 ccu, 3s)
   - 64B: `2,257,130 msg/s`
   - 1024B: `1,581,840 msg/s`
 
@@ -94,4 +92,3 @@ cd core/bench/benchwithzmq/multi
 - 측정/출력/집계 깨짐, 패턴 전환 크래시, PUBSUB rc=-6는 코드 레벨로 정리됨.
 - STREAM 64B 절대치와 소메시지(64/256B)에서의 zlink-std_zmq 편차는 여전히 런타임 노이즈/엔진 성능 특성 영향이 남아 있음.
 - 동일 조건(zlink vs zmq 동일) 원칙은 유지됨.
-

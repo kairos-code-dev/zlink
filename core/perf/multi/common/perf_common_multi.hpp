@@ -113,28 +113,6 @@ inline int resolve_multi_size_transition_drain_ms (int fallback_drain_ms)
       0);
 }
 
-inline size_t resolve_multi_send_attempts (size_t owned_size, size_t payload_size)
-{
-    const size_t safe_owned = std::max<size_t> (1, owned_size);
-    const int explicit_batch =
-      resolve_multi_int_env ("PERF_MULTI_SEND_BATCH", 0, 0);
-    if (explicit_batch > 0) {
-        return std::max<size_t> (
-          1,
-          std::min<size_t> (safe_owned, static_cast<size_t> (explicit_batch)));
-    }
-
-    size_t capped = safe_owned;
-    if (payload_size >= 262144)
-        capped = std::min<size_t> (safe_owned, 8);
-    else if (payload_size >= 131072)
-        capped = std::min<size_t> (safe_owned, 16);
-    else if (payload_size >= 65536)
-        capped = std::min<size_t> (safe_owned, 32);
-
-    return std::max<size_t> (1, capped);
-}
-
 inline int resolve_multi_default_hwm (const char *pattern, int clients)
 {
     (void) pattern;
@@ -175,7 +153,7 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.client_workers = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_WORKERS", resolve_multi_default_client_workers (), 1);
     settings.client_poll_timeout_ms = resolve_multi_int_env (
-      "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 1, 0);
+      "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0, 0);
     settings.client_idle_sleep_us = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_IDLE_SLEEP_US", 0, 0);
     settings.send_backoff_us =

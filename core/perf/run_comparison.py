@@ -3,6 +3,7 @@
 core/perf - zlink benchmark runner
 """
 import datetime
+import collections
 import os
 import platform
 import queue
@@ -56,6 +57,7 @@ MULTI_PATTERN_SUFFIX = {
     "MULTI_STREAM_LEN32BE": "stream_len32be",
 }
 MULTI_ECHO_PATTERNS = {
+    "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
     "MULTI_STREAM",
@@ -296,6 +298,43 @@ def parse_env_int(name, default, *fallback_names):
         return int(val)
     except ValueError:
         return default
+
+
+def resolve_output_capture_limit():
+    return max(1024, parse_env_int("PERF_CAPTURE_MAX_BYTES", 4 * 1024 * 1024))
+
+
+class BoundedTextBuffer:
+    def __init__(self, limit):
+        self._limit = max(1024, int(limit))
+        self._chunks = collections.deque()
+        self._size = 0
+        self._truncated = False
+
+    def append(self, text):
+        if not text:
+            return
+
+        if len(text) >= self._limit:
+            self._chunks.clear()
+            tail = text[-self._limit :]
+            self._chunks.append(tail)
+            self._size = len(tail)
+            self._truncated = True
+            return
+
+        self._chunks.append(text)
+        self._size += len(text)
+        while self._size > self._limit and self._chunks:
+            removed = self._chunks.popleft()
+            self._size -= len(removed)
+            self._truncated = True
+
+    def text(self):
+        out = "".join(self._chunks)
+        if not self._truncated:
+            return out
+        return "[output truncated]\n" + out
 
 
 def resource_metrics_enabled():
@@ -544,8 +583,9 @@ def run_command_with_metrics(
         bufsize=1,
     )
     out_queue = queue.Queue()
-    stdout_chunks = []
-    stderr_chunks = []
+    capture_limit = resolve_output_capture_limit()
+    stdout_buffer = BoundedTextBuffer(capture_limit)
+    stderr_buffer = BoundedTextBuffer(capture_limit)
     stream_done = {"stdout": False, "stderr": False}
 
     def _reader(pipe, stream_name):
@@ -580,14 +620,14 @@ def run_command_with_metrics(
                 continue
 
             if stream_name == "stdout":
-                stdout_chunks.append(line)
+                stdout_buffer.append(line)
                 if on_stdout_line is not None:
                     try:
                         on_stdout_line(line)
                     except Exception:
                         pass
             else:
-                stderr_chunks.append(line)
+                stderr_buffer.append(line)
                 if on_stderr_line is not None:
                     try:
                         on_stderr_line(line)
@@ -699,8 +739,8 @@ def run_command_with_metrics(
 
     return {
         "returncode": proc.returncode,
-        "stdout": "".join(stdout_chunks),
-        "stderr": "".join(stderr_chunks),
+        "stdout": stdout_buffer.text(),
+        "stderr": stderr_buffer.text(),
         "timed_out": timed_out,
         "cpu_pct": cpu_pct,
         "mem_mb": end_mem_mb,
@@ -1246,13 +1286,14 @@ def run_multi_sizes_test_stream_shared(
         server_proc = None
         close_server_sampler = None
         sample_server_metrics = None
-        server_stdout_lines = []
-        server_stderr_lines = []
+        capture_limit = resolve_output_capture_limit()
+        server_stdout_buffer = BoundedTextBuffer(capture_limit)
+        server_stderr_buffer = BoundedTextBuffer(capture_limit)
         out_queue = queue.Queue()
         reader_threads = []
 
         def append_server_stdout_line(line):
-            server_stdout_lines.append(line)
+            server_stdout_buffer.append(line)
             emit_multi_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
@@ -1314,7 +1355,7 @@ def run_multi_sizes_test_stream_shared(
                 if stream_name == "stdout":
                     append_server_stdout_line(line)
                 else:
-                    server_stderr_lines.append(line)
+                    server_stderr_buffer.append(line)
 
         try:
             server_proc = subprocess.Popen(
@@ -1374,7 +1415,7 @@ def run_multi_sizes_test_stream_shared(
                     if parsed_ep:
                         endpoint = parsed_ep
                 else:
-                    server_stderr_lines.append(line)
+                    server_stderr_buffer.append(line)
 
             if early_status in ("unsupported", "skip"):
                 stop_server()
@@ -1532,8 +1573,8 @@ def run_multi_sizes_test_stream_shared(
             drain_server_output()
             server_rc = server_proc.returncode if server_proc else 0
 
-            combined_stdout = "".join(server_stdout_lines) + client_stdout
-            combined_stderr = "".join(server_stderr_lines) + client_stderr
+            combined_stdout = server_stdout_buffer.text() + client_stdout
+            combined_stderr = server_stderr_buffer.text() + client_stderr
             stderr_lower = combined_stderr.lower()
 
             parsed = {}
@@ -1766,13 +1807,14 @@ def run_multi_sizes_test_split(
         server_proc = None
         close_server_sampler = None
         sample_server_metrics = None
-        server_stdout_lines = []
-        server_stderr_lines = []
+        capture_limit = resolve_output_capture_limit()
+        server_stdout_buffer = BoundedTextBuffer(capture_limit)
+        server_stderr_buffer = BoundedTextBuffer(capture_limit)
         out_queue = queue.Queue()
         reader_threads = []
 
         def append_server_stdout_line(line):
-            server_stdout_lines.append(line)
+            server_stdout_buffer.append(line)
             emit_multi_result_metrics_from_line(
                 line, transport, expected_sizes, result_line_callback
             )
@@ -1834,7 +1876,7 @@ def run_multi_sizes_test_split(
                 if stream_name == "stdout":
                     append_server_stdout_line(line)
                 else:
-                    server_stderr_lines.append(line)
+                    server_stderr_buffer.append(line)
 
         try:
             server_proc = subprocess.Popen(
@@ -1894,7 +1936,7 @@ def run_multi_sizes_test_split(
                     if parsed_ep:
                         endpoint = parsed_ep
                 else:
-                    server_stderr_lines.append(line)
+                    server_stderr_buffer.append(line)
 
             if early_status in ("unsupported", "skip"):
                 stop_server()
@@ -2010,8 +2052,8 @@ def run_multi_sizes_test_split(
             drain_server_output()
             server_rc = server_proc.returncode if server_proc else 0
 
-            combined_stdout = "".join(server_stdout_lines) + client_stdout
-            combined_stderr = "".join(server_stderr_lines) + client_stderr
+            combined_stdout = server_stdout_buffer.text() + client_stdout
+            combined_stderr = server_stderr_buffer.text() + client_stderr
             stderr_lower = combined_stderr.lower()
 
             parsed = {}
@@ -3265,16 +3307,16 @@ def build_effective_option_items(args, selected_patterns):
         timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
         items.extend(
             [
-                ("multi_warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3))),
-                ("multi_duration_seconds", str(parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))),
-                ("multi_clients", resolve_clients_meta(selected_patterns) or "1000"),
-                ("multi_hwm", str(base_hwm)),
-                ("multi_sndhwm", str(sndhwm)),
-                ("multi_rcvhwm", str(rcvhwm)),
-                ("multi_sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 5000))),
-                ("multi_rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 5000))),
+                ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3))),
+                ("duration_seconds", str(parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))),
+                ("clients", resolve_clients_meta(selected_patterns) or "1000"),
+                ("hwm", str(base_hwm)),
+                ("sndhwm", str(sndhwm)),
+                ("rcvhwm", str(rcvhwm)),
+                ("sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 5000))),
+                ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 5000))),
                 (
-                    "multi_timeout_seconds",
+                    "timeout_seconds",
                     str(timeout_override) if timeout_override > 0 else "auto",
                 ),
             ]

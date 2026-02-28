@@ -6,8 +6,6 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
-#include <iomanip>
-#include <iostream>
 #include <string>
 #include <thread>
 
@@ -23,35 +21,8 @@ struct multi_bench_settings_t
     int size_transition_drain_ms;
     int client_workers;
     int client_poll_timeout_ms;
-    int client_idle_sleep_us;
-    int send_backoff_us;
     int connect_ready_timeout_ms;
 };
-
-inline bool bench_show_prep ()
-{
-    static const bool enabled =
-      std::getenv ("PERF_SHOW_PREP") != NULL
-      && std::strcmp (std::getenv ("PERF_SHOW_PREP"), "0") != 0;
-    return enabled;
-}
-
-inline void print_prep_result (const std::string &lib_type,
-                               const std::string &pattern,
-                               const std::string &transport,
-                               size_t size,
-                               double connect_ms,
-                               double ready_wait_ms)
-{
-    if (!bench_show_prep ())
-        return;
-    const double printed_connect_ms = ready_wait_ms >= 0.01 ? connect_ms : 0.0;
-
-    std::cout << "PREP," << lib_type << "," << pattern << "," << transport << ","
-              << size << ",connect_ms," << std::fixed << std::setprecision (2)
-              << printed_connect_ms << ",ready_ms," << ready_wait_ms
-              << std::endl;
-}
 
 inline int resolve_multi_int_env (const char *env_name,
                                   int default_value,
@@ -89,6 +60,7 @@ inline bool multi_pattern_uses_default_drain (const char *pattern)
            || std::strcmp (pattern, "MULTI_DEALER_ROUTER") == 0
            || std::strcmp (pattern, "MULTI_ROUTER_ROUTER") == 0
            || std::strcmp (pattern, "MULTI_PUBSUB") == 0
+           || std::strcmp (pattern, "MULTI_GATEWAY") == 0
            || is_stream_variant;
 }
 
@@ -104,9 +76,8 @@ inline int resolve_multi_drain_ms ()
     return 0;
 }
 
-inline int resolve_multi_size_transition_drain_ms (int fallback_drain_ms)
+inline int resolve_multi_size_transition_drain_ms ()
 {
-    (void) fallback_drain_ms;
     return resolve_multi_int_env (
       "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
       300,
@@ -149,15 +120,11 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.settle_ms = resolve_multi_int_env ("PERF_MULTI_SETTLE_MS", 500, 0);
     settings.drain_ms = resolve_multi_drain_ms ();
     settings.size_transition_drain_ms =
-      resolve_multi_size_transition_drain_ms (settings.drain_ms);
+      resolve_multi_size_transition_drain_ms ();
     settings.client_workers = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_WORKERS", resolve_multi_default_client_workers (), 1);
     settings.client_poll_timeout_ms = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0, 0);
-    settings.client_idle_sleep_us = resolve_multi_int_env (
-      "PERF_MULTI_CLIENT_IDLE_SLEEP_US", 0, 0);
-    settings.send_backoff_us =
-      resolve_multi_int_env ("PERF_MULTI_SEND_BACKOFF_US", 20, 0);
     settings.connect_ready_timeout_ms =
       resolve_multi_int_env ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0);
     return settings;

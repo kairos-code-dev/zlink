@@ -177,7 +177,7 @@ inline void print_perf_result_line (const client_options_t &opt,
 
     const double throughput =
       size > 0 ? (throughput_bps / static_cast<double> (size)) : 0.0;
-    const double bandwidth = throughput_bps / 1000000.0;
+    const double bandwidth = (throughput_bps * 2.0) / 1000000.0;
     const double latency = p50_us * 0.5;
     const double latency_p95 = p95_us * 0.5;
     const double latency_p99 = p99_us * 0.5;

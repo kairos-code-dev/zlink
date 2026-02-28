@@ -499,8 +499,6 @@ void receiver_t::send_heartbeat ()
 {
     socket_base_t *dealer = NULL;
     std::string last_registry;
-    zlink_routing_id_t rid;
-    rid.size = 0;
     while (_stop.get () == 0) {
         std::string registry;
         std::string service;
@@ -510,7 +508,6 @@ void receiver_t::send_heartbeat ()
             registry = _registry_endpoint;
             service = _service_name;
             advertise = _advertise_endpoint;
-            rid = _routing_id;
         }
 
         if (registry != last_registry) {
@@ -524,8 +521,14 @@ void receiver_t::send_heartbeat ()
         if (!dealer && !registry.empty ()) {
             dealer = _ctx->create_socket (ZLINK_DEALER);
             if (dealer) {
-                if (rid.size > 0)
-                    dealer->setsockopt (ZLINK_ROUTING_ID, rid.data, rid.size);
+                const int linger = 0;
+                const int sndtimeo_ms = 100;
+                dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
+                dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                                    sizeof (sndtimeo_ms));
+                // Heartbeat sender must not reuse register DEALER identity.
+                // Using the same routing-id can cause ROUTER identity takeover/
+                // rejection races under high client counts.
                 dealer->connect (registry.c_str ());
             }
         }

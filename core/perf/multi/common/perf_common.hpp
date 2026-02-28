@@ -184,34 +184,6 @@ private:
     std::vector<double> _samples;
 };
 
-inline bool bench_blocking_send_enabled()
-{
-    static int enabled = -1;
-    if (enabled >= 0)
-        return enabled != 0;
-
-    const char *explicit_mode = std::getenv("PERF_MULTI_BLOCKING_SEND");
-    if (explicit_mode && std::strcmp(explicit_mode, "0") != 0) {
-        enabled = 1;
-        return true;
-    }
-
-    const char *profile = std::getenv("PERF_PROFILE");
-    if (profile && std::strcmp(profile, "realistic") == 0) {
-        enabled = 1;
-        return true;
-    }
-
-    enabled = 0;
-    return false;
-}
-
-inline int bench_send_flags(int base_flags = 0)
-{
-    return bench_blocking_send_enabled() ? base_flags
-                                         : (base_flags | ZLINK_DONTWAIT);
-}
-
 inline int bench_io_threads()
 {
     return parse_positive_env("PERF_IO_THREADS", 0);
@@ -488,7 +460,12 @@ inline void print_result(const std::string& lib_type,
                          double latency_p95,
                          double latency_p99) {
     const bool is_echo_pattern =
-      pattern == "MULTI_DEALER_ROUTER" || pattern == "MULTI_ROUTER_ROUTER";
+      pattern == "MULTI_DEALER_ROUTER"
+      || pattern == "MULTI_ROUTER_ROUTER"
+      || pattern == "MULTI_GATEWAY"
+      || pattern == "MULTI_STREAM"
+      || pattern == "MULTI_STREAM_CALLBACK"
+      || pattern == "MULTI_STREAM_LEN32BE";
     const double direction_factor = is_echo_pattern ? 2.0 : 1.0;
     const double bandwidth_mb_s =
       (throughput * static_cast<double>(size) * direction_factor) / 1000000.0;

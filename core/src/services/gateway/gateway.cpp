@@ -25,6 +25,11 @@ static void ensure_gateway_routing_id (socket_base_t *socket_,
 {
     if (!socket_)
         return;
+    if (override_id_ && !override_id_->empty ()) {
+        // Explicit routing id must take precedence over any auto-generated id.
+        zlink::discovery::set_socket_routing_id (socket_, override_id_, NULL);
+        return;
+    }
     unsigned char buf[256];
     size_t size = sizeof (buf);
     if (socket_->getsockopt (ZLINK_ROUTING_ID, buf, &size) != 0)

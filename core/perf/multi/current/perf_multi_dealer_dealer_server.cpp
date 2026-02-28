@@ -19,8 +19,6 @@ namespace {
 static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const char *k_token = "dealer_dealer";
 static const int k_server_socket_type = ZLINK_DEALER;
-static const bool k_server_router_echo = false;
-static const bool k_pubsub_mode = false;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 
@@ -108,126 +106,33 @@ inline unsigned long long wallclock_now_us ()
         .count ());
 }
 
-inline bool relay_router_once (void *server,
-                               std::vector<char> &id_buf,
-                               std::vector<char> &payload_buf,
-                               int poll_timeout_ms)
-{
-    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
-    const int prc = zlink_poll (item, 1, poll_timeout_ms);
-    if (prc < 0)
-        return zlink_errno () == EINTR;
-    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-        return true;
-
-    const int id_len = zlink_recv (server, id_buf.data (), id_buf.size (), 0);
-    if (id_len < 0)
-        return zlink_errno () == EINTR;
-
-    int payload_len = 0;
-    bool has_payload = false;
-    while (true) {
-        int more = 0;
-        size_t more_size = sizeof (more);
-        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0)
-            break;
-        if (!more)
-            break;
-
-        const int len =
-          zlink_recv (server, payload_buf.data (), payload_buf.size (), 0);
-        if (len < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return false;
-        }
-        payload_len = len;
-        has_payload = true;
-    }
-
-    if (zlink_send (
-          server,
-          id_buf.data (),
-          static_cast<size_t> (id_len),
-          ZLINK_SNDMORE)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
-    }
-
-    if (!has_payload) {
-        if (zlink_send (server, "", 0, 0) < 0) {
-            const int err = zlink_errno ();
-            return err == EINTR || err == EAGAIN;
-        }
-        return true;
-    }
-
-    if (zlink_send (
-          server,
-          payload_buf.data (),
-          static_cast<size_t> (payload_len),
-          0)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
-    }
-
-    return true;
-}
-
-inline bool relay_dealer_once (void *server,
-                               std::vector<char> &payload,
-                               int poll_timeout_ms)
-{
-    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
-    const int prc = zlink_poll (item, 1, poll_timeout_ms);
-    if (prc < 0)
-        return zlink_errno () == EINTR;
-    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-        return true;
-
-    const int len = zlink_recv (server, payload.data (), payload.size (), 0);
-    if (len < 0)
-        return zlink_errno () == EINTR;
-
-    if (zlink_send (
-          server,
-          payload.data (),
-          static_cast<size_t> (len),
-          0)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
-    }
-
-    return true;
-}
-
 inline bool publish_once (void *server,
                           std::vector<char> &payload,
-                          int send_backoff_us)
+                          size_t current_msg_size)
 {
-    if (payload.size () >= sizeof (unsigned long long)) {
+    if (current_msg_size == 0)
+        return true;
+
+    const size_t send_size =
+      std::min (payload.size (), std::max<size_t> (static_cast<size_t> (1), current_msg_size));
+
+    if (send_size >= sizeof (unsigned long long)) {
         const unsigned long long now_us = wallclock_now_us ();
         std::memcpy (payload.data (), &now_us, sizeof (now_us));
     }
 
-    if (zlink_send (server, payload.data (), payload.size (), ZLINK_DONTWAIT)
-        >= 0) {
+    if (zlink_send (server, payload.data (), send_size, 0) >= 0)
         return true;
-    }
 
     const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR) {
-        if (send_backoff_us > 0) {
-            std::this_thread::sleep_for (
-              std::chrono::microseconds (send_backoff_us));
-        }
+    if (err == EINTR)
+        return true;
+    if (err == EAGAIN || err == ETIMEDOUT) {
+        std::this_thread::yield ();
         return true;
     }
 
-    return false;
+    return g_stop_requested.load (std::memory_order_acquire);
 }
 
 inline size_t resolve_max_size (const std::vector<size_t> &sizes)
@@ -238,6 +143,69 @@ inline size_t resolve_max_size (const std::vector<size_t> &sizes)
             max_size = sizes[i];
     }
     return max_size;
+}
+
+struct one_way_phase_t
+{
+    one_way_phase_t (size_t msg_size_,
+                     std::chrono::steady_clock::duration duration_,
+                     bool send_active_) :
+        msg_size (msg_size_),
+        duration (duration_),
+        send_active (send_active_)
+    {
+    }
+
+    size_t msg_size;
+    std::chrono::steady_clock::duration duration;
+    bool send_active;
+};
+
+inline void append_one_way_phase (std::vector<one_way_phase_t> *phases,
+                                  size_t msg_size,
+                                  double seconds,
+                                  bool send_active)
+{
+    if (!phases || seconds <= 0.0)
+        return;
+    phases->push_back (one_way_phase_t (
+      msg_size,
+      std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+        std::chrono::duration<double> (seconds)),
+      send_active));
+}
+
+inline std::vector<one_way_phase_t>
+build_one_way_phases (const multi_bench_settings_t &settings,
+                      const std::vector<size_t> &msg_sizes)
+{
+    std::vector<one_way_phase_t> phases;
+    if (msg_sizes.empty ())
+        return phases;
+
+    const double warmup_s = static_cast<double> (std::max (0, settings.warmup_seconds));
+    const double settle_s =
+      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
+    const double throughput_s =
+      static_cast<double> (std::max (1, settings.duration_seconds));
+    const double latency_s =
+      static_cast<double> (std::max (1, settings.duration_seconds));
+    const double drain_s = static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
+    const double transition_s =
+      static_cast<double> (std::max (0, settings.size_transition_drain_ms)) / 1000.0;
+
+    for (size_t i = 0; i < msg_sizes.size (); ++i) {
+        const size_t msg_size = msg_sizes[i];
+        append_one_way_phase (&phases, msg_size, warmup_s, true);
+        append_one_way_phase (&phases, msg_size, settle_s, false);
+        append_one_way_phase (&phases, msg_size, throughput_s, true);
+        append_one_way_phase (&phases, msg_size, latency_s, true);
+        append_one_way_phase (&phases, msg_size, drain_s, false);
+        if ((i + 1) < msg_sizes.size ())
+            append_one_way_phase (&phases, msg_size, transition_s, false);
+    }
+
+    return phases;
 }
 
 inline void print_server_metrics (
@@ -264,32 +232,44 @@ inline void print_server_metrics (
 
 inline bool run_server_loop (void *server,
                              const multi_bench_settings_t &settings,
-                             std::vector<char> *payload,
-                             std::vector<char> *router_id_buf,
-                             std::vector<char> *router_payload_buf)
+                             const std::vector<size_t> &msg_sizes,
+                             std::vector<char> *payload)
 {
-    if (!server || !payload || !router_id_buf || !router_payload_buf)
+    if (!server || !payload)
         return false;
 
+    const std::vector<one_way_phase_t> phases =
+      build_one_way_phases (settings, msg_sizes);
+    size_t phase_index = 0;
+    auto phase_deadline = std::chrono::steady_clock::now ();
+    if (!phases.empty ())
+        phase_deadline += phases[0].duration;
+
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        if (k_pubsub_mode) {
-            if (!publish_once (server, *payload, settings.send_backoff_us))
-                return false;
-            continue;
-        }
-
-        if (k_server_router_echo) {
-            if (!relay_router_once (
-                  server,
-                  *router_id_buf,
-                  *router_payload_buf,
-                  50)) {
-                return false;
+        if (!phases.empty ()) {
+            const auto now = std::chrono::steady_clock::now ();
+            while (phase_index < phases.size () && now >= phase_deadline) {
+                ++phase_index;
+                if (phase_index < phases.size ())
+                    phase_deadline += phases[phase_index].duration;
             }
+
+            if (phase_index >= phases.size ()) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+
+            if (!phases[phase_index].send_active) {
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                continue;
+            }
+
+            if (!publish_once (server, *payload, phases[phase_index].msg_size))
+                return false;
             continue;
         }
 
-        if (!relay_dealer_once (server, *payload, 50))
+        if (!publish_once (server, *payload, payload->size ()))
             return false;
     }
 
@@ -378,12 +358,6 @@ inline int run_server_benchmark (const std::string &lib_name,
         static_cast<size_t> (1024),
         std::max<size_t> (max_size, sizeof (unsigned long long))),
       's');
-    std::vector<char> router_id_buf (
-      std::max<size_t> (256, static_cast<size_t> (1024)),
-      '\0');
-    std::vector<char> router_payload_buf (
-      std::max<size_t> (max_size + 256, static_cast<size_t> (1024)),
-      '\0');
 
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
@@ -401,9 +375,8 @@ inline int run_server_benchmark (const std::string &lib_name,
     const bool loop_ok = run_server_loop (
       server,
       settings,
-      &payload,
-      &router_id_buf,
-      &router_payload_buf);
+      sizes,
+      &payload);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

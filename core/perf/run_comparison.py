@@ -57,12 +57,17 @@ MULTI_PATTERN_SUFFIX = {
     "MULTI_STREAM_LEN32BE": "stream_len32be",
 }
 MULTI_ECHO_PATTERNS = {
-    "MULTI_DEALER_DEALER",
     "MULTI_DEALER_ROUTER",
     "MULTI_ROUTER_ROUTER",
+    "MULTI_GATEWAY",
     "MULTI_STREAM",
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
+}
+MULTI_SIZE_ISOLATION_PATTERNS = {
+    "MULTI_DEALER_DEALER",
+    "MULTI_PUBSUB",
+    "MULTI_SPOT",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -796,8 +801,6 @@ _env_multi_stream_sizes = parse_env_list(
 )
 if _env_multi_stream_sizes:
     MULTI_STREAM_MSG_SIZES = _env_multi_stream_sizes
-elif _env_sizes:
-    MULTI_STREAM_MSG_SIZES = _env_sizes
 else:
     MULTI_STREAM_MSG_SIZES = [64, 256, 1024, 65536]
 
@@ -827,8 +830,6 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
     "PERF_MULTI_CLIENT_WORKERS",
     "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS",
-    "PERF_MULTI_CLIENT_IDLE_SLEEP_US",
-    "PERF_MULTI_SEND_BACKOFF_US",
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
     "PERF_MULTI_MONITOR_HWM",
     "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
@@ -1102,6 +1103,7 @@ def multi_pattern_default_drain_ms(pattern_name):
         "MULTI_DEALER_ROUTER",
         "MULTI_ROUTER_ROUTER",
         "MULTI_PUBSUB",
+        "MULTI_GATEWAY",
         "MULTI_STREAM",
         "MULTI_STREAM_CALLBACK",
         "MULTI_STREAM_LEN32BE",
@@ -1744,7 +1746,15 @@ def run_multi_sizes_test_split(
     if timeout_override > 0:
         timeout_sec = timeout_override
     else:
-        timeout_sec = max(45, duration_seconds * max(1, len(sizes)) * 3 + 20)
+        size_count = max(1, len(sizes))
+        has_large_payload = any(sz >= 131072 for sz in sizes)
+        is_secure_transport = transport in ("tls", "wss")
+        if pattern_name == "MULTI_GATEWAY":
+            timeout_sec = max(120, duration_seconds * size_count * 8 + 40)
+        elif is_secure_transport and has_large_payload:
+            timeout_sec = max(240, duration_seconds * size_count * 12 + 60)
+        else:
+            timeout_sec = max(45, duration_seconds * size_count * 3 + 20)
 
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
@@ -2225,6 +2235,59 @@ def run_multi_sizes_test(
         server_path = os.path.join(BUILD_DIR, names["server"] + EXE_SUFFIX)
         client_path = os.path.join(BUILD_DIR, names["client"] + EXE_SUFFIX)
         if os.path.exists(server_path) and os.path.exists(client_path):
+            if (
+                pattern_name in MULTI_SIZE_ISOLATION_PATTERNS
+                and len(sizes) > 1
+            ):
+                merged = {
+                    "status": "success",
+                    "parsed": {},
+                    "timed_out": False,
+                    "returncode": 0,
+                    "cpu_pct": None,
+                    "mem_mb": None,
+                    "reason": "",
+                    "warnings": [],
+                }
+
+                for size in sizes:
+                    isolated = run_multi_sizes_test_split(
+                        names["server"],
+                        names["client"],
+                        lib_name,
+                        transport,
+                        [size],
+                        pattern_name,
+                        result_line_callback=result_line_callback,
+                    )
+
+                    merged["warnings"].extend(isolated.get("warnings", []))
+                    merged["parsed"].update(isolated.get("parsed", {}))
+
+                    cpu_pct = isolated.get("cpu_pct")
+                    if cpu_pct is not None:
+                        if merged["cpu_pct"] is None:
+                            merged["cpu_pct"] = cpu_pct
+                        else:
+                            merged["cpu_pct"] = max(merged["cpu_pct"], cpu_pct)
+
+                    mem_mb = isolated.get("mem_mb")
+                    if mem_mb is not None:
+                        if merged["mem_mb"] is None:
+                            merged["mem_mb"] = mem_mb
+                        else:
+                            merged["mem_mb"] = max(merged["mem_mb"], mem_mb)
+
+                    if isolated.get("status") != "success":
+                        merged["status"] = isolated.get("status", "fail")
+                        merged["timed_out"] = isolated.get("timed_out", False)
+                        merged["returncode"] = isolated.get("returncode", -1)
+                        reason = isolated.get("reason", "size_case_failed")
+                        merged["reason"] = f"{reason}_size_{size}"
+                        return merged
+
+                return merged
+
             return run_multi_sizes_test_split(
                 names["server"],
                 names["client"],

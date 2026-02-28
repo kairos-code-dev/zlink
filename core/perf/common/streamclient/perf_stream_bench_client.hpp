@@ -223,7 +223,8 @@ class bench_client_t : public bench_client_iface_t
                       size > 0
                         ? (m.throughput_bps / static_cast<double> (size))
                         : 0.0;
-                    const double bandwidth = m.throughput_bps / 1000000.0;
+                    const double bandwidth =
+                      (m.throughput_bps * 2.0) / 1000000.0;
                     const double latency_mean_rtt =
                       m.mean_us > 0.0 ? m.mean_us : m.p50_us;
                     const double latency_p95_rtt =

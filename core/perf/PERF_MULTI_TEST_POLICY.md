@@ -16,9 +16,9 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 2-phase: throughput(duration) → latency(duration) |
+| 측정 모델 | time-based, 패턴별 phase: echo는 2-phase(throughput→latency), one-way는 throughput phase 내 latency 샘플링 |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
-| latency | latency 전용 duration phase (패턴별 제수 적용) |
+| latency | echo는 latency 전용 phase, one-way는 throughput phase 샘플링 |
 | 대표값 | median (runs > 1) |
 | 기본 runs | 3 |
 | 결과 출력 | RESULT line |
@@ -30,12 +30,12 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 | 역할 | 바이너리 | 책임 |
 |------|----------|------|
 | server | `perf_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
-| client | `perf_multi_<pattern>_client(.exe)` | connect, throughput phase + latency phase 측정, client-side 리소스 보고 |
+| client | `perf_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
 
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
 │  bind(endpoint)                      │    │  connect(endpoint) × N clients        │
-│  relay/echo received messages        │◄──►│  send/recv (throughput) + latency phase │
+│  relay/echo received messages        │◄──►│  send/recv throughput + latency 샘플링  │
 │  RESULT: server_cpu_pct, server_mem_mb│    │  RESULT: throughput, latency, p95/p99, │
 │  READY/DONE protocol on stdout       │    │         client_cpu_pct, client_mem_mb  │
 └──────────────────────────────────────┘    └───────────────────────────────────────┘
@@ -50,12 +50,12 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 | 1. server 시작 | 스크립트가 server 바이너리를 spawn |
 | 2. server READY | server가 bind 완료 후 stdout에 `READY,<endpoint>` 출력 |
 | 3. client 시작 | 스크립트가 READY를 읽은 후 client 바이너리를 spawn (`--endpoint <endpoint>`) |
-| 4. 측정 수행 | client가 throughput phase 후 latency phase를 순차 수행 |
+| 4. 측정 수행 | client가 패턴별 phase 정책(echo 2-phase / one-way 단일 throughput phase 샘플링)으로 측정 |
 | 5. client 종료 | client가 RESULT line 출력 후 종료 (exit code 0) |
 | 6. server 종료 | 스크립트가 server에 SIGTERM (Linux) / TerminateProcess (Windows) 전송, server가 RESULT line 출력 후 종료 |
 
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
-- phase 전환(throughput phase / latency phase)은 **client 프로세스 내부**에서 제어한다. server는 phase를 인식하지 않으며 수신 메시지를 단순 relay한다.
+- phase 전환(또는 단일 phase 내 샘플링)은 **client 프로세스 내부**에서 제어한다. server는 phase를 인식하지 않으며 수신 메시지를 단순 relay한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 
 #### 소스 파일 구조
@@ -1048,8 +1048,8 @@ active warmup 시 pre-measure drain: `PERF_MULTI_WARMUP_DRAIN_MS` (기본 `max(P
 
 | 방향 | 단위 | 의미 | 측정 지점 | 패턴 |
 |------|------|------|-----------|------|
-| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
-| one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT |
+| echo | `ops/s` | 왕복 완료 수/초 | client 측 recv | MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
+| one-way | `msg/s` | 단방향 수신 수/초 | receiver 측 recv | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 - echo 패턴: client가 send → server echo → client recv. 1 rtt = 2 message hops. client가 echo를 수신한 횟수를 카운트한다.
 - one-way 패턴: sender가 송신한 메시지를 receiver가 수신한다(서버 relay 또는 server push 포함). 1 msg = 1 message hop으로 보고, receiver 수신 수를 카운트한다.
@@ -1078,43 +1078,40 @@ throughput과 메시지 크기로부터 실제 네트워크 전송량(MB/s)을 �
 
 ## 9. Latency 측정
 
-latency는 throughput과 **분리된 latency phase**에서 측정한다.
+latency는 패턴 유형에 따라 측정 방식을 분리한다.
 
 ### 9.0 phase 순서
 
 각 size는 아래 순서로 측정한다.
 
-1. throughput phase: warmup → settle → duration(throughput 계산)
-2. latency phase: duration(latency 샘플 수집)
-3. drain/size transition drain
+1. echo 패턴: warmup → settle → throughput phase → latency phase → drain/size transition drain
+2. one-way 패턴: warmup → settle → throughput phase(동시 latency 샘플링) → drain/size transition drain
 
-- throughput phase와 latency phase는 동일 실행/동일 설정(transport, clients, socket options)으로 순차 수행한다.
-- 두 phase는 시간적으로 분리되므로, 동일 순간 부하는 아니지만 동일 조건의 재현 가능한 측정값을 제공한다.
+- echo 패턴의 throughput/latency phase는 동일 실행/동일 설정(transport, clients, socket options)에서 순차 수행한다.
+- one-way 패턴은 backlog 누적을 줄이기 위해 throughput phase에서 latency 샘플을 같이 수집한다.
 
 ### 9.1 패턴별 divisor 규칙
 
 | 유형 | divisor | 적용 패턴 |
 |------|---------|-----------|
-| 양방향 RTT | `roundtrip_count * 2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
-| 양방향 RTT (별도 1:1) | `roundtrip_count * 2` | MULTI_DEALER_DEALER |
-| 단방향 | `received_count` | MULTI_PUBSUB |
-| 단방향 멀티홉 | `received_count` | MULTI_GATEWAY, MULTI_SPOT |
+| 양방향 RTT | `roundtrip_count * 2` | MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE |
+| 단방향 | `received_count` | MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT |
 
 ### 9.2 계산식
 
-- mean: latency phase에서 수집한 샘플의 산술 평균
-- p95: latency phase 샘플의 95th percentile
-- p99: latency phase 샘플의 99th percentile
+- mean: 측정 phase에서 수집한 샘플의 산술 평균
+- p95: 샘플의 95th percentile
+- p99: 샘플의 99th percentile
 
-- RTT 샘플: `sample_us = elapsed_us / (roundtrip_count * 2)`
-- 단방향 샘플: `sample_us = elapsed_us / received_count`
+- RTT 샘플(echo): `sample_us = elapsed_us / (roundtrip_count * 2)`
+- 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
 - warmup/drain 구간의 데이터는 계산에서 제외한다.
 
 ### 9.3 one-way server-push 보정 규칙
 
-`MULTI_PUBSUB`, `MULTI_GATEWAY`, `MULTI_SPOT`는 server가 지속적으로 publish/push하므로, latency phase에서 큐 backlog가 곧바로 샘플 왜곡으로 이어질 수 있다. 이를 완화하기 위해 아래 규칙을 적용한다.
+`MULTI_DEALER_DEALER`, `MULTI_PUBSUB`, `MULTI_SPOT`는 server가 지속적으로 publish/push하므로, 큐 backlog가 곧바로 샘플 왜곡으로 이어질 수 있다. 이를 완화하기 위해 아래 규칙을 적용한다.
 
-- latency phase worker 수는 throughput phase와 동일한 `client_workers` 계산식을 사용한다(1 worker 강제 금지).
+- one-way latency 샘플링 worker 수는 throughput 처리 worker와 동일한 `client_workers` 계산식을 사용한다(1 worker 강제 금지).
 - 소켓 drain 루프에서 latency 샘플은 **drain cycle 내 최신 메시지 1개만** 반영한다(오래된 backlog 메시지 다중 반영 금지).
 - mean은 전체 worker의 `lat_sum/lat_count`로 계산한다.
 - p95/p99는 worker별 p95/p99를 각 worker `lat_count`로 가중 평균하여 합성한다.
@@ -1130,8 +1127,8 @@ latency는 throughput과 **분리된 latency phase**에서 측정한다.
 | throughput | `throughput` | echo: `ops/s`, one-way: `msg/s` | `recv_count / duration_seconds` — 섹션 8.1 참조 |
 | bandwidth | `bandwidth` | MB/s | 섹션 8.3 참조 |
 | latency | `latency` | us | 패턴별 divisor 규칙 적용 (섹션 9.1) |
-| latency p95 | `latency_p95` | us | latency phase 샘플 95th percentile |
-| latency p99 | `latency_p99` | us | latency phase 샘플 99th percentile |
+| latency p95 | `latency_p95` | us | 측정 샘플 95th percentile (echo는 latency phase, one-way는 throughput phase 샘플링) |
+| latency p99 | `latency_p99` | us | 측정 샘플 99th percentile (echo는 latency phase, one-way는 throughput phase 샘플링) |
 
 - Tier 1 메트릭이 누락되면 해당 조합은 fail로 처리한다.
 - `expected`/`actual` 완료 판정은 Tier 1 RESULT line만 카운트한다 (조합당 5줄: throughput + bandwidth + latency + latency_p95 + latency_p99).
@@ -1287,13 +1284,12 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MULTI_CLIENT_WORKERS` | 클라이언트 thread-pool 워커 수 (소켓 소유 스레드 수) | 4 |
 | `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 워커 poll 타임아웃(ms) | 1 |
-| `PERF_MULTI_CLIENT_IDLE_SLEEP_US` | 클라이언트 워커 유휴 backoff(us) | 0 |
-| `PERF_MULTI_SEND_BACKOFF_US` | 송신 블록 시 backoff(us) | 20 |
-| `PERF_MULTI_BLOCKING_SEND` | 블로킹 전송 모드 | 0 |
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 5000 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 5000 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
+| `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 
+- `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다 (항상 blocking send, 불필요 backoff 제거).
 - `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 소켓 소유 thread-pool 루프에서 readiness 기반으로 즉시 drain한다.
 
 ### 12.5 프로세스 조정
@@ -1396,10 +1392,10 @@ def bandwidth_mbps(throughput, msg_size, is_echo):
     return throughput * msg_size * multiplier / 1_000_000
 
 def latency_rtt_us(elapsed_us, roundtrip_count):
-    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_STREAM*, MULTI_DEALER_DEALER(별도 1:1)"""
+    """MULTI_DEALER_ROUTER, MULTI_ROUTER_*, MULTI_GATEWAY, MULTI_STREAM*"""
     return elapsed_us / max(1, roundtrip_count * 2)
 
 def latency_oneway_us(elapsed_us, count):
-    """MULTI_PUBSUB, MULTI_GATEWAY, MULTI_SPOT: count=received_count"""
+    """MULTI_DEALER_DEALER, MULTI_PUBSUB, MULTI_SPOT: count=received_count"""
     return elapsed_us / max(1, count)
 ```

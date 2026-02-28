@@ -19,8 +19,6 @@ namespace {
 static const char *k_pattern = "MULTI_DEALER_ROUTER";
 static const char *k_token = "dealer_router";
 static const int k_server_socket_type = ZLINK_ROUTER;
-static const bool k_server_router_echo = true;
-static const bool k_pubsub_mode = false;
 static const bool k_server_has_routing_id = false;
 static const char *k_server_routing_id = "SERVER";
 
@@ -100,85 +98,62 @@ inline std::string bind_server_endpoint (void *server,
     return endpoint;
 }
 
-inline unsigned long long wallclock_now_us ()
+enum relay_status_t
 {
-    return static_cast<unsigned long long> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
-}
+    relay_error = -1,
+    relay_idle = 0,
+    relay_progress = 1
+};
 
-inline bool relay_router_once (void *server,
-                               std::vector<char> &id_buf,
-                               std::vector<char> &payload_buf,
-                               int poll_timeout_ms)
+inline relay_status_t relay_router_message_non_blocking (void *server)
 {
-    zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
-    const int prc = zlink_poll (item, 1, poll_timeout_ms);
-    if (prc < 0)
-        return zlink_errno () == EINTR;
-    if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
-        return true;
+    bool more = true;
+    bool received_any = false;
 
-    const int id_len = zlink_recv (server, id_buf.data (), id_buf.size (), 0);
-    if (id_len < 0)
-        return zlink_errno () == EINTR;
+    while (more) {
+        zlink_msg_t part;
+        if (zlink_msg_init (&part) != 0)
+            return relay_error;
 
-    int payload_len = 0;
-    bool has_payload = false;
-    while (true) {
-        int more = 0;
-        size_t more_size = sizeof (more);
-        if (zlink_getsockopt (server, ZLINK_RCVMORE, &more, &more_size) != 0)
-            break;
-        if (!more)
-            break;
-
-        const int len =
-          zlink_recv (server, payload_buf.data (), payload_buf.size (), 0);
-        if (len < 0) {
-            if (zlink_errno () == EINTR)
-                continue;
-            return false;
-        }
-        payload_len = len;
-        has_payload = true;
-    }
-
-    if (zlink_send (
-          server,
-          id_buf.data (),
-          static_cast<size_t> (id_len),
-          ZLINK_SNDMORE)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
-    }
-
-    if (!has_payload) {
-        if (zlink_send (server, "", 0, 0) < 0) {
+        int recv_rc = zlink_msg_recv (&part, server, ZLINK_DONTWAIT);
+        while (recv_rc < 0 && zlink_errno () == EINTR)
+            recv_rc = zlink_msg_recv (&part, server, ZLINK_DONTWAIT);
+        if (recv_rc < 0) {
             const int err = zlink_errno ();
-            return err == EINTR || err == EAGAIN;
+            zlink_msg_close (&part);
+            if (!received_any && err == EAGAIN)
+                return relay_idle;
+            return relay_error;
         }
-        return true;
+
+        received_any = true;
+        more = zlink_msg_more (&part) != 0;
+        const int send_flags = more ? ZLINK_SNDMORE : 0;
+
+        while (!g_stop_requested.load (std::memory_order_acquire)) {
+            const int send_rc = zlink_msg_send (&part, server, send_flags);
+            if (send_rc >= 0)
+                break;
+
+            const int err = zlink_errno ();
+            if (err == EINTR)
+                continue;
+            if (err == EAGAIN) {
+                std::this_thread::yield ();
+                continue;
+            }
+
+            zlink_msg_close (&part);
+            return relay_error;
+        }
+
+        zlink_msg_close (&part);
     }
 
-    if (zlink_send (
-          server,
-          payload_buf.data (),
-          static_cast<size_t> (payload_len),
-          0)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
-    }
-
-    return true;
+    return relay_progress;
 }
 
-inline bool relay_dealer_once (void *server,
-                               std::vector<char> &payload,
-                               int poll_timeout_ms)
+inline bool relay_router_once (void *server, int poll_timeout_ms)
 {
     zlink_pollitem_t item[] = {{server, 0, ZLINK_POLLIN, 0}};
     const int prc = zlink_poll (item, 1, poll_timeout_ms);
@@ -187,57 +162,15 @@ inline bool relay_dealer_once (void *server,
     if (prc == 0 || (item[0].revents & ZLINK_POLLIN) == 0)
         return true;
 
-    const int len = zlink_recv (server, payload.data (), payload.size (), 0);
-    if (len < 0)
-        return zlink_errno () == EINTR;
-
-    if (zlink_send (
-          server,
-          payload.data (),
-          static_cast<size_t> (len),
-          0)
-        < 0) {
-        const int err = zlink_errno ();
-        return err == EINTR || err == EAGAIN;
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        const relay_status_t status = relay_router_message_non_blocking (server);
+        if (status == relay_error)
+            return false;
+        if (status == relay_idle)
+            break;
     }
 
     return true;
-}
-
-inline bool publish_once (void *server,
-                          std::vector<char> &payload,
-                          int send_backoff_us)
-{
-    if (payload.size () >= sizeof (unsigned long long)) {
-        const unsigned long long now_us = wallclock_now_us ();
-        std::memcpy (payload.data (), &now_us, sizeof (now_us));
-    }
-
-    if (zlink_send (server, payload.data (), payload.size (), ZLINK_DONTWAIT)
-        >= 0) {
-        return true;
-    }
-
-    const int err = zlink_errno ();
-    if (err == EAGAIN || err == EINTR) {
-        if (send_backoff_us > 0) {
-            std::this_thread::sleep_for (
-              std::chrono::microseconds (send_backoff_us));
-        }
-        return true;
-    }
-
-    return false;
-}
-
-inline size_t resolve_max_size (const std::vector<size_t> &sizes)
-{
-    size_t max_size = 64;
-    for (size_t i = 0; i < sizes.size (); ++i) {
-        if (sizes[i] > max_size)
-            max_size = sizes[i];
-    }
-    return max_size;
 }
 
 inline void print_server_metrics (
@@ -263,34 +196,16 @@ inline void print_server_metrics (
 }
 
 inline bool run_server_loop (void *server,
-                             const multi_bench_settings_t &settings,
-                             std::vector<char> *payload,
-                             std::vector<char> *router_id_buf,
-                             std::vector<char> *router_payload_buf)
+                             const multi_bench_settings_t &settings)
 {
-    if (!server || !payload || !router_id_buf || !router_payload_buf)
+    (void) settings;
+    if (!server)
         return false;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
-        if (k_pubsub_mode) {
-            if (!publish_once (server, *payload, settings.send_backoff_us))
-                return false;
-            continue;
-        }
-
-        if (k_server_router_echo) {
-            if (!relay_router_once (
-                  server,
-                  *router_id_buf,
-                  *router_payload_buf,
-                  50)) {
-                return false;
-            }
-            continue;
-        }
-
-        if (!relay_dealer_once (server, *payload, 50))
+        if (!relay_router_once (server, 50)) {
             return false;
+        }
     }
 
     return true;
@@ -372,19 +287,6 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (sizes.empty ())
         sizes.push_back (64);
 
-    const size_t max_size = resolve_max_size (sizes);
-    std::vector<char> payload (
-      std::max<size_t> (
-        static_cast<size_t> (1024),
-        std::max<size_t> (max_size, sizeof (unsigned long long))),
-      's');
-    std::vector<char> router_id_buf (
-      std::max<size_t> (256, static_cast<size_t> (1024)),
-      '\0');
-    std::vector<char> router_payload_buf (
-      std::max<size_t> (max_size + 256, static_cast<size_t> (1024)),
-      '\0');
-
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
     std::cout << "READY," << endpoint << std::endl;
@@ -398,12 +300,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    const bool loop_ok = run_server_loop (
-      server,
-      settings,
-      &payload,
-      &router_id_buf,
-      &router_payload_buf);
+    const bool loop_ok = run_server_loop (server, settings);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

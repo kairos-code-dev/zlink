@@ -97,6 +97,18 @@ struct bench_latency_stats_t {
     double p99_us;
 };
 
+struct server_queue_stats_t {
+    server_queue_stats_t() :
+        snd_pending_max(0.0),
+        rcv_pending_max(0.0),
+        rcv_pending_end(0.0)
+    {}
+
+    double snd_pending_max;
+    double rcv_pending_max;
+    double rcv_pending_end;
+};
+
 class bench_latency_sampler_t {
 public:
     explicit bench_latency_sampler_t(
@@ -481,6 +493,84 @@ inline void print_result(const std::string& lib_type,
               << ",latency_p99," << std::fixed << std::setprecision(2) << latency_p99 << std::endl;
 }
 
+inline void print_server_queue_metrics(const std::string &lib_type,
+                                       const std::string &pattern,
+                                       const std::string &transport,
+                                       size_t size,
+                                       const server_queue_stats_t &queue_stats)
+{
+    std::cout << "RESULT," << lib_type << "," << pattern << ","
+              << transport << "," << size << ",server_snd_pending_max,"
+              << std::fixed << std::setprecision(2) << queue_stats.snd_pending_max
+              << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << ","
+              << transport << "," << size << ",server_rcv_pending_max,"
+              << std::fixed << std::setprecision(2) << queue_stats.rcv_pending_max
+              << std::endl;
+    std::cout << "RESULT," << lib_type << "," << pattern << ","
+              << transport << "," << size << ",server_rcv_pending_end,"
+              << std::fixed << std::setprecision(2) << queue_stats.rcv_pending_end
+              << std::endl;
+}
+
+inline unsigned long long peer_activity_score(
+  const zlink_peer_info_t &info_)
+{
+    return static_cast<unsigned long long>(info_.msgs_sent)
+           + static_cast<unsigned long long>(info_.msgs_received);
+}
+
+inline bool read_first_peer_info(void *socket_, zlink_peer_info_t *info_)
+{
+    if (!socket_ || !info_)
+        return false;
+
+    size_t peer_count = 0;
+    if (zlink_socket_peers(socket_, NULL, &peer_count) != 0 || peer_count == 0)
+        return false;
+
+    std::vector<zlink_peer_info_t> peers(peer_count);
+    size_t to_copy = peer_count;
+    if (zlink_socket_peers(socket_, &peers[0], &to_copy) != 0 || to_copy == 0)
+        return false;
+
+    size_t best = 0;
+    for (size_t i = 1; i < to_copy; ++i) {
+        const zlink_peer_info_t &cand = peers[i];
+        const zlink_peer_info_t &cur = peers[best];
+        if (cand.connected_time > cur.connected_time) {
+            best = i;
+            continue;
+        }
+        if (cand.connected_time == cur.connected_time
+            && peer_activity_score(cand) > peer_activity_score(cur)) {
+            best = i;
+        }
+    }
+
+    *info_ = peers[best];
+    return true;
+}
+
+inline server_queue_stats_t sample_server_queue_stats(void *send_socket_,
+                                                      void *recv_socket_)
+{
+    server_queue_stats_t out;
+    zlink_peer_info_t info;
+
+    if (read_first_peer_info(send_socket_, &info))
+        out.snd_pending_max =
+          static_cast<double>(static_cast<unsigned long long>(info.snd_pending_msgs));
+    if (read_first_peer_info(recv_socket_, &info)) {
+        const double pending =
+          static_cast<double>(static_cast<unsigned long long>(info.rcv_pending_msgs));
+        out.rcv_pending_max = pending;
+        out.rcv_pending_end = pending;
+    }
+
+    return out;
+}
+
 inline void print_result(const std::string& lib_type,
                          const std::string& pattern,
                          const std::string& transport,
@@ -575,6 +665,19 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
       bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
     set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+}
+
+inline void apply_benchmark_socket_options(void *socket_,
+                                           int hwm_value,
+                                           const std::string &transport)
+{
+    if (!socket_)
+        return;
+
+    const int linger_ms = 0;
+    set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    apply_benchmark_hwm(socket_, hwm_value);
+    apply_debug_timeouts(socket_, transport);
 }
 
 inline std::string transport_from_endpoint(const std::string &endpoint)

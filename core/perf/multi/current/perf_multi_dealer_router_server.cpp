@@ -177,7 +177,8 @@ inline void print_server_metrics (
   const std::string &lib_name,
   const std::string &transport,
   const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
+  const bench_multi_resource_metrics_t &metrics,
+  const server_queue_stats_t &queue_stats)
 {
     for (size_t i = 0; i < sizes.size (); ++i) {
         if (metrics.has_cpu_pct) {
@@ -192,6 +193,12 @@ inline void print_server_metrics (
                       << ",server_mem_mb," << std::fixed
                       << std::setprecision (2) << metrics.mem_mb << std::endl;
         }
+        print_server_queue_metrics (
+          lib_name,
+          k_pattern,
+          transport,
+          sizes[i],
+          queue_stats);
     }
 }
 
@@ -304,7 +311,9 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);
-    print_server_metrics (lib_name, transport, sizes, metrics);
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats (server, server);
+    print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
     close_connect_monitor (server_monitor);
     zlink_close (server);

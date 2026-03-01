@@ -28,6 +28,7 @@ static const uint32_t spot_node_tag_value = 0x1e6700d9;
 static const uint32_t default_heartbeat_ms = 5000;
 static const uint64_t discovery_refresh_ms = 500;
 static const size_t spot_pub_queue_hwm_default = 1024;
+static const size_t spot_sub_queue_hwm_default = 1000;
 
 static void sleep_ms (int ms_)
 {
@@ -206,6 +207,7 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _discovery (NULL),
     _next_discovery_refresh_ms (0),
     _pub_queue_hwm (spot_pub_queue_hwm_default),
+    _sub_queue_hwm (spot_sub_queue_hwm_default),
     _pub_mode (ZLINK_SPOT_NODE_PUB_MODE_SYNC),
     _pub_queue_full_policy (ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN),
     _tls_trust_system (0),
@@ -776,6 +778,21 @@ int spot_node_t::set_socket_option (int socket_role_,
             errno = EINVAL;
             return -1;
     }
+
+    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+        && option_ == ZLINK_RCVHWM && optvallen_ == sizeof (int)) {
+        int value = 0;
+        memcpy (&value, optval_, sizeof (value));
+        if (value > 0) {
+            _sub_queue_hwm = static_cast<size_t> (value);
+            for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
+                 it != _subs.end (); ++it) {
+                if (*it)
+                    (*it)->_queue_hwm = _sub_queue_hwm;
+            }
+        }
+    }
+
     for (size_t i = 0; i < opts->size (); ++i) {
         if ((*opts)[i].option == option_) {
             (*opts)[i].value.assign (
@@ -849,6 +866,7 @@ spot_sub_t *spot_node_t::create_spot_sub ()
     }
 
     scoped_lock_t lock (_sync);
+    sub->_queue_hwm = _sub_queue_hwm;
     _subs.insert (sub);
     return sub;
 }
@@ -1464,7 +1482,10 @@ void spot_node_t::flush_pending ()
         for (std::deque<std::string>::const_iterator it =
                peer_connect.begin ();
              it != peer_connect.end (); ++it)
-            _sub->connect (it->c_str ());
+            if (_sub->connect (it->c_str ()) != 0 && getenv ("PERF_DEBUG")) {
+                fprintf (stderr, "[spot-node] sub connect failed %s: %s\n",
+                         it->c_str (), strerror (errno));
+            }
         for (std::deque<std::string>::const_iterator it =
                peer_disconnect.begin ();
              it != peer_disconnect.end (); ++it)
@@ -1576,8 +1597,13 @@ void spot_node_t::refresh_peers ()
         _peer_endpoints = next;
     }
 
-    for (size_t i = 0; i < to_connect.size (); ++i)
-        _sub->connect (to_connect[i].c_str ());
+    for (size_t i = 0; i < to_connect.size (); ++i) {
+        if (_sub->connect (to_connect[i].c_str ()) != 0
+            && getenv ("PERF_DEBUG")) {
+            fprintf (stderr, "[spot-node] refresh connect failed %s: %s\n",
+                     to_connect[i].c_str (), strerror (errno));
+        }
+    }
     for (size_t i = 0; i < to_disconnect.size (); ++i)
         _sub->term_endpoint (to_disconnect[i].c_str ());
 }

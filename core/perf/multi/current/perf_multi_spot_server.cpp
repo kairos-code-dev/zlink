@@ -14,131 +14,380 @@
 #include <thread>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#else
+#include <process.h>
+#endif
+
 namespace {
 
 static const char *k_pattern = "MULTI_SPOT";
-static const char *k_token = "spot";
-static const int k_server_socket_type = ZLINK_DEALER;
-static const bool k_server_has_routing_id = false;
-static const char *k_server_routing_id = "SERVER";
+static const char *k_service_name = "perf-spot";
+static const char *k_topic = "bench";
 
-static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_stop_requested(false);
 
-inline void on_signal (int)
+typedef int (*spot_set_tls_server_fn)(void *, const char *, const char *);
+typedef int (*spot_set_tls_client_fn)(void *, const char *, const char *, int);
+
+inline void debug_stage(const char *stage)
 {
-    g_stop_requested.store (true, std::memory_order_release);
+    if (bench_debug_enabled() && stage)
+        std::cerr << "[multi-spot-server] " << stage << std::endl;
 }
 
-inline void install_signal_handlers ()
+inline void debug_error(const char *stage)
 {
-    std::signal (SIGINT, on_signal);
+    if (!bench_debug_enabled() || !stage)
+        return;
+    std::cerr << "[multi-spot-server] " << stage << " failed: "
+              << zlink_strerror(zlink_errno()) << std::endl;
+}
+
+inline bool set_spot_node_routing_id(void *node, const char *routing_id)
+{
+    if (!node || !routing_id || routing_id[0] == '\0')
+        return false;
+    return zlink_spot_node_setsockopt(node,
+                                      ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_ROUTING_ID,
+                                      routing_id,
+                                      std::strlen(routing_id))
+           == 0;
+}
+
+inline void on_signal(int)
+{
+    g_stop_requested.store(true, std::memory_order_release);
+}
+
+inline void install_signal_handlers()
+{
+    std::signal(SIGINT, on_signal);
 #if defined(SIGTERM)
-    std::signal (SIGTERM, on_signal);
+    std::signal(SIGTERM, on_signal);
 #endif
 }
 
-inline bool is_supported_transport (const std::string &transport)
+inline bool is_supported_transport(const std::string &transport)
 {
     return transport == "tcp" || transport == "tls" || transport == "ws"
            || transport == "wss";
 }
 
-inline std::string bind_server_endpoint (void *server,
-                                         const std::string &transport,
-                                         const std::string &token)
+inline int current_process_id()
 {
-    const int bind_port =
-      resolve_multi_int_env ("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
-    if (bind_port <= 0) {
-        std::string endpoint_any = make_endpoint (transport, token);
-        if (endpoint_any.empty ()) {
-            std::cerr << "No endpoint available for transport " << transport
-                      << std::endl;
-            return std::string ();
-        }
-        if (zlink_bind (server, endpoint_any.c_str ()) != 0) {
-            std::cerr << "bind failed for " << endpoint_any << ": "
-                      << zlink_strerror (zlink_errno ()) << std::endl;
-            return std::string ();
+#if !defined(_WIN32)
+    return static_cast<int>(getpid());
+#else
+    return static_cast<int>(_getpid());
+#endif
+}
+
+inline std::string replace_any_host_with_localhost(const std::string &endpoint)
+{
+    std::string normalized = endpoint;
+    const std::string any_v4 = "://0.0.0.0:";
+    const std::string any_v6 = "://[::]:";
+    size_t pos = normalized.find(any_v4);
+    if (pos != std::string::npos)
+        normalized.replace(pos, any_v4.size(), "://127.0.0.1:");
+    pos = normalized.find(any_v6);
+    if (pos != std::string::npos)
+        normalized.replace(pos, any_v6.size(), "://127.0.0.1:");
+    return normalized;
+}
+
+inline bool setup_registry(void *ctx,
+                           int base_port,
+                           void **registry_out,
+                           std::string *pub_endpoint_out,
+                           std::string *router_endpoint_out)
+{
+    if (!ctx || !registry_out || !pub_endpoint_out || !router_endpoint_out)
+        return false;
+
+    *registry_out = NULL;
+    pub_endpoint_out->clear();
+    router_endpoint_out->clear();
+
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        const int port_base = base_port + attempt * 3;
+        const std::string pub_ep = make_fixed_endpoint("tcp", port_base + 1);
+        const std::string router_ep = make_fixed_endpoint("tcp", port_base + 2);
+
+        void *registry = zlink_registry_new(ctx);
+        if (!registry)
+            return false;
+
+        if (zlink_registry_set_endpoints(registry, pub_ep.c_str(), router_ep.c_str())
+              == 0
+            && zlink_registry_start(registry) == 0) {
+            *registry_out = registry;
+            *pub_endpoint_out = pub_ep;
+            *router_endpoint_out = router_ep;
+            return true;
         }
 
-        char last_endpoint[MAX_SOCKET_STRING] = "";
-        size_t size = sizeof (last_endpoint);
-        if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size)
-            == 0) {
-            endpoint_any.assign (last_endpoint);
-            const std::string any_v4 = "://0.0.0.0:";
-            const std::string any_v6 = "://[::]:";
-            size_t pos = endpoint_any.find (any_v4);
-            if (pos != std::string::npos) {
-                endpoint_any.replace (pos, any_v4.size (), "://127.0.0.1:");
-            } else {
-                pos = endpoint_any.find (any_v6);
-                if (pos != std::string::npos)
-                    endpoint_any.replace (pos, any_v6.size (), "://127.0.0.1:");
-            }
-        }
-
-        apply_debug_timeouts (server, transport);
-        return endpoint_any;
+        zlink_registry_destroy(&registry);
     }
 
-    std::string endpoint = make_fixed_endpoint (transport, bind_port);
-    if (zlink_bind (server, endpoint.c_str ()) != 0) {
-        std::cerr << "bind failed for " << endpoint << ": "
-                  << zlink_strerror (zlink_errno ()) << std::endl;
-        return std::string ();
+    return false;
+}
+
+inline bool configure_spot_tls_server(void *node, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
+
+    spot_set_tls_server_fn fn = reinterpret_cast<spot_set_tls_server_fn>(
+      resolve_symbol("zlink_spot_node_set_tls_server"));
+    if (!fn)
+        return false;
+
+    static const std::string cert_path =
+      write_temp_cert(test_certs::server_cert_pem, "multi_spot_srv_cert");
+    static const std::string key_path =
+      write_temp_cert(test_certs::server_key_pem, "multi_spot_srv_key");
+    return fn(node, cert_path.c_str(), key_path.c_str()) == 0;
+}
+
+inline bool configure_spot_tls_client(void *node, const std::string &transport)
+{
+    if (transport != "tls" && transport != "wss")
+        return true;
+
+    spot_set_tls_client_fn fn = reinterpret_cast<spot_set_tls_client_fn>(
+      resolve_symbol("zlink_spot_node_set_tls_client"));
+    if (!fn)
+        return false;
+
+    static const std::string ca_path =
+      write_temp_cert(test_certs::ca_cert_pem, "multi_spot_ca");
+    return fn(node, ca_path.c_str(), "localhost", 0) == 0;
+}
+
+inline void apply_spot_node_options(void *node,
+                                    const multi_bench_settings_t &settings,
+                                    const std::string &transport)
+{
+    if (!node)
+        return;
+
+    const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
+    const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
+    const int sndtimeo_ms =
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+    const int rcvtimeo_ms =
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+    const int linger_ms = 0;
+    const int xpub_nodrop = resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
+
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_SNDHWM, &sndhwm, sizeof(sndhwm));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_RCVHWM, &rcvhwm, sizeof(rcvhwm));
+
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_LINGER, &linger_ms, sizeof(linger_ms));
+
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_SNDTIMEO, &sndtimeo_ms,
+                                      sizeof(sndtimeo_ms));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_RCVTIMEO, &rcvtimeo_ms,
+                                      sizeof(rcvtimeo_ms));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_SNDTIMEO, &sndtimeo_ms,
+                                      sizeof(sndtimeo_ms));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_DEALER,
+                                      ZLINK_RCVTIMEO, &rcvtimeo_ms,
+                                      sizeof(rcvtimeo_ms));
+
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
+                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
+                                      sizeof(xpub_nodrop));
+
+    (void) transport;
+}
+
+inline void enforce_spot_socket_options(void *pub_socket,
+                                        void *sub_socket,
+                                        const multi_bench_settings_t &settings,
+                                        const std::string &transport)
+{
+    if (!pub_socket || !sub_socket)
+        return;
+
+    const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
+    const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
+    const int sndtimeo_ms =
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+    const int rcvtimeo_ms =
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+    const int linger_ms = 0;
+    const int xpub_nodrop = resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
+
+    set_sockopt_int(pub_socket, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
+    set_sockopt_int(pub_socket, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(pub_socket, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int(pub_socket, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(pub_socket, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+    set_sockopt_int(pub_socket, ZLINK_XPUB_NODROP, xpub_nodrop, "ZLINK_XPUB_NODROP");
+
+    set_sockopt_int(sub_socket, ZLINK_SNDHWM, sndhwm, "ZLINK_SNDHWM");
+    set_sockopt_int(sub_socket, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
+    set_sockopt_int(sub_socket, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int(sub_socket, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(sub_socket, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
+
+    apply_debug_timeouts(pub_socket, transport);
+    apply_debug_timeouts(sub_socket, transport);
+}
+
+inline std::string bind_spot_endpoint(void *node,
+                                      const std::string &transport,
+                                      const std::string &token)
+{
+    if (!node)
+        return std::string();
+
+    const int bind_port = resolve_multi_int_env("PERF_MULTI_SERVER_BIND_PORT", 0, 0);
+    std::string endpoint =
+      bind_port > 0 ? make_fixed_endpoint(transport, bind_port)
+                    : make_endpoint(transport, token);
+    if (endpoint.empty()) {
+        std::cerr << "No endpoint available for transport " << transport
+                  << std::endl;
+        return std::string();
     }
+
+    if (zlink_spot_node_bind(node, endpoint.c_str()) != 0) {
+        std::cerr << "spot node bind failed for " << endpoint << ": "
+                  << zlink_strerror(zlink_errno()) << std::endl;
+        return std::string();
+    }
+
+    void *pub_socket = zlink_spot_node_pub_socket_unsafe(node);
+    if (!pub_socket)
+        return std::string();
 
     char last_endpoint[MAX_SOCKET_STRING] = "";
-    size_t size = sizeof (last_endpoint);
-    if (zlink_getsockopt (server, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
-        endpoint.assign (last_endpoint);
-    apply_debug_timeouts (server, transport);
+    size_t size = sizeof(last_endpoint);
+    if (zlink_getsockopt(pub_socket, ZLINK_LAST_ENDPOINT, last_endpoint, &size) == 0)
+        endpoint.assign(last_endpoint);
+
+    endpoint = replace_any_host_with_localhost(endpoint);
     return endpoint;
 }
 
-inline unsigned long long wallclock_now_us ()
+inline bool wait_for_pub_peers(void *node, size_t target_count, int timeout_ms)
 {
-    return static_cast<unsigned long long> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
+    if (!node)
+        return false;
+
+    const size_t target = std::max<size_t>(1, target_count);
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1, timeout_ms));
+    auto next_debug_log = std::chrono::steady_clock::now();
+
+    while (!g_stop_requested.load(std::memory_order_acquire)
+           && std::chrono::steady_clock::now() < deadline) {
+        size_t count = 0;
+        if (zlink_spot_node_pub_peers(node, NULL, &count) == 0 && count >= target)
+            return true;
+        if (bench_debug_enabled()
+            && std::chrono::steady_clock::now() >= next_debug_log) {
+            std::cerr << "[multi-spot-server] pub peers " << count << "/"
+                      << target << std::endl;
+            next_debug_log = std::chrono::steady_clock::now()
+                             + std::chrono::milliseconds(500);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    size_t count = 0;
+    const bool ok = zlink_spot_node_pub_peers(node, NULL, &count) == 0 && count >= target;
+    if (!ok && bench_debug_enabled()) {
+        std::cerr << "[multi-spot-server] pub peer ready timeout " << count
+                  << "/" << target << std::endl;
+    }
+    return ok;
 }
 
-inline bool publish_once (void *server,
-                          std::vector<char> &payload,
-                          size_t current_msg_size)
+inline unsigned long long wallclock_now_us()
 {
-    if (current_msg_size == 0)
+    return static_cast<unsigned long long>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+        .count());
+}
+
+inline bool publish_once(void *spot_pub,
+                         const std::string &topic,
+                         std::vector<char> &payload,
+                         size_t current_msg_size)
+{
+    if (!spot_pub || current_msg_size == 0 || payload.empty())
         return true;
 
     const size_t send_size =
-      std::min (payload.size (), std::max<size_t> (static_cast<size_t> (1), current_msg_size));
+      std::min(payload.size(), std::max<size_t>(static_cast<size_t>(1), current_msg_size));
+    const unsigned long long now_us = wallclock_now_us();
 
-    if (send_size >= sizeof (unsigned long long)) {
-        const unsigned long long now_us = wallclock_now_us ();
-        std::memcpy (payload.data (), &now_us, sizeof (now_us));
+    if (send_size <= sizeof(now_us)) {
+        zlink_msg_t msg;
+        if (zlink_msg_init_size(&msg, send_size) != 0)
+            return false;
+        std::memcpy(zlink_msg_data(&msg), &now_us, send_size);
+
+        if (zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0)
+            return true;
+    } else {
+        zlink_msg_t parts[2];
+        if (zlink_msg_init_size(&parts[0], sizeof(now_us)) != 0)
+            return false;
+        std::memcpy(zlink_msg_data(&parts[0]), &now_us, sizeof(now_us));
+
+        if (zlink_msg_init_data(&parts[1],
+                                payload.data(),
+                                send_size - sizeof(now_us),
+                                NULL,
+                                NULL)
+            != 0) {
+            zlink_msg_close(&parts[0]);
+            return false;
+        }
+
+        if (zlink_spot_pub_publish(spot_pub, topic.c_str(), parts, 2, 0) == 0)
+            return true;
     }
 
-    if (zlink_send (server, payload.data (), send_size, 0) >= 0)
-        return true;
-
-    const int err = zlink_errno ();
+    const int err = zlink_errno();
     if (err == EINTR)
         return true;
     if (err == EAGAIN || err == ETIMEDOUT) {
-        std::this_thread::yield ();
+        std::this_thread::yield();
         return true;
     }
 
-    return g_stop_requested.load (std::memory_order_acquire);
+    return g_stop_requested.load(std::memory_order_acquire);
 }
 
-inline size_t resolve_max_size (const std::vector<size_t> &sizes)
+inline size_t resolve_max_size(const std::vector<size_t> &sizes)
 {
     size_t max_size = 64;
-    for (size_t i = 0; i < sizes.size (); ++i) {
+    for (size_t i = 0; i < sizes.size(); ++i) {
         if (sizes[i] > max_size)
             max_size = sizes[i];
     }
@@ -147,12 +396,12 @@ inline size_t resolve_max_size (const std::vector<size_t> &sizes)
 
 struct one_way_phase_t
 {
-    one_way_phase_t (size_t msg_size_,
-                     std::chrono::steady_clock::duration duration_,
-                     bool send_active_) :
-        msg_size (msg_size_),
-        duration (duration_),
-        send_active (send_active_)
+    one_way_phase_t(size_t msg_size_,
+                    std::chrono::steady_clock::duration duration_,
+                    bool send_active_) :
+        msg_size(msg_size_),
+        duration(duration_),
+        send_active(send_active_)
     {
     }
 
@@ -161,241 +410,273 @@ struct one_way_phase_t
     bool send_active;
 };
 
-inline void append_one_way_phase (std::vector<one_way_phase_t> *phases,
-                                  size_t msg_size,
-                                  double seconds,
-                                  bool send_active)
+inline void append_one_way_phase(std::vector<one_way_phase_t> *phases,
+                                 size_t msg_size,
+                                 double seconds,
+                                 bool send_active)
 {
     if (!phases || seconds <= 0.0)
         return;
-    phases->push_back (one_way_phase_t (
+    phases->push_back(one_way_phase_t(
       msg_size,
-      std::chrono::duration_cast<std::chrono::steady_clock::duration> (
-        std::chrono::duration<double> (seconds)),
+      std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(seconds)),
       send_active));
 }
 
 inline std::vector<one_way_phase_t>
-build_one_way_phases (const multi_bench_settings_t &settings,
-                      const std::vector<size_t> &msg_sizes)
+build_one_way_phases(const multi_bench_settings_t &settings,
+                     const std::vector<size_t> &msg_sizes)
 {
     std::vector<one_way_phase_t> phases;
-    if (msg_sizes.empty ())
+    if (msg_sizes.empty())
         return phases;
 
-    const double warmup_s = static_cast<double> (std::max (0, settings.warmup_seconds));
+    const double warmup_s = static_cast<double>(std::max(0, settings.warmup_seconds));
     const double settle_s =
-      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
+      static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
     const double throughput_s =
-      static_cast<double> (std::max (1, settings.duration_seconds));
+      static_cast<double>(std::max(1, settings.duration_seconds));
     const double latency_s =
-      static_cast<double> (std::max (1, settings.duration_seconds));
-    const double drain_s = static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
+      static_cast<double>(std::max(1, settings.duration_seconds));
+    const double drain_s =
+      static_cast<double>(std::max(0, settings.drain_ms)) / 1000.0;
     const double transition_s =
-      static_cast<double> (std::max (0, settings.size_transition_drain_ms)) / 1000.0;
+      static_cast<double>(std::max(0, settings.size_transition_drain_ms)) / 1000.0;
 
-    for (size_t i = 0; i < msg_sizes.size (); ++i) {
+    for (size_t i = 0; i < msg_sizes.size(); ++i) {
         const size_t msg_size = msg_sizes[i];
-        append_one_way_phase (&phases, msg_size, warmup_s, true);
-        append_one_way_phase (&phases, msg_size, settle_s, false);
-        append_one_way_phase (&phases, msg_size, throughput_s, true);
-        append_one_way_phase (&phases, msg_size, latency_s, true);
-        append_one_way_phase (&phases, msg_size, drain_s, false);
-        if ((i + 1) < msg_sizes.size ())
-            append_one_way_phase (&phases, msg_size, transition_s, false);
+        append_one_way_phase(&phases, msg_size, warmup_s, true);
+        append_one_way_phase(&phases, msg_size, settle_s, false);
+        append_one_way_phase(&phases, msg_size, throughput_s, true);
+        append_one_way_phase(&phases, msg_size, latency_s, true);
+        append_one_way_phase(&phases, msg_size, drain_s, false);
+        if ((i + 1) < msg_sizes.size())
+            append_one_way_phase(&phases, msg_size, transition_s, false);
     }
 
     return phases;
 }
 
-inline void print_server_metrics (
-  const std::string &lib_name,
-  const std::string &transport,
-  const std::vector<size_t> &sizes,
-  const bench_multi_resource_metrics_t &metrics)
+inline void print_server_metrics(const std::string &lib_name,
+                                 const std::string &transport,
+                                 const std::vector<size_t> &sizes,
+                                 const bench_multi_resource_metrics_t &metrics,
+                                 const server_queue_stats_t &queue_stats)
 {
-    for (size_t i = 0; i < sizes.size (); ++i) {
+    for (size_t i = 0; i < sizes.size(); ++i) {
         if (metrics.has_cpu_pct) {
             std::cout << "RESULT," << lib_name << "," << k_pattern << ","
                       << transport << "," << sizes[i]
                       << ",server_cpu_pct," << std::fixed
-                      << std::setprecision (2) << metrics.cpu_pct << std::endl;
+                      << std::setprecision(2) << metrics.cpu_pct << std::endl;
         }
         if (metrics.has_mem_mb) {
             std::cout << "RESULT," << lib_name << "," << k_pattern << ","
                       << transport << "," << sizes[i]
                       << ",server_mem_mb," << std::fixed
-                      << std::setprecision (2) << metrics.mem_mb << std::endl;
+                      << std::setprecision(2) << metrics.mem_mb << std::endl;
         }
+        print_server_queue_metrics(lib_name,
+                                   k_pattern,
+                                   transport,
+                                   sizes[i],
+                                   queue_stats);
     }
 }
 
-inline bool run_server_loop (void *server,
-                             const multi_bench_settings_t &settings,
-                             const std::vector<size_t> &msg_sizes,
-                             std::vector<char> *payload)
+inline bool run_server_loop(void *spot_pub,
+                            const multi_bench_settings_t &settings,
+                            const std::vector<size_t> &msg_sizes,
+                            std::vector<char> *payload)
 {
-    if (!server || !payload)
+    if (!spot_pub || !payload)
         return false;
 
     const std::vector<one_way_phase_t> phases =
-      build_one_way_phases (settings, msg_sizes);
+      build_one_way_phases(settings, msg_sizes);
     size_t phase_index = 0;
-    auto phase_deadline = std::chrono::steady_clock::now ();
-    if (!phases.empty ())
+    auto phase_deadline = std::chrono::steady_clock::now();
+    if (!phases.empty())
         phase_deadline += phases[0].duration;
 
-    while (!g_stop_requested.load (std::memory_order_acquire)) {
-        if (!phases.empty ()) {
-            const auto now = std::chrono::steady_clock::now ();
-            while (phase_index < phases.size () && now >= phase_deadline) {
+    while (!g_stop_requested.load(std::memory_order_acquire)) {
+        if (!phases.empty()) {
+            const auto now = std::chrono::steady_clock::now();
+            while (phase_index < phases.size() && now >= phase_deadline) {
                 ++phase_index;
-                if (phase_index < phases.size ())
+                if (phase_index < phases.size())
                     phase_deadline += phases[phase_index].duration;
             }
 
-            if (phase_index >= phases.size ()) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            if (phase_index >= phases.size()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
 
             if (!phases[phase_index].send_active) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
 
-            if (!publish_once (server, *payload, phases[phase_index].msg_size))
+            if (!publish_once(spot_pub, k_topic, *payload, phases[phase_index].msg_size))
                 return false;
             continue;
         }
 
-        if (!publish_once (server, *payload, payload->size ()))
+        if (!publish_once(spot_pub, k_topic, *payload, payload->size()))
             return false;
     }
 
     return true;
 }
 
-inline int run_server_benchmark (const std::string &lib_name,
-                                 const std::string &transport)
+inline int run_server_benchmark(const std::string &lib_name,
+                                const std::string &transport)
 {
-    set_perf_multi_pattern_env (k_pattern);
+    set_perf_multi_pattern_env(k_pattern);
 
-    if (!is_supported_transport (transport)) {
+    if (!is_supported_transport(transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
                   << transport << std::endl;
         return 0;
     }
 
-    if (!transport_available (transport)) {
+    if (!transport_available(transport)) {
         std::cerr << "transport unavailable: " << transport << std::endl;
         return 1;
     }
 
     ctx_guard_t ctx;
-    if (!ctx.valid ())
+    if (!ctx.valid())
         return 1;
 
-    void *server = zlink_socket (ctx.get (), k_server_socket_type);
-    if (!server)
+    const multi_bench_settings_t settings = resolve_multi_bench_settings();
+
+    void *registry = NULL;
+    void *node = zlink_spot_node_new(ctx.get());
+    void *spot_pub = NULL;
+
+    auto cleanup = [&]() {
+        if (spot_pub)
+            zlink_spot_pub_destroy(&spot_pub);
+        if (node)
+            zlink_spot_node_destroy(&node);
+        if (registry)
+            zlink_registry_destroy(&registry);
+    };
+
+    if (!node)
         return 1;
 
-    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
-    const int linger_ms = 0;
-    set_sockopt_int (server, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
-    apply_benchmark_hwm (server, settings.hwm);
-    if (k_server_has_routing_id) {
-        zlink_setsockopt (
-          server,
-          ZLINK_ROUTING_ID,
-          k_server_routing_id,
-          std::strlen (k_server_routing_id));
-    }
-
-    if (!setup_tls_server (server, transport)) {
-        zlink_close (server);
-        return 1;
-    }
-
-    connect_monitor_t server_monitor;
-    if (!open_connect_monitor (server, server_monitor)) {
-        zlink_close (server);
-        return 1;
-    }
-
-    const std::string endpoint = bind_server_endpoint (
-      server,
-      transport,
-      lib_name + std::string ("_") + k_token + "_server");
-    if (endpoint.empty ()) {
-        close_connect_monitor (server_monitor);
-        zlink_close (server);
+    std::string registry_pub_endpoint;
+    std::string registry_router_endpoint;
+    debug_stage("setup registry");
+    if (!setup_registry(ctx.get(),
+                        30000 + (current_process_id() % 20000),
+                        &registry,
+                        &registry_pub_endpoint,
+                        &registry_router_endpoint)) {
+        cleanup();
         return 1;
     }
 
-    g_stop_requested.store (false, std::memory_order_release);
-    install_signal_handlers ();
+    if (!configure_spot_tls_server(node, transport)
+        || !configure_spot_tls_client(node, transport)) {
+        cleanup();
+        return 1;
+    }
 
-    std::thread stdin_watcher ([] () {
+    apply_spot_node_options(node, settings, transport);
+
+    const std::string endpoint =
+      bind_spot_endpoint(node,
+                         transport,
+                         lib_name + std::string("_spot_server"));
+    if (endpoint.empty()) {
+        debug_error("spot bind");
+        cleanup();
+        return 1;
+    }
+
+    debug_stage("connect/register");
+    if (zlink_spot_node_connect_registry(node, registry_router_endpoint.c_str()) != 0
+        || zlink_spot_node_register(node, k_service_name, endpoint.c_str()) != 0) {
+        debug_error("spot register");
+        cleanup();
+        return 1;
+    }
+
+    spot_pub = zlink_spot_pub_new(node);
+    if (!spot_pub) {
+        cleanup();
+        return 1;
+    }
+
+    void *pub_socket = zlink_spot_node_pub_socket_unsafe(node);
+    void *sub_socket = zlink_spot_node_sub_socket_unsafe(node);
+    if (!pub_socket || !sub_socket) {
+        cleanup();
+        return 1;
+    }
+
+    g_stop_requested.store(false, std::memory_order_release);
+    install_signal_handlers();
+
+    std::thread stdin_watcher([]() {
         std::string line;
-        while (std::getline (std::cin, line)) {
+        while (std::getline(std::cin, line)) {
             if (line == "STOP" || line == "QUIT") {
-                g_stop_requested.store (true, std::memory_order_release);
+                g_stop_requested.store(true, std::memory_order_release);
                 return;
             }
         }
-        g_stop_requested.store (true, std::memory_order_release);
+        g_stop_requested.store(true, std::memory_order_release);
     });
-    stdin_watcher.detach ();
+    stdin_watcher.detach();
 
-    std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
-    if (sizes.empty ())
-        sizes.push_back (64);
+    std::vector<size_t> sizes = resolve_bench_msg_sizes(64);
+    if (sizes.empty())
+        sizes.push_back(64);
 
-    const size_t max_size = resolve_max_size (sizes);
-    std::vector<char> payload (
-      std::max<size_t> (
-        static_cast<size_t> (1024),
-        std::max<size_t> (max_size, sizeof (unsigned long long))),
+    const size_t max_size = resolve_max_size(sizes);
+    std::vector<char> payload(
+      std::max<size_t>(static_cast<size_t>(1024), max_size),
       's');
 
-    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
+    const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample();
 
-    std::cout << "READY," << endpoint << std::endl;
+    const std::string ready_payload =
+      endpoint + "|" + registry_pub_endpoint + "|" + registry_router_endpoint;
+    std::cout << "READY," << ready_payload << std::endl;
 
-    if (!wait_connect_ready_count (
-          server_monitor,
-          settings.clients,
-          settings.connect_ready_timeout_ms)) {
-        close_connect_monitor (server_monitor);
-        zlink_close (server);
-        return 1;
+    const int peer_wait_ms = std::min(500, settings.connect_ready_timeout_ms);
+    if (!wait_for_pub_peers(node, settings.clients, peer_wait_ms)) {
+        if (bench_debug_enabled())
+            std::cerr << "[multi-spot-server] continue without full pub peer ready"
+                      << std::endl;
     }
 
-    const bool loop_ok = run_server_loop (
-      server,
-      settings,
-      sizes,
-      &payload);
+    const bool loop_ok = run_server_loop(spot_pub, settings, sizes, &payload);
 
     const bench_multi_resource_metrics_t metrics =
-      bench_multi_finish_resource_probe (sample_start);
-    print_server_metrics (lib_name, transport, sizes, metrics);
+      bench_multi_finish_resource_probe(sample_start);
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats(pub_socket, sub_socket);
+    print_server_metrics(lib_name, transport, sizes, metrics, queue_stats);
 
-    close_connect_monitor (server_monitor);
-    zlink_close (server);
-
+    cleanup();
     return loop_ok ? 0 : 1;
 }
 
 } // namespace
 
-int main (int argc, char **argv)
+int main(int argc, char **argv)
 {
     if (argc < 3)
         return 1;
 
     const std::string lib_name = argv[1];
     const std::string transport = argv[2];
-    return run_server_benchmark (lib_name, transport);
+    return run_server_benchmark(lib_name, transport);
 }

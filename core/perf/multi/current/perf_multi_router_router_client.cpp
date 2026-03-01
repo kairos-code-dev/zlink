@@ -5,7 +5,6 @@
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -14,7 +13,6 @@
 #include <cstring>
 #include <iostream>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -25,13 +23,11 @@ static const bool k_client_router_send = true;
 static const char *k_server_routing_id = "SERVER";
 
 using perf_multi_client::backoff_worker_idle;
-using perf_multi_client::build_worker_assignments;
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::recv_one_message;
-using perf_multi_client::resolve_worker_count;
 using perf_multi_client::send_error;
 using perf_multi_client::send_ok;
 using perf_multi_client::wait_all_client_connect_ready;
@@ -68,116 +64,6 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline void run_echo_worker_loop (
-  const std::vector<void *> &sockets,
-  const std::vector<size_t> &owned,
-  const multi_bench_settings_t &settings,
-  const std::vector<char> &payload,
-  size_t payload_size,
-  const std::string &server_id,
-  size_t scratch_size,
-  const std::chrono::steady_clock::time_point &deadline,
-  int poll_timeout_ms,
-  bool allow_send,
-  std::atomic<bool> *fatal_error,
-  long *local_recv_out)
-{
-    if (!fatal_error || !local_recv_out)
-        return;
-
-    long local_recv = 0;
-    size_t rr = 0;
-    std::vector<char> scratch (scratch_size, '\0');
-    std::vector<zlink_pollitem_t> poll_items (owned.size ());
-    std::vector<uint8_t> awaiting_reply (owned.size (), 0);
-    for (size_t i = 0; i < owned.size (); ++i) {
-        const zlink_pollitem_t item = {
-          sockets[owned[i]],
-          0,
-          ZLINK_POLLIN,
-          0,
-        };
-        poll_items[i] = item;
-    }
-
-    while (std::chrono::steady_clock::now () < deadline
-           && !fatal_error->load (std::memory_order_acquire)) {
-        bool progressed = false;
-
-        if (allow_send) {
-            bool tried_send = false;
-            for (size_t attempts = 0; attempts < owned.size (); ++attempts) {
-                const size_t local_idx = (rr + attempts) % owned.size ();
-                if (awaiting_reply[local_idx] != 0)
-                    continue;
-
-                const size_t socket_idx = owned[local_idx];
-                const send_status_t send_rc = send_echo_message (
-                  sockets[socket_idx],
-                  server_id,
-                  payload,
-                  payload_size);
-                tried_send = true;
-                rr = (local_idx + 1) % owned.size ();
-                if (send_rc == send_ok) {
-                    awaiting_reply[local_idx] = 1;
-                    progressed = true;
-                } else if (send_rc == send_error) {
-                    fatal_error->store (true, std::memory_order_release);
-                }
-                break;
-            }
-            if (!tried_send)
-                rr = (rr + 1) % owned.size ();
-        }
-
-        if (fatal_error->load (std::memory_order_acquire))
-            break;
-
-        for (size_t i = 0; i < poll_items.size (); ++i)
-            poll_items[i].revents = 0;
-
-        const int prc = zlink_poll (
-          &poll_items[0],
-          static_cast<int> (poll_items.size ()),
-          poll_timeout_ms);
-        if (prc < 0) {
-            if (zlink_errno () != EINTR) {
-                fatal_error->store (true, std::memory_order_release);
-                break;
-            }
-        } else if (prc > 0) {
-            for (size_t i = 0; i < poll_items.size (); ++i) {
-                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
-                    continue;
-
-                const int recv_rc =
-                  recv_one_message (sockets[owned[i]],
-                                    scratch,
-                                    ZLINK_DONTWAIT,
-                                    0);
-                if (recv_rc < 0) {
-                    fatal_error->store (true, std::memory_order_release);
-                    break;
-                }
-                if (recv_rc > 0) {
-                    progressed = true;
-                    ++local_recv;
-                    awaiting_reply[i] = 0;
-                }
-            }
-        }
-
-        if (fatal_error->load (std::memory_order_acquire))
-            break;
-
-        if (!progressed)
-            backoff_worker_idle (settings);
-    }
-
-    *local_recv_out = local_recv;
-}
-
 inline bool run_echo_window_thread_pool (
   const std::vector<void *> &sockets,
   const multi_bench_settings_t &settings,
@@ -197,12 +83,9 @@ inline bool run_echo_window_thread_pool (
         return true;
     }
 
-    const size_t worker_count = resolve_worker_count (settings, sockets.size ());
-    std::vector<std::vector<size_t> > worker_assign;
-    build_worker_assignments (sockets.size (), worker_count, &worker_assign);
-
-    std::atomic<bool> fatal_error (false);
-    std::atomic<long> recv_accum (0);
+    bool fatal_error = false;
+    long local_recv = 0;
+    size_t rr = 0;
 
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -213,38 +96,107 @@ inline bool run_echo_window_thread_pool (
     const size_t scratch_size =
       std::max<size_t> (scratch_capacity, static_cast<size_t> (64));
 
-    std::vector<std::thread> workers;
-    workers.reserve (worker_count);
-    for (size_t w = 0; w < worker_count; ++w) {
-        workers.push_back (std::thread ([&, w] () {
-            long local_recv = 0;
-            run_echo_worker_loop (
-              sockets,
-              worker_assign[w],
-              settings,
-              payload,
-              payload_size,
-              server_id,
-              scratch_size,
-              deadline,
-              poll_timeout_ms,
-              allow_send,
-              &fatal_error,
-              &local_recv);
-
-            recv_accum.fetch_add (local_recv, std::memory_order_relaxed);
-        }));
+    std::vector<char> scratch (scratch_size, '\0');
+    std::vector<uint8_t> awaiting_reply (sockets.size (), 0);
+    std::vector<zlink_pollitem_t> poll_items (sockets.size ());
+    for (size_t i = 0; i < sockets.size (); ++i) {
+        const zlink_pollitem_t item = {
+          sockets[i],
+          0,
+          ZLINK_POLLIN,
+          0,
+        };
+        poll_items[i] = item;
     }
 
-    for (size_t i = 0; i < workers.size (); ++i) {
-        if (workers[i].joinable ())
-            workers[i].join ();
+    while (std::chrono::steady_clock::now () < deadline && !fatal_error) {
+        bool progressed = false;
+
+        if (allow_send) {
+            const size_t start_rr = rr;
+            for (size_t attempts = 0; attempts < sockets.size (); ++attempts) {
+                const size_t idx = (start_rr + attempts) % sockets.size ();
+                if (awaiting_reply[idx] != 0)
+                    continue;
+
+                const send_status_t send_rc = send_echo_message (
+                  sockets[idx],
+                  server_id,
+                  payload,
+                  payload_size);
+                if (send_rc == send_ok) {
+                    awaiting_reply[idx] = 1;
+                    progressed = true;
+                } else if (send_rc == send_error) {
+                    fatal_error = true;
+                    break;
+                }
+            }
+            rr = (start_rr + 1) % sockets.size ();
+        }
+
+        if (fatal_error)
+            break;
+
+        for (size_t i = 0; i < poll_items.size (); ++i)
+            poll_items[i].revents = 0;
+
+        const int prc = zlink_poll (
+          &poll_items[0],
+          static_cast<int> (poll_items.size ()),
+          poll_timeout_ms);
+        if (prc < 0) {
+            if (zlink_errno () != EINTR) {
+                fatal_error = true;
+                break;
+            }
+        } else if (prc > 0) {
+            for (size_t i = 0; i < poll_items.size (); ++i) {
+                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+                    continue;
+
+                const int recv_rc =
+                  recv_one_message (sockets[i], scratch, ZLINK_DONTWAIT, 0);
+                if (recv_rc < 0) {
+                    fatal_error = true;
+                    break;
+                }
+                if (recv_rc <= 0)
+                    continue;
+
+                progressed = true;
+                ++local_recv;
+                awaiting_reply[i] = 0;
+
+                if (!allow_send)
+                    continue;
+
+                const send_status_t send_rc = send_echo_message (
+                  sockets[i],
+                  server_id,
+                  payload,
+                  payload_size);
+                if (send_rc == send_ok) {
+                    awaiting_reply[i] = 1;
+                    progressed = true;
+                } else if (send_rc == send_error) {
+                    fatal_error = true;
+                    break;
+                }
+            }
+        }
+
+        if (fatal_error)
+            break;
+
+        if (!progressed)
+            backoff_worker_idle (settings);
     }
 
     if (recv_total)
-        *recv_total = recv_accum.load (std::memory_order_relaxed);
+        *recv_total = local_recv;
 
-    return !fatal_error.load (std::memory_order_acquire);
+    return !fatal_error;
 }
 
 inline bench_latency_stats_t measure_echo_latency_stats_us (

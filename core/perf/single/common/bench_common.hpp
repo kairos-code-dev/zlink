@@ -754,16 +754,20 @@ inline void apply_single_hwm(void *socket_)
     set_sockopt_int(socket_, ZLINK_RCVHWM, rcvhwm, "ZLINK_RCVHWM");
 }
 
-inline void apply_single_send_timeout(void *socket_,
-                                      const std::string &transport_)
+inline void apply_single_benchmark_socket_options(void *socket_,
+                                                  const std::string &transport_)
 {
     if (!socket_)
         return;
     if (transport_ == "pgm" || transport_ == "epgm")
         return;
 
-    const int timeout_ms = resolve_single_send_timeout_ms();
-    set_sockopt_int(socket_, ZLINK_SNDTIMEO, timeout_ms, "ZLINK_SNDTIMEO");
+    const int linger_ms = 0;
+    const int sndtimeo_ms = resolve_single_send_timeout_ms();
+    const int rcvtimeo_ms = resolve_single_recv_timeout_ms();
+    set_sockopt_int(socket_, ZLINK_LINGER, linger_ms, "ZLINK_LINGER");
+    set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
+    set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }
 
 inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
@@ -1071,8 +1075,8 @@ inline bool setup_connected_pair(void *bind_socket_,
     if (!connect_checked(connect_socket_, endpoint))
         return false;
 
-    apply_single_send_timeout(bind_socket_, transport_);
-    apply_single_send_timeout(connect_socket_, transport_);
+    apply_single_benchmark_socket_options(bind_socket_, transport_);
+    apply_single_benchmark_socket_options(connect_socket_, transport_);
 
     settle();
     return true;

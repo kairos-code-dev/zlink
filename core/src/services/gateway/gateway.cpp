@@ -473,10 +473,14 @@ int gateway_t::send_request_frames (service_pool_t *pool_,
 
     const zlink_routing_id_t &rid = pool_->routing_ids[provider_index_];
     zlink_msg_t rid_msg;
-    if (zlink_msg_init_size (&rid_msg, rid.size) != 0)
+    if (zlink_msg_init_data (
+          &rid_msg,
+          rid.size > 0 ? const_cast<uint8_t *> (rid.data) : NULL,
+          rid.size,
+          NULL,
+          NULL)
+        != 0)
         return -1;
-    if (rid.size > 0)
-        memcpy (zlink_msg_data (&rid_msg), rid.data, rid.size);
     int send_flags =
       (part_count_ > 0 ? ZLINK_SNDMORE : 0) | (flags_ & ZLINK_DONTWAIT);
     if (zlink_msg_send (&rid_msg, _router_socket, send_flags) < 0) {

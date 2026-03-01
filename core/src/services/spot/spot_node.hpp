@@ -152,6 +152,7 @@ class spot_node_t
     mutex_t _pub_queue_sync;
     std::deque<async_publish_t> _pending_pub;
     size_t _pub_queue_hwm;
+    size_t _sub_queue_hwm;
     atomic_counter_t _pub_mode;
     atomic_counter_t _pub_queue_full_policy;
 

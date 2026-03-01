@@ -547,8 +547,11 @@ void run_gateway(const std::string &transport,
 
     const int gateway_sndhwm = resolve_single_socket_hwm(true);
     const int receiver_rcvhwm = resolve_single_socket_hwm(false);
+    const int gateway_rcvhwm = resolve_single_socket_hwm(false);
+    const int receiver_sndhwm = resolve_single_socket_hwm(true);
     const int send_timeout_ms = resolve_single_send_timeout_ms();
     const int recv_timeout_ms = resolve_single_recv_timeout_ms();
+    const int linger_ms = 0;
 
     // Apply benchmark options by service role before bind/connect:
     // gateway(sender): SNDHWM + SNDTIMEO
@@ -559,6 +562,12 @@ void run_gateway(const std::string &transport,
     (void) zlink_gateway_setsockopt(gateway, ZLINK_SNDTIMEO,
                                     &send_timeout_ms,
                                     sizeof(send_timeout_ms));
+    (void) zlink_gateway_setsockopt(gateway, ZLINK_RCVTIMEO,
+                                    &recv_timeout_ms,
+                                    sizeof(recv_timeout_ms));
+    (void) zlink_gateway_setsockopt(gateway, ZLINK_RCVHWM,
+                                    &gateway_rcvhwm,
+                                    sizeof(gateway_rcvhwm));
     (void) zlink_receiver_setsockopt(provider,
                                      ZLINK_RECEIVER_SOCKET_ROUTER,
                                      ZLINK_RCVHWM,
@@ -566,17 +575,39 @@ void run_gateway(const std::string &transport,
                                      sizeof(receiver_rcvhwm));
     (void) zlink_receiver_setsockopt(provider,
                                      ZLINK_RECEIVER_SOCKET_ROUTER,
+                                     ZLINK_SNDHWM,
+                                     &receiver_sndhwm,
+                                     sizeof(receiver_sndhwm));
+    (void) zlink_receiver_setsockopt(provider,
+                                     ZLINK_RECEIVER_SOCKET_ROUTER,
                                      ZLINK_RCVTIMEO,
                                      &recv_timeout_ms,
                                      sizeof(recv_timeout_ms));
+    (void) zlink_receiver_setsockopt(provider,
+                                     ZLINK_RECEIVER_SOCKET_ROUTER,
+                                     ZLINK_SNDTIMEO,
+                                     &send_timeout_ms,
+                                     sizeof(send_timeout_ms));
 
     // Enforce benchmark options on actual transport sockets.
     set_sockopt_int(gateway_router, ZLINK_SNDHWM, gateway_sndhwm,
                     "ZLINK_SNDHWM");
+    set_sockopt_int(gateway_router, ZLINK_RCVHWM, gateway_rcvhwm,
+                    "ZLINK_RCVHWM");
+    set_sockopt_int(gateway_router, ZLINK_LINGER, linger_ms,
+                    "ZLINK_LINGER");
     set_sockopt_int(gateway_router, ZLINK_SNDTIMEO, send_timeout_ms,
                     "ZLINK_SNDTIMEO");
+    set_sockopt_int(gateway_router, ZLINK_RCVTIMEO, recv_timeout_ms,
+                    "ZLINK_RCVTIMEO");
+    set_sockopt_int(provider_router, ZLINK_SNDHWM, receiver_sndhwm,
+                    "ZLINK_SNDHWM");
     set_sockopt_int(provider_router, ZLINK_RCVHWM, receiver_rcvhwm,
                     "ZLINK_RCVHWM");
+    set_sockopt_int(provider_router, ZLINK_LINGER, linger_ms,
+                    "ZLINK_LINGER");
+    set_sockopt_int(provider_router, ZLINK_SNDTIMEO, send_timeout_ms,
+                    "ZLINK_SNDTIMEO");
     set_sockopt_int(provider_router, ZLINK_RCVTIMEO, recv_timeout_ms,
                     "ZLINK_RCVTIMEO");
 

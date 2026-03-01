@@ -33,6 +33,11 @@ REQUIRED_RESULT_METRICS = (
     LATENCY_P99_METRIC,
 )
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
+MULTI_SERVER_QUEUE_METRICS = (
+    "server_snd_pending_max",
+    "server_rcv_pending_max",
+    "server_rcv_pending_end",
+)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = (
     "MULTI_STREAM",
@@ -954,6 +959,9 @@ def parse_result_line(line, transport, expected_sizes):
         "client_mem_mb",
         "server_cpu_pct",
         "server_mem_mb",
+        "server_snd_pending_max",
+        "server_rcv_pending_max",
+        "server_rcv_pending_end",
     ):
         return None, f"ignored unknown RESULT metric '{metric}': {line.strip()}"
 
@@ -1194,6 +1202,9 @@ def run_multi_sizes_test_stream_shared(
         timeout_sec = max(60, duration_seconds * max(1, len(sizes)) * 4 + 30)
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
+        ready_timeout_ms = max(ready_timeout_ms, 30000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 15000)
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
@@ -2951,6 +2962,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                 for optional_metric in (
                     "server_cpu_pct",
                     "server_mem_mb",
+                    "server_snd_pending_max",
+                    "server_rcv_pending_max",
+                    "server_rcv_pending_end",
                     "connect_ok",
                     "connect_fail",
                     "connect_target",
@@ -3955,6 +3969,9 @@ def main():
                 mem_key = f"{tr}|{sz}|server_mem_mb" if is_multi else f"{tr}|{sz}|mem_mb"
                 server_cpu_key = f"{tr}|{sz}|server_cpu_pct"
                 server_mem_key = f"{tr}|{sz}|server_mem_mb"
+                server_sndq_key = f"{tr}|{sz}|server_snd_pending_max"
+                server_rcvq_max_key = f"{tr}|{sz}|server_rcv_pending_max"
+                server_rcvq_end_key = f"{tr}|{sz}|server_rcv_pending_end"
                 has_tp = tp_key in c_stats
                 has_bw = bw_key in c_stats
                 has_lat = lat_key in c_stats
@@ -3997,6 +4014,19 @@ def main():
                         mem_v = c_stats[mem_key]
                         current_metric = "server_mem_mb" if is_multi else "mem_mb"
                         current_results[(p_name, tr, sz, current_metric)] = mem_v
+                    if is_multi:
+                        if server_sndq_key in c_stats:
+                            current_results[(p_name, tr, sz, "server_snd_pending_max")] = c_stats[
+                                server_sndq_key
+                            ]
+                        if server_rcvq_max_key in c_stats:
+                            current_results[(p_name, tr, sz, "server_rcv_pending_max")] = c_stats[
+                                server_rcvq_max_key
+                            ]
+                        if server_rcvq_end_key in c_stats:
+                            current_results[(p_name, tr, sz, "server_rcv_pending_end")] = c_stats[
+                                server_rcvq_end_key
+                            ]
 
                 status_counts[status] += 1
 

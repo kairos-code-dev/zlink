@@ -2,15 +2,19 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
-#include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -18,11 +22,34 @@ namespace {
 static const char *k_pattern = "MULTI_DEALER_DEALER";
 static const int k_client_socket_type = ZLINK_DEALER;
 
+static std::atomic<bool> g_stop_requested (false);
+
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::wait_all_client_connect_ready;
+
+inline void on_signal (int)
+{
+    g_stop_requested.store (true, std::memory_order_release);
+}
+
+inline void install_signal_handlers ()
+{
+    std::signal (SIGINT, on_signal);
+#if defined(SIGTERM)
+    std::signal (SIGTERM, on_signal);
+#endif
+}
+
+inline unsigned long long wallclock_now_us ()
+{
+    return static_cast<unsigned long long> (
+      std::chrono::duration_cast<std::chrono::microseconds> (
+        std::chrono::system_clock::now ().time_since_epoch ())
+        .count ());
+}
 
 inline bool create_client_sockets (
   ctx_guard_t &ctx,
@@ -42,39 +69,6 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline void print_client_result_lines (
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    print_result (
-      lib_name,
-      k_pattern,
-      transport,
-      msg_size,
-      throughput,
-      latency.mean_us,
-      latency.p95_us,
-      latency.p99_us);
-
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                  << std::endl;
-    }
-
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision (2) << metrics.mem_mb
-                  << std::endl;
-    }
-}
-
 inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
 {
     std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (fallback_size);
@@ -83,34 +77,105 @@ inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
     return msg_sizes;
 }
 
-inline bool run_single_size_case (const std::vector<void *> &sockets,
-                                  const multi_bench_settings_t &base_settings,
-                                  size_t scratch_capacity,
-                                  const std::string &lib_name,
-                                  const std::string &transport,
-                                  size_t msg_size)
+inline bool send_one_message (void *socket,
+                              std::vector<char> &payload,
+                              size_t msg_size,
+                              bool stamp_timestamp)
 {
-    multi_bench_settings_t settings = base_settings;
-    double throughput = 0.0;
-    bench_latency_stats_t latency;
-    bench_multi_resource_metrics_t metrics;
-    if (!perf_multi_client::run_one_way_duration (
-          sockets,
-          settings,
-          scratch_capacity,
-          &throughput,
-          &latency,
-          &metrics)) {
+    if (!socket || msg_size == 0 || msg_size > payload.size ())
         return false;
+
+    if (stamp_timestamp && msg_size >= sizeof (unsigned long long)) {
+        const unsigned long long now_us = wallclock_now_us ();
+        std::memcpy (payload.data (), &now_us, sizeof (now_us));
     }
 
-    print_client_result_lines (
-      lib_name,
-      transport,
-      msg_size,
-      throughput,
-      latency,
-      metrics);
+    const int rc = zlink_send (socket, payload.data (), msg_size, 0);
+    if (rc >= 0)
+        return true;
+
+    const int err = zlink_errno ();
+    if (err == EINTR || err == EAGAIN || err == ETIMEDOUT || err == ENOTCONN
+        || err == EHOSTUNREACH || err == ENOENT)
+        return true;
+
+    return g_stop_requested.load (std::memory_order_acquire);
+}
+
+inline bool run_send_window (const std::vector<void *> &sockets,
+                             std::vector<char> &payload,
+                             size_t msg_size,
+                             double duration_seconds,
+                             bool send_active,
+                             bool stamp_timestamp)
+{
+    if (duration_seconds <= 0.0)
+        return true;
+
+    const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+        std::chrono::duration<double> (duration_seconds));
+
+    if (!send_active) {
+        while (!g_stop_requested.load (std::memory_order_acquire)
+               && std::chrono::steady_clock::now () < deadline) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        return true;
+    }
+
+    if (sockets.empty ())
+        return false;
+
+    size_t socket_index = 0;
+    while (!g_stop_requested.load (std::memory_order_acquire)
+           && std::chrono::steady_clock::now () < deadline) {
+        void *sock = sockets[socket_index];
+        socket_index = (socket_index + 1) % sockets.size ();
+        if (!send_one_message (sock, payload, msg_size, stamp_timestamp))
+            return false;
+    }
+
+    return true;
+}
+
+inline bool run_single_size_case (const std::vector<void *> &sockets,
+                                  const multi_bench_settings_t &settings,
+                                  std::vector<char> &payload,
+                                  size_t msg_size,
+                                  bool has_next_size)
+{
+    const double warmup_s =
+      static_cast<double> (std::max (0, settings.warmup_seconds));
+    const double settle_s =
+      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
+    const double throughput_s =
+      static_cast<double> (std::max (1, settings.duration_seconds));
+    const double latency_s =
+      static_cast<double> (std::max (1, settings.duration_seconds));
+    const double drain_s =
+      static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
+    const double transition_s =
+      has_next_size ? static_cast<double> (
+                        std::max (0, settings.size_transition_drain_ms))
+                        / 1000.0
+                    : 0.0;
+
+    if (!run_send_window (sockets, payload, msg_size, warmup_s, true, false))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, settle_s, false, false))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, throughput_s, true, false))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, settle_s, false, false))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, latency_s, true, true))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, drain_s, false, false))
+        return false;
+    if (!run_send_window (sockets, payload, msg_size, transition_s, false, false))
+        return false;
 
     return true;
 }
@@ -133,7 +198,7 @@ inline int run_client_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    const multi_bench_settings_t base_settings = resolve_multi_bench_settings ();
+    const multi_bench_settings_t settings = resolve_multi_bench_settings ();
     const std::vector<size_t> msg_sizes = resolve_case_msg_sizes (fallback_size);
 
     ctx_guard_t ctx;
@@ -146,7 +211,7 @@ inline int run_client_benchmark (const std::string &lib_name,
           ctx,
           transport,
           endpoint,
-          base_settings,
+          settings,
           &sockets,
           &monitors)) {
         close_client_monitors (&monitors);
@@ -156,31 +221,41 @@ inline int run_client_benchmark (const std::string &lib_name,
 
     if (!wait_all_client_connect_ready (
           monitors,
-          base_settings.connect_ready_timeout_ms)) {
+          settings.connect_ready_timeout_ms)) {
         close_client_monitors (&monitors);
         close_client_sockets (&sockets);
         return 1;
     }
     close_client_monitors (&monitors);
 
-    const size_t scratch_capacity = static_cast<size_t> (64);
+    g_stop_requested.store (false, std::memory_order_release);
+    install_signal_handlers ();
+
+    size_t max_size = 64;
+    for (size_t i = 0; i < msg_sizes.size (); ++i)
+        max_size = std::max (max_size, msg_sizes[i]);
+    max_size = std::max<size_t> (max_size, sizeof (unsigned long long));
+
+    std::vector<char> payload (max_size, 'd');
 
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
-        const size_t msg_size = msg_sizes[si];
-        if (!run_single_size_case (
-              sockets,
-              base_settings,
-              scratch_capacity,
-              lib_name,
-              transport,
-              msg_size)) {
+        if (g_stop_requested.load (std::memory_order_acquire)) {
             close_client_sockets (&sockets);
             return 1;
         }
 
-        run_size_transition_drain_stage (
-          base_settings, (si + 1) < msg_sizes.size ());
+        const bool has_next_size = (si + 1) < msg_sizes.size ();
+        if (!run_single_size_case (
+              sockets,
+              settings,
+              payload,
+              msg_sizes[si],
+              has_next_size)) {
+            close_client_sockets (&sockets);
+            return 1;
+        }
     }
+
     close_client_sockets (&sockets);
     return 0;
 }

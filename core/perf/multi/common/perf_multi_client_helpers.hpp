@@ -302,7 +302,7 @@ inline bool create_client_sockets (
     return true;
 }
 
-inline void backoff_worker_idle (const multi_bench_settings_t &settings)
+inline void backoff_client_idle (const multi_bench_settings_t &settings)
 {
     (void) settings;
     std::this_thread::yield ();
@@ -324,8 +324,6 @@ inline bool drain_socket_non_blocking (void *socket,
       collect_latency ? sizeof (unsigned long long) : 0;
 
     long local_recv = 0;
-    bool tail_sample_valid = false;
-    double tail_sample_us = 0.0;
     while (true) {
         const int rc =
           recv_one_message (socket, scratch, ZLINK_DONTWAIT, capture_bytes);
@@ -343,17 +341,13 @@ inline bool drain_socket_non_blocking (void *socket,
                 std::chrono::system_clock::now ().time_since_epoch ())
                 .count ());
             if (now_us >= sent_us) {
-                tail_sample_us = static_cast<double> (now_us - sent_us);
-                tail_sample_valid = true;
+                const double sample_us = static_cast<double> (now_us - sent_us);
+                *lat_sum += sample_us;
+                (*lat_count)++;
+                if (lat_samples)
+                    lat_samples->add (sample_us);
             }
         }
-    }
-
-    if (collect_latency && tail_sample_valid) {
-        *lat_sum += tail_sample_us;
-        (*lat_count)++;
-        if (lat_samples)
-            lat_samples->add (tail_sample_us);
     }
 
     if (recv_count)
@@ -455,7 +449,7 @@ inline bool run_one_way_window_loop (
             break;
 
         if (!progressed)
-            backoff_worker_idle (settings);
+            backoff_client_idle (settings);
     }
 
     if (recv_total)
@@ -516,9 +510,21 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
         return false;
     }
 
-    if (settings.settle_ms > 0) {
-        std::this_thread::sleep_for (
-          std::chrono::milliseconds (settings.settle_ms));
+    const double settle_seconds =
+      static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
+    if (settle_seconds > 0.0) {
+        if (!run_one_way_window_loop (
+              recv_sockets,
+              settings,
+              scratch_capacity,
+              settle_seconds,
+              false,
+              NULL,
+              NULL,
+              NULL,
+              NULL)) {
+            return false;
+        }
     }
 
     long recv_count = 0;
@@ -541,6 +547,21 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
                       / static_cast<double> (std::max (1, settings.duration_seconds));
     if (recv_count <= 0)
         return false;
+
+    if (settle_seconds > 0.0) {
+        if (!run_one_way_window_loop (
+              recv_sockets,
+              settings,
+              scratch_capacity,
+              settle_seconds,
+              false,
+              NULL,
+              NULL,
+              NULL,
+              NULL)) {
+            return false;
+        }
+    }
 
     double lat_sum = 0.0;
     long lat_count = 0;

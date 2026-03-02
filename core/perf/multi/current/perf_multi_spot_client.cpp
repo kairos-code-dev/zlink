@@ -604,9 +604,20 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
         return false;
     }
 
-    if (settings.settle_ms > 0) {
-        std::this_thread::sleep_for(
-          std::chrono::milliseconds(settings.settle_ms));
+    const double settle_seconds =
+      static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
+    if (settle_seconds > 0.0) {
+        if (!run_spot_one_way_window_loop(slots,
+                                          settings,
+                                          settle_seconds,
+                                          false,
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          NULL)) {
+            debug_stage("pre-throughput settle drain failed");
+            return false;
+        }
     }
 
     long recv_count = 0;
@@ -633,6 +644,20 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
                       << recv_count << std::endl;
         }
         return false;
+    }
+
+    if (settle_seconds > 0.0) {
+        if (!run_spot_one_way_window_loop(slots,
+                                          settings,
+                                          settle_seconds,
+                                          false,
+                                          NULL,
+                                          NULL,
+                                          NULL,
+                                          NULL)) {
+            debug_stage("pre-latency settle drain failed");
+            return false;
+        }
     }
 
     double lat_sum = 0.0;

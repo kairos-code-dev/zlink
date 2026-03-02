@@ -18,6 +18,7 @@
 #include "core/io_thread.hpp"
 #include "core/reaper.hpp"
 #include "core/pipe.hpp"
+#include "services/control/service_control_runtime.hpp"
 #include "utils/err.hpp"
 #include "core/msg.hpp"
 #include "utils/random.hpp"
@@ -71,6 +72,7 @@ zlink::ctx_t::ctx_t () :
     _starting (true),
     _terminating (false),
     _reaper (NULL),
+    _service_control_runtime (NULL),
     _max_sockets (clipped_maxsocket (ZLINK_MAX_SOCKETS_DFLT)),
     _max_msgsz (INT_MAX),
     _io_thread_count (ZLINK_IO_THREADS_DFLT),
@@ -96,6 +98,12 @@ zlink::ctx_t::~ctx_t ()
 {
     //  Check that there are no remaining _sockets.
     zlink_assert (_sockets.empty ());
+
+    if (_service_control_runtime) {
+        _service_control_runtime->stop ();
+        delete _service_control_runtime;
+        _service_control_runtime = NULL;
+    }
 
     //  Ask I/O threads to terminate. If stop signal wasn't sent to I/O
     //  thread subsequent invocation of destructor would hang-up.
@@ -125,6 +133,16 @@ zlink::ctx_t::~ctx_t ()
 bool zlink::ctx_t::valid () const
 {
     return _term_mailbox.valid ();
+}
+
+zlink::service_control_runtime_t *zlink::ctx_t::service_control_runtime ()
+{
+    scoped_lock_t locker (_slot_sync);
+    if (_terminating)
+        return NULL;
+    if (_starting && !start ())
+        return NULL;
+    return _service_control_runtime;
 }
 
 int zlink::ctx_t::terminate ()
@@ -393,6 +411,14 @@ bool zlink::ctx_t::start ()
     _slots[reaper_tid] = _reaper->get_mailbox ();
     _reaper->start ();
 
+    _service_control_runtime = new (std::nothrow) service_control_runtime_t (this);
+    if (!_service_control_runtime) {
+        errno = ENOMEM;
+        goto fail_cleanup_reaper;
+    }
+    if (!_service_control_runtime->start ())
+        goto fail_cleanup_reaper;
+
     //  Create I/O thread objects and launch them.
     _slots.resize (slot_count, NULL);
 
@@ -422,6 +448,11 @@ bool zlink::ctx_t::start ()
     return true;
 
 fail_cleanup_reaper:
+    if (_service_control_runtime) {
+        _service_control_runtime->stop ();
+        delete _service_control_runtime;
+        _service_control_runtime = NULL;
+    }
     _reaper->stop ();
     delete _reaper;
     _reaper = NULL;

@@ -5,7 +5,6 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
-#include "core/thread.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
@@ -70,8 +69,10 @@ class spot_node_t
     struct handler_delivery_t;
     struct async_publish_t;
 
-    static void run (void *arg_);
-    void loop ();
+    static void control_task (void *arg_);
+    void control_tick ();
+    bool is_control_thread () const;
+    void request_control_tick ();
     void process_sub ();
     bool process_handler_delivery ();
     bool process_async_publish ();
@@ -87,7 +88,7 @@ class spot_node_t
       const std::vector<spot_sub_t *> &targets_);
     void refresh_peers ();
     void send_heartbeat (uint64_t now_ms_);
-    void ensure_worker_sockets ();
+    void ensure_control_sockets ();
     void flush_pending ();
 
     static bool validate_topic (const char *topic_, std::string *out_);
@@ -172,7 +173,8 @@ class spot_node_t
     std::vector<socket_opt_t> _dealer_opts;
 
     atomic_counter_t _stop;
-    thread_t _worker;
+    uint64_t _task_id;
+    uint32_t _control_tick_ms;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (spot_node_t)
 };

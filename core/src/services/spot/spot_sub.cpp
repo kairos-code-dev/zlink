@@ -147,7 +147,7 @@ int spot_sub_t::set_handler (zlink_spot_sub_handler_fn handler_,
             return 0;
         }
 
-        wait_quiesce = !_node->_worker.is_current_thread ();
+        wait_quiesce = !_node->is_control_thread ();
     }
 
     if (!wait_quiesce)

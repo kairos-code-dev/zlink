@@ -309,38 +309,6 @@ def parse_env_int(name, default, *fallback_names):
         return default
 
 
-def is_wsl_runtime():
-    if not IS_LINUX:
-        return False
-    try:
-        release = platform.release().lower()
-    except Exception:
-        return False
-    return "microsoft" in release or "wsl" in release
-
-
-def maybe_apply_wsl_service_client_cap(selected_patterns):
-    global base_env
-
-    if not selected_patterns or not is_wsl_runtime():
-        return
-
-    service_patterns = {"MULTI_GATEWAY", "MULTI_SPOT"}
-    if not any(pattern in service_patterns for pattern in selected_patterns):
-        return
-
-    configured = parse_env_int("PERF_MULTI_SERVICE_CLIENTS", 0)
-    if configured > 0:
-        return
-
-    requested_clients = max(1, parse_env_int("PERF_MULTI_CLIENTS", 1000))
-    auto_cap = max(1, parse_env_int("PERF_MULTI_WSL_SERVICE_CLIENT_CAP", 32))
-    service_clients = min(requested_clients, auto_cap)
-    value = str(service_clients)
-    os.environ["PERF_MULTI_SERVICE_CLIENTS"] = value
-    base_env["PERF_MULTI_SERVICE_CLIENTS"] = value
-
-
 def resolve_output_capture_limit():
     return max(1024, parse_env_int("PERF_CAPTURE_MAX_BYTES", 4 * 1024 * 1024))
 
@@ -868,7 +836,6 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_CONNECT_CONCURRENCY",
     "PERF_MULTI_DRAIN_MS",
     "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
-    "PERF_MULTI_CLIENT_WORKERS",
     "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS",
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
     "PERF_MULTI_MONITOR_HWM",
@@ -1217,6 +1184,39 @@ def parse_ready_endpoint(line):
     return parts[1].strip()
 
 
+def summarize_server_startup_detail(stdout_text, stderr_text, max_len=180):
+    def pick_detail(text):
+        if not text:
+            return ""
+        fallback = ""
+        for raw in reversed(text.splitlines()):
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("READY,"):
+                continue
+            if not fallback:
+                fallback = line
+            lower = line.lower()
+            if (
+                "[multi-" in line
+                or " t+" in line
+                or "failed" in lower
+                or "error" in lower
+                or "timeout" in lower
+            ):
+                return line
+        return fallback
+
+    detail = pick_detail(stderr_text) or pick_detail(stdout_text)
+    if not detail:
+        return ""
+    detail = detail.replace("\r", " ").replace("\n", " ").strip()
+    if len(detail) > max_len:
+        detail = detail[:max_len]
+    return detail
+
+
 def _pipe_reader(pipe, stream_name, out_queue):
     try:
         for line in iter(pipe.readline, ""):
@@ -1266,11 +1266,9 @@ def run_multi_sizes_test_stream_shared(
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
     if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
-        # Spot secure startup can stall under long full-suite stress runs
-        # (high CCU + repeated process churn). Keep this conservative to
-        # avoid false FAIL from pre-ready terminate.
-        ready_timeout_ms = max(ready_timeout_ms, 60000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 30000)
+        # Secure transports need a bit more startup slack for TLS handshake.
+        ready_timeout_ms = max(ready_timeout_ms, 20000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
@@ -1540,11 +1538,22 @@ def run_multi_sizes_test_stream_shared(
                 }
 
             if not endpoint:
+                pump_server_output_nonblocking()
+                was_running_before_stop = server_proc and server_proc.poll() is None
                 stop_server()
                 drain_server_output()
                 reason = "server_ready_timeout"
-                if server_proc and server_proc.poll() is not None:
+                if (
+                    server_proc
+                    and not was_running_before_stop
+                    and server_proc.poll() is not None
+                ):
                     reason = f"server_exit_before_ready_{server_proc.returncode}"
+                startup_detail = summarize_server_startup_detail(
+                    server_stdout_buffer.text(), server_stderr_buffer.text()
+                )
+                if startup_detail:
+                    reason = f"{reason}::{startup_detail}"
                 return {
                     "status": "fail",
                     "parsed": {},
@@ -1898,17 +1907,12 @@ def run_multi_sizes_test_split(
 
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    if pattern_name == "MULTI_GATEWAY":
-        # Gateway startup can spend noticeable time in registry/discovery setup when
-        # client count is high. A 10s READY timeout causes intermittent false fails.
-        ready_timeout_ms = max(ready_timeout_ms, 30000)
+    if pattern_name == "MULTI_GATEWAY" and transport in ("tls", "wss"):
+        ready_timeout_ms = max(ready_timeout_ms, 20000)
         shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
-        # Spot secure startup can stall under long full-suite stress runs
-        # (high CCU + repeated process churn). Keep this conservative to
-        # avoid false FAIL from pre-ready terminate.
-        ready_timeout_ms = max(ready_timeout_ms, 60000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 30000)
+        ready_timeout_ms = max(ready_timeout_ms, 20000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
@@ -1947,10 +1951,10 @@ def run_multi_sizes_test_split(
         set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
         if pattern_name == "MULTI_GATEWAY":
             gateway_refresh_sleep_ms = max(
-                1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 10)
+                1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 1)
             )
             receiver_hb_chunk_ms = max(
-                1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 1000)
+                1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
             )
             set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
             set_env_pair(
@@ -1958,7 +1962,7 @@ def run_multi_sizes_test_split(
             )
         if pattern_name == "MULTI_SPOT":
             spot_idle_sleep_ms = max(
-                1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 10)
+                1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 1)
             )
             set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
@@ -2169,11 +2173,22 @@ def run_multi_sizes_test_split(
                 }
 
             if not endpoint:
+                pump_server_output_nonblocking()
+                was_running_before_stop = server_proc and server_proc.poll() is None
                 stop_server()
                 drain_server_output()
                 reason = "server_ready_timeout"
-                if server_proc and server_proc.poll() is not None:
+                if (
+                    server_proc
+                    and not was_running_before_stop
+                    and server_proc.poll() is not None
+                ):
                     reason = f"server_exit_before_ready_{server_proc.returncode}"
+                startup_detail = summarize_server_startup_detail(
+                    server_stdout_buffer.text(), server_stderr_buffer.text()
+                )
+                if startup_detail:
+                    reason = f"{reason}::{startup_detail}"
                 return {
                     "status": "fail",
                     "parsed": {},
@@ -2639,7 +2654,7 @@ def _table_header_line(is_multi):
     if is_multi:
         return (
             f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
-            f"{'Lat.Mean':>{lat_w}} | {'Lat.P95':>{lat95_w}} | {'Lat.P99':>{lat99_w}} | "
+            f"{'Lat.Mean(ms)':>{lat_w}} | {'Lat.P95(ms)':>{lat95_w}} | {'Lat.P99(ms)':>{lat99_w}} | "
             f"{'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} | "
             f"{'Q.Snd.Max':>{sndq_w}} | {'Q.Rcv.Max':>{rcvq_w}} | {'Q.Rcv.End':>{rcvend_w}} |"
         )
@@ -2718,9 +2733,20 @@ def _emit_table_row(
         )
         tp_s = format_throughput(pattern_name, throughput if throughput is not None else 0.0)
         bw_s = format_bandwidth(bandwidth if bandwidth is not None else 0.0)
-        lat_s = f"{(latency_mean if latency_mean is not None else 0.0):8.2f} us"
-        lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):8.2f} us"
-        lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):8.2f} us"
+        if is_multi:
+            lat_s = (
+                f"{((latency_mean if latency_mean is not None else 0.0) / 1000.0):8.2f} ms"
+            )
+            lat95_s = (
+                f"{((latency_p95_value if latency_p95_value is not None else 0.0) / 1000.0):8.2f} ms"
+            )
+            lat99_s = (
+                f"{((latency_p99_value if latency_p99_value is not None else 0.0) / 1000.0):8.2f} ms"
+            )
+        else:
+            lat_s = f"{(latency_mean if latency_mean is not None else 0.0):8.2f} us"
+            lat95_s = f"{(latency_p95_value if latency_p95_value is not None else 0.0):8.2f} us"
+            lat99_s = f"{(latency_p99_value if latency_p99_value is not None else 0.0):8.2f} us"
         cpu_s = f"{float(client_cpu):4.1f}" if client_cpu is not None else "N/A"
         mem_s = f"{float(client_mem):6.1f}" if client_mem is not None else "N/A"
         server_cpu_s = f"{float(server_cpu):4.1f}" if server_cpu is not None else "N/A"
@@ -4147,7 +4173,6 @@ def main():
     selected_patterns = [
         p_name for _, p_name in comparisons if requested is None or p_name in requested
     ]
-    maybe_apply_wsl_service_client_cap(selected_patterns)
     multi_only_run = bool(selected_patterns) and all(is_multi_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])

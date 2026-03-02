@@ -9,6 +9,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
+#include <deque>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -46,6 +47,21 @@ inline void install_signal_handlers ()
 #if defined(SIGTERM)
     std::signal (SIGTERM, on_signal);
 #endif
+}
+
+inline void debug_timing_ms (
+  const char *stage,
+  const std::chrono::steady_clock::time_point &startup_begin)
+{
+    if (!bench_debug_enabled () || !stage)
+        return;
+    const long long elapsed_ms =
+      static_cast<long long> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::steady_clock::now () - startup_begin)
+          .count ());
+    std::cerr << "[multi-gateway-server] t+" << elapsed_ms << "ms " << stage
+              << std::endl;
 }
 
 inline void request_queue_probe (size_t msg_size)
@@ -230,31 +246,9 @@ enum relay_status_t
 {
     relay_error = -1,
     relay_idle = 0,
-    relay_progress = 1
+    relay_progress = 1,
+    relay_deferred = 2
 };
-
-inline bool wait_for_gateway_connection (void *gateway,
-                                         const char *service_name,
-                                         int timeout_ms)
-{
-    if (!gateway || !service_name || service_name[0] == '\0')
-        return false;
-
-    if (zlink_gateway_connection_count (gateway, service_name) > 0)
-        return true;
-
-    const auto deadline =
-      std::chrono::steady_clock::now ()
-      + std::chrono::milliseconds (std::max (1000, timeout_ms * 4));
-    while (!g_stop_requested.load (std::memory_order_acquire)
-           && std::chrono::steady_clock::now () < deadline) {
-        if (zlink_gateway_connection_count (gateway, service_name) > 0)
-            return true;
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
-    }
-
-    return zlink_gateway_connection_count (gateway, service_name) > 0;
-}
 
 struct gateway_request_t
 {
@@ -275,6 +269,153 @@ inline void close_gateway_request_payload (gateway_request_t *request)
 
     zlink_msg_close (&request->payload);
     request->has_payload = false;
+}
+
+inline void reset_gateway_request (gateway_request_t *request)
+{
+    if (!request)
+        return;
+    request->client_service[0] = '\0';
+    request->has_payload = false;
+}
+
+inline bool move_gateway_request (gateway_request_t *dst,
+                                  gateway_request_t *src)
+{
+    if (!dst || !src)
+        return false;
+
+    close_gateway_request_payload (dst);
+
+    const size_t len = std::strlen (src->client_service);
+    const size_t copy_len =
+      std::min (len, sizeof (dst->client_service) - 1);
+    if (copy_len > 0)
+        std::memcpy (dst->client_service, src->client_service, copy_len);
+    dst->client_service[copy_len] = '\0';
+
+    if (!src->has_payload) {
+        dst->has_payload = false;
+        reset_gateway_request (src);
+        return true;
+    }
+
+    if (zlink_msg_init (&dst->payload) != 0)
+        return false;
+    if (zlink_msg_move (&dst->payload, &src->payload) != 0) {
+        zlink_msg_close (&dst->payload);
+        dst->has_payload = false;
+        return false;
+    }
+
+    dst->has_payload = true;
+    src->has_payload = false;
+    reset_gateway_request (src);
+    return true;
+}
+
+inline bool is_gateway_transient_send_error (int err)
+{
+    return err == EHOSTUNREACH || err == ENOTCONN || err == ENOENT
+           || err == EAGAIN;
+}
+
+inline bool gateway_has_service_connection (void *gateway,
+                                            const char *service_name)
+{
+    if (!gateway || !service_name || service_name[0] == '\0')
+        return false;
+    return zlink_gateway_connection_count (gateway, service_name) > 0;
+}
+
+inline bool enqueue_deferred_request (std::deque<gateway_request_t> *pending,
+                                      gateway_request_t *request)
+{
+    if (!pending || !request)
+        return false;
+
+    pending->push_back (gateway_request_t ());
+    if (!move_gateway_request (&pending->back (), request)) {
+        pending->pop_back ();
+        close_gateway_request_payload (request);
+        reset_gateway_request (request);
+        return false;
+    }
+    return true;
+}
+
+inline bool flush_pending_gateway_responses (void *server_gateway,
+                                             std::deque<gateway_request_t> *pending)
+{
+    if (!server_gateway || !pending)
+        return false;
+
+    const size_t attempt_count = pending->size ();
+    for (size_t i = 0; i < attempt_count; ++i) {
+        gateway_request_t &entry = pending->front ();
+
+        if (!entry.has_payload || entry.client_service[0] == '\0') {
+            close_gateway_request_payload (&entry);
+            pending->pop_front ();
+            continue;
+        }
+
+        if (!gateway_has_service_connection (server_gateway,
+                                             entry.client_service)) {
+            pending->push_back (gateway_request_t ());
+            if (!move_gateway_request (&pending->back (), &entry)) {
+                pending->pop_back ();
+                close_gateway_request_payload (&entry);
+                reset_gateway_request (&entry);
+                return false;
+            }
+            pending->pop_front ();
+            continue;
+        }
+
+        const int send_rc = zlink_gateway_send (
+          server_gateway,
+          entry.client_service,
+          &entry.payload,
+          1,
+          0);
+        if (send_rc == 0) {
+            reset_gateway_request (&entry);
+            pending->pop_front ();
+            continue;
+        }
+
+        const int err = zlink_errno ();
+        if (is_gateway_transient_send_error (err)) {
+            pending->push_back (gateway_request_t ());
+            if (!move_gateway_request (&pending->back (), &entry)) {
+                pending->pop_back ();
+                close_gateway_request_payload (&entry);
+                reset_gateway_request (&entry);
+                return false;
+            }
+            pending->pop_front ();
+            continue;
+        }
+
+        close_gateway_request_payload (&entry);
+        reset_gateway_request (&entry);
+        return false;
+    }
+
+    return true;
+}
+
+inline void close_pending_gateway_responses (std::deque<gateway_request_t> *pending)
+{
+    if (!pending)
+        return;
+    for (std::deque<gateway_request_t>::iterator it = pending->begin ();
+         it != pending->end (); ++it) {
+        close_gateway_request_payload (&(*it));
+        reset_gateway_request (&(*it));
+    }
+    pending->clear ();
 }
 
 inline bool recv_one_frame (void *router, zlink_msg_t *msg, int flags, int *err_out)
@@ -369,7 +510,6 @@ inline relay_status_t recv_gateway_request (
 inline relay_status_t relay_gateway_request (
   void *router,
   void *server_gateway,
-  int connect_ready_timeout_ms,
   gateway_request_t *request,
   int recv_flags)
 {
@@ -380,6 +520,10 @@ inline relay_status_t relay_gateway_request (
     if (recv_status != relay_progress)
         return recv_status;
 
+    if (!gateway_has_service_connection (server_gateway,
+                                         request->client_service))
+        return relay_deferred;
+
     const int send_rc = zlink_gateway_send (
       server_gateway,
       request->client_service,
@@ -387,30 +531,15 @@ inline relay_status_t relay_gateway_request (
       1,
       0);
     if (send_rc == 0) {
-        request->has_payload = false;
+        reset_gateway_request (request);
         return relay_progress;
     }
 
-    const int first_err = zlink_errno ();
-    if ((first_err == EHOSTUNREACH || first_err == ENOTCONN
-         || first_err == ENOENT)
-        && wait_for_gateway_connection (
-             server_gateway,
-             request->client_service,
-             connect_ready_timeout_ms)) {
-        const int retry_rc = zlink_gateway_send (
-          server_gateway,
-          request->client_service,
-          &request->payload,
-          1,
-          0);
-        if (retry_rc == 0) {
-            request->has_payload = false;
-            return relay_progress;
-        }
-    }
+    if (is_gateway_transient_send_error (zlink_errno ()))
+        return relay_deferred;
 
     close_gateway_request_payload (request);
+    reset_gateway_request (request);
     return relay_error;
 }
 
@@ -432,39 +561,64 @@ inline bool run_server_loop (void *server_receiver,
         return false;
 
     gateway_request_t request;
+    std::deque<gateway_request_t> pending_responses;
+    zlink_pollitem_t item = {router, 0, ZLINK_POLLIN, 0};
+    const bool debug = std::getenv ("PERF_DEBUG") != NULL;
+    size_t deferred_count = 0;
+    size_t pending_max = 0;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
         emit_requested_queue_probe (
           lib_name, transport, queue_send_socket, queue_recv_socket);
-        const relay_status_t first_status = relay_gateway_request (
-          router,
-          server_gateway,
-          settings.connect_ready_timeout_ms,
-          &request,
-          0);
-        if (first_status == relay_idle)
-            continue;
-        if (first_status == relay_error) {
+
+        if (!flush_pending_gateway_responses (server_gateway,
+                                              &pending_responses)) {
             std::cerr << "gateway server: relay failed: "
                       << zlink_strerror (zlink_errno ()) << " service='"
-                      << request.client_service << "' conn_count="
+                      << (pending_responses.empty () ? ""
+                                                    : pending_responses.front ()
+                                                        .client_service)
+                      << "' conn_count="
                       << zlink_gateway_connection_count (
                            server_gateway,
-                           request.client_service)
+                           pending_responses.empty ()
+                             ? ""
+                             : pending_responses.front ().client_service)
                       << " available="
                       << (server_discovery
                             ? zlink_discovery_service_available (
                                 server_discovery,
-                                request.client_service)
+                                pending_responses.empty ()
+                                  ? ""
+                                  : pending_responses.front ().client_service)
                             : -1)
                       << " receivers="
                       << (server_discovery
                             ? zlink_discovery_receiver_count (
                                 server_discovery,
-                                request.client_service)
+                                pending_responses.empty ()
+                                  ? ""
+                                  : pending_responses.front ().client_service)
                             : -1)
                       << std::endl;
+            close_pending_gateway_responses (&pending_responses);
             return false;
+        }
+        pending_max = std::max (pending_max, pending_responses.size ());
+
+        item.revents = 0;
+        const int poll_timeout_ms = pending_responses.empty () ? 2 : 0;
+        const int prc = zlink_poll (&item, 1, poll_timeout_ms);
+        if (prc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            close_pending_gateway_responses (&pending_responses);
+            return false;
+        }
+        if (prc == 0 || !(item.revents & ZLINK_POLLIN)) {
+            if (!pending_responses.empty ())
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            continue;
         }
 
         while (!g_stop_requested.load (std::memory_order_acquire)) {
@@ -473,11 +627,19 @@ inline bool run_server_loop (void *server_receiver,
             const relay_status_t status = relay_gateway_request (
               router,
               server_gateway,
-              settings.connect_ready_timeout_ms,
               &request,
               ZLINK_DONTWAIT);
             if (status == relay_progress)
                 continue;
+            if (status == relay_deferred) {
+                ++deferred_count;
+                if (!enqueue_deferred_request (&pending_responses, &request)) {
+                    close_pending_gateway_responses (&pending_responses);
+                    return false;
+                }
+                pending_max = std::max (pending_max, pending_responses.size ());
+                continue;
+            }
             if (status == relay_idle)
                 break;
 
@@ -500,11 +662,18 @@ inline bool run_server_loop (void *server_receiver,
                                 request.client_service)
                             : -1)
                       << std::endl;
+            close_pending_gateway_responses (&pending_responses);
             return false;
         }
     }
 
     close_gateway_request_payload (&request);
+    reset_gateway_request (&request);
+    if (debug) {
+        std::cerr << "gateway server debug: deferred=" << deferred_count
+                  << " pending_max=" << pending_max << std::endl;
+    }
+    close_pending_gateway_responses (&pending_responses);
     return true;
 }
 
@@ -541,6 +710,9 @@ inline int run_server_benchmark (const std::string &lib_name,
                                  const std::string &transport)
 {
     set_perf_multi_pattern_env (k_pattern);
+    const std::chrono::steady_clock::time_point startup_begin =
+      std::chrono::steady_clock::now ();
+    debug_timing_ms ("startup begin", startup_begin);
 
     if (!is_supported_transport (transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -557,10 +729,12 @@ inline int run_server_benchmark (const std::string &lib_name,
     std::vector<size_t> sizes = resolve_bench_msg_sizes (64);
     if (sizes.empty ())
         sizes.push_back (64);
+    debug_timing_ms ("settings ready", startup_begin);
 
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
+    debug_timing_ms ("ctx ready", startup_begin);
 
     void *registry = NULL;
     std::string registry_pub_endpoint;
@@ -575,6 +749,7 @@ inline int run_server_benchmark (const std::string &lib_name,
                   << zlink_strerror (zlink_errno ()) << std::endl;
         return 1;
     }
+    debug_timing_ms ("registry ready", startup_begin);
 
     void *server_discovery = NULL;
     void *server_gateway = NULL;
@@ -597,6 +772,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("receiver created", startup_begin);
 
     if (!configure_receiver_tls (server_receiver, transport)) {
         std::cerr << "gateway server: receiver tls configure failed"
@@ -604,6 +780,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("receiver tls configured", startup_begin);
 
     receiver_endpoint = bind_receiver_endpoint (
       server_receiver,
@@ -614,6 +791,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("receiver bind ready", startup_begin);
 
     void *receiver_router = zlink_receiver_router_socket_unsafe (server_receiver);
     if (!receiver_router) {
@@ -637,6 +815,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("receiver registry connected", startup_begin);
 
     server_discovery =
       zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
@@ -655,23 +834,10 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
-    const size_t service_clients =
-      resolve_multi_service_clients (settings.clients);
-    if (service_clients != settings.clients) {
-        std::cerr << "gateway server: service clients capped "
-                  << service_clients << "/" << settings.clients << std::endl;
-    }
-    for (size_t i = 0; i < service_clients; ++i) {
-        const std::string service_name =
-          std::string (k_client_service_prefix) + std::to_string (i);
-        if (zlink_discovery_subscribe (server_discovery, service_name.c_str ()) != 0) {
-            std::cerr << "gateway server: discovery subscribe failed for "
-                      << service_name << ": " << zlink_strerror (zlink_errno ())
-                      << std::endl;
-            cleanup ();
-            return 1;
-        }
-    }
+    debug_timing_ms ("discovery connected", startup_begin);
+    // Keep subscriptions empty to accept all client services.
+    // This avoids O(clients) subscribe startup overhead at high client counts
+    // and lets the server start the benchmark loop immediately.
 
     server_gateway =
       zlink_gateway_new (ctx.get (), server_discovery, k_server_gateway_rid);
@@ -680,6 +846,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("gateway created", startup_begin);
 
     const int gateway_sndtimeo_ms =
       bench_timeout_ms_from_env ("PERF_MULTI_SNDTIMEO_MS", 200);
@@ -716,6 +883,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
+    debug_timing_ms ("gateway tls configured", startup_begin);
 
     void *gateway_router = zlink_gateway_router_socket_unsafe (server_gateway);
     if (!gateway_router) {
@@ -724,6 +892,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
     apply_benchmark_socket_options (gateway_router, settings.hwm, transport);
+    debug_timing_ms ("gateway/receiver sockets ready", startup_begin);
 
     g_stop_requested.store (false, std::memory_order_release);
     g_queue_probe_pending.store (false, std::memory_order_release);
@@ -753,6 +922,7 @@ inline int run_server_benchmark (const std::string &lib_name,
 
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
 
+    debug_timing_ms ("emit READY", startup_begin);
     std::cout << "READY," << ready_payload << std::endl;
 
     const bool loop_ok = run_server_loop (
@@ -771,8 +941,14 @@ inline int run_server_benchmark (const std::string &lib_name,
       sample_server_queue_stats (gateway_router, receiver_router);
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
-    cleanup ();
-    return loop_ok ? 0 : 1;
+    if (!loop_ok) {
+        cleanup ();
+        return 1;
+    }
+
+    // Fast-exit path for benchmark success. Explicit teardown of large service
+    // sets can dominate shutdown latency and skew multi-run wall time.
+    return 0;
 }
 
 } // namespace

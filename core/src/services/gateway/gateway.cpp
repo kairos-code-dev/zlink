@@ -4,12 +4,11 @@
 
 #include "core/msg.hpp"
 #include "services/gateway/routing_id_utils.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cerrno>
 #include <cstring>
-#include <thread>
 #include <cstdlib>
 
 #include <zlink.h>
@@ -135,6 +134,9 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
     _router_socket (NULL),
     _use_lock (true),
     _stop (0),
+    _refresh_task_id (0),
+    _refresh_interval_ms (
+      static_cast<uint32_t> (resolve_gateway_refresh_sleep_ms ())),
     _tls_trust_system (0),
     _routing_id_override (routing_id_ ? routing_id_ : "")
 {
@@ -143,7 +145,16 @@ gateway_t::gateway_t (ctx_t *ctx_, discovery_t *discovery_,
         _discovery->add_observer (this);
     if (init_router_socket () != 0)
         _tag = 0xdeadbeef;
-    _refresh_worker.start (refresh_run, this, "gateway-refresh");
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _tag == gateway_tag_value) {
+        _refresh_task_id =
+          runtime->add_periodic_task (refresh_task, this, _refresh_interval_ms,
+                                      true);
+        if (_refresh_task_id == 0)
+            _tag = 0xdeadbeef;
+    } else {
+        _tag = 0xdeadbeef;
+    }
 }
 
 gateway_t::~gateway_t ()
@@ -156,75 +167,72 @@ bool gateway_t::check_tag () const
     return _tag == gateway_tag_value;
 }
 
-void gateway_t::refresh_run (void *arg_)
+void gateway_t::refresh_task (void *arg_)
 {
     gateway_t *self = static_cast<gateway_t *> (arg_);
-    self->refresh_loop ();
+    self->refresh_tick ();
 }
 
-void gateway_t::refresh_loop ()
+void gateway_t::refresh_tick ()
 {
-    const int refresh_sleep_ms = resolve_gateway_refresh_sleep_ms ();
-    while (_stop.get () == 0) {
-        std::vector<std::string> services_to_refresh;
-        {
+    if (_stop.get () != 0)
+        return;
+
+    std::vector<std::string> services_to_refresh;
+    {
+        scoped_lock_t lock (_sync);
+        process_monitor_events ();
+        const uint64_t now_ms = _clock.now_ms ();
+        for (std::map<std::string, uint64_t>::iterator it =
+               _down_until_ms.begin ();
+             it != _down_until_ms.end ();) {
+            if (now_ms >= it->second) {
+                _down_endpoints.erase (it->first);
+                it = _down_until_ms.erase (it);
+                _force_refresh_all = true;
+            } else {
+                ++it;
+            }
+        }
+        if (_discovery) {
+            if (_force_refresh_all) {
+                for (std::map<std::string, service_pool_t>::iterator it =
+                       _pools.begin ();
+                     it != _pools.end (); ++it) {
+                    it->second.dirty = true;
+                    services_to_refresh.push_back (it->first);
+                }
+            } else {
+                for (std::set<std::string>::iterator sit =
+                       _pending_updates.begin ();
+                     sit != _pending_updates.end (); ++sit) {
+                    std::map<std::string, service_pool_t>::iterator pit =
+                      _pools.find (*sit);
+                    if (pit != _pools.end ()) {
+                        pit->second.dirty = true;
+                        services_to_refresh.push_back (*sit);
+                    }
+                }
+            }
+        }
+        _pending_updates.clear ();
+        _force_refresh_all = false;
+    }
+    if (_discovery && !services_to_refresh.empty ()) {
+        for (size_t i = 0; i < services_to_refresh.size (); ++i) {
+            const std::string &service = services_to_refresh[i];
+            std::vector<provider_info_t> providers;
+            _discovery->snapshot_providers (service, &providers);
+            const uint64_t seq = _discovery->service_update_seq (service);
             scoped_lock_t lock (_sync);
-            process_monitor_events ();
-            const uint64_t now_ms = _clock.now_ms ();
-            for (std::map<std::string, uint64_t>::iterator it =
-                   _down_until_ms.begin ();
-                 it != _down_until_ms.end ();) {
-                if (now_ms >= it->second) {
-                    _down_endpoints.erase (it->first);
-                    it = _down_until_ms.erase (it);
-                    _force_refresh_all = true;
-                } else {
-                    ++it;
-                }
-            }
-            if (_discovery) {
-                if (_force_refresh_all) {
-                    for (std::map<std::string, service_pool_t>::iterator it =
-                           _pools.begin ();
-                         it != _pools.end (); ++it) {
-                        it->second.dirty = true;
-                        services_to_refresh.push_back (it->first);
-                    }
-                } else {
-                    for (std::set<std::string>::iterator sit =
-                           _pending_updates.begin ();
-                         sit != _pending_updates.end (); ++sit) {
-                        std::map<std::string, service_pool_t>::iterator pit =
-                          _pools.find (*sit);
-                        if (pit != _pools.end ()) {
-                            pit->second.dirty = true;
-                            services_to_refresh.push_back (*sit);
-                        }
-                    }
-                }
-            }
-            _pending_updates.clear ();
-            _force_refresh_all = false;
+            std::map<std::string, service_pool_t>::iterator it =
+              _pools.find (service);
+            if (it == _pools.end ())
+                continue;
+            if (!it->second.dirty)
+                continue;
+            refresh_pool (&it->second, providers, seq);
         }
-        if (_discovery && !services_to_refresh.empty ()) {
-            for (size_t i = 0; i < services_to_refresh.size (); ++i) {
-                const std::string &service = services_to_refresh[i];
-                std::vector<provider_info_t> providers;
-                _discovery->snapshot_providers (service, &providers);
-                const uint64_t seq =
-                  _discovery->service_update_seq (service);
-                scoped_lock_t lock (_sync);
-                std::map<std::string, service_pool_t>::iterator it =
-                  _pools.find (service);
-                if (it == _pools.end ())
-                    continue;
-                if (!it->second.dirty)
-                    continue;
-                refresh_pool (&it->second, providers, seq);
-            }
-        }
-        std::this_thread::sleep_for (
-          std::chrono::milliseconds (refresh_sleep_ms));
     }
 }
 
@@ -761,6 +769,9 @@ void gateway_t::on_service_update (const std::string &service_name_)
         if (pit != _pools.end ())
             pit->second.dirty = true;
     }
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _refresh_task_id != 0)
+        runtime->wakeup_task (_refresh_task_id);
 }
 
 int gateway_t::connection_count (const char *service_name_)
@@ -805,10 +816,12 @@ int gateway_t::set_tls_client (const char *ca_cert_,
 int gateway_t::destroy ()
 {
     _stop.set (1);
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _refresh_task_id != 0)
+        runtime->remove_task (_refresh_task_id);
+    _refresh_task_id = 0;
     if (_discovery)
         _discovery->remove_observer (this);
-    if (_refresh_worker.get_started ())
-        _refresh_worker.stop ();
     _pools.clear ();
     _last_service_name.clear ();
     _last_pool = NULL;

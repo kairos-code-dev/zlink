@@ -4,16 +4,12 @@
 
 #include "services/gateway/receiver.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/control/service_control_runtime.hpp"
 
+#include "utils/clock.hpp"
 #include "utils/err.hpp"
 #include "utils/random.hpp"
 #include "services/gateway/routing_id_utils.hpp"
-
-#if defined ZLINK_HAVE_WINDOWS
-#include "utils/windows.hpp"
-#else
-#include <unistd.h>
-#endif
 
 #include <string.h>
 #include <vector>
@@ -22,15 +18,6 @@
 namespace zlink
 {
 static const uint32_t receiver_tag_value = 0x1e6700d8;
-
-static void sleep_ms (int ms_)
-{
-#if defined ZLINK_HAVE_WINDOWS
-    Sleep (ms_);
-#else
-    usleep (static_cast<useconds_t> (ms_) * 1000);
-#endif
-}
 
 static uint32_t resolve_receiver_heartbeat_chunk_ms ()
 {
@@ -154,7 +141,10 @@ receiver_t::receiver_t (ctx_t *ctx_, const char *routing_id_) :
     _weight (1),
     _last_status (-1),
     _heartbeat_interval_ms (5000),
-    _stop (0)
+    _next_heartbeat_ms (0),
+    _stop (0),
+    _heartbeat_task_id (0),
+    _heartbeat_dealer (NULL)
 {
     zlink_assert (_ctx);
     _routing_id.size = 0;
@@ -349,9 +339,25 @@ int receiver_t::register_service (const char *service_name_,
         return -1;
     }
 
-    if (!_heartbeat_thread.get_started ()) {
+    if (_heartbeat_task_id == 0) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (!runtime) {
+            errno = ENOTSUP;
+            return -1;
+        }
+
+        const uint32_t heartbeat_chunk_ms = resolve_receiver_heartbeat_chunk_ms ();
+        uint32_t tick_ms =
+          heartbeat_chunk_ms < _heartbeat_interval_ms ? heartbeat_chunk_ms
+                                                      : _heartbeat_interval_ms;
+        if (tick_ms == 0)
+            tick_ms = 1;
         _stop.set (0);
-        _heartbeat_thread.start (heartbeat_worker, this, "recvbeat");
+        _next_heartbeat_ms = 0;
+        _heartbeat_task_id =
+          runtime->add_periodic_task (heartbeat_task, this, tick_ms, true);
+        if (_heartbeat_task_id == 0)
+            return -1;
     }
 
     return 0;
@@ -508,82 +514,91 @@ void *receiver_t::router ()
     return static_cast<void *> (_router);
 }
 
-void receiver_t::heartbeat_worker (void *arg_)
+void receiver_t::heartbeat_task (void *arg_)
 {
     receiver_t *self = static_cast<receiver_t *> (arg_);
-    self->send_heartbeat ();
+    self->heartbeat_tick ();
 }
 
-void receiver_t::send_heartbeat ()
+void receiver_t::heartbeat_tick ()
 {
+    if (_stop.get () != 0)
+        return;
+
+    zlink::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+
+    std::string registry;
+    std::string service;
+    std::string advertise;
     socket_base_t *dealer = NULL;
-    std::string last_registry;
-    const uint32_t heartbeat_chunk_ms = resolve_receiver_heartbeat_chunk_ms ();
-    while (_stop.get () == 0) {
-        std::string registry;
-        std::string service;
-        std::string advertise;
-        {
-            scoped_lock_t lock (_sync);
-            registry = _registry_endpoint;
-            service = _service_name;
-            advertise = _advertise_endpoint;
-        }
+    {
+        scoped_lock_t lock (_sync);
+        if (_next_heartbeat_ms != 0 && now < _next_heartbeat_ms)
+            return;
 
-        if (registry != last_registry) {
-            if (dealer) {
-                dealer->close ();
-                dealer = NULL;
+        registry = _registry_endpoint;
+        service = _service_name;
+        advertise = _advertise_endpoint;
+
+        if (registry.empty () || service.empty () || advertise.empty ())
+            return;
+
+        if (_heartbeat_registry_endpoint != registry) {
+            if (_heartbeat_dealer) {
+                _heartbeat_dealer->close ();
+                _heartbeat_dealer = NULL;
             }
-            last_registry = registry;
+            _heartbeat_registry_endpoint = registry;
         }
 
-        if (!dealer && !registry.empty ()) {
-            dealer = _ctx->create_socket (ZLINK_DEALER);
-            if (dealer) {
+        if (!_heartbeat_dealer) {
+            _heartbeat_dealer = _ctx->create_socket (ZLINK_DEALER);
+            if (_heartbeat_dealer) {
                 const int linger = 0;
                 const int sndtimeo_ms = 100;
-                dealer->setsockopt (ZLINK_LINGER, &linger, sizeof (linger));
-                dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
-                                    sizeof (sndtimeo_ms));
+                _heartbeat_dealer->setsockopt (ZLINK_LINGER, &linger,
+                                               sizeof (linger));
+                _heartbeat_dealer->setsockopt (ZLINK_SNDTIMEO, &sndtimeo_ms,
+                                               sizeof (sndtimeo_ms));
                 // Heartbeat sender must not reuse register DEALER identity.
                 // Using the same routing-id can cause ROUTER identity takeover/
                 // rejection races under high client counts.
-                dealer->connect (registry.c_str ());
+                if (_heartbeat_dealer->connect (registry.c_str ()) != 0) {
+                    _heartbeat_dealer->close ();
+                    _heartbeat_dealer = NULL;
+                }
             }
         }
 
-        if (dealer && !service.empty () && !advertise.empty ()) {
-            send_u16 (dealer, discovery_protocol::msg_heartbeat,
-                      ZLINK_SNDMORE);
-            send_u16 (dealer,
-                      discovery_protocol::service_type_gateway_receiver,
-                      ZLINK_SNDMORE);
-            send_string (dealer, service, ZLINK_SNDMORE);
-            send_string (dealer, advertise, 0);
-        }
-
-        uint32_t remaining = _heartbeat_interval_ms;
-        while (remaining > 0 && _stop.get () == 0) {
-            const uint32_t chunk =
-              remaining > heartbeat_chunk_ms ? heartbeat_chunk_ms : remaining;
-            sleep_ms (static_cast<int> (chunk));
-            remaining -= chunk;
-        }
+        dealer = _heartbeat_dealer;
+        _next_heartbeat_ms = now + _heartbeat_interval_ms;
     }
 
-    if (dealer) {
-        dealer->close ();
-    }
+    if (!dealer)
+        return;
+
+    send_u16 (dealer, discovery_protocol::msg_heartbeat, ZLINK_SNDMORE);
+    send_u16 (dealer, discovery_protocol::service_type_gateway_receiver,
+              ZLINK_SNDMORE);
+    send_string (dealer, service, ZLINK_SNDMORE);
+    send_string (dealer, advertise, 0);
 }
 
 int receiver_t::destroy ()
 {
     _stop.set (1);
-    if (_heartbeat_thread.get_started ())
-        _heartbeat_thread.stop ();
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _heartbeat_task_id != 0)
+        runtime->remove_task (_heartbeat_task_id);
+    _heartbeat_task_id = 0;
 
     scoped_lock_t lock (_sync);
+    if (_heartbeat_dealer) {
+        _heartbeat_dealer->close ();
+        _heartbeat_dealer = NULL;
+    }
+    _heartbeat_registry_endpoint.clear ();
     if (_dealer) {
         _dealer->close ();
         _dealer = NULL;

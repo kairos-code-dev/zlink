@@ -4,6 +4,7 @@
 
 #include "services/discovery/discovery.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include "utils/err.hpp"
 
@@ -32,6 +33,8 @@ discovery_t::discovery_t (ctx_t *ctx_, uint16_t service_type_) :
     _ctx (ctx_),
     _tag (discovery_tag_value),
     _stop (0),
+    _task_id (0),
+    _sub_socket (NULL),
     _update_seq (0),
     _service_type (service_type_)
 {
@@ -61,8 +64,20 @@ int discovery_t::connect_registry (const char *registry_pub_endpoint_)
         _registry_endpoints.insert (registry_pub_endpoint_);
     }
 
-    if (!_worker.get_started ())
-        _worker.start (run, this, "discovery");
+    if (_task_id == 0) {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (!runtime) {
+            errno = ENOTSUP;
+            return -1;
+        }
+        _task_id = runtime->add_periodic_task (control_task, this, 1, true);
+        if (_task_id == 0)
+            return -1;
+    } else {
+        service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+        if (runtime)
+            runtime->wakeup_task (_task_id);
+    }
 
     return 0;
 }
@@ -105,20 +120,26 @@ int discovery_t::set_socket_option (int socket_role_,
     }
 
     scoped_lock_t lock (_sync);
+    bool updated = false;
     for (size_t i = 0; i < _sub_opts.size (); ++i) {
         if (_sub_opts[i].option == option_) {
             _sub_opts[i].value.assign (
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
-            return 0;
+            updated = true;
+            break;
         }
     }
-    socket_opt_t opt;
-    opt.option = option_;
-    opt.value.assign (static_cast<const unsigned char *> (optval_),
-                      static_cast<const unsigned char *> (optval_)
-                        + optvallen_);
-    _sub_opts.push_back (opt);
+    if (!updated) {
+        socket_opt_t opt;
+        opt.option = option_;
+        opt.value.assign (static_cast<const unsigned char *> (optval_),
+                          static_cast<const unsigned char *> (optval_)
+                            + optvallen_);
+        _sub_opts.push_back (opt);
+    }
+    if (_sub_socket)
+        zlink_setsockopt (_sub_socket, option_, optval_, optvallen_);
     return 0;
 }
 
@@ -243,79 +264,105 @@ int discovery_t::service_available (const char *service_name_)
 int discovery_t::destroy ()
 {
     _stop.set (1);
-    if (_worker.get_started ())
-        _worker.stop ();
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _task_id != 0)
+        runtime->remove_task (_task_id);
+    _task_id = 0;
+    close_sub_socket ();
     return 0;
 }
 
-void discovery_t::run (void *arg_)
+void discovery_t::control_task (void *arg_)
 {
     discovery_t *self = static_cast<discovery_t *> (arg_);
-    self->loop ();
+    self->tick ();
 }
 
-void discovery_t::loop ()
+int discovery_t::ensure_sub_socket ()
 {
+    scoped_lock_t lock (_sync);
+    if (_sub_socket)
+        return 0;
+
     void *sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
+    if (!sub)
+        return -1;
+
+    for (size_t i = 0; i < _sub_opts.size (); ++i) {
+        if (!_sub_opts[i].value.empty ())
+            zlink_setsockopt (sub, _sub_opts[i].option, &_sub_opts[i].value[0],
+                              _sub_opts[i].value.size ());
+    }
+    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
+    _sub_socket = sub;
+    _connected_endpoints.clear ();
+    return 0;
+}
+
+void discovery_t::close_sub_socket ()
+{
+    scoped_lock_t lock (_sync);
+    if (_sub_socket) {
+        zlink_close (_sub_socket);
+        _sub_socket = NULL;
+    }
+    _connected_endpoints.clear ();
+}
+
+void discovery_t::tick ()
+{
+    if (_stop.get () != 0)
+        return;
+
+    if (ensure_sub_socket () != 0)
+        return;
+
+    void *sub = NULL;
+    std::set<std::string> endpoints;
+    {
+        scoped_lock_t lock (_sync);
+        sub = _sub_socket;
+        endpoints = _registry_endpoints;
+    }
     if (!sub)
         return;
 
-    std::vector<socket_opt_t> sub_opts;
-    {
+    for (std::set<std::string>::const_iterator it = endpoints.begin ();
+         it != endpoints.end (); ++it) {
         scoped_lock_t lock (_sync);
-        sub_opts = _sub_opts;
-    }
-    for (size_t i = 0; i < sub_opts.size (); ++i) {
-        if (!sub_opts[i].value.empty ())
-            zlink_setsockopt (sub, sub_opts[i].option, &sub_opts[i].value[0],
-                              sub_opts[i].value.size ());
-    }
-    zlink_setsockopt (sub, ZLINK_SUBSCRIBE, "", 0);
-
-    std::set<std::string> connected;
-
-    while (_stop.get () == 0) {
-        std::set<std::string> endpoints;
-        {
-            scoped_lock_t lock (_sync);
-            endpoints = _registry_endpoints;
+        if (_connected_endpoints.find (*it) == _connected_endpoints.end ()
+            && _sub_socket == sub) {
+            zlink_connect (sub, it->c_str ());
+            _connected_endpoints.insert (*it);
         }
+    }
 
-        for (std::set<std::string>::const_iterator it = endpoints.begin ();
-             it != endpoints.end (); ++it) {
-            if (connected.find (*it) == connected.end ()) {
-                zlink_connect (sub, it->c_str ());
-                connected.insert (*it);
-            }
-        }
-
+    while (true) {
         zlink_pollitem_t item;
         item.socket = sub;
         item.fd = 0;
         item.events = ZLINK_POLLIN;
         item.revents = 0;
+        const int rc = zlink_poll (&item, 1, 0);
+        if (rc <= 0 || !(item.revents & ZLINK_POLLIN))
+            break;
 
-        const int rc = zlink_poll (&item, 1, 100);
-        if (rc > 0 && (item.revents & ZLINK_POLLIN)) {
-            std::vector<zlink_msg_t> frames;
-            while (true) {
-                zlink_msg_t frame;
-                zlink_msg_init (&frame);
-                if (zlink_msg_recv (&frame, sub, 0) == -1) {
-                    zlink_msg_close (&frame);
-                    break;
-                }
-                frames.push_back (frame);
-                if (!zlink_msg_more (&frame))
-                    break;
+        std::vector<zlink_msg_t> frames;
+        while (true) {
+            zlink_msg_t frame;
+            zlink_msg_init (&frame);
+            if (zlink_msg_recv (&frame, sub, ZLINK_DONTWAIT) == -1) {
+                zlink_msg_close (&frame);
+                break;
             }
-            if (!frames.empty ())
-                handle_service_list (frames);
-            close_frames (&frames);
+            frames.push_back (frame);
+            if (!zlink_msg_more (&frame))
+                break;
         }
+        if (!frames.empty ())
+            handle_service_list (frames);
+        close_frames (&frames);
     }
-
-    zlink_close (sub);
 }
 
 void discovery_t::notify_observers (const std::set<std::string> &services_)

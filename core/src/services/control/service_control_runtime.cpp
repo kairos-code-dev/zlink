@@ -1,0 +1,220 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+#include "precompiled.hpp"
+
+#include "services/control/service_control_runtime.hpp"
+
+#include "core/ctx.hpp"
+#include "utils/clock.hpp"
+
+#include <limits.h>
+#include <vector>
+
+namespace zlink
+{
+service_control_runtime_t::service_control_runtime_t (ctx_t *ctx_) :
+    _ctx (ctx_),
+    _next_task_id (1),
+    _active_task_id (0),
+    _running (false),
+    _stopping (false)
+{
+    zlink_assert (_ctx);
+}
+
+service_control_runtime_t::~service_control_runtime_t ()
+{
+    stop ();
+}
+
+bool service_control_runtime_t::start ()
+{
+    scoped_lock_t lock (_sync);
+    if (_running)
+        return true;
+
+    _stopping = false;
+    _active_task_id = 0;
+    _ctx->start_thread (_thread, run, this, "service-ctrl");
+    _running = true;
+    return true;
+}
+
+void service_control_runtime_t::stop ()
+{
+    {
+        scoped_lock_t lock (_sync);
+        if (!_running)
+            return;
+        _stopping = true;
+        _cv.broadcast ();
+    }
+
+    _thread.stop ();
+
+    scoped_lock_t lock (_sync);
+    _tasks.clear ();
+    _active_task_id = 0;
+    _running = false;
+    _stopping = false;
+}
+
+uint64_t service_control_runtime_t::add_periodic_task (
+  service_control_task_fn *fn_,
+  void *arg_,
+  uint32_t interval_ms_,
+  bool run_immediately_)
+{
+    if (!fn_ || interval_ms_ == 0) {
+        errno = EINVAL;
+        return 0;
+    }
+
+    zlink::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+
+    scoped_lock_t lock (_sync);
+    if (!_running || _stopping) {
+        errno = ETERM;
+        return 0;
+    }
+
+    task_entry_t task;
+    task.id = _next_task_id++;
+    if (task.id == 0)
+        task.id = _next_task_id++;
+    task.fn = fn_;
+    task.arg = arg_;
+    task.interval_ms = interval_ms_;
+    task.next_run_ms = run_immediately_ ? 0 : now + interval_ms_;
+    task.pending_wakeup = run_immediately_;
+
+    _tasks[task.id] = task;
+    _cv.broadcast ();
+    return task.id;
+}
+
+int service_control_runtime_t::remove_task (uint64_t task_id_)
+{
+    if (task_id_ == 0)
+        return 0;
+
+    scoped_lock_t lock (_sync);
+    _tasks.erase (task_id_);
+    while (_active_task_id == task_id_)
+        _cv.wait (&_sync, -1);
+    return 0;
+}
+
+int service_control_runtime_t::wakeup_task (uint64_t task_id_)
+{
+    if (task_id_ == 0)
+        return 0;
+
+    scoped_lock_t lock (_sync);
+    std::map<uint64_t, task_entry_t>::iterator it = _tasks.find (task_id_);
+    if (it == _tasks.end ()) {
+        errno = EINVAL;
+        return -1;
+    }
+    it->second.pending_wakeup = true;
+    it->second.next_run_ms = 0;
+    _cv.broadcast ();
+    return 0;
+}
+
+bool service_control_runtime_t::is_current_thread () const
+{
+    return _thread.get_started () && _thread.is_current_thread ();
+}
+
+void service_control_runtime_t::run (void *arg_)
+{
+    service_control_runtime_t *self =
+      static_cast<service_control_runtime_t *> (arg_);
+    self->loop ();
+}
+
+void service_control_runtime_t::loop ()
+{
+    zlink::clock_t clock;
+
+    while (true) {
+        std::vector<due_call_t> due_calls;
+
+        {
+            scoped_lock_t lock (_sync);
+            while (due_calls.empty () && !_stopping) {
+                const uint64_t now = clock.now_ms ();
+                bool have_next_deadline = false;
+                uint64_t next_deadline = 0;
+
+                for (std::map<uint64_t, task_entry_t>::iterator it =
+                       _tasks.begin ();
+                     it != _tasks.end (); ++it) {
+                    task_entry_t &task = it->second;
+                    const bool due =
+                      task.pending_wakeup || now >= task.next_run_ms;
+                    if (due) {
+                        task.pending_wakeup = false;
+                        task.next_run_ms = now + task.interval_ms;
+                        due_call_t call;
+                        call.task_id = task.id;
+                        call.fn = task.fn;
+                        call.arg = task.arg;
+                        due_calls.push_back (call);
+                    } else {
+                        if (!have_next_deadline
+                            || task.next_run_ms < next_deadline) {
+                            next_deadline = task.next_run_ms;
+                            have_next_deadline = true;
+                        }
+                    }
+                }
+
+                if (!due_calls.empty () || _stopping)
+                    break;
+
+                if (!have_next_deadline) {
+                    _cv.wait (&_sync, -1);
+                } else {
+                    const int wait_ms =
+                      next_deadline <= now
+                        ? 0
+                        : static_cast<int> (
+                            std::min<uint64_t> (next_deadline - now,
+                                                static_cast<uint64_t> (INT_MAX)));
+                    _cv.wait (&_sync, wait_ms);
+                }
+            }
+
+            if (_stopping)
+                break;
+        }
+
+        for (size_t i = 0; i < due_calls.size (); ++i) {
+            due_call_t call = due_calls[i];
+            {
+                scoped_lock_t lock (_sync);
+                if (_tasks.find (call.task_id) == _tasks.end ())
+                    continue;
+                _active_task_id = call.task_id;
+            }
+
+            call.fn (call.arg);
+
+            {
+                scoped_lock_t lock (_sync);
+                if (_active_task_id == call.task_id) {
+                    _active_task_id = 0;
+                    _cv.broadcast ();
+                }
+            }
+        }
+    }
+
+    scoped_lock_t lock (_sync);
+    _active_task_id = 0;
+    _cv.broadcast ();
+}
+}

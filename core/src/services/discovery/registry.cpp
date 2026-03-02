@@ -4,6 +4,7 @@
 
 #include "services/discovery/registry.hpp"
 #include "services/discovery/discovery_protocol.hpp"
+#include "services/control/service_control_runtime.hpp"
 
 #include "utils/err.hpp"
 #include "utils/random.hpp"
@@ -45,7 +46,15 @@ registry_t::registry_t (ctx_t *ctx_) :
     _heartbeat_interval_ms (5000),
     _heartbeat_timeout_ms (15000),
     _broadcast_interval_ms (30000),
-    _stop (0)
+    _stop (0),
+    _task_id (0),
+    _pub_socket (NULL),
+    _router_socket (NULL),
+    _peer_sub_socket (NULL),
+    _next_broadcast_ms (0),
+    _last_sent_seq (0),
+    _started (false),
+    _next_socket_retry_ms (0)
 {
     zlink_assert (_ctx);
 }
@@ -127,15 +136,19 @@ int registry_t::set_socket_option (int socket_role_,
 
     scoped_lock_t lock (_sync);
     std::vector<socket_opt_t> *opts = NULL;
+    void *existing_socket = NULL;
     switch (socket_role_) {
         case ZLINK_REGISTRY_SOCKET_PUB:
             opts = &_pub_opts;
+            existing_socket = _pub_socket;
             break;
         case ZLINK_REGISTRY_SOCKET_ROUTER:
             opts = &_router_opts;
+            existing_socket = _router_socket;
             break;
         case ZLINK_REGISTRY_SOCKET_PEER_SUB:
             opts = &_peer_sub_opts;
+            existing_socket = _peer_sub_socket;
             break;
         default:
             errno = EINVAL;
@@ -146,6 +159,8 @@ int registry_t::set_socket_option (int socket_role_,
             (*opts)[i].value.assign (
               static_cast<const unsigned char *> (optval_),
               static_cast<const unsigned char *> (optval_) + optvallen_);
+            if (existing_socket)
+                zlink_setsockopt (existing_socket, option_, optval_, optvallen_);
             return 0;
         }
     }
@@ -155,93 +170,112 @@ int registry_t::set_socket_option (int socket_role_,
                       static_cast<const unsigned char *> (optval_)
                         + optvallen_);
     opts->push_back (opt);
+    if (existing_socket)
+        zlink_setsockopt (existing_socket, option_, optval_, optvallen_);
     return 0;
 }
 
 int registry_t::start ()
 {
-    scoped_lock_t lock (_sync);
-    if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
-        errno = EINVAL;
+    {
+        scoped_lock_t lock (_sync);
+        if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+        if (_started)
+            return 0;
+        _stop.set (0);
+        _started = true;
+        _next_broadcast_ms = 0;
+        _last_sent_seq = _list_seq;
+    }
+
+    // Ensure bind succeeds before reporting start success. With async-only
+    // startup this could return 0 even when endpoints are busy, which leaves
+    // clients blocked in register-ack waits.
+    if (ensure_sockets () != 0) {
+        scoped_lock_t lock (_sync);
+        _started = false;
         return -1;
     }
-    if (_stop.get () == 0 && _worker.get_started ())
-        return 0;
 
-    _stop.set (0);
-    _worker.start (run, this, "registry");
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (!runtime) {
+        errno = ENOTSUP;
+        close_sockets ();
+        scoped_lock_t lock (_sync);
+        _started = false;
+        return -1;
+    }
+
+    _task_id = runtime->add_periodic_task (control_task, this, 1, true);
+    if (_task_id == 0) {
+        close_sockets ();
+        scoped_lock_t lock (_sync);
+        _started = false;
+        return -1;
+    }
     return 0;
 }
 
 int registry_t::destroy ()
 {
-    stop_worker ();
+    _stop.set (1);
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _task_id != 0)
+        runtime->remove_task (_task_id);
+    _task_id = 0;
+    close_sockets ();
+    scoped_lock_t lock (_sync);
+    _started = false;
     return 0;
 }
 
-void registry_t::stop_worker ()
-{
-    _stop.set (1);
-    if (_worker.get_started ())
-        _worker.stop ();
-}
-
-void registry_t::run (void *arg_)
+void registry_t::control_task (void *arg_)
 {
     registry_t *self = static_cast<registry_t *> (arg_);
-    self->loop ();
+    self->tick ();
 }
 
-void registry_t::loop ()
+int registry_t::ensure_sockets ()
 {
-    std::string pub_endpoint;
-    std::string router_endpoint;
-    std::vector<std::string> peer_pubs;
-    uint32_t registry_id = 0;
-    bool registry_id_set = false;
+    zlink::clock_t clock;
+    const uint64_t now = clock.now_ms ();
 
-    {
-        scoped_lock_t lock (_sync);
-        pub_endpoint = _pub_endpoint;
-        router_endpoint = _router_endpoint;
-        peer_pubs = _peer_pubs;
-        registry_id = _registry_id;
-        registry_id_set = _registry_id_set;
+    scoped_lock_t lock (_sync);
+    if (!_started || _stop.get () != 0)
+        return -1;
+    if (_pub_socket && _router_socket)
+        return 0;
+    if (now < _next_socket_retry_ms)
+        return -1;
+    if (_pub_endpoint.empty () || _router_endpoint.empty ()) {
+        errno = EINVAL;
+        return -1;
     }
 
     void *pub = zlink_socket (static_cast<void *> (_ctx), ZLINK_XPUB);
     void *router = zlink_socket (static_cast<void *> (_ctx), ZLINK_ROUTER);
-    void *peer_sub = NULL;
-    std::set<std::string> peer_connected;
-
     if (!pub || !router) {
         if (pub)
             zlink_close (pub);
         if (router)
             zlink_close (router);
-        return;
+        _next_socket_retry_ms = now + 100;
+        return -1;
     }
 
-    std::vector<socket_opt_t> pub_opts;
-    std::vector<socket_opt_t> router_opts;
-    std::vector<socket_opt_t> peer_sub_opts;
-    {
-        scoped_lock_t lock (_sync);
-        pub_opts = _pub_opts;
-        router_opts = _router_opts;
-        peer_sub_opts = _peer_sub_opts;
+    for (size_t i = 0; i < _pub_opts.size (); ++i) {
+        if (!_pub_opts[i].value.empty ())
+            zlink_setsockopt (pub, _pub_opts[i].option, &_pub_opts[i].value[0],
+                              _pub_opts[i].value.size ());
     }
-
-    for (size_t i = 0; i < pub_opts.size (); ++i) {
-        if (!pub_opts[i].value.empty ())
-            zlink_setsockopt (pub, pub_opts[i].option, &pub_opts[i].value[0],
-                              pub_opts[i].value.size ());
-    }
-    for (size_t i = 0; i < router_opts.size (); ++i) {
-        if (!router_opts[i].value.empty ())
-            zlink_setsockopt (router, router_opts[i].option,
-                              &router_opts[i].value[0],
-                              router_opts[i].value.size ());
+    for (size_t i = 0; i < _router_opts.size (); ++i) {
+        if (!_router_opts[i].value.empty ())
+            zlink_setsockopt (router, _router_opts[i].option,
+                              &_router_opts[i].value[0],
+                              _router_opts[i].value.size ());
     }
 
     int verbose = 1;
@@ -252,64 +286,125 @@ void registry_t::loop ()
                           sizeof (mandatory));
     }
 
-    if (zlink_bind (pub, pub_endpoint.c_str ()) != 0
-        || zlink_bind (router, router_endpoint.c_str ()) != 0) {
-        zlink_close (pub);
+    if (zlink_bind (pub, _pub_endpoint.c_str ()) != 0
+        || zlink_bind (router, _router_endpoint.c_str ()) != 0) {
         zlink_close (router);
-        return;
+        zlink_close (pub);
+        _next_socket_retry_ms = now + 100;
+        return -1;
     }
 
-    if (!peer_pubs.empty ()) {
+    if (_pub_socket)
+        zlink_close (_pub_socket);
+    if (_router_socket)
+        zlink_close (_router_socket);
+    _pub_socket = pub;
+    _router_socket = router;
+
+    if (!_registry_id_set) {
+        _registry_id = zlink::generate_random ();
+        if (_registry_id == 0)
+            _registry_id = 1;
+        _registry_id_set = true;
+    }
+
+    _next_broadcast_ms = now + _broadcast_interval_ms;
+    _last_sent_seq = _list_seq;
+    _next_socket_retry_ms = 0;
+    return 0;
+}
+
+void registry_t::close_sockets ()
+{
+    void *pub = NULL;
+    void *router = NULL;
+    void *peer_sub = NULL;
+    {
+        scoped_lock_t lock (_sync);
+        pub = _pub_socket;
+        router = _router_socket;
+        peer_sub = _peer_sub_socket;
+        _pub_socket = NULL;
+        _router_socket = NULL;
+        _peer_sub_socket = NULL;
+        _peer_connected.clear ();
+    }
+
+    if (peer_sub)
+        zlink_close (peer_sub);
+    if (router)
+        zlink_close (router);
+    if (pub)
+        zlink_close (pub);
+}
+
+void registry_t::tick ()
+{
+    if (_stop.get () != 0)
+        return;
+
+    {
+        scoped_lock_t lock (_sync);
+        if (!_started)
+            return;
+    }
+
+    if (ensure_sockets () != 0)
+        return;
+
+    void *pub = NULL;
+    void *router = NULL;
+    void *peer_sub = NULL;
+    std::vector<std::string> peer_pubs;
+    std::vector<socket_opt_t> peer_sub_opts;
+    uint32_t broadcast_interval_ms = 0;
+    {
+        scoped_lock_t lock (_sync);
+        pub = _pub_socket;
+        router = _router_socket;
+        peer_sub = _peer_sub_socket;
+        peer_pubs = _peer_pubs;
+        peer_sub_opts = _peer_sub_opts;
+        broadcast_interval_ms = _broadcast_interval_ms;
+    }
+    if (!pub || !router)
+        return;
+
+    if (!peer_pubs.empty () && !peer_sub) {
         peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
         if (peer_sub) {
             for (size_t i = 0; i < peer_sub_opts.size (); ++i) {
                 if (!peer_sub_opts[i].value.empty ())
-                    zlink_setsockopt (peer_sub,
-                                      peer_sub_opts[i].option,
+                    zlink_setsockopt (peer_sub, peer_sub_opts[i].option,
                                       &peer_sub_opts[i].value[0],
                                       peer_sub_opts[i].value.size ());
             }
             zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
-            for (size_t i = 0; i < peer_pubs.size (); ++i) {
-                zlink_connect (peer_sub, peer_pubs[i].c_str ());
-                peer_connected.insert (peer_pubs[i]);
-            }
-        }
-    }
-
-    if (!registry_id_set) {
-        registry_id = zlink::generate_random ();
-        if (registry_id == 0)
-            registry_id = 1;
-        scoped_lock_t lock (_sync);
-        _registry_id = registry_id;
-        _registry_id_set = true;
-    }
-
-    zlink::clock_t clock;
-    uint64_t next_broadcast = clock.now_ms () + _broadcast_interval_ms;
-    uint64_t last_sent_seq = _list_seq;
-
-    while (_stop.get () == 0) {
-        {
             scoped_lock_t lock (_sync);
-            peer_pubs = _peer_pubs;
-        }
-        if (!peer_pubs.empty () && !peer_sub) {
-            peer_sub = zlink_socket (static_cast<void *> (_ctx), ZLINK_SUB);
-            if (peer_sub)
-                zlink_setsockopt (peer_sub, ZLINK_SUBSCRIBE, "", 0);
-        }
-        if (peer_sub) {
-            for (size_t i = 0; i < peer_pubs.size (); ++i) {
-                const std::string &endpoint = peer_pubs[i];
-                if (peer_connected.find (endpoint) == peer_connected.end ()) {
-                    zlink_connect (peer_sub, endpoint.c_str ());
-                    peer_connected.insert (endpoint);
-                }
+            if (_peer_sub_socket == NULL)
+                _peer_sub_socket = peer_sub;
+            else {
+                zlink_close (peer_sub);
+                peer_sub = _peer_sub_socket;
             }
         }
+    } else if (peer_sub == NULL && !peer_pubs.empty ()) {
+        scoped_lock_t lock (_sync);
+        peer_sub = _peer_sub_socket;
+    }
 
+    if (peer_sub) {
+        for (size_t i = 0; i < peer_pubs.size (); ++i) {
+            const std::string &endpoint = peer_pubs[i];
+            scoped_lock_t lock (_sync);
+            if (_peer_connected.find (endpoint) == _peer_connected.end ()) {
+                zlink_connect (peer_sub, endpoint.c_str ());
+                _peer_connected.insert (endpoint);
+            }
+        }
+    }
+
+    for (int drain = 0; drain < 64; ++drain) {
         zlink_pollitem_t items[3];
         int item_count = 0;
         items[item_count].socket = router;
@@ -330,57 +425,78 @@ void registry_t::loop ()
             item_count++;
         }
 
-        const int rc = zlink_poll (items, item_count, 100);
-        if (rc > 0) {
-            int idx = 0;
-            if (items[idx].revents & ZLINK_POLLIN)
-                handle_router (router);
-            idx++;
-            if (items[idx].revents & ZLINK_POLLIN) {
-                while (true) {
-                    zlink_msg_t submsg;
-                    zlink_msg_init (&submsg);
-                    if (zlink_msg_recv (&submsg, pub, ZLINK_DONTWAIT) == -1) {
-                        zlink_msg_close (&submsg);
-                        break;
-                    }
-                    if (zlink_msg_size (&submsg) > 0) {
-                        unsigned char *data = static_cast<unsigned char *> (
-                          zlink_msg_data (&submsg));
-                        if (data && data[0] == 1)
-                            send_service_list (pub);
-                    }
+        const int rc = zlink_poll (items, item_count, 0);
+        if (rc <= 0)
+            break;
+
+        bool handled = false;
+        int idx = 0;
+        if (items[idx].revents & ZLINK_POLLIN) {
+            handle_router (router);
+            handled = true;
+        }
+        idx++;
+        if (items[idx].revents & ZLINK_POLLIN) {
+            handled = true;
+            while (true) {
+                zlink_msg_t submsg;
+                zlink_msg_init (&submsg);
+                if (zlink_msg_recv (&submsg, pub, ZLINK_DONTWAIT) == -1) {
                     zlink_msg_close (&submsg);
+                    break;
                 }
+                if (zlink_msg_size (&submsg) > 0) {
+                    unsigned char *data = static_cast<unsigned char *> (
+                      zlink_msg_data (&submsg));
+                    if (data && data[0] == 1)
+                        send_service_list (pub);
+                }
+                zlink_msg_close (&submsg);
             }
-            idx++;
-            if (peer_sub && (items[idx].revents & ZLINK_POLLIN))
-                handle_peer (peer_sub);
+        }
+        idx++;
+        if (peer_sub && (items[idx].revents & ZLINK_POLLIN)) {
+            handle_peer (peer_sub);
+            handled = true;
         }
 
-        const uint64_t now = clock.now_ms ();
-        remove_expired (now);
-        if (_list_seq != last_sent_seq) {
-            send_service_list (pub);
-            last_sent_seq = _list_seq;
-            next_broadcast = now + _broadcast_interval_ms;
-        } else if (now >= next_broadcast) {
-            send_service_list (pub);
-            next_broadcast = now + _broadcast_interval_ms;
-        }
+        if (!handled)
+            break;
     }
 
-    if (peer_sub)
-        zlink_close (peer_sub);
-    zlink_close (router);
-    zlink_close (pub);
+    zlink::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+    remove_expired (now);
+
+    bool send_list = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_list_seq != _last_sent_seq) {
+            send_list = true;
+            _last_sent_seq = _list_seq;
+            _next_broadcast_ms = now + _broadcast_interval_ms;
+        } else if (_next_broadcast_ms == 0 || now >= _next_broadcast_ms) {
+            send_list = true;
+            _next_broadcast_ms = now + _broadcast_interval_ms;
+        }
+        if (_broadcast_interval_ms == 0)
+            _broadcast_interval_ms = 30000;
+    }
+
+    if (send_list)
+        send_service_list (pub);
+
+    if (broadcast_interval_ms == 0) {
+        scoped_lock_t lock (_sync);
+        _broadcast_interval_ms = 30000;
+    }
 }
 
 void registry_t::handle_router (void *router_)
 {
     zlink_msg_t msg;
     zlink_msg_init (&msg);
-    if (zlink_msg_recv (&msg, router_, 0) == -1) {
+    if (zlink_msg_recv (&msg, router_, ZLINK_DONTWAIT) == -1) {
         zlink_msg_close (&msg);
         return;
     }
@@ -396,7 +512,7 @@ void registry_t::handle_router (void *router_)
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_recv (&frame, router_, 0) == -1) {
+        if (zlink_msg_recv (&frame, router_, ZLINK_DONTWAIT) == -1) {
             zlink_msg_close (&frame);
             break;
         }
@@ -455,7 +571,7 @@ void registry_t::handle_peer (void *sub_)
     while (true) {
         zlink_msg_t frame;
         zlink_msg_init (&frame);
-        if (zlink_msg_recv (&frame, sub_, 0) == -1) {
+        if (zlink_msg_recv (&frame, sub_, ZLINK_DONTWAIT) == -1) {
             zlink_msg_close (&frame);
             break;
         }

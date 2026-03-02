@@ -4,7 +4,6 @@
 #define __ZLINK_DISCOVERY_DISCOVERY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
-#include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/mutex.hpp"
 
@@ -69,8 +68,10 @@ class discovery_t
         std::vector<provider_info_t> providers;
     };
 
-    static void run (void *arg_);
-    void loop ();
+    static void control_task (void *arg_);
+    void tick ();
+    int ensure_sub_socket ();
+    void close_sub_socket ();
     void handle_service_list (const std::vector<zlink_msg_t> &frames_);
     void notify_observers (const std::set<std::string> &services_);
 
@@ -78,7 +79,9 @@ class discovery_t
     uint32_t _tag;
 
     atomic_counter_t _stop;
-    thread_t _worker;
+    uint64_t _task_id;
+    void *_sub_socket;
+    std::set<std::string> _connected_endpoints;
 
     mutex_t _sync;
     std::set<std::string> _registry_endpoints;

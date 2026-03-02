@@ -51,11 +51,11 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 | 2. server READY | server가 bind 완료 후 stdout에 `READY,<endpoint>` 출력 |
 | 3. client 시작 | 스크립트가 READY를 읽은 후 client 바이너리를 spawn (`--endpoint <endpoint>`) |
 | 4. 측정 수행 | client가 패턴별 phase 정책(echo 2-phase / one-way 2-phase)으로 측정 |
-| 5. client 종료 | client가 RESULT line 출력 후 종료 (exit code 0) |
-| 6. server 종료 | 스크립트가 server에 SIGTERM (Linux) / TerminateProcess (Windows) 전송, server가 RESULT line 출력 후 종료 |
+| 5. client 종료 | client가 phase 완료 후 종료 (exit code 0) |
+| 6. server 종료 | 스크립트가 server에 SIGTERM (Linux) / TerminateProcess (Windows) 전송, server/client가 출력한 RESULT line을 합산 |
 
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
-- phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way(server-push)는 server/client가 동일 순서의 phase를 수행한다.
+- phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way는 sender/receiver가 동일 순서의 phase를 수행한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 
 #### 소스 파일 구조
@@ -993,7 +993,7 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 [warmup] -> [settle] -> [throughput] -> [latency] -> [drain] -> [size_transition_drain]
 ```
 
-> echo는 client가 phase를 제어하며 server는 relay/echo 대기한다. one-way(server-push)는 server/client가 동일 순서의 phase를 수행한다.
+> echo는 client가 phase를 제어하며 server는 relay/echo 대기한다. one-way는 sender/receiver가 동일 순서의 phase를 수행한다.
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
@@ -1107,14 +1107,14 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 - 단방향 샘플(one-way): 수신 메시지에 포함된 송신 타임스탬프 기준 `now_us - sent_us`
 - warmup/drain 구간의 데이터는 계산에서 제외한다.
 
-### 9.3 one-way server-push 보정 규칙
+### 9.3 one-way latency 집계 규칙
 
-`MULTI_DEALER_DEALER`, `MULTI_PUBSUB`, `MULTI_SPOT`는 server가 지속적으로 publish/push하므로, 큐 backlog가 곧바로 샘플 왜곡으로 이어질 수 있다. 이를 완화하기 위해 아래 규칙을 적용한다.
+one-way 패턴 latency는 패턴의 실제 receiver 측에서 측정한다.
 
-- one-way latency 샘플링 worker 수는 throughput 처리 worker와 동일한 `client_workers` 계산식을 사용한다(1 worker 강제 금지).
-- 소켓 drain 루프에서 latency 샘플은 **drain cycle 내 최신 메시지 1개만** 반영한다(오래된 backlog 메시지 다중 반영 금지).
-- mean은 전체 worker의 `lat_sum/lat_count`로 계산한다.
-- p95/p99는 worker별 p95/p99를 각 worker `lat_count`로 가중 평균하여 합성한다.
+- `MULTI_DEALER_DEALER`: server(receiver) 기준으로 latency 측정
+- `MULTI_PUBSUB`, `MULTI_SPOT`: client(receiver) 기준으로 latency 측정
+- latency phase 구간에서 수신한 메시지는 **전수 집계**한다(메시지 단위 샘플 누락 금지).
+- mean은 `lat_sum / lat_count`로 계산하고, p95/p99는 동일 샘플 집합에서 계산한다.
 
 ---
 
@@ -1282,15 +1282,14 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_CLIENT_WORKERS` | 클라이언트 thread-pool 워커 수 (소켓 소유 스레드 수) | 4 |
-| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 워커 poll 타임아웃(ms) | 1 |
+| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 poll 타임아웃(ms) | 1 |
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
 | `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 
 - `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다 (항상 blocking send, 불필요 backoff 제거).
-- `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 소켓 소유 thread-pool 루프에서 readiness 기반으로 즉시 drain한다.
+- `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 단일 제어 루프에서 readiness 기반으로 즉시 drain한다.
 
 ### 12.5 프로세스 조정
 

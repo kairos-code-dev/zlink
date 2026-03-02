@@ -22,7 +22,7 @@ static const int k_client_socket_type = ZLINK_ROUTER;
 static const bool k_client_router_send = true;
 static const char *k_server_routing_id = "SERVER";
 
-using perf_multi_client::backoff_worker_idle;
+using perf_multi_client::backoff_client_idle;
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
@@ -190,7 +190,7 @@ inline bool run_echo_window_round_robin (
             break;
 
         if (!progressed)
-            backoff_worker_idle (settings);
+            backoff_client_idle (settings);
     }
 
     if (recv_total)

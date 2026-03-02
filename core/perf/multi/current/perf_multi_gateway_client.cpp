@@ -26,7 +26,7 @@ static bool g_server_routing_id_valid = false;
 typedef int (*gateway_set_tls_client_fn) (void *, const char *, const char *, int);
 typedef int (*receiver_set_tls_server_fn) (void *, const char *, const char *);
 
-using perf_multi_client::backoff_worker_idle;
+using perf_multi_client::backoff_client_idle;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
 using perf_multi_client::recv_one_message;
@@ -572,13 +572,122 @@ inline bool run_echo_window_round_robin (
             break;
 
         if (!progressed)
-            backoff_worker_idle (settings);
+            backoff_client_idle (settings);
     }
 
     if (recv_total)
         *recv_total = local_recv;
 
     return !fatal_error;
+}
+
+inline bool prime_roundtrip_all_slots (
+  const std::vector<gateway_client_slot_t> &slots,
+  const multi_bench_settings_t &settings,
+  const std::vector<char> &payload,
+  size_t payload_size,
+  size_t scratch_capacity,
+  int timeout_ms)
+{
+    if (slots.empty ())
+        return false;
+
+    const int bounded_timeout_ms = std::max (1000, timeout_ms);
+    const auto deadline =
+      std::chrono::steady_clock::now ()
+      + std::chrono::milliseconds (bounded_timeout_ms);
+
+    const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
+    const size_t scratch_size =
+      std::max<size_t> (scratch_capacity, static_cast<size_t> (64));
+
+    std::vector<char> scratch (scratch_size, '\0');
+    std::vector<uint8_t> awaiting_reply (slots.size (), 0);
+    std::vector<uint8_t> roundtrip_count (slots.size (), 0);
+    std::vector<zlink_pollitem_t> poll_items (slots.size ());
+    for (size_t i = 0; i < slots.size (); ++i) {
+        const zlink_pollitem_t item = {
+          slots[i].receiver_router,
+          0,
+          ZLINK_POLLIN,
+          0,
+        };
+        poll_items[i] = item;
+    }
+
+    const uint8_t target_roundtrips_per_slot = 3;
+    size_t primed_count = 0;
+    size_t rr = 0;
+
+    while (primed_count < slots.size () && std::chrono::steady_clock::now () < deadline) {
+        bool progressed = false;
+
+        const size_t start_rr = rr;
+        for (size_t attempts = 0; attempts < slots.size (); ++attempts) {
+            const size_t idx = (start_rr + attempts) % slots.size ();
+            if (roundtrip_count[idx] >= target_roundtrips_per_slot
+                || awaiting_reply[idx] != 0)
+                continue;
+
+            const gateway_send_result_t send_rc = send_gateway_message (
+              slots[idx].gateway,
+              payload,
+              payload_size);
+            if (send_rc == gateway_send_ok) {
+                awaiting_reply[idx] = 1;
+                progressed = true;
+            } else if (send_rc == gateway_send_fatal) {
+                return false;
+            }
+        }
+        rr = (start_rr + 1) % slots.size ();
+
+        for (size_t i = 0; i < poll_items.size (); ++i)
+            poll_items[i].revents = 0;
+
+        const int prc = zlink_poll (
+          &poll_items[0], static_cast<int> (poll_items.size ()), poll_timeout_ms);
+        if (prc < 0) {
+            if (zlink_errno () == EINTR)
+                continue;
+            return false;
+        }
+        if (prc > 0) {
+            for (size_t i = 0; i < poll_items.size (); ++i) {
+                if ((poll_items[i].revents & ZLINK_POLLIN) == 0)
+                    continue;
+
+                const int recv_rc = recv_one_message (
+                  slots[i].receiver_router,
+                  scratch,
+                  ZLINK_DONTWAIT,
+                  0);
+                if (recv_rc < 0)
+                    return false;
+                if (recv_rc <= 0)
+                    continue;
+
+                progressed = true;
+                awaiting_reply[i] = 0;
+                if (roundtrip_count[i] < target_roundtrips_per_slot) {
+                    ++roundtrip_count[i];
+                }
+                if (roundtrip_count[i] == target_roundtrips_per_slot) {
+                    ++primed_count;
+                }
+            }
+        }
+
+        if (!progressed)
+            backoff_client_idle (settings);
+    }
+
+    if (primed_count != slots.size ()) {
+        std::cerr << "gateway client: preflight prime incomplete "
+                  << primed_count << "/" << slots.size () << std::endl;
+    }
+
+    return primed_count == slots.size ();
 }
 
 inline bench_latency_stats_t measure_echo_latency_stats_us (
@@ -700,7 +809,20 @@ inline bool run_echo_duration (
     }
 
     if (settings.settle_ms > 0) {
-        std::this_thread::sleep_for (std::chrono::milliseconds (settings.settle_ms));
+        const double settle_drain_seconds =
+          static_cast<double> (settings.settle_ms) / 1000.0;
+        if (!run_echo_window_round_robin (
+              slots,
+              settings,
+              payload,
+              payload_size,
+              scratch_capacity,
+              settle_drain_seconds,
+              false,
+              NULL)) {
+            std::cerr << "gateway client: settle drain failed" << std::endl;
+            return false;
+        }
     }
 
     long recv_count = 0;
@@ -965,6 +1087,23 @@ inline int run_client_benchmark (const std::string &lib_name,
     std::vector<char> payload (payload_capacity, 'c');
     std::vector<char> latency_scratch (scratch_capacity, '\0');
 
+    // Prime reverse-path gateway connections before the first measured size.
+    // Require at least one successful roundtrip per slot to keep first-size
+    // throughput from including connection settle cost.
+    if (!prime_roundtrip_all_slots (
+          slots,
+          base_settings,
+          payload,
+          static_cast<size_t> (64),
+          scratch_capacity,
+          base_settings.connect_ready_timeout_ms * 4)) {
+        std::cerr << "gateway client: preflight warmup failed" << std::endl;
+        close_gateway_client_slots (&slots);
+        if (discovery)
+            zlink_discovery_destroy (&discovery);
+        return 1;
+    }
+
     for (size_t si = 0; si < msg_sizes.size (); ++si) {
         const size_t msg_size = msg_sizes[si];
         if (!run_single_size_case (
@@ -989,9 +1128,9 @@ inline int run_client_benchmark (const std::string &lib_name,
           (si + 1) < msg_sizes.size ());
     }
 
-    close_gateway_client_slots (&slots);
-    if (discovery)
-        zlink_discovery_destroy (&discovery);
+    // Fast-exit path for benchmark success: process teardown follows
+    // immediately and explicit per-slot destroy of all service objects can
+    // dominate wall-clock time at high client counts.
     return 0;
 }
 

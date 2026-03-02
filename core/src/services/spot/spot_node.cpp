@@ -6,6 +6,7 @@
 #include "services/spot/spot_pub.hpp"
 #include "services/spot/spot_sub.hpp"
 
+#include "services/control/service_control_runtime.hpp"
 #include "services/discovery/discovery_protocol.hpp"
 #include "sockets/socket_base.hpp"
 #include "utils/clock.hpp"
@@ -16,12 +17,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined ZLINK_HAVE_WINDOWS
-#include "utils/windows.hpp"
-#else
-#include <unistd.h>
-#endif
-
 namespace zlink
 {
 static const uint32_t spot_node_tag_value = 0x1e6700d9;
@@ -29,15 +24,6 @@ static const uint32_t default_heartbeat_ms = 5000;
 static const uint64_t discovery_refresh_ms = 500;
 static const size_t spot_pub_queue_hwm_default = 1024;
 static const size_t spot_sub_queue_hwm_default = 1000;
-
-static void sleep_ms (int ms_)
-{
-#if defined ZLINK_HAVE_WINDOWS
-    Sleep (ms_);
-#else
-    usleep (static_cast<useconds_t> (ms_) * 1000);
-#endif
-}
 
 static int resolve_spot_idle_sleep_ms ()
 {
@@ -211,7 +197,10 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _pub_mode (ZLINK_SPOT_NODE_PUB_MODE_SYNC),
     _pub_queue_full_policy (ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN),
     _tls_trust_system (0),
-    _stop (0)
+    _stop (0),
+    _task_id (0),
+    _control_tick_ms (
+      static_cast<uint32_t> (std::max (1, resolve_spot_idle_sleep_ms ())))
 {
     zlink_assert (_ctx);
 
@@ -222,7 +211,13 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _routing_id.size = sizeof (_node_id);
     memcpy (_routing_id.data, &_node_id, sizeof (_node_id));
 
-    _worker.start (run, this, "spotnode");
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime) {
+        _task_id = runtime->add_periodic_task (control_task, this,
+                                               _control_tick_ms, true);
+    }
+    if (_task_id == 0)
+        _tag = 0xdeadbeef;
 }
 
 spot_node_t::~spot_node_t ()
@@ -373,6 +368,7 @@ int spot_node_t::connect_registry (const char *registry_router_endpoint_)
     if (_registry_endpoints.insert (registry_router_endpoint_).second
         && _registered)
         _pending_registry_connect.push_back (registry_router_endpoint_);
+    request_control_tick ();
     return 0;
 }
 
@@ -388,6 +384,7 @@ int spot_node_t::connect_peer_pub (const char *peer_pub_endpoint_)
         return 0;
     _peer_endpoints.insert (peer_pub_endpoint_);
     _pending_peer_connect.push_back (peer_pub_endpoint_);
+    request_control_tick ();
     return 0;
 }
 
@@ -401,6 +398,7 @@ int spot_node_t::disconnect_peer_pub (const char *peer_pub_endpoint_)
     scoped_lock_t lock (_sync);
     _peer_endpoints.erase (peer_pub_endpoint_);
     _pending_peer_disconnect.push_back (peer_pub_endpoint_);
+    request_control_tick ();
     return 0;
 }
 
@@ -530,6 +528,7 @@ int spot_node_t::register_node (const char *service_name_,
          it != _registry_endpoints.end (); ++it) {
         _pending_registry_connect.push_back (*it);
     }
+    request_control_tick ();
     return 0;
 }
 
@@ -627,6 +626,7 @@ int spot_node_t::set_discovery (discovery_t *discovery_,
     _discovery = discovery_;
     _discovery_service = service;
     _next_discovery_refresh_ms = 0;
+    request_control_tick ();
     return 0;
 }
 
@@ -956,6 +956,7 @@ int spot_node_t::subscribe (spot_sub_t *sub_, const char *topic_)
     _topic_index[topic].insert (sub_);
 
     add_filter (topic);
+    request_control_tick ();
     return 0;
 }
 
@@ -980,6 +981,7 @@ int spot_node_t::subscribe_pattern (spot_sub_t *sub_, const char *pattern_)
         return 0;
     _pattern_subs.insert (sub_);
     add_filter (prefix);
+    request_control_tick ();
     return 0;
 }
 
@@ -1004,6 +1006,7 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
         if (sub_->_patterns.empty ())
             _pattern_subs.erase (sub_);
         remove_filter (prefix);
+        request_control_tick ();
         return 0;
     }
 
@@ -1030,6 +1033,7 @@ int spot_node_t::unsubscribe (spot_sub_t *sub_, const char *topic_or_pattern_)
             _topic_index.erase (idx);
     }
     remove_filter (topic);
+    request_control_tick ();
     return 0;
 }
 
@@ -1083,6 +1087,8 @@ int spot_node_t::publish (const char *topic_,
 
         for (size_t i = 0; i < part_count_; ++i)
             zlink_msg_close (&parts_[i]);
+        if (accepted)
+            request_control_tick ();
         return 0;
     }
 
@@ -1362,7 +1368,7 @@ bool spot_node_t::process_async_publish ()
     return true;
 }
 
-void spot_node_t::ensure_worker_sockets ()
+void spot_node_t::ensure_control_sockets ()
 {
     if (!_sub) {
         _sub = _ctx->create_socket (ZLINK_SUB);
@@ -1630,64 +1636,69 @@ void spot_node_t::send_heartbeat (uint64_t now_ms_)
     send_string (dealer, endpoint, 0);
 }
 
-void spot_node_t::run (void *arg_)
+bool spot_node_t::is_control_thread () const
 {
-    spot_node_t *self = static_cast<spot_node_t *> (arg_);
-    self->loop ();
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    return runtime && runtime->is_current_thread ();
 }
 
-void spot_node_t::loop ()
+void spot_node_t::request_control_tick ()
 {
-    zlink::clock_t clock;
-    const int idle_sleep_ms = resolve_spot_idle_sleep_ms ();
-    while (_stop.get () == 0) {
-        bool handled = false;
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _task_id != 0)
+        runtime->wakeup_task (_task_id);
+}
 
-        ensure_worker_sockets ();
-        flush_pending ();
+void spot_node_t::control_task (void *arg_)
+{
+    spot_node_t *self = static_cast<spot_node_t *> (arg_);
+    self->control_tick ();
+}
 
-        process_sub ();
-        while (process_handler_delivery ())
-            handled = true;
-        while (process_async_publish ())
-            handled = true;
-        while (process_handler_delivery ())
-            handled = true;
+void spot_node_t::control_tick ()
+{
+    if (_stop.get () != 0)
+        return;
 
-        const uint64_t now = clock.now_ms ();
-        bool do_heartbeat = false;
-        bool do_refresh = false;
-        {
-            scoped_lock_t lock (_sync);
-            if (_registered
-                && (now - _last_heartbeat_ms) >= _heartbeat_interval_ms)
-                do_heartbeat = true;
-            if (_discovery && now >= _next_discovery_refresh_ms) {
-                _next_discovery_refresh_ms = now + discovery_refresh_ms;
-                do_refresh = true;
-            }
-        }
+    ensure_control_sockets ();
+    flush_pending ();
 
-        if (do_heartbeat) {
-            send_heartbeat (now);
-            handled = true;
-        }
-
-        if (do_refresh) {
-            refresh_peers ();
-            handled = true;
-        }
-
-        if (!handled)
-            sleep_ms (idle_sleep_ms);
+    process_sub ();
+    while (process_handler_delivery ()) {
     }
+    while (process_async_publish ()) {
+    }
+    while (process_handler_delivery ()) {
+    }
+
+    zlink::clock_t clock;
+    const uint64_t now = clock.now_ms ();
+    bool do_heartbeat = false;
+    bool do_refresh = false;
+    {
+        scoped_lock_t lock (_sync);
+        if (_registered && (now - _last_heartbeat_ms) >= _heartbeat_interval_ms)
+            do_heartbeat = true;
+        if (_discovery && now >= _next_discovery_refresh_ms) {
+            _next_discovery_refresh_ms = now + discovery_refresh_ms;
+            do_refresh = true;
+        }
+    }
+
+    if (do_heartbeat)
+        send_heartbeat (now);
+
+    if (do_refresh)
+        refresh_peers ();
 }
 
 int spot_node_t::destroy ()
 {
     _stop.set (1);
-    if (_worker.get_started ())
-        _worker.stop ();
+    service_control_runtime_t *runtime = _ctx->service_control_runtime ();
+    if (runtime && _task_id != 0)
+        runtime->remove_task (_task_id);
+    _task_id = 0;
 
     socket_base_t *dealer = NULL;
     socket_base_t *pub = NULL;

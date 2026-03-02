@@ -47,6 +47,21 @@ inline void debug_error(const char *stage)
               << zlink_strerror(zlink_errno()) << std::endl;
 }
 
+inline void debug_timing_ms(
+  const char *stage,
+  const std::chrono::steady_clock::time_point &startup_begin)
+{
+    if (!bench_debug_enabled() || !stage)
+        return;
+    const long long elapsed_ms =
+      static_cast<long long>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - startup_begin)
+          .count());
+    std::cerr << "[multi-spot-server] t+" << elapsed_ms << "ms " << stage
+              << std::endl;
+}
+
 inline bool set_spot_node_routing_id(void *node, const char *routing_id)
 {
     if (!node || !routing_id || routing_id[0] == '\0')
@@ -476,6 +491,7 @@ build_one_way_phases(const multi_bench_settings_t &settings,
         append_one_way_phase(&phases, msg_size, warmup_s, true);
         append_one_way_phase(&phases, msg_size, settle_s, false);
         append_one_way_phase(&phases, msg_size, throughput_s, true);
+        append_one_way_phase(&phases, msg_size, settle_s, false);
         append_one_way_phase(&phases, msg_size, latency_s, true);
         append_one_way_phase(&phases, msg_size, drain_s, false);
         if ((i + 1) < msg_sizes.size())
@@ -571,6 +587,9 @@ inline int run_server_benchmark(const std::string &lib_name,
                                 const std::string &transport)
 {
     set_perf_multi_pattern_env(k_pattern);
+    const std::chrono::steady_clock::time_point startup_begin =
+      std::chrono::steady_clock::now();
+    debug_timing_ms("startup begin", startup_begin);
 
     if (!is_supported_transport(transport)) {
         std::cout << "UNSUPPORTED," << lib_name << "," << k_pattern << ","
@@ -586,6 +605,7 @@ inline int run_server_benchmark(const std::string &lib_name,
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
+    debug_timing_ms("ctx ready", startup_begin);
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
 
@@ -604,6 +624,7 @@ inline int run_server_benchmark(const std::string &lib_name,
 
     if (!node)
         return 1;
+    debug_timing_ms("spot node created", startup_begin);
 
     std::string registry_pub_endpoint;
     std::string registry_router_endpoint;
@@ -616,12 +637,14 @@ inline int run_server_benchmark(const std::string &lib_name,
         cleanup();
         return 1;
     }
+    debug_timing_ms("registry ready", startup_begin);
 
     if (!configure_spot_tls_server(node, transport)
         || !configure_spot_tls_client(node, transport)) {
         cleanup();
         return 1;
     }
+    debug_timing_ms("tls configured", startup_begin);
 
     apply_spot_node_options(node, settings, transport);
 
@@ -634,6 +657,7 @@ inline int run_server_benchmark(const std::string &lib_name,
         cleanup();
         return 1;
     }
+    debug_timing_ms("spot bind ready", startup_begin);
 
     debug_stage("connect/register");
     if (zlink_spot_node_connect_registry(node, registry_router_endpoint.c_str()) != 0
@@ -642,6 +666,7 @@ inline int run_server_benchmark(const std::string &lib_name,
         cleanup();
         return 1;
     }
+    debug_timing_ms("spot registry connected", startup_begin);
 
     spot_pub = zlink_spot_pub_new(node);
     if (!spot_pub) {
@@ -655,6 +680,7 @@ inline int run_server_benchmark(const std::string &lib_name,
         cleanup();
         return 1;
     }
+    debug_timing_ms("pub/sub sockets ready", startup_begin);
 
     g_stop_requested.store(false, std::memory_order_release);
     g_queue_probe_pending.store(false, std::memory_order_release);
@@ -691,6 +717,7 @@ inline int run_server_benchmark(const std::string &lib_name,
 
     const std::string ready_payload =
       endpoint + "|" + registry_pub_endpoint + "|" + registry_router_endpoint;
+    debug_timing_ms("emit READY", startup_begin);
     std::cout << "READY," << ready_payload << std::endl;
 
     const int peer_wait_ms = std::min(500, settings.connect_ready_timeout_ms);

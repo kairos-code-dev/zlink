@@ -227,6 +227,7 @@ build_one_way_phases (const multi_bench_settings_t &settings,
         append_one_way_phase (&phases, msg_size, warmup_s, true);
         append_one_way_phase (&phases, msg_size, settle_s, false);
         append_one_way_phase (&phases, msg_size, throughput_s, true);
+        append_one_way_phase (&phases, msg_size, settle_s, false);
         append_one_way_phase (&phases, msg_size, latency_s, true);
         append_one_way_phase (&phases, msg_size, drain_s, false);
         if ((i + 1) < msg_sizes.size ())

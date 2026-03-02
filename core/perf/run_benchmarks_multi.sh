@@ -203,7 +203,7 @@ Options:
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
-  --io-threads N         Legacy alias of --server-io-threads.
+  --io-threads N         Legacy alias that sets both server/client io-threads.
   --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS (default: 4).
   --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS (default: 1).
   --msg-sizes LIST       Comma-separated message sizes.
@@ -361,7 +361,7 @@ SCRIPT_ARGS=()
 EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
 MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_IO_THREADS:-4}}"
-MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-1}"
+MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_IO_THREADS:-1}}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -487,7 +487,16 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --io-threads|--server-io-threads)
+    --io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_SERVER_IO_THREADS="${2}"
+      MULTI_CLIENT_IO_THREADS="${2}"
+      shift 2
+      ;;
+    --server-io-threads)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1

@@ -967,6 +967,7 @@ set(protocol-sources
     src/protocol/decoder_allocators.cpp)
 
 set(discovery-sources
+    src/services/control/service_control_runtime.cpp
     src/services/discovery/registry.cpp
     src/services/discovery/discovery.cpp
     src/services/gateway/gateway.cpp

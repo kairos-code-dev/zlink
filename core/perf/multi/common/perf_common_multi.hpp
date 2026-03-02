@@ -19,7 +19,6 @@ struct multi_bench_settings_t
     int settle_ms;
     int drain_ms;
     int size_transition_drain_ms;
-    int client_workers;
     int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
 };
@@ -91,11 +90,6 @@ inline int resolve_multi_default_hwm (const char *pattern, int clients)
     return 1000;
 }
 
-inline int resolve_multi_default_client_workers ()
-{
-    return 4;
-}
-
 inline int resolve_multi_default_clients (const char *pattern)
 {
     (void) pattern;
@@ -135,8 +129,6 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.drain_ms = resolve_multi_drain_ms ();
     settings.size_transition_drain_ms =
       resolve_multi_size_transition_drain_ms ();
-    settings.client_workers = resolve_multi_int_env (
-      "PERF_MULTI_CLIENT_WORKERS", resolve_multi_default_client_workers (), 1);
     settings.client_poll_timeout_ms = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0, 0);
     settings.connect_ready_timeout_ms =

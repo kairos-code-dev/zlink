@@ -7,7 +7,6 @@
 
 #include "core/ctx.hpp"
 #include "core/msg.hpp"
-#include "core/thread.hpp"
 #include "services/discovery/discovery.hpp"
 #include "utils/clock.hpp"
 #include "utils/atomic_counter.hpp"
@@ -90,8 +89,8 @@ class gateway_t : public discovery_observer_t
                              int flags_);
 
     void process_monitor_events ();
-    static void refresh_run (void *arg_);
-    void refresh_loop ();
+    static void refresh_task (void *arg_);
+    void refresh_tick ();
 
     ctx_t *_ctx;
     discovery_t *_discovery;
@@ -111,7 +110,8 @@ class gateway_t : public discovery_observer_t
     socket_base_t *_router_socket;
     bool _use_lock;
     atomic_counter_t _stop;
-    thread_t _refresh_worker;
+    uint64_t _refresh_task_id;
+    uint32_t _refresh_interval_ms;
     mutex_t _sync;
     clock_t _clock;
 

@@ -4,12 +4,12 @@
 #define __ZLINK_DISCOVERY_REGISTRY_HPP_INCLUDED__
 
 #include "core/ctx.hpp"
-#include "core/thread.hpp"
 #include "utils/atomic_counter.hpp"
 #include "utils/clock.hpp"
 #include "utils/mutex.hpp"
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -68,8 +68,10 @@ class registry_t
 
     typedef std::map<service_key_t, service_entry_t> service_map_t;
 
-    static void run (void *arg_);
-    void loop ();
+    static void control_task (void *arg_);
+    void tick ();
+    int ensure_sockets ();
+    void close_sockets ();
     void handle_router (void *router_);
     void handle_peer (void *sub_);
     void handle_register (void *router_, const zlink_msg_t *frames_,
@@ -87,8 +89,6 @@ class registry_t
                             const std::string &error_);
     void send_service_list (void *pub_);
     void remove_expired (uint64_t now_ms_);
-
-    void stop_worker ();
 
     ctx_t *_ctx;
     uint32_t _tag;
@@ -115,7 +115,15 @@ class registry_t
     std::vector<socket_opt_t> _peer_sub_opts;
 
     atomic_counter_t _stop;
-    thread_t _worker;
+    uint64_t _task_id;
+    void *_pub_socket;
+    void *_router_socket;
+    void *_peer_sub_socket;
+    std::set<std::string> _peer_connected;
+    uint64_t _next_broadcast_ms;
+    uint64_t _last_sent_seq;
+    bool _started;
+    uint64_t _next_socket_retry_ms;
 
     mutex_t _sync;
 

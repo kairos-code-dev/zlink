@@ -1197,6 +1197,8 @@ ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
  * @param[in,out] topic_id_len  On input, buffer size; on output, actual length.
  *
  * Concurrent calls on the same subscriber are rejected with EBUSY.
+ * Blocking recv (flags=0) honors ZLINK_RCVTIMEO configured through
+ * zlink_spot_node_setsockopt(..., ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVTIMEO, ...).
  */
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       zlink_msg_t **parts,

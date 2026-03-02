@@ -258,6 +258,9 @@ inline void apply_spot_node_options(void *node,
     (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
                                       ZLINK_XPUB_NODROP, &xpub_nodrop,
                                       sizeof(xpub_nodrop));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
+                                      sizeof(xpub_nodrop));
 
     (void) transport;
 }
@@ -720,7 +723,7 @@ inline int run_server_benchmark(const std::string &lib_name,
     debug_timing_ms("emit READY", startup_begin);
     std::cout << "READY," << ready_payload << std::endl;
 
-    const int peer_wait_ms = std::min(500, settings.connect_ready_timeout_ms);
+    const int peer_wait_ms = std::max(500, settings.connect_ready_timeout_ms);
     const size_t service_clients =
       resolve_multi_service_clients(settings.clients);
     if (service_clients != settings.clients) {

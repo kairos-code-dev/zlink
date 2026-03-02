@@ -84,6 +84,8 @@ class spot_sub_t
     mutex_t _queue_sync;
     std::deque<queue_entry_t> _queue;
     size_t _queue_hwm;
+    int _recv_timeout_ms;
+    bool _queue_nodrop;
     condition_variable_t _queue_cv;
 
     zlink_spot_sub_handler_fn _handler;

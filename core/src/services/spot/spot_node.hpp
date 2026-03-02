@@ -154,6 +154,8 @@ class spot_node_t
     std::deque<async_publish_t> _pending_pub;
     size_t _pub_queue_hwm;
     size_t _sub_queue_hwm;
+    int _sub_recv_timeout_ms;
+    bool _sub_queue_nodrop;
     atomic_counter_t _pub_mode;
     atomic_counter_t _pub_queue_full_policy;
 

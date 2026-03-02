@@ -85,15 +85,32 @@ inline int resolve_multi_size_transition_drain_ms ()
 
 inline int resolve_multi_default_hwm (const char *pattern, int clients)
 {
-    (void) pattern;
     (void) clients;
-    return 1000;
+
+    if (pattern && *pattern) {
+        const bool is_stream_variant =
+          std::strcmp (pattern, "MULTI_STREAM") == 0
+          || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
+          || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
+        if (is_stream_variant)
+            return 10;
+    }
+
+    return 100;
 }
 
 inline int resolve_multi_default_clients (const char *pattern)
 {
-    (void) pattern;
-    return 1000;
+    if (pattern && *pattern) {
+        const bool is_stream_variant =
+          std::strcmp (pattern, "MULTI_STREAM") == 0
+          || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
+          || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
+        if (is_stream_variant)
+            return 10000;
+    }
+
+    return 100;
 }
 
 inline size_t resolve_multi_service_clients (size_t requested_clients)
@@ -120,7 +137,7 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.hwm = resolve_multi_int_env (
       "PERF_MULTI_HWM", resolve_multi_default_hwm (pattern, resolved_clients), 1);
     settings.warmup_seconds =
-      resolve_multi_int_env ("PERF_MULTI_WARMUP_SECONDS", 3, 0);
+      resolve_multi_int_env ("PERF_MULTI_WARMUP_SECONDS", 2, 0);
     settings.active_warmup =
       resolve_multi_int_env ("PERF_MULTI_ACTIVE_WARMUP", 0, 0);
     settings.duration_seconds =

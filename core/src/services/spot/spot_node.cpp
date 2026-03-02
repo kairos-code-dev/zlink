@@ -194,6 +194,8 @@ spot_node_t::spot_node_t (ctx_t *ctx_) :
     _next_discovery_refresh_ms (0),
     _pub_queue_hwm (spot_pub_queue_hwm_default),
     _sub_queue_hwm (spot_sub_queue_hwm_default),
+    _sub_recv_timeout_ms (-1),
+    _sub_queue_nodrop (false),
     _pub_mode (ZLINK_SPOT_NODE_PUB_MODE_SYNC),
     _pub_queue_full_policy (ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN),
     _tls_trust_system (0),
@@ -787,10 +789,45 @@ int spot_node_t::set_socket_option (int socket_role_,
             _sub_queue_hwm = static_cast<size_t> (value);
             for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
                  it != _subs.end (); ++it) {
-                if (*it)
+                if (*it) {
+                    scoped_lock_t queue_lock ((*it)->_queue_sync);
                     (*it)->_queue_hwm = _sub_queue_hwm;
+                }
             }
         }
+    }
+
+    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+        && option_ == ZLINK_RCVTIMEO && optvallen_ == sizeof (int)) {
+        int value = 0;
+        memcpy (&value, optval_, sizeof (value));
+        if (value < -1) {
+            errno = EINVAL;
+            return -1;
+        }
+        _sub_recv_timeout_ms = value;
+        for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
+             it != _subs.end (); ++it) {
+            if (*it) {
+                scoped_lock_t queue_lock ((*it)->_queue_sync);
+                (*it)->_recv_timeout_ms = _sub_recv_timeout_ms;
+            }
+        }
+    }
+
+    if (socket_role_ == ZLINK_SPOT_NODE_SOCKET_SUB
+        && option_ == ZLINK_XPUB_NODROP && optvallen_ == sizeof (int)) {
+        int value = 0;
+        memcpy (&value, optval_, sizeof (value));
+        _sub_queue_nodrop = value != 0;
+        for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
+             it != _subs.end (); ++it) {
+            if (*it) {
+                scoped_lock_t queue_lock ((*it)->_queue_sync);
+                (*it)->_queue_nodrop = _sub_queue_nodrop;
+            }
+        }
+        return 0;
     }
 
     for (size_t i = 0; i < opts->size (); ++i) {
@@ -867,6 +904,8 @@ spot_sub_t *spot_node_t::create_spot_sub ()
 
     scoped_lock_t lock (_sync);
     sub->_queue_hwm = _sub_queue_hwm;
+    sub->_recv_timeout_ms = _sub_recv_timeout_ms;
+    sub->_queue_nodrop = _sub_queue_nodrop;
     _subs.insert (sub);
     return sub;
 }
@@ -1512,6 +1551,28 @@ void spot_node_t::process_sub ()
         return;
 
     while (true) {
+        if (_sub_queue_nodrop) {
+            bool queue_full = false;
+            {
+                scoped_lock_t lock (_sync);
+                for (std::set<spot_sub_t *>::iterator it = _subs.begin ();
+                     it != _subs.end (); ++it) {
+                    spot_sub_t *sub = *it;
+                    if (!sub || sub->callback_enabled ())
+                        continue;
+
+                    scoped_lock_t queue_lock (sub->_queue_sync);
+                    if (sub->_queue_hwm > 0
+                        && sub->_queue.size () >= sub->_queue_hwm) {
+                        queue_full = true;
+                        break;
+                    }
+                }
+            }
+            if (queue_full)
+                return;
+        }
+
         msg_t topic_frame;
         if (topic_frame.init () != 0)
             return;

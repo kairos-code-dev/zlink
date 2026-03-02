@@ -170,6 +170,9 @@ inline void apply_spot_node_options(void *node,
     (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_PUB,
                                       ZLINK_XPUB_NODROP, &xpub_nodrop,
                                       sizeof(xpub_nodrop));
+    (void) zlink_spot_node_setsockopt(node, ZLINK_SPOT_NODE_SOCKET_SUB,
+                                      ZLINK_XPUB_NODROP, &xpub_nodrop,
+                                      sizeof(xpub_nodrop));
 
     (void) transport;
 }

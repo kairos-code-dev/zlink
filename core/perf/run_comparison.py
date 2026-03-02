@@ -1098,15 +1098,21 @@ def detect_special_status(stdout, expected_lib, expected_pattern, expected_trans
 
 def multi_pattern_default_clients(pattern_name, transport=None):
     if pattern_name in STREAM_VARIANT_PATTERNS:
-        base = max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 1000))
+        base = max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000))
         tr = (transport or "").strip().lower()
         if tr in ("tls", "ws", "wss"):
             non_tcp_cap = max(
-                1, parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 256)
+                1, parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 10000)
             )
             return min(base, non_tcp_cap)
         return base
-    return max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 1000))
+    return max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100))
+
+
+def multi_pattern_default_hwm(pattern_name):
+    if pattern_name in STREAM_VARIANT_PATTERNS:
+        return max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_HWM", 10))
+    return max(1, parse_env_int("PERF_MULTI_DEFAULT_HWM", 100))
 
 
 def multi_pattern_default_drain_ms(
@@ -1314,19 +1320,21 @@ def run_multi_sizes_test_stream_shared(
         if not server_io_threads_value:
             server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
         if not server_io_threads_value:
-            server_io_threads_value = "4"
+            server_io_threads_value = "2"
         try:
             server_io_threads_int = max(1, int(server_io_threads_value))
         except ValueError:
-            server_io_threads_int = 4
+            server_io_threads_int = 2
 
         client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
         if not client_io_threads_value:
-            client_io_threads_value = "1"
+            client_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
+        if not client_io_threads_value:
+            client_io_threads_value = "2"
         try:
             client_io_threads_int = max(1, int(client_io_threads_value))
         except ValueError:
-            client_io_threads_int = 1
+            client_io_threads_int = 2
         try:
             drain_int = max(0, int(drain_value))
         except ValueError:
@@ -1338,7 +1346,7 @@ def run_multi_sizes_test_stream_shared(
             1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
         )
         warmup_seconds = max(
-            0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
+            0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
         )
 
         server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
@@ -1970,19 +1978,21 @@ def run_multi_sizes_test_split(
         if not server_io_threads_value:
             server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
         if not server_io_threads_value:
-            server_io_threads_value = "4"
+            server_io_threads_value = "2"
         try:
             server_io_threads_int = max(1, int(server_io_threads_value))
         except ValueError:
-            server_io_threads_int = 4
+            server_io_threads_int = 2
 
         client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
         if not client_io_threads_value:
-            client_io_threads_value = "1"
+            client_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
+        if not client_io_threads_value:
+            client_io_threads_value = "2"
         try:
             client_io_threads_int = max(1, int(client_io_threads_value))
         except ValueError:
-            client_io_threads_int = 1
+            client_io_threads_int = 2
 
         if IS_WINDOWS:
             server_cmd = [server_binary_path, lib_name, transport]
@@ -2582,14 +2592,14 @@ def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
     if pattern_name.startswith("MULTI_"):
         timeout_sec = max(
             60,
-            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
+            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
             + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
             + 30,
         )
     if pattern_name in STREAM_VARIANT_PATTERNS:
         timeout_sec = max(
             120,
-            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3)
+            parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
             + parse_env_int("PERF_MULTI_DURATION_SECONDS", 5)
             + 90,
         )
@@ -3642,11 +3652,11 @@ def resolve_clients_meta(selected_patterns):
 
     stream_default = parse_env_int(
         "PERF_MULTI_DEFAULT_STREAM_CLIENTS",
-        parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 1000),
+        parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000),
     )
     general_default = parse_env_int(
         "PERF_MULTI_DEFAULT_CLIENTS",
-        parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 1000),
+        parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100),
     )
     if len(selected_patterns) == 1 and selected_patterns[0] in STREAM_VARIANT_PATTERNS:
         return str(stream_default)
@@ -3704,25 +3714,159 @@ def build_effective_option_items(args, selected_patterns):
     ]
 
     if multi_only:
-        base_hwm = parse_env_int("PERF_MULTI_HWM", 1000)
+        hwm_raw = os.environ.get("PERF_MULTI_HWM", "").strip()
+        default_hwm_values = set()
+        for pattern in selected_patterns:
+            default_hwm_values.add(multi_pattern_default_hwm(pattern))
+        if hwm_raw:
+            base_hwm = max(1, parse_env_int("PERF_MULTI_HWM", 100))
+            hwm_display = str(base_hwm)
+        elif not default_hwm_values:
+            base_hwm = 100
+            hwm_display = "100 (default)"
+        elif len(default_hwm_values) == 1:
+            base_hwm = next(iter(default_hwm_values))
+            hwm_display = f"{base_hwm} (default)"
+        else:
+            base_hwm = max(default_hwm_values)
+            hwm_display = (
+                "mixed-default("
+                + ",".join(str(v) for v in sorted(default_hwm_values))
+                + ")"
+            )
+
         sndhwm = parse_env_int("PERF_MULTI_SNDHWM", base_hwm)
         rcvhwm = parse_env_int("PERF_MULTI_RCVHWM", base_hwm)
+        sndhwm_display = str(sndhwm)
+        rcvhwm_display = str(rcvhwm)
+        if not os.environ.get("PERF_MULTI_SNDHWM", "").strip():
+            sndhwm_display = hwm_display
+        if not os.environ.get("PERF_MULTI_RCVHWM", "").strip():
+            rcvhwm_display = hwm_display
         timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
         service_clients = parse_env_int("PERF_MULTI_SERVICE_CLIENTS", 0)
+        default_clients = max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 100))
+        default_stream_clients = max(
+            1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000)
+        )
+        server_io_threads = max(
+            1,
+            parse_env_int(
+                "PERF_MULTI_SERVER_IO_THREADS", parse_env_int("PERF_IO_THREADS", 2)
+            ),
+        )
+        client_io_threads = max(
+            1,
+            parse_env_int(
+                "PERF_MULTI_CLIENT_IO_THREADS", parse_env_int("PERF_IO_THREADS", 2)
+            ),
+        )
+
+        clients_meta = resolve_clients_meta(selected_patterns) or "100"
+        try:
+            clients_for_connect = max(1, int(clients_meta))
+        except ValueError:
+            clients_for_connect = 100
+
+        connect_raw = os.environ.get("PERF_MULTI_CONNECT_CONCURRENCY", "").strip()
+        connect_display = (
+            connect_raw
+            if connect_raw
+            else f"{resolve_pattern_connect_concurrency(clients_for_connect)} (default)"
+        )
+
+        drain_raw = os.environ.get("PERF_MULTI_DRAIN_MS", "").strip()
+        if drain_raw:
+            drain_display = str(max(0, parse_env_int("PERF_MULTI_DRAIN_MS", 0)))
+        else:
+            default_drain_values = set()
+            for pattern in selected_patterns:
+                pattern_transports = select_transports(pattern)
+                pattern_sizes = (
+                    MULTI_STREAM_MSG_SIZES
+                    if pattern in STREAM_VARIANT_PATTERNS
+                    else MSG_SIZES
+                )
+                for transport in pattern_transports:
+                    pattern_clients = multi_pattern_default_clients(pattern, transport)
+                    default_drain_values.add(
+                        multi_pattern_default_drain_ms(
+                            pattern,
+                            transport,
+                            sizes=pattern_sizes,
+                            clients=pattern_clients,
+                        )
+                    )
+            if not default_drain_values:
+                drain_display = "0 (default)"
+            elif len(default_drain_values) == 1:
+                drain_display = f"{next(iter(default_drain_values))} (default)"
+            else:
+                drain_display = (
+                    "mixed-default("
+                    + ",".join(str(v) for v in sorted(default_drain_values))
+                    + ")"
+                )
+
         items.extend(
             [
-                ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3))),
+                ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2))),
+                ("active_warmup", str(parse_env_int("PERF_MULTI_ACTIVE_WARMUP", 0))),
                 ("duration_seconds", str(parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))),
-                ("clients", resolve_clients_meta(selected_patterns) or "1000"),
+                ("clients", clients_meta),
+                ("default_clients", str(default_clients)),
+                ("default_stream_clients", str(default_stream_clients)),
                 (
                     "service_clients",
                     str(service_clients) if service_clients > 0 else "auto",
                 ),
-                ("hwm", str(base_hwm)),
-                ("sndhwm", str(sndhwm)),
-                ("rcvhwm", str(rcvhwm)),
+                ("server_io_threads", str(server_io_threads)),
+                ("client_io_threads", str(client_io_threads)),
+                ("hwm", hwm_display),
+                ("sndhwm", sndhwm_display),
+                ("rcvhwm", rcvhwm_display),
                 ("sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 200))),
                 ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 200))),
+                ("connect_concurrency", connect_display),
+                ("settle_ms", str(parse_env_int("PERF_MULTI_SETTLE_MS", 500))),
+                ("drain_ms", drain_display),
+                (
+                    "size_transition_drain_ms",
+                    str(parse_env_int("PERF_MULTI_SIZE_TRANSITION_DRAIN_MS", 300)),
+                ),
+                (
+                    "client_poll_timeout_ms",
+                    str(parse_env_int("PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0)),
+                ),
+                (
+                    "connect_ready_timeout_ms",
+                    str(parse_env_int("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000)),
+                ),
+                ("monitor_hwm", str(parse_env_int("PERF_MULTI_MONITOR_HWM", 1000))),
+                ("server_ready_timeout_ms", str(args["server_ready_timeout_ms"])),
+                (
+                    "server_shutdown_timeout_ms",
+                    str(args["server_shutdown_timeout_ms"]),
+                ),
+                ("server_bind_port", str(args["server_bind_port"])),
+                ("transport_transition_ms", str(args["transport_transition_ms"])),
+                ("pattern_transition_ms", str(args["pattern_transition_ms"])),
+                (
+                    "lat_timeout_ms",
+                    str(parse_env_int("PERF_MULTI_LAT_TIMEOUT_MS", 5000)),
+                ),
+                (
+                    "stream_non_tcp_clients_max",
+                    str(parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
+                ),
+                (
+                    "stream_latency_sample_rate",
+                    str(parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)),
+                ),
+                (
+                    "disable_resource_metrics",
+                    str(max(0, parse_env_int("PERF_DISABLE_RESOURCE_METRICS", 0))),
+                ),
                 (
                     "timeout_seconds",
                     str(timeout_override) if timeout_override > 0 else "auto",

@@ -204,14 +204,14 @@ Options:
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
   --io-threads N         Legacy alias that sets both server/client io-threads.
-  --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS (default: 4).
-  --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS (default: 1).
+  --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS (default: 2).
+  --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS (default: 2).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
-  --warmup N             Optional override for multi warmup seconds (default 3).
+  --warmup N             Optional override for multi warmup seconds (default 2).
   --duration N           Optional override for multi duration seconds (default 5).
-  --clients N            Override number of client sockets per pattern.
-  --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
+  --clients N            Override number of client sockets per pattern (default: 100, stream=10000).
+  --hwm N                Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
   --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
   --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
@@ -337,7 +337,7 @@ HAS_EXPLICIT_RUNS=0
 HAS_EXPLICIT_RESULTS_DIR=0
 BUILD_MODE="incremental"
 BUILD_MODE_EXPLICIT=0
-MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-3}"
+MULTI_WARMUP_SECONDS="${PERF_MULTI_WARMUP_SECONDS:-2}"
 MULTI_DURATION_SECONDS="${PERF_MULTI_DURATION_SECONDS:-5}"
 MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
 MULTI_HWM="${PERF_MULTI_HWM:-}"
@@ -358,10 +358,10 @@ DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS:-0}"
 RESULTS_DIR_OVERRIDE="${PERF_RESULTS_DIR:-}"
 EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
-EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
-EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
-MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_IO_THREADS:-4}}"
-MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_IO_THREADS:-1}}"
+EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-100}"
+EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-10000}"
+MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_IO_THREADS:-2}}"
+MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-${PERF_IO_THREADS:-2}}"
 
 set_build_mode() {
   local next_mode="${1:-}"

@@ -21,7 +21,7 @@ param(
     [double]$WarnLatencyPct = 10,
     [double]$FailLatencyPct = 15,
     [Alias("MultiWarmupSeconds")]
-    [int]$Warmup = 3,
+    [int]$Warmup = 2,
     [Alias("MultiDurationSeconds")]
     [int]$Duration = 5,
     [Alias("MultiClients")]
@@ -87,10 +87,10 @@ Options:
   -FailThroughputPct N         Throughput fail threshold.
   -WarnLatencyPct N            Latency warning threshold.
   -FailLatencyPct N            Latency fail threshold.
-  -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS.
+  -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS (default: 2).
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
-  -Clients N                   Override PERF_MULTI_CLIENTS.
-  -Hwm N                       Override PERF_MULTI_HWM (default: 1000 in binary).
+  -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
+  -Hwm N                       Override PERF_MULTI_HWM (default: 100, stream=10 in binary).
   -SendHwm N                   Override PERF_MULTI_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_MULTI_RCVHWM (fallback: -Hwm).
   -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.

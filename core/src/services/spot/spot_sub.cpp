@@ -65,6 +65,8 @@ spot_sub_t::spot_sub_t (spot_node_t *node_) :
     _node (node_),
     _tag (spot_sub_tag_value),
     _queue_hwm (spot_queue_hwm_default),
+    _recv_timeout_ms (-1),
+    _queue_nodrop (false),
     _handler (NULL),
     _handler_userdata (NULL),
     _handler_state (handler_none),
@@ -199,8 +201,12 @@ bool spot_sub_t::enqueue_shared_message (spot_shared_message_t *shared_)
         return false;
 
     scoped_lock_t lock (_queue_sync);
-    if (_queue.size () >= _queue_hwm)
+    if (_queue.size () >= _queue_hwm) {
+        if (_queue_nodrop)
+            errno = EAGAIN;
         return false;
+    }
+
     _queue.push_back (queue_entry_t ());
     queue_entry_t &entry = _queue.back ();
     retain_shared_message (shared_);
@@ -394,7 +400,9 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
                 errno = EAGAIN;
                 return -1;
             }
-            _queue_cv.wait (&_queue_sync, -1);
+            const int timeout_ms = _recv_timeout_ms >= 0 ? _recv_timeout_ms : -1;
+            if (_queue_cv.wait (&_queue_sync, timeout_ms) != 0)
+                return -1;
         }
     }
 

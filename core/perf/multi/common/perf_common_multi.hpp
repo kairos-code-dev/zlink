@@ -102,6 +102,20 @@ inline int resolve_multi_default_clients (const char *pattern)
     return 1000;
 }
 
+inline size_t resolve_multi_service_clients (size_t requested_clients)
+{
+    const int override_clients = resolve_multi_int_env (
+      "PERF_MULTI_SERVICE_CLIENTS",
+      0,
+      1);
+    if (override_clients <= 0)
+        return requested_clients;
+
+    return std::min (
+      requested_clients,
+      static_cast<size_t> (override_clients));
+}
+
 inline multi_bench_settings_t resolve_multi_bench_settings ()
 {
     multi_bench_settings_t settings;
@@ -141,6 +155,30 @@ inline void run_size_transition_drain_stage (
         return;
 
     std::this_thread::sleep_for (std::chrono::milliseconds (drain_ms));
+}
+
+inline bool parse_queue_probe_command (const std::string &line,
+                                       size_t *msg_size_out)
+{
+    if (!msg_size_out)
+        return false;
+
+    static const char k_prefix[] = "QUEUE,";
+    if (line.compare (0, sizeof (k_prefix) - 1, k_prefix) != 0)
+        return false;
+
+    const char *value = line.c_str () + (sizeof (k_prefix) - 1);
+    if (!value || *value == '\0')
+        return false;
+
+    errno = 0;
+    char *end = NULL;
+    const unsigned long parsed = std::strtoul (value, &end, 10);
+    if (errno != 0 || end == value || !end || *end != '\0' || parsed == 0)
+        return false;
+
+    *msg_size_out = static_cast<size_t> (parsed);
+    return true;
 }
 
 

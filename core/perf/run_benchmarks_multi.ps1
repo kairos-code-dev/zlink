@@ -33,9 +33,9 @@ param(
     [Alias("MultiRcvHwm")]
     [string]$RecvHwm = "",
     [Alias("MultiSndtimeoMs")]
-    [string]$SendTimeoutMs = "5000",
+    [string]$SendTimeoutMs = "200",
     [Alias("MultiRcvtimeoMs")]
-    [string]$RecvTimeoutMs = "5000",
+    [string]$RecvTimeoutMs = "200",
     [Alias("MultiConnectConcurrency")]
     [string]$ConnectConcurrency = "",
     [Alias("MultiDrainMs")]
@@ -67,6 +67,7 @@ Run only multi-socket benchmark patterns.
 
 Options:
   -Pattern NAME                Pattern list (comma-separated) or ALL. MULTI_ prefix is optional.
+                               Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
   -Runs N                      Iterations per configuration (default: observe/trend=3, gate=5).
@@ -145,24 +146,69 @@ $DefaultPatterns = @(
     "STREAM_LEN32BE"
 )
 
-$RawPatterns = @()
-if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
-    $RawPatterns = $DefaultPatterns
-} else {
-    foreach ($part in $Pattern.Split(",")) {
-        $p = $part.Trim().ToUpperInvariant()
-        if ($p) { $RawPatterns += $p }
+function Add-UniquePattern {
+    param(
+        [System.Collections.Generic.List[string]]$List,
+        [string]$PatternName
+    )
+    if ([string]::IsNullOrWhiteSpace($PatternName)) { return }
+    if (-not $List.Contains($PatternName)) {
+        $List.Add($PatternName)
     }
 }
-$PatternList = @()
-foreach ($p in $RawPatterns) {
-    if (-not $p.StartsWith("MULTI_")) {
-        $p = "MULTI_$p"
+
+function Expand-AndAddPatternAlias {
+    param(
+        [System.Collections.Generic.List[string]]$List,
+        [string]$RawPattern
+    )
+    $p = $RawPattern.Trim().ToUpperInvariant()
+    if (-not $p) { return }
+    if ($p.StartsWith("MULTI_")) {
+        $p = $p.Substring(6)
     }
-    if ($p -eq "MULTI_ROUTER_ROUTER_POLL") {
+
+    switch ($p) {
+        "STREAM" {
+            Add-UniquePattern -List $List -PatternName "STREAM"
+            Add-UniquePattern -List $List -PatternName "STREAM_CALLBACK"
+            Add-UniquePattern -List $List -PatternName "STREAM_LEN32BE"
+            break
+        }
+        "STREAMS" {
+            Add-UniquePattern -List $List -PatternName "STREAM"
+            Add-UniquePattern -List $List -PatternName "STREAM_CALLBACK"
+            Add-UniquePattern -List $List -PatternName "STREAM_LEN32BE"
+            break
+        }
+        default {
+            Add-UniquePattern -List $List -PatternName $p
+            break
+        }
+    }
+}
+
+$ExpandedPatterns = New-Object 'System.Collections.Generic.List[string]'
+if ($Pattern.Trim().ToUpperInvariant() -eq "ALL") {
+    foreach ($p in $DefaultPatterns) {
+        Expand-AndAddPatternAlias -List $ExpandedPatterns -RawPattern $p
+    }
+} else {
+    foreach ($part in $Pattern.Split(",")) {
+        Expand-AndAddPatternAlias -List $ExpandedPatterns -RawPattern $part
+    }
+}
+
+$PatternList = @()
+foreach ($p in $ExpandedPatterns) {
+    $normalized = $p
+    if (-not $normalized.StartsWith("MULTI_")) {
+        $normalized = "MULTI_$normalized"
+    }
+    if ($normalized -eq "MULTI_ROUTER_ROUTER_POLL") {
         throw "ROUTER_ROUTER_POLL is removed from multi benchmarks."
     }
-    $PatternList += $p
+    $PatternList += $normalized
 }
 if ($PatternList.Count -eq 0) {
     throw "No valid pattern specified."

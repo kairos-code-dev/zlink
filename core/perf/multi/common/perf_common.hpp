@@ -660,9 +660,9 @@ inline void apply_debug_timeouts(void *socket_, const std::string &transport) {
         return;
 
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
     set_sockopt_int(socket_, ZLINK_SNDTIMEO, sndtimeo_ms, "ZLINK_SNDTIMEO");
     set_sockopt_int(socket_, ZLINK_RCVTIMEO, rcvtimeo_ms, "ZLINK_RCVTIMEO");
 }

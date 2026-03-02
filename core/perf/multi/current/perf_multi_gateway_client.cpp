@@ -244,7 +244,13 @@ inline bool create_gateway_client_slots (
         return false;
 
     *discovery_out = NULL;
-    slots_out->assign (settings.clients, gateway_client_slot_t ());
+    const size_t service_clients =
+      resolve_multi_service_clients (settings.clients);
+    slots_out->assign (service_clients, gateway_client_slot_t ());
+    if (service_clients != settings.clients) {
+        std::cerr << "gateway client: service clients capped "
+                  << service_clients << "/" << settings.clients << std::endl;
+    }
 
     void *discovery =
       zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
@@ -260,9 +266,9 @@ inline bool create_gateway_client_slots (
     }
 
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env ("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env ("PERF_MULTI_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env ("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env ("PERF_MULTI_RCVTIMEO_MS", 200);
     const int sndhwm = bench_hwm_from_env ("PERF_MULTI_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env ("PERF_MULTI_RCVHWM", settings.hwm);
 
@@ -442,7 +448,7 @@ inline gateway_send_result_t send_gateway_message (void *gateway,
     }
 }
 
-inline bool run_echo_window_thread_pool (
+inline bool run_echo_window_round_robin (
   const std::vector<gateway_client_slot_t> &slots,
   const multi_bench_settings_t &settings,
   const std::vector<char> &payload,
@@ -680,7 +686,7 @@ inline bool run_echo_duration (
     if (slots.empty ())
         return false;
 
-    if (!run_echo_window_thread_pool (
+    if (!run_echo_window_round_robin (
           slots,
           settings,
           payload,
@@ -699,7 +705,7 @@ inline bool run_echo_duration (
 
     long recv_count = 0;
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
-    if (!run_echo_window_thread_pool (
+    if (!run_echo_window_round_robin (
           slots,
           settings,
           payload,
@@ -716,7 +722,7 @@ inline bool run_echo_duration (
     const double drain_seconds =
       static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
     if (drain_seconds > 0.0) {
-        if (!run_echo_window_thread_pool (
+        if (!run_echo_window_round_robin (
               slots,
               settings,
               payload,

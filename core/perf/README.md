@@ -27,6 +27,8 @@ project, invokes the Python comparison script, and saves results.
 | `--hwm N` | — | Set both `PERF_SINGLE_SNDHWM`/`PERF_SINGLE_RCVHWM` fallback via `PERF_SINGLE_HWM` |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` (send queue HWM) |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` (receive queue HWM) |
+| `--sndtimeo N` | `200` | Set `PERF_SINGLE_SNDTIMEO_MS` (send timeout, ms) |
+| `--rcvtimeo N` | `200` | Set `PERF_SINGLE_RCVTIMEO_MS` (receive timeout, ms) |
 | `--pin-cpu` | off | Pin to CPU core via Linux `taskset` |
 | `--io-threads N` | — | Set `PERF_IO_THREADS` for benchmark binaries |
 | `--msg-sizes LIST` | — | Comma-separated payload sizes (e.g., `64,1024,65536`) |
@@ -64,7 +66,9 @@ Note: `pgm`/`epgm` transports are currently temporarily disabled and unsupported
 6. Environment variables forwarded:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
    PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
-   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD (reuse mode only)
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM,
+   PERF_SINGLE_SNDTIMEO_MS, PERF_SINGLE_RCVTIMEO_MS,
+   PERF_NO_AUTOBUILD (reuse mode only)
 7. Print total elapsed time on exit
 ```
 
@@ -148,8 +152,8 @@ Multi-specific options:
 | `--hwm N` | `1000` | High water mark (send/recv queue depth) |
 | `--send-hwm N` | `--hwm` | Send queue high water mark (`PERF_MULTI_SNDHWM`) |
 | `--recv-hwm N` | `--hwm` | Receive queue high water mark (`PERF_MULTI_RCVHWM`) |
-| `--send-timeout-ms N` | `5000` | Send timeout (ms) |
-| `--recv-timeout-ms N` | `5000` | Receive timeout (ms) |
+| `--send-timeout-ms N` | `200` | Send timeout (ms) |
+| `--recv-timeout-ms N` | `200` | Receive timeout (ms) |
 | `--connect-concurrency N` | auto | Concurrent connection count. Auto: 128 (< 10K clients), 1024 (>= 10K) |
 | `--drain-ms N` | pattern-specific | Post-measurement drain wait (ms). Default 300 for most patterns, 0 for GATEWAY/SPOT |
 | `--transport-transition-ms N` | `3000` | Pause between transport transitions (ms) |

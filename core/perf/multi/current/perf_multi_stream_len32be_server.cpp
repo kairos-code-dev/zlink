@@ -28,6 +28,8 @@ static const char *k_pattern = "MULTI_STREAM_LEN32BE";
 static std::atomic<bool> g_stop_requested (false);
 static std::atomic<bool> g_callback_failed (false);
 static void *g_server_socket = NULL;
+static std::atomic<bool> g_queue_probe_pending (false);
+static std::atomic<size_t> g_queue_probe_size (0);
 
 inline void on_signal (int)
 {
@@ -40,6 +42,32 @@ inline void install_signal_handlers ()
 #if defined(SIGTERM)
     std::signal (SIGTERM, on_signal);
 #endif
+}
+
+inline void request_queue_probe (size_t msg_size)
+{
+    if (msg_size == 0)
+        return;
+    g_queue_probe_size.store (msg_size, std::memory_order_release);
+    g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+inline void emit_requested_queue_probe (const std::string &lib_name,
+                                        const std::string &transport,
+                                        void *send_socket,
+                                        void *recv_socket)
+{
+    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
+        return;
+
+    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
+    if (msg_size == 0 || !send_socket || !recv_socket)
+        return;
+
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats (send_socket, recv_socket);
+    print_server_queue_metrics (
+      lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 inline bool is_stream_event_payload (const unsigned char *data, size_t size)
@@ -247,6 +275,8 @@ int main (int argc, char **argv)
 
     g_stop_requested.store (false, std::memory_order_release);
     g_callback_failed.store (false, std::memory_order_release);
+    g_queue_probe_pending.store (false, std::memory_order_release);
+    g_queue_probe_size.store (0, std::memory_order_release);
     g_server_socket = server;
     install_signal_handlers ();
 
@@ -259,6 +289,11 @@ int main (int argc, char **argv)
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
+            size_t queue_size = 0;
+            if (parse_queue_probe_command (line, &queue_size)) {
+                request_queue_probe (queue_size);
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
                 return;
@@ -272,6 +307,7 @@ int main (int argc, char **argv)
 
     int rc = 0;
     while (!g_stop_requested.load (std::memory_order_acquire)) {
+        emit_requested_queue_probe (lib_name, transport, server, server);
         if (g_callback_failed.load (std::memory_order_acquire)) {
             rc = 1;
             break;

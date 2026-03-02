@@ -193,6 +193,7 @@ By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with 
 
 Options:
   --pattern NAME         Benchmark pattern (default: all patterns above). MULTI_ prefix is optional.
+                         Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
   --help                 Show this help.
   --reuse-build          Reuse existing build directory as-is (skip configure/build).
   --clean-build          Remove build directory and do a clean build.
@@ -202,7 +203,9 @@ Options:
   --output PATH          Tee results to a file.
   --runs N               Iterations per configuration (default: 1).
   --pin-cpu              Pin CPU core during benchmarks (Linux taskset).
-  --io-threads N         Set PERF_IO_THREADS for the benchmark run.
+  --io-threads N         Legacy alias of --server-io-threads.
+  --server-io-threads N  Set PERF_MULTI_SERVER_IO_THREADS (default: 4).
+  --client-io-threads N  Set PERF_MULTI_CLIENT_IO_THREADS (default: 1).
   --msg-sizes LIST       Comma-separated message sizes.
   --transports LIST      Comma-separated transports.
   --warmup N             Optional override for multi warmup seconds (default 3).
@@ -211,8 +214,10 @@ Options:
   --hwm N                Override PERF_MULTI_HWM (default: 1000 in binary).
   --send-hwm N           Override PERF_MULTI_SNDHWM (fallback: --hwm).
   --recv-hwm N           Override PERF_MULTI_RCVHWM (fallback: --hwm).
-  --send-timeout-ms N    Override PERF_MULTI_SNDTIMEO_MS (default: 5000).
-  --recv-timeout-ms N    Override PERF_MULTI_RCVTIMEO_MS (default: 5000).
+  --sndtimeo N           Override PERF_MULTI_SNDTIMEO_MS (default: 200).
+  --rcvtimeo N           Override PERF_MULTI_RCVTIMEO_MS (default: 200).
+  --send-timeout-ms N    Alias of --sndtimeo.
+  --recv-timeout-ms N    Alias of --rcvtimeo.
   --connect-concurrency N
                          Override concurrent connect count.
   --drain-ms N           Override PERF_MULTI_DRAIN_MS.
@@ -285,6 +290,46 @@ resolve_pattern_connect_concurrency() {
   fi
 }
 
+add_explicit_pattern_unique() {
+  local pattern="${1:-}"
+  if [[ -z "${pattern}" ]]; then
+    return
+  fi
+  local existing
+  for existing in "${EXPLICIT_PATTERNS[@]}"; do
+    if [[ "${existing}" == "${pattern}" ]]; then
+      return
+    fi
+  done
+  EXPLICIT_PATTERNS+=("${pattern}")
+}
+
+expand_and_add_explicit_pattern() {
+  local raw="${1:-}"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  raw="$(printf '%s' "${raw}" | tr '[:lower:]' '[:upper:]')"
+  if [[ -z "${raw}" ]]; then
+    return
+  fi
+
+  local base="${raw}"
+  if [[ "${base}" == MULTI_* ]]; then
+    base="${base#MULTI_}"
+  fi
+
+  case "${base}" in
+    STREAM|STREAMS)
+      add_explicit_pattern_unique "STREAM"
+      add_explicit_pattern_unique "STREAM_CALLBACK"
+      add_explicit_pattern_unique "STREAM_LEN32BE"
+      ;;
+    *)
+      add_explicit_pattern_unique "${base}"
+      ;;
+  esac
+}
+
 HAS_EXPLICIT_TRANSPORT=0
 HAS_EXPLICIT_MSG_SIZES=0
 HAS_EXPLICIT_RESULTS_TAG=0
@@ -298,8 +343,8 @@ MULTI_CLIENTS="${PERF_MULTI_CLIENTS:-}"
 MULTI_HWM="${PERF_MULTI_HWM:-}"
 MULTI_SNDHWM="${PERF_MULTI_SNDHWM:-}"
 MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
-MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-5000}"
-MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-5000}"
+MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
+MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
 MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
 MULTI_DRAIN_MS="${PERF_MULTI_DRAIN_MS:-}"
 MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
@@ -315,6 +360,8 @@ EXPLICIT_PATTERNS=()
 SCRIPT_ARGS=()
 EFFECTIVE_DEFAULT_MULTI_CLIENTS="${PERF_MULTI_DEFAULT_CLIENTS:-1000}"
 EFFECTIVE_DEFAULT_STREAM_CLIENTS="${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-1000}"
+MULTI_SERVER_IO_THREADS="${PERF_MULTI_SERVER_IO_THREADS:-${PERF_IO_THREADS:-4}}"
+MULTI_CLIENT_IO_THREADS="${PERF_MULTI_CLIENT_IO_THREADS:-1}"
 
 set_build_mode() {
   local next_mode="${1:-}"
@@ -367,9 +414,7 @@ while [[ $# -gt 0 ]]; do
       fi
       IFS=',' read -r -a pattern_list <<< "$2"
       for p in "${pattern_list[@]}"; do
-        if [[ -n "${p}" ]]; then
-          EXPLICIT_PATTERNS+=( "${p}" )
-        fi
+        expand_and_add_explicit_pattern "${p}"
       done
       shift 2
       ;;
@@ -434,12 +479,28 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_ARGS+=( "$1" "$2" )
       shift 2
       ;;
-    --build-dir|--output|--io-threads)
+    --build-dir|--output)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
       fi
       SCRIPT_ARGS+=( "$1" "$2" )
+      shift 2
+      ;;
+    --io-threads|--server-io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_SERVER_IO_THREADS="${2}"
+      shift 2
+      ;;
+    --client-io-threads)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 1
+      fi
+      MULTI_CLIENT_IO_THREADS="${2}"
       shift 2
       ;;
     --clients)
@@ -474,7 +535,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_RCVHWM="${2}"
       shift 2
       ;;
-    --send-timeout-ms)
+    --sndtimeo|--send-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -482,7 +543,7 @@ while [[ $# -gt 0 ]]; do
       MULTI_SNDTIMEO_MS="${2}"
       shift 2
       ;;
-    --recv-timeout-ms)
+    --rcvtimeo|--recv-timeout-ms)
       if [[ $# -lt 2 ]]; then
         echo "Error: $1 requires a value." >&2
         exit 1
@@ -607,6 +668,22 @@ if [[ -n "${MULTI_RCVHWM}" ]] && ( ! is_uint "${MULTI_RCVHWM}" || (( MULTI_RCVHW
   echo "Error: --recv-hwm must be a positive integer." >&2
   exit 1
 fi
+if [[ -n "${MULTI_SNDTIMEO_MS}" ]] && ( ! is_uint "${MULTI_SNDTIMEO_MS}" || (( MULTI_SNDTIMEO_MS < 1 )) ); then
+  echo "Error: --sndtimeo must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${MULTI_RCVTIMEO_MS}" ]] && ( ! is_uint "${MULTI_RCVTIMEO_MS}" || (( MULTI_RCVTIMEO_MS < 1 )) ); then
+  echo "Error: --rcvtimeo must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${MULTI_SERVER_IO_THREADS}" ]] && ( ! is_uint "${MULTI_SERVER_IO_THREADS}" || (( MULTI_SERVER_IO_THREADS < 1 )) ); then
+  echo "Error: --server-io-threads must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${MULTI_CLIENT_IO_THREADS}" ]] && ( ! is_uint "${MULTI_CLIENT_IO_THREADS}" || (( MULTI_CLIENT_IO_THREADS < 1 )) ); then
+  echo "Error: --client-io-threads must be a positive integer." >&2
+  exit 1
+fi
 if ! is_uint "${MULTI_SERVER_SHUTDOWN_TIMEOUT_MS}"; then
   echo "Error: --server-shutdown-timeout-ms must be a non-negative integer." >&2
   exit 1
@@ -688,6 +765,12 @@ RUN_ENV+=(PERF_MULTI_DEFAULT_CLIENTS="${EFFECTIVE_DEFAULT_MULTI_CLIENTS}")
 RUN_ENV+=(PERF_MULTI_DEFAULT_STREAM_CLIENTS="${EFFECTIVE_DEFAULT_STREAM_CLIENTS}")
 if [[ -n "${MULTI_CLIENTS}" ]]; then
   RUN_ENV+=(PERF_MULTI_CLIENTS="${MULTI_CLIENTS}")
+fi
+if [[ -n "${MULTI_SERVER_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_SERVER_IO_THREADS="${MULTI_SERVER_IO_THREADS}")
+fi
+if [[ -n "${MULTI_CLIENT_IO_THREADS}" ]]; then
+  RUN_ENV+=(PERF_MULTI_CLIENT_IO_THREADS="${MULTI_CLIENT_IO_THREADS}")
 fi
 if [[ -n "${MULTI_HWM}" ]]; then
   RUN_ENV+=(PERF_MULTI_HWM="${MULTI_HWM}")

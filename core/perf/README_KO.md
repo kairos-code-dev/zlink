@@ -27,6 +27,8 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 | `--hwm N` | — | `PERF_SINGLE_HWM`으로 송수신 HWM 공통 fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 (송신 큐 HWM) |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 (수신 큐 HWM) |
+| `--sndtimeo N` | `200` | `PERF_SINGLE_SNDTIMEO_MS` 설정 (송신 타임아웃, ms) |
+| `--rcvtimeo N` | `200` | `PERF_SINGLE_RCVTIMEO_MS` 설정 (수신 타임아웃, ms) |
 | `--pin-cpu` | 비활성 | Linux `taskset`으로 CPU 코어 고정 |
 | `--io-threads N` | — | 벤치마크 바이너리의 `PERF_IO_THREADS` 설정 |
 | `--msg-sizes LIST` | — | 페이로드 크기 목록 (쉼표 구분, 예: `64,1024,65536`) |
@@ -64,7 +66,9 @@ Python 비교 스크립트를 호출하여 결과를 저장한다.
 6. 환경 변수 전달:
    PERF_IO_THREADS, PERF_MSG_SIZES, PERF_TRANSPORTS,
    PERF_SINGLE_DURATION_SECONDS, PERF_SINGLE_HWM,
-   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM, PERF_NO_AUTOBUILD (reuse 모드에서만)
+   PERF_SINGLE_SNDHWM, PERF_SINGLE_RCVHWM,
+   PERF_SINGLE_SNDTIMEO_MS, PERF_SINGLE_RCVTIMEO_MS,
+   PERF_NO_AUTOBUILD (reuse 모드에서만)
 7. 종료 시 총 경과 시간 출력
 ```
 
@@ -147,8 +151,8 @@ Multi 전용 옵션:
 | `--hwm N` | `1000` | HWM (송수신 큐 깊이) |
 | `--send-hwm N` | `--hwm` | 송신 큐 HWM (`PERF_MULTI_SNDHWM`) |
 | `--recv-hwm N` | `--hwm` | 수신 큐 HWM (`PERF_MULTI_RCVHWM`) |
-| `--send-timeout-ms N` | `5000` | 송신 타임아웃 (ms) |
-| `--recv-timeout-ms N` | `5000` | 수신 타임아웃 (ms) |
+| `--send-timeout-ms N` | `200` | 송신 타임아웃 (ms) |
+| `--recv-timeout-ms N` | `200` | 수신 타임아웃 (ms) |
 | `--connect-concurrency N` | 자동 | 동시 연결 수. 자동: 128 (< 1만 클라이언트), 1024 (>= 1만) |
 | `--drain-ms N` | 패턴별 | 측정 후 드레인 대기 (ms). 대부분 300, GATEWAY/SPOT은 0 |
 | `--transport-transition-ms N` | `3000` | 트랜스포트 전환 간 대기 (ms) |

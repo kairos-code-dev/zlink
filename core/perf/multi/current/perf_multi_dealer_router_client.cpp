@@ -64,7 +64,7 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline bool run_echo_window_thread_pool (
+inline bool run_echo_window_round_robin (
   const std::vector<void *> &sockets,
   const multi_bench_settings_t &settings,
   const std::vector<char> &payload,
@@ -289,7 +289,7 @@ inline bool run_echo_duration (
     if (sockets.empty ())
         return false;
 
-    if (!run_echo_window_thread_pool (
+    if (!run_echo_window_round_robin (
           sockets,
           settings,
           payload,
@@ -309,7 +309,7 @@ inline bool run_echo_duration (
 
     long recv_count = 0;
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
-    if (!run_echo_window_thread_pool (
+    if (!run_echo_window_round_robin (
           sockets,
           settings,
           payload,
@@ -326,7 +326,7 @@ inline bool run_echo_duration (
     const double drain_seconds =
       static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
     if (drain_seconds > 0.0) {
-        if (!run_echo_window_thread_pool (
+        if (!run_echo_window_round_robin (
               sockets,
               settings,
               payload,

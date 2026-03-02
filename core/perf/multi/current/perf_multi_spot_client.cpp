@@ -132,9 +132,9 @@ inline void apply_spot_node_options(void *node,
     const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
 
@@ -343,7 +343,12 @@ inline bool create_spot_client_slots(
     if (!slots_out)
         return false;
 
-    slots_out->assign(settings.clients, spot_client_slot_t());
+    const size_t service_clients = resolve_multi_service_clients(settings.clients);
+    slots_out->assign(service_clients, spot_client_slot_t());
+    if (service_clients != settings.clients) {
+        std::cerr << "spot client: service clients capped "
+                  << service_clients << "/" << settings.clients << std::endl;
+    }
 
     for (size_t i = 0; i < slots_out->size(); ++i) {
         spot_client_slot_t &slot = (*slots_out)[i];
@@ -605,23 +610,45 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     }
 
     long recv_count = 0;
-    double lat_sum = 0.0;
-    long lat_count = 0;
-    bench_latency_stats_t latency_stats;
-
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample();
     if (!run_spot_one_way_window_loop(slots,
                                       settings,
                                       static_cast<double>(std::max(1, settings.duration_seconds)),
-                                      true,
+                                      false,
                                       &recv_count,
-                                      &lat_sum,
-                                      &lat_count,
-                                      &latency_stats)) {
+                                      NULL,
+                                      NULL,
+                                      NULL)) {
         debug_stage("throughput window failed");
         return false;
     }
     *metrics_out = bench_multi_finish_resource_probe(sample_start);
+
+    *throughput_out = static_cast<double>(recv_count)
+                      / static_cast<double>(std::max(1, settings.duration_seconds));
+
+    if (recv_count <= 0) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] throughput sample recv_count="
+                      << recv_count << std::endl;
+        }
+        return false;
+    }
+
+    double lat_sum = 0.0;
+    long lat_count = 0;
+    bench_latency_stats_t latency_stats;
+    if (!run_spot_one_way_window_loop(slots,
+                                      settings,
+                                      static_cast<double>(std::max(1, settings.duration_seconds)),
+                                      true,
+                                      NULL,
+                                      &lat_sum,
+                                      &lat_count,
+                                      &latency_stats)) {
+        debug_stage("latency window failed");
+        return false;
+    }
 
     const double drain_seconds =
       static_cast<double>(std::max(0, settings.drain_ms)) / 1000.0;
@@ -639,13 +666,10 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
         }
     }
 
-    *throughput_out = static_cast<double>(recv_count)
-                      / static_cast<double>(std::max(1, settings.duration_seconds));
-
-    if (recv_count <= 0 || lat_count <= 0) {
+    if (lat_count <= 0) {
         if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] no samples recv_count=" << recv_count
-                      << " lat_count=" << lat_count << std::endl;
+            std::cerr << "[multi-spot-client] no latency samples lat_count="
+                      << lat_count << std::endl;
         }
         return false;
     }
@@ -763,7 +787,7 @@ inline int run_client_benchmark(const std::string &lib_name,
     std::string provider_endpoint;
     if (wait_for_service_receivers(discovery,
                                    k_service_name,
-                                   static_cast<int>(settings.clients),
+                                   static_cast<int>(slots.size()),
                                    settings.connect_ready_timeout_ms)) {
         (void) resolve_service_endpoint(discovery, k_service_name, &provider_endpoint);
     }

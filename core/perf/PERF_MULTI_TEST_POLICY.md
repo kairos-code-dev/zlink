@@ -16,9 +16,9 @@
 
 | 항목 | 기준 |
 |------|------|
-| 측정 모델 | time-based, 패턴별 phase: echo는 2-phase(throughput→latency), one-way는 throughput phase 내 latency 샘플링 |
+| 측정 모델 | time-based, 패턴별 phase: echo/one-way 모두 2-phase(throughput→latency) |
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
-| latency | echo는 latency 전용 phase, one-way는 throughput phase 샘플링 |
+| latency | echo/one-way 모두 latency 전용 phase에서 측정 |
 | 대표값 | median (runs > 1) |
 | 기본 runs | 3 |
 | 결과 출력 | RESULT line |
@@ -35,7 +35,7 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
 │  bind(endpoint)                      │    │  connect(endpoint) × N clients        │
-│  relay/echo received messages        │◄──►│  send/recv throughput + latency 샘플링  │
+│  relay/echo received messages        │◄──►│  phase별 throughput/latency 측정         │
 │  RESULT: server_cpu_pct, server_mem_mb│    │  RESULT: throughput, latency, p95/p99, │
 │  READY/DONE protocol on stdout       │    │         client_cpu_pct, client_mem_mb  │
 └──────────────────────────────────────┘    └───────────────────────────────────────┘
@@ -50,12 +50,12 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 | 1. server 시작 | 스크립트가 server 바이너리를 spawn |
 | 2. server READY | server가 bind 완료 후 stdout에 `READY,<endpoint>` 출력 |
 | 3. client 시작 | 스크립트가 READY를 읽은 후 client 바이너리를 spawn (`--endpoint <endpoint>`) |
-| 4. 측정 수행 | client가 패턴별 phase 정책(echo 2-phase / one-way 단일 throughput phase 샘플링)으로 측정 |
+| 4. 측정 수행 | client가 패턴별 phase 정책(echo 2-phase / one-way 2-phase)으로 측정 |
 | 5. client 종료 | client가 RESULT line 출력 후 종료 (exit code 0) |
 | 6. server 종료 | 스크립트가 server에 SIGTERM (Linux) / TerminateProcess (Windows) 전송, server가 RESULT line 출력 후 종료 |
 
 - server는 client 종료까지 상시 대기하며 relay/echo를 수행한다.
-- phase 전환(또는 단일 phase 내 샘플링)은 **client 프로세스 내부**에서 제어한다. server는 phase를 인식하지 않으며 수신 메시지를 단순 relay한다.
+- phase 전환은 패턴별로 제어한다: echo는 client가 phase를 제어하고 server는 relay/echo 대기, one-way(server-push)는 server/client가 동일 순서의 phase를 수행한다.
 - 스크립트는 양쪽 프로세스의 stdout을 수집하고, 종료 코드를 확인하여 결과를 합산한다.
 
 #### 소스 파일 구조
@@ -637,8 +637,8 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 | `--multi-hwm N` | 소켓 HWM | 1000 |
 | `--multi-sndhwm N` | 소켓 송신 HWM | `--multi-hwm` |
 | `--multi-rcvhwm N` | 소켓 수신 HWM | `--multi-hwm` |
-| `--multi-sndtimeo-ms N` | 송신 타임아웃(ms) | 5000 |
-| `--multi-rcvtimeo-ms N` | 수신 타임아웃(ms) | 5000 |
+| `--multi-sndtimeo-ms N` | 송신 타임아웃(ms) | 200 |
+| `--multi-rcvtimeo-ms N` | 수신 타임아웃(ms) | 200 |
 | `--multi-connect-concurrency N` | 동시 연결 수 | auto |
 | `--multi-drain-ms N` | drain 대기(ms) | 패턴별 기본값 |
 | `--multi-transport-transition-ms N` | transport 전환 cooldown(ms) | 3000 |
@@ -932,17 +932,17 @@ Multi 벤치마크는 server/client 별도 프로세스로 동작하므로, 각 
 
 ```text
 client 프로세스 내부:
-[warmup] -> [settle] -> [duration] -> [drain] -> [size_transition_drain]
-                         ^         ^
-                     샘플₁ 수집  샘플₂ 수집 → client_cpu_pct, client_mem_mb
+[warmup] -> [settle] -> [throughput] -> [latency] -> [drain] -> [size_transition_drain]
+                          ^            ^
+                      샘플₁ 수집   샘플₂ 수집 → client_cpu_pct, client_mem_mb
 
 server 프로세스:
 [bind] -> [READY] -> [relay 대기] -> ... -> [종료 신호] -> server_cpu_pct, server_mem_mb 출력
                                                            (전체 실행 구간 기준)
 ```
 
-- **client**: duration phase 시작/종료 시점에 자체 PID를 대상으로 2회 샘플링하여 `client_cpu_pct`, `client_mem_mb`를 출력한다.
-- **server**: 종료 신호 수신 시 bind~종료 전체 구간의 CPU/메모리를 측정하여 `server_cpu_pct`, `server_mem_mb`를 출력한다. server는 size별 phase를 인식하지 않으므로 전체 실행 구간 기준으로 1회 측정한다.
+- **client**: throughput phase 시작/종료 시점에 자체 PID를 대상으로 2회 샘플링하여 `client_cpu_pct`, `client_mem_mb`를 출력한다.
+- **server**: 종료 신호 수신 시 bind~종료 전체 구간의 CPU/메모리를 측정하여 `server_cpu_pct`, `server_mem_mb`를 출력한다(전체 실행 구간 기준 1회).
 - 리소스 메트릭은 정보성(informational)이므로 누락 시 완료 판정에 영향을 주지 않는다.
 
 #### size별 귀속 규칙
@@ -951,8 +951,8 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 
 | 항목 | 규칙 |
 |------|------|
-| `client_cpu_pct` | 각 size의 duration phase 시작/종료 시점에 개별 샘플링 |
-| `client_mem_mb` | 각 size의 duration phase 종료 시점에 개별 읽기 |
+| `client_cpu_pct` | 각 size의 throughput phase 시작/종료 시점에 개별 샘플링 |
+| `client_mem_mb` | 각 size의 throughput phase 종료 시점에 개별 읽기 |
 | `server_cpu_pct` | 전체 실행 구간 1회 측정 (size별 분리 불가) |
 | `server_mem_mb` | 종료 시점 1회 읽기 (size별 분리 불가) |
 
@@ -974,8 +974,8 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 │  │  │  [2] wait READY,<endpoint>                                      │  │  │
 │  │  │  [3] spawn client(pattern, transport, sizes, endpoint)          │  │  │
 │  │  │      client 내부 (전체 size 순회):                               │  │  │
-│  │  │        [warmup]-[settle]-[duration]-[drain]-[size_drain]        │  │  │
-│  │  │        [warmup]-[settle]-[duration]-[drain]-[size_drain]        │  │  │
+│  │  │        [warmup]-[settle]-[throughput]-[latency]-[drain]-[size_drain] │  │  │
+│  │  │        [warmup]-[settle]-[throughput]-[latency]-[drain]-[size_drain] │  │  │
 │  │  │        ...                                                      │  │  │
 │  │  │  [4] client 종료, RESULT line 수집                              │  │  │
 │  │  │  [5] server 종료, server RESULT line 수집                       │  │  │
@@ -990,16 +990,17 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 ### 7.1 client 프로세스 내부 Phase (size 1개 기준)
 
 ```text
-[warmup] -> [settle] -> [duration] -> [drain] -> [size_transition_drain]
+[warmup] -> [settle] -> [throughput] -> [latency] -> [drain] -> [size_transition_drain]
 ```
 
-> server 프로세스는 phase를 인식하지 않는다. bind 후 READY를 출력하고, 종료 신호를 받을 때까지 수신 메시지를 relay/echo한다.
+> echo는 client가 phase를 제어하며 server는 relay/echo 대기한다. one-way(server-push)는 server/client가 동일 순서의 phase를 수행한다.
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
 | warmup | time-based | 3s | `PERF_MULTI_WARMUP_SECONDS` |
 | settle | time-based | 500ms | `PERF_MULTI_SETTLE_MS` |
-| duration | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
+| throughput | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
+| latency | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 | drain | time-based | 패턴별 | `PERF_MULTI_DRAIN_MS` |
 | size_transition_drain | time-based | 300ms | `PERF_MULTI_SIZE_TRANSITION_DRAIN_MS` |
 
@@ -1085,10 +1086,9 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 각 size는 아래 순서로 측정한다.
 
 1. echo 패턴: warmup → settle → throughput phase → latency phase → drain/size transition drain
-2. one-way 패턴: warmup → settle → throughput phase(동시 latency 샘플링) → drain/size transition drain
+2. one-way 패턴: warmup → settle → throughput phase → latency phase → drain/size transition drain
 
-- echo 패턴의 throughput/latency phase는 동일 실행/동일 설정(transport, clients, socket options)에서 순차 수행한다.
-- one-way 패턴은 backlog 누적을 줄이기 위해 throughput phase에서 latency 샘플을 같이 수집한다.
+- echo/one-way 모두 throughput/latency phase를 동일 실행/동일 설정(transport, clients, socket options)에서 순차 수행한다.
 
 ### 9.1 패턴별 divisor 규칙
 
@@ -1127,8 +1127,8 @@ latency는 패턴 유형에 따라 측정 방식을 분리한다.
 | throughput | `throughput` | echo: `ops/s`, one-way: `msg/s` | `recv_count / duration_seconds` — 섹션 8.1 참조 |
 | bandwidth | `bandwidth` | MB/s | 섹션 8.3 참조 |
 | latency | `latency` | us | 패턴별 divisor 규칙 적용 (섹션 9.1) |
-| latency p95 | `latency_p95` | us | 측정 샘플 95th percentile (echo는 latency phase, one-way는 throughput phase 샘플링) |
-| latency p99 | `latency_p99` | us | 측정 샘플 99th percentile (echo는 latency phase, one-way는 throughput phase 샘플링) |
+| latency p95 | `latency_p95` | us | 측정 샘플 95th percentile (echo/one-way 모두 latency phase) |
+| latency p99 | `latency_p99` | us | 측정 샘플 99th percentile (echo/one-way 모두 latency phase) |
 
 - Tier 1 메트릭이 누락되면 해당 조합은 fail로 처리한다.
 - `expected`/`actual` 완료 판정은 Tier 1 RESULT line만 카운트한다 (조합당 5줄: throughput + bandwidth + latency + latency_p95 + latency_p99).
@@ -1284,8 +1284,8 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MULTI_CLIENT_WORKERS` | 클라이언트 thread-pool 워커 수 (소켓 소유 스레드 수) | 4 |
 | `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 워커 poll 타임아웃(ms) | 1 |
-| `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 5000 |
-| `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 5000 |
+| `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
+| `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
 | `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 
@@ -1323,7 +1323,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 ### 13.1 측정 경로(hot path) lock 사용 금지
 
-벤치마크 바이너리의 **측정 구간(duration phase)에서 실행되는 hot path**에 `std::mutex`, `std::condition_variable` 등 blocking synchronization primitive를 사용하지 않는다.
+벤치마크 바이너리의 **측정 구간(active phase: throughput/latency)에서 실행되는 hot path**에 `std::mutex`, `std::condition_variable` 등 blocking synchronization primitive를 사용하지 않는다.
 
 | 구분 | 허용 | 금지 |
 |------|------|------|
@@ -1338,7 +1338,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 ### 13.2 불필요한 메모리 할당/복사 금지
 
-벤치마크는 **라이브러리 자체의 성능만 온전히 측정**해야 한다. 측정 구간(duration phase)에서 벤치마크 코드가 유발하는 불필요한 메모리 할당·복사는 측정 결과를 왜곡하므로 금지한다.
+벤치마크는 **라이브러리 자체의 성능만 온전히 측정**해야 한다. 측정 구간(active phase: throughput/latency)에서 벤치마크 코드가 유발하는 불필요한 메모리 할당·복사는 측정 결과를 왜곡하므로 금지한다.
 
 | 구분 | 권장 | 금지 |
 |------|------|------|
@@ -1349,7 +1349,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | routing_id | 필요 시 고정 버퍼에 1회 저장 | 매 메시지마다 `std::vector<unsigned char>` 할당 |
 | 카운터/통계 | `std::atomic<int64_t>` | 구조체를 큐에 push |
 
-- **원칙**: duration phase에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
+- **원칙**: active phase(throughput/latency)에서 벤치마크 인프라 코드의 `malloc`/`new`/`vector::push_back` 호출이 0에 수렴해야 한다. 측정 결과에 라이브러리 외 오버헤드가 포함되면 패턴 간 비교(예: MULTI_STREAM vs MULTI_STREAM_CALLBACK)가 공정하지 않다.
 - warmup phase 이전(setup/connect)과 drain 이후(결과 출력/정리)에서는 할당/복사에 제한이 없다.
 - `zlink_msg_data()` 반환 포인터를 직접 참조하여 불필요한 복사를 피한다. 내용 검증이 필요 없는 throughput 측정에서는 payload를 읽지 않는다.
 - Multi의 대량 클라이언트(1000~10000) 환경에서는 per-client 버퍼도 setup 시 사전 할당하고, duration 내에서 재사용한다.

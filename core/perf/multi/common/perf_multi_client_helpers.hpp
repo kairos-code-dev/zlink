@@ -324,6 +324,8 @@ inline bool drain_socket_non_blocking (void *socket,
       collect_latency ? sizeof (unsigned long long) : 0;
 
     long local_recv = 0;
+    bool tail_sample_valid = false;
+    double tail_sample_us = 0.0;
     while (true) {
         const int rc =
           recv_one_message (socket, scratch, ZLINK_DONTWAIT, capture_bytes);
@@ -341,13 +343,17 @@ inline bool drain_socket_non_blocking (void *socket,
                 std::chrono::system_clock::now ().time_since_epoch ())
                 .count ());
             if (now_us >= sent_us) {
-                const double sample_us = static_cast<double> (now_us - sent_us);
-                *lat_sum += sample_us;
-                (*lat_count)++;
-                if (lat_samples)
-                    lat_samples->add (sample_us);
+                tail_sample_us = static_cast<double> (now_us - sent_us);
+                tail_sample_valid = true;
             }
         }
+    }
+
+    if (collect_latency && tail_sample_valid) {
+        *lat_sum += tail_sample_us;
+        (*lat_count)++;
+        if (lat_samples)
+            lat_samples->add (tail_sample_us);
     }
 
     if (recv_count)
@@ -517,6 +523,25 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
 
     long recv_count = 0;
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
+    if (!run_one_way_window_loop (
+          recv_sockets,
+          settings,
+          scratch_capacity,
+          static_cast<double> (std::max (1, settings.duration_seconds)),
+          false,
+          &recv_count,
+          NULL,
+          NULL,
+          NULL)) {
+        return false;
+    }
+    *metrics_out = bench_multi_finish_resource_probe (sample_start);
+
+    *throughput_out = static_cast<double> (recv_count)
+                      / static_cast<double> (std::max (1, settings.duration_seconds));
+    if (recv_count <= 0)
+        return false;
+
     double lat_sum = 0.0;
     long lat_count = 0;
     bench_latency_stats_t latency_stats;
@@ -526,13 +551,26 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
           scratch_capacity,
           static_cast<double> (std::max (1, settings.duration_seconds)),
           true,
-          &recv_count,
+          NULL,
           &lat_sum,
           &lat_count,
           &latency_stats)) {
         return false;
     }
-    *metrics_out = bench_multi_finish_resource_probe (sample_start);
+    if (lat_count <= 0)
+        return false;
+
+    if (latency_stats.mean_us <= 0.0 && lat_count > 0)
+        latency_stats.mean_us = lat_sum / static_cast<double> (lat_count);
+    if (latency_stats.p95_us <= 0.0)
+        latency_stats.p95_us = latency_stats.mean_us;
+    if (latency_stats.p99_us <= 0.0)
+        latency_stats.p99_us = latency_stats.p95_us;
+    if (latency_stats.p95_us < latency_stats.mean_us)
+        latency_stats.p95_us = latency_stats.mean_us;
+    if (latency_stats.p99_us < latency_stats.p95_us)
+        latency_stats.p99_us = latency_stats.p95_us;
+    *latency_out = latency_stats;
 
     const double drain_seconds =
       static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
@@ -551,22 +589,6 @@ inline bool run_one_way_duration (const std::vector<void *> &recv_sockets,
         }
     }
 
-    *throughput_out = static_cast<double> (recv_count)
-                      / static_cast<double> (std::max (1, settings.duration_seconds));
-    if (recv_count <= 0 || lat_count <= 0)
-        return false;
-
-    if (latency_stats.mean_us <= 0.0 && lat_count > 0)
-        latency_stats.mean_us = lat_sum / static_cast<double> (lat_count);
-    if (latency_stats.p95_us <= 0.0)
-        latency_stats.p95_us = latency_stats.mean_us;
-    if (latency_stats.p99_us <= 0.0)
-        latency_stats.p99_us = latency_stats.p95_us;
-    if (latency_stats.p95_us < latency_stats.mean_us)
-        latency_stats.p95_us = latency_stats.mean_us;
-    if (latency_stats.p99_us < latency_stats.p95_us)
-        latency_stats.p99_us = latency_stats.p95_us;
-    *latency_out = latency_stats;
     return true;
 }
 

@@ -13,6 +13,8 @@ param(
     [string]$Hwm = "",
     [string]$SendHwm = "",
     [string]$RecvHwm = "",
+    [string]$Sndtimeo = "",
+    [string]$Rcvtimeo = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -47,6 +49,8 @@ Options:
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_SINGLE_RCVHWM (fallback: -Hwm).
+  -Sndtimeo N                  Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
+  -Rcvtimeo N                  Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
@@ -102,6 +106,12 @@ if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) {
 }
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) {
     throw "RecvHwm must be a positive integer."
+}
+if ($Sndtimeo -and ($Sndtimeo -notmatch '^\d+$' -or [int]$Sndtimeo -lt 1)) {
+    throw "Sndtimeo must be a positive integer."
+}
+if ($Rcvtimeo -and ($Rcvtimeo -notmatch '^\d+$' -or [int]$Rcvtimeo -lt 1)) {
+    throw "Rcvtimeo must be a positive integer."
 }
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     throw "MsgSizes must be a comma-separated list of integers."
@@ -412,7 +422,12 @@ if (-not $Duration) { $Duration = $env:PERF_SINGLE_DURATION_SECONDS }
 if (-not $Hwm) { $Hwm = $env:PERF_SINGLE_HWM }
 if (-not $SendHwm) { $SendHwm = $env:PERF_SINGLE_SNDHWM }
 if (-not $RecvHwm) { $RecvHwm = $env:PERF_SINGLE_RCVHWM }
+if (-not $Sndtimeo) { $Sndtimeo = $env:PERF_SINGLE_SNDTIMEO_MS }
+if (-not $Rcvtimeo) { $Rcvtimeo = $env:PERF_SINGLE_RCVTIMEO_MS }
+if (-not $Rcvtimeo) { $Rcvtimeo = $env:PERF_SINGLE_PUBSUB_RCVTIMEO_MS }
 if (-not $Duration) { $Duration = "5" }
+if (-not $Sndtimeo) { $Sndtimeo = "200" }
+if (-not $Rcvtimeo) { $Rcvtimeo = "200" }
 
 if ($IoThreads) {
     $RunEnv["PERF_IO_THREADS"] = $IoThreads
@@ -438,6 +453,12 @@ if ($SendHwm) {
 }
 if ($RecvHwm) {
     $RunEnv["PERF_SINGLE_RCVHWM"] = $RecvHwm
+}
+if ($Sndtimeo) {
+    $RunEnv["PERF_SINGLE_SNDTIMEO_MS"] = $Sndtimeo
+}
+if ($Rcvtimeo) {
+    $RunEnv["PERF_SINGLE_RCVTIMEO_MS"] = $Rcvtimeo
 }
 if ($PinCpu) {
     $RunEnv["PERF_TASKSET"] = "1"

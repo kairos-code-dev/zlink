@@ -29,6 +29,8 @@ static const char *k_client_service_prefix = "c";
 static const char *k_server_gateway_rid = "sg";
 
 static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_queue_probe_pending (false);
+static std::atomic<size_t> g_queue_probe_size (0);
 
 typedef int (*gateway_set_tls_client_fn) (void *, const char *, const char *, int);
 typedef int (*receiver_set_tls_server_fn) (void *, const char *, const char *);
@@ -44,6 +46,32 @@ inline void install_signal_handlers ()
 #if defined(SIGTERM)
     std::signal (SIGTERM, on_signal);
 #endif
+}
+
+inline void request_queue_probe (size_t msg_size)
+{
+    if (msg_size == 0)
+        return;
+    g_queue_probe_size.store (msg_size, std::memory_order_release);
+    g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+inline void emit_requested_queue_probe (const std::string &lib_name,
+                                        const std::string &transport,
+                                        void *send_socket,
+                                        void *recv_socket)
+{
+    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
+        return;
+
+    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
+    if (msg_size == 0 || !send_socket || !recv_socket)
+        return;
+
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats (send_socket, recv_socket);
+    print_server_queue_metrics (
+      lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 inline bool is_supported_transport (const std::string &transport)
@@ -155,7 +183,9 @@ inline int resolve_registry_base_port ()
         return configured + 64;
 
     const int pid = std::max (1, current_process_id ());
-    return 30000 + (pid % 20000);
+    // Keep 3-port blocks disjoint across nearby PIDs to avoid cross-transport
+    // collisions during sequential multi runs.
+    return 30000 + ((pid % 5000) * 3);
 }
 
 inline bool setup_registry (void *ctx,
@@ -387,7 +417,11 @@ inline relay_status_t relay_gateway_request (
 inline bool run_server_loop (void *server_receiver,
                              void *server_discovery,
                              void *server_gateway,
-                             const multi_bench_settings_t &settings)
+                             const multi_bench_settings_t &settings,
+                             const std::string &lib_name,
+                             const std::string &transport,
+                             void *queue_send_socket,
+                             void *queue_recv_socket)
 {
     (void) settings;
     if (!server_receiver || !server_gateway)
@@ -400,6 +434,8 @@ inline bool run_server_loop (void *server_receiver,
     gateway_request_t request;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
+        emit_requested_queue_probe (
+          lib_name, transport, queue_send_socket, queue_recv_socket);
         const relay_status_t first_status = relay_gateway_request (
           router,
           server_gateway,
@@ -432,6 +468,8 @@ inline bool run_server_loop (void *server_receiver,
         }
 
         while (!g_stop_requested.load (std::memory_order_acquire)) {
+            emit_requested_queue_probe (
+              lib_name, transport, queue_send_socket, queue_recv_socket);
             const relay_status_t status = relay_gateway_request (
               router,
               server_gateway,
@@ -617,7 +655,13 @@ inline int run_server_benchmark (const std::string &lib_name,
         cleanup ();
         return 1;
     }
-    for (size_t i = 0; i < settings.clients; ++i) {
+    const size_t service_clients =
+      resolve_multi_service_clients (settings.clients);
+    if (service_clients != settings.clients) {
+        std::cerr << "gateway server: service clients capped "
+                  << service_clients << "/" << settings.clients << std::endl;
+    }
+    for (size_t i = 0; i < service_clients; ++i) {
         const std::string service_name =
           std::string (k_client_service_prefix) + std::to_string (i);
         if (zlink_discovery_subscribe (server_discovery, service_name.c_str ()) != 0) {
@@ -638,9 +682,9 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
 
     const int gateway_sndtimeo_ms =
-      bench_timeout_ms_from_env ("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env ("PERF_MULTI_SNDTIMEO_MS", 200);
     const int gateway_rcvtimeo_ms =
-      bench_timeout_ms_from_env ("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env ("PERF_MULTI_RCVTIMEO_MS", 200);
     const int gateway_sndhwm =
       bench_hwm_from_env ("PERF_MULTI_SNDHWM", settings.hwm);
     const int gateway_rcvhwm =
@@ -682,11 +726,18 @@ inline int run_server_benchmark (const std::string &lib_name,
     apply_benchmark_socket_options (gateway_router, settings.hwm, transport);
 
     g_stop_requested.store (false, std::memory_order_release);
+    g_queue_probe_pending.store (false, std::memory_order_release);
+    g_queue_probe_size.store (0, std::memory_order_release);
     install_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
+            size_t queue_size = 0;
+            if (parse_queue_probe_command (line, &queue_size)) {
+                request_queue_probe (queue_size);
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
                 return;
@@ -708,7 +759,11 @@ inline int run_server_benchmark (const std::string &lib_name,
       server_receiver,
       server_discovery,
       server_gateway,
-      settings);
+      settings,
+      lib_name,
+      transport,
+      gateway_router,
+      receiver_router);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

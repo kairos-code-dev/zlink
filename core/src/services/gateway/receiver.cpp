@@ -17,6 +17,7 @@
 
 #include <string.h>
 #include <vector>
+#include <stdlib.h>
 
 namespace zlink
 {
@@ -29,6 +30,24 @@ static void sleep_ms (int ms_)
 #else
     usleep (static_cast<useconds_t> (ms_) * 1000);
 #endif
+}
+
+static uint32_t resolve_receiver_heartbeat_chunk_ms ()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return static_cast<uint32_t> (cached);
+
+    int value = 100;
+    const char *env = getenv ("ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS");
+    if (env && *env) {
+        char *end = NULL;
+        const long parsed = strtol (env, &end, 10);
+        if (end != env && parsed > 0 && parsed <= 5000)
+            value = static_cast<int> (parsed);
+    }
+    cached = value;
+    return static_cast<uint32_t> (cached);
 }
 
 static int send_frame (socket_base_t *socket_,
@@ -499,6 +518,7 @@ void receiver_t::send_heartbeat ()
 {
     socket_base_t *dealer = NULL;
     std::string last_registry;
+    const uint32_t heartbeat_chunk_ms = resolve_receiver_heartbeat_chunk_ms ();
     while (_stop.get () == 0) {
         std::string registry;
         std::string service;
@@ -545,7 +565,8 @@ void receiver_t::send_heartbeat ()
 
         uint32_t remaining = _heartbeat_interval_ms;
         while (remaining > 0 && _stop.get () == 0) {
-            const uint32_t chunk = remaining > 100 ? 100 : remaining;
+            const uint32_t chunk =
+              remaining > heartbeat_chunk_ms ? heartbeat_chunk_ms : remaining;
             sleep_ms (static_cast<int> (chunk));
             remaining -= chunk;
         }

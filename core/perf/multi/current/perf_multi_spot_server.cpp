@@ -27,6 +27,8 @@ static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
 
 static std::atomic<bool> g_stop_requested(false);
+static std::atomic<bool> g_queue_probe_pending(false);
+static std::atomic<size_t> g_queue_probe_size(0);
 
 typedef int (*spot_set_tls_server_fn)(void *, const char *, const char *);
 typedef int (*spot_set_tls_client_fn)(void *, const char *, const char *, int);
@@ -68,6 +70,31 @@ inline void install_signal_handlers()
 #if defined(SIGTERM)
     std::signal(SIGTERM, on_signal);
 #endif
+}
+
+inline void request_queue_probe(size_t msg_size)
+{
+    if (msg_size == 0)
+        return;
+    g_queue_probe_size.store(msg_size, std::memory_order_release);
+    g_queue_probe_pending.store(true, std::memory_order_release);
+}
+
+inline void emit_requested_queue_probe(const std::string &lib_name,
+                                       const std::string &transport,
+                                       void *send_socket,
+                                       void *recv_socket)
+{
+    if (!g_queue_probe_pending.exchange(false, std::memory_order_acq_rel))
+        return;
+
+    const size_t msg_size = g_queue_probe_size.load(std::memory_order_acquire);
+    if (msg_size == 0 || !send_socket || !recv_socket)
+        return;
+
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats(send_socket, recv_socket);
+    print_server_queue_metrics(lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 inline bool is_supported_transport(const std::string &transport)
@@ -178,9 +205,9 @@ inline void apply_spot_node_options(void *node,
     const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
 
@@ -231,9 +258,9 @@ inline void enforce_spot_socket_options(void *pub_socket,
     const int sndhwm = bench_hwm_from_env("PERF_MULTI_SNDHWM", settings.hwm);
     const int rcvhwm = bench_hwm_from_env("PERF_MULTI_RCVHWM", settings.hwm);
     const int sndtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_SNDTIMEO_MS", 200);
     const int rcvtimeo_ms =
-      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 5000);
+      bench_timeout_ms_from_env("PERF_MULTI_RCVTIMEO_MS", 200);
     const int linger_ms = 0;
     const int xpub_nodrop = resolve_multi_int_env("PERF_MULTI_SPOT_XPUB_NODROP", 1, 0);
 
@@ -488,7 +515,11 @@ inline void print_server_metrics(const std::string &lib_name,
 inline bool run_server_loop(void *spot_pub,
                             const multi_bench_settings_t &settings,
                             const std::vector<size_t> &msg_sizes,
-                            std::vector<char> *payload)
+                            std::vector<char> *payload,
+                            const std::string &lib_name,
+                            const std::string &transport,
+                            void *queue_send_socket,
+                            void *queue_recv_socket)
 {
     if (!spot_pub || !payload)
         return false;
@@ -501,6 +532,11 @@ inline bool run_server_loop(void *spot_pub,
         phase_deadline += phases[0].duration;
 
     while (!g_stop_requested.load(std::memory_order_acquire)) {
+        emit_requested_queue_probe(lib_name,
+                                   transport,
+                                   queue_send_socket,
+                                   queue_recv_socket);
+
         if (!phases.empty()) {
             const auto now = std::chrono::steady_clock::now();
             while (phase_index < phases.size() && now >= phase_deadline) {
@@ -621,11 +657,18 @@ inline int run_server_benchmark(const std::string &lib_name,
     }
 
     g_stop_requested.store(false, std::memory_order_release);
+    g_queue_probe_pending.store(false, std::memory_order_release);
+    g_queue_probe_size.store(0, std::memory_order_release);
     install_signal_handlers();
 
     std::thread stdin_watcher([]() {
         std::string line;
         while (std::getline(std::cin, line)) {
+            size_t queue_size = 0;
+            if (parse_queue_probe_command(line, &queue_size)) {
+                request_queue_probe(queue_size);
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store(true, std::memory_order_release);
                 return;
@@ -651,13 +694,26 @@ inline int run_server_benchmark(const std::string &lib_name,
     std::cout << "READY," << ready_payload << std::endl;
 
     const int peer_wait_ms = std::min(500, settings.connect_ready_timeout_ms);
-    if (!wait_for_pub_peers(node, settings.clients, peer_wait_ms)) {
+    const size_t service_clients =
+      resolve_multi_service_clients(settings.clients);
+    if (service_clients != settings.clients) {
+        std::cerr << "spot server: service clients capped "
+                  << service_clients << "/" << settings.clients << std::endl;
+    }
+    if (!wait_for_pub_peers(node, service_clients, peer_wait_ms)) {
         if (bench_debug_enabled())
             std::cerr << "[multi-spot-server] continue without full pub peer ready"
                       << std::endl;
     }
 
-    const bool loop_ok = run_server_loop(spot_pub, settings, sizes, &payload);
+    const bool loop_ok = run_server_loop(spot_pub,
+                                         settings,
+                                         sizes,
+                                         &payload,
+                                         lib_name,
+                                         transport,
+                                         pub_socket,
+                                         sub_socket);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe(sample_start);

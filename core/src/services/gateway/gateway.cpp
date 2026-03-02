@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cstring>
 #include <thread>
+#include <cstdlib>
 
 #include <zlink.h>
 
@@ -80,6 +81,24 @@ static int monitor_event_mask ()
            | ZLINK_EVENT_HANDSHAKE_FAILED_AUTH;
 }
 
+static int resolve_gateway_refresh_sleep_ms ()
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached;
+
+    int value = 1;
+    const char *env = getenv ("ZLINK_GATEWAY_REFRESH_SLEEP_MS");
+    if (env && *env) {
+        char *end = NULL;
+        const long parsed = strtol (env, &end, 10);
+        if (end != env && parsed >= 0 && parsed <= 1000)
+            value = static_cast<int> (parsed);
+    }
+    cached = value;
+    return cached;
+}
+
 static std::string routing_id_key (const zlink_routing_id_t &rid_)
 {
     if (rid_.size == 0)
@@ -145,6 +164,7 @@ void gateway_t::refresh_run (void *arg_)
 
 void gateway_t::refresh_loop ()
 {
+    const int refresh_sleep_ms = resolve_gateway_refresh_sleep_ms ();
     while (_stop.get () == 0) {
         std::vector<std::string> services_to_refresh;
         {
@@ -203,7 +223,8 @@ void gateway_t::refresh_loop ()
                 refresh_pool (&it->second, providers, seq);
             }
         }
-        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        std::this_thread::sleep_for (
+          std::chrono::milliseconds (refresh_sleep_ms));
     }
 }
 

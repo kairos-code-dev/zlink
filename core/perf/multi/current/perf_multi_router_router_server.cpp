@@ -23,6 +23,8 @@ static const bool k_server_has_routing_id = true;
 static const char *k_server_routing_id = "SERVER";
 
 static std::atomic<bool> g_stop_requested (false);
+static std::atomic<bool> g_queue_probe_pending (false);
+static std::atomic<size_t> g_queue_probe_size (0);
 
 inline void on_signal (int)
 {
@@ -35,6 +37,32 @@ inline void install_signal_handlers ()
 #if defined(SIGTERM)
     std::signal (SIGTERM, on_signal);
 #endif
+}
+
+inline void request_queue_probe (size_t msg_size)
+{
+    if (msg_size == 0)
+        return;
+    g_queue_probe_size.store (msg_size, std::memory_order_release);
+    g_queue_probe_pending.store (true, std::memory_order_release);
+}
+
+inline void emit_requested_queue_probe (const std::string &lib_name,
+                                        const std::string &transport,
+                                        void *send_socket,
+                                        void *recv_socket)
+{
+    if (!g_queue_probe_pending.exchange (false, std::memory_order_acq_rel))
+        return;
+
+    const size_t msg_size = g_queue_probe_size.load (std::memory_order_acquire);
+    if (msg_size == 0 || !send_socket || !recv_socket)
+        return;
+
+    const server_queue_stats_t queue_stats =
+      sample_server_queue_stats (send_socket, recv_socket);
+    print_server_queue_metrics (
+      lib_name, k_pattern, transport, msg_size, queue_stats);
 }
 
 inline bool is_supported_transport (const std::string &transport)
@@ -203,13 +231,16 @@ inline void print_server_metrics (
 }
 
 inline bool run_server_loop (void *server,
-                             const multi_bench_settings_t &settings)
+                             const multi_bench_settings_t &settings,
+                             const std::string &lib_name,
+                             const std::string &transport)
 {
     (void) settings;
     if (!server)
         return false;
 
     while (!g_stop_requested.load (std::memory_order_acquire)) {
+        emit_requested_queue_probe (lib_name, transport, server, server);
         if (!relay_router_once (server, 50)) {
             return false;
         }
@@ -276,11 +307,18 @@ inline int run_server_benchmark (const std::string &lib_name,
     }
 
     g_stop_requested.store (false, std::memory_order_release);
+    g_queue_probe_pending.store (false, std::memory_order_release);
+    g_queue_probe_size.store (0, std::memory_order_release);
     install_signal_handlers ();
 
     std::thread stdin_watcher ([] () {
         std::string line;
         while (std::getline (std::cin, line)) {
+            size_t queue_size = 0;
+            if (parse_queue_probe_command (line, &queue_size)) {
+                request_queue_probe (queue_size);
+                continue;
+            }
             if (line == "STOP" || line == "QUIT") {
                 g_stop_requested.store (true, std::memory_order_release);
                 return;
@@ -307,7 +345,7 @@ inline int run_server_benchmark (const std::string &lib_name,
         return 1;
     }
 
-    const bool loop_ok = run_server_loop (server, settings);
+    const bool loop_ok = run_server_loop (server, settings, lib_name, transport);
 
     const bench_multi_resource_metrics_t metrics =
       bench_multi_finish_resource_probe (sample_start);

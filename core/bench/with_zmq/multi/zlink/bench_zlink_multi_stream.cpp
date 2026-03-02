@@ -1,4 +1,4 @@
-#include "../../../../perf/multi/common/bench_common.hpp"
+#include "../../../../perf/multi/common/perf_common.hpp"
 #include "../common/bench_common_multi.hpp"
 #include "../common/stream_frame.hpp"
 #include <zlink.h>

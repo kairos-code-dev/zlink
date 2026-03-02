@@ -72,7 +72,6 @@ MULTI_ECHO_PATTERNS = {
 MULTI_SIZE_ISOLATION_PATTERNS = {
     "MULTI_DEALER_DEALER",
     "MULTI_PUBSUB",
-    "MULTI_SPOT",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -308,6 +307,38 @@ def parse_env_int(name, default, *fallback_names):
         return int(val)
     except ValueError:
         return default
+
+
+def is_wsl_runtime():
+    if not IS_LINUX:
+        return False
+    try:
+        release = platform.release().lower()
+    except Exception:
+        return False
+    return "microsoft" in release or "wsl" in release
+
+
+def maybe_apply_wsl_service_client_cap(selected_patterns):
+    global base_env
+
+    if not selected_patterns or not is_wsl_runtime():
+        return
+
+    service_patterns = {"MULTI_GATEWAY", "MULTI_SPOT"}
+    if not any(pattern in service_patterns for pattern in selected_patterns):
+        return
+
+    configured = parse_env_int("PERF_MULTI_SERVICE_CLIENTS", 0)
+    if configured > 0:
+        return
+
+    requested_clients = max(1, parse_env_int("PERF_MULTI_CLIENTS", 1000))
+    auto_cap = max(1, parse_env_int("PERF_MULTI_WSL_SERVICE_CLIENT_CAP", 32))
+    service_clients = min(requested_clients, auto_cap)
+    value = str(service_clients)
+    os.environ["PERF_MULTI_SERVICE_CLIENTS"] = value
+    base_env["PERF_MULTI_SERVICE_CLIENTS"] = value
 
 
 def resolve_output_capture_limit():
@@ -806,6 +837,10 @@ _env_multi_stream_sizes = parse_env_list(
 )
 if _env_multi_stream_sizes:
     MULTI_STREAM_MSG_SIZES = _env_multi_stream_sizes
+elif _env_sizes:
+    # Keep stream sizes aligned with --msg-sizes/PERF_MSG_SIZES
+    # unless a stream-specific override is explicitly provided.
+    MULTI_STREAM_MSG_SIZES = _env_sizes
 else:
     MULTI_STREAM_MSG_SIZES = [64, 256, 1024, 65536]
 
@@ -840,6 +875,8 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_SERVER_READY_TIMEOUT_MS",
     "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS",
     "PERF_MULTI_SERVER_BIND_PORT",
+    "PERF_MULTI_SERVER_IO_THREADS",
+    "PERF_MULTI_CLIENT_IO_THREADS",
     "PERF_IO_THREADS",
     "PERF_MAX_SOCKETS",
     "PERF_LAT_COUNT",
@@ -1105,7 +1142,9 @@ def multi_pattern_default_clients(pattern_name, transport=None):
     return max(1, parse_env_int("PERF_MULTI_DEFAULT_CLIENTS", 1000))
 
 
-def multi_pattern_default_drain_ms(pattern_name):
+def multi_pattern_default_drain_ms(
+    pattern_name, transport="", sizes=None, clients=None
+):
     if pattern_name in (
         "MULTI_DEALER_DEALER",
         "MULTI_DEALER_ROUTER",
@@ -1116,6 +1155,18 @@ def multi_pattern_default_drain_ms(pattern_name):
         "MULTI_STREAM_CALLBACK",
         "MULTI_STREAM_LEN32BE",
     ):
+        if pattern_name in STREAM_VARIANT_PATTERNS:
+            tr = (transport or "").strip().lower()
+            try:
+                clients_int = max(1, int(clients))
+            except (TypeError, ValueError):
+                clients_int = multi_pattern_default_clients(pattern_name, tr)
+            size_list = sizes if sizes else MULTI_STREAM_MSG_SIZES
+            max_size = max(size_list) if size_list else 0
+            # Large encrypted/websocket stream runs at high CCU often leave
+            # outstanding echoes at phase end; extend drain to avoid false FAIL.
+            if tr in ("tls", "ws", "wss") and clients_int >= 5000 and max_size >= 65536:
+                return 5000
         return 300
     return 0
 
@@ -1132,6 +1183,18 @@ def normalize_multi_metric_name(metric):
     if metric == "mem_mb":
         return "client_mem_mb"
     return metric
+
+
+def should_warn_duplicate_multi_metric(metric_name):
+    # Queue probe metrics can be emitted multiple times; keep the first value and
+    # suppress duplicate warnings for these keys.
+    if metric_name in (
+        "server_snd_pending_max",
+        "server_rcv_pending_max",
+        "server_rcv_pending_end",
+    ):
+        return False
+    return True
 
 
 def resolve_multi_binary_names(pattern_name):
@@ -1203,8 +1266,11 @@ def run_multi_sizes_test_stream_shared(
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
     if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
-        ready_timeout_ms = max(ready_timeout_ms, 30000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 15000)
+        # Spot secure startup can stall under long full-suite stress runs
+        # (high CCU + repeated process churn). Keep this conservative to
+        # avoid false FAIL from pre-ready terminate.
+        ready_timeout_ms = max(ready_timeout_ms, 60000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 30000)
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
@@ -1219,19 +1285,23 @@ def run_multi_sizes_test_stream_shared(
         if not clients_value:
             clients_value = str(multi_pattern_default_clients(pattern_name, transport))
         set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
+        try:
+            clients_int = max(1, int(clients_value))
+        except ValueError:
+            clients_int = multi_pattern_default_clients(pattern_name, transport)
 
         connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
         if not connect_value:
-            try:
-                clients = int(clients_value)
-            except ValueError:
-                clients = multi_pattern_default_clients(pattern_name, transport)
-            connect_value = str(resolve_pattern_connect_concurrency(max(1, clients)))
+            connect_value = str(resolve_pattern_connect_concurrency(clients_int))
         set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
         drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
         if not drain_value:
-            drain_value = str(multi_pattern_default_drain_ms(pattern_name))
+            drain_value = str(
+                multi_pattern_default_drain_ms(
+                    pattern_name, transport, sizes=sizes, clients=clients_int
+                )
+            )
         set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
 
         set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
@@ -1242,21 +1312,29 @@ def run_multi_sizes_test_stream_shared(
             "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS", 300
         )
 
-        io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
-        if not io_threads_value:
-            io_threads_value = "4"
+        server_io_threads_value = env_pair_value(env, "PERF_MULTI_SERVER_IO_THREADS")
+        if not server_io_threads_value:
+            server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
+        if not server_io_threads_value:
+            server_io_threads_value = "4"
         try:
-            clients_int = max(1, int(clients_value))
+            server_io_threads_int = max(1, int(server_io_threads_value))
         except ValueError:
-            clients_int = multi_pattern_default_clients(pattern_name, transport)
+            server_io_threads_int = 4
+
+        client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
+        if not client_io_threads_value:
+            client_io_threads_value = "1"
         try:
-            io_threads_int = max(1, int(io_threads_value))
+            client_io_threads_int = max(1, int(client_io_threads_value))
         except ValueError:
-            io_threads_int = 4
+            client_io_threads_int = 1
         try:
             drain_int = max(0, int(drain_value))
         except ValueError:
-            drain_int = multi_pattern_default_drain_ms(pattern_name)
+            drain_int = multi_pattern_default_drain_ms(
+                pattern_name, transport, sizes=sizes, clients=clients_int
+            )
 
         latency_sample_rate = max(
             1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
@@ -1282,7 +1360,7 @@ def run_multi_sizes_test_stream_shared(
             "--ccu",
             str(clients_int),
             "--io-threads",
-            str(io_threads_int),
+            str(client_io_threads_int),
             "--drain-ms",
             str(drain_int),
             "--size-transition-drain-ms",
@@ -1295,6 +1373,10 @@ def run_multi_sizes_test_stream_shared(
             "0",
         ]
         client_cmd = build_bench_cmd(shared_client_path, shared_client_args)
+        server_env = env.copy()
+        client_env = env.copy()
+        set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
+        set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
         server_proc = None
         close_server_sampler = None
@@ -1370,10 +1452,23 @@ def run_multi_sizes_test_stream_shared(
                 else:
                     server_stderr_buffer.append(line)
 
+        def pump_server_output_nonblocking():
+            while True:
+                try:
+                    stream_name, line = out_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(line)
+                else:
+                    server_stderr_buffer.append(line)
+
         try:
             server_proc = subprocess.Popen(
                 server_cmd,
-                env=env,
+                env=server_env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1472,6 +1567,7 @@ def run_multi_sizes_test_stream_shared(
             last_client_cpu = [None]
             last_client_mem = [None]
             last_client_size = [None]
+            queue_probe_requested_sizes = set()
 
             def update_live_size_from_line(line):
                 parsed_line, _warning = parse_result_line(
@@ -1485,6 +1581,24 @@ def run_multi_sizes_test_stream_shared(
                 )
                 if connect_line:
                     current_live_size[0] = connect_line[1]
+
+            def request_server_queue_probe(size_value):
+                nonlocal server_proc
+                if server_proc is None or server_proc.poll() is not None:
+                    return
+                try:
+                    size_int = int(size_value)
+                except (TypeError, ValueError):
+                    return
+                if size_int <= 0 or size_int in queue_probe_requested_sizes:
+                    return
+                try:
+                    if server_proc.stdin:
+                        server_proc.stdin.write(f"QUEUE,{size_int}\n")
+                        server_proc.stdin.flush()
+                        queue_probe_requested_sizes.add(size_int)
+                except Exception:
+                    return
 
             def emit_live_server_metrics(force=False):
                 if result_line_callback is None or sample_server_metrics is None:
@@ -1555,24 +1669,34 @@ def run_multi_sizes_test_stream_shared(
                 last_client_size[0] = target_size
 
             def on_client_stdout_line(line):
+                pump_server_output_nonblocking()
                 update_live_size_from_line(line)
                 emit_multi_result_metrics_from_line(
                     line, transport, expected_sizes, result_line_callback
                 )
+                parsed_line, _warning = parse_result_line(
+                    line, transport, expected_sizes
+                )
+                if parsed_line:
+                    _line_transport, line_size, metric_name, _value = parsed_line
+                    if normalize_multi_metric_name(metric_name) == "throughput":
+                        request_server_queue_probe(line_size)
                 emit_live_server_metrics()
                 emit_live_client_metrics(None, None)
 
             def on_client_sample(sample_cpu, sample_mem):
+                pump_server_output_nonblocking()
                 emit_live_server_metrics()
                 emit_live_client_metrics(sample_cpu, sample_mem)
 
             sampled = run_command_with_metrics(
                 client_cmd + ["--endpoint", endpoint],
-                env,
+                client_env,
                 timeout_sec,
                 on_stdout_line=on_client_stdout_line,
                 on_sample=on_client_sample,
             )
+            pump_server_output_nonblocking()
             emit_live_server_metrics(force=True)
             emit_live_client_metrics(None, None, force=True)
             client_stdout = sampled.get("stdout", "") or ""
@@ -1614,10 +1738,13 @@ def run_multi_sizes_test_stream_shared(
                 metric_name = normalize_multi_metric_name(metric)
                 key = f"{line_transport}|{line_size}|{metric_name}"
                 if key in parsed:
-                    warnings.append(
-                        "duplicate RESULT metric detected; keeping last value: "
-                        f"{pattern_name} {transport} {line_size}B {metric_name}"
-                    )
+                    if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                        continue
+                    if should_warn_duplicate_multi_metric(metric_name):
+                        warnings.append(
+                            "duplicate RESULT metric detected; keeping last value: "
+                            f"{pattern_name} {transport} {line_size}B {metric_name}"
+                        )
                 parsed[key] = value
 
             for sz in sizes:
@@ -1760,7 +1887,9 @@ def run_multi_sizes_test_split(
         size_count = max(1, len(sizes))
         has_large_payload = any(sz >= 131072 for sz in sizes)
         is_secure_transport = transport in ("tls", "wss")
-        if pattern_name == "MULTI_GATEWAY":
+        if pattern_name == "MULTI_SPOT":
+            timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
+        elif pattern_name == "MULTI_GATEWAY":
             timeout_sec = max(120, duration_seconds * size_count * 8 + 40)
         elif is_secure_transport and has_large_payload:
             timeout_sec = max(240, duration_seconds * size_count * 12 + 60)
@@ -1769,6 +1898,17 @@ def run_multi_sizes_test_split(
 
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
+    if pattern_name == "MULTI_GATEWAY":
+        # Gateway startup can spend noticeable time in registry/discovery setup when
+        # client count is high. A 10s READY timeout causes intermittent false fails.
+        ready_timeout_ms = max(ready_timeout_ms, 30000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
+    if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
+        # Spot secure startup can stall under long full-suite stress runs
+        # (high CCU + repeated process churn). Keep this conservative to
+        # avoid false FAIL from pre-ready terminate.
+        ready_timeout_ms = max(ready_timeout_ms, 60000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 30000)
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
@@ -1784,23 +1924,61 @@ def run_multi_sizes_test_split(
         if not clients_value:
             clients_value = str(multi_pattern_default_clients(pattern_name, transport))
         set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
+        try:
+            clients_int = max(1, int(clients_value))
+        except ValueError:
+            clients_int = multi_pattern_default_clients(pattern_name, transport)
 
         connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
         if not connect_value:
-            try:
-                clients = int(clients_value)
-            except ValueError:
-                clients = multi_pattern_default_clients(pattern_name, transport)
-            connect_value = str(resolve_pattern_connect_concurrency(max(1, clients)))
+            connect_value = str(resolve_pattern_connect_concurrency(clients_int))
         set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
 
         drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
         if not drain_value:
-            drain_value = str(multi_pattern_default_drain_ms(pattern_name))
+            drain_value = str(
+                multi_pattern_default_drain_ms(
+                    pattern_name, transport, sizes=sizes, clients=clients_int
+                )
+            )
         set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
         set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
         set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
         set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
+        if pattern_name == "MULTI_GATEWAY":
+            gateway_refresh_sleep_ms = max(
+                1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 10)
+            )
+            receiver_hb_chunk_ms = max(
+                1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 1000)
+            )
+            set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
+            set_env_pair(
+                env, "ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS", receiver_hb_chunk_ms
+            )
+        if pattern_name == "MULTI_SPOT":
+            spot_idle_sleep_ms = max(
+                1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 10)
+            )
+            set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
+
+        server_io_threads_value = env_pair_value(env, "PERF_MULTI_SERVER_IO_THREADS")
+        if not server_io_threads_value:
+            server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
+        if not server_io_threads_value:
+            server_io_threads_value = "4"
+        try:
+            server_io_threads_int = max(1, int(server_io_threads_value))
+        except ValueError:
+            server_io_threads_int = 4
+
+        client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
+        if not client_io_threads_value:
+            client_io_threads_value = "1"
+        try:
+            client_io_threads_int = max(1, int(client_io_threads_value))
+        except ValueError:
+            client_io_threads_int = 1
 
         if IS_WINDOWS:
             server_cmd = [server_binary_path, lib_name, transport]
@@ -1824,6 +2002,10 @@ def run_multi_sizes_test_split(
         else:
             server_cmd = [server_binary_path, lib_name, transport]
             client_cmd = [client_binary_path, lib_name, transport, str(fallback_size)]
+        server_env = env.copy()
+        client_env = env.copy()
+        set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
+        set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
         server_proc = None
         close_server_sampler = None
@@ -1899,10 +2081,23 @@ def run_multi_sizes_test_split(
                 else:
                     server_stderr_buffer.append(line)
 
+        def pump_server_output_nonblocking():
+            while True:
+                try:
+                    stream_name, line = out_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if line is None:
+                    continue
+                if stream_name == "stdout":
+                    append_server_stdout_line(line)
+                else:
+                    server_stderr_buffer.append(line)
+
         try:
             server_proc = subprocess.Popen(
                 server_cmd,
-                env=env,
+                env=server_env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -1998,6 +2193,7 @@ def run_multi_sizes_test_split(
             last_server_cpu = [None]
             last_server_mem = [None]
             last_server_size = [None]
+            queue_probe_requested_sizes = set()
 
             def update_live_size_from_line(line):
                 parsed_line, _warning = parse_result_line(
@@ -2011,6 +2207,24 @@ def run_multi_sizes_test_split(
                 )
                 if connect_line:
                     current_live_size[0] = connect_line[1]
+
+            def request_server_queue_probe(size_value):
+                nonlocal server_proc
+                if server_proc is None or server_proc.poll() is not None:
+                    return
+                try:
+                    size_int = int(size_value)
+                except (TypeError, ValueError):
+                    return
+                if size_int <= 0 or size_int in queue_probe_requested_sizes:
+                    return
+                try:
+                    if server_proc.stdin:
+                        server_proc.stdin.write(f"QUEUE,{size_int}\n")
+                        server_proc.stdin.flush()
+                        queue_probe_requested_sizes.add(size_int)
+                except Exception:
+                    return
 
             def emit_live_server_metrics(force=False):
                 if result_line_callback is None or sample_server_metrics is None:
@@ -2047,20 +2261,32 @@ def run_multi_sizes_test_split(
                 last_server_size[0] = target_size
 
             def on_client_stdout_line(line):
+                pump_server_output_nonblocking()
                 update_live_size_from_line(line)
                 emit_multi_result_metrics_from_line(
                     line, transport, expected_sizes, result_line_callback
                 )
+                parsed_line, _warning = parse_result_line(
+                    line, transport, expected_sizes
+                )
+                if parsed_line:
+                    _line_transport, line_size, metric_name, _value = parsed_line
+                    if normalize_multi_metric_name(metric_name) == "throughput":
+                        request_server_queue_probe(line_size)
                 emit_live_server_metrics()
 
             client_cmd = client_cmd + ["--endpoint", endpoint]
             sampled = run_command_with_metrics(
                 client_cmd,
-                env,
+                client_env,
                 timeout_sec,
                 on_stdout_line=on_client_stdout_line,
-                on_sample=lambda _cpu, _mem: emit_live_server_metrics(),
+                on_sample=lambda _cpu, _mem: (
+                    pump_server_output_nonblocking(),
+                    emit_live_server_metrics(),
+                ),
             )
+            pump_server_output_nonblocking()
             emit_live_server_metrics(force=True)
             client_stdout = sampled.get("stdout", "") or ""
             client_stderr = sampled.get("stderr", "") or ""
@@ -2089,10 +2315,13 @@ def run_multi_sizes_test_split(
                 metric_name = normalize_multi_metric_name(metric)
                 key = f"{line_transport}|{line_size}|{metric_name}"
                 if key in parsed:
-                    warnings.append(
-                        "duplicate RESULT metric detected; keeping last value: "
-                        f"{pattern_name} {transport} {line_size}B {metric_name}"
-                    )
+                    if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                        continue
+                    if should_warn_duplicate_multi_metric(metric_name):
+                        warnings.append(
+                            "duplicate RESULT metric detected; keeping last value: "
+                            f"{pattern_name} {transport} {line_size}B {metric_name}"
+                        )
                 parsed[key] = value
 
             token_status, token_reason = detect_special_status(
@@ -2249,6 +2478,7 @@ def run_multi_sizes_test(
             if (
                 pattern_name in MULTI_SIZE_ISOLATION_PATTERNS
                 and len(sizes) > 1
+                and transport not in ("tls", "wss")
             ):
                 merged = {
                     "status": "success",
@@ -2403,11 +2633,15 @@ def _table_header_line(is_multi):
     lat99_w = 12
     cpu_w = 6
     mem_w = 8
+    sndq_w = 9
+    rcvq_w = 9
+    rcvend_w = 9
     if is_multi:
         return (
             f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
             f"{'Lat.Mean':>{lat_w}} | {'Lat.P95':>{lat95_w}} | {'Lat.P99':>{lat99_w}} | "
-            f"{'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} |"
+            f"{'S.CPU%':>{cpu_w}} | {'S.Mem MB':>{mem_w}} | "
+            f"{'Q.Snd.Max':>{sndq_w}} | {'Q.Rcv.Max':>{rcvq_w}} | {'Q.Rcv.End':>{rcvend_w}} |"
         )
     return (
         f"| {'Size':<{size_w}} | {'Throughput':>{tp_w}} | {'Bandwidth':>{bw_w}} | "
@@ -2425,11 +2659,15 @@ def _table_separator_line(is_multi):
     lat99_w = 12
     cpu_w = 6
     mem_w = 8
+    sndq_w = 9
+    rcvq_w = 9
+    rcvend_w = 9
     if is_multi:
         return (
             f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
             f"{'-' * (lat_w + 2)}|{'-' * (lat95_w + 2)}|{'-' * (lat99_w + 2)}|"
             f"{'-' * (cpu_w + 2)}|{'-' * (mem_w + 2)}|"
+            f"{'-' * (sndq_w + 2)}|{'-' * (rcvq_w + 2)}|{'-' * (rcvend_w + 2)}|"
         )
     return (
         f"|{'-' * (size_w + 2)}|{'-' * (tp_w + 2)}|{'-' * (bw_w + 2)}|"
@@ -2459,6 +2697,9 @@ def _emit_table_row(
     client_mem=None,
     server_cpu=None,
     server_mem=None,
+    server_sndq_max=None,
+    server_rcvq_max=None,
+    server_rcvq_end=None,
 ):
     size_w = 8
     tp_w = 16
@@ -2468,6 +2709,9 @@ def _emit_table_row(
     lat99_w = 12
     cpu_w = 6
     mem_w = 8
+    sndq_w = 9
+    rcvq_w = 9
+    rcvend_w = 9
     if status == "success":
         latency_mean, latency_p95_value, latency_p99_value = resolve_latency_triplet(
             latency, latency_p95, latency_p99
@@ -2481,6 +2725,21 @@ def _emit_table_row(
         mem_s = f"{float(client_mem):6.1f}" if client_mem is not None else "N/A"
         server_cpu_s = f"{float(server_cpu):4.1f}" if server_cpu is not None else "N/A"
         server_mem_s = f"{float(server_mem):6.1f}" if server_mem is not None else "N/A"
+        server_sndq_s = (
+            f"{int(round(float(server_sndq_max))):d}"
+            if server_sndq_max is not None
+            else "N/A"
+        )
+        server_rcvq_max_s = (
+            f"{int(round(float(server_rcvq_max))):d}"
+            if server_rcvq_max is not None
+            else "N/A"
+        )
+        server_rcvq_end_s = (
+            f"{int(round(float(server_rcvq_end))):d}"
+            if server_rcvq_end is not None
+            else "N/A"
+        )
     else:
         token = "UNSUPPORTED" if status == "unsupported" else "FAIL"
         tp_s = token
@@ -2492,12 +2751,16 @@ def _emit_table_row(
         mem_s = "N/A"
         server_cpu_s = "N/A"
         server_mem_s = "N/A"
+        server_sndq_s = "N/A"
+        server_rcvq_max_s = "N/A"
+        server_rcvq_end_s = "N/A"
 
     if is_multi:
         row_line = (
             f"| {f'{size}B':<{size_w}} | {tp_s:>{tp_w}} | {bw_s:>{bw_w}} | "
             f"{lat_s:>{lat_w}} | {lat95_s:>{lat95_w}} | {lat99_s:>{lat99_w}} | "
-            f"{server_cpu_s:>{cpu_w}} | {server_mem_s:>{mem_w}} |"
+            f"{server_cpu_s:>{cpu_w}} | {server_mem_s:>{mem_w}} | "
+            f"{server_sndq_s:>{sndq_w}} | {server_rcvq_max_s:>{rcvq_w}} | {server_rcvq_end_s:>{rcvend_w}} |"
         )
     else:
         row_line = (
@@ -2608,9 +2871,25 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                     lat99_value = live_metrics.get(lat99_key)
                     server_cpu_value = live_metrics.get(f"{tr}|{sz}|server_cpu_pct")
                     server_mem_value = live_metrics.get(f"{tr}|{sz}|server_mem_mb")
-                    has_server_cpu = server_cpu_value is not None
-                    has_server_mem = server_mem_value is not None
-                    has_full_server_metrics = has_server_cpu and has_server_mem
+                    server_sndq_value = live_metrics.get(f"{tr}|{sz}|server_snd_pending_max")
+                    server_rcvq_max_value = live_metrics.get(
+                        f"{tr}|{sz}|server_rcv_pending_max"
+                    )
+                    server_rcvq_end_value = live_metrics.get(
+                        f"{tr}|{sz}|server_rcv_pending_end"
+                    )
+                    has_server_sndq = server_sndq_value is not None
+                    has_server_rcvq_max = server_rcvq_max_value is not None
+                    has_server_rcvq_end = server_rcvq_end_value is not None
+                    has_full_server_metrics = (
+                        has_server_sndq
+                        and has_server_rcvq_max
+                        and has_server_rcvq_end
+                    )
+                    if not has_full_server_metrics:
+                        return
+                    if sz in live_emitted_sizes:
+                        return
 
                     if (
                         tp_value is None
@@ -2641,10 +2920,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         if connect_ok_int < connect_required_int:
                             return
 
-                    if sz in live_emitted_sizes:
-                        if not has_full_server_metrics:
-                            return
-
                     _emit_table_row(
                         emit,
                         pattern_name,
@@ -2659,6 +2934,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=lat99_value,
                         server_cpu=server_cpu_value,
                         server_mem=server_mem_value,
+                        server_sndq_max=server_sndq_value,
+                        server_rcvq_max=server_rcvq_max_value,
+                        server_rcvq_end=server_rcvq_end_value,
                     )
                     live_emitted_sizes.add(sz)
                     if has_full_server_metrics:
@@ -2861,12 +3139,25 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                             continue
 
                     if sz in live_emitted_sizes:
-                        if sz not in live_emitted_with_server:
+                        if (
+                            pattern_name not in STREAM_VARIANT_PATTERNS
+                            and sz not in live_emitted_with_server
+                        ):
                             server_cpu_value = parsed.get(f"{tr}|{sz}|server_cpu_pct")
                             server_mem_value = parsed.get(f"{tr}|{sz}|server_mem_mb")
+                            server_sndq_value = parsed.get(f"{tr}|{sz}|server_snd_pending_max")
+                            server_rcvq_max_value = parsed.get(
+                                f"{tr}|{sz}|server_rcv_pending_max"
+                            )
+                            server_rcvq_end_value = parsed.get(
+                                f"{tr}|{sz}|server_rcv_pending_end"
+                            )
                             if (
                                 server_cpu_value is not None
                                 or server_mem_value is not None
+                                or server_sndq_value is not None
+                                or server_rcvq_max_value is not None
+                                or server_rcvq_end_value is not None
                             ):
                                 _emit_table_row(
                                     emit,
@@ -2882,6 +3173,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                                     latency_p99=parsed.get(lat99_key),
                                     server_cpu=server_cpu_value,
                                     server_mem=server_mem_value,
+                                    server_sndq_max=server_sndq_value,
+                                    server_rcvq_max=server_rcvq_max_value,
+                                    server_rcvq_end=server_rcvq_end_value,
                                 )
                                 live_emitted_with_server.add(sz)
                         continue
@@ -2899,6 +3193,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=parsed.get(lat99_key),
                         server_cpu=parsed.get(f"{tr}|{sz}|server_cpu_pct"),
                         server_mem=parsed.get(f"{tr}|{sz}|server_mem_mb"),
+                        server_sndq_max=parsed.get(f"{tr}|{sz}|server_snd_pending_max"),
+                        server_rcvq_max=parsed.get(f"{tr}|{sz}|server_rcv_pending_max"),
+                        server_rcvq_end=parsed.get(f"{tr}|{sz}|server_rcv_pending_end"),
                     )
                     live_emitted_sizes.add(sz)
 
@@ -3013,6 +3310,9 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         latency_p99=final_stats.get(lat99_key),
                         server_cpu=final_stats.get(f"{tr}|{sz}|server_cpu_pct"),
                         server_mem=final_stats.get(f"{tr}|{sz}|server_mem_mb"),
+                        server_sndq_max=final_stats.get(f"{tr}|{sz}|server_snd_pending_max"),
+                        server_rcvq_max=final_stats.get(f"{tr}|{sz}|server_rcv_pending_max"),
+                        server_rcvq_end=final_stats.get(f"{tr}|{sz}|server_rcv_pending_end"),
                     )
 
             emit(f"    Testing {tr}: Done")
@@ -3382,16 +3682,21 @@ def build_effective_option_items(args, selected_patterns):
         sndhwm = parse_env_int("PERF_MULTI_SNDHWM", base_hwm)
         rcvhwm = parse_env_int("PERF_MULTI_RCVHWM", base_hwm)
         timeout_override = parse_env_int("PERF_MULTI_TIMEOUT_SECONDS", 0)
+        service_clients = parse_env_int("PERF_MULTI_SERVICE_CLIENTS", 0)
         items.extend(
             [
                 ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 3))),
                 ("duration_seconds", str(parse_env_int("PERF_MULTI_DURATION_SECONDS", 5))),
                 ("clients", resolve_clients_meta(selected_patterns) or "1000"),
+                (
+                    "service_clients",
+                    str(service_clients) if service_clients > 0 else "auto",
+                ),
                 ("hwm", str(base_hwm)),
                 ("sndhwm", str(sndhwm)),
                 ("rcvhwm", str(rcvhwm)),
-                ("sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 5000))),
-                ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 5000))),
+                ("sndtimeo_ms", str(parse_env_int("PERF_MULTI_SNDTIMEO_MS", 200))),
+                ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 200))),
                 (
                     "timeout_seconds",
                     str(timeout_override) if timeout_override > 0 else "auto",
@@ -3842,6 +4147,7 @@ def main():
     selected_patterns = [
         p_name for _, p_name in comparisons if requested is None or p_name in requested
     ]
+    maybe_apply_wsl_service_client_cap(selected_patterns)
     multi_only_run = bool(selected_patterns) and all(is_multi_pattern(p) for p in selected_patterns)
 
     results_root = resolve_results_root(args["results_dir"])

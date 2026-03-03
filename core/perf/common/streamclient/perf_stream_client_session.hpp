@@ -14,6 +14,7 @@
 
 #include "perf_stream_bench_client_iface.hpp"
 #include "perf_stream_common.hpp"
+#include "../../multi/common/perf_multi_metric_header.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -457,7 +458,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         send_one ();
     }
 
-    // Build a len32be frame, embed sampled latency data, and async_write.
+    // Build a len32be frame, stamp common metric header, and async_write.
     void send_one ()
     {
         const size_t size = owner.current_phase_size ();
@@ -474,17 +475,18 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
           &write_buf[0], static_cast<uint32_t> (size));
         unsigned char *payload_write = write_buf.size () > 4 ? &write_buf[4] : NULL;
 
-        if (owner.latency_sampling_enabled () && payload_write && size >= 16) {
+        if (payload_write
+            && size >= perf_multi_metric::header_size ()) {
             const uint64_t seq = owner.next_seq ();
-            uint64_t sent_ns = 0;
-            const int sample_rate = owner.latency_sample_rate ();
-            if (sample_rate <= 1
-                || (seq % static_cast<uint64_t> (sample_rate)) == 0) {
-                sent_ns = perf_stream_common::perf_stream_now_ns ();
-            }
-            perf_stream_common::perf_stream_store_u64_be (payload_write, seq);
-            perf_stream_common::perf_stream_store_u64_be (payload_write + 8,
-                                                          sent_ns);
+            const uint64_t sent_ts_us = perf_multi_metric::now_us ();
+            (void) perf_multi_metric::stamp_payload (
+              payload_write,
+              size,
+              owner.metric_run_id (),
+              owner.metric_phase (),
+              size,
+              seq,
+              sent_ts_us);
         }
 
         owner.on_send_begin (size);
@@ -771,7 +773,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         start_read_payload ();
     }
 
-    // Complete a roundtrip: extract latency data, report to orchestrator,
+    // Complete a roundtrip: decode stamped header, report to orchestrator,
     // and re-enter the send loop.
     void on_read_payload (const boost::system::error_code &ec, size_t bytes)
     {
@@ -806,16 +808,24 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         const size_t payload_bytes = bytes;
         const unsigned char *payload_ptr = payload_bytes > 0 ? &read_buf[0] : NULL;
 
-        uint64_t seq = 0;
-        uint64_t sent_ns = 0;
-        if (owner.latency_sampling_enabled () && payload_ptr && payload_bytes >= 16) {
-            seq = perf_stream_common::perf_stream_load_u64_be (payload_ptr);
-            sent_ns = perf_stream_common::perf_stream_load_u64_be (payload_ptr + 8);
+        uint64_t sent_ts_us = 0;
+        if (payload_ptr
+            && payload_bytes >= perf_multi_metric::header_size ()) {
+            perf_multi_metric::header_t header;
+            if (perf_multi_metric::decode_payload_header (
+                  payload_ptr, payload_bytes, &header)) {
+                if (header.msg_size == static_cast<uint32_t> (chunk_size))
+                    sent_ts_us = header.sent_ts_us;
+                else
+                    owner.on_size_mismatch ();
+            } else {
+                owner.on_size_mismatch ();
+            }
         }
 
         if (outstanding > 0) {
             --outstanding;
-            owner.on_recv_done (payload_bytes, seq, sent_ns);
+            owner.on_recv_done (payload_bytes, sent_ts_us);
         }
 
         maybe_send_more ();

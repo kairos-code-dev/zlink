@@ -51,32 +51,6 @@ inline void perf_stream_store_u32_be (unsigned char *p, uint32_t v)
     p[3] = static_cast<unsigned char> (v & 0xFF);
 }
 
-// 64-bit BE helpers for embedding seq/timestamp in latency-sampled payloads.
-// Payload layout: [8B seq][8B sent_ns][remaining...]
-inline uint64_t perf_stream_load_u64_be (const unsigned char *p)
-{
-    return (static_cast<uint64_t> (p[0]) << 56)
-           | (static_cast<uint64_t> (p[1]) << 48)
-           | (static_cast<uint64_t> (p[2]) << 40)
-           | (static_cast<uint64_t> (p[3]) << 32)
-           | (static_cast<uint64_t> (p[4]) << 24)
-           | (static_cast<uint64_t> (p[5]) << 16)
-           | (static_cast<uint64_t> (p[6]) << 8)
-           | static_cast<uint64_t> (p[7]);
-}
-
-inline void perf_stream_store_u64_be (unsigned char *p, uint64_t v)
-{
-    p[0] = static_cast<unsigned char> ((v >> 56) & 0xFF);
-    p[1] = static_cast<unsigned char> ((v >> 48) & 0xFF);
-    p[2] = static_cast<unsigned char> ((v >> 40) & 0xFF);
-    p[3] = static_cast<unsigned char> ((v >> 32) & 0xFF);
-    p[4] = static_cast<unsigned char> ((v >> 24) & 0xFF);
-    p[5] = static_cast<unsigned char> ((v >> 16) & 0xFF);
-    p[6] = static_cast<unsigned char> ((v >> 8) & 0xFF);
-    p[7] = static_cast<unsigned char> (v & 0xFF);
-}
-
 inline std::string lower_copy (const std::string &text)
 {
     std::string out = text;

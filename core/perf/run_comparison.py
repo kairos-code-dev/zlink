@@ -862,7 +862,13 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_SERVER_BIND_PORT",
     "PERF_MULTI_SERVER_IO_THREADS",
     "PERF_MULTI_CLIENT_IO_THREADS",
+    "PERF_MULTI_STREAM_SERVER_IO_THREADS",
+    "PERF_MULTI_STREAM_CLIENT_IO_THREADS",
     "PERF_IO_THREADS",
+    "PERF_MULTI_DEFAULT_IO_THREADS",
+    "PERF_MULTI_DEFAULT_STREAM_IO_THREADS",
+    "PERF_MULTI_DEFAULT_HWM",
+    "PERF_MULTI_DEFAULT_STREAM_HWM",
     "PERF_MAX_SOCKETS",
     "PERF_LAT_COUNT",
     "PERF_MULTI_LAT_TIMEOUT_MS",
@@ -1133,6 +1139,12 @@ def multi_pattern_default_hwm(pattern_name):
     return max(1, parse_env_int("PERF_MULTI_DEFAULT_HWM", 100))
 
 
+def multi_pattern_default_io_threads(pattern_name):
+    if pattern_name in STREAM_VARIANT_PATTERNS:
+        return max(1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_IO_THREADS", 4))
+    return max(1, parse_env_int("PERF_MULTI_DEFAULT_IO_THREADS", 2))
+
+
 def resolve_pattern_connect_concurrency(clients):
     if clients >= 10000:
         return 1024
@@ -1240,16 +1252,21 @@ def _resolve_multi_server_timeouts(pattern_name, transport, ready_timeout_ms, sh
     return ready_timeout_ms, shutdown_timeout_ms
 
 
-def _resolve_multi_io_threads(env, io_key):
+def _resolve_multi_io_threads(env, io_key, pattern_name):
     io_value = env_pair_value(env, io_key)
+    if not io_value and pattern_name in STREAM_VARIANT_PATTERNS:
+        if io_key == "PERF_MULTI_SERVER_IO_THREADS":
+            io_value = env_pair_value(env, "PERF_MULTI_STREAM_SERVER_IO_THREADS")
+        elif io_key == "PERF_MULTI_CLIENT_IO_THREADS":
+            io_value = env_pair_value(env, "PERF_MULTI_STREAM_CLIENT_IO_THREADS")
     if not io_value:
         io_value = env_pair_value(env, "PERF_IO_THREADS")
     if not io_value:
-        io_value = "2"
+        io_value = str(multi_pattern_default_io_threads(pattern_name))
     try:
         return max(1, int(io_value))
     except (TypeError, ValueError):
-        return 2
+        return multi_pattern_default_io_threads(pattern_name)
 
 
 def _prepare_multi_case_env(
@@ -1293,8 +1310,12 @@ def _prepare_multi_case_env(
         spot_idle_sleep_ms = max(1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 1))
         set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
-    server_io_threads_int = _resolve_multi_io_threads(env, "PERF_MULTI_SERVER_IO_THREADS")
-    client_io_threads_int = _resolve_multi_io_threads(env, "PERF_MULTI_CLIENT_IO_THREADS")
+    server_io_threads_int = _resolve_multi_io_threads(
+        env, "PERF_MULTI_SERVER_IO_THREADS", pattern_name
+    )
+    client_io_threads_int = _resolve_multi_io_threads(
+        env, "PERF_MULTI_CLIENT_IO_THREADS", pattern_name
+    )
     return env, size_csv, clients_int, server_io_threads_int, client_io_threads_int
 
 
@@ -1351,9 +1372,6 @@ def run_multi_sizes_test_stream_shared(
     set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
     set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
     set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
-    latency_sample_rate = max(
-        1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
-    )
     warmup_seconds = max(
         0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
     )
@@ -1376,8 +1394,6 @@ def run_multi_sizes_test_stream_shared(
         str(clients_int),
         "--io-threads",
         str(client_io_threads_int),
-        "--latency-sample-rate",
-        str(latency_sample_rate),
         "--print-perf-result",
         "1",
         "--send-stop-token",
@@ -3680,18 +3696,76 @@ def build_effective_option_items(args, selected_patterns):
         default_stream_clients = max(
             1, parse_env_int("PERF_MULTI_DEFAULT_STREAM_CLIENTS", 10000)
         )
-        server_io_threads = max(
-            1,
-            parse_env_int(
-                "PERF_MULTI_SERVER_IO_THREADS", parse_env_int("PERF_IO_THREADS", 2)
-            ),
-        )
-        client_io_threads = max(
-            1,
-            parse_env_int(
-                "PERF_MULTI_CLIENT_IO_THREADS", parse_env_int("PERF_IO_THREADS", 2)
-            ),
-        )
+        explicit_server_io = os.environ.get("PERF_MULTI_SERVER_IO_THREADS", "").strip()
+        explicit_client_io = os.environ.get("PERF_MULTI_CLIENT_IO_THREADS", "").strip()
+        explicit_stream_server_io = os.environ.get(
+            "PERF_MULTI_STREAM_SERVER_IO_THREADS", ""
+        ).strip()
+        explicit_stream_client_io = os.environ.get(
+            "PERF_MULTI_STREAM_CLIENT_IO_THREADS", ""
+        ).strip()
+        explicit_perf_io = os.environ.get("PERF_IO_THREADS", "").strip()
+        if explicit_server_io:
+            server_io_threads = max(1, parse_env_int("PERF_MULTI_SERVER_IO_THREADS", 2))
+            server_io_display = str(server_io_threads)
+        elif (
+            explicit_stream_server_io
+            and selected_patterns
+            and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
+        ):
+            server_io_threads = max(
+                1, parse_env_int("PERF_MULTI_STREAM_SERVER_IO_THREADS", 4)
+            )
+            server_io_display = f"{server_io_threads} (stream override)"
+        elif explicit_perf_io:
+            server_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
+            server_io_display = f"{server_io_threads} (from PERF_IO_THREADS)"
+        else:
+            default_server_io_values = {
+                multi_pattern_default_io_threads(pattern)
+                for pattern in selected_patterns
+            }
+            if len(default_server_io_values) == 1:
+                server_io_threads = next(iter(default_server_io_values))
+                server_io_display = f"{server_io_threads} (default)"
+            else:
+                server_io_threads = max(default_server_io_values)
+                server_io_display = (
+                    "mixed-default("
+                    + ",".join(str(v) for v in sorted(default_server_io_values))
+                    + ")"
+                )
+
+        if explicit_client_io:
+            client_io_threads = max(1, parse_env_int("PERF_MULTI_CLIENT_IO_THREADS", 2))
+            client_io_display = str(client_io_threads)
+        elif (
+            explicit_stream_client_io
+            and selected_patterns
+            and all(p in STREAM_VARIANT_PATTERNS for p in selected_patterns)
+        ):
+            client_io_threads = max(
+                1, parse_env_int("PERF_MULTI_STREAM_CLIENT_IO_THREADS", 4)
+            )
+            client_io_display = f"{client_io_threads} (stream override)"
+        elif explicit_perf_io:
+            client_io_threads = max(1, parse_env_int("PERF_IO_THREADS", 2))
+            client_io_display = f"{client_io_threads} (from PERF_IO_THREADS)"
+        else:
+            default_client_io_values = {
+                multi_pattern_default_io_threads(pattern)
+                for pattern in selected_patterns
+            }
+            if len(default_client_io_values) == 1:
+                client_io_threads = next(iter(default_client_io_values))
+                client_io_display = f"{client_io_threads} (default)"
+            else:
+                client_io_threads = max(default_client_io_values)
+                client_io_display = (
+                    "mixed-default("
+                    + ",".join(str(v) for v in sorted(default_client_io_values))
+                    + ")"
+                )
 
         clients_meta = resolve_clients_meta(selected_patterns) or "100"
         try:
@@ -3718,8 +3792,8 @@ def build_effective_option_items(args, selected_patterns):
                     "service_clients",
                     str(service_clients) if service_clients > 0 else "auto",
                 ),
-                ("server_io_threads", str(server_io_threads)),
-                ("client_io_threads", str(client_io_threads)),
+                ("server_io_threads", server_io_display),
+                ("client_io_threads", client_io_display),
                 ("hwm", hwm_display),
                 ("sndhwm", sndhwm_display),
                 ("rcvhwm", rcvhwm_display),
@@ -3751,10 +3825,6 @@ def build_effective_option_items(args, selected_patterns):
                 (
                     "stream_non_tcp_clients_max",
                     str(parse_env_int("PERF_MULTI_STREAM_NON_TCP_CLIENTS_MAX", 10000)),
-                ),
-                (
-                    "stream_latency_sample_rate",
-                    str(parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)),
                 ),
                 (
                     "disable_resource_metrics",

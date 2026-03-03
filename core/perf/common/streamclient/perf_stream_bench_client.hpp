@@ -231,9 +231,6 @@ class bench_client_t : public bench_client_iface_t
                       m.p95_us > 0.0 ? m.p95_us : latency_mean_rtt;
                     const double latency_p99_rtt =
                       m.p99_us > 0.0 ? m.p99_us : latency_p95_rtt;
-                    const double latency = latency_mean_rtt * 0.5;
-                    const double latency_p95 = latency_p95_rtt * 0.5;
-                    const double latency_p99 = latency_p99_rtt * 0.5;
                     std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
                                  size, throughput);
@@ -242,13 +239,13 @@ class bench_client_t : public bench_client_iface_t
                                  size, bandwidth);
                     std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency);
+                                 size, latency_mean_rtt);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p95);
+                                 size, latency_p95_rtt);
                     std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
                                  opt.pattern.c_str (), opt.transport.c_str (),
-                                 size, latency_p99);
+                                 size, latency_p99_rtt);
                 }
                 std::fflush (stdout);
                 if (!m.pass)
@@ -302,14 +299,19 @@ class bench_client_t : public bench_client_iface_t
         return phase_size.load (std::memory_order_relaxed);
     }
 
-    bool latency_sampling_enabled () const override
+    uint32_t metric_run_id () const override
     {
-        return opt.latency_sample_rate > 0;
+        return 1U;
     }
 
-    int latency_sample_rate () const override
+    perf_multi_metric::phase_t metric_phase () const override
     {
-        return opt.latency_sample_rate;
+        const int current_mode = mode.load (std::memory_order_acquire);
+        if (current_mode == phase_warmup)
+            return perf_multi_metric::phase_warmup;
+        if (current_mode == phase_measure)
+            return perf_multi_metric::phase_active;
+        return perf_multi_metric::phase_unknown;
     }
 
     uint64_t next_seq () override
@@ -322,8 +324,8 @@ class bench_client_t : public bench_client_iface_t
         outstanding_total.fetch_add (1, std::memory_order_relaxed);
     }
 
-    // Record received bytes; sample RTT if latency sampling is active.
-    void on_recv_done (size_t bytes, uint64_t seq, uint64_t sent_ns) override
+    // Record received bytes and RTT derived from stamped payload header.
+    void on_recv_done (size_t bytes, uint64_t sent_ts_us) override
     {
         outstanding_total.fetch_sub (1, std::memory_order_relaxed);
         if (!collect_metrics.load (std::memory_order_acquire))
@@ -332,14 +334,11 @@ class bench_client_t : public bench_client_iface_t
         bytes_recv_measure.fetch_add (
           static_cast<long long> (bytes), std::memory_order_relaxed);
 
-        const int sample_rate = opt.latency_sample_rate;
-        if (sample_rate > 0 && seq > 0 && sent_ns > 0
-            && (seq % static_cast<uint64_t> (sample_rate)) == 0) {
-            const uint64_t now = perf_stream_common::perf_stream_now_ns ();
-            if (now > sent_ns) {
-                const double us = static_cast<double> (now - sent_ns) / 1000.0;
-                add_rtt_sample (us);
-            }
+        if (sent_ts_us > 0) {
+            const uint64_t now_us = perf_multi_metric::now_us ();
+            if (now_us >= sent_ts_us)
+                add_rtt_sample (
+                  static_cast<double> (now_us - sent_ts_us));
         }
     }
 
@@ -630,7 +629,7 @@ class bench_client_t : public bench_client_iface_t
         const size_t sample_count = std::min<size_t> (
           sample_overwrite_idx.load (std::memory_order_relaxed),
           k_rtt_sample_capacity);
-        if (sample_count > 0 && latency_sampling_enabled ()) {
+        if (sample_count > 0) {
             std::vector<double> snapshot;
             snapshot.reserve (sample_count);
             for (size_t i = 0; i < sample_count; ++i) {

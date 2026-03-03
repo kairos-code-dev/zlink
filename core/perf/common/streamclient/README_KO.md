@@ -182,23 +182,12 @@ perf_stream_client.cpp
 7. (선택) 서버에 stop 토큰 전송
 ```
 
-## 레이턴시 샘플링
+## 메트릭 헤더
 
-`--latency-sample-rate N` 설정 시, 매 N번째 메시지의 페이로드 앞
-16바이트에 타이밍 데이터를 삽입한다:
-
-```
-┌───────────────┬───────────────┬──────────────┐
-│ 8 바이트 (BE) │ 8 바이트 (BE) │ 나머지       │
-│ 시퀀스 번호   │ sent_ns       │ (무시)       │
-└───────────────┴───────────────┴──────────────┘
-```
-
-에코 서버는 페이로드를 변경 없이 반사한다. 수신 시 클라이언트는
-`seq`와 `sent_ns`를 읽어 RTT = `now_ns - sent_ns`를 계산하고,
-atomic 링버퍼(`k_rtt_sample_capacity` = 1M 엔트리)에 샘플을 저장한다.
-샘플은 `double → uint64_t` 비트 캐스팅으로 `std::atomic<uint64_t>[]`에
-저장하여 I/O 스레드에서의 스레드 안전 쓰기와 메인 스레드에서의 안전한 읽기를 보장한다.
+stream 클라이언트는 다른 multi 패턴과 동일한 공통 metric header를
+각 payload에 기록한다. 서버가 payload를 그대로 에코하면, 클라이언트는
+수신 시 header를 decode하여 같은 측정 구간에서 throughput/latency를
+동시에 계산한다.
 
 ## 루프백 포트 샤딩
 
@@ -226,10 +215,9 @@ shards = ceil(ccu / 사용 가능한 임시 포트 수)
 | `--runs` | `1` | 크기별 벤치마크 반복 횟수 |
 | `--warmup` | `2` | 워밍업 시간 (초) |
 | `--duration` | `10` | 측정 시간 (초) |
-| `--drain-ms` | `300` | 측정 후 드레인 대기 (ms) |
-| `--size-transition-drain-ms` | `300` | 크기 전환 간 드레인 (ms) |
+| `--drain-ms` | `0` | 측정 후 드레인 대기 (ms) |
+| `--size-transition-drain-ms` | `0` | 크기 전환 간 드레인 (ms) |
 | `--io-threads` | `4` | I/O 워커 스레드 수 |
-| `--latency-sample-rate` | `0` | 매 N번째 메시지 레이턴시 샘플링 (0=비활성) |
 | `--print-perf-result` | `0` | 출력 형식: 0=상세, 1=양쪽, 2=CSV 전용 |
 | `--send-stop-token` | `0` | 벤치마크 후 서버에 stop 토큰 전송 |
 | `--stop-token` | `__zlink_perf_stop__` | 커스텀 stop 토큰 문자열 |

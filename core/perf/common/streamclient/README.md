@@ -183,23 +183,12 @@ Fixed `len32be` framing on all transports:
 7. (optional) Send stop token to server
 ```
 
-## Latency Sampling
+## Metric Header
 
-When `--latency-sample-rate N` is set, every N-th message embeds timing
-data in the first 16 bytes of payload:
-
-```
-┌───────────────┬───────────────┬──────────────┐
-│ 8 bytes (BE)  │ 8 bytes (BE)  │ remaining    │
-│ sequence num  │ sent_ns       │ (ignored)    │
-└───────────────┴───────────────┴──────────────┘
-```
-
-The echo server reflects payload unchanged. On receive, the client reads
-back `seq` and `sent_ns`, computes RTT = `now_ns - sent_ns`, and stores
-the sample in an atomic ring buffer (`k_rtt_sample_capacity` = 1M entries).
-Samples are stored as bit-cast `double → uint64_t` in `std::atomic<uint64_t>[]`
-to ensure thread-safe write from I/O threads and safe read from the main thread.
+The stream client stamps the same multi benchmark metric header used by
+other multi patterns into each payload. The echoed payload is decoded on
+receive, and throughput/latency are calculated in the same measurement
+window from the decoded send timestamp.
 
 ## Loopback Port Sharding
 
@@ -228,10 +217,9 @@ Ephemeral port range is read from `/proc/sys/net/ipv4/ip_local_port_range`.
 | `--runs` | `1` | Number of benchmark runs per size |
 | `--warmup` | `2` | Warmup duration (seconds) |
 | `--duration` | `10` | Measurement duration (seconds) |
-| `--drain-ms` | `300` | Post-measurement drain wait (ms) |
-| `--size-transition-drain-ms` | `300` | Drain between size transitions (ms) |
+| `--drain-ms` | `0` | Post-measurement drain wait (ms) |
+| `--size-transition-drain-ms` | `0` | Drain between size transitions (ms) |
 | `--io-threads` | `4` | I/O worker thread count |
-| `--latency-sample-rate` | `0` | Sample every N-th message for latency (0=disabled) |
 | `--print-perf-result` | `0` | Output format: 0=detailed, 1=both, 2=CSV only |
 | `--send-stop-token` | `0` | Send stop token to server after benchmark |
 | `--stop-token` | `__zlink_perf_stop__` | Custom stop token string |

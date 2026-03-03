@@ -6,7 +6,6 @@
 //   client_options_t       – all benchmark parameters with sensible defaults
 //   case_metrics_t         – per-size result accumulator (throughput, latency, errors)
 //   parse_options()        – populates client_options_t from argv
-//   print_perf_result_line() – emits CSV lines for the benchmark runner
 //   send_stop_token_once() – sends a stop token to the echo server
 
 #include "perf_stream_arg_reader.hpp"
@@ -34,7 +33,6 @@ struct client_options_t
     int drain_ms;
     int size_transition_drain_ms;
     int io_threads;
-    int latency_sample_rate;
     int print_perf_result;
     std::string stop_token;
     int send_stop_token;
@@ -52,7 +50,6 @@ struct client_options_t
           drain_ms (0),
           size_transition_drain_ms (0),
           io_threads (4),
-          latency_sample_rate (0),
           print_perf_result (0),
           stop_token ("__zlink_perf_stop__"),
           send_stop_token (0)
@@ -118,8 +115,6 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     opt.size_transition_drain_ms = args.get_int (
       "--size-transition-drain-ms", opt.size_transition_drain_ms, 0);
     opt.io_threads = args.get_int ("--io-threads", opt.io_threads, 1);
-    opt.latency_sample_rate = args.get_int ("--latency-sample-rate",
-                                            opt.latency_sample_rate, 0);
     opt.print_perf_result = args.get_int ("--print-perf-result",
                                           opt.print_perf_result, 0);
     opt.stop_token = args.get_string ("--stop-token", opt.stop_token.c_str ());
@@ -159,40 +154,6 @@ inline bool parse_options (int argc, char **argv, client_options_t &opt)
     }
 
     return true;
-}
-
-// Emit CSV-formatted result lines consumed by the benchmark runner.
-// Format: RESULT,current,<pattern>,<transport>,<size>,<metric>,<value>
-// Skipped when print_perf_result <= 0 or the case failed.
-inline void print_perf_result_line (const client_options_t &opt,
-                                    size_t size,
-                                    double throughput_bps,
-                                    double p50_us,
-                                    double p95_us,
-                                    double p99_us,
-                                    bool pass)
-{
-    if (opt.print_perf_result <= 0 || !pass)
-        return;
-
-    const double throughput =
-      size > 0 ? (throughput_bps / static_cast<double> (size)) : 0.0;
-    const double bandwidth = (throughput_bps * 2.0) / 1000000.0;
-    const double latency = p50_us * 0.5;
-    const double latency_p95 = p95_us * 0.5;
-    const double latency_p99 = p99_us * 0.5;
-
-    std::printf ("RESULT,current,%s,%s,%zu,throughput,%.6f\n",
-                 opt.pattern.c_str (), opt.transport.c_str (), size, throughput);
-    std::printf ("RESULT,current,%s,%s,%zu,bandwidth,%.6f\n",
-                 opt.pattern.c_str (), opt.transport.c_str (), size, bandwidth);
-    std::printf ("RESULT,current,%s,%s,%zu,latency,%.6f\n",
-                 opt.pattern.c_str (), opt.transport.c_str (), size, latency);
-    std::printf ("RESULT,current,%s,%s,%zu,latency_p95,%.6f\n",
-                 opt.pattern.c_str (), opt.transport.c_str (), size, latency_p95);
-    std::printf ("RESULT,current,%s,%s,%zu,latency_p99,%.6f\n",
-                 opt.pattern.c_str (), opt.transport.c_str (), size, latency_p99);
-    std::fflush (stdout);
 }
 
 // Open a one-shot connection and send the stop token to the echo server.

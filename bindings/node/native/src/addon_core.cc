@@ -189,22 +189,85 @@ int stream_on_packets_slot(const zlink_routing_id_t *rid_,
     return 0;
 }
 
-typedef int (*stream_slot_callback_t)(const zlink_routing_id_t *,
-                                      zlink_msg_t *,
-                                      size_t);
+template <size_t Slot>
+int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
+{
+    if (!rid_ || !msg_)
+        return 0;
 
-#define STREAM_SLOT_CALLBACK(N) &stream_on_packets_slot<N>
-static stream_slot_callback_t g_stream_slot_callbacks[k_stream_slot_count] = {
-    STREAM_SLOT_CALLBACK(0),
-    STREAM_SLOT_CALLBACK(1),
-    STREAM_SLOT_CALLBACK(2),
-    STREAM_SLOT_CALLBACK(3),
-    STREAM_SLOT_CALLBACK(4),
-    STREAM_SLOT_CALLBACK(5),
-    STREAM_SLOT_CALLBACK(6),
-    STREAM_SLOT_CALLBACK(7),
+    const auto close_msg = [msg_]() { (void) zlink_msg_close(msg_); };
+
+    stream_js_state_t *state = &g_stream_slots[Slot];
+    napi_threadsafe_function tsfn = NULL;
+    {
+        std::lock_guard<std::mutex> lock(g_stream_slots_mu);
+        if (!state->used || !state->tsfn) {
+            close_msg();
+            return 0;
+        }
+        if (state->stop_requested.load(std::memory_order_acquire) != 0) {
+            close_msg();
+            return 1;
+        }
+        tsfn = state->tsfn;
+    }
+
+    std::unique_ptr<stream_js_payload_t> payload(new stream_js_payload_t());
+    payload->routing_id.assign(rid_->data, rid_->data + rid_->size);
+    payload->packets.reserve(1);
+
+    const unsigned char *packet_data =
+      static_cast<const unsigned char *>(zlink_msg_data(msg_));
+    const size_t packet_size = zlink_msg_size(msg_);
+    std::vector<unsigned char> packet;
+    if (packet_data && packet_size > 0)
+        packet.assign(packet_data, packet_data + packet_size);
+    payload->packets.push_back(packet);
+    (void) zlink_msg_close(msg_);
+
+    napi_status call_status =
+      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking);
+    if (call_status != napi_ok)
+        return 1;
+    payload.release();
+
+    if (state->stop_requested.load(std::memory_order_acquire) != 0)
+        return 1;
+    return 0;
+}
+
+typedef int (*stream_slot_packets_callback_t)(const zlink_routing_id_t *,
+                                              zlink_msg_t *,
+                                              size_t);
+typedef int (*stream_slot_raw_callback_t)(const zlink_routing_id_t *,
+                                          zlink_msg_t *);
+
+#define STREAM_SLOT_PACKETS_CALLBACK(N) &stream_on_packets_slot<N>
+static stream_slot_packets_callback_t
+  g_stream_slot_packet_callbacks[k_stream_slot_count] = {
+    STREAM_SLOT_PACKETS_CALLBACK(0),
+    STREAM_SLOT_PACKETS_CALLBACK(1),
+    STREAM_SLOT_PACKETS_CALLBACK(2),
+    STREAM_SLOT_PACKETS_CALLBACK(3),
+    STREAM_SLOT_PACKETS_CALLBACK(4),
+    STREAM_SLOT_PACKETS_CALLBACK(5),
+    STREAM_SLOT_PACKETS_CALLBACK(6),
+    STREAM_SLOT_PACKETS_CALLBACK(7),
 };
-#undef STREAM_SLOT_CALLBACK
+#undef STREAM_SLOT_PACKETS_CALLBACK
+
+#define STREAM_SLOT_RAW_CALLBACK(N) &stream_on_raw_slot<N>
+static stream_slot_raw_callback_t g_stream_slot_raw_callbacks[k_stream_slot_count] = {
+    STREAM_SLOT_RAW_CALLBACK(0),
+    STREAM_SLOT_RAW_CALLBACK(1),
+    STREAM_SLOT_RAW_CALLBACK(2),
+    STREAM_SLOT_RAW_CALLBACK(3),
+    STREAM_SLOT_RAW_CALLBACK(4),
+    STREAM_SLOT_RAW_CALLBACK(5),
+    STREAM_SLOT_RAW_CALLBACK(6),
+    STREAM_SLOT_RAW_CALLBACK(7),
+};
+#undef STREAM_SLOT_RAW_CALLBACK
 
 void stream_release_slot(void *socket)
 {
@@ -583,6 +646,11 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
     int32_t mode = 0;
     if (argc >= 3)
         napi_get_value_int32(env, argv[2], &mode);
+    if (mode != 0 && mode != ZLINK_STREAM_DISPATCH_LEN32BE) {
+        napi_throw_range_error(env, NULL,
+                               "streamAttach mode must be NONE(0) or LEN32BE(1)");
+        return NULL;
+    }
 
     {
         std::lock_guard<std::mutex> lock(g_stream_slots_mu);
@@ -626,8 +694,13 @@ napi_value socket_stream_attach(napi_env env, napi_callback_info info)
         slot->stop_requested.store(0, std::memory_order_release);
     }
 
-    const int rc = zlink_stream_attach(sock, g_stream_slot_callbacks[slot_index],
-                                       mode);
+    int rc = 0;
+    if (mode == ZLINK_STREAM_DISPATCH_LEN32BE) {
+        rc = zlink_stream_attach_len32be(
+          sock, g_stream_slot_packet_callbacks[slot_index]);
+    } else {
+        rc = zlink_stream_attach_raw(sock, g_stream_slot_raw_callbacks[slot_index]);
+    }
     if (rc != 0) {
         stream_release_slot(sock);
         return throw_last_error(env, "streamAttach failed");

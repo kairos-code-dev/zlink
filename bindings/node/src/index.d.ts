@@ -180,6 +180,12 @@ export class Socket {
     handler: (routingId: Buffer, packets: Buffer[]) => number | void,
     mode?: number
   ): void;
+  streamAttachRaw(
+    handler: (routingId: Buffer, packets: Buffer[]) => number | void
+  ): void;
+  streamAttachLen32be(
+    handler: (routingId: Buffer, packets: Buffer[]) => number | void
+  ): void;
   streamDetach(): void;
   streamPeerRoutingId(index?: number): Buffer | null;
   streamSend(
@@ -226,11 +232,23 @@ export class Discovery {
 
 export class Gateway {
   constructor(ctx: Context, discovery: Discovery, routingId?: string | null);
-  send(service: string, parts: Buffer[], flags?: number): void;
+  send(
+    service: string,
+    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
+    flags?: number
+  ): void;
+  sendToRoutingId(
+    service: string,
+    routingId: Buffer | Uint8Array | string,
+    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
+    flags?: number
+  ): void;
   recv(flags?: number): { service: string; parts: Buffer[] };
   setLoadBalancing(service: string, strategy: number): void;
   setTlsClient(ca: string, host: string, trust: number): void;
   connectionCount(service: string): number;
+  routerSocket(): Socket;
+  routerPeers(): PeerInfo[];
   setSockOpt(option: number, value: Buffer | Uint8Array | string): void;
   close(): void;
 }
@@ -246,6 +264,7 @@ export class Receiver {
   setTlsServer(cert: string, key: string): void;
   setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
   routerSocket(): Socket;
+  routerPeers(): PeerInfo[];
   close(): void;
 }
 
@@ -261,15 +280,33 @@ export class SpotNode {
   setTlsServer(cert: string, key: string): void;
   setTlsClient(ca: string, host: string, trust: number): void;
   setSockOpt(role: number, option: number, value: Buffer | Uint8Array | string): void;
+  pubSocket(): Socket;
+  subSocket(): Socket;
+  pubPeers(): PeerInfo[];
+  subPeers(): PeerInfo[];
   close(): void;
 }
 
 export class Spot {
   constructor(node: SpotNode);
-  publish(topic: string, parts: Buffer[], flags?: number): void;
+  publish(
+    topic: string,
+    payloadOrParts: Buffer | Uint8Array | string | Buffer[],
+    flags?: number
+  ): void;
   subscribe(topic: string): void;
   subscribePattern(pattern: string): void;
   unsubscribe(topicOrPattern: string): void;
   recv(flags?: number): { topic: string; parts: Buffer[] };
   close(): void;
+}
+
+export interface PeerInfo {
+  routingId: Buffer;
+  remoteAddr: string;
+  connectedTime: number;
+  msgsSent: number;
+  msgsReceived: number;
+  sndPendingMsgs: number;
+  rcvPendingMsgs: number;
 }

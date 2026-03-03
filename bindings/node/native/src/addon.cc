@@ -46,10 +46,13 @@ static napi_value init(napi_env env, napi_value exports)
 
         {"gatewayNew", 0, gateway_new, 0, 0, 0, napi_default, 0},
         {"gatewaySend", 0, gateway_send, 0, 0, 0, napi_default, 0},
+        {"gatewaySendToRoutingId", 0, gateway_send_rid, 0, 0, 0, napi_default, 0},
         {"gatewayRecv", 0, gateway_recv, 0, 0, 0, napi_default, 0},
         {"gatewaySetLbStrategy", 0, gateway_set_lb, 0, 0, 0, napi_default, 0},
         {"gatewaySetTlsClient", 0, gateway_set_tls, 0, 0, 0, napi_default, 0},
         {"gatewayConnectionCount", 0, gateway_connection_count, 0, 0, 0, napi_default, 0},
+        {"gatewayRouter", 0, gateway_router, 0, 0, 0, napi_default, 0},
+        {"gatewayRouterPeers", 0, gateway_router_peers, 0, 0, 0, napi_default, 0},
         {"gatewaySetSockOpt", 0, gateway_setsockopt, 0, 0, 0, napi_default, 0},
         {"gatewayDestroy", 0, gateway_destroy, 0, 0, 0, napi_default, 0},
 
@@ -62,6 +65,7 @@ static napi_value init(napi_env env, napi_value exports)
         {"providerRegisterResult", 0, provider_register_result, 0, 0, 0, napi_default, 0},
         {"providerSetTlsServer", 0, provider_set_tls_server, 0, 0, 0, napi_default, 0},
         {"providerRouter", 0, provider_router, 0, 0, 0, napi_default, 0},
+        {"providerRouterPeers", 0, provider_router_peers, 0, 0, 0, napi_default, 0},
         {"providerSetSockOpt", 0, provider_setsockopt, 0, 0, 0, napi_default, 0},
         {"providerDestroy", 0, provider_destroy, 0, 0, 0, napi_default, 0},
 
@@ -77,6 +81,10 @@ static napi_value init(napi_env env, napi_value exports)
         {"spotNodeSetTlsServer", 0, spot_node_set_tls_server, 0, 0, 0, napi_default, 0},
         {"spotNodeSetTlsClient", 0, spot_node_set_tls_client, 0, 0, 0, napi_default, 0},
         {"spotNodeSetSockOpt", 0, spot_node_setsockopt, 0, 0, 0, napi_default, 0},
+        {"spotNodePubSocket", 0, spot_node_pub_socket, 0, 0, 0, napi_default, 0},
+        {"spotNodeSubSocket", 0, spot_node_sub_socket, 0, 0, 0, napi_default, 0},
+        {"spotNodePubPeers", 0, spot_node_pub_peers, 0, 0, 0, napi_default, 0},
+        {"spotNodeSubPeers", 0, spot_node_sub_peers, 0, 0, 0, napi_default, 0},
 
         {"spotNew", 0, spot_new, 0, 0, 0, napi_default, 0},
         {"spotDestroy", 0, spot_destroy, 0, 0, 0, napi_default, 0},

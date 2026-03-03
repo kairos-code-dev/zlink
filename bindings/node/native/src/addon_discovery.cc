@@ -2,6 +2,80 @@
 
 #include "addon_api.h"
 
+namespace {
+
+bool parse_routing_id_buffer(napi_env env,
+                             napi_value value,
+                             zlink_routing_id_t *out_rid)
+{
+    void *rid_data = NULL;
+    size_t rid_len = 0;
+    if (napi_get_buffer_info(env, value, &rid_data, &rid_len) != napi_ok) {
+        napi_throw_type_error(env, NULL, "routingId must be Buffer");
+        return false;
+    }
+    if (rid_len == 0 || rid_len > 255) {
+        napi_throw_range_error(env, NULL,
+                               "routingId length must be 1..255 bytes");
+        return false;
+    }
+    memset(out_rid, 0, sizeof(*out_rid));
+    out_rid->size = static_cast<uint8_t>(rid_len);
+    memcpy(out_rid->data, rid_data, rid_len);
+    return true;
+}
+
+napi_value build_peer_array(napi_env env,
+                            const std::vector<zlink_peer_info_t> &peers)
+{
+    napi_value arr;
+    napi_create_array_with_length(env, peers.size(), &arr);
+    for (size_t i = 0; i < peers.size(); ++i) {
+        const zlink_peer_info_t &peer = peers[i];
+        napi_value obj;
+        napi_create_object(env, &obj);
+
+        napi_value routing_id;
+        napi_create_buffer_copy(env, peer.routing_id.size, peer.routing_id.data,
+                                NULL, &routing_id);
+        napi_set_named_property(env, obj, "routingId", routing_id);
+
+        napi_value remote_addr;
+        napi_create_string_utf8(env, peer.remote_addr, NAPI_AUTO_LENGTH,
+                                &remote_addr);
+        napi_set_named_property(env, obj, "remoteAddr", remote_addr);
+
+        napi_value connected_time;
+        napi_create_double(env, static_cast<double>(peer.connected_time),
+                           &connected_time);
+        napi_set_named_property(env, obj, "connectedTime", connected_time);
+
+        napi_value msgs_sent;
+        napi_create_double(env, static_cast<double>(peer.msgs_sent), &msgs_sent);
+        napi_set_named_property(env, obj, "msgsSent", msgs_sent);
+
+        napi_value msgs_received;
+        napi_create_double(env, static_cast<double>(peer.msgs_received),
+                           &msgs_received);
+        napi_set_named_property(env, obj, "msgsReceived", msgs_received);
+
+        napi_value snd_pending;
+        napi_create_double(env, static_cast<double>(peer.snd_pending_msgs),
+                           &snd_pending);
+        napi_set_named_property(env, obj, "sndPendingMsgs", snd_pending);
+
+        napi_value rcv_pending;
+        napi_create_double(env, static_cast<double>(peer.rcv_pending_msgs),
+                           &rcv_pending);
+        napi_set_named_property(env, obj, "rcvPendingMsgs", rcv_pending);
+
+        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+    }
+    return arr;
+}
+
+} // namespace
+
 napi_value registry_new(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -319,14 +393,89 @@ napi_value gateway_send(napi_env env, napi_callback_info info)
     void *gw = NULL;
     napi_get_value_external(env, argv[0], &gw);
     std::string service = get_string(env, argv[1]);
-    std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
-        return NULL;
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
-    int rc = zlink_gateway_send(gw, service.c_str(), parts.data(), parts.size(), flags);
-    if (rc != 0)
-        return throw_last_error(env, "gateway_send failed");
+
+    bool is_buffer = false;
+    napi_is_buffer(env, argv[2], &is_buffer);
+    int rc = 0;
+    if (is_buffer) {
+        void *data = NULL;
+        size_t len = 0;
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        rc = zlink_gateway_send_bytes(gw, service.c_str(), data, len, flags);
+        if (rc != 0)
+            return throw_last_error(env, "gateway_send_bytes failed");
+    } else {
+        std::vector<zlink_msg_t> parts;
+        if (!build_msg_vector(env, argv[2], &parts))
+            return NULL;
+        rc = zlink_gateway_send(gw, service.c_str(), parts.data(), parts.size(),
+                                flags);
+        if (rc != 0) {
+            close_msg_vector(parts);
+            return throw_last_error(env, "gateway_send failed");
+        }
+    }
+
+    napi_value ok;
+    napi_get_undefined(env, &ok);
+    return ok;
+}
+
+napi_value gateway_send_rid(napi_env env, napi_callback_info info)
+{
+    napi_value argv[5];
+    size_t argc = 5;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    if (argc < 4) {
+        napi_throw_type_error(
+          env, NULL,
+          "gatewaySendToRoutingId requires (gateway, service, routingId, payloadOrParts[, flags])");
+        return NULL;
+    }
+
+    void *gw = NULL;
+    napi_get_value_external(env, argv[0], &gw);
+    std::string service = get_string(env, argv[1]);
+
+    zlink_routing_id_t rid;
+    if (!parse_routing_id_buffer(env, argv[2], &rid))
+        return NULL;
+
+    int32_t flags = 0;
+    if (argc >= 5)
+        napi_get_value_int32(env, argv[4], &flags);
+
+    bool is_buffer = false;
+    napi_is_buffer(env, argv[3], &is_buffer);
+    int rc = 0;
+    if (is_buffer) {
+        void *data = NULL;
+        size_t len = 0;
+        if (napi_get_buffer_info(env, argv[3], &data, &len) != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        rc = zlink_gateway_send_rid_bytes(gw, service.c_str(), &rid, data, len,
+                                          flags);
+        if (rc != 0)
+            return throw_last_error(env, "gateway_send_rid_bytes failed");
+    } else {
+        std::vector<zlink_msg_t> parts;
+        if (!build_msg_vector(env, argv[3], &parts))
+            return NULL;
+        rc = zlink_gateway_send_rid(gw, service.c_str(), &rid, parts.data(),
+                                    parts.size(), flags);
+        if (rc != 0) {
+            close_msg_vector(parts);
+            return throw_last_error(env, "gateway_send_rid failed");
+        }
+    }
+
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -417,6 +566,47 @@ napi_value gateway_connection_count(napi_env env, napi_callback_info info)
     napi_value out;
     napi_create_int32(env, rc, &out);
     return out;
+}
+
+napi_value gateway_router(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *gw = NULL;
+    napi_get_value_external(env, argv[0], &gw);
+    void *sock = zlink_gateway_router_socket_unsafe(gw);
+    if (!sock)
+        return throw_last_error(env, "gateway_router failed");
+    napi_value ext;
+    napi_create_external(env, sock, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value gateway_router_peers(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *gw = NULL;
+    napi_get_value_external(env, argv[0], &gw);
+
+    size_t count = 0;
+    int rc = zlink_gateway_router_peers(gw, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "gateway_router_peers failed");
+    if (count == 0) {
+        napi_value arr;
+        napi_create_array_with_length(env, 0, &arr);
+        return arr;
+    }
+
+    std::vector<zlink_peer_info_t> peers(count);
+    rc = zlink_gateway_router_peers(gw, peers.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "gateway_router_peers failed");
+    peers.resize(count);
+    return build_peer_array(env, peers);
 }
 
 napi_value gateway_destroy(napi_env env, napi_callback_info info)
@@ -601,6 +791,32 @@ napi_value provider_router(napi_env env, napi_callback_info info)
     napi_value ext;
     napi_create_external(env, sock, NULL, NULL, &ext);
     return ext;
+}
+
+napi_value provider_router_peers(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *p = NULL;
+    napi_get_value_external(env, argv[0], &p);
+
+    size_t count = 0;
+    int rc = zlink_receiver_router_peers(p, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "provider_router_peers failed");
+    if (count == 0) {
+        napi_value arr;
+        napi_create_array_with_length(env, 0, &arr);
+        return arr;
+    }
+
+    std::vector<zlink_peer_info_t> peers(count);
+    rc = zlink_receiver_router_peers(p, peers.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "provider_router_peers failed");
+    peers.resize(count);
+    return build_peer_array(env, peers);
 }
 
 napi_value gateway_setsockopt(napi_env env, napi_callback_info info)

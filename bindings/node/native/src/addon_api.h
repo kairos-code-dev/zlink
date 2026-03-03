@@ -57,10 +57,13 @@ napi_value discovery_setsockopt(napi_env env, napi_callback_info info);
 
 napi_value gateway_new(napi_env env, napi_callback_info info);
 napi_value gateway_send(napi_env env, napi_callback_info info);
+napi_value gateway_send_rid(napi_env env, napi_callback_info info);
 napi_value gateway_recv(napi_env env, napi_callback_info info);
 napi_value gateway_set_lb(napi_env env, napi_callback_info info);
 napi_value gateway_set_tls(napi_env env, napi_callback_info info);
 napi_value gateway_connection_count(napi_env env, napi_callback_info info);
+napi_value gateway_router(napi_env env, napi_callback_info info);
+napi_value gateway_router_peers(napi_env env, napi_callback_info info);
 napi_value gateway_setsockopt(napi_env env, napi_callback_info info);
 napi_value gateway_destroy(napi_env env, napi_callback_info info);
 
@@ -73,6 +76,7 @@ napi_value provider_unregister(napi_env env, napi_callback_info info);
 napi_value provider_register_result(napi_env env, napi_callback_info info);
 napi_value provider_set_tls_server(napi_env env, napi_callback_info info);
 napi_value provider_router(napi_env env, napi_callback_info info);
+napi_value provider_router_peers(napi_env env, napi_callback_info info);
 napi_value provider_setsockopt(napi_env env, napi_callback_info info);
 napi_value provider_destroy(napi_env env, napi_callback_info info);
 
@@ -88,6 +92,10 @@ napi_value spot_node_set_discovery(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_server(napi_env env, napi_callback_info info);
 napi_value spot_node_set_tls_client(napi_env env, napi_callback_info info);
 napi_value spot_node_setsockopt(napi_env env, napi_callback_info info);
+napi_value spot_node_pub_socket(napi_env env, napi_callback_info info);
+napi_value spot_node_sub_socket(napi_env env, napi_callback_info info);
+napi_value spot_node_pub_peers(napi_env env, napi_callback_info info);
+napi_value spot_node_sub_peers(napi_env env, napi_callback_info info);
 
 napi_value spot_new(napi_env env, napi_callback_info info);
 napi_value spot_destroy(napi_env env, napi_callback_info info);

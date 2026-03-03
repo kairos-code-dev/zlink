@@ -289,6 +289,14 @@ class Socket {
     requireNative().socketStreamAttach(this._native, handler, mode | 0);
   }
 
+  streamAttachRaw(handler) {
+    this.streamAttach(handler, StreamDispatchMode.NONE);
+  }
+
+  streamAttachLen32be(handler) {
+    this.streamAttach(handler, StreamDispatchMode.LEN32BE);
+  }
+
   streamDetach() {
     requireNative().socketStreamDetach(this._native);
   }
@@ -381,11 +389,39 @@ class Gateway {
   constructor(ctx, discovery, routingId = null) {
     this._native = requireNative().gatewayNew(ctx._native, discovery._native, routingId);
   }
-  send(service, parts, flags = 0) { requireNative().gatewaySend(this._native, service, parts, flags); }
+  send(service, payloadOrParts, flags = 0) {
+    if (Array.isArray(payloadOrParts)) {
+      requireNative().gatewaySend(this._native, service, payloadOrParts, flags);
+      return;
+    }
+    const payload = Buffer.isBuffer(payloadOrParts)
+      ? payloadOrParts
+      : Buffer.from(payloadOrParts);
+    requireNative().gatewaySend(this._native, service, payload, flags);
+  }
+  sendToRoutingId(service, routingId, payloadOrParts, flags = 0) {
+    const rid = Buffer.isBuffer(routingId) ? routingId : Buffer.from(routingId);
+    if (Array.isArray(payloadOrParts)) {
+      requireNative().gatewaySendToRoutingId(this._native, service, rid, payloadOrParts, flags);
+      return;
+    }
+    const payload = Buffer.isBuffer(payloadOrParts)
+      ? payloadOrParts
+      : Buffer.from(payloadOrParts);
+    requireNative().gatewaySendToRoutingId(this._native, service, rid, payload, flags);
+  }
   recv(flags = 0) { return requireNative().gatewayRecv(this._native, flags); }
   setLoadBalancing(service, strategy) { requireNative().gatewaySetLbStrategy(this._native, service, strategy); }
   setTlsClient(ca, host, trust) { requireNative().gatewaySetTlsClient(this._native, ca, host, trust); }
   connectionCount(service) { return requireNative().gatewayConnectionCount(this._native, service); }
+  routerSocket() {
+    const h = requireNative().gatewayRouter(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
+  routerPeers() { return requireNative().gatewayRouterPeers(this._native); }
   setSockOpt(option, value) {
     const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
     requireNative().gatewaySetSockOpt(this._native, option, b);
@@ -413,6 +449,7 @@ class Receiver {
     s._own = false;
     return s;
   }
+  routerPeers() { return requireNative().providerRouterPeers(this._native); }
   close() { if (!this._native) return; requireNative().providerDestroy(this._native); this._native = null; }
 }
 
@@ -431,12 +468,37 @@ class SpotNode {
     const b = Buffer.isBuffer(value) ? value : Buffer.from(value);
     requireNative().spotNodeSetSockOpt(this._native, role, option, b);
   }
+  pubSocket() {
+    const h = requireNative().spotNodePubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
+  subSocket() {
+    const h = requireNative().spotNodeSubSocket(this._native);
+    const s = Object.create(Socket.prototype);
+    s._native = h;
+    s._own = false;
+    return s;
+  }
+  pubPeers() { return requireNative().spotNodePubPeers(this._native); }
+  subPeers() { return requireNative().spotNodeSubPeers(this._native); }
   close() { if (!this._native) return; requireNative().spotNodeDestroy(this._native); this._native = null; }
 }
 
 class Spot {
   constructor(node) { this._native = requireNative().spotNew(node._native); }
-  publish(topic, parts, flags = 0) { requireNative().spotPublish(this._native, topic, parts, flags); }
+  publish(topic, payloadOrParts, flags = 0) {
+    if (Array.isArray(payloadOrParts)) {
+      requireNative().spotPublish(this._native, topic, payloadOrParts, flags);
+      return;
+    }
+    const payload = Buffer.isBuffer(payloadOrParts)
+      ? payloadOrParts
+      : Buffer.from(payloadOrParts);
+    requireNative().spotPublish(this._native, topic, payload, flags);
+  }
   subscribe(topic) { requireNative().spotSubscribe(this._native, topic); }
   subscribePattern(pattern) { requireNative().spotSubscribePattern(this._native, pattern); }
   unsubscribe(topicOrPattern) { requireNative().spotUnsubscribe(this._native, topicOrPattern); }

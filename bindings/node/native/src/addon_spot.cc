@@ -2,6 +2,59 @@
 
 #include "addon_api.h"
 
+namespace {
+
+napi_value build_peer_array(napi_env env,
+                            const std::vector<zlink_peer_info_t> &peers)
+{
+    napi_value arr;
+    napi_create_array_with_length(env, peers.size(), &arr);
+    for (size_t i = 0; i < peers.size(); ++i) {
+        const zlink_peer_info_t &peer = peers[i];
+        napi_value obj;
+        napi_create_object(env, &obj);
+
+        napi_value routing_id;
+        napi_create_buffer_copy(env, peer.routing_id.size, peer.routing_id.data,
+                                NULL, &routing_id);
+        napi_set_named_property(env, obj, "routingId", routing_id);
+
+        napi_value remote_addr;
+        napi_create_string_utf8(env, peer.remote_addr, NAPI_AUTO_LENGTH,
+                                &remote_addr);
+        napi_set_named_property(env, obj, "remoteAddr", remote_addr);
+
+        napi_value connected_time;
+        napi_create_double(env, static_cast<double>(peer.connected_time),
+                           &connected_time);
+        napi_set_named_property(env, obj, "connectedTime", connected_time);
+
+        napi_value msgs_sent;
+        napi_create_double(env, static_cast<double>(peer.msgs_sent), &msgs_sent);
+        napi_set_named_property(env, obj, "msgsSent", msgs_sent);
+
+        napi_value msgs_received;
+        napi_create_double(env, static_cast<double>(peer.msgs_received),
+                           &msgs_received);
+        napi_set_named_property(env, obj, "msgsReceived", msgs_received);
+
+        napi_value snd_pending;
+        napi_create_double(env, static_cast<double>(peer.snd_pending_msgs),
+                           &snd_pending);
+        napi_set_named_property(env, obj, "sndPendingMsgs", snd_pending);
+
+        napi_value rcv_pending;
+        napi_create_double(env, static_cast<double>(peer.rcv_pending_msgs),
+                           &rcv_pending);
+        napi_set_named_property(env, obj, "rcvPendingMsgs", rcv_pending);
+
+        napi_set_element(env, arr, static_cast<uint32_t>(i), obj);
+    }
+    return arr;
+}
+
+} // namespace
+
 napi_value spot_node_new(napi_env env, napi_callback_info info)
 {
     napi_value argv[1];
@@ -209,6 +262,88 @@ napi_value spot_node_setsockopt(napi_env env, napi_callback_info info)
     return ok;
 }
 
+napi_value spot_node_pub_socket(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    void *sock = zlink_spot_node_pub_socket_unsafe(node);
+    if (!sock)
+        return throw_last_error(env, "spot_node_pub_socket failed");
+    napi_value ext;
+    napi_create_external(env, sock, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value spot_node_sub_socket(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+    void *sock = zlink_spot_node_sub_socket_unsafe(node);
+    if (!sock)
+        return throw_last_error(env, "spot_node_sub_socket failed");
+    napi_value ext;
+    napi_create_external(env, sock, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value spot_node_pub_peers(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+
+    size_t count = 0;
+    int rc = zlink_spot_node_pub_peers(node, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_pub_peers failed");
+    if (count == 0) {
+        napi_value arr;
+        napi_create_array_with_length(env, 0, &arr);
+        return arr;
+    }
+
+    std::vector<zlink_peer_info_t> peers(count);
+    rc = zlink_spot_node_pub_peers(node, peers.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_pub_peers failed");
+    peers.resize(count);
+    return build_peer_array(env, peers);
+}
+
+napi_value spot_node_sub_peers(napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
+    void *node = NULL;
+    napi_get_value_external(env, argv[0], &node);
+
+    size_t count = 0;
+    int rc = zlink_spot_node_sub_peers(node, NULL, &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_sub_peers failed");
+    if (count == 0) {
+        napi_value arr;
+        napi_create_array_with_length(env, 0, &arr);
+        return arr;
+    }
+
+    std::vector<zlink_peer_info_t> peers(count);
+    rc = zlink_spot_node_sub_peers(node, peers.data(), &count);
+    if (rc != 0)
+        return throw_last_error(env, "spot_node_sub_peers failed");
+    peers.resize(count);
+    return build_peer_array(env, peers);
+}
+
 struct spot_handle_t
 {
     void *node;
@@ -291,14 +426,35 @@ napi_value spot_publish(napi_env env, napi_callback_info info)
     napi_get_cb_info(env, info, &argc, argv, NULL, NULL);
     spot_handle_t *spot = get_spot_handle(env, argv[0]);
     std::string topic = get_string(env, argv[1]);
-    std::vector<zlink_msg_t> parts;
-    if (!build_msg_vector(env, argv[2], &parts))
-        return NULL;
     int32_t flags = 0;
     napi_get_value_int32(env, argv[3], &flags);
-    int rc = zlink_spot_pub_publish(spot ? spot->pub : NULL, topic.c_str(), parts.data(), parts.size(), flags);
-    if (rc != 0)
-        return throw_last_error(env, "spot_publish failed");
+
+    bool is_buffer = false;
+    napi_is_buffer(env, argv[2], &is_buffer);
+    int rc = 0;
+    if (is_buffer) {
+        void *data = NULL;
+        size_t len = 0;
+        if (napi_get_buffer_info(env, argv[2], &data, &len) != napi_ok) {
+            napi_throw_type_error(env, NULL, "payload must be Buffer");
+            return NULL;
+        }
+        rc = zlink_spot_pub_publish_bytes(spot ? spot->pub : NULL,
+                                          topic.c_str(), data, len, flags);
+        if (rc != 0)
+            return throw_last_error(env, "spot_publish_bytes failed");
+    } else {
+        std::vector<zlink_msg_t> parts;
+        if (!build_msg_vector(env, argv[2], &parts))
+            return NULL;
+        rc = zlink_spot_pub_publish(spot ? spot->pub : NULL, topic.c_str(),
+                                    parts.data(), parts.size(), flags);
+        if (rc != 0) {
+            close_msg_vector(parts);
+            return throw_last_error(env, "spot_publish failed");
+        }
+    }
+
     napi_value ok;
     napi_get_undefined(env, &ok);
     return ok;
@@ -382,4 +538,3 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
     napi_set_named_property(env, obj, "parts", arr);
     return obj;
 }
-

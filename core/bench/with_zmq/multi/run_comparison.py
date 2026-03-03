@@ -191,6 +191,12 @@ else:
 
 DEFAULT_NUM_RUNS = 3
 PATTERN_SEPARATOR = "==============================================================================="
+SPLIT_SERVER_CLIENT_PATTERNS = {
+    "MULTI_DEALER_DEALER",
+    "MULTI_DEALER_ROUTER",
+    "MULTI_ROUTER_ROUTER",
+    "MULTI_STREAM",
+}
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
     SCRIPT_DIR, f"std_zmq_multi_cache_{_platform_tag}-{_arch_tag}.json"
@@ -231,6 +237,7 @@ def parse_nonnegative_int_env(name, default_value):
     raw = os.environ.get(name)
     if raw is None:
         return default_value
+
     try:
         return max(0, int(raw))
     except ValueError:
@@ -348,6 +355,16 @@ def run_cmake_configure(cmake_build_dir):
 def get_env_for_lib(lib_name):
     env = base_env.copy()
     env["BENCH_MSG_SIZES"] = ",".join(str(sz) for sz in MSG_SIZES)
+    alias_pairs = (
+        ("BENCH_MULTI_CLIENTS", "PERF_MULTI_CLIENTS"),
+        ("BENCH_IO_THREADS", "PERF_IO_THREADS"),
+        ("BENCH_MSG_SIZES", "PERF_MSG_SIZES"),
+        ("BENCH_TRANSPORTS", "PERF_TRANSPORTS"),
+    )
+    for src, dst in alias_pairs:
+        src_value = env.get(src, "").strip()
+        if src_value and not env.get(dst):
+            env[dst] = src_value
     if IS_WINDOWS:
         env["PATH"] = f"{LIBZMQ_LIB_DIR};{env.get('PATH', '')}"
     else:
@@ -396,6 +413,218 @@ def parse_prep_line(line, transport, expected_sizes):
     return line_size, connect_ms, ready_ms
 
 
+def parse_ready_endpoint_line(line):
+    if not line.startswith("READY,"):
+        return ""
+    parts = line.strip().split(",", 1)
+    if len(parts) != 2:
+        return ""
+    return parts[1].strip()
+
+
+def _stop_server_process(proc):
+    if proc is None:
+        return
+    try:
+        if proc.stdin is not None:
+            proc.stdin.write("STOP\n")
+            proc.stdin.flush()
+            proc.stdin.close()
+    except Exception:
+        pass
+
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2.0)
+        except Exception:
+            proc.kill()
+            try:
+                proc.wait(timeout=1.0)
+            except Exception:
+                pass
+
+
+def run_split_server_client_test(
+    binary_path,
+    lib_name,
+    transport,
+    fallback_size,
+    expected_sizes,
+    timeout_sec,
+    progress_cb=None,
+    metric_cb=None,
+):
+    env = get_env_for_lib(lib_name)
+    parsed = {}
+    expected_metric_count = len(expected_sizes) * 2
+    outcome = {
+        "parsed": parsed,
+        "timed_out": False,
+        "returncode": 0,
+        "error": "",
+    }
+
+    server_cmd = [binary_path, lib_name, transport, str(fallback_size), "--server-only"]
+    client_cmd = [binary_path, lib_name, transport, str(fallback_size)]
+    server_proc = None
+    selector = None
+
+    try:
+        server_proc = subprocess.Popen(
+            server_cmd,
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        endpoint = ""
+        ready_deadline = time.monotonic() + timeout_sec
+        selector = selectors.DefaultSelector()
+        if server_proc.stdout is not None:
+            selector.register(server_proc.stdout, selectors.EVENT_READ)
+
+        while time.monotonic() < ready_deadline:
+            if server_proc.poll() is not None:
+                break
+            events = selector.select(timeout=min(0.5, ready_deadline - time.monotonic()))
+            if not events:
+                continue
+            for key, _ in events:
+                line = key.fileobj.readline()
+                if not line:
+                    continue
+                endpoint = parse_ready_endpoint_line(line)
+                if endpoint:
+                    break
+            if endpoint:
+                break
+
+        if selector is not None:
+            selector.close()
+            selector = None
+
+        if not endpoint:
+            rc = server_proc.poll()
+            if rc is None:
+                outcome["timed_out"] = True
+                outcome["error"] = "server_ready_timeout"
+            else:
+                outcome["returncode"] = rc
+                outcome["error"] = f"server_start_failed_rc_{rc}"
+            return outcome
+
+        cmd = client_cmd + ["--endpoint", endpoint]
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        deadline = time.monotonic() + timeout_sec
+        selector = selectors.DefaultSelector()
+        if proc.stdout is not None:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+
+        timed_out = False
+        process_done = False
+        while True:
+            if process_done:
+                break
+            now = time.monotonic()
+            if now >= deadline:
+                timed_out = True
+                break
+
+            events = selector.select(timeout=min(1.0, deadline - now))
+            if not events:
+                if proc.poll() is not None:
+                    break
+                continue
+
+            for key, _ in events:
+                line = key.fileobj.readline()
+                if not line:
+                    if proc.poll() is not None:
+                        process_done = True
+                        break
+                    continue
+                prep_line = parse_prep_line(line, transport, expected_sizes)
+                if prep_line and progress_cb is not None:
+                    line_size, connect_ms, ready_ms = prep_line
+                    progress_cb(line_size, connect_ms, ready_ms)
+                parsed_line = parse_result_line(line, transport, expected_sizes)
+                if not parsed_line:
+                    continue
+                line_transport, line_size, metric, value = parsed_line
+                parsed[f"{line_transport}|{line_size}|{metric}"] = value
+                if metric_cb is not None:
+                    metric_cb(line_size, metric, value)
+                if progress_cb is not None and metric == "throughput":
+                    progress_cb(line_size)
+
+                if expected_metric_count > 0 and len(parsed) >= expected_metric_count:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=2.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait()
+                    selector.close()
+                    outcome["returncode"] = 0
+                    return outcome
+
+        if timed_out:
+            proc.kill()
+            rc = proc.wait()
+            selector.close()
+            outcome["timed_out"] = True
+            outcome["returncode"] = rc
+            return outcome
+
+        selector.close()
+        if proc.stdout is not None:
+            tail = proc.stdout.read()
+            if tail:
+                for line in tail.splitlines():
+                    prep_line = parse_prep_line(line, transport, expected_sizes)
+                    if prep_line and progress_cb is not None:
+                        line_size, connect_ms, ready_ms = prep_line
+                        progress_cb(line_size, connect_ms, ready_ms)
+                    parsed_line = parse_result_line(line, transport, expected_sizes)
+                    if not parsed_line:
+                        continue
+                    line_transport, line_size, metric, value = parsed_line
+                    parsed[f"{line_transport}|{line_size}|{metric}"] = value
+                    if metric_cb is not None:
+                        metric_cb(line_size, metric, value)
+                    if progress_cb is not None and metric == "throughput":
+                        progress_cb(line_size)
+
+        outcome["returncode"] = proc.wait()
+        return outcome
+    except Exception as exc:
+        return {
+            "parsed": {},
+            "timed_out": False,
+            "returncode": -1,
+            "error": f"exception_{type(exc).__name__}",
+        }
+    finally:
+        if selector is not None:
+            selector.close()
+        _stop_server_process(server_proc)
+
+
 def run_single_test(
     binary_name, lib_name, transport, pattern_name, progress_cb=None, metric_cb=None
 ):
@@ -422,7 +651,24 @@ def run_single_test(
             (warmup_seconds + duration_seconds) * max(1, len(MSG_SIZES)) * 8 + 120,
         )
 
+    expected_sizes = set(MSG_SIZES)
+
     try:
+        if (
+            lib_name == "zlink"
+            and pattern_name in SPLIT_SERVER_CLIENT_PATTERNS
+        ):
+            return run_split_server_client_test(
+                binary_path,
+                lib_name,
+                transport,
+                fallback_size,
+                expected_sizes,
+                timeout_sec,
+                progress_cb=progress_cb,
+                metric_cb=metric_cb,
+            )
+
         if IS_WINDOWS:
             cmd = [binary_path, lib_name, transport, str(fallback_size)]
         elif os.environ.get("BENCH_TASKSET") == "1":
@@ -439,7 +685,6 @@ def run_single_test(
             cmd = [binary_path, lib_name, transport, str(fallback_size)]
 
         parsed = {}
-        expected_sizes = set(MSG_SIZES)
         expected_metric_count = len(expected_sizes) * 2
         outcome = {
             "parsed": parsed,

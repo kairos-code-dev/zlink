@@ -131,7 +131,7 @@ if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     add_zlink_bench_multi(comp_zlink_multi_pubsub
                     multi/current/bench_zlink_multi_pubsub.cpp)
     add_zlink_bench_multi(comp_zlink_multi_stream
-                    multi/current/bench_zlink_multi_stream.cpp)
+                    multi/current/bench_zlink_multi_stream_client.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()

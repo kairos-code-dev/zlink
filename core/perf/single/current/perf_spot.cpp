@@ -515,22 +515,12 @@ static bool run_spot_oneway_phase (void *spot_pub,
                 break;
             }
 
-            bool sent = false;
-            while (std::chrono::steady_clock::now () < deadline) {
-                const int send_rc =
-                  send_spot_try (spot_pub, topic, *payload, payload_size);
-                if (send_rc > 0) {
-                    sent = true;
-                    break;
-                }
-                if (send_rc < 0) {
-                    send_failed = true;
-                    break;
-                }
-                std::this_thread::yield ();
-            }
-            if (send_failed || !sent)
+            const int send_rc =
+              send_spot_try (spot_pub, topic, *payload, payload_size);
+            if (send_rc <= 0) {
+                send_failed = true;
                 break;
+            }
 
             if (queue_probe)
                 queue_probe->sample_send_if_due ();
@@ -549,19 +539,12 @@ static bool run_spot_oneway_phase (void *spot_pub,
                 break;
             }
 
-            for (;;) {
-                const int send_rc =
-                  send_spot_try (spot_pub, topic, *payload, payload_size);
-                if (send_rc > 0)
-                    break;
-                if (send_rc < 0) {
-                    send_failed = true;
-                    break;
-                }
-                std::this_thread::yield ();
-            }
-            if (send_failed)
+            const int send_rc =
+              send_spot_try (spot_pub, topic, *payload, payload_size);
+            if (send_rc <= 0) {
+                send_failed = true;
                 break;
+            }
         }
     }
 

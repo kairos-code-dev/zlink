@@ -65,6 +65,7 @@ set(tests
   monitoring/test_monitor_enhanced
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
+  spot/test_spot_send_blocking_wakeup
   scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink

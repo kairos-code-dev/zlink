@@ -270,11 +270,9 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
     while (true) {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
-        char topic_out[256];
-        size_t topic_len = 0;
         const int rc = zlink_spot_sub_recv(spot_sub, &parts, &count,
                                            ZLINK_DONTWAIT,
-                                           topic_out, &topic_len);
+                                           NULL, NULL);
         if (rc == 0) {
             if (parts)
                 zlink_msgv_close(parts, count);
@@ -309,10 +307,8 @@ static int recv_spot_header_flags (void *spot_sub,
 
     zlink_msg_t *parts = NULL;
     size_t count = 0;
-    char topic_out[256];
-    size_t topic_len = 0;
     const int rc = zlink_spot_sub_recv (
-      spot_sub, &parts, &count, flags, topic_out, &topic_len);
+      spot_sub, &parts, &count, flags, NULL, NULL);
     if (rc != 0) {
         const int err = zlink_errno ();
         if (parts)

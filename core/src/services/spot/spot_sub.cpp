@@ -416,7 +416,10 @@ int spot_sub_t::recv (zlink_msg_t **parts_,
     zlink_msg_t *out_parts = NULL;
     size_t out_count = 0;
     if (!shared->parts.empty ()) {
-        out_parts = alloc_msgv_from_parts_ref (shared->parts, &out_count);
+        const bool unique_owner = shared->refs.get () == 1;
+        out_parts = unique_owner
+                      ? alloc_msgv_from_parts (&shared->parts, &out_count)
+                      : alloc_msgv_from_parts_ref (shared->parts, &out_count);
         if (!out_parts) {
             if (parts_)
                 *parts_ = NULL;

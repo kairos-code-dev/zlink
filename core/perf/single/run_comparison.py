@@ -746,8 +746,8 @@ def build_bench_cmd(binary_path: str, args: List[str], pin_cpu: bool) -> List[st
 
 def single_table_header_line() -> str:
     return (
-        "| Size     |       Throughput |    Bandwidth |     Lat.Mean |"
-        "      Lat.P95 |      Lat.P99 | CPU% | Mem MB |"
+        "| Size     |       Throughput |    Bandwidth |  Lat.Mean(ms) |"
+        "   Lat.P95(ms) |   Lat.P99(ms) | CPU% | Mem MB |"
         " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
     )
 
@@ -774,9 +774,9 @@ def single_table_row_line(size: int, status: str, record: Optional[ComboRecord] 
         )
         tp_s = format_throughput("", record.throughput)
         bw_s = format_bandwidth(record.bandwidth)
-        lat_s = format_latency_us(record.latency)
-        lat95_s = format_latency_us(lat_p95 if lat_p95 is not None else 0.0)
-        lat99_s = format_latency_us(lat_p99 if lat_p99 is not None else 0.0)
+        lat_s = format_latency_ms(record.latency)
+        lat95_s = format_latency_ms(lat_p95 if lat_p95 is not None else 0.0)
+        lat99_s = format_latency_ms(lat_p99 if lat_p99 is not None else 0.0)
         cpu_s = f"{record.cpu_pct:4.1f}" if record.cpu_pct is not None else "N/A"
         mem_s = f"{record.mem_mb:6.1f}" if record.mem_mb is not None else "N/A"
         q_snd_s = format_queue_pending(record.snd_pending_max)
@@ -1017,8 +1017,8 @@ def format_bandwidth(bandwidth_mb_s: float) -> str:
     return f"{bandwidth_mb_s:8.2f} MB/s"
 
 
-def format_latency_us(latency: float) -> str:
-    return f"{latency:8.2f} us"
+def format_latency_ms(latency_us: float) -> str:
+    return f"{latency_us / 1000.0:8.2f} ms"
 
 
 def build_pattern_table_lines(
@@ -1031,8 +1031,8 @@ def build_pattern_table_lines(
     for transport in transports:
         lines.append(f"### Transport: {transport}")
         lines.append(
-            "| Size   |       Throughput |    Bandwidth |    Lat.Mean |"
-            "     Lat.P95 |     Lat.P99 | CPU% |  Mem MB |"
+            "| Size   |       Throughput |    Bandwidth | Lat.Mean(ms) |"
+            "  Lat.P95(ms) |  Lat.P99(ms) | CPU% |  Mem MB |"
             " Q.Snd.Max | Q.Rcv.Max | Q.Rcv.End |"
         )
         lines.append(
@@ -1049,14 +1049,14 @@ def build_pattern_table_lines(
                 continue
             tp_s = format_throughput(pattern, record.throughput)
             bw_s = format_bandwidth(record.bandwidth)
-            lat_s = format_latency_us(record.latency)
+            lat_s = format_latency_ms(record.latency)
             _, lat95_value, lat99_value = resolve_latency_triplet(
                 record.latency,
                 record.latency_p95,
                 record.latency_p99,
             )
-            lat95_s = format_latency_us(lat95_value if lat95_value is not None else 0.0)
-            lat99_s = format_latency_us(lat99_value if lat99_value is not None else 0.0)
+            lat95_s = format_latency_ms(lat95_value if lat95_value is not None else 0.0)
+            lat99_s = format_latency_ms(lat99_value if lat99_value is not None else 0.0)
             cpu_s = "N/A"
             mem_s = "N/A"
             if record.cpu_pct is not None:

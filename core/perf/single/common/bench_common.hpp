@@ -516,14 +516,22 @@ inline int resolve_single_queue_sample_ms()
     return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_MS", 100);
 }
 
+inline int resolve_single_queue_sample_every_msgs()
+{
+    return parse_positive_env("PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS", 64);
+}
+
 class queue_probe_t {
 public:
     queue_probe_t(void *send_socket_, void *recv_socket_) :
         _send_socket(send_socket_),
         _recv_socket(recv_socket_),
         _sample_interval_ns(resolve_sample_interval_ns()),
+        _sample_every_msgs(resolve_sample_every_msgs()),
         _send_last_sample_ns(0),
         _recv_last_sample_ns(0),
+        _send_msgs_since_sample(0),
+        _recv_msgs_since_sample(0),
         _snd_pending_max(0),
         _rcv_pending_max(0),
         _rcv_pending_end(0),
@@ -558,6 +566,12 @@ private:
         const unsigned long long clamped_ms =
           static_cast<unsigned long long>(sample_ms > 0 ? sample_ms : 100);
         return clamped_ms * 1000000ULL;
+    }
+
+    static unsigned int resolve_sample_every_msgs()
+    {
+        const int value = resolve_single_queue_sample_every_msgs();
+        return static_cast<unsigned int>(value > 0 ? value : 64);
     }
 
     static unsigned long long now_ns()
@@ -612,6 +626,15 @@ private:
         if (!_send_socket)
             return;
 
+        if (force_) {
+            _send_msgs_since_sample = 0;
+        } else if (_sample_every_msgs > 1) {
+            ++_send_msgs_since_sample;
+            if (_send_msgs_since_sample < _sample_every_msgs)
+                return;
+            _send_msgs_since_sample = 0;
+        }
+
         const unsigned long long now = now_ns();
         if (!force_ && _send_last_sample_ns > 0
             && now - _send_last_sample_ns < _sample_interval_ns) {
@@ -635,6 +658,15 @@ private:
         if (!_recv_socket)
             return;
 
+        if (force_) {
+            _recv_msgs_since_sample = 0;
+        } else if (_sample_every_msgs > 1) {
+            ++_recv_msgs_since_sample;
+            if (_recv_msgs_since_sample < _sample_every_msgs)
+                return;
+            _recv_msgs_since_sample = 0;
+        }
+
         const unsigned long long now = now_ns();
         if (!force_ && _recv_last_sample_ns > 0
             && now - _recv_last_sample_ns < _sample_interval_ns) {
@@ -657,8 +689,11 @@ private:
     void *_send_socket;
     void *_recv_socket;
     unsigned long long _sample_interval_ns;
+    unsigned int _sample_every_msgs;
     unsigned long long _send_last_sample_ns;
     unsigned long long _recv_last_sample_ns;
+    unsigned int _send_msgs_since_sample;
+    unsigned int _recv_msgs_since_sample;
     unsigned long long _snd_pending_max;
     unsigned long long _rcv_pending_max;
     unsigned long long _rcv_pending_end;

@@ -64,7 +64,7 @@ active 구간 집계는 payload에 기록된 metric header를 기준으로만 �
 |------|------|------|
 | success | RESULT line 정상 출력 | 유효 결과 |
 | unsupported | 정책 밖 pattern/transport 조합 | 제외, fail 아님 |
-| skip | 환경 미충족 | 제외, fail 아님 |
+| skip | 환경 미충족 | 제외, fail 아님 (결과 테이블에서는 `fail`로 표시) |
 | fail | timeout / no_data / non-zero exit | 무효 |
 
 ### 3.2 완료 판정
@@ -88,6 +88,7 @@ status   = (expected == actual) ? "complete" : "partial"
 - 실패 조합 자동 재시도 금지
 - `UNSUPPORTED` 오용 금지
   - 정책에 정의된 조합 실행 실패는 `fail`로 보고해야 한다.
+  - 단, 바이너리 stderr에 `protocol not supported`가 포함되면 실행 엔진이 해당 조합을 `unsupported`로 자동 분류한다.
 
 ---
 
@@ -241,6 +242,7 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `PERF_TRANSPORTS` | transport 목록 override | 패턴 기본값 |
 | `PERF_TASKSET` | CPU pinning 활성화 (`1`) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`) | 0 |
+| `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
 
 ### 8.2 phase/timeout
 
@@ -250,14 +252,20 @@ single suite 공식 결과는 위 실행기로만 생성한다.
 | `PERF_SINGLE_DURATION_SECONDS` | active 구간 시간(초) | 5 |
 | `PERF_SINGLE_TIMEOUT_SECONDS` | 프로세스 timeout(초) | `max(30, duration*6+15)` |
 
-### 8.3 queue/hwm
+### 8.3 queue/hwm/timeout
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
 | `PERF_SINGLE_HWM` | 소켓 HWM 공통 fallback | 1000 |
 | `PERF_SINGLE_SNDHWM` | 송신 HWM 우선값 | `PERF_SINGLE_HWM` |
 | `PERF_SINGLE_RCVHWM` | 수신 HWM 우선값 | `PERF_SINGLE_HWM` |
-| `PERF_SINGLE_QUEUE_SAMPLE_MS` | queue pending 샘플링 주기 | 100 |
+| `PERF_SINGLE_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
+| `PERF_SINGLE_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
+| `PERF_SINGLE_PUBSUB_RCVTIMEO_MS` | PUBSUB 수신 타임아웃(ms) | `PERF_SINGLE_RCVTIMEO_MS` |
+| `PERF_SINGLE_QUEUE_SAMPLE_MS` | queue pending 샘플링 주기(ms) | 100 |
+| `PERF_SINGLE_QUEUE_SAMPLE_EVERY_MSGS` | queue pending 샘플링 메시지 간격 | 64 |
+| `PERF_SINGLE_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
+| `PERF_SINGLE_PUBSUB_XPUB_NODROP` | PUBSUB의 `ZLINK_XPUB_NODROP` 기본값 | (바이너리별) |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 
 ---

@@ -30,6 +30,8 @@ DEALER_ROUTER, ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT).
 | `--hwm N` | — | Set `PERF_SINGLE_HWM` fallback |
 | `--send-hwm N` | — | Set `PERF_SINGLE_SNDHWM` |
 | `--recv-hwm N` | — | Set `PERF_SINGLE_RCVHWM` |
+| `--sndtimeo N` / `--send-timeout-ms N` | `200` | Set `PERF_SINGLE_SNDTIMEO_MS` |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | Set `PERF_SINGLE_RCVTIMEO_MS` |
 | `--pin-cpu` | off | Pin CPU core (Linux taskset) |
 | `--io-threads N` | — | Set `PERF_IO_THREADS` |
 | `--msg-sizes LIST` | — | Comma-separated sizes |

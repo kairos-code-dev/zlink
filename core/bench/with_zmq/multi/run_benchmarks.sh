@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESULTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)/results"
+DEFAULT_RESULTS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)/results"
 
 SECONDS=0
 SHOW_TOTAL_TIME=0
@@ -31,6 +32,86 @@ print_total_time() {
   echo "Total benchmark time: $(format_elapsed "${elapsed}") (${elapsed}s, exit=${status})"
 }
 trap 'print_total_time $?' EXIT
+
+detect_platform_tag() {
+  local platform="linux"
+  case "$(uname -s)" in
+    Darwin*)
+      platform="macos"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      platform="windows"
+      ;;
+  esac
+  printf '%s' "${platform}"
+}
+
+cleanup_old_results_dirs() {
+  local root="${1:-}"
+  local retention="${BENCH_RESULTS_RETENTION_DAYS:-${PERF_RESULTS_RETENTION_DAYS:-90}}"
+  if [[ -z "${root}" || ! -d "${root}" ]]; then
+    return
+  fi
+  if [[ -z "${retention}" || ! "${retention}" =~ ^[0-9]+$ || "${retention}" -le 0 ]]; then
+    return
+  fi
+
+  local cutoff
+  cutoff="$(date -u -d "-${retention} days" +%Y%m%d 2>/dev/null || true)"
+  if [[ -z "${cutoff}" ]]; then
+    return
+  fi
+
+  local dir base
+  for dir in "${root}"/*; do
+    [[ -d "${dir}" ]] || continue
+    base="$(basename "${dir}")"
+    if [[ ! "${base}" =~ ^[0-9]{8}$ ]]; then
+      continue
+    fi
+    if [[ "${base}" < "${cutoff}" ]]; then
+      rm -rf "${dir}"
+    fi
+  done
+}
+
+enforce_file_retention() {
+  local dir_path="${1:-}"
+  local max_files="${BENCH_MAX_RESULT_FILES:-${PERF_MAX_RESULT_FILES:-100}}"
+
+  if [[ -z "${dir_path}" || ! -d "${dir_path}" ]]; then
+    return
+  fi
+  if [[ -z "${max_files}" || ! "${max_files}" =~ ^[0-9]+$ || "${max_files}" -lt 1 ]]; then
+    return
+  fi
+
+  python3 - "${dir_path}" "${max_files}" <<'PY'
+import os
+import sys
+
+dir_path = sys.argv[1]
+max_files = int(sys.argv[2])
+
+if not os.path.isdir(dir_path) or max_files < 1:
+    raise SystemExit(0)
+
+files = [
+    name
+    for name in os.listdir(dir_path)
+    if os.path.isfile(os.path.join(dir_path, name))
+]
+if len(files) <= max_files:
+    raise SystemExit(0)
+
+files.sort()
+for name in files[: len(files) - max_files]:
+    try:
+        os.remove(os.path.join(dir_path, name))
+    except OSError:
+        pass
+PY
+}
 
 DEFAULT_PATTERN="router_router"
 DEFAULT_TRANSPORT="tcp,tls,ws,wss"
@@ -154,7 +235,11 @@ Options:
   --single [N]                  Also run matching single pattern after multi
                                 N omitted: use --runs value
                                 N provided: use N for single runs
-  --result                      Write output to core/bench/with_zmq/results/YYYYMMDD/
+  --output PATH                 Tee console logs to a file.
+  --results-dir PATH            Override result root directory.
+  --results-tag NAME            Optional tag in saved result filename.
+  --result-file PATH            Override tmp result file path.
+  --result                      Compatibility flag (tmp/report save is always enabled).
   --refresh-std-cache           Refresh libzmq cache during this run
   --std-cache-file PATH         libzmq cache file path
   --warmup N                    Override BENCH_MULTI_WARMUP_SECONDS (default: 3)
@@ -185,6 +270,10 @@ Options:
 
 Environment:
   BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
+
+Notes:
+  - tmp result is always saved under results/multi/tmp/.
+  - report result is always saved under results/multi/report/.
 USAGE
 }
 
@@ -234,10 +323,14 @@ PIN_CPU=0
 ZLINK_ONLY=0
 RUN_SINGLE=0
 SINGLE_RUNS=""
-RESULT_TO_FILE=0
+RESULT_COMPAT=0
 REFRESH_STD_CACHE=0
 STD_CACHE_FILE=""
 PATTERN_RAW="${DEFAULT_PATTERN}"
+RESULTS_DIR="${BENCH_RESULTS_DIR:-${PERF_RESULTS_DIR:-}}"
+RESULTS_TAG=""
+RESULT_FILE=""
+OUTPUT_FILE=""
 
 MULTI_WARMUP_SECONDS="${BENCH_MULTI_WARMUP_SECONDS:-3}"
 MULTI_DURATION_SECONDS="${BENCH_MULTI_DURATION_SECONDS:-5}"
@@ -285,6 +378,22 @@ while [[ $# -gt 0 ]]; do
       BUILD_DIR="${2:-}"
       shift 2
       ;;
+    --output)
+      OUTPUT_FILE="${2:-}"
+      shift 2
+      ;;
+    --results-dir)
+      RESULTS_DIR="${2:-}"
+      shift 2
+      ;;
+    --results-tag)
+      RESULTS_TAG="${2:-}"
+      shift 2
+      ;;
+    --result-file)
+      RESULT_FILE="${2:-}"
+      shift 2
+      ;;
     --zlink-only)
       ZLINK_ONLY=1
       shift
@@ -299,7 +408,7 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     --result)
-      RESULT_TO_FILE=1
+      RESULT_COMPAT=1
       shift
       ;;
     --refresh-std-cache)
@@ -403,6 +512,11 @@ if [[ -z "${TRANSPORT}" ]]; then
   exit 1
 fi
 
+if [[ -z "${RUNS}" || ! "${RUNS}" =~ ^[0-9]+$ || "${RUNS}" -lt 1 ]]; then
+  echo "Error: --runs must be a positive integer." >&2
+  exit 1
+fi
+
 if [[ "${PATTERN_RAW}" == *","* ]]; then
   echo "Error: only one pattern is supported. Use a single value (e.g. router_router)." >&2
   exit 1
@@ -414,26 +528,44 @@ PATTERN_INTERNAL="$(normalize_pattern "${PATTERN_RAW}")" || {
 }
 PATTERN_TAG="$(display_pattern "${PATTERN_INTERNAL}")"
 
-if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
-  DATE_DIR="$(date +%Y%m%d)"
+if [[ -z "${RESULTS_DIR}" ]]; then
+  RESULTS_DIR="${DEFAULT_RESULTS_ROOT}"
+fi
+RESULTS_DIR="$(realpath -m "${RESULTS_DIR}")"
+
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
+fi
+
+if [[ -n "${RESULT_FILE}" ]]; then
+  RESULT_FILE="$(realpath -m "${RESULT_FILE}")"
+else
   TS="$(date +%Y%m%d_%H%M%S)"
-  PLATFORM="linux"
-  case "$(uname -s)" in
-    Darwin*)
-      PLATFORM="macos"
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      PLATFORM="windows"
-      ;;
-  esac
+  NAME="perf_$(detect_platform_tag)_${TS}"
+  if [[ -n "${RESULTS_TAG}" ]]; then
+    NAME="${NAME}_${RESULTS_TAG}"
+  fi
+  RESULT_FILE="${RESULTS_DIR}/multi/tmp/${NAME}.txt"
+fi
 
-  RESULT_PATTERN_TAG="${PATTERN_TAG}"
+REPORT_DIR="${RESULTS_DIR}/multi/report"
+REPORT_FILE="${REPORT_DIR}/$(basename "${RESULT_FILE}")"
 
-  OUTPUT_DIR="${RESULTS_ROOT}/${DATE_DIR}"
-  mkdir -p "${OUTPUT_DIR}"
-  OUTPUT_FILE="${OUTPUT_DIR}/bench_${PLATFORM}_${RESULT_PATTERN_TAG}_${TS}.txt"
-  exec > >(tee "${OUTPUT_FILE}") 2>&1
-  echo "Saving benchmark output to: ${OUTPUT_FILE}"
+if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
+  echo "Error: --output cannot point to the same file as tmp result output." >&2
+  exit 1
+fi
+
+if [[ "${RESULT_COMPAT}" -eq 1 ]]; then
+  echo "Note: --result is deprecated; tmp/report save is always enabled."
+fi
+
+cleanup_old_results_dirs "${RESULTS_DIR}"
+
+mkdir -p "$(dirname "${RESULT_FILE}")"
+mkdir -p "${REPORT_DIR}"
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  mkdir -p "$(dirname "${OUTPUT_FILE}")"
 fi
 
 export BENCH_TRANSPORTS="${TRANSPORT}"
@@ -535,7 +667,23 @@ fi
 
 echo "=== Running multi benchmark: ${PATTERN_TAG} ==="
 SHOW_TOTAL_TIME=1
-python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}"
+
+set +e
+if [[ -n "${OUTPUT_FILE}" ]]; then
+  python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}" "${OUTPUT_FILE}"
+else
+  python3 "${SCRIPT_DIR}/run_comparison.py" "${PATTERN_INTERNAL}" "${EXTRA_ARGS[@]}" 2>&1 | tee "${RESULT_FILE}"
+fi
+run_status=${PIPESTATUS[0]}
+set -e
+
+cp -f "${RESULT_FILE}" "${REPORT_FILE}"
+enforce_file_retention "$(dirname "${RESULT_FILE}")"
+enforce_file_retention "${REPORT_DIR}"
+
+if [[ "${run_status}" -ne 0 ]]; then
+  exit "${run_status}"
+fi
 
 if [[ "${RUN_SINGLE}" -eq 1 ]]; then
   case "${PATTERN_INTERNAL}" in
@@ -563,8 +711,11 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
 
   SINGLE_RUNS_EFFECTIVE="${SINGLE_RUNS:-${RUNS}}"
   SINGLE_SCRIPT="${SCRIPT_DIR}/../single/run_benchmarks.sh"
-  SINGLE_ARGS=(--pattern "${SINGLE_PATTERN}" --transport "${TRANSPORT}" --runs "${SINGLE_RUNS_EFFECTIVE}")
+  SINGLE_ARGS=(--pattern "${SINGLE_PATTERN}" --transport "${TRANSPORT}" --runs "${SINGLE_RUNS_EFFECTIVE}" --results-dir "${RESULTS_DIR}")
 
+  if [[ -n "${RESULTS_TAG}" ]]; then
+    SINGLE_ARGS+=(--results-tag "${RESULTS_TAG}")
+  fi
   if [[ -n "${MSG_SIZES}" ]]; then
     SINGLE_ARGS+=(--msg-sizes "${MSG_SIZES}")
   fi
@@ -573,9 +724,6 @@ if [[ "${RUN_SINGLE}" -eq 1 ]]; then
   fi
   if [[ "${PIN_CPU}" -eq 1 ]]; then
     SINGLE_ARGS+=(--pin-cpu)
-  fi
-  if [[ "${RESULT_TO_FILE}" -eq 1 ]]; then
-    SINGLE_ARGS+=(--result)
   fi
 
   echo "=== Running matching single benchmark: ${SINGLE_PATTERN} (runs=${SINGLE_RUNS_EFFECTIVE}) ==="

@@ -116,22 +116,22 @@ endfunction()
 
 if(EXISTS "${ZLINK_INCLUDE_DIR}/zlink.h")
     # --- zlink (current) ---
-    add_zlink_bench_single(comp_zlink_pair single/zlink/bench_zlink_pair.cpp)
-    add_zlink_bench_single(comp_zlink_pubsub single/zlink/bench_zlink_pubsub.cpp)
-    add_zlink_bench_single(comp_zlink_dealer_dealer single/zlink/bench_zlink_dealer_dealer.cpp)
-    add_zlink_bench_single(comp_zlink_dealer_router single/zlink/bench_zlink_dealer_router.cpp)
-    add_zlink_bench_single(comp_zlink_router_router single/zlink/bench_zlink_router_router.cpp)
-    add_zlink_bench_single(comp_zlink_router_router_poll single/zlink/bench_zlink_router_router_poll.cpp)
+    add_zlink_bench_single(comp_zlink_pair single/current/bench_zlink_pair.cpp)
+    add_zlink_bench_single(comp_zlink_pubsub single/current/bench_zlink_pubsub.cpp)
+    add_zlink_bench_single(comp_zlink_dealer_dealer single/current/bench_zlink_dealer_dealer.cpp)
+    add_zlink_bench_single(comp_zlink_dealer_router single/current/bench_zlink_dealer_router.cpp)
+    add_zlink_bench_single(comp_zlink_router_router single/current/bench_zlink_router_router.cpp)
+    add_zlink_bench_single(comp_zlink_router_router_poll single/current/bench_zlink_router_router_poll.cpp)
     add_zlink_bench_multi(comp_zlink_multi_dealer_dealer
-                    multi/zlink/bench_zlink_multi_dealer_dealer.cpp)
+                    multi/current/bench_zlink_multi_dealer_dealer.cpp)
     add_zlink_bench_multi(comp_zlink_multi_dealer_router
-                    multi/zlink/bench_zlink_multi_dealer_router.cpp)
+                    multi/current/bench_zlink_multi_dealer_router.cpp)
     add_zlink_bench_multi(comp_zlink_multi_router_router
-                    multi/zlink/bench_zlink_multi_router_router.cpp)
+                    multi/current/bench_zlink_multi_router_router.cpp)
     add_zlink_bench_multi(comp_zlink_multi_pubsub
-                    multi/zlink/bench_zlink_multi_pubsub.cpp)
+                    multi/current/bench_zlink_multi_pubsub.cpp)
     add_zlink_bench_multi(comp_zlink_multi_stream
-                    multi/zlink/bench_zlink_multi_stream.cpp)
+                    multi/current/bench_zlink_multi_stream.cpp)
 else()
     message(WARNING "zlink headers not found at ${ZLINK_INCLUDE_DIR}")
 endif()
@@ -140,22 +140,22 @@ if(EXISTS "${STD_LIBZMQ_INCLUDE_DIR}/zmq.h" AND STD_LIBZMQ_LIBRARY)
     message(STATUS "Found standard libzmq for comparison: ${STD_LIBZMQ_LIBRARY}")
 
     # --- standard libzmq (baseline) ---
-    add_std_zmq_bench_single(comp_std_zmq_pair single/libzmq/bench_zmq_pair.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_pubsub single/libzmq/bench_zmq_pubsub.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_dealer_dealer single/libzmq/bench_zmq_dealer_dealer.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_dealer_router single/libzmq/bench_zmq_dealer_router.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_router_router single/libzmq/bench_zmq_router_router.cpp)
-    add_std_zmq_bench_single(comp_std_zmq_router_router_poll single/libzmq/bench_zmq_router_router_poll.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_pair single/std/bench_zmq_pair.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_pubsub single/std/bench_zmq_pubsub.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_dealer_dealer single/std/bench_zmq_dealer_dealer.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_dealer_router single/std/bench_zmq_dealer_router.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_router_router single/std/bench_zmq_router_router.cpp)
+    add_std_zmq_bench_single(comp_std_zmq_router_router_poll single/std/bench_zmq_router_router_poll.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_dealer_dealer
-                      multi/libzmq/bench_zmq_multi_dealer_dealer.cpp)
+                      multi/std/bench_zmq_multi_dealer_dealer.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_dealer_router
-                      multi/libzmq/bench_zmq_multi_dealer_router.cpp)
+                      multi/std/bench_zmq_multi_dealer_router.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_router_router
-                      multi/libzmq/bench_zmq_multi_router_router.cpp)
+                      multi/std/bench_zmq_multi_router_router.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_pubsub
-                      multi/libzmq/bench_zmq_multi_pubsub.cpp)
+                      multi/std/bench_zmq_multi_pubsub.cpp)
     add_std_zmq_bench_multi(comp_std_zmq_multi_stream
-                      multi/libzmq/bench_zmq_multi_stream.cpp)
+                      multi/std/bench_zmq_multi_stream.cpp)
 else()
     message(STATUS "Standard libzmq not found. Comparative benchmarks will be skipped.")
 endif()

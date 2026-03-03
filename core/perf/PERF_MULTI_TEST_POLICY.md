@@ -84,7 +84,7 @@ perf/multi/
 |------|----------|-----------|--------|
 | runs | `--runs N` | — | 1 |
 | msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 6종 |
-| transports | `--transports` | `PERF_TRANSPORTS` | `tcp,tls,ws,wss` |
+| transports | `--transports` | `PERF_TRANSPORTS` | 패턴별 기본값 (§11.3 참조) |
 | clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000) |
 
 - **CLI 인자 > 환경 변수 > 기본값** 순으로 적용한다.
@@ -110,22 +110,22 @@ perf/multi/
 | 상태 | 판정 기준 |
 |------|-----------|
 | success | exit code 0 + RESULT line 존재 |
-| unsupported | stdout에 `UNSUPPORTED` 토큰 출력 + exit code 0 |
+| unsupported | stdout에 `UNSUPPORTED` 토큰 출력 + exit code 0, 또는 stderr에 `protocol not supported` 포함 |
 | skip | stdout에 `SKIP` 토큰 출력 + exit code 0 |
 | fail | exit code ≠ 0, 또는 timeout, 또는 RESULT line 미출력 (exit 0이나 데이터 없음 = no_data) |
 
 - `UNSUPPORTED` 토큰 형식: `UNSUPPORTED,<lib>,<pattern>,<transport>`
 - `SKIP` 토큰 형식: `SKIP,<lib>,<pattern>,<transport>,<reason>`
+- **stderr 기반 unsupported 판정**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 실행 엔진이 해당 조합을 `unsupported`로 자동 분류한다. 이는 런타임에서 지원되지 않는 transport를 감지하는 메커니즘이다.
 - 동일 조합에서 RESULT line과 UNSUPPORTED/SKIP 토큰이 동시에 출력되면 **RESULT line을 우선**한다.
 - MULTI_STREAM 계열에서 테스트 모델 위반(예: non-STREAM server 사용, zlink STREAM client `connect()` 경로 사용)은 `UNSUPPORTED`/`SKIP` 대상이 아니다.
 - 해당 구현 경로는 코드에서 삭제하고, `zlink STREAM server(bind-only) + raw client(connect)` 모델로 재구현해야 한다.
-- **UNSUPPORTED 오용 금지**: §11.3에 정의된 transport가 실행 시 실패하면 반드시 `fail`로 보고한다. 정의된 transport를 `UNSUPPORTED`로 보고하여 실패를 숨기는 것을 금지한다. `UNSUPPORTED`는 정책에 정의되지 않은 pattern-transport 조합에만 사용한다. 상세 규칙은 [PERF_POLICY.md § 8.4](PERF_POLICY.md)을 참조한다.
 
 ### 3.2 유효성 규칙
 
 1. 모든 `pattern/transport/size` 조합에서 RESULT line이 출력되어야 한다.
 2. `unsupported`는 fail 집계에서 제외한다.
-3. `skip`은 fail 집계에서 제외한다.
+3. `skip`은 fail 집계에서 제외한다. 단, 결과 테이블에서 skip 조합의 행은 `fail`로 표시된다 (내부적으로는 skip으로 분류되어 완료 판정에서 제외).
 4. runs > 1인 경우 대표값은 **median**을 사용한다.
 5. 동일 `pattern/transport/size/metric` 조합의 RESULT line이 **중복** 출력되면 **마지막 값**을 사용한다. 중복 자체는 에러가 아니며 warning을 출력한다.
 6. RESULT line의 필드 수가 7개가 아니면 해당 라인을 무시하고 warning을 출력한다.
@@ -136,7 +136,7 @@ perf/multi/
 
 ```text
 for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
-    for transport in [tcp, tls, ws, wss]:
+    for transport in pattern_transports:   # non-service: tcp,tls,ws,wss,ipc / service+stream: tcp,tls,ws,wss
         for run in 1..N:
             spawn server(pattern, transport)         # server 프로세스 시작
             wait READY                               # server stdout에서 READY,<endpoint> 대기
@@ -171,9 +171,15 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 실패한 조합을 자동으로 재시도하지 않는다. 상세 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
 
+> **STREAM 서버 send 재시도 예외**: STREAM 서버 바이너리의 `send_stream_once` 함수는 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. 이는 STREAM 소켓의 비동기 라우팅 특성상 일시적 send 실패가 정상적으로 발생할 수 있기 때문이며, 스크립트/조합 레벨의 재시도(retry)와는 다르다.
+
 ### 3.6 코어 로직 인라인 원칙
 
-각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 소켓 생성, bind/connect, send/recv 루프, phase 제어는 각 파일에 인라인으로 존재해야 하며, 외부 공통 함수 한 줄로 위임하는 것을 금지한다. 단, **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
+각 벤치마크 소스 파일은 해당 패턴의 zlink API 사용법을 명시적으로 보여주는 샘플 역할을 해야 한다. 상세 규칙은 [PERF_POLICY.md § 8.5](PERF_POLICY.md)를 참조한다.
+
+- **server 바이너리**: 소켓 생성, bind, send/recv 루프, phase 제어가 각 파일에 인라인으로 존재해야 한다.
+- **client 바이너리**: 공통 헬퍼(`perf_multi_client_helpers.hpp`)의 `run_multi_echo_client_benchmark` / `run_multi_oneway_client_benchmark` 함수로 위임하는 것을 허용한다. client 측 소켓 연결/측정 로직은 패턴 간 구조적 차이가 적어 공통화가 실질적이며, 각 client 소스는 패턴 상수(소켓 타입, routing id, echo/oneway 모드)를 명시하여 호출한다.
+- **동일 파일 내 extract method(의미 단위 함수 분리)** 는 허용/권장한다.
 
 예외: STREAM client(`core/perf/common/streamclient/`)는 검증 인프라 코드로
 분류하며 공통 모듈화를 허용한다. 단, multi 실행 경로/phase 정책 준수는
@@ -410,7 +416,7 @@ perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 | 인자 | 대상 | 설명 |
 |------|------|------|
 | `lib_name` | server/client | 라이브러리 식별자 (`current`) |
-| `transport` | server/client | `tcp`, `tls`, `ws`, `wss` |
+| `transport` | server/client | `tcp`, `tls`, `ws`, `wss`, `ipc` (패턴별, §11.3 참조) |
 | `size` | client만 | 메시지 크기(bytes) |
 | `--endpoint` | client만 | server가 READY로 출력한 endpoint 주소 |
 
@@ -443,7 +449,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | `pattern` | `MULTI_DEALER_DEALER`, `MULTI_STREAM` 등 |
 | `transport` | `tcp`, `tls`, `ws`, `wss` |
 | `size` | 메시지 크기(bytes) |
-| `metric` | `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`, `client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb` |
+| `metric` | `throughput`, `bandwidth`, `latency`, `latency_p95`, `latency_p99`, `client_cpu_pct`, `client_mem_mb`, `server_cpu_pct`, `server_mem_mb`, `server_snd_pending_max`, `server_rcv_pending_max`, `server_rcv_pending_end` |
 | `value` | 수치 값 (소수점 2자리) |
 
 | metric | 출력 프로세스 | 설명 | 필수 |
@@ -457,6 +463,9 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 | `client_mem_mb` | client | client 프로세스 메모리 (MB, RSS/WorkingSet 기준) | Linux/Windows |
 | `server_cpu_pct` | server | server 프로세스 CPU 사용률 (%) | Linux/Windows |
 | `server_mem_mb` | server | server 프로세스 메모리 (MB, RSS/WorkingSet 기준) | Linux/Windows |
+| `server_snd_pending_max` | server | server 송신 큐 최대 대기 수 | informational |
+| `server_rcv_pending_max` | server | server 수신 큐 최대 대기 수 | informational |
+| `server_rcv_pending_end` | server | server 수신 큐 종료 시점 대기 수 | informational |
 
 - 리소스 메트릭은 server/client 프로세스별로 **독립 측정**한다.
 - `client_cpu_pct`, `client_mem_mb`는 client 프로세스가 자체 PID를 대상으로 측정하여 출력한다.
@@ -895,7 +904,9 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴군 | transport |
 |--------|-----------|
-| 전체 | tcp, tls, ws, wss |
+| MULTI_DEALER_DEALER, MULTI_DEALER_ROUTER, MULTI_ROUTER_ROUTER, MULTI_PUBSUB | tcp, tls, ws, wss, ipc (Windows: ipc 제외) |
+| MULTI_GATEWAY, MULTI_SPOT | tcp, tls, ws, wss |
+| MULTI_STREAM, MULTI_STREAM_CALLBACK, MULTI_STREAM_LEN32BE | tcp, tls, ws, wss |
 
 ---
 
@@ -908,9 +919,11 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_DEBUG` | 디버그 로그 | unset |
 | `PERF_IO_THREADS` | context I/O threads | 0 |
 | `PERF_MSG_SIZES` | 테스트 size 목록 | `64,256,1024,65536,131072,262144` |
-| `PERF_TRANSPORTS` | 테스트 transport 목록 | `tcp,tls,ws,wss` |
+| `PERF_TRANSPORTS` | 테스트 transport 목록 | 패턴별 기본값 (§11.3 참조) |
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`로 활성화) | 0 |
+| `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
+| `PERF_CAPTURE_MAX_BYTES` | 프로세스 stdout 캡처 최대 바이트 | 4194304 (4MB) |
 
 ### 12.2 Phase 제어
 
@@ -934,16 +947,19 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MULTI_RCVHWM` | 소켓 수신 HWM | `PERF_MULTI_HWM` |
 | `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
+| `PERF_MULTI_SERVICE_CLIENTS` | 서비스 클라이언트 수 상한 (0=제한 없음) | 0 |
+| `PERF_MULTI_LATENCY_SAMPLE_CAP` | 레이턴시 샘플 최대 수 | 200000 |
 
 ### 12.4 송수신 제어
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 poll 타임아웃(ms) | 1 |
+| `PERF_MULTI_CLIENT_POLL_TIMEOUT_MS` | 클라이언트 poll 타임아웃(ms) | 0 |
 | `PERF_MULTI_SNDTIMEO_MS` | 송신 타임아웃(ms) | 200 |
 | `PERF_MULTI_RCVTIMEO_MS` | 수신 타임아웃(ms) | 200 |
 | `PERF_MULTI_MONITOR_HWM` | 모니터 소켓 HWM | 1000 |
 | `PERF_MULTI_PUBSUB_XPUB_NODROP` | PUBSUB 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
+| `PERF_MULTI_SPOT_XPUB_NODROP` | SPOT 서버의 `ZLINK_XPUB_NODROP` 기본값 | 1 |
 
 - `PERF_MULTI_CLIENT_IDLE_SLEEP_US`, `PERF_MULTI_SEND_BACKOFF_US`, `PERF_MULTI_BLOCKING_SEND`는 삭제됐다 (항상 blocking send, 불필요 backoff 제거).
 - `PERF_MULTI_RECV_BATCH`, `PERF_MULTI_SEND_WORKERS`, `PERF_SERVER_RECV_THREADS`는 삭제됐다. multi client는 단일 제어 루프에서 readiness 기반으로 즉시 drain한다.
@@ -967,11 +983,17 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 |------|------|--------|
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
+| `PERF_MULTI_SERVER_IO_THREADS` | 서버 I/O threads (non-stream) | 2 |
+| `PERF_MULTI_CLIENT_IO_THREADS` | 클라이언트 I/O threads (non-stream) | 2 |
+| `PERF_MULTI_STREAM_SERVER_IO_THREADS` | 서버 I/O threads (stream) | 4 |
+| `PERF_MULTI_STREAM_CLIENT_IO_THREADS` | 클라이언트 I/O threads (stream) | 4 |
+| `PERF_MULTI_DEFAULT_IO_THREADS` | I/O threads 공통 기본값 | 2 |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
 | `PERF_SKIP_MEMORY_CHECK` | 메모리 가드 검사 생략 | 0 |
 | `PERF_MULTI_MEMORY_BUDGET_PCT` | MemAvailable 대비 예산 비율(%) | 70 |
 | `PERF_MULTI_MEMORY_BASE_MB` | 기본 메모리 예약(MB) | 512 |
 | `PERF_MULTI_MEMORY_PER_CLIENT_KB` | 클라이언트당 예상 메모리(KB) | 1024 |
+| `PERF_MULTI_STREAM_SEND_RETRIES` | STREAM 서버 send 재시도 횟수 | 128 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 > **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.

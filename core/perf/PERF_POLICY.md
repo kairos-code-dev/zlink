@@ -77,6 +77,7 @@ perf/                                       # bindings/<lang>/perf/
 
 - 모든 벤치마크 소스 파일은 **`perf_`** 접두어를 사용한다 (PascalCase 언어는 `Perf` 접두어).
 - 기본 패턴: `perf_<pattern>` — 각 언어의 명명 컨벤션을 적용한다.
+- **예외**: 공통 유틸리티 헤더는 `perf_` 접두어 없이 명명할 수 있다 (예: `bench_common.hpp`, `perf_common.hpp`).
 - 상세 파일명 규칙은 개별 정책 문서를 참조한다:
   - Single: [PERF_SINGLE_TEST_POLICY.md § 10.1](PERF_SINGLE_TEST_POLICY.md)
   - Multi: [PERF_MULTI_TEST_POLICY.md § 11.1](PERF_MULTI_TEST_POLICY.md)
@@ -173,7 +174,7 @@ perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
 
-> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. core는 `run_comparison.py`를 내부 실행/비교 엔진으로 사용하고, bindings는 `bindings/perf/run_policy_bench.py`를 내부 실행/비교 엔진으로 사용한다. 환경 변수로 실행 스크립트를 우회하는 것은 허용하지 않는다.
+> **정책 준수 실행기**: 아래 스크립트가 각 suite의 유일한 정책 준수 실행기이다. core single은 `single/run_comparison.py`를, core multi는 `run_comparison.py`를 내부 실행/비교 엔진으로 사용한다 (`run_benchmarks.sh`에서 `PERF_ALLOW_MULTI=1` 여부로 경로를 결정한다). bindings는 `bindings/perf/run_policy_bench.py`를 내부 실행/비교 엔진으로 사용한다.
 >
 > | suite | core | bindings |
 > |-------|------|----------|
@@ -279,6 +280,12 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | `client_mem_mb` | client 프로세스 메모리 (MB) — multi용 | Linux/Windows |
 | `server_cpu_pct` | server 프로세스 CPU (%) — multi용 | Linux/Windows |
 | `server_mem_mb` | server 프로세스 메모리 (MB) — multi용 | Linux/Windows |
+| `snd_pending_max` | 송신 큐 최대 대기 수 — single용 | informational |
+| `rcv_pending_max` | 수신 큐 최대 대기 수 — single용 | informational |
+| `rcv_pending_end` | 수신 큐 종료 시점 대기 수 — single용 | informational |
+| `server_snd_pending_max` | server 송신 큐 최대 대기 수 — multi용 | informational |
+| `server_rcv_pending_max` | server 수신 큐 최대 대기 수 — multi용 | informational |
+| `server_rcv_pending_end` | server 수신 큐 종료 시점 대기 수 — multi용 | informational |
 
 - throughput 단위는 패턴의 메시지 흐름 방향에 따라 결정된다. echo(왕복) 패턴은 `ops/s`, one-way(단방향) 패턴은 `msg/s`. 상세 분류는 개별 정책 문서 섹션 8.1을 참조한다.
 - bandwidth는 throughput 단위가 다른 패턴 간에도 실제 데이터 처리량으로 직접 비교할 수 있는 공통 지표이다. 상세 계산은 개별 정책 문서 섹션 8.3을 참조한다.
@@ -439,7 +446,7 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 항목 | 규칙 |
 |------|------|
 | 스크립트 레벨 재시도 | 금지 — 실패한 pattern/transport/size 조합을 자동으로 다시 실행하지 않는다 |
-| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다 |
+| 바이너리 내부 재시도 | 금지 — send/recv 실패 시 자동 재시도하지 않는다. **예외**: STREAM 서버의 `send_stream_once`는 `PERF_MULTI_STREAM_SEND_RETRIES` (기본: 128) 횟수만큼 send를 재시도한다. STREAM 소켓의 비동기 라우팅 특성상 일시적 send 실패가 정상 발생할 수 있으므로 허용한다 |
 | 환경 변수 | `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 **삭제 대상**이다. 구현에 존재하면 제거해야 한다 |
 
 - **이유**: 재시도는 실패 원인을 숨긴다. 벤치마크 실패는 라이브러리 또는 환경의 실제 문제를 반영하며, 재시도로 통과시키면 회귀가 감지되지 않는다.
@@ -479,10 +486,11 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | 정의된 transport가 정상 동작 | `success` | RESULT line 출력 |
 | 정의된 transport가 실패 (timeout, crash, no_data 등) | `fail` | 원인 파악 후 수정 필요 |
 | 정책에 정의되지 않은 transport 조합 | `unsupported` | 결과 제외 |
+| stderr에 `protocol not supported` 포함 | `unsupported` | 런타임에서 지원되지 않는 transport 자동 감지 |
 | 플랫폼 제약으로 실행 불가 (예: Windows에서 ipc) | `skip` | reason 명시 필수 |
 
 - `UNSUPPORTED`는 **정책에 정의되지 않은** pattern-transport 조합에만 사용한다.
-- 정책에 정의된 transport가 동작하지 않으면 **라이브러리 또는 환경 결함**이다. §8.2 대응 절차를 따른다.
+- **stderr 기반 자동 분류**: 바이너리 stderr에 `protocol not supported` 문자열이 포함되면 실행 엔진(`run_comparison.py`)이 해당 조합을 `unsupported`로 자동 분류한다. 이는 런타임에서 지원되지 않는 transport를 감지하는 메커니즘이다.
 - 실패를 `UNSUPPORTED`로 위장하면 회귀(regression)가 감지되지 않으므로 엄격히 금지한다.
 
 ### 8.5 코어 로직 인라인 원칙
@@ -516,9 +524,9 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - 이 예외는 STREAM 계열 client 인프라에만 적용한다.
 - STREAM 계열은 multi suite에서만 테스트하므로 single suite에는 해당 없다.
 
-#### 인라인 필수 (코어 로직)
+#### 인라인 필수 (코어 로직) — server 바이너리
 
-아래 항목은 **반드시 각 테스트 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더/공통 소스의 함수 한 줄로 위임하여 코어 로직을 숨기는 것을 금지한다.
+아래 항목은 **server 바이너리의 각 소스 파일 내에 명시적으로 존재**해야 한다. 공통 헤더/공통 소스의 함수 한 줄로 위임하여 코어 로직을 숨기는 것을 금지한다.
 
 | 항목 | 설명 |
 |------|------|
@@ -527,6 +535,10 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 | bind / connect | 서버의 bind, 클라이언트의 connect 호출 |
 | send / recv 루프 | 메시지 교환 흐름 (echo, relay, one-way 등) |
 | phase 제어 | warmup → measure → drain 시퀀스 |
+
+#### multi client 헬퍼 위임 허용
+
+multi client 바이너리는 공통 헬퍼(`perf_multi_client_helpers.hpp`)의 `run_multi_echo_client_benchmark` / `run_multi_oneway_client_benchmark` 함수로 위임하는 것을 허용한다. client 측 소켓 연결/측정 로직은 패턴 간 구조적 차이가 적어 공통화가 실질적이며, 각 client 소스는 패턴 상수(소켓 타입, routing id, echo/oneway 모드)를 명시하여 호출한다.
 
 #### 동일 파일 Extract Method 허용
 
@@ -591,6 +603,7 @@ int main (int argc, char **argv)
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
+| `PERF_DISABLE_RESOURCE_METRICS` | 리소스 메트릭(CPU/메모리) 수집 비활성화 (`1`로 활성화) | 0 |
 | `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 - 위 환경 변수는 core와 모든 바인딩에서 동일하게 적용된다.

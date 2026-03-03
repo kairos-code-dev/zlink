@@ -49,6 +49,9 @@ Options:
   --pattern NAME[,NAME...]     Pattern list (MULTI_* only)
   --multi-clients N            Force clients for all patterns
   --multi-inflight N           Alias for --inflight
+  --results-dir PATH           Forwarded to multi runner (results root override)
+  --results-tag NAME           Forwarded to multi runner (result filename tag)
+  --output PATH                Forwarded to multi runner (tee console log file)
   --help                       Show help
 
 Other options are forwarded to:

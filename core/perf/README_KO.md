@@ -30,6 +30,8 @@ ROUTER_ROUTER, ROUTER_ROUTER_POLL, GATEWAY, SPOT)의 성능을 측정한다.
 | `--hwm N` | — | `PERF_SINGLE_HWM` fallback 설정 |
 | `--send-hwm N` | — | `PERF_SINGLE_SNDHWM` 설정 |
 | `--recv-hwm N` | — | `PERF_SINGLE_RCVHWM` 설정 |
+| `--sndtimeo N` / `--send-timeout-ms N` | `200` | `PERF_SINGLE_SNDTIMEO_MS` 설정 |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | `200` | `PERF_SINGLE_RCVTIMEO_MS` 설정 |
 | `--pin-cpu` | 비활성 | CPU 고정(Linux taskset) |
 | `--io-threads N` | — | `PERF_IO_THREADS` 설정 |
 | `--msg-sizes LIST` | — | 메시지 크기 목록(쉼표 구분) |

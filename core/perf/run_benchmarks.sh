@@ -536,6 +536,56 @@ if [[ -n "${PERF_DISABLE_RESOURCE_METRICS:-}" ]]; then
   RUN_ENV+=(PERF_DISABLE_RESOURCE_METRICS="${PERF_DISABLE_RESOURCE_METRICS}")
 fi
 
+value_or_default() {
+  local value="${1:-}"
+  local fallback="${2:-}"
+  if [[ -n "${value}" ]]; then
+    printf '%s' "${value}"
+  else
+    printf '%s' "${fallback}"
+  fi
+}
+
+print_effective_option() {
+  local key="${1:-}"
+  local value="${2:-}"
+  printf -- "- %s: %s\n" "${key}" "${value}"
+}
+
+EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
+EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
+
+echo
+echo "## Effective Options (runner)"
+print_effective_option "pattern" "${PATTERN_CSV}"
+print_effective_option "build_dir" "${BUILD_DIR}"
+print_effective_option "build_mode" "${BUILD_MODE}"
+print_effective_option "reuse_build" "$( [[ "${BUILD_MODE}" == "reuse" ]] && echo 1 || echo 0 )"
+print_effective_option "clean_build" "$( [[ "${BUILD_MODE}" == "clean" ]] && echo 1 || echo 0 )"
+print_effective_option "runs" "${RUNS}"
+print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
+print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"
+print_effective_option "send_hwm" "$(value_or_default "${EFFECTIVE_SEND_HWM}" "default(binary)")"
+print_effective_option "recv_hwm" "$(value_or_default "${EFFECTIVE_RECV_HWM}" "default(binary)")"
+print_effective_option "pin_cpu" "${PIN_CPU}"
+print_effective_option "io_threads" "$(value_or_default "${PERF_IO_THREADS}" "default(benchmark)")"
+print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"
+print_effective_option "transports" "$(value_or_default "${PERF_TRANSPORTS}" "default(benchmark)")"
+print_effective_option "results_dir" "${RESULTS_DIR}"
+print_effective_option "results_tag" "$(value_or_default "${RESULTS_TAG}" "none")"
+print_effective_option "result_file" "${RESULT_FILE}"
+print_effective_option "output_file" "$(value_or_default "${OUTPUT_FILE}" "none")"
+print_effective_option "comparison_script" "${PERF_COMPARISON_SCRIPT}"
+print_effective_option "python" "${PYTHON_BIN[*]}"
+echo
+echo "## Effective Env (runner)"
+for entry in "${RUN_ENV[@]}"; do
+  key="${entry%%=*}"
+  value="${entry#*=}"
+  print_effective_option "${key}" "${value}"
+done
+echo
+
 SHOW_TOTAL_TIME=1
 if [[ -n "${OUTPUT_FILE}" ]]; then
   mkdir -p "$(dirname "${OUTPUT_FILE}")"

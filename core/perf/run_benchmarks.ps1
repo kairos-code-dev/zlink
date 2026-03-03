@@ -394,13 +394,58 @@ if ($UseReuseBuild) {
     $RunEnv["PERF_NO_AUTOBUILD"] = "1"
 }
 
+function Get-ValueOrDefault {
+    param(
+        [string]$Value,
+        [string]$DefaultValue
+    )
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $DefaultValue
+    }
+    return $Value
+}
+
+function Show-EffectiveOption {
+    param(
+        [string]$Key,
+        [string]$Value
+    )
+    Write-Host ("- {0}: {1}" -f $Key, $Value)
+}
+
+$BuildMode = if ($UseReuseBuild) { "reuse" } else { "clean" }
+$EffectiveSendHwm = if ($SendHwm) { $SendHwm } elseif ($Hwm) { $Hwm } else { "" }
+$EffectiveRecvHwm = if ($RecvHwm) { $RecvHwm } elseif ($Hwm) { $Hwm } else { "" }
+
+Write-Host ""
+Write-Host "## Effective Options (runner)"
+Show-EffectiveOption "pattern" $Pattern
+Show-EffectiveOption "build_dir" $BuildDir
+Show-EffectiveOption "build_mode" $BuildMode
+Show-EffectiveOption "reuse_build" $(if ($UseReuseBuild) { "1" } else { "0" })
+Show-EffectiveOption "clean_build" $(if ($UseReuseBuild) { "0" } else { "1" })
+Show-EffectiveOption "runs" $Runs.ToString()
+Show-EffectiveOption "duration_seconds" $Duration
+Show-EffectiveOption "hwm" (Get-ValueOrDefault -Value $Hwm -DefaultValue "default(binary)")
+Show-EffectiveOption "send_hwm" (Get-ValueOrDefault -Value $EffectiveSendHwm -DefaultValue "default(binary)")
+Show-EffectiveOption "recv_hwm" (Get-ValueOrDefault -Value $EffectiveRecvHwm -DefaultValue "default(binary)")
+Show-EffectiveOption "pin_cpu" $(if ($PinCpu) { "1" } else { "0" })
+Show-EffectiveOption "io_threads" (Get-ValueOrDefault -Value $IoThreads -DefaultValue "default(benchmark)")
+Show-EffectiveOption "msg_sizes" (Get-ValueOrDefault -Value $MsgSizes -DefaultValue "default(benchmark)")
+Show-EffectiveOption "transports" (Get-ValueOrDefault -Value $Transports -DefaultValue "default(benchmark)")
+Show-EffectiveOption "results_dir" $ResultsDir
+Show-EffectiveOption "results_tag" (Get-ValueOrDefault -Value $ResultsTag -DefaultValue "none")
+Show-EffectiveOption "result_file" $ResultFile
+Show-EffectiveOption "output_file" (Get-ValueOrDefault -Value $OutputFile -DefaultValue "none")
+Show-EffectiveOption "comparison_script" $BenchComparisonScript
+Show-EffectiveOption "python" $PythonExe
+Write-Host ""
+Write-Host "## Effective Env (runner)"
+foreach ($key in ($RunEnv.Keys | Sort-Object)) {
+    Show-EffectiveOption $key $RunEnv[$key]
+}
 Write-Host ""
 Write-Host "Running benchmarks..."
-Write-Host "Pattern: $Pattern"
-Write-Host "Build Directory: $BuildDir"
-Write-Host "Runs: $Runs"
-if ($Duration) { Write-Host "Duration: $Duration s" }
-Write-Host "Comparison Script: $BenchComparisonScript"
 Write-Host ""
 
 foreach ($key in $RunEnv.Keys) {

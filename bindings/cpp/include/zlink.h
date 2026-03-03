@@ -5,8 +5,8 @@
 
 /*  Version macros for compile-time API version detection                     */
 #define ZLINK_VERSION_MAJOR 1
-#define ZLINK_VERSION_MINOR 6
-#define ZLINK_VERSION_PATCH 1
+#define ZLINK_VERSION_MINOR 7
+#define ZLINK_VERSION_PATCH 0
 
 #define ZLINK_MAKE_VERSION(major, minor, patch)                                  \
     ((major) *10000 + (minor) *100 + (patch))
@@ -363,6 +363,7 @@ ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_,
 #define ZLINK_BLOCKY 70
 #define ZLINK_XPUB_MANUAL 71
 #define ZLINK_XPUB_WELCOME_MSG 72
+#define ZLINK_STREAM_NOTIFY 73
 #define ZLINK_INVERT_MATCHING 74
 #define ZLINK_HEARTBEAT_IVL 75
 #define ZLINK_HEARTBEAT_TTL 76
@@ -501,18 +502,33 @@ zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
 ZLINK_EXPORT int zlink_recv (void *s_, void *buf_, size_t len_, int flags_);
 
 /**
- * @brief Callback type for STREAM packet/chunk dispatch.
+ * @brief Callback type for raw STREAM chunk dispatch.
  *
  * Callback is invoked on the owning STREAM I/O thread.
  * Returning non-zero requests dispatcher shutdown.
  *
- * @param rid_   Routing id for the peer that produced this data.
- * @param msgs_  Message payload array. In LEN32BE mode each item is a complete
- *               payload; otherwise each item may be a raw stream chunk.
- *               Ownership is transferred to the callback. The callback must
- *               release each item exactly once (e.g. zlink_msg_close() or
- *               consume via zlink_stream_send_msg()) before return, and must
- *               not retain pointers to message structs after callback return.
+ * @param rid_ Routing id for the peer that produced this chunk.
+ * @param msg_ Raw stream chunk. Ownership is transferred to the callback.
+ *             The callback must release it exactly once
+ *             (e.g. zlink_msg_close() or consume via zlink_stream_send_msg())
+ *             before return, and must not retain this pointer after return.
+ * @return 0 to continue dispatch, non-zero to stop.
+ */
+typedef int (*zlink_stream_on_raw_fn) (const zlink_routing_id_t *rid_,
+                                       zlink_msg_t *msg_);
+
+/**
+ * @brief Callback type for LEN32BE STREAM packet dispatch.
+ *
+ * Callback is invoked on the owning STREAM I/O thread.
+ * Returning non-zero requests dispatcher shutdown.
+ *
+ * @param rid_ Routing id for the peer that produced these packets.
+ * @param msgs_ Message payload array. Each item is one complete LEN32BE packet.
+ *              Ownership is transferred to the callback. The callback must
+ *              release each item exactly once (e.g. zlink_msg_close() or
+ *              consume via zlink_stream_send_msg()) before return, and must
+ *              not retain pointers to message structs after callback return.
  * @param msg_count_ Number of entries in @p msgs_.
  * @return 0 to continue dispatch, non-zero to stop.
  */
@@ -524,14 +540,42 @@ typedef int (*zlink_stream_on_packets_fn) (const zlink_routing_id_t *rid_,
 #define ZLINK_STREAM_DISPATCH_LEN32BE 0x0001
 
 /**
- * @brief Attach STREAM callback dispatch.
+ * @brief Attach raw STREAM callback dispatch.
  *
  * Valid only for ZLINK_STREAM sockets.
- * If already attached for the socket, returns -1 with errno=EBUSY.
+ * If a callback is already attached for the socket, returns -1 with
+ * errno=EBUSY.
  *
- * @param s_         STREAM socket.
- * @param on_packets_ Callback for received stream data.
- * @param flags_     Dispatch flags (e.g. ZLINK_STREAM_DISPATCH_LEN32BE).
+ * @param s_ STREAM socket.
+ * @param on_raw_ Callback for raw stream chunks.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_attach_raw (void *s_,
+                                          zlink_stream_on_raw_fn on_raw_);
+
+/**
+ * @brief Attach LEN32BE STREAM callback dispatch.
+ *
+ * Valid only for ZLINK_STREAM sockets.
+ * If a callback is already attached for the socket, returns -1 with
+ * errno=EBUSY.
+ *
+ * @param s_ STREAM socket.
+ * @param on_packets_ Callback for decoded LEN32BE packets.
+ * @return 0 on success, -1 on failure (errno is set).
+ */
+ZLINK_EXPORT int zlink_stream_attach_len32be (
+  void *s_, zlink_stream_on_packets_fn on_packets_);
+
+/**
+ * @brief Attach STREAM callback dispatch (legacy wrapper).
+ *
+ * This wrapper now registers LEN32BE packet dispatch. `flags_` must be 0 or
+ * include only `ZLINK_STREAM_DISPATCH_LEN32BE`.
+ *
+ * @param s_ STREAM socket.
+ * @param on_packets_ Callback for decoded LEN32BE packets.
+ * @param flags_ Legacy flags value.
  * @return 0 on success, -1 on failure (errno is set).
  */
 ZLINK_EXPORT int zlink_stream_attach (void *s_,
@@ -815,6 +859,18 @@ ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                      int flags);
 
 /**
+ * @brief Send a single-part byte buffer to a service (load-balanced).
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (0 or ZLINK_DONTWAIT).
+ */
+ZLINK_EXPORT int zlink_gateway_send_bytes (void *gateway,
+                                           const char *service_name,
+                                           const void *data,
+                                           size_t size,
+                                           int flags);
+
+/**
  * @brief Receive a message.
  * @param[out] parts             Received multipart message (caller must free).
  * @param[out] part_count        Number of parts.
@@ -834,6 +890,20 @@ ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
                                          zlink_msg_t *parts,
                                          size_t part_count,
                                      int flags);
+
+/**
+ * @brief Send a single-part byte buffer directly to a specific Receiver.
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (0 or ZLINK_DONTWAIT).
+ */
+ZLINK_EXPORT int zlink_gateway_send_rid_bytes (
+  void *gateway,
+  const char *service_name,
+  const zlink_routing_id_t *routing_id,
+  const void *data,
+  size_t size,
+  int flags);
 
 /** @name Load-balancing strategies */
 /** @{ */
@@ -1093,6 +1163,18 @@ ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
                                          size_t part_count,
                                          int flags);
 
+/**
+ * @brief Publish a single-part byte buffer under a topic.
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (typically 0).
+ */
+ZLINK_EXPORT int zlink_spot_pub_publish_bytes (void *pub,
+                                               const char *topic_id,
+                                               const void *data,
+                                               size_t size,
+                                               int flags);
+
 /* SPOT Sub ---------------------------------------------------------------- */
 
 /**
@@ -1153,6 +1235,8 @@ ZLINK_EXPORT int zlink_spot_sub_set_handler (void *sub,
  * @param[in,out] topic_id_len  On input, buffer size; on output, actual length.
  *
  * Concurrent calls on the same subscriber are rejected with EBUSY.
+ * Blocking recv (flags=0) honors ZLINK_RCVTIMEO configured through
+ * zlink_spot_node_setsockopt(..., ZLINK_SPOT_NODE_SOCKET_SUB, ZLINK_RCVTIMEO, ...).
  */
 ZLINK_EXPORT int zlink_spot_sub_recv (void *sub,
                                       zlink_msg_t **parts,

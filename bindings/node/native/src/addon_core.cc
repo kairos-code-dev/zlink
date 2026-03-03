@@ -179,7 +179,7 @@ int stream_on_packets_slot(const zlink_routing_id_t *rid_,
     }
 
     napi_status call_status =
-      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking);
+      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_blocking);
     if (call_status != napi_ok)
         return 1;
     payload.release();
@@ -226,7 +226,7 @@ int stream_on_raw_slot(const zlink_routing_id_t *rid_, zlink_msg_t *msg_)
     (void) zlink_msg_close(msg_);
 
     napi_status call_status =
-      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_nonblocking);
+      napi_call_threadsafe_function(tsfn, payload.get(), napi_tsfn_blocking);
     if (call_status != napi_ok)
         return 1;
     payload.release();

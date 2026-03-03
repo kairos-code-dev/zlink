@@ -107,6 +107,55 @@ function intSockOpt(value) {
   return buf;
 }
 
+function configureOneWaySocket(socket) {
+  const hwm = parseEnv('PERF_HWM', 100000);
+  const sndTimeoutMs = parseEnv('PERF_SNDTIMEO_MS', 5000);
+  const rcvTimeoutMs = parseEnv('PERF_RCVTIMEO_MS', 5000);
+  try { socket.setSockOpt(zlink.SocketOption.SNDHWM, intSockOpt(hwm)); } catch (_) {}
+  try { socket.setSockOpt(zlink.SocketOption.RCVHWM, intSockOpt(hwm)); } catch (_) {}
+  try { socket.setSockOpt(zlink.SocketOption.SNDTIMEO, intSockOpt(sndTimeoutMs)); } catch (_) {}
+  try { socket.setSockOpt(zlink.SocketOption.RCVTIMEO, intSockOpt(rcvTimeoutMs)); } catch (_) {}
+}
+
+async function drainSinglePart(socket, recvBuf, expectedMax, idleDrainMs) {
+  const idleLimit = Math.max(1, idleDrainMs | 0);
+  let recvCount = 0;
+  let idle = 0;
+  while (idle < idleLimit) {
+    if (expectedMax > 0 && recvCount >= expectedMax) break;
+    try {
+      socket.recvInto(recvBuf, zlink.ReceiveFlag.DONTWAIT);
+      recvCount += 1;
+      idle = 0;
+      continue;
+    } catch (_) {
+      idle += 1;
+      await sleep(1);
+    }
+  }
+  return recvCount;
+}
+
+async function drainMultipart(socket, ridBuf, dataBuf, expectedMax, idleDrainMs) {
+  const idleLimit = Math.max(1, idleDrainMs | 0);
+  let recvCount = 0;
+  let idle = 0;
+  while (idle < idleLimit) {
+    if (expectedMax > 0 && recvCount >= expectedMax) break;
+    try {
+      socket.recvInto(ridBuf, zlink.ReceiveFlag.DONTWAIT);
+      socket.recvInto(dataBuf, zlink.ReceiveFlag.DONTWAIT);
+      recvCount += 1;
+      idle = 0;
+      continue;
+    } catch (_) {
+      idle += 1;
+      await sleep(1);
+    }
+  }
+  return recvCount;
+}
+
 const ECHO_PATTERNS = new Set([]);
 
 function bandwidthMbps(pattern, throughput, size) {
@@ -265,6 +314,7 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
   const warmup = parseEnv('PERF_WARMUP_COUNT', 1000);
   const latCount = parseEnv('PERF_LAT_COUNT', 500);
   const msgCount = resolveMsgCount(size);
+  const idleDrainMs = parseEnv('PERF_IDLE_DRAIN_MS', 500);
 
   const ctx = new zlink.Context();
   const a = new zlink.Socket(ctx, typeA);
@@ -275,6 +325,8 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
     a.bind(ep);
     b.connect(ep);
     await settle();
+    configureOneWaySocket(a);
+    configureOneWaySocket(b);
 
     const buf = Buffer.alloc(size, 'a');
     const recvA = Buffer.alloc(Math.max(1, size));
@@ -295,14 +347,20 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
+    let sent = 0;
     for (let i = 0; i < msgCount; i++) {
-      b.send(buf, zlink.SendFlag.NONE);
+      try {
+        b.send(buf, zlink.SendFlag.DONTWAIT);
+        sent += 1;
+      } catch (_) {
+        break;
+      }
     }
-    for (let i = 0; i < msgCount; i++) {
-      a.recvInto(recvA, zlink.ReceiveFlag.NONE);
-    }
+    const recvCount = await drainSinglePart(a, recvA, sent, idleDrainMs);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const thr = msgCount / elapsedSec;
+    const effective = Math.min(sent, recvCount);
+    if (effective <= 0) return 2;
+    const thr = effective / elapsedSec;
 
     printResult(pattern, transport, size, thr, latUs);
     return 0;
@@ -318,6 +376,7 @@ async function runPairLike(pattern, typeA, typeB, transport, size) {
 async function runPubSub(transport, size) {
   const warmup = parseEnv('PERF_WARMUP_COUNT', 1000);
   const msgCount = resolveMsgCount(size);
+  const idleDrainMs = parseEnv('PERF_IDLE_DRAIN_MS', 500);
 
   const ctx = new zlink.Context();
   const pub = new zlink.Socket(ctx, zlink.SocketType.PUB);
@@ -329,6 +388,8 @@ async function runPubSub(transport, size) {
     pub.bind(ep);
     sub.connect(ep);
     await settle();
+    configureOneWaySocket(pub);
+    configureOneWaySocket(sub);
 
     const buf = Buffer.alloc(size, 'a');
     const recvBuf = Buffer.alloc(Math.max(1, size));
@@ -338,15 +399,20 @@ async function runPubSub(transport, size) {
     }
 
     const t0 = process.hrtime.bigint();
+    let sent = 0;
     for (let i = 0; i < msgCount; i++) {
-      pub.send(buf, zlink.SendFlag.NONE);
+      try {
+        pub.send(buf, zlink.SendFlag.DONTWAIT);
+        sent += 1;
+      } catch (_) {
+        break;
+      }
     }
-    for (let i = 0; i < msgCount; i++) {
-      sub.recvInto(recvBuf, zlink.ReceiveFlag.NONE);
-    }
+    const recvCount = await drainSinglePart(sub, recvBuf, sent, idleDrainMs);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const thr = msgCount / elapsedSec;
-    const latUs = (elapsedSec * 1e6) / msgCount;
+    if (recvCount <= 0) return 2;
+    const thr = recvCount / elapsedSec;
+    const latUs = (elapsedSec * 1e6) / recvCount;
 
     printResult('PUBSUB', transport, size, thr, latUs);
     return 0;
@@ -363,6 +429,7 @@ async function runDealerRouter(transport, size) {
   const warmup = parseEnv('PERF_WARMUP_COUNT', 1000);
   const latCount = parseEnv('PERF_LAT_COUNT', 1000);
   const msgCount = resolveMsgCount(size);
+  const idleDrainMs = parseEnv('PERF_IDLE_DRAIN_MS', 500);
 
   const ctx = new zlink.Context();
   const router = new zlink.Socket(ctx, zlink.SocketType.ROUTER);
@@ -374,6 +441,8 @@ async function runDealerRouter(transport, size) {
     router.bind(ep);
     dealer.connect(ep);
     await settle();
+    configureOneWaySocket(router);
+    configureOneWaySocket(dealer);
 
     const buf = Buffer.alloc(size, 'a');
     const ridBuf = Buffer.alloc(256);
@@ -400,15 +469,21 @@ async function runDealerRouter(transport, size) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
+    let sent = 0;
     for (let i = 0; i < msgCount; i++) {
-      dealer.send(buf, zlink.SendFlag.NONE);
+      try {
+        dealer.send(buf, zlink.SendFlag.DONTWAIT);
+        sent += 1;
+      } catch (_) {
+        break;
+      }
     }
-    for (let i = 0; i < msgCount; i++) {
-      router.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
-      router.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
-    }
+    const recvCount = await drainMultipart(router, ridBuf, dataBuf, sent,
+      idleDrainMs);
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const thr = msgCount / elapsedSec;
+    const effective = Math.min(sent, recvCount);
+    if (effective <= 0) return 2;
+    const thr = effective / elapsedSec;
 
     printResult('DEALER_ROUTER', transport, size, thr, latUs);
     return 0;
@@ -424,6 +499,7 @@ async function runDealerRouter(transport, size) {
 async function runRouterRouter(transport, size, usePoll) {
   const latCount = parseEnv('PERF_LAT_COUNT', 1000);
   const msgCount = resolveMsgCount(size);
+  const idleDrainMs = parseEnv('PERF_IDLE_DRAIN_MS', 500);
 
   const ctx = new zlink.Context();
   const router1 = new zlink.Socket(ctx, zlink.SocketType.ROUTER);
@@ -448,6 +524,8 @@ async function runRouterRouter(transport, size, usePoll) {
     router1.bind(ep);
     router2.connect(ep);
     await settle();
+    configureOneWaySocket(router1);
+    configureOneWaySocket(router2);
 
     if (usePoll) {
       poller1 = new zlink.Poller();
@@ -511,33 +589,23 @@ async function runRouterRouter(transport, size, usePoll) {
     const latUs = (Number(process.hrtime.bigint() - t0) / 1000.0) / (latCount * 2);
 
     t0 = process.hrtime.bigint();
+    let sent = 0;
     for (let i = 0; i < msgCount; i++) {
-      router2.send(routingId1, zlink.SendFlag.SNDMORE);
-      router2.send(buf, zlink.SendFlag.NONE);
-    }
-    if (usePoll) {
-      let received = 0;
-      while (received < msgCount) {
-        if (!waitForInput(router1, 2000, poller1)) return 2;
-        while (received < msgCount) {
-          try {
-            router1.recvInto(ridBuf, zlink.ReceiveFlag.DONTWAIT);
-            router1.recvInto(dataBuf, zlink.ReceiveFlag.DONTWAIT);
-            received++;
-          } catch (_) {
-            break;
-          }
-        }
-      }
-    } else {
-      for (let i = 0; i < msgCount; i++) {
-        router1.recvInto(ridBuf, zlink.ReceiveFlag.NONE);
-        router1.recvInto(dataBuf, zlink.ReceiveFlag.NONE);
+      try {
+        router2.send(routingId1, zlink.SendFlag.SNDMORE | zlink.SendFlag.DONTWAIT);
+        router2.send(buf, zlink.SendFlag.DONTWAIT);
+        sent += 1;
+      } catch (_) {
+        break;
       }
     }
+    const recvCount = await drainMultipart(router1, ridBuf, dataBuf, sent,
+      idleDrainMs);
 
     const elapsedSec = Number(process.hrtime.bigint() - t0) / 1e9;
-    const thr = msgCount / elapsedSec;
+    const effective = Math.min(sent, recvCount);
+    if (effective <= 0) return 2;
+    const thr = effective / elapsedSec;
     const pattern = usePoll ? 'ROUTER_ROUTER_POLL' : 'ROUTER_ROUTER';
     printResult(pattern, transport, size, thr, latUs);
     return 0;

@@ -550,6 +550,7 @@ async function runServerDealer(pattern, transport, endpoint, size) {
 }
 
 async function runServerStreamRecv(pattern, transport, endpoint, size) {
+  const debug = parseEnv('PERF_DEBUG', 0) === 1;
   const cpuStart = process.cpuUsage();
   const wallStartNs = nowNs();
   const ctx = new zlink.Context();
@@ -595,18 +596,21 @@ async function runServerStreamRecv(pattern, transport, endpoint, size) {
     if (!setupTlsServer(sock, transport)) {
       return 2;
     }
-    sock.bind(endpoint);
-    console.log(`READY,${endpoint}`);
-    if (!waitMonitorReady(monitor, readyTimeoutMs, true)) {
-      return 2;
-    }
-
     let stop = false;
     let callbackFailed = false;
+    let callbackCount = 0;
 
     sock.streamAttach((rid, packets) => {
       if (!rid || rid.length === 0 || !packets) {
         return 0;
+      }
+      callbackCount += 1;
+      if (debug && callbackCount <= 5) {
+        const lens = [];
+        for (const pkt of packets) {
+          lens.push(pkt ? pkt.length : -1);
+        }
+        console.error(`stream_recv_cb#${callbackCount}: packets=${lens.join('/')}`);
       }
 
       const stash = getStash(rid);
@@ -632,7 +636,10 @@ async function runServerStreamRecv(pattern, transport, endpoint, size) {
           }
           try {
             sock.streamSend(rid, frame, zlink.SendFlag.NONE);
-          } catch (_) {
+          } catch (err) {
+            if (debug) {
+              console.error(`stream_send_failed:${err && err.message ? err.message : err}`);
+            }
             callbackFailed = true;
             stop = true;
             return 1;
@@ -643,17 +650,29 @@ async function runServerStreamRecv(pattern, transport, endpoint, size) {
     }, zlink.StreamDispatchMode.NONE);
     attached = true;
 
+    sock.bind(endpoint);
+    console.log(`READY,${endpoint}`);
+    if (!waitMonitorReady(monitor, readyTimeoutMs, true)) {
+      return 2;
+    }
+
     const deadline = Date.now() + Math.max(rcvTimeoutMs * 12, 60000);
     while (!stop && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 1));
     }
     if (!stop || callbackFailed) {
+      if (debug) {
+        console.error(`stream_server_incomplete: stop=${stop} callbackFailed=${callbackFailed}`);
+      }
       return 2;
     }
 
     printServerMetrics(pattern, transport, size, cpuStart, wallStartNs);
     return 0;
-  } catch (_) {
+  } catch (err) {
+    if (debug) {
+      console.error(`stream_server_error:${err && err.stack ? err.stack : err}`);
+    }
     return 2;
   } finally {
     if (attached) {
@@ -666,6 +685,7 @@ async function runServerStreamRecv(pattern, transport, endpoint, size) {
 }
 
 async function runServerStreamCallback(pattern, transport, endpoint, size, dispatchMode) {
+  const debug = parseEnv('PERF_DEBUG', 0) === 1;
   const cpuStart = process.cpuUsage();
   const wallStartNs = nowNs();
   const ctx = new zlink.Context();
@@ -683,18 +703,21 @@ async function runServerStreamCallback(pattern, transport, endpoint, size, dispa
     if (!setupTlsServer(sock, transport)) {
       return 2;
     }
-    sock.bind(endpoint);
-    console.log(`READY,${endpoint}`);
-    if (!waitMonitorReady(monitor, readyTimeoutMs, true)) {
-      return 2;
-    }
-
     let stop = false;
     let callbackFailed = false;
+    let callbackCount = 0;
 
     sock.streamAttach((rid, packets) => {
       if (!rid || rid.length === 0 || !packets) {
         return 0;
+      }
+      callbackCount += 1;
+      if (debug && callbackCount <= 5) {
+        const lens = [];
+        for (const pkt of packets) {
+          lens.push(pkt ? pkt.length : -1);
+        }
+        console.error(`stream_callback_cb#${callbackCount}: packets=${lens.join('/')}`);
       }
       for (const packet of packets) {
         if (!packet || packet.length === 0) {
@@ -717,7 +740,10 @@ async function runServerStreamCallback(pattern, transport, endpoint, size, dispa
 
         try {
           sock.streamSend(rid, packet, zlink.SendFlag.NONE);
-        } catch (_) {
+        } catch (err) {
+          if (debug) {
+            console.error(`stream_callback_send_failed:${err && err.message ? err.message : err}`);
+          }
           callbackFailed = true;
           stop = true;
           return 1;
@@ -727,17 +753,29 @@ async function runServerStreamCallback(pattern, transport, endpoint, size, dispa
     }, dispatchMode);
     attached = true;
 
+    sock.bind(endpoint);
+    console.log(`READY,${endpoint}`);
+    if (!waitMonitorReady(monitor, readyTimeoutMs, true)) {
+      return 2;
+    }
+
     const deadline = Date.now() + Math.max(rcvTimeoutMs * 12, 60000);
     while (!stop && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 1));
     }
     if (!stop || callbackFailed) {
+      if (debug) {
+        console.error(`stream_callback_incomplete: stop=${stop} callbackFailed=${callbackFailed}`);
+      }
       return 2;
     }
 
     printServerMetrics(pattern, transport, size, cpuStart, wallStartNs);
     return 0;
-  } catch (_) {
+  } catch (err) {
+    if (debug) {
+      console.error(`stream_callback_error:${err && err.stack ? err.stack : err}`);
+    }
     return 2;
   } finally {
     if (attached) {

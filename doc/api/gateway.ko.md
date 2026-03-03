@@ -70,7 +70,36 @@ int zlink_gateway_send(void *gateway,
 **스레드 안전성:** 스레드 안전함. 여러 스레드가 동일한 Gateway 핸들에서
 동시에 `zlink_gateway_send`를 호출할 수 있습니다.
 
-**참고:** `zlink_gateway_recv`, `zlink_gateway_send_rid`, `zlink_gateway_set_lb_strategy`
+**참고:** `zlink_gateway_send_bytes`, `zlink_gateway_recv`, `zlink_gateway_send_rid`, `zlink_gateway_set_lb_strategy`
+
+---
+
+### zlink_gateway_send_bytes
+
+서비스에 단일 파트 바이트 버퍼를 전송합니다 (로드 밸런싱).
+
+```c
+int zlink_gateway_send_bytes(void *gateway,
+                             const char *service_name,
+                             const void *data,
+                             size_t size,
+                             int flags);
+```
+
+`service_name`으로 등록된 Receiver에 단일 파트 payload를 전송합니다.
+단일 버퍼 전송에 최적화된 편의 API로, 호출자가 `zlink_msg_t`를 직접
+구성/해제할 필요가 없습니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- `size > 0`인데 `data == NULL`.
+- `EHOSTUNREACH` -- 서비스에 대한 수신자가 없습니다.
+- `EAGAIN` -- `ZLINK_DONTWAIT`가 설정되었으며 작업이 블록됩니다.
+
+**스레드 안전성:** 스레드 안전함.
+
+**참고:** `zlink_gateway_send`, `zlink_gateway_send_rid_bytes`
 
 ---
 
@@ -129,7 +158,36 @@ Receiver에 멀티파트 메시지를 전송합니다. 이는 상태 유지 프�
 
 **스레드 안전성:** 스레드 안전함.
 
-**참고:** `zlink_gateway_send`
+**참고:** `zlink_gateway_send`, `zlink_gateway_send_rid_bytes`
+
+---
+
+### zlink_gateway_send_rid_bytes
+
+라우팅 ID로 특정 Receiver에 단일 파트 바이트 버퍼를 직접 전송합니다.
+
+```c
+int zlink_gateway_send_rid_bytes(void *gateway,
+                                 const char *service_name,
+                                 const zlink_routing_id_t *routing_id,
+                                 const void *data,
+                                 size_t size,
+                                 int flags);
+```
+
+로드 밸런싱을 우회하고 지정된 `service_name` 내에서 `routing_id`로 식별되는
+Receiver에 단일 파트 payload를 전송합니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- `size > 0`인데 `data == NULL`.
+- `EHOSTUNREACH` -- 지정된 라우팅 ID가 연결되어 있지 않습니다.
+- `EAGAIN` -- `ZLINK_DONTWAIT`가 설정되었으며 작업이 블록됩니다.
+
+**스레드 안전성:** 스레드 안전함.
+
+**참고:** `zlink_gateway_send_rid`, `zlink_gateway_send_bytes`
 
 ---
 

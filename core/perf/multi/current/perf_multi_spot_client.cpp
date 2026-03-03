@@ -2,11 +2,13 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,12 +22,15 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
+static const uint32_t k_metric_run_id = 1U;
 
 typedef int (*spot_set_tls_server_fn)(void *, const char *, const char *);
 typedef int (*spot_set_tls_client_fn)(void *, const char *, const char *, int);
 
-using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::normalize_latency_stats;
+using perf_multi_client::print_client_result_lines;
+using perf_multi_client::resolve_case_msg_sizes;
 
 struct spot_client_slot_t
 {
@@ -36,6 +41,20 @@ struct spot_client_slot_t
     {
     }
 };
+
+inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
+                               int timeout_ms);
+inline void close_spot_client_slots(std::vector<spot_client_slot_t> *slots);
+inline bool create_spot_client_slots(ctx_guard_t &ctx,
+                                     const std::string &transport,
+                                     const multi_bench_settings_t &settings,
+                                     std::vector<spot_client_slot_t> *slots_out);
+
+inline bool is_supported_transport(const std::string &transport)
+{
+    return transport == "tcp" || transport == "tls" || transport == "ws"
+           || transport == "wss";
+}
 
 inline void debug_stage(const char *stage)
 {
@@ -177,42 +196,6 @@ inline void apply_spot_node_options(void *node,
     (void) transport;
 }
 
-inline bool wait_for_service_receivers(void *discovery,
-                                       const char *service_name,
-                                       int target_count,
-                                       int timeout_ms)
-{
-    if (!discovery || !service_name || service_name[0] == '\0')
-        return false;
-
-    const int target = std::max(1, target_count);
-    const auto deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(1000, timeout_ms));
-    auto next_debug_log = std::chrono::steady_clock::now();
-
-    while (std::chrono::steady_clock::now() < deadline) {
-        const int count = zlink_discovery_receiver_count(discovery, service_name);
-        const int available = zlink_discovery_service_available(discovery, service_name);
-        if (bench_debug_enabled()
-            && std::chrono::steady_clock::now() >= next_debug_log) {
-            std::cerr << "[multi-spot-client] discovery count=" << count
-                      << " available=" << available << std::endl;
-            next_debug_log = std::chrono::steady_clock::now()
-                             + std::chrono::milliseconds(500);
-        }
-        if (available > 0)
-            return true;
-        if (count >= target)
-            return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-
-    const int count = zlink_discovery_receiver_count(discovery, service_name);
-    const int available = zlink_discovery_service_available(discovery, service_name);
-    return available > 0 || count >= target;
-}
-
 inline bool resolve_service_endpoint(void *discovery,
                                      const char *service_name,
                                      std::string *endpoint_out)
@@ -243,18 +226,55 @@ inline bool resolve_service_endpoint(void *discovery,
     return false;
 }
 
-inline bool connect_slots_to_provider(std::vector<spot_client_slot_t> *slots,
-                                      const std::string &provider_endpoint)
+inline bool wait_for_service_receivers(void *discovery,
+                                       const char *service_name,
+                                       int target_count,
+                                       int timeout_ms)
 {
-    if (!slots || slots->empty() || provider_endpoint.empty())
+    if (!discovery || !service_name || service_name[0] == '\0')
+        return false;
+
+    const int target = std::max(1, target_count);
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(std::max(1000, timeout_ms));
+    auto next_debug_log = std::chrono::steady_clock::now();
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        const int count = zlink_discovery_receiver_count(discovery, service_name);
+        const int available = zlink_discovery_service_available(discovery, service_name);
+        if (bench_debug_enabled()
+            && std::chrono::steady_clock::now() >= next_debug_log) {
+            std::cerr << "[multi-spot-client] discovery count=" << count
+                      << " available=" << available << std::endl;
+            next_debug_log = std::chrono::steady_clock::now()
+                             + std::chrono::milliseconds(500);
+        }
+        if (available > 0 || count >= target)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    const int count = zlink_discovery_receiver_count(discovery, service_name);
+    const int available = zlink_discovery_service_available(discovery, service_name);
+    return available > 0 || count >= target;
+}
+
+inline bool attach_discovery_to_slots(std::vector<spot_client_slot_t> *slots,
+                                      void *discovery,
+                                      const char *service_name)
+{
+    if (!slots || slots->empty() || !discovery || !service_name
+        || service_name[0] == '\0')
         return false;
 
     for (size_t i = 0; i < slots->size(); ++i) {
         spot_client_slot_t &slot = (*slots)[i];
         if (!slot.node)
             return false;
-        if (zlink_spot_node_connect_peer_pub(slot.node, provider_endpoint.c_str()) != 0) {
-            debug_error("spot_node_connect_peer_pub");
+        if (zlink_spot_node_set_discovery(slot.node, discovery, service_name)
+            != 0) {
+            debug_error("spot_node_set_discovery");
             return false;
         }
     }
@@ -285,6 +305,30 @@ inline bool create_slot_subscribers(std::vector<spot_client_slot_t> *slots)
     return true;
 }
 
+inline bool prepare_connected_spot_slots(ctx_guard_t &ctx,
+                                         const std::string &transport,
+                                         const multi_bench_settings_t &settings,
+                                         void *discovery,
+                                         std::vector<spot_client_slot_t> *slots)
+{
+    if (!slots)
+        return false;
+
+    close_spot_client_slots(slots);
+    slots->clear();
+
+    if (!create_spot_client_slots(ctx, transport, settings, slots)
+        || !attach_discovery_to_slots(slots, discovery, k_service_name)
+        || !create_slot_subscribers(slots))
+        return false;
+
+    // Re-arm discovery after SUB creation so every slot refreshes peer endpoints.
+    if (!attach_discovery_to_slots(slots, discovery, k_service_name))
+        return false;
+
+    return wait_all_sub_peers(*slots, settings.connect_ready_timeout_ms);
+}
+
 inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
                                int timeout_ms)
 {
@@ -295,7 +339,7 @@ inline bool wait_all_sub_peers(const std::vector<spot_client_slot_t> &slots,
     size_t ready_count = 0;
     const auto deadline =
       std::chrono::steady_clock::now()
-      + std::chrono::milliseconds(std::max(5000, timeout_ms * 2));
+      + std::chrono::milliseconds(std::max(5000, timeout_ms * 3));
 
     while (std::chrono::steady_clock::now() < deadline && ready_count < slots.size()) {
         for (size_t i = 0; i < slots.size(); ++i) {
@@ -388,40 +432,43 @@ inline bool create_spot_client_slots(
     return true;
 }
 
-inline bool decode_timestamp_from_parts(const zlink_msg_t *parts,
-                                        size_t count,
-                                        unsigned long long *sent_us_out)
+inline bool decode_metric_header_from_parts(const zlink_msg_t *parts,
+                                            size_t count,
+                                            perf_multi_metric::header_t *header_out)
 {
-    if (!parts || count == 0 || !sent_us_out)
+    if (!parts || count == 0 || !header_out)
         return false;
 
-    unsigned char buf[sizeof(unsigned long long)] = {0};
+    unsigned char header_buf[64] = {0};
+    const size_t target = perf_multi_metric::header_size();
     size_t copied = 0;
-    for (size_t i = 0; i < count && copied < sizeof(buf); ++i) {
+    for (size_t i = 0; i < count && copied < target; ++i) {
         const unsigned char *data =
           static_cast<const unsigned char *>(zlink_msg_data(
             const_cast<zlink_msg_t *>(&parts[i])));
         const size_t part_size = zlink_msg_size(&parts[i]);
         if (!data || part_size == 0)
             continue;
-        const size_t copy_size = std::min(sizeof(buf) - copied, part_size);
-        std::memcpy(buf + copied, data, copy_size);
+        const size_t copy_size = std::min(target - copied, part_size);
+        std::memcpy(header_buf + copied, data, copy_size);
         copied += copy_size;
     }
 
-    if (copied < sizeof(buf))
+    if (copied < target)
         return false;
 
-    std::memcpy(sent_us_out, buf, sizeof(unsigned long long));
-    return true;
+    return perf_multi_metric::decode_header(header_buf, target, header_out);
 }
 
 inline int recv_spot_message_once(void *sub,
                                   int flags,
+                                  size_t expected_msg_size,
+                                  perf_multi_metric::phase_t expected_phase,
                                   bool collect_latency,
                                   double *lat_sum,
                                   long *lat_count,
-                                  bench_latency_sampler_t *latency_samples)
+                                  bench_latency_sampler_t *latency_samples,
+                                  uint64_t *last_sampled_seq)
 {
     if (!sub)
         return -1;
@@ -439,61 +486,97 @@ inline int recv_spot_message_once(void *sub,
         return -1;
     }
 
-    if (collect_latency && lat_sum && lat_count && part_count > 0) {
-        unsigned long long sent_us = 0;
-        if (decode_timestamp_from_parts(parts, part_count, &sent_us)) {
-            const unsigned long long now_us = static_cast<unsigned long long>(
-              std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count());
-            if (now_us >= sent_us) {
-                const double sample_us = static_cast<double>(now_us - sent_us);
-                *lat_sum += sample_us;
-                (*lat_count)++;
-                if (latency_samples)
-                    latency_samples->add(sample_us);
+    int matched = 0;
+    perf_multi_metric::header_t header;
+    if (decode_metric_header_from_parts(parts, part_count, &header)
+        && header.magic == perf_multi_metric::k_magic
+        && header.run_id == k_metric_run_id
+        && (expected_phase == perf_multi_metric::phase_unknown
+            || header.phase == static_cast<uint32_t>(expected_phase))
+        && header.msg_size == static_cast<uint32_t>(expected_msg_size)) {
+        matched = 1;
+        if (collect_latency && lat_sum && lat_count) {
+            bool take_sample = true;
+            if (last_sampled_seq && header.seq > 0) {
+                if (header.seq <= *last_sampled_seq)
+                    take_sample = false;
+                else
+                    *last_sampled_seq = header.seq;
+            }
+            if (take_sample) {
+                const uint64_t now_us = perf_multi_metric::now_us();
+                if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
+                    const double sample_us =
+                      static_cast<double>(now_us - header.sent_ts_us);
+                    *lat_sum += sample_us;
+                    (*lat_count)++;
+                    if (latency_samples)
+                        latency_samples->add(sample_us);
+                }
             }
         }
     }
 
     if (parts)
         zlink_msgv_close(parts, part_count);
-    return 1;
+    return matched ? 1 : 2;
 }
 
 inline bool drain_spot_sub_non_blocking(void *sub,
+                                        size_t expected_msg_size,
+                                        perf_multi_metric::phase_t expected_phase,
                                         long *recv_count,
+                                        long *consumed_count,
                                         bool collect_latency,
                                         double *lat_sum,
                                         long *lat_count,
-                                        bench_latency_sampler_t *latency_samples)
+                                        bench_latency_sampler_t *latency_samples,
+                                        uint64_t *last_sampled_seq,
+                                        const std::chrono::steady_clock::time_point *deadline,
+                                        int recv_batch_limit)
 {
     if (!sub)
         return false;
 
     long local_recv = 0;
+    long local_consumed = 0;
     while (true) {
+        if (deadline && std::chrono::steady_clock::now() >= *deadline)
+            break;
+        if (recv_batch_limit > 0 && local_consumed >= recv_batch_limit)
+            break;
+
         const int rc = recv_spot_message_once(sub,
                                               ZLINK_DONTWAIT,
+                                              expected_msg_size,
+                                              expected_phase,
                                               collect_latency,
                                               lat_sum,
                                               lat_count,
-                                              latency_samples);
+                                              latency_samples,
+                                              last_sampled_seq);
         if (rc < 0)
             return false;
         if (rc == 0)
             break;
+        ++local_consumed;
+        if (rc > 1)
+            continue;
         ++local_recv;
     }
 
     if (recv_count)
         *recv_count += local_recv;
+    if (consumed_count)
+        *consumed_count += local_consumed;
     return true;
 }
 
 inline bool run_spot_one_way_window_loop(
   const std::vector<spot_client_slot_t> &slots,
   const multi_bench_settings_t &settings,
+  size_t expected_msg_size,
+  perf_multi_metric::phase_t expected_phase,
   double duration_seconds,
   bool collect_latency,
   long *recv_total,
@@ -520,36 +603,45 @@ inline bool run_spot_one_way_window_loop(
       std::chrono::steady_clock::now()
       + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(duration_seconds));
+    const int recv_batch_limit =
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_BATCH", 256, 1);
 
     bool fatal_error = false;
     long recv_sum = 0;
     double lat_sum_local = 0.0;
     long lat_count_local = 0;
     bench_latency_sampler_t latency_samples;
+    uint64_t last_sampled_seq = 0;
 
     while (std::chrono::steady_clock::now() < deadline && !fatal_error) {
         bool progressed = false;
         for (size_t i = 0; i < slots.size(); ++i) {
             long recv_now = 0;
+            long consumed_now = 0;
             if (!drain_spot_sub_non_blocking(slots[i].sub,
+                                             expected_msg_size,
+                                             expected_phase,
                                              &recv_now,
+                                             &consumed_now,
                                              collect_latency,
                                              collect_latency ? &lat_sum_local : NULL,
                                              collect_latency ? &lat_count_local : NULL,
-                                             collect_latency ? &latency_samples : NULL)) {
+                                             collect_latency ? &latency_samples : NULL,
+                                             collect_latency ? &last_sampled_seq : NULL,
+                                             &deadline,
+                                             recv_batch_limit)) {
                 fatal_error = true;
                 break;
             }
 
-            if (recv_now > 0) {
+            if (recv_now > 0)
                 recv_sum += recv_now;
+            if (consumed_now > 0)
                 progressed = true;
-            }
         }
 
         if (fatal_error)
             break;
-
         if (!progressed)
             std::this_thread::yield();
     }
@@ -561,30 +653,72 @@ inline bool run_spot_one_way_window_loop(
     if (lat_count)
         *lat_count = lat_count_local;
     if (latency_out) {
-        if (!collect_latency || lat_count_local <= 0) {
+        if (!collect_latency)
             *latency_out = bench_latency_stats_t();
-        } else {
-            bench_latency_stats_t stats = latency_samples.snapshot();
-            if (stats.mean_us <= 0.0)
-                stats.mean_us =
-                  lat_sum_local / static_cast<double>(std::max<long>(1, lat_count_local));
-            if (stats.p95_us <= 0.0)
-                stats.p95_us = stats.mean_us;
-            if (stats.p99_us <= 0.0)
-                stats.p99_us = stats.p95_us;
-            if (stats.p95_us < stats.mean_us)
-                stats.p95_us = stats.mean_us;
-            if (stats.p99_us < stats.p95_us)
-                stats.p99_us = stats.p95_us;
-            *latency_out = stats;
-        }
+        else
+            normalize_latency_stats(lat_sum_local,
+                                    lat_count_local,
+                                    &latency_samples,
+                                    latency_out);
     }
 
     return !fatal_error;
 }
 
+inline bool wait_for_msg_size_start(const std::vector<spot_client_slot_t> &slots,
+                                    const multi_bench_settings_t &settings,
+                                    size_t msg_size)
+{
+    if (slots.empty() || msg_size == 0)
+        return false;
+
+    const int recv_batch_limit =
+      resolve_multi_int_env("PERF_MULTI_SPOT_RECV_BATCH", 256, 1);
+    const int sync_timeout_ms =
+      std::max(5000,
+               std::max(settings.connect_ready_timeout_ms,
+                        std::max(settings.connect_ready_timeout_ms * 4,
+                                 settings.warmup_seconds * 1000
+                                   + settings.settle_ms + 5000)));
+    const auto deadline =
+      std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(sync_timeout_ms);
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        bool progressed = false;
+        for (size_t i = 0; i < slots.size(); ++i) {
+            long matched_now = 0;
+            long consumed_now = 0;
+            if (!drain_spot_sub_non_blocking(slots[i].sub,
+                                             msg_size,
+                                             perf_multi_metric::phase_unknown,
+                                             &matched_now,
+                                             &consumed_now,
+                                             false,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             &deadline,
+                                             recv_batch_limit)) {
+                return false;
+            }
+            if (matched_now > 0)
+                return true;
+            if (consumed_now > 0)
+                progressed = true;
+        }
+
+        if (!progressed)
+            std::this_thread::yield();
+    }
+
+    return false;
+}
+
 inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slots,
                                       const multi_bench_settings_t &settings,
+                                      size_t msg_size,
                                       double *throughput_out,
                                       bench_latency_stats_t *latency_out,
                                       bench_multi_resource_metrics_t *metrics_out)
@@ -595,157 +729,184 @@ inline bool run_spot_one_way_duration(const std::vector<spot_client_slot_t> &slo
     *throughput_out = 0.0;
     *latency_out = bench_latency_stats_t();
 
-    if (!run_spot_one_way_window_loop(slots,
-                                      settings,
-                                      static_cast<double>(std::max(0, settings.warmup_seconds)),
-                                      false,
-                                      NULL,
-                                      NULL,
-                                      NULL,
-                                      NULL)) {
-        debug_stage("warmup window failed");
+    if (!wait_for_msg_size_start(slots, settings, msg_size)) {
+        debug_stage("size sync failed");
         return false;
     }
 
-    const double settle_seconds =
-      static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
-    if (settle_seconds > 0.0) {
-        if (!run_spot_one_way_window_loop(slots,
-                                          settings,
-                                          settle_seconds,
-                                          false,
-                                          NULL,
-                                          NULL,
-                                          NULL,
-                                          NULL)) {
-            debug_stage("pre-throughput settle drain failed");
-            return false;
-        }
-    }
-
     long recv_count = 0;
+    double lat_sum = 0.0;
+    long lat_count = 0;
+    bench_latency_stats_t latency_stats;
+
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample();
     if (!run_spot_one_way_window_loop(slots,
                                       settings,
+                                      msg_size,
+                                      perf_multi_metric::phase_unknown,
                                       static_cast<double>(std::max(1, settings.duration_seconds)),
-                                      false,
+                                      true,
                                       &recv_count,
-                                      NULL,
-                                      NULL,
-                                      NULL)) {
-        debug_stage("throughput window failed");
+                                      &lat_sum,
+                                      &lat_count,
+                                      &latency_stats)) {
+        debug_stage("active window failed");
         return false;
     }
     *metrics_out = bench_multi_finish_resource_probe(sample_start);
 
     *throughput_out = static_cast<double>(recv_count)
                       / static_cast<double>(std::max(1, settings.duration_seconds));
-
-    if (recv_count <= 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] throughput sample recv_count="
-                      << recv_count << std::endl;
-        }
-        return false;
-    }
-
-    if (settle_seconds > 0.0) {
-        if (!run_spot_one_way_window_loop(slots,
-                                          settings,
-                                          settle_seconds,
-                                          false,
-                                          NULL,
-                                          NULL,
-                                          NULL,
-                                          NULL)) {
-            debug_stage("pre-latency settle drain failed");
-            return false;
-        }
-    }
-
-    double lat_sum = 0.0;
-    long lat_count = 0;
-    bench_latency_stats_t latency_stats;
-    if (!run_spot_one_way_window_loop(slots,
-                                      settings,
-                                      static_cast<double>(std::max(1, settings.duration_seconds)),
-                                      true,
-                                      NULL,
-                                      &lat_sum,
-                                      &lat_count,
-                                      &latency_stats)) {
-        debug_stage("latency window failed");
-        return false;
-    }
-
-    const double drain_seconds =
-      static_cast<double>(std::max(0, settings.drain_ms)) / 1000.0;
-    if (drain_seconds > 0.0) {
-        if (!run_spot_one_way_window_loop(slots,
-                                          settings,
-                                          drain_seconds,
-                                          false,
-                                          NULL,
-                                          NULL,
-                                          NULL,
-                                          NULL)) {
-            debug_stage("drain window failed");
-            return false;
-        }
-    }
-
-    if (lat_count <= 0) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] no latency samples lat_count="
-                      << lat_count << std::endl;
-        }
+    if (recv_count <= 0 || lat_count <= 0) {
         return false;
     }
 
     if (latency_stats.mean_us <= 0.0)
-        latency_stats.mean_us = lat_sum / static_cast<double>(lat_count);
-    if (latency_stats.p95_us <= 0.0)
-        latency_stats.p95_us = latency_stats.mean_us;
-    if (latency_stats.p99_us <= 0.0)
-        latency_stats.p99_us = latency_stats.p95_us;
-    if (latency_stats.p95_us < latency_stats.mean_us)
-        latency_stats.p95_us = latency_stats.mean_us;
-    if (latency_stats.p99_us < latency_stats.p95_us)
-        latency_stats.p99_us = latency_stats.p95_us;
-
+        normalize_latency_stats(lat_sum, lat_count, NULL, &latency_stats);
     *latency_out = latency_stats;
+
     return true;
 }
 
-inline void print_client_result_lines(const std::string &lib_name,
-                                      const std::string &transport,
-                                      size_t msg_size,
-                                      double throughput,
-                                      const bench_latency_stats_t &latency,
-                                      const bench_multi_resource_metrics_t &metrics)
+inline void cleanup_spot_runtime(std::vector<spot_client_slot_t> *slots,
+                                 void **discovery)
 {
-    print_result(lib_name,
-                 k_pattern,
-                 transport,
-                 msg_size,
-                 throughput,
-                 latency.mean_us,
-                 latency.p95_us,
-                 latency.p99_us);
+    close_spot_client_slots(slots);
+    if (discovery && *discovery) {
+        zlink_discovery_destroy(discovery);
+        *discovery = NULL;
+    }
+}
 
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision(2) << metrics.cpu_pct
-                  << std::endl;
+inline void run_spot_debug_probe(const std::vector<spot_client_slot_t> &slots,
+                                 size_t msg_size)
+{
+    if (!bench_debug_enabled() || slots.empty())
+        return;
+
+    long probe_recv = 0;
+    const auto probe_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < probe_deadline) {
+        const int rc = recv_spot_message_once(slots[0].sub,
+                                              ZLINK_DONTWAIT,
+                                              msg_size,
+                                              perf_multi_metric::phase_warmup,
+                                              false,
+                                              NULL,
+                                              NULL,
+                                              NULL,
+                                              NULL);
+        if (rc < 0)
+            break;
+        if (rc == 1) {
+            ++probe_recv;
+            continue;
+        }
+        if (rc > 1)
+            continue;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision(2) << metrics.mem_mb
-                  << std::endl;
+    std::cerr << "[multi-spot-client] pre-run probe recv=" << probe_recv
+              << std::endl;
+}
+
+inline bool setup_spot_runtime(ctx_guard_t &ctx,
+                               const std::string &transport,
+                               const std::string &registry_pub_endpoint,
+                               const multi_bench_settings_t &settings,
+                               const std::vector<size_t> &msg_sizes,
+                               void **discovery_out,
+                               std::vector<spot_client_slot_t> *slots_out)
+{
+    if (!discovery_out || !slots_out)
+        return false;
+
+    *discovery_out = zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
+    if (!*discovery_out
+        || zlink_discovery_connect_registry(*discovery_out, registry_pub_endpoint.c_str()) != 0
+        || zlink_discovery_subscribe(*discovery_out, k_service_name) != 0) {
+        cleanup_spot_runtime(slots_out, discovery_out);
+        return false;
     }
+
+    if (!wait_for_service_receivers(*discovery_out,
+                                    k_service_name,
+                                    1,
+                                    settings.connect_ready_timeout_ms)
+        || !prepare_connected_spot_slots(
+          ctx, transport, settings, *discovery_out, slots_out)) {
+        cleanup_spot_runtime(slots_out, discovery_out);
+        return false;
+    }
+
+    std::string provider_endpoint;
+    (void) resolve_service_endpoint(*discovery_out, k_service_name, &provider_endpoint);
+    if (bench_debug_enabled()) {
+        std::cerr << "[multi-spot-client] provider endpoint "
+                  << provider_endpoint << std::endl;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+      std::max(100, settings.settle_ms)));
+    run_spot_debug_probe(*slots_out, msg_sizes.empty() ? 64 : msg_sizes[0]);
+
+    return true;
+}
+
+inline bool run_spot_size_cases(ctx_guard_t &ctx,
+                                const std::string &transport,
+                                const multi_bench_settings_t &settings,
+                                void *discovery,
+                                std::vector<spot_client_slot_t> *slots,
+                                const std::string &lib_name,
+                                const std::vector<size_t> &msg_sizes)
+{
+    if (!slots)
+        return false;
+
+    debug_stage("run sizes");
+    for (size_t si = 0; si < msg_sizes.size(); ++si) {
+        if (bench_debug_enabled()) {
+            std::cerr << "[multi-spot-client] size " << msg_sizes[si] << " start"
+                      << std::endl;
+        }
+
+        double throughput = 0.0;
+        bench_latency_stats_t latency;
+        bench_multi_resource_metrics_t metrics;
+        if (!run_spot_one_way_duration(*slots,
+                                       settings,
+                                       msg_sizes[si],
+                                       &throughput,
+                                       &latency,
+                                       &metrics)) {
+            if (bench_debug_enabled()) {
+                std::cerr << "[multi-spot-client] size " << msg_sizes[si]
+                          << " failed" << std::endl;
+            }
+            return false;
+        }
+
+        print_client_result_lines(k_pattern,
+                                  lib_name,
+                                  transport,
+                                  msg_sizes[si],
+                                  throughput,
+                                  latency,
+                                  metrics);
+
+        if ((si + 1) >= msg_sizes.size())
+            continue;
+
+        if (!prepare_connected_spot_slots(
+              ctx, transport, settings, discovery, slots)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 inline int run_client_benchmark(const std::string &lib_name,
@@ -781,126 +942,36 @@ inline int run_client_benchmark(const std::string &lib_name,
     (void) registry_router_endpoint;
 
     const multi_bench_settings_t settings = resolve_multi_bench_settings();
-    std::vector<size_t> msg_sizes = resolve_bench_msg_sizes(fallback_size);
-    if (msg_sizes.empty())
-        msg_sizes.push_back(fallback_size > 0 ? fallback_size : 64);
+    std::vector<size_t> msg_sizes = resolve_case_msg_sizes(fallback_size);
 
     ctx_guard_t ctx;
     if (!ctx.valid())
         return 1;
 
-    debug_stage("create discovery");
-    void *discovery =
-      zlink_discovery_new_typed(ctx.get(), ZLINK_SERVICE_TYPE_SPOT);
-    debug_stage("connect discovery registry");
-    if (!discovery
-        || zlink_discovery_connect_registry(discovery, registry_pub_endpoint.c_str()) != 0
-        || zlink_discovery_subscribe(discovery, k_service_name) != 0) {
-        if (discovery)
-            zlink_discovery_destroy(&discovery);
-        return 1;
-    }
-
-    debug_stage("create slots");
     std::vector<spot_client_slot_t> slots;
-    if (!create_spot_client_slots(ctx,
-                                  transport,
-                                  settings,
-                                  &slots)) {
-        close_spot_client_slots(&slots);
-        zlink_discovery_destroy(&discovery);
+    void *discovery = NULL;
+    if (!setup_spot_runtime(ctx,
+                            transport,
+                            registry_pub_endpoint,
+                            settings,
+                            msg_sizes,
+                            &discovery,
+                            &slots)) {
         return 1;
     }
 
-    std::string provider_endpoint;
-    if (wait_for_service_receivers(discovery,
-                                   k_service_name,
-                                   static_cast<int>(slots.size()),
-                                   settings.connect_ready_timeout_ms)) {
-        (void) resolve_service_endpoint(discovery, k_service_name, &provider_endpoint);
-    }
-
-    if (provider_endpoint.empty())
-        provider_endpoint = server_endpoint;
-
-    if (provider_endpoint.empty()
-        || !create_slot_subscribers(&slots)
-        || !connect_slots_to_provider(&slots, provider_endpoint)) {
-        close_spot_client_slots(&slots);
-        zlink_discovery_destroy(&discovery);
-        return 1;
-    }
-    if (bench_debug_enabled()) {
-        std::cerr << "[multi-spot-client] provider endpoint "
-                  << provider_endpoint << std::endl;
-    }
-
-    debug_stage("wait sub peers");
-    if (!wait_all_sub_peers(slots, settings.connect_ready_timeout_ms)) {
-        close_spot_client_slots(&slots);
-        zlink_discovery_destroy(&discovery);
+    if (!run_spot_size_cases(ctx,
+                             transport,
+                             settings,
+                             discovery,
+                             &slots,
+                             lib_name,
+                             msg_sizes)) {
+        cleanup_spot_runtime(&slots, &discovery);
         return 1;
     }
 
-    if (bench_debug_enabled() && !slots.empty()) {
-        long probe_recv = 0;
-        const auto probe_deadline =
-          std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        while (std::chrono::steady_clock::now() < probe_deadline) {
-            const int rc = recv_spot_message_once(slots[0].sub,
-                                                  ZLINK_DONTWAIT,
-                                                  false,
-                                                  NULL,
-                                                  NULL,
-                                                  NULL);
-            if (rc < 0)
-                break;
-            if (rc > 0) {
-                ++probe_recv;
-                continue;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-        std::cerr << "[multi-spot-client] pre-run probe recv=" << probe_recv
-                  << std::endl;
-    }
-
-    debug_stage("run sizes");
-    for (size_t si = 0; si < msg_sizes.size(); ++si) {
-        if (bench_debug_enabled()) {
-            std::cerr << "[multi-spot-client] size " << msg_sizes[si] << " start"
-                      << std::endl;
-        }
-        double throughput = 0.0;
-        bench_latency_stats_t latency;
-        bench_multi_resource_metrics_t metrics;
-
-        if (!run_spot_one_way_duration(slots,
-                                       settings,
-                                       &throughput,
-                                       &latency,
-                                       &metrics)) {
-            if (bench_debug_enabled()) {
-                std::cerr << "[multi-spot-client] size " << msg_sizes[si]
-                          << " failed" << std::endl;
-            }
-            close_spot_client_slots(&slots);
-            zlink_discovery_destroy(&discovery);
-            return 1;
-        }
-
-        print_client_result_lines(lib_name,
-                                  transport,
-                                  msg_sizes[si],
-                                  throughput,
-                                  latency,
-                                  metrics);
-
-        run_size_transition_drain_stage(settings, (si + 1) < msg_sizes.size());
-    }
-
-    close_spot_client_slots(&slots);
-    zlink_discovery_destroy(&discovery);
+    cleanup_spot_runtime(&slots, &discovery);
     return 0;
 }
 

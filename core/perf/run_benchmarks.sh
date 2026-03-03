@@ -89,8 +89,6 @@ SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
-SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
-SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_SINGLE_PUBSUB_RCVTIMEO_MS:-200}}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
 if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
   PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
@@ -118,18 +116,15 @@ Options:
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
-  --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
-  --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
 
 Notes:
-  - tmp result is always saved under results/single/tmp/.
-  - report result save is always enabled.
+  - result is saved under results/<single|multi>/report/.
   - default build mode is incremental (configure/build without deleting build dir).
-  - --output and report save can be used together.
+  - --output and result save can be used together.
   - MULTI_* patterns are rejected by this script.
 USAGE
 }
@@ -195,14 +190,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
-      shift
-      ;;
-    --sndtimeo|--sndtimeo-ms)
-      SINGLE_SNDTIMEO_MS="${2:-}"
-      shift
-      ;;
-    --rcvtimeo|--rcvtimeo-ms)
-      SINGLE_RCVTIMEO_MS="${2:-}"
       shift
       ;;
     --pin-cpu)
@@ -323,14 +310,6 @@ if [[ -n "${SINGLE_RCVHWM}" && ( ! "${SINGLE_RCVHWM}" =~ ^[0-9]+$ || "${SINGLE_R
   echo "recv-hwm must be a positive integer." >&2
   exit 1
 fi
-if [[ -n "${SINGLE_SNDTIMEO_MS}" && ( ! "${SINGLE_SNDTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_SNDTIMEO_MS}" -lt 1 ) ]]; then
-  echo "sndtimeo must be a positive integer." >&2
-  exit 1
-fi
-if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_RCVTIMEO_MS}" -lt 1 ) ]]; then
-  echo "rcvtimeo must be a positive integer." >&2
-  exit 1
-fi
 
 if [[ "${RUNS_EXPLICIT}" -eq 0 ]]; then
   RUNS=1
@@ -365,14 +344,14 @@ RESULT_SUITE="single"
 if (( MULTI_PATTERN_COUNT > 0 )); then
   RESULT_SUITE="multi"
 fi
-RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/tmp/${NAME}.txt"
+RESULT_FILE="${RESULTS_DIR}/${RESULT_SUITE}/report/${NAME}.txt"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
   OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
 fi
 
 if [[ -n "${RESULT_FILE}" && -n "${OUTPUT_FILE}" && "${RESULT_FILE}" == "${OUTPUT_FILE}" ]]; then
-  echo "Error: --output cannot point to the same file as report result output." >&2
+  echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
 fi
 
@@ -549,12 +528,6 @@ if [[ -n "${SINGLE_SNDHWM}" ]]; then
 fi
 if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
-fi
-if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
-  RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
-fi
-if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
-  RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
 fi
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)

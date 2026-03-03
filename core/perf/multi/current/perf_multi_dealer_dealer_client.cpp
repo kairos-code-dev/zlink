@@ -1,6 +1,7 @@
 #include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
 
 #include <algorithm>
@@ -28,6 +29,7 @@ using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::wait_all_client_connect_ready;
 
 inline void on_signal (int)
@@ -41,14 +43,6 @@ inline void install_signal_handlers ()
 #if defined(SIGTERM)
     std::signal (SIGTERM, on_signal);
 #endif
-}
-
-inline unsigned long long wallclock_now_us ()
-{
-    return static_cast<unsigned long long> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
 }
 
 inline bool create_client_sockets (
@@ -69,28 +63,29 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
-{
-    std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (fallback_size);
-    if (msg_sizes.empty ())
-        msg_sizes.push_back (fallback_size > 0 ? fallback_size : 64);
-    return msg_sizes;
-}
-
 inline bool send_one_message (void *socket,
                               std::vector<char> &payload,
+                              size_t payload_size,
+                              uint32_t run_id,
+                              perf_multi_metric::phase_t phase,
                               size_t msg_size,
-                              bool stamp_timestamp)
+                              uint64_t seq)
 {
-    if (!socket || msg_size == 0 || msg_size > payload.size ())
+    if (!socket || payload_size == 0 || payload_size > payload.size ())
         return false;
 
-    if (stamp_timestamp && msg_size >= sizeof (unsigned long long)) {
-        const unsigned long long now_us = wallclock_now_us ();
-        std::memcpy (payload.data (), &now_us, sizeof (now_us));
+    if (!perf_multi_metric::stamp_payload (
+          payload.data (),
+          payload_size,
+          run_id,
+          phase,
+          msg_size,
+          seq,
+          perf_multi_metric::now_us ())) {
+        return false;
     }
 
-    const int rc = zlink_send (socket, payload.data (), msg_size, 0);
+    const int rc = zlink_send (socket, payload.data (), payload_size, 0);
     if (rc >= 0)
         return true;
 
@@ -104,10 +99,13 @@ inline bool send_one_message (void *socket,
 
 inline bool run_send_window (const std::vector<void *> &sockets,
                              std::vector<char> &payload,
+                             size_t payload_size,
+                             uint32_t run_id,
+                             perf_multi_metric::phase_t phase,
                              size_t msg_size,
                              double duration_seconds,
                              bool send_active,
-                             bool stamp_timestamp)
+                             uint64_t *seq)
 {
     if (duration_seconds <= 0.0)
         return true;
@@ -125,7 +123,7 @@ inline bool run_send_window (const std::vector<void *> &sockets,
         return true;
     }
 
-    if (sockets.empty ())
+    if (sockets.empty () || !seq)
         return false;
 
     size_t socket_index = 0;
@@ -133,8 +131,16 @@ inline bool run_send_window (const std::vector<void *> &sockets,
            && std::chrono::steady_clock::now () < deadline) {
         void *sock = sockets[socket_index];
         socket_index = (socket_index + 1) % sockets.size ();
-        if (!send_one_message (sock, payload, msg_size, stamp_timestamp))
+        if (!send_one_message (
+              sock,
+              payload,
+              payload_size,
+              run_id,
+              phase,
+              msg_size,
+              (*seq)++)) {
             return false;
+        }
     }
 
     return true;
@@ -144,38 +150,56 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   const multi_bench_settings_t &settings,
                                   std::vector<char> &payload,
                                   size_t msg_size,
-                                  bool has_next_size)
+                                  uint32_t run_id)
 {
+    const size_t payload_size =
+      std::max<size_t> (msg_size, perf_multi_metric::header_size ());
     const double warmup_s =
       static_cast<double> (std::max (0, settings.warmup_seconds));
     const double settle_s =
       static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
-    const double throughput_s =
+    const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
-    const double latency_s =
-      static_cast<double> (std::max (1, settings.duration_seconds));
-    const double drain_s =
-      static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
-    const double transition_s =
-      has_next_size ? static_cast<double> (
-                        std::max (0, settings.size_transition_drain_ms))
-                        / 1000.0
-                    : 0.0;
 
-    if (!run_send_window (sockets, payload, msg_size, warmup_s, true, false))
+    uint64_t seq = 1;
+    if (!run_send_window (
+          sockets,
+          payload,
+          payload_size,
+          run_id,
+          perf_multi_metric::phase_warmup,
+          msg_size,
+          warmup_s,
+          true,
+          &seq)) {
         return false;
-    if (!run_send_window (sockets, payload, msg_size, settle_s, false, false))
+    }
+
+    if (!run_send_window (
+          sockets,
+          payload,
+          payload_size,
+          run_id,
+          perf_multi_metric::phase_drain,
+          msg_size,
+          settle_s,
+          false,
+          &seq)) {
         return false;
-    if (!run_send_window (sockets, payload, msg_size, throughput_s, true, false))
+    }
+
+    if (!run_send_window (
+          sockets,
+          payload,
+          payload_size,
+          run_id,
+          perf_multi_metric::phase_active,
+          msg_size,
+          active_s,
+          true,
+          &seq)) {
         return false;
-    if (!run_send_window (sockets, payload, msg_size, settle_s, false, false))
-        return false;
-    if (!run_send_window (sockets, payload, msg_size, latency_s, true, true))
-        return false;
-    if (!run_send_window (sockets, payload, msg_size, drain_s, false, false))
-        return false;
-    if (!run_send_window (sockets, payload, msg_size, transition_s, false, false))
-        return false;
+    }
 
     return true;
 }
@@ -234,7 +258,7 @@ inline int run_client_benchmark (const std::string &lib_name,
     size_t max_size = 64;
     for (size_t i = 0; i < msg_sizes.size (); ++i)
         max_size = std::max (max_size, msg_sizes[i]);
-    max_size = std::max<size_t> (max_size, sizeof (unsigned long long));
+    max_size = std::max<size_t> (max_size, perf_multi_metric::header_size ());
 
     std::vector<char> payload (max_size, 'd');
 
@@ -244,13 +268,13 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
 
-        const bool has_next_size = (si + 1) < msg_sizes.size ();
+        const uint32_t run_id = static_cast<uint32_t> (si + 1);
         if (!run_single_size_case (
               sockets,
               settings,
               payload,
               msg_sizes[si],
-              has_next_size)) {
+              run_id)) {
             close_client_sockets (&sockets);
             return 1;
         }

@@ -1,11 +1,13 @@
 #include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <csignal>
 #include <cstring>
 #include <iomanip>
@@ -25,6 +27,7 @@ namespace {
 static const char *k_pattern = "MULTI_SPOT";
 static const char *k_service_name = "perf-spot";
 static const char *k_topic = "bench";
+static const uint32_t k_metric_run_id = 1U;
 
 static std::atomic<bool> g_stop_requested(false);
 static std::atomic<bool> g_queue_probe_pending(false);
@@ -143,6 +146,7 @@ inline std::string replace_any_host_with_localhost(const std::string &endpoint)
 
 inline bool setup_registry(void *ctx,
                            int base_port,
+                           int broadcast_interval_ms,
                            void **registry_out,
                            std::string *pub_endpoint_out,
                            std::string *router_endpoint_out)
@@ -162,6 +166,11 @@ inline bool setup_registry(void *ctx,
         void *registry = zlink_registry_new(ctx);
         if (!registry)
             return false;
+
+        if (broadcast_interval_ms > 0) {
+            (void) zlink_registry_set_broadcast_interval(
+              registry, static_cast<uint32_t>(broadcast_interval_ms));
+        }
 
         if (zlink_registry_set_endpoints(registry, pub_ep.c_str(), router_ep.c_str())
               == 0
@@ -370,63 +379,52 @@ inline bool wait_for_pub_peers(void *node, size_t target_count, int timeout_ms)
     return ok;
 }
 
-inline unsigned long long wallclock_now_us()
-{
-    return static_cast<unsigned long long>(
-      std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-        .count());
-}
-
 inline bool publish_once(void *spot_pub,
                          const std::string &topic,
                          std::vector<char> &payload,
-                         size_t current_msg_size)
+                         size_t current_msg_size,
+                         perf_multi_metric::phase_t phase,
+                         uint64_t *seq)
 {
     if (!spot_pub || current_msg_size == 0 || payload.empty())
         return true;
+    if (!seq)
+        return false;
 
+    const size_t metric_header_size = perf_multi_metric::header_size();
     const size_t send_size =
       std::min(payload.size(), std::max<size_t>(static_cast<size_t>(1), current_msg_size));
-    const unsigned long long now_us = wallclock_now_us();
+    if (send_size < metric_header_size)
+        return false;
+    if (!perf_multi_metric::stamp_payload(payload.data(),
+                                          send_size,
+                                          k_metric_run_id,
+                                          phase,
+                                          current_msg_size,
+                                          (*seq)++,
+                                          perf_multi_metric::now_us())) {
+        return false;
+    }
 
-    if (send_size <= sizeof(now_us)) {
-        zlink_msg_t msg;
-        if (zlink_msg_init_size(&msg, send_size) != 0)
-            return false;
-        std::memcpy(zlink_msg_data(&msg), &now_us, send_size);
-
-        if (zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0)
+    while (true) {
+        if (zlink_spot_pub_publish_bytes(spot_pub,
+                                         topic.c_str(),
+                                         payload.data(),
+                                         send_size,
+                                         0)
+            == 0) {
             return true;
-    } else {
-        zlink_msg_t parts[2];
-        if (zlink_msg_init_size(&parts[0], sizeof(now_us)) != 0)
-            return false;
-        std::memcpy(zlink_msg_data(&parts[0]), &now_us, sizeof(now_us));
-
-        if (zlink_msg_init_data(&parts[1],
-                                payload.data(),
-                                send_size - sizeof(now_us),
-                                NULL,
-                                NULL)
-            != 0) {
-            zlink_msg_close(&parts[0]);
-            return false;
         }
 
-        if (zlink_spot_pub_publish(spot_pub, topic.c_str(), parts, 2, 0) == 0)
+        const int err = zlink_errno();
+        if (err == EINTR)
+            continue;
+        if (err == EAGAIN || err == ETIMEDOUT) {
+            std::this_thread::yield();
             return true;
+        }
+        return g_stop_requested.load(std::memory_order_acquire);
     }
-
-    const int err = zlink_errno();
-    if (err == EINTR)
-        return true;
-    if (err == EAGAIN || err == ETIMEDOUT) {
-        std::this_thread::yield();
-        return true;
-    }
-
-    return g_stop_requested.load(std::memory_order_acquire);
 }
 
 inline size_t resolve_max_size(const std::vector<size_t> &sizes)
@@ -442,21 +440,25 @@ inline size_t resolve_max_size(const std::vector<size_t> &sizes)
 struct one_way_phase_t
 {
     one_way_phase_t(size_t msg_size_,
+                    perf_multi_metric::phase_t phase_,
                     std::chrono::steady_clock::duration duration_,
                     bool send_active_) :
         msg_size(msg_size_),
+        phase(phase_),
         duration(duration_),
         send_active(send_active_)
     {
     }
 
     size_t msg_size;
+    perf_multi_metric::phase_t phase;
     std::chrono::steady_clock::duration duration;
     bool send_active;
 };
 
 inline void append_one_way_phase(std::vector<one_way_phase_t> *phases,
                                  size_t msg_size,
+                                 perf_multi_metric::phase_t phase,
                                  double seconds,
                                  bool send_active)
 {
@@ -464,6 +466,7 @@ inline void append_one_way_phase(std::vector<one_way_phase_t> *phases,
         return;
     phases->push_back(one_way_phase_t(
       msg_size,
+      phase,
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(seconds)),
       send_active));
@@ -480,25 +483,17 @@ build_one_way_phases(const multi_bench_settings_t &settings,
     const double warmup_s = static_cast<double>(std::max(0, settings.warmup_seconds));
     const double settle_s =
       static_cast<double>(std::max(0, settings.settle_ms)) / 1000.0;
-    const double throughput_s =
+    const double active_s =
       static_cast<double>(std::max(1, settings.duration_seconds));
-    const double latency_s =
-      static_cast<double>(std::max(1, settings.duration_seconds));
-    const double drain_s =
-      static_cast<double>(std::max(0, settings.drain_ms)) / 1000.0;
-    const double transition_s =
-      static_cast<double>(std::max(0, settings.size_transition_drain_ms)) / 1000.0;
 
     for (size_t i = 0; i < msg_sizes.size(); ++i) {
         const size_t msg_size = msg_sizes[i];
-        append_one_way_phase(&phases, msg_size, warmup_s, true);
-        append_one_way_phase(&phases, msg_size, settle_s, false);
-        append_one_way_phase(&phases, msg_size, throughput_s, true);
-        append_one_way_phase(&phases, msg_size, settle_s, false);
-        append_one_way_phase(&phases, msg_size, latency_s, true);
-        append_one_way_phase(&phases, msg_size, drain_s, false);
-        if ((i + 1) < msg_sizes.size())
-            append_one_way_phase(&phases, msg_size, transition_s, false);
+        append_one_way_phase(
+          &phases, msg_size, perf_multi_metric::phase_warmup, warmup_s, true);
+        append_one_way_phase(
+          &phases, msg_size, perf_multi_metric::phase_drain, settle_s, false);
+        append_one_way_phase(
+          &phases, msg_size, perf_multi_metric::phase_active, active_s, true);
     }
 
     return phases;
@@ -547,6 +542,9 @@ inline bool run_server_loop(void *spot_pub,
       build_one_way_phases(settings, msg_sizes);
     size_t phase_index = 0;
     auto phase_deadline = std::chrono::steady_clock::now();
+    size_t current_phase_msg_size = 0;
+    perf_multi_metric::phase_t current_phase = perf_multi_metric::phase_warmup;
+    uint64_t phase_seq = 1;
     if (!phases.empty())
         phase_deadline += phases[0].duration;
 
@@ -569,18 +567,39 @@ inline bool run_server_loop(void *spot_pub,
                 continue;
             }
 
+            if (phases[phase_index].msg_size != current_phase_msg_size
+                || phases[phase_index].phase != current_phase) {
+                current_phase_msg_size = phases[phase_index].msg_size;
+                current_phase = phases[phase_index].phase;
+                phase_seq = 1;
+            }
+
             if (!phases[phase_index].send_active) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 continue;
             }
 
-            if (!publish_once(spot_pub, k_topic, *payload, phases[phase_index].msg_size))
+            if (!publish_once(spot_pub,
+                              k_topic,
+                              *payload,
+                              phases[phase_index].msg_size,
+                              phases[phase_index].phase,
+                              &phase_seq)) {
                 return false;
+            }
             continue;
         }
 
-        if (!publish_once(spot_pub, k_topic, *payload, payload->size()))
+        current_phase = perf_multi_metric::phase_active;
+        current_phase_msg_size = payload->size();
+        if (!publish_once(spot_pub,
+                          k_topic,
+                          *payload,
+                          payload->size(),
+                          perf_multi_metric::phase_active,
+                          &phase_seq)) {
             return false;
+        }
     }
 
     return true;
@@ -634,6 +653,7 @@ inline int run_server_benchmark(const std::string &lib_name,
     debug_stage("setup registry");
     if (!setup_registry(ctx.get(),
                         30000 + (current_process_id() % 20000),
+                        std::max(100, settings.settle_ms),
                         &registry,
                         &registry_pub_endpoint,
                         &registry_router_endpoint)) {
@@ -715,6 +735,8 @@ inline int run_server_benchmark(const std::string &lib_name,
     std::vector<char> payload(
       std::max<size_t>(static_cast<size_t>(1024), max_size),
       's');
+    if (payload.size() < perf_multi_metric::header_size())
+        payload.resize(perf_multi_metric::header_size(), 's');
 
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample();
 

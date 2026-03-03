@@ -281,6 +281,16 @@ public:
         }
     }
 
+    // Force full context termination immediately (blocking) and clear handle.
+    void force_term()
+    {
+        if (!_ctx)
+            return;
+        zlink_ctx_shutdown(_ctx);
+        zlink_ctx_term(_ctx);
+        _ctx = NULL;
+    }
+
     void *get() const { return _ctx; }
     bool valid() const { return _ctx != NULL; }
 

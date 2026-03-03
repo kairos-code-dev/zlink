@@ -220,7 +220,6 @@ Options:
   --recv-timeout-ms N    Alias of --rcvtimeo.
   --connect-concurrency N
                          Override concurrent connect count.
-  --drain-ms N           Override PERF_MULTI_DRAIN_MS.
   --transport-transition-ms N
                          Override PERF_MULTI_TRANSPORT_TRANSITION_MS (default: 3000).
   --pattern-transition-ms N
@@ -245,36 +244,9 @@ Environment:
   PERF_MULTI_MEMORY_PER_CLIENT_KB=1024
                             Estimated memory per client socket for guard
 Notes:
-  - tmp result is always saved under results/multi/tmp/.
-  - report result save is always enabled.
+  - result is saved under results/multi/report/.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
-}
-
-pattern_uses_default_drain() {
-  local pattern="${1:-}"
-  case "${pattern^^}" in
-    MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER|MULTI_PUBSUB|MULTI_STREAM|MULTI_STREAM_CALLBACK|MULTI_STREAM_LEN32BE)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-resolve_pattern_drain_ms() {
-  local pattern="${1:-}"
-  if [[ -n "${MULTI_DRAIN_MS}" ]]; then
-    echo "${MULTI_DRAIN_MS}"
-    return
-  fi
-
-  if pattern_uses_default_drain "${pattern}"; then
-    echo "${PERF_MULTI_EXCEPTION_DRAIN_MS:-300}"
-  else
-    echo "0"
-  fi
 }
 
 resolve_pattern_connect_concurrency() {
@@ -346,7 +318,6 @@ MULTI_RCVHWM="${PERF_MULTI_RCVHWM:-}"
 MULTI_SNDTIMEO_MS="${PERF_MULTI_SNDTIMEO_MS:-200}"
 MULTI_RCVTIMEO_MS="${PERF_MULTI_RCVTIMEO_MS:-200}"
 MULTI_CONNECT_CONCURRENCY="${PERF_MULTI_CONNECT_CONCURRENCY:-}"
-MULTI_DRAIN_MS="${PERF_MULTI_DRAIN_MS:-}"
 MULTI_TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-3000}"
 MULTI_PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-3000}"
 MULTI_SERVER_READY_TIMEOUT_MS="${PERF_MULTI_SERVER_READY_TIMEOUT_MS:-10000}"
@@ -566,14 +537,6 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       MULTI_CONNECT_CONCURRENCY="${2}"
-      shift 2
-      ;;
-    --drain-ms)
-      if [[ $# -lt 2 ]]; then
-        echo "Error: $1 requires a value." >&2
-        exit 1
-      fi
-      MULTI_DRAIN_MS="${2}"
       shift 2
       ;;
     --transport-transition-ms)
@@ -854,9 +817,6 @@ fi
 
 if [[ -n "${MULTI_CONNECT_CONCURRENCY}" ]]; then
   RUN_ENV+=(PERF_MULTI_CONNECT_CONCURRENCY="${MULTI_CONNECT_CONCURRENCY}")
-fi
-if [[ -n "${MULTI_DRAIN_MS}" ]]; then
-  RUN_ENV+=(PERF_MULTI_DRAIN_MS="${MULTI_DRAIN_MS}")
 fi
 
 PATTERN_CSV="$(IFS=,; echo "${RUN_PATTERNS[*]}")"

@@ -495,7 +495,35 @@ message parts is transferred.
 `ASYNC` mode may return `EAGAIN` when the queue is full and full-policy is
 `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`.
 
-**See also:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
+**See also:** `zlink_spot_pub_publish_bytes`, `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
+
+---
+
+### zlink_spot_pub_publish_bytes
+
+Publish a single-part byte buffer under a topic.
+
+```c
+int zlink_spot_pub_publish_bytes(void *pub,
+                                 const char *topic_id,
+                                 const void *data,
+                                 size_t size,
+                                 int flags);
+```
+
+Publishes a single-part payload on the Node's PUB socket with the given
+topic identifier. This convenience API avoids caller-side `zlink_msg_t`
+construction for the common single-buffer publish path.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- `data == NULL` while `size > 0`.
+- `EAGAIN` -- async publish queue is full with `EAGAIN` full-policy.
+
+**Thread safety:** Thread-safe.
+
+**See also:** `zlink_spot_pub_publish`, `zlink_spot_pub_new`
 
 ---
 

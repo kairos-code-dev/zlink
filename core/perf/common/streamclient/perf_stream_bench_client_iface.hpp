@@ -25,6 +25,7 @@ class bench_client_iface_t
     virtual bool allow_send () const = 0;       // true if within active phase window
     virtual size_t current_phase_size () const = 0; // payload size for current phase
     virtual bool latency_sampling_enabled () const = 0;
+    virtual int latency_sample_rate () const = 0;
     virtual uint64_t next_seq () = 0;           // monotonic sequence for latency embedding
 
     // --- Metrics callbacks (called from I/O threads via strand) ---

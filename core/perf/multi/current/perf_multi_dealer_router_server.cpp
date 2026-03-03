@@ -67,8 +67,14 @@ inline void emit_requested_queue_probe (const std::string &lib_name,
 
 inline bool is_supported_transport (const std::string &transport)
 {
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
+    if (transport == "tcp" || transport == "tls" || transport == "ws"
+        || transport == "wss")
+        return true;
+#if !defined(_WIN32)
+    if (transport == "ipc")
+        return true;
+#endif
+    return false;
 }
 
 inline std::string bind_server_endpoint (void *server,
@@ -135,48 +141,66 @@ enum relay_status_t
 
 inline relay_status_t relay_router_message_non_blocking (void *server)
 {
-    bool more = true;
-    bool received_any = false;
+    // Identity frame
+    zlink_msg_t identity;
+    if (zlink_msg_init (&identity) != 0)
+        return relay_error;
 
-    while (more) {
-        zlink_msg_t part;
-        if (zlink_msg_init (&part) != 0)
-            return relay_error;
-
-        int recv_rc = zlink_msg_recv (&part, server, ZLINK_DONTWAIT);
-        while (recv_rc < 0 && zlink_errno () == EINTR)
-            recv_rc = zlink_msg_recv (&part, server, ZLINK_DONTWAIT);
-        if (recv_rc < 0) {
-            const int err = zlink_errno ();
-            zlink_msg_close (&part);
-            if (!received_any && err == EAGAIN)
-                return relay_idle;
-            return relay_error;
-        }
-
-        received_any = true;
-        more = zlink_msg_more (&part) != 0;
-        const int send_flags = more ? ZLINK_SNDMORE : 0;
-
-        while (!g_stop_requested.load (std::memory_order_acquire)) {
-            const int send_rc = zlink_msg_send (&part, server, send_flags);
-            if (send_rc >= 0)
-                break;
-
-            const int err = zlink_errno ();
-            if (err == EINTR)
-                continue;
-            if (err == EAGAIN) {
-                std::this_thread::yield ();
-                continue;
-            }
-
-            zlink_msg_close (&part);
-            return relay_error;
-        }
-
-        zlink_msg_close (&part);
+    int recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
+    while (recv_rc < 0 && zlink_errno () == EINTR)
+        recv_rc = zlink_msg_recv (&identity, server, ZLINK_DONTWAIT);
+    if (recv_rc < 0) {
+        const int err = zlink_errno ();
+        zlink_msg_close (&identity);
+        if (err == EAGAIN)
+            return relay_idle;
+        return relay_error;
     }
+
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        const int send_rc = zlink_msg_send (&identity, server, ZLINK_SNDMORE);
+        if (send_rc >= 0)
+            break;
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err == EAGAIN) {
+            std::this_thread::yield ();
+            continue;
+        }
+        zlink_msg_close (&identity);
+        return relay_error;
+    }
+    zlink_msg_close (&identity);
+
+    // Payload frame
+    zlink_msg_t payload;
+    if (zlink_msg_init (&payload) != 0)
+        return relay_error;
+
+    recv_rc = zlink_msg_recv (&payload, server, 0);
+    while (recv_rc < 0 && zlink_errno () == EINTR)
+        recv_rc = zlink_msg_recv (&payload, server, 0);
+    if (recv_rc < 0) {
+        zlink_msg_close (&payload);
+        return relay_error;
+    }
+
+    while (!g_stop_requested.load (std::memory_order_acquire)) {
+        const int send_rc = zlink_msg_send (&payload, server, 0);
+        if (send_rc >= 0)
+            break;
+        const int err = zlink_errno ();
+        if (err == EINTR)
+            continue;
+        if (err == EAGAIN) {
+            std::this_thread::yield ();
+            continue;
+        }
+        zlink_msg_close (&payload);
+        return relay_error;
+    }
+    zlink_msg_close (&payload);
 
     return relay_progress;
 }

@@ -44,6 +44,10 @@ STREAM_VARIANT_PATTERNS = (
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
 )
+PATTERN_ALIASES = {
+    "STREAM": STREAM_VARIANT_PATTERNS,
+    "STREAMS": STREAM_VARIANT_PATTERNS,
+}
 STREAM_SHARED_CLIENT_BINARY = "perf_stream_client"
 STREAM_SERVER_BINARY_BY_PATTERN = {
     "MULTI_STREAM": "comp_current_multi_stream_server",
@@ -68,10 +72,6 @@ MULTI_ECHO_PATTERNS = {
     "MULTI_STREAM",
     "MULTI_STREAM_CALLBACK",
     "MULTI_STREAM_LEN32BE",
-}
-MULTI_SIZE_ISOLATION_PATTERNS = {
-    "MULTI_DEALER_DEALER",
-    "MULTI_PUBSUB",
 }
 SINGLE_ECHO_PATTERNS = {
     "PAIR",
@@ -102,6 +102,20 @@ def is_echo_pattern(pattern_name):
     if pattern.startswith("MULTI_"):
         return pattern in MULTI_ECHO_PATTERNS
     return pattern in SINGLE_ECHO_PATTERNS
+
+
+def expand_pattern_aliases(requested_patterns):
+    expanded = set()
+    for pattern in requested_patterns:
+        normalized = (pattern or "").strip().upper()
+        if not normalized:
+            continue
+        alias_members = PATTERN_ALIASES.get(normalized)
+        if alias_members:
+            expanded.update(alias_members)
+            continue
+        expanded.add(normalized)
+    return expanded
 
 
 def resolve_stream_server_binary(pattern_name):
@@ -764,6 +778,11 @@ TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     TRANSPORTS.append("ipc")
 
+# Default transports for multi non-service patterns.
+MULTI_NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
+if not IS_WINDOWS:
+    MULTI_NON_SERVICE_TRANSPORTS.append("ipc")
+
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
@@ -774,20 +793,21 @@ def is_multi_pattern(pattern_name):
 
 
 def select_transports(pattern_name):
-    base = (
-        STREAM_TRANSPORTS
-        if pattern_name
-        in (
-            "MULTI_STREAM",
-            "MULTI_STREAM_CALLBACK",
-            "MULTI_STREAM_LEN32BE",
-            "GATEWAY",
-            "SPOT",
-            "MULTI_GATEWAY",
-            "MULTI_SPOT",
-        )
-        else TRANSPORTS
+    multi_service_or_stream = pattern_name in (
+        "MULTI_STREAM",
+        "MULTI_STREAM_CALLBACK",
+        "MULTI_STREAM_LEN32BE",
+        "MULTI_GATEWAY",
+        "MULTI_SPOT",
     )
+    if pattern_name in ("GATEWAY", "SPOT"):
+        base = STREAM_TRANSPORTS
+    elif multi_service_or_stream:
+        base = STREAM_TRANSPORTS
+    elif is_multi_pattern(pattern_name):
+        base = MULTI_NON_SERVICE_TRANSPORTS
+    else:
+        base = TRANSPORTS
     if not _env_transports:
         return list(base)
     return [t for t in base if t in _env_transports]
@@ -834,8 +854,6 @@ ENV_ALIAS_KEYS = (
     "PERF_MULTI_SNDTIMEO_MS",
     "PERF_MULTI_RCVTIMEO_MS",
     "PERF_MULTI_CONNECT_CONCURRENCY",
-    "PERF_MULTI_DRAIN_MS",
-    "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
     "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS",
     "PERF_MULTI_CONNECT_READY_TIMEOUT_MS",
     "PERF_MULTI_MONITOR_HWM",
@@ -1115,35 +1133,6 @@ def multi_pattern_default_hwm(pattern_name):
     return max(1, parse_env_int("PERF_MULTI_DEFAULT_HWM", 100))
 
 
-def multi_pattern_default_drain_ms(
-    pattern_name, transport="", sizes=None, clients=None
-):
-    if pattern_name in (
-        "MULTI_DEALER_DEALER",
-        "MULTI_DEALER_ROUTER",
-        "MULTI_ROUTER_ROUTER",
-        "MULTI_PUBSUB",
-        "MULTI_GATEWAY",
-        "MULTI_STREAM",
-        "MULTI_STREAM_CALLBACK",
-        "MULTI_STREAM_LEN32BE",
-    ):
-        if pattern_name in STREAM_VARIANT_PATTERNS:
-            tr = (transport or "").strip().lower()
-            try:
-                clients_int = max(1, int(clients))
-            except (TypeError, ValueError):
-                clients_int = multi_pattern_default_clients(pattern_name, tr)
-            size_list = sizes if sizes else MULTI_STREAM_MSG_SIZES
-            max_size = max(size_list) if size_list else 0
-            # Large encrypted/websocket stream runs at high CCU often leave
-            # outstanding echoes at phase end; extend drain to avoid false FAIL.
-            if tr in ("tls", "ws", "wss") and clients_int >= 5000 and max_size >= 65536:
-                return 5000
-        return 300
-    return 0
-
-
 def resolve_pattern_connect_concurrency(clients):
     if clients >= 10000:
         return 1024
@@ -1241,6 +1230,74 @@ def build_bench_cmd(binary_path, args):
     return [binary_path] + list(args)
 
 
+def _resolve_multi_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
+    if (
+        pattern_name in ("MULTI_GATEWAY", "MULTI_SPOT")
+        and transport in ("tls", "wss")
+    ):
+        ready_timeout_ms = max(ready_timeout_ms, 20000)
+        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
+    return ready_timeout_ms, shutdown_timeout_ms
+
+
+def _resolve_multi_io_threads(env, io_key):
+    io_value = env_pair_value(env, io_key)
+    if not io_value:
+        io_value = env_pair_value(env, "PERF_IO_THREADS")
+    if not io_value:
+        io_value = "2"
+    try:
+        return max(1, int(io_value))
+    except (TypeError, ValueError):
+        return 2
+
+
+def _prepare_multi_case_env(
+    lib_name,
+    transport,
+    sizes,
+    pattern_name,
+    force_stream_sizes=False,
+):
+    env = get_env_for_lib(lib_name)
+    size_csv = ",".join(str(sz) for sz in sizes)
+    set_env_pair(env, "PERF_MSG_SIZES", size_csv)
+    set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
+    if force_stream_sizes or pattern_name in STREAM_VARIANT_PATTERNS:
+        set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
+
+    clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
+    if not clients_value:
+        clients_value = str(multi_pattern_default_clients(pattern_name, transport))
+    set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
+    try:
+        clients_int = max(1, int(clients_value))
+    except ValueError:
+        clients_int = multi_pattern_default_clients(pattern_name, transport)
+
+    connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
+    if not connect_value:
+        connect_value = str(resolve_pattern_connect_concurrency(clients_int))
+    set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
+
+    if pattern_name == "MULTI_GATEWAY":
+        gateway_refresh_sleep_ms = max(
+            1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 1)
+        )
+        receiver_hb_chunk_ms = max(
+            1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
+        )
+        set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
+        set_env_pair(env, "ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS", receiver_hb_chunk_ms)
+    if pattern_name == "MULTI_SPOT":
+        spot_idle_sleep_ms = max(1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 1))
+        set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
+
+    server_io_threads_int = _resolve_multi_io_threads(env, "PERF_MULTI_SERVER_IO_THREADS")
+    client_io_threads_int = _resolve_multi_io_threads(env, "PERF_MULTI_CLIENT_IO_THREADS")
+    return env, size_csv, clients_int, server_io_threads_int, client_io_threads_int
+
+
 def run_multi_sizes_test_stream_shared(
     server_binary_name,
     lib_name,
@@ -1271,606 +1328,558 @@ def run_multi_sizes_test_stream_shared(
         timeout_sec = max(60, duration_seconds * max(1, len(sizes)) * 4 + 30)
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
-        # Secure transports need a bit more startup slack for TLS handshake.
-        ready_timeout_ms = max(ready_timeout_ms, 20000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
+    ready_timeout_ms, shutdown_timeout_ms = _resolve_multi_server_timeouts(
+        pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms
+    )
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
-    for _ in range(1):
-        env = get_env_for_lib(lib_name)
-        size_csv = ",".join(str(sz) for sz in sizes)
-        set_env_pair(env, "PERF_MSG_SIZES", size_csv)
-        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
-        set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
+    (
+        env,
+        size_csv,
+        clients_int,
+        server_io_threads_int,
+        client_io_threads_int,
+    ) = _prepare_multi_case_env(
+        lib_name,
+        transport,
+        sizes,
+        pattern_name,
+        force_stream_sizes=True,
+    )
 
-        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
-        if not clients_value:
-            clients_value = str(multi_pattern_default_clients(pattern_name, transport))
-        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
-        try:
-            clients_int = max(1, int(clients_value))
-        except ValueError:
-            clients_int = multi_pattern_default_clients(pattern_name, transport)
+    set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+    set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+    set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
+    latency_sample_rate = max(
+        1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
+    )
+    warmup_seconds = max(
+        0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
+    )
 
-        connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
-        if not connect_value:
-            connect_value = str(resolve_pattern_connect_concurrency(clients_int))
-        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
+    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
+    shared_client_args = [
+        "--transport",
+        transport,
+        "--pattern",
+        pattern_name,
+        "--sizes",
+        size_csv,
+        "--runs",
+        "1",
+        "--warmup",
+        str(warmup_seconds),
+        "--duration",
+        str(duration_seconds),
+        "--ccu",
+        str(clients_int),
+        "--io-threads",
+        str(client_io_threads_int),
+        "--latency-sample-rate",
+        str(latency_sample_rate),
+        "--print-perf-result",
+        "1",
+        "--send-stop-token",
+        "0",
+    ]
+    client_cmd = build_bench_cmd(shared_client_path, shared_client_args)
+    server_env = env.copy()
+    client_env = env.copy()
+    set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
+    set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
-        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
-        if not drain_value:
-            drain_value = str(
-                multi_pattern_default_drain_ms(
-                    pattern_name, transport, sizes=sizes, clients=clients_int
-                )
-            )
-        set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
+    server_proc = None
+    close_server_sampler = None
+    sample_server_metrics = None
+    capture_limit = resolve_output_capture_limit()
+    server_stdout_buffer = BoundedTextBuffer(capture_limit)
+    server_stderr_buffer = BoundedTextBuffer(capture_limit)
+    out_queue = queue.Queue()
+    reader_threads = []
 
-        set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
-        set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
-        set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
-
-        size_transition_drain_ms = parse_env_int(
-            "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS", 300
+    def append_server_stdout_line(line):
+        server_stdout_buffer.append(line)
+        emit_multi_result_metrics_from_line(
+            line, transport, expected_sizes, result_line_callback
         )
 
-        server_io_threads_value = env_pair_value(env, "PERF_MULTI_SERVER_IO_THREADS")
-        if not server_io_threads_value:
-            server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
-        if not server_io_threads_value:
-            server_io_threads_value = "2"
-        try:
-            server_io_threads_int = max(1, int(server_io_threads_value))
-        except ValueError:
-            server_io_threads_int = 2
-
-        client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
-        if not client_io_threads_value:
-            client_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
-        if not client_io_threads_value:
-            client_io_threads_value = "2"
-        try:
-            client_io_threads_int = max(1, int(client_io_threads_value))
-        except ValueError:
-            client_io_threads_int = 2
-        try:
-            drain_int = max(0, int(drain_value))
-        except ValueError:
-            drain_int = multi_pattern_default_drain_ms(
-                pattern_name, transport, sizes=sizes, clients=clients_int
-            )
-
-        latency_sample_rate = max(
-            1, parse_env_int("PERF_MULTI_STREAM_LATENCY_SAMPLE_RATE", 64)
-        )
-        warmup_seconds = max(
-            0, parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2)
-        )
-
-        server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
-        shared_client_args = [
-            "--transport",
-            transport,
-            "--pattern",
-            pattern_name,
-            "--sizes",
-            size_csv,
-            "--runs",
-            "1",
-            "--warmup",
-            str(warmup_seconds),
-            "--duration",
-            str(duration_seconds),
-            "--ccu",
-            str(clients_int),
-            "--io-threads",
-            str(client_io_threads_int),
-            "--drain-ms",
-            str(drain_int),
-            "--size-transition-drain-ms",
-            str(max(0, int(size_transition_drain_ms))),
-            "--latency-sample-rate",
-            str(latency_sample_rate),
-            "--print-perf-result",
-            "1",
-            "--send-stop-token",
-            "0",
-        ]
-        client_cmd = build_bench_cmd(shared_client_path, shared_client_args)
-        server_env = env.copy()
-        client_env = env.copy()
-        set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
-        set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
-
-        server_proc = None
-        close_server_sampler = None
-        sample_server_metrics = None
-        capture_limit = resolve_output_capture_limit()
-        server_stdout_buffer = BoundedTextBuffer(capture_limit)
-        server_stderr_buffer = BoundedTextBuffer(capture_limit)
-        out_queue = queue.Queue()
-        reader_threads = []
-
-        def append_server_stdout_line(line):
-            server_stdout_buffer.append(line)
-            emit_multi_result_metrics_from_line(
-                line, transport, expected_sizes, result_line_callback
-            )
-
-        def stop_server():
-            nonlocal server_proc
-            if not server_proc:
-                return
-            if server_proc.poll() is None:
-                try:
-                    if server_proc.stdin:
-                        try:
-                            server_proc.stdin.write("STOP\n")
-                            server_proc.stdin.flush()
-                        except Exception:
-                            pass
-                        try:
-                            server_proc.stdin.close()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                wait_sec = shutdown_timeout_ms / 1000.0
-                if wait_sec <= 0:
-                    wait_sec = 0.1
-                try:
-                    server_proc.wait(timeout=wait_sec)
-                except subprocess.TimeoutExpired:
+    def stop_server():
+        nonlocal server_proc
+        if not server_proc:
+            return
+        if server_proc.poll() is None:
+            try:
+                if server_proc.stdin:
                     try:
-                        server_proc.terminate()
+                        server_proc.stdin.write("STOP\n")
+                        server_proc.stdin.flush()
                     except Exception:
                         pass
                     try:
-                        server_proc.wait(timeout=max(1.0, wait_sec))
+                        server_proc.stdin.close()
                     except Exception:
-                        try:
-                            server_proc.kill()
-                        except Exception:
-                            pass
-                        try:
-                            server_proc.wait(timeout=2)
-                        except Exception:
-                            pass
-
-        def drain_server_output():
-            for t in reader_threads:
+                        pass
+            except Exception:
+                pass
+            wait_sec = shutdown_timeout_ms / 1000.0
+            if wait_sec <= 0:
+                wait_sec = 0.1
+            try:
+                server_proc.wait(timeout=wait_sec)
+            except subprocess.TimeoutExpired:
                 try:
-                    t.join(timeout=1.0)
+                    server_proc.terminate()
                 except Exception:
                     pass
-
-            while True:
                 try:
-                    stream_name, line = out_queue.get_nowait()
-                except queue.Empty:
-                    break
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                else:
-                    server_stderr_buffer.append(line)
-
-        def pump_server_output_nonblocking():
-            while True:
-                try:
-                    stream_name, line = out_queue.get_nowait()
-                except queue.Empty:
-                    break
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                else:
-                    server_stderr_buffer.append(line)
-
-        try:
-            server_proc = subprocess.Popen(
-                server_cmd,
-                env=server_env,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-            )
-            reader_threads = [
-                threading.Thread(
-                    target=_pipe_reader,
-                    args=(server_proc.stdout, "stdout", out_queue),
-                    daemon=True,
-                ),
-                threading.Thread(
-                    target=_pipe_reader,
-                    args=(server_proc.stderr, "stderr", out_queue),
-                    daemon=True,
-                ),
-            ]
-            for t in reader_threads:
-                t.start()
-
-            endpoint = ""
-            early_status = ""
-            early_reason = ""
-            ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
-            while not endpoint and time.monotonic() <= ready_deadline:
-                try:
-                    stream_name, line = out_queue.get(timeout=0.05)
-                except queue.Empty:
-                    if server_proc.poll() is not None:
-                        break
-                    continue
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                    token = parse_special_token(line)
-                    if token:
-                        token_status = token[0]
-                        token_lib = token[1]
-                        token_pattern = token[2]
-                        token_transport = token[3]
-                        if (
-                            token_lib == lib_name
-                            and token_pattern == pattern_name
-                            and token_transport == transport
-                        ):
-                            early_status = token_status
-                            early_reason = token[4] if len(token) > 4 else token_status
-                            break
-                    parsed_ep = parse_ready_endpoint(line)
-                    if parsed_ep:
-                        endpoint = parsed_ep
-                else:
-                    server_stderr_buffer.append(line)
-
-            if early_status in ("unsupported", "skip"):
-                stop_server()
-                drain_server_output()
-                return {
-                    "status": early_status,
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
-                    "reason": early_reason or early_status,
-                    "warnings": [],
-                }
-
-            if not endpoint:
-                pump_server_output_nonblocking()
-                was_running_before_stop = server_proc and server_proc.poll() is None
-                stop_server()
-                drain_server_output()
-                reason = "server_ready_timeout"
-                if (
-                    server_proc
-                    and not was_running_before_stop
-                    and server_proc.poll() is not None
-                ):
-                    reason = f"server_exit_before_ready_{server_proc.returncode}"
-                startup_detail = summarize_server_startup_detail(
-                    server_stdout_buffer.text(), server_stderr_buffer.text()
-                )
-                if startup_detail:
-                    reason = f"{reason}::{startup_detail}"
-                return {
-                    "status": "fail",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": server_proc.returncode if server_proc else -1,
-                    "cpu_pct": None,
-                    "mem_mb": None,
-                    "reason": reason,
-                    "warnings": [],
-                }
-
-            line_transport = transport.lower()
-            sample_server_metrics, close_server_sampler = create_external_process_sampler(
-                server_proc.pid
-            )
-            current_live_size = [sizes[0] if sizes else None]
-            last_server_cpu = [None]
-            last_server_mem = [None]
-            last_server_size = [None]
-            last_client_cpu = [None]
-            last_client_mem = [None]
-            last_client_size = [None]
-            queue_probe_requested_sizes = set()
-
-            def update_live_size_from_line(line):
-                parsed_line, _warning = parse_result_line(
-                    line, transport, expected_sizes
-                )
-                if parsed_line:
-                    current_live_size[0] = parsed_line[1]
-                    return
-                connect_line, _connect_warning = parse_result_connect_line(
-                    line, transport, expected_sizes
-                )
-                if connect_line:
-                    current_live_size[0] = connect_line[1]
-
-            def request_server_queue_probe(size_value):
-                nonlocal server_proc
-                if server_proc is None or server_proc.poll() is not None:
-                    return
-                try:
-                    size_int = int(size_value)
-                except (TypeError, ValueError):
-                    return
-                if size_int <= 0 or size_int in queue_probe_requested_sizes:
-                    return
-                try:
-                    if server_proc.stdin:
-                        server_proc.stdin.write(f"QUEUE,{size_int}\n")
-                        server_proc.stdin.flush()
-                        queue_probe_requested_sizes.add(size_int)
+                    server_proc.wait(timeout=max(1.0, wait_sec))
                 except Exception:
-                    return
+                    try:
+                        server_proc.kill()
+                    except Exception:
+                        pass
+                    try:
+                        server_proc.wait(timeout=2)
+                    except Exception:
+                        pass
 
-            def emit_live_server_metrics(force=False):
-                if result_line_callback is None or sample_server_metrics is None:
-                    return
-                sample_cpu, sample_mem, changed = sample_server_metrics()
-                if sample_cpu is not None:
-                    last_server_cpu[0] = float(sample_cpu)
-                if sample_mem is not None:
-                    last_server_mem[0] = float(sample_mem)
+    def drain_server_output():
+        for t in reader_threads:
+            try:
+                t.join(timeout=1.0)
+            except Exception:
+                pass
 
-                target_size = current_live_size[0]
-                if target_size not in expected_sizes:
-                    return
-                size_changed = target_size != last_server_size[0]
-                if not changed and not force and not size_changed:
-                    return
+        while True:
+            try:
+                stream_name, line = out_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+            else:
+                server_stderr_buffer.append(line)
 
-                if last_server_cpu[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "server_cpu_pct",
-                        last_server_cpu[0],
-                    )
-                if last_server_mem[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "server_mem_mb",
-                        last_server_mem[0],
-                    )
-                last_server_size[0] = target_size
+    def pump_server_output_nonblocking():
+        while True:
+            try:
+                stream_name, line = out_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+            else:
+                server_stderr_buffer.append(line)
 
-            def emit_live_client_metrics(sample_cpu, sample_mem, force=False):
-                if result_line_callback is None:
-                    return
+    try:
+        server_proc = subprocess.Popen(
+            server_cmd,
+            env=server_env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        reader_threads = [
+            threading.Thread(
+                target=_pipe_reader,
+                args=(server_proc.stdout, "stdout", out_queue),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=_pipe_reader,
+                args=(server_proc.stderr, "stderr", out_queue),
+                daemon=True,
+            ),
+        ]
+        for t in reader_threads:
+            t.start()
 
-                if sample_cpu is not None:
-                    last_client_cpu[0] = float(sample_cpu)
-                if sample_mem is not None:
-                    last_client_mem[0] = float(sample_mem)
+        endpoint = ""
+        early_status = ""
+        early_reason = ""
+        ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
+        while not endpoint and time.monotonic() <= ready_deadline:
+            try:
+                stream_name, line = out_queue.get(timeout=0.05)
+            except queue.Empty:
+                if server_proc.poll() is not None:
+                    break
+                continue
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+                token = parse_special_token(line)
+                if token:
+                    token_status = token[0]
+                    token_lib = token[1]
+                    token_pattern = token[2]
+                    token_transport = token[3]
+                    if (
+                        token_lib == lib_name
+                        and token_pattern == pattern_name
+                        and token_transport == transport
+                    ):
+                        early_status = token_status
+                        early_reason = token[4] if len(token) > 4 else token_status
+                        break
+                parsed_ep = parse_ready_endpoint(line)
+                if parsed_ep:
+                    endpoint = parsed_ep
+            else:
+                server_stderr_buffer.append(line)
 
-                target_size = current_live_size[0]
-                if target_size not in expected_sizes:
-                    return
-                size_changed = target_size != last_client_size[0]
-                if sample_cpu is None and sample_mem is None and not force and not size_changed:
-                    return
-
-                if last_client_cpu[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "client_cpu_pct",
-                        last_client_cpu[0],
-                    )
-                if last_client_mem[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "client_mem_mb",
-                        last_client_mem[0],
-                    )
-                last_client_size[0] = target_size
-
-            def on_client_stdout_line(line):
-                pump_server_output_nonblocking()
-                update_live_size_from_line(line)
-                emit_multi_result_metrics_from_line(
-                    line, transport, expected_sizes, result_line_callback
-                )
-                parsed_line, _warning = parse_result_line(
-                    line, transport, expected_sizes
-                )
-                if parsed_line:
-                    _line_transport, line_size, metric_name, _value = parsed_line
-                    if normalize_multi_metric_name(metric_name) == "throughput":
-                        request_server_queue_probe(line_size)
-                emit_live_server_metrics()
-                emit_live_client_metrics(None, None)
-
-            def on_client_sample(sample_cpu, sample_mem):
-                pump_server_output_nonblocking()
-                emit_live_server_metrics()
-                emit_live_client_metrics(sample_cpu, sample_mem)
-
-            sampled = run_command_with_metrics(
-                client_cmd + ["--endpoint", endpoint],
-                client_env,
-                timeout_sec,
-                on_stdout_line=on_client_stdout_line,
-                on_sample=on_client_sample,
-            )
-            pump_server_output_nonblocking()
-            emit_live_server_metrics(force=True)
-            emit_live_client_metrics(None, None, force=True)
-            client_stdout = sampled.get("stdout", "") or ""
-            client_stderr = sampled.get("stderr", "") or ""
-            progress_meta = {
-                "server_endpoint": endpoint,
-                "client_stderr": client_stderr,
-            }
-
+        if early_status in ("unsupported", "skip"):
             stop_server()
             drain_server_output()
-            server_rc = server_proc.returncode if server_proc else 0
+            return {
+                "status": early_status,
+                "parsed": {},
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": early_reason or early_status,
+                "warnings": [],
+            }
 
-            combined_stdout = server_stdout_buffer.text() + client_stdout
-            combined_stderr = server_stderr_buffer.text() + client_stderr
-            stderr_lower = combined_stderr.lower()
-
-            parsed = {}
-            warnings = []
-            for line in combined_stdout.splitlines():
-                parsed_line, warning = parse_result_line(line, transport, expected_sizes)
-                if warning:
-                    warnings.append(warning)
-                if not parsed_line:
-                    connect_line, connect_warning = parse_result_connect_line(
-                        line, transport, expected_sizes
-                    )
-                    if connect_warning:
-                        warnings.append(connect_warning)
-                    if not connect_line:
-                        continue
-                    line_transport, line_size, ok_value, fail_value, target_value = connect_line
-                    parsed[f"{line_transport}|{line_size}|connect_ok"] = ok_value
-                    parsed[f"{line_transport}|{line_size}|connect_fail"] = fail_value
-                    parsed[f"{line_transport}|{line_size}|connect_target"] = target_value
-                    continue
-
-                line_transport, line_size, metric, value = parsed_line
-                metric_name = normalize_multi_metric_name(metric)
-                key = f"{line_transport}|{line_size}|{metric_name}"
-                if key in parsed:
-                    if metric_name in MULTI_SERVER_QUEUE_METRICS:
-                        continue
-                    if should_warn_duplicate_multi_metric(metric_name):
-                        warnings.append(
-                            "duplicate RESULT metric detected; keeping last value: "
-                            f"{pattern_name} {transport} {line_size}B {metric_name}"
-                        )
-                parsed[key] = value
-
-            for sz in sizes:
-                connect_target_key = f"{transport}|{sz}|connect_target"
-                parsed.setdefault(connect_target_key, float(clients_int))
-
-            token_status, token_reason = detect_special_status(
-                combined_stdout, lib_name, pattern_name, transport
+        if not endpoint:
+            pump_server_output_nonblocking()
+            was_running_before_stop = server_proc and server_proc.poll() is None
+            stop_server()
+            drain_server_output()
+            reason = "server_ready_timeout"
+            if (
+                server_proc
+                and not was_running_before_stop
+                and server_proc.poll() is not None
+            ):
+                reason = f"server_exit_before_ready_{server_proc.returncode}"
+            startup_detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
             )
-
-            if sampled.get("timed_out", False):
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": True,
-                    "returncode": sampled.get("returncode", -1),
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "timeout",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if sampled.get("returncode", 0) != 0:
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": sampled.get("returncode", -1),
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if server_rc not in (0, None):
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": server_rc,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": f"server_non_zero_exit_{server_rc}",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-
-            if parsed:
-                return {
-                    "status": "success",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if token_status in ("unsupported", "skip"):
-                return {
-                    "status": token_status,
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": token_reason if token_reason else token_status,
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if "protocol not supported" in stderr_lower:
-                return {
-                    "status": "unsupported",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "unsupported",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
+            if startup_detail:
+                reason = f"{reason}::{startup_detail}"
             return {
                 "status": "fail",
                 "parsed": {},
+                "timed_out": False,
+                "returncode": server_proc.returncode if server_proc else -1,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": reason,
+                "warnings": [],
+            }
+
+        line_transport = transport.lower()
+        sample_server_metrics, close_server_sampler = create_external_process_sampler(
+            server_proc.pid
+        )
+        current_live_size = [sizes[0] if sizes else None]
+        last_server_cpu = [None]
+        last_server_mem = [None]
+        last_server_size = [None]
+        last_client_cpu = [None]
+        last_client_mem = [None]
+        last_client_size = [None]
+        queue_probe_requested_sizes = set()
+
+        def update_live_size_from_line(line):
+            parsed_line, _warning = parse_result_line(
+                line, transport, expected_sizes
+            )
+            if parsed_line:
+                current_live_size[0] = parsed_line[1]
+                return
+            connect_line, _connect_warning = parse_result_connect_line(
+                line, transport, expected_sizes
+            )
+            if connect_line:
+                current_live_size[0] = connect_line[1]
+
+        def request_server_queue_probe(size_value):
+            nonlocal server_proc
+            if server_proc is None or server_proc.poll() is not None:
+                return
+            try:
+                size_int = int(size_value)
+            except (TypeError, ValueError):
+                return
+            if size_int <= 0 or size_int in queue_probe_requested_sizes:
+                return
+            try:
+                if server_proc.stdin:
+                    server_proc.stdin.write(f"QUEUE,{size_int}\n")
+                    server_proc.stdin.flush()
+                    queue_probe_requested_sizes.add(size_int)
+            except Exception:
+                return
+
+        def emit_live_server_metrics(force=False):
+            if result_line_callback is None or sample_server_metrics is None:
+                return
+            sample_cpu, sample_mem, changed = sample_server_metrics()
+            if sample_cpu is not None:
+                last_server_cpu[0] = float(sample_cpu)
+            if sample_mem is not None:
+                last_server_mem[0] = float(sample_mem)
+
+            target_size = current_live_size[0]
+            if target_size not in expected_sizes:
+                return
+            size_changed = target_size != last_server_size[0]
+            if not changed and not force and not size_changed:
+                return
+
+            if last_server_cpu[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "server_cpu_pct",
+                    last_server_cpu[0],
+                )
+            if last_server_mem[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "server_mem_mb",
+                    last_server_mem[0],
+                )
+            last_server_size[0] = target_size
+
+        def emit_live_client_metrics(sample_cpu, sample_mem, force=False):
+            if result_line_callback is None:
+                return
+
+            if sample_cpu is not None:
+                last_client_cpu[0] = float(sample_cpu)
+            if sample_mem is not None:
+                last_client_mem[0] = float(sample_mem)
+
+            target_size = current_live_size[0]
+            if target_size not in expected_sizes:
+                return
+            size_changed = target_size != last_client_size[0]
+            if sample_cpu is None and sample_mem is None and not force and not size_changed:
+                return
+
+            if last_client_cpu[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "client_cpu_pct",
+                    last_client_cpu[0],
+                )
+            if last_client_mem[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "client_mem_mb",
+                    last_client_mem[0],
+                )
+            last_client_size[0] = target_size
+
+        def on_client_stdout_line(line):
+            pump_server_output_nonblocking()
+            update_live_size_from_line(line)
+            emit_multi_result_metrics_from_line(
+                line, transport, expected_sizes, result_line_callback
+            )
+            parsed_line, _warning = parse_result_line(
+                line, transport, expected_sizes
+            )
+            if parsed_line:
+                _line_transport, line_size, metric_name, _value = parsed_line
+                if normalize_multi_metric_name(metric_name) == "throughput":
+                    request_server_queue_probe(line_size)
+            emit_live_server_metrics()
+            emit_live_client_metrics(None, None)
+
+        def on_client_sample(sample_cpu, sample_mem):
+            pump_server_output_nonblocking()
+            emit_live_server_metrics()
+            emit_live_client_metrics(sample_cpu, sample_mem)
+
+        sampled = run_command_with_metrics(
+            client_cmd + ["--endpoint", endpoint],
+            client_env,
+            timeout_sec,
+            on_stdout_line=on_client_stdout_line,
+            on_sample=on_client_sample,
+        )
+        pump_server_output_nonblocking()
+        emit_live_server_metrics(force=True)
+        emit_live_client_metrics(None, None, force=True)
+        client_stdout = sampled.get("stdout", "") or ""
+        client_stderr = sampled.get("stderr", "") or ""
+        progress_meta = {
+            "server_endpoint": endpoint,
+            "client_stderr": client_stderr,
+        }
+
+        stop_server()
+        drain_server_output()
+        server_rc = server_proc.returncode if server_proc else 0
+
+        combined_stdout = server_stdout_buffer.text() + client_stdout
+        combined_stderr = server_stderr_buffer.text() + client_stderr
+        stderr_lower = combined_stderr.lower()
+
+        parsed = {}
+        warnings = []
+        for line in combined_stdout.splitlines():
+            parsed_line, warning = parse_result_line(line, transport, expected_sizes)
+            if warning:
+                warnings.append(warning)
+            if not parsed_line:
+                connect_line, connect_warning = parse_result_connect_line(
+                    line, transport, expected_sizes
+                )
+                if connect_warning:
+                    warnings.append(connect_warning)
+                if not connect_line:
+                    continue
+                line_transport, line_size, ok_value, fail_value, target_value = connect_line
+                parsed[f"{line_transport}|{line_size}|connect_ok"] = ok_value
+                parsed[f"{line_transport}|{line_size}|connect_fail"] = fail_value
+                parsed[f"{line_transport}|{line_size}|connect_target"] = target_value
+                continue
+
+            line_transport, line_size, metric, value = parsed_line
+            metric_name = normalize_multi_metric_name(metric)
+            key = f"{line_transport}|{line_size}|{metric_name}"
+            if key in parsed:
+                if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                    continue
+                if should_warn_duplicate_multi_metric(metric_name):
+                    warnings.append(
+                        "duplicate RESULT metric detected; keeping last value: "
+                        f"{pattern_name} {transport} {line_size}B {metric_name}"
+                    )
+            parsed[key] = value
+
+        for sz in sizes:
+            connect_target_key = f"{transport}|{sz}|connect_target"
+            parsed.setdefault(connect_target_key, float(clients_int))
+
+        token_status, token_reason = detect_special_status(
+            combined_stdout, lib_name, pattern_name, transport
+        )
+
+        if sampled.get("timed_out", False):
+            return {
+                "status": "fail",
+                "parsed": parsed,
+                "timed_out": True,
+                "returncode": sampled.get("returncode", -1),
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "timeout",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        if sampled.get("returncode", 0) != 0:
+            detail = summarize_server_startup_detail(client_stdout, client_stderr)
+            reason = f"non_zero_exit_{sampled.get('returncode', -1)}"
+            if detail:
+                reason = f"{reason}_{detail}"
+            return {
+                "status": "fail",
+                "parsed": parsed,
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": "no_data",
+                "reason": reason,
                 "warnings": warnings,
                 **progress_meta,
             }
-        except Exception:
-            stop_server()
+        if server_rc not in (0, None):
             return {
                 "status": "fail",
+                "parsed": parsed,
+                "timed_out": False,
+                "returncode": server_rc,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": f"server_non_zero_exit_{server_rc}",
+                "warnings": warnings,
+                **progress_meta,
+            }
+
+        if parsed:
+            return {
+                "status": "success",
+                "parsed": parsed,
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        if token_status in ("unsupported", "skip"):
+            return {
+                "status": token_status,
                 "parsed": {},
                 "timed_out": False,
-                "returncode": -1,
-                "cpu_pct": None,
-                "mem_mb": None,
-                "reason": "exception",
-                "warnings": [],
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": token_reason if token_reason else token_status,
+                "warnings": warnings,
+                **progress_meta,
             }
-        finally:
-            if close_server_sampler is not None:
-                close_server_sampler()
+        if "protocol not supported" in stderr_lower:
+            return {
+                "status": "unsupported",
+                "parsed": {},
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "unsupported",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        return {
+            "status": "fail",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": sampled.get("returncode", -1),
+            "cpu_pct": sampled.get("cpu_pct"),
+            "mem_mb": sampled.get("mem_mb"),
+            "reason": "no_data",
+            "warnings": warnings,
+            **progress_meta,
+        }
+    except Exception:
+        stop_server()
+        return {
+            "status": "fail",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": -1,
+            "cpu_pct": None,
+            "mem_mb": None,
+            "reason": "exception",
+            "warnings": [],
+        }
+    finally:
+        if close_server_sampler is not None:
+            close_server_sampler()
 
     return {
         "status": "fail",
@@ -1915,543 +1924,468 @@ def run_multi_sizes_test_split(
 
     ready_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_READY_TIMEOUT_MS", 10000))
     shutdown_timeout_ms = max(0, parse_env_int("PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", 5000))
-    if pattern_name == "MULTI_GATEWAY" and transport in ("tls", "wss"):
-        ready_timeout_ms = max(ready_timeout_ms, 20000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
-    if pattern_name == "MULTI_SPOT" and transport in ("tls", "wss"):
-        ready_timeout_ms = max(ready_timeout_ms, 20000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
+    ready_timeout_ms, shutdown_timeout_ms = _resolve_multi_server_timeouts(
+        pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms
+    )
     bind_port = max(0, parse_env_int("PERF_MULTI_SERVER_BIND_PORT", 0))
     expected_sizes = set(sizes)
 
-    for _ in range(1):
-        env = get_env_for_lib(lib_name)
-        size_csv = ",".join(str(sz) for sz in sizes)
-        set_env_pair(env, "PERF_MSG_SIZES", size_csv)
-        set_env_pair(env, "PERF_MULTI_PATTERN", pattern_name)
-        if pattern_name in STREAM_VARIANT_PATTERNS:
-            set_env_pair(env, "PERF_MULTI_STREAM_MSG_SIZES", size_csv)
+    (
+        env,
+        size_csv,
+        clients_int,
+        server_io_threads_int,
+        client_io_threads_int,
+    ) = _prepare_multi_case_env(
+        lib_name,
+        transport,
+        sizes,
+        pattern_name,
+    )
 
-        clients_value = env_pair_value(env, "PERF_MULTI_CLIENTS")
-        if not clients_value:
-            clients_value = str(multi_pattern_default_clients(pattern_name, transport))
-        set_env_pair(env, "PERF_MULTI_CLIENTS", clients_value)
-        try:
-            clients_int = max(1, int(clients_value))
-        except ValueError:
-            clients_int = multi_pattern_default_clients(pattern_name, transport)
+    set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
+    set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
+    set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
+    server_cmd = build_bench_cmd(server_binary_path, [lib_name, transport])
+    client_cmd = build_bench_cmd(
+        client_binary_path, [lib_name, transport, str(fallback_size)]
+    )
+    server_env = env.copy()
+    client_env = env.copy()
+    set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
+    set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
 
-        connect_value = env_pair_value(env, "PERF_MULTI_CONNECT_CONCURRENCY")
-        if not connect_value:
-            connect_value = str(resolve_pattern_connect_concurrency(clients_int))
-        set_env_pair(env, "PERF_MULTI_CONNECT_CONCURRENCY", connect_value)
+    server_proc = None
+    close_server_sampler = None
+    sample_server_metrics = None
+    capture_limit = resolve_output_capture_limit()
+    server_stdout_buffer = BoundedTextBuffer(capture_limit)
+    server_stderr_buffer = BoundedTextBuffer(capture_limit)
+    out_queue = queue.Queue()
+    reader_threads = []
 
-        drain_value = env_pair_value(env, "PERF_MULTI_DRAIN_MS")
-        if not drain_value:
-            drain_value = str(
-                multi_pattern_default_drain_ms(
-                    pattern_name, transport, sizes=sizes, clients=clients_int
-                )
-            )
-        set_env_pair(env, "PERF_MULTI_DRAIN_MS", drain_value)
-        set_env_pair(env, "PERF_MULTI_SERVER_READY_TIMEOUT_MS", ready_timeout_ms)
-        set_env_pair(env, "PERF_MULTI_SERVER_SHUTDOWN_TIMEOUT_MS", shutdown_timeout_ms)
-        set_env_pair(env, "PERF_MULTI_SERVER_BIND_PORT", bind_port)
-        if pattern_name == "MULTI_GATEWAY":
-            gateway_refresh_sleep_ms = max(
-                1, parse_env_int("PERF_MULTI_GATEWAY_REFRESH_SLEEP_MS", 1)
-            )
-            receiver_hb_chunk_ms = max(
-                1, parse_env_int("PERF_MULTI_RECEIVER_HEARTBEAT_CHUNK_MS", 100)
-            )
-            set_env_pair(env, "ZLINK_GATEWAY_REFRESH_SLEEP_MS", gateway_refresh_sleep_ms)
-            set_env_pair(
-                env, "ZLINK_RECEIVER_HEARTBEAT_CHUNK_MS", receiver_hb_chunk_ms
-            )
-        if pattern_name == "MULTI_SPOT":
-            spot_idle_sleep_ms = max(
-                1, parse_env_int("PERF_MULTI_SPOT_IDLE_SLEEP_MS", 1)
-            )
-            set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
+    def append_server_stdout_line(line):
+        server_stdout_buffer.append(line)
+        emit_multi_result_metrics_from_line(
+            line, transport, expected_sizes, result_line_callback
+        )
 
-        server_io_threads_value = env_pair_value(env, "PERF_MULTI_SERVER_IO_THREADS")
-        if not server_io_threads_value:
-            server_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
-        if not server_io_threads_value:
-            server_io_threads_value = "2"
-        try:
-            server_io_threads_int = max(1, int(server_io_threads_value))
-        except ValueError:
-            server_io_threads_int = 2
-
-        client_io_threads_value = env_pair_value(env, "PERF_MULTI_CLIENT_IO_THREADS")
-        if not client_io_threads_value:
-            client_io_threads_value = env_pair_value(env, "PERF_IO_THREADS")
-        if not client_io_threads_value:
-            client_io_threads_value = "2"
-        try:
-            client_io_threads_int = max(1, int(client_io_threads_value))
-        except ValueError:
-            client_io_threads_int = 2
-
-        if IS_WINDOWS:
-            server_cmd = [server_binary_path, lib_name, transport]
-            client_cmd = [
-                client_binary_path,
-                lib_name,
-                transport,
-                str(fallback_size),
-            ]
-        elif os.environ.get("PERF_TASKSET") == "1":
-            server_cmd = ["taskset", "-c", "1", server_binary_path, lib_name, transport]
-            client_cmd = [
-                "taskset",
-                "-c",
-                "1",
-                client_binary_path,
-                lib_name,
-                transport,
-                str(fallback_size),
-            ]
-        else:
-            server_cmd = [server_binary_path, lib_name, transport]
-            client_cmd = [client_binary_path, lib_name, transport, str(fallback_size)]
-        server_env = env.copy()
-        client_env = env.copy()
-        set_env_pair(server_env, "PERF_IO_THREADS", server_io_threads_int)
-        set_env_pair(client_env, "PERF_IO_THREADS", client_io_threads_int)
-
-        server_proc = None
-        close_server_sampler = None
-        sample_server_metrics = None
-        capture_limit = resolve_output_capture_limit()
-        server_stdout_buffer = BoundedTextBuffer(capture_limit)
-        server_stderr_buffer = BoundedTextBuffer(capture_limit)
-        out_queue = queue.Queue()
-        reader_threads = []
-
-        def append_server_stdout_line(line):
-            server_stdout_buffer.append(line)
-            emit_multi_result_metrics_from_line(
-                line, transport, expected_sizes, result_line_callback
-            )
-
-        def stop_server():
-            nonlocal server_proc
-            if not server_proc:
-                return
-            if server_proc.poll() is None:
-                try:
-                    if server_proc.stdin:
-                        try:
-                            server_proc.stdin.write("STOP\n")
-                            server_proc.stdin.flush()
-                        except Exception:
-                            pass
-                        try:
-                            server_proc.stdin.close()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-                wait_sec = shutdown_timeout_ms / 1000.0
-                if wait_sec <= 0:
-                    wait_sec = 0.1
-                try:
-                    server_proc.wait(timeout=wait_sec)
-                except subprocess.TimeoutExpired:
+    def stop_server():
+        nonlocal server_proc
+        if not server_proc:
+            return
+        if server_proc.poll() is None:
+            try:
+                if server_proc.stdin:
                     try:
-                        server_proc.terminate()
+                        server_proc.stdin.write("STOP\n")
+                        server_proc.stdin.flush()
                     except Exception:
                         pass
                     try:
-                        server_proc.wait(timeout=max(1.0, wait_sec))
+                        server_proc.stdin.close()
                     except Exception:
-                        try:
-                            server_proc.kill()
-                        except Exception:
-                            pass
-                        try:
-                            server_proc.wait(timeout=2)
-                        except Exception:
-                            pass
-
-        def drain_server_output():
-            for t in reader_threads:
+                        pass
+            except Exception:
+                pass
+            wait_sec = shutdown_timeout_ms / 1000.0
+            if wait_sec <= 0:
+                wait_sec = 0.1
+            try:
+                server_proc.wait(timeout=wait_sec)
+            except subprocess.TimeoutExpired:
                 try:
-                    t.join(timeout=1.0)
+                    server_proc.terminate()
                 except Exception:
                     pass
-
-            while True:
                 try:
-                    stream_name, line = out_queue.get_nowait()
-                except queue.Empty:
-                    break
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                else:
-                    server_stderr_buffer.append(line)
-
-        def pump_server_output_nonblocking():
-            while True:
-                try:
-                    stream_name, line = out_queue.get_nowait()
-                except queue.Empty:
-                    break
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                else:
-                    server_stderr_buffer.append(line)
-
-        try:
-            server_proc = subprocess.Popen(
-                server_cmd,
-                env=server_env,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-            )
-            reader_threads = [
-                threading.Thread(
-                    target=_pipe_reader,
-                    args=(server_proc.stdout, "stdout", out_queue),
-                    daemon=True,
-                ),
-                threading.Thread(
-                    target=_pipe_reader,
-                    args=(server_proc.stderr, "stderr", out_queue),
-                    daemon=True,
-                ),
-            ]
-            for t in reader_threads:
-                t.start()
-
-            endpoint = ""
-            early_status = ""
-            early_reason = ""
-            ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
-            while not endpoint and time.monotonic() <= ready_deadline:
-                try:
-                    stream_name, line = out_queue.get(timeout=0.05)
-                except queue.Empty:
-                    if server_proc.poll() is not None:
-                        break
-                    continue
-                if line is None:
-                    continue
-                if stream_name == "stdout":
-                    append_server_stdout_line(line)
-                    token = parse_special_token(line)
-                    if token:
-                        token_status = token[0]
-                        token_lib = token[1]
-                        token_pattern = token[2]
-                        token_transport = token[3]
-                        if (
-                            token_lib == lib_name
-                            and token_pattern == pattern_name
-                            and token_transport == transport
-                        ):
-                            early_status = token_status
-                            early_reason = token[4] if len(token) > 4 else token_status
-                            break
-                    parsed_ep = parse_ready_endpoint(line)
-                    if parsed_ep:
-                        endpoint = parsed_ep
-                else:
-                    server_stderr_buffer.append(line)
-
-            if early_status in ("unsupported", "skip"):
-                stop_server()
-                drain_server_output()
-                return {
-                    "status": early_status,
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
-                    "reason": early_reason or early_status,
-                    "warnings": [],
-                }
-
-            if not endpoint:
-                pump_server_output_nonblocking()
-                was_running_before_stop = server_proc and server_proc.poll() is None
-                stop_server()
-                drain_server_output()
-                reason = "server_ready_timeout"
-                if (
-                    server_proc
-                    and not was_running_before_stop
-                    and server_proc.poll() is not None
-                ):
-                    reason = f"server_exit_before_ready_{server_proc.returncode}"
-                startup_detail = summarize_server_startup_detail(
-                    server_stdout_buffer.text(), server_stderr_buffer.text()
-                )
-                if startup_detail:
-                    reason = f"{reason}::{startup_detail}"
-                return {
-                    "status": "fail",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": server_proc.returncode if server_proc else -1,
-                    "cpu_pct": None,
-                    "mem_mb": None,
-                    "reason": reason,
-                    "warnings": [],
-                }
-
-            line_transport = transport.lower()
-            sample_server_metrics, close_server_sampler = create_external_process_sampler(
-                server_proc.pid
-            )
-            current_live_size = [sizes[0] if sizes else None]
-            last_server_cpu = [None]
-            last_server_mem = [None]
-            last_server_size = [None]
-            queue_probe_requested_sizes = set()
-
-            def update_live_size_from_line(line):
-                parsed_line, _warning = parse_result_line(
-                    line, transport, expected_sizes
-                )
-                if parsed_line:
-                    current_live_size[0] = parsed_line[1]
-                    return
-                connect_line, _connect_warning = parse_result_connect_line(
-                    line, transport, expected_sizes
-                )
-                if connect_line:
-                    current_live_size[0] = connect_line[1]
-
-            def request_server_queue_probe(size_value):
-                nonlocal server_proc
-                if server_proc is None or server_proc.poll() is not None:
-                    return
-                try:
-                    size_int = int(size_value)
-                except (TypeError, ValueError):
-                    return
-                if size_int <= 0 or size_int in queue_probe_requested_sizes:
-                    return
-                try:
-                    if server_proc.stdin:
-                        server_proc.stdin.write(f"QUEUE,{size_int}\n")
-                        server_proc.stdin.flush()
-                        queue_probe_requested_sizes.add(size_int)
+                    server_proc.wait(timeout=max(1.0, wait_sec))
                 except Exception:
-                    return
+                    try:
+                        server_proc.kill()
+                    except Exception:
+                        pass
+                    try:
+                        server_proc.wait(timeout=2)
+                    except Exception:
+                        pass
 
-            def emit_live_server_metrics(force=False):
-                if result_line_callback is None or sample_server_metrics is None:
-                    return
-                sample_cpu, sample_mem, changed = sample_server_metrics()
-                if sample_cpu is not None:
-                    last_server_cpu[0] = float(sample_cpu)
-                if sample_mem is not None:
-                    last_server_mem[0] = float(sample_mem)
+    def drain_server_output():
+        for t in reader_threads:
+            try:
+                t.join(timeout=1.0)
+            except Exception:
+                pass
 
-                target_size = current_live_size[0]
-                if target_size not in expected_sizes:
-                    return
-                size_changed = target_size != last_server_size[0]
-                if not changed and not force and not size_changed:
-                    return
+        while True:
+            try:
+                stream_name, line = out_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+            else:
+                server_stderr_buffer.append(line)
 
-                if last_server_cpu[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "server_cpu_pct",
-                        last_server_cpu[0],
-                    )
-                if last_server_mem[0] is not None:
-                    _emit_multi_result_metric_callback(
-                        result_line_callback,
-                        line_transport,
-                        target_size,
-                        "server_mem_mb",
-                        last_server_mem[0],
-                    )
-                last_server_size[0] = target_size
+    def pump_server_output_nonblocking():
+        while True:
+            try:
+                stream_name, line = out_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+            else:
+                server_stderr_buffer.append(line)
 
-            def on_client_stdout_line(line):
-                pump_server_output_nonblocking()
-                update_live_size_from_line(line)
-                emit_multi_result_metrics_from_line(
-                    line, transport, expected_sizes, result_line_callback
-                )
-                parsed_line, _warning = parse_result_line(
-                    line, transport, expected_sizes
-                )
-                if parsed_line:
-                    _line_transport, line_size, metric_name, _value = parsed_line
-                    if normalize_multi_metric_name(metric_name) == "throughput":
-                        request_server_queue_probe(line_size)
-                emit_live_server_metrics()
+    try:
+        server_proc = subprocess.Popen(
+            server_cmd,
+            env=server_env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        reader_threads = [
+            threading.Thread(
+                target=_pipe_reader,
+                args=(server_proc.stdout, "stdout", out_queue),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=_pipe_reader,
+                args=(server_proc.stderr, "stderr", out_queue),
+                daemon=True,
+            ),
+        ]
+        for t in reader_threads:
+            t.start()
 
-            client_cmd = client_cmd + ["--endpoint", endpoint]
-            sampled = run_command_with_metrics(
-                client_cmd,
-                client_env,
-                timeout_sec,
-                on_stdout_line=on_client_stdout_line,
-                on_sample=lambda _cpu, _mem: (
-                    pump_server_output_nonblocking(),
-                    emit_live_server_metrics(),
-                ),
-            )
-            pump_server_output_nonblocking()
-            emit_live_server_metrics(force=True)
-            client_stdout = sampled.get("stdout", "") or ""
-            client_stderr = sampled.get("stderr", "") or ""
-            progress_meta = {
-                "server_endpoint": endpoint,
-                "client_stderr": client_stderr,
-            }
+        endpoint = ""
+        early_status = ""
+        early_reason = ""
+        ready_deadline = time.monotonic() + (ready_timeout_ms / 1000.0)
+        while not endpoint and time.monotonic() <= ready_deadline:
+            try:
+                stream_name, line = out_queue.get(timeout=0.05)
+            except queue.Empty:
+                if server_proc.poll() is not None:
+                    break
+                continue
+            if line is None:
+                continue
+            if stream_name == "stdout":
+                append_server_stdout_line(line)
+                token = parse_special_token(line)
+                if token:
+                    token_status = token[0]
+                    token_lib = token[1]
+                    token_pattern = token[2]
+                    token_transport = token[3]
+                    if (
+                        token_lib == lib_name
+                        and token_pattern == pattern_name
+                        and token_transport == transport
+                    ):
+                        early_status = token_status
+                        early_reason = token[4] if len(token) > 4 else token_status
+                        break
+                parsed_ep = parse_ready_endpoint(line)
+                if parsed_ep:
+                    endpoint = parsed_ep
+            else:
+                server_stderr_buffer.append(line)
 
+        if early_status in ("unsupported", "skip"):
             stop_server()
             drain_server_output()
-            server_rc = server_proc.returncode if server_proc else 0
+            return {
+                "status": early_status,
+                "parsed": {},
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": early_reason or early_status,
+                "warnings": [],
+            }
 
-            combined_stdout = server_stdout_buffer.text() + client_stdout
-            combined_stderr = server_stderr_buffer.text() + client_stderr
-            stderr_lower = combined_stderr.lower()
-
-            parsed = {}
-            warnings = []
-            for line in combined_stdout.splitlines():
-                parsed_line, warning = parse_result_line(line, transport, expected_sizes)
-                if warning:
-                    warnings.append(warning)
-                if not parsed_line:
-                    continue
-                line_transport, line_size, metric, value = parsed_line
-                metric_name = normalize_multi_metric_name(metric)
-                key = f"{line_transport}|{line_size}|{metric_name}"
-                if key in parsed:
-                    if metric_name in MULTI_SERVER_QUEUE_METRICS:
-                        continue
-                    if should_warn_duplicate_multi_metric(metric_name):
-                        warnings.append(
-                            "duplicate RESULT metric detected; keeping last value: "
-                            f"{pattern_name} {transport} {line_size}B {metric_name}"
-                        )
-                parsed[key] = value
-
-            token_status, token_reason = detect_special_status(
-                combined_stdout, lib_name, pattern_name, transport
+        if not endpoint:
+            pump_server_output_nonblocking()
+            was_running_before_stop = server_proc and server_proc.poll() is None
+            stop_server()
+            drain_server_output()
+            reason = "server_ready_timeout"
+            if (
+                server_proc
+                and not was_running_before_stop
+                and server_proc.poll() is not None
+            ):
+                reason = f"server_exit_before_ready_{server_proc.returncode}"
+            startup_detail = summarize_server_startup_detail(
+                server_stdout_buffer.text(), server_stderr_buffer.text()
             )
-
-            if sampled.get("timed_out", False):
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": True,
-                    "returncode": sampled.get("returncode", -1),
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "timeout",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if sampled.get("returncode", 0) != 0:
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": sampled.get("returncode", -1),
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if server_rc not in (0, None):
-                return {
-                    "status": "fail",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": server_rc,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": f"server_non_zero_exit_{server_rc}",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-
-            if parsed:
-                return {
-                    "status": "success",
-                    "parsed": parsed,
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if token_status in ("unsupported", "skip"):
-                return {
-                    "status": token_status,
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": token_reason if token_reason else token_status,
-                    "warnings": warnings,
-                    **progress_meta,
-                }
-            if "protocol not supported" in stderr_lower:
-                return {
-                    "status": "unsupported",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": sampled.get("cpu_pct"),
-                    "mem_mb": sampled.get("mem_mb"),
-                    "reason": "unsupported",
-                    "warnings": warnings,
-                    **progress_meta,
-                }
+            if startup_detail:
+                reason = f"{reason}::{startup_detail}"
             return {
                 "status": "fail",
                 "parsed": {},
+                "timed_out": False,
+                "returncode": server_proc.returncode if server_proc else -1,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": reason,
+                "warnings": [],
+            }
+
+        line_transport = transport.lower()
+        sample_server_metrics, close_server_sampler = create_external_process_sampler(
+            server_proc.pid
+        )
+        current_live_size = [sizes[0] if sizes else None]
+        last_server_cpu = [None]
+        last_server_mem = [None]
+        last_server_size = [None]
+        queue_probe_requested_sizes = set()
+
+        def update_live_size_from_line(line):
+            parsed_line, _warning = parse_result_line(
+                line, transport, expected_sizes
+            )
+            if parsed_line:
+                current_live_size[0] = parsed_line[1]
+                return
+            connect_line, _connect_warning = parse_result_connect_line(
+                line, transport, expected_sizes
+            )
+            if connect_line:
+                current_live_size[0] = connect_line[1]
+
+        def request_server_queue_probe(size_value):
+            nonlocal server_proc
+            if server_proc is None or server_proc.poll() is not None:
+                return
+            try:
+                size_int = int(size_value)
+            except (TypeError, ValueError):
+                return
+            if size_int <= 0 or size_int in queue_probe_requested_sizes:
+                return
+            try:
+                if server_proc.stdin:
+                    server_proc.stdin.write(f"QUEUE,{size_int}\n")
+                    server_proc.stdin.flush()
+                    queue_probe_requested_sizes.add(size_int)
+            except Exception:
+                return
+
+        def emit_live_server_metrics(force=False):
+            if result_line_callback is None or sample_server_metrics is None:
+                return
+            sample_cpu, sample_mem, changed = sample_server_metrics()
+            if sample_cpu is not None:
+                last_server_cpu[0] = float(sample_cpu)
+            if sample_mem is not None:
+                last_server_mem[0] = float(sample_mem)
+
+            target_size = current_live_size[0]
+            if target_size not in expected_sizes:
+                return
+            size_changed = target_size != last_server_size[0]
+            if not changed and not force and not size_changed:
+                return
+
+            if last_server_cpu[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "server_cpu_pct",
+                    last_server_cpu[0],
+                )
+            if last_server_mem[0] is not None:
+                _emit_multi_result_metric_callback(
+                    result_line_callback,
+                    line_transport,
+                    target_size,
+                    "server_mem_mb",
+                    last_server_mem[0],
+                )
+            last_server_size[0] = target_size
+
+        def on_client_stdout_line(line):
+            pump_server_output_nonblocking()
+            update_live_size_from_line(line)
+            emit_multi_result_metrics_from_line(
+                line, transport, expected_sizes, result_line_callback
+            )
+            parsed_line, _warning = parse_result_line(
+                line, transport, expected_sizes
+            )
+            if parsed_line:
+                _line_transport, line_size, metric_name, _value = parsed_line
+                if normalize_multi_metric_name(metric_name) == "throughput":
+                    request_server_queue_probe(line_size)
+            emit_live_server_metrics()
+
+        client_cmd = client_cmd + ["--endpoint", endpoint]
+        sampled = run_command_with_metrics(
+            client_cmd,
+            client_env,
+            timeout_sec,
+            on_stdout_line=on_client_stdout_line,
+            on_sample=lambda _cpu, _mem: (
+                pump_server_output_nonblocking(),
+                emit_live_server_metrics(),
+            ),
+        )
+        pump_server_output_nonblocking()
+        emit_live_server_metrics(force=True)
+        client_stdout = sampled.get("stdout", "") or ""
+        client_stderr = sampled.get("stderr", "") or ""
+        progress_meta = {
+            "server_endpoint": endpoint,
+            "client_stderr": client_stderr,
+        }
+
+        stop_server()
+        drain_server_output()
+        server_rc = server_proc.returncode if server_proc else 0
+
+        combined_stdout = server_stdout_buffer.text() + client_stdout
+        combined_stderr = server_stderr_buffer.text() + client_stderr
+        stderr_lower = combined_stderr.lower()
+
+        parsed = {}
+        warnings = []
+        for line in combined_stdout.splitlines():
+            parsed_line, warning = parse_result_line(line, transport, expected_sizes)
+            if warning:
+                warnings.append(warning)
+            if not parsed_line:
+                continue
+            line_transport, line_size, metric, value = parsed_line
+            metric_name = normalize_multi_metric_name(metric)
+            key = f"{line_transport}|{line_size}|{metric_name}"
+            if key in parsed:
+                if metric_name in MULTI_SERVER_QUEUE_METRICS:
+                    continue
+                if should_warn_duplicate_multi_metric(metric_name):
+                    warnings.append(
+                        "duplicate RESULT metric detected; keeping last value: "
+                        f"{pattern_name} {transport} {line_size}B {metric_name}"
+                    )
+            parsed[key] = value
+
+        token_status, token_reason = detect_special_status(
+            combined_stdout, lib_name, pattern_name, transport
+        )
+
+        if sampled.get("timed_out", False):
+            return {
+                "status": "fail",
+                "parsed": parsed,
+                "timed_out": True,
+                "returncode": sampled.get("returncode", -1),
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "timeout",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        if sampled.get("returncode", 0) != 0:
+            return {
+                "status": "fail",
+                "parsed": parsed,
                 "timed_out": False,
                 "returncode": sampled.get("returncode", -1),
                 "cpu_pct": sampled.get("cpu_pct"),
                 "mem_mb": sampled.get("mem_mb"),
-                "reason": "no_data",
+                "reason": f"non_zero_exit_{sampled.get('returncode', -1)}",
                 "warnings": warnings,
                 **progress_meta,
             }
-        except Exception:
-            stop_server()
+        if server_rc not in (0, None):
             return {
                 "status": "fail",
+                "parsed": parsed,
+                "timed_out": False,
+                "returncode": server_rc,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": f"server_non_zero_exit_{server_rc}",
+                "warnings": warnings,
+                **progress_meta,
+            }
+
+        if parsed:
+            return {
+                "status": "success",
+                "parsed": parsed,
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        if token_status in ("unsupported", "skip"):
+            return {
+                "status": token_status,
                 "parsed": {},
                 "timed_out": False,
-                "returncode": -1,
-                "cpu_pct": None,
-                "mem_mb": None,
-                "reason": "exception",
-                "warnings": [],
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": token_reason if token_reason else token_status,
+                "warnings": warnings,
+                **progress_meta,
             }
-        finally:
-            if close_server_sampler is not None:
-                close_server_sampler()
+        if "protocol not supported" in stderr_lower:
+            return {
+                "status": "unsupported",
+                "parsed": {},
+                "timed_out": False,
+                "returncode": 0,
+                "cpu_pct": sampled.get("cpu_pct"),
+                "mem_mb": sampled.get("mem_mb"),
+                "reason": "unsupported",
+                "warnings": warnings,
+                **progress_meta,
+            }
+        return {
+            "status": "fail",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": sampled.get("returncode", -1),
+            "cpu_pct": sampled.get("cpu_pct"),
+            "mem_mb": sampled.get("mem_mb"),
+            "reason": "no_data",
+            "warnings": warnings,
+            **progress_meta,
+        }
+    except Exception:
+        stop_server()
+        return {
+            "status": "fail",
+            "parsed": {},
+            "timed_out": False,
+            "returncode": -1,
+            "cpu_pct": None,
+            "mem_mb": None,
+            "reason": "exception",
+            "warnings": [],
+        }
+    finally:
+        if close_server_sampler is not None:
+            close_server_sampler()
 
     return {
         "status": "fail",
@@ -2473,6 +2407,8 @@ def run_multi_sizes_test(
     pattern_name,
     result_line_callback=None,
 ):
+    size_list = list(sizes) if sizes else [64]
+
     if pattern_name in STREAM_VARIANT_PATTERNS:
         server_binary = resolve_stream_server_binary(pattern_name)
         if not server_binary:
@@ -2486,103 +2422,94 @@ def run_multi_sizes_test(
                 "reason": "invalid_stream_server_pattern",
                 "warnings": [],
             }
-        return run_multi_sizes_test_stream_shared(
-            server_binary,
-            lib_name,
-            transport,
-            sizes,
-            pattern_name,
-            result_line_callback=result_line_callback,
-        )
 
-    names = resolve_multi_binary_names(pattern_name)
-    if names:
+        def run_one_size_case(case_size):
+            return run_multi_sizes_test_stream_shared(
+                server_binary,
+                lib_name,
+                transport,
+                [case_size],
+                pattern_name,
+                result_line_callback=result_line_callback,
+            )
+
+    else:
+        names = resolve_multi_binary_names(pattern_name)
+        if not names:
+            return {
+                "status": "fail",
+                "parsed": {},
+                "timed_out": False,
+                "returncode": -1,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": "invalid_multi_pattern",
+                "warnings": [],
+            }
+
         server_path = os.path.join(BUILD_DIR, names["server"] + EXE_SUFFIX)
         client_path = os.path.join(BUILD_DIR, names["client"] + EXE_SUFFIX)
-        if os.path.exists(server_path) and os.path.exists(client_path):
-            if (
-                pattern_name in MULTI_SIZE_ISOLATION_PATTERNS
-                and len(sizes) > 1
-                and transport not in ("tls", "wss")
-            ):
-                merged = {
-                    "status": "success",
-                    "parsed": {},
-                    "timed_out": False,
-                    "returncode": 0,
-                    "cpu_pct": None,
-                    "mem_mb": None,
-                    "reason": "",
-                    "warnings": [],
-                }
+        if not os.path.exists(server_path) or not os.path.exists(client_path):
+            return {
+                "status": "fail",
+                "parsed": {},
+                "timed_out": False,
+                "returncode": -1,
+                "cpu_pct": None,
+                "mem_mb": None,
+                "reason": "missing_split_binaries",
+                "warnings": [],
+            }
 
-                for size in sizes:
-                    isolated = run_multi_sizes_test_split(
-                        names["server"],
-                        names["client"],
-                        lib_name,
-                        transport,
-                        [size],
-                        pattern_name,
-                        result_line_callback=result_line_callback,
-                    )
-
-                    merged["warnings"].extend(isolated.get("warnings", []))
-                    merged["parsed"].update(isolated.get("parsed", {}))
-
-                    cpu_pct = isolated.get("cpu_pct")
-                    if cpu_pct is not None:
-                        if merged["cpu_pct"] is None:
-                            merged["cpu_pct"] = cpu_pct
-                        else:
-                            merged["cpu_pct"] = max(merged["cpu_pct"], cpu_pct)
-
-                    mem_mb = isolated.get("mem_mb")
-                    if mem_mb is not None:
-                        if merged["mem_mb"] is None:
-                            merged["mem_mb"] = mem_mb
-                        else:
-                            merged["mem_mb"] = max(merged["mem_mb"], mem_mb)
-
-                    if isolated.get("status") != "success":
-                        merged["status"] = isolated.get("status", "fail")
-                        merged["timed_out"] = isolated.get("timed_out", False)
-                        merged["returncode"] = isolated.get("returncode", -1)
-                        reason = isolated.get("reason", "size_case_failed")
-                        merged["reason"] = f"{reason}_size_{size}"
-                        return merged
-
-                return merged
-
+        def run_one_size_case(case_size):
             return run_multi_sizes_test_split(
                 names["server"],
                 names["client"],
                 lib_name,
                 transport,
-                sizes,
+                [case_size],
                 pattern_name,
                 result_line_callback=result_line_callback,
             )
-        return {
-            "status": "fail",
-            "parsed": {},
-            "timed_out": False,
-            "returncode": -1,
-            "cpu_pct": None,
-            "mem_mb": None,
-            "reason": "missing_split_binaries",
-            "warnings": [],
-        }
-    return {
-        "status": "fail",
+
+    merged = {
+        "status": "success",
         "parsed": {},
         "timed_out": False,
-        "returncode": -1,
+        "returncode": 0,
         "cpu_pct": None,
         "mem_mb": None,
-        "reason": "invalid_multi_pattern",
+        "reason": "",
         "warnings": [],
     }
+    for size in size_list:
+        isolated = run_one_size_case(size)
+        merged["warnings"].extend(isolated.get("warnings", []))
+        merged["parsed"].update(isolated.get("parsed", {}))
+
+        cpu_pct = isolated.get("cpu_pct")
+        if cpu_pct is not None:
+            if merged["cpu_pct"] is None:
+                merged["cpu_pct"] = cpu_pct
+            else:
+                merged["cpu_pct"] = max(merged["cpu_pct"], cpu_pct)
+
+        mem_mb = isolated.get("mem_mb")
+        if mem_mb is not None:
+            if merged["mem_mb"] is None:
+                merged["mem_mb"] = mem_mb
+            else:
+                merged["mem_mb"] = max(merged["mem_mb"], mem_mb)
+
+        if isolated.get("status") != "success":
+            merged["status"] = isolated.get("status", "fail")
+            merged["timed_out"] = isolated.get("timed_out", False)
+            merged["returncode"] = isolated.get("returncode", -1)
+            reason = isolated.get("reason", "size_case_failed")
+            merged["reason"] = f"{reason}_size_{size}"
+            return merged
+
+    return merged
 
 
 def run_single_test(binary_name, lib_name, transport, size, pattern_name=""):
@@ -3099,12 +3026,16 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
 
                     if missing:
                         run_failed_sizes.add(sz)
+                        outcome_reason = (outcome.get("reason", "") or "").strip()
                         for metric in missing:
                             if timed_out_run:
                                 reason = f"timeout_missing_{metric}"
                             else:
-                                suffix = f"_rc_{rc}" if rc not in (0, None) else ""
-                                reason = f"missing_{metric}{suffix}"
+                                if outcome_reason:
+                                    reason = f"missing_{metric}_{outcome_reason}"
+                                else:
+                                    suffix = f"_rc_{rc}" if rc not in (0, None) else ""
+                                    reason = f"missing_{metric}{suffix}"
                             failures.append((pattern_name, lib_name, tr, sz, reason))
                         if sz not in live_emitted_sizes:
                             _emit_table_row(
@@ -3775,39 +3706,6 @@ def build_effective_option_items(args, selected_patterns):
             else f"{resolve_pattern_connect_concurrency(clients_for_connect)} (default)"
         )
 
-        drain_raw = os.environ.get("PERF_MULTI_DRAIN_MS", "").strip()
-        if drain_raw:
-            drain_display = str(max(0, parse_env_int("PERF_MULTI_DRAIN_MS", 0)))
-        else:
-            default_drain_values = set()
-            for pattern in selected_patterns:
-                pattern_transports = select_transports(pattern)
-                pattern_sizes = (
-                    MULTI_STREAM_MSG_SIZES
-                    if pattern in STREAM_VARIANT_PATTERNS
-                    else MSG_SIZES
-                )
-                for transport in pattern_transports:
-                    pattern_clients = multi_pattern_default_clients(pattern, transport)
-                    default_drain_values.add(
-                        multi_pattern_default_drain_ms(
-                            pattern,
-                            transport,
-                            sizes=pattern_sizes,
-                            clients=pattern_clients,
-                        )
-                    )
-            if not default_drain_values:
-                drain_display = "0 (default)"
-            elif len(default_drain_values) == 1:
-                drain_display = f"{next(iter(default_drain_values))} (default)"
-            else:
-                drain_display = (
-                    "mixed-default("
-                    + ",".join(str(v) for v in sorted(default_drain_values))
-                    + ")"
-                )
-
         items.extend(
             [
                 ("warmup_seconds", str(parse_env_int("PERF_MULTI_WARMUP_SECONDS", 2))),
@@ -3829,11 +3727,6 @@ def build_effective_option_items(args, selected_patterns):
                 ("rcvtimeo_ms", str(parse_env_int("PERF_MULTI_RCVTIMEO_MS", 200))),
                 ("connect_concurrency", connect_display),
                 ("settle_ms", str(parse_env_int("PERF_MULTI_SETTLE_MS", 500))),
-                ("drain_ms", drain_display),
-                (
-                    "size_transition_drain_ms",
-                    str(parse_env_int("PERF_MULTI_SIZE_TRANSITION_DRAIN_MS", 300)),
-                ),
                 (
                     "client_poll_timeout_ms",
                     str(parse_env_int("PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0)),
@@ -3916,7 +3809,6 @@ def resolve_multi_results_dirs(results_root):
     multi_root = os.path.join(results_root, "multi")
     return {
         "root": multi_root,
-        "tmp": os.path.join(multi_root, "tmp"),
         "report": os.path.join(multi_root, "report"),
     }
 
@@ -3963,15 +3855,6 @@ def prune_result_files(dir_path, max_files, exclude_names=None):
             continue
 
 
-def write_report_table_file(path, table_lines):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        for line in table_lines:
-            f.write(f"{line}\n")
-    os.replace(tmp_path, path)
-
-
 def build_failure_lookup(failures, pattern_name):
     lookup = {}
     for pattern, _lib_name, transport, size, reason in failures:
@@ -4016,7 +3899,7 @@ def parse_args():
         "  --pin-cpu                    Pin CPU core during benchmarks (Linux taskset)\n"
         "  --results-dir PATH           Results root directory (default: core/perf/results)\n"
         "  --results-tag NAME           Optional suffix tag for saved filenames\n"
-        "  --result-file PATH           Explicit tmp result file path\n"
+        "  --result-file PATH           Explicit result file path\n"
         "  --multi-transport-transition-ms N  Transport transition cooldown (ms)\n"
         "  --multi-pattern-transition-ms N    Pattern transition cooldown (ms)\n"
         "  --multi-server-ready-timeout-ms N  Server READY wait timeout (ms)\n"
@@ -4303,6 +4186,7 @@ def main():
         if not requested:
             print("Error: --pattern requires at least one value.", file=sys.stderr)
             sys.exit(1)
+        requested = expand_pattern_aliases(requested)
 
     known_patterns = {p_name for _, p_name in comparisons}
     if requested is not None:
@@ -4321,10 +4205,10 @@ def main():
 
     results_root = resolve_results_root(args["results_dir"])
     results_layout = resolve_multi_results_dirs(results_root)
-    tmp_result_file = args["result_file"]
-    if not tmp_result_file:
+    result_file = args["result_file"]
+    if not result_file:
         tag = args["results_tag"]
-        tmp_result_file = os.path.join(results_layout["tmp"], build_result_filename(tag))
+        result_file = os.path.join(results_layout["report"], build_result_filename(tag))
 
     missing_current = collect_missing_patterns(comparisons, requested)
     skip_auto_build = (
@@ -4373,14 +4257,14 @@ def main():
             )
         sys.exit(1)
 
-    tmp_parent = os.path.dirname(tmp_result_file)
-    if tmp_parent:
-        os.makedirs(tmp_parent, exist_ok=True)
-    tmp_log_fh = open(tmp_result_file, "w", encoding="utf-8", buffering=1)
+    result_parent = os.path.dirname(result_file)
+    if result_parent:
+        os.makedirs(result_parent, exist_ok=True)
+    result_log_fh = open(result_file, "w", encoding="utf-8", buffering=1)
     orig_stdout = sys.stdout
     orig_stderr = sys.stderr
-    sys.stdout = TeeStream(orig_stdout, tmp_log_fh)
-    sys.stderr = TeeStream(orig_stderr, tmp_log_fh)
+    sys.stdout = TeeStream(orig_stdout, result_log_fh)
+    sys.stderr = TeeStream(orig_stderr, result_log_fh)
 
     meta_items = build_meta_items(num_runs, selected_patterns)
     print_meta_lines(meta_items)
@@ -4393,8 +4277,6 @@ def main():
     current_results = {}
     expected_result_lines = 0
     actual_result_lines = 0
-    table_lines = []
-
     selected_comparisons = [
         (current_bin, p_name)
         for current_bin, p_name in comparisons
@@ -4403,15 +4285,13 @@ def main():
     pattern_transition_ms = args["pattern_transition_ms"] if multi_only_run else 0
 
     for pattern_idx, (current_bin, p_name) in enumerate(selected_comparisons):
-        if table_lines:
+        if pattern_idx > 0:
             print("")
             print(PATTERN_SEPARATOR)
             print("")
-            table_lines.extend(["", PATTERN_SEPARATOR, ""])
 
         pattern_header = f"## PATTERN: {p_name} ({pattern_direction_label(p_name)})"
         print(pattern_header)
-        table_lines.append(pattern_header)
 
         pattern_transports = select_transports(p_name)
         if not pattern_transports:
@@ -4420,9 +4300,7 @@ def main():
             status_counts["skip"] += 1
             continue
 
-        c_stats, failures = collect_data(
-            current_bin, "current", p_name, num_runs, pattern_transports, table_lines
-        )
+        c_stats, failures = collect_data(current_bin, "current", p_name, num_runs, pattern_transports, None)
         all_failures.extend(failures)
         failure_lookup = build_failure_lookup(failures, p_name)
 
@@ -4516,15 +4394,8 @@ def main():
 
     run_status = "complete" if expected_result_lines == actual_result_lines else "partial"
     max_files = resolve_results_max_files()
-    prune_result_files(os.path.dirname(tmp_result_file), max_files)
-    print(f"\nSaved tmp result file: {tmp_result_file}")
-
-    print("\n## Save Report")
-    tag = args["results_tag"]
-    report_file = os.path.join(results_layout["report"], build_result_filename(tag))
-    write_report_table_file(report_file, table_lines)
-    prune_result_files(results_layout["report"], max_files)
-    print(f"- saved: {report_file} (status={run_status})")
+    prune_result_files(os.path.dirname(result_file), max_files)
+    print(f"\nSaved result file: {result_file} (status={run_status})")
 
     print("\n## Status Summary")
     print(f"- success: {status_counts['success']}")
@@ -4548,7 +4419,7 @@ def main():
 
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
-    tmp_log_fh.close()
+    result_log_fh.close()
     if run_status != "complete":
         raise SystemExit(1)
     raise SystemExit(0)

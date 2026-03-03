@@ -2,12 +2,10 @@
 #define PERF_COMMON_MULTI_HPP
 
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
 #include <string>
-#include <thread>
 
 struct multi_bench_settings_t
 {
@@ -17,8 +15,6 @@ struct multi_bench_settings_t
     int active_warmup;
     int duration_seconds;
     int settle_ms;
-    int drain_ms;
-    int size_transition_drain_ms;
     int client_poll_timeout_ms;
     int connect_ready_timeout_ms;
 };
@@ -43,44 +39,6 @@ inline int resolve_multi_int_env (const char *env_name,
     if (parsed < min_value)
         return min_value;
     return static_cast<int> (parsed);
-}
-
-inline bool multi_pattern_uses_default_drain (const char *pattern)
-{
-    if (!pattern || !*pattern)
-        return false;
-
-    const bool is_stream_variant =
-      std::strcmp (pattern, "MULTI_STREAM") == 0
-      || std::strcmp (pattern, "MULTI_STREAM_CALLBACK") == 0
-      || std::strcmp (pattern, "MULTI_STREAM_LEN32BE") == 0;
-
-    return std::strcmp (pattern, "MULTI_DEALER_DEALER") == 0
-           || std::strcmp (pattern, "MULTI_DEALER_ROUTER") == 0
-           || std::strcmp (pattern, "MULTI_ROUTER_ROUTER") == 0
-           || std::strcmp (pattern, "MULTI_PUBSUB") == 0
-           || std::strcmp (pattern, "MULTI_GATEWAY") == 0
-           || is_stream_variant;
-}
-
-inline int resolve_multi_drain_ms ()
-{
-    const int explicit_drain = resolve_multi_int_env ("PERF_MULTI_DRAIN_MS", -1, 0);
-    if (explicit_drain >= 0)
-        return explicit_drain;
-
-    const char *pattern = std::getenv ("PERF_MULTI_PATTERN");
-    if (multi_pattern_uses_default_drain (pattern))
-        return 300;
-    return 0;
-}
-
-inline int resolve_multi_size_transition_drain_ms ()
-{
-    return resolve_multi_int_env (
-      "PERF_MULTI_SIZE_TRANSITION_DRAIN_MS",
-      300,
-      0);
 }
 
 inline int resolve_multi_default_hwm (const char *pattern, int clients)
@@ -143,27 +101,11 @@ inline multi_bench_settings_t resolve_multi_bench_settings ()
     settings.duration_seconds =
       resolve_multi_int_env ("PERF_MULTI_DURATION_SECONDS", 5, 1);
     settings.settle_ms = resolve_multi_int_env ("PERF_MULTI_SETTLE_MS", 500, 0);
-    settings.drain_ms = resolve_multi_drain_ms ();
-    settings.size_transition_drain_ms =
-      resolve_multi_size_transition_drain_ms ();
     settings.client_poll_timeout_ms = resolve_multi_int_env (
       "PERF_MULTI_CLIENT_POLL_TIMEOUT_MS", 0, 0);
     settings.connect_ready_timeout_ms =
       resolve_multi_int_env ("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", 5000, 0);
     return settings;
-}
-
-inline void run_size_transition_drain_stage (
-  const multi_bench_settings_t &settings,
-  bool has_next_size)
-{
-    (void) has_next_size;
-
-    const int drain_ms = std::max (0, settings.size_transition_drain_ms);
-    if (drain_ms <= 0)
-        return;
-
-    std::this_thread::sleep_for (std::chrono::milliseconds (drain_ms));
 }
 
 inline bool parse_queue_probe_command (const std::string &line,

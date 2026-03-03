@@ -4,8 +4,6 @@ param(
     [string]$OutputFile = "",
     [int]$Runs = 1,
     [switch]$Build,
-    [switch]$Save,
-    [string]$SaveVersion = "",
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [Alias("duration")]
@@ -13,16 +11,10 @@ param(
     [string]$Hwm = "",
     [string]$SendHwm = "",
     [string]$RecvHwm = "",
-    [string]$Sndtimeo = "",
-    [string]$Rcvtimeo = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
     [switch]$PinCpu,
-    [ValidateSet("observe", "trend", "gate")]
-    [string]$Mode = "observe",
-    [string]$BaselineFile = "",
-    [int]$RollingN = 10,
     [switch]$Help
 )
 
@@ -40,31 +32,22 @@ Options:
   -BuildDir PATH               Build directory (default: core\build\windows-x64).
   -Build                       Force clean build (default is reuse-build).
   -OutputFile PATH             Tee console logs to a file.
-  -Save                        Save baseline under results\single\baseline\ (complete only, timestamp version).
-  -SaveVersion VERSION         Baseline version to use with -Save (e.g., v1.5.0).
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag in saved result filename.
-  -Runs N                      Iterations per pattern/transport/size (default by mode: observe=1, trend=3, gate=5).
+  -Runs N                      Iterations per pattern/transport/size (default: 1).
   -Duration N                  Override single duration seconds (default: 5).
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_SINGLE_RCVHWM (fallback: -Hwm).
-  -Sndtimeo N                  Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
-  -Rcvtimeo N                  Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
-  -Mode MODE                   observe|trend|gate (default: observe).
-  -BaselineFile PATH           Baseline file for gate mode.
-  -RollingN N                  Rolling baseline window for trend mode (default: 10).
 
 Notes:
-  - tmp result is always saved under results\single\tmp\.
-  - report result save is always enabled.
+  - result is saved under results\<single|multi>\report\.
   - reuse-build is always enabled unless -Build is provided.
-  - -OutputFile and report save can be used together.
-  - -save-baseline is removed. Use -Save [-SaveVersion VERSION].
+  - -OutputFile and report output can be used together.
 "@
 }
 
@@ -74,21 +57,6 @@ if ($Help) {
 }
 
 $UseReuseBuild = -not $Build.IsPresent
-$SaveReport = $true
-
-$RollingNExplicit = $PSBoundParameters.ContainsKey("RollingN")
-if (-not $RollingNExplicit) {
-    $rollingEnv = $env:PERF_ROLLING_N
-    if ($rollingEnv) {
-        $parsedRolling = 0
-        if ([int]::TryParse($rollingEnv, [ref]$parsedRolling) -and $parsedRolling -ge 1) {
-            $RollingN = $parsedRolling
-        }
-    }
-}
-if ($RollingN -lt 1) {
-    throw "RollingN must be >= 1."
-}
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') {
     throw "IoThreads must be a non-negative integer."
 }
@@ -107,20 +75,11 @@ if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) {
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) {
     throw "RecvHwm must be a positive integer."
 }
-if ($Sndtimeo -and ($Sndtimeo -notmatch '^\d+$' -or [int]$Sndtimeo -lt 1)) {
-    throw "Sndtimeo must be a positive integer."
-}
-if ($Rcvtimeo -and ($Rcvtimeo -notmatch '^\d+$' -or [int]$Rcvtimeo -lt 1)) {
-    throw "Rcvtimeo must be a positive integer."
-}
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     throw "MsgSizes must be a comma-separated list of integers."
 }
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') {
     throw "Transports must be a comma-separated list of names."
-}
-if ($SaveVersion) {
-    $Save = $true
 }
 if (-not $ResultsTag) {
     $ResultsTag = $env:PERF_RESULTS_TAG
@@ -129,14 +88,6 @@ $AllowMulti = ($env:PERF_ALLOW_MULTI -eq "1")
 $MultiPatternCount = 0
 $SinglePatternCount = 0
 
-$RunsExplicit = $PSBoundParameters.ContainsKey("Runs")
-if (-not $RunsExplicit) {
-    switch ($Mode) {
-        "observe" { $Runs = 1 }
-        "trend" { $Runs = 3 }
-        "gate" { $Runs = 5 }
-    }
-}
 if ($Runs -lt 1) {
     throw "Runs must be >= 1."
 }
@@ -221,13 +172,13 @@ if ($ResultsTag) {
     $Name = "${Name}_${ResultsTag}"
 }
 $ResultSuite = if ($MultiPatternCount -gt 0) { "multi" } else { "single" }
-$ResultFile = Join-Path (Join-Path (Join-Path $ResultsDir $ResultSuite) "tmp") "${Name}.txt"
+$ResultFile = Join-Path (Join-Path (Join-Path $ResultsDir $ResultSuite) "report") "${Name}.txt"
 if ($OutputFile) {
     $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)
 }
 
 if ($ResultFile -and $OutputFile -and ($ResultFile -ieq $OutputFile)) {
-    throw "-OutputFile cannot point to the same file as report result output."
+    throw "-OutputFile cannot point to the same file as result output."
 }
 
 function Cleanup-OldResultDirs {
@@ -393,26 +344,13 @@ if ($PinCpu) {
     $RunArgs += "--pin-cpu"
 }
 
-$RunArgs += @("--mode", $Mode, "--rolling-n", $RollingN.ToString())
 if ($ResultsDir) {
     $RunArgs += @("--results-dir", $ResultsDir)
 }
 if ($ResultsTag) {
     $RunArgs += @("--results-tag", $ResultsTag)
 }
-if ($BaselineFile) {
-    $RunArgs += @("--baseline-file", $BaselineFile)
-}
 $RunArgs += @("--result-file", $ResultFile)
-if ($SaveReport) {
-    $RunArgs += "--result"
-}
-if ($Save) {
-    $RunArgs += "--save"
-    if ($SaveVersion) {
-        $RunArgs += $SaveVersion
-    }
-}
 
 $RunEnv = @{}
 if (-not $IoThreads) { $IoThreads = $env:PERF_IO_THREADS }
@@ -422,12 +360,7 @@ if (-not $Duration) { $Duration = $env:PERF_SINGLE_DURATION_SECONDS }
 if (-not $Hwm) { $Hwm = $env:PERF_SINGLE_HWM }
 if (-not $SendHwm) { $SendHwm = $env:PERF_SINGLE_SNDHWM }
 if (-not $RecvHwm) { $RecvHwm = $env:PERF_SINGLE_RCVHWM }
-if (-not $Sndtimeo) { $Sndtimeo = $env:PERF_SINGLE_SNDTIMEO_MS }
-if (-not $Rcvtimeo) { $Rcvtimeo = $env:PERF_SINGLE_RCVTIMEO_MS }
-if (-not $Rcvtimeo) { $Rcvtimeo = $env:PERF_SINGLE_PUBSUB_RCVTIMEO_MS }
 if (-not $Duration) { $Duration = "5" }
-if (-not $Sndtimeo) { $Sndtimeo = "200" }
-if (-not $Rcvtimeo) { $Rcvtimeo = "200" }
 
 if ($IoThreads) {
     $RunEnv["PERF_IO_THREADS"] = $IoThreads
@@ -454,12 +387,6 @@ if ($SendHwm) {
 if ($RecvHwm) {
     $RunEnv["PERF_SINGLE_RCVHWM"] = $RecvHwm
 }
-if ($Sndtimeo) {
-    $RunEnv["PERF_SINGLE_SNDTIMEO_MS"] = $Sndtimeo
-}
-if ($Rcvtimeo) {
-    $RunEnv["PERF_SINGLE_RCVTIMEO_MS"] = $Rcvtimeo
-}
 if ($PinCpu) {
     $RunEnv["PERF_TASKSET"] = "1"
 }
@@ -473,7 +400,6 @@ Write-Host "Pattern: $Pattern"
 Write-Host "Build Directory: $BuildDir"
 Write-Host "Runs: $Runs"
 if ($Duration) { Write-Host "Duration: $Duration s" }
-Write-Host "Mode: $Mode"
 Write-Host "Comparison Script: $BenchComparisonScript"
 Write-Host ""
 

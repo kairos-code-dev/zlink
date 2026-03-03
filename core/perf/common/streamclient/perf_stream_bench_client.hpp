@@ -307,6 +307,11 @@ class bench_client_t : public bench_client_iface_t
         return opt.latency_sample_rate > 0;
     }
 
+    int latency_sample_rate () const override
+    {
+        return opt.latency_sample_rate;
+    }
+
     uint64_t next_seq () override
     {
         return seq_gen.fetch_add (1, std::memory_order_relaxed) + 1;
@@ -509,19 +514,22 @@ class bench_client_t : public bench_client_iface_t
         mode.store (phase_idle, std::memory_order_release);
         collect_metrics.store (false, std::memory_order_release);
 
-        const auto drain_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (std::max (0, opt.drain_ms));
-        while (std::chrono::steady_clock::now () < drain_deadline) {
-            if (outstanding_total.load (std::memory_order_relaxed) <= 0)
-                break;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
+        const int drain_ms = std::max (0, opt.drain_ms);
+        if (drain_ms > 0) {
+            const auto drain_deadline =
+              std::chrono::steady_clock::now ()
+              + std::chrono::milliseconds (drain_ms);
+            while (std::chrono::steady_clock::now () < drain_deadline) {
+                if (outstanding_total.load (std::memory_order_relaxed) <= 0)
+                    break;
+                std::this_thread::sleep_for (std::chrono::milliseconds (1));
+            }
 
-        const long remaining = outstanding_total.load (std::memory_order_relaxed);
-        if (remaining > 0) {
-            on_timeout (remaining);
-            on_abandon (remaining);
+            const long remaining = outstanding_total.load (std::memory_order_relaxed);
+            if (remaining > 0) {
+                on_timeout (remaining);
+                on_abandon (remaining);
+            }
         }
 
         return true;

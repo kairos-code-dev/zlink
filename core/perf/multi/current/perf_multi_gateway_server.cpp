@@ -434,24 +434,6 @@ inline bool recv_one_frame (void *router, zlink_msg_t *msg, int flags, int *err_
     return false;
 }
 
-inline void discard_remaining_frames (void *router)
-{
-    while (true) {
-        zlink_msg_t extra;
-        if (zlink_msg_init (&extra) != 0)
-            return;
-        int err = 0;
-        if (!recv_one_frame (router, &extra, 0, &err)) {
-            zlink_msg_close (&extra);
-            return;
-        }
-        const bool more = zlink_msg_more (&extra) != 0;
-        zlink_msg_close (&extra);
-        if (!more)
-            return;
-    }
-}
-
 inline relay_status_t recv_gateway_request (
   void *router,
   gateway_request_t *request,
@@ -484,9 +466,8 @@ inline relay_status_t recv_gateway_request (
         request->client_service[0] = '\0';
     }
 
-    const bool has_payload = zlink_msg_more (&rid_part) != 0;
     zlink_msg_close (&rid_part);
-    if (!has_payload || request->client_service[0] == '\0')
+    if (request->client_service[0] == '\0')
         return relay_error;
 
     if (zlink_msg_init (&request->payload) != 0)
@@ -497,12 +478,6 @@ inline relay_status_t recv_gateway_request (
         return relay_error;
     }
     request->has_payload = true;
-
-    if (zlink_msg_more (&request->payload)) {
-        discard_remaining_frames (router);
-        close_gateway_request_payload (request);
-        return relay_error;
-    }
 
     return relay_progress;
 }
@@ -747,6 +722,7 @@ inline int run_server_benchmark (const std::string &lib_name,
           &registry_router_endpoint)) {
         std::cerr << "gateway server: registry setup failed: "
                   << zlink_strerror (zlink_errno ()) << std::endl;
+        ctx.force_term ();
         return 1;
     }
     debug_timing_ms ("registry ready", startup_begin);
@@ -766,19 +742,27 @@ inline int run_server_benchmark (const std::string &lib_name,
         if (registry)
             zlink_registry_destroy (&registry);
     };
+    auto fail = [&] () {
+        cleanup ();
+        ctx.force_term ();
+        return 1;
+    };
+    auto done = [&] () {
+        cleanup ();
+        ctx.force_term ();
+        return 0;
+    };
 
     server_receiver = zlink_receiver_new (ctx.get (), "perf-server-rx");
     if (!server_receiver) {
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("receiver created", startup_begin);
 
     if (!configure_receiver_tls (server_receiver, transport)) {
         std::cerr << "gateway server: receiver tls configure failed"
                   << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("receiver tls configured", startup_begin);
 
@@ -788,15 +772,13 @@ inline int run_server_benchmark (const std::string &lib_name,
       lib_name + std::string ("_gateway_server"));
     if (receiver_endpoint.empty ()) {
         std::cerr << "gateway server: receiver bind failed" << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("receiver bind ready", startup_begin);
 
     void *receiver_router = zlink_receiver_router_socket_unsafe (server_receiver);
     if (!receiver_router) {
-        cleanup ();
-        return 1;
+        return fail ();
     }
     apply_benchmark_socket_options (receiver_router, settings.hwm, transport);
 
@@ -812,8 +794,7 @@ inline int run_server_benchmark (const std::string &lib_name,
              != 0) {
         std::cerr << "gateway server: receiver registry connect/register failed: "
                   << zlink_strerror (zlink_errno ()) << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("receiver registry connected", startup_begin);
 
@@ -821,8 +802,7 @@ inline int run_server_benchmark (const std::string &lib_name,
       zlink_discovery_new_typed (ctx.get (), ZLINK_SERVICE_TYPE_GATEWAY);
     if (!server_discovery) {
         std::cerr << "gateway server: discovery create failed" << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
 
     if (zlink_discovery_connect_registry (
@@ -831,8 +811,7 @@ inline int run_server_benchmark (const std::string &lib_name,
           != 0) {
         std::cerr << "gateway server: discovery connect/subscribe failed: "
                   << zlink_strerror (zlink_errno ()) << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("discovery connected", startup_begin);
     // Keep subscriptions empty to accept all client services.
@@ -843,8 +822,7 @@ inline int run_server_benchmark (const std::string &lib_name,
       zlink_gateway_new (ctx.get (), server_discovery, k_server_gateway_rid);
     if (!server_gateway) {
         std::cerr << "gateway server: gateway create failed" << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("gateway created", startup_begin);
 
@@ -880,16 +858,14 @@ inline int run_server_benchmark (const std::string &lib_name,
     if (!configure_gateway_tls (server_gateway, transport)) {
         std::cerr << "gateway server: gateway tls configure failed"
                   << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     debug_timing_ms ("gateway tls configured", startup_begin);
 
     void *gateway_router = zlink_gateway_router_socket_unsafe (server_gateway);
     if (!gateway_router) {
         std::cerr << "gateway server: gateway router unavailable" << std::endl;
-        cleanup ();
-        return 1;
+        return fail ();
     }
     apply_benchmark_socket_options (gateway_router, settings.hwm, transport);
     debug_timing_ms ("gateway/receiver sockets ready", startup_begin);
@@ -942,13 +918,10 @@ inline int run_server_benchmark (const std::string &lib_name,
     print_server_metrics (lib_name, transport, sizes, metrics, queue_stats);
 
     if (!loop_ok) {
-        cleanup ();
-        return 1;
+        return fail ();
     }
 
-    // Fast-exit path for benchmark success. Explicit teardown of large service
-    // sets can dominate shutdown latency and skew multi-run wall time.
-    return 0;
+    return done ();
 }
 
 } // namespace

@@ -1,9 +1,7 @@
 import importlib.util
-import json
 import os
 import pathlib
 import sys
-import tempfile
 import unittest
 
 
@@ -75,49 +73,12 @@ class RunComparisonPolicyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             RC.parse_pattern_arg("STREAM")
 
-    def test_threshold_rules_reject_bandwidth_metric(self):
-        rules_data = {
-            "PAIR/tcp/bandwidth": {"warning": -10, "fail": -15},
-            "PAIR/tcp/throughput": {"warning": -10, "fail": -15},
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-            json.dump(rules_data, fh)
-            path = fh.name
-        try:
-            with EnvPatch(
-                updates={"PERF_THRESHOLDS_FILE": path},
-            ):
-                rules, warnings = RC.load_threshold_rules()
-        finally:
-            os.remove(path)
-
-        self.assertEqual(len(rules), 1)
-        self.assertEqual(rules[0].metric, "throughput")
-        self.assertTrue(any("PAIR/tcp/bandwidth" in msg for msg in warnings))
-
-    def test_baseline_compare_ignores_bandwidth_metric(self):
-        key = ("current", "PAIR", "tcp", 64, "bandwidth")
-        warnings, fails, skipped = RC.compare_against_baseline(
-            "trend",
-            {key: 100.0},
-            {},
-            [],
+    def test_single_result_dir_uses_report_path(self):
+        root = os.path.join(os.sep, "tmp", "perf-root")
+        self.assertEqual(
+            RC.single_result_dir(root),
+            os.path.join(root, "single", "report"),
         )
-        self.assertEqual(warnings, [])
-        self.assertEqual(fails, [])
-        self.assertEqual(skipped, 0)
-
-    def test_baseline_compare_warns_on_missing_throughput_baseline(self):
-        key = ("current", "PAIR", "tcp", 64, "throughput")
-        warnings, fails, skipped = RC.compare_against_baseline(
-            "trend",
-            {key: 100.0},
-            {},
-            [],
-        )
-        self.assertEqual(fails, [])
-        self.assertEqual(skipped, 1)
-        self.assertTrue(any("baseline missing" in msg for msg in warnings))
 
 
 if __name__ == "__main__":

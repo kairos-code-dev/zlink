@@ -802,6 +802,40 @@ int zlink_gateway_send (void *gateway_,
     return gateway->send (service_name_, parts_, part_count_, flags_);
 }
 
+int zlink_gateway_send_bytes (void *gateway_,
+                              const char *service_name_,
+                              const void *data_,
+                              size_t size_,
+                              int flags_)
+{
+    if (!gateway_)
+        return -1;
+    if (size_ > 0 && !data_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return -1;
+    if (size_ > 0)
+        memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc = gateway->send (service_name_, &part, 1, flags_);
+    if (unlikely (rc != 0)) {
+        const int err = errno;
+        zlink_msg_close (&part);
+        errno = err;
+    }
+    return rc;
+}
+
 int zlink_gateway_recv (void *gateway_,
                         zlink_msg_t **parts_,
                         size_t *part_count_,
@@ -834,6 +868,42 @@ int zlink_gateway_send_rid (void *gateway_,
     }
     return gateway->send_rid (service_name_, routing_id_, parts_, part_count_,
                               flags_);
+}
+
+int zlink_gateway_send_rid_bytes (void *gateway_,
+                                  const char *service_name_,
+                                  const zlink_routing_id_t *routing_id_,
+                                  const void *data_,
+                                  size_t size_,
+                                  int flags_)
+{
+    if (!gateway_)
+        return -1;
+    if (size_ > 0 && !data_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::gateway_t *gateway = static_cast<zlink::gateway_t *> (gateway_);
+    if (!gateway->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return -1;
+    if (size_ > 0)
+        memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc =
+      gateway->send_rid (service_name_, routing_id_, &part, 1, flags_);
+    if (unlikely (rc != 0)) {
+        const int err = errno;
+        zlink_msg_close (&part);
+        errno = err;
+    }
+    return rc;
 }
 
 int zlink_gateway_set_lb_strategy (void *gateway_,
@@ -1400,6 +1470,40 @@ int zlink_spot_pub_publish (void *pub_,
         return -1;
     }
     return pub->publish (topic_id_, parts_, part_count_, flags_);
+}
+
+int zlink_spot_pub_publish_bytes (void *pub_,
+                                  const char *topic_id_,
+                                  const void *data_,
+                                  size_t size_,
+                                  int flags_)
+{
+    if (!pub_)
+        return -1;
+    if (size_ > 0 && !data_) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    zlink::spot_pub_t *pub = static_cast<zlink::spot_pub_t *> (pub_);
+    if (!pub->check_tag ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    zlink_msg_t part;
+    if (zlink_msg_init_size (&part, size_) != 0)
+        return -1;
+    if (size_ > 0)
+        memcpy (zlink_msg_data (&part), data_, size_);
+
+    const int rc = pub->publish (topic_id_, &part, 1, flags_);
+    if (unlikely (rc != 0)) {
+        const int err = errno;
+        zlink_msg_close (&part);
+        errno = err;
+    }
+    return rc;
 }
 
 void *zlink_spot_sub_new (void *node_)

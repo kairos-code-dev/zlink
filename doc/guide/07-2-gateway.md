@@ -70,10 +70,11 @@ zlink_gateway_set_lb_strategy(gateway, "payment-service",
 
 ```c
 /* Send request from Gateway to Receiver */
-zlink_msg_t req;
-zlink_msg_init_data(&req, data, size, NULL, NULL);
-zlink_gateway_send(gateway, "payment-service", &req, 1, 0);
+const char *req = "request";
+zlink_gateway_send_bytes(gateway, "payment-service", req, 7, 0);
 ```
+
+For multipart payloads, use `zlink_gateway_send()`.
 
 ### 4.2 Receiving Replies (Gateway)
 
@@ -125,7 +126,9 @@ zlink_receiver_update_weight(receiver, "payment-service", 5);
 All public Gateway APIs are protected by internal mutexes. They are safe to call concurrently from multiple threads.
 
 - `zlink_gateway_send()`
+- `zlink_gateway_send_bytes()`
 - `zlink_gateway_send_rid()`
+- `zlink_gateway_send_rid_bytes()`
 - `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_setsockopt()`
@@ -141,10 +144,9 @@ void *gateway = zlink_gateway_new(ctx, discovery, "gw-1");
 /* Worker thread function */
 void *send_worker(void *arg) {
     void *gw = arg;
-    zlink_msg_t req;
-    zlink_msg_init_data(&req, "request", 7, NULL, NULL);
+    const char *req = "request";
     /* Concurrent send calls from multiple threads -- safe */
-    zlink_gateway_send(gw, "my-service", &req, 1, 0);
+    zlink_gateway_send_bytes(gw, "my-service", req, 7, 0);
     return NULL;
 }
 
@@ -220,9 +222,8 @@ while (!zlink_discovery_service_available(discovery, "echo-service"))
     sleep(1);
 
 /* Request/Reply */
-zlink_msg_t req;
-zlink_msg_init_data(&req, "hello", 5, NULL, NULL);
-zlink_gateway_send(gateway, "echo-service", &req, 1, 0);
+const char *req = "hello";
+zlink_gateway_send_bytes(gateway, "echo-service", req, 5, 0);
 
 /* ... Receiver processes and replies ... */
 
@@ -241,8 +242,10 @@ zlink_ctx_term(ctx);
 |----------|-------------|
 | `zlink_gateway_new(ctx, discovery, routing_id)` | Create Gateway |
 | `zlink_gateway_send(...)` | Send message (with LB) |
+| `zlink_gateway_send_bytes(...)` | Send single-part byte message (with LB) |
 | `zlink_gateway_recv(...)` | Receive message (Receiver reply) |
 | `zlink_gateway_send_rid(...)` | Send to specific Receiver |
+| `zlink_gateway_send_rid_bytes(...)` | Send single-part byte message to specific Receiver |
 | `zlink_gateway_set_lb_strategy(...)` | Set LB strategy |
 | `zlink_gateway_setsockopt(...)` | Set socket options |
 | `zlink_gateway_set_tls_client(...)` | Set TLS client configuration |

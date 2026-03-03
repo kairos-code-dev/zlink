@@ -75,9 +75,6 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 
-MetricKey = Tuple[str, str, str, int, str]  # lib, pattern, transport, size, metric
-
-
 @dataclass
 class RunOutcome:
     status: str  # success | unsupported | skip | fail
@@ -467,11 +464,7 @@ def build_result_filename(tag: str = "") -> str:
     return f"{name}.txt"
 
 
-def single_tmp_dir(results_root: str) -> str:
-    return os.path.join(results_root, "single", "tmp")
-
-
-def single_report_dir(results_root: str) -> str:
+def single_result_dir(results_root: str) -> str:
     return os.path.join(results_root, "single", "report")
 
 
@@ -1084,82 +1077,6 @@ def build_pattern_table_lines(
     return lines
 
 
-def detect_cpu_model() -> str:
-    if not IS_WINDOWS and os.path.isfile("/proc/cpuinfo"):
-        try:
-            with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as fh:
-                for line in fh:
-                    if line.lower().startswith("model name"):
-                        return line.split(":", 1)[1].strip()
-        except OSError:
-            pass
-
-    cpu = platform.processor().strip()
-    if cpu:
-        return cpu
-    return "unknown"
-
-
-def read_build_type(build_dir: str) -> str:
-    cmake_build_dir = derive_cmake_build_dir(build_dir)
-    if not cmake_build_dir:
-        return "Release"
-
-    cache_path = os.path.join(cmake_build_dir, "CMakeCache.txt")
-    if not os.path.isfile(cache_path):
-        return "Release"
-
-    try:
-        with open(cache_path, "r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                if line.startswith("CMAKE_BUILD_TYPE:STRING="):
-                    build_type = line.split("=", 1)[1].strip()
-                    return build_type or "Release"
-    except OSError:
-        pass
-
-    return "Release"
-
-
-def git_commit_short() -> str:
-    try:
-        proc = subprocess.run(
-            ["git", "-C", ROOT_DIR, "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except Exception:
-        return "unknown"
-
-    if proc.returncode != 0:
-        return "unknown"
-    out = (proc.stdout or "").strip()
-    return out or "unknown"
-
-
-def gather_meta(runs: int, build_dir: str) -> Dict[str, str]:
-    local_now = datetime.datetime.now().astimezone()
-    meta = {
-        "os": platform.platform(),
-        "cpu": detect_cpu_model(),
-        "cores": str(os.cpu_count() or 0),
-        "build": read_build_type(build_dir),
-        "commit": git_commit_short(),
-        "timestamp": local_now.replace(microsecond=0).isoformat(),
-        "runs": str(runs),
-    }
-
-    if hasattr(os, "getloadavg"):
-        try:
-            la = os.getloadavg()
-            meta["load_avg"] = f"{la[0]:.2f} {la[1]:.2f} {la[2]:.2f}"
-        except OSError:
-            pass
-
-    return meta
-
-
 def build_single_option_items(
     args: argparse.Namespace,
     timeout_sec: int,
@@ -1181,10 +1098,7 @@ def build_single_option_items(
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
-        ("latency_seconds", str(parse_env_int("PERF_SINGLE_LATENCY_SECONDS", parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5)))),
         ("timeout_seconds", str(timeout_sec)),
-        ("sndtimeo_ms", str(parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200))),
-        ("recvtimeo_ms", str(parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200, "PERF_SINGLE_PUBSUB_RCVTIMEO_MS"))),
         ("hwm", str(base_hwm)),
         ("sndhwm", str(sndhwm)),
         ("rcvhwm", str(rcvhwm)),
@@ -1199,84 +1113,6 @@ def print_effective_options(label: str, items: List[Tuple[str, str]]) -> None:
     print(f"\n## Effective Options ({label})")
     for key, value in items:
         print(f"- {key}: {value}")
-
-
-def result_sort_key(key: MetricKey):
-    lib, pattern, transport, size, metric = key
-    pattern_order = {name: idx for idx, name in enumerate(DEFAULT_PATTERNS)}
-    transport_order = {
-        "tcp": 0,
-        "inproc": 1,
-        "ipc": 2,
-        "tls": 3,
-        "ws": 4,
-        "wss": 5,
-    }
-    metric_order = {
-        "throughput": 0,
-        "bandwidth": 1,
-        "latency": 2,
-        LATENCY_P95_METRIC: 3,
-        LATENCY_P99_METRIC: 4,
-        "cpu_pct": 5,
-        "mem_mb": 6,
-        SND_PENDING_MAX_METRIC: 7,
-        RCV_PENDING_MAX_METRIC: 8,
-        RCV_PENDING_END_METRIC: 9,
-    }
-    return (
-        pattern_order.get(pattern, 999),
-        transport_order.get(transport, 999),
-        size,
-        metric_order.get(metric, 999),
-        lib,
-    )
-
-
-def write_result_file(
-    path: str,
-    meta: Dict[str, str],
-    metrics: Dict[MetricKey, float],
-    table_text: str = "",
-    table_only: bool = False,
-) -> None:
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-    cleaned_table = table_text.rstrip("\n")
-
-    ordered_meta_keys = [
-        "os",
-        "cpu",
-        "cores",
-        "build",
-        "commit",
-        "timestamp",
-        "load_avg",
-        "runs",
-        "status",
-        "expected",
-        "actual",
-    ]
-
-    with open(path, "w", encoding="utf-8") as fh:
-        if table_only:
-            if cleaned_table:
-                fh.write(cleaned_table + "\n")
-            return
-        for key in ordered_meta_keys:
-            if key in meta:
-                fh.write(f"META,{key},{meta[key]}\n")
-        for metric_key in sorted(metrics.keys(), key=result_sort_key):
-            lib, pattern, transport, size, metric = metric_key
-            value = metrics[metric_key]
-            fh.write(
-                f"RESULT,{lib},{pattern},{transport},{size},{metric},{value:.2f}\n"
-            )
-        if cleaned_table:
-            fh.write("TABLE\n")
-            fh.write(cleaned_table + "\n")
 
 
 def parse_args() -> argparse.Namespace:
@@ -1378,19 +1214,18 @@ def main() -> int:
         return 1
 
     results_root = os.path.abspath(args.results_dir)
-    tmp_dir = single_tmp_dir(results_root)
-    report_dir = single_report_dir(results_root)
-    tmp_result_file = args.result_file
-    if not tmp_result_file:
-        tmp_result_file = os.path.join(tmp_dir, build_result_filename(args.results_tag))
-    tmp_parent = os.path.dirname(tmp_result_file)
-    if tmp_parent:
-        os.makedirs(tmp_parent, exist_ok=True)
-    tmp_log_fh = open(tmp_result_file, "w", encoding="utf-8", buffering=1)
+    result_dir = single_result_dir(results_root)
+    result_file = args.result_file
+    if not result_file:
+        result_file = os.path.join(result_dir, build_result_filename(args.results_tag))
+    result_parent = os.path.dirname(result_file)
+    if result_parent:
+        os.makedirs(result_parent, exist_ok=True)
+    result_log_fh = open(result_file, "w", encoding="utf-8", buffering=1)
     orig_stdout = sys.stdout
     orig_stderr = sys.stderr
-    sys.stdout = TeeStream(orig_stdout, tmp_log_fh)
-    sys.stderr = TeeStream(orig_stderr, tmp_log_fh)
+    sys.stdout = TeeStream(orig_stdout, result_log_fh)
+    sys.stderr = TeeStream(orig_stderr, result_log_fh)
 
     pattern_transports: Dict[str, List[str]] = {}
     pattern_sizes: Dict[str, List[int]] = {}
@@ -1413,7 +1248,6 @@ def main() -> int:
 
     all_failures: List[Tuple[str, str, int, str]] = []
     combo_results: Dict[Tuple[str, str, int], ComboRecord] = {}
-    result_metrics: Dict[MetricKey, float] = {}
     run_warnings: List[str] = []
     table_lines: List[str] = []
 
@@ -1670,51 +1504,6 @@ def main() -> int:
                         rcv_pending_end=rcv_pending_end,
                     )
 
-                    tp_key = ("current", pattern, transport, size, "throughput")
-                    bw_key = ("current", pattern, transport, size, "bandwidth")
-                    lat_key = ("current", pattern, transport, size, "latency")
-                    lat95_key = ("current", pattern, transport, size, LATENCY_P95_METRIC)
-                    lat99_key = ("current", pattern, transport, size, LATENCY_P99_METRIC)
-                    result_metrics[tp_key] = throughput
-                    result_metrics[bw_key] = bandwidth
-                    result_metrics[lat_key] = latency
-                    result_metrics[lat95_key] = latency_p95
-                    result_metrics[lat99_key] = latency_p99
-                    if cpu_pct is not None:
-                        result_metrics[("current", pattern, transport, size, "cpu_pct")] = cpu_pct
-                    if mem_mb is not None:
-                        result_metrics[("current", pattern, transport, size, "mem_mb")] = mem_mb
-                    if snd_pending_max is not None:
-                        result_metrics[
-                            (
-                                "current",
-                                pattern,
-                                transport,
-                                size,
-                                SND_PENDING_MAX_METRIC,
-                            )
-                        ] = snd_pending_max
-                    if rcv_pending_max is not None:
-                        result_metrics[
-                            (
-                                "current",
-                                pattern,
-                                transport,
-                                size,
-                                RCV_PENDING_MAX_METRIC,
-                            )
-                        ] = rcv_pending_max
-                    if rcv_pending_end is not None:
-                        result_metrics[
-                            (
-                                "current",
-                                pattern,
-                                transport,
-                                size,
-                                RCV_PENDING_END_METRIC,
-                            )
-                        ] = rcv_pending_end
-
             if show_run_labels:
                 median_line = "      median:"
                 print(median_line)
@@ -1782,25 +1571,12 @@ def main() -> int:
         for item in run_warnings:
             print(f"- {item}")
 
-    meta = gather_meta(args.runs, build_dir)
-    meta["status"] = completion_status
-    meta["expected"] = str(expected_result_lines)
-    meta["actual"] = str(actual_result_lines)
-    table_text = ""
-    if table_lines:
-        table_text = "\n".join(table_lines).rstrip() + "\n"
-
-    enforce_file_retention(os.path.dirname(tmp_result_file))
-    print(f"\nSaved tmp result file: {tmp_result_file}")
-
-    report_path = os.path.join(report_dir, build_result_filename(args.results_tag))
-    write_result_file(report_path, meta, result_metrics, table_text=table_text, table_only=True)
-    enforce_file_retention(report_dir)
-    print(f"Saved report file: {report_path} (status={completion_status})")
+    enforce_file_retention(os.path.dirname(result_file))
+    print(f"\nSaved result file: {result_file} (status={completion_status})")
 
     sys.stdout = orig_stdout
     sys.stderr = orig_stderr
-    tmp_log_fh.close()
+    result_log_fh.close()
     if completion_status != "complete":
         return 1
     return 0

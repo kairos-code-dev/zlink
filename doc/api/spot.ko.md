@@ -486,7 +486,35 @@ int zlink_spot_pub_publish(void *pub,
 `ASYNC` 모드에서 큐 포화 정책이
 `ZLINK_SPOT_NODE_PUB_QUEUE_FULL_EAGAIN`인 경우 `EAGAIN`이 반환될 수 있습니다.
 
-**참고:** `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
+**참고:** `zlink_spot_pub_publish_bytes`, `zlink_spot_sub_subscribe`, `zlink_spot_pub_new`
+
+---
+
+### zlink_spot_pub_publish_bytes
+
+토픽으로 단일 파트 바이트 버퍼를 게시합니다.
+
+```c
+int zlink_spot_pub_publish_bytes(void *pub,
+                                 const char *topic_id,
+                                 const void *data,
+                                 size_t size,
+                                 int flags);
+```
+
+지정된 토픽 식별자로 노드의 PUB 소켓에 단일 파트 payload를 게시합니다.
+단일 버퍼 게시 경로에서 호출자가 `zlink_msg_t`를 직접 구성하지 않아도 되는
+편의 API입니다.
+
+**반환값:** 성공 시 `0`, 실패 시 `-1` (errno가 설정됨).
+
+**에러:**
+- `EINVAL` -- `size > 0`인데 `data == NULL`.
+- `EAGAIN` -- ASYNC 게시 큐가 `EAGAIN` 정책에서 포화됨.
+
+**스레드 안전성:** 스레드 안전.
+
+**참고:** `zlink_spot_pub_publish`, `zlink_spot_pub_new`
 
 ---
 

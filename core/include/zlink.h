@@ -859,6 +859,18 @@ ZLINK_EXPORT int zlink_gateway_send (void *gateway,
                                      int flags);
 
 /**
+ * @brief Send a single-part byte buffer to a service (load-balanced).
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (0 or ZLINK_DONTWAIT).
+ */
+ZLINK_EXPORT int zlink_gateway_send_bytes (void *gateway,
+                                           const char *service_name,
+                                           const void *data,
+                                           size_t size,
+                                           int flags);
+
+/**
  * @brief Receive a message.
  * @param[out] parts             Received multipart message (caller must free).
  * @param[out] part_count        Number of parts.
@@ -878,6 +890,20 @@ ZLINK_EXPORT int zlink_gateway_send_rid (void *gateway,
                                          zlink_msg_t *parts,
                                          size_t part_count,
                                      int flags);
+
+/**
+ * @brief Send a single-part byte buffer directly to a specific Receiver.
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (0 or ZLINK_DONTWAIT).
+ */
+ZLINK_EXPORT int zlink_gateway_send_rid_bytes (
+  void *gateway,
+  const char *service_name,
+  const zlink_routing_id_t *routing_id,
+  const void *data,
+  size_t size,
+  int flags);
 
 /** @name Load-balancing strategies */
 /** @{ */
@@ -1136,6 +1162,18 @@ ZLINK_EXPORT int zlink_spot_pub_publish (void *pub,
                                          zlink_msg_t *parts,
                                          size_t part_count,
                                          int flags);
+
+/**
+ * @brief Publish a single-part byte buffer under a topic.
+ * @param data          Payload buffer.
+ * @param size          Payload size in bytes.
+ * @param flags         Send flags (typically 0).
+ */
+ZLINK_EXPORT int zlink_spot_pub_publish_bytes (void *pub,
+                                               const char *topic_id,
+                                               const void *data,
+                                               size_t size,
+                                               int flags);
 
 /* SPOT Sub ---------------------------------------------------------------- */
 

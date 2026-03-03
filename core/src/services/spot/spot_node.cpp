@@ -1623,10 +1623,12 @@ void spot_node_t::refresh_peers ()
 {
     discovery_t *disc = NULL;
     std::string service;
+    std::string self_advertise;
     {
         scoped_lock_t lock (_sync);
         disc = _discovery;
         service = _discovery_service;
+        self_advertise = _advertise_endpoint;
     }
     if (!disc || !_sub)
         return;
@@ -1639,10 +1641,7 @@ void spot_node_t::refresh_peers ()
         const provider_info_t &entry = providers[i];
         if (entry.endpoint.empty ())
             continue;
-        if (entry.routing_id.size == _routing_id.size
-            && memcmp (entry.routing_id.data, _routing_id.data,
-                       _routing_id.size)
-                 == 0)
+        if (!self_advertise.empty () && entry.endpoint == self_advertise)
             continue;
         next.insert (entry.endpoint);
     }

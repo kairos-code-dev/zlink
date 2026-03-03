@@ -4,22 +4,12 @@ param(
     [string]$OutputFile = "",
     [int]$Runs = 0,
     [switch]$Build,
-    [switch]$Save,
-    [string]$SaveVersion = "",
     [string]$ResultsDir = "",
     [string]$ResultsTag = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
     [switch]$PinCpu,
-    [ValidateSet("observe", "trend", "gate")]
-    [string]$Mode = "observe",
-    [int]$RollingN = 10,
-    [string]$BaselineFile = "",
-    [double]$WarnThroughputPct = 10,
-    [double]$FailThroughputPct = 15,
-    [double]$WarnLatencyPct = 10,
-    [double]$FailLatencyPct = 15,
     [Alias("MultiWarmupSeconds")]
     [int]$Warmup = 2,
     [Alias("MultiDurationSeconds")]
@@ -38,8 +28,6 @@ param(
     [string]$RecvTimeoutMs = "200",
     [Alias("MultiConnectConcurrency")]
     [string]$ConnectConcurrency = "",
-    [Alias("MultiDrainMs")]
-    [string]$DrainMs = "",
     [Alias("MultiTransportTransitionMs")]
     [int]$TransportTransitionMs = 3000,
     [Alias("MultiPatternTransitionMs")]
@@ -70,23 +58,14 @@ Options:
                                Alias: stream/streams => STREAM,STREAM_CALLBACK,STREAM_LEN32BE
   -BuildDir PATH               Build directory.
   -OutputFile PATH             Tee console logs to file.
-  -Runs N                      Iterations per configuration (default: observe/trend=3, gate=5).
+  -Runs N                      Iterations per configuration (default: 3).
   -Build                       Force clean build (default is reuse-build).
-  -Save                        Save baseline file (complete only, timestamp version).
-  -SaveVersion VERSION         Baseline version to use with -Save.
   -ResultsDir PATH             Override result root directory.
   -ResultsTag NAME             Optional tag appended to result filename.
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable PERF_TASKSET=1.
-  -Mode MODE                   observe|trend|gate (default: observe).
-  -RollingN N                  Rolling baseline window (default: 10).
-  -BaselineFile PATH           Fixed baseline override file for gate mode.
-  -WarnThroughputPct N         Throughput warning threshold.
-  -FailThroughputPct N         Throughput fail threshold.
-  -WarnLatencyPct N            Latency warning threshold.
-  -FailLatencyPct N            Latency fail threshold.
   -Warmup N                    Override PERF_MULTI_WARMUP_SECONDS (default: 2).
   -Duration N                  Override PERF_MULTI_DURATION_SECONDS.
   -Clients N                   Override PERF_MULTI_CLIENTS (default: 100, stream=10000).
@@ -96,7 +75,6 @@ Options:
   -SendTimeoutMs N             Override PERF_MULTI_SNDTIMEO_MS.
   -RecvTimeoutMs N             Override PERF_MULTI_RCVTIMEO_MS.
   -ConnectConcurrency N        Override PERF_MULTI_CONNECT_CONCURRENCY.
-  -DrainMs N                   Override PERF_MULTI_DRAIN_MS.
   -TransportTransitionMs N     Transport transition cooldown(ms).
   -PatternTransitionMs N       Pattern transition cooldown(ms).
   -ServerReadyTimeoutMs N      Server READY wait timeout(ms).
@@ -112,7 +90,6 @@ if ($Help) {
     exit 0
 }
 
-if ($RollingN -lt 1) { throw "RollingN must be >= 1." }
 if ($Warmup -lt 0) { throw "Warmup must be >= 0." }
 if ($Duration -lt 1) { throw "Duration must be >= 1." }
 if ($TransportTransitionMs -lt 0) { throw "TransportTransitionMs must be >= 0." }
@@ -124,16 +101,12 @@ if ($ServerShutdownTimeoutMs -lt 0) { throw "ServerShutdownTimeoutMs must be >= 
 if ($ServerBindPort -lt 0 -or $ServerBindPort -gt 65535) {
     throw "ServerBindPort must be in range 0..65535."
 }
-if ($WarnThroughputPct -lt 0 -or $FailThroughputPct -lt 0 -or $WarnLatencyPct -lt 0 -or $FailLatencyPct -lt 0) {
-    throw "Threshold values must be >= 0."
-}
 if ($IoThreads -and $IoThreads -notmatch '^\d+$') { throw "IoThreads must be a non-negative integer." }
 if ($Hwm -and ($Hwm -notmatch '^\d+$' -or [int]$Hwm -lt 1)) { throw "Hwm must be a positive integer." }
 if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) { throw "SendHwm must be a positive integer." }
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) { throw "RecvHwm must be a positive integer." }
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') { throw "MsgSizes must be a comma-separated list of integers." }
 if ($Transports -and $Transports -notmatch '^[a-z]+(,[a-z]+)*$') { throw "Transports must be a comma-separated list of names." }
-if ($SaveVersion) { $Save = $true }
 $DefaultPatterns = @(
     "DEALER_DEALER",
     "DEALER_ROUTER",
@@ -215,10 +188,9 @@ if ($PatternList.Count -eq 0) {
 }
 $PatternCsv = ($PatternList -join ",")
 
-$ModeLower = $Mode.ToLowerInvariant()
 if ($Runs -lt 0) { throw "Runs must be >= 0." }
 if ($Runs -eq 0) {
-    if ($ModeLower -eq "gate") { $Runs = 5 } else { $Runs = 3 }
+    $Runs = 3
 }
 
 $ScriptDir = $PSScriptRoot
@@ -227,7 +199,7 @@ if (-not (Test-Path $Runner)) {
     throw "runner script not found: $Runner"
 }
 
-$RunArgs = @("-Pattern", $PatternCsv, "-Mode", $ModeLower, "-RollingN", $RollingN.ToString(), "-Runs", $Runs.ToString())
+$RunArgs = @("-Pattern", $PatternCsv, "-Runs", $Runs.ToString())
 if ($BuildDir) { $RunArgs += @("-BuildDir", $BuildDir) }
 if ($OutputFile) { $RunArgs += @("-OutputFile", $OutputFile) }
 if ($ResultsDir) { $RunArgs += @("-ResultsDir", $ResultsDir) }
@@ -236,24 +208,11 @@ if ($IoThreads) { $RunArgs += @("-IoThreads", $IoThreads) }
 if ($MsgSizes) { $RunArgs += @("-MsgSizes", $MsgSizes) }
 if ($Transports) { $RunArgs += @("-Transports", $Transports) }
 if ($PinCpu) { $RunArgs += "-PinCpu" }
-if ($Save) {
-    $RunArgs += "-Save"
-    if ($SaveVersion) {
-        $RunArgs += @("-SaveVersion", $SaveVersion)
-    }
-}
-if ($BaselineFile) { $RunArgs += @("-BaselineFile", $BaselineFile) }
 if ($Build.IsPresent) { $RunArgs += "-Build" }
 
 $RunEnv = @{}
 $RunEnv["PERF_ALLOW_MULTI"] = "1"
 $RunEnv["PERF_MULTI_POLICY"] = "1"
-$RunEnv["PERF_MODE"] = $ModeLower
-$RunEnv["PERF_ROLLING_N"] = $RollingN.ToString()
-$RunEnv["PERF_WARN_THROUGHPUT_PCT"] = $WarnThroughputPct.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-$RunEnv["PERF_FAIL_THROUGHPUT_PCT"] = $FailThroughputPct.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-$RunEnv["PERF_WARN_LATENCY_PCT"] = $WarnLatencyPct.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-$RunEnv["PERF_FAIL_LATENCY_PCT"] = $FailLatencyPct.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 $RunEnv["PERF_MULTI_WARMUP_SECONDS"] = $Warmup.ToString()
 $RunEnv["PERF_MULTI_DURATION_SECONDS"] = $Duration.ToString()
 $RunEnv["PERF_MULTI_SNDTIMEO_MS"] = $SendTimeoutMs
@@ -270,7 +229,6 @@ if ($Hwm) { $RunEnv["PERF_MULTI_HWM"] = $Hwm }
 if ($SendHwm) { $RunEnv["PERF_MULTI_SNDHWM"] = $SendHwm }
 if ($RecvHwm) { $RunEnv["PERF_MULTI_RCVHWM"] = $RecvHwm }
 if ($ConnectConcurrency) { $RunEnv["PERF_MULTI_CONNECT_CONCURRENCY"] = $ConnectConcurrency }
-if ($DrainMs) { $RunEnv["PERF_MULTI_DRAIN_MS"] = $DrainMs }
 
 $PreviousEnv = @{}
 foreach ($key in $RunEnv.Keys) {

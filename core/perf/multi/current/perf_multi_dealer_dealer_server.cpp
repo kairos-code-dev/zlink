@@ -1,6 +1,7 @@
 #include "../common/perf_multi_entry.hpp"
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -38,8 +40,14 @@ inline void install_signal_handlers ()
 
 inline bool is_supported_transport (const std::string &transport)
 {
-    return transport == "tcp" || transport == "tls" || transport == "ws"
-           || transport == "wss";
+    if (transport == "tcp" || transport == "tls" || transport == "ws"
+        || transport == "wss")
+        return true;
+#if !defined(_WIN32)
+    if (transport == "ipc")
+        return true;
+#endif
+    return false;
 }
 
 inline std::string bind_server_endpoint (void *server,
@@ -98,14 +106,6 @@ inline std::string bind_server_endpoint (void *server,
     return endpoint;
 }
 
-inline unsigned long long wallclock_now_us ()
-{
-    return static_cast<unsigned long long> (
-      std::chrono::duration_cast<std::chrono::microseconds> (
-        std::chrono::system_clock::now ().time_since_epoch ())
-        .count ());
-}
-
 enum recv_result_t
 {
     recv_ok = 0,
@@ -113,10 +113,34 @@ enum recv_result_t
     recv_fatal = 2
 };
 
+inline bool decode_and_match_header (const zlink_msg_t *msg,
+                                     size_t expected_msg_size,
+                                     uint32_t expected_run_id,
+                                     perf_multi_metric::phase_t expected_phase,
+                                     perf_multi_metric::header_t *header_out)
+{
+    if (!msg || !header_out)
+        return false;
+
+    if (!perf_multi_metric::decode_payload_header (
+          zlink_msg_data (const_cast<zlink_msg_t *> (msg)),
+          zlink_msg_size (const_cast<zlink_msg_t *> (msg)),
+          header_out)) {
+        return false;
+    }
+
+    return header_out->magic == perf_multi_metric::k_magic
+           && header_out->run_id == expected_run_id
+           && header_out->phase == static_cast<uint32_t> (expected_phase)
+           && header_out->msg_size == static_cast<uint32_t> (expected_msg_size);
+}
+
 inline recv_result_t receive_one_message (
   void *server,
   int flags,
-  size_t expected_size,
+  size_t expected_msg_size,
+  uint32_t expected_run_id,
+  perf_multi_metric::phase_t expected_phase,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -140,19 +164,21 @@ inline recv_result_t receive_one_message (
         return recv_fatal;
     }
 
-    const size_t msg_size = zlink_msg_size (&msg);
-    const bool size_match = expected_size == 0 || msg_size == expected_size;
+    perf_multi_metric::header_t header;
+    const bool matched = decode_and_match_header (
+      &msg,
+      expected_msg_size,
+      expected_run_id,
+      expected_phase,
+      &header);
 
-    if (size_match && count_message && message_count)
+    if (matched && count_message && message_count)
         (*message_count)++;
 
-    if (size_match && collect_latency && lat_sum && lat_count
-        && msg_size >= sizeof (unsigned long long)) {
-        unsigned long long sent_us = 0;
-        std::memcpy (&sent_us, zlink_msg_data (&msg), sizeof (sent_us));
-        const unsigned long long now_us = wallclock_now_us ();
-        if (now_us >= sent_us) {
-            const double sample_us = static_cast<double> (now_us - sent_us);
+    if (matched && collect_latency && lat_sum && lat_count) {
+        const uint64_t now_us = perf_multi_metric::now_us ();
+        if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
+            const double sample_us = static_cast<double> (now_us - header.sent_ts_us);
             *lat_sum += sample_us;
             (*lat_count)++;
             if (lat_samples)
@@ -160,32 +186,15 @@ inline recv_result_t receive_one_message (
         }
     }
 
-    bool more = zlink_msg_more (&msg) != 0;
     zlink_msg_close (&msg);
-
-    while (more) {
-        zlink_msg_t next;
-        if (zlink_msg_init (&next) != 0)
-            return recv_fatal;
-
-        int next_rc = zlink_msg_recv (&next, server, 0);
-        while (next_rc < 0 && zlink_errno () == EINTR)
-            next_rc = zlink_msg_recv (&next, server, 0);
-        if (next_rc < 0) {
-            zlink_msg_close (&next);
-            return recv_fatal;
-        }
-
-        more = zlink_msg_more (&next) != 0;
-        zlink_msg_close (&next);
-    }
-
     return recv_ok;
 }
 
 inline bool drain_non_blocking_messages (
   void *server,
-  size_t expected_size,
+  size_t expected_msg_size,
+  uint32_t expected_run_id,
+  perf_multi_metric::phase_t expected_phase,
   bool count_message,
   bool collect_latency,
   long *message_count,
@@ -197,7 +206,9 @@ inline bool drain_non_blocking_messages (
         const recv_result_t status = receive_one_message (
           server,
           ZLINK_DONTWAIT,
-          expected_size,
+          expected_msg_size,
+          expected_run_id,
+          expected_phase,
           count_message,
           collect_latency,
           message_count,
@@ -214,7 +225,9 @@ inline bool drain_non_blocking_messages (
 
 inline bool run_receive_window (
   void *server,
-  size_t expected_size,
+  size_t expected_msg_size,
+  uint32_t expected_run_id,
+  perf_multi_metric::phase_t expected_phase,
   double duration_seconds,
   bool count_message,
   bool collect_latency,
@@ -238,7 +251,9 @@ inline bool run_receive_window (
         const recv_result_t status = receive_one_message (
           server,
           0,
-          expected_size,
+          expected_msg_size,
+          expected_run_id,
+          expected_phase,
           count_message,
           collect_latency,
           message_count,
@@ -252,7 +267,9 @@ inline bool run_receive_window (
 
         if (!drain_non_blocking_messages (
               server,
-              expected_size,
+              expected_msg_size,
+              expected_run_id,
+              expected_phase,
               count_message,
               collect_latency,
               message_count,
@@ -266,28 +283,37 @@ inline bool run_receive_window (
     return true;
 }
 
-inline bool run_idle_stage (
-  void *server,
-  size_t expected_size,
-  double duration_seconds)
+inline void normalize_latency_stats (double lat_sum,
+                                     long lat_count,
+                                     bench_latency_sampler_t *samples,
+                                     bench_latency_stats_t *latency_out)
 {
-    return run_receive_window (
-      server,
-      expected_size,
-      duration_seconds,
-      false,
-      false,
-      NULL,
-      NULL,
-      NULL,
-      NULL);
+    if (!latency_out)
+        return;
+    if (lat_count <= 0) {
+        *latency_out = bench_latency_stats_t ();
+        return;
+    }
+
+    bench_latency_stats_t stats = samples ? samples->snapshot () : bench_latency_stats_t ();
+    if (stats.mean_us <= 0.0)
+        stats.mean_us = lat_sum / static_cast<double> (lat_count);
+    if (stats.p95_us <= 0.0)
+        stats.p95_us = stats.mean_us;
+    if (stats.p99_us <= 0.0)
+        stats.p99_us = stats.p95_us;
+    if (stats.p95_us < stats.mean_us)
+        stats.p95_us = stats.mean_us;
+    if (stats.p99_us < stats.p95_us)
+        stats.p99_us = stats.p95_us;
+    *latency_out = stats;
 }
 
 inline bool run_one_size_benchmark (
   void *server,
   const multi_bench_settings_t &settings,
   size_t msg_size,
-  bool has_next_size,
+  uint32_t run_id,
   const std::string &lib_name,
   const std::string &transport)
 {
@@ -295,76 +321,67 @@ inline bool run_one_size_benchmark (
       static_cast<double> (std::max (0, settings.warmup_seconds));
     const double settle_s =
       static_cast<double> (std::max (0, settings.settle_ms)) / 1000.0;
-    const double throughput_s =
+    const double active_s =
       static_cast<double> (std::max (1, settings.duration_seconds));
-    const double latency_s =
-      static_cast<double> (std::max (1, settings.duration_seconds));
-    const double drain_s =
-      static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
-    const double transition_s = has_next_size
-                                  ? static_cast<double> (
-                                      std::max (0, settings.size_transition_drain_ms))
-                                      / 1000.0
-                                  : 0.0;
 
-    if (!run_idle_stage (server, msg_size, warmup_s))
-        return false;
-    if (!run_idle_stage (server, msg_size, settle_s))
-        return false;
-
-    long throughput_count = 0;
     if (!run_receive_window (
           server,
           msg_size,
-          throughput_s,
-          true,
+          run_id,
+          perf_multi_metric::phase_warmup,
+          warmup_s,
           false,
-          &throughput_count,
+          false,
+          NULL,
           NULL,
           NULL,
           NULL)) {
         return false;
     }
 
-    if (throughput_count <= 0)
-        return false;
-
-    if (!run_idle_stage (server, msg_size, settle_s))
-        return false;
-
-    double lat_sum = 0.0;
-    long lat_count = 0;
-    bench_latency_sampler_t lat_samples;
     if (!run_receive_window (
           server,
           msg_size,
-          latency_s,
+          run_id,
+          perf_multi_metric::phase_drain,
+          settle_s,
           false,
-          true,
+          false,
           NULL,
+          NULL,
+          NULL,
+          NULL)) {
+        return false;
+    }
+
+    long recv_count = 0;
+    double lat_sum = 0.0;
+    long lat_count = 0;
+    bench_latency_sampler_t lat_samples;
+
+    if (!run_receive_window (
+          server,
+          msg_size,
+          run_id,
+          perf_multi_metric::phase_active,
+          active_s,
+          true,
+          true,
+          &recv_count,
           &lat_sum,
           &lat_count,
           &lat_samples)) {
         return false;
     }
 
-    if (lat_count <= 0)
+    if (recv_count <= 0 || lat_count <= 0)
         return false;
 
-    bench_latency_stats_t latency = lat_samples.snapshot ();
-    if (latency.mean_us <= 0.0)
-        latency.mean_us = lat_sum / static_cast<double> (lat_count);
-    if (latency.p95_us <= 0.0)
-        latency.p95_us = latency.mean_us;
-    if (latency.p99_us <= 0.0)
-        latency.p99_us = latency.p95_us;
-    if (latency.p95_us < latency.mean_us)
-        latency.p95_us = latency.mean_us;
-    if (latency.p99_us < latency.p95_us)
-        latency.p99_us = latency.p95_us;
+    bench_latency_stats_t latency;
+    normalize_latency_stats (lat_sum, lat_count, &lat_samples, &latency);
 
     const double throughput =
-      static_cast<double> (throughput_count)
+      static_cast<double> (recv_count)
       / static_cast<double> (std::max (1, settings.duration_seconds));
 
     print_result (
@@ -385,11 +402,6 @@ inline bool run_one_size_benchmark (
       transport,
       msg_size,
       queue_stats);
-
-    if (!run_idle_stage (server, msg_size, drain_s))
-        return false;
-    if (transition_s > 0.0 && !run_idle_stage (server, msg_size, transition_s))
-        return false;
 
     return true;
 }
@@ -502,12 +514,13 @@ inline int run_server_benchmark (const std::string &lib_name,
             ok = false;
             break;
         }
-        const bool has_next = (si + 1) < sizes.size ();
+
+        const uint32_t run_id = static_cast<uint32_t> (si + 1);
         if (!run_one_size_benchmark (
               server,
               settings,
               sizes[si],
-              has_next,
+              run_id,
               lib_name,
               transport)) {
             ok = false;

@@ -93,10 +93,11 @@ zlink_spot_node_connect_peer_pub(node, "tcp://node3:9000");
 void *pub = zlink_spot_pub_new(node);
 
 /* 발행 */
-zlink_msg_t msg;
-zlink_msg_init_data(&msg, "hello world", 11, NULL, NULL);
-zlink_spot_pub_publish(pub, "chat:room1:message", &msg, 1, 0);
+const char *msg = "hello world";
+zlink_spot_pub_publish_bytes(pub, "chat:room1:message", msg, 11, 0);
 ```
+
+멀티파트 payload가 필요하면 `zlink_spot_pub_publish()`를 사용한다.
 
 ### 4.2 구독/수신 (SPOT Sub)
 

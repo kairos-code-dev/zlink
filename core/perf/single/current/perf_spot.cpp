@@ -1,4 +1,5 @@
 #include "../common/bench_common.hpp"
+#include "../common/perf_single_metric_header.hpp"
 #include <zlink.h>
 #include <atomic>
 #include <cstring>
@@ -235,16 +236,14 @@ static bool send_spot(void *spot_pub,
 
     const size_t send_size =
       std::min(payload.size(), std::max<size_t>(static_cast<size_t>(1), msg_size));
-    zlink_msg_t msg;
-    if (zlink_msg_init_data(&msg,
-                            const_cast<char *>(payload.data()),
-                            send_size,
-                            NULL,
-                            NULL)
-        != 0) {
-        return false;
-    }
-    return zlink_spot_pub_publish(spot_pub, topic.c_str(), &msg, 1, 0) == 0;
+    const void *data =
+      send_size > 0 ? static_cast<const void *>(payload.data()) : NULL;
+    return zlink_spot_pub_publish_bytes(spot_pub,
+                                        topic.c_str(),
+                                        data,
+                                        send_size,
+                                        0)
+           == 0;
 }
 
 // Return codes: 1=sent, 0=transient backpressure/interruption, -1=fatal.
@@ -259,21 +258,6 @@ static int send_spot_try(void *spot_pub,
     if (err == EAGAIN || err == EINTR)
         return 0;
     return -1;
-}
-
-static bool recv_spot_blocking(void *spot_sub)
-{
-    zlink_msg_t *parts = NULL;
-    size_t count = 0;
-    char topic_out[256];
-    size_t topic_len = 0;
-    const int rc =
-      zlink_spot_sub_recv(spot_sub, &parts, &count, 0, topic_out, &topic_len);
-    if (rc != 0)
-        return false;
-    if (parts)
-        zlink_msgv_close(parts, count);
-    return true;
 }
 
 static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
@@ -311,50 +295,61 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
     }
 }
 
-static bool run_spot_warmup_and_latency(void *spot_pub,
-                                        void *spot_sub,
-                                        const std::string &topic,
-                                        const std::vector<char> &payload,
-                                        size_t msg_size,
-                                        bool use_blocking_recv,
-                                        int recv_timeout_ms,
-                                        latency_stats_t *out_stats)
+static int recv_spot_header_flags (void *spot_sub,
+                                   size_t payload_size,
+                                   int flags,
+                                   perf_single_metric::header_t *header_out,
+                                   bool *header_ok_out)
 {
-    if (!out_stats)
-        return false;
+    if (!spot_sub)
+        return -1;
 
-    auto recv_one = [&]() {
-        return use_blocking_recv ? recv_spot_blocking(spot_sub)
-                                 : recv_spot_with_timeout_polling(spot_sub,
-                                                                  recv_timeout_ms);
-    };
+    if (header_ok_out)
+        *header_ok_out = false;
 
-    int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
-    if (msg_size >= 65536 && warmup_count > 20)
-        warmup_count = 20;
-    for (int i = 0; i < warmup_count; ++i) {
-        if (!send_spot(spot_pub, topic, payload, msg_size) || !recv_one())
-            return false;
+    zlink_msg_t *parts = NULL;
+    size_t count = 0;
+    char topic_out[256];
+    size_t topic_len = 0;
+    const int rc = zlink_spot_sub_recv (
+      spot_sub, &parts, &count, flags, topic_out, &topic_len);
+    if (rc != 0) {
+        const int err = zlink_errno ();
+        if (parts)
+            zlink_msgv_close (parts, count);
+        if (err == EAGAIN || err == EINTR)
+            return 0;
+        return -1;
     }
 
-    const int latency_duration_s = resolve_single_latency_duration_seconds();
-    latency_stats_builder_t latency_builder;
-    const auto latency_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(latency_duration_s > 0 ? latency_duration_s : 1);
-    while (std::chrono::steady_clock::now() < latency_deadline) {
-        stopwatch_t per_message;
-        per_message.start();
-        if (!send_spot(spot_pub, topic, payload, msg_size) || !recv_one())
-            return false;
-        latency_builder.add(per_message.elapsed_ms() * 1000.0);
+    if (count == 0 || !parts) {
+        if (parts)
+            zlink_msgv_close (parts, count);
+        return -1;
     }
 
-    if (latency_builder.count() == 0)
-        return false;
+    const size_t actual_size = zlink_msg_size (&parts[0]);
+    const bool size_ok = actual_size == payload_size;
+    const bool single_part = count == 1;
+    bool header_ok = false;
+    if (size_ok && single_part) {
+        if (header_out) {
+            header_ok = perf_single_metric::decode_payload_header (
+              zlink_msg_data (&parts[0]), actual_size, header_out);
+        } else {
+            header_ok = true;
+        }
+    }
 
-    *out_stats = latency_builder.snapshot();
-    return true;
+    zlink_msgv_close (parts, count);
+
+    if (!size_ok || !single_part)
+        return -1;
+
+    if (header_ok_out)
+        *header_ok_out = header_ok;
+
+    return 1;
 }
 
 static bool ensure_spot_subscription_ready(void *spot_pub,
@@ -386,133 +381,213 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
     return false;
 }
 
-static bool run_spot_throughput_parallel(void *spot_pub,
-                                         void *spot_sub,
-                                         bool use_blocking_recv,
-                                         const std::string &topic,
-                                         const std::vector<char> &payload,
-                                         size_t msg_size,
-                                         queue_probe_t *queue_probe,
-                                         int recv_timeout_ms,
-                                         int throughput_duration_s,
-                                         int *out_received)
+static bool run_spot_oneway_phase (void *spot_pub,
+                                   void *spot_sub,
+                                   const std::string &topic,
+                                   std::vector<char> *payload,
+                                   size_t payload_size,
+                                   size_t msg_size,
+                                   uint32_t run_id,
+                                   uint64_t *seq,
+                                   perf_single_metric::phase_t phase,
+                                   int warmup_count,
+                                   int duration_s,
+                                   int recv_timeout_ms,
+                                   queue_probe_t *queue_probe,
+                                   unsigned long long *out_received,
+                                   latency_stats_t *out_stats)
 {
-    if (!out_received)
+    if (!spot_pub || !spot_sub || !payload || !seq || !out_received)
         return false;
 
-    std::atomic<bool> sender_done(false);
-    std::atomic<bool> recv_failed(false);
-    std::atomic<int> recv_count(0);
-    const auto throughput_deadline =
-      std::chrono::steady_clock::now()
-      + std::chrono::seconds(throughput_duration_s > 0 ? throughput_duration_s
-                                                       : 1);
-    const auto drain_idle_limit =
-      std::chrono::milliseconds(recv_timeout_ms > 0 ? recv_timeout_ms : 200);
-    auto recv_one_flags = [&](int flags) {
-        zlink_msg_t *parts = NULL;
-        size_t count = 0;
-        char topic_out[256];
-        size_t topic_len = 0;
-        const int rc = zlink_spot_sub_recv(
-          spot_sub, &parts, &count, flags, topic_out, &topic_len);
-        if (rc == 0) {
-            if (parts)
-                zlink_msgv_close(parts, count);
-            return 1;
-        }
+    const bool active_phase = phase == perf_single_metric::phase_active;
+    const auto deadline =
+      active_phase
+        ? std::chrono::steady_clock::now ()
+            + std::chrono::seconds (duration_s > 0 ? duration_s : 1)
+        : std::chrono::steady_clock::time_point ();
+    const auto drain_idle_limit = std::chrono::milliseconds (
+      recv_timeout_ms > 0 ? recv_timeout_ms : 200);
 
-        const int err = zlink_errno();
-        if (err == EAGAIN || err == EINTR)
-            return 0;
-        return -1;
-    };
+    std::atomic<bool> sender_done (false);
+    std::atomic<bool> recv_failed (false);
+    unsigned long long received = 0;
+    latency_stats_builder_t latency_builder;
 
-    std::thread receiver([&]() {
-        auto last_recv_at = std::chrono::steady_clock::now();
-        if (queue_probe)
-            queue_probe->force_sample_recv();
+    std::thread receiver ([&] () {
+        auto last_recv_at = std::chrono::steady_clock::now ();
+
+        auto account_header =
+          [&] (const perf_single_metric::header_t &header, bool header_ok) {
+              if (active_phase && queue_probe)
+                  queue_probe->sample_recv_if_due ();
+
+              if (!header_ok || header.magic != perf_single_metric::k_magic
+                  || header.phase != static_cast<uint32_t> (phase)) {
+                  return;
+              }
+
+              if (active_phase) {
+                  if (std::chrono::steady_clock::now () < deadline) {
+                      ++received;
+                      const uint64_t now = perf_single_metric::now_us ();
+                      const double latency_us =
+                        now >= header.sent_ts_us
+                          ? static_cast<double> (now - header.sent_ts_us)
+                          : 0.0;
+                      latency_builder.add (latency_us);
+                  }
+              } else {
+                  ++received;
+              }
+          };
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
+
         while (true) {
-            const bool done = sender_done.load(std::memory_order_acquire);
-            const int flags = use_blocking_recv && !done ? 0 : ZLINK_DONTWAIT;
-            const int recv_rc = recv_one_flags(flags);
-            if (recv_rc > 0) {
-                last_recv_at = std::chrono::steady_clock::now();
-                if (std::chrono::steady_clock::now() < throughput_deadline) {
-                    recv_count.fetch_add(1, std::memory_order_release);
-                }
-                if (queue_probe)
-                    queue_probe->sample_recv_if_due();
+            const bool done = sender_done.load (std::memory_order_acquire);
+            const int flags = done ? ZLINK_DONTWAIT : 0;
 
-                // Drain immediately available messages without batch limits.
+            perf_single_metric::header_t header;
+            bool header_ok = false;
+            const int recv_rc = recv_spot_header_flags (
+              spot_sub, payload_size, flags, &header, &header_ok);
+            if (recv_rc > 0) {
+                last_recv_at = std::chrono::steady_clock::now ();
+                account_header (header, header_ok);
+
                 for (;;) {
-                    const int burst_rc = recv_one_flags(ZLINK_DONTWAIT);
+                    perf_single_metric::header_t burst_header;
+                    bool burst_header_ok = false;
+                    const int burst_rc = recv_spot_header_flags (
+                      spot_sub,
+                      payload_size,
+                      ZLINK_DONTWAIT,
+                      &burst_header,
+                      &burst_header_ok);
                     if (burst_rc > 0) {
-                        last_recv_at = std::chrono::steady_clock::now();
-                        if (std::chrono::steady_clock::now()
-                            < throughput_deadline) {
-                            recv_count.fetch_add(1, std::memory_order_release);
-                        }
-                        if (queue_probe)
-                            queue_probe->sample_recv_if_due();
+                        last_recv_at = std::chrono::steady_clock::now ();
+                        account_header (burst_header, burst_header_ok);
                         continue;
                     }
                     if (burst_rc == 0)
                         break;
-                    recv_failed.store(true, std::memory_order_release);
+
+                    recv_failed.store (true, std::memory_order_release);
                     break;
                 }
-                if (recv_failed.load(std::memory_order_acquire))
+
+                if (recv_failed.load (std::memory_order_acquire))
                     break;
                 continue;
             }
 
             if (recv_rc == 0) {
                 if (done
-                    && std::chrono::steady_clock::now() - last_recv_at
+                    && std::chrono::steady_clock::now () - last_recv_at
                          >= drain_idle_limit) {
                     break;
                 }
-                std::this_thread::yield();
+                std::this_thread::yield ();
                 continue;
             }
 
-            recv_failed.store(true, std::memory_order_release);
+            recv_failed.store (true, std::memory_order_release);
             break;
         }
-        if (queue_probe)
-            queue_probe->force_sample_recv();
+
+        if (active_phase && queue_probe)
+            queue_probe->force_sample_recv ();
     });
 
     bool send_failed = false;
-    if (queue_probe)
-        queue_probe->force_sample_send();
-    while (std::chrono::steady_clock::now() < throughput_deadline) {
-        const int send_rc = send_spot_try(spot_pub, topic, payload, msg_size);
-        if (send_rc > 0) {
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    if (active_phase) {
+        while (std::chrono::steady_clock::now () < deadline) {
+            const uint64_t sent_ts = perf_single_metric::now_us ();
+            if (!perf_single_metric::stamp_payload (payload->data (),
+                                                    payload_size,
+                                                    run_id,
+                                                    phase,
+                                                    msg_size,
+                                                    (*seq)++,
+                                                    sent_ts)) {
+                send_failed = true;
+                break;
+            }
+
+            bool sent = false;
+            while (std::chrono::steady_clock::now () < deadline) {
+                const int send_rc =
+                  send_spot_try (spot_pub, topic, *payload, payload_size);
+                if (send_rc > 0) {
+                    sent = true;
+                    break;
+                }
+                if (send_rc < 0) {
+                    send_failed = true;
+                    break;
+                }
+                std::this_thread::yield ();
+            }
+            if (send_failed || !sent)
+                break;
+
             if (queue_probe)
-                queue_probe->sample_send_if_due();
-            continue;
+                queue_probe->sample_send_if_due ();
         }
-        if (send_rc == 0) {
-            std::this_thread::yield();
-            continue;
-        }
-        if (send_rc < 0) {
-            send_failed = true;
-            break;
+    } else {
+        for (int i = 0; i < warmup_count; ++i) {
+            if (!perf_single_metric::stamp_payload (
+                  payload->data (),
+                  payload_size,
+                  run_id,
+                  phase,
+                  msg_size,
+                  (*seq)++,
+                  perf_single_metric::now_us ())) {
+                send_failed = true;
+                break;
+            }
+
+            for (;;) {
+                const int send_rc =
+                  send_spot_try (spot_pub, topic, *payload, payload_size);
+                if (send_rc > 0)
+                    break;
+                if (send_rc < 0) {
+                    send_failed = true;
+                    break;
+                }
+                std::this_thread::yield ();
+            }
+            if (send_failed)
+                break;
         }
     }
-    if (queue_probe)
-        queue_probe->force_sample_send();
-    sender_done.store(true, std::memory_order_release);
-    receiver.join();
 
-    if (send_failed || recv_failed.load(std::memory_order_acquire))
+    if (active_phase && queue_probe)
+        queue_probe->force_sample_send ();
+
+    sender_done.store (true, std::memory_order_release);
+    receiver.join ();
+
+    if (send_failed || recv_failed.load (std::memory_order_acquire))
         return false;
 
-    const int received = recv_count.load(std::memory_order_acquire);
-    *out_received = received > 0 ? received : 0;
+    *out_received = received;
+
+    if (active_phase) {
+        if (received == 0 || latency_builder.count () == 0 || !out_stats)
+            return false;
+        *out_stats = latency_builder.snapshot ();
+    } else if (received < static_cast<unsigned long long> (warmup_count)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -551,6 +626,10 @@ void run_spot(const std::string &transport,
     ctx_guard_t ctx;
     if (!ctx.valid())
         return;
+    {
+        int blocky = 0;
+        (void) zlink_ctx_set(ctx.get(), ZLINK_BLOCKY, blocky);
+    }
 
     const char *service_name = "perf-spot";
     void *registry = NULL;
@@ -567,20 +646,27 @@ void run_spot(const std::string &transport,
             delete queue_probe;
             queue_probe = NULL;
         }
-        if (spot_pub)
+        if (spot_pub) {
             zlink_spot_pub_destroy(&spot_pub);
-        if (spot_sub)
+        }
+        if (spot_sub) {
             zlink_spot_sub_destroy(&spot_sub);
-        if (pub_registered && node_pub)
+        }
+        if (pub_registered && node_pub) {
             (void) zlink_spot_node_unregister(node_pub, service_name);
-        if (node_pub)
+        }
+        if (node_pub) {
             zlink_spot_node_destroy(&node_pub);
-        if (node_sub)
+        }
+        if (node_sub) {
             zlink_spot_node_destroy(&node_sub);
-        if (discovery)
+        }
+        if (discovery) {
             zlink_discovery_destroy(&discovery);
-        if (registry)
+        }
+        if (registry) {
             zlink_registry_destroy(&registry);
+        }
     };
 
     auto fail_no_queue = [&]() {
@@ -601,7 +687,6 @@ void run_spot(const std::string &transport,
     const int recv_timeout_ms = resolve_single_recv_timeout_ms();
     const int linger_ms = 0;
     const int xpub_nodrop = 1;
-    bool use_blocking_recv = false;
 
     int base_port = 32000 + (current_process_id() % 2000) * 4;
     std::string registry_pub_endpoint;
@@ -704,7 +789,10 @@ void run_spot(const std::string &transport,
         return;
     }
     const size_t payload_capacity =
-      std::max<size_t>(std::max<size_t>(msg_size, static_cast<size_t>(64)),
+      std::max<size_t>(std::max<size_t>(
+                         std::max<size_t>(msg_size,
+                                          perf_single_metric::header_size()),
+                         static_cast<size_t>(64)),
                        static_cast<size_t>(1));
     std::vector<char> payload(payload_capacity, 'a');
     settle();
@@ -748,31 +836,55 @@ void run_spot(const std::string &transport,
         }
     }
 
-    const int throughput_duration_s = resolve_single_duration_seconds();
+    const uint32_t run_id = static_cast<uint32_t>(perf_single_metric::now_us());
+    uint64_t seq = 1;
+    int warmup_count = resolve_bench_count("PERF_WARMUP_COUNT", 200);
+    if (msg_size >= 65536 && warmup_count > 20)
+        warmup_count = 20;
+
+    unsigned long long warmup_received = 0;
+    if (!run_spot_oneway_phase(spot_pub,
+                               spot_sub,
+                               topic,
+                               &payload,
+                               payload_capacity,
+                               msg_size,
+                               run_id,
+                               &seq,
+                               perf_single_metric::phase_warmup,
+                               warmup_count,
+                               0,
+                               recv_timeout_ms,
+                               NULL,
+                               &warmup_received,
+                               NULL)) {
+        fail();
+        return;
+    }
+
+    const int duration_s = std::max(1, resolve_single_duration_seconds());
+    unsigned long long received = 0;
     latency_stats_t latency_stats;
-    if (!run_spot_warmup_and_latency(spot_pub,
-                                     spot_sub,
-                                     topic,
-                                     payload,
-                                     msg_size,
-                                     use_blocking_recv, recv_timeout_ms,
-                                     &latency_stats)) {
+    if (!run_spot_oneway_phase(spot_pub,
+                               spot_sub,
+                               topic,
+                               &payload,
+                               payload_capacity,
+                               msg_size,
+                               run_id,
+                               &seq,
+                               perf_single_metric::phase_active,
+                               0,
+                               duration_s,
+                               recv_timeout_ms,
+                               queue_probe,
+                               &received,
+                               &latency_stats)) {
         fail();
         return;
     }
-
-    int received = 0;
-    if (!run_spot_throughput_parallel(spot_pub, spot_sub, use_blocking_recv,
-                                      topic, payload, msg_size, queue_probe,
-                                      recv_timeout_ms,
-                                      throughput_duration_s,
-                                      &received)) {
-        fail();
-        return;
-    }
-
-    const double throughput = static_cast<double>(received)
-                              / static_cast<double>(throughput_duration_s);
+    const double throughput =
+      static_cast<double>(received) / static_cast<double>(duration_s);
     const queue_stats_t queue_stats = snapshot_queue_stats();
 
     print_result(lib_name, "SPOT", transport, msg_size, throughput,

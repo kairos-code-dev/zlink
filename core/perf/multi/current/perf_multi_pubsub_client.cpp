@@ -17,11 +17,14 @@ namespace {
 
 static const char *k_pattern = "MULTI_PUBSUB";
 static const int k_client_socket_type = ZLINK_SUB;
+static const uint32_t k_metric_run_id = 1U;
 
 using perf_multi_client::close_client_monitors;
 using perf_multi_client::close_client_sockets;
 using perf_multi_client::is_supported_transport;
 using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::print_client_result_lines;
+using perf_multi_client::resolve_case_msg_sizes;
 using perf_multi_client::wait_all_client_connect_ready;
 
 inline bool create_client_sockets (
@@ -42,47 +45,6 @@ inline bool create_client_sockets (
       monitors_out);
 }
 
-inline void print_client_result_lines (
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    print_result (
-      lib_name,
-      k_pattern,
-      transport,
-      msg_size,
-      throughput,
-      latency.mean_us,
-      latency.p95_us,
-      latency.p99_us);
-
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                  << std::endl;
-    }
-
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision (2) << metrics.mem_mb
-                  << std::endl;
-    }
-}
-
-inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
-{
-    std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (fallback_size);
-    if (msg_sizes.empty ())
-        msg_sizes.push_back (fallback_size > 0 ? fallback_size : 64);
-    return msg_sizes;
-}
-
 inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   const multi_bench_settings_t &base_settings,
                                   size_t scratch_capacity,
@@ -90,13 +52,14 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
                                   const std::string &transport,
                                   size_t msg_size)
 {
-    multi_bench_settings_t settings = base_settings;
     double throughput = 0.0;
     bench_latency_stats_t latency;
     bench_multi_resource_metrics_t metrics;
     if (!perf_multi_client::run_one_way_duration (
           sockets,
-          settings,
+          base_settings,
+          msg_size,
+          k_metric_run_id,
           scratch_capacity,
           &throughput,
           &latency,
@@ -105,6 +68,7 @@ inline bool run_single_size_case (const std::vector<void *> &sockets,
     }
 
     print_client_result_lines (
+      k_pattern,
       lib_name,
       transport,
       msg_size,
@@ -178,8 +142,6 @@ inline int run_client_benchmark (const std::string &lib_name,
             return 1;
         }
 
-        run_size_transition_drain_stage (
-          base_settings, (si + 1) < msg_sizes.size ());
     }
     close_client_sockets (&sockets);
     return 0;

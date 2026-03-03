@@ -73,7 +73,36 @@ message parts is transferred to the Gateway.
 **Thread safety:** Thread-safe. Multiple threads may call `zlink_gateway_send`
 concurrently on the same Gateway handle.
 
-**See also:** `zlink_gateway_recv`, `zlink_gateway_send_rid`, `zlink_gateway_set_lb_strategy`
+**See also:** `zlink_gateway_send_bytes`, `zlink_gateway_recv`, `zlink_gateway_send_rid`, `zlink_gateway_set_lb_strategy`
+
+---
+
+### zlink_gateway_send_bytes
+
+Send a single-part byte buffer to a service (load-balanced).
+
+```c
+int zlink_gateway_send_bytes(void *gateway,
+                             const char *service_name,
+                             const void *data,
+                             size_t size,
+                             int flags);
+```
+
+Sends a single-part payload to a Receiver registered under `service_name`.
+This is a convenience API for the common single-buffer case and does not
+require caller-side `zlink_msg_t` management.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- `data == NULL` while `size > 0`.
+- `EHOSTUNREACH` -- no receivers available for the service.
+- `EAGAIN` -- `ZLINK_DONTWAIT` was set and the operation would block.
+
+**Thread safety:** Thread-safe.
+
+**See also:** `zlink_gateway_send`, `zlink_gateway_send_rid_bytes`
 
 ---
 
@@ -134,7 +163,36 @@ a stateful protocol.
 
 **Thread safety:** Thread-safe.
 
-**See also:** `zlink_gateway_send`
+**See also:** `zlink_gateway_send`, `zlink_gateway_send_rid_bytes`
+
+---
+
+### zlink_gateway_send_rid_bytes
+
+Send a single-part byte buffer directly to a specific Receiver by routing ID.
+
+```c
+int zlink_gateway_send_rid_bytes(void *gateway,
+                                 const char *service_name,
+                                 const zlink_routing_id_t *routing_id,
+                                 const void *data,
+                                 size_t size,
+                                 int flags);
+```
+
+Bypasses load balancing and sends a single-part payload to the Receiver
+identified by `routing_id` within the given `service_name`.
+
+**Returns:** `0` on success, or `-1` on failure (errno is set).
+
+**Errors:**
+- `EINVAL` -- `data == NULL` while `size > 0`.
+- `EHOSTUNREACH` -- the specified routing ID is not connected.
+- `EAGAIN` -- `ZLINK_DONTWAIT` was set and the operation would block.
+
+**Thread safety:** Thread-safe.
+
+**See also:** `zlink_gateway_send_rid`, `zlink_gateway_send_bytes`
 
 ---
 

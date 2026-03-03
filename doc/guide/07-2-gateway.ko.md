@@ -70,10 +70,11 @@ zlink_gateway_set_lb_strategy(gateway, "payment-service",
 
 ```c
 /* Gateway에서 Receiver로 요청 전송 */
-zlink_msg_t req;
-zlink_msg_init_data(&req, data, size, NULL, NULL);
-zlink_gateway_send(gateway, "payment-service", &req, 1, 0);
+const char *req = "request";
+zlink_gateway_send_bytes(gateway, "payment-service", req, 7, 0);
 ```
+
+멀티파트 payload가 필요하면 `zlink_gateway_send()`를 사용한다.
 
 ### 4.2 응답 수신 (Gateway)
 
@@ -125,7 +126,9 @@ zlink_receiver_update_weight(receiver, "payment-service", 5);
 Gateway의 모든 공개 API는 내부 mutex로 보호된다. 여러 스레드에서 동시에 호출해도 안전하다.
 
 - `zlink_gateway_send()`
+- `zlink_gateway_send_bytes()`
 - `zlink_gateway_send_rid()`
+- `zlink_gateway_send_rid_bytes()`
 - `zlink_gateway_recv()`
 - `zlink_gateway_set_lb_strategy()`
 - `zlink_gateway_setsockopt()`
@@ -141,10 +144,9 @@ void *gateway = zlink_gateway_new(ctx, discovery, "gw-1");
 /* 워커 스레드 함수 */
 void *send_worker(void *arg) {
     void *gw = arg;
-    zlink_msg_t req;
-    zlink_msg_init_data(&req, "request", 7, NULL, NULL);
+    const char *req = "request";
     /* 여러 스레드에서 동시에 send 호출 — 안전 */
-    zlink_gateway_send(gw, "my-service", &req, 1, 0);
+    zlink_gateway_send_bytes(gw, "my-service", req, 7, 0);
     return NULL;
 }
 
@@ -220,9 +222,8 @@ while (!zlink_discovery_service_available(discovery, "echo-service"))
     sleep(1);
 
 /* 요청/응답 */
-zlink_msg_t req;
-zlink_msg_init_data(&req, "hello", 5, NULL, NULL);
-zlink_gateway_send(gateway, "echo-service", &req, 1, 0);
+const char *req = "hello";
+zlink_gateway_send_bytes(gateway, "echo-service", req, 5, 0);
 
 /* ... Receiver에서 수신/응답 처리 ... */
 
@@ -241,8 +242,10 @@ zlink_ctx_term(ctx);
 |------|------|
 | `zlink_gateway_new(ctx, discovery, routing_id)` | Gateway 생성 |
 | `zlink_gateway_send(...)` | 메시지 전송 (LB 적용) |
+| `zlink_gateway_send_bytes(...)` | 단일 파트 바이트 메시지 전송 (LB 적용) |
 | `zlink_gateway_recv(...)` | 메시지 수신 (Receiver 응답) |
 | `zlink_gateway_send_rid(...)` | 특정 Receiver로 전송 |
+| `zlink_gateway_send_rid_bytes(...)` | 특정 Receiver로 단일 파트 바이트 메시지 전송 |
 | `zlink_gateway_set_lb_strategy(...)` | LB 전략 설정 |
 | `zlink_gateway_setsockopt(...)` | 소켓 옵션 설정 |
 | `zlink_gateway_set_tls_client(...)` | TLS 클라이언트 설정 |

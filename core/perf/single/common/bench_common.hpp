@@ -83,27 +83,9 @@ inline int parse_positive_env(const char *name_, int default_value_)
     return static_cast<int>(parsed);
 }
 
-inline int parse_positive_env_pair(const char *primary_name_,
-                                   const char *legacy_name_,
-                                   int default_value_)
-{
-    const int primary = parse_positive_env(primary_name_, 0);
-    if (primary > 0)
-        return primary;
-    return parse_positive_env(legacy_name_, default_value_);
-}
-
 inline int resolve_single_duration_seconds()
 {
-    return parse_positive_env_pair("PERF_SINGLE_DURATION_SECONDS",
-                                   "PERF_SINGLE_DURATION_SECONDS", 5);
-}
-
-inline int resolve_single_latency_duration_seconds()
-{
-    const int base = resolve_single_duration_seconds();
-    return parse_positive_env_pair("PERF_SINGLE_LATENCY_SECONDS",
-                                   "PERF_SINGLE_LATENCY_SECONDS", base);
+    return parse_positive_env("PERF_SINGLE_DURATION_SECONDS", 5);
 }
 
 inline size_t resolve_single_latency_sample_cap()
@@ -483,41 +465,6 @@ inline int recv_two_part_msg_flags(void *socket_,
     return 1;
 }
 
-inline bool drain_socket_nonblocking(void *socket_)
-{
-    if (!socket_)
-        return true;
-
-    char discard[256];
-    int frame_guard = 0;
-    const int frame_limit = 65536;
-    while (frame_guard < frame_limit) {
-        const int rc = zlink_recv(
-          socket_, discard, sizeof(discard), ZLINK_DONTWAIT);
-        if (rc < 0) {
-            const int err = zlink_errno();
-            return err == EAGAIN || err == EINTR;
-        }
-
-        ++frame_guard;
-        int more = 0;
-        size_t more_size = sizeof(more);
-        if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size) != 0)
-            return false;
-        while (more != 0 && frame_guard < frame_limit) {
-            if (zlink_recv(socket_, discard, sizeof(discard), 0) < 0)
-                return false;
-            ++frame_guard;
-            more_size = sizeof(more);
-            if (zlink_getsockopt(socket_, ZLINK_RCVMORE, &more, &more_size)
-                != 0) {
-                return false;
-            }
-        }
-    }
-    return false;
-}
-
 inline bool bench_debug_enabled() {
     static const bool enabled = std::getenv("PERF_DEBUG") != nullptr;
     return enabled;
@@ -548,13 +495,13 @@ inline int resolve_single_send_timeout_ms()
 
 inline int resolve_single_recv_timeout_ms()
 {
-    return parse_positive_env_pair("PERF_SINGLE_RCVTIMEO_MS",
-                                   "PERF_SINGLE_PUBSUB_RCVTIMEO_MS", 200);
+    return parse_positive_env("PERF_SINGLE_RCVTIMEO_MS", 200);
 }
 
 inline int resolve_single_pubsub_recv_timeout_ms()
 {
-    return resolve_single_recv_timeout_ms();
+    return parse_positive_env("PERF_SINGLE_PUBSUB_RCVTIMEO_MS",
+                              resolve_single_recv_timeout_ms());
 }
 
 inline int resolve_single_socket_hwm(bool send_)

@@ -457,7 +457,7 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
         send_one ();
     }
 
-    // Build a len32be frame, embed latency data if sampling, and async_write.
+    // Build a len32be frame, embed sampled latency data, and async_write.
     void send_one ()
     {
         const size_t size = owner.current_phase_size ();
@@ -476,7 +476,12 @@ class client_session_t : public std::enable_shared_from_this<client_session_t>
 
         if (owner.latency_sampling_enabled () && payload_write && size >= 16) {
             const uint64_t seq = owner.next_seq ();
-            const uint64_t sent_ns = perf_stream_common::perf_stream_now_ns ();
+            uint64_t sent_ns = 0;
+            const int sample_rate = owner.latency_sample_rate ();
+            if (sample_rate <= 1
+                || (seq % static_cast<uint64_t> (sample_rate)) == 0) {
+                sent_ns = perf_stream_common::perf_stream_now_ns ();
+            }
             perf_stream_common::perf_stream_store_u64_be (payload_write, seq);
             perf_stream_common::perf_stream_store_u64_be (payload_write + 8,
                                                           sent_ns);

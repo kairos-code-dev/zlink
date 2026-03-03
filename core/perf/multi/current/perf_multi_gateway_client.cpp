@@ -2,6 +2,7 @@
 #include "../common/perf_common.hpp"
 #include "../common/perf_common_multi.hpp"
 #include "../common/perf_multi_client_helpers.hpp"
+#include "../common/perf_multi_metric_header.hpp"
 #include "../../../bench/with_zmq/multi/common/bench_multi_resource.hpp"
 
 #include <algorithm>
@@ -27,9 +28,13 @@ typedef int (*gateway_set_tls_client_fn) (void *, const char *, const char *, in
 typedef int (*receiver_set_tls_server_fn) (void *, const char *, const char *);
 
 using perf_multi_client::backoff_client_idle;
-using perf_multi_client::is_supported_transport;
+using perf_multi_client::decode_metric_header_from_capture;
+using perf_multi_client::normalize_latency_stats;
 using perf_multi_client::parse_endpoint_arg;
+using perf_multi_client::print_client_result_lines;
 using perf_multi_client::recv_one_message;
+using perf_multi_client::resolve_case_max_msg_size;
+using perf_multi_client::resolve_case_msg_sizes;
 
 enum gateway_send_result_t
 {
@@ -46,6 +51,12 @@ struct gateway_client_slot_t
 
     gateway_client_slot_t () : gateway (NULL), receiver (NULL), receiver_router (NULL) {}
 };
+
+inline bool is_supported_transport (const std::string &transport)
+{
+    return transport == "tcp" || transport == "tls" || transport == "ws"
+           || transport == "wss";
+}
 
 inline std::string replace_any_host_with_localhost (const std::string &endpoint)
 {
@@ -401,41 +412,30 @@ inline gateway_send_result_t send_gateway_message (void *gateway,
         return gateway_send_fatal;
 
     while (true) {
-        zlink_msg_t part;
-        if (zlink_msg_init_data (
-              &part,
-              payload_size > 0
-                ? const_cast<char *> (payload.data ())
-                : static_cast<void *> (NULL),
-              payload_size,
-              NULL,
-              NULL)
-            != 0) {
-            return gateway_send_fatal;
-        }
+        const void *data =
+          payload_size > 0 ? static_cast<const void *> (payload.data ()) : NULL;
 
         int send_rc = -1;
         if (g_server_routing_id_valid) {
-            send_rc = zlink_gateway_send_rid (
+            send_rc = zlink_gateway_send_rid_bytes (
               gateway,
               k_server_service_name,
               &g_server_routing_id,
-              &part,
-              1,
+              data,
+              payload_size,
               0);
         } else {
-            send_rc = zlink_gateway_send (
+            send_rc = zlink_gateway_send_bytes (
               gateway,
               k_server_service_name,
-              &part,
-              1,
+              data,
+              payload_size,
               0);
         }
         if (send_rc == 0)
             return gateway_send_ok;
 
         const int err = zlink_errno ();
-        zlink_msg_close (&part);
         if (err == EINTR)
             continue;
         if (err == EAGAIN || err == ENOENT || err == ENOTCONN
@@ -451,24 +451,43 @@ inline gateway_send_result_t send_gateway_message (void *gateway,
 inline bool run_echo_window_round_robin (
   const std::vector<gateway_client_slot_t> &slots,
   const multi_bench_settings_t &settings,
-  const std::vector<char> &payload,
+  std::vector<std::vector<char> > &slot_payloads,
   size_t payload_size,
+  size_t msg_size,
+  uint32_t run_id,
+  perf_multi_metric::phase_t phase,
   size_t scratch_capacity,
   double duration_seconds,
   bool allow_send,
+  bool collect_latency,
+  double *lat_sum,
+  long *lat_count,
+  bench_latency_stats_t *latency_out,
   long *recv_total)
 {
     if (slots.empty ())
         return false;
+    if (slot_payloads.size () != slots.size ())
+        return false;
     if (duration_seconds <= 0.0) {
         if (recv_total)
             *recv_total = 0;
+        if (lat_sum)
+            *lat_sum = 0.0;
+        if (lat_count)
+            *lat_count = 0;
+        if (latency_out)
+            *latency_out = bench_latency_stats_t ();
         return true;
     }
 
     bool fatal_error = false;
     long local_recv = 0;
+    double lat_sum_local = 0.0;
+    long lat_count_local = 0;
+    bench_latency_sampler_t latency_samples;
     size_t rr = 0;
+    uint64_t seq = 1;
 
     const auto deadline =
       std::chrono::steady_clock::now ()
@@ -477,7 +496,9 @@ inline bool run_echo_window_round_robin (
 
     const int poll_timeout_ms = std::max (0, settings.client_poll_timeout_ms);
     const size_t scratch_size =
-      std::max<size_t> (scratch_capacity, static_cast<size_t> (64));
+      std::max<size_t> (
+        scratch_capacity,
+        perf_multi_metric::header_size () + static_cast<size_t> (64));
 
     std::vector<char> scratch (scratch_size, '\0');
     std::vector<uint8_t> awaiting_reply (slots.size (), 0);
@@ -501,10 +522,26 @@ inline bool run_echo_window_round_robin (
                 const size_t idx = (start_rr + attempts) % slots.size ();
                 if (awaiting_reply[idx] != 0)
                     continue;
+                if (slot_payloads[idx].size () < payload_size) {
+                    fatal_error = true;
+                    break;
+                }
+
+                if (!perf_multi_metric::stamp_payload (
+                      slot_payloads[idx].data (),
+                      payload_size,
+                      run_id,
+                      phase,
+                      msg_size,
+                      seq++,
+                      perf_multi_metric::now_us ())) {
+                    fatal_error = true;
+                    break;
+                }
 
                 const gateway_send_result_t send_rc = send_gateway_message (
                   slots[idx].gateway,
-                  payload,
+                  slot_payloads[idx],
                   payload_size);
                 if (send_rc == gateway_send_ok) {
                     awaiting_reply[idx] = 1;
@@ -539,7 +576,7 @@ inline bool run_echo_window_round_robin (
                   slots[i].receiver_router,
                   scratch,
                   ZLINK_DONTWAIT,
-                  0);
+                  scratch.size ());
                 if (recv_rc < 0) {
                     fatal_error = true;
                     break;
@@ -548,15 +585,49 @@ inline bool run_echo_window_round_robin (
                     continue;
 
                 progressed = true;
-                ++local_recv;
                 awaiting_reply[i] = 0;
+
+                perf_multi_metric::header_t header;
+                if (decode_metric_header_from_capture (scratch, &header)
+                    && header.magic == perf_multi_metric::k_magic
+                    && header.run_id == run_id
+                    && header.phase == static_cast<uint32_t> (phase)
+                    && header.msg_size == static_cast<uint32_t> (msg_size)) {
+                    ++local_recv;
+                    if (collect_latency) {
+                        const uint64_t now_us = perf_multi_metric::now_us ();
+                        if (header.sent_ts_us > 0 && now_us >= header.sent_ts_us) {
+                            const double sample_us =
+                              static_cast<double> (now_us - header.sent_ts_us) * 0.5;
+                            lat_sum_local += sample_us;
+                            lat_count_local++;
+                            latency_samples.add (sample_us);
+                        }
+                    }
+                }
 
                 if (!allow_send)
                     continue;
+                if (slot_payloads[i].size () < payload_size) {
+                    fatal_error = true;
+                    break;
+                }
+
+                if (!perf_multi_metric::stamp_payload (
+                      slot_payloads[i].data (),
+                      payload_size,
+                      run_id,
+                      phase,
+                      msg_size,
+                      seq++,
+                      perf_multi_metric::now_us ())) {
+                    fatal_error = true;
+                    break;
+                }
 
                 const gateway_send_result_t send_rc = send_gateway_message (
                   slots[i].gateway,
-                  payload,
+                  slot_payloads[i],
                   payload_size);
                 if (send_rc == gateway_send_ok) {
                     awaiting_reply[i] = 1;
@@ -577,6 +648,18 @@ inline bool run_echo_window_round_robin (
 
     if (recv_total)
         *recv_total = local_recv;
+    if (lat_sum)
+        *lat_sum = lat_sum_local;
+    if (lat_count)
+        *lat_count = lat_count_local;
+    if (latency_out) {
+        if (!collect_latency) {
+            *latency_out = bench_latency_stats_t ();
+        } else {
+            normalize_latency_stats (
+              lat_sum_local, lat_count_local, &latency_samples, latency_out);
+        }
+    }
 
     return !fatal_error;
 }
@@ -584,12 +667,14 @@ inline bool run_echo_window_round_robin (
 inline bool prime_roundtrip_all_slots (
   const std::vector<gateway_client_slot_t> &slots,
   const multi_bench_settings_t &settings,
-  const std::vector<char> &payload,
+  std::vector<std::vector<char> > &slot_payloads,
   size_t payload_size,
   size_t scratch_capacity,
   int timeout_ms)
 {
     if (slots.empty ())
+        return false;
+    if (slot_payloads.size () != slots.size ())
         return false;
 
     const int bounded_timeout_ms = std::max (1000, timeout_ms);
@@ -615,7 +700,7 @@ inline bool prime_roundtrip_all_slots (
         poll_items[i] = item;
     }
 
-    const uint8_t target_roundtrips_per_slot = 3;
+    const uint8_t target_roundtrips_per_slot = 1;
     size_t primed_count = 0;
     size_t rr = 0;
 
@@ -628,10 +713,12 @@ inline bool prime_roundtrip_all_slots (
             if (roundtrip_count[idx] >= target_roundtrips_per_slot
                 || awaiting_reply[idx] != 0)
                 continue;
+            if (slot_payloads[idx].size () < payload_size)
+                return false;
 
             const gateway_send_result_t send_rc = send_gateway_message (
               slots[idx].gateway,
-              payload,
+              slot_payloads[idx],
               payload_size);
             if (send_rc == gateway_send_ok) {
                 awaiting_reply[idx] = 1;
@@ -671,9 +758,8 @@ inline bool prime_roundtrip_all_slots (
                 awaiting_reply[i] = 0;
                 if (roundtrip_count[i] < target_roundtrips_per_slot) {
                     ++roundtrip_count[i];
-                }
-                if (roundtrip_count[i] == target_roundtrips_per_slot) {
-                    ++primed_count;
+                    if (roundtrip_count[i] == target_roundtrips_per_slot)
+                        ++primed_count;
                 }
             }
         }
@@ -690,98 +776,14 @@ inline bool prime_roundtrip_all_slots (
     return primed_count == slots.size ();
 }
 
-inline bench_latency_stats_t measure_echo_latency_stats_us (
-  const std::vector<gateway_client_slot_t> &slots,
-  const std::vector<char> &payload,
-  size_t payload_size,
-  std::vector<char> &scratch)
-{
-    bench_latency_stats_t empty;
-    if (slots.empty () || !slots[0].gateway || !slots[0].receiver_router)
-        return empty;
-
-    int lat_count = std::max (1, resolve_bench_count ("PERF_LAT_COUNT", 200));
-    if (payload_size >= 262144)
-        lat_count = std::min (lat_count, 16);
-    else if (payload_size >= 131072)
-        lat_count = std::min (lat_count, 32);
-    else if (payload_size >= 65536)
-        lat_count = std::min (lat_count, 64);
-    const int lat_timeout_ms =
-      std::max (1, resolve_bench_count ("PERF_MULTI_LAT_TIMEOUT_MS", 5000));
-
-    zlink_pollitem_t item = {slots[0].receiver_router, 0, ZLINK_POLLIN, 0};
-    bench_latency_sampler_t lat_samples;
-
-    for (int i = 0; i < lat_count; ++i) {
-        stopwatch_t per_roundtrip;
-        per_roundtrip.start ();
-
-        bool sent = false;
-        const auto send_deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (lat_timeout_ms);
-        while (std::chrono::steady_clock::now () < send_deadline) {
-            const gateway_send_result_t send_rc =
-              send_gateway_message (slots[0].gateway, payload, payload_size);
-            if (send_rc == gateway_send_ok) {
-                sent = true;
-                break;
-            }
-            if (send_rc == gateway_send_fatal)
-                return empty;
-            std::this_thread::sleep_for (std::chrono::milliseconds (1));
-        }
-        if (!sent)
-            break;
-
-        bool got_reply = false;
-        const auto deadline =
-          std::chrono::steady_clock::now ()
-          + std::chrono::milliseconds (lat_timeout_ms);
-
-        while (std::chrono::steady_clock::now () < deadline) {
-            item.revents = 0;
-            const int prc = zlink_poll (&item, 1, 1);
-            if (prc < 0) {
-                if (zlink_errno () == EINTR)
-                    continue;
-                return empty;
-            }
-            if (prc == 0)
-                continue;
-            if ((item.revents & ZLINK_POLLIN) == 0)
-                continue;
-
-            const int rc = recv_one_message (
-              slots[0].receiver_router,
-              scratch,
-              ZLINK_DONTWAIT,
-              0);
-            if (rc < 0)
-                return empty;
-            if (rc > 0) {
-                got_reply = true;
-                break;
-            }
-        }
-
-        if (!got_reply)
-            break;
-
-        lat_samples.add ((per_roundtrip.elapsed_ms () * 1000.0) / 2.0);
-    }
-
-    return lat_samples.snapshot ();
-}
-
 inline bool run_echo_duration (
   const std::vector<gateway_client_slot_t> &slots,
   const multi_bench_settings_t &settings,
-  const std::vector<char> &payload,
+  std::vector<std::vector<char> > &slot_payloads,
   size_t payload_size,
+  size_t msg_size,
+  uint32_t run_id,
   size_t scratch_capacity,
-  std::vector<char> &lat_scratch,
   double *throughput_out,
   bench_latency_stats_t *latency_out,
   bench_multi_resource_metrics_t *metrics_out)
@@ -798,11 +800,18 @@ inline bool run_echo_duration (
     if (!run_echo_window_round_robin (
           slots,
           settings,
-          payload,
+          slot_payloads,
           payload_size,
+          msg_size,
+          run_id,
+          perf_multi_metric::phase_warmup,
           scratch_capacity,
           static_cast<double> (std::max (0, settings.warmup_seconds)),
           true,
+          false,
+          NULL,
+          NULL,
+          NULL,
           NULL)) {
         std::cerr << "gateway client: warmup phase failed" << std::endl;
         return false;
@@ -814,11 +823,18 @@ inline bool run_echo_duration (
         if (!run_echo_window_round_robin (
               slots,
               settings,
-              payload,
+              slot_payloads,
               payload_size,
+              msg_size,
+              run_id,
+              perf_multi_metric::phase_warmup,
               scratch_capacity,
               settle_drain_seconds,
               false,
+              false,
+              NULL,
+              NULL,
+              NULL,
               NULL)) {
             std::cerr << "gateway client: settle drain failed" << std::endl;
             return false;
@@ -826,147 +842,65 @@ inline bool run_echo_duration (
     }
 
     long recv_count = 0;
+    long lat_count = 0;
+    bench_latency_stats_t active_latency;
     const bench_multi_cpu_sample_t sample_start = bench_multi_capture_cpu_sample ();
     if (!run_echo_window_round_robin (
           slots,
           settings,
-          payload,
+          slot_payloads,
           payload_size,
+          msg_size,
+          run_id,
+          perf_multi_metric::phase_active,
           scratch_capacity,
           static_cast<double> (std::max (1, settings.duration_seconds)),
           true,
+          true,
+          NULL,
+          &lat_count,
+          &active_latency,
           &recv_count)) {
         std::cerr << "gateway client: throughput phase failed" << std::endl;
         return false;
     }
     *metrics_out = bench_multi_finish_resource_probe (sample_start);
 
-    const double drain_seconds =
-      static_cast<double> (std::max (0, settings.drain_ms)) / 1000.0;
-    if (drain_seconds > 0.0) {
-        if (!run_echo_window_round_robin (
-              slots,
-              settings,
-              payload,
-              payload_size,
-              scratch_capacity,
-              drain_seconds,
-              false,
-              NULL)) {
-            std::cerr << "gateway client: drain phase failed" << std::endl;
-            return false;
-        }
-    }
-
     *throughput_out = static_cast<double> (recv_count)
                       / static_cast<double> (std::max (1, settings.duration_seconds));
-    if (recv_count <= 0) {
-        std::cerr << "gateway client: recv_count is zero" << std::endl;
+    if (recv_count <= 0 || lat_count <= 0) {
+        std::cerr << "gateway client: no active samples" << std::endl;
         return false;
     }
-
-    *latency_out =
-      measure_echo_latency_stats_us (slots, payload, payload_size, lat_scratch);
-
-    bool estimated_from_throughput = false;
-    if (latency_out->mean_us <= 0.0 && *throughput_out > 0.0) {
-        latency_out->mean_us = 1000000.0 / *throughput_out;
-        estimated_from_throughput = true;
-    }
-    if (latency_out->p95_us <= 0.0) {
-        latency_out->p95_us = estimated_from_throughput
-                                ? latency_out->mean_us * 1.25
-                                : latency_out->mean_us;
-    }
-    if (latency_out->p99_us <= 0.0) {
-        latency_out->p99_us = estimated_from_throughput
-                                ? latency_out->mean_us * 1.50
-                                : latency_out->p95_us;
-    }
-    if (latency_out->p95_us < latency_out->mean_us)
-        latency_out->p95_us = latency_out->mean_us;
-    if (latency_out->p99_us < latency_out->p95_us)
-        latency_out->p99_us = latency_out->p95_us;
+    *latency_out = active_latency;
 
     return true;
-}
-
-inline void print_client_result_lines (
-  const std::string &lib_name,
-  const std::string &transport,
-  size_t msg_size,
-  double throughput,
-  const bench_latency_stats_t &latency,
-  const bench_multi_resource_metrics_t &metrics)
-{
-    print_result (
-      lib_name,
-      k_pattern,
-      transport,
-      msg_size,
-      throughput,
-      latency.mean_us,
-      latency.p95_us,
-      latency.p99_us);
-
-    if (metrics.has_cpu_pct) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_cpu_pct,"
-                  << std::fixed << std::setprecision (2) << metrics.cpu_pct
-                  << std::endl;
-    }
-
-    if (metrics.has_mem_mb) {
-        std::cout << "RESULT," << lib_name << "," << k_pattern << ","
-                  << transport << "," << msg_size << ",client_mem_mb,"
-                  << std::fixed << std::setprecision (2) << metrics.mem_mb
-                  << std::endl;
-    }
-}
-
-inline std::vector<size_t> resolve_case_msg_sizes (size_t fallback_size)
-{
-    std::vector<size_t> msg_sizes = resolve_bench_msg_sizes (fallback_size);
-    if (msg_sizes.empty ())
-        msg_sizes.push_back (fallback_size > 0 ? fallback_size : 64);
-    return msg_sizes;
-}
-
-inline size_t resolve_case_max_msg_size (size_t fallback_size,
-                                         const std::vector<size_t> &msg_sizes)
-{
-    size_t max_msg_size = fallback_size > 0 ? fallback_size : 64;
-    for (size_t i = 0; i < msg_sizes.size (); ++i)
-        max_msg_size = std::max (max_msg_size, msg_sizes[i]);
-    return max_msg_size;
 }
 
 inline bool run_single_size_case (
   const std::vector<gateway_client_slot_t> &slots,
   const multi_bench_settings_t &base_settings,
-  const std::vector<char> &payload,
+  std::vector<std::vector<char> > &slot_payloads,
   size_t scratch_capacity,
-  std::vector<char> *latency_scratch,
   const std::string &lib_name,
   const std::string &transport,
   size_t msg_size)
 {
-    if (!latency_scratch)
-        return false;
-
-    const multi_bench_settings_t settings = base_settings;
-    const size_t payload_size = std::max<size_t> (msg_size, 64);
+    const size_t payload_size =
+      std::max<size_t> (msg_size, perf_multi_metric::header_size ());
+    const uint32_t run_id = static_cast<uint32_t> (msg_size);
 
     double throughput = 0.0;
     bench_latency_stats_t latency;
     bench_multi_resource_metrics_t metrics;
     if (!run_echo_duration (
           slots,
-          settings,
-          payload,
+          base_settings,
+          slot_payloads,
           payload_size,
+          msg_size,
+          run_id,
           scratch_capacity,
-          *latency_scratch,
           &throughput,
           &latency,
           &metrics)) {
@@ -974,12 +908,159 @@ inline bool run_single_size_case (
     }
 
     print_client_result_lines (
+      k_pattern,
       lib_name,
       transport,
       msg_size,
       throughput,
       latency,
       metrics);
+    return true;
+}
+
+inline void cleanup_gateway_runtime (std::vector<gateway_client_slot_t> *slots,
+                                     void **discovery)
+{
+    close_gateway_client_slots (slots);
+    if (discovery && *discovery) {
+        zlink_discovery_destroy (discovery);
+        *discovery = NULL;
+    }
+}
+
+inline bool resolve_gateway_server_routing_id (void *discovery)
+{
+    g_server_routing_id_valid = false;
+    g_server_routing_id.size = 0;
+
+    if (!discovery)
+        return false;
+
+    zlink_receiver_info_t infos[4];
+    size_t info_count = 4;
+    if (zlink_discovery_get_receivers (
+          discovery,
+          k_server_service_name,
+          infos,
+          &info_count)
+          != 0
+        || info_count == 0
+        || infos[0].routing_id.size == 0) {
+        return false;
+    }
+
+    g_server_routing_id = infos[0].routing_id;
+    g_server_routing_id_valid = true;
+    return true;
+}
+
+inline bool setup_gateway_runtime (
+  ctx_guard_t &ctx,
+  const std::string &transport,
+  const std::string &registry_pub_endpoint,
+  const std::string &registry_router_endpoint,
+  const multi_bench_settings_t &settings,
+  const std::vector<size_t> &msg_sizes,
+  size_t max_msg_size,
+  std::vector<gateway_client_slot_t> *slots_out,
+  void **discovery_out,
+  std::vector<std::vector<char> > *slot_payloads_out,
+  size_t *scratch_capacity_out)
+{
+    if (!slots_out || !discovery_out || !slot_payloads_out || !scratch_capacity_out)
+        return false;
+
+    *discovery_out = NULL;
+    if (!create_gateway_client_slots (
+          ctx,
+          transport,
+          registry_pub_endpoint,
+          registry_router_endpoint,
+          settings,
+          slots_out,
+          discovery_out)) {
+        std::cerr << "gateway client: slot creation failed" << std::endl;
+        cleanup_gateway_runtime (slots_out, discovery_out);
+        return false;
+    }
+
+    if (!wait_discovery_service_available (
+          *discovery_out,
+          k_server_service_name,
+          settings.connect_ready_timeout_ms * 4)) {
+        std::cerr << "gateway client: discovery does not see " << k_server_service_name
+                  << std::endl;
+        cleanup_gateway_runtime (slots_out, discovery_out);
+        return false;
+    }
+
+    (void) resolve_gateway_server_routing_id (*discovery_out);
+
+    if (!wait_all_gateway_connect_ready (
+          *slots_out,
+          settings.connect_ready_timeout_ms)) {
+        std::cerr << "gateway client: server service not ready within timeout"
+                  << std::endl;
+        cleanup_gateway_runtime (slots_out, discovery_out);
+        return false;
+    }
+    std::this_thread::sleep_for (std::chrono::milliseconds (200));
+
+    const size_t payload_capacity =
+      std::max<size_t> (max_msg_size, perf_multi_metric::header_size ());
+    *scratch_capacity_out =
+      perf_multi_metric::header_size () + static_cast<size_t> (64);
+    slot_payloads_out->assign (
+      slots_out->size (), std::vector<char> (payload_capacity, 'c'));
+
+    const size_t prime_payload_size =
+      std::max<size_t> (
+        msg_sizes.empty () ? static_cast<size_t> (64) : msg_sizes[0],
+        perf_multi_metric::header_size ());
+
+    if (!prime_roundtrip_all_slots (
+          *slots_out,
+          settings,
+          *slot_payloads_out,
+          prime_payload_size,
+          *scratch_capacity_out,
+          settings.connect_ready_timeout_ms * 4)) {
+        std::cerr << "gateway client: preflight warmup failed" << std::endl;
+        cleanup_gateway_runtime (slots_out, discovery_out);
+        return false;
+    }
+
+    return true;
+}
+
+inline bool run_gateway_size_cases (
+  const std::vector<gateway_client_slot_t> &slots,
+  const multi_bench_settings_t &settings,
+  std::vector<std::vector<char> > *slot_payloads,
+  size_t scratch_capacity,
+  const std::string &lib_name,
+  const std::string &transport,
+  const std::vector<size_t> &msg_sizes)
+{
+    if (!slot_payloads)
+        return false;
+
+    for (size_t si = 0; si < msg_sizes.size (); ++si) {
+        const size_t msg_size = msg_sizes[si];
+        if (!run_single_size_case (
+              slots,
+              settings,
+              *slot_payloads,
+              scratch_capacity,
+              lib_name,
+              transport,
+              msg_size)) {
+            std::cerr << "gateway client: size case failed for " << msg_size
+                      << "B" << std::endl;
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -1020,117 +1101,47 @@ inline int run_client_benchmark (const std::string &lib_name,
     const size_t max_msg_size =
       resolve_case_max_msg_size (fallback_size, msg_sizes);
 
+    std::vector<std::vector<char> > slot_payloads;
+    size_t scratch_capacity = 0;
+    // Keep payload storage alive until after ctx teardown so async transport
+    // workers cannot read freed send buffers during shutdown.
     ctx_guard_t ctx;
     if (!ctx.valid ())
         return 1;
 
     std::vector<gateway_client_slot_t> slots;
     void *discovery = NULL;
-    if (!create_gateway_client_slots (
+    if (!setup_gateway_runtime (
           ctx,
           transport,
           registry_pub_endpoint,
           registry_router_endpoint,
           base_settings,
+          msg_sizes,
+          max_msg_size,
           &slots,
-          &discovery)) {
-        std::cerr << "gateway client: slot creation failed" << std::endl;
-        close_gateway_client_slots (&slots);
-        if (discovery)
-            zlink_discovery_destroy (&discovery);
+          &discovery,
+          &slot_payloads,
+          &scratch_capacity)) {
+        ctx.force_term ();
         return 1;
     }
 
-    if (!wait_discovery_service_available (
-          discovery,
-          k_server_service_name,
-          base_settings.connect_ready_timeout_ms * 4)) {
-        std::cerr << "gateway client: discovery does not see " << k_server_service_name
-                  << std::endl;
-        close_gateway_client_slots (&slots);
-        if (discovery)
-            zlink_discovery_destroy (&discovery);
-        return 1;
-    }
-
-    g_server_routing_id_valid = false;
-    g_server_routing_id.size = 0;
-    zlink_receiver_info_t infos[4];
-    size_t info_count = 4;
-    if (zlink_discovery_get_receivers (
-          discovery,
-          k_server_service_name,
-          infos,
-          &info_count)
-          == 0
-        && info_count > 0
-        && infos[0].routing_id.size > 0) {
-        g_server_routing_id = infos[0].routing_id;
-        g_server_routing_id_valid = true;
-    }
-
-    if (!wait_all_gateway_connect_ready (
-          slots,
-          base_settings.connect_ready_timeout_ms)) {
-        std::cerr << "gateway client: server service not ready within timeout"
-                  << std::endl;
-        close_gateway_client_slots (&slots);
-        if (discovery)
-            zlink_discovery_destroy (&discovery);
-        return 1;
-    }
-    std::this_thread::sleep_for (std::chrono::milliseconds (200));
-
-    const size_t payload_capacity = std::max<size_t> (max_msg_size, 64);
-    const size_t scratch_capacity = static_cast<size_t> (64);
-
-    std::vector<char> payload (payload_capacity, 'c');
-    std::vector<char> latency_scratch (scratch_capacity, '\0');
-
-    // Prime reverse-path gateway connections before the first measured size.
-    // Require at least one successful roundtrip per slot to keep first-size
-    // throughput from including connection settle cost.
-    if (!prime_roundtrip_all_slots (
+    if (!run_gateway_size_cases (
           slots,
           base_settings,
-          payload,
-          static_cast<size_t> (64),
+          &slot_payloads,
           scratch_capacity,
-          base_settings.connect_ready_timeout_ms * 4)) {
-        std::cerr << "gateway client: preflight warmup failed" << std::endl;
-        close_gateway_client_slots (&slots);
-        if (discovery)
-            zlink_discovery_destroy (&discovery);
+          lib_name,
+          transport,
+          msg_sizes)) {
+        cleanup_gateway_runtime (&slots, &discovery);
+        ctx.force_term ();
         return 1;
     }
 
-    for (size_t si = 0; si < msg_sizes.size (); ++si) {
-        const size_t msg_size = msg_sizes[si];
-        if (!run_single_size_case (
-              slots,
-              base_settings,
-              payload,
-              scratch_capacity,
-              &latency_scratch,
-              lib_name,
-              transport,
-              msg_size)) {
-            std::cerr << "gateway client: size case failed for " << msg_size
-                      << "B" << std::endl;
-            close_gateway_client_slots (&slots);
-            if (discovery)
-                zlink_discovery_destroy (&discovery);
-            return 1;
-        }
-
-        run_size_transition_drain_stage (
-          base_settings,
-          (si + 1) < msg_sizes.size ());
-    }
-
-    // Fast-exit path for benchmark success: process teardown follows
-    // immediately and explicit per-slot destroy of all service objects can
-    // dominate wall-clock time at high client counts.
+    cleanup_gateway_runtime (&slots, &discovery);
+    ctx.force_term ();
     return 0;
 }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
 using Zlink.Native;
 
 namespace Zlink;
@@ -121,6 +122,35 @@ public sealed class Receiver : IDisposable
         if (handle == IntPtr.Zero)
             throw ZlinkException.FromLastError();
         return Socket.Adopt(handle, false);
+    }
+
+    public PeerInfoRecord[] GetRouterPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_receiver_router_peers(_handle,
+            IntPtr.Zero, ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<PeerInfoRecord>();
+
+        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_receiver_router_peers(_handle, native,
+                ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            for (int i = 0; i < peers.Length; i++)
+                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+            return peers;
+        }
+        finally
+        {
+            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+        }
     }
 
     public void Dispose()

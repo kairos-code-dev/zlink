@@ -565,8 +565,7 @@ public final class Spot implements AutoCloseable {
                                       long offset,
                                       long length,
                                       SendFlag flags) {
-        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, 1);
-        publishConstInternal(vec, topicId, payload, offset, length, flags);
+        publishConstBytes(topicId, payload, offset, length, flags);
     }
 
     private void publishConstInternal(PublishContext context,
@@ -575,33 +574,21 @@ public final class Spot implements AutoCloseable {
                                       long offset,
                                       long length,
                                       SendFlag flags) {
-        MemorySegment vec = context.ensureVector(1);
-        publishConstInternal(vec, topicId, payload, offset, length, flags);
+        context.ensureOpen();
+        publishConstBytes(topicId, payload, offset, length, flags);
     }
 
-    private void publishConstInternal(MemorySegment vec,
-                                      MemorySegment topicId,
-                                      MemorySegment payload,
-                                      long offset,
-                                      long length,
-                                      SendFlag flags) {
-        int initialized = 0;
-        try {
-            MemorySegment slice = length == 0 ? MemorySegment.NULL
-                : payload.asSlice(offset, length);
-            int rc = NativeMsg.msgInitData(vec, slice, length,
-                MemorySegment.NULL, MemorySegment.NULL);
-            if (rc != 0)
-                throw new RuntimeException("zlink_msg_init_data failed");
-            initialized = 1;
-            rc = Native.spotPubPublish(pubHandle, topicId, vec, 1,
-                flags.getValue());
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_pub_publish failed");
-        } catch (RuntimeException ex) {
-            closeMsgVector(vec, initialized);
-            throw ex;
-        }
+    private void publishConstBytes(MemorySegment topicId,
+                                   MemorySegment payload,
+                                   long offset,
+                                   long length,
+                                   SendFlag flags) {
+        MemorySegment slice = length == 0 ? MemorySegment.NULL
+          : payload.asSlice(offset, length);
+        int rc = Native.spotPubPublishBytes(pubHandle, topicId, slice, length,
+          flags.getValue());
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_pub_publish_bytes failed");
     }
 
     private static void closeMsgVector(MemorySegment vec, int count) {

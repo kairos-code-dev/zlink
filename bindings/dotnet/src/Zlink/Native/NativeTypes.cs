@@ -38,6 +38,18 @@ internal unsafe struct ZlinkProviderInfo
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal unsafe struct ZlinkPeerInfo
+{
+    public ZlinkRoutingId RoutingId;
+    public fixed byte RemoteAddr[256];
+    public ulong ConnectedTime;
+    public ulong MsgsSent;
+    public ulong MsgsReceived;
+    public ulong SndPendingMsgs;
+    public ulong RcvPendingMsgs;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct ZlinkPollItemUnix
 {
     public IntPtr Socket;

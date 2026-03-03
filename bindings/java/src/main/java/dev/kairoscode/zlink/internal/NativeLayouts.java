@@ -18,6 +18,16 @@ public final class NativeLayouts {
     public static final long PROVIDER_WEIGHT_OFFSET = 512 + 256;
     public static final long PROVIDER_REGISTERED_OFFSET = PROVIDER_WEIGHT_OFFSET + 8;
 
+    public static final MemoryLayout PEER_INFO_LAYOUT = MemoryLayout.sequenceLayout(
+            256 + 256 + 8 + 8 + 8 + 8 + 8, ValueLayout.JAVA_BYTE);
+    public static final long PEER_ROUTING_OFFSET = 0;
+    public static final long PEER_REMOTE_OFFSET = 256;
+    public static final long PEER_CONNECTED_OFFSET = 512;
+    public static final long PEER_MSGS_SENT_OFFSET = PEER_CONNECTED_OFFSET + 8;
+    public static final long PEER_MSGS_RECV_OFFSET = PEER_MSGS_SENT_OFFSET + 8;
+    public static final long PEER_SND_PENDING_OFFSET = PEER_MSGS_RECV_OFFSET + 8;
+    public static final long PEER_RCV_PENDING_OFFSET = PEER_SND_PENDING_OFFSET + 8;
+
     public static final MemoryLayout MONITOR_EVENT_LAYOUT = MemoryLayout.sequenceLayout(
             8 + 8 + 256 + 256 + 256, ValueLayout.JAVA_BYTE);
     public static final long MONITOR_EVENT_OFFSET = 0;

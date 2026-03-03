@@ -15,6 +15,7 @@ public sealed class Socket : IDisposable
     private IntPtr _handle;
     private readonly bool _own;
     private NativeMethods.ZlinkStreamOnPacketsDelegate? _streamCallback;
+    private NativeMethods.ZlinkStreamOnRawDelegate? _streamRawCallback;
     private StreamPacketsHandler? _streamHandler;
     private bool _streamAttached;
 
@@ -170,6 +171,48 @@ public sealed class Socket : IDisposable
         _streamAttached = true;
     }
 
+    public void AttachStreamRaw(StreamPacketsHandler handler)
+    {
+        EnsureNotDisposed();
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        if (_streamAttached)
+            throw new InvalidOperationException(
+                "STREAM callback is already attached.");
+
+        _streamHandler = handler;
+        _streamRawCallback = OnStreamRaw;
+        int rc = NativeMethods.zlink_stream_attach_raw(_handle, _streamRawCallback);
+        if (rc != 0)
+        {
+            _streamHandler = null;
+            _streamRawCallback = null;
+            throw ZlinkException.FromLastError();
+        }
+        _streamAttached = true;
+    }
+
+    public void AttachStreamLen32Be(StreamPacketsHandler handler)
+    {
+        EnsureNotDisposed();
+        if (handler == null)
+            throw new ArgumentNullException(nameof(handler));
+        if (_streamAttached)
+            throw new InvalidOperationException(
+                "STREAM callback is already attached.");
+
+        _streamHandler = handler;
+        _streamCallback = OnStreamPackets;
+        int rc = NativeMethods.zlink_stream_attach_len32be(_handle, _streamCallback);
+        if (rc != 0)
+        {
+            _streamHandler = null;
+            _streamCallback = null;
+            throw ZlinkException.FromLastError();
+        }
+        _streamAttached = true;
+    }
+
     public void DetachStream()
     {
         EnsureNotDisposed();
@@ -179,6 +222,7 @@ public sealed class Socket : IDisposable
         _streamAttached = false;
         _streamHandler = null;
         _streamCallback = null;
+        _streamRawCallback = null;
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -533,6 +577,41 @@ public sealed class Socket : IDisposable
         return 0;
     }
 
+    private unsafe int OnStreamRaw(IntPtr routingId, IntPtr message)
+    {
+        StreamPacketsHandler? handler = _streamHandler;
+        if (handler == null || routingId == IntPtr.Zero || message == IntPtr.Zero)
+            return 0;
+
+        ZlinkRoutingId* rid = (ZlinkRoutingId*)routingId;
+        int ridSize = rid->Size;
+        if (ridSize < 0 || ridSize > 255)
+            ridSize = 0;
+        ReadOnlySpan<byte> ridSpan = ridSize > 0
+            ? new ReadOnlySpan<byte>(rid->Data, ridSize)
+            : ReadOnlySpan<byte>.Empty;
+
+        int rc;
+        try
+        {
+            IntPtr payloadPtr = NativeMethods.zlink_msg_data(message);
+            int payloadSize = checked((int)NativeMethods.zlink_msg_size(message));
+            ReadOnlySpan<byte> payload = payloadSize > 0
+                && payloadPtr != IntPtr.Zero
+                ? new ReadOnlySpan<byte>((void*)payloadPtr, payloadSize)
+                : ReadOnlySpan<byte>.Empty;
+            rc = handler(ridSpan, payload);
+        }
+        catch
+        {
+            CloseStreamPacket(message);
+            return 1;
+        }
+
+        CloseStreamPacket(message);
+        return rc;
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -549,6 +628,7 @@ public sealed class Socket : IDisposable
             _streamAttached = false;
             _streamHandler = null;
             _streamCallback = null;
+            _streamRawCallback = null;
         }
         if (_own)
             NativeMethods.zlink_close(_handle);

@@ -25,6 +25,9 @@ public final class Socket implements AutoCloseable {
     private static final FunctionDescriptor FD_STREAM_CALLBACK =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.JAVA_LONG);
+    private static final FunctionDescriptor FD_STREAM_CALLBACK_RAW =
+      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+        ValueLayout.ADDRESS);
     private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
 
     private MemorySegment handle;
@@ -319,6 +322,64 @@ public final class Socket implements AutoCloseable {
         attachStream(handler, StreamDispatchMode.NONE);
     }
 
+    public void attachStreamRaw(StreamPacketHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        if (streamAttached)
+            throw new IllegalStateException("STREAM callback already attached");
+
+        try {
+            MethodHandle cb = MethodHandles.lookup().findVirtual(
+              Socket.class,
+              "onStreamRaw",
+              MethodType.methodType(int.class, MemorySegment.class,
+                MemorySegment.class)).bindTo(this);
+            streamCallbackArena = Arena.ofShared();
+            streamCallbackStub =
+              LINKER.upcallStub(cb, FD_STREAM_CALLBACK_RAW, streamCallbackArena);
+        } catch (NoSuchMethodException | IllegalAccessException ex) {
+            throw new RuntimeException("stream callback binding failed", ex);
+        }
+
+        int rc = Native.streamAttachRaw(handle, streamCallbackStub);
+        if (rc != 0) {
+            closeArena(streamCallbackArena);
+            streamCallbackArena = null;
+            streamCallbackStub = MemorySegment.NULL;
+            throw new RuntimeException("zlink_stream_attach_raw failed");
+        }
+        streamHandler = handler;
+        streamAttached = true;
+    }
+
+    public void attachStreamLen32be(StreamPacketHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        if (streamAttached)
+            throw new IllegalStateException("STREAM callback already attached");
+
+        try {
+            MethodHandle cb = MethodHandles.lookup().findVirtual(
+              Socket.class,
+              "onStreamPackets",
+              MethodType.methodType(int.class, MemorySegment.class,
+                MemorySegment.class, long.class)).bindTo(this);
+            streamCallbackArena = Arena.ofShared();
+            streamCallbackStub =
+              LINKER.upcallStub(cb, FD_STREAM_CALLBACK, streamCallbackArena);
+        } catch (NoSuchMethodException | IllegalAccessException ex) {
+            throw new RuntimeException("stream callback binding failed", ex);
+        }
+
+        int rc = Native.streamAttachLen32be(handle, streamCallbackStub);
+        if (rc != 0) {
+            closeArena(streamCallbackArena);
+            streamCallbackArena = null;
+            streamCallbackStub = MemorySegment.NULL;
+            throw new RuntimeException("zlink_stream_attach_len32be failed");
+        }
+        streamHandler = handler;
+        streamAttached = true;
+    }
+
     public void detachStream() {
         if (!streamAttached)
             return;
@@ -578,6 +639,42 @@ public final class Socket implements AutoCloseable {
         }
 
         return 0;
+    }
+
+    private int onStreamRaw(MemorySegment rid, MemorySegment msg) {
+        StreamPacketHandler handler = streamHandler;
+        if (handler == null || rid == null || msg == null)
+            return 0;
+
+        StreamSpanScratch scratch = streamSpanScratch.get();
+        MemorySegment ridSeg = rid.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
+        int ridLen = ridSeg.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;
+        if (ridLen > STREAM_ROUTING_ID_MAX)
+            ridLen = STREAM_ROUTING_ID_MAX;
+        MemorySegment ridData = ridLen == 0
+          ? MemorySegment.NULL
+          : ridSeg.asSlice(1, ridLen);
+        scratch.routingId.set(ridData, ridLen);
+
+        int rc;
+        try {
+            long payloadSize = NativeMsg.msgSize(msg);
+            if (payloadSize < 0)
+                payloadSize = 0;
+            if (payloadSize > Integer.MAX_VALUE)
+                return 1;
+            int payloadLen = (int) payloadSize;
+            MemorySegment payloadData = payloadLen == 0
+              ? MemorySegment.NULL
+              : NativeMsg.msgData(msg).reinterpret(payloadLen);
+            scratch.payload.set(payloadData, payloadLen);
+            rc = handler.onPacket(scratch.routingId, scratch.payload);
+        } catch (Throwable t) {
+            closeStreamPacket(msg);
+            return 1;
+        }
+        closeStreamPacket(msg);
+        return rc;
     }
 
     private int streamSend(MemorySegment routingId, long ridOffset, long ridLength,

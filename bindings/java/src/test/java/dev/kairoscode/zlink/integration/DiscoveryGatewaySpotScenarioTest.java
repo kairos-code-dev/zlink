@@ -51,7 +51,7 @@ public class DiscoveryGatewaySpotScenarioTest {
                                       () -> discovery.receiverCount("svc") > 0, 5000));
                                     try (Gateway.PreparedService preparedSvc =
                                            gateway.prepareService("svc")) {
-                                        assertTrue(TestTransports.waitUntil(
+                                    assertTrue(TestTransports.waitUntil(
                                           () -> gateway.connectionCount(preparedSvc) > 0, 5000));
                                     TestTransports.gatewaySendWithRetry(
                                       gateway, "svc", "hello".getBytes(), SendFlag.NONE, 5000);

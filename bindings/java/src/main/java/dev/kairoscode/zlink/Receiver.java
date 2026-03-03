@@ -4,6 +4,7 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
+import dev.kairoscode.zlink.internal.NativeLayouts;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -119,6 +120,41 @@ public class Receiver implements AutoCloseable {
         if (sock == null || sock.address() == 0)
             throw new RuntimeException("zlink_receiver_router_socket_unsafe failed");
         return Socket.adopt(sock, false);
+    }
+
+    public PeerInfo[] routerPeers() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
+            count.set(ValueLayout.JAVA_LONG, 0, 0L);
+            int rc = Native.providerRouterPeers(handle, MemorySegment.NULL,
+              count);
+            if (rc != 0)
+                throw new RuntimeException("zlink_receiver_router_peers failed");
+            long available = count.get(ValueLayout.JAVA_LONG, 0);
+            if (available <= 0)
+                return new PeerInfo[0];
+
+            MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
+              available);
+            count.set(ValueLayout.JAVA_LONG, 0, available);
+            rc = Native.providerRouterPeers(handle, peersMem, count);
+            if (rc != 0)
+                throw new RuntimeException("zlink_receiver_router_peers failed");
+
+            long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
+            if (actualLong < 0)
+                actualLong = 0;
+            if (actualLong > available)
+                actualLong = available;
+            int actual = (int) actualLong;
+            long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
+            PeerInfo[] out = new PeerInfo[actual];
+            for (int i = 0; i < actual; i++) {
+                out[i] = PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
+                  stride));
+            }
+            return out;
+        }
     }
 
     @Override

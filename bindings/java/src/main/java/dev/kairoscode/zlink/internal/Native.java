@@ -45,6 +45,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
@@ -105,6 +109,10 @@ public final class Native {
                     ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_SEND = downcall("zlink_gateway_send",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_GATEWAY_SEND_BYTES = downcall("zlink_gateway_send_bytes",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_GATEWAY_SEND_RID_BYTES = downcall("zlink_gateway_send_rid_bytes",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_RECV = downcall("zlink_gateway_recv",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_LB = downcall("zlink_gateway_set_lb_strategy",
@@ -113,6 +121,10 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_GATEWAY_COUNT = downcall("zlink_gateway_connection_count",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_GATEWAY_ROUTER = downcall("zlink_gateway_router_socket_unsafe",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_GATEWAY_ROUTER_PEERS = downcall("zlink_gateway_router_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_GATEWAY_DESTROY = downcall("zlink_gateway_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
@@ -146,6 +158,8 @@ public final class Native {
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_PROVIDER_ROUTER = downcall("zlink_receiver_router_socket_unsafe",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_PROVIDER_ROUTER_PEERS = downcall("zlink_receiver_router_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_PROVIDER_DESTROY = downcall("zlink_receiver_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
 
@@ -174,12 +188,22 @@ public final class Native {
     private static final MethodHandle MH_SPOT_NODE_SETSOCKOPT = downcall("zlink_spot_node_setsockopt",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+    private static final MethodHandle MH_SPOT_NODE_PUB_SOCKET = downcall("zlink_spot_node_pub_socket_unsafe",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_SUB_SOCKET = downcall("zlink_spot_node_sub_socket_unsafe",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_PUB_PEERS = downcall("zlink_spot_node_pub_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final MethodHandle MH_SPOT_NODE_SUB_PEERS = downcall("zlink_spot_node_sub_peers",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     private static final MethodHandle MH_SPOT_PUB_NEW = downcall("zlink_spot_pub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_PUB_DESTROY = downcall("zlink_spot_pub_destroy",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SPOT_PUB_PUBLISH = downcall("zlink_spot_pub_publish",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+    private static final MethodHandle MH_SPOT_PUB_PUBLISH_BYTES = downcall("zlink_spot_pub_publish_bytes",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_SPOT_SUB_NEW = downcall("zlink_spot_sub_new",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
@@ -298,6 +322,24 @@ public final class Native {
             return (int) MH_STREAM_ATTACH.invokeExact(socket, callback, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_attach failed", t);
+        }
+    }
+
+    public static int streamAttachRaw(MemorySegment socket,
+                                      MemorySegment callback) {
+        try {
+            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_attach_raw failed", t);
+        }
+    }
+
+    public static int streamAttachLen32be(MemorySegment socket,
+                                          MemorySegment callback) {
+        try {
+            return (int) MH_STREAM_ATTACH_LEN32BE.invokeExact(socket, callback);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_stream_attach_len32be failed", t);
         }
     }
 
@@ -565,6 +607,28 @@ public final class Native {
         }
     }
 
+    public static int gatewaySendBytes(MemorySegment gw, MemorySegment service,
+                                       MemorySegment data, long size, int flags) {
+        try {
+            return (int) MH_GATEWAY_SEND_BYTES.invokeExact(gw, service, data,
+              size, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_send_bytes failed", t);
+        }
+    }
+
+    public static int gatewaySendRidBytes(MemorySegment gw, MemorySegment service,
+                                          MemorySegment routingId,
+                                          MemorySegment data, long size,
+                                          int flags) {
+        try {
+            return (int) MH_GATEWAY_SEND_RID_BYTES.invokeExact(gw, service,
+              routingId, data, size, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_send_rid_bytes failed", t);
+        }
+    }
+
     public static int gatewayRecv(MemorySegment gw, MemorySegment partsPtr, MemorySegment count, int flags, MemorySegment serviceOut) {
         try {
             return (int) MH_GATEWAY_RECV.invokeExact(gw, partsPtr, count, flags, serviceOut);
@@ -594,6 +658,24 @@ public final class Native {
             return (int) MH_GATEWAY_COUNT.invokeExact(gw, service);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_gateway_connection_count failed", t);
+        }
+    }
+
+    public static MemorySegment gatewayRouter(MemorySegment gw) {
+        try {
+            return (MemorySegment) MH_GATEWAY_ROUTER.invokeExact(gw);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_router_socket_unsafe failed",
+              t);
+        }
+    }
+
+    public static int gatewayRouterPeers(MemorySegment gw, MemorySegment peers,
+                                         MemorySegment count) {
+        try {
+            return (int) MH_GATEWAY_ROUTER_PEERS.invokeExact(gw, peers, count);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_gateway_router_peers failed", t);
         }
     }
 
@@ -684,6 +766,15 @@ public final class Native {
             return (MemorySegment) MH_PROVIDER_ROUTER.invokeExact(p);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_receiver_router_socket_unsafe failed", t);
+        }
+    }
+
+    public static int providerRouterPeers(MemorySegment p, MemorySegment peers,
+                                          MemorySegment count) {
+        try {
+            return (int) MH_PROVIDER_ROUTER_PEERS.invokeExact(p, peers, count);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_receiver_router_peers failed", t);
         }
     }
 
@@ -819,6 +910,42 @@ public final class Native {
         }
     }
 
+    public static MemorySegment spotNodePubSocket(MemorySegment node) {
+        try {
+            return (MemorySegment) MH_SPOT_NODE_PUB_SOCKET.invokeExact(node);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_pub_socket_unsafe failed",
+              t);
+        }
+    }
+
+    public static MemorySegment spotNodeSubSocket(MemorySegment node) {
+        try {
+            return (MemorySegment) MH_SPOT_NODE_SUB_SOCKET.invokeExact(node);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_sub_socket_unsafe failed",
+              t);
+        }
+    }
+
+    public static int spotNodePubPeers(MemorySegment node, MemorySegment peers,
+                                       MemorySegment count) {
+        try {
+            return (int) MH_SPOT_NODE_PUB_PEERS.invokeExact(node, peers, count);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_pub_peers failed", t);
+        }
+    }
+
+    public static int spotNodeSubPeers(MemorySegment node, MemorySegment peers,
+                                       MemorySegment count) {
+        try {
+            return (int) MH_SPOT_NODE_SUB_PEERS.invokeExact(node, peers, count);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_node_sub_peers failed", t);
+        }
+    }
+
     public static MemorySegment spotPubNew(MemorySegment node) {
         try {
             return (MemorySegment) MH_SPOT_PUB_NEW.invokeExact(node);
@@ -842,6 +969,17 @@ public final class Native {
             return (int) MH_SPOT_PUB_PUBLISH.invokeExact(pub, topic, parts, count, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_spot_pub_publish failed", t);
+        }
+    }
+
+    public static int spotPubPublishBytes(MemorySegment pub, MemorySegment topic,
+                                          MemorySegment data, long size,
+                                          int flags) {
+        try {
+            return (int) MH_SPOT_PUB_PUBLISH_BYTES.invokeExact(pub, topic, data,
+              size, flags);
+        } catch (Throwable t) {
+            throw new RuntimeException("zlink_spot_pub_publish_bytes failed", t);
         }
     }
 

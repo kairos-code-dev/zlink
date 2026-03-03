@@ -131,6 +131,82 @@ public sealed class SpotNode : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public Socket CreatePubSocket()
+    {
+        EnsureNotDisposed();
+        IntPtr handle = NativeMethods.zlink_spot_node_pub_socket_unsafe(_handle);
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+        return Socket.Adopt(handle, false);
+    }
+
+    public Socket CreateSubSocket()
+    {
+        EnsureNotDisposed();
+        IntPtr handle = NativeMethods.zlink_spot_node_sub_socket_unsafe(_handle);
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+        return Socket.Adopt(handle, false);
+    }
+
+    public PeerInfoRecord[] GetPubPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_spot_node_pub_peers(_handle, IntPtr.Zero,
+            ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<PeerInfoRecord>();
+
+        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_spot_node_pub_peers(_handle, native,
+                ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            for (int i = 0; i < peers.Length; i++)
+                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+            return peers;
+        }
+        finally
+        {
+            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+        }
+    }
+
+    public PeerInfoRecord[] GetSubPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_spot_node_sub_peers(_handle, IntPtr.Zero,
+            ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<PeerInfoRecord>();
+
+        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_spot_node_sub_peers(_handle, native,
+                ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            for (int i = 0; i < peers.Length; i++)
+                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+            return peers;
+        }
+        finally
+        {
+            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+        }
+    }
+
     public void Dispose()
     {
         if (_handle == IntPtr.Zero)
@@ -243,25 +319,12 @@ public sealed class Spot : IDisposable
         if (topicId == null)
             throw new ArgumentNullException(nameof(topicId));
 
-        ZlinkMsg part = default;
         int rc = 0;
-        bool built = false;
-        try
+        fixed (byte* payloadPtr = payload)
         {
-            Message.InitFromSpan(payload, ref part);
-            built = true;
-            rc = NativeMethods.zlink_spot_pub_publish(_pubHandle, topicId, &part,
-                (nuint)1, (int)flags);
+            rc = NativeMethods.zlink_spot_pub_publish_bytes(_pubHandle, topicId,
+                payloadPtr, (nuint)payload.Length, (int)flags);
         }
-        catch
-        {
-            if (built)
-                NativeMethods.zlink_msg_close(ref part);
-            throw;
-        }
-
-        if (rc < 0 && built)
-            NativeMethods.zlink_msg_close(ref part);
         ZlinkException.ThrowIfError(rc);
     }
 

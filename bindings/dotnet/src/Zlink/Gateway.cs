@@ -196,37 +196,23 @@ public sealed class Gateway : IDisposable
         if (useRoutingId)
             nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
 
-        ZlinkMsg part = default;
         int rc = 0;
-        bool built = false;
-        try
+        fixed (byte* serviceNamePtr = serviceNameUtf8)
+        fixed (byte* payloadPtr = payload)
         {
-            Message.InitFromSpan(payload, ref part);
-            built = true;
-            fixed (byte* serviceNamePtr = serviceNameUtf8)
+            if (useRoutingId)
             {
-                if (useRoutingId)
-                {
-                    rc = NativeMethods.zlink_gateway_send_rid(_handle,
-                        serviceNamePtr, &nativeRoutingId, &part, (nuint)1,
-                        (int)flags);
-                }
-                else
-                {
-                    rc = NativeMethods.zlink_gateway_send(_handle, serviceNamePtr,
-                        &part, (nuint)1, (int)flags);
-                }
+                rc = NativeMethods.zlink_gateway_send_rid_bytes(_handle,
+                    serviceNamePtr, &nativeRoutingId, payloadPtr,
+                    (nuint)payload.Length, (int)flags);
+            }
+            else
+            {
+                rc = NativeMethods.zlink_gateway_send_bytes(_handle,
+                    serviceNamePtr, payloadPtr, (nuint)payload.Length,
+                    (int)flags);
             }
         }
-        catch
-        {
-            if (built)
-                NativeMethods.zlink_msg_close(ref part);
-            throw;
-        }
-
-        if (rc < 0 && built)
-            NativeMethods.zlink_msg_close(ref part);
         ZlinkException.ThrowIfError(rc);
     }
 
@@ -333,6 +319,44 @@ public sealed class Gateway : IDisposable
         if (count < 0)
             throw ZlinkException.FromLastError();
         return count;
+    }
+
+    public Socket CreateRouterSocket()
+    {
+        EnsureNotDisposed();
+        IntPtr handle = NativeMethods.zlink_gateway_router_socket_unsafe(_handle);
+        if (handle == IntPtr.Zero)
+            throw ZlinkException.FromLastError();
+        return Socket.Adopt(handle, false);
+    }
+
+    public PeerInfoRecord[] GetRouterPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_gateway_router_peers(_handle, IntPtr.Zero,
+            ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<PeerInfoRecord>();
+
+        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_gateway_router_peers(_handle, native,
+                ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            for (int i = 0; i < peers.Length; i++)
+                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+            return peers;
+        }
+        finally
+        {
+            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+        }
     }
 
     public void SetSockOpt(SocketOption option, byte[] value)

@@ -2281,7 +2281,6 @@ def run_single_pattern_transport(
             if (
                 pattern in STREAM_SINGLE_PATTERNS
                 and supports_split_multi(cfg.binding)
-                and cfg.binding != "dotnet"
             ):
                 server_pattern = SINGLE_TO_MULTI_STREAM_PATTERN.get(pattern, pattern)
                 server_cmd = binding_multi_role_command(
@@ -2479,7 +2478,7 @@ def run_multi_pattern_transport(
                         )
                     continue
 
-                if pattern in MULTI_STREAM_PATTERNS and cfg.binding != "dotnet":
+                if pattern in MULTI_STREAM_PATTERNS:
                     client_cmd = stream_shared_client_cmd(
                         cfg=cfg,
                         env=env,

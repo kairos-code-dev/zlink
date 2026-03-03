@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Compatibility shim for legacy fastpath benchmarks/tests."""
+"""Shared helpers for Python single-perf runners."""
 
 from __future__ import annotations
 
+import atexit
+import os
+import socket
+import struct
+import sys
 import time
+from pathlib import Path
+from typing import Callable, List, Optional, Sequence, Tuple
 
-try:
-    from perf_common import wait_for_input as _wait_for_input
-    from perf_common import wait_until as _wait_until
-except Exception:  # pragma: no cover
-    _wait_for_input = None
-    _wait_until = None
+ROOT = Path(__file__).resolve().parents[4]
+PY_SRC_DIR = ROOT / "bindings" / "python" / "src"
+if str(PY_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(PY_SRC_DIR))
+
+import zlink
 
 
 FASTPATH_CEXT = None
@@ -48,33 +55,43 @@ def make_cext_spot_recv_many(*_args, **_kwargs):
     return None
 
 
-def wait_for_input(sock, timeout_ms, waiter=None):
-    if _wait_for_input is None:
-        return False
+_IPC_ENDPOINTS: set[str] = set()
+
+
+def _register_ipc_endpoint(endpoint: str) -> None:
+    prefix = "ipc://"
+    if not endpoint.startswith(prefix):
+        return
+    ipc_path = endpoint[len(prefix) :]
+    if not ipc_path.startswith("/"):
+        return
+    _IPC_ENDPOINTS.add(ipc_path)
     try:
-        if waiter is None:
-            return bool(_wait_for_input(sock, timeout_ms))
-        return bool(_wait_for_input(sock, timeout_ms, waiter))
-    except TypeError:
-        return bool(_wait_for_input(sock, timeout_ms))
+        os.unlink(ipc_path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
 
-def wait_until(fn, timeout_ms, interval_ms=10):
-    if _wait_until is not None:
+def _cleanup_ipc_endpoints() -> None:
+    for ipc_path in list(_IPC_ENDPOINTS):
         try:
-            return bool(_wait_until(fn, timeout_ms, interval_ms))
-        except TypeError:
-            return bool(_wait_until(fn, timeout_ms))
+            os.unlink(ipc_path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
 
 atexit.register(_cleanup_ipc_endpoints)
 
 
 def get_port() -> int:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = int(sock.getsockname()[1])
+    sock.close()
     return port
 
 
@@ -88,26 +105,60 @@ def endpoint_for(transport: str, name: str) -> str:
     return f"{transport}://127.0.0.1:{get_port()}"
 
 
+def _read_int_env(name: str) -> int:
+    candidates = [name]
+    if name.startswith("PERF_"):
+        candidates.append(name[len("PERF_") :])
+    else:
+        candidates.append(f"PERF_{name}")
+    for key in candidates:
+        raw = os.environ.get(key)
+        if not raw:
+            continue
+        try:
+            parsed = int(raw)
+        except ValueError:
+            continue
+        return parsed
+    return 0
+
+
 def resolve_msg_count(size: int) -> int:
-    env = os.environ.get("PERF_MSG_COUNT") or os.environ.get("PERF_MSG_COUNT")
-    if env and env.isdigit() and int(env) > 0:
-        return int(env)
+    env_count = _read_int_env("PERF_MSG_COUNT")
+    if env_count > 0:
+        return env_count
     return 200000 if size <= 1024 else 20000
 
 
 def parse_env(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None and name.startswith("PERF_"):
-        value = os.environ.get("PERF_" + name[len("PERF_"):])
-    elif value is None and name.startswith("PERF_"):
-        value = os.environ.get("PERF_" + name[len("PERF_"):])
-    if not value:
-        return default
-    try:
-        parsed = int(value)
-    except ValueError:
-        return default
+    parsed = _read_int_env(name)
     return parsed if parsed > 0 else default
+
+
+def parse_pattern_args(
+    pattern: str, args: Sequence[str]
+) -> Optional[Tuple[str, int]]:
+    tokens = list(args)
+    if len(tokens) >= 3 and tokens[0].upper() == pattern.upper():
+        transport = tokens[1]
+        size_text = tokens[2]
+    elif len(tokens) >= 2:
+        transport = tokens[0]
+        size_text = tokens[1]
+    else:
+        return None
+
+    transport = str(transport).strip().lower()
+    if transport not in {"tcp", "tls", "ws", "wss", "inproc", "ipc"}:
+        return None
+
+    try:
+        size = int(size_text)
+    except (TypeError, ValueError):
+        return None
+    if size <= 0:
+        return None
+    return transport, size
 
 
 def settle() -> None:
@@ -126,7 +177,13 @@ def _bandwidth_mbps(pattern: str, throughput: float, size: int) -> float:
     return (throughput * float(size) * multiplier) / 1_000_000.0
 
 
-def print_result(pattern: str, transport: str, size: int, throughput: float, latency_us: float) -> None:
+def print_result(
+    pattern: str,
+    transport: str,
+    size: int,
+    throughput: float,
+    latency_us: float,
+) -> None:
     bandwidth = _bandwidth_mbps(pattern, throughput, size)
     print(f"RESULT,current,{pattern},{transport},{size},throughput,{throughput}")
     print(f"RESULT,current,{pattern},{transport},{size},bandwidth,{bandwidth}")
@@ -144,11 +201,108 @@ class SocketWaiter:
         return len(events) > 0
 
 
-def wait_for_input(sock, timeout_ms: int, waiter: Optional[SocketWaiter] = None) -> bool:
+def wait_for_input(
+    sock, timeout_ms: int, waiter: Optional[SocketWaiter] = None
+) -> bool:
     if waiter is None:
         waiter = SocketWaiter(sock)
     timeout = -1 if timeout_ms < 0 else timeout_ms
     return waiter.wait(timeout)
+
+
+def configure_one_way_socket(sock) -> None:
+    hwm = parse_env("PERF_HWM", 100000)
+    snd_timeout_ms = parse_env("PERF_SNDTIMEO_MS", 5000)
+    rcv_timeout_ms = parse_env("PERF_RCVTIMEO_MS", 5000)
+    try:
+        sock.setsockopt(int(zlink.SocketOption.SNDHWM), int_sockopt(hwm))
+    except Exception:
+        pass
+    try:
+        sock.setsockopt(int(zlink.SocketOption.RCVHWM), int_sockopt(hwm))
+    except Exception:
+        pass
+    try:
+        sock.setsockopt(
+            int(zlink.SocketOption.SNDTIMEO), int_sockopt(snd_timeout_ms)
+        )
+    except Exception:
+        pass
+    try:
+        sock.setsockopt(
+            int(zlink.SocketOption.RCVTIMEO), int_sockopt(rcv_timeout_ms)
+        )
+    except Exception:
+        pass
+
+
+def drain_single_part(
+    sock, recv_buf: bytearray, expected_max: int, idle_drain_ms: int
+) -> int:
+    recv_dontwait = int(zlink.ReceiveFlag.DONTWAIT)
+    idle_limit = max(1, int(idle_drain_ms))
+    recv_count = 0
+    idle = 0
+    while idle < idle_limit:
+        if expected_max > 0 and recv_count >= expected_max:
+            break
+        try:
+            sock.recv_into(recv_buf, recv_dontwait)
+            recv_count += 1
+            idle = 0
+        except Exception:
+            idle += 1
+            time.sleep(0.001)
+    return recv_count
+
+
+def drain_multipart(
+    sock,
+    rid_buf: bytearray,
+    data_buf: bytearray,
+    expected_max: int,
+    idle_drain_ms: int,
+) -> int:
+    recv_dontwait = int(zlink.ReceiveFlag.DONTWAIT)
+    idle_limit = max(1, int(idle_drain_ms))
+    recv_count = 0
+    idle = 0
+    while idle < idle_limit:
+        if expected_max > 0 and recv_count >= expected_max:
+            break
+        try:
+            sock.recv_into(rid_buf, recv_dontwait)
+            sock.recv_into(data_buf, recv_dontwait)
+            recv_count += 1
+            idle = 0
+        except Exception:
+            idle += 1
+            time.sleep(0.001)
+    return recv_count
+
+
+def gateway_send_with_retry(
+    gateway, service: str, parts, flags: int, timeout_ms: int
+) -> None:
+    deadline = time.time() + (max(1, timeout_ms) / 1000.0)
+    while time.time() < deadline:
+        try:
+            gateway.send(service, parts, flags)
+            return
+        except Exception:
+            time.sleep(0.01)
+    raise RuntimeError("timeout")
+
+
+def spot_recv_with_timeout(spot, timeout_ms: int):
+    recv_dontwait = int(zlink.ReceiveFlag.DONTWAIT)
+    deadline = time.time() + (max(1, timeout_ms) / 1000.0)
+    while time.time() < deadline:
+        try:
+            return spot.recv(recv_dontwait)
+        except Exception:
+            time.sleep(0.01)
+    raise RuntimeError("timeout")
 
 
 def recv_exact(sock, size: int, flags: int = 0) -> bytes:
@@ -173,7 +327,7 @@ class StreamLen32BeStash:
         if available < 4:
             return None
         head = self._start
-        body_len = struct.unpack("!I", self._buf[head:head + 4])[0]
+        body_len = struct.unpack("!I", self._buf[head : head + 4])[0]
         if body_len > _STREAM_MAX_FRAME_BYTES:
             self._buf.clear()
             self._start = 0
@@ -196,7 +350,7 @@ class StreamLen32BeStash:
         frames: List[bytes] = []
         while (len(self._buf) - self._start) >= 4:
             head = self._start
-            body_len = struct.unpack("!I", self._buf[head:head + 4])[0]
+            body_len = struct.unpack("!I", self._buf[head : head + 4])[0]
             if body_len > _STREAM_MAX_FRAME_BYTES:
                 self._buf.clear()
                 self._start = 0
@@ -218,7 +372,7 @@ class StreamLen32BeStash:
             self._start = 0
             return
         if self._start > 4096 and (self._start * 2) >= len(self._buf):
-            self._buf = self._buf[self._start:]
+            self._buf = self._buf[self._start :]
             self._start = 0
 
 

@@ -4,6 +4,8 @@ import sys
 
 from perf_common import (
     SocketWaiter,
+    configure_one_way_socket,
+    drain_multipart,
     endpoint_for,
     int_sockopt,
     parse_env,
@@ -19,6 +21,7 @@ from perf_common import (
 def run_router_router(transport: str, size: int, use_poll: bool) -> int:
     lat_count = parse_env("PERF_LAT_COUNT", 1000)
     msg_count = resolve_msg_count(size)
+    idle_drain_ms = parse_env("PERF_IDLE_DRAIN_MS", 500)
 
     ctx = zlink.Context()
     router1 = zlink.Socket(ctx, int(zlink.SocketType.ROUTER))
@@ -48,6 +51,8 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         router1.bind(endpoint)
         router2.connect(endpoint)
         settle()
+        configure_one_way_socket(router1)
+        configure_one_way_socket(router2)
 
         waiter1 = SocketWaiter(router1)
         waiter2 = SocketWaiter(router2)
@@ -109,31 +114,23 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / (lat_count * 2)
 
         start = time.perf_counter()
-        if use_poll:
-            for _ in range(msg_count):
-                router2.send_const(rid1, send_more)
-                router2.send_const(buf, send_none)
+        sent = 0
+        for _ in range(msg_count):
+            try:
+                router2.send_const(rid1, send_more | send_dontwait)
+                router2.send_const(buf, send_dontwait)
+                sent += 1
+            except Exception:
+                break
 
-            received = 0
-            while received < msg_count:
-                if not wait_for_input(router1, 2000, waiter1):
-                    return 2
-                while received < msg_count:
-                    try:
-                        router1.recv_into(id_buf, recv_dontwait)
-                        router1.recv_into(data_buf, recv_dontwait)
-                    except Exception:
-                        break
-                    received += 1
-        else:
-            for _ in range(msg_count):
-                router2.send_const(rid1, send_more)
-                router2.send_const(buf, send_none)
-            for _ in range(msg_count):
-                router1.recv_into(id_buf, recv_none)
-                router1.recv_into(data_buf, recv_none)
-
-        throughput = msg_count / (time.perf_counter() - start)
+        recv_count = drain_multipart(
+            router1, id_buf, data_buf, sent, idle_drain_ms
+        )
+        elapsed = time.perf_counter() - start
+        effective = min(sent, recv_count)
+        if effective <= 0:
+            return 2
+        throughput = effective / elapsed
         pattern = "ROUTER_ROUTER_POLL" if use_poll else "ROUTER_ROUTER"
         print_result(pattern, transport, size, throughput, lat_us)
         return 0

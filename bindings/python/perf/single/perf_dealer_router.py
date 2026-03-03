@@ -3,6 +3,8 @@ import time
 import sys
 
 from perf_common import (
+    configure_one_way_socket,
+    drain_multipart,
     endpoint_for,
     int_sockopt,
     parse_env,
@@ -18,6 +20,7 @@ def run(transport: str, size: int) -> int:
     warmup = parse_env("PERF_WARMUP_COUNT", 1000)
     lat_count = parse_env("PERF_LAT_COUNT", 1000)
     msg_count = resolve_msg_count(size)
+    idle_drain_ms = parse_env("PERF_IDLE_DRAIN_MS", 500)
 
     ctx = zlink.Context()
     router = zlink.Socket(ctx, int(zlink.SocketType.ROUTER))
@@ -29,8 +32,11 @@ def run(transport: str, size: int) -> int:
         router.bind(endpoint)
         dealer.connect(endpoint)
         settle()
+        configure_one_way_socket(router)
+        configure_one_way_socket(dealer)
 
         send_none = int(zlink.SendFlag.NONE)
+        send_dontwait = int(zlink.SendFlag.DONTWAIT)
         send_more = int(zlink.SendFlag.SNDMORE)
         recv_none = int(zlink.ReceiveFlag.NONE)
         buf = b"a" * size
@@ -57,13 +63,22 @@ def run(transport: str, size: int) -> int:
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / (lat_count * 2)
 
         start = time.perf_counter()
+        sent = 0
         for _ in range(msg_count):
-            dealer.send_const(buf, send_none)
-        for _ in range(msg_count):
-            router.recv_into(rid_buf, recv_none)
-            router.recv_into(data_buf, recv_none)
+            try:
+                dealer.send_const(buf, send_dontwait)
+                sent += 1
+            except Exception:
+                break
+        recv_count = drain_multipart(
+            router, rid_buf, data_buf, sent, idle_drain_ms
+        )
 
-        throughput = msg_count / (time.perf_counter() - start)
+        elapsed = time.perf_counter() - start
+        effective = min(sent, recv_count)
+        if effective <= 0:
+            return 2
+        throughput = effective / elapsed
         print_result("DEALER_ROUTER", transport, size, throughput, lat_us)
         return 0
     except Exception:

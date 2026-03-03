@@ -197,6 +197,10 @@ SPLIT_SERVER_CLIENT_PATTERNS = {
     "MULTI_ROUTER_ROUTER",
     "MULTI_STREAM",
 }
+STREAM_SHARED_CLIENT_BINARY = "comp_zlink_multi_stream"
+STREAM_SERVER_BINARY_BY_PATTERN = {
+    "MULTI_STREAM": "comp_zlink_multi_stream_server",
+}
 _platform_tag, _arch_tag = platform_arch_tag()
 DEFAULT_STD_CACHE_FILE = os.path.join(
     SCRIPT_DIR, f"std_zmq_multi_cache_{_platform_tag}-{_arch_tag}.json"
@@ -258,13 +262,21 @@ def select_comparisons(comparisons, pattern_req):
     return selected
 
 
+def required_zlink_split_binaries(pattern_name):
+    server_bin = STREAM_SERVER_BINARY_BY_PATTERN.get(pattern_name)
+    if not server_bin:
+        return []
+    return [server_bin]
+
+
 def expected_runtime_binaries(selected_comparisons, include_std):
     names = []
-    for std_bin, zlk_bin, _ in selected_comparisons:
+    for std_bin, zlk_bin, pattern_name in selected_comparisons:
         names.append(zlk_bin)
+        names.extend(required_zlink_split_binaries(pattern_name))
         if include_std:
             names.append(std_bin)
-    return names
+    return sorted(set(names))
 
 
 def collect_missing_binaries(runtime_bin_dir, names):
@@ -278,11 +290,14 @@ def collect_missing_binaries(runtime_bin_dir, names):
 
 def collect_multi_build_targets(comparisons, include_std):
     targets = []
-    for std_bin, zlk_bin, _ in comparisons:
+    for std_bin, zlk_bin, pattern_name in comparisons:
         if include_std and std_bin not in targets:
             targets.append(std_bin)
         if zlk_bin not in targets:
             targets.append(zlk_bin)
+        for extra_bin in required_zlink_split_binaries(pattern_name):
+            if extra_bin not in targets:
+                targets.append(extra_bin)
     return targets
 
 
@@ -448,12 +463,16 @@ def _stop_server_process(proc):
 
 
 def run_split_server_client_test(
-    binary_path,
+    server_binary_path,
+    client_binary_path,
     lib_name,
     transport,
+    pattern_name,
     fallback_size,
     expected_sizes,
     timeout_sec,
+    warmup_seconds,
+    duration_seconds,
     progress_cb=None,
     metric_cb=None,
 ):
@@ -467,8 +486,51 @@ def run_split_server_client_test(
         "error": "",
     }
 
-    server_cmd = [binary_path, lib_name, transport, str(fallback_size), "--server-only"]
-    client_cmd = [binary_path, lib_name, transport, str(fallback_size)]
+    server_cmd = [server_binary_path, lib_name, transport, str(fallback_size), "--server-only"]
+    if pattern_name == "MULTI_STREAM":
+        ordered_sizes = [size for size in MSG_SIZES if size in expected_sizes]
+        if not ordered_sizes:
+            ordered_sizes = sorted(expected_sizes)
+        size_csv = ",".join(str(size) for size in ordered_sizes)
+        raw_clients = (
+            env.get("PERF_MULTI_CLIENTS")
+            or env.get("BENCH_MULTI_CLIENTS")
+            or "1000"
+        )
+        try:
+            clients = max(1, int(raw_clients))
+        except ValueError:
+            clients = 1000
+        raw_io_threads = env.get("PERF_IO_THREADS") or env.get("BENCH_IO_THREADS") or "4"
+        try:
+            io_threads = max(1, int(raw_io_threads))
+        except ValueError:
+            io_threads = 4
+        client_cmd = [
+            client_binary_path,
+            "--transport",
+            transport,
+            "--pattern",
+            pattern_name,
+            "--sizes",
+            size_csv,
+            "--runs",
+            "1",
+            "--warmup",
+            str(max(0, warmup_seconds)),
+            "--duration",
+            str(max(1, duration_seconds)),
+            "--ccu",
+            str(clients),
+            "--io-threads",
+            str(io_threads),
+            "--print-perf-result",
+            "1",
+            "--send-stop-token",
+            "0",
+        ]
+    else:
+        client_cmd = [client_binary_path, lib_name, transport, str(fallback_size)]
     server_proc = None
     selector = None
 
@@ -658,13 +720,27 @@ def run_single_test(
             lib_name == "zlink"
             and pattern_name in SPLIT_SERVER_CLIENT_PATTERNS
         ):
+            split_server_path = binary_path
+            split_client_path = binary_path
+            split_server_bin = STREAM_SERVER_BINARY_BY_PATTERN.get(pattern_name)
+            if split_server_bin:
+                split_server_path = os.path.join(
+                    BUILD_DIR, split_server_bin + EXE_SUFFIX
+                )
+                split_client_path = os.path.join(
+                    BUILD_DIR, STREAM_SHARED_CLIENT_BINARY + EXE_SUFFIX
+                )
             return run_split_server_client_test(
-                binary_path,
+                split_server_path,
+                split_client_path,
                 lib_name,
                 transport,
+                pattern_name,
                 fallback_size,
                 expected_sizes,
                 timeout_sec,
+                warmup_seconds,
+                duration_seconds,
                 progress_cb=progress_cb,
                 metric_cb=metric_cb,
             )

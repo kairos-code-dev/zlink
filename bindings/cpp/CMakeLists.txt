@@ -38,6 +38,7 @@ if(ZLINK_CPP_BUILD_TESTS)
   add_cpp_binding_test(test_cpp_xpub_xsub tests/test_cpp_xpub_xsub.cpp)
   add_cpp_binding_test(test_cpp_multipart tests/test_cpp_multipart.cpp)
   add_cpp_binding_test(test_cpp_discovery tests/test_cpp_discovery_gateway_spot.cpp)
+  add_cpp_binding_test(test_cpp_api_surface tests/test_cpp_api_surface.cpp)
 endif()
 
 option(ZLINK_CPP_BUILD_BENCHMARKS "Build C++ binding benchmarks" OFF)

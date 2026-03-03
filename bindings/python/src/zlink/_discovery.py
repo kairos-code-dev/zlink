@@ -2,7 +2,7 @@
 
 import ctypes
 from ._ffi import lib
-from ._core import _raise_last_error, ZlinkMsg, Message
+from ._core import _raise_last_error, ZlinkMsg, Message, _ZlinkRoutingId, _as_bytes_view, _send_buffer
 
 
 class ReceiverInfo(ctypes.Structure):
@@ -13,6 +13,59 @@ class ReceiverInfo(ctypes.Structure):
         ("weight", ctypes.c_uint),
         ("registered_at", ctypes.c_uint64),
     ]
+
+
+class PeerInfo(ctypes.Structure):
+    _fields_ = [
+        ("routing_id", _ZlinkRoutingId),
+        ("remote_addr", ctypes.c_char * 256),
+        ("connected_time", ctypes.c_uint64),
+        ("msgs_sent", ctypes.c_uint64),
+        ("msgs_received", ctypes.c_uint64),
+        ("snd_pending_msgs", ctypes.c_uint64),
+        ("rcv_pending_msgs", ctypes.c_uint64),
+    ]
+
+
+def _to_routing_id_struct(routing_id):
+    rid_view = _as_bytes_view(routing_id)
+    rid_len = rid_view.nbytes
+    if rid_len <= 0 or rid_len > 255:
+        raise ValueError("routing_id length must be between 1 and 255")
+    rid = _ZlinkRoutingId()
+    rid.size = rid_len
+    for i in range(rid_len):
+        rid.data[i] = rid_view[i]
+    return rid
+
+
+def _peer_to_dict(peer):
+    return {
+        "routing_id": bytes(peer.routing_id.data[: peer.routing_id.size]),
+        "remote_addr": peer.remote_addr.split(b"\0", 1)[0].decode(),
+        "connected_time": int(peer.connected_time),
+        "msgs_sent": int(peer.msgs_sent),
+        "msgs_received": int(peer.msgs_received),
+        "snd_pending_msgs": int(peer.snd_pending_msgs),
+        "rcv_pending_msgs": int(peer.rcv_pending_msgs),
+    }
+
+
+def _query_peers(handle, fn):
+    count = ctypes.c_size_t(0)
+    rc = fn(handle, None, ctypes.byref(count))
+    if rc != 0:
+        _raise_last_error()
+    if count.value == 0:
+        return []
+
+    arr = (PeerInfo * count.value)()
+    rc = fn(handle, ctypes.cast(arr, ctypes.c_void_p), ctypes.byref(count))
+    if rc != 0:
+        _raise_last_error()
+
+    return [_peer_to_dict(arr[i]) for i in range(count.value)]
+
 
 class Registry:
     def __init__(self, ctx):
@@ -136,12 +189,61 @@ class Gateway:
         if not self._handle:
             _raise_last_error()
 
-    def send(self, service, parts, flags=0):
-        arr, built = _build_msg_array(parts)
-        rc = lib().zlink_gateway_send(self._handle, service.encode(), ctypes.byref(arr), len(parts), flags)
+    def send(self, service, payload_or_parts, flags=0):
+        if isinstance(payload_or_parts, (list, tuple)):
+            arr, built = _build_msg_array(payload_or_parts)
+            rc = lib().zlink_gateway_send(
+                self._handle,
+                service.encode(),
+                ctypes.byref(arr),
+                len(payload_or_parts),
+                flags,
+            )
+            if rc != 0:
+                _close_msg_array(arr, built)
+                _raise_last_error()
+            return
+
+        payload = payload_or_parts.encode() if isinstance(payload_or_parts, str) else payload_or_parts
+        payload_buf, payload_size, keepalive = _send_buffer(payload)
+        rc = lib().zlink_gateway_send_bytes(
+            self._handle, service.encode(), payload_buf, payload_size, flags
+        )
         if rc != 0:
-            _close_msg_array(arr, built)
             _raise_last_error()
+        _ = keepalive
+
+    def send_to_routing_id(self, service, routing_id, payload_or_parts, flags=0):
+        rid = _to_routing_id_struct(routing_id)
+
+        if isinstance(payload_or_parts, (list, tuple)):
+            arr, built = _build_msg_array(payload_or_parts)
+            rc = lib().zlink_gateway_send_rid(
+                self._handle,
+                service.encode(),
+                ctypes.byref(rid),
+                ctypes.byref(arr),
+                len(payload_or_parts),
+                flags,
+            )
+            if rc != 0:
+                _close_msg_array(arr, built)
+                _raise_last_error()
+            return
+
+        payload = payload_or_parts.encode() if isinstance(payload_or_parts, str) else payload_or_parts
+        payload_buf, payload_size, keepalive = _send_buffer(payload)
+        rc = lib().zlink_gateway_send_rid_bytes(
+            self._handle,
+            service.encode(),
+            ctypes.byref(rid),
+            payload_buf,
+            payload_size,
+            flags,
+        )
+        if rc != 0:
+            _raise_last_error()
+        _ = keepalive
 
     def recv(self, flags=0):
         parts = ctypes.c_void_p()
@@ -169,6 +271,16 @@ class Gateway:
         if rc < 0:
             _raise_last_error()
         return rc
+
+    def router_socket(self):
+        handle = lib().zlink_gateway_router_socket_unsafe(self._handle)
+        if not handle:
+            _raise_last_error()
+        from ._core import Socket
+        return Socket._from_handle(handle, own=False)
+
+    def router_peers(self):
+        return _query_peers(self._handle, lib().zlink_gateway_router_peers)
 
     def set_sockopt(self, option, value: bytes):
         buf = ctypes.create_string_buffer(value)
@@ -241,6 +353,9 @@ class Receiver:
             _raise_last_error()
         from ._core import Socket
         return Socket._from_handle(handle, own=False)
+
+    def router_peers(self):
+        return _query_peers(self._handle, lib().zlink_receiver_router_peers)
 
     def close(self):
         if self._handle:

@@ -56,6 +56,10 @@ class _Lib:
         L.zlink_send_const.restype = ctypes.c_int
         L.zlink_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_recv.restype = ctypes.c_int
+        L.zlink_stream_attach_raw.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        L.zlink_stream_attach_raw.restype = ctypes.c_int
+        L.zlink_stream_attach_len32be.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        L.zlink_stream_attach_len32be.restype = ctypes.c_int
         L.zlink_stream_attach.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
         L.zlink_stream_attach.restype = ctypes.c_int
         L.zlink_stream_detach.argtypes = [ctypes.c_void_p]
@@ -142,12 +146,22 @@ class _Lib:
         L.zlink_gateway_new.restype = ctypes.c_void_p
         L.zlink_gateway_send.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_gateway_send.restype = ctypes.c_int
+        L.zlink_gateway_send_bytes.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_gateway_send_bytes.restype = ctypes.c_int
+        L.zlink_gateway_send_rid.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_gateway_send_rid.restype = ctypes.c_int
+        L.zlink_gateway_send_rid_bytes.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_gateway_send_rid_bytes.restype = ctypes.c_int
         L.zlink_gateway_recv.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_size_t), ctypes.c_int, ctypes.c_char_p]
         L.zlink_gateway_recv.restype = ctypes.c_int
         L.zlink_gateway_set_lb_strategy.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
         L.zlink_gateway_set_lb_strategy.restype = ctypes.c_int
         L.zlink_gateway_set_tls_client.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
         L.zlink_gateway_set_tls_client.restype = ctypes.c_int
+        L.zlink_gateway_router_socket_unsafe.argtypes = [ctypes.c_void_p]
+        L.zlink_gateway_router_socket_unsafe.restype = ctypes.c_void_p
+        L.zlink_gateway_router_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        L.zlink_gateway_router_peers.restype = ctypes.c_int
         L.zlink_gateway_connection_count.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         L.zlink_gateway_connection_count.restype = ctypes.c_int
         L.zlink_gateway_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
@@ -186,6 +200,8 @@ class _Lib:
         L.zlink_receiver_set_tls_server.restype = ctypes.c_int
         L.zlink_receiver_router_socket_unsafe.argtypes = [ctypes.c_void_p]
         L.zlink_receiver_router_socket_unsafe.restype = ctypes.c_void_p
+        L.zlink_receiver_router_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        L.zlink_receiver_router_peers.restype = ctypes.c_int
         L.zlink_receiver_destroy.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
         L.zlink_receiver_destroy.restype = ctypes.c_int
 
@@ -213,6 +229,14 @@ class _Lib:
         L.zlink_spot_node_set_tls_client.restype = ctypes.c_int
         L.zlink_spot_node_setsockopt.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t]
         L.zlink_spot_node_setsockopt.restype = ctypes.c_int
+        L.zlink_spot_node_pub_socket_unsafe.argtypes = [ctypes.c_void_p]
+        L.zlink_spot_node_pub_socket_unsafe.restype = ctypes.c_void_p
+        L.zlink_spot_node_sub_socket_unsafe.argtypes = [ctypes.c_void_p]
+        L.zlink_spot_node_sub_socket_unsafe.restype = ctypes.c_void_p
+        L.zlink_spot_node_pub_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        L.zlink_spot_node_pub_peers.restype = ctypes.c_int
+        L.zlink_spot_node_sub_peers.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+        L.zlink_spot_node_sub_peers.restype = ctypes.c_int
 
         L.zlink_spot_pub_new.argtypes = [ctypes.c_void_p]
         L.zlink_spot_pub_new.restype = ctypes.c_void_p
@@ -220,6 +244,8 @@ class _Lib:
         L.zlink_spot_pub_destroy.restype = ctypes.c_int
         L.zlink_spot_pub_publish.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_spot_pub_publish.restype = ctypes.c_int
+        L.zlink_spot_pub_publish_bytes.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+        L.zlink_spot_pub_publish_bytes.restype = ctypes.c_int
 
         L.zlink_spot_sub_new.argtypes = [ctypes.c_void_p]
         L.zlink_spot_sub_new.restype = ctypes.c_void_p
@@ -275,16 +301,27 @@ def _find_bundled_library():
 def _find_dev_library():
     base = pathlib.Path(__file__).resolve()
     repo = base.parents[4]
+    candidates = []
     if os.name == "nt":
-        candidate = repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll"
+        candidates.extend([
+            repo / "core" / "build" / "lib" / "zlink.dll",
+            repo / "core" / "build" / "windows-x64" / "lib" / "zlink.dll",
+        ])
     else:
         uname = os.uname().sysname.lower()
         if "darwin" in uname or "mac" in uname:
-            candidate = repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib"
+            candidates.extend([
+                repo / "core" / "build" / "lib" / "libzlink.dylib",
+                repo / "core" / "build" / "darwin-x64" / "lib" / "libzlink.dylib",
+            ])
         else:
-            candidate = repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so"
-    if candidate.exists():
-        return str(candidate)
+            candidates.extend([
+                repo / "core" / "build" / "lib" / "libzlink.so",
+                repo / "core" / "build" / "linux-x64" / "lib" / "libzlink.so",
+            ])
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
     return None
 
 

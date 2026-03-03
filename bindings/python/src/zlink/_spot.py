@@ -2,8 +2,8 @@
 
 import ctypes
 from ._ffi import lib
-from ._core import _raise_last_error, Message, ZlinkMsg
-from ._discovery import _parts_to_bytes, _build_msg_array, _close_msg_array
+from ._core import _raise_last_error, Message, ZlinkMsg, _send_buffer
+from ._discovery import _parts_to_bytes, _build_msg_array, _close_msg_array, _query_peers
 
 
 _SPOT_SUB_HANDLER = ctypes.CFUNCTYPE(
@@ -100,6 +100,26 @@ class SpotNode:
         # Node-level options use socket role 0 (ZLINK_SPOT_NODE_SOCKET_NODE).
         self.set_sockopt(0, option, int(value))
 
+    def pub_socket(self):
+        handle = lib().zlink_spot_node_pub_socket_unsafe(self._handle)
+        if not handle:
+            _raise_last_error()
+        from ._core import Socket
+        return Socket._from_handle(handle, own=False)
+
+    def sub_socket(self):
+        handle = lib().zlink_spot_node_sub_socket_unsafe(self._handle)
+        if not handle:
+            _raise_last_error()
+        from ._core import Socket
+        return Socket._from_handle(handle, own=False)
+
+    def pub_peers(self):
+        return _query_peers(self._handle, lib().zlink_spot_node_pub_peers)
+
+    def sub_peers(self):
+        return _query_peers(self._handle, lib().zlink_spot_node_sub_peers)
+
     def close(self):
         if self._handle:
             handle = ctypes.c_void_p(self._handle)
@@ -124,12 +144,29 @@ class Spot:
             self._sub_handle = None
             _raise_last_error()
 
-    def publish(self, topic_id, parts, flags=0):
-        arr, built = _build_msg_array(parts)
-        rc = lib().zlink_spot_pub_publish(self._pub_handle, topic_id.encode(), ctypes.byref(arr), len(parts), flags)
+    def publish(self, topic_id, payload_or_parts, flags=0):
+        if isinstance(payload_or_parts, (list, tuple)):
+            arr, built = _build_msg_array(payload_or_parts)
+            rc = lib().zlink_spot_pub_publish(
+                self._pub_handle,
+                topic_id.encode(),
+                ctypes.byref(arr),
+                len(payload_or_parts),
+                flags,
+            )
+            if rc != 0:
+                _close_msg_array(arr, built)
+                _raise_last_error()
+            return
+
+        payload = payload_or_parts.encode() if isinstance(payload_or_parts, str) else payload_or_parts
+        payload_buf, payload_size, keepalive = _send_buffer(payload)
+        rc = lib().zlink_spot_pub_publish_bytes(
+            self._pub_handle, topic_id.encode(), payload_buf, payload_size, flags
+        )
         if rc != 0:
-            _close_msg_array(arr, built)
             _raise_last_error()
+        _ = keepalive
 
     def subscribe(self, topic_id):
         rc = lib().zlink_spot_sub_subscribe(self._sub_handle, topic_id.encode())

@@ -294,25 +294,48 @@ public final class Socket implements AutoCloseable {
         if (streamAttached)
             throw new IllegalStateException("STREAM callback already attached");
 
+        final MethodHandle cb;
+        final FunctionDescriptor fd;
+        final String attachName;
         try {
-            MethodHandle cb = MethodHandles.lookup().findVirtual(
-              Socket.class,
-              "onStreamPackets",
-              MethodType.methodType(int.class, MemorySegment.class,
-                MemorySegment.class, long.class)).bindTo(this);
-            streamCallbackArena = Arena.ofShared();
-            streamCallbackStub =
-              LINKER.upcallStub(cb, FD_STREAM_CALLBACK, streamCallbackArena);
+            if (mode == StreamDispatchMode.NONE) {
+                cb = MethodHandles.lookup().findVirtual(
+                  Socket.class,
+                  "onStreamRaw",
+                  MethodType.methodType(int.class, MemorySegment.class,
+                    MemorySegment.class)).bindTo(this);
+                fd = FD_STREAM_CALLBACK_RAW;
+                attachName = "zlink_stream_attach_raw";
+            } else if (mode == StreamDispatchMode.LEN32BE) {
+                cb = MethodHandles.lookup().findVirtual(
+                  Socket.class,
+                  "onStreamPackets",
+                  MethodType.methodType(int.class, MemorySegment.class,
+                    MemorySegment.class, long.class)).bindTo(this);
+                fd = FD_STREAM_CALLBACK;
+                attachName = "zlink_stream_attach_len32be";
+            } else {
+                throw new IllegalArgumentException(
+                  "unsupported StreamDispatchMode: " + mode);
+            }
         } catch (NoSuchMethodException | IllegalAccessException ex) {
             throw new RuntimeException("stream callback binding failed", ex);
         }
 
-        int rc = Native.streamAttach(handle, streamCallbackStub, mode.getValue());
+        streamCallbackArena = Arena.ofShared();
+        streamCallbackStub =
+          LINKER.upcallStub(cb, fd, streamCallbackArena);
+
+        int rc;
+        if (mode == StreamDispatchMode.NONE)
+            rc = Native.streamAttachRaw(handle, streamCallbackStub);
+        else
+            rc = Native.streamAttachLen32be(handle, streamCallbackStub);
         if (rc != 0) {
             closeArena(streamCallbackArena);
             streamCallbackArena = null;
             streamCallbackStub = MemorySegment.NULL;
-            throw new RuntimeException("zlink_stream_attach failed");
+            throw new RuntimeException(attachName + " failed");
         }
         streamHandler = handler;
         streamAttached = true;

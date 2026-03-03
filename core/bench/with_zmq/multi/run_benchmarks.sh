@@ -238,8 +238,7 @@ Options:
   --output PATH                 Tee console logs to a file.
   --results-dir PATH            Override result root directory.
   --results-tag NAME            Optional tag in saved result filename.
-  --result-file PATH            Override tmp result file path.
-  --result                      Compatibility flag (tmp/report save is always enabled).
+  --result-file PATH            Override result file path.
   --refresh-std-cache           Refresh libzmq cache during this run
   --std-cache-file PATH         libzmq cache file path
   --warmup N                    Override BENCH_MULTI_WARMUP_SECONDS (default: 3)
@@ -272,8 +271,7 @@ Environment:
   BENCH_SKIP_NOFILE_CHECK=1     Disable preflight nofile(limit) check
 
 Notes:
-  - tmp result is always saved under results/multi/tmp/.
-  - report result is always saved under results/multi/report/.
+  - result is saved under results/multi/report/.
 USAGE
 }
 
@@ -323,7 +321,6 @@ PIN_CPU=0
 ZLINK_ONLY=0
 RUN_SINGLE=0
 SINGLE_RUNS=""
-RESULT_COMPAT=0
 REFRESH_STD_CACHE=0
 STD_CACHE_FILE=""
 PATTERN_RAW="${DEFAULT_PATTERN}"
@@ -406,10 +403,6 @@ while [[ $# -gt 0 ]]; do
       else
         shift
       fi
-      ;;
-    --result)
-      RESULT_COMPAT=1
-      shift
       ;;
     --refresh-std-cache)
       REFRESH_STD_CACHE=1
@@ -545,25 +538,17 @@ else
   if [[ -n "${RESULTS_TAG}" ]]; then
     NAME="${NAME}_${RESULTS_TAG}"
   fi
-  RESULT_FILE="${RESULTS_DIR}/multi/tmp/${NAME}.txt"
+  RESULT_FILE="${RESULTS_DIR}/multi/report/${NAME}.txt"
 fi
-
-REPORT_DIR="${RESULTS_DIR}/multi/report"
-REPORT_FILE="${REPORT_DIR}/$(basename "${RESULT_FILE}")"
 
 if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
-  echo "Error: --output cannot point to the same file as tmp result output." >&2
+  echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
-fi
-
-if [[ "${RESULT_COMPAT}" -eq 1 ]]; then
-  echo "Note: --result is deprecated; tmp/report save is always enabled."
 fi
 
 cleanup_old_results_dirs "${RESULTS_DIR}"
 
 mkdir -p "$(dirname "${RESULT_FILE}")"
-mkdir -p "${REPORT_DIR}"
 if [[ -n "${OUTPUT_FILE}" ]]; then
   mkdir -p "$(dirname "${OUTPUT_FILE}")"
 fi
@@ -614,9 +599,11 @@ elif [[ -z "${BENCH_IO_THREADS:-}" && "${effective_clients}" =~ ^[0-9]+$ && "${e
 fi
 if [[ -n "${BENCH_IO_THREADS:-}" ]]; then
   echo "Config: io_threads=${BENCH_IO_THREADS}"
+  export PERF_IO_THREADS="${BENCH_IO_THREADS}"
 fi
 
 export BENCH_MULTI_CLIENTS="${effective_clients}"
+export PERF_MULTI_CLIENTS="${effective_clients}"
 export BENCH_MULTI_PATTERN="${PATTERN_INTERNAL}"
 export BENCH_MULTI_CONNECT_CONCURRENCY="${effective_connect_concurrency}"
 export BENCH_MULTI_DRAIN_MS="${effective_drain_ms}"
@@ -677,9 +664,7 @@ fi
 run_status=${PIPESTATUS[0]}
 set -e
 
-cp -f "${RESULT_FILE}" "${REPORT_FILE}"
 enforce_file_retention "$(dirname "${RESULT_FILE}")"
-enforce_file_retention "${REPORT_DIR}"
 
 if [[ "${run_status}" -ne 0 ]]; then
   exit "${run_status}"

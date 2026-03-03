@@ -20,7 +20,6 @@ param(
     [switch]$PinCpu,
     [switch]$ReuseBuild,
     [switch]$CleanBuild,
-    [switch]$Result,
     [switch]$Help
 )
 
@@ -52,15 +51,12 @@ Options:
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
   -PinCpu                      Enable taskset mode on Linux runner.
-  -Result                      Compatibility flag (tmp/report save is always enabled).
-
 Notes:
   - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL
   - Removed patterns: STREAM,GATEWAY,SPOT
   - Supported transports: tcp,inproc (ipc is not supported on Windows).
   - Removed transports: ws,wss,tls
-  - tmp result is always saved under results\single\tmp\.
-  - report result is always enabled under results\single\report\.
+  - result is saved under results\single\report\.
 "@
 }
 
@@ -315,22 +311,18 @@ else {
     $Transports = "tcp,inproc"
 }
 
-if ($Result) {
-    Write-Host "Note: -Result is deprecated; tmp/report save is always enabled."
-}
-
 $timestamp = (Get-Date).ToString("yyyyMMdd_HHmmss")
 $name = "perf_windows_${timestamp}"
 if ($ResultsTag) {
     $name = "${name}_${ResultsTag}"
 }
-$resultFile = Join-Path (Join-Path (Join-Path $ResultsDir "single") "tmp") "${name}.txt"
+$resultFile = Join-Path (Join-Path (Join-Path $ResultsDir "single") "report") "${name}.txt"
 
 if ($OutputFile) {
     $OutputFile = [System.IO.Path]::GetFullPath($OutputFile)
 }
 if ($OutputFile -and ($OutputFile -ieq $resultFile)) {
-    throw "-OutputFile cannot point to the same file as tmp result output."
+    throw "-OutputFile cannot point to the same file as result output."
 }
 
 if ($ReuseBuild) {

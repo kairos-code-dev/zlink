@@ -40,8 +40,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
 
     def test_results_dir_policy(self):
         root = "/tmp/bench-results"
-        self.assertEqual(RC.single_tmp_dir(root), "/tmp/bench-results/single/tmp")
-        self.assertEqual(RC.single_report_dir(root), "/tmp/bench-results/single/report")
+        self.assertEqual(RC.single_result_dir(root), "/tmp/bench-results/single/report")
 
     def test_comparison_table_format_kept_without_resource_columns(self):
         std = {

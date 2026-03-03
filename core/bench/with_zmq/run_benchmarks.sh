@@ -93,7 +93,6 @@ SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
 SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-}"
 SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-${PERF_SINGLE_PUBSUB_RCVTIMEO_MS:-}}"
-RESULT_COMPAT=0
 BENCH_COMPARISON_SCRIPT="${SCRIPT_DIR}/single/run_comparison.py"
 SINGLE_BUILD_TARGETS=(
   comp_std_zmq_pair
@@ -137,15 +136,12 @@ Options:
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
   --transports LIST           Comma-separated transports.
   --transport LIST            Alias for --transports.
-  --result                    Compatibility flag (tmp/report save is always enabled).
-
 Notes:
   - Supported patterns: PAIR,PUBSUB,DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,ROUTER_ROUTER_POLL
   - Removed patterns: STREAM,GATEWAY,SPOT
   - Supported transports: tcp,ipc,inproc (Windows: tcp,inproc)
   - Removed transports: ws,wss,tls
-  - tmp result is always saved under results/single/tmp/.
-  - report result is always enabled under results/single/report/.
+  - result is saved under results/single/report/.
   - default build mode is incremental (configure/build without deleting build dir).
 USAGE
 }
@@ -235,11 +231,7 @@ while [[ $# -gt 0 ]]; do
     --transports|--transport)
       TRANSPORTS="${2:-}"
       shift
-      ;;
-    --result)
-      RESULT_COMPAT=1
-      ;;
-    -h|--help)
+      ;;    -h|--help)
       usage
       exit 0
       ;;
@@ -407,18 +399,14 @@ NAME="perf_${PLATFORM}_${TS}"
 if [[ -n "${RESULTS_TAG}" ]]; then
   NAME="${NAME}_${RESULTS_TAG}"
 fi
-RESULT_FILE="${RESULTS_DIR}/single/tmp/${NAME}.txt"
+RESULT_FILE="${RESULTS_DIR}/single/report/${NAME}.txt"
 
 if [[ -n "${OUTPUT_FILE}" ]]; then
   OUTPUT_FILE="$(realpath -m "${OUTPUT_FILE}")"
 fi
 if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" == "${RESULT_FILE}" ]]; then
-  echo "Error: --output cannot point to the same file as tmp result output." >&2
+  echo "Error: --output cannot point to the same file as result output." >&2
   exit 1
-fi
-
-if [[ "${RESULT_COMPAT}" -eq 1 ]]; then
-  echo "Note: --result is deprecated; tmp/report save is always enabled."
 fi
 
 cleanup_old_results_dirs() {

@@ -107,11 +107,7 @@ def build_result_filename(tag: str) -> str:
     return name + ".txt"
 
 
-def single_tmp_dir(results_root: str) -> str:
-    return os.path.join(results_root, "single", "tmp")
-
-
-def single_report_dir(results_root: str) -> str:
+def single_result_dir(results_root: str) -> str:
     return os.path.join(results_root, "single", "report")
 
 
@@ -727,17 +723,6 @@ def collect_data(
     return final_stats, failures
 
 
-def write_report_file(path: str, table_text: str) -> None:
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-    with open(path, "w", encoding="utf-8") as fh:
-        cleaned = table_text.rstrip("\n")
-        if cleaned:
-            fh.write(cleaned + "\n")
-
-
 def resolve_patterns_from_args(args: argparse.Namespace) -> List[str]:
     pattern_token = args.pattern
     if args.pattern_opt:
@@ -953,26 +938,24 @@ def main() -> int:
         return 2
 
     results_root = os.path.abspath(args.results_dir)
-    tmp_dir = single_tmp_dir(results_root)
-    report_dir = single_report_dir(results_root)
+    result_dir = single_result_dir(results_root)
 
-    tmp_result_file = args.result_file
-    if not tmp_result_file:
-        tmp_result_file = os.path.join(tmp_dir, build_result_filename(args.results_tag))
+    result_file = args.result_file
+    if not result_file:
+        result_file = os.path.join(result_dir, build_result_filename(args.results_tag))
 
-    tmp_parent = os.path.dirname(tmp_result_file)
-    if tmp_parent:
-        os.makedirs(tmp_parent, exist_ok=True)
+    result_parent = os.path.dirname(result_file)
+    if result_parent:
+        os.makedirs(result_parent, exist_ok=True)
 
-    tmp_log_fh = open(tmp_result_file, "w", encoding="utf-8", buffering=1)
+    result_log_fh = open(result_file, "w", encoding="utf-8", buffering=1)
     orig_stdout = sys.stdout
     orig_stderr = sys.stderr
-    sys.stdout = TeeStream(orig_stdout, tmp_log_fh)
-    sys.stderr = TeeStream(orig_stderr, tmp_log_fh)
+    sys.stdout = TeeStream(orig_stdout, result_log_fh)
+    sys.stderr = TeeStream(orig_stderr, result_log_fh)
 
     all_failures: List[Tuple[str, str, str, int, str]] = []
     any_failure = False
-    table_lines: List[str] = []
 
     try:
         option_items = build_effective_option_items(
@@ -984,7 +967,6 @@ def main() -> int:
 
         for std_bin, zlk_bin, pattern_name in comparisons:
             print(f"\n## PATTERN: {pattern_name}")
-            table_lines.append(f"## PATTERN: {pattern_name}")
 
             for tr in transports:
                 std_data, std_fail = collect_data(
@@ -1014,14 +996,12 @@ def main() -> int:
                     announce=True,
                 )
 
-                # Emit per-transport table immediately for tmp/console visibility.
+                # Emit per-transport table immediately for result file/console visibility.
                 transport_block = build_pattern_report_lines(
                     std_data, zlk_data, [tr], msg_sizes
                 )
                 for line in transport_block:
                     print(line)
-                table_lines.extend(transport_block)
-                table_lines.append("")
 
                 all_failures.extend(std_fail)
                 all_failures.extend(zlk_fail)
@@ -1033,19 +1013,12 @@ def main() -> int:
             for pattern, lib_name, tr, sz, reason in all_failures:
                 print(f"- {pattern} {lib_name} {tr} {sz}B: {reason}")
 
-        table_text = "\n".join(table_lines).rstrip("\n") + "\n"
-        report_path = os.path.join(report_dir, build_result_filename(args.results_tag))
-        write_report_file(report_path, table_text)
-
-        enforce_file_retention(os.path.dirname(tmp_result_file))
-        enforce_file_retention(report_dir)
-
-        print(f"\nSaved tmp result file: {tmp_result_file}")
-        print(f"Saved report file: {report_path}")
+        enforce_file_retention(os.path.dirname(result_file))
+        print(f"\nSaved result file: {result_file}")
     finally:
         sys.stdout = orig_stdout
         sys.stderr = orig_stderr
-        tmp_log_fh.close()
+        result_log_fh.close()
 
     return 1 if any_failure else 0
 

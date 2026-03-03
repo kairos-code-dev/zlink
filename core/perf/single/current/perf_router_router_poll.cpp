@@ -218,13 +218,14 @@ inline bool run_oneway_phase (void *router1,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
-            if (!wait_for_input (poll_r1, 0)) {
+            const long poll_timeout_ms =
+              done ? 1 : static_cast<long> (std::max (1, recv_timeout_ms));
+            if (!wait_for_input (poll_r1, poll_timeout_ms)) {
                 if (done
                     && std::chrono::steady_clock::now () - last_recv_at
                          >= drain_idle_limit) {
                     break;
                 }
-                std::this_thread::yield ();
                 continue;
             }
 

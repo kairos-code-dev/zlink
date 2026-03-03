@@ -147,7 +147,7 @@ inline bool run_oneway_phase (void *pub_socket,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int flags = 0;
 
             perf_single_metric::header_t header;
             bool header_ok = false;
@@ -189,7 +189,6 @@ inline bool run_oneway_phase (void *pub_socket,
                          >= drain_idle_limit) {
                     break;
                 }
-                std::this_thread::yield ();
                 continue;
             }
 

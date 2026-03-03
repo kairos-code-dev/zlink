@@ -49,7 +49,7 @@ static const std::vector<size_t> MSG_SIZES = {64, 256, 1024, 65536, 131072, 2621
 static const std::vector<std::string> TRANSPORTS = {"tcp", "inproc", "ipc"};
 static const std::vector<std::string> STREAM_TRANSPORTS = {"tcp", "tls", "ws", "wss"};
 static const size_t MAX_SOCKET_STRING = 256;
-static const int SETTLE_TIME_MS = 300;
+static const int SETTLE_TIME_MS = 100;
 
 // --- Stopwatch ---
 class stopwatch_t {

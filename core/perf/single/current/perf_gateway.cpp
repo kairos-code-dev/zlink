@@ -87,13 +87,16 @@ static bool wait_for_discovery(void *discovery,
 {
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    int sleep_ms = 1;
 
     while (true) {
         if (zlink_discovery_service_available(discovery, service) > 0)
             return true;
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        if (sleep_ms < 20)
+            sleep_ms = std::min(20, sleep_ms * 2);
     }
 }
 
@@ -103,13 +106,16 @@ static bool wait_for_gateway(void *gateway,
 {
     const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    int sleep_ms = 1;
 
     while (true) {
         if (zlink_gateway_connection_count(gateway, service) > 0)
             return true;
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        if (sleep_ms < 20)
+            sleep_ms = std::min(20, sleep_ms * 2);
     }
 }
 
@@ -368,7 +374,7 @@ static bool run_gateway_oneway_phase (void *gateway,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int flags = 0;
 
             zlink_routing_id_t rid;
             rid.size = 0;
@@ -418,7 +424,6 @@ static bool run_gateway_oneway_phase (void *gateway,
                          >= drain_idle_limit) {
                     break;
                 }
-                std::this_thread::yield ();
                 continue;
             }
 

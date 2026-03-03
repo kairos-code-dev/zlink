@@ -146,11 +146,14 @@ static bool wait_for_service_receivers(void *discovery,
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1000, timeout_ms));
+    int sleep_ms = 1;
     while (std::chrono::steady_clock::now() < deadline) {
         const int count = zlink_discovery_receiver_count(discovery, service_name);
         if (count >= target)
             return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        if (sleep_ms < 20)
+            sleep_ms = std::min(20, sleep_ms * 2);
     }
 
     return zlink_discovery_receiver_count(discovery, service_name) >= target;
@@ -164,13 +167,16 @@ static bool wait_for_sub_peer_ready(void *node, int timeout_ms)
     const auto deadline =
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(std::max(1000, timeout_ms));
+    int sleep_ms = 1;
     while (std::chrono::steady_clock::now() < deadline) {
         size_t peer_count = 0;
         if (zlink_spot_node_sub_peers(node, NULL, &peer_count) == 0
             && peer_count > 0) {
             return true;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        if (sleep_ms < 20)
+            sleep_ms = std::min(20, sleep_ms * 2);
     }
 
     size_t peer_count = 0;
@@ -288,7 +294,7 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
             std::this_thread::sleep_for(
               std::chrono::microseconds(poll_sleep_us));
         } else {
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(50));
         }
     }
 }
@@ -362,6 +368,7 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
       std::chrono::steady_clock::now()
       + std::chrono::milliseconds(ready_timeout_ms > 0 ? ready_timeout_ms
                                                        : 2000);
+    int sleep_ms = 1;
 
     while (std::chrono::steady_clock::now() < deadline) {
         const int send_rc = send_spot_try(spot_pub, topic, payload, 1);
@@ -371,7 +378,9 @@ static bool ensure_spot_subscription_ready(void *spot_pub,
         }
         if (send_rc < 0)
             return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+        if (sleep_ms < 10)
+            sleep_ms = std::min(10, sleep_ms * 2);
     }
 
     return false;
@@ -443,7 +452,7 @@ static bool run_spot_oneway_phase (void *spot_pub,
 
         while (true) {
             const bool done = sender_done.load (std::memory_order_acquire);
-            const int flags = done ? ZLINK_DONTWAIT : 0;
+            const int flags = 0;
 
             perf_single_metric::header_t header;
             bool header_ok = false;
@@ -485,7 +494,6 @@ static bool run_spot_oneway_phase (void *spot_pub,
                          >= drain_idle_limit) {
                     break;
                 }
-                std::this_thread::yield ();
                 continue;
             }
 
@@ -784,29 +792,6 @@ void run_spot(const std::string &transport,
     void *pub_socket_unsafe = zlink_spot_node_pub_socket_unsafe(node_pub);
     void *sub_socket_unsafe = zlink_spot_node_sub_socket_unsafe(node_sub);
     if (pub_socket_unsafe && sub_socket_unsafe) {
-        // Enforce benchmark socket options on active transport sockets.
-        set_sockopt_int(pub_socket_unsafe, ZLINK_SNDHWM, sndhwm,
-                        "ZLINK_SNDHWM");
-        set_sockopt_int(pub_socket_unsafe, ZLINK_RCVHWM, rcvhwm,
-                        "ZLINK_RCVHWM");
-        set_sockopt_int(sub_socket_unsafe, ZLINK_SNDHWM, sndhwm,
-                        "ZLINK_SNDHWM");
-        set_sockopt_int(sub_socket_unsafe, ZLINK_RCVHWM, rcvhwm,
-                        "ZLINK_RCVHWM");
-        set_sockopt_int(pub_socket_unsafe, ZLINK_LINGER, linger_ms,
-                        "ZLINK_LINGER");
-        set_sockopt_int(sub_socket_unsafe, ZLINK_LINGER, linger_ms,
-                        "ZLINK_LINGER");
-        set_sockopt_int(pub_socket_unsafe, ZLINK_SNDTIMEO, send_timeout_ms,
-                        "ZLINK_SNDTIMEO");
-        set_sockopt_int(pub_socket_unsafe, ZLINK_RCVTIMEO, recv_timeout_ms,
-                        "ZLINK_RCVTIMEO");
-        set_sockopt_int(sub_socket_unsafe, ZLINK_SNDTIMEO, send_timeout_ms,
-                        "ZLINK_SNDTIMEO");
-        set_sockopt_int(pub_socket_unsafe, ZLINK_XPUB_NODROP, xpub_nodrop,
-                        "ZLINK_XPUB_NODROP");
-        set_sockopt_int(sub_socket_unsafe, ZLINK_RCVTIMEO, recv_timeout_ms,
-                        "ZLINK_RCVTIMEO");
         queue_probe = new (std::nothrow) queue_probe_t(pub_socket_unsafe,
                                                        sub_socket_unsafe);
         if (!queue_probe) {

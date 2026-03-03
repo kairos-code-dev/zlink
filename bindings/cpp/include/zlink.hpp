@@ -631,6 +631,16 @@ class socket_t
         return zlink_stream_attach (_socket, on_packets_, flags_);
     }
 
+    int stream_attach_raw (zlink_stream_on_raw_fn on_raw_)
+    {
+        return zlink_stream_attach_raw (_socket, on_raw_);
+    }
+
+    int stream_attach_len32be (zlink_stream_on_packets_fn on_packets_)
+    {
+        return zlink_stream_attach_len32be (_socket, on_packets_);
+    }
+
     int stream_attach (zlink_stream_on_packets_fn on_packets_,
                        stream_dispatch_mode mode_)
     {
@@ -1070,6 +1080,42 @@ class gateway_t
         service_.assign (name);
         return 0;
     }
+
+    int send_bytes (const char *service_,
+                    const void *data_,
+                    size_t size_,
+                    send_flag flags_ = send_flag::none)
+    {
+        return zlink_gateway_send_bytes (
+          _gw, service_, data_, size_, static_cast<int> (flags_));
+    }
+
+    int send_rid (const char *service_,
+                  const zlink_routing_id_t &routing_id_,
+                  std::vector<message_t> &parts_,
+                  send_flag flags_ = send_flag::none)
+    {
+        if (parts_.empty ())
+            return -1;
+        std::vector<zlink_msg_t> tmp;
+        tmp.resize (parts_.size ());
+        for (size_t i = 0; i < parts_.size (); ++i) {
+            if (parts_[i].move_to (&tmp[i]) != 0)
+                return -1;
+        }
+        return zlink_gateway_send_rid (_gw, service_, &routing_id_, tmp.data (),
+                                       tmp.size (), static_cast<int> (flags_));
+    }
+
+    int send_rid_bytes (const char *service_,
+                        const zlink_routing_id_t &routing_id_,
+                        const void *data_,
+                        size_t size_,
+                        send_flag flags_ = send_flag::none)
+    {
+        return zlink_gateway_send_rid_bytes (
+          _gw, service_, &routing_id_, data_, size_, static_cast<int> (flags_));
+    }
     int set_sockopt (socket_option option_, const void *value_, size_t len_)
     {
         return zlink_gateway_setsockopt (_gw, static_cast<int> (option_), value_, len_);
@@ -1088,6 +1134,16 @@ class gateway_t
     int connection_count (const char *service_)
     {
         return zlink_gateway_connection_count (_gw, service_);
+    }
+
+    void *router_handle () const
+    {
+        return zlink_gateway_router_socket_unsafe (_gw);
+    }
+
+    int router_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_gateway_router_peers (_gw, peers_, count_);
     }
 
     int destroy ()
@@ -1175,6 +1231,11 @@ class receiver_t
     void *router_handle () const
     {
         return zlink_receiver_router_socket_unsafe (_receiver);
+    }
+
+    int router_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_receiver_router_peers (_receiver, peers_, count_);
     }
 
     int destroy ()
@@ -1267,6 +1328,26 @@ class spot_node_t
           static_cast<int> (option_), &value_, sizeof (value_));
     }
 
+    void *pub_socket_handle () const
+    {
+        return zlink_spot_node_pub_socket_unsafe (_node);
+    }
+
+    void *sub_socket_handle () const
+    {
+        return zlink_spot_node_sub_socket_unsafe (_node);
+    }
+
+    int pub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_spot_node_pub_peers (_node, peers_, count_);
+    }
+
+    int sub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_spot_node_sub_peers (_node, peers_, count_);
+    }
+
     int destroy ()
     {
         if (!_node)
@@ -1345,6 +1426,15 @@ class spot_t
                 return -1;
         }
         return zlink_spot_pub_publish (_pub, topic_, tmp.data (), tmp.size (), 0);
+    }
+
+    int publish_bytes (const char *topic_,
+                       const void *data_,
+                       size_t size_,
+                       send_flag flags_ = send_flag::none)
+    {
+        return zlink_spot_pub_publish_bytes (
+          _pub, topic_, data_, size_, static_cast<int> (flags_));
     }
 
     int subscribe (const char *topic_) { return zlink_spot_sub_subscribe (_sub, topic_); }

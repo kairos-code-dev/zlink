@@ -2,6 +2,7 @@
 #define BENCH_COMMON_MULTI_HPP
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <climits>
@@ -178,6 +179,51 @@ inline void run_size_transition_drain_stage (const multi_bench_settings_t &setti
     const int sleep_ms = std::max (0, settings.size_transition_drain_ms);
     if (sleep_ms > 0)
         std::this_thread::sleep_for (std::chrono::milliseconds (sleep_ms));
+}
+
+template <typename ConnectFn>
+inline bool connect_clients_concurrently (const std::vector<void *> &sockets,
+                                          const std::string &endpoint,
+                                          ConnectFn connect_fn,
+                                          int max_concurrency)
+{
+    if (sockets.empty ())
+        return true;
+
+    std::atomic<bool> ok (true);
+    const size_t total = sockets.size ();
+    size_t start = 0;
+    const size_t chunk =
+      max_concurrency > 0 ? static_cast<size_t> (max_concurrency) : 1;
+
+    while (start < total) {
+        const size_t end = start + chunk < total ? start + chunk : total;
+        std::vector<std::thread> workers;
+        workers.reserve (end - start);
+        for (size_t i = start; i < end; ++i) {
+            workers.push_back (std::thread ([&, i] () {
+                if (!connect_fn (sockets[i], endpoint))
+                    ok.store (false, std::memory_order_relaxed);
+            }));
+        }
+        for (size_t i = 0; i < workers.size (); ++i)
+            workers[i].join ();
+
+        if (!ok.load (std::memory_order_relaxed))
+            return false;
+        start = end;
+    }
+
+    return true;
+}
+
+template <typename ConnectFn>
+inline bool connect_clients_concurrently (const std::vector<void *> &sockets,
+                                          const std::string &endpoint,
+                                          ConnectFn connect_fn)
+{
+    return connect_clients_concurrently (
+      sockets, endpoint, connect_fn, resolve_multi_int_env ("BENCH_MULTI_CONNECT_CONCURRENCY", 128, 1));
 }
 
 template <typename SetupFn,

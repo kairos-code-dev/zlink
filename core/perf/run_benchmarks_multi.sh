@@ -188,7 +188,7 @@ Default PATTERN is:
   DEALER_DEALER,DEALER_ROUTER,ROUTER_ROUTER,PUBSUB,GATEWAY,SPOT,STREAM,STREAM_CALLBACK,STREAM_LEN32BE
 The MULTI_ prefix is auto-prepended internally; you may omit it.
 By default, this wrapper runs current zlink only.
-By default, multi-bench keeps warmup at 3s and duration window at 5s.
+By default, multi-bench keeps warmup at 2s and duration window at 5s.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
 
 Options:

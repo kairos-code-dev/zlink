@@ -20,7 +20,7 @@
 | throughput | `recv_count / duration_seconds` — echo 패턴: `ops/s`, one-way 패턴: `msg/s` |
 | latency | active phase에서 수신된 메시지의 내장 timestamp(header)로 전수 집계 |
 | 대표값 | median (runs > 1) |
-| 기본 runs | 3 |
+| 기본 runs | 1 |
 | 결과 출력 | RESULT line |
 
 ### 1.1 프로세스 모델
@@ -29,8 +29,8 @@ Multi 벤치마크는 **server/client 별도 프로세스**로 동작한다.
 
 | 역할 | 바이너리 | 책임 |
 |------|----------|------|
-| server | `perf_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
-| client | `perf_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
+| server | `comp_current_multi_<pattern>_server(.exe)` | bind, relay/echo, server-side 리소스 보고 |
+| client | `comp_current_multi_<pattern>_client(.exe)` | connect, 패턴별 phase 정책에 따라 throughput/latency 측정, client-side 리소스 보고 |
 
 ```text
 ┌─ server process ─────────────────────┐    ┌─ client process ──────────────────────┐
@@ -76,120 +76,19 @@ perf/multi/
 
 ---
 
-## 2. 운영 모드
-
-| 모드 | 목적 | baseline | 기본 runs | 판정 |
-|------|------|----------|-----------|------|
-| Observe | 수치 수집 | 불필요 | 3 | 실행 오류만 fail |
-| Trend | 회귀 감지 | rolling (최근 N회 median) | 3 | threshold 초과 시 warning |
-| Gate | 릴리즈 승인 | 고정 (릴리즈 시점 저장) | 5 | threshold 초과 시 fail |
-
-- 기본 모드: **Observe**
-- Baseline comparison은 Trend/Gate 모드에서만 수행한다.
-- Rolling baseline(최근 N회 median)을 기본으로 하며, 고정 baseline은 릴리즈 시점에만 사용한다.
-
-### 2.1 임계치 기본값
-
-| 메트릭 | warning | fail |
-|--------|---------|------|
-| throughput | -10% | -15% |
-| latency | +10% | +15% |
-
-- Observe: 임계치 미적용
-- Trend: warning만 적용
-- Gate: warning + fail 적용
-- 패턴/transport별 개별 임계치는 설정 파일에서 override 가능 (아래 2.2 참조)
-
-#### 임계치 부호 규칙
-
-| 메트릭 | 부호 의미 | 판정 방향 | fail 예시 |
-|--------|-----------|-----------|-----------|
-| throughput | 음수 = 성능 저하 | 변동률 ≤ 임계치 → 트리거 | 변동률 -16% ≤ -15% → fail |
-| latency | 양수 = 성능 저하 | 변동률 ≥ 임계치 → 트리거 | 변동률 +16% ≥ +15% → fail |
-
-```text
-변동률 = (측정값 - baseline) / baseline × 100
-
-throughput 예시: (130000 - 150000) / 150000 × 100 = -13.33%
-  → warning(-10%) 초과 → WARNING
-
-latency 예시: (52.0 - 45.0) / 45.0 × 100 = +15.56%
-  → fail(+15%) 초과 → FAIL
-```
-
-- 비교식은 단일 공식이며 부호가 방향을 결정한다.
-- throughput: 변동률이 warning 값 **이하**이면 warning, fail 값 **이하**이면 fail.
-- latency: 변동률이 warning 값 **이상**이면 warning, fail 값 **이상**이면 fail.
-
-### 2.2 임계치 Override 설정 파일
-
-| 항목 | 값 |
-|------|---|
-| 파일 경로 | `perf/thresholds.json` |
-| 경로 override | `PERF_THRESHOLDS_FILE` 환경 변수 |
-| 포맷 | JSON |
-
-```json
-{
-  "MULTI_DEALER_DEALER/tcp/throughput": { "warning": -15, "fail": -20 },
-  "MULTI_STREAM/*/latency": { "warning": 15, "fail": 20 },
-  "*/wss/throughput": { "warning": -12, "fail": -18 }
-}
-```
-
-| 키 형식 | 설명 |
-|---------|------|
-| `<pattern>/<transport>/<metric>` | 특정 조합 |
-| `<pattern>/*/<metric>` | 해당 패턴의 모든 transport |
-| `*/<transport>/<metric>` | 모든 패턴의 해당 transport |
-| `*/*/<metric>` | 전체 메트릭 기본값 override |
-
-**우선순위** (높은 순, 구체도 기준):
-
-| 순위 | 키 형식 | 설명 |
-|------|---------|------|
-| 1 | `<pattern>/<transport>/<metric>` | 정확 매칭 (최우선) |
-| 2 | `<pattern>/*/<metric>` | transport만 와일드카드 |
-| 3 | `*/<transport>/<metric>` | pattern만 와일드카드 |
-| 4 | `*/*/<metric>` | 전체 와일드카드 (최저) |
-| 5 | (없음) | 섹션 2.1 기본값 |
-
-- 동일 구체도의 키가 충돌하면 **파일 내 먼저 나타나는 키**를 사용한다 (JSON 객체 순서).
-- thresholds.json에 `warning`만 지정하고 `fail`을 생략하면 해당 조합의 `fail`은 섹션 2.1 기본값을 사용한다 (부분 override 허용). 반대도 동일.
-
-| 상황 | 동작 |
-|------|------|
-| 파일 없음 | 기본값 사용 (warning/에러 없음) |
-| 파싱 실패 | warning 출력 후 기본값 사용 |
-| 키 누락 | 해당 조합은 기본값 사용 |
-
-#### 스키마 유효성 검사
-
-| 검사 항목 | 규칙 | 실패 시 |
-|-----------|------|---------|
-| 키 형식 | `<pattern_or_*>/<transport_or_*>/<metric>` 3-segment 필수 | warning 출력, 해당 키 무시 |
-| warning/fail 값 | 숫자 (정수 또는 소수) | warning 출력, 해당 키 무시 |
-| throughput warning/fail | 음수 또는 0이어야 함 | 양수이면 warning 출력 후 부호 반전 적용 |
-| latency warning/fail | 양수 또는 0이어야 함 | 음수이면 warning 출력 후 부호 반전 적용 |
-| unknown 필드 | `warning`, `fail` 외의 키 | 무시 (warning 없음) |
-
----
-
-### 2.3 옵션 우선순위
+## 2. 옵션 우선순위
 
 실행 옵션이 여러 경로로 지정될 수 있는 경우 아래 우선순위를 따른다 (높은 순).
 
-| 옵션 | CLI 인자 | 환경 변수 | 모드 기본값 |
-|------|----------|-----------|------------|
-| runs | `--runs N` | — | Observe=3, Trend=3, Gate=5 |
-| rolling N | — | `PERF_ROLLING_N` | 10 |
-| 임계치 | — | thresholds.json (2.2) | 섹션 2.1 기본값 |
+| 옵션 | CLI 인자 | 환경 변수 | 기본값 |
+|------|----------|-----------|--------|
+| runs | `--runs N` | — | 1 |
 | msg sizes | `--msg-sizes` | `PERF_MSG_SIZES` | 표준 6종 |
 | transports | `--transports` | `PERF_TRANSPORTS` | `tcp,tls,ws,wss` |
-| clients | `--multi-clients` | `PERF_MULTI_CLIENTS` | 1000 |
+| clients | `--clients` | `PERF_MULTI_CLIENTS` | 100 (stream=10000) |
 
-- **CLI 인자 > 환경 변수 > 모드 기본값** 순으로 적용한다.
-- `--runs`를 생략하면 현재 모드의 기본 runs를 사용한다. `--runs`를 명시하면 모드 기본값을 무시한다.
+- **CLI 인자 > 환경 변수 > 기본값** 순으로 적용한다.
+- `--runs`를 생략하면 기본값 1을 사용한다.
 
 ---
 
@@ -262,12 +161,10 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 | 종료 코드 | 의미 | 상황 |
 |-----------|------|------|
-| 0 | 성공 | 모든 조합 complete, Gate 임계치 통과 |
-| 1 | 실행 오류 | 빌드 실패, 바이너리 미존재, baseline 파일 미존재, partial에서 `--save` 시도 |
-| 2 | Gate 실패 | 실행은 complete이나 Gate 모드에서 fail 임계치 초과 |
+| 0 | 성공 | 모든 조합 complete |
+| 1 | 실행 오류 | 빌드 실패, 바이너리 미존재, partial 결과 |
 
-- Observe/Trend 모드에서는 임계치 초과가 종료 코드에 영향을 주지 않는다 (항상 0 또는 1).
-- partial 상태 자체는 종료 코드 0이다 (`--save` 미사용 시). `--save`과 함께 partial이면 종료 코드 1.
+- partial 상태(일부 조합 실패)는 종료 코드 1이다.
 - 여러 오류 조건이 동시에 발생하면 가장 높은 종료 코드를 반환한다.
 
 ### 3.5 실패 처리: Retry 금지
@@ -288,86 +185,19 @@ for pattern in [MULTI_DEALER_DEALER, MULTI_PUBSUB, ...]:
 
 ### 4.1 결과 파일 형식
 
-디렉터리별로 저장 형식이 다르다.
-
-#### tmp/ · baseline/ (기계 파싱 + 사람 열람)
-
-```text
-META,os,Linux 6.6.87.2-microsoft-standard-WSL2
-META,cpu,AMD Ryzen 9 7950X
-META,cores,32
-META,build,Release
-META,commit,abc1234
-META,timestamp,2026-02-23T23:30:00+09:00
-META,load_avg,0.52 0.48 0.45
-META,mode,observe
-META,runs,3
-META,patterns,MULTI_DEALER_DEALER
-META,transports,tcp
-META,msg_sizes,64,256
-META,clients,1000
-META,pin_cpu,off
-META,warmup_seconds,3
-META,duration_seconds,5
-META,status,complete
-META,expected,6
-META,actual,6
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,throughput,150000.00
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,bandwidth,9.60
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,latency,45.23
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,client_cpu_pct,48.20
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,client_mem_mb,128.40
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,server_cpu_pct,35.10
-RESULT,current,MULTI_DEALER_DEALER,tcp,64,server_mem_mb,64.20
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,throughput,135000.00
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,bandwidth,34.56
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,latency,52.10
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,client_cpu_pct,52.10
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,client_mem_mb,135.20
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,server_cpu_pct,38.50
-RESULT,current,MULTI_DEALER_DEALER,tcp,256,server_mem_mb,66.80
-TABLE
-## Execution Options
-| Option           | Value                              |
-|------------------|------------------------------------|
-| mode             | observe                            |
-| runs             | 3                                  |
-| patterns         | MULTI_DEALER_DEALER                |
-| transports       | tcp                                |
-| msg_sizes        | 64, 256                            |
-| clients          | 1000                               |
-| pin_cpu          | off                                |
-| warmup_seconds   | 3                                  |
-| duration_seconds | 5                                  |
-
-===============================================================================
-
-## PATTERN: MULTI_DEALER_DEALER (one-way)
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------------|--------------|--------|----------|
-| 64B      |   150.00 Kmsg/s  |  9.6 MB/s |    45.23 us  |    61.40 us  |    79.85 us  |  35.1  |   64.2   |
-| 256B     |   135.00 Kmsg/s  | 34.6 MB/s |    52.10 us  |    70.55 us  |    92.10 us  |  38.5  |   66.8   |
-```
-
-- META → RESULT → TABLE 세 영역으로 구성된다.
-- `TABLE` 마커 이후에 `## Execution Options` 헤더(실행 옵션 테이블)를 먼저 출력하고, 이어서 패턴별 결과 테이블을 출력한다 (섹션 6.2 참조).
-- 기계 파싱 시 `META,`와 `RESULT,`로 시작하는 라인만 처리하면 TABLE 영역은 자연히 무시된다.
-
-#### report/ (사람이 읽는 용도)
+결과는 `report/`에 사람이 읽을 수 있는 형식으로 저장한다.
 
 ```text
 ## Execution Options
 | Option           | Value                              |
 |------------------|------------------------------------|
-| mode             | observe                            |
-| runs             | 3                                  |
+| runs             | 1                                  |
 | patterns         | MULTI_DEALER_DEALER                |
 | transports       | tcp                                |
 | msg_sizes        | 64, 256                            |
-| clients          | 1000                               |
+| clients          | 100                                |
 | pin_cpu          | off                                |
-| warmup_seconds   | 3                                  |
+| warmup_seconds   | 2                                  |
 | duration_seconds | 5                                  |
 
 ===============================================================================
@@ -381,56 +211,25 @@ TABLE
 | 256B     |   135.00 Kmsg/s  | 34.6 MB/s |    52.10 us  |    70.55 us  |    92.10 us  |  38.5  |   66.8   |
 ```
 
-- **실행 옵션 헤더 + TABLE**을 저장한다. META/RESULT 라인은 포함하지 않는다. `TABLE` 마커도 생략한다.
-- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다.
-- 기계 파싱용 데이터가 필요하면 동일 실행의 `tmp/` 파일을 참조한다.
+- **실행 옵션 헤더 + TABLE**을 저장한다.
+- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
 
-| 라인 유형 | 형식 | 설명 |
-|-----------|------|------|
-| `META` | `META,<key>,<value>` | 실행 환경 및 완료 상태 메타데이터 |
-| `RESULT` | `RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>` | 측정 결과 |
+### 4.2 RESULT line 형식
 
-### 4.2 META 필수 키
+```text
+RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
+```
 
-| 키 | 필수 | 설명 |
-|----|------|------|
-| `os` | MUST | OS 및 커널 버전 |
-| `cpu` | MUST | CPU 모델명 |
-| `cores` | MUST | 논리 코어 수 |
-| `build` | MUST | 빌드 타입 (Release/Debug) |
-| `commit` | MUST | git commit SHA |
-| `timestamp` | MUST | 실행 시각 (ISO 8601, 로컬 시간대 offset 포함) |
-| `load_avg` | SHOULD | 실행 시점 load average |
-| `mode` | MUST | 운영 모드 (observe/trend/gate) |
-| `runs` | MUST | 반복 횟수 |
-| `patterns` | MUST | 실행된 패턴 목록 (쉼표 구분) |
-| `transports` | MUST | 실행된 transport 목록 (쉼표 구분) |
-| `msg_sizes` | MUST | 메시지 크기 목록 (쉼표 구분) |
-| `clients` | MUST | 클라이언트 소켓 수 |
-| `pin_cpu` | MUST | CPU pinning 사용 여부 (`on`/`off`) |
-| `warmup_seconds` | MUST | warmup 시간(초) |
-| `duration_seconds` | MUST | 측정 시간(초) |
-| `status` | MUST | 완료 상태: `complete` 또는 `partial` |
-| `expected` | MUST | 예상 RESULT 라인 수 (unsupported/skip 제외) |
-| `actual` | MUST | 실제 RESULT 라인 수 |
+- RESULT line은 stdout에 출력되며, 스크립트가 이를 파싱하여 테이블을 구성한다.
 
 ### 4.3 저장 구조
 
 ```text
 perf/results/
 └── multi/
-    ├── tmp/                                              # 임시 저장 (항상)
-    │   ├── perf_linux_20260224_081152.txt
-    │   ├── perf_linux_20260224_093000_mytag.txt
-    │   └── ...
-    ├── report/                                           # 레포트 (--result, complete/partial)
-    │   ├── perf_linux_20260224_091530.txt
-    │   ├── perf_linux_20260224_143000_release.txt
-    │   └── ...
-    └── baseline/                                         # baseline (--save)
-        ├── latest.txt                                    # 최근 baseline (symlink)
-        ├── v1.5.0.txt
-        ├── perf_linux_20260224_150000.txt
+    └── report/
+        ├── perf_linux_20260224_091530.txt
+        ├── perf_linux_20260224_143000_release.txt
         └── ...
 ```
 
@@ -443,140 +242,25 @@ perf/results/
 - `<platform>`: `linux`, `windows`, `macos`
 - `<tag>`: `--results-tag` 옵션으로 지정 (선택)
 
-| 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
-|------|------|-----------|-----------|------|
-| 임시 저장 | (항상) | `tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `report/` | **실행 옵션 헤더 + TABLE** | complete/partial 무관 |
-| baseline 저장 | `--save [VER]` | `baseline/` | META + RESULT + TABLE | complete만 (Gate 비교 대상) |
+| 동작 | 저장 위치 | 저장 형식 | 조건 |
+|------|-----------|-----------|------|
+| 결과 저장 | `report/` | 실행 옵션 헤더 + TABLE | 항상 저장 (complete/partial 무관) |
 
 ### 4.4 결과 저장 흐름
-
-#### 임시 저장 (항상)
-
-```text
-실행 완료 (complete/partial 무관)
-    → results/multi/tmp/ 에 항상 저장 (META + RESULT + TABLE)
-```
-
-- 옵션 없이 항상 수행된다.
-- Trend 모드에서 rolling baseline 소스로 사용된다 (`status=complete` 파일만 필터링).
-
-#### `--result` (레포트 생성)
 
 ```text
 실행 완료
     → results/multi/report/ 에 실행 옵션 헤더 + TABLE 저장 (complete/partial 무관)
 ```
 
-- 용도: 사람이 결과를 확인하기 위한 레포트
-- `report/`에는 **실행 옵션 헤더 + TABLE**을 저장한다 (META/RESULT 라인 미포함).
+- 결과는 항상 `report/`에 저장된다.
 - `status=partial`인 경우에도 저장한다. 실패한 조합의 결과가 누락된 채로 저장되며, 실패 요약(§ 6.4)이 포함된다.
 
-#### `--save [VER]` (baseline 저장)
-
-```text
-실행 완료 + complete 필수
-    → VER 지정 시: results/multi/baseline/<VER>.txt 에 저장
-    → VER 미지정 시: results/multi/baseline/perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt 에 저장
-    → results/multi/baseline/latest.txt symlink 갱신
-    → partial인 경우 에러로 중단 (baseline 저장 거부)
-```
-
-- 용도: Gate 모드에서 비교 대상 baseline
-- `status=complete`인 경우에만 저장한다. `partial`이면 에러 메시지를 출력하고 저장하지 않는다.
-- `latest.txt`는 가장 최근 저장된 baseline 파일에 대한 symlink이며, 저장 시 자동 갱신된다.
-- **동일 버전 덮어쓰기**: `baseline/<VER>.txt`가 이미 존재하면 덮어쓴다. 부분 갱신 불가, 항상 전체 파일을 교체한다.
-
-#### `--result --save` (동시 사용)
-
-```text
-실행 완료
-    → tmp/ 에 항상 저장
-    → report/ 에 항상 저장 (complete/partial 무관)
-    → complete → baseline/ 에도 저장
-    → partial  → baseline/ 에는 저장하지 않음
-```
-
-- `--result`과 `--save`는 동시 사용 가능.
-
-#### 저장 옵션 조합 매트릭스
-
-| 옵션 조합 | status=complete | status=partial |
-|-----------|-----------------|----------------|
-| (없음) | tmp/ 저장 | tmp/ 저장 |
-| `--result` | tmp/ + report/ 저장 | tmp/ + report/ 저장 |
-| `--save [V]` | tmp/ + baseline/ 저장 | tmp/ 저장 (baseline/ 에러, exit code 1) |
-| `--result --save [V]` | tmp/ + report/ + baseline/ 저장 | tmp/ + report/ 저장 (baseline/ 에러, exit code 1) |
-
-### 4.5 Baseline 관리
-
-| 모드 | baseline 소스 | 생성 방법 |
-|------|--------------|-----------|
-| Observe | 없음 | — |
-| Trend | rolling (최근 N회 median) | `tmp/`에서 `status=complete` 파일 자동 조회 |
-| Gate | 고정 (`baseline/`) | `--save [VER]` |
-
-#### 완료 판정
-
-`--result` 및 `--save` 시 실행 종료 시점에 아래 기준으로 완료 여부를 판정한다. `--result`는 complete/partial 무관하게 `report/`에 저장한다. `--save`는 **complete인 경우에만** `baseline/`에 저장한다.
-
-```text
-expected = 요청된 전체 조합 수 - unsupported 수 - skip 수
-actual   = 성공적으로 출력된 RESULT 라인 수
-
-status = (expected == actual) ? "complete" : "partial"
-```
-
-| status | 조건 | 의미 |
-|--------|------|------|
-| `complete` | `expected == actual` | 요청된 모든 유효 조합의 결과가 정상 출력됨 |
-| `partial` | `expected != actual` | 일부 조합이 timeout/no_data/fail로 누락됨 |
-
-- `unsupported`와 `skip`은 `expected`에서 제외한다 (fail이 아니므로).
-- `expected`와 `actual`은 RESULT 라인 수 기준이다 (throughput + bandwidth + latency + latency_p95 + latency_p99 = 조합당 5줄).
-- `partial`인 경우 `--result`는 report/에 그대로 저장하고, `--save`는 에러로 중단한다.
-
-#### Rolling baseline (Trend 모드)
-
-1. `results/multi/tmp/` 디렉터리에서 `META,status,complete`인 파일만 필터링한 뒤, 파일명 사전순 내림차순(= 최신순)으로 정렬하여 최근 N개(기본 10, `PERF_ROLLING_N`으로 override)를 수집한다. **mtime이 아닌 파일명 기준**이다 (파일명에 `YYYYMMDD_HHMMSS`가 포함되어 사전순 = 시간순이 보장됨).
-2. 각 파일에서 동일 키(`pattern/transport/size/metric`)의 값을 추출한다.
-3. 키별로 수집된 값의 **median**을 rolling baseline으로 사용한다.
-4. `tmp/`에는 complete/partial이 혼재하므로 반드시 `META,status,complete` 필터링을 수행한다.
-5. N개 미만의 complete 파일만 존재하는 경우 **존재하는 파일 전체**를 사용하여 baseline을 산출한다. complete 파일이 0개이면 baseline 비교를 건너뛰고 warning을 출력한다.
-6. **키별 최소 샘플 수**: N개 파일을 수집했더라도 특정 키가 일부 파일에만 존재할 수 있다. 키별로 **1개 이상**의 값이 있으면 median을 산출한다. 0개이면 해당 키의 baseline 비교를 건너뛰고 warning을 출력한다.
-
-```text
-tmp/ 내 최근 complete 10개 파일에서 MULTI_DEALER_DEALER/tcp/64/throughput 값:
-  [145000, 147000, 148000, 149000, 149500, 150000, 151000, 151500, 152000, 153000]
-                            ↓
-                    median = 149750
-                            ↓
-                  rolling baseline = 149750
-
-오늘 측정 대표값: 150000
-변동률: (150000 - 149750) / 149750 × 100 = +0.17%
-→ 임계치(-10% warning) 이내 → PASS
-```
-
-#### 고정 baseline (Gate 모드)
-
-1. `results/multi/baseline/<version>.txt` 또는 `latest.txt`(symlink)를 로드한다.
-2. 동일 키(`pattern/transport/size/metric`)로 1:1 매칭하여 비교한다.
-3. 매칭되지 않는 키는 비교에서 제외하고 warning을 출력한다.
-4. baseline 파일이 존재하지 않으면 (`latest.txt` 포함) Gate 모드 실행을 **에러로 중단**한다 (exit code 1). baseline 없이 Gate 판정은 불가능하다.
-
-### 4.6 보존 정책
+### 4.5 보존 정책
 
 | 디렉터리 | 최대 파일 수 | 초과 시 처리 |
 |-----------|-------------|-------------|
-| `tmp/` | 100 | 오래된 순 자동 삭제 |
-| `report/` | 100 | 오래된 순 자동 삭제 |
-| `baseline/` | 100 | 오래된 순 자동 삭제 (`latest.txt` symlink 제외) |
-
-- 파일 수 검사는 새 파일 저장 시 수행한다.
-- 삭제 대상 선정: **파일명 사전순 오름차순**(= 가장 오래된 파일)부터 삭제. mtime이 아닌 파일명 기준이다.
-- `baseline/latest.txt` symlink는 삭제 대상에서 제외한다.
-- rolling baseline 참조 범위: 최근 10개 (기본값, `PERF_ROLLING_N`으로 override).
+| `report/` | `PERF_RESULTS_MAX_FILES` (기본 100) | 파일명 사전순 기준 오래된 파일 삭제 |
 
 ---
 
@@ -595,19 +279,21 @@ perf/run_benchmarks_multi.ps1 [options]
 perf/multi/run_benchmarks.sh [options]
 ```
 
-> **정책 준수 실행기**: core는 `run_benchmarks_multi.sh` / `.ps1`, bindings는 `multi/run_benchmarks.sh` / `.ps1`이 multi suite의 유일한 정책 준수 실행기이다 ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조). core는 `multi/run_comparison.py`, bindings는 `bindings/perf/run_policy_bench.py --suite multi`를 내부 실행/비교 엔진으로 사용한다. `PERF_COMPARISON_SCRIPT` 등 환경 변수로 실행 스크립트를 우회하는 것은 허용하지 않는다.
+> **정책 준수 실행기**: core는 `run_benchmarks_multi.sh` / `.ps1`, bindings는 `multi/run_benchmarks.sh` / `.ps1`이 multi suite의 유일한 정책 준수 실행기이다 ([PERF_POLICY.md § 3.1](PERF_POLICY.md) 참조). 환경 변수로 실행 스크립트를 우회하는 것은 허용하지 않는다.
 
 #### 실행기 체인
 
 ```text
-run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 파싱, 빌드/실행 준비
-    → (core) multi/run_comparison.py
-    → (bindings) bindings/perf/run_policy_bench.py --suite multi
-        → perf_multi_*_server(.exe) / 언어별 server runner  # server 프로세스
-        → perf_multi_*_client(.exe) / 언어별 client runner  # client 프로세스
+run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 파싱, 빌드, multi 환경 설정
+    → run_benchmarks.sh (PERF_ALLOW_MULTI=1)               # 공통 빌드/실행 래퍼
+        → run_comparison.py                                # Python 비교/실행 엔진
+            → comp_current_multi_*_server(.exe)            # server 프로세스
+            → comp_current_multi_*_client(.exe)            # client 프로세스
+            → perf_stream_client (STREAM 계열)             # STREAM 공유 client
 ```
 
-- core wrapper는 `multi/run_comparison.py`, bindings wrapper는 `bindings/perf/run_policy_bench.py`를 호출한다.
+- `run_benchmarks_multi.sh`는 multi 옵션을 정규화한 뒤 `PERF_ALLOW_MULTI=1` 환경으로 `run_benchmarks.sh`를 호출한다.
+- `run_benchmarks.sh`는 `PERF_ALLOW_MULTI=1`일 때 root `run_comparison.py`를 Python 엔진으로 사용한다.
 - 스크립트는 각 pattern/transport 조합별로 **server → READY 대기 → client** 순서로 두 프로세스를 관리한다.
 - server/client 양쪽 바이너리가 RESULT line을 stdout에 출력하고, 스크립트가 이를 합산 수집한다.
 
@@ -615,42 +301,41 @@ run_benchmarks_multi.sh / .ps1                             # 진입점: 옵션 �
 
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
-| `--pattern NAME` | 측정할 패턴 (쉼표 구분 가능) | 전체 MULTI_* 패턴 |
-| `--mode MODE` | 운영 모드: `observe`, `trend`, `gate` (§ 2 참조) | `observe` |
+| `--pattern NAME` | 측정할 패턴 (쉼표 구분 가능). `MULTI_` 접두어 생략 가능 | 전체 MULTI_* 패턴 |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
-| `--runs N` | 패턴/transport/size 조합당 반복 횟수 (모드별 기본값: § 2 참조) | 3 (Observe/Trend), 5 (Gate) |
+| `--runs N` | 패턴/transport/size 조합당 반복 횟수 | 1 |
 | `--reuse-build` | 기존 빌드 디렉터리 재사용 (configure/build 생략) | off |
 | `--clean-build` | 빌드 디렉터리 삭제 후 클린 configure/build 수행 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU 고정 (Linux: taskset, Windows: processor affinity) | off |
-| `--io-threads N` | context I/O threads 수 | 0 |
+| `--io-threads N` | 서버/클라이언트 io threads 동시 설정 (레거시 별칭) | — |
+| `--server-io-threads N` | 서버 io threads | non-stream=2, stream=4 |
+| `--client-io-threads N` | 클라이언트 io threads | non-stream=2, stream=4 |
 | `--msg-sizes LIST` | 메시지 크기 목록 (쉼표 구분). STREAM 계열은 § 11.2 참조 | `64,256,1024,65536,131072,262144` (STREAM: `64,256,1024,65536`) |
 | `--transports LIST` | transport 목록 (쉼표 구분) | `tcp,tls,ws,wss` |
 | `--output PATH` | 결과를 파일에 동시 출력 (tee) | stdout만 |
-| `--result` | `results/multi/report/`에 TABLE 레포트 저장 (complete/partial 무관) | off |
-| `--save [VER]` | 완료 시 `results/multi/baseline/`에 baseline 저장 | — |
 | `--results-dir PATH` | 결과 저장 루트 디렉터리 override (`PATH/multi/` 하위 사용) | `perf/results` |
 | `--results-tag NAME` | 결과 파일명에 태그 추가 | 없음 |
-| `--baseline-file PATH` | Gate 모드 비교 대상 baseline 파일 | `latest.txt` |
-| `--multi-warmup-seconds N` | warmup 시간(초) | 3 |
-| `--multi-duration-seconds N` | 측정 시간(초) | 5 |
-| `--multi-clients N` | 클라이언트 소켓 수 | 1000 |
-| `--multi-hwm N` | 소켓 HWM | 1000 |
-| `--multi-sndhwm N` | 소켓 송신 HWM | `--multi-hwm` |
-| `--multi-rcvhwm N` | 소켓 수신 HWM | `--multi-hwm` |
-| `--multi-sndtimeo-ms N` | 송신 타임아웃(ms) | 200 |
-| `--multi-rcvtimeo-ms N` | 수신 타임아웃(ms) | 200 |
-| `--multi-connect-concurrency N` | 동시 연결 수 | auto |
-| `--multi-drain-ms N` | drain 대기(ms) | 패턴별 기본값 |
-| `--multi-transport-transition-ms N` | transport 전환 cooldown(ms) | 3000 |
-| `--multi-pattern-transition-ms N` | pattern 전환 cooldown(ms) | 3000 |
+| `--warmup N` | warmup 시간(초) | 2 |
+| `--duration N` | 측정 시간(초) | 5 |
+| `--clients N` | 클라이언트 소켓 수 | 100 (stream=10000) |
+| `--hwm N` | 소켓 HWM | 100 (stream=10) |
+| `--send-hwm N` | 소켓 송신 HWM | `--hwm` fallback |
+| `--recv-hwm N` | 소켓 수신 HWM | `--hwm` fallback |
+| `--sndtimeo N` / `--send-timeout-ms N` | 송신 타임아웃(ms) | 200 |
+| `--rcvtimeo N` / `--recv-timeout-ms N` | 수신 타임아웃(ms) | 200 |
+| `--connect-concurrency N` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
+| `--transport-transition-ms N` | transport 전환 cooldown(ms) | 3000 |
+| `--pattern-transition-ms N` | pattern 전환 cooldown(ms) | 3000 |
+| `--server-ready-timeout-ms N` | server READY 대기 타임아웃(ms) | 10000 |
+| `--connect-ready-timeout-ms N` | 연결 준비 대기 타임아웃(ms) | 5000 |
+| `--monitor-hwm N` | 모니터 소켓 HWM | 1000 |
+| `--server-shutdown-timeout-ms N` | server 종료 대기 타임아웃(ms) | 5000 |
+| `--server-bind-port N` | server 바인드 포트 (0=자동 할당) | 0 |
 
 #### 옵션 관계
 
 - `--output`: 임의 경로에 stdout을 tee. 저장 구조와 무관.
-- 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `--result`: `report/`에 실행 옵션 헤더 + TABLE 저장. **complete/partial 무관**하게 저장.
-- `--save [VER]`: `baseline/`에 저장. **complete인 경우에만** 저장. partial이면 에러.
-- `--result`과 `--save`는 동시 사용 가능.
+- 결과는 항상 `results/multi/report/`에 저장된다.
 
 #### 빌드 모드 동작
 
@@ -678,28 +363,16 @@ perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 perf/run_benchmarks_multi.sh --pattern MULTI_DEALER_DEALER,MULTI_PUBSUB
 
 # 클라이언트 수/메시지 크기 제한
-perf/run_benchmarks_multi.sh --multi-clients 1000 --msg-sizes 64,1024
+perf/run_benchmarks_multi.sh --clients 1000 --msg-sizes 64,1024
 
-# 레포트 저장 (report/)
-perf/run_benchmarks_multi.sh --result
+# 태그 추가
+perf/run_benchmarks_multi.sh --results-tag debug1
 
-# 레포트 + 태그
-perf/run_benchmarks_multi.sh --result --results-tag debug1
-
-# baseline 저장 (baseline/, 타임스탬프 파일명)
-perf/run_benchmarks_multi.sh --save
-
-# baseline 저장 (baseline/v1.5.0.txt)
-perf/run_benchmarks_multi.sh --runs 5 --save v1.5.0
-
-# 레포트 + baseline 동시 저장
-perf/run_benchmarks_multi.sh --result --save
-
-# 5회 반복, CPU 고정, 레포트 저장
-perf/run_benchmarks_multi.sh --runs 5 --pin-cpu --result
+# 5회 반복, CPU 고정
+perf/run_benchmarks_multi.sh --runs 5 --pin-cpu
 
 # 측정 시간 조정
-perf/run_benchmarks_multi.sh --multi-warmup-seconds 5 --multi-duration-seconds 10
+perf/run_benchmarks_multi.sh --warmup 5 --duration 10
 ```
 
 ### 5.4 바이너리 직접 실행
@@ -717,21 +390,21 @@ perf/run_benchmarks_multi.sh --multi-warmup-seconds 5 --multi-duration-seconds 1
 ```bash
 # 예시: MULTI_DEALER_DEALER
 # 터미널 1 (server)
-./core/build/linux-x64/bin/perf_multi_dealer_dealer_server current tcp
+./core/build/linux-x64/bin/comp_current_multi_dealer_dealer_server current tcp
 # stdout: READY,tcp://0.0.0.0:15557
 
 # 터미널 2 (client)
-./core/build/linux-x64/bin/perf_multi_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+./core/build/linux-x64/bin/comp_current_multi_dealer_dealer_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-# 예시: MULTI_STREAM 계열 (각각 별도 server/client 바이너리)
-./core/build/linux-x64/bin/perf_multi_stream_server current tcp
-./core/build/linux-x64/bin/perf_multi_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+# 예시: MULTI_STREAM 계열 (server는 패턴별 바이너리, client는 공유 바이너리)
+./core/build/linux-x64/bin/comp_current_multi_stream_server current tcp
+./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/perf_multi_stream_callback_server current tcp
-./core/build/linux-x64/bin/perf_multi_stream_callback_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+./core/build/linux-x64/bin/comp_current_multi_stream_callback_server current tcp
+./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 
-./core/build/linux-x64/bin/perf_multi_stream_len32be_server current tcp
-./core/build/linux-x64/bin/perf_multi_stream_len32be_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
+./core/build/linux-x64/bin/comp_current_multi_stream_len32be_server current tcp
+./core/build/linux-x64/bin/perf_stream_client current tcp 1024 --endpoint tcp://127.0.0.1:15557
 ```
 
 | 인자 | 대상 | 설명 |
@@ -794,13 +467,7 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 > **구현 필수**: 스크립트는 RESULT line 파싱 외에 아래 형식의 사람이 읽을 수 있는 테이블을 **반드시 stdout에 출력하고, 결과 파일에도 기록**해야 한다. RESULT line만 출력하고 테이블을 생략하면 안 된다.
 
-`run_benchmarks_multi.sh` 실행 시 패턴/transport별로 markdown table이 stdout에 출력되고, 결과 파일에도 기록된다. 디렉터리별 기록 형식:
-
-| 디렉터리 | TABLE 기록 방식 |
-|-----------|----------------|
-| `tmp/` | META + RESULT 이후 `TABLE` 마커와 함께 기록 |
-| `report/` | **실행 옵션 헤더 + TABLE** 기록 (META/RESULT 없음, `TABLE` 마커도 생략) |
-| `baseline/` | META + RESULT 이후 `TABLE` 마커와 함께 기록 |
+`run_benchmarks_multi.sh` 실행 시 패턴/transport별로 markdown table이 stdout에 출력되고, 결과 파일(`report/`)에도 실행 옵션 헤더 + TABLE로 기록된다.
 
 ```text
 ## PATTERN: MULTI_DEALER_DEALER (one-way)
@@ -913,11 +580,9 @@ RESULT,current,MULTI_DEALER_DEALER,tcp,1024,server_mem_mb,64.20
 
 사용된 옵션에 따라 결과 파일이 아래 경로에 저장된다. 파일 형식은 섹션 4.1을 참조한다.
 
-| 옵션 | 저장 경로 |
-|------|-----------|
-| (항상) | `perf/results/multi/tmp/perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
-| `--result` | `perf/results/multi/report/perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
-| `--save [VER]` | `perf/results/multi/baseline/<VER>.txt` 또는 `baseline/perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
+| 저장 경로 |
+|-----------|
+| `perf/results/multi/report/perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt` |
 
 ### 6.6 리소스 메트릭 수집
 
@@ -974,8 +639,8 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 │  │  │  [2] wait READY,<endpoint>                                      │  │  │
 │  │  │  [3] spawn client(pattern, transport, sizes, endpoint)          │  │  │
 │  │  │      client 내부 (전체 size 순회):                               │  │  │
-│  │  │        [warmup]-[settle]-[active]-[drain]-[size_drain]          │  │  │
-│  │  │        [warmup]-[settle]-[active]-[drain]-[size_drain]          │  │  │
+│  │  │        [warmup]-[settle]-[active]                               │  │  │
+│  │  │        [warmup]-[settle]-[active]                               │  │  │
 │  │  │        ...                                                      │  │  │
 │  │  │  [4] client 종료, RESULT line 수집                              │  │  │
 │  │  │  [5] server 종료, server RESULT line 수집                       │  │  │
@@ -997,7 +662,7 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 
 | Phase | 방식 | 기본값 | 환경 변수 |
 |-------|------|--------|-----------|
-| warmup | time-based | 3s | `PERF_MULTI_WARMUP_SECONDS` |
+| warmup | time-based | 2s | `PERF_MULTI_WARMUP_SECONDS` |
 | settle | time-based | 500ms | `PERF_MULTI_SETTLE_MS` |
 | active | time-based | 5s | `PERF_MULTI_DURATION_SECONDS` |
 
@@ -1015,7 +680,7 @@ client 프로세스는 1회 실행에서 모든 size를 순회한다. client 리
 
 ### 7.3 Size 전환 정책
 
-- Multi는 size 전환 시 server/client를 size 단위로 재시작한다.
+- Multi는 client 1회 실행에서 모든 size를 순회한다 (size별 server/client 재시작 없음).
 - size 사이의 drain sleep은 사용하지 않는다.
 
 ### 7.4 warmup 모드
@@ -1184,15 +849,15 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 패턴 | server 소스 | server 바이너리 | client 소스 | client 바이너리 |
 |------|------------|----------------|------------|----------------|
-| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `perf_multi_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `perf_multi_dealer_dealer_client` |
-| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `perf_multi_dealer_router_server` | `*_dealer_router_client.cpp` | `perf_multi_dealer_router_client` |
-| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `perf_multi_router_router_server` | `*_router_router_client.cpp` | `perf_multi_router_router_client` |
-| MULTI_PUBSUB | `*_pubsub_server.cpp` | `perf_multi_pubsub_server` | `*_pubsub_client.cpp` | `perf_multi_pubsub_client` |
-| MULTI_GATEWAY | `*_gateway_server.cpp` | `perf_multi_gateway_server` | `*_gateway_client.cpp` | `perf_multi_gateway_client` |
-| MULTI_SPOT | `*_spot_server.cpp` | `perf_multi_spot_server` | `*_spot_client.cpp` | `perf_multi_spot_client` |
-| MULTI_STREAM | `*_stream_server.cpp` | `perf_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `perf_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
-| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `perf_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_DEALER_DEALER | `*_dealer_dealer_server.cpp` | `comp_current_multi_dealer_dealer_server` | `*_dealer_dealer_client.cpp` | `comp_current_multi_dealer_dealer_client` |
+| MULTI_DEALER_ROUTER | `*_dealer_router_server.cpp` | `comp_current_multi_dealer_router_server` | `*_dealer_router_client.cpp` | `comp_current_multi_dealer_router_client` |
+| MULTI_ROUTER_ROUTER | `*_router_router_server.cpp` | `comp_current_multi_router_router_server` | `*_router_router_client.cpp` | `comp_current_multi_router_router_client` |
+| MULTI_PUBSUB | `*_pubsub_server.cpp` | `comp_current_multi_pubsub_server` | `*_pubsub_client.cpp` | `comp_current_multi_pubsub_client` |
+| MULTI_GATEWAY | `*_gateway_server.cpp` | `comp_current_multi_gateway_server` | `*_gateway_client.cpp` | `comp_current_multi_gateway_client` |
+| MULTI_SPOT | `*_spot_server.cpp` | `comp_current_multi_spot_server` | `*_spot_client.cpp` | `comp_current_multi_spot_client` |
+| MULTI_STREAM | `*_stream_server.cpp` | `comp_current_multi_stream_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_CALLBACK | `*_stream_callback_server.cpp` | `comp_current_multi_stream_callback_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
+| MULTI_STREAM_LEN32BE | `*_stream_len32be_server.cpp` | `comp_current_multi_stream_len32be_server` | `perf/common/streamclient/perf_stream_client.cpp` (shared) | `perf_stream_client` (shared) |
 
 > 위 표의 `*`는 `perf_multi`를 축약한 것이다 (예: `*_stream_server.cpp` = `perf_multi_stream_server.cpp`).
 > STREAM client 예외(core): `MULTI_STREAM*` client는 [PERF_POLICY.md § 8.5](PERF_POLICY.md)의 STREAM client 예외에 따라 `perf/common/streamclient/` 공용 구현을 사용한다. server는 패턴별 분리를 유지해야 한다.
@@ -1251,7 +916,7 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_WARMUP_SECONDS` | warmup 시간(초) | 3 |
+| `PERF_MULTI_WARMUP_SECONDS` | warmup 시간(초) | 2 |
 | `PERF_MULTI_DURATION_SECONDS` | 측정 시간(초) | 5 |
 | `PERF_MULTI_SETTLE_MS` | settle 대기(ms) | 500 |
 | `PERF_MULTI_TRANSPORT_TRANSITION_MS` | transport 전환 cooldown(ms) | 3000 |
@@ -1262,12 +927,12 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 1000 |
+| `PERF_MULTI_CLIENTS` | 클라이언트 소켓 수 | 100 (stream=10000) |
 | `PERF_MULTI_STREAM_MSG_SIZES` | STREAM 계열 전용 size 목록 | `64,256,1024,65536` |
-| `PERF_MULTI_HWM` | 소켓 HWM | 1000 |
+| `PERF_MULTI_HWM` | 소켓 HWM | 100 (stream=10) |
 | `PERF_MULTI_SNDHWM` | 소켓 송신 HWM | `PERF_MULTI_HWM` |
 | `PERF_MULTI_RCVHWM` | 소켓 수신 HWM | `PERF_MULTI_HWM` |
-| `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | 128 |
+| `PERF_MULTI_CONNECT_CONCURRENCY` | 동시 연결 수 | auto (clients≥10000: 1024, 기타: 128) |
 | `PERF_MULTI_CONNECT_READY_TIMEOUT_MS` | 연결 준비 타임아웃(ms) | 5000 |
 
 ### 12.4 송수신 제어
@@ -1303,10 +968,13 @@ server/client 분리 패턴은 **별도 소스 파일 / 별도 바이너리**로
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
 | `PERF_MULTI_RUN_COOLDOWN_MS` | run 간 cooldown(ms) | 3000 |
 | `PERF_SKIP_NOFILE_CHECK` | nofile limit 검사 생략 | 0 |
+| `PERF_SKIP_MEMORY_CHECK` | 메모리 가드 검사 생략 | 0 |
+| `PERF_MULTI_MEMORY_BUDGET_PCT` | MemAvailable 대비 예산 비율(%) | 70 |
+| `PERF_MULTI_MEMORY_BASE_MB` | 기본 메모리 예약(MB) | 512 |
+| `PERF_MULTI_MEMORY_PER_CLIENT_KB` | 클라이언트당 예상 메모리(KB) | 1024 |
+| `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 > **삭제된 환경 변수**: `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS` 및 레거시 `PERF_MULTI_ATTEMPTS`, `PERF_MULTI_STREAM_ATTEMPTS`는 삭제 대상이다. 구현에 존재하면 제거해야 한다. Retry 금지 정책은 [PERF_POLICY.md § 8](PERF_POLICY.md)을 참조한다.
-| `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
-| `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |
 
 ---
 

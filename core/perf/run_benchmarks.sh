@@ -89,6 +89,8 @@ SINGLE_DURATION_SECONDS="${PERF_SINGLE_DURATION_SECONDS:-5}"
 SINGLE_HWM="${PERF_SINGLE_HWM:-}"
 SINGLE_SNDHWM="${PERF_SINGLE_SNDHWM:-}"
 SINGLE_RCVHWM="${PERF_SINGLE_RCVHWM:-}"
+SINGLE_SNDTIMEO_MS="${PERF_SINGLE_SNDTIMEO_MS:-200}"
+SINGLE_RCVTIMEO_MS="${PERF_SINGLE_RCVTIMEO_MS:-200}"
 PERF_ALLOW_MULTI="${PERF_ALLOW_MULTI:-0}"
 if [[ "${PERF_ALLOW_MULTI}" == "1" ]]; then
   PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
@@ -116,6 +118,10 @@ Options:
   --hwm N                     Override PERF_SINGLE_HWM (default: 1000 in binary).
   --send-hwm N                Override PERF_SINGLE_SNDHWM (fallback: --hwm).
   --recv-hwm N                Override PERF_SINGLE_RCVHWM (fallback: --hwm).
+  --sndtimeo N                Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
+  --rcvtimeo N                Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
+  --send-timeout-ms N         Alias of --sndtimeo.
+  --recv-timeout-ms N         Alias of --rcvtimeo.
   --pin-cpu                   Pin CPU core during benchmark runs (Linux taskset).
   --io-threads N              Set PERF_IO_THREADS for benchmark binaries.
   --msg-sizes LIST            Comma-separated sizes (e.g., 64,1024,65536).
@@ -190,6 +196,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recv-hwm)
       SINGLE_RCVHWM="${2:-}"
+      shift
+      ;;
+    --sndtimeo|--send-timeout-ms)
+      SINGLE_SNDTIMEO_MS="${2:-}"
+      shift
+      ;;
+    --rcvtimeo|--recv-timeout-ms)
+      SINGLE_RCVTIMEO_MS="${2:-}"
       shift
       ;;
     --pin-cpu)
@@ -308,6 +322,14 @@ if [[ -n "${SINGLE_SNDHWM}" && ( ! "${SINGLE_SNDHWM}" =~ ^[0-9]+$ || "${SINGLE_S
 fi
 if [[ -n "${SINGLE_RCVHWM}" && ( ! "${SINGLE_RCVHWM}" =~ ^[0-9]+$ || "${SINGLE_RCVHWM}" -lt 1 ) ]]; then
   echo "recv-hwm must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_SNDTIMEO_MS}" && ( ! "${SINGLE_SNDTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_SNDTIMEO_MS}" -lt 1 ) ]]; then
+  echo "sndtimeo must be a positive integer." >&2
+  exit 1
+fi
+if [[ -n "${SINGLE_RCVTIMEO_MS}" && ( ! "${SINGLE_RCVTIMEO_MS}" =~ ^[0-9]+$ || "${SINGLE_RCVTIMEO_MS}" -lt 1 ) ]]; then
+  echo "rcvtimeo must be a positive integer." >&2
   exit 1
 fi
 
@@ -529,6 +551,12 @@ fi
 if [[ -n "${SINGLE_RCVHWM}" ]]; then
   RUN_ENV+=(PERF_SINGLE_RCVHWM="${SINGLE_RCVHWM}")
 fi
+if [[ -n "${SINGLE_SNDTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_SNDTIMEO_MS="${SINGLE_SNDTIMEO_MS}")
+fi
+if [[ -n "${SINGLE_RCVTIMEO_MS}" ]]; then
+  RUN_ENV+=(PERF_SINGLE_RCVTIMEO_MS="${SINGLE_RCVTIMEO_MS}")
+fi
 if [[ "${BUILD_MODE}" == "reuse" ]]; then
   RUN_ENV+=(PERF_NO_AUTOBUILD=1)
 fi
@@ -554,6 +582,7 @@ print_effective_option() {
 
 EFFECTIVE_SEND_HWM="${SINGLE_SNDHWM:-${SINGLE_HWM:-}}"
 EFFECTIVE_RECV_HWM="${SINGLE_RCVHWM:-${SINGLE_HWM:-}}"
+EFFECTIVE_IO_THREADS="${PERF_IO_THREADS:-0}"
 
 echo
 echo "## Effective Options (runner)"
@@ -567,8 +596,10 @@ print_effective_option "duration_seconds" "${SINGLE_DURATION_SECONDS}"
 print_effective_option "hwm" "$(value_or_default "${SINGLE_HWM}" "default(binary)")"
 print_effective_option "send_hwm" "$(value_or_default "${EFFECTIVE_SEND_HWM}" "default(binary)")"
 print_effective_option "recv_hwm" "$(value_or_default "${EFFECTIVE_RECV_HWM}" "default(binary)")"
+print_effective_option "sndtimeo_ms" "${SINGLE_SNDTIMEO_MS}"
+print_effective_option "rcvtimeo_ms" "${SINGLE_RCVTIMEO_MS}"
 print_effective_option "pin_cpu" "${PIN_CPU}"
-print_effective_option "io_threads" "$(value_or_default "${PERF_IO_THREADS}" "default(benchmark)")"
+print_effective_option "io_threads" "${EFFECTIVE_IO_THREADS}"
 print_effective_option "msg_sizes" "$(value_or_default "${PERF_MSG_SIZES}" "default(benchmark)")"
 print_effective_option "transports" "$(value_or_default "${PERF_TRANSPORTS}" "default(benchmark)")"
 print_effective_option "results_dir" "${RESULTS_DIR}"

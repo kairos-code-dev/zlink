@@ -80,8 +80,8 @@ multi 패턴 래퍼 스크립트다. multi 옵션을 정규화한 뒤 `PERF_ALLO
 | `--runs N` | `1` | 설정별 반복 횟수 |
 | `--pin-cpu` | 비활성 | CPU 고정 |
 | `--io-threads N` | — | 서버/클라이언트 io thread 동시 설정 |
-| `--server-io-threads N` | `2` | 서버 io threads |
-| `--client-io-threads N` | `2` | 클라이언트 io threads |
+| `--server-io-threads N` | non-stream=`2`, stream=`4` | 서버 io threads |
+| `--client-io-threads N` | non-stream=`2`, stream=`4` | 클라이언트 io threads |
 | `--msg-sizes LIST` | env/기본값 | 메시지 크기 목록 |
 | `--transports LIST` | `tcp,tls,ws,wss` | 트랜스포트 목록 |
 | `--warmup N` | `2` | warmup 시간(초) |
@@ -114,6 +114,9 @@ results/
 
 - nofile 가드 (`PERF_SKIP_NOFILE_CHECK=1`로 비활성화)
 - 메모리 가드 (`PERF_SKIP_MEMORY_CHECK=1`로 비활성화)
+  - `PERF_MULTI_MEMORY_BUDGET_PCT=70` — MemAvailable 대비 예산 비율(%)
+  - `PERF_MULTI_MEMORY_BASE_MB=512` — 기본 메모리 예약(MB)
+  - `PERF_MULTI_MEMORY_PER_CLIENT_KB=1024` — 클라이언트당 예상 메모리(KB)
 
 ---
 
@@ -126,7 +129,7 @@ results/
 | `PERF_TRANSPORTS` | 트랜스포트 override |
 | `PERF_RESULTS_DIR` | 결과 루트 경로 override |
 | `PERF_RESULTS_TAG` | 파일명 태그 |
-| `PERF_RESULTS_RETENTION_DAYS` | 오래된 결과 정리 기준 |
+| `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 (기본: 100) |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 (`1`) |
 | `PERF_TASKSET` | CPU 고정 (`1`) |
 

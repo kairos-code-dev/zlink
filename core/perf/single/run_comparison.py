@@ -1095,13 +1095,19 @@ def build_single_option_items(
     base_hwm = parse_env_int("PERF_SINGLE_HWM", 1000)
     sndhwm = parse_env_int("PERF_SINGLE_SNDHWM", base_hwm)
     rcvhwm = parse_env_int("PERF_SINGLE_RCVHWM", base_hwm)
+    sndtimeo_ms = parse_env_int("PERF_SINGLE_SNDTIMEO_MS", 200)
+    rcvtimeo_ms = parse_env_int("PERF_SINGLE_RCVTIMEO_MS", 200)
+    io_threads = max(0, parse_env_int("PERF_IO_THREADS", 0))
     items: List[Tuple[str, str]] = [
         ("runs", str(args.runs)),
         ("duration_seconds", str(parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5))),
         ("timeout_seconds", str(timeout_sec)),
+        ("io_threads", str(io_threads)),
         ("hwm", str(base_hwm)),
         ("sndhwm", str(sndhwm)),
         ("rcvhwm", str(rcvhwm)),
+        ("sndtimeo_ms", str(sndtimeo_ms)),
+        ("rcvtimeo_ms", str(rcvtimeo_ms)),
         ("patterns", ",".join(patterns)),
         ("transports", ",".join(unique_transports) if unique_transports else "none"),
         ("msg_sizes", ",".join(str(sz) for sz in unique_sizes) if unique_sizes else "none"),

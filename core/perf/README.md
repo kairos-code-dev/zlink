@@ -80,8 +80,8 @@ and delegates execution to `run_benchmarks.sh`.
 | `--runs N` | `1` | Iterations per configuration |
 | `--pin-cpu` | off | Pin CPU core |
 | `--io-threads N` | — | Set both server/client io threads |
-| `--server-io-threads N` | `2` | Set server io threads |
-| `--client-io-threads N` | `2` | Set client io threads |
+| `--server-io-threads N` | non-stream=`2`, stream=`4` | Set server io threads |
+| `--client-io-threads N` | non-stream=`2`, stream=`4` | Set client io threads |
 | `--msg-sizes LIST` | env/default | Comma-separated sizes |
 | `--transports LIST` | `tcp,tls,ws,wss` | Comma-separated transports |
 | `--warmup N` | `2` | Multi warmup seconds |
@@ -114,6 +114,9 @@ results/
 
 - nofile guard (`PERF_SKIP_NOFILE_CHECK=1` to disable)
 - memory guard (`PERF_SKIP_MEMORY_CHECK=1` to disable)
+  - `PERF_MULTI_MEMORY_BUDGET_PCT=70` — percent of MemAvailable reserved
+  - `PERF_MULTI_MEMORY_BASE_MB=512` — fixed memory reserve
+  - `PERF_MULTI_MEMORY_PER_CLIENT_KB=1024` — estimated memory per client
 
 ---
 
@@ -126,7 +129,7 @@ results/
 | `PERF_TRANSPORTS` | Transport override |
 | `PERF_RESULTS_DIR` | Results root override |
 | `PERF_RESULTS_TAG` | Filename tag |
-| `PERF_RESULTS_RETENTION_DAYS` | Old result cleanup threshold |
+| `PERF_RESULTS_MAX_FILES` | Max result files per report/ directory (default: 100) |
 | `PERF_FAIL_FAST` | Stop early on failure (`1`) |
 | `PERF_TASKSET` | CPU pinning (`1`) |
 

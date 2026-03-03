@@ -11,6 +11,10 @@ param(
     [string]$Hwm = "",
     [string]$SendHwm = "",
     [string]$RecvHwm = "",
+    [Alias("sndtimeo", "SendTimeoutMs")]
+    [string]$Sndtimeo = "",
+    [Alias("rcvtimeo", "RecvTimeoutMs")]
+    [string]$Rcvtimeo = "",
     [string]$IoThreads = "",
     [string]$MsgSizes = "",
     [string]$Transports = "",
@@ -39,6 +43,8 @@ Options:
   -Hwm N                       Override PERF_SINGLE_HWM (default: 1000 in binary).
   -SendHwm N                   Override PERF_SINGLE_SNDHWM (fallback: -Hwm).
   -RecvHwm N                   Override PERF_SINGLE_RCVHWM (fallback: -Hwm).
+  -Sndtimeo N                  Override PERF_SINGLE_SNDTIMEO_MS (default: 200).
+  -Rcvtimeo N                  Override PERF_SINGLE_RCVTIMEO_MS (default: 200).
   -IoThreads N                 Set PERF_IO_THREADS.
   -MsgSizes LIST               Comma-separated message sizes.
   -Transports LIST             Comma-separated transports.
@@ -74,6 +80,12 @@ if ($SendHwm -and ($SendHwm -notmatch '^\d+$' -or [int]$SendHwm -lt 1)) {
 }
 if ($RecvHwm -and ($RecvHwm -notmatch '^\d+$' -or [int]$RecvHwm -lt 1)) {
     throw "RecvHwm must be a positive integer."
+}
+if ($Sndtimeo -and ($Sndtimeo -notmatch '^\d+$' -or [int]$Sndtimeo -lt 1)) {
+    throw "Sndtimeo must be a positive integer."
+}
+if ($Rcvtimeo -and ($Rcvtimeo -notmatch '^\d+$' -or [int]$Rcvtimeo -lt 1)) {
+    throw "Rcvtimeo must be a positive integer."
 }
 if ($MsgSizes -and $MsgSizes -notmatch '^\d+(,\d+)*$') {
     throw "MsgSizes must be a comma-separated list of integers."
@@ -360,7 +372,18 @@ if (-not $Duration) { $Duration = $env:PERF_SINGLE_DURATION_SECONDS }
 if (-not $Hwm) { $Hwm = $env:PERF_SINGLE_HWM }
 if (-not $SendHwm) { $SendHwm = $env:PERF_SINGLE_SNDHWM }
 if (-not $RecvHwm) { $RecvHwm = $env:PERF_SINGLE_RCVHWM }
+if (-not $Sndtimeo) { $Sndtimeo = $env:PERF_SINGLE_SNDTIMEO_MS }
+if (-not $Rcvtimeo) { $Rcvtimeo = $env:PERF_SINGLE_RCVTIMEO_MS }
 if (-not $Duration) { $Duration = "5" }
+if (-not $Sndtimeo) { $Sndtimeo = "200" }
+if (-not $Rcvtimeo) { $Rcvtimeo = "200" }
+
+if ($Sndtimeo -notmatch '^\d+$' -or [int]$Sndtimeo -lt 1) {
+    throw "Sndtimeo must be a positive integer."
+}
+if ($Rcvtimeo -notmatch '^\d+$' -or [int]$Rcvtimeo -lt 1) {
+    throw "Rcvtimeo must be a positive integer."
+}
 
 if ($IoThreads) {
     $RunEnv["PERF_IO_THREADS"] = $IoThreads
@@ -387,6 +410,8 @@ if ($SendHwm) {
 if ($RecvHwm) {
     $RunEnv["PERF_SINGLE_RCVHWM"] = $RecvHwm
 }
+$RunEnv["PERF_SINGLE_SNDTIMEO_MS"] = $Sndtimeo
+$RunEnv["PERF_SINGLE_RCVTIMEO_MS"] = $Rcvtimeo
 if ($PinCpu) {
     $RunEnv["PERF_TASKSET"] = "1"
 }
@@ -416,6 +441,7 @@ function Show-EffectiveOption {
 $BuildMode = if ($UseReuseBuild) { "reuse" } else { "clean" }
 $EffectiveSendHwm = if ($SendHwm) { $SendHwm } elseif ($Hwm) { $Hwm } else { "" }
 $EffectiveRecvHwm = if ($RecvHwm) { $RecvHwm } elseif ($Hwm) { $Hwm } else { "" }
+$EffectiveIoThreads = if ($IoThreads) { $IoThreads } else { "0" }
 
 Write-Host ""
 Write-Host "## Effective Options (runner)"
@@ -429,8 +455,10 @@ Show-EffectiveOption "duration_seconds" $Duration
 Show-EffectiveOption "hwm" (Get-ValueOrDefault -Value $Hwm -DefaultValue "default(binary)")
 Show-EffectiveOption "send_hwm" (Get-ValueOrDefault -Value $EffectiveSendHwm -DefaultValue "default(binary)")
 Show-EffectiveOption "recv_hwm" (Get-ValueOrDefault -Value $EffectiveRecvHwm -DefaultValue "default(binary)")
+Show-EffectiveOption "sndtimeo_ms" $Sndtimeo
+Show-EffectiveOption "rcvtimeo_ms" $Rcvtimeo
 Show-EffectiveOption "pin_cpu" $(if ($PinCpu) { "1" } else { "0" })
-Show-EffectiveOption "io_threads" (Get-ValueOrDefault -Value $IoThreads -DefaultValue "default(benchmark)")
+Show-EffectiveOption "io_threads" $EffectiveIoThreads
 Show-EffectiveOption "msg_sizes" (Get-ValueOrDefault -Value $MsgSizes -DefaultValue "default(benchmark)")
 Show-EffectiveOption "transports" (Get-ValueOrDefault -Value $Transports -DefaultValue "default(benchmark)")
 Show-EffectiveOption "results_dir" $ResultsDir

@@ -39,13 +39,9 @@ perf/
 ├── multi/                                  # multi 벤치마크 소스
 └── results/                                # 결과 저장 루트
     ├── single/
-    │   ├── tmp/                            # 항상 저장 (임시)
-    │   ├── report/                         # --result (누적, complete/partial)
-    │   └── baseline/                       # --save [VER] (고정)
+    │   └── report/                         # 결과 레포트
     └── multi/
-        ├── tmp/
-        ├── report/
-        └── baseline/
+        └── report/                         # 결과 레포트
 ```
 
 ### 2.0.1 bindings (바인딩 라이브러리)
@@ -62,13 +58,9 @@ perf/                                       # bindings/<lang>/perf/
 │   └── ...
 └── results/                                # 결과 저장 루트 (core와 동일 구조)
     ├── single/
-    │   ├── tmp/
-    │   ├── report/
-    │   └── baseline/
+    │   └── report/
     └── multi/
-        ├── tmp/
-        ├── report/
-        └── baseline/
+        └── report/
 ```
 
 ### 2.0.2 소스 파일 위치 및 명명 규칙
@@ -148,13 +140,9 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 | 디렉터리 | 최대 파일 수 | 초과 시 처리 |
 |-----------|-------------|-------------|
-| `tmp/` | 100 | 오래된 순 자동 삭제 |
-| `report/` | 100 | 오래된 순 자동 삭제 |
-| `baseline/` | 100 | 오래된 순 자동 삭제 (`latest.txt` symlink 제외) |
+| `report/` | `PERF_RESULTS_MAX_FILES` (기본 100) | 파일명 사전순 기준 오래된 파일 삭제 |
 
 - `single/`과 `multi/` 각각 독립적으로 적용한다.
-- 파일 수 검사는 새 파일 저장 시 수행한다.
-- 삭제 대상 선정: **파일명 사전순 오름차순**(= 가장 오래된 파일)부터 삭제. mtime이 아닌 파일명 기준이다.
 
 ### 2.3 저장 단위
 
@@ -173,14 +161,14 @@ STREAM 계열 벤치마크는 **len32be framing** 프로토콜로 통일한다.
 
 ```bash
 # core single만 실행
-perf/run_benchmarks.sh --pattern PAIR --save
+perf/run_benchmarks.sh --pattern PAIR
 
 # core multi만 실행
-perf/run_benchmarks_multi.sh --pattern MULTI_STREAM --save
+perf/run_benchmarks_multi.sh --pattern MULTI_STREAM
 
 # bindings 실행 (예: node)
-perf/single/run_benchmarks.sh --pattern PAIR --save
-perf/multi/run_benchmarks.sh --pattern MULTI_STREAM --save
+perf/single/run_benchmarks.sh --pattern PAIR
+perf/multi/run_benchmarks.sh --pattern MULTI_STREAM
 ```
 
 각 스크립트의 상세 옵션은 개별 정책 문서의 섹션 5를 참조한다.
@@ -212,20 +200,8 @@ perf/run_benchmarks_multi.sh --pattern ALL
 # core: 특정 패턴만
 perf/run_benchmarks.sh --pattern PAIR,PUBSUB
 
-# core: 레포트 저장 (report/)
-perf/run_benchmarks.sh --result
-
-# core: baseline 저장 (baseline/, 타임스탬프 파일명)
-perf/run_benchmarks.sh --save
-
-# core: baseline 저장 (baseline/v1.5.0.txt)
-perf/run_benchmarks.sh --save v1.5.0
-
-# core: baseline 비교 (Trend 모드)
-perf/run_benchmarks.sh --mode trend --result
-
-# core: baseline 비교 (Gate 모드, 특정 baseline 파일)
-perf/run_benchmarks.sh --mode gate --baseline-file perf/results/single/baseline/v1.5.0.txt
+# core: 태그 추가
+perf/run_benchmarks.sh --results-tag v1.5.0
 
 # bindings: 동일한 옵션 체계 적용 (예: python)
 perf/single/run_benchmarks.sh --pattern ALL
@@ -237,22 +213,18 @@ perf/multi/run_benchmarks.sh --pattern ALL
 | 옵션 | 설명 | 기본값 |
 |------|------|--------|
 | `--pattern NAME` | 측정할 패턴 (쉼표 구분) | 전체 |
-| `--mode MODE` | 운영 모드: `observe`, `trend`, `gate` | `observe` |
-| `--runs N` | 반복 횟수 | suite별 기본값 |
+| `--runs N` | 반복 횟수 | 1 |
 | `--build-dir PATH` | 빌드 디렉터리 경로 | 자동 탐색 |
 | `--reuse-build` | 기존 빌드 재사용 (configure/build 생략) | off |
 | `--clean-build` | 빌드 디렉터리 삭제 후 클린 빌드 | off (기본은 증분 빌드) |
 | `--pin-cpu` | CPU pinning (Linux: taskset, Windows: processor affinity) | off |
 | `--output PATH` | stdout tee 출력 | stdout만 |
-| `--result` | `report/`에 TABLE 레포트 저장 (complete/partial) | off |
-| `--save [VER]` | `baseline/`에 baseline 저장 (complete만) | — |
 | `--results-dir PATH` | 결과 저장 루트 override | `perf/results` |
 | `--results-tag NAME` | 결과 파일명 태그 | 없음 |
-| `--baseline-file PATH` | Gate 모드 비교 대상 baseline 파일 | `latest.txt` |
 | `--msg-sizes LIST` | 메시지 크기 목록 | suite별 기본값 |
 | `--transports LIST` | transport 목록 | suite별 기본값 |
 
-- suite별 고유 옵션(`--multi-clients` 등)은 환경 변수 또는 개별 스크립트 호출 시 전달한다.
+- suite별 고유 옵션(`--clients` 등)은 개별 스크립트 호출 시 전달한다.
 
 ---
 
@@ -260,43 +232,14 @@ perf/multi/run_benchmarks.sh --pattern ALL
 
 ### 4.1 파일 구조
 
-디렉터리별로 저장 형식이 다르다.
+결과는 `report/`에 사람이 읽을 수 있는 형식으로 저장한다.
 
-#### tmp/ · baseline/ (기계 파싱용)
-
-```text
-META,<key>,<value>
-META,<key>,<value>
-...
-RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
-RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
-...
-TABLE
-## Execution Options
-| Option     | Value                              |
-|------------|------------------------------------|
-| mode       | observe                            |
-| ...        | ...                                |
-
-===============================================================================
-
-## PATTERN: PAIR (one-way)
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |     Lat.Mean |      Lat.P95 |      Lat.P99 | CPU% | Mem MB |
-...
-```
-
-- META → RESULT → TABLE 세 영역으로 구성된다.
-- `TABLE` 마커 이후의 내용은 RESULT 데이터를 사람이 읽을 수 있는 markdown table로 포맷한 것이다.
-- 기계 파싱 시 `META,`와 `RESULT,`로 시작하는 라인만 처리하면 TABLE 영역은 자연히 무시된다.
-
-#### report/ (사람이 읽는 용도)
+#### report/ (결과 레포트)
 
 ```text
 ## Execution Options
 | Option     | Value                              |
 |------------|------------------------------------|
-| mode       | observe                            |
 | runs       | 1                                  |
 | patterns   | PAIR, GATEWAY                      |
 | transports | tcp, tls, ws, wss                  |
@@ -314,9 +257,8 @@ TABLE
 | 1024B    |   120.30 Kmsg/s  | 123.2 MB/s|   52.10 us   |   70.55 us   |   92.10 us   | 52.1 |   14.1 |
 ```
 
-- **실행 옵션 헤더 + TABLE**을 저장한다. META/RESULT 라인은 포함하지 않는다.
-- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout TABLE 영역 모두에 포함해야 한다.
-- 기계 파싱용 데이터가 필요하면 동일 실행의 `tmp/` 파일을 참조한다.
+- **실행 옵션 헤더 + TABLE**을 저장한다.
+- `## Execution Options` 섹션은 실행 시 사용된 옵션을 테이블로 출력한다. report/ 파일과 stdout 모두에 포함해야 한다.
 
 ### 4.2 RESULT line 형식
 
@@ -343,19 +285,11 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 - `cpu_pct`, `mem_mb`는 정보성(informational) 메트릭이다. 누락 시 완료 판정에 영향 없음.
 - 상세 META 키 및 패턴별 측정 방식은 개별 정책 문서를 참조한다.
 
-### 4.3 저장 옵션
+### 4.3 저장 규칙
 
-| 동작 | 옵션 | 저장 위치 | 저장 형식 | 조건 |
-|------|------|-----------|-----------|------|
-| 임시 저장 | (항상) | `<suite>/tmp/` | META + RESULT + TABLE | complete/partial 무관 |
-| 레포트 생성 | `--result` | `<suite>/report/` | **실행 옵션 헤더 + TABLE** | complete/partial 무관 |
-| baseline 저장 | `--save [VER]` | `<suite>/baseline/<VER>.txt` | META + RESULT + TABLE | complete만 (partial 시 에러) |
+결과는 항상 `<suite>/report/`에 저장된다 (complete/partial 무관).
 
-- 임시 저장(`tmp/`)은 옵션 없이 항상 수행된다.
-- `report/`에는 실행 옵션 헤더(`## Execution Options` 테이블)와 TABLE을 저장한다. META/RESULT 라인은 포함하지 않는다. 기계 파싱용 데이터는 동일 실행의 `tmp/` 파일을 참조한다.
-- `--result`과 `--save`는 동시 사용 가능.
-- `--save` 버전 미지정 시 타임스탬프 기반 파일명으로 저장. 지정 시 `<VER>.txt`로 저장.
-- `--save` 동일 버전 덮어쓰기: 기존 파일이 있으면 전체 교체. 부분 갱신 불가.
+- 파일명 형식: `perf_<platform>_YYYYMMDD_HHMMSS[_<tag>].txt`
 - 완료 판정 기준: `expected == actual` (throughput + bandwidth + latency + latency_p95 + latency_p99 RESULT line 기준, 조합당 5줄).
 
 ---
@@ -370,7 +304,6 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ## Execution Options
 | Option     | Value                              |
 |------------|------------------------------------|
-| mode       | observe                            |
 | runs       | 1                                  |
 | patterns   | PAIR, GATEWAY                      |
 | transports | tcp, tls, ws, wss                  |
@@ -481,42 +414,6 @@ RESULT,<lib>,<pattern>,<transport>,<size>,<metric>,<value>
 ```
 
 ---
-
-## 6. 운영 모드 (공통)
-
-| 모드 | 목적 | baseline | 판정 |
-|------|------|----------|------|
-| Observe | 수치 수집 | 불필요 | 실행 오류만 fail |
-| Trend | 회귀 감지 | rolling (최근 N회 median, `tmp/` 소스) | threshold 초과 시 warning |
-| Gate | 릴리즈 승인 | 고정 (`baseline/`) | threshold 초과 시 fail |
-
-### 6.1 임계치
-
-| 메트릭 | warning | fail |
-|--------|---------|------|
-| throughput | -10% | -15% |
-| latency | +10% | +15% |
-
-| 모드 | warning | fail |
-|------|---------|------|
-| Observe | 미적용 | 미적용 |
-| Trend | 적용 | 미적용 |
-| Gate | 적용 | 적용 |
-
-패턴/transport별 개별 임계치 override는 `perf/thresholds.json`에서 설정 가능 (`PERF_THRESHOLDS_FILE` 환경 변수로 경로 override). 바인딩도 동일한 thresholds.json을 사용하거나 `PERF_THRESHOLDS_FILE`로 별도 파일을 지정할 수 있다. 상세 사양은 개별 정책 문서의 섹션 2.2를 참조한다.
-
-### 6.2 Rolling baseline
-
-1. `tmp/` 디렉터리에서 `META,status,complete`인 파일만 필터링한 뒤, 파일명 사전순 내림차순(= 최신순)으로 정렬하여 최근 N개(기본 10, `PERF_ROLLING_N`으로 override)를 수집. **mtime이 아닌 파일명 기준**.
-2. 동일 키(`pattern/transport/size/metric`)별 값의 **median**을 rolling baseline으로 사용.
-3. `tmp/`에는 complete/partial이 혼재하므로 반드시 `META,status,complete` 필터링을 수행한다.
-4. N개 미만 시 존재하는 complete 파일 전체를 사용. 0개이면 비교 건너뛰기 + warning.
-
-### 6.3 고정 baseline
-
-1. `baseline/<version>.txt` 또는 `latest.txt`(symlink) 로드.
-2. 동일 키로 1:1 매칭 비교.
-3. 매칭되지 않는 키는 비교 제외 + warning 출력.
 
 ---
 
@@ -694,8 +591,7 @@ int main (int argc, char **argv)
 | `PERF_TASKSET` | CPU pinning (`1`로 활성화, Linux: taskset, Windows: processor affinity) | 0 |
 | `PERF_FAIL_FAST` | 실패 시 즉시 중단 | 0 |
 | `PERF_MAX_SOCKETS` | context max sockets | auto |
-| `PERF_ROLLING_N` | rolling baseline 참조 파일 수 | 10 |
-| `PERF_THRESHOLDS_FILE` | 임계치 override 설정 파일 경로 | `perf/thresholds.json` |
+| `PERF_RESULTS_MAX_FILES` | report/ 디렉터리 최대 파일 수 | 100 |
 
 - 위 환경 변수는 core와 모든 바인딩에서 동일하게 적용된다.
 - suite별 고유 환경 변수는 개별 정책 문서를 참조한다:

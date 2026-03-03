@@ -143,6 +143,8 @@ internal static partial class PerfRunner
 
                 int stopRequested = 0;
                 int callbackFailed = 0;
+                long payloadSeen = 0;
+                long lastActivityTicks = Stopwatch.GetTimestamp();
                 StreamDispatchMode dispatchMode = IsMultiLen32BePattern(pattern)
                     ? StreamDispatchMode.Len32Be
                     : StreamDispatchMode.None;
@@ -163,6 +165,9 @@ internal static partial class PerfRunner
                         Interlocked.Exchange(ref stopRequested, 1);
                         return 0;
                     }
+                    Interlocked.Increment(ref payloadSeen);
+                    Interlocked.Exchange(ref lastActivityTicks,
+                        Stopwatch.GetTimestamp());
 
                     try
                     {
@@ -178,11 +183,21 @@ internal static partial class PerfRunner
 
                 server.Bind(endpoint);
                 Console.WriteLine($"READY,{endpoint}");
+                long idleBreakTicks = (long)(
+                    Stopwatch.Frequency
+                    * (Math.Max(rcvTimeoutMs * 2, 5000) / 1000.0));
 
                 while (Volatile.Read(ref stopRequested) == 0)
                 {
                     if (Volatile.Read(ref callbackFailed) != 0)
                         return 2;
+                    if (Volatile.Read(ref payloadSeen) > 0)
+                    {
+                        long idleTicks = Stopwatch.GetTimestamp()
+                            - Volatile.Read(ref lastActivityTicks);
+                        if (idleTicks >= idleBreakTicks)
+                            break;
+                    }
                     Thread.Sleep(1);
                 }
 

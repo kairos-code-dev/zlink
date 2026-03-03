@@ -159,13 +159,28 @@ public sealed class Socket : IDisposable
                 "STREAM callback is already attached.");
 
         _streamHandler = handler;
-        _streamCallback = OnStreamPackets;
-        int rc = NativeMethods.zlink_stream_attach(_handle, _streamCallback,
-            (int)mode);
+        int rc;
+        if (mode == StreamDispatchMode.None)
+        {
+            _streamRawCallback = OnStreamRaw;
+            rc = NativeMethods.zlink_stream_attach_raw(_handle, _streamRawCallback);
+        }
+        else if (mode == StreamDispatchMode.Len32Be)
+        {
+            _streamCallback = OnStreamPackets;
+            rc = NativeMethods.zlink_stream_attach_len32be(_handle, _streamCallback);
+        }
+        else
+        {
+            _streamHandler = null;
+            throw new ArgumentOutOfRangeException(nameof(mode),
+                "mode must be None(0) or Len32Be(1)");
+        }
         if (rc != 0)
         {
             _streamHandler = null;
             _streamCallback = null;
+            _streamRawCallback = null;
             throw ZlinkException.FromLastError();
         }
         _streamAttached = true;

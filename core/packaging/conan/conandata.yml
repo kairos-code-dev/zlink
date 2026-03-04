@@ -1,4 +1,7 @@
 sources:
+  "1.7.1":
+    url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v1.7.1.tar.gz"
+    sha256: "59a43ecc524c7f20bf8f452b4e0ba798a8434341881d3b7bdb586488a335d430"
   "1.4.0":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v1.4.0-hotfix1.tar.gz"
     sha256: "d4081e63846de62d27ec7e8e79b56d616236e174c8b4524499f76f678a360177"

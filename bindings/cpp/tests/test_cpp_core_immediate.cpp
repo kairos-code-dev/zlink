@@ -69,11 +69,11 @@ int main ()
 
     assert (wait_send_eagain (frontend, "Hello", 2000));
 
-    backend = zlink::socket_t (ctx, zlink::socket_type::dealer);
-    assert (backend.set (zlink::socket_option::linger, zero) == 0);
-    assert (backend.bind (endpoint) == 0);
+    zlink::socket_t rebound_backend (ctx, zlink::socket_type::dealer);
+    assert (rebound_backend.set (zlink::socket_option::linger, zero) == 0);
+    assert (rebound_backend.bind (endpoint) == 0);
 
-    assert (backend.send ("Hello", 5) == 5);
+    assert (rebound_backend.send ("Hello", 5) == 5);
     std::memset (recv_buf, 0, sizeof (recv_buf));
     assert (recv_with_timeout (frontend, recv_buf, sizeof (recv_buf), 2000) == 5);
     assert (std::memcmp (recv_buf, "Hello", 5) == 0);

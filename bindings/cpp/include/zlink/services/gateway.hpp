@@ -27,8 +27,11 @@ class gateway_t
      * @param disc_ Discovery instance.
      */
     gateway_t (context_t &ctx_, discovery_t &disc_)
-        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), NULL))
+        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), NULL)),
+          _last_error (0)
     {
+        if (!_gw)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
     /**
@@ -41,18 +44,23 @@ class gateway_t
                discovery_t &disc_,
                const std::string &routing_id_)
         : _gw (zlink_gateway_new (
-            ctx_.handle (), disc_.handle (), routing_id_.c_str ()))
+            ctx_.handle (), disc_.handle (), routing_id_.c_str ())),
+          _last_error (0)
     {
+        if (!_gw)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
     /**
      * @brief Destroy gateway handle.
      */
-    ~gateway_t () { destroy (); }
+    ~gateway_t () { (void) destroy (); }
 
-    gateway_t (gateway_t &&other) noexcept : _gw (other._gw)
+    gateway_t (gateway_t &&other) noexcept
+        : _gw (other._gw), _last_error (other._last_error)
     {
         other._gw = NULL;
+        other._last_error = 0;
     }
 
     gateway_t &operator= (gateway_t &&other) noexcept
@@ -60,14 +68,28 @@ class gateway_t
         if (this == &other)
             return *this;
 
-        destroy ();
+        (void) destroy ();
         _gw = other._gw;
+        _last_error = other._last_error;
         other._gw = NULL;
+        other._last_error = 0;
         return *this;
     }
 
     gateway_t (const gateway_t &) = delete;
     gateway_t &operator= (const gateway_t &) = delete;
+
+    /**
+     * @brief Check whether gateway handle was created.
+     * @return `true` when handle is valid.
+     */
+    bool valid () const noexcept { return _gw != NULL; }
+
+    /**
+     * @brief Return constructor-time initialization error.
+     * @return Error number, or 0 when initialized successfully.
+     */
+    int last_error () const noexcept { return _last_error; }
 
     /**
      * @brief Send multipart request to a service.
@@ -76,9 +98,10 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send (const std::string &service_,
-              std::vector<message_t> &parts_,
-              send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send (const std::string &service_,
+          std::vector<message_t> &parts_,
+          send_flag flags_ = send_flag::none)
     {
         if (parts_.empty ()) {
             errno = EINVAL;
@@ -96,8 +119,11 @@ class gateway_t
           _gw, service_.c_str (), _send_parts_scratch.data (),
           _send_parts_scratch.size (),
           static_cast<int> (flags_));
-        if (rc != 0)
+        if (rc != 0) {
+            const int err = errno;
             close_native_parts (_send_parts_scratch, moved);
+            errno = err;
+        }
         _send_parts_scratch.clear ();
         return rc;
     }
@@ -109,9 +135,10 @@ class gateway_t
      * @param flags_ Receive flags.
      * @return 0 on success, -1 on failure.
      */
-    int recv (std::vector<message_t> &out_,
-              std::string &service_,
-              recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD int
+    recv (std::vector<message_t> &out_,
+          std::string &service_,
+          recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
@@ -133,10 +160,11 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_bytes (const std::string &service_,
-                    const void *data_,
-                    size_t size_,
-                    send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_bytes (const std::string &service_,
+                const void *data_,
+                size_t size_,
+                send_flag flags_ = send_flag::none)
     {
         return zlink_gateway_send_bytes (
           _gw, service_.c_str (), data_, size_, static_cast<int> (flags_));
@@ -153,12 +181,13 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of send result.
      */
-    int send_zero (const std::string &service_,
-                   void *data_,
-                   size_t size_,
-                   zlink_free_fn *ffn_,
-                   void *hint_ = NULL,
-                   send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_zero (const std::string &service_,
+               void *data_,
+               size_t size_,
+               zlink_free_fn *ffn_,
+               void *hint_ = NULL,
+               send_flag flags_ = send_flag::none)
     {
         if (size_ > 0 && !data_) {
             errno = EINVAL;
@@ -187,10 +216,11 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_rid (const std::string &service_,
-                  const std::string &routing_id_,
-                  std::vector<message_t> &parts_,
-                  send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_rid (const std::string &service_,
+              const std::string &routing_id_,
+              std::vector<message_t> &parts_,
+              send_flag flags_ = send_flag::none)
     {
         if (parts_.empty ()) {
             errno = EINVAL;
@@ -212,8 +242,11 @@ class gateway_t
           _gw, service_.c_str (), &rid, _send_parts_scratch.data (),
           _send_parts_scratch.size (),
           static_cast<int> (flags_));
-        if (rc != 0)
+        if (rc != 0) {
+            const int err = errno;
             close_native_parts (_send_parts_scratch, moved);
+            errno = err;
+        }
         _send_parts_scratch.clear ();
         return rc;
     }
@@ -227,11 +260,12 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_rid_bytes (const std::string &service_,
-                        const std::string &routing_id_,
-                        const void *data_,
-                        size_t size_,
-                        send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_rid_bytes (const std::string &service_,
+                    const std::string &routing_id_,
+                    const void *data_,
+                    size_t size_,
+                    send_flag flags_ = send_flag::none)
     {
         zlink_routing_id_t rid;
         if (routing_id_from_string (routing_id_, &rid) != 0)
@@ -252,13 +286,14 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of send result.
      */
-    int send_rid_zero (const std::string &service_,
-                       const std::string &routing_id_,
-                       void *data_,
-                       size_t size_,
-                       zlink_free_fn *ffn_,
-                       void *hint_ = NULL,
-                       send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_rid_zero (const std::string &service_,
+                   const std::string &routing_id_,
+                   void *data_,
+                   size_t size_,
+                   zlink_free_fn *ffn_,
+                   void *hint_ = NULL,
+                   send_flag flags_ = send_flag::none)
     {
         if (size_ > 0 && !data_) {
             errno = EINVAL;
@@ -290,7 +325,8 @@ class gateway_t
      * @param len_ Buffer length in bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (socket_option option_, const void *value_, size_t len_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (socket_option option_, const void *value_, size_t len_)
     {
         return zlink_gateway_setsockopt (_gw, static_cast<int> (option_), value_,
                                          len_);
@@ -303,6 +339,7 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set_sockopt (socket_option_key_t<T> key_, const T &value_)
     {
@@ -315,8 +352,9 @@ class gateway_t
      * @param value_ Option value bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (socket_option_key_t<std::string> key_,
-                     const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (socket_option_key_t<std::string> key_,
+                 const std::string &value_)
     {
         return set_sockopt (key_.option, value_.data (), value_.size ());
     }
@@ -327,8 +365,9 @@ class gateway_t
      * @param strategy_ Balancing strategy.
      * @return 0 on success, -1 on failure.
      */
-    int set_lb_strategy (const std::string &service_,
-                         gateway_lb_strategy strategy_)
+    ZLINK_CPP_NODISCARD int
+    set_lb_strategy (const std::string &service_,
+                     gateway_lb_strategy strategy_)
     {
         return zlink_gateway_set_lb_strategy (
           _gw, service_.c_str (), static_cast<int> (strategy_));
@@ -341,9 +380,10 @@ class gateway_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const std::string &ca_,
-                        const std::string &hostname_,
-                        int trust_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_client (const std::string &ca_,
+                    const std::string &hostname_,
+                    int trust_)
     {
         const char *ca = ca_.empty () ? NULL : ca_.c_str ();
         const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
@@ -358,9 +398,10 @@ class gateway_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const std::string &ca_,
-                        const std::string &hostname_,
-                        bool trust_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_client (const std::string &ca_,
+                    const std::string &hostname_,
+                    bool trust_)
     {
         return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
     }
@@ -370,7 +411,7 @@ class gateway_t
      * @param service_ Service name.
      * @return Connection count, or -1 on failure.
      */
-    int connection_count (const std::string &service_)
+    ZLINK_CPP_NODISCARD int connection_count (const std::string &service_)
     {
         return zlink_gateway_connection_count (_gw, service_.c_str ());
     }
@@ -390,7 +431,8 @@ class gateway_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int router_peers (zlink_peer_info_t *peers_, size_t *count_)
+    ZLINK_CPP_NODISCARD int
+    router_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
         return zlink_gateway_router_peers (_gw, peers_, count_);
     }
@@ -399,7 +441,7 @@ class gateway_t
      * @brief Explicitly destroy gateway handle.
      * @return 0 on success, -1 on failure.
      */
-    int destroy ()
+    ZLINK_CPP_NODISCARD int destroy ()
     {
         if (!_gw)
             return 0;
@@ -430,9 +472,11 @@ class gateway_t
         moved_ = 0;
         for (size_t i = 0; i < parts_.size (); ++i) {
             if (parts_[i].move_to (&native_parts_[i]) != 0) {
+                const int err = errno;
                 close_native_parts (native_parts_, moved_);
                 for (size_t j = i; j < parts_.size (); ++j)
                     parts_[j].close ();
+                errno = err;
                 return -1;
             }
             ++moved_;
@@ -468,6 +512,7 @@ class gateway_t
     }
 
     void *_gw;
+    int _last_error;
     std::vector<zlink_msg_t> _send_parts_scratch;
 };
 
@@ -485,6 +530,10 @@ class receiver_t
         int status;
         std::string resolved_endpoint;
         std::string error_message;
+        size_t resolved_endpoint_length;
+        size_t error_message_length;
+        bool resolved_endpoint_possibly_truncated;
+        bool error_message_possibly_truncated;
     };
 
     /**
@@ -492,8 +541,10 @@ class receiver_t
      * @param ctx_ Context wrapper.
      */
     explicit receiver_t (context_t &ctx_)
-        : _receiver (zlink_receiver_new (ctx_.handle (), NULL))
+        : _receiver (zlink_receiver_new (ctx_.handle (), NULL)), _last_error (0)
     {
+        if (!_receiver)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
     /**
@@ -502,18 +553,23 @@ class receiver_t
      * @param routing_id_ Routing id string.
      */
     receiver_t (context_t &ctx_, const std::string &routing_id_)
-        : _receiver (zlink_receiver_new (ctx_.handle (), routing_id_.c_str ()))
+        : _receiver (zlink_receiver_new (ctx_.handle (), routing_id_.c_str ())),
+          _last_error (0)
     {
+        if (!_receiver)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
     /**
      * @brief Destroy receiver handle.
      */
-    ~receiver_t () { destroy (); }
+    ~receiver_t () { (void) destroy (); }
 
-    receiver_t (receiver_t &&other) noexcept : _receiver (other._receiver)
+    receiver_t (receiver_t &&other) noexcept
+        : _receiver (other._receiver), _last_error (other._last_error)
     {
         other._receiver = NULL;
+        other._last_error = 0;
     }
 
     receiver_t &operator= (receiver_t &&other) noexcept
@@ -521,9 +577,11 @@ class receiver_t
         if (this == &other)
             return *this;
 
-        destroy ();
+        (void) destroy ();
         _receiver = other._receiver;
+        _last_error = other._last_error;
         other._receiver = NULL;
+        other._last_error = 0;
         return *this;
     }
 
@@ -531,11 +589,23 @@ class receiver_t
     receiver_t &operator= (const receiver_t &) = delete;
 
     /**
+     * @brief Check whether receiver handle was created.
+     * @return `true` when handle is valid.
+     */
+    bool valid () const noexcept { return _receiver != NULL; }
+
+    /**
+     * @brief Return constructor-time initialization error.
+     * @return Error number, or 0 when initialized successfully.
+     */
+    int last_error () const noexcept { return _last_error; }
+
+    /**
      * @brief Bind receiver endpoint.
      * @param endpoint_ Bind endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
         return zlink_receiver_bind (_receiver, endpoint_.c_str ());
     }
@@ -545,7 +615,7 @@ class receiver_t
      * @param endpoint_ Registry endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_registry (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
     {
         return zlink_receiver_connect_registry (_receiver, endpoint_.c_str ());
     }
@@ -558,10 +628,11 @@ class receiver_t
      * @param len_ Buffer length.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (receiver_socket_role role_,
-                     socket_option option_,
-                     const void *value_,
-                     size_t len_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (receiver_socket_role role_,
+                 socket_option option_,
+                 const void *value_,
+                 size_t len_)
     {
         return zlink_receiver_setsockopt (
           _receiver, static_cast<int> (role_), static_cast<int> (option_), value_,
@@ -576,6 +647,7 @@ class receiver_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set_sockopt (receiver_socket_role role_,
                  socket_option_key_t<T> key_,
@@ -591,9 +663,10 @@ class receiver_t
      * @param value_ Option value bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (receiver_socket_role role_,
-                     socket_option_key_t<std::string> key_,
-                     const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (receiver_socket_role role_,
+                 socket_option_key_t<std::string> key_,
+                 const std::string &value_)
     {
         return set_sockopt (role_, key_.option, value_.data (), value_.size ());
     }
@@ -605,9 +678,10 @@ class receiver_t
      * @param weight_ Selection weight.
      * @return 0 on success, -1 on failure.
      */
-    int register_service (const std::string &service_,
-                          const std::string &advertise_,
-                          uint32_t weight_)
+    ZLINK_CPP_NODISCARD int
+    register_service (const std::string &service_,
+                      const std::string &advertise_,
+                      uint32_t weight_)
     {
         return zlink_receiver_register (
           _receiver, service_.c_str (), advertise_.c_str (), weight_);
@@ -619,7 +693,8 @@ class receiver_t
      * @param weight_ New weight.
      * @return 0 on success, -1 on failure.
      */
-    int update_weight (const std::string &service_, uint32_t weight_)
+    ZLINK_CPP_NODISCARD int
+    update_weight (const std::string &service_, uint32_t weight_)
     {
         return zlink_receiver_update_weight (_receiver, service_.c_str (), weight_);
     }
@@ -629,26 +704,9 @@ class receiver_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int unregister_service (const std::string &service_)
+    ZLINK_CPP_NODISCARD int unregister_service (const std::string &service_)
     {
         return zlink_receiver_unregister (_receiver, service_.c_str ());
-    }
-
-    /**
-     * @brief Query latest register result details.
-     * @param service_ Service name.
-     * @param status_ Output status code.
-     * @param resolved_ Output resolved endpoint buffer.
-     * @param err_ Output error text buffer.
-     * @return 0 on success, -1 on failure.
-     */
-    int register_result (const std::string &service_,
-                         int *status_,
-                         char *resolved_,
-                         char *err_)
-    {
-        return zlink_receiver_register_result (
-          _receiver, service_.c_str (), status_, resolved_, err_);
     }
 
     /**
@@ -657,7 +715,8 @@ class receiver_t
      * @param out_ Output result snapshot.
      * @return 0 on success, -1 on failure.
      */
-    int register_result (const std::string &service_, register_result_t *out_)
+    ZLINK_CPP_NODISCARD int
+    register_result (const std::string &service_, register_result_t *out_)
     {
         if (!out_) {
             errno = EINVAL;
@@ -670,13 +729,22 @@ class receiver_t
         std::memset (resolved, 0, sizeof (resolved));
         std::memset (err, 0, sizeof (err));
 
-        const int rc = register_result (service_, &status, resolved, err);
+        const int rc = zlink_receiver_register_result (
+          _receiver, service_.c_str (), &status, resolved, err);
         if (rc != 0)
             return rc;
 
+        const size_t resolved_len = std::strlen (resolved);
+        const size_t err_len = std::strlen (err);
         out_->status = status;
         out_->resolved_endpoint.assign (resolved);
         out_->error_message.assign (err);
+        out_->resolved_endpoint_length = resolved_len;
+        out_->error_message_length = err_len;
+        out_->resolved_endpoint_possibly_truncated =
+          resolved_len == (sizeof (resolved) - 1);
+        out_->error_message_possibly_truncated =
+          err_len == (sizeof (err) - 1);
         return 0;
     }
 
@@ -686,7 +754,8 @@ class receiver_t
      * @param key_ Private key file path.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_server (const std::string &cert_, const std::string &key_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_server (const std::string &cert_, const std::string &key_)
     {
         return zlink_receiver_set_tls_server (
           _receiver, cert_.c_str (), key_.c_str ());
@@ -707,7 +776,8 @@ class receiver_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int router_peers (zlink_peer_info_t *peers_, size_t *count_)
+    ZLINK_CPP_NODISCARD int
+    router_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
         return zlink_receiver_router_peers (_receiver, peers_, count_);
     }
@@ -716,7 +786,7 @@ class receiver_t
      * @brief Explicitly destroy receiver handle.
      * @return 0 on success, -1 on failure.
      */
-    int destroy ()
+    ZLINK_CPP_NODISCARD int destroy ()
     {
         if (!_receiver)
             return 0;
@@ -734,6 +804,7 @@ class receiver_t
 
   private:
     void *_receiver;
+    int _last_error;
 };
 
 } // namespace service

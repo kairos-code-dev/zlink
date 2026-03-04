@@ -41,7 +41,7 @@ class socket_t
     /**
      * @brief Close owned socket on destruction.
      */
-    ~socket_t () { close (); }
+    ~socket_t () { (void) close (); }
 
     socket_t (socket_t &&other) noexcept
         : _socket (other._socket), _own (other._own)
@@ -50,18 +50,7 @@ class socket_t
         other._own = false;
     }
 
-    socket_t &operator= (socket_t &&other) noexcept
-    {
-        if (this == &other)
-            return *this;
-
-        close ();
-        _socket = other._socket;
-        _own = other._own;
-        other._socket = NULL;
-        other._own = false;
-        return *this;
-    }
+    socket_t &operator= (socket_t &&other) noexcept = delete;
 
     socket_t (const socket_t &) = delete;
     socket_t &operator= (const socket_t &) = delete;
@@ -108,7 +97,7 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
         return zlink_bind (_socket, endpoint_.c_str ());
     }
@@ -118,7 +107,7 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int connect (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int connect (const std::string &endpoint_)
     {
         return zlink_connect (_socket, endpoint_.c_str ());
     }
@@ -128,7 +117,7 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int unbind (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int unbind (const std::string &endpoint_)
     {
         return zlink_unbind (_socket, endpoint_.c_str ());
     }
@@ -138,7 +127,7 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int disconnect (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int disconnect (const std::string &endpoint_)
     {
         return zlink_disconnect (_socket, endpoint_.c_str ());
     }
@@ -147,7 +136,7 @@ class socket_t
      * @brief Close the socket when this wrapper owns it.
      * @return 0 on success, -1 on failure.
      */
-    int close () noexcept
+    ZLINK_CPP_NODISCARD int close () noexcept
     {
         int rc = 0;
         if (_socket && _own)
@@ -164,7 +153,8 @@ class socket_t
      * @param flags_ Send flags.
      * @return Sent byte count or -1 on failure.
      */
-    int send (const void *buf_, size_t len_, send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send (const void *buf_, size_t len_, send_flag flags_ = send_flag::none)
     {
         return zlink_send (_socket, buf_, len_, static_cast<int> (flags_));
     }
@@ -175,7 +165,8 @@ class socket_t
      * @param flags_ Send flags.
      * @return Sent byte count or -1 on failure.
      */
-    int send (const std::string &s_, send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send (const std::string &s_, send_flag flags_ = send_flag::none)
     {
         return zlink_send (_socket, s_.data (), s_.size (),
                            static_cast<int> (flags_));
@@ -191,11 +182,12 @@ class socket_t
      * @return Sent byte count or -1 on failure.
      * @note Ownership of `data_` is consumed regardless of send result.
      */
-    int send_zero (void *data_,
-                   size_t len_,
-                   zlink_free_fn *ffn_,
-                   void *hint_ = NULL,
-                   send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send_zero (void *data_,
+               size_t len_,
+               zlink_free_fn *ffn_,
+               void *hint_ = NULL,
+               send_flag flags_ = send_flag::none)
     {
         if (len_ > 0 && !data_) {
             errno = EINVAL;
@@ -219,7 +211,8 @@ class socket_t
      * @param flags_ Receive flags.
      * @return Received byte count or -1 on failure.
      */
-    int recv (void *buf_, size_t len_, recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD int
+    recv (void *buf_, size_t len_, recv_flag flags_ = recv_flag::none)
     {
         return zlink_recv (_socket, buf_, len_, static_cast<int> (flags_));
     }
@@ -231,7 +224,8 @@ class socket_t
      * @return Sent byte count or -1 on failure.
      * @note `msg_` ownership is transferred and it is closed regardless of result.
      */
-    int send (message_t &msg_, send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    send (message_t &msg_, send_flag flags_ = send_flag::none)
     {
         if (!msg_.valid ()) {
             errno = EINVAL;
@@ -250,7 +244,8 @@ class socket_t
      * @param flags_ Receive flags.
      * @return Received byte count or -1 on failure.
      */
-    int recv (message_t &msg_, recv_flag flags_ = recv_flag::none)
+    ZLINK_CPP_NODISCARD int
+    recv (message_t &msg_, recv_flag flags_ = recv_flag::none)
     {
         if (!msg_.valid () && msg_.init () != 0)
             return -1;
@@ -264,7 +259,8 @@ class socket_t
      * @param flags_ Dispatch flags.
      * @return 0 on success, -1 on failure.
      */
-    int stream_attach (zlink_stream_on_packets_fn on_packets_, int flags_ = 0)
+    ZLINK_CPP_NODISCARD int
+    stream_attach (zlink_stream_on_packets_fn on_packets_, int flags_ = 0)
     {
         return zlink_stream_attach (_socket, on_packets_, flags_);
     }
@@ -274,7 +270,7 @@ class socket_t
      * @param on_raw_ Callback for raw bytes.
      * @return 0 on success, -1 on failure.
      */
-    int stream_attach_raw (zlink_stream_on_raw_fn on_raw_)
+    ZLINK_CPP_NODISCARD int stream_attach_raw (zlink_stream_on_raw_fn on_raw_)
     {
         return zlink_stream_attach_raw (_socket, on_raw_);
     }
@@ -284,7 +280,8 @@ class socket_t
      * @param on_packets_ Callback for decoded packets.
      * @return 0 on success, -1 on failure.
      */
-    int stream_attach_len32be (zlink_stream_on_packets_fn on_packets_)
+    ZLINK_CPP_NODISCARD int
+    stream_attach_len32be (zlink_stream_on_packets_fn on_packets_)
     {
         return zlink_stream_attach_len32be (_socket, on_packets_);
     }
@@ -295,8 +292,9 @@ class socket_t
      * @param mode_ Stream dispatch mode.
      * @return 0 on success, -1 on failure.
      */
-    int stream_attach (zlink_stream_on_packets_fn on_packets_,
-                       stream_dispatch_mode mode_)
+    ZLINK_CPP_NODISCARD int
+    stream_attach (zlink_stream_on_packets_fn on_packets_,
+                   stream_dispatch_mode mode_)
     {
         return stream_attach (on_packets_, static_cast<int> (mode_));
     }
@@ -305,7 +303,10 @@ class socket_t
      * @brief Detach stream callback.
      * @return 0 on success, -1 on failure.
      */
-    int stream_detach () { return zlink_stream_detach (_socket); }
+    ZLINK_CPP_NODISCARD int stream_detach ()
+    {
+        return zlink_stream_detach (_socket);
+    }
 
     /**
      * @brief Get routing id for a connected stream peer by index.
@@ -313,7 +314,7 @@ class socket_t
      * @param out_ Output routing id as a 32-bit value.
      * @return 0 on success, -1 on failure.
      */
-    int stream_peer_routing_id (int index_, uint32_t *out_)
+    ZLINK_CPP_NODISCARD int stream_peer_routing_id (int index_, uint32_t *out_)
     {
         if (!out_) {
             errno = EINVAL;
@@ -342,10 +343,11 @@ class socket_t
      * @param flags_ Send flags.
      * @return Sent byte count or -1 on failure.
      */
-    int stream_send (uint32_t routing_id_,
-                     const void *buf_,
-                     size_t len_,
-                     send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    stream_send (uint32_t routing_id_,
+                 const void *buf_,
+                 size_t len_,
+                 send_flag flags_ = send_flag::none)
     {
         zlink_routing_id_t rid;
         encode_stream_routing_id (routing_id_, &rid);
@@ -360,9 +362,10 @@ class socket_t
      * @param flags_ Send flags.
      * @return Sent byte count or -1 on failure.
      */
-    int stream_send (uint32_t routing_id_,
-                     const std::string &payload_,
-                     send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    stream_send (uint32_t routing_id_,
+                 const std::string &payload_,
+                 send_flag flags_ = send_flag::none)
     {
         return stream_send (routing_id_, payload_.data (), payload_.size (),
                             flags_);
@@ -376,9 +379,10 @@ class socket_t
      * @return Sent byte count or -1 on failure.
      * @note `msg_` ownership is transferred and it is closed regardless of result.
      */
-    int stream_send_msg (uint32_t routing_id_,
-                         message_t &msg_,
-                         send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    stream_send_msg (uint32_t routing_id_,
+                     message_t &msg_,
+                     send_flag flags_ = send_flag::none)
     {
         if (!msg_.valid ()) {
             errno = EINVAL;
@@ -400,7 +404,8 @@ class socket_t
      * @param optlen_ Buffer size.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option option_, const void *optval_, size_t optlen_)
+    ZLINK_CPP_NODISCARD int
+    set (socket_option option_, const void *optval_, size_t optlen_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (option_), optval_,
                                  optlen_);
@@ -413,7 +418,8 @@ class socket_t
      * @param optlen_ Input/output buffer size.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option option_, void *optval_, size_t *optlen_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option option_, void *optval_, size_t *optlen_) const
     {
         return zlink_getsockopt (_socket, static_cast<int> (option_), optval_,
                                  optlen_);
@@ -425,7 +431,7 @@ class socket_t
      * @param value_ Integer value.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option option_, int value_)
+    ZLINK_CPP_NODISCARD int set (socket_option option_, int value_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (option_), &value_,
                                  sizeof (value_));
@@ -437,7 +443,7 @@ class socket_t
      * @param value_ Integer value.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option_key_t<int> key_, int value_)
+    ZLINK_CPP_NODISCARD int set (socket_option_key_t<int> key_, int value_)
     {
         return set (key_.option, value_);
     }
@@ -448,7 +454,8 @@ class socket_t
      * @param value_ 64-bit integer value.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option_key_t<int64_t> key_, int64_t value_)
+    ZLINK_CPP_NODISCARD int
+    set (socket_option_key_t<int64_t> key_, int64_t value_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
                                  sizeof (value_));
@@ -460,7 +467,8 @@ class socket_t
      * @param value_ Unsigned 64-bit value.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option_key_t<uint64_t> key_, uint64_t value_)
+    ZLINK_CPP_NODISCARD int
+    set (socket_option_key_t<uint64_t> key_, uint64_t value_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
                                  sizeof (value_));
@@ -473,6 +481,7 @@ class socket_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set (socket_option_key_t<T> key_, const T &value_)
     {
@@ -486,7 +495,7 @@ class socket_t
      * @param value_ Output value pointer.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option option_, int *value_) const
+    ZLINK_CPP_NODISCARD int get (socket_option option_, int *value_) const
     {
         if (!value_) {
             errno = EINVAL;
@@ -504,7 +513,7 @@ class socket_t
      * @param value_ Output integer reference.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option option_, int &value_) const
+    ZLINK_CPP_NODISCARD int get (socket_option option_, int &value_) const
     {
         return get (option_, &value_);
     }
@@ -515,7 +524,7 @@ class socket_t
      * @param value_ Output integer pointer.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<int> key_, int *value_) const
+    ZLINK_CPP_NODISCARD int get (socket_option_key_t<int> key_, int *value_) const
     {
         return get (key_.option, value_);
     }
@@ -526,7 +535,7 @@ class socket_t
      * @param value_ Output integer reference.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<int> key_, int &value_) const
+    ZLINK_CPP_NODISCARD int get (socket_option_key_t<int> key_, int &value_) const
     {
         return get (key_, &value_);
     }
@@ -537,7 +546,8 @@ class socket_t
      * @param value_ Output integer pointer.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<int64_t> key_, int64_t *value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<int64_t> key_, int64_t *value_) const
     {
         if (!value_) {
             errno = EINVAL;
@@ -555,7 +565,8 @@ class socket_t
      * @param value_ Output integer reference.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<int64_t> key_, int64_t &value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<int64_t> key_, int64_t &value_) const
     {
         return get (key_, &value_);
     }
@@ -566,7 +577,8 @@ class socket_t
      * @param value_ Output integer pointer.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<uint64_t> key_, uint64_t *value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<uint64_t> key_, uint64_t *value_) const
     {
         if (!value_) {
             errno = EINVAL;
@@ -584,7 +596,8 @@ class socket_t
      * @param value_ Output integer reference.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<uint64_t> key_, uint64_t &value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<uint64_t> key_, uint64_t &value_) const
     {
         return get (key_, &value_);
     }
@@ -596,6 +609,7 @@ class socket_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     get (socket_option_key_t<T> key_, T *value_) const
     {
@@ -616,6 +630,7 @@ class socket_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     get (socket_option_key_t<T> key_, T &value_) const
     {
@@ -628,7 +643,8 @@ class socket_t
      * @param value_ Option value string.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option option_, const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set (socket_option option_, const std::string &value_)
     {
         return zlink_setsockopt (_socket, static_cast<int> (option_),
                                  value_.data (), value_.size ());
@@ -640,8 +656,8 @@ class socket_t
      * @param value_ Option value string.
      * @return 0 on success, -1 on failure.
      */
-    int set (socket_option_key_t<std::string> key_,
-             const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set (socket_option_key_t<std::string> key_, const std::string &value_)
     {
         return set (key_.option, value_);
     }
@@ -652,7 +668,8 @@ class socket_t
      * @param value_ Output string.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option option_, std::string &value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option option_, std::string &value_) const
     {
         if (!is_string_socket_option (option_)) {
             errno = EINVAL;
@@ -695,7 +712,8 @@ class socket_t
      * @param value_ Output string.
      * @return 0 on success, -1 on failure.
      */
-    int get (socket_option_key_t<std::string> key_, std::string &value_) const
+    ZLINK_CPP_NODISCARD int
+    get (socket_option_key_t<std::string> key_, std::string &value_) const
     {
         return get (key_.option, value_);
     }
@@ -706,7 +724,8 @@ class socket_t
      * @param events_ Event mask.
      * @return 0 on success, -1 on failure.
      */
-    int monitor (const std::string &addr_, monitor_event events_)
+    ZLINK_CPP_NODISCARD int
+    monitor (const std::string &addr_, monitor_event events_)
     {
         return zlink_socket_monitor (
           _socket, addr_.c_str (), static_cast<int> (events_));
@@ -717,7 +736,7 @@ class socket_t
      * @param events_ Event mask.
      * @return Owning monitor socket wrapper.
      */
-    socket_t monitor_open (monitor_event events_)
+    ZLINK_CPP_NODISCARD socket_t monitor_open (monitor_event events_)
     {
         void *m = zlink_socket_monitor_open (_socket, static_cast<int> (events_));
         return socket_t::adopt (m);
@@ -729,7 +748,8 @@ class socket_t
      * @param info_ Output peer info.
      * @return 0 on success, -1 on failure.
      */
-    int peer_info (const std::string &routing_id_, zlink_peer_info_t *info_) const
+    ZLINK_CPP_NODISCARD int
+    peer_info (const std::string &routing_id_, zlink_peer_info_t *info_) const
     {
         zlink_routing_id_t rid;
         if (routing_id_from_string (routing_id_, &rid) != 0)
@@ -743,7 +763,8 @@ class socket_t
      * @param out_ Output routing id bytes.
      * @return 0 on success, -1 on failure.
      */
-    int peer_routing_id (int index_, std::string &out_) const
+    ZLINK_CPP_NODISCARD int
+    peer_routing_id (int index_, std::string &out_) const
     {
         zlink_routing_id_t rid;
         std::memset (&rid, 0, sizeof (rid));
@@ -757,7 +778,7 @@ class socket_t
      * @brief Count currently known peers.
      * @return Peer count, or -1 on failure.
      */
-    int peer_count () const
+    ZLINK_CPP_NODISCARD int peer_count () const
     {
         return _socket ? zlink_socket_peer_count (_socket) : -1;
     }
@@ -768,7 +789,8 @@ class socket_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int peers (zlink_peer_info_t *peers_, size_t *count_) const
+    ZLINK_CPP_NODISCARD int
+    peers (zlink_peer_info_t *peers_, size_t *count_) const
     {
         return zlink_socket_peers (_socket, peers_, count_);
     }

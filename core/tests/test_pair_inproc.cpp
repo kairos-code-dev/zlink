@@ -33,12 +33,12 @@ void test_roundtrip ()
 }
 
 // TODO it appears that this has nothing to do with pair or inproc, and belongs somewhere else
-void test_zlink_send_const ()
+void test_zlink_send_multipart ()
 {
     TEST_ASSERT_EQUAL_INT (3, TEST_ASSERT_SUCCESS_ERRNO (
-                                zlink_send_const (sb, "foo", 3, ZLINK_SNDMORE)));
+                                zlink_send (sb, "foo", 3, ZLINK_SNDMORE)));
     TEST_ASSERT_EQUAL_INT (
-      6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send_const (sb, "foobar", 6, 0)));
+      6, TEST_ASSERT_SUCCESS_ERRNO (zlink_send (sb, "foobar", 6, 0)));
 
     recv_string_expect_success (sc, "foo", 0);
     recv_string_expect_success (sc, "foobar", 0);
@@ -50,6 +50,6 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_roundtrip);
-    RUN_TEST (test_zlink_send_const);
+    RUN_TEST (test_zlink_send_multipart);
     return UNITY_END ();
 }

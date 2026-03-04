@@ -235,7 +235,7 @@ printf("RTT: %.1f us\n", rtt_us);
 
 - [ ] 소형 메시지(≤33B)는 VSM 활용 (inline 저장)
 - [ ] 대용량 메시지는 zero-copy (`zlink_msg_init_data`) 활용
-- [ ] 상수 데이터는 `zlink_send_const()` 사용
+- [ ] 상수/static 페이로드는 `zlink_msg_init_data(..., NULL, NULL)`를 신중히 사용
 - [ ] 불필요한 `zlink_msg_copy()` 회피
 
 ### Transport 최적화

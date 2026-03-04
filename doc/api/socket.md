@@ -376,32 +376,7 @@ this flag.
 
 **Thread safety:** Not thread-safe on the same socket.
 
-**See also:** `zlink_send_const`, `zlink_recv`, `zlink_msg_send`
-
----
-
-### zlink_send_const
-
-Send constant data on a socket (zero-copy hint).
-
-```c
-int zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
-```
-
-Behaves identically to `zlink_send()` but signals to the library that `buf_`
-points to constant, immutable data (e.g. a string literal or static buffer).
-The library may avoid copying the data internally when possible, improving
-performance for frequently sent constant payloads. The caller must ensure
-`buf_` remains valid and unchanged for the lifetime of the program.
-
-**Returns:** Number of bytes sent on success, -1 on failure (errno is set).
-
-**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was set.
-`ETERM` if the context was terminated.
-
-**Thread safety:** Not thread-safe on the same socket.
-
-**See also:** `zlink_send`, `zlink_msg_init_data`
+**See also:** `zlink_recv`, `zlink_msg_send`, `zlink_msg_init_data`
 
 ---
 

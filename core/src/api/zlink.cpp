@@ -1690,27 +1690,6 @@ int zlink_send (void *s_, const void *buf_, size_t len_, int flags_)
     return rc;
 }
 
-int zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_)
-{
-    socket_handle_t handle = as_socket_handle (s_);
-    if (!handle.socket)
-        return -1;
-    zlink_msg_t msg;
-    int rc =
-      zlink_msg_init_data (&msg, const_cast<void *> (buf_), len_, NULL, NULL);
-    if (rc != 0)
-        return -1;
-
-    rc = s_sendmsg (handle, &msg, flags_);
-    if (unlikely (rc < 0)) {
-        const int err = errno;
-        zlink_msg_close (&msg);
-        errno = err;
-        return -1;
-    }
-    return rc;
-}
-
 // Receiving functions.
 
 static int s_recvmsg (socket_handle_t handle_, zlink_msg_t *msg_, int flags_)

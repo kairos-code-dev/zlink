@@ -50,21 +50,21 @@ zlink_send(client, "World", 5, 0);
 size = zlink_recv(server, buf, sizeof(buf), 0);
 ```
 
-### Sending Constant Data
+### Sending Multipart Data
 
-Constant (literal) data can be sent directly without copying.
+Multipart data can be sent by setting `ZLINK_SNDMORE` on all but the final
+frame.
 
 ```c
-/* zlink_send_const: sends without internal copy */
-zlink_send_const(server, "foo", 3, ZLINK_SNDMORE);
-zlink_send_const(server, "foobar", 6, 0);
+zlink_send(server, "foo", 3, ZLINK_SNDMORE);
+zlink_send(server, "foobar", 6, 0);
 
 /* Receiver receives normally */
 recv_buf(client, buf, sizeof(buf), 0);  /* "foo" */
 recv_buf(client, buf, sizeof(buf), 0);  /* "foobar" */
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_const()` test
+> Reference: `core/tests/test_pair_inproc.cpp` -- `test_zlink_send_multipart()` test
 
 ## 3. Message Format
 

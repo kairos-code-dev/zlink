@@ -488,10 +488,6 @@ ZLINK_EXPORT int zlink_disconnect (void *s_, const char *addr_);
  */
 ZLINK_EXPORT int zlink_send (void *s_, const void *buf_, size_t len_, int flags_);
 
-/** @brief Send constant data on a socket (zero-copy hint). */
-ZLINK_EXPORT int
-zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
-
 /**
  * @brief Receive data from a socket.
  * @param buf_   Receive buffer.

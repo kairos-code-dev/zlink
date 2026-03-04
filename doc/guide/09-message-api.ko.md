@@ -12,7 +12,7 @@ zlink 메시지는 `zlink_msg_t` 구조체로 표현되며, 64바이트 고정 �
 |------|------|--------|-----------|
 | VSM (Very Small Message) | ≤33B (64-bit) | msg_t 내부 inline 저장 | 소형 데이터, 가장 빈번 |
 | LMSG (Large Message) | >33B | malloc'd 버퍼, 참조 카운팅 | 대형 데이터 |
-| CMSG (Constant Message) | 상수 데이터 | 외부 포인터 참조 (복사 없음) | `zlink_send_const()` |
+| CMSG (Constant Message) | 상수 데이터 | 외부 포인터 참조 (복사 없음) | `zlink_msg_init_data(..., NULL, NULL)` |
 | ZCLMSG (Zero-copy Large) | zero-copy | 외부 버퍼 + 해제 콜백 | `zlink_msg_init_data()` |
 
 > 내부 메모리 레이아웃(VSM/LMSG 구조체 상세)은 [architecture.md](../internals/architecture.ko.md)를 참고.
@@ -188,20 +188,26 @@ zlink_msg_close(&copy);  /* 마지막 참조 해제 시 my_free 호출 */
 
 > 참고: `core/tests/test_msg_ffn.cpp` — close/send/copy 각 시나리오
 
-### zlink_send_const — 상수 데이터 전송
+### zlink_msg_init_data로 상수 데이터 전송
 
-복사 없이 상수(리터럴, static) 데이터를 전송. free function 불필요.
+`zlink_msg_init_data()`를 `ffn=NULL`로 호출하면 상수(리터럴, static) 데이터를
+복사 없이 전송할 수 있다.
 
 ```c
-/* 문자열 리터럴 직접 전송 */
-zlink_send_const(socket, "Hello", 5, 0);
+/* 단일 프레임 */
+zlink_msg_t msg;
+zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);
+zlink_msg_send(&msg, socket, 0);
 
 /* 멀티파트 */
-zlink_send_const(socket, "foo", 3, ZLINK_SNDMORE);
-zlink_send_const(socket, "foobar", 6, 0);
+zlink_msg_t part1, part2;
+zlink_msg_init_data(&part1, (void *)"foo", 3, NULL, NULL);
+zlink_msg_send(&part1, socket, ZLINK_SNDMORE);
+zlink_msg_init_data(&part2, (void *)"foobar", 6, NULL, NULL);
+zlink_msg_send(&part2, socket, 0);
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_const()`
+> 참고: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 6. Multipart 메시지 실전 패턴
 

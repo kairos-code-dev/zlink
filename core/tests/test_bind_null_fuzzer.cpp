@@ -42,7 +42,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
         sent = send (client, (const char *) data, size, MSG_NOSIGNAL);
     msleep (250);
 
-    TEST_ASSERT_EQUAL_INT (6, zlink_send_const (server, "HELLO", 6, 0));
+    TEST_ASSERT_EQUAL_INT (6, zlink_send (server, "HELLO", 6, 0));
     TEST_ASSERT_EQUAL_INT (6, zlink_recv (client_good, buf, 6, 0));
 
     close (client);

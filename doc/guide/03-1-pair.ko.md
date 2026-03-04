@@ -50,21 +50,21 @@ zlink_send(client, "World", 5, 0);
 size = zlink_recv(server, buf, sizeof(buf), 0);
 ```
 
-### 상수 데이터 전송
+### 멀티파트 데이터 전송
 
-복사 없이 상수(리터럴) 데이터를 직접 전송할 수 있다.
+마지막 프레임을 제외한 모든 프레임에 `ZLINK_SNDMORE`를 설정해 멀티파트 데이터를
+보낼 수 있다.
 
 ```c
-/* zlink_send_const: 내부 복사 없이 전송 */
-zlink_send_const(server, "foo", 3, ZLINK_SNDMORE);
-zlink_send_const(server, "foobar", 6, 0);
+zlink_send(server, "foo", 3, ZLINK_SNDMORE);
+zlink_send(server, "foobar", 6, 0);
 
 /* 수신 측에서 정상적으로 수신 */
 recv_buf(client, buf, sizeof(buf), 0);  /* "foo" */
 recv_buf(client, buf, sizeof(buf), 0);  /* "foobar" */
 ```
 
-> 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_const()` 테스트
+> 참고: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_multipart()` 테스트
 
 ## 3. 메시지 형식
 

@@ -371,32 +371,7 @@ int zlink_send (void *s_, const void *buf_, size_t len_, int flags_);
 
 **스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
 
-**참고:** `zlink_send_const`, `zlink_recv`, `zlink_msg_send`
-
----
-
-### zlink_send_const
-
-소켓에서 상수 데이터를 송신합니다 (제로카피 힌트).
-
-```c
-int zlink_send_const (void *s_, const void *buf_, size_t len_, int flags_);
-```
-
-`zlink_send()`와 동일하게 동작하지만 `buf_`가 상수, 불변 데이터(예: 문자열
-리터럴 또는 정적 버퍼)를 가리킨다는 것을 라이브러리에 알립니다. 라이브러리는
-가능한 경우 내부적으로 데이터 복사를 피하여 자주 송신하는 상수 페이로드의
-성능을 향상시킬 수 있습니다. 호출자는 `buf_`가 프로그램의 수명 동안 유효하고
-변경되지 않도록 보장해야 합니다.
-
-**반환값:** 성공 시 송신된 바이트 수, 실패 시 -1 (errno가 설정됨).
-
-**에러:** 작업이 블로킹되고 `ZLINK_DONTWAIT`가 설정된 경우 `EAGAIN`. Context가
-종료된 경우 `ETERM`.
-
-**스레드 안전성:** 동일 소켓에서 스레드 안전하지 않습니다.
-
-**참고:** `zlink_send`, `zlink_msg_init_data`
+**참고:** `zlink_recv`, `zlink_msg_send`, `zlink_msg_init_data`
 
 ---
 

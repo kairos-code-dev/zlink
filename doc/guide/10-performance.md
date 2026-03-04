@@ -235,7 +235,7 @@ printf("RTT: %.1f us\n", rtt_us);
 
 - [ ] Leverage VSM for small messages (≤33B) (inline storage)
 - [ ] Use zero-copy (`zlink_msg_init_data`) for large messages
-- [ ] Use `zlink_send_const()` for constant data
+- [ ] For constant/static payloads, use `zlink_msg_init_data(..., NULL, NULL)` carefully
 - [ ] Avoid unnecessary `zlink_msg_copy()` calls
 
 ### Transport Optimization

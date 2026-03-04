@@ -12,7 +12,7 @@ zlink messages are represented by the `zlink_msg_t` structure, which has a fixed
 |------|-----------|--------|-------------|
 | VSM (Very Small Message) | ≤33B (64-bit) | Inline storage within msg_t | Small data, most frequent |
 | LMSG (Large Message) | >33B | malloc'd buffer, reference counted | Large data |
-| CMSG (Constant Message) | Constant data | External pointer reference (no copy) | `zlink_send_const()` |
+| CMSG (Constant Message) | Constant data | External pointer reference (no copy) | `zlink_msg_init_data(..., NULL, NULL)` |
 | ZCLMSG (Zero-copy Large) | zero-copy | External buffer + free callback | `zlink_msg_init_data()` |
 
 > For internal memory layout details (VSM/LMSG struct internals), see [architecture.md](../internals/architecture.md).
@@ -188,20 +188,26 @@ zlink_msg_close(&copy);  /* my_free called when last reference is released */
 
 > Reference: `core/tests/test_msg_ffn.cpp` — close/send/copy scenarios
 
-### zlink_send_const — Sending Constant Data
+### Constant Data with zlink_msg_init_data
 
-Sends constant (literal, static) data without copying. No free function needed.
+Constant (literal, static) data can be sent without copying by using
+`zlink_msg_init_data()` with `ffn=NULL`.
 
 ```c
-/* Send a string literal directly */
-zlink_send_const(socket, "Hello", 5, 0);
+/* Single frame */
+zlink_msg_t msg;
+zlink_msg_init_data(&msg, (void *)"Hello", 5, NULL, NULL);
+zlink_msg_send(&msg, socket, 0);
 
 /* Multipart */
-zlink_send_const(socket, "foo", 3, ZLINK_SNDMORE);
-zlink_send_const(socket, "foobar", 6, 0);
+zlink_msg_t part1, part2;
+zlink_msg_init_data(&part1, (void *)"foo", 3, NULL, NULL);
+zlink_msg_send(&part1, socket, ZLINK_SNDMORE);
+zlink_msg_init_data(&part2, (void *)"foobar", 6, NULL, NULL);
+zlink_msg_send(&part2, socket, 0);
 ```
 
-> Reference: `core/tests/test_pair_inproc.cpp` — `test_zlink_send_const()`
+> Reference: `core/tests/test_msg_flags.cpp` — `test_shared_const()`
 
 ## 6. Multipart Message Patterns in Practice
 

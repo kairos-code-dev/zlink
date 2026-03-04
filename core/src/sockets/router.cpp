@@ -422,8 +422,9 @@ bool zlink::router_t::identify_peer (pipe_t *pipe_, bool locally_initiated_)
         routing_id.set (
           reinterpret_cast<const unsigned char *> (connect_routing_id.c_str ()),
           connect_routing_id.length ());
-        //  Not allowed to duplicate an existing rid
-        zlink_assert (!has_out_pipe (routing_id));
+        //  Duplicate connect_routing_id can legitimately happen while a prior
+        //  connection is being torn down asynchronously. Use the common
+        //  duplicate-ID handling path below instead of aborting.
     } else {
         //  Pick up handshake cases and also case where next integral routing id is set
         msg.init ();

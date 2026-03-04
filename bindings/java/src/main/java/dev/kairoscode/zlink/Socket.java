@@ -5,7 +5,9 @@ package dev.kairoscode.zlink;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeMsg;
 import dev.kairoscode.zlink.options.SocketOptionKey;
+import dev.kairoscode.zlink.options.SocketOptions;
 import dev.kairoscode.zlink.options.SocketOptionValueType;
+import io.netty.buffer.ByteBuf;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -22,7 +24,7 @@ public final class Socket implements AutoCloseable {
     private static final int DEFAULT_IO_BUFFER_SIZE = 8192;
     private static final int STREAM_ROUTING_ID_SIZE = 4;
     private static final int STREAM_ROUTING_ID_LAYOUT_SIZE = 256;
-    private static final long U32_MAX = 0xFFFF_FFFFL;
+    private static final long STREAM_ROUTING_ID_MAX = 0xFFFF_FFFFL;
     private static final Linker LINKER = Linker.nativeLinker();
     private static final FunctionDescriptor FD_STREAM_CALLBACK =
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -33,6 +35,7 @@ public final class Socket implements AutoCloseable {
 
     private MemorySegment handle;
     private final boolean own;
+    private final SocketType socketTypeHint;
     private Arena sendScratchArena = Arena.ofShared();
     private Arena recvScratchArena = Arena.ofShared();
     private MemorySegment sendScratch = MemorySegment.NULL;
@@ -53,17 +56,19 @@ public final class Socket implements AutoCloseable {
         if (handle == null || handle.address() == 0)
             throw ZlinkException.fromLastError("zlink_socket");
         this.own = true;
+        this.socketTypeHint = type;
     }
 
-    private Socket(MemorySegment handle, boolean own) {
+    private Socket(MemorySegment handle, boolean own, SocketType socketTypeHint) {
         this.handle = handle;
         this.own = own;
+        this.socketTypeHint = socketTypeHint;
     }
 
     public static Socket adopt(MemorySegment handle, boolean own) {
         if (handle == null || handle.address() == 0)
             throw new IllegalArgumentException("invalid socket handle");
-        return new Socket(handle, own);
+        return new Socket(handle, own, null);
     }
 
     public void bind(String endpoint) {
@@ -145,6 +150,7 @@ public final class Socket implements AutoCloseable {
 
     public void setOption(SocketOptionKey<Integer> option, int value) {
         Objects.requireNonNull(option, "option");
+        validateAmbiguousOption(option);
         validateOptionType(option, SocketOptionValueType.INT32);
         option.requireWritable();
         setSockOptInt(option.optionId(), value);
@@ -152,6 +158,7 @@ public final class Socket implements AutoCloseable {
 
     public void setOption(SocketOptionKey<Long> option, long value) {
         Objects.requireNonNull(option, "option");
+        validateAmbiguousOption(option);
         validateOptionType(option, SocketOptionValueType.INT64);
         option.requireWritable();
         setSockOptLong(option.optionId(), value);
@@ -159,6 +166,7 @@ public final class Socket implements AutoCloseable {
 
     public void setOption(SocketOptionKey<String> option, String value) {
         Objects.requireNonNull(option, "option");
+        validateAmbiguousOption(option);
         validateOptionType(option, SocketOptionValueType.STRING);
         option.requireWritable();
         byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
@@ -168,6 +176,7 @@ public final class Socket implements AutoCloseable {
 
     public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
         Objects.requireNonNull(option, "option");
+        validateAmbiguousOption(option);
         validateOptionType(option, SocketOptionValueType.BYTES);
         option.requireWritable();
         Objects.requireNonNull(value, "value");
@@ -177,6 +186,7 @@ public final class Socket implements AutoCloseable {
     @SuppressWarnings("unchecked")
     public <T> T getOption(SocketOptionKey<T> option) {
         Objects.requireNonNull(option, "option");
+        validateAmbiguousOption(option);
         option.requireReadable();
         return switch (option.valueType()) {
             case INT32 -> (T) Integer.valueOf(getSockOptInt(option.optionId()));
@@ -195,11 +205,17 @@ public final class Socket implements AutoCloseable {
         return new MonitorSocket(Socket.adopt(sock, true));
     }
 
-    public int send(byte[] data, SendFlag flags) {
-        return send(data, 0, data.length, flags);
+    public int send(byte[] data, SendFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        return send(data, 0, data.length, flag.getValue());
     }
 
-    public int send(byte[] data, int offset, int length, SendFlag flags) {
+    public int send(byte[] data, int offset, int length, SendFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        return send(data, offset, length, flag.getValue());
+    }
+
+    private int send(byte[] data, int offset, int length, int sendFlags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
         MemorySegment seg = length == 0 ? MemorySegment.NULL
@@ -208,18 +224,22 @@ public final class Socket implements AutoCloseable {
             MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0,
                 length);
         }
-        int rc = Native.send(handle, seg, length, flags.getValue());
+        int rc = Native.send(handle, seg, length, sendFlags);
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_send");
         return rc;
     }
 
-    public int send(ByteBuffer buffer, SendFlag flags) {
+    public int send(ByteBuffer buffer, SendFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        return send(buffer, flag.getValue());
+    }
+
+    private int send(ByteBuffer buffer, int sendFlags) {
         Objects.requireNonNull(buffer, "buffer");
         int length = buffer.remaining();
         if (length == 0) {
-            int rc = Native.send(handle, MemorySegment.NULL, 0,
-              flags.getValue());
+            int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send");
             return rc;
@@ -232,24 +252,33 @@ public final class Socket implements AutoCloseable {
             seg = ensureSendScratch(length);
             MemorySegment.copy(srcSeg, 0, seg, 0, length);
         }
-        int rc = Native.send(handle, seg, length, flags.getValue());
+        int rc = Native.send(handle, seg, length, sendFlags);
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_send");
         buffer.position(buffer.position() + rc);
         return rc;
     }
 
-    public int send(ByteSpan span, SendFlag flags) {
+    public int send(ByteSpan span, SendFlag flag) {
         Objects.requireNonNull(span, "span");
-        return send(span.segment(), 0, span.length(), flags);
+        Objects.requireNonNull(flag, "flag");
+        return send(span.segment(), 0, span.length(), flag.getValue());
     }
 
-    public int send(MemorySegment segment, SendFlag flags) {
+    public int send(MemorySegment segment, SendFlag flag) {
         Objects.requireNonNull(segment, "segment");
-        return send(segment, 0, segment.byteSize(), flags);
+        Objects.requireNonNull(flag, "flag");
+        return send(segment, 0, segment.byteSize(), flag.getValue());
     }
 
-    public int send(MemorySegment segment, long offset, long length, SendFlag flags) {
+    public int send(MemorySegment segment, long offset, long length,
+                    SendFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        return send(segment, offset, length, flag.getValue());
+    }
+
+    private int send(MemorySegment segment, long offset, long length,
+                     int sendFlags) {
         Objects.requireNonNull(segment, "segment");
         validateRange(segment.byteSize(), offset, length, "segment");
         MemorySegment slice;
@@ -262,19 +291,23 @@ public final class Socket implements AutoCloseable {
             slice = ensureSendScratch(intLength);
             MemorySegment.copy(segment, offset, slice, 0, length);
         }
-        int rc = Native.send(handle, slice, length, flags.getValue());
+        int rc = Native.send(handle, slice, length, sendFlags);
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_send");
         return rc;
     }
 
-    public int send(io.netty.buffer.ByteBuf buf, SendFlag flags) {
+    public int send(ByteBuf buf, SendFlag flag) {
         Objects.requireNonNull(buf, "buf");
-        Objects.requireNonNull(flags, "flags");
+        Objects.requireNonNull(flag, "flag");
+        return send(buf, flag.getValue());
+    }
+
+    private int send(ByteBuf buf, int sendFlags) {
+        Objects.requireNonNull(buf, "buf");
         int len = buf.readableBytes();
         if (len <= 0) {
-            int rc = Native.send(handle, MemorySegment.NULL, 0,
-              flags.getValue());
+            int rc = Native.send(handle, MemorySegment.NULL, 0, sendFlags);
             if (rc < 0)
                 throw ZlinkException.fromLastError("zlink_send");
             return rc;
@@ -283,12 +316,12 @@ public final class Socket implements AutoCloseable {
         int readerIndex = buf.readerIndex();
         try {
             ByteBuffer nio = buf.nioBuffer(readerIndex, len);
-            int rc = send(nio, flags);
+            int rc = send(nio, sendFlags);
             if (rc > 0)
                 buf.readerIndex(readerIndex + rc);
             return rc;
         } catch (UnsupportedOperationException ex) {
-            return sendNettyFallback(buf, readerIndex, len, flags);
+            return sendNettyFallback(buf, readerIndex, len, sendFlags);
         }
     }
 
@@ -392,7 +425,7 @@ public final class Socket implements AutoCloseable {
             throw ZlinkException.fromLastError("zlink_stream_detach");
     }
 
-    public byte[] streamPeerRoutingId(int index) {
+    public byte[] streamPeerRoutingIdBytes(int index) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rid = arena.allocate(STREAM_ROUTING_ID_LAYOUT_SIZE);
             rid.set(ValueLayout.JAVA_BYTE, 0, (byte) 0);
@@ -409,25 +442,25 @@ public final class Socket implements AutoCloseable {
         }
     }
 
-    public byte[] streamPeerRoutingId() {
+    public byte[] streamPeerRoutingIdBytes() {
+        return streamPeerRoutingIdBytes(0);
+    }
+
+    public Long streamPeerRoutingId(int index) {
+        byte[] rid = streamPeerRoutingIdBytes(index);
+        if (rid == null)
+            return null;
+        return decodeStreamRoutingId(rid);
+    }
+
+    public Long streamPeerRoutingId() {
         return streamPeerRoutingId(0);
     }
 
-    public Long streamPeerRoutingIdU32(int index) {
-        byte[] rid = streamPeerRoutingId(index);
-        if (rid == null)
-            return null;
-        return decodeStreamRoutingIdU32(rid);
-    }
-
-    public Long streamPeerRoutingIdU32() {
-        return streamPeerRoutingIdU32(0);
-    }
-
-    public int streamSend(long routingIdU32, byte[] payload, SendFlag flags) {
+    public int streamSend(long routingId, byte[] payload, SendFlag flags) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(flags, "flags");
-        validateStreamRoutingIdU32(routingIdU32);
+        validateStreamRoutingId(routingId);
 
         MemorySegment payloadSlice;
         if (payload.length == 0) {
@@ -439,7 +472,7 @@ public final class Socket implements AutoCloseable {
         }
 
         MemorySegment ridLayout = streamRoutingIdScratch.get();
-        writeStreamRoutingIdU32(ridLayout, routingIdU32);
+        writeStreamRoutingId(ridLayout, routingId);
         int rc = Native.streamSend(handle, ridLayout, payloadSlice,
           payload.length, flags.getValue());
         if (rc < 0)
@@ -447,17 +480,17 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
-    public int streamSend(long routingIdU32, byte[] payload) {
-        return streamSend(routingIdU32, payload, SendFlag.NONE);
+    public int streamSend(long routingId, byte[] payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
     }
 
-    public int streamSend(long routingIdU32, Message payload, SendFlag flags) {
+    public int streamSend(long routingId, Message payload, SendFlag flags) {
         Objects.requireNonNull(payload, "payload");
         Objects.requireNonNull(flags, "flags");
-        validateStreamRoutingIdU32(routingIdU32);
+        validateStreamRoutingId(routingId);
 
         MemorySegment ridLayout = streamRoutingIdScratch.get();
-        writeStreamRoutingIdU32(ridLayout, routingIdU32);
+        writeStreamRoutingId(ridLayout, routingId);
         int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
           flags.getValue());
         if (rc < 0)
@@ -466,8 +499,8 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
-    public int streamSend(long routingIdU32, Message payload) {
-        return streamSend(routingIdU32, payload, SendFlag.NONE);
+    public int streamSend(long routingId, Message payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
     }
 
     public int streamSend(byte[] routingId, byte[] payload, SendFlag flags) {
@@ -639,7 +672,7 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
-    public int recv(io.netty.buffer.ByteBuf buf, ReceiveFlag flags) {
+    public int recv(ByteBuf buf, ReceiveFlag flags) {
         Objects.requireNonNull(buf, "buf");
         Objects.requireNonNull(flags, "flags");
         int writable = buf.writableBytes();
@@ -685,9 +718,9 @@ public final class Socket implements AutoCloseable {
             return 1;
         }
 
-        final int routingIdU32;
+        final long routingId;
         try {
-            routingIdU32 = (int) decodeStreamRoutingIdU32(rid);
+            routingId = decodeStreamRoutingId(rid);
         } catch (RuntimeException ex) {
             try {
                 NativeMsg.msgvClose(msgs, msgCount);
@@ -704,7 +737,7 @@ public final class Socket implements AutoCloseable {
         }
 
         try {
-            return handler.onPackets(routingIdU32, packets);
+            return handler.onPackets(routingId, packets);
         } catch (Throwable t) {
             Message.closeAll(packets);
             return 1;
@@ -720,9 +753,9 @@ public final class Socket implements AutoCloseable {
             return 0;
         }
 
-        final int routingIdU32;
+        final long routingId;
         try {
-            routingIdU32 = (int) decodeStreamRoutingIdU32(rid);
+            routingId = decodeStreamRoutingId(rid);
         } catch (RuntimeException ex) {
             closeStreamPacket(msg);
             return 1;
@@ -737,7 +770,7 @@ public final class Socket implements AutoCloseable {
         }
 
         try {
-            return handler.onPacket(routingIdU32, payload);
+            return handler.onPacket(routingId, payload);
         } catch (Throwable t) {
             try {
                 payload.close();
@@ -862,6 +895,37 @@ public final class Socket implements AutoCloseable {
             throw new IllegalArgumentException(
               option.name() + " expects " + option.valueType()
                 + ", not " + expected);
+        }
+    }
+
+    private void validateAmbiguousOption(SocketOptionKey<?> option) {
+        if (option.optionId() != SocketOption.TLS_VERIFY.getValue())
+            return;
+        SocketType type = resolveSocketType();
+        if (type == null)
+            return;
+        if (type == SocketType.XPUB) {
+            if (option != SocketOptions.XPUB_MANUAL_LAST_VALUE) {
+                throw new IllegalArgumentException(
+                  "XPUB socket option id 98 must use "
+                    + SocketOptions.XPUB_MANUAL_LAST_VALUE.name());
+            }
+            return;
+        }
+        if (option != SocketOptions.TLS_VERIFY) {
+            throw new IllegalArgumentException(
+              "Non-XPUB socket option id 98 must use "
+                + SocketOptions.TLS_VERIFY.name());
+        }
+    }
+
+    private SocketType resolveSocketType() {
+        if (socketTypeHint != null)
+            return socketTypeHint;
+        try {
+            return SocketType.fromValue(getSockOptInt(SocketOption.TYPE.getValue()));
+        } catch (RuntimeException ignored) {
+            return null;
         }
     }
 
@@ -992,14 +1056,14 @@ public final class Socket implements AutoCloseable {
         return (int) length;
     }
 
-    private int sendNettyFallback(io.netty.buffer.ByteBuf buf,
+    private int sendNettyFallback(ByteBuf buf,
                                   int readerIndex,
                                   int length,
-                                  SendFlag flags) {
+                                  int sendFlags) {
         MemorySegment seg = ensureSendScratch(length);
         ByteBuffer dst = seg.asSlice(0, length).asByteBuffer();
         buf.getBytes(readerIndex, dst);
-        int rc = Native.send(handle, seg, length, flags.getValue());
+        int rc = Native.send(handle, seg, length, sendFlags);
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_send");
         if (rc > 0)
@@ -1007,7 +1071,7 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
-    private int recvNettyFallback(io.netty.buffer.ByteBuf buf,
+    private int recvNettyFallback(ByteBuf buf,
                                   int writerIndex,
                                   int writable,
                                   ReceiveFlag flags) {
@@ -1023,26 +1087,26 @@ public final class Socket implements AutoCloseable {
         return rc;
     }
 
-    private static void validateStreamRoutingIdU32(long routingIdU32) {
-        if ((routingIdU32 & ~U32_MAX) != 0L) {
+    private static void validateStreamRoutingId(long routingId) {
+        if ((routingId & ~STREAM_ROUTING_ID_MAX) != 0L) {
             throw new IllegalArgumentException(
               "STREAM routingId must be an unsigned 32-bit value");
         }
     }
 
-    private static void writeStreamRoutingIdU32(MemorySegment ridLayout,
-                                                long routingIdU32) {
+    private static void writeStreamRoutingId(MemorySegment ridLayout,
+                                             long routingId) {
         ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) STREAM_ROUTING_ID_SIZE);
         ridLayout.set(ValueLayout.JAVA_BYTE, 1,
-          (byte) ((routingIdU32 >>> 24) & 0xFF));
+          (byte) ((routingId >>> 24) & 0xFF));
         ridLayout.set(ValueLayout.JAVA_BYTE, 2,
-          (byte) ((routingIdU32 >>> 16) & 0xFF));
+          (byte) ((routingId >>> 16) & 0xFF));
         ridLayout.set(ValueLayout.JAVA_BYTE, 3,
-          (byte) ((routingIdU32 >>> 8) & 0xFF));
-        ridLayout.set(ValueLayout.JAVA_BYTE, 4, (byte) (routingIdU32 & 0xFF));
+          (byte) ((routingId >>> 8) & 0xFF));
+        ridLayout.set(ValueLayout.JAVA_BYTE, 4, (byte) (routingId & 0xFF));
     }
 
-    private static long decodeStreamRoutingIdU32(byte[] routingId) {
+    private static long decodeStreamRoutingId(byte[] routingId) {
         Objects.requireNonNull(routingId, "routingId");
         if (routingId.length != STREAM_ROUTING_ID_SIZE) {
             throw new IllegalStateException(
@@ -1054,7 +1118,7 @@ public final class Socket implements AutoCloseable {
           | (routingId[3] & 0xFFL);
     }
 
-    private static long decodeStreamRoutingIdU32(MemorySegment routingIdLayout) {
+    private static long decodeStreamRoutingId(MemorySegment routingIdLayout) {
         Objects.requireNonNull(routingIdLayout, "routingIdLayout");
         MemorySegment rid = routingIdLayout.reinterpret(STREAM_ROUTING_ID_LAYOUT_SIZE);
         int ridLen = rid.get(ValueLayout.JAVA_BYTE, 0) & 0xFF;

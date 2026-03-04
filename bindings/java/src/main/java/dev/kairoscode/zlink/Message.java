@@ -13,12 +13,14 @@ public final class Message implements AutoCloseable {
     private final Arena arena;
     private final MemorySegment msg;
     private boolean valid;
+    private boolean closed;
     private Object zeroCopyAnchor;
 
     private Message(boolean raw) {
         this.arena = Arena.ofConfined();
         this.msg = arena.allocate(64);
         this.valid = false;
+        this.closed = false;
         this.zeroCopyAnchor = null;
     }
 
@@ -27,7 +29,8 @@ public final class Message implements AutoCloseable {
         int rc = NativeMsg.msgInit(msg);
         if (rc != 0) {
             arena.close();
-            throw new RuntimeException("zlink_msg_init failed");
+            closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init");
         }
         valid = true;
     }
@@ -37,7 +40,8 @@ public final class Message implements AutoCloseable {
         int rc = NativeMsg.msgInitSize(msg, size);
         if (rc != 0) {
             arena.close();
-            throw new RuntimeException("zlink_msg_init_size failed");
+            closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init_size");
         }
         valid = true;
     }
@@ -103,7 +107,8 @@ public final class Message implements AutoCloseable {
         int rc = NativeMsg.msgInitData(msg.msg, slice, length, MemorySegment.NULL, MemorySegment.NULL);
         if (rc != 0) {
             msg.arena.close();
-            throw new RuntimeException("zlink_msg_init_data failed");
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init_data");
         }
         msg.valid = true;
         msg.zeroCopyAnchor = data;
@@ -120,7 +125,8 @@ public final class Message implements AutoCloseable {
         int rc = NativeMsg.msgInitData(msg.msg, seg, length, MemorySegment.NULL, MemorySegment.NULL);
         if (rc != 0) {
             msg.arena.close();
-            throw new RuntimeException("zlink_msg_init_data failed");
+            msg.closed = true;
+            throw ZlinkException.fromLastError("zlink_msg_init_data");
         }
         msg.valid = true;
         msg.zeroCopyAnchor = data;
@@ -128,18 +134,22 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
-    public void send(Socket socket, int flags) {
-        int rc = NativeMsg.msgSend(msg, socket.handle(), flags);
+    public void send(Socket socket, SendFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        int rc = NativeMsg.msgSend(msg, socket.handle(), flag.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_msg_send failed");
+            throw ZlinkException.fromLastError("zlink_msg_send");
         valid = false;
+        zeroCopyAnchor = null;
     }
 
-    public void recv(Socket socket, int flags) {
-        int rc = NativeMsg.msgRecv(msg, socket.handle(), flags);
+    public void recv(Socket socket, ReceiveFlag flag) {
+        Objects.requireNonNull(flag, "flag");
+        int rc = NativeMsg.msgRecv(msg, socket.handle(), flag.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_msg_recv failed");
+            throw ZlinkException.fromLastError("zlink_msg_recv");
         valid = true;
+        zeroCopyAnchor = null;
     }
 
     public int size() {
@@ -211,46 +221,46 @@ public final class Message implements AutoCloseable {
         return true;
     }
 
-    void copyTo(MemorySegment destination) {
+    public void copyTo(MemorySegment destination) {
         int rc = NativeMsg.msgCopy(destination, msg);
         if (rc != 0)
-            throw new RuntimeException("zlink_msg_copy failed");
+            throw ZlinkException.fromLastError("zlink_msg_copy");
     }
 
-    void moveTo(MemorySegment destination) {
+    public void moveTo(MemorySegment destination) {
         int rc = NativeMsg.msgMove(destination, msg);
         if (rc != 0)
-            throw new RuntimeException("zlink_msg_move failed");
+            throw ZlinkException.fromLastError("zlink_msg_move");
         valid = false;
         zeroCopyAnchor = null;
     }
 
     void resetForReuse() {
-        if (!arena.scope().isAlive())
+        if (closed || !arena.scope().isAlive())
             throw new IllegalStateException("message is closed");
         if (valid) {
             int rc = NativeMsg.msgClose(msg);
             if (rc != 0)
-                throw new RuntimeException("zlink_msg_close failed");
+                throw ZlinkException.fromLastError("zlink_msg_close");
             valid = false;
         }
         int rc = NativeMsg.msgInit(msg);
         if (rc != 0)
-            throw new RuntimeException("zlink_msg_init failed");
+            throw ZlinkException.fromLastError("zlink_msg_init");
         valid = true;
         zeroCopyAnchor = null;
     }
 
     boolean isReusable() {
-        return arena.scope().isAlive();
+        return !closed && arena.scope().isAlive();
     }
 
-    static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
+    public static Message[] fromMsgVector(MemorySegment partsAddr, long count) {
         return fromMsgVector(partsAddr, count, null);
     }
 
-    static Message[] fromMsgVector(MemorySegment partsAddr, long count,
-                                   Message[] reusable) {
+    public static Message[] fromMsgVector(MemorySegment partsAddr, long count,
+                                          Message[] reusable) {
         if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
             return new Message[0];
         if (count > Integer.MAX_VALUE)
@@ -282,7 +292,7 @@ public final class Message implements AutoCloseable {
                 }
                 int rc = NativeMsg.msgMove(msg.msg, src);
                 if (rc != 0) {
-                    throw new RuntimeException("zlink_msg_move failed");
+                    throw ZlinkException.fromLastError("zlink_msg_move");
                 }
                 msg.valid = true;
                 msg.zeroCopyAnchor = null;
@@ -305,7 +315,50 @@ public final class Message implements AutoCloseable {
         }
     }
 
-    static void closeAll(Message[] parts) {
+    static Message fromOwnedNative(MemorySegment nativeMsg) {
+        if (nativeMsg == null || nativeMsg.address() == 0)
+            throw new IllegalArgumentException("nativeMsg is null");
+
+        Message out = new Message();
+        boolean sourceClosed = false;
+        try {
+            int rc = NativeMsg.msgMove(out.msg, nativeMsg);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_msg_move");
+            rc = NativeMsg.msgClose(nativeMsg);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_msg_close");
+            sourceClosed = true;
+            return out;
+        } catch (RuntimeException ex) {
+            if (!sourceClosed) {
+                try {
+                    NativeMsg.msgClose(nativeMsg);
+                } catch (RuntimeException ignored) {
+                }
+            }
+            try {
+                out.close();
+            } catch (RuntimeException ignored) {
+            }
+            throw ex;
+        }
+    }
+
+    public static void closeAll(Message[] parts) {
+        if (parts == null)
+            return;
+        for (Message part : parts) {
+            if (part != null && part.isReusable()) {
+                try {
+                    part.close();
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+    }
+
+    public static void closeAll(Iterable<? extends Message> parts) {
         if (parts == null)
             return;
         for (Message part : parts) {
@@ -322,13 +375,23 @@ public final class Message implements AutoCloseable {
         return msg;
     }
 
+    void markStreamSent() {
+        valid = true;
+        zeroCopyAnchor = null;
+    }
+
     @Override
     public void close() {
+        if (closed)
+            return;
         if (valid) {
             NativeMsg.msgClose(msg);
             valid = false;
         }
-        arena.close();
+        zeroCopyAnchor = null;
+        if (arena.scope().isAlive())
+            arena.close();
+        closed = true;
     }
 
     private static void validateRange(int total, int offset, int length, String name) {

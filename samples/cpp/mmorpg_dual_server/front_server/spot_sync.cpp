@@ -104,7 +104,7 @@ int SpotSync::poll_events() {
 
     int count = 0;
     while (true) {
-        zlink::msgv_t out;
+        zlink::multipart_t out;
         std::string topic_out;
         int rc = spot_.recv(out, topic_out, zlink::recv_flag::dontwait);
         if (rc != 0 || out.size() == 0) break;

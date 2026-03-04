@@ -169,17 +169,17 @@ private:
 
 ---
 
-## msgv_t (멀티파트 수신 관리)
+## multipart_t (멀티파트 수신 관리)
 ```cpp
 namespace zlink {
 
-class msgv_t {
+class multipart_t {
 public:
-    msgv_t();
-    ~msgv_t();
+    multipart_t();
+    ~multipart_t();
 
-    msgv_t(msgv_t&&) noexcept;
-    msgv_t& operator=(msgv_t&&) noexcept;
+    multipart_t(multipart_t&&) noexcept;
+    multipart_t& operator=(multipart_t&&) noexcept;
 
     zlink_msg_t* data();
     size_t size() const;

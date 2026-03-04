@@ -1,26 +1,26 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-#ifndef ZLINK_CPP_MSGV_HPP_INCLUDED
-#define ZLINK_CPP_MSGV_HPP_INCLUDED
+#ifndef ZLINK_CPP_MULTIPART_HPP_INCLUDED
+#define ZLINK_CPP_MULTIPART_HPP_INCLUDED
 
 #include "common.hpp"
 
 namespace zlink
 {
 
-class msgv_t
+class multipart_t
 {
   public:
-    msgv_t () : _parts (NULL), _count (0) {}
-    ~msgv_t () { reset (); }
+    multipart_t () : _parts (NULL), _count (0) {}
+    ~multipart_t () { reset (); }
 
-    msgv_t (msgv_t &&other) noexcept
+    multipart_t (multipart_t &&other) noexcept
         : _parts (other._parts), _count (other._count)
     {
         other._parts = NULL;
         other._count = 0;
     }
 
-    msgv_t &operator= (msgv_t &&other) noexcept
+    multipart_t &operator= (multipart_t &&other) noexcept
     {
         if (this == &other)
             return *this;
@@ -33,8 +33,8 @@ class msgv_t
         return *this;
     }
 
-    msgv_t (const msgv_t &) = delete;
-    msgv_t &operator= (const msgv_t &) = delete;
+    multipart_t (const multipart_t &) = delete;
+    multipart_t &operator= (const multipart_t &) = delete;
 
     void reset ()
     {

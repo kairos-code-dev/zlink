@@ -4,7 +4,7 @@
 
 #include "context.hpp"
 #include "message.hpp"
-#include "msgv.hpp"
+#include "multipart.hpp"
 #include "types.hpp"
 
 #include <cerrno>
@@ -223,7 +223,9 @@ class gateway_t
         return zlink_gateway_send (_gw, service_, tmp.data (), tmp.size (), 0);
     }
 
-    int recv (msgv_t &out_, std::string &service_, recv_flag flags_ = recv_flag::none)
+    int recv (multipart_t &out_,
+              std::string &service_,
+              recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
         size_t count = 0;
@@ -684,7 +686,9 @@ class spot_t
           _sub, enable ? &spot_t::handler_trampoline : NULL, this);
     }
 
-    int recv (msgv_t &out_, std::string &topic_, recv_flag flags_ = recv_flag::none)
+    int recv (multipart_t &out_,
+              std::string &topic_,
+              recv_flag flags_ = recv_flag::none)
     {
         zlink_msg_t *parts = NULL;
         size_t count = 0;

@@ -64,7 +64,7 @@ int main()
         const char *reply = "world";
         assert(recv_router.send(reply, 5) == 5);
 
-        zlink::msgv_t out;
+        zlink::multipart_t out;
         std::string svc_out;
         const int recv_rc = gateway.recv(out, svc_out, zlink::recv_flag::dontwait);
         if (recv_rc != 0) {
@@ -105,7 +105,7 @@ int main()
         std::memcpy(spot_parts[0].data(), "spot-msg", 8);
         assert(spot.publish(topic, spot_parts) == 0);
 
-        zlink::msgv_t spot_out;
+        zlink::multipart_t spot_out;
         std::string topic_out;
         const auto deadline =
           std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);

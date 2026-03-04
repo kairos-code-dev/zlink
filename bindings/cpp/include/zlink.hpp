@@ -9,7 +9,7 @@
 #include "zlink/context.hpp"
 #include "zlink/socket.hpp"
 #include "zlink/poller.hpp"
-#include "zlink/msgv.hpp"
+#include "zlink/multipart.hpp"
 #include "zlink/monitor.hpp"
 #include "zlink/services.hpp"
 #include "zlink/atomic_counter.hpp"

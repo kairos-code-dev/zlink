@@ -2,9 +2,7 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Text;
-using System.Threading;
 using Zlink;
 using Zlink.Native;
 
@@ -113,9 +111,7 @@ public sealed class SpotNode : IDisposable
         int value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int32)
-            throw new ArgumentException("Expected int socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         SetOptionInt32(role, option.Option, value);
     }
 
@@ -123,9 +119,7 @@ public sealed class SpotNode : IDisposable
         long value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int64)
-            throw new ArgumentException("Expected long socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         SetOptionInt64(role, option.Option, value);
     }
 
@@ -133,9 +127,7 @@ public sealed class SpotNode : IDisposable
         ulong value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.UInt64)
-            throw new ArgumentException("Expected ulong socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         SetOptionUInt64(role, option.Option, value);
     }
 
@@ -151,9 +143,7 @@ public sealed class SpotNode : IDisposable
         ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         SetOptionBytes(role, option.Option, value);
     }
 
@@ -161,9 +151,7 @@ public sealed class SpotNode : IDisposable
         string value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.String)
-            throw new ArgumentException("Expected string socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         SetOptionString(role, option.Option, value);
     }
 
@@ -350,16 +338,12 @@ public sealed class SpotNode : IDisposable
 public sealed class Spot : IDisposable
 {
     private const int StackPublishPartLimit = 8;
-    private const int TopicCacheLimit = 1024;
     private const int TopicBufferSize = 256;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
     private SpotSubHandler? _subHandler;
     private SpotSubPacketHandler? _subPacketHandler;
     private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
-    private int _topicUtf8CacheCount;
-    private readonly ConcurrentDictionary<string, byte[]> _topicUtf8Cache =
-        new(StringComparer.Ordinal);
 
     public Spot(SpotNode node)
     {
@@ -712,16 +696,7 @@ public sealed class Spot : IDisposable
 
     private byte[] GetTopicUtf8(string topicId)
     {
-        if (_topicUtf8Cache.TryGetValue(topicId, out var cached))
-            return cached;
-
-        byte[] encoded = EncodeTopicUtf8(topicId);
-        if (Volatile.Read(ref _topicUtf8CacheCount) < TopicCacheLimit
-            && _topicUtf8Cache.TryAdd(topicId, encoded))
-        {
-            Interlocked.Increment(ref _topicUtf8CacheCount);
-        }
-        return encoded;
+        return EncodeTopicUtf8(topicId);
     }
 
     private static void ValidateTopicId(string value, string paramName)

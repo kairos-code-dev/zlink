@@ -223,34 +223,6 @@ public sealed class Message : IDisposable
         }
     }
 
-    internal static unsafe void InitFromSpan(ReadOnlySpan<byte> data,
-        ref ZlinkMsg dest)
-    {
-        int rc = NativeMethods.zlink_msg_init_size(ref dest, (nuint)data.Length);
-        if (rc != 0)
-            throw ZlinkException.FromLastError();
-        try
-        {
-            if (data.Length == 0)
-                return;
-
-            IntPtr ptr = NativeMethods.zlink_msg_data(ref dest);
-            if (ptr == IntPtr.Zero)
-                throw new InvalidOperationException("Message data is null.");
-
-            fixed (byte* src = data)
-            {
-                new ReadOnlySpan<byte>(src, data.Length)
-                    .CopyTo(new Span<byte>((void*)ptr, data.Length));
-            }
-        }
-        catch
-        {
-            NativeMethods.zlink_msg_close(ref dest);
-            throw;
-        }
-    }
-
     internal static unsafe int CopySinglePartPayload(IntPtr parts, nuint count,
         Span<byte> destination)
     {

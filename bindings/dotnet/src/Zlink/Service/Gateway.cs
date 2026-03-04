@@ -2,9 +2,7 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Text;
-using System.Threading;
 using Zlink;
 using Zlink.Native;
 
@@ -13,15 +11,7 @@ namespace Zlink.Service;
 public sealed class Gateway : IDisposable
 {
     private const int StackSendPartLimit = 8;
-    private const int ServiceNameCacheLimit = 1024;
-    private const int RoutingIdCacheLimit = 1024;
     private IntPtr _handle;
-    private int _serviceNameUtf8CacheCount;
-    private int _routingIdUtf8CacheCount;
-    private readonly ConcurrentDictionary<string, byte[]> _serviceNameUtf8Cache =
-        new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, byte[]> _routingIdUtf8Cache =
-        new(StringComparer.Ordinal);
 
     public Gateway(Context context, Discovery discovery)
     {
@@ -41,7 +31,17 @@ public sealed class Gateway : IDisposable
             throw new ArgumentNullException(nameof(context));
         if (discovery == null)
             throw new ArgumentNullException(nameof(discovery));
-        ValidateRoutingIdString(routingId, nameof(routingId));
+        if (routingId == null)
+            throw new ArgumentNullException(nameof(routingId));
+        if (routingId.Length == 0)
+            throw new ArgumentException("routingId must not be empty.",
+                nameof(routingId));
+        int byteCount = Encoding.UTF8.GetByteCount(routingId);
+        if (byteCount <= 0 || byteCount > 255)
+        {
+            throw new ArgumentOutOfRangeException(nameof(routingId),
+                "routingId UTF-8 length must be between 1 and 255 bytes.");
+        }
         _handle = NativeMethods.zlink_gateway_new(context.Handle,
             discovery.Handle, routingId);
         if (_handle == IntPtr.Zero)
@@ -68,22 +68,8 @@ public sealed class Gateway : IDisposable
     public unsafe void Send(string serviceName, ReadOnlySpan<byte> payload,
         SendFlags flags = SendFlags.None)
     {
-        SendSinglePayloadCore(serviceName, default, useRoutingId: false, payload,
-            flags);
-    }
-
-    /// <summary>
-    /// Sends multipart message to a specific routing id and consumes ownership
-    /// of all parts.
-    /// </summary>
-    public void SendToRoutingId(string serviceName, byte[] routingId,
-        Message[] parts, SendFlags flags = SendFlags.None)
-    {
-        if (routingId == null)
-            throw new ArgumentNullException(nameof(routingId));
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        SendToRoutingId(serviceName, routingId.AsSpan(), parts.AsSpan(), flags);
+        SendSinglePayloadCore(serviceName, default, useRoutingId: false,
+            payload, flags);
     }
 
     public void SendToRoutingId(string serviceName, string routingId,
@@ -93,8 +79,8 @@ public sealed class Gateway : IDisposable
             throw new ArgumentNullException(nameof(routingId));
         if (parts == null)
             throw new ArgumentNullException(nameof(parts));
-        SendToRoutingId(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
-            parts.AsSpan(), flags);
+        SendCore(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
+            useRoutingId: true, parts.AsSpan(), flags);
     }
 
     public void SendToRoutingId(string serviceName, string routingId,
@@ -102,15 +88,8 @@ public sealed class Gateway : IDisposable
     {
         if (routingId == null)
             throw new ArgumentNullException(nameof(routingId));
-        SendToRoutingId(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
-            parts, flags);
-    }
-
-    public unsafe void SendToRoutingId(string serviceName,
-        ReadOnlySpan<byte> routingId, ReadOnlySpan<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        SendCore(serviceName, routingId, useRoutingId: true, parts, flags);
+        SendCore(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
+            useRoutingId: true, parts, flags);
     }
 
     public void SendToRoutingId(string serviceName, string routingId,
@@ -118,16 +97,8 @@ public sealed class Gateway : IDisposable
     {
         if (routingId == null)
             throw new ArgumentNullException(nameof(routingId));
-        SendToRoutingId(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
-            payload, flags);
-    }
-
-    public unsafe void SendToRoutingId(string serviceName,
-        ReadOnlySpan<byte> routingId, ReadOnlySpan<byte> payload,
-        SendFlags flags = SendFlags.None)
-    {
-        SendSinglePayloadCore(serviceName, routingId, useRoutingId: true, payload,
-            flags);
+        SendSinglePayloadCore(serviceName, GetRoutingIdUtf8(routingId).AsSpan(),
+            useRoutingId: true, payload, flags);
     }
 
     private unsafe void SendCore(string serviceName,
@@ -207,7 +178,6 @@ public sealed class Gateway : IDisposable
         ValidateServiceName(serviceName, nameof(serviceName));
 
         byte[] serviceNameUtf8 = GetServiceNameUtf8(serviceName);
-
         ZlinkRoutingId nativeRoutingId = default;
         if (useRoutingId)
             nativeRoutingId = NativeHelpers.WriteRoutingId(routingId);
@@ -353,27 +323,21 @@ public sealed class Gateway : IDisposable
     public void SetOption(SocketOptionKey<int> option, int value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int32)
-            throw new ArgumentException("Expected int socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         SetOptionInt32(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<long> option, long value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int64)
-            throw new ArgumentException("Expected long socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         SetOptionInt64(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<ulong> option, ulong value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.UInt64)
-            throw new ArgumentException("Expected ulong socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         SetOptionUInt64(option.Option, value);
     }
 
@@ -387,18 +351,14 @@ public sealed class Gateway : IDisposable
     public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         SetOptionBytes(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<string> option, string value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.String)
-            throw new ArgumentException("Expected string socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         SetOptionString(option.Option, value);
     }
 
@@ -484,30 +444,12 @@ public sealed class Gateway : IDisposable
 
     private byte[] GetServiceNameUtf8(string serviceName)
     {
-        if (_serviceNameUtf8Cache.TryGetValue(serviceName, out var cached))
-            return cached;
-
-        byte[] encoded = EncodeServiceNameUtf8(serviceName);
-        if (Volatile.Read(ref _serviceNameUtf8CacheCount) < ServiceNameCacheLimit
-            && _serviceNameUtf8Cache.TryAdd(serviceName, encoded))
-        {
-            Interlocked.Increment(ref _serviceNameUtf8CacheCount);
-        }
-        return encoded;
+        return EncodeServiceNameUtf8(serviceName);
     }
 
     private byte[] GetRoutingIdUtf8(string routingId)
     {
-        if (_routingIdUtf8Cache.TryGetValue(routingId, out var cached))
-            return cached;
-
-        byte[] encoded = EncodeRoutingIdUtf8(routingId);
-        if (Volatile.Read(ref _routingIdUtf8CacheCount) < RoutingIdCacheLimit
-            && _routingIdUtf8Cache.TryAdd(routingId, encoded))
-        {
-            Interlocked.Increment(ref _routingIdUtf8CacheCount);
-        }
-        return encoded;
+        return RoutingIdCodec.FromPublicString(routingId, nameof(routingId));
     }
 
     private static byte[] EncodeServiceNameUtf8(string serviceName)
@@ -516,20 +458,6 @@ public sealed class Gateway : IDisposable
         byte[] bytes = new byte[byteCount + 1];
         Encoding.UTF8.GetBytes(serviceName, bytes.AsSpan(0, byteCount));
         bytes[byteCount] = 0;
-        return bytes;
-    }
-
-    private static byte[] EncodeRoutingIdUtf8(string routingId)
-    {
-        int byteCount = Encoding.UTF8.GetByteCount(routingId);
-        if (byteCount <= 0 || byteCount > 255)
-        {
-            throw new ArgumentOutOfRangeException(nameof(routingId),
-                "routingId UTF-8 length must be between 1 and 255 bytes.");
-        }
-
-        byte[] bytes = new byte[byteCount];
-        Encoding.UTF8.GetBytes(routingId, bytes.AsSpan());
         return bytes;
     }
 
@@ -542,20 +470,6 @@ public sealed class Gateway : IDisposable
                 paramName);
     }
 
-    private static void ValidateRoutingIdString(string routingId, string paramName)
-    {
-        if (routingId == null)
-            throw new ArgumentNullException(paramName);
-        if (routingId.Length == 0)
-            throw new ArgumentException("routingId must not be empty.",
-                paramName);
-        int byteCount = Encoding.UTF8.GetByteCount(routingId);
-        if (byteCount <= 0 || byteCount > 255)
-        {
-            throw new ArgumentOutOfRangeException(paramName,
-                "routingId UTF-8 length must be between 1 and 255 bytes.");
-        }
-    }
 }
 
 public readonly struct GatewayMessage

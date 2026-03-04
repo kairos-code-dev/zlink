@@ -134,8 +134,8 @@ public sealed class test_gateway
 
         ReceiverInfoRecord[] providers = discovery.GetReceivers("svc");
         Assert.NotEmpty(providers);
-        byte[] targetRoutingId = providers[0].RoutingId;
-        Assert.NotEmpty(targetRoutingId);
+        string targetRoutingId = providers[0].RoutingId;
+        Assert.False(string.IsNullOrEmpty(targetRoutingId));
 
         gateway.SendToRoutingId("svc", targetRoutingId,
             Encoding.UTF8.GetBytes("rid-msg"), SendFlags.None);

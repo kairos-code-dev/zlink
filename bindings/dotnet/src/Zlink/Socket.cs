@@ -182,28 +182,7 @@ public sealed class Socket : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public bool TryGetPeerRoutingId(out byte[] routingId, int index = 0)
-    {
-        EnsureNotDisposed();
-        int rc = NativeMethods.zlink_socket_peer_routing_id(_handle, index,
-            out var rid);
-        if (rc != 0 || rid.Size == 0)
-        {
-            routingId = Array.Empty<byte>();
-            return false;
-        }
-        routingId = NativeHelpers.ReadRoutingId(ref rid);
-        return true;
-    }
-
-    public byte[]? GetPeerRoutingId(int index = 0)
-    {
-        return TryGetPeerRoutingId(out var routingId, index)
-            ? routingId
-            : null;
-    }
-
-    public unsafe bool TryGetPeerRoutingIdU32(out uint routingId, int index = 0)
+    public unsafe bool TryGetPeerRoutingId(out uint routingId, int index = 0)
     {
         EnsureNotDisposed();
         int rc = NativeMethods.zlink_socket_peer_routing_id(_handle, index,
@@ -216,9 +195,9 @@ public sealed class Socket : IDisposable
         return true;
     }
 
-    public uint? GetPeerRoutingIdU32(int index = 0)
+    public uint? GetPeerRoutingId(int index = 0)
     {
-        return TryGetPeerRoutingIdU32(out uint routingId, index)
+        return TryGetPeerRoutingId(out uint routingId, index)
             ? routingId
             : null;
     }
@@ -236,7 +215,7 @@ public sealed class Socket : IDisposable
     {
         Span<byte> rid = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32BigEndian(rid, routingId);
-        return StreamSend(rid, payload, flags);
+        return StreamSendCore(rid, payload, flags);
     }
 
     public int StreamSend(uint routingId, Message message,
@@ -244,20 +223,10 @@ public sealed class Socket : IDisposable
     {
         Span<byte> rid = stackalloc byte[sizeof(uint)];
         BinaryPrimitives.WriteUInt32BigEndian(rid, routingId);
-        return StreamSend(rid, message, flags);
+        return StreamSendCore(rid, message, flags);
     }
 
-    public int StreamSend(byte[] routingId, byte[] payload,
-        SendFlags flags = SendFlags.None)
-    {
-        if (routingId == null)
-            throw new ArgumentNullException(nameof(routingId));
-        if (payload == null)
-            throw new ArgumentNullException(nameof(payload));
-        return StreamSend(routingId.AsSpan(), payload.AsSpan(), flags);
-    }
-
-    public unsafe int StreamSend(ReadOnlySpan<byte> routingId,
+    private unsafe int StreamSendCore(ReadOnlySpan<byte> routingId,
         ReadOnlySpan<byte> payload, SendFlags flags = SendFlags.None)
     {
         EnsureNotDisposed();
@@ -275,18 +244,10 @@ public sealed class Socket : IDisposable
         return rc;
     }
 
-    public int StreamSend(byte[] routingId, Message message,
-        SendFlags flags = SendFlags.None)
-    {
-        if (routingId == null)
-            throw new ArgumentNullException(nameof(routingId));
-        return StreamSend(routingId.AsSpan(), message, flags);
-    }
-
     /// <summary>
     /// Sends a message and consumes its ownership regardless of send result.
     /// </summary>
-    public int StreamSend(ReadOnlySpan<byte> routingId, Message message,
+    private int StreamSendCore(ReadOnlySpan<byte> routingId, Message message,
         SendFlags flags = SendFlags.None)
     {
         if (message == null)
@@ -306,14 +267,23 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public PeerRecord GetPeerInfo(byte[] routingId)
+    public PeerRecord GetPeerInfo(uint routingId)
+    {
+        Span<byte> rid = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(rid, routingId);
+        return GetPeerInfoCore(rid);
+    }
+
+    public PeerRecord GetPeerInfo(string routingId)
     {
         if (routingId == null)
             throw new ArgumentNullException(nameof(routingId));
-        return GetPeerInfo(routingId.AsSpan());
+        byte[] encoded = RoutingIdCodec.FromPublicString(routingId,
+            nameof(routingId));
+        return GetPeerInfoCore(encoded);
     }
 
-    public PeerRecord GetPeerInfo(ReadOnlySpan<byte> routingId)
+    private PeerRecord GetPeerInfoCore(ReadOnlySpan<byte> routingId)
     {
         EnsureNotDisposed();
         ZlinkRoutingId nativeId = NativeHelpers.WriteRoutingId(routingId);
@@ -406,36 +376,38 @@ public sealed class Socket : IDisposable
     {
         EnsureNotDisposed();
         var msg = new Message();
-        int rc = NativeMethods.zlink_msg_recv(ref msg.Handle, _handle,
-            (int)flags);
-        ZlinkException.ThrowIfError(rc);
-        return msg;
+        try
+        {
+            int rc = NativeMethods.zlink_msg_recv(ref msg.Handle, _handle,
+                (int)flags);
+            ZlinkException.ThrowIfError(rc);
+            return msg;
+        }
+        catch
+        {
+            msg.Dispose();
+            throw;
+        }
     }
 
     public void SetOption(SocketOptionKey<int> option, int value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int32)
-            throw new ArgumentException("Expected int socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         SetOptionInt32(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<long> option, long value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int64)
-            throw new ArgumentException("Expected long socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         SetOptionInt64(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<ulong> option, ulong value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.UInt64)
-            throw new ArgumentException("Expected ulong socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         SetOptionUInt64(option.Option, value);
     }
 
@@ -449,72 +421,56 @@ public sealed class Socket : IDisposable
     public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         SetOptionBytes(option.Option, value);
     }
 
     public void SetOption(SocketOptionKey<string> option, string value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.String)
-            throw new ArgumentException("Expected string socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         SetOptionString(option.Option, value);
     }
 
     public int GetOption(SocketOptionKey<int> option)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int32)
-            throw new ArgumentException("Expected int socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         return GetOptionInt32(option.Option);
     }
 
     public long GetOption(SocketOptionKey<long> option)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int64)
-            throw new ArgumentException("Expected long socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         return GetOptionInt64(option.Option);
     }
 
     public ulong GetOption(SocketOptionKey<ulong> option)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.UInt64)
-            throw new ArgumentException("Expected ulong socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         return GetOptionUInt64(option.Option);
     }
 
     public byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return GetOptionBytes(option.Option, initialSize);
     }
 
     public int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         return GetOptionBytesInto(option.Option, destination);
     }
 
     public string GetOption(SocketOptionKey<string> option, int initialSize = 256)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.String)
-            throw new ArgumentException("Expected string socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         return GetOptionString(option.Option, initialSize);
     }
 

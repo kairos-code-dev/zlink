@@ -59,9 +59,7 @@ public sealed class Discovery : IDisposable
         int value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int32)
-            throw new ArgumentException("Expected int socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt32(option.ValueKind, nameof(option));
         SetOptionInt32(role, option.Option, value);
     }
 
@@ -69,9 +67,7 @@ public sealed class Discovery : IDisposable
         long value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Int64)
-            throw new ArgumentException("Expected long socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectInt64(option.ValueKind, nameof(option));
         SetOptionInt64(role, option.Option, value);
     }
 
@@ -79,9 +75,7 @@ public sealed class Discovery : IDisposable
         ulong value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.UInt64)
-            throw new ArgumentException("Expected ulong socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectUInt64(option.ValueKind, nameof(option));
         SetOptionUInt64(role, option.Option, value);
     }
 
@@ -97,9 +91,7 @@ public sealed class Discovery : IDisposable
         ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.Bytes)
-            throw new ArgumentException("Expected byte[] socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectBytes(option.ValueKind, nameof(option));
         SetOptionBytes(role, option.Option, value);
     }
 
@@ -107,9 +99,7 @@ public sealed class Discovery : IDisposable
         string value)
     {
         EnsureNotDisposed();
-        if (option.ValueKind != SocketOptionValueKind.String)
-            throw new ArgumentException("Expected string socket option key.",
-                nameof(option));
+        SocketOptionValidation.ExpectString(option.ValueKind, nameof(option));
         SetOptionString(role, option.Option, value);
     }
 
@@ -262,7 +252,7 @@ public sealed class Discovery : IDisposable
 public readonly struct ReceiverInfoRecord
 {
     public ReceiverInfoRecord(string serviceName, string endpoint,
-        byte[] routingId,
+        string routingId,
         uint weight, ulong registeredAt)
     {
         ServiceName = serviceName;
@@ -274,7 +264,7 @@ public readonly struct ReceiverInfoRecord
 
     public string ServiceName { get; }
     public string Endpoint { get; }
-    public byte[] RoutingId { get; }
+    public string RoutingId { get; }
     public uint Weight { get; }
     public ulong RegisteredAt { get; }
 
@@ -283,7 +273,8 @@ public readonly struct ReceiverInfoRecord
         string service = NativeHelpers.ReadFixedString(ref info, true);
         string endpoint = NativeHelpers.ReadFixedString(ref info, false);
         byte[] routing = NativeHelpers.ReadRoutingId(ref info.RoutingId);
-        return new ReceiverInfoRecord(service, endpoint, routing, info.Weight,
+        string routingId = RoutingIdCodec.ToPublicString(routing);
+        return new ReceiverInfoRecord(service, endpoint, routingId, info.Weight,
             info.RegisteredAt);
     }
 }

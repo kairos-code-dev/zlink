@@ -28,9 +28,6 @@ internal static class NativeMethods
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkTimerDelegate(int timerId, IntPtr arg);
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void ZlinkThreadDelegate(IntPtr arg);
-
     static NativeMethods()
     {
         NativeLibraryLoader.EnsureLoaded();
@@ -147,10 +144,6 @@ internal static class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_init_size(ref ZlinkMsg msg,
         nuint size);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_init_data(ref ZlinkMsg msg,
-        IntPtr data, nuint size, IntPtr freeFn, IntPtr hint);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_send(ref ZlinkMsg msg, IntPtr socket,
@@ -665,12 +658,5 @@ internal static class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern ulong zlink_stopwatch_stop(IntPtr watch);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern IntPtr zlink_thread_start(ZlinkThreadDelegate func,
-        IntPtr arg);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void zlink_thread_join(IntPtr thread);
 
 }

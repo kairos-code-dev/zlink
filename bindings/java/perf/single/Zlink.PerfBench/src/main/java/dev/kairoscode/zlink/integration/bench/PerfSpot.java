@@ -12,10 +12,6 @@ final class PerfSpot {
         int warmup = PerfUtil.parseEnv("PERF_WARMUP_COUNT", 200);
         int latCount = PerfUtil.parseEnv("PERF_LAT_COUNT", 200);
         int msgCount = PerfUtil.resolveMsgCount(size);
-        // Spot default uses const single-part path; override via env.
-        int globalConst = PerfUtil.parseEnvFlag("PERF_USE_CONST", 1);
-        boolean useConst = PerfUtil.parseEnvFlag("PERF_SPOT_USE_CONST",
-          globalConst) == 1;
         int maxSpot = PerfUtil.parseEnv("PERF_SPOT_MSG_COUNT_MAX", 50000);
         if (msgCount > maxSpot) {
             msgCount = maxSpot;
@@ -52,25 +48,15 @@ final class PerfSpot {
             MemorySegment payloadSegment = payloadArena.allocate(size);
             MemorySegment.copy(MemorySegment.ofArray(payload), 0, payloadSegment, 0, size);
             for (int i = 0; i < warmup; i++) {
-                if (useConst) {
-                    spotPub.publishConst(preparedTopic, payloadSegment,
-                      SendFlag.NONE, publishContext);
-                } else {
-                    publishMove(spotPub, preparedTopic, payloadSegment,
-                      publishContext);
-                }
+                publishMove(spotPub, preparedTopic, payloadSegment,
+                  publishContext);
                 PerfUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                if (useConst) {
-                    spotPub.publishConst(preparedTopic, payloadSegment,
-                      SendFlag.NONE, publishContext);
-                } else {
-                    publishMove(spotPub, preparedTopic, payloadSegment,
-                      publishContext);
-                }
+                publishMove(spotPub, preparedTopic, payloadSegment,
+                  publishContext);
                 PerfUtil.spotRecvRawBlocking(spotSub, recvContext);
             }
             double latUs = (System.nanoTime() - t0) / 1000.0 / latCount;
@@ -97,13 +83,8 @@ final class PerfSpot {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    if (useConst) {
-                        spotPub.publishConst(preparedTopic, payloadSegment,
-                          SendFlag.NONE, publishContext);
-                    } else {
-                        publishMove(spotPub, preparedTopic, payloadSegment,
-                          publishContext);
-                    }
+                    publishMove(spotPub, preparedTopic, payloadSegment,
+                      publishContext);
                     sent++;
                 } catch (Exception e) {
                     break;

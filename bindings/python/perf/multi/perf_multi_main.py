@@ -312,12 +312,12 @@ def run_client_echo_router(pattern: str, transport: str, endpoint: str, size: in
 
         warmup_end = time.monotonic() + float(warmup_s)
         while time.monotonic() < warmup_end:
-            client.send_const(payload, send_none)
+            client.send(payload, send_none)
             client.recv_into(recv_buf, recv_none)
 
         lat_t0 = time.perf_counter()
         for _ in range(lat_count):
-            client.send_const(payload, send_none)
+            client.send(payload, send_none)
             client.recv_into(recv_buf, recv_none)
         lat_us = ((time.perf_counter() - lat_t0) * 1_000_000.0) / (lat_count * 2)
 
@@ -325,13 +325,13 @@ def run_client_echo_router(pattern: str, transport: str, endpoint: str, size: in
         t0 = time.perf_counter()
         deadline = time.monotonic() + float(duration_s)
         while time.monotonic() < deadline:
-            client.send_const(payload, send_none)
+            client.send(payload, send_none)
             client.recv_into(recv_buf, recv_none)
             ops += 1
         elapsed = max(1e-9, time.perf_counter() - t0)
         throughput = float(ops) / elapsed
 
-        client.send_const(STOP_TOKEN, send_none)
+        client.send(STOP_TOKEN, send_none)
         return_code = 0
         print_client_results(pattern, transport, size, throughput, lat_us)
     except Exception:

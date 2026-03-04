@@ -84,6 +84,24 @@ public final class Socket implements AutoCloseable {
         }
     }
 
+    public void unbind(String endpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
+            int rc = Native.unbind(handle, addr);
+            if (rc != 0)
+                throw new RuntimeException("zlink_unbind failed");
+        }
+    }
+
+    public void disconnect(String endpoint) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
+            int rc = Native.disconnect(handle, addr);
+            if (rc != 0)
+                throw new RuntimeException("zlink_disconnect failed");
+        }
+    }
+
     public void setSockOpt(SocketOption option, byte[] value) {
         setSockOpt(option, value, 0, value.length);
     }
@@ -187,8 +205,13 @@ public final class Socket implements AutoCloseable {
     public int send(ByteBuffer buffer, SendFlag flags) {
         Objects.requireNonNull(buffer, "buffer");
         int length = buffer.remaining();
-        if (length == 0)
-            return 0;
+        if (length == 0) {
+            int rc = Native.send(handle, MemorySegment.NULL, 0,
+              flags.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send");
+            return rc;
+        }
         MemorySegment srcSeg = MemorySegment.ofBuffer(buffer);
         MemorySegment seg;
         if (buffer.isDirect()) {
@@ -207,45 +230,6 @@ public final class Socket implements AutoCloseable {
     public int send(ByteSpan span, SendFlag flags) {
         Objects.requireNonNull(span, "span");
         return send(span.segment(), 0, span.length(), flags);
-    }
-
-    public int sendConst(ByteSpan span, SendFlag flags) {
-        Objects.requireNonNull(span, "span");
-        return sendConst(span.segment(), 0, span.length(), flags);
-    }
-
-    public int sendConst(ByteBuffer buffer, SendFlag flags) {
-        Objects.requireNonNull(buffer, "buffer");
-        if (!buffer.isDirect())
-            throw new IllegalArgumentException("sendConst requires a direct ByteBuffer");
-        int length = buffer.remaining();
-        if (length == 0)
-            return 0;
-        int rc = Native.sendConst(handle, MemorySegment.ofBuffer(buffer), length,
-          flags.getValue());
-        if (rc < 0)
-            throw new RuntimeException("zlink_send_const failed");
-        buffer.position(buffer.position() + rc);
-        return rc;
-    }
-
-    public int sendConst(MemorySegment segment, SendFlag flags) {
-        Objects.requireNonNull(segment, "segment");
-        return sendConst(segment, 0, segment.byteSize(), flags);
-    }
-
-    public int sendConst(MemorySegment segment, long offset, long length, SendFlag flags) {
-        Objects.requireNonNull(segment, "segment");
-        validateRange(segment.byteSize(), offset, length, "segment");
-        if (length == 0)
-            return 0;
-        if (!segment.isNative())
-            throw new IllegalArgumentException("sendConst requires a native MemorySegment");
-        MemorySegment slice = segment.asSlice(offset, length);
-        int rc = Native.sendConst(handle, slice, length, flags.getValue());
-        if (rc < 0)
-            throw new RuntimeException("zlink_send_const failed");
-        return rc;
     }
 
     public int send(MemorySegment segment, SendFlag flags) {
@@ -274,8 +258,13 @@ public final class Socket implements AutoCloseable {
 
     public int send(ByteBuf buf, SendFlag flags) {
         int len = buf.readableBytes();
-        if (len <= 0)
-            return 0;
+        if (len <= 0) {
+            int rc = Native.send(handle, MemorySegment.NULL, 0,
+              flags.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send");
+            return rc;
+        }
         ByteBuffer nio = buf.nioBuffer();
         if (nio.remaining() != len) {
             nio = nio.duplicate();
@@ -489,6 +478,30 @@ public final class Socket implements AutoCloseable {
     }
 
     public int streamSend(MemorySegment routingId, MemorySegment payload) {
+        return streamSend(routingId, payload, SendFlag.NONE);
+    }
+
+    public int streamSend(byte[] routingId, Message payload, SendFlag flags) {
+        Objects.requireNonNull(routingId, "routingId");
+        Objects.requireNonNull(payload, "payload");
+        Objects.requireNonNull(flags, "flags");
+        if (routingId.length <= 0 || routingId.length > STREAM_ROUTING_ID_MAX) {
+            throw new IllegalArgumentException(
+              "routingId length must be between 1 and 255");
+        }
+        MemorySegment ridLayout = streamRoutingIdScratch.get();
+        ridLayout.set(ValueLayout.JAVA_BYTE, 0, (byte) routingId.length);
+        MemorySegment.copy(MemorySegment.ofArray(routingId), 0,
+          ridLayout.asSlice(1, routingId.length), 0, routingId.length);
+        int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
+          flags.getValue());
+        if (rc < 0)
+            throw new RuntimeException("zlink_stream_send_msg failed");
+        payload.markStreamSent();
+        return rc;
+    }
+
+    public int streamSend(byte[] routingId, Message payload) {
         return streamSend(routingId, payload, SendFlag.NONE);
     }
 
@@ -795,6 +808,8 @@ public final class Socket implements AutoCloseable {
         recvScratchArena = null;
         sendScratch = MemorySegment.NULL;
         recvScratch = MemorySegment.NULL;
+        streamSpanScratch.remove();
+        streamRoutingIdScratch.remove();
     }
 
     private static void validateRange(int total, int offset, int length, String name) {

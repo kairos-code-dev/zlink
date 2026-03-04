@@ -39,12 +39,12 @@ def run_pair_like(pattern: str, sock_a_type: int, sock_b_type: int, transport: s
         recv_view = memoryview(recv_buf)
 
         for _ in range(warmup):
-            b.send_const(buf, send_none)
+            b.send(buf, send_none)
             a.recv_into(recv_buf, recv_none)
 
         start = time.perf_counter()
         for _ in range(lat_count):
-            b.send_const(buf, send_none)
+            b.send(buf, send_none)
             n = a.recv_into(recv_buf, recv_none)
             a.send(recv_view[:n], send_none)
             b.recv_into(recv_buf, recv_none)
@@ -54,7 +54,7 @@ def run_pair_like(pattern: str, sock_a_type: int, sock_b_type: int, transport: s
         sent = 0
         for _ in range(msg_count):
             try:
-                b.send_const(buf, send_dontwait)
+                b.send(buf, send_dontwait)
                 sent += 1
             except Exception:
                 break

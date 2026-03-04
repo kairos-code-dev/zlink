@@ -61,8 +61,8 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         for _ in range(100):
             try:
                 flags = send_more | send_dontwait
-                router2.send_const(rid1, flags)
-                router2.send_const(ping, send_dontwait)
+                router2.send(rid1, flags)
+                router2.send(ping, send_dontwait)
             except Exception:
                 time.sleep(0.01)
                 continue
@@ -82,8 +82,8 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         if not connected:
             return 2
 
-        router1.send_const(rid2, send_more)
-        router1.send_const(pong, send_none)
+        router1.send(rid2, send_more)
+        router1.send(pong, send_none)
 
         if use_poll and not wait_for_input(router2, 2000, waiter2):
             return 2
@@ -93,8 +93,8 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
 
         start = time.perf_counter()
         for _ in range(lat_count):
-            router2.send_const(rid1, send_more)
-            router2.send_const(buf, send_none)
+            router2.send(rid1, send_more)
+            router2.send(buf, send_none)
 
             if use_poll and not wait_for_input(router1, 2000, waiter1):
                 return 2
@@ -103,7 +103,7 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
             router1.recv_into(data_buf, recv_none)
 
             router1.send(id_view[:rid_len], send_more)
-            router1.send_const(buf, send_none)
+            router1.send(buf, send_none)
 
             if use_poll and not wait_for_input(router2, 2000, waiter2):
                 return 2
@@ -117,8 +117,8 @@ def run_router_router(transport: str, size: int, use_poll: bool) -> int:
         sent = 0
         for _ in range(msg_count):
             try:
-                router2.send_const(rid1, send_more | send_dontwait)
-                router2.send_const(buf, send_dontwait)
+                router2.send(rid1, send_more | send_dontwait)
+                router2.send(buf, send_dontwait)
                 sent += 1
             except Exception:
                 break

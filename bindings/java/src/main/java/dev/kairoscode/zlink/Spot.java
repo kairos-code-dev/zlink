@@ -9,13 +9,25 @@ import dev.kairoscode.zlink.internal.NativeMsg;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class Spot implements AutoCloseable {
     private MemorySegment pubHandle;
     private MemorySegment subHandle;
     private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
     private static final int TOPIC_CAPACITY = 256;
+    private static final int TOPIC_CACHE_LIMIT = 1024;
+    private static final int TOPIC_SCRATCH_INITIAL_CAPACITY = 64;
+    private final ConcurrentHashMap<String, MemorySegment> topicCache =
+      new ConcurrentHashMap<>();
+    private final Arena topicCacheArena = Arena.ofShared();
+    private final ThreadLocal<MemorySegment> topicScratch =
+      ThreadLocal.withInitial(() -> Arena.ofAuto().allocate(
+        TOPIC_SCRATCH_INITIAL_CAPACITY));
+    private final ThreadLocal<Integer> topicScratchCapacity =
+      ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
 
     public Spot(SpotNode node) {
         this.pubHandle = Native.spotPubNew(node.handle());
@@ -28,8 +40,8 @@ public final class Spot implements AutoCloseable {
 
     public void publish(String topicId, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topicId, "topicId");
+        MemorySegment topic = topicCString(topicId);
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment topic = NativeHelpers.toCString(arena, topicId);
             publishInternal(arena, topic, parts, flags, false);
         }
     }
@@ -58,25 +70,9 @@ public final class Spot implements AutoCloseable {
 
     public void publishMove(String topicId, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topicId, "topicId");
+        MemorySegment topic = topicCString(topicId);
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment topic = NativeHelpers.toCString(arena, topicId);
             publishInternal(arena, topic, parts, flags, true);
-        }
-    }
-
-    public void publishConst(String topicId, MemorySegment payload,
-                             SendFlag flags) {
-        publishConst(topicId, payload, 0, payload.byteSize(), flags);
-    }
-
-    public void publishConst(String topicId, MemorySegment payload, long offset,
-                             long length, SendFlag flags) {
-        Objects.requireNonNull(topicId, "topicId");
-        Objects.requireNonNull(payload, "payload");
-        validatePayloadRange(payload, offset, length);
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment topic = NativeHelpers.toCString(arena, topicId);
-            publishConstInternal(arena, topic, payload, offset, length, flags);
         }
     }
 
@@ -84,22 +80,6 @@ public final class Spot implements AutoCloseable {
         Objects.requireNonNull(topic, "topic");
         try (Arena arena = Arena.ofConfined()) {
             publishInternal(arena, topic.cString(), parts, flags, true);
-        }
-    }
-
-    public void publishConst(PreparedTopic topic, MemorySegment payload,
-                             SendFlag flags) {
-        publishConst(topic, payload, 0, payload.byteSize(), flags);
-    }
-
-    public void publishConst(PreparedTopic topic, MemorySegment payload,
-                             long offset, long length, SendFlag flags) {
-        Objects.requireNonNull(topic, "topic");
-        Objects.requireNonNull(payload, "payload");
-        validatePayloadRange(payload, offset, length);
-        try (Arena arena = Arena.ofConfined()) {
-            publishConstInternal(arena, topic.cString(), payload, offset,
-                length, flags);
         }
     }
 
@@ -118,28 +98,10 @@ public final class Spot implements AutoCloseable {
         publishSingleInternal(context, topic.cString(), part, flags, true);
     }
 
-    public void publishConst(PreparedTopic topic, MemorySegment payload,
-                             SendFlag flags, PublishContext context) {
-        publishConst(topic, payload, 0, payload.byteSize(), flags, context);
-    }
-
-    public void publishConst(PreparedTopic topic, MemorySegment payload,
-                             long offset, long length, SendFlag flags,
-                             PublishContext context) {
-        Objects.requireNonNull(topic, "topic");
-        Objects.requireNonNull(payload, "payload");
-        Objects.requireNonNull(context, "context");
-        validatePayloadRange(payload, offset, length);
-        publishConstInternal(context, topic.cString(), payload, offset, length,
-            flags);
-    }
-
     public void subscribe(String topicId) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotSubSubscribe(subHandle, NativeHelpers.toCString(arena, topicId));
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_sub_subscribe failed");
-        }
+        int rc = Native.spotSubSubscribe(subHandle, topicCString(topicId));
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_sub_subscribe failed");
     }
 
     public void subscribe(PreparedTopic topic) {
@@ -150,19 +112,16 @@ public final class Spot implements AutoCloseable {
     }
 
     public void subscribePattern(String pattern) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotSubSubscribePattern(subHandle, NativeHelpers.toCString(arena, pattern));
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_sub_subscribe_pattern failed");
-        }
+        int rc = Native.spotSubSubscribePattern(subHandle, topicCString(pattern));
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_sub_subscribe_pattern failed");
     }
 
     public void unsubscribe(String topicIdOrPattern) {
-        try (Arena arena = Arena.ofConfined()) {
-            int rc = Native.spotSubUnsubscribe(subHandle, NativeHelpers.toCString(arena, topicIdOrPattern));
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_sub_unsubscribe failed");
-        }
+        int rc = Native.spotSubUnsubscribe(subHandle,
+            topicCString(topicIdOrPattern));
+        if (rc != 0)
+            throw new RuntimeException("zlink_spot_sub_unsubscribe failed");
     }
 
     public void unsubscribe(PreparedTopic topic) {
@@ -250,6 +209,11 @@ public final class Spot implements AutoCloseable {
             Native.spotSubDestroy(subHandle);
             subHandle = MemorySegment.NULL;
         }
+        topicCache.clear();
+        topicScratch.remove();
+        topicScratchCapacity.remove();
+        if (topicCacheArena.scope().isAlive())
+            topicCacheArena.close();
     }
 
     public record SpotMessage(String topicId, byte[][] parts) {}
@@ -559,38 +523,6 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    private void publishConstInternal(Arena arena,
-                                      MemorySegment topicId,
-                                      MemorySegment payload,
-                                      long offset,
-                                      long length,
-                                      SendFlag flags) {
-        publishConstBytes(topicId, payload, offset, length, flags);
-    }
-
-    private void publishConstInternal(PublishContext context,
-                                      MemorySegment topicId,
-                                      MemorySegment payload,
-                                      long offset,
-                                      long length,
-                                      SendFlag flags) {
-        context.ensureOpen();
-        publishConstBytes(topicId, payload, offset, length, flags);
-    }
-
-    private void publishConstBytes(MemorySegment topicId,
-                                   MemorySegment payload,
-                                   long offset,
-                                   long length,
-                                   SendFlag flags) {
-        MemorySegment slice = length == 0 ? MemorySegment.NULL
-          : payload.asSlice(offset, length);
-        int rc = Native.spotPubPublishBytes(pubHandle, topicId, slice, length,
-          flags.getValue());
-        if (rc != 0)
-            throw new RuntimeException("zlink_spot_pub_publish_bytes failed");
-    }
-
     private static void closeMsgVector(MemorySegment vec, int count) {
         for (int i = 0; i < count; i++) {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
@@ -634,14 +566,33 @@ public final class Spot implements AutoCloseable {
         return topicLen;
     }
 
-    private static void validatePayloadRange(MemorySegment payload,
-                                             long offset,
-                                             long length) {
-        if (!payload.isNative())
-            throw new IllegalArgumentException(
-                "publishConst requires a native MemorySegment");
-        long total = payload.byteSize();
-        if (offset < 0 || length < 0 || offset > total - length)
-            throw new IndexOutOfBoundsException("payload range out of bounds");
+    private MemorySegment topicCString(String topic) {
+        Objects.requireNonNull(topic, "topic");
+        MemorySegment cached = topicCache.get(topic);
+        if (cached != null)
+            return cached;
+        if (topicCache.size() >= TOPIC_CACHE_LIMIT)
+            return topicScratchCString(topic);
+        MemorySegment encoded = NativeHelpers.toCString(topicCacheArena, topic);
+        MemorySegment previous = topicCache.putIfAbsent(topic, encoded);
+        return previous == null ? encoded : previous;
     }
+
+    private MemorySegment topicScratchCString(String value) {
+        byte[] utf8 = value.getBytes(StandardCharsets.UTF_8);
+        int needed = utf8.length + 1;
+        MemorySegment scratch = topicScratch.get();
+        int capacity = topicScratchCapacity.get();
+        if (capacity < needed) {
+            int grown = Math.max(capacity << 1, needed);
+            scratch = Arena.ofAuto().allocate(grown);
+            topicScratch.set(scratch);
+            topicScratchCapacity.set(grown);
+        }
+        MemorySegment.copy(MemorySegment.ofArray(utf8), 0, scratch, 0,
+            utf8.length);
+        scratch.set(ValueLayout.JAVA_BYTE, utf8.length, (byte) 0);
+        return scratch.asSlice(0, needed);
+    }
+
 }

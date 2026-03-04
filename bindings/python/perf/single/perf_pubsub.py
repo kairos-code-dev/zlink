@@ -40,14 +40,14 @@ def run(transport: str, size: int) -> int:
         recv_buf = bytearray(max(1, size))
 
         for _ in range(warmup):
-            pub.send_const(buf, send_none)
+            pub.send(buf, send_none)
             sub.recv_into(recv_buf, recv_none)
 
         start = time.perf_counter()
         sent = 0
         for _ in range(msg_count):
             try:
-                pub.send_const(buf, send_dontwait)
+                pub.send(buf, send_dontwait)
                 sent += 1
             except Exception:
                 break

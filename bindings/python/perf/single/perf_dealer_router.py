@@ -45,20 +45,20 @@ def run(transport: str, size: int) -> int:
         rid_view = memoryview(rid_buf)
 
         for _ in range(warmup):
-            dealer.send_const(buf, send_none)
+            dealer.send(buf, send_none)
             rid_len = router.recv_into(rid_buf, recv_none)
             router.recv_into(data_buf, recv_none)
             router.send(rid_view[:rid_len], send_more)
-            router.send_const(buf, send_none)
+            router.send(buf, send_none)
             dealer.recv_into(data_buf, recv_none)
 
         start = time.perf_counter()
         for _ in range(lat_count):
-            dealer.send_const(buf, send_none)
+            dealer.send(buf, send_none)
             rid_len = router.recv_into(rid_buf, recv_none)
             router.recv_into(data_buf, recv_none)
             router.send(rid_view[:rid_len], send_more)
-            router.send_const(buf, send_none)
+            router.send(buf, send_none)
             dealer.recv_into(data_buf, recv_none)
         lat_us = ((time.perf_counter() - start) * 1_000_000.0) / (lat_count * 2)
 
@@ -66,7 +66,7 @@ def run(transport: str, size: int) -> int:
         sent = 0
         for _ in range(msg_count):
             try:
-                dealer.send_const(buf, send_dontwait)
+                dealer.send(buf, send_dontwait)
                 sent += 1
             except Exception:
                 break

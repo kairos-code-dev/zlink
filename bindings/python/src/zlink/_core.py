@@ -157,14 +157,6 @@ class Socket:
         _ = keepalive
         return rc
 
-    def send_const(self, data: bytes, flags: int = 0):
-        buf, size, keepalive = _send_buffer(data)
-        rc = lib().zlink_send_const(self._handle, buf, size, flags)
-        if rc < 0:
-            _raise_last_error()
-        _ = keepalive
-        return rc
-
     def recv(self, size: int, flags: int = 0) -> bytes:
         buf = ctypes.create_string_buffer(size)
         rc = lib().zlink_recv(self._handle, buf, size, flags)

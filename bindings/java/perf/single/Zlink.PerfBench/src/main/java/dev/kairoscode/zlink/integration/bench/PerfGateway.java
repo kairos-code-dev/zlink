@@ -12,10 +12,6 @@ final class PerfGateway {
         int warmup = PerfUtil.parseEnv("PERF_WARMUP_COUNT", 1000);
         int latCount = PerfUtil.parseEnv("PERF_LAT_COUNT", 500);
         int msgCount = PerfUtil.resolveMsgCount(size);
-        // Gateway default uses const single-part path; override via env.
-        int globalConst = PerfUtil.parseEnvFlag("PERF_USE_CONST", 1);
-        boolean useConst = PerfUtil.parseEnvFlag("PERF_GATEWAY_USE_CONST",
-          globalConst) == 1;
 
         Context ctx = new Context();
         Registry registry = null;
@@ -77,26 +73,16 @@ final class PerfGateway {
             MemorySegment ridSegment = payloadArena.allocate(256);
             MemorySegment payloadRecvSegment = payloadArena.allocate(dataCap);
             for (int i = 0; i < warmup; i++) {
-                if (useConst) {
-                    gateway.sendConst(preparedService, payloadSegment,
-                      SendFlag.NONE, sendContext);
-                } else {
-                    gatewaySendMove(gateway, preparedService, payloadSegment,
-                      sendContext);
-                }
+                gatewaySendMove(gateway, preparedService, payloadSegment,
+                  sendContext);
                 recvGatewayPayloadBlocking(router, ridSegment,
                   payloadRecvSegment, dataCap);
             }
 
             long t0 = System.nanoTime();
             for (int i = 0; i < latCount; i++) {
-                if (useConst) {
-                    gateway.sendConst(preparedService, payloadSegment,
-                      SendFlag.NONE, sendContext);
-                } else {
-                    gatewaySendMove(gateway, preparedService, payloadSegment,
-                      sendContext);
-                }
+                gatewaySendMove(gateway, preparedService, payloadSegment,
+                  sendContext);
                 recvGatewayPayloadBlocking(router, ridSegment,
                   payloadRecvSegment, dataCap);
             }
@@ -121,13 +107,8 @@ final class PerfGateway {
             t0 = System.nanoTime();
             for (int i = 0; i < msgCount; i++) {
                 try {
-                    if (useConst) {
-                        gateway.sendConst(preparedService, payloadSegment,
-                          SendFlag.NONE, sendContext);
-                    } else {
-                        gatewaySendMove(gateway, preparedService, payloadSegment,
-                          sendContext);
-                    }
+                    gatewaySendMove(gateway, preparedService, payloadSegment,
+                      sendContext);
                     sent++;
                 } catch (Exception e) {
                     break;

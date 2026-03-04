@@ -52,8 +52,6 @@ class _Lib:
         L.zlink_disconnect.restype = ctypes.c_int
         L.zlink_send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_send.restype = ctypes.c_int
-        L.zlink_send_const.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
-        L.zlink_send_const.restype = ctypes.c_int
         L.zlink_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
         L.zlink_recv.restype = ctypes.c_int
         L.zlink_stream_attach_raw.argtypes = [ctypes.c_void_p, ctypes.c_void_p]

@@ -142,14 +142,6 @@ def _load_lib():
     ]
     _lib.zlink_send.restype = ctypes.c_int
 
-    _lib.zlink_send_const.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_int,
-    ]
-    _lib.zlink_send_const.restype = ctypes.c_int
-
     _lib.zlink_recv.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,

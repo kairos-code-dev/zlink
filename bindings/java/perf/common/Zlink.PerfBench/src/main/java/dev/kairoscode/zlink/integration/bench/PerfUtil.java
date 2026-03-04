@@ -66,15 +66,6 @@ final class PerfUtil {
         socket.send(payload, 0, payloadLen, SendFlag.NONE);
     }
 
-    static void streamSendConst(Socket socket,
-                                MemorySegment rid,
-                                int ridLen,
-                                MemorySegment payload,
-                                int payloadLen) {
-        socket.sendConst(rid, 0, ridLen, SendFlag.SNDMORE);
-        socket.sendConst(payload, 0, payloadLen, SendFlag.NONE);
-    }
-
     static StreamFrame streamRecv(Socket socket, int cap) {
         try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
             ridMsg.recv(socket, ReceiveFlag.NONE.getValue());

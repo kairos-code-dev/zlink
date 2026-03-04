@@ -129,27 +129,6 @@ public sealed class Socket : IDisposable
         return rc;
     }
 
-    public int SendConst(byte[] buffer, SendFlags flags = SendFlags.None)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return SendConst(buffer.AsSpan(), flags);
-    }
-
-    public unsafe int SendConst(ReadOnlySpan<byte> buffer,
-        SendFlags flags = SendFlags.None)
-    {
-        EnsureNotDisposed();
-        int rc;
-        fixed (byte* ptr = buffer)
-        {
-            rc = NativeMethods.zlink_send_const(_handle, ptr,
-                (nuint)buffer.Length, (int)flags);
-        }
-        ZlinkException.ThrowIfError(rc);
-        return rc;
-    }
-
     public void AttachStreamRaw(StreamPacketHandler handler)
     {
         EnsureNotDisposed();

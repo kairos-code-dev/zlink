@@ -14,7 +14,6 @@ target_compile_features(zlink-cpp INTERFACE cxx_std_11)
 if(NOT DEFINED ZLINK_CPP_BUILD_TESTS)
   option(ZLINK_CPP_BUILD_TESTS "Build C++ binding tests" OFF)
 endif()
-option(ZLINK_CPP_BUILD_EXAMPLES "Build C++ binding examples" OFF)
 
 if(ZLINK_CPP_BUILD_TESTS)
   if(NOT TARGET libzlink)
@@ -64,22 +63,4 @@ if(ZLINK_CPP_BUILD_BENCHMARKS)
   )
   target_link_libraries(cpp_pair_bench PRIVATE libzlink zlink-cpp Threads::Threads)
   target_compile_features(cpp_pair_bench PRIVATE cxx_std_17)
-endif()
-
-if(ZLINK_CPP_BUILD_EXAMPLES)
-  if(NOT TARGET libzlink)
-    message(FATAL_ERROR "libzlink target not found. Build core first or add_subdirectory(core)")
-  endif()
-
-  add_executable(cpp_pair_basic examples/pair_basic.cpp)
-  target_link_libraries(cpp_pair_basic PRIVATE libzlink zlink-cpp)
-
-  add_executable(cpp_dealer_router examples/dealer_router.cpp)
-  target_link_libraries(cpp_dealer_router PRIVATE libzlink zlink-cpp)
-
-  add_executable(cpp_spot_basic examples/spot_basic.cpp)
-  target_link_libraries(cpp_spot_basic PRIVATE libzlink zlink-cpp)
-
-  add_executable(cpp_monitor_basic examples/monitor_basic.cpp)
-  target_link_libraries(cpp_monitor_basic PRIVATE libzlink zlink-cpp)
 endif()

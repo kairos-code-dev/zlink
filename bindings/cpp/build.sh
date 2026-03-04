@@ -2,12 +2,11 @@
 set -euo pipefail
 
 # Usage:
-#   ./bindings/cpp/build.sh [RUN_TESTS] [BUILD_EXAMPLES]
+#   ./bindings/cpp/build.sh [RUN_TESTS]
 # Example:
-#   ./bindings/cpp/build.sh ON OFF
+#   ./bindings/cpp/build.sh ON
 
 RUN_TESTS="${1:-ON}"
-BUILD_EXAMPLES="${2:-OFF}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -25,7 +24,6 @@ fi
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" \
   -DZLINK_BUILD_CPP_BINDINGS=ON \
-  -DZLINK_CPP_BUILD_TESTS="${RUN_TESTS}" \
-  -DZLINK_CPP_BUILD_EXAMPLES="${BUILD_EXAMPLES}"
+  -DZLINK_CPP_BUILD_TESTS="${RUN_TESTS}"
 
 cmake --build "${BUILD_DIR}" -j"$(nproc)"

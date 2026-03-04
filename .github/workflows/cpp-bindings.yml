@@ -25,7 +25,6 @@ jobs:
           cmake -B build_cpp_ci \
             -DZLINK_BUILD_CPP_BINDINGS=ON \
             -DZLINK_CPP_BUILD_TESTS=ON \
-            -DZLINK_CPP_BUILD_EXAMPLES=ON \
             -DZLINK_BUILD_TESTS=OFF
 
       - name: Build

@@ -361,7 +361,6 @@ jobs:
           cmake -B build_cpp_release \
             -DZLINK_BUILD_CPP_BINDINGS=ON \
             -DZLINK_CPP_BUILD_TESTS=ON \
-            -DZLINK_CPP_BUILD_EXAMPLES=OFF \
             -DZLINK_BUILD_TESTS=OFF
           cmake --build build_cpp_release --parallel
           ctest --test-dir build_cpp_release --output-on-failure -R test_cpp_
@@ -370,7 +369,6 @@ jobs:
         run: |
           mkdir -p dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/include
           cp -r bindings/cpp/include/* dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/include/
-          cp bindings/cpp/examples/README.md dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}/
           tar -C dist/cpp -czf dist/cpp/zlink-cpp-${{ needs.resolve.outputs.version }}.tar.gz zlink-cpp-${{ needs.resolve.outputs.version }}
 
       - uses: actions/upload-artifact@v4

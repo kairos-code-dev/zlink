@@ -4,9 +4,9 @@ using Zlink.Native;
 
 namespace Zlink;
 
-public readonly struct PeerInfoRecord
+public readonly struct PeerRecord
 {
-    public PeerInfoRecord(byte[] routingId, string remoteAddress,
+    public PeerRecord(byte[] routingId, string remoteAddress,
         ulong connectedTime, ulong msgsSent, ulong msgsReceived,
         ulong sndPendingMsgs, ulong rcvPendingMsgs)
     {
@@ -27,7 +27,7 @@ public readonly struct PeerInfoRecord
     public ulong SndPendingMsgs { get; }
     public ulong RcvPendingMsgs { get; }
 
-    internal static unsafe PeerInfoRecord FromNative(ref ZlinkPeerInfo info)
+    internal static unsafe PeerRecord FromNative(ref ZlinkPeerInfo info)
     {
         byte[] routing = NativeHelpers.ReadRoutingId(ref info.RoutingId);
         string remote;
@@ -35,7 +35,7 @@ public readonly struct PeerInfoRecord
         {
             remote = NativeHelpers.ReadString(ptr, 256);
         }
-        return new PeerInfoRecord(routing, remote, info.ConnectedTime,
+        return new PeerRecord(routing, remote, info.ConnectedTime,
             info.MsgsSent, info.MsgsReceived, info.SndPendingMsgs,
             info.RcvPendingMsgs);
     }

@@ -63,7 +63,7 @@ public sealed class Receiver : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public ReceiverRegisterResult RegisterResult(string serviceName)
+    public ReceiverRegisterResult GetRegisterResult(string serviceName)
     {
         EnsureNotDisposed();
         unsafe
@@ -87,14 +87,14 @@ public sealed class Receiver : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetSockOpt(ReceiverSocketRole role, SocketOption option, byte[] value)
+    public void SetOption(ReceiverSocketRole role, SocketOption option, byte[] value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-        SetSockOpt(role, option, value.AsSpan());
+        SetOption(role, option, value.AsSpan());
     }
 
-    public unsafe void SetSockOpt(ReceiverSocketRole role, SocketOption option,
+    public unsafe void SetOption(ReceiverSocketRole role, SocketOption option,
         ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
@@ -106,7 +106,7 @@ public sealed class Receiver : IDisposable
         }
     }
 
-    public unsafe void SetSockOpt(ReceiverSocketRole role, SocketOption option, int value)
+    public unsafe void SetOption(ReceiverSocketRole role, SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;
@@ -124,7 +124,7 @@ public sealed class Receiver : IDisposable
         return Socket.Adopt(handle, false);
     }
 
-    public PeerInfoRecord[] GetRouterPeers()
+    public PeerRecord[] GetRouterPeers()
     {
         EnsureNotDisposed();
         nuint count = 0;
@@ -132,7 +132,7 @@ public sealed class Receiver : IDisposable
             IntPtr.Zero, ref count);
         ZlinkException.ThrowIfError(rc);
         if (count == 0)
-            return Array.Empty<PeerInfoRecord>();
+            return Array.Empty<PeerRecord>();
 
         ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
         try
@@ -142,9 +142,9 @@ public sealed class Receiver : IDisposable
                 ref actual);
             ZlinkException.ThrowIfError(rc);
 
-            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            PeerRecord[] peers = new PeerRecord[(int)actual];
             for (int i = 0; i < peers.Length; i++)
-                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+                peers[i] = PeerRecord.FromNative(ref native[i]);
             return peers;
         }
         finally

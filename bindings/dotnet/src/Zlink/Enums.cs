@@ -114,13 +114,6 @@ public enum ReceiveFlags
     DontWait = 1
 }
 
-[Flags]
-public enum StreamDispatchMode
-{
-    None = 0,
-    Len32Be = 0x0001
-}
-
 public enum ErrorCode
 {
     Efsm = 156384763,

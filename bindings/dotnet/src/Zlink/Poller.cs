@@ -37,7 +37,7 @@ public sealed class Poller
         return true;
     }
 
-    public bool RemoveFd(int fd)
+    public bool Remove(int fd)
     {
         int idx = _items.FindIndex(item => item.Socket == null && item.Fd == fd);
         if (idx < 0)
@@ -57,6 +57,18 @@ public sealed class Poller
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return WaitWindows(events, timeoutMs);
         return WaitUnix(events, timeoutMs);
+    }
+
+    public int Wait(Span<PollEvent> destination, int timeoutMs,
+        out int totalReady)
+    {
+        totalReady = 0;
+        if (_items.Count == 0)
+            return 0;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return WaitWindows(destination, timeoutMs, out totalReady);
+        return WaitUnix(destination, timeoutMs, out totalReady);
     }
 
     private int WaitUnix(List<PollEvent> events, int timeoutMs)
@@ -121,6 +133,94 @@ public sealed class Poller
                 (PollEvents)pollItems[i].Revents));
         }
         return events.Count;
+    }
+
+    private int WaitUnix(Span<PollEvent> destination, int timeoutMs,
+        out int totalReady)
+    {
+        EnsureUnixCapacity(_items.Count);
+        var pollItems = _unixPollItems;
+        for (int i = 0; i < _items.Count; i++)
+        {
+            var item = _items[i];
+            pollItems[i] = new ZlinkPollItemUnix
+            {
+                Socket = item.Socket?.Handle ?? IntPtr.Zero,
+                Fd = item.Fd,
+                Events = (short)item.Events,
+                Revents = 0
+            };
+        }
+
+        int rc = NativeMethods.zlink_poll_unix(pollItems, _items.Count,
+            timeoutMs);
+        if (rc <= 0)
+        {
+            totalReady = 0;
+            return rc;
+        }
+
+        int written = 0;
+        int ready = 0;
+        for (int i = 0; i < _items.Count; i++)
+        {
+            if (pollItems[i].Revents == 0)
+                continue;
+            ready++;
+            if (written < destination.Length)
+            {
+                destination[written++] = new PollEvent(_items[i].Socket,
+                    _items[i].Tag, (PollEvents)pollItems[i].Events,
+                    (PollEvents)pollItems[i].Revents);
+            }
+        }
+
+        totalReady = ready;
+        return written;
+    }
+
+    private int WaitWindows(Span<PollEvent> destination, int timeoutMs,
+        out int totalReady)
+    {
+        EnsureWindowsCapacity(_items.Count);
+        var pollItems = _windowsPollItems;
+        for (int i = 0; i < _items.Count; i++)
+        {
+            var item = _items[i];
+            pollItems[i] = new ZlinkPollItemWindows
+            {
+                Socket = item.Socket?.Handle ?? IntPtr.Zero,
+                Fd = (ulong)item.Fd,
+                Events = (short)item.Events,
+                Revents = 0
+            };
+        }
+
+        int rc = NativeMethods.zlink_poll_windows(pollItems, _items.Count,
+            timeoutMs);
+        if (rc <= 0)
+        {
+            totalReady = 0;
+            return rc;
+        }
+
+        int written = 0;
+        int ready = 0;
+        for (int i = 0; i < _items.Count; i++)
+        {
+            if (pollItems[i].Revents == 0)
+                continue;
+            ready++;
+            if (written < destination.Length)
+            {
+                destination[written++] = new PollEvent(_items[i].Socket,
+                    _items[i].Tag, (PollEvents)pollItems[i].Events,
+                    (PollEvents)pollItems[i].Revents);
+            }
+        }
+
+        totalReady = ready;
+        return written;
     }
 
     private void EnsureUnixCapacity(int count)

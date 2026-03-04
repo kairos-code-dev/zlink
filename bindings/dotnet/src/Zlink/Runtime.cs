@@ -17,11 +17,20 @@ public static class Runtime
         return rc != 0;
     }
 
-    public static void Sleep(int seconds)
+    public static void SleepSeconds(int seconds)
     {
         if (seconds < 0)
             throw new ArgumentOutOfRangeException(nameof(seconds));
         NativeMethods.zlink_sleep(seconds);
+    }
+
+    public static void Sleep(TimeSpan duration)
+    {
+        double totalSeconds = duration.TotalSeconds;
+        if (double.IsNaN(totalSeconds) || double.IsInfinity(totalSeconds)
+            || totalSeconds < 0 || totalSeconds > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(duration));
+        NativeMethods.zlink_sleep((int)Math.Ceiling(totalSeconds));
     }
 
     public static int Proxy(Socket frontend, Socket backend,

@@ -112,10 +112,6 @@ internal static class NativeMethods
         nuint len, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_stream_attach(IntPtr socket,
-        ZlinkStreamOnPacketsDelegate onPackets, int flags);
-
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_attach_raw(IntPtr socket,
         ZlinkStreamOnRawDelegate onRaw);
 
@@ -577,6 +573,11 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
         ZlinkMsg* parts, nuint partCount, int flags);
 
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_pub_publish",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_spot_pub_publish(IntPtr pub,
+        byte* topicId, ZlinkMsg* parts, nuint partCount, int flags);
+
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_spot_pub_publish_bytes(IntPtr pub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
@@ -587,6 +588,11 @@ internal static class NativeMethods
     internal static unsafe extern int zlink_spot_pub_publish_bytes(IntPtr pub,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicId,
         byte* data, nuint size, int flags);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_spot_pub_publish_bytes",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static unsafe extern int zlink_spot_pub_publish_bytes(IntPtr pub,
+        byte* topicId, byte* data, nuint size, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_spot_sub_new(IntPtr node);

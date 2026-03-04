@@ -1,3 +1,4 @@
+using System;
 using Xunit;
 
 namespace Zlink.Tests;
@@ -29,5 +30,15 @@ public sealed class test_system
 
         Assert.NotEqual(System.IntPtr.Zero, socket.Handle);
         Assert.True(Runtime.Has("tcp") || !Runtime.Has("tcp"));
+    }
+
+    [Fact]
+    public void runtime_sleep_overloads_callable()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        Runtime.SleepSeconds(0);
+        Runtime.Sleep(TimeSpan.Zero);
     }
 }

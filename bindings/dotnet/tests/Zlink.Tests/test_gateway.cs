@@ -53,10 +53,10 @@ public sealed class test_gateway
         using var receiver = new Receiver(ctx);
 
         const int hwm = 1000000;
-        gateway.SetSockOpt(SocketOption.SndHwm, hwm);
-        gateway.SetSockOpt(SocketOption.RcvHwm, hwm);
-        receiver.SetSockOpt(ReceiverSocketRole.Router, SocketOption.SndHwm, hwm);
-        receiver.SetSockOpt(ReceiverSocketRole.Router, SocketOption.RcvHwm, hwm);
+        gateway.SetOption(SocketOption.SndHwm, hwm);
+        gateway.SetOption(SocketOption.RcvHwm, hwm);
+        receiver.SetOption(ReceiverSocketRole.Router, SocketOption.SndHwm, hwm);
+        receiver.SetOption(ReceiverSocketRole.Router, SocketOption.RcvHwm, hwm);
 
         using var gatewayRouter = gateway.CreateRouterSocket();
         using var receiverRouter = receiver.CreateRouterSocket();
@@ -94,7 +94,7 @@ public sealed class test_gateway
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            var r = receiver.RegisterResult("svc");
+            var r = receiver.GetRegisterResult("svc");
             return r.Status == 0;
         }, 4000));
 
@@ -152,6 +152,74 @@ public sealed class test_gateway
         string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
             receiverRouter, "hello", 3000);
         Assert.Equal("hello", payload);
+    }
+
+    [Fact]
+    public void gateway_send_message_moves_ownership()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var registry = new Registry(ctx);
+        string regPub = CoreTestSupport.NewEndpoint("inproc", "gw-msg-own-pub");
+        string regRouter = CoreTestSupport.NewEndpoint("inproc", "gw-msg-own-router");
+        registry.SetEndpoints(regPub, regRouter);
+        registry.Start();
+
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        discovery.ConnectRegistry(regPub);
+        discovery.Subscribe("svc-own");
+
+        using var receiver = new Receiver(ctx);
+        using var receiverRouter = receiver.CreateRouterSocket();
+        RegisterProvider(receiver, receiverRouter, regRouter, "svc-own", 1, "OWN1");
+
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+            discovery.ReceiverCount("svc-own") == 1, 4000));
+
+        using var gateway = new Gateway(ctx, discovery);
+        Assert.True(CoreTestSupport.WaitUntil(() =>
+            gateway.ConnectionCount("svc-own") > 0, 4000));
+
+        using var message = Message.FromBytes("owned-send"u8);
+        gateway.Send("svc-own", new[] { message }, SendFlags.None);
+        Assert.Throws<ObjectDisposedException>(() =>
+        {
+            _ = message.Size;
+        });
+
+        string payload = CoreTestSupport.ReceiveRouterPayloadWithTimeout(
+            receiverRouter, "owned-send", 3000);
+        Assert.Equal("owned-send", payload);
+    }
+
+    [Fact]
+    public void gateway_send_message_failure_still_consumes_ownership()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var registry = new Registry(ctx);
+        string regPub = CoreTestSupport.NewEndpoint("inproc", "gw-msg-fail-pub");
+        string regRouter = CoreTestSupport.NewEndpoint("inproc", "gw-msg-fail-router");
+        registry.SetEndpoints(regPub, regRouter);
+        registry.Start();
+
+        using var discovery = new Discovery(ctx, DiscoveryServiceType.Gateway);
+        discovery.ConnectRegistry(regPub);
+        discovery.Subscribe("svc-missing");
+
+        using var gateway = new Gateway(ctx, discovery);
+        using var message = Message.FromBytes("owned-fail"u8);
+
+        Assert.Throws<ZlinkException>(() =>
+            gateway.Send("svc-missing", new[] { message }, SendFlags.DontWait));
+        Assert.Throws<ObjectDisposedException>(() =>
+        {
+            _ = message.Size;
+        });
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public sealed class test_service_discovery
 
         Assert.True(CoreTestSupport.WaitUntil(() =>
         {
-            var result = providerA.RegisterResult("svc-A");
+            var result = providerA.GetRegisterResult("svc-A");
             return result.Status == 0;
         }, 3000));
 

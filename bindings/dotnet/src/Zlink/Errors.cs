@@ -30,4 +30,26 @@ public sealed class ZlinkException : Exception
         if (rc < 0)
             throw FromLastError();
     }
+
+    public static bool TryMapErrorCode(int errno, out ErrorCode code)
+    {
+        switch (errno)
+        {
+            case (int)ErrorCode.Efsm:
+                code = ErrorCode.Efsm;
+                return true;
+            case (int)ErrorCode.EnoCompatProto:
+                code = ErrorCode.EnoCompatProto;
+                return true;
+            case (int)ErrorCode.Eterm:
+                code = ErrorCode.Eterm;
+                return true;
+            case (int)ErrorCode.EmThread:
+                code = ErrorCode.EmThread;
+                return true;
+            default:
+                code = default;
+                return false;
+        }
+    }
 }

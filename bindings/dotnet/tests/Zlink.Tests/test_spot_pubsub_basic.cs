@@ -86,6 +86,62 @@ public sealed class test_spot_pubsub_basic
     }
 
     [Fact]
+    public void spot_publish_message_moves_ownership()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
+        spot.Subscribe("own:topic");
+
+        using var msg = Message.FromBytes("owned-spot"u8);
+        spot.Publish("own:topic", new[] { msg }, SendFlags.None);
+
+        Assert.Throws<ObjectDisposedException>(() =>
+        {
+            _ = msg.Size;
+        });
+    }
+
+    [Fact]
+    public void spot_packet_handler_zero_copy_callback()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var node = new SpotNode(ctx);
+        using var spot = new Spot(node);
+
+        using var signal = new ManualResetEventSlim(false);
+        byte[]? topicSeen = null;
+        byte[]? payloadSeen = null;
+        int partCount = 0;
+
+        spot.SetPacketHandler((topicUtf8, parts) =>
+        {
+            topicSeen = topicUtf8.ToArray();
+            partCount = parts.Length;
+            if (parts.Length > 0)
+                payloadSeen = parts[0].AsReadOnlySpan().ToArray();
+            signal.Set();
+        });
+
+        spot.Subscribe("raw:topic");
+        using var msg = Message.FromBytes("raw-payload"u8);
+        spot.Publish("raw:topic", new[] { msg }, SendFlags.None);
+
+        Assert.True(signal.Wait(2000));
+        Assert.NotNull(topicSeen);
+        Assert.NotNull(payloadSeen);
+        Assert.Equal("raw:topic", Encoding.UTF8.GetString(topicSeen!));
+        Assert.Equal(1, partCount);
+        Assert.Equal("raw-payload", Encoding.UTF8.GetString(payloadSeen!));
+    }
+
+    [Fact]
     public void spot_peer_pubsub()
     {
         if (!CoreTestSupport.IsNativeAvailable())

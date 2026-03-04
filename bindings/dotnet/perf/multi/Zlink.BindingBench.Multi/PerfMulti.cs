@@ -75,7 +75,7 @@ internal static partial class PerfRunner
         {
             try
             {
-                MonitorEventInfo evt = monitor.Receive(ReceiveFlags.DontWait);
+                MonitorEvent evt = monitor.Receive(ReceiveFlags.DontWait);
                 if (IsMonitorReady(evt.Event, acceptFallback))
                     return true;
             }

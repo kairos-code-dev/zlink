@@ -32,6 +32,9 @@ public sealed class Gateway : IDisposable
             throw ZlinkException.FromLastError();
     }
 
+    /// <summary>
+    /// Sends multipart message to a service and consumes ownership of all parts.
+    /// </summary>
     public void Send(string serviceName, Message[] parts,
         SendFlags flags = SendFlags.None)
     {
@@ -43,8 +46,7 @@ public sealed class Gateway : IDisposable
     public unsafe void Send(string serviceName, ReadOnlySpan<Message> parts,
         SendFlags flags = SendFlags.None)
     {
-        SendCore(serviceName, default, useRoutingId: false, parts, flags,
-            moveParts: false);
+        SendCore(serviceName, default, useRoutingId: false, parts, flags);
     }
 
     public unsafe void Send(string serviceName, ReadOnlySpan<byte> payload,
@@ -54,21 +56,10 @@ public sealed class Gateway : IDisposable
             flags);
     }
 
-    public void SendMove(string serviceName, Message[] parts,
-        SendFlags flags = SendFlags.None)
-    {
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        SendMove(serviceName, parts.AsSpan(), flags);
-    }
-
-    public unsafe void SendMove(string serviceName,
-        ReadOnlySpan<Message> parts, SendFlags flags = SendFlags.None)
-    {
-        SendCore(serviceName, default, useRoutingId: false, parts, flags,
-            moveParts: true);
-    }
-
+    /// <summary>
+    /// Sends multipart message to a specific routing id and consumes ownership
+    /// of all parts.
+    /// </summary>
     public void SendToRoutingId(string serviceName, byte[] routingId,
         Message[] parts, SendFlags flags = SendFlags.None)
     {
@@ -83,8 +74,7 @@ public sealed class Gateway : IDisposable
         ReadOnlySpan<byte> routingId, ReadOnlySpan<Message> parts,
         SendFlags flags = SendFlags.None)
     {
-        SendCore(serviceName, routingId, useRoutingId: true, parts, flags,
-            moveParts: false);
+        SendCore(serviceName, routingId, useRoutingId: true, parts, flags);
     }
 
     public unsafe void SendToRoutingId(string serviceName,
@@ -95,28 +85,9 @@ public sealed class Gateway : IDisposable
             flags);
     }
 
-    public void SendMoveToRoutingId(string serviceName, byte[] routingId,
-        Message[] parts, SendFlags flags = SendFlags.None)
-    {
-        if (routingId == null)
-            throw new ArgumentNullException(nameof(routingId));
-        if (parts == null)
-            throw new ArgumentNullException(nameof(parts));
-        SendMoveToRoutingId(serviceName, routingId.AsSpan(), parts.AsSpan(),
-            flags);
-    }
-
-    public unsafe void SendMoveToRoutingId(string serviceName,
-        ReadOnlySpan<byte> routingId, ReadOnlySpan<Message> parts,
-        SendFlags flags = SendFlags.None)
-    {
-        SendCore(serviceName, routingId, useRoutingId: true, parts, flags,
-            moveParts: true);
-    }
-
     private unsafe void SendCore(string serviceName,
         ReadOnlySpan<byte> routingId, bool useRoutingId,
-        ReadOnlySpan<Message> parts, SendFlags flags, bool moveParts)
+        ReadOnlySpan<Message> parts, SendFlags flags)
     {
         EnsureNotDisposed();
         if (serviceName == null)
@@ -144,10 +115,11 @@ public sealed class Gateway : IDisposable
                 if (parts[i] == null)
                     throw new ArgumentException(
                         "Parts must not contain null messages.", nameof(parts));
-                if (moveParts)
-                    parts[i].MoveTo(ref nativeParts[i]);
-                else
-                    parts[i].CopyTo(ref nativeParts[i]);
+            }
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                parts[i].MoveTo(ref nativeParts[i]);
                 built++;
             }
 
@@ -295,6 +267,18 @@ public sealed class Gateway : IDisposable
         }
     }
 
+    public bool TryReceiveSinglePayloadWithCode(Span<byte> payloadBuffer,
+        out int payloadSize, out ErrorCode? errorCode,
+        ReceiveFlags flags = ReceiveFlags.DontWait)
+    {
+        bool ok = TryReceiveSinglePayload(payloadBuffer, out payloadSize,
+            out int errno, flags);
+        errorCode = ZlinkException.TryMapErrorCode(errno, out var code)
+            ? code
+            : null;
+        return ok;
+    }
+
     public void SetLoadBalancing(string serviceName,
         GatewayLoadBalancing strategy)
     {
@@ -331,7 +315,7 @@ public sealed class Gateway : IDisposable
         return Socket.Adopt(handle, false);
     }
 
-    public PeerInfoRecord[] GetRouterPeers()
+    public PeerRecord[] GetRouterPeers()
     {
         EnsureNotDisposed();
         nuint count = 0;
@@ -339,7 +323,7 @@ public sealed class Gateway : IDisposable
             ref count);
         ZlinkException.ThrowIfError(rc);
         if (count == 0)
-            return Array.Empty<PeerInfoRecord>();
+            return Array.Empty<PeerRecord>();
 
         ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared.Rent((int)count);
         try
@@ -349,9 +333,9 @@ public sealed class Gateway : IDisposable
                 ref actual);
             ZlinkException.ThrowIfError(rc);
 
-            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            PeerRecord[] peers = new PeerRecord[(int)actual];
             for (int i = 0; i < peers.Length; i++)
-                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+                peers[i] = PeerRecord.FromNative(ref native[i]);
             return peers;
         }
         finally
@@ -360,14 +344,14 @@ public sealed class Gateway : IDisposable
         }
     }
 
-    public void SetSockOpt(SocketOption option, byte[] value)
+    public void SetOption(SocketOption option, byte[] value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
-        SetSockOpt(option, value.AsSpan());
+        SetOption(option, value.AsSpan());
     }
 
-    public unsafe void SetSockOpt(SocketOption option, ReadOnlySpan<byte> value)
+    public unsafe void SetOption(SocketOption option, ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
         fixed (byte* ptr = value)
@@ -378,7 +362,7 @@ public sealed class Gateway : IDisposable
         }
     }
 
-    public unsafe void SetSockOpt(SocketOption option, int value)
+    public unsafe void SetOption(SocketOption option, int value)
     {
         EnsureNotDisposed();
         int tmp = value;

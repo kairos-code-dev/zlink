@@ -14,12 +14,12 @@ public sealed class MonitorSocket : IDisposable
         _socket = socket;
     }
 
-    public MonitorEventInfo Receive(ReceiveFlags flags = ReceiveFlags.None)
+    public MonitorEvent Receive(ReceiveFlags flags = ReceiveFlags.None)
     {
         int rc = NativeMethods.zlink_monitor_recv(_socket.Handle, out var evt,
             (int)flags);
         ZlinkException.ThrowIfError(rc);
-        return MonitorEventInfo.FromNative(ref evt);
+        return MonitorEvent.FromNative(ref evt);
     }
 
     public void Dispose()
@@ -34,25 +34,27 @@ public sealed class MonitorSocket : IDisposable
     }
 }
 
-public readonly struct MonitorEventInfo
+public readonly struct MonitorEvent
 {
-    public MonitorEventInfo(ulong @event, ulong value, byte[] routingId,
-        string localAddress, string remoteAddress)
+    public MonitorEvent(SocketEvent @event, ulong value, byte[] routingId,
+        string localAddress, string remoteAddress, ulong rawEvent)
     {
         Event = @event;
         Value = value;
         RoutingId = routingId;
         LocalAddress = localAddress;
         RemoteAddress = remoteAddress;
+        RawEvent = rawEvent;
     }
 
-    public ulong Event { get; }
+    public SocketEvent Event { get; }
     public ulong Value { get; }
     public byte[] RoutingId { get; }
     public string LocalAddress { get; }
     public string RemoteAddress { get; }
+    public ulong RawEvent { get; }
 
-    internal static MonitorEventInfo FromNative(ref ZlinkMonitorEvent evt)
+    internal static MonitorEvent FromNative(ref ZlinkMonitorEvent evt)
     {
         byte[] routing = NativeHelpers.ReadRoutingId(ref evt.RoutingId);
         string local;
@@ -66,7 +68,8 @@ public readonly struct MonitorEventInfo
                 remote = NativeHelpers.ReadString(remotePtr, 256);
             }
         }
-        return new MonitorEventInfo(evt.Event, evt.Value, routing, local,
-            remote);
+        SocketEvent @event = (SocketEvent)(evt.Event & 0xFFFFFFFFuL);
+        return new MonitorEvent(@event, evt.Value, routing, local,
+            remote, evt.Event);
     }
 }

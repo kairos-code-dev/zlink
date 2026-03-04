@@ -215,6 +215,17 @@ def replace_regex(path: Path, pattern: str, repl: str, count: int = 1) -> None:
         path.write_text(new_text, encoding="utf-8")
         updated.append(str(path.relative_to(repo_root)))
 
+def replace_regex_optional(path: Path, pattern: str, repl: str,
+                           count: int = 1) -> bool:
+    text = path.read_text(encoding="utf-8")
+    new_text, n = re.subn(pattern, repl, text, count=count, flags=re.MULTILINE)
+    if n == 0:
+        return False
+    if new_text != text:
+        path.write_text(new_text, encoding="utf-8")
+        updated.append(str(path.relative_to(repo_root)))
+    return True
+
 def update_json_version(path: Path) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     old = data.get("version")
@@ -245,12 +256,24 @@ replace_regex(dotnet_version_test, r"Assert\.Equal\(\d+,\s*patch\);",
 
 replace_regex(java_gradle, r"^version\s*=\s*'[^']+'$",
               f"version = '{expect}'")
-replace_regex(java_version_test,
-              r"assertEquals\(\d+,\s*v\[1\]\);",
-              f"assertEquals({minor}, v[1]);")
-replace_regex(java_version_test,
-              r"assertEquals\(\d+,\s*v\[2\]\);",
-              f"assertEquals({patch}, v[2]);")
+java_minor_updated = replace_regex_optional(
+    java_version_test,
+    r"assertEquals\(\d+,\s*v\[1\]\);",
+    f"assertEquals({minor}, v[1]);",
+)
+java_patch_updated = replace_regex_optional(
+    java_version_test,
+    r"assertEquals\(\d+,\s*v\[2\]\);",
+    f"assertEquals({patch}, v[2]);",
+)
+if java_minor_updated != java_patch_updated:
+    errors.append(
+        f"{java_version_test}: partial java version marker update "
+        "(minor/patch pattern mismatch)"
+    )
+elif not java_minor_updated and not java_patch_updated:
+    # Newer java tests may read expected version directly from core/include/zlink.h.
+    pass
 
 update_json_version(node_pkg)
 node_lock_data = json.loads(node_lock.read_text(encoding="utf-8"))

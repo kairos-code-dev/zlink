@@ -157,25 +157,14 @@ public sealed class Socket : IDisposable
         if (_streamAttached)
             throw new InvalidOperationException(
                 "STREAM callback is already attached.");
+        if ((mode & ~StreamDispatchMode.Len32Be) != 0)
+            throw new ArgumentOutOfRangeException(nameof(mode),
+                "Only Len32Be flag is supported.");
 
         _streamHandler = handler;
-        int rc;
-        if (mode == StreamDispatchMode.None)
-        {
-            _streamRawCallback = OnStreamRaw;
-            rc = NativeMethods.zlink_stream_attach_raw(_handle, _streamRawCallback);
-        }
-        else if (mode == StreamDispatchMode.Len32Be)
-        {
-            _streamCallback = OnStreamPackets;
-            rc = NativeMethods.zlink_stream_attach_len32be(_handle, _streamCallback);
-        }
-        else
-        {
-            _streamHandler = null;
-            throw new ArgumentOutOfRangeException(nameof(mode),
-                "mode must be None(0) or Len32Be(1)");
-        }
+        _streamCallback = OnStreamPackets;
+        int rc = NativeMethods.zlink_stream_attach(_handle, _streamCallback,
+            (int)mode);
         if (rc != 0)
         {
             _streamHandler = null;
@@ -277,6 +266,82 @@ public sealed class Socket : IDisposable
         }
         ZlinkException.ThrowIfError(rc);
         return rc;
+    }
+
+    public int StreamSend(byte[] routingId, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        if (routingId == null)
+            throw new ArgumentNullException(nameof(routingId));
+        return StreamSend(routingId.AsSpan(), message, flags);
+    }
+
+    public int StreamSend(ReadOnlySpan<byte> routingId, Message message,
+        SendFlags flags = SendFlags.None)
+    {
+        if (message == null)
+            throw new ArgumentNullException(nameof(message));
+        EnsureNotDisposed();
+        ZlinkRoutingId rid = NativeHelpers.WriteRoutingId(routingId);
+        int rc = NativeMethods.zlink_stream_send_msg(_handle, ref rid,
+            ref message.Handle, (int)flags);
+        ZlinkException.ThrowIfError(rc);
+        return rc;
+    }
+
+    public PeerInfoRecord GetPeerInfo(byte[] routingId)
+    {
+        if (routingId == null)
+            throw new ArgumentNullException(nameof(routingId));
+        return GetPeerInfo(routingId.AsSpan());
+    }
+
+    public PeerInfoRecord GetPeerInfo(ReadOnlySpan<byte> routingId)
+    {
+        EnsureNotDisposed();
+        ZlinkRoutingId nativeId = NativeHelpers.WriteRoutingId(routingId);
+        int rc = NativeMethods.zlink_socket_peer_info(_handle, ref nativeId,
+            out var info);
+        ZlinkException.ThrowIfError(rc);
+        return PeerInfoRecord.FromNative(ref info);
+    }
+
+    public int PeerCount()
+    {
+        EnsureNotDisposed();
+        int count = NativeMethods.zlink_socket_peer_count(_handle);
+        if (count < 0)
+            throw ZlinkException.FromLastError();
+        return count;
+    }
+
+    public PeerInfoRecord[] GetPeers()
+    {
+        EnsureNotDisposed();
+        nuint count = 0;
+        int rc = NativeMethods.zlink_socket_peers(_handle, IntPtr.Zero,
+            ref count);
+        ZlinkException.ThrowIfError(rc);
+        if (count == 0)
+            return Array.Empty<PeerInfoRecord>();
+
+        ZlinkPeerInfo[] native = ArrayPool<ZlinkPeerInfo>.Shared
+            .Rent(checked((int)count));
+        try
+        {
+            nuint actual = count;
+            rc = NativeMethods.zlink_socket_peers(_handle, native, ref actual);
+            ZlinkException.ThrowIfError(rc);
+
+            PeerInfoRecord[] peers = new PeerInfoRecord[(int)actual];
+            for (int i = 0; i < peers.Length; i++)
+                peers[i] = PeerInfoRecord.FromNative(ref native[i]);
+            return peers;
+        }
+        finally
+        {
+            ArrayPool<ZlinkPeerInfo>.Shared.Return(native);
+        }
     }
 
     public int Receive(byte[] buffer, ReceiveFlags flags = ReceiveFlags.None)

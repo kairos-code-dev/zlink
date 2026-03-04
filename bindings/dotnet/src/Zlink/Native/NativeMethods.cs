@@ -17,6 +17,20 @@ internal static class NativeMethods
         IntPtr routingId,
         IntPtr message);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal unsafe delegate void ZlinkSpotSubHandlerDelegate(
+        byte* topic,
+        nuint topicLen,
+        IntPtr parts,
+        nuint partCount,
+        IntPtr userData);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkTimerDelegate(int timerId, IntPtr arg);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ZlinkThreadDelegate(IntPtr arg);
+
     static NativeMethods()
     {
         NativeLibraryLoader.EnsureLoaded();
@@ -117,8 +131,28 @@ internal static class NativeMethods
         ref ZlinkRoutingId routingId, IntPtr data, nuint size, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_stream_send_msg(IntPtr socket,
+        ref ZlinkRoutingId routingId, ref ZlinkMsg msg, int flags);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_peer_info(IntPtr socket,
+        [In] ref ZlinkRoutingId routingId, out ZlinkPeerInfo info);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_socket_peer_routing_id(IntPtr socket,
         int index, out ZlinkRoutingId routingId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_peer_count(IntPtr socket);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_peers(IntPtr socket,
+        [In, Out] ZlinkPeerInfo[] peers, ref nuint count);
+
+    [DllImport(LibraryName, EntryPoint = "zlink_socket_peers",
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_socket_peers(IntPtr socket, IntPtr peers,
+        ref nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_msg_init(ref ZlinkMsg msg);
@@ -211,6 +245,21 @@ internal static class NativeMethods
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_poll_windows(
         [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_proxy(IntPtr frontend, IntPtr backend,
+        IntPtr capture);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_proxy_steerable(IntPtr frontend,
+        IntPtr backend, IntPtr capture, IntPtr control);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_has(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string capability);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_sleep(int seconds);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
@@ -558,8 +607,73 @@ internal static class NativeMethods
         [MarshalAs(UnmanagedType.LPUTF8Str)] string topicIdOrPattern);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern unsafe int zlink_spot_sub_set_handler(IntPtr sub,
+        ZlinkSpotSubHandlerDelegate? handler, IntPtr userData);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static unsafe extern int zlink_spot_sub_recv(IntPtr sub,
         out IntPtr parts, out nuint partCount, int flags, byte* topicId,
         ref nuint topicIdLen);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_atomic_counter_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_atomic_counter_set(IntPtr counter,
+        int value);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_inc(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_dec(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_atomic_counter_value(IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_atomic_counter_destroy(ref IntPtr counter);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_timers_new();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_destroy(ref IntPtr timers);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_add(IntPtr timers, nuint interval,
+        ZlinkTimerDelegate handler, IntPtr arg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_cancel(IntPtr timers, int timerId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_set_interval(IntPtr timers,
+        int timerId, nuint interval);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_reset(IntPtr timers, int timerId);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern long zlink_timers_timeout(IntPtr timers);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_timers_execute(IntPtr timers);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_stopwatch_start();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong zlink_stopwatch_intermediate(IntPtr watch);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong zlink_stopwatch_stop(IntPtr watch);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr zlink_thread_start(ZlinkThreadDelegate func,
+        IntPtr arg);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void zlink_thread_join(IntPtr thread);
 
 }

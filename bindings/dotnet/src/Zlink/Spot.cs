@@ -2,6 +2,7 @@
 
 using System;
 using System.Buffers;
+using System.Text;
 using Zlink.Native;
 
 namespace Zlink;
@@ -233,6 +234,8 @@ public sealed class Spot : IDisposable
     private const int StackPublishPartLimit = 8;
     private IntPtr _pubHandle;
     private IntPtr _subHandle;
+    private SpotSubHandler? _subHandler;
+    private NativeMethods.ZlinkSpotSubHandlerDelegate? _subHandlerNative;
 
     public Spot(SpotNode node)
     {
@@ -350,6 +353,36 @@ public sealed class Spot : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
+    public unsafe void SetHandler(SpotSubHandler? handler)
+    {
+        EnsureNotDisposed();
+        if (handler == null)
+        {
+            int clearRc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
+                null, IntPtr.Zero);
+            ZlinkException.ThrowIfError(clearRc);
+            _subHandler = null;
+            _subHandlerNative = null;
+            return;
+        }
+
+        SpotSubHandler? previousHandler = _subHandler;
+        NativeMethods.ZlinkSpotSubHandlerDelegate? previousNative =
+            _subHandlerNative;
+        NativeMethods.ZlinkSpotSubHandlerDelegate nextNative =
+            OnNativeSubMessage;
+        _subHandler = handler;
+        _subHandlerNative = nextNative;
+        int rc = NativeMethods.zlink_spot_sub_set_handler(_subHandle,
+            nextNative, IntPtr.Zero);
+        if (rc != 0)
+        {
+            _subHandler = previousHandler;
+            _subHandlerNative = previousNative;
+            throw ZlinkException.FromLastError();
+        }
+    }
+
     public SpotMessage Receive(ReceiveFlags flags = ReceiveFlags.None)
     {
         EnsureNotDisposed();
@@ -434,6 +467,19 @@ public sealed class Spot : IDisposable
         }
         if (_subHandle != IntPtr.Zero)
         {
+            if (_subHandlerNative != null)
+            {
+                try
+                {
+                    NativeMethods.zlink_spot_sub_set_handler(_subHandle, null,
+                        IntPtr.Zero);
+                }
+                catch
+                {
+                }
+                _subHandler = null;
+                _subHandlerNative = null;
+            }
             NativeMethods.zlink_spot_sub_destroy(ref _subHandle);
             _subHandle = IntPtr.Zero;
         }
@@ -450,7 +496,35 @@ public sealed class Spot : IDisposable
         if (_pubHandle == IntPtr.Zero || _subHandle == IntPtr.Zero)
             throw new ObjectDisposedException(nameof(Spot));
     }
+
+    private unsafe void OnNativeSubMessage(byte* topic, nuint topicLen,
+        IntPtr parts, nuint partCount, IntPtr userData)
+    {
+        SpotSubHandler? handler = _subHandler;
+        if (handler == null)
+            return;
+
+        Message[]? managedParts = null;
+        try
+        {
+            string topicId = topic == null || topicLen == 0
+                ? string.Empty
+                : Encoding.UTF8.GetString(
+                    new ReadOnlySpan<byte>(topic, checked((int)topicLen)));
+            managedParts = Message.CopyFromNativeReadOnlyVector(parts, partCount);
+            handler(topicId, managedParts);
+        }
+        catch
+        {
+            if (managedParts == null)
+                return;
+            foreach (Message? part in managedParts)
+                part?.Dispose();
+        }
+    }
 }
+
+public delegate void SpotSubHandler(string topicId, Message[] parts);
 
 public readonly struct SpotMessage
 {

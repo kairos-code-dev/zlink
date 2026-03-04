@@ -248,6 +248,51 @@ public sealed class Message : IDisposable
         return payloadSize;
     }
 
+    internal static unsafe Message[] CopyFromNativeReadOnlyVector(IntPtr parts,
+        nuint count)
+    {
+        if (parts == IntPtr.Zero || count == 0)
+            return Array.Empty<Message>();
+
+        int length = checked((int)count);
+        Message[] result = new Message[length];
+        int built = 0;
+        try
+        {
+            ZlinkMsg* msgv = (ZlinkMsg*)parts;
+            for (int i = 0; i < length; i++)
+            {
+                int size = checked((int)NativeMethods.zlink_msg_size(ref msgv[i]));
+                if (size <= 0)
+                {
+                    result[i] = new Message(0);
+                }
+                else
+                {
+                    IntPtr payloadPtr = NativeMethods.zlink_msg_data(ref msgv[i]);
+                    if (payloadPtr == IntPtr.Zero)
+                    {
+                        result[i] = new Message(0);
+                    }
+                    else
+                    {
+                        ReadOnlySpan<byte> payload = new ReadOnlySpan<byte>(
+                            (void*)payloadPtr, size);
+                        result[i] = new Message(payload);
+                    }
+                }
+                built++;
+            }
+            return result;
+        }
+        catch
+        {
+            for (int i = 0; i < built; i++)
+                result[i]?.Dispose();
+            throw;
+        }
+    }
+
     internal static Message[] FromNativeVector(IntPtr parts, nuint count)
     {
         if (parts == IntPtr.Zero || count == 0)

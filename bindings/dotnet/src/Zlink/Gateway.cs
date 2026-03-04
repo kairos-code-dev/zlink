@@ -11,6 +11,7 @@ namespace Zlink;
 public sealed class Gateway : IDisposable
 {
     private const int StackSendPartLimit = 8;
+    private const int ServiceNameCacheLimit = 1024;
     private IntPtr _handle;
     private readonly ConcurrentDictionary<string, byte[]> _serviceNameUtf8Cache =
         new(StringComparer.Ordinal);
@@ -408,14 +409,24 @@ public sealed class Gateway : IDisposable
 
     private byte[] GetServiceNameUtf8(string serviceName)
     {
-        return _serviceNameUtf8Cache.GetOrAdd(serviceName, static key =>
+        if (_serviceNameUtf8Cache.TryGetValue(serviceName, out var cached))
+            return cached;
+
+        byte[] encoded = EncodeServiceNameUtf8(serviceName);
+        if (_serviceNameUtf8Cache.Count < ServiceNameCacheLimit)
         {
-            int byteCount = Encoding.UTF8.GetByteCount(key);
-            byte[] bytes = new byte[byteCount + 1];
-            Encoding.UTF8.GetBytes(key, bytes.AsSpan(0, byteCount));
-            bytes[byteCount] = 0;
-            return bytes;
-        });
+            _serviceNameUtf8Cache.TryAdd(serviceName, encoded);
+        }
+        return encoded;
+    }
+
+    private static byte[] EncodeServiceNameUtf8(string serviceName)
+    {
+        int byteCount = Encoding.UTF8.GetByteCount(serviceName);
+        byte[] bytes = new byte[byteCount + 1];
+        Encoding.UTF8.GetBytes(serviceName, bytes.AsSpan(0, byteCount));
+        bytes[byteCount] = 0;
+        return bytes;
     }
 }
 

@@ -25,20 +25,10 @@ internal static class NativeLibraryLoader
 
             if (TryLoadConfiguredPath(out _handle))
                 return;
+            if (TryLoadPackagedCandidates(out _handle))
+                return;
             if (TryLoadWellKnownNames(out _handle))
                 return;
-
-            string rid = GetRid();
-            foreach (string baseDir in GetBaseDirs())
-            {
-                foreach (string candidate in GetCandidates(baseDir, rid))
-                {
-                    if (!File.Exists(candidate))
-                        continue;
-                    if (TryLoad(candidate, out _handle))
-                        return;
-                }
-            }
         }
     }
 
@@ -87,6 +77,34 @@ internal static class NativeLibraryLoader
         }
         handle = IntPtr.Zero;
         return false;
+    }
+
+    private static bool TryLoadPackagedCandidates(out IntPtr handle)
+    {
+        handle = IntPtr.Zero;
+        string rid = GetRid();
+        foreach (string baseDir in GetBaseDirs())
+        {
+            foreach (string candidate in GetCandidates(baseDir, rid))
+            {
+                if (!File.Exists(candidate))
+                    continue;
+                if (TryLoad(candidate, out handle))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    internal static bool HasExport(string symbol)
+    {
+        if (string.IsNullOrWhiteSpace(symbol))
+            throw new ArgumentException("Symbol name is required.",
+                nameof(symbol));
+
+        EnsureLoaded();
+        return _handle != IntPtr.Zero
+            && NativeLibrary.TryGetExport(_handle, symbol, out _);
     }
 
     private static bool TryLoad(string nameOrPath, out IntPtr handle)

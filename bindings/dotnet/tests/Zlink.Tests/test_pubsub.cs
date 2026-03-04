@@ -24,7 +24,7 @@ public sealed class test_pubsub
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub");
         publisher.Bind(endpoint);
         subscriber.Connect(endpoint);
-        subscriber.SetOption(SocketOption.Subscribe, Array.Empty<byte>());
+        subscriber.SetOption(SocketOptions.Subscribe, string.Empty);
         Thread.Sleep(100);
 
         CoreTestSupport.SendBytesWithRetry(publisher, "test"u8, SendFlags.None,
@@ -51,7 +51,7 @@ public sealed class test_pubsub
         string endpoint = CoreTestSupport.NewEndpoint(transport, "pubsub-filter");
         publisher.Bind(endpoint);
         subscriber.Connect(endpoint);
-        subscriber.SetOption(SocketOption.Subscribe, "topicA");
+        subscriber.SetOption(SocketOptions.Subscribe, "topicA");
         Thread.Sleep(100);
 
         CoreTestSupport.SendBytesWithRetry(publisher, "topicA hello"u8,

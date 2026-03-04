@@ -14,9 +14,9 @@ public sealed class test_gateway
         string transport = "tcp")
     {
         receiver.Bind(CoreTestSupport.NewEndpoint(transport, serviceName));
-        router.SetOption(SocketOption.ProbeRouter, 1);
-        router.SetOption(SocketOption.RoutingId, routingId);
-        string advertise = router.GetOptionString(SocketOption.LastEndpoint);
+        router.SetOption(SocketOptions.ProbeRouter, 1);
+        router.SetOption(SocketOptions.RoutingId, routingId);
+        string advertise = router.GetOption(SocketOptions.LastEndpoint);
         receiver.ConnectRegistry(regRouter);
         receiver.Register(serviceName, advertise, weight);
     }
@@ -53,18 +53,18 @@ public sealed class test_gateway
         using var receiver = new Receiver(ctx);
 
         const int hwm = 1000000;
-        gateway.SetOption(SocketOption.SndHwm, hwm);
-        gateway.SetOption(SocketOption.RcvHwm, hwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOption.SndHwm, hwm);
-        receiver.SetOption(ReceiverSocketRole.Router, SocketOption.RcvHwm, hwm);
+        gateway.SetOption(SocketOptions.SndHwm, hwm);
+        gateway.SetOption(SocketOptions.RcvHwm, hwm);
+        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.SndHwm, hwm);
+        receiver.SetOption(ReceiverSocketRole.Router, SocketOptions.RcvHwm, hwm);
 
         using var gatewayRouter = gateway.CreateRouterSocket();
         using var receiverRouter = receiver.CreateRouterSocket();
 
-        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOption.SndHwm));
-        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOption.RcvHwm));
-        Assert.Equal(hwm, receiverRouter.GetOption(SocketOption.SndHwm));
-        Assert.Equal(hwm, receiverRouter.GetOption(SocketOption.RcvHwm));
+        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOptions.SndHwm));
+        Assert.Equal(hwm, gatewayRouter.GetOption(SocketOptions.RcvHwm));
+        Assert.Equal(hwm, receiverRouter.GetOption(SocketOptions.SndHwm));
+        Assert.Equal(hwm, receiverRouter.GetOption(SocketOptions.RcvHwm));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class test_gateway
         string receiverBind = CoreTestSupport.NewEndpoint("tcp", "gw-receiver");
         receiver.Bind(receiverBind);
         using var receiverRouter = receiver.CreateRouterSocket();
-        string advertise = receiverRouter.GetOptionString(SocketOption.LastEndpoint);
+        string advertise = receiverRouter.GetOption(SocketOptions.LastEndpoint);
         receiver.ConnectRegistry(regRouter);
         receiver.Register("svc", advertise, 1);
 

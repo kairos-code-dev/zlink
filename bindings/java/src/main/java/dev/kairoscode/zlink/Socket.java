@@ -4,6 +4,8 @@ package dev.kairoscode.zlink;
 
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeMsg;
+import dev.kairoscode.zlink.options.SocketOptionKey;
+import dev.kairoscode.zlink.options.SocketOptionValueType;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -14,8 +16,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 
 public final class Socket implements AutoCloseable {
@@ -51,7 +51,7 @@ public final class Socket implements AutoCloseable {
     public Socket(Context ctx, SocketType type) {
         this.handle = Native.socket(ctx.handle(), type.getValue());
         if (handle == null || handle.address() == 0)
-            throw new RuntimeException("zlink_socket failed");
+            throw ZlinkException.fromLastError("zlink_socket");
         this.own = true;
     }
 
@@ -60,9 +60,9 @@ public final class Socket implements AutoCloseable {
         this.own = own;
     }
 
-    static Socket adopt(MemorySegment handle, boolean own) {
+    public static Socket adopt(MemorySegment handle, boolean own) {
         if (handle == null || handle.address() == 0)
-            throw new RuntimeException("invalid socket handle");
+            throw new IllegalArgumentException("invalid socket handle");
         return new Socket(handle, own);
     }
 
@@ -71,7 +71,7 @@ public final class Socket implements AutoCloseable {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.bind(handle, addr);
             if (rc != 0)
-                throw new RuntimeException("zlink_bind failed");
+                throw ZlinkException.fromLastError("zlink_bind");
         }
     }
 
@@ -80,7 +80,7 @@ public final class Socket implements AutoCloseable {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.connect(handle, addr);
             if (rc != 0)
-                throw new RuntimeException("zlink_connect failed");
+                throw ZlinkException.fromLastError("zlink_connect");
         }
     }
 
@@ -89,7 +89,7 @@ public final class Socket implements AutoCloseable {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.unbind(handle, addr);
             if (rc != 0)
-                throw new RuntimeException("zlink_unbind failed");
+                throw ZlinkException.fromLastError("zlink_unbind");
         }
     }
 
@@ -98,7 +98,7 @@ public final class Socket implements AutoCloseable {
             MemorySegment addr = arena.allocateFrom(endpoint, StandardCharsets.UTF_8);
             int rc = Native.disconnect(handle, addr);
             if (rc != 0)
-                throw new RuntimeException("zlink_disconnect failed");
+                throw ZlinkException.fromLastError("zlink_disconnect");
         }
     }
 
@@ -109,22 +109,14 @@ public final class Socket implements AutoCloseable {
     public void setSockOpt(SocketOption option, byte[] value, int offset, int length) {
         Objects.requireNonNull(value, "value");
         validateRange(value.length, offset, length, "value");
-        MemorySegment buf = length == 0 ? MemorySegment.NULL : ensureSendScratch(length);
-        if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0, length);
-        }
-        int rc = Native.setSockOpt(handle, option.getValue(), buf, length);
-        if (rc != 0)
-            throw new RuntimeException("zlink_setsockopt failed");
+        setSockOptBytes(option.getValue(), value, offset, length);
     }
 
     public void setSockOpt(SocketOption option, ByteBuffer value) {
         Objects.requireNonNull(value, "value");
         int length = value.remaining();
         if (length == 0) {
-            int rc = Native.setSockOpt(handle, option.getValue(), MemorySegment.NULL, 0);
-            if (rc != 0)
-                throw new RuntimeException("zlink_setsockopt failed");
+            setSockOptRaw(option.getValue(), MemorySegment.NULL, 0);
             return;
         }
         MemorySegment srcSeg = MemorySegment.ofBuffer(value);
@@ -135,53 +127,71 @@ public final class Socket implements AutoCloseable {
             seg = ensureSendScratch(length);
             MemorySegment.copy(srcSeg, 0, seg, 0, length);
         }
-        int rc = Native.setSockOpt(handle, option.getValue(), seg, length);
-        if (rc != 0)
-            throw new RuntimeException("zlink_setsockopt failed");
+        setSockOptRaw(option.getValue(), seg, length);
         value.position(value.position() + length);
     }
 
     public void setSockOpt(SocketOption option, int value) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
-            buf.set(ValueLayout.JAVA_INT, 0, value);
-            int rc = Native.setSockOpt(handle, option.getValue(), buf, ValueLayout.JAVA_INT.byteSize());
-            if (rc != 0)
-                throw new RuntimeException("zlink_setsockopt failed");
-        }
+        setSockOptInt(option.getValue(), value);
     }
 
     public byte[] getSockOptBytes(SocketOption option, int maxLen) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(maxLen);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, maxLen);
-            int rc = Native.getSockOpt(handle, option.getValue(), buf, len);
-            if (rc != 0)
-                throw new RuntimeException("zlink_getsockopt failed");
-            int actual = (int) len.get(ValueLayout.JAVA_LONG, 0);
-            byte[] out = new byte[actual];
-            MemorySegment.copy(buf, 0, MemorySegment.ofArray(out), 0, actual);
-            return out;
-        }
+        return getSockOptBytes(option.getValue(), maxLen);
     }
 
     public int getSockOptInt(SocketOption option) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
-            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
-            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
-            int rc = Native.getSockOpt(handle, option.getValue(), buf, len);
-            if (rc != 0)
-                throw new RuntimeException("zlink_getsockopt failed");
-            return buf.get(ValueLayout.JAVA_INT, 0);
-        }
+        return getSockOptInt(option.getValue());
+    }
+
+    public void setOption(SocketOptionKey<Integer> option, int value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT32);
+        option.requireWritable();
+        setSockOptInt(option.optionId(), value);
+    }
+
+    public void setOption(SocketOptionKey<Long> option, long value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT64);
+        option.requireWritable();
+        setSockOptLong(option.optionId(), value);
+    }
+
+    public void setOption(SocketOptionKey<String> option, String value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.STRING);
+        option.requireWritable();
+        byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
+          StandardCharsets.UTF_8);
+        setSockOptBytes(option.optionId(), utf8, 0, utf8.length);
+    }
+
+    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.BYTES);
+        option.requireWritable();
+        Objects.requireNonNull(value, "value");
+        setSockOptBytes(option.optionId(), value, 0, value.length);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T getOption(SocketOptionKey<T> option) {
+        Objects.requireNonNull(option, "option");
+        option.requireReadable();
+        return switch (option.valueType()) {
+            case INT32 -> (T) Integer.valueOf(getSockOptInt(option.optionId()));
+            case INT64 -> (T) Long.valueOf(getSockOptLong(option.optionId()));
+            case STRING -> (T) decodeCString(
+              getSockOptBytes(option.optionId(), option.maxReadLength()));
+            case BYTES -> (T) getSockOptBytes(option.optionId(),
+              option.maxReadLength());
+        };
     }
 
     public MonitorSocket monitorOpen(int events) {
         MemorySegment sock = Native.monitorOpen(handle, events);
         if (sock == null || sock.address() == 0)
-            throw new RuntimeException("zlink_socket_monitor_open failed");
+            throw ZlinkException.fromLastError("zlink_socket_monitor_open");
         return new MonitorSocket(Socket.adopt(sock, true));
     }
 
@@ -192,13 +202,15 @@ public final class Socket implements AutoCloseable {
     public int send(byte[] data, int offset, int length, SendFlag flags) {
         Objects.requireNonNull(data, "data");
         validateRange(data.length, offset, length, "data");
-        MemorySegment seg = length == 0 ? MemorySegment.NULL : ensureSendScratch(length);
+        MemorySegment seg = length == 0 ? MemorySegment.NULL
+            : ensureSendScratch(length);
         if (length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0, length);
+            MemorySegment.copy(MemorySegment.ofArray(data), offset, seg, 0,
+                length);
         }
         int rc = Native.send(handle, seg, length, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_send failed");
+            throw ZlinkException.fromLastError("zlink_send");
         return rc;
     }
 
@@ -222,7 +234,7 @@ public final class Socket implements AutoCloseable {
         }
         int rc = Native.send(handle, seg, length, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_send failed");
+            throw ZlinkException.fromLastError("zlink_send");
         buffer.position(buffer.position() + rc);
         return rc;
     }
@@ -252,29 +264,7 @@ public final class Socket implements AutoCloseable {
         }
         int rc = Native.send(handle, slice, length, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_send failed");
-        return rc;
-    }
-
-    public int send(ByteBuf buf, SendFlag flags) {
-        Objects.requireNonNull(buf, "buf");
-        Objects.requireNonNull(flags, "flags");
-        int len = buf.readableBytes();
-        if (len <= 0) {
-            int rc = Native.send(handle, MemorySegment.NULL, 0,
-              flags.getValue());
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_send");
-            return rc;
-        }
-        ByteBuffer nio = buf.nioBuffer();
-        if (nio.remaining() != len) {
-            nio = nio.duplicate();
-            nio.limit(nio.position() + len);
-        }
-        int rc = send(nio, flags);
-        if (rc > 0)
-            buf.advanceReader(rc);
+            throw ZlinkException.fromLastError("zlink_send");
         return rc;
     }
 
@@ -351,7 +341,7 @@ public final class Socket implements AutoCloseable {
             closeArena(streamCallbackArena);
             streamCallbackArena = null;
             streamCallbackStub = MemorySegment.NULL;
-            throw new RuntimeException("zlink_stream_attach_raw failed");
+            throw ZlinkException.fromLastError("zlink_stream_attach_raw");
         }
         streamRawHandler = handler;
         streamBatchHandler = null;
@@ -381,7 +371,7 @@ public final class Socket implements AutoCloseable {
             closeArena(streamCallbackArena);
             streamCallbackArena = null;
             streamCallbackStub = MemorySegment.NULL;
-            throw new RuntimeException("zlink_stream_attach_len32be failed");
+            throw ZlinkException.fromLastError("zlink_stream_attach_len32be");
         }
         streamRawHandler = null;
         streamBatchHandler = handler;
@@ -399,7 +389,7 @@ public final class Socket implements AutoCloseable {
         streamCallbackArena = null;
         streamCallbackStub = MemorySegment.NULL;
         if (rc != 0)
-            throw new RuntimeException("zlink_stream_detach failed");
+            throw ZlinkException.fromLastError("zlink_stream_detach");
     }
 
     public byte[] streamPeerRoutingId(int index) {
@@ -453,7 +443,7 @@ public final class Socket implements AutoCloseable {
         int rc = Native.streamSend(handle, ridLayout, payloadSlice,
           payload.length, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_stream_send failed");
+            throw ZlinkException.fromLastError("zlink_stream_send");
         return rc;
     }
 
@@ -471,7 +461,7 @@ public final class Socket implements AutoCloseable {
         int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
           flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_stream_send_msg failed");
+            throw ZlinkException.fromLastError("zlink_stream_send_msg");
         payload.markStreamSent();
         return rc;
     }
@@ -550,7 +540,7 @@ public final class Socket implements AutoCloseable {
         int rc = Native.streamSendMsg(handle, ridLayout, payload.handle(),
           flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_stream_send_msg failed");
+            throw ZlinkException.fromLastError("zlink_stream_send_msg");
         payload.markStreamSent();
         return rc;
     }
@@ -567,7 +557,7 @@ public final class Socket implements AutoCloseable {
         MemorySegment seg = ensureRecvScratch(size);
         int rc = Native.recv(handle, seg, size, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_recv failed");
+            throw ZlinkException.fromLastError("zlink_recv");
         byte[] out = new byte[rc];
         if (rc > 0)
             MemorySegment.copy(seg, 0, MemorySegment.ofArray(out), 0, rc);
@@ -587,7 +577,7 @@ public final class Socket implements AutoCloseable {
         MemorySegment seg = ensureRecvScratch(length);
         int rc = Native.recv(handle, seg, length, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_recv failed");
+            throw ZlinkException.fromLastError("zlink_recv");
         if (rc > 0) {
             MemorySegment.copy(seg, 0, MemorySegment.ofArray(data), offset, rc);
         }
@@ -611,7 +601,7 @@ public final class Socket implements AutoCloseable {
             }
         }
         if (rc < 0)
-            throw new RuntimeException("zlink_recv failed");
+            throw ZlinkException.fromLastError("zlink_recv");
         buffer.position(buffer.position() + rc);
         return rc;
     }
@@ -645,23 +635,7 @@ public final class Socket implements AutoCloseable {
             }
         }
         if (rc < 0)
-            throw new RuntimeException("zlink_recv failed");
-        return rc;
-    }
-
-    public int recv(ByteBuf buf, ReceiveFlag flags) {
-        Objects.requireNonNull(buf, "buf");
-        Objects.requireNonNull(flags, "flags");
-        int writable = buf.writableBytes();
-        if (writable <= 0)
-            return 0;
-        ByteBuffer nio = buf.nioBuffer();
-        ByteBuffer dup = nio.duplicate();
-        dup.position(buf.writerIndex());
-        dup.limit(buf.writerIndex() + writable);
-        int rc = recv(dup, flags);
-        if (rc > 0)
-            buf.advanceWriter(rc);
+            throw ZlinkException.fromLastError("zlink_recv");
         return rc;
     }
 
@@ -730,8 +704,7 @@ public final class Socket implements AutoCloseable {
         }
 
         try {
-            List<Message> packetList = Arrays.asList(packets);
-            return handler.onPackets(routingIdU32, packetList);
+            return handler.onPackets(routingIdU32, packets);
         } catch (Throwable t) {
             Message.closeAll(packets);
             return 1;
@@ -805,7 +778,7 @@ public final class Socket implements AutoCloseable {
         int rc = Native.streamSend(handle, ridLayout, payloadSlice,
           payloadLength, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_stream_send failed");
+            throw ZlinkException.fromLastError("zlink_stream_send");
         return rc;
     }
 
@@ -838,7 +811,7 @@ public final class Socket implements AutoCloseable {
         int rc = Native.streamSend(handle, ridLayout, payloadSlice,
           payloadLength, flags.getValue());
         if (rc < 0)
-            throw new RuntimeException("zlink_stream_send failed");
+            throw ZlinkException.fromLastError("zlink_stream_send");
         return rc;
     }
 
@@ -881,6 +854,106 @@ public final class Socket implements AutoCloseable {
     private static void validateRange(long total, long offset, long length, String name) {
         if (offset < 0 || length < 0 || offset > total - length)
             throw new IndexOutOfBoundsException(name + " range out of bounds");
+    }
+
+    private static void validateOptionType(SocketOptionKey<?> option,
+                                           SocketOptionValueType expected) {
+        if (option.valueType() != expected) {
+            throw new IllegalArgumentException(
+              option.name() + " expects " + option.valueType()
+                + ", not " + expected);
+        }
+    }
+
+    private void setSockOptRaw(int optionId, MemorySegment value, long len) {
+        int rc = Native.setSockOpt(handle, optionId, value, len);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_setsockopt");
+    }
+
+    private void setSockOptBytes(int optionId, byte[] value, int offset,
+                                 int length) {
+        MemorySegment buf = length == 0 ? MemorySegment.NULL
+            : ensureSendScratch(length);
+        if (length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
+                length);
+        }
+        setSockOptRaw(optionId, buf, length);
+    }
+
+    private void setSockOptInt(int optionId, int value) {
+        MemorySegment buf = ensureSendScratch(Integer.BYTES);
+        buf.set(ValueLayout.JAVA_INT, 0, value);
+        setSockOptRaw(optionId, buf, Integer.BYTES);
+    }
+
+    private void setSockOptLong(int optionId, long value) {
+        MemorySegment buf = ensureSendScratch(Long.BYTES);
+        buf.set(ValueLayout.JAVA_LONG, 0, value);
+        setSockOptRaw(optionId, buf, Long.BYTES);
+    }
+
+    private byte[] getSockOptBytes(int optionId, int maxLen) {
+        if (maxLen < 0)
+            throw new IllegalArgumentException("maxLen must be >= 0");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = maxLen == 0 ? MemorySegment.NULL
+                : arena.allocate(maxLen);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, maxLen);
+            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_getsockopt");
+            long actualLong = len.get(ValueLayout.JAVA_LONG, 0);
+            if (actualLong < 0)
+                actualLong = 0;
+            if (actualLong > maxLen)
+                actualLong = maxLen;
+            int actual = (int) actualLong;
+            if (actual == 0)
+                return new byte[0];
+            byte[] out = new byte[actual];
+            MemorySegment.copy(buf, 0, MemorySegment.ofArray(out), 0, actual);
+            return out;
+        }
+    }
+
+    private int getSockOptInt(int optionId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_INT.byteSize());
+            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_getsockopt");
+            return buf.get(ValueLayout.JAVA_INT, 0);
+        }
+    }
+
+    private long getSockOptLong(int optionId) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment len = arena.allocate(ValueLayout.JAVA_LONG);
+            len.set(ValueLayout.JAVA_LONG, 0, ValueLayout.JAVA_LONG.byteSize());
+            int rc = Native.getSockOpt(handle, optionId, buf, len);
+            if (rc != 0)
+                throw ZlinkException.fromLastError("zlink_getsockopt");
+            return buf.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    private static String decodeCString(byte[] raw) {
+        int len = raw.length;
+        for (int i = 0; i < raw.length; i++) {
+            if (raw[i] == 0) {
+                len = i;
+                break;
+            }
+        }
+        if (len == 0)
+            return "";
+        return new String(raw, 0, len, StandardCharsets.UTF_8);
     }
 
     private MemorySegment ensureSendScratch(int length) {

@@ -243,10 +243,10 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
 
-        stream.SetOption(SocketOption.StreamNotify, 1);
+        stream.SetOption(SocketOptions.StreamNotify, 1);
         Assert.Throws<ZlinkException>(() => stream.AttachStreamRaw((_, _) => 0));
 
-        stream.SetOption(SocketOption.StreamNotify, 0);
+        stream.SetOption(SocketOptions.StreamNotify, 0);
         stream.AttachStreamRaw((_, _) => 0);
         stream.DetachStream();
     }
@@ -870,7 +870,7 @@ public sealed class test_stream_socket
 
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
-        stream.SetOption(SocketOption.MaxMsgSize, BitConverter.GetBytes((long)4));
+        stream.SetOption(SocketOptions.MaxMsgSize, 4L);
 
         string endpoint = CoreTestSupport.NewEndpoint("tcp", "stream-maxmsg");
         int port = CoreTestSupport.ExtractPort(endpoint);
@@ -949,8 +949,8 @@ public sealed class test_stream_socket
 
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
-        stream.SetOption(SocketOption.TlsCert, cert);
-        stream.SetOption(SocketOption.TlsKey, key);
+        stream.SetOption(SocketOptions.TlsCert, cert);
+        stream.SetOption(SocketOptions.TlsKey, key);
         string endpoint = CoreTestSupport.NewEndpoint("wss", "stream-wss");
         stream.Bind(endpoint);
     }

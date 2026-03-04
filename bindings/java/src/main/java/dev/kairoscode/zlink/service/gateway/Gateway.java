@@ -1,7 +1,19 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.gateway;
 
+import dev.kairoscode.zlink.ByteSpan;
+import dev.kairoscode.zlink.Context;
+import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.PeerInfo;
+import dev.kairoscode.zlink.ReceiveFlag;
+import dev.kairoscode.zlink.SendFlag;
+import dev.kairoscode.zlink.Socket;
+import dev.kairoscode.zlink.SocketOption;
+import dev.kairoscode.zlink.ZlinkException;
+import dev.kairoscode.zlink.options.SocketOptionKey;
+import dev.kairoscode.zlink.options.SocketOptionValueType;
+import dev.kairoscode.zlink.service.discovery.Discovery;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -10,7 +22,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -34,6 +46,8 @@ public final class Gateway implements AutoCloseable {
       ThreadLocal.withInitial(() -> SERVICE_NAME_SCRATCH_INITIAL_CAPACITY);
     private final ThreadLocal<SendScratch> sendScratch =
       ThreadLocal.withInitial(SendScratch::new);
+    private final ThreadLocal<RecvContext> recvScratch =
+      ThreadLocal.withInitial(RecvContext::new);
     private final ConcurrentHashMap<String, MemorySegment> serviceNameCache =
       new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, MemorySegment> routingIdCache =
@@ -55,10 +69,10 @@ public final class Gateway implements AutoCloseable {
             this.handle = Native.gatewayNew(ctx.handle(), discovery.handle(), rid);
         }
         if (handle == null || handle.address() == 0)
-            throw new RuntimeException("zlink_gateway_new failed");
+            throw ZlinkException.fromLastError("zlink_gateway_new");
     }
 
-    public void send(String serviceName, Message message, SendFlag flags) {
+    public void sendTo(String serviceName, Message message, SendFlag flags) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flags, "flags");
         Objects.requireNonNull(serviceName, "serviceName");
@@ -67,27 +81,27 @@ public final class Gateway implements AutoCloseable {
         sendSingleInternal(vec, service, message, flags, false);
     }
 
-    public void send(String serviceName, Message message) {
-        send(serviceName, message, SendFlag.NONE);
+    public void sendTo(String serviceName, Message message) {
+        sendTo(serviceName, message, SendFlag.NONE);
     }
 
-    public void send(String serviceName, List<Message> messages,
-                     SendFlag flags) {
+    public void sendTo(String serviceName, Message[] messages,
+                       SendFlag flags) {
         Objects.requireNonNull(flags, "flags");
         Objects.requireNonNull(serviceName, "serviceName");
         Objects.requireNonNull(messages, "messages");
         MemorySegment service = serviceNameCString(serviceName);
-        int partCount = validateMessagesList(messages, "messages");
+        int partCount = validateMessageArray(messages, "messages");
         MemorySegment vec = sendScratch.get().ensureVector(partCount);
-        sendInternal(vec, service, messages, partCount, flags, false);
+        sendInternal(vec, service, messages, flags, false);
     }
 
-    public void send(String serviceName, List<Message> messages) {
-        send(serviceName, messages, SendFlag.NONE);
+    public void sendTo(String serviceName, Message[] messages) {
+        sendTo(serviceName, messages, SendFlag.NONE);
     }
 
-    public void sendToRoutingId(String serviceName, String routingId,
-                                Message message, SendFlag flags) {
+    public void sendTo(String serviceName, String routingId,
+                       Message message, SendFlag flags) {
         Objects.requireNonNull(message, "message");
         Objects.requireNonNull(flags, "flags");
         Objects.requireNonNull(serviceName, "serviceName");
@@ -98,28 +112,26 @@ public final class Gateway implements AutoCloseable {
         sendToRoutingIdSingleInternal(vec, service, rid, message, flags, false);
     }
 
-    public void sendToRoutingId(String serviceName, String routingId,
-                                Message message) {
-        sendToRoutingId(serviceName, routingId, message, SendFlag.NONE);
+    public void sendTo(String serviceName, String routingId, Message message) {
+        sendTo(serviceName, routingId, message, SendFlag.NONE);
     }
 
-    public void sendToRoutingId(String serviceName, String routingId,
-                                List<Message> messages, SendFlag flags) {
+    public void sendTo(String serviceName, String routingId,
+                       Message[] messages, SendFlag flags) {
         Objects.requireNonNull(flags, "flags");
         Objects.requireNonNull(serviceName, "serviceName");
         Objects.requireNonNull(routingId, "routingId");
         Objects.requireNonNull(messages, "messages");
         MemorySegment service = serviceNameCString(serviceName);
         MemorySegment rid = buildRoutingId(routingId);
-        int partCount = validateMessagesList(messages, "messages");
+        int partCount = validateMessageArray(messages, "messages");
         MemorySegment vec = sendScratch.get().ensureVector(partCount);
-        sendToRoutingIdInternal(vec, service, rid, messages, partCount, flags,
-            false);
+        sendToRoutingIdInternal(vec, service, rid, messages, flags, false);
     }
 
-    public void sendToRoutingId(String serviceName, String routingId,
-                                List<Message> messages) {
-        sendToRoutingId(serviceName, routingId, messages, SendFlag.NONE);
+    public void sendTo(String serviceName, String routingId,
+                       Message[] messages) {
+        sendTo(serviceName, routingId, messages, SendFlag.NONE);
     }
 
     private void send(String serviceName, Message[] parts, SendFlag flags) {
@@ -492,24 +504,22 @@ public final class Gateway implements AutoCloseable {
     }
 
     public GatewayMessage recv(ReceiveFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment service = arena.allocate(SERVICE_NAME_CAPACITY);
-            int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
-            if (rc != 0)
-                throw new RuntimeException("zlink_gateway_recv failed");
-            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
-            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
-            if (parts.length != 1) {
-                Message.closeAll(parts);
-                throw new IllegalStateException(
-                    "recv expects exactly one message part; use recvMany");
-            }
-            String serviceName = NativeHelpers.fromCString(service, SERVICE_NAME_CAPACITY);
-            return new GatewayMessage(serviceName, parts[0]);
+        RecvContext context = recvScratch.get();
+        int rc = Native.gatewayRecv(handle, context.partsPtr(), context.partCount(),
+            flags.getValue(), context.serviceName());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_gateway_recv");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+        if (parts.length != 1) {
+            Message.closeAll(parts);
+            throw new IllegalStateException(
+                "recv expects exactly one message part; use recvMany");
         }
+        String serviceName = NativeHelpers.fromCString(context.serviceName(),
+            SERVICE_NAME_CAPACITY);
+        return new GatewayMessage(serviceName, parts[0]);
     }
 
     public GatewayMessages recvMany(ReceiveFlag flags) {
@@ -517,19 +527,17 @@ public final class Gateway implements AutoCloseable {
     }
 
     public GatewayMessages recvMessages(ReceiveFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment service = arena.allocate(SERVICE_NAME_CAPACITY);
-            int rc = Native.gatewayRecv(handle, partsPtr, count, flags.getValue(), service);
-            if (rc != 0)
-                throw new RuntimeException("zlink_gateway_recv failed");
-            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
-            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
-            String serviceName = NativeHelpers.fromCString(service, SERVICE_NAME_CAPACITY);
-            return new GatewayMessages(serviceName, parts);
-        }
+        RecvContext context = recvScratch.get();
+        int rc = Native.gatewayRecv(handle, context.partsPtr(), context.partCount(),
+            flags.getValue(), context.serviceName());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_gateway_recv");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+        String serviceName = NativeHelpers.fromCString(context.serviceName(),
+            SERVICE_NAME_CAPACITY);
+        return new GatewayMessages(serviceName, parts);
     }
 
     private RecvContext createRecvContext() {
@@ -559,14 +567,14 @@ public final class Gateway implements AutoCloseable {
         int rc = Native.gatewaySetLbStrategy(handle, serviceNameCString(serviceName),
             strategy.getValue());
         if (rc != 0)
-            throw new RuntimeException("zlink_gateway_set_lb_strategy failed");
+            throw ZlinkException.fromLastError("zlink_gateway_set_lb_strategy");
     }
 
     private void setLoadBalancing(PreparedService service, GatewayLbStrategy strategy) {
         Objects.requireNonNull(service, "service");
         int rc = Native.gatewaySetLbStrategy(handle, service.cString(), strategy.getValue());
         if (rc != 0)
-            throw new RuntimeException("zlink_gateway_set_lb_strategy failed");
+            throw ZlinkException.fromLastError("zlink_gateway_set_lb_strategy");
     }
 
     public void setTlsClient(String caCert, String hostname, int trustSystem) {
@@ -574,14 +582,14 @@ public final class Gateway implements AutoCloseable {
             int rc = Native.gatewaySetTlsClient(handle, NativeHelpers.toCString(arena, caCert),
                 NativeHelpers.toCString(arena, hostname), trustSystem);
             if (rc != 0)
-                throw new RuntimeException("zlink_gateway_set_tls_client failed");
+                throw ZlinkException.fromLastError("zlink_gateway_set_tls_client");
         }
     }
 
     public int connectionCount(String serviceName) {
         int rc = Native.gatewayConnectionCount(handle, serviceNameCString(serviceName));
         if (rc < 0)
-            throw new RuntimeException("zlink_gateway_connection_count failed");
+            throw ZlinkException.fromLastError("zlink_gateway_connection_count");
         return rc;
     }
 
@@ -589,34 +597,34 @@ public final class Gateway implements AutoCloseable {
         Objects.requireNonNull(service, "service");
         int rc = Native.gatewayConnectionCount(handle, service.cString());
         if (rc < 0)
-            throw new RuntimeException("zlink_gateway_connection_count failed");
+            throw ZlinkException.fromLastError("zlink_gateway_connection_count");
         return rc;
     }
 
     public Socket routerSocket() {
         MemorySegment sock = Native.gatewayRouter(handle);
         if (sock == null || sock.address() == 0)
-            throw new RuntimeException("zlink_gateway_router_socket_unsafe failed");
+            throw ZlinkException.fromLastError("zlink_gateway_router_socket_unsafe");
         return Socket.adopt(sock, false);
     }
 
-    public PeerInfo[] routerPeers() {
+    public List<PeerInfo> routerPeers() {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
             count.set(ValueLayout.JAVA_LONG, 0, 0L);
             int rc = Native.gatewayRouterPeers(handle, MemorySegment.NULL, count);
             if (rc != 0)
-                throw new RuntimeException("zlink_gateway_router_peers failed");
+                throw ZlinkException.fromLastError("zlink_gateway_router_peers");
             long available = count.get(ValueLayout.JAVA_LONG, 0);
             if (available <= 0)
-                return new PeerInfo[0];
+                return Collections.emptyList();
 
             MemorySegment peersMem = arena.allocate(NativeLayouts.PEER_INFO_LAYOUT,
               available);
             count.set(ValueLayout.JAVA_LONG, 0, available);
             rc = Native.gatewayRouterPeers(handle, peersMem, count);
             if (rc != 0)
-                throw new RuntimeException("zlink_gateway_router_peers failed");
+                throw ZlinkException.fromLastError("zlink_gateway_router_peers");
 
             long actualLong = count.get(ValueLayout.JAVA_LONG, 0);
             if (actualLong < 0)
@@ -625,10 +633,10 @@ public final class Gateway implements AutoCloseable {
                 actualLong = available;
             int actual = (int) actualLong;
             long stride = NativeLayouts.PEER_INFO_LAYOUT.byteSize();
-            PeerInfo[] out = new PeerInfo[actual];
+            ArrayList<PeerInfo> out = new ArrayList<>(actual);
             for (int i = 0; i < actual; i++) {
-                out[i] = PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
-                  stride));
+                out.add(PeerInfo.fromNative(peersMem.asSlice((long) i * stride,
+                  stride)));
             }
             return out;
         }
@@ -643,26 +651,45 @@ public final class Gateway implements AutoCloseable {
     }
 
     public void setSockOpt(SocketOption option, byte[] value) {
+        Objects.requireNonNull(option, "option");
         Objects.requireNonNull(value, "value");
-        MemorySegment buf = value.length == 0 ? MemorySegment.NULL
-            : ensureSockOptScratch(value.length);
-        if (value.length > 0) {
-            MemorySegment.copy(MemorySegment.ofArray(value), 0, buf, 0,
-                value.length);
-        }
-        int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf,
-            value.length);
-        if (rc != 0)
-            throw new RuntimeException("zlink_gateway_setsockopt failed");
+        setSockOptBytes(option.getValue(), value, 0, value.length);
     }
 
     public void setSockOpt(SocketOption option, int value) {
-        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
-        buf.set(ValueLayout.JAVA_INT, 0, value);
-        int rc = Native.gatewaySetSockOpt(handle, option.getValue(), buf,
-            Integer.BYTES);
-        if (rc != 0)
-            throw new RuntimeException("zlink_gateway_setsockopt failed");
+        Objects.requireNonNull(option, "option");
+        setSockOptInt(option.getValue(), value);
+    }
+
+    public void setOption(SocketOptionKey<Integer> option, int value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT32);
+        option.requireWritable();
+        setSockOptInt(option.optionId(), value);
+    }
+
+    public void setOption(SocketOptionKey<Long> option, long value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.INT64);
+        option.requireWritable();
+        setSockOptLong(option.optionId(), value);
+    }
+
+    public void setOption(SocketOptionKey<String> option, String value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.STRING);
+        option.requireWritable();
+        byte[] utf8 = Objects.requireNonNull(value, "value").getBytes(
+          StandardCharsets.UTF_8);
+        setSockOptBytes(option.optionId(), utf8, 0, utf8.length);
+    }
+
+    public void setOption(SocketOptionKey<byte[]> option, byte[] value) {
+        Objects.requireNonNull(option, "option");
+        validateOptionType(option, SocketOptionValueType.BYTES);
+        option.requireWritable();
+        Objects.requireNonNull(value, "value");
+        setSockOptBytes(option.optionId(), value, 0, value.length);
     }
 
     @Override
@@ -675,6 +702,9 @@ public final class Gateway implements AutoCloseable {
         serviceNameScratch.remove();
         serviceNameScratchCapacity.remove();
         sendScratch.remove();
+        RecvContext recvContext = recvScratch.get();
+        recvContext.close();
+        recvScratch.remove();
         closeArena(serviceNameCacheArena);
         closeArena(routingIdCacheArena);
         closeArena(sockOptArena);
@@ -837,28 +867,29 @@ public final class Gateway implements AutoCloseable {
 
     public static final class GatewayMessages implements AutoCloseable {
         private final String serviceName;
-        private final List<Message> parts;
+        private final Message[] parts;
+        private boolean closed;
 
         GatewayMessages(String serviceName, Message[] parts) {
             this.serviceName = serviceName == null ? "" : serviceName;
-            Message[] safeParts = parts == null ? new Message[0] : parts;
-            this.parts = Collections.unmodifiableList(Arrays.asList(safeParts));
+            this.parts = parts == null ? new Message[0] : parts;
+            this.closed = false;
         }
 
         public String serviceName() {
             return serviceName;
         }
 
-        public List<Message> parts() {
+        public Message[] parts() {
             return parts;
         }
 
         @Override
         public void close() {
-            for (Message part : parts) {
-                if (part != null)
-                    part.close();
-            }
+            if (closed)
+                return;
+            closed = true;
+            Message.closeAll(parts);
         }
     }
 
@@ -949,16 +980,6 @@ public final class Gateway implements AutoCloseable {
         sendInternal(vec, serviceName, parts, flags, move);
     }
 
-    private void sendInternal(Arena arena,
-                              MemorySegment serviceName,
-                              List<Message> parts,
-                              SendFlag flags,
-                              boolean move) {
-        int partCount = validateMessagesList(parts, "messages");
-        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, partCount);
-        sendInternal(vec, serviceName, parts, partCount, flags, move);
-    }
-
     private void sendInternal(SendContext context,
                               MemorySegment serviceName,
                               Message[] parts,
@@ -990,7 +1011,7 @@ public final class Gateway implements AutoCloseable {
                 MemorySegment dest = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
                 int rc = NativeMsg.msgInit(dest);
                 if (rc != 0)
-                    throw new RuntimeException("zlink_msg_init failed");
+                    throw ZlinkException.fromLastError("zlink_msg_init");
                 initialized++;
                 if (move)
                     part.moveTo(dest);
@@ -999,48 +1020,6 @@ public final class Gateway implements AutoCloseable {
             }
             int rc = Native.gatewaySend(handle, serviceName, vec, parts.length,
               flags.getValue());
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_gateway_send");
-        } catch (RuntimeException ex) {
-            closeMsgVector(vec, initialized);
-            throw ex;
-        }
-    }
-
-    private void sendInternal(MemorySegment vec,
-                              MemorySegment serviceName,
-                              List<Message> parts,
-                              int partCount,
-                              SendFlag flags,
-                              boolean move) {
-        if (partCount <= 0)
-            throw new IllegalArgumentException("messages required");
-        if (partCount == 1) {
-            Message part = parts.get(0);
-            sendSingleInternal(vec, serviceName, part, flags, move);
-            return;
-        }
-        int initialized = 0;
-        int index = 0;
-        try {
-            for (Message part : parts) {
-                if (part == null)
-                    throw new IllegalArgumentException(
-                        "messages[" + index + "] is null");
-                MemorySegment dest = vec.asSlice((long) index * MSG_SIZE,
-                    MSG_SIZE);
-                int rc = NativeMsg.msgInit(dest);
-                if (rc != 0)
-                    throw new RuntimeException("zlink_msg_init failed");
-                initialized++;
-                if (move)
-                    part.moveTo(dest);
-                else
-                    part.copyTo(dest);
-                index++;
-            }
-            int rc = Native.gatewaySend(handle, serviceName, vec, partCount,
-                flags.getValue());
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_gateway_send");
         } catch (RuntimeException ex) {
@@ -1069,7 +1048,7 @@ public final class Gateway implements AutoCloseable {
         try {
             int rc = NativeMsg.msgInit(vec);
             if (rc != 0)
-                throw new RuntimeException("zlink_msg_init failed");
+                throw ZlinkException.fromLastError("zlink_msg_init");
             initialized = 1;
             if (move)
                 part.moveTo(vec);
@@ -1111,18 +1090,6 @@ public final class Gateway implements AutoCloseable {
         sendToRoutingIdInternal(vec, serviceName, routingId, parts, flags, move);
     }
 
-    private void sendToRoutingIdInternal(Arena arena,
-                                         MemorySegment serviceName,
-                                         MemorySegment routingId,
-                                         List<Message> parts,
-                                         SendFlag flags,
-                                         boolean move) {
-        int partCount = validateMessagesList(parts, "messages");
-        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, partCount);
-        sendToRoutingIdInternal(vec, serviceName, routingId, parts, partCount,
-            flags, move);
-    }
-
     private void sendToRoutingIdInternal(SendContext context,
                                          MemorySegment serviceName,
                                          MemorySegment routingId,
@@ -1152,7 +1119,7 @@ public final class Gateway implements AutoCloseable {
                 MemorySegment dest = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
                 int rc = NativeMsg.msgInit(dest);
                 if (rc != 0)
-                    throw new RuntimeException("zlink_msg_init failed");
+                    throw ZlinkException.fromLastError("zlink_msg_init");
                 initialized++;
                 if (move)
                     part.moveTo(dest);
@@ -1181,7 +1148,7 @@ public final class Gateway implements AutoCloseable {
         try {
             int rc = NativeMsg.msgInit(vec);
             if (rc != 0)
-                throw new RuntimeException("zlink_msg_init failed");
+                throw ZlinkException.fromLastError("zlink_msg_init");
             initialized = 1;
             if (move)
                 part.moveTo(vec);
@@ -1189,50 +1156,6 @@ public final class Gateway implements AutoCloseable {
                 part.copyTo(vec);
             rc = Native.gatewaySendRid(handle, serviceName, routingId, vec, 1,
                 flags.getValue());
-            if (rc != 0)
-                throw ZlinkException.fromLastError("zlink_gateway_send_rid");
-        } catch (RuntimeException ex) {
-            closeMsgVector(vec, initialized);
-            throw ex;
-        }
-    }
-
-    private void sendToRoutingIdInternal(MemorySegment vec,
-                                         MemorySegment serviceName,
-                                         MemorySegment routingId,
-                                         List<Message> parts,
-                                         int partCount,
-                                         SendFlag flags,
-                                         boolean move) {
-        if (partCount <= 0)
-            throw new IllegalArgumentException("messages required");
-        if (partCount == 1) {
-            Message part = parts.get(0);
-            sendToRoutingIdSingleInternal(vec, serviceName, routingId, part,
-                flags, move);
-            return;
-        }
-        int initialized = 0;
-        int index = 0;
-        try {
-            for (Message part : parts) {
-                if (part == null)
-                    throw new IllegalArgumentException(
-                        "messages[" + index + "] is null");
-                MemorySegment dest = vec.asSlice((long) index * MSG_SIZE,
-                    MSG_SIZE);
-                int rc = NativeMsg.msgInit(dest);
-                if (rc != 0)
-                    throw new RuntimeException("zlink_msg_init failed");
-                initialized++;
-                if (move)
-                    part.moveTo(dest);
-                else
-                    part.copyTo(dest);
-                index++;
-            }
-            int rc = Native.gatewaySendRid(handle, serviceName, routingId, vec,
-                partCount, flags.getValue());
             if (rc != 0)
                 throw ZlinkException.fromLastError("zlink_gateway_send_rid");
         } catch (RuntimeException ex) {
@@ -1256,7 +1179,7 @@ public final class Gateway implements AutoCloseable {
             flags.getValue(),
             context.serviceName());
         if (rc != 0)
-            throw new RuntimeException("zlink_gateway_recv failed");
+            throw ZlinkException.fromLastError("zlink_gateway_recv");
         long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
         MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
         Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
@@ -1309,6 +1232,44 @@ public final class Gateway implements AutoCloseable {
             sockOptScratchCapacity = length;
         }
         return sockOptScratch.asSlice(0, length);
+    }
+
+    private static void validateOptionType(SocketOptionKey<?> option,
+                                           SocketOptionValueType expected) {
+        if (option.valueType() != expected) {
+            throw new IllegalArgumentException(
+              option.name() + " expects " + option.valueType()
+                + ", not " + expected);
+        }
+    }
+
+    private void setSockOptRaw(int optionId, MemorySegment value, long len) {
+        int rc = Native.gatewaySetSockOpt(handle, optionId, value, len);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_gateway_setsockopt");
+    }
+
+    private void setSockOptBytes(int optionId, byte[] value, int offset,
+                                 int length) {
+        MemorySegment buf = length == 0 ? MemorySegment.NULL
+            : ensureSockOptScratch(length);
+        if (length > 0) {
+            MemorySegment.copy(MemorySegment.ofArray(value), offset, buf, 0,
+                length);
+        }
+        setSockOptRaw(optionId, buf, length);
+    }
+
+    private void setSockOptInt(int optionId, int value) {
+        MemorySegment buf = ensureSockOptScratch(Integer.BYTES);
+        buf.set(ValueLayout.JAVA_INT, 0, value);
+        setSockOptRaw(optionId, buf, Integer.BYTES);
+    }
+
+    private void setSockOptLong(int optionId, long value) {
+        MemorySegment buf = ensureSockOptScratch(Long.BYTES);
+        buf.set(ValueLayout.JAVA_LONG, 0, value);
+        setSockOptRaw(optionId, buf, Long.BYTES);
     }
 
     private static void closeArena(Arena arena) {
@@ -1381,10 +1342,9 @@ public final class Gateway implements AutoCloseable {
             throw new IndexOutOfBoundsException(name + " range out of bounds");
     }
 
-    private static int validateMessagesList(List<Message> messages,
-                                            String name) {
+    private static int validateMessageArray(Message[] messages, String name) {
         Objects.requireNonNull(messages, name);
-        int size = messages.size();
+        int size = messages.length;
         if (size <= 0)
             throw new IllegalArgumentException(name + " required");
         return size;

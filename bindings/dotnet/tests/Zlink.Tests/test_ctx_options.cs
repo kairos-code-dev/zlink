@@ -50,7 +50,7 @@ public sealed class test_ctx_options
         Assert.Equal(1, ctx.GetOption(CtxIpv6));
 
         using var router = new Socket(ctx, SocketType.Router);
-        Assert.Equal(1, router.GetOption(SocketOption.Ipv6));
+        Assert.Equal(1, router.GetOption(SocketOptions.Ipv6));
     }
 
     [Fact]
@@ -79,14 +79,14 @@ public sealed class test_ctx_options
         using var ctx = new Context();
         using (var preRouter = new Socket(ctx, SocketType.Router))
         {
-            Assert.Equal(-1, preRouter.GetOption(SocketOption.Linger));
+            Assert.Equal(-1, preRouter.GetOption(SocketOptions.Linger));
         }
 
         ctx.SetOption(CtxBlocky, 0);
         Assert.Equal(0, ctx.GetOption(CtxBlocky));
 
         using var router = new Socket(ctx, SocketType.Router);
-        Assert.Equal(0, router.GetOption(SocketOption.Linger));
+        Assert.Equal(0, router.GetOption(SocketOptions.Linger));
     }
 
     [Fact]

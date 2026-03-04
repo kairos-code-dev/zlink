@@ -412,29 +412,141 @@ public sealed class Socket : IDisposable
         return msg;
     }
 
-    public void SetOption(SocketOption option, int value)
+    public void SetOption(SocketOptionKey<int> option, int value)
     {
         EnsureNotDisposed();
-        unsafe
-        {
-            int tmp = value;
-            IntPtr ptr = new IntPtr(&tmp);
-            int rc = NativeMethods.zlink_setsockopt(_handle, (int)option, ptr,
-                (nuint)sizeof(int));
-            ZlinkException.ThrowIfError(rc);
-        }
+        if (option.ValueKind != SocketOptionValueKind.Int32)
+            throw new ArgumentException("Expected int socket option key.",
+                nameof(option));
+        SetOptionInt32(option.Option, value);
     }
 
-    public void SetOption(SocketOption option, byte[] value)
+    public void SetOption(SocketOptionKey<long> option, long value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int64)
+            throw new ArgumentException("Expected long socket option key.",
+                nameof(option));
+        SetOptionInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<ulong> option, ulong value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.UInt64)
+            throw new ArgumentException("Expected ulong socket option key.",
+                nameof(option));
+        SetOptionUInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         SetOption(option, value.AsSpan());
     }
 
-    public unsafe void SetOption(SocketOption option, ReadOnlySpan<byte> value)
+    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Bytes)
+            throw new ArgumentException("Expected byte[] socket option key.",
+                nameof(option));
+        SetOptionBytes(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<string> option, string value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.String)
+            throw new ArgumentException("Expected string socket option key.",
+                nameof(option));
+        SetOptionString(option.Option, value);
+    }
+
+    public int GetOption(SocketOptionKey<int> option)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int32)
+            throw new ArgumentException("Expected int socket option key.",
+                nameof(option));
+        return GetOptionInt32(option.Option);
+    }
+
+    public long GetOption(SocketOptionKey<long> option)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int64)
+            throw new ArgumentException("Expected long socket option key.",
+                nameof(option));
+        return GetOptionInt64(option.Option);
+    }
+
+    public ulong GetOption(SocketOptionKey<ulong> option)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.UInt64)
+            throw new ArgumentException("Expected ulong socket option key.",
+                nameof(option));
+        return GetOptionUInt64(option.Option);
+    }
+
+    public byte[] GetOption(SocketOptionKey<byte[]> option, int initialSize = 256)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Bytes)
+            throw new ArgumentException("Expected byte[] socket option key.",
+                nameof(option));
+        return GetOptionBytes(option.Option, initialSize);
+    }
+
+    public int GetOption(SocketOptionKey<byte[]> option, Span<byte> destination)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Bytes)
+            throw new ArgumentException("Expected byte[] socket option key.",
+                nameof(option));
+        return GetOptionBytesInto(option.Option, destination);
+    }
+
+    public string GetOption(SocketOptionKey<string> option, int initialSize = 256)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.String)
+            throw new ArgumentException("Expected string socket option key.",
+                nameof(option));
+        return GetOptionString(option.Option, initialSize);
+    }
+
+    private unsafe void SetOptionInt32(SocketOption option, int value)
+    {
+        int tmp = value;
+        IntPtr ptr = new IntPtr(&tmp);
+        int rc = NativeMethods.zlink_setsockopt(_handle, (int)option, ptr,
+            (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionInt64(SocketOption option, long value)
+    {
+        long tmp = value;
+        IntPtr ptr = new IntPtr(&tmp);
+        int rc = NativeMethods.zlink_setsockopt(_handle, (int)option, ptr,
+            (nuint)sizeof(long));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionUInt64(SocketOption option, ulong value)
+    {
+        ulong tmp = value;
+        IntPtr ptr = new IntPtr(&tmp);
+        int rc = NativeMethods.zlink_setsockopt(_handle, (int)option, ptr,
+            (nuint)sizeof(ulong));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionBytes(SocketOption option, ReadOnlySpan<byte> value)
+    {
         fixed (byte* ptr = value)
         {
             int rc = NativeMethods.zlink_setsockopt(_handle, (int)option,
@@ -443,9 +555,8 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public void SetOption(SocketOption option, string value)
+    private void SetOptionString(SocketOption option, string value)
     {
-        EnsureNotDisposed();
         if (value == null)
             throw new ArgumentNullException(nameof(value));
 
@@ -454,7 +565,7 @@ public sealed class Socket : IDisposable
         {
             Span<byte> buffer = stackalloc byte[maxByteCount];
             int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
-            SetOption(option, buffer.Slice(0, byteCount));
+            SetOptionBytes(option, buffer.Slice(0, byteCount));
             return;
         }
 
@@ -462,7 +573,7 @@ public sealed class Socket : IDisposable
         try
         {
             int byteCount = Encoding.UTF8.GetBytes(value, rented);
-            SetOption(option, rented.AsSpan(0, byteCount));
+            SetOptionBytes(option, rented.AsSpan(0, byteCount));
         }
         finally
         {
@@ -470,24 +581,41 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public int GetOption(SocketOption option)
+    private unsafe int GetOptionInt32(SocketOption option)
     {
-        EnsureNotDisposed();
-        unsafe
-        {
-            int value = 0;
-            nuint size = (nuint)sizeof(int);
-            IntPtr ptr = new IntPtr(&value);
-            int rc = NativeMethods.zlink_getsockopt(_handle, (int)option, ptr,
-                ref size);
-            ZlinkException.ThrowIfError(rc);
-            return value;
-        }
+        int value = 0;
+        nuint size = (nuint)sizeof(int);
+        IntPtr ptr = new IntPtr(&value);
+        int rc = NativeMethods.zlink_getsockopt(_handle, (int)option, ptr,
+            ref size);
+        ZlinkException.ThrowIfError(rc);
+        return value;
     }
 
-    public byte[] GetOptionBytes(SocketOption option, int initialSize = 256)
+    private unsafe long GetOptionInt64(SocketOption option)
     {
-        EnsureNotDisposed();
+        long value = 0;
+        nuint size = (nuint)sizeof(long);
+        IntPtr ptr = new IntPtr(&value);
+        int rc = NativeMethods.zlink_getsockopt(_handle, (int)option, ptr,
+            ref size);
+        ZlinkException.ThrowIfError(rc);
+        return value;
+    }
+
+    private unsafe ulong GetOptionUInt64(SocketOption option)
+    {
+        ulong value = 0;
+        nuint size = (nuint)sizeof(ulong);
+        IntPtr ptr = new IntPtr(&value);
+        int rc = NativeMethods.zlink_getsockopt(_handle, (int)option, ptr,
+            ref size);
+        ZlinkException.ThrowIfError(rc);
+        return value;
+    }
+
+    private byte[] GetOptionBytes(SocketOption option, int initialSize = 256)
+    {
         if (initialSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(initialSize));
         byte[] rented = ArrayPool<byte>.Shared.Rent(initialSize);
@@ -535,9 +663,9 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public unsafe int GetOption(SocketOption option, Span<byte> destination)
+    private unsafe int GetOptionBytesInto(SocketOption option,
+        Span<byte> destination)
     {
-        EnsureNotDisposed();
         fixed (byte* ptr = destination)
         {
             nuint size = (nuint)destination.Length;
@@ -548,13 +676,13 @@ public sealed class Socket : IDisposable
         }
     }
 
-    public string GetOptionString(SocketOption option, int initialSize = 256)
+    private string GetOptionString(SocketOption option, int initialSize = 256)
     {
         byte[] bytes = GetOptionBytes(option, initialSize);
         int len = Array.IndexOf(bytes, (byte)0);
         if (len < 0)
             len = bytes.Length;
-        return System.Text.Encoding.UTF8.GetString(bytes, 0, len);
+        return Encoding.UTF8.GetString(bytes, 0, len);
     }
 
     public void Monitor(string address, SocketEvent events)

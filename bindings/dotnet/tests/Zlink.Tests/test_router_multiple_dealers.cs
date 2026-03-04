@@ -23,8 +23,8 @@ public sealed class test_router_multiple_dealers
         using var dealer1 = new Socket(ctx, SocketType.Dealer);
         using var dealer2 = new Socket(ctx, SocketType.Dealer);
 
-        dealer1.SetOption(SocketOption.RoutingId, "D1");
-        dealer2.SetOption(SocketOption.RoutingId, "D2");
+        dealer1.SetOption(SocketOptions.RoutingId, "D1");
+        dealer2.SetOption(SocketOptions.RoutingId, "D2");
 
         string endpoint = CoreTestSupport.NewEndpoint(transport,
             "router-multi-dealer");

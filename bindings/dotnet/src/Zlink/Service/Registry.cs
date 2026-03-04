@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers;
+using System.Text;
 using Zlink;
 using Zlink.Native;
 
@@ -63,17 +65,94 @@ public sealed class Registry : IDisposable
         ZlinkException.ThrowIfError(rc);
     }
 
-    public void SetOption(RegistrySocketRole role, SocketOption option, byte[] value)
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<int> option,
+        int value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int32)
+            throw new ArgumentException("Expected int socket option key.",
+                nameof(option));
+        SetOptionInt32(role, option.Option, value);
+    }
+
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<long> option,
+        long value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int64)
+            throw new ArgumentException("Expected long socket option key.",
+                nameof(option));
+        SetOptionInt64(role, option.Option, value);
+    }
+
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<ulong> option,
+        ulong value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.UInt64)
+            throw new ArgumentException("Expected ulong socket option key.",
+                nameof(option));
+        SetOptionUInt64(role, option.Option, value);
+    }
+
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<byte[]> option,
+        byte[] value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         SetOption(role, option, value.AsSpan());
     }
 
-    public unsafe void SetOption(RegistrySocketRole role, SocketOption option,
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<byte[]> option,
         ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Bytes)
+            throw new ArgumentException("Expected byte[] socket option key.",
+                nameof(option));
+        SetOptionBytes(role, option.Option, value);
+    }
+
+    public void SetOption(RegistrySocketRole role, SocketOptionKey<string> option,
+        string value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.String)
+            throw new ArgumentException("Expected string socket option key.",
+                nameof(option));
+        SetOptionString(role, option.Option, value);
+    }
+
+    private unsafe void SetOptionInt32(RegistrySocketRole role,
+        SocketOption option, int value)
+    {
+        int tmp = value;
+        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionInt64(RegistrySocketRole role,
+        SocketOption option, long value)
+    {
+        long tmp = value;
+        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(long));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionUInt64(RegistrySocketRole role,
+        SocketOption option, ulong value)
+    {
+        ulong tmp = value;
+        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
+            (int)option, (IntPtr)(&tmp), (nuint)sizeof(ulong));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionBytes(RegistrySocketRole role,
+        SocketOption option, ReadOnlySpan<byte> value)
+    {
         fixed (byte* ptr = value)
         {
             int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
@@ -82,13 +161,31 @@ public sealed class Registry : IDisposable
         }
     }
 
-    public unsafe void SetOption(RegistrySocketRole role, SocketOption option, int value)
+    private void SetOptionString(RegistrySocketRole role, SocketOption option,
+        string value)
     {
-        EnsureNotDisposed();
-        int tmp = value;
-        int rc = NativeMethods.zlink_registry_setsockopt(_handle, (int)role,
-            (int)option, (IntPtr)(&tmp), (nuint)sizeof(int));
-        ZlinkException.ThrowIfError(rc);
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+
+        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+        if (maxByteCount <= 512)
+        {
+            Span<byte> buffer = stackalloc byte[maxByteCount];
+            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
+            SetOptionBytes(role, option, buffer.Slice(0, byteCount));
+            return;
+        }
+
+        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+        try
+        {
+            int byteCount = Encoding.UTF8.GetBytes(value, rented);
+            SetOptionBytes(role, option, rented.AsSpan(0, byteCount));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     public void Start()

@@ -10,7 +10,7 @@ public sealed class test_service_discovery
     {
         provider.Bind(CoreTestSupport.NewEndpoint("tcp", serviceName));
         using var router = provider.CreateRouterSocket();
-        string advertise = router.GetOptionString(SocketOption.LastEndpoint);
+        string advertise = router.GetOption(SocketOptions.LastEndpoint);
         provider.ConnectRegistry(regRouter);
         provider.Register(serviceName, advertise, weight);
         return advertise;
@@ -87,7 +87,7 @@ public sealed class test_service_discovery
         using var providerARouter = providerA.CreateRouterSocket();
         string bindA = CoreTestSupport.NewEndpoint("tcp", "svc-a");
         providerA.Bind(bindA);
-        string advertiseA = providerARouter.GetOptionString(SocketOption.LastEndpoint);
+        string advertiseA = providerARouter.GetOption(SocketOptions.LastEndpoint);
         providerA.ConnectRegistry(regRouter);
         providerA.Register("svc-A", advertiseA, 10);
 

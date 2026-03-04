@@ -350,31 +350,116 @@ public sealed class Gateway : IDisposable
         }
     }
 
-    public void SetOption(SocketOption option, byte[] value)
+    public void SetOption(SocketOptionKey<int> option, int value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int32)
+            throw new ArgumentException("Expected int socket option key.",
+                nameof(option));
+        SetOptionInt32(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<long> option, long value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.Int64)
+            throw new ArgumentException("Expected long socket option key.",
+                nameof(option));
+        SetOptionInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<ulong> option, ulong value)
+    {
+        EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.UInt64)
+            throw new ArgumentException("Expected ulong socket option key.",
+                nameof(option));
+        SetOptionUInt64(option.Option, value);
+    }
+
+    public void SetOption(SocketOptionKey<byte[]> option, byte[] value)
     {
         if (value == null)
             throw new ArgumentNullException(nameof(value));
         SetOption(option, value.AsSpan());
     }
 
-    public unsafe void SetOption(SocketOption option, ReadOnlySpan<byte> value)
+    public void SetOption(SocketOptionKey<byte[]> option, ReadOnlySpan<byte> value)
     {
         EnsureNotDisposed();
-        fixed (byte* ptr = value)
-        {
-            int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
-                (IntPtr)ptr, (nuint)value.Length);
-            ZlinkException.ThrowIfError(rc);
-        }
+        if (option.ValueKind != SocketOptionValueKind.Bytes)
+            throw new ArgumentException("Expected byte[] socket option key.",
+                nameof(option));
+        SetOptionBytes(option.Option, value);
     }
 
-    public unsafe void SetOption(SocketOption option, int value)
+    public void SetOption(SocketOptionKey<string> option, string value)
     {
         EnsureNotDisposed();
+        if (option.ValueKind != SocketOptionValueKind.String)
+            throw new ArgumentException("Expected string socket option key.",
+                nameof(option));
+        SetOptionString(option.Option, value);
+    }
+
+    private unsafe void SetOptionInt32(SocketOption option, int value)
+    {
         int tmp = value;
         int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
             (IntPtr)(&tmp), (nuint)sizeof(int));
         ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionInt64(SocketOption option, long value)
+    {
+        long tmp = value;
+        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+            (IntPtr)(&tmp), (nuint)sizeof(long));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionUInt64(SocketOption option, ulong value)
+    {
+        ulong tmp = value;
+        int rc = NativeMethods.zlink_gateway_setsockopt(_handle, (int)option,
+            (IntPtr)(&tmp), (nuint)sizeof(ulong));
+        ZlinkException.ThrowIfError(rc);
+    }
+
+    private unsafe void SetOptionBytes(SocketOption option, ReadOnlySpan<byte> value)
+    {
+        fixed (byte* ptr = value)
+        {
+            int rc = NativeMethods.zlink_gateway_setsockopt(_handle,
+                (int)option, (IntPtr)ptr, (nuint)value.Length);
+            ZlinkException.ThrowIfError(rc);
+        }
+    }
+
+    private void SetOptionString(SocketOption option, string value)
+    {
+        if (value == null)
+            throw new ArgumentNullException(nameof(value));
+
+        int maxByteCount = Encoding.UTF8.GetMaxByteCount(value.Length);
+        if (maxByteCount <= 512)
+        {
+            Span<byte> buffer = stackalloc byte[maxByteCount];
+            int byteCount = Encoding.UTF8.GetBytes(value.AsSpan(), buffer);
+            SetOptionBytes(option, buffer.Slice(0, byteCount));
+            return;
+        }
+
+        byte[] rented = ArrayPool<byte>.Shared.Rent(maxByteCount);
+        try
+        {
+            int byteCount = Encoding.UTF8.GetBytes(value, rented);
+            SetOptionBytes(option, rented.AsSpan(0, byteCount));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     public void Dispose()

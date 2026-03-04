@@ -190,7 +190,7 @@ internal static class CoreTestSupport
             if (first == expectedPayload)
                 return first;
 
-            int more = router.GetOption(SocketOption.RcvMore);
+            int more = router.GetOption(SocketOptions.RcvMore);
             if (more != 0)
             {
                 string second = ReceiveStringWithTimeout(router, 256, 500);
@@ -220,7 +220,7 @@ internal static class CoreTestSupport
         if (bytes > 0)
             Buffer.BlockCopy(buffer, 0, lastPart, 0, bytes);
 
-        while (socket.GetOption(SocketOption.RcvMore) != 0)
+        while (socket.GetOption(SocketOptions.RcvMore) != 0)
             lastPart = ReceiveBytesWithTimeout(socket, maxSize, 500);
         return true;
     }

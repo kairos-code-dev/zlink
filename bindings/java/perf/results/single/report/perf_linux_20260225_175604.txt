@@ -1,6 +1,0 @@
-## PATTERN: STREAM_CALLBACK (one-way)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|------|--------|
-| 64B |     14.35 Kmsg/s |      0.9 MB/s |     39.28 us |  0.3 |    8.6 |

@@ -1,0 +1,696 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+#ifndef ZLINK_CPP_SERVICES_SPOT_HPP_INCLUDED
+#define ZLINK_CPP_SERVICES_SPOT_HPP_INCLUDED
+
+#include "../context.hpp"
+#include "../message.hpp"
+#include "../types.hpp"
+
+#include <cerrno>
+
+namespace zlink
+{
+
+/**
+ * @brief Spot node wrapper that manages publish/subscribe service sockets.
+ */
+class spot_node_t
+{
+  public:
+    /**
+     * @brief Create a spot node.
+     * @param ctx_ Context wrapper.
+     */
+    explicit spot_node_t (context_t &ctx_)
+        : _node (zlink_spot_node_new (ctx_.handle ()))
+    {
+    }
+
+    /**
+     * @brief Destroy node handle.
+     */
+    ~spot_node_t () { destroy (); }
+
+    spot_node_t (spot_node_t &&other) noexcept : _node (other._node)
+    {
+        other._node = NULL;
+    }
+
+    spot_node_t &operator= (spot_node_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        destroy ();
+        _node = other._node;
+        other._node = NULL;
+        return *this;
+    }
+
+    spot_node_t (const spot_node_t &) = delete;
+    spot_node_t &operator= (const spot_node_t &) = delete;
+
+    /**
+     * @brief Bind spot node endpoint.
+     * @param endpoint_ Bind endpoint.
+     * @return 0 on success, -1 on failure.
+     */
+    int bind (const char *endpoint_)
+    {
+        return zlink_spot_node_bind (_node, endpoint_);
+    }
+
+    /**
+     * @brief Connect to registry endpoint.
+     * @param endpoint_ Registry endpoint.
+     * @return 0 on success, -1 on failure.
+     */
+    int connect_registry (const char *endpoint_)
+    {
+        return zlink_spot_node_connect_registry (_node, endpoint_);
+    }
+
+    /**
+     * @brief Connect to another spot node's PUB endpoint.
+     * @param endpoint_ Peer PUB endpoint.
+     * @return 0 on success, -1 on failure.
+     */
+    int connect_peer_pub (const char *endpoint_)
+    {
+        return zlink_spot_node_connect_peer_pub (_node, endpoint_);
+    }
+
+    /**
+     * @brief Disconnect from a peer PUB endpoint.
+     * @param endpoint_ Peer PUB endpoint.
+     * @return 0 on success, -1 on failure.
+     */
+    int disconnect_peer_pub (const char *endpoint_)
+    {
+        return zlink_spot_node_disconnect_peer_pub (_node, endpoint_);
+    }
+
+    /**
+     * @brief Register spot service endpoint.
+     * @param service_ Service name.
+     * @param advertise_ Advertised endpoint.
+     * @return 0 on success, -1 on failure.
+     */
+    int register_service (const char *service_, const char *advertise_)
+    {
+        return zlink_spot_node_register (_node, service_, advertise_);
+    }
+
+    /**
+     * @brief Unregister a spot service.
+     * @param service_ Service name.
+     * @return 0 on success, -1 on failure.
+     */
+    int unregister_service (const char *service_)
+    {
+        return zlink_spot_node_unregister (_node, service_);
+    }
+
+    /**
+     * @brief Inject external discovery handle for a service.
+     * @param discovery_ Native discovery handle.
+     * @param service_ Service name.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_discovery (void *discovery_, const char *service_)
+    {
+        return zlink_spot_node_set_discovery (_node, discovery_, service_);
+    }
+
+    /**
+     * @brief Configure TLS server certificate for node sockets.
+     * @param cert_ Certificate file path.
+     * @param key_ Private key file path.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_tls_server (const char *cert_, const char *key_)
+    {
+        return zlink_spot_node_set_tls_server (_node, cert_, key_);
+    }
+
+    /**
+     * @brief Configure TLS client settings for node sockets.
+     * @param ca_ CA file path.
+     * @param hostname_ Expected peer hostname.
+     * @param trust_ Trust-system flag.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_tls_client (const char *ca_, const char *hostname_, int trust_)
+    {
+        return zlink_spot_node_set_tls_client (_node, ca_, hostname_, trust_);
+    }
+
+    /**
+     * @brief Configure TLS client settings for node sockets.
+     * @param ca_ CA file path.
+     * @param hostname_ Expected peer hostname.
+     * @param trust_ Trust-system flag.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_tls_client (const char *ca_, const char *hostname_, bool trust_)
+    {
+        return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
+    }
+
+    /**
+     * @brief Set socket option by internal role.
+     * @param role_ Internal socket role.
+     * @param option_ Socket option key.
+     * @param value_ Option value buffer.
+     * @param len_ Buffer length in bytes.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (spot_node_socket_role role_,
+                     socket_option option_,
+                     const void *value_,
+                     size_t len_)
+    {
+        return zlink_spot_node_setsockopt (
+          _node, static_cast<int> (role_), static_cast<int> (option_), value_,
+          len_);
+    }
+
+    /**
+     * @brief Set integer socket option by internal role.
+     * @param role_ Internal socket role.
+     * @param option_ Socket option key.
+     * @param value_ Integer option value.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (spot_node_socket_role role_,
+                     socket_option option_,
+                     int value_)
+    {
+        return set_sockopt (role_, option_, &value_, sizeof (value_));
+    }
+
+    /**
+     * @brief Set node-level integer option.
+     * @param option_ Node option key.
+     * @param value_ Integer option value.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (spot_node_option option_, int value_)
+    {
+        return zlink_spot_node_setsockopt (
+          _node, static_cast<int> (spot_node_socket_role::node),
+          static_cast<int> (option_), &value_, sizeof (value_));
+    }
+
+    /**
+     * @brief Access internal PUB socket handle.
+     * @return Native socket handle.
+     */
+    void *pub_socket_handle () const
+    {
+        return zlink_spot_node_pub_socket_unsafe (_node);
+    }
+
+    /**
+     * @brief Access internal SUB socket handle.
+     * @return Native socket handle.
+     */
+    void *sub_socket_handle () const
+    {
+        return zlink_spot_node_sub_socket_unsafe (_node);
+    }
+
+    /**
+     * @brief Enumerate PUB socket peers.
+     * @param peers_ Output peer array.
+     * @param count_ In/out capacity and written count.
+     * @return 0 on success, -1 on failure.
+     */
+    int pub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_spot_node_pub_peers (_node, peers_, count_);
+    }
+
+    /**
+     * @brief Enumerate SUB socket peers.
+     * @param peers_ Output peer array.
+     * @param count_ In/out capacity and written count.
+     * @return 0 on success, -1 on failure.
+     */
+    int sub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    {
+        return zlink_spot_node_sub_peers (_node, peers_, count_);
+    }
+
+    /**
+     * @brief Explicitly destroy node handle.
+     * @return 0 on success, -1 on failure.
+     */
+    int destroy ()
+    {
+        if (!_node)
+            return 0;
+
+        void *tmp = _node;
+        _node = NULL;
+        return zlink_spot_node_destroy (&tmp);
+    }
+
+    /**
+     * @brief Access raw native node handle.
+     * @return Native handle pointer.
+     */
+    void *handle () const { return _node; }
+
+  private:
+    void *_node;
+};
+
+/**
+ * @brief Spot pub/sub convenience wrapper for one node.
+ */
+class spot_t
+{
+  public:
+    /**
+     * @brief Subscription callback type.
+     */
+    typedef std::function<void (const std::string &, const zlink_msg_t *, size_t)>
+      handler_fn;
+
+    /**
+     * @brief Create spot pub/sub handles from a node.
+     * @param node_ Spot node wrapper.
+     */
+    explicit spot_t (spot_node_t &node_)
+        : _node (node_.handle ()),
+          _pub (zlink_spot_pub_new (node_.handle ())),
+          _sub (zlink_spot_sub_new (node_.handle ())),
+          _last_error (0)
+    {
+        if (_pub && _sub)
+            return;
+
+        const int err = errno;
+        if (_pub)
+            zlink_spot_pub_destroy (&_pub);
+        if (_sub)
+            zlink_spot_sub_destroy (&_sub);
+        _pub = NULL;
+        _sub = NULL;
+        _last_error = err != 0 ? err : EFAULT;
+    }
+
+    /**
+     * @brief Destroy pub/sub handles.
+     */
+    ~spot_t () { destroy (); }
+
+    spot_t (spot_t &&other) noexcept
+        : _node (NULL), _pub (NULL), _sub (NULL), _last_error (0)
+    {
+        other.set_handler (handler_fn ());
+        _node = other._node;
+        _pub = other._pub;
+        _sub = other._sub;
+        _last_error = other._last_error;
+        other._node = NULL;
+        other._pub = NULL;
+        other._sub = NULL;
+        other._last_error = 0;
+    }
+
+    spot_t &operator= (spot_t &&other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        set_handler (handler_fn ());
+        destroy ();
+        other.set_handler (handler_fn ());
+        _node = other._node;
+        _pub = other._pub;
+        _sub = other._sub;
+        _last_error = other._last_error;
+        other._node = NULL;
+        other._pub = NULL;
+        other._sub = NULL;
+        other._last_error = 0;
+        return *this;
+    }
+
+    spot_t (const spot_t &) = delete;
+    spot_t &operator= (const spot_t &) = delete;
+
+    /**
+     * @brief Check whether publisher/subscriber handles were created.
+     * @return `true` when both handles are valid.
+     */
+    bool valid () const noexcept { return _pub != NULL && _sub != NULL; }
+
+    /**
+     * @brief Return the last constructor-time initialization error.
+     * @return Error number, or 0 when initialized successfully.
+     */
+    int last_error () const noexcept { return _last_error; }
+
+    /**
+     * @brief Publish multipart payload on a topic.
+     * @param topic_ Topic string.
+     * @param parts_ Message parts. Ownership is transferred regardless of result.
+     * @param flags_ Send flags.
+     * @return 0 on success, -1 on failure.
+     */
+    int publish (const char *topic_,
+                 std::vector<message_t> &parts_,
+                 send_flag flags_ = send_flag::none)
+    {
+        if (!_pub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        if (parts_.empty ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        std::vector<zlink_msg_t> tmp (parts_.size ());
+        size_t moved = 0;
+        if (move_parts_transfer (parts_, tmp, moved) != 0)
+            return -1;
+
+        const int rc = zlink_spot_pub_publish (
+          _pub, topic_, tmp.data (), tmp.size (), static_cast<int> (flags_));
+        if (rc != 0)
+            close_native_parts (tmp, moved);
+        return rc;
+    }
+
+    /**
+     * @brief Publish single-frame bytes on a topic.
+     * @param topic_ Topic string.
+     * @param data_ Payload pointer.
+     * @param size_ Payload size in bytes.
+     * @param flags_ Send flags.
+     * @return 0 on success, -1 on failure.
+     */
+    int publish_bytes (const char *topic_,
+                       const void *data_,
+                       size_t size_,
+                       send_flag flags_ = send_flag::none)
+    {
+        if (!_pub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        return zlink_spot_pub_publish_bytes (
+          _pub, topic_, data_, size_, static_cast<int> (flags_));
+    }
+
+    /**
+     * @brief Publish single-frame external buffer without a pre-send copy.
+     * @param topic_ Topic string.
+     * @param data_ External payload buffer. May be `NULL` only when `size_` is 0.
+     * @param size_ Payload size in bytes.
+     * @param ffn_ Optional release callback for `data_`.
+     * @param hint_ Optional callback context pointer.
+     * @param flags_ Send flags.
+     * @return 0 on success, -1 on failure.
+     * @note Once initialized, ownership of `data_` is consumed regardless of publish result.
+     */
+    int publish_zero (const char *topic_,
+                      void *data_,
+                      size_t size_,
+                      zlink_free_fn *ffn_,
+                      void *hint_ = NULL,
+                      send_flag flags_ = send_flag::none)
+    {
+        if (!_pub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        if (size_ > 0 && !data_) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        zlink_msg_t part;
+        if (zlink_msg_init_data (&part, data_, size_, ffn_, hint_) != 0)
+            return -1;
+
+        const int rc = zlink_spot_pub_publish (
+          _pub, topic_, &part, 1, static_cast<int> (flags_));
+        if (rc != 0) {
+            const int err = errno;
+            zlink_msg_close (&part);
+            errno = err;
+        }
+        return rc;
+    }
+
+    /**
+     * @brief Subscribe to an exact topic.
+     * @param topic_ Topic string.
+     * @return 0 on success, -1 on failure.
+     */
+    int subscribe (const char *topic_)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        return zlink_spot_sub_subscribe (_sub, topic_);
+    }
+
+    /**
+     * @brief Subscribe using a topic pattern.
+     * @param pattern_ Pattern string.
+     * @return 0 on success, -1 on failure.
+     */
+    int subscribe_pattern (const char *pattern_)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        return zlink_spot_sub_subscribe_pattern (_sub, pattern_);
+    }
+
+    /**
+     * @brief Remove topic or pattern subscription.
+     * @param topic_or_pattern_ Topic or pattern string.
+     * @return 0 on success, -1 on failure.
+     */
+    int unsubscribe (const char *topic_or_pattern_)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+        return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_);
+    }
+
+    /**
+     * @brief Register or clear async message handler.
+     * @param fn_ Handler function. Empty function disables callbacks.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_handler (handler_fn fn_)
+    {
+        const bool enable = static_cast<bool> (fn_);
+        {
+            std::lock_guard<std::mutex> lock (_handler_sync);
+            _handler_fn = std::move (fn_);
+        }
+
+        if (!_sub) {
+            if (enable) {
+                errno = _last_error != 0 ? _last_error : EFAULT;
+                return -1;
+            }
+            return 0;
+        }
+
+        return zlink_spot_sub_set_handler (
+          _sub, enable ? &spot_t::handler_trampoline : NULL, this);
+    }
+
+    /**
+     * @brief Receive one multipart publication.
+     * @param out_ Output message frames.
+     * @param topic_ Output topic.
+     * @param flags_ Receive flags.
+     * @return 0 on success, -1 on failure.
+     */
+    int recv (std::vector<message_t> &out_,
+              std::string &topic_,
+              recv_flag flags_ = recv_flag::none)
+    {
+        if (!_sub) {
+            errno = _last_error != 0 ? _last_error : EFAULT;
+            return -1;
+        }
+
+        zlink_msg_t *parts = NULL;
+        size_t count = 0;
+        char topic_buf[256];
+        size_t topic_len = sizeof (topic_buf);
+        const int rc = zlink_spot_sub_recv (
+          _sub,
+          &parts,
+          &count,
+          static_cast<int> (flags_),
+          topic_buf,
+          &topic_len);
+        if (rc != 0)
+            return rc;
+
+        const size_t topic_size =
+          topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
+        topic_.assign (topic_buf, topic_size);
+        return move_received_parts (out_, parts, count);
+    }
+
+    /**
+     * @brief Explicitly destroy pub/sub handles.
+     * @return 0 on success, -1 on failure.
+     */
+    int destroy ()
+    {
+        int rc = 0;
+        if (_sub)
+            set_handler (handler_fn ());
+
+        if (_pub) {
+            void *tmp = _pub;
+            _pub = NULL;
+            if (zlink_spot_pub_destroy (&tmp) != 0)
+                rc = -1;
+        }
+
+        if (_sub) {
+            void *tmp = _sub;
+            _sub = NULL;
+            if (zlink_spot_sub_destroy (&tmp) != 0)
+                rc = -1;
+        }
+
+        _node = NULL;
+        return rc;
+    }
+
+    /**
+     * @brief Access native publisher handle.
+     * @return Native handle pointer.
+     */
+    void *pub_handle () const { return _pub; }
+    /**
+     * @brief Access native publisher handle.
+     * @return Native handle pointer.
+     */
+    void *publisher_handle () const { return _pub; }
+    /**
+     * @brief Access native subscriber handle.
+     * @return Native handle pointer.
+     */
+    void *sub_handle () const { return _sub; }
+    /**
+     * @brief Access native subscriber handle.
+     * @return Native handle pointer.
+     */
+    void *subscriber_handle () const { return _sub; }
+    /**
+     * @brief Access native publisher handle (legacy alias).
+     * @return Native handle pointer.
+     */
+    void *handle () const { return pub_handle (); }
+
+  private:
+    static void close_native_parts (std::vector<zlink_msg_t> &parts_,
+                                    size_t count_) noexcept
+    {
+        for (size_t i = 0; i < count_; ++i)
+            zlink_msg_close (&parts_[i]);
+    }
+
+    static int move_parts_transfer (std::vector<message_t> &parts_,
+                                    std::vector<zlink_msg_t> &native_parts_,
+                                    size_t &moved_)
+    {
+        moved_ = 0;
+        for (size_t i = 0; i < parts_.size (); ++i) {
+            if (parts_[i].move_to (&native_parts_[i]) != 0) {
+                close_native_parts (native_parts_, moved_);
+                for (size_t j = i; j < parts_.size (); ++j)
+                    parts_[j].close ();
+                return -1;
+            }
+            ++moved_;
+        }
+        return 0;
+    }
+
+    static int move_received_parts (std::vector<message_t> &out_,
+                                    zlink_msg_t *parts_,
+                                    size_t count_)
+    {
+        out_.clear ();
+        if (!parts_ || count_ == 0) {
+            if (parts_)
+                zlink_multipart_close (parts_, count_);
+            return 0;
+        }
+
+        out_.reserve (count_);
+        for (size_t i = 0; i < count_; ++i) {
+            message_t part;
+            if (!part.valid () || zlink_msg_move (part.handle (), &parts_[i]) != 0) {
+                zlink_multipart_close (parts_, count_);
+                out_.clear ();
+                errno = EFAULT;
+                return -1;
+            }
+            out_.push_back (std::move (part));
+        }
+
+        zlink_multipart_close (parts_, count_);
+        return 0;
+    }
+
+    static void handler_trampoline (const char *topic_,
+                                    size_t topic_len_,
+                                    const zlink_msg_t *parts_,
+                                    size_t part_count_,
+                                    void *userdata_) noexcept
+    {
+        spot_t *self = static_cast<spot_t *> (userdata_);
+        if (!self)
+            return;
+
+        handler_fn fn;
+        {
+            std::lock_guard<std::mutex> lock (self->_handler_sync);
+            fn = self->_handler_fn;
+        }
+        if (!fn)
+            return;
+
+        try {
+            fn (std::string (topic_, topic_len_), parts_, part_count_);
+        }
+        catch (...) {
+        }
+    }
+
+    void *_node;
+    void *_pub;
+    void *_sub;
+    int _last_error;
+    handler_fn _handler_fn;
+    std::mutex _handler_sync;
+};
+
+} // namespace zlink
+
+#endif

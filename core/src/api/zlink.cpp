@@ -491,7 +491,7 @@ int zlink_socket_peers (void *socket_, zlink_peer_info_t *peers_, size_t *count_
     return handle.socket->socket_peers (peers_, count_);
 }
 
-void zlink_msgv_close (zlink_msg_t *parts_, size_t part_count_)
+void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
 {
     if (!parts_)
         return;

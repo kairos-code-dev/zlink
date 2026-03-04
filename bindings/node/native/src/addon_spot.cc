@@ -529,7 +529,7 @@ napi_value spot_recv(napi_env env, napi_callback_info info)
         napi_create_buffer_copy(env, sz, data, NULL, &buf);
         napi_set_element(env, arr, i, buf);
     }
-    zlink_msgv_close(parts, count);
+    zlink_multipart_close(parts, count);
     napi_value obj;
     napi_create_object(env, &obj);
     napi_value t;

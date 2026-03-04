@@ -284,7 +284,7 @@ public sealed class Message : IDisposable
         }
         finally
         {
-            NativeMethods.zlink_msgv_close(parts, count);
+            NativeMethods.zlink_multipart_close(parts, count);
         }
         return result;
     }

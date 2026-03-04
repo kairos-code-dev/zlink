@@ -13,7 +13,7 @@ class thread_t
     thread_t () : _thread (NULL) {}
 
     explicit thread_t (zlink_thread_fn *fn_, void *arg_)
-        : _thread (zlink_threadstart (fn_, arg_))
+        : _thread (zlink_thread_start (fn_, arg_))
     {
     }
 
@@ -41,7 +41,7 @@ class thread_t
     void close ()
     {
         if (_thread) {
-            zlink_threadclose (_thread);
+            zlink_thread_join (_thread);
             _thread = NULL;
         }
     }

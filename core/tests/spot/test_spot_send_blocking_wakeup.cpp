@@ -114,7 +114,7 @@ bool recv_one (void *spot_sub_)
         return false;
 
     if (parts)
-        zlink_msgv_close (parts, count);
+        zlink_multipart_close (parts, count);
     return true;
 }
 
@@ -131,11 +131,11 @@ bool wait_until_ready (void *spot_pub_, void *spot_sub_)
               spot_sub_, &parts, &count, ZLINK_DONTWAIT, NULL, NULL);
             if (recv_rc == 0) {
                 if (parts)
-                    zlink_msgv_close (parts, count);
+                    zlink_multipart_close (parts, count);
                 return true;
             }
             if (parts)
-                zlink_msgv_close (parts, count);
+                zlink_multipart_close (parts, count);
             if (errno != EAGAIN)
                 return false;
         } else if (errno != EAGAIN) {

@@ -215,7 +215,7 @@ namespace zlink {
 
 class atomic_counter_t { /* zlink_atomic_counter_* */ };
 class stopwatch_t { /* zlink_stopwatch_* */ };
-class thread_t { /* zlink_threadstart/close */ };
+class thread_t { /* zlink_thread_start/close */ };
 
 int proxy(socket_t&, socket_t&, socket_t* capture = nullptr);
 int proxy_steerable(socket_t&, socket_t&, socket_t* capture, socket_t& control);

@@ -213,7 +213,7 @@ internal static class NativeMethods
         [In, Out] ZlinkPollItemWindows[] items, int nitems, long timeout);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void zlink_msgv_close(IntPtr parts, nuint count);
+    internal static extern void zlink_multipart_close(IntPtr parts, nuint count);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern IntPtr zlink_registry_new(IntPtr ctx);

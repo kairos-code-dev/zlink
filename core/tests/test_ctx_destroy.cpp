@@ -47,7 +47,7 @@ void test_ctx_shutdown ()
     TEST_ASSERT_NOT_NULL (socket);
 
     // Spawn a thread to receive on socket
-    void *receiver_thread = zlink_threadstart (&receiver, socket);
+    void *receiver_thread = zlink_thread_start (&receiver, socket);
 
     // Wait for thread to start up and block
     msleep (SETTLE_TIME);
@@ -56,7 +56,7 @@ void test_ctx_shutdown ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_shutdown (ctx));
 
     // Wait for thread to finish
-    zlink_threadclose (receiver_thread);
+    zlink_thread_join (receiver_thread);
 
     // Close the socket.
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (socket));
@@ -174,7 +174,7 @@ void test_poller_exists_with_socket_on_zlink_ctx_term (const int socket_type_)
     poller_test_data.counter = zlink_atomic_counter_new ();
     TEST_ASSERT_NOT_NULL (poller_test_data.counter);
 
-    void *thread = zlink_threadstart (run_poller, &poller_test_data);
+    void *thread = zlink_thread_start (run_poller, &poller_test_data);
     TEST_ASSERT_NOT_NULL (thread);
 
     while (zlink_atomic_counter_value (poller_test_data.counter) == 0) {
@@ -184,7 +184,7 @@ void test_poller_exists_with_socket_on_zlink_ctx_term (const int socket_type_)
     // Destroy the context
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (poller_test_data.ctx));
 
-    zlink_threadclose (thread);
+    zlink_thread_join (thread);
 
     zlink_atomic_counter_destroy (&poller_test_data.counter);
 #else

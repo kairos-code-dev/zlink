@@ -691,7 +691,7 @@ ZLINK_EXPORT int zlink_socket_peers (void *socket_,
                                  size_t *count_);
 
 /** @brief Close all parts in a multipart message array. */
-ZLINK_EXPORT void zlink_msgv_close (zlink_msg_t *parts, size_t part_count);
+ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 
 /******************************************************************************/
 /*  Service Discovery API                                                     */
@@ -1349,10 +1349,10 @@ ZLINK_EXPORT void zlink_sleep (int seconds_);
 typedef void (zlink_thread_fn) (void *);
 
 /** @brief Start a new thread running the given function. Returns a thread handle. */
-ZLINK_EXPORT void *zlink_threadstart (zlink_thread_fn *func_, void *arg_);
+ZLINK_EXPORT void *zlink_thread_start (zlink_thread_fn *func_, void *arg_);
 
 /** @brief Wait for a thread to finish and release its handle. */
-ZLINK_EXPORT void zlink_threadclose (void *thread_);
+ZLINK_EXPORT void zlink_thread_join (void *thread_);
 
 #undef ZLINK_EXPORT
 

@@ -415,5 +415,5 @@ def _parts_to_bytes(parts_ptr, count):
         size = lib().zlink_msg_size(ctypes.byref(msg))
         data_ptr = lib().zlink_msg_data(ctypes.byref(msg))
         out.append(ctypes.string_at(data_ptr, size))
-    lib().zlink_msgv_close(parts_ptr, count)
+    lib().zlink_multipart_close(parts_ptr, count)
     return out

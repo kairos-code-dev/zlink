@@ -178,7 +178,7 @@ void server_task (void * /*unused_*/)
     int thread_nbr;
     void *threads[5];
     for (thread_nbr = 0; thread_nbr < QT_WORKERS; thread_nbr++)
-        threads[thread_nbr] = zlink_threadstart (&server_worker, NULL);
+        threads[thread_nbr] = zlink_thread_start (&server_worker, NULL);
 
     // Endpoint socket sends random port to avoid test failing when port in use
     void *endpoint_receivers[QT_CLIENTS];
@@ -202,7 +202,7 @@ void server_task (void * /*unused_*/)
     zlink_proxy (frontend, backend, NULL);
 
     for (thread_nbr = 0; thread_nbr < QT_WORKERS; thread_nbr++)
-        zlink_threadclose (threads[thread_nbr]);
+        zlink_thread_join (threads[thread_nbr]);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (frontend));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (backend));
@@ -308,9 +308,9 @@ void test_proxy ()
     struct thread_data databags[QT_CLIENTS + 1];
     for (int i = 0; i < QT_CLIENTS; i++) {
         databags[i].id = i;
-        threads[i] = zlink_threadstart (&client_task, &databags[i]);
+        threads[i] = zlink_thread_start (&client_task, &databags[i]);
     }
-    threads[QT_CLIENTS] = zlink_threadstart (&server_task, NULL);
+    threads[QT_CLIENTS] = zlink_thread_start (&server_task, NULL);
     msleep (500); // Run for 500 ms then quit
 
     if (is_verbose)
@@ -328,7 +328,7 @@ void test_proxy ()
     teardown_test_context ();
 
     for (int i = 0; i < QT_CLIENTS + 1; i++)
-        zlink_threadclose (threads[i]);
+        zlink_thread_join (threads[i]);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_close (control));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (control_context));

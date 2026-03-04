@@ -47,7 +47,7 @@ unsigned long zlink_stopwatch_stop (void *watch_)
     return res;
 }
 
-void *zlink_threadstart (zlink_thread_fn *func_, void *arg_)
+void *zlink_thread_start (zlink_thread_fn *func_, void *arg_)
 {
     zlink::thread_t *thread = new (std::nothrow) zlink::thread_t;
     alloc_assert (thread);
@@ -55,7 +55,7 @@ void *zlink_threadstart (zlink_thread_fn *func_, void *arg_)
     return thread;
 }
 
-void zlink_threadclose (void *thread_)
+void zlink_thread_join (void *thread_)
 {
     zlink::thread_t *p_thread = static_cast<zlink::thread_t *> (thread_);
     p_thread->stop ();

@@ -104,8 +104,8 @@ class _Lib:
         L.zlink_monitor_recv.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
         L.zlink_monitor_recv.restype = ctypes.c_int
 
-        L.zlink_msgv_close.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
-        L.zlink_msgv_close.restype = None
+        L.zlink_multipart_close.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        L.zlink_multipart_close.restype = None
 
         L.zlink_registry_new.argtypes = [ctypes.c_void_p]
         L.zlink_registry_new.restype = ctypes.c_void_p

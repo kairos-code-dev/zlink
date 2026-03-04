@@ -47,11 +47,11 @@ void test_shutdown_stress ()
         bind_loopback_ipv4 (socket, tdata.endpoint, sizeof (tdata.endpoint));
 
         for (int i = 0; i != THREAD_COUNT; i++) {
-            threads[i] = zlink_threadstart (&worker, &tdata);
+            threads[i] = zlink_thread_start (&worker, &tdata);
         }
 
         for (int i = 0; i != THREAD_COUNT; i++) {
-            zlink_threadclose (threads[i]);
+            zlink_thread_join (threads[i]);
         }
 
         test_context_socket_close (socket);

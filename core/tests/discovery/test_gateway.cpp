@@ -1690,7 +1690,7 @@ void test_gateway_concurrent_send_and_updates ()
         args[i].count = send_per_thread;
         args[i].ok = &send_ok;
         args[i].fail = &send_fail;
-        threads.push_back (zlink_threadstart (&send_worker, &args[i]));
+        threads.push_back (zlink_thread_start (&send_worker, &args[i]));
     }
 
     step_log ("sync: update thread start");
@@ -1698,12 +1698,12 @@ void test_gateway_concurrent_send_and_updates ()
     upd.provider = provider;
     upd.service_name = service_name;
     upd.iterations = 200;
-    void *upd_thread = zlink_threadstart (&update_worker, &upd);
+    void *upd_thread = zlink_thread_start (&update_worker, &upd);
 
     step_log ("sync: wait sender threads");
     for (size_t i = 0; i < threads.size (); ++i)
-        zlink_threadclose (threads[i]);
-    zlink_threadclose (upd_thread);
+        zlink_thread_join (threads[i]);
+    zlink_thread_join (upd_thread);
 
     step_log ("sync: receive messages");
     recv_stop.store (true);

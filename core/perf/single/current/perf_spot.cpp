@@ -281,7 +281,7 @@ static bool recv_spot_with_timeout_polling(void *spot_sub, int timeout_ms)
                                            NULL, NULL);
         if (rc == 0) {
             if (parts)
-                zlink_msgv_close(parts, count);
+                zlink_multipart_close(parts, count);
             return true;
         }
 
@@ -318,7 +318,7 @@ static int recv_spot_header_flags (void *spot_sub,
     if (rc != 0) {
         const int err = zlink_errno ();
         if (parts)
-            zlink_msgv_close (parts, count);
+            zlink_multipart_close (parts, count);
         if (err == EAGAIN || err == EINTR)
             return 0;
         return -1;
@@ -326,7 +326,7 @@ static int recv_spot_header_flags (void *spot_sub,
 
     if (count == 0 || !parts) {
         if (parts)
-            zlink_msgv_close (parts, count);
+            zlink_multipart_close (parts, count);
         return -1;
     }
 
@@ -343,7 +343,7 @@ static int recv_spot_header_flags (void *spot_sub,
         }
     }
 
-    zlink_msgv_close (parts, count);
+    zlink_multipart_close (parts, count);
 
     if (!size_ok || !single_part)
         return -1;

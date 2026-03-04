@@ -205,7 +205,7 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_EQUAL_STRING (topic, recv_topic);
     TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
     TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&recv_parts[0]), payload_size);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&spot_a_pub, &spot_a_sub));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&spot_b_pub, &spot_b_sub));
@@ -353,8 +353,8 @@ static void test_spot_multi_publisher ()
     TEST_ASSERT_TRUE (got_from_a);
     TEST_ASSERT_TRUE (got_from_b);
 
-    zlink_msgv_close (recv_parts_1, recv_count_1);
-    zlink_msgv_close (recv_parts_2, recv_count_2);
+    zlink_multipart_close (recv_parts_1, recv_count_1);
+    zlink_multipart_close (recv_parts_2, recv_count_2);
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&spot_a_pub, &spot_a_sub));
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&spot_b_pub, &spot_b_sub));
@@ -566,7 +566,7 @@ static void test_spot_sub_handler_clear_barrier ()
         msleep (10);
     }
     TEST_ASSERT_TRUE (got_recv);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -658,7 +658,7 @@ static void spot_sub_blocking_recv_worker (blocking_recv_probe_t *probe_)
                        probe_->expected_payload_size)
                  == 0)
             probe_->payload_ok.store (1);
-        zlink_msgv_close (recv_parts, recv_count);
+        zlink_multipart_close (recv_parts, recv_count);
         probe_->err.store (0);
     } else {
         probe_->err.store (zlink_errno ());
@@ -711,7 +711,7 @@ static void test_spot_sub_recv_concurrent_ebusy ()
                 continue;
             }
         } else if (rc == 0) {
-            zlink_msgv_close (recv_parts, recv_count);
+            zlink_multipart_close (recv_parts, recv_count);
         }
         TEST_FAIL_MESSAGE ("unexpected result while checking concurrent recv");
     }
@@ -840,7 +840,7 @@ static void test_spot_pub_async_mode_local_delivery ()
     TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
     TEST_ASSERT_EQUAL_INT (4, (int) zlink_msg_size (&recv_parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&recv_parts[0]), 4);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (destroy_spot_pub_sub (&pub, &sub));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -1327,7 +1327,7 @@ static bool wait_for_spot_message (void *spot_sub_,
                                  expected_payload_,
                                  expected_payload_size_)
                            == 0;
-            zlink_msgv_close (recv_parts, recv_count);
+            zlink_multipart_close (recv_parts, recv_count);
             if (ok)
                 return true;
             continue;
@@ -1478,7 +1478,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                   zone_is_adjacent_or_self (src_x, src_y, x, y));
                 TEST_ASSERT_EQUAL_STRING (topics[src_idx].c_str (), recv_topic);
 
-                zlink_msgv_close (recv_parts, recv_count);
+                zlink_multipart_close (recv_parts, recv_count);
             }
 
             TEST_ASSERT_EQUAL_INT (expected_counts[dst_idx], received);

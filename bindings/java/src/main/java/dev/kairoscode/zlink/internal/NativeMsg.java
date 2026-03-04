@@ -35,7 +35,7 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_MORE = downcall("zlink_msg_more",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSGV_CLOSE = downcall("zlink_msgv_close",
+    private static final MethodHandle MH_MSGV_CLOSE = downcall("zlink_multipart_close",
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
 
     private NativeMsg() {}
@@ -133,7 +133,7 @@ public final class NativeMsg {
         try {
             MH_MSGV_CLOSE.invokeExact(parts, count);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_msgv_close failed", t);
+            throw new RuntimeException("zlink_multipart_close failed", t);
         }
     }
 

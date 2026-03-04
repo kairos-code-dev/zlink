@@ -65,7 +65,7 @@ static void test_spot_local_pubsub ()
     TEST_ASSERT_EQUAL_STRING ("chat:room1:msg", topic);
     TEST_ASSERT_EQUAL_INT (5, (int) zlink_msg_size (&recv_parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("hello", zlink_msg_data (&recv_parts[0]), 5);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -98,7 +98,7 @@ static void test_spot_pattern_subscribe ()
     TEST_ASSERT_SUCCESS_ERRNO (
       zlink_spot_recv (spot, &recv_parts, &recv_count, 0, topic, NULL));
     TEST_ASSERT_EQUAL_STRING ("zone:12:state", topic);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -157,7 +157,7 @@ static void test_spot_multipart_publish ()
     TEST_ASSERT_EQUAL_INT (2, (int) recv_count);
     TEST_ASSERT_EQUAL_MEMORY ("one", zlink_msg_data (&recv_parts[0]), 3);
     TEST_ASSERT_EQUAL_MEMORY ("two", zlink_msg_data (&recv_parts[1]), 3);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
@@ -204,7 +204,7 @@ static void test_spot_peer_pubsub ()
     TEST_ASSERT_EQUAL_STRING ("peer:topic", topic);
     TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
     TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&recv_parts[0]), 4);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
@@ -338,7 +338,7 @@ static void run_spot_peer_transport_test (peer_transport_t transport_)
     TEST_ASSERT_EQUAL_STRING (topic, recv_topic);
     TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
     TEST_ASSERT_EQUAL_MEMORY (payload, zlink_msg_data (&recv_parts[0]), payload_size);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
@@ -426,7 +426,7 @@ static void test_spot_unsubscribe ()
       zlink_spot_recv (spot, &recv_parts, &recv_count, 0, NULL, NULL));
     TEST_ASSERT_EQUAL_INT (1, (int) recv_count);
     TEST_ASSERT_EQUAL_MEMORY ("msg1", zlink_msg_data (&recv_parts[0]), 4);
-    zlink_msgv_close (recv_parts, recv_count);
+    zlink_multipart_close (recv_parts, recv_count);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_unsubscribe (spot, "unsub:topic"));
 
@@ -531,8 +531,8 @@ static void test_spot_multi_publisher ()
     TEST_ASSERT_TRUE (got_from_a);
     TEST_ASSERT_TRUE (got_from_b);
 
-    zlink_msgv_close (recv_parts_1, recv_count_1);
-    zlink_msgv_close (recv_parts_2, recv_count_2);
+    zlink_multipart_close (recv_parts_1, recv_count_1);
+    zlink_multipart_close (recv_parts_2, recv_count_2);
 
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_a));
     TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_b));
@@ -613,7 +613,7 @@ static bool wait_for_spot_message (void *spot_,
                                  expected_payload_,
                                  expected_payload_size_)
                            == 0;
-            zlink_msgv_close (recv_parts, recv_count);
+            zlink_multipart_close (recv_parts, recv_count);
             if (ok)
                 return true;
             continue;
@@ -743,7 +743,7 @@ static void test_spot_mmorpg_zone_adjacency_scale ()
                   zone_is_adjacent_or_self (src_x, src_y, x, y));
                 TEST_ASSERT_EQUAL_STRING (topics[src_idx].c_str (), recv_topic);
 
-                zlink_msgv_close (recv_parts, recv_count);
+                zlink_multipart_close (recv_parts, recv_count);
             }
 
             TEST_ASSERT_EQUAL_INT (expected_counts[dst_idx], received);

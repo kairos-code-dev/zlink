@@ -39,7 +39,7 @@ class msgv_t
     void reset ()
     {
         if (_parts) {
-            zlink_msgv_close (_parts, _count);
+            zlink_multipart_close (_parts, _count);
             _parts = NULL;
             _count = 0;
         }

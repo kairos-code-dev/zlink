@@ -214,8 +214,8 @@ def _load_lib():
     _lib.zlink_msg_gets.argtypes = [ctypes.POINTER(ZlinkMsg), ctypes.c_char_p]
     _lib.zlink_msg_gets.restype = ctypes.c_char_p
 
-    _lib.zlink_msgv_close.argtypes = [ctypes.POINTER(ZlinkMsg), ctypes.c_size_t]
-    _lib.zlink_msgv_close.restype = None
+    _lib.zlink_multipart_close.argtypes = [ctypes.POINTER(ZlinkMsg), ctypes.c_size_t]
+    _lib.zlink_multipart_close.restype = None
 
     _lib.zlink_socket_monitor.argtypes = [
         ctypes.c_void_p,

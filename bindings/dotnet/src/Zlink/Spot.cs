@@ -384,7 +384,7 @@ public sealed class Spot : IDisposable
         finally
         {
             if (parts != IntPtr.Zero && count > 0)
-                NativeMethods.zlink_msgv_close(parts, count);
+                NativeMethods.zlink_multipart_close(parts, count);
         }
     }
 
@@ -421,7 +421,7 @@ public sealed class Spot : IDisposable
         finally
         {
             if (parts != IntPtr.Zero && count > 0)
-                NativeMethods.zlink_msgv_close(parts, count);
+                NativeMethods.zlink_multipart_close(parts, count);
         }
     }
 

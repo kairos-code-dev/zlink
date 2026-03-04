@@ -518,7 +518,7 @@ inline int recv_spot_message_once(void *sub,
     }
 
     if (parts)
-        zlink_msgv_close(parts, part_count);
+        zlink_multipart_close(parts, part_count);
     return matched ? 1 : 2;
 }
 

@@ -156,11 +156,11 @@ inline void send_bounce_msg_may_fail(zlink::socket_t &socket)
 
     const int rc1 = socket.send(kBounce, bounce_len, zlink::send_flag::sndmore);
     assert(rc1 == static_cast<int>(bounce_len)
-           || (rc1 == -1 && zlink_errno() == EAGAIN));
+           || (rc1 == -1 && errno == EAGAIN));
 
     const int rc2 = socket.send(kBounce, bounce_len);
     assert(rc2 == static_cast<int>(bounce_len)
-           || (rc2 == -1 && zlink_errno() == EAGAIN));
+           || (rc2 == -1 && errno == EAGAIN));
 }
 
 inline void recv_bounce_msg_fail(zlink::socket_t &socket)
@@ -171,7 +171,7 @@ inline void recv_bounce_msg_fail(zlink::socket_t &socket)
     char buffer[64];
     const int rc = socket.recv(buffer, sizeof(buffer));
     assert(rc == -1);
-    assert(zlink_errno() == EAGAIN);
+    assert(errno == EAGAIN);
 }
 
 inline void expect_bounce_fail(zlink::socket_t &server, zlink::socket_t &client)

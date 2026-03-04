@@ -1,17 +1,23 @@
-#include <zlink.h>
+#include "test_helpers.hpp"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cassert>
-#include <thread>
-#include <chrono>
 
-namespace
+namespace {
+
+struct registry_endpoints_t
 {
-void sleep_ms (int ms_)
+    std::string pub;
+    std::string router;
+};
+
+registry_endpoints_t make_registry_endpoints (const char *suffix_)
 {
-    std::this_thread::sleep_for (std::chrono::milliseconds (ms_));
+    registry_endpoints_t eps;
+    eps.pub = unique_inproc ("inproc://cpp-reg-pub-gw-", suffix_);
+    eps.router = unique_inproc ("inproc://cpp-reg-router-gw-", suffix_);
+    return eps;
 }
 
 void step_log (const char *msg_)
@@ -22,147 +28,120 @@ void step_log (const char *msg_)
     }
 }
 
-void wait_gateway_ready (void *gateway_, const char *service_name_, int timeout_ms_)
+bool wait_gateway_ready (zlink::service::gateway_t &gateway_,
+                         const std::string &service_name_,
+                         int timeout_ms_)
 {
-    const int sleep_ms_step = 5;
-    const int attempts = timeout_ms_ / sleep_ms_step;
-    for (int i = 0; i < attempts; ++i) {
-        const int count =
-          zlink_gateway_connection_count (gateway_, service_name_);
-        if (count > 0)
-            return;
-        sleep_ms (sleep_ms_step);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (gateway_.connection_count (service_name_) > 0)
+            return true;
+        sleep_ms (5);
     }
-    assert (false && "gateway connection timeout");
+    return false;
 }
 
-void send_gateway_with_timeout (void *gateway_,
-                                const char *service_name_,
-                                zlink_msg_t *parts_,
-                                size_t part_count_,
-                                int timeout_ms_)
+bool wait_for_provider (zlink::service::discovery_t &discovery_,
+                        const std::string &service_name_,
+                        int timeout_ms_)
 {
-    const int sleep_ms_step = 2;
-    const int attempts = timeout_ms_ / sleep_ms_step;
-    for (int i = 0; i < attempts; ++i) {
-        const int rc = zlink_gateway_send (gateway_, service_name_, parts_,
-                                           part_count_, ZLINK_DONTWAIT);
-        if (rc == 0)
-            return;
-        if (zlink_errno () != EAGAIN && zlink_errno () != EHOSTUNREACH)
-            break;
-        sleep_ms (sleep_ms_step);
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        if (discovery_.receiver_count (service_name_) > 0)
+            return true;
+        sleep_ms (10);
     }
-    assert (false && "gateway send timeout");
+    return false;
 }
 
-void setup_registry (void *ctx_,
-                     void **registry_out_,
-                     const char *pub_ep_,
-                     const char *router_ep_)
+bool wait_for_router_peers (zlink::service::receiver_t &receiver_, int timeout_ms_)
 {
-    void *registry = zlink_registry_new (ctx_);
-    assert (registry != NULL);
-    assert (zlink_registry_set_endpoints (registry, pub_ep_, router_ep_) == 0);
-    assert (zlink_registry_start (registry) == 0);
-    *registry_out_ = registry;
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::milliseconds (timeout_ms_);
+    while (std::chrono::steady_clock::now () < deadline) {
+        zlink_peer_info_t peers[8];
+        std::memset (peers, 0, sizeof (peers));
+        size_t count = 8;
+        if (receiver_.router_peers (peers, &count) == 0 && count > 0)
+            return true;
+        sleep_ms (10);
+    }
+    return false;
+}
+
+void send_gateway_payload (zlink::service::gateway_t &gateway_,
+                           const std::string &service_name_,
+                           const char *payload_,
+                           size_t payload_size_)
+{
+    zlink::message_t msg (payload_size_);
+    assert (msg.valid ());
+    if (payload_size_ > 0)
+        std::memcpy (msg.data (), payload_, payload_size_);
+
+    std::vector<zlink::message_t> parts;
+    parts.push_back (std::move (msg));
+    assert (gateway_.send (service_name_, parts) == 0);
 }
 
 void test_gateway_single_service_tcp ()
 {
-    void *ctx = zlink_ctx_new ();
-    assert (ctx != NULL);
-    const char *service_name = "svc";
+    const std::string service_name = "svc";
+    const registry_endpoints_t eps = make_registry_endpoints ("single");
 
-    void *registry = NULL;
-    step_log ("setup registry");
-    setup_registry (ctx, &registry, "inproc://reg-pub-gateway1",
-                    "inproc://reg-router-gateway1");
+    zlink::context_t ctx;
+    zlink::service::registry_t registry (ctx);
+    assert (registry.valid ());
+    assert (registry.set_endpoints (eps.pub, eps.router) == 0);
+    assert (registry.start () == 0);
     sleep_ms (100);
 
-    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
-    assert (discovery != NULL);
+    zlink::service::discovery_t discovery (ctx, zlink::service_type::gateway);
+    assert (discovery.valid ());
     step_log ("connect discovery");
-    assert (zlink_discovery_connect_registry (discovery, "inproc://reg-pub-gateway1")
-            == 0);
-    assert (zlink_discovery_subscribe (discovery, service_name) == 0);
+    assert (discovery.connect_registry (eps.pub) == 0);
+    assert (discovery.subscribe (service_name) == 0);
 
-    step_log ("bind provider router");
-    const char provider_rid[] = "PROV1";
-    char advertise_ep[256] = {0};
-    void *provider = zlink_receiver_new (ctx, NULL);
-    assert (provider != NULL);
-    assert (zlink_receiver_bind (provider, "tcp://127.0.0.1:*") == 0);
-    void *provider_router = zlink_receiver_router_socket_unsafe (provider);
-    assert (provider_router != NULL);
-    int probe = 1;
-    assert (zlink_setsockopt (provider_router, ZLINK_PROBE_ROUTER, &probe,
-                              sizeof (probe))
+    step_log ("setup provider");
+    zlink::service::receiver_t provider (ctx);
+    assert (provider.valid ());
+    assert (provider.bind ("tcp://127.0.0.1:*") == 0);
+    assert (provider.set_sockopt (zlink::receiver_socket_role::router,
+                                  zlink::socket_options::probe_router, 1)
             == 0);
-    assert (zlink_setsockopt (provider_router, ZLINK_ROUTING_ID, provider_rid,
-                              sizeof (provider_rid) - 1)
-            == 0);
-    size_t advertise_len = sizeof (advertise_ep);
-    assert (zlink_getsockopt (provider_router, ZLINK_LAST_ENDPOINT, advertise_ep,
-                              &advertise_len)
+    assert (provider.set_sockopt (zlink::receiver_socket_role::router,
+                                  zlink::socket_options::routing_id, "PROV1")
             == 0);
 
-    step_log ("connect provider dealer");
-    assert (zlink_receiver_connect_registry (provider, "inproc://reg-router-gateway1")
-            == 0);
-    step_log ("register service");
-    assert (zlink_receiver_register (provider, service_name, advertise_ep, 1) == 0);
+    zlink::socket_t provider_router =
+      zlink::socket_t::wrap (provider.router_handle ());
+    const std::string advertise_ep = bound_endpoint (provider_router);
+    assert (!advertise_ep.empty ());
 
-    sleep_ms (200);
+    assert (provider.connect_registry (eps.router) == 0);
+    assert (provider.register_service (service_name, advertise_ep, 1) == 0);
+    assert (wait_for_provider (discovery, service_name, 2000));
 
     zlink_receiver_info_t provider_info;
     std::memset (&provider_info, 0, sizeof (provider_info));
     size_t count = 1;
-    step_log ("get providers");
-    assert (zlink_discovery_get_receivers (discovery, service_name, &provider_info,
-                                           &count)
-            == 0);
+    assert (discovery.get_receivers (service_name, &provider_info, &count) == 0);
     assert (count == 1);
-    assert (std::strcmp (advertise_ep, provider_info.endpoint) == 0);
+    assert (std::strcmp (advertise_ep.c_str (), provider_info.endpoint) == 0);
     assert (provider_info.routing_id.size > 0);
 
-    step_log ("create gateway socket");
-    void *gateway = zlink_gateway_new (ctx, discovery, NULL);
-    assert (gateway != NULL);
-    wait_gateway_ready (gateway, service_name, 2000);
-    sleep_ms (200);
-
-    int timeout_ms = 2000;
-    assert (zlink_setsockopt (provider_router, ZLINK_RCVTIMEO, &timeout_ms,
-                              sizeof (timeout_ms))
-            == 0);
-    sleep_ms (200);
+    step_log ("create gateway");
+    zlink::service::gateway_t gateway (ctx, discovery);
+    assert (gateway.valid ());
+    assert (wait_gateway_ready (gateway, service_name, 2000));
 
     step_log ("send payload");
-    zlink_msg_t payload;
-    assert (zlink_msg_init_size (&payload, 5) == 0);
-    std::memcpy (zlink_msg_data (&payload), "hello", 5);
-
-    assert (zlink_gateway_connection_count (gateway, service_name) >= 1);
-    sleep_ms (200);
-
-    zlink_msg_t parts[1];
-    parts[0] = payload;
-    send_gateway_with_timeout (gateway, service_name, parts, 1, 2000);
-
-    zlink_peer_info_t peers[8];
-    std::memset (peers, 0, sizeof (peers));
-    size_t peer_count = 8;
-    assert (zlink_receiver_router_peers (provider, peers, &peer_count) == 0);
-    assert (peer_count > 0);
-
-    step_log ("cleanup");
-    assert (zlink_gateway_destroy (&gateway) == 0);
-    assert (zlink_receiver_destroy (&provider) == 0);
-    assert (zlink_discovery_destroy (&discovery) == 0);
-    assert (zlink_registry_destroy (&registry) == 0);
-    assert (zlink_ctx_term (ctx) == 0);
+    send_gateway_payload (gateway, service_name, "hello", 5);
+    assert (wait_for_router_peers (provider, 2000));
 }
+
 } // namespace
 
 int main ()

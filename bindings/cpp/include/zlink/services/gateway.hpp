@@ -8,8 +8,11 @@
 #include "discovery.hpp"
 
 #include <cerrno>
+#include <type_traits>
 
 namespace zlink
+{
+namespace service
 {
 
 /**
@@ -34,8 +37,11 @@ class gateway_t
      * @param disc_ Discovery instance.
      * @param routing_id_ Routing id string.
      */
-    gateway_t (context_t &ctx_, discovery_t &disc_, const char *routing_id_)
-        : _gw (zlink_gateway_new (ctx_.handle (), disc_.handle (), routing_id_))
+    gateway_t (context_t &ctx_,
+               discovery_t &disc_,
+               const std::string &routing_id_)
+        : _gw (zlink_gateway_new (
+            ctx_.handle (), disc_.handle (), routing_id_.c_str ()))
     {
     }
 
@@ -70,7 +76,7 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send (const char *service_,
+    int send (const std::string &service_,
               std::vector<message_t> &parts_,
               send_flag flags_ = send_flag::none)
     {
@@ -79,15 +85,20 @@ class gateway_t
             return -1;
         }
 
-        std::vector<zlink_msg_t> tmp (parts_.size ());
+        _send_parts_scratch.resize (parts_.size ());
         size_t moved = 0;
-        if (move_parts_transfer (parts_, tmp, moved) != 0)
+        if (move_parts_transfer (parts_, _send_parts_scratch, moved) != 0) {
+            _send_parts_scratch.clear ();
             return -1;
+        }
 
         const int rc = zlink_gateway_send (
-          _gw, service_, tmp.data (), tmp.size (), static_cast<int> (flags_));
+          _gw, service_.c_str (), _send_parts_scratch.data (),
+          _send_parts_scratch.size (),
+          static_cast<int> (flags_));
         if (rc != 0)
-            close_native_parts (tmp, moved);
+            close_native_parts (_send_parts_scratch, moved);
+        _send_parts_scratch.clear ();
         return rc;
     }
 
@@ -122,13 +133,13 @@ class gateway_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_bytes (const char *service_,
+    int send_bytes (const std::string &service_,
                     const void *data_,
                     size_t size_,
                     send_flag flags_ = send_flag::none)
     {
         return zlink_gateway_send_bytes (
-          _gw, service_, data_, size_, static_cast<int> (flags_));
+          _gw, service_.c_str (), data_, size_, static_cast<int> (flags_));
     }
 
     /**
@@ -142,7 +153,7 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of send result.
      */
-    int send_zero (const char *service_,
+    int send_zero (const std::string &service_,
                    void *data_,
                    size_t size_,
                    zlink_free_fn *ffn_,
@@ -159,7 +170,7 @@ class gateway_t
             return -1;
 
         const int rc = zlink_gateway_send (
-          _gw, service_, &part, 1, static_cast<int> (flags_));
+          _gw, service_.c_str (), &part, 1, static_cast<int> (flags_));
         if (rc != 0) {
             const int err = errno;
             zlink_msg_close (&part);
@@ -171,13 +182,13 @@ class gateway_t
     /**
      * @brief Send multipart request pinned to a routing id.
      * @param service_ Service name.
-     * @param routing_id_ Target routing id.
+     * @param routing_id_ Target routing id bytes.
      * @param parts_ Message parts. Ownership is transferred regardless of result.
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_rid (const char *service_,
-                  const zlink_routing_id_t &routing_id_,
+    int send_rid (const std::string &service_,
+                  const std::string &routing_id_,
                   std::vector<message_t> &parts_,
                   send_flag flags_ = send_flag::none)
     {
@@ -186,61 +197,53 @@ class gateway_t
             return -1;
         }
 
-        std::vector<zlink_msg_t> tmp (parts_.size ());
-        size_t moved = 0;
-        if (move_parts_transfer (parts_, tmp, moved) != 0)
-            return -1;
-
-        const int rc = zlink_gateway_send_rid (
-          _gw, service_, &routing_id_, tmp.data (), tmp.size (),
-          static_cast<int> (flags_));
-        if (rc != 0)
-            close_native_parts (tmp, moved);
-        return rc;
-    }
-
-    /**
-     * @brief Send multipart request pinned to binary-string routing id.
-     * @param service_ Service name.
-     * @param routing_id_ Target routing id bytes.
-     * @param parts_ Message parts. Ownership is transferred regardless of result.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     */
-    int send_rid (const char *service_,
-                  const std::string &routing_id_,
-                  std::vector<message_t> &parts_,
-                  send_flag flags_ = send_flag::none)
-    {
         zlink_routing_id_t rid;
         if (routing_id_from_string (routing_id_, &rid) != 0)
             return -1;
-        return send_rid (service_, rid, parts_, flags_);
+
+        _send_parts_scratch.resize (parts_.size ());
+        size_t moved = 0;
+        if (move_parts_transfer (parts_, _send_parts_scratch, moved) != 0) {
+            _send_parts_scratch.clear ();
+            return -1;
+        }
+
+        const int rc = zlink_gateway_send_rid (
+          _gw, service_.c_str (), &rid, _send_parts_scratch.data (),
+          _send_parts_scratch.size (),
+          static_cast<int> (flags_));
+        if (rc != 0)
+            close_native_parts (_send_parts_scratch, moved);
+        _send_parts_scratch.clear ();
+        return rc;
     }
 
     /**
      * @brief Send single-frame bytes pinned to a routing id.
      * @param service_ Service name.
-     * @param routing_id_ Target routing id.
+     * @param routing_id_ Target routing id bytes.
      * @param data_ Payload pointer.
      * @param size_ Payload size in bytes.
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int send_rid_bytes (const char *service_,
-                        const zlink_routing_id_t &routing_id_,
+    int send_rid_bytes (const std::string &service_,
+                        const std::string &routing_id_,
                         const void *data_,
                         size_t size_,
                         send_flag flags_ = send_flag::none)
     {
+        zlink_routing_id_t rid;
+        if (routing_id_from_string (routing_id_, &rid) != 0)
+            return -1;
         return zlink_gateway_send_rid_bytes (
-          _gw, service_, &routing_id_, data_, size_, static_cast<int> (flags_));
+          _gw, service_.c_str (), &rid, data_, size_, static_cast<int> (flags_));
     }
 
     /**
      * @brief Send single-frame external buffer pinned to a routing id.
      * @param service_ Service name.
-     * @param routing_id_ Target routing id.
+     * @param routing_id_ Target routing id bytes.
      * @param data_ External payload buffer. May be `NULL` only when `size_` is 0.
      * @param size_ Payload size in bytes.
      * @param ffn_ Optional release callback for `data_`.
@@ -249,8 +252,8 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of send result.
      */
-    int send_rid_zero (const char *service_,
-                       const zlink_routing_id_t &routing_id_,
+    int send_rid_zero (const std::string &service_,
+                       const std::string &routing_id_,
                        void *data_,
                        size_t size_,
                        zlink_free_fn *ffn_,
@@ -262,64 +265,22 @@ class gateway_t
             return -1;
         }
 
+        zlink_routing_id_t rid;
+        if (routing_id_from_string (routing_id_, &rid) != 0)
+            return -1;
+
         zlink_msg_t part;
         if (zlink_msg_init_data (&part, data_, size_, ffn_, hint_) != 0)
             return -1;
 
         const int rc = zlink_gateway_send_rid (
-          _gw, service_, &routing_id_, &part, 1, static_cast<int> (flags_));
+          _gw, service_.c_str (), &rid, &part, 1, static_cast<int> (flags_));
         if (rc != 0) {
             const int err = errno;
             zlink_msg_close (&part);
             errno = err;
         }
         return rc;
-    }
-
-    /**
-     * @brief Send single-frame external buffer pinned to binary-string routing id.
-     * @param service_ Service name.
-     * @param routing_id_ Target routing id bytes.
-     * @param data_ External payload buffer. May be `NULL` only when `size_` is 0.
-     * @param size_ Payload size in bytes.
-     * @param ffn_ Optional release callback for `data_`.
-     * @param hint_ Optional callback context pointer.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     */
-    int send_rid_zero (const char *service_,
-                       const std::string &routing_id_,
-                       void *data_,
-                       size_t size_,
-                       zlink_free_fn *ffn_,
-                       void *hint_ = NULL,
-                       send_flag flags_ = send_flag::none)
-    {
-        zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
-            return -1;
-        return send_rid_zero (service_, rid, data_, size_, ffn_, hint_, flags_);
-    }
-
-    /**
-     * @brief Send single-frame bytes pinned to binary-string routing id.
-     * @param service_ Service name.
-     * @param routing_id_ Target routing id bytes.
-     * @param data_ Payload pointer.
-     * @param size_ Payload size in bytes.
-     * @param flags_ Send flags.
-     * @return 0 on success, -1 on failure.
-     */
-    int send_rid_bytes (const char *service_,
-                        const std::string &routing_id_,
-                        const void *data_,
-                        size_t size_,
-                        send_flag flags_ = send_flag::none)
-    {
-        zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
-            return -1;
-        return send_rid_bytes (service_, rid, data_, size_, flags_);
     }
 
     /**
@@ -336,15 +297,41 @@ class gateway_t
     }
 
     /**
+     * @brief Set typed non-string gateway socket option.
+     * @param key_ Typed socket option key.
+     * @param value_ Typed option value.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_sockopt (socket_option_key_t<T> key_, const T &value_)
+    {
+        return set_sockopt (key_.option, &value_, sizeof (value_));
+    }
+
+    /**
+     * @brief Set typed string gateway socket option.
+     * @param key_ Typed socket option key.
+     * @param value_ Option value bytes.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (socket_option_key_t<std::string> key_,
+                     const std::string &value_)
+    {
+        return set_sockopt (key_.option, value_.data (), value_.size ());
+    }
+
+    /**
      * @brief Set load-balancing strategy for a service.
      * @param service_ Service name.
      * @param strategy_ Balancing strategy.
      * @return 0 on success, -1 on failure.
      */
-    int set_lb_strategy (const char *service_, gateway_lb_strategy strategy_)
+    int set_lb_strategy (const std::string &service_,
+                         gateway_lb_strategy strategy_)
     {
         return zlink_gateway_set_lb_strategy (
-          _gw, service_, static_cast<int> (strategy_));
+          _gw, service_.c_str (), static_cast<int> (strategy_));
     }
 
     /**
@@ -354,9 +341,14 @@ class gateway_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const char *ca_, const char *hostname_, int trust_)
+    int set_tls_client (const std::string &ca_,
+                        const std::string &hostname_,
+                        int trust_)
     {
-        return zlink_gateway_set_tls_client (_gw, ca_, hostname_, trust_);
+        const char *ca = ca_.empty () ? NULL : ca_.c_str ();
+        const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+        return zlink_gateway_set_tls_client (
+          _gw, ca, hostname, trust_);
     }
 
     /**
@@ -366,7 +358,9 @@ class gateway_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const char *ca_, const char *hostname_, bool trust_)
+    int set_tls_client (const std::string &ca_,
+                        const std::string &hostname_,
+                        bool trust_)
     {
         return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
     }
@@ -376,9 +370,9 @@ class gateway_t
      * @param service_ Service name.
      * @return Connection count, or -1 on failure.
      */
-    int connection_count (const char *service_)
+    int connection_count (const std::string &service_)
     {
-        return zlink_gateway_connection_count (_gw, service_);
+        return zlink_gateway_connection_count (_gw, service_.c_str ());
     }
 
     /**
@@ -474,6 +468,7 @@ class gateway_t
     }
 
     void *_gw;
+    std::vector<zlink_msg_t> _send_parts_scratch;
 };
 
 /**
@@ -482,6 +477,16 @@ class gateway_t
 class receiver_t
 {
   public:
+    /**
+     * @brief Registration result snapshot.
+     */
+    struct register_result_t
+    {
+        int status;
+        std::string resolved_endpoint;
+        std::string error_message;
+    };
+
     /**
      * @brief Create receiver with auto routing id.
      * @param ctx_ Context wrapper.
@@ -496,8 +501,8 @@ class receiver_t
      * @param ctx_ Context wrapper.
      * @param routing_id_ Routing id string.
      */
-    receiver_t (context_t &ctx_, const char *routing_id_)
-        : _receiver (zlink_receiver_new (ctx_.handle (), routing_id_))
+    receiver_t (context_t &ctx_, const std::string &routing_id_)
+        : _receiver (zlink_receiver_new (ctx_.handle (), routing_id_.c_str ()))
     {
     }
 
@@ -530,9 +535,9 @@ class receiver_t
      * @param endpoint_ Bind endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const char *endpoint_)
+    int bind (const std::string &endpoint_)
     {
-        return zlink_receiver_bind (_receiver, endpoint_);
+        return zlink_receiver_bind (_receiver, endpoint_.c_str ());
     }
 
     /**
@@ -540,9 +545,9 @@ class receiver_t
      * @param endpoint_ Registry endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_registry (const char *endpoint_)
+    int connect_registry (const std::string &endpoint_)
     {
-        return zlink_receiver_connect_registry (_receiver, endpoint_);
+        return zlink_receiver_connect_registry (_receiver, endpoint_.c_str ());
     }
 
     /**
@@ -564,17 +569,48 @@ class receiver_t
     }
 
     /**
+     * @brief Set typed non-string socket option on internal receiver socket.
+     * @param role_ Internal socket role.
+     * @param key_ Typed socket option key.
+     * @param value_ Typed option value.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_sockopt (receiver_socket_role role_,
+                 socket_option_key_t<T> key_,
+                 const T &value_)
+    {
+        return set_sockopt (role_, key_.option, &value_, sizeof (value_));
+    }
+
+    /**
+     * @brief Set typed string socket option on internal receiver socket.
+     * @param role_ Internal socket role.
+     * @param key_ Typed socket option key.
+     * @param value_ Option value bytes.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (receiver_socket_role role_,
+                     socket_option_key_t<std::string> key_,
+                     const std::string &value_)
+    {
+        return set_sockopt (role_, key_.option, value_.data (), value_.size ());
+    }
+
+    /**
      * @brief Register service endpoint with a weight.
      * @param service_ Service name.
      * @param advertise_ Advertised endpoint.
      * @param weight_ Selection weight.
      * @return 0 on success, -1 on failure.
      */
-    int register_service (const char *service_,
-                          const char *advertise_,
+    int register_service (const std::string &service_,
+                          const std::string &advertise_,
                           uint32_t weight_)
     {
-        return zlink_receiver_register (_receiver, service_, advertise_, weight_);
+        return zlink_receiver_register (
+          _receiver, service_.c_str (), advertise_.c_str (), weight_);
     }
 
     /**
@@ -583,9 +619,9 @@ class receiver_t
      * @param weight_ New weight.
      * @return 0 on success, -1 on failure.
      */
-    int update_weight (const char *service_, uint32_t weight_)
+    int update_weight (const std::string &service_, uint32_t weight_)
     {
-        return zlink_receiver_update_weight (_receiver, service_, weight_);
+        return zlink_receiver_update_weight (_receiver, service_.c_str (), weight_);
     }
 
     /**
@@ -593,9 +629,9 @@ class receiver_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int unregister_service (const char *service_)
+    int unregister_service (const std::string &service_)
     {
-        return zlink_receiver_unregister (_receiver, service_);
+        return zlink_receiver_unregister (_receiver, service_.c_str ());
     }
 
     /**
@@ -606,13 +642,42 @@ class receiver_t
      * @param err_ Output error text buffer.
      * @return 0 on success, -1 on failure.
      */
-    int register_result (const char *service_,
+    int register_result (const std::string &service_,
                          int *status_,
                          char *resolved_,
                          char *err_)
     {
         return zlink_receiver_register_result (
-          _receiver, service_, status_, resolved_, err_);
+          _receiver, service_.c_str (), status_, resolved_, err_);
+    }
+
+    /**
+     * @brief Query latest register result details.
+     * @param service_ Service name.
+     * @param out_ Output result snapshot.
+     * @return 0 on success, -1 on failure.
+     */
+    int register_result (const std::string &service_, register_result_t *out_)
+    {
+        if (!out_) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        char resolved[256];
+        char err[256];
+        int status = 0;
+        std::memset (resolved, 0, sizeof (resolved));
+        std::memset (err, 0, sizeof (err));
+
+        const int rc = register_result (service_, &status, resolved, err);
+        if (rc != 0)
+            return rc;
+
+        out_->status = status;
+        out_->resolved_endpoint.assign (resolved);
+        out_->error_message.assign (err);
+        return 0;
     }
 
     /**
@@ -621,9 +686,10 @@ class receiver_t
      * @param key_ Private key file path.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_server (const char *cert_, const char *key_)
+    int set_tls_server (const std::string &cert_, const std::string &key_)
     {
-        return zlink_receiver_set_tls_server (_receiver, cert_, key_);
+        return zlink_receiver_set_tls_server (
+          _receiver, cert_.c_str (), key_.c_str ());
     }
 
     /**
@@ -670,6 +736,7 @@ class receiver_t
     void *_receiver;
 };
 
+} // namespace service
 } // namespace zlink
 
 #endif

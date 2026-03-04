@@ -19,6 +19,9 @@
 #endif
 
 #if __cplusplus >= 201703L
+/**
+ * @brief Marks return values that should not be ignored.
+ */
 #define ZLINK_CPP_NODISCARD [[nodiscard]]
 #else
 #define ZLINK_CPP_NODISCARD

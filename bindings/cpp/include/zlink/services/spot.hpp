@@ -7,8 +7,11 @@
 #include "../types.hpp"
 
 #include <cerrno>
+#include <type_traits>
 
 namespace zlink
+{
+namespace service
 {
 
 /**
@@ -55,9 +58,9 @@ class spot_node_t
      * @param endpoint_ Bind endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const char *endpoint_)
+    int bind (const std::string &endpoint_)
     {
-        return zlink_spot_node_bind (_node, endpoint_);
+        return zlink_spot_node_bind (_node, endpoint_.c_str ());
     }
 
     /**
@@ -65,9 +68,9 @@ class spot_node_t
      * @param endpoint_ Registry endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_registry (const char *endpoint_)
+    int connect_registry (const std::string &endpoint_)
     {
-        return zlink_spot_node_connect_registry (_node, endpoint_);
+        return zlink_spot_node_connect_registry (_node, endpoint_.c_str ());
     }
 
     /**
@@ -75,9 +78,9 @@ class spot_node_t
      * @param endpoint_ Peer PUB endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_peer_pub (const char *endpoint_)
+    int connect_peer_pub (const std::string &endpoint_)
     {
-        return zlink_spot_node_connect_peer_pub (_node, endpoint_);
+        return zlink_spot_node_connect_peer_pub (_node, endpoint_.c_str ());
     }
 
     /**
@@ -85,9 +88,9 @@ class spot_node_t
      * @param endpoint_ Peer PUB endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int disconnect_peer_pub (const char *endpoint_)
+    int disconnect_peer_pub (const std::string &endpoint_)
     {
-        return zlink_spot_node_disconnect_peer_pub (_node, endpoint_);
+        return zlink_spot_node_disconnect_peer_pub (_node, endpoint_.c_str ());
     }
 
     /**
@@ -96,9 +99,11 @@ class spot_node_t
      * @param advertise_ Advertised endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int register_service (const char *service_, const char *advertise_)
+    int register_service (const std::string &service_,
+                          const std::string &advertise_)
     {
-        return zlink_spot_node_register (_node, service_, advertise_);
+        return zlink_spot_node_register (
+          _node, service_.c_str (), advertise_.c_str ());
     }
 
     /**
@@ -106,9 +111,9 @@ class spot_node_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int unregister_service (const char *service_)
+    int unregister_service (const std::string &service_)
     {
-        return zlink_spot_node_unregister (_node, service_);
+        return zlink_spot_node_unregister (_node, service_.c_str ());
     }
 
     /**
@@ -117,9 +122,10 @@ class spot_node_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int set_discovery (void *discovery_, const char *service_)
+    int set_discovery (void *discovery_, const std::string &service_)
     {
-        return zlink_spot_node_set_discovery (_node, discovery_, service_);
+        return zlink_spot_node_set_discovery (
+          _node, discovery_, service_.c_str ());
     }
 
     /**
@@ -128,9 +134,10 @@ class spot_node_t
      * @param key_ Private key file path.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_server (const char *cert_, const char *key_)
+    int set_tls_server (const std::string &cert_, const std::string &key_)
     {
-        return zlink_spot_node_set_tls_server (_node, cert_, key_);
+        return zlink_spot_node_set_tls_server (
+          _node, cert_.c_str (), key_.c_str ());
     }
 
     /**
@@ -140,9 +147,14 @@ class spot_node_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const char *ca_, const char *hostname_, int trust_)
+    int set_tls_client (const std::string &ca_,
+                        const std::string &hostname_,
+                        int trust_)
     {
-        return zlink_spot_node_set_tls_client (_node, ca_, hostname_, trust_);
+        const char *ca = ca_.empty () ? NULL : ca_.c_str ();
+        const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
+        return zlink_spot_node_set_tls_client (
+          _node, ca, hostname, trust_);
     }
 
     /**
@@ -152,7 +164,9 @@ class spot_node_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const char *ca_, const char *hostname_, bool trust_)
+    int set_tls_client (const std::string &ca_,
+                        const std::string &hostname_,
+                        bool trust_)
     {
         return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
     }
@@ -173,6 +187,36 @@ class spot_node_t
         return zlink_spot_node_setsockopt (
           _node, static_cast<int> (role_), static_cast<int> (option_), value_,
           len_);
+    }
+
+    /**
+     * @brief Set typed non-string socket option by internal role.
+     * @param role_ Internal socket role.
+     * @param key_ Typed socket option key.
+     * @param value_ Typed option value.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set_sockopt (spot_node_socket_role role_,
+                 socket_option_key_t<T> key_,
+                 const T &value_)
+    {
+        return set_sockopt (role_, key_.option, &value_, sizeof (value_));
+    }
+
+    /**
+     * @brief Set typed string socket option by internal role.
+     * @param role_ Internal socket role.
+     * @param key_ Typed socket option key.
+     * @param value_ Option value bytes.
+     * @return 0 on success, -1 on failure.
+     */
+    int set_sockopt (spot_node_socket_role role_,
+                     socket_option_key_t<std::string> key_,
+                     const std::string &value_)
+    {
+        return set_sockopt (role_, key_.option, value_.data (), value_.size ());
     }
 
     /**
@@ -361,7 +405,7 @@ class spot_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int publish (const char *topic_,
+    int publish (const std::string &topic_,
                  std::vector<message_t> &parts_,
                  send_flag flags_ = send_flag::none)
     {
@@ -375,15 +419,20 @@ class spot_t
             return -1;
         }
 
-        std::vector<zlink_msg_t> tmp (parts_.size ());
+        _publish_parts_scratch.resize (parts_.size ());
         size_t moved = 0;
-        if (move_parts_transfer (parts_, tmp, moved) != 0)
+        if (move_parts_transfer (parts_, _publish_parts_scratch, moved) != 0) {
+            _publish_parts_scratch.clear ();
             return -1;
+        }
 
         const int rc = zlink_spot_pub_publish (
-          _pub, topic_, tmp.data (), tmp.size (), static_cast<int> (flags_));
+          _pub, topic_.c_str (), _publish_parts_scratch.data (),
+          _publish_parts_scratch.size (),
+          static_cast<int> (flags_));
         if (rc != 0)
-            close_native_parts (tmp, moved);
+            close_native_parts (_publish_parts_scratch, moved);
+        _publish_parts_scratch.clear ();
         return rc;
     }
 
@@ -395,7 +444,7 @@ class spot_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int publish_bytes (const char *topic_,
+    int publish_bytes (const std::string &topic_,
                        const void *data_,
                        size_t size_,
                        send_flag flags_ = send_flag::none)
@@ -405,7 +454,7 @@ class spot_t
             return -1;
         }
         return zlink_spot_pub_publish_bytes (
-          _pub, topic_, data_, size_, static_cast<int> (flags_));
+          _pub, topic_.c_str (), data_, size_, static_cast<int> (flags_));
     }
 
     /**
@@ -419,7 +468,7 @@ class spot_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of publish result.
      */
-    int publish_zero (const char *topic_,
+    int publish_zero (const std::string &topic_,
                       void *data_,
                       size_t size_,
                       zlink_free_fn *ffn_,
@@ -440,7 +489,7 @@ class spot_t
             return -1;
 
         const int rc = zlink_spot_pub_publish (
-          _pub, topic_, &part, 1, static_cast<int> (flags_));
+          _pub, topic_.c_str (), &part, 1, static_cast<int> (flags_));
         if (rc != 0) {
             const int err = errno;
             zlink_msg_close (&part);
@@ -454,13 +503,13 @@ class spot_t
      * @param topic_ Topic string.
      * @return 0 on success, -1 on failure.
      */
-    int subscribe (const char *topic_)
+    int subscribe (const std::string &topic_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
-        return zlink_spot_sub_subscribe (_sub, topic_);
+        return zlink_spot_sub_subscribe (_sub, topic_.c_str ());
     }
 
     /**
@@ -468,13 +517,13 @@ class spot_t
      * @param pattern_ Pattern string.
      * @return 0 on success, -1 on failure.
      */
-    int subscribe_pattern (const char *pattern_)
+    int subscribe_pattern (const std::string &pattern_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
-        return zlink_spot_sub_subscribe_pattern (_sub, pattern_);
+        return zlink_spot_sub_subscribe_pattern (_sub, pattern_.c_str ());
     }
 
     /**
@@ -482,13 +531,13 @@ class spot_t
      * @param topic_or_pattern_ Topic or pattern string.
      * @return 0 on success, -1 on failure.
      */
-    int unsubscribe (const char *topic_or_pattern_)
+    int unsubscribe (const std::string &topic_or_pattern_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
             return -1;
         }
-        return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_);
+        return zlink_spot_sub_unsubscribe (_sub, topic_or_pattern_.c_str ());
     }
 
     /**
@@ -521,11 +570,15 @@ class spot_t
      * @param out_ Output message frames.
      * @param topic_ Output topic.
      * @param flags_ Receive flags.
+     * @param topic_len_out_ Optional output for full topic byte length.
+     * @param truncated_out_ Optional output for topic truncation flag.
      * @return 0 on success, -1 on failure.
      */
     int recv (std::vector<message_t> &out_,
               std::string &topic_,
-              recv_flag flags_ = recv_flag::none)
+              recv_flag flags_ = recv_flag::none,
+              size_t *topic_len_out_ = NULL,
+              bool *truncated_out_ = NULL)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -545,6 +598,12 @@ class spot_t
           &topic_len);
         if (rc != 0)
             return rc;
+
+        const bool truncated = topic_len > (sizeof (topic_buf) - 1);
+        if (topic_len_out_)
+            *topic_len_out_ = topic_len;
+        if (truncated_out_)
+            *truncated_out_ = truncated;
 
         const size_t topic_size =
           topic_len < sizeof (topic_buf) ? topic_len : sizeof (topic_buf) - 1;
@@ -687,10 +746,12 @@ class spot_t
     void *_pub;
     void *_sub;
     int _last_error;
+    std::vector<zlink_msg_t> _publish_parts_scratch;
     handler_fn _handler_fn;
     std::mutex _handler_sync;
 };
 
+} // namespace service
 } // namespace zlink
 
 #endif

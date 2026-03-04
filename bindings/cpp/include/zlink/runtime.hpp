@@ -7,6 +7,9 @@
 namespace zlink
 {
 
+/**
+ * @brief Semantic version triple of the linked zlink runtime.
+ */
 struct version_info_t
 {
     int major;
@@ -14,11 +17,21 @@ struct version_info_t
     int patch;
 };
 
+/**
+ * @brief Query linked zlink version.
+ * @param major_ Output major version.
+ * @param minor_ Output minor version.
+ * @param patch_ Output patch version.
+ */
 inline void version (int *major_, int *minor_, int *patch_)
 {
     zlink_version (major_, minor_, patch_);
 }
 
+/**
+ * @brief Query linked zlink version.
+ * @return Version structure.
+ */
 inline version_info_t version ()
 {
     version_info_t out = {0, 0, 0};
@@ -26,11 +39,22 @@ inline version_info_t version ()
     return out;
 }
 
+/**
+ * @brief Sleep for a whole-second duration.
+ * @param seconds_ Number of seconds.
+ */
 inline void sleep (int seconds_)
 {
     zlink_sleep (seconds_);
 }
 
+/**
+ * @brief Start a builtin forwarding proxy loop.
+ * @param frontend_ Frontend socket.
+ * @param backend_ Backend socket.
+ * @param capture_ Optional capture socket.
+ * @return 0 on success, -1 on failure.
+ */
 inline int proxy (socket_t &frontend_,
                   socket_t &backend_,
                   socket_t *capture_ = NULL)
@@ -40,6 +64,14 @@ inline int proxy (socket_t &frontend_,
                         capture_ ? capture_->handle () : NULL);
 }
 
+/**
+ * @brief Start a steerable proxy loop.
+ * @param frontend_ Frontend socket.
+ * @param backend_ Backend socket.
+ * @param capture_ Optional capture socket.
+ * @param control_ Control socket for commands.
+ * @return 0 on success, -1 on failure.
+ */
 inline int proxy_steerable (socket_t &frontend_,
                             socket_t &backend_,
                             socket_t *capture_,
@@ -52,9 +84,14 @@ inline int proxy_steerable (socket_t &frontend_,
       control_.handle ());
 }
 
-inline bool has (const char *capability_)
+/**
+ * @brief Check whether a runtime capability is available.
+ * @param capability_ Capability name.
+ * @return `true` when supported.
+ */
+inline bool has (const std::string &capability_)
 {
-    return zlink_has (capability_) != 0;
+    return zlink_has (capability_.c_str ()) != 0;
 }
 
 } // namespace zlink

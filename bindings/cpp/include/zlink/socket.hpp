@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace zlink
@@ -107,26 +108,9 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const char *endpoint_) { return zlink_bind (_socket, endpoint_); }
-
-    /**
-     * @brief Bind socket to an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
     int bind (const std::string &endpoint_)
     {
         return zlink_bind (_socket, endpoint_.c_str ());
-    }
-
-    /**
-     * @brief Connect socket to an endpoint.
-     * @param endpoint_ Endpoint string.
-     * @return 0 on success, -1 on failure.
-     */
-    int connect (const char *endpoint_)
-    {
-        return zlink_connect (_socket, endpoint_);
     }
 
     /**
@@ -144,9 +128,9 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int unbind (const char *endpoint_)
+    int unbind (const std::string &endpoint_)
     {
-        return zlink_unbind (_socket, endpoint_);
+        return zlink_unbind (_socket, endpoint_.c_str ());
     }
 
     /**
@@ -154,9 +138,9 @@ class socket_t
      * @param endpoint_ Endpoint string.
      * @return 0 on success, -1 on failure.
      */
-    int disconnect (const char *endpoint_)
+    int disconnect (const std::string &endpoint_)
     {
-        return zlink_disconnect (_socket, endpoint_);
+        return zlink_disconnect (_socket, endpoint_.c_str ());
     }
 
     /**
@@ -245,14 +229,18 @@ class socket_t
      * @param msg_ Message to send.
      * @param flags_ Send flags.
      * @return Sent byte count or -1 on failure.
-     * @note `msg_` is closed only on success. On failure it remains reusable.
+     * @note `msg_` ownership is transferred and it is closed regardless of result.
      */
     int send (message_t &msg_, send_flag flags_ = send_flag::none)
     {
+        if (!msg_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
         const int rc = zlink_msg_send (msg_.handle (), _socket,
                                        static_cast<int> (flags_));
-        if (rc >= 0)
-            msg_.close ();
+        msg_.close ();
         return rc;
     }
 
@@ -366,42 +354,6 @@ class socket_t
     }
 
     /**
-     * @brief Send bytes to a stream peer by binary routing id.
-     * @param routing_id_ Target peer routing id bytes.
-     * @param buf_ Payload buffer.
-     * @param len_ Payload length.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    int stream_send (const zlink_routing_id_t &routing_id_,
-                     const void *buf_,
-                     size_t len_,
-                     send_flag flags_ = send_flag::none)
-    {
-        return zlink_stream_send (_socket, &routing_id_, buf_, len_,
-                                  static_cast<int> (flags_));
-    }
-
-    /**
-     * @brief Send bytes to a stream peer by binary-string routing id.
-     * @param routing_id_ Target peer routing id bytes.
-     * @param buf_ Payload buffer.
-     * @param len_ Payload length.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    int stream_send (const std::string &routing_id_,
-                     const void *buf_,
-                     size_t len_,
-                     send_flag flags_ = send_flag::none)
-    {
-        zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
-            return -1;
-        return stream_send (rid, buf_, len_, flags_);
-    }
-
-    /**
      * @brief Send string to a stream peer by routing id value.
      * @param routing_id_ Peer routing id as a 32-bit value.
      * @param payload_ Payload string.
@@ -409,21 +361,6 @@ class socket_t
      * @return Sent byte count or -1 on failure.
      */
     int stream_send (uint32_t routing_id_,
-                     const std::string &payload_,
-                     send_flag flags_ = send_flag::none)
-    {
-        return stream_send (routing_id_, payload_.data (), payload_.size (),
-                            flags_);
-    }
-
-    /**
-     * @brief Send string payload to a stream peer by binary routing id.
-     * @param routing_id_ Target peer routing id bytes.
-     * @param payload_ Payload string.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     */
-    int stream_send (const std::string &routing_id_,
                      const std::string &payload_,
                      send_flag flags_ = send_flag::none)
     {
@@ -443,48 +380,17 @@ class socket_t
                          message_t &msg_,
                          send_flag flags_ = send_flag::none)
     {
+        if (!msg_.valid ()) {
+            errno = EINVAL;
+            return -1;
+        }
+
         zlink_routing_id_t rid;
         encode_stream_routing_id (routing_id_, &rid);
         const int rc = zlink_stream_send_msg (
           _socket, &rid, msg_.handle (), static_cast<int> (flags_));
         msg_.close ();
         return rc;
-    }
-
-    /**
-     * @brief Send a message frame to a stream peer by binary routing id.
-     * @param routing_id_ Target peer routing id bytes.
-     * @param msg_ Message frame.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note `msg_` ownership is transferred and it is closed regardless of result.
-     */
-    int stream_send_msg (const zlink_routing_id_t &routing_id_,
-                         message_t &msg_,
-                         send_flag flags_ = send_flag::none)
-    {
-        const int rc = zlink_stream_send_msg (
-          _socket, &routing_id_, msg_.handle (), static_cast<int> (flags_));
-        msg_.close ();
-        return rc;
-    }
-
-    /**
-     * @brief Send a message frame to a stream peer by binary-string routing id.
-     * @param routing_id_ Target peer routing id bytes.
-     * @param msg_ Message frame.
-     * @param flags_ Send flags.
-     * @return Sent byte count or -1 on failure.
-     * @note `msg_` ownership is transferred and it is closed regardless of result.
-     */
-    int stream_send_msg (const std::string &routing_id_,
-                         message_t &msg_,
-                         send_flag flags_ = send_flag::none)
-    {
-        zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
-            return -1;
-        return stream_send_msg (rid, msg_, flags_);
     }
 
     /**
@@ -526,6 +432,55 @@ class socket_t
     }
 
     /**
+     * @brief Set a typed `int` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Integer value.
+     * @return 0 on success, -1 on failure.
+     */
+    int set (socket_option_key_t<int> key_, int value_)
+    {
+        return set (key_.option, value_);
+    }
+
+    /**
+     * @brief Set a typed `int64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ 64-bit integer value.
+     * @return 0 on success, -1 on failure.
+     */
+    int set (socket_option_key_t<int64_t> key_, int64_t value_)
+    {
+        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
+                                 sizeof (value_));
+    }
+
+    /**
+     * @brief Set a typed `uint64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Unsigned 64-bit value.
+     * @return 0 on success, -1 on failure.
+     */
+    int set (socket_option_key_t<uint64_t> key_, uint64_t value_)
+    {
+        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
+                                 sizeof (value_));
+    }
+
+    /**
+     * @brief Set a typed non-string socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Typed value.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    set (socket_option_key_t<T> key_, const T &value_)
+    {
+        return zlink_setsockopt (_socket, static_cast<int> (key_.option), &value_,
+                                 sizeof (value_));
+    }
+
+    /**
      * @brief Get an integer socket option.
      * @param option_ Option key.
      * @param value_ Output value pointer.
@@ -544,6 +499,130 @@ class socket_t
     }
 
     /**
+     * @brief Get an integer socket option.
+     * @param option_ Option key.
+     * @param value_ Output integer reference.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option option_, int &value_) const
+    {
+        return get (option_, &value_);
+    }
+
+    /**
+     * @brief Get a typed `int` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer pointer.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<int> key_, int *value_) const
+    {
+        return get (key_.option, value_);
+    }
+
+    /**
+     * @brief Get a typed `int` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer reference.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<int> key_, int &value_) const
+    {
+        return get (key_, &value_);
+    }
+
+    /**
+     * @brief Get a typed `int64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer pointer.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<int64_t> key_, int64_t *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        size_t len = sizeof (*value_);
+        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
+                                 &len);
+    }
+
+    /**
+     * @brief Get a typed `int64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer reference.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<int64_t> key_, int64_t &value_) const
+    {
+        return get (key_, &value_);
+    }
+
+    /**
+     * @brief Get a typed `uint64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer pointer.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<uint64_t> key_, uint64_t *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        size_t len = sizeof (*value_);
+        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
+                                 &len);
+    }
+
+    /**
+     * @brief Get a typed `uint64_t` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output integer reference.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<uint64_t> key_, uint64_t &value_) const
+    {
+        return get (key_, &value_);
+    }
+
+    /**
+     * @brief Get a typed non-string socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output value pointer.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get (socket_option_key_t<T> key_, T *value_) const
+    {
+        if (!value_) {
+            errno = EINVAL;
+            return -1;
+        }
+
+        size_t len = sizeof (*value_);
+        return zlink_getsockopt (_socket, static_cast<int> (key_.option), value_,
+                                 &len);
+    }
+
+    /**
+     * @brief Get a typed non-string socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output value reference.
+     * @return 0 on success, -1 on failure.
+     */
+    template<typename T>
+    typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
+    get (socket_option_key_t<T> key_, T &value_) const
+    {
+        return get (key_, &value_);
+    }
+
+    /**
      * @brief Set a string socket option.
      * @param option_ Option key.
      * @param value_ Option value string.
@@ -556,6 +635,18 @@ class socket_t
     }
 
     /**
+     * @brief Set a typed `std::string` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Option value string.
+     * @return 0 on success, -1 on failure.
+     */
+    int set (socket_option_key_t<std::string> key_,
+             const std::string &value_)
+    {
+        return set (key_.option, value_);
+    }
+
+    /**
      * @brief Get a string socket option.
      * @param option_ Option key.
      * @param value_ Output string.
@@ -563,27 +654,50 @@ class socket_t
      */
     int get (socket_option option_, std::string &value_) const
     {
-        size_t len = 256;
-        std::vector<char> buf (len);
-        if (zlink_getsockopt (
-              _socket, static_cast<int> (option_), buf.data (), &len)
-            != 0)
+        if (!is_string_socket_option (option_)) {
+            errno = EINVAL;
             return -1;
-
-        if (len > buf.size ()) {
-            buf.resize (len);
-            if (zlink_getsockopt (
-                  _socket, static_cast<int> (option_), buf.data (), &len)
-                != 0)
-                return -1;
         }
 
-        const size_t bounded_len = len <= buf.size () ? len : buf.size ();
-        size_t out_len = bounded_len;
-        if (out_len > 0 && buf[out_len - 1] == '\0')
-            --out_len;
-        value_.assign (buf.data (), out_len);
-        return 0;
+        const bool binary = is_binary_string_socket_option (option_);
+        size_t cap = initial_string_option_capacity (option_);
+        const size_t max_cap = 64u * 1024u;
+
+        while (cap <= max_cap) {
+            std::vector<char> buf (cap);
+            size_t len = cap;
+            const int rc = zlink_getsockopt (
+              _socket, static_cast<int> (option_), buf.data (), &len);
+            if (rc == 0) {
+                const size_t bounded_len = len <= buf.size () ? len : buf.size ();
+                size_t out_len = bounded_len;
+                if (!binary && out_len > 0 && buf[out_len - 1] == '\0')
+                    --out_len;
+                value_.assign (buf.data (), out_len);
+                return 0;
+            }
+
+            if (errno != EINVAL || cap == max_cap)
+                return -1;
+
+            cap = cap * 2u;
+            if (cap > max_cap)
+                cap = max_cap;
+        }
+
+        errno = EINVAL;
+        return -1;
+    }
+
+    /**
+     * @brief Get a typed `std::string` socket option key.
+     * @param key_ Typed option key.
+     * @param value_ Output string.
+     * @return 0 on success, -1 on failure.
+     */
+    int get (socket_option_key_t<std::string> key_, std::string &value_) const
+    {
+        return get (key_.option, value_);
     }
 
     /**
@@ -592,9 +706,10 @@ class socket_t
      * @param events_ Event mask.
      * @return 0 on success, -1 on failure.
      */
-    int monitor (const char *addr_, monitor_event events_)
+    int monitor (const std::string &addr_, monitor_event events_)
     {
-        return zlink_socket_monitor (_socket, addr_, static_cast<int> (events_));
+        return zlink_socket_monitor (
+          _socket, addr_.c_str (), static_cast<int> (events_));
     }
 
     /**
@@ -614,40 +729,12 @@ class socket_t
      * @param info_ Output peer info.
      * @return 0 on success, -1 on failure.
      */
-    int peer_info (const zlink_routing_id_t &routing_id_,
-                   zlink_peer_info_t *info_) const
-    {
-        return zlink_socket_peer_info (_socket, &routing_id_, info_);
-    }
-
-    /**
-     * @brief Query metadata for a peer routing id byte sequence.
-     * @param routing_id_bytes_ Peer routing id byte buffer.
-     * @param routing_id_size_ Byte size of routing id.
-     * @param info_ Output peer info.
-     * @return 0 on success, -1 on failure.
-     */
-    int peer_info (const void *routing_id_bytes_,
-                   size_t routing_id_size_,
-                   zlink_peer_info_t *info_) const
-    {
-        zlink_routing_id_t routing_id;
-        if (routing_id_from_bytes (
-              routing_id_bytes_, routing_id_size_, &routing_id)
-            != 0)
-            return -1;
-        return peer_info (routing_id, info_);
-    }
-
-    /**
-     * @brief Query metadata for a peer routing id binary string.
-     * @param routing_id_ Peer routing id bytes.
-     * @param info_ Output peer info.
-     * @return 0 on success, -1 on failure.
-     */
     int peer_info (const std::string &routing_id_, zlink_peer_info_t *info_) const
     {
-        return peer_info (routing_id_.data (), routing_id_.size (), info_);
+        zlink_routing_id_t rid;
+        if (routing_id_from_string (routing_id_, &rid) != 0)
+            return -1;
+        return zlink_socket_peer_info (_socket, &rid, info_);
     }
 
     /**
@@ -687,6 +774,60 @@ class socket_t
     }
 
   private:
+    static bool is_string_socket_option (socket_option option_) noexcept
+    {
+        switch (option_) {
+            case socket_option::routing_id:
+            case socket_option::subscribe:
+            case socket_option::unsubscribe:
+            case socket_option::last_endpoint:
+            case socket_option::connect_routing_id:
+            case socket_option::xpub_welcome_msg:
+            case socket_option::bindtodevice:
+            case socket_option::tls_cert:
+            case socket_option::tls_key:
+            case socket_option::tls_ca:
+            case socket_option::tls_hostname:
+            case socket_option::tls_password:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool is_binary_string_socket_option (socket_option option_) noexcept
+    {
+        switch (option_) {
+            case socket_option::routing_id:
+            case socket_option::connect_routing_id:
+            case socket_option::subscribe:
+            case socket_option::unsubscribe:
+            case socket_option::xpub_welcome_msg:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static size_t initial_string_option_capacity (socket_option option_) noexcept
+    {
+        switch (option_) {
+            case socket_option::routing_id:
+            case socket_option::connect_routing_id:
+                return 255;
+            case socket_option::tls_cert:
+            case socket_option::tls_key:
+            case socket_option::tls_ca:
+            case socket_option::tls_hostname:
+            case socket_option::tls_password:
+                return 512;
+            case socket_option::last_endpoint:
+                return 1024;
+            default:
+                return 512;
+        }
+    }
+
     static void encode_stream_routing_id (uint32_t routing_id_,
                                           zlink_routing_id_t *out_) noexcept
     {

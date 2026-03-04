@@ -50,6 +50,9 @@ try (var ctx = new Context();
 - Direct `ByteBuffer` path
   - `send(ByteBuffer buffer, SendFlag flags)`
   - `recv(ByteBuffer buffer, ReceiveFlag flags)`
+- Netty `ByteBuf` path
+  - `send(io.netty.buffer.ByteBuf buf, SendFlag flags)`
+  - `recv(io.netty.buffer.ByteBuf buf, ReceiveFlag flags)`
 - Context tuning
   - `ctx.setOption(ContextOption.IO_THREADS, n)`
 - Zero-copy message view
@@ -61,6 +64,7 @@ try (var ctx = new Context();
 - Gateway/SPOT low-copy path
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
+  - `Gateway.sendToRoutingId(..., String routingId, ...)` (Java-friendly routing id path)
   - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (reused send vector)
   - `Gateway.send/sendMove(PreparedService, Message part, SendFlag, SendContext)` (single-part fast path)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)
@@ -82,24 +86,30 @@ try (var ctx = new Context();
 ## 5. STREAM Callback API
 
 `Socket` STREAM helpers:
-- `attachStream(StreamPacketHandler handler, StreamDispatchMode mode)`
+- `attachStreamRaw(StreamPacketHandler handler)` (`onPacket(int routingIdU32, Message payload)`)
+- `attachStreamLen32be(StreamPacketBatchHandler handler)` (`onPackets(int routingIdU32, List<Message> packets)`)
 - `detachStream()`
 - `streamPeerRoutingId(int index)`
+- `streamPeerRoutingIdU32(int index)` (STREAM uint32 routing id view)
 - `streamSend(byte[]/ByteBuffer/ByteSpan/MemorySegment routingId, ... payload, SendFlag flags)`
+- `streamSend(long routingIdU32, byte[]/Message payload, SendFlag flags)`
 
 Mode rules:
 - While attached, receive STREAM payloads in the callback.
 - Do not mix `recv(...)` for STREAM payload consumption while attached.
 - After `detachStream()`, normal `recv(...)` use is available again.
+- Callback payload ownership is transferred to Java callback handlers.
+- `StreamPacketHandler` must close each `Message` unless ownership is moved by `streamSend(..., Message, ...)`.
+- `StreamPacketBatchHandler` also receives owned `Message` instances and must close each message it keeps.
 
 ```java
 try (var stream = new Socket(ctx, SocketType.STREAM)) {
-    stream.attachStream((rid, payload) -> {
-        byte[] copy = new byte[payload.length()];
-        payload.asByteBuffer().duplicate().get(copy);
-        stream.streamSend(rid, ByteSpan.of(copy), SendFlag.NONE);
+    stream.attachStreamRaw((ridU32, payload) -> {
+        try (payload) {
+            stream.streamSend(ridU32, payload, SendFlag.NONE);
+        }
         return 0;
-    }, StreamDispatchMode.LEN32BE);
+    });
 }
 ```
 
@@ -109,6 +119,7 @@ try (var stream = new Socket(ctx, SocketType.STREAM)) {
 // build.gradle
 dependencies {
     implementation files('path/to/zlink.jar')
+    compileOnly 'io.netty:netty-buffer:4.1.100.Final' // optional
 }
 ```
 

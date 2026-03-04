@@ -257,6 +257,8 @@ public final class Socket implements AutoCloseable {
     }
 
     public int send(ByteBuf buf, SendFlag flags) {
+        Objects.requireNonNull(buf, "buf");
+        Objects.requireNonNull(flags, "flags");
         int len = buf.readableBytes();
         if (len <= 0) {
             int rc = Native.send(handle, MemorySegment.NULL, 0,
@@ -274,6 +276,30 @@ public final class Socket implements AutoCloseable {
         if (rc > 0)
             buf.advanceReader(rc);
         return rc;
+    }
+
+    public int send(io.netty.buffer.ByteBuf buf, SendFlag flags) {
+        Objects.requireNonNull(buf, "buf");
+        Objects.requireNonNull(flags, "flags");
+        int len = buf.readableBytes();
+        if (len <= 0) {
+            int rc = Native.send(handle, MemorySegment.NULL, 0,
+              flags.getValue());
+            if (rc < 0)
+                throw ZlinkException.fromLastError("zlink_send");
+            return rc;
+        }
+
+        int readerIndex = buf.readerIndex();
+        try {
+            ByteBuffer nio = buf.nioBuffer(readerIndex, len);
+            int rc = send(nio, flags);
+            if (rc > 0)
+                buf.readerIndex(readerIndex + rc);
+            return rc;
+        } catch (UnsupportedOperationException ex) {
+            return sendNettyFallback(buf, readerIndex, len, flags);
+        }
     }
 
     public void attachStream(StreamPacketHandler handler,
@@ -624,6 +650,8 @@ public final class Socket implements AutoCloseable {
     }
 
     public int recv(ByteBuf buf, ReceiveFlag flags) {
+        Objects.requireNonNull(buf, "buf");
+        Objects.requireNonNull(flags, "flags");
         int writable = buf.writableBytes();
         if (writable <= 0)
             return 0;
@@ -635,6 +663,25 @@ public final class Socket implements AutoCloseable {
         if (rc > 0)
             buf.advanceWriter(rc);
         return rc;
+    }
+
+    public int recv(io.netty.buffer.ByteBuf buf, ReceiveFlag flags) {
+        Objects.requireNonNull(buf, "buf");
+        Objects.requireNonNull(flags, "flags");
+        int writable = buf.writableBytes();
+        if (writable <= 0)
+            return 0;
+
+        int writerIndex = buf.writerIndex();
+        try {
+            ByteBuffer nio = buf.nioBuffer(writerIndex, writable);
+            int rc = recv(nio, flags);
+            if (rc > 0)
+                buf.writerIndex(writerIndex + rc);
+            return rc;
+        } catch (UnsupportedOperationException ex) {
+            return recvNettyFallback(buf, writerIndex, writable, flags);
+        }
     }
 
     private static void closeStreamPacket(MemorySegment msg) {
@@ -870,6 +917,37 @@ public final class Socket implements AutoCloseable {
             throw new IllegalArgumentException("length too large: " + length);
         }
         return (int) length;
+    }
+
+    private int sendNettyFallback(io.netty.buffer.ByteBuf buf,
+                                  int readerIndex,
+                                  int length,
+                                  SendFlag flags) {
+        MemorySegment seg = ensureSendScratch(length);
+        ByteBuffer dst = seg.asSlice(0, length).asByteBuffer();
+        buf.getBytes(readerIndex, dst);
+        int rc = Native.send(handle, seg, length, flags.getValue());
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_send");
+        if (rc > 0)
+            buf.readerIndex(readerIndex + rc);
+        return rc;
+    }
+
+    private int recvNettyFallback(io.netty.buffer.ByteBuf buf,
+                                  int writerIndex,
+                                  int writable,
+                                  ReceiveFlag flags) {
+        MemorySegment seg = ensureRecvScratch(writable);
+        int rc = Native.recv(handle, seg, writable, flags.getValue());
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_recv");
+        if (rc > 0) {
+            ByteBuffer src = seg.asSlice(0, rc).asByteBuffer();
+            buf.setBytes(writerIndex, src);
+            buf.writerIndex(writerIndex + rc);
+        }
+        return rc;
     }
 
     private static void validateStreamRoutingIdU32(long routingIdU32) {

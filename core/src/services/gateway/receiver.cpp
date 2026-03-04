@@ -377,16 +377,18 @@ int receiver_t::update_weight (const char *service_name_, uint32_t weight_)
     }
 
     const uint32_t value = weight_ == 0 ? 1 : weight_;
-    if (send_u16 (_dealer, discovery_protocol::msg_update_weight,
+    if (send_u16 (_dealer, discovery_protocol::msg_update_weight, ZLINK_SNDMORE)
+        != 0)
+        return -1;
+    if (send_u16 (_dealer, discovery_protocol::service_type_gateway_receiver,
                   ZLINK_SNDMORE)
-          != 0
-        || send_u16 (_dealer,
-                     discovery_protocol::service_type_gateway_receiver,
-                     ZLINK_SNDMORE)
-             != 0
-        || send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0
-        || send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0
-        || send_u32 (_dealer, value, 0) != 0)
+        != 0)
+        return -1;
+    if (send_string (_dealer, service_name_, ZLINK_SNDMORE) != 0)
+        return -1;
+    if (send_string (_dealer, _advertise_endpoint, ZLINK_SNDMORE) != 0)
+        return -1;
+    if (send_u32 (_dealer, value, 0) != 0)
         return -1;
 
     int status = -1;
@@ -532,17 +534,22 @@ void receiver_t::heartbeat_tick ()
     std::string service;
     std::string advertise;
     socket_base_t *dealer = NULL;
-    {
-        scoped_lock_t lock (_sync);
+
+    // Never block the shared control-runtime thread on receiver lock: if another
+    // API call is in-flight, skip this heartbeat tick and retry next interval.
+    if (!_sync.try_lock ())
+        return;
+
+    do {
         if (_next_heartbeat_ms != 0 && now < _next_heartbeat_ms)
-            return;
+            break;
 
         registry = _registry_endpoint;
         service = _service_name;
         advertise = _advertise_endpoint;
 
         if (registry.empty () || service.empty () || advertise.empty ())
-            return;
+            break;
 
         if (_heartbeat_registry_endpoint != registry) {
             if (_heartbeat_dealer) {
@@ -573,7 +580,9 @@ void receiver_t::heartbeat_tick ()
 
         dealer = _heartbeat_dealer;
         _next_heartbeat_ms = now + _heartbeat_interval_ms;
-    }
+    } while (false);
+
+    _sync.unlock ();
 
     if (!dealer)
         return;

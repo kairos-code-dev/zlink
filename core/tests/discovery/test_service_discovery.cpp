@@ -496,6 +496,78 @@ static void test_discovery_weight_update ()
     step_log ("=== test_discovery_weight_update done ===");
 }
 
+// Regression: multiple update_weight calls must not deadlock runtime tasks.
+static void test_discovery_weight_update_stress ()
+{
+    step_log ("=== test_discovery_weight_update_stress ===");
+
+    void *ctx = get_test_context ();
+    TEST_ASSERT_NOT_NULL (ctx);
+
+    step_log ("setup registry");
+    void *registry = NULL;
+    setup_registry (ctx, &registry, "inproc://reg-pub-weight-stress",
+                    "inproc://reg-router-weight-stress");
+    msleep (50);
+
+    step_log ("setup discovery");
+    void *discovery = zlink_discovery_new_typed (ctx, ZLINK_SERVICE_TYPE_GATEWAY);
+    TEST_ASSERT_NOT_NULL (discovery);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_connect_registry (
+      discovery, "inproc://reg-pub-weight-stress"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_discovery_subscribe (discovery, "weight-stress-svc"));
+    msleep (50);
+
+    step_log ("create provider");
+    void *provider = zlink_receiver_new (ctx, NULL);
+    TEST_ASSERT_NOT_NULL (provider);
+
+    char bind_ep[64];
+    snprintf (bind_ep, sizeof (bind_ep), "tcp://127.0.0.1:%d",
+              test_port (5705));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_bind (provider, bind_ep));
+
+    char advertise_ep[256] = {0};
+    size_t advertise_len = sizeof (advertise_ep);
+    void *router = zlink_receiver_router_socket_unsafe(provider);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_getsockopt (router, ZLINK_LAST_ENDPOINT, advertise_ep,
+                        &advertise_len));
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_connect_registry (
+      provider, "inproc://reg-router-weight-stress"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_receiver_register (provider, "weight-stress-svc", advertise_ep, 10));
+
+    step_log ("wait for provider");
+    TEST_ASSERT_TRUE (wait_for_provider (discovery, "weight-stress-svc", 2000));
+
+    uint32_t expected_weight = 10;
+    for (int i = 0; i < 64; ++i) {
+        expected_weight = (i % 2) == 0 ? 7 : 53;
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_update_weight (
+          provider, "weight-stress-svc", expected_weight));
+    }
+
+    msleep (200);
+
+    zlink_receiver_info_t providers[4];
+    size_t count = 4;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_get_receivers (
+      discovery, "weight-stress-svc", providers, &count));
+    TEST_ASSERT_EQUAL_INT (1, (int) count);
+    TEST_ASSERT_EQUAL_UINT32 (expected_weight, providers[0].weight);
+
+    step_log ("cleanup");
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_receiver_destroy (&provider));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_discovery_destroy (&discovery));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_registry_destroy (&registry));
+
+    step_log ("=== test_discovery_weight_update_stress done ===");
+}
+
 int main (void)
 {
     setup_test_environment ();
@@ -505,5 +577,6 @@ int main (void)
     RUN_TEST (test_discovery_service_filtering);
     RUN_TEST (test_discovery_heartbeat_timeout);
     RUN_TEST (test_discovery_weight_update);
+    RUN_TEST (test_discovery_weight_update_stress);
     return UNITY_END ();
 }

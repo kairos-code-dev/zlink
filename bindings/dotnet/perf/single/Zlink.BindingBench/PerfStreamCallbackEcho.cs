@@ -32,7 +32,7 @@ internal sealed class PerfStreamCallbackEcho : IDisposable
         var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(timeoutMs, 1));
         while (DateTime.UtcNow < deadline)
         {
-            byte[]? rid = socket.StreamPeerRoutingId(0);
+            byte[]? rid = socket.GetPeerRoutingId(0);
             if (rid != null && rid.Length == 4)
                 return rid;
             Thread.Sleep(1);
@@ -50,10 +50,10 @@ internal sealed class PerfStreamCallbackEcho : IDisposable
 
     internal void Attach()
     {
-        var mode = _len32be
-            ? StreamDispatchMode.Len32Be
-            : StreamDispatchMode.None;
-        _socket.AttachStream(OnPacket, mode);
+        if (_len32be)
+            _socket.AttachStreamLen32Be(OnPacket);
+        else
+            _socket.AttachStreamRaw(OnPacket);
     }
 
     internal void Detach()

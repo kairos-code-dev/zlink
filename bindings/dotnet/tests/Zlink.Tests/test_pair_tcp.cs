@@ -83,4 +83,25 @@ public sealed class test_pair_tcp
         Assert.NotNull(events[0].Socket);
         Assert.NotEqual(PollEvents.None, events[0].Revents & PollEvents.PollIn);
     }
+
+    [Fact]
+    public void receive_dontwait_throws_eagain_on_empty_queue()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = new Context();
+        using var sender = new Socket(ctx, SocketType.Pair);
+        using var receiver = new Socket(ctx, SocketType.Pair);
+        string endpoint = CoreTestSupport.NewEndpoint("inproc",
+            "pair-try-recv-code");
+        sender.Bind(endpoint);
+        receiver.Connect(endpoint);
+        Thread.Sleep(50);
+
+        byte[] buffer = new byte[32];
+        var ex = Assert.Throws<ZlinkException>(() =>
+            receiver.Receive(buffer, ReceiveFlags.DontWait));
+        Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(ex.Errno));
+    }
 }

@@ -17,39 +17,44 @@ internal static partial class PerfRunner
     internal static int ReceiveRetry(Zlink.Socket socket, Span<byte> buffer,
         ReceiveFlags flags = ReceiveFlags.None)
     {
+        ReceiveFlags operationFlags = flags | ReceiveFlags.DontWait;
         while (true)
         {
-            if (socket.TryReceive(buffer, out int bytesReceived, out int errno,
-                flags))
+            try
             {
-                return bytesReceived;
+                return socket.Receive(buffer, operationFlags);
             }
-            if (errno == ErrnoEintr)
+            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+            {
                 continue;
-            if (errno == ErrnoEagain)
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
             {
                 Thread.Sleep(1);
                 continue;
             }
-            throw ZlinkException.FromLastError();
         }
     }
 
     internal static int SendRetry(Zlink.Socket socket, ReadOnlySpan<byte> buffer,
         SendFlags flags = SendFlags.None)
     {
+        SendFlags operationFlags = flags | SendFlags.DontWait;
         while (true)
         {
-            if (socket.TrySend(buffer, out int bytesSent, out int errno, flags))
-                return bytesSent;
-            if (errno == ErrnoEintr)
+            try
+            {
+                return socket.Send(buffer, operationFlags);
+            }
+            catch (ZlinkException ex) when (IsInterrupted(ex.Errno))
+            {
                 continue;
-            if (errno == ErrnoEagain)
+            }
+            catch (ZlinkException ex) when (IsWouldBlock(ex.Errno))
             {
                 Thread.Sleep(1);
                 continue;
             }
-            throw ZlinkException.FromLastError();
         }
     }
 
@@ -59,6 +64,18 @@ internal static partial class PerfRunner
         if (int.TryParse(raw, out int parsed) && parsed > 0)
             return parsed;
         return defaultValue;
+    }
+
+    private static bool IsWouldBlock(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EAgain || errno == ErrnoEagain;
+    }
+
+    private static bool IsInterrupted(int errno)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(errno);
+        return code == ErrorCode.EIntr || errno == ErrnoEintr;
     }
 
     internal static int ParseNonNegativeEnv(string name, int defaultValue)

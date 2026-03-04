@@ -72,11 +72,8 @@ internal static partial class PerfRunner
             server.SetOption(SocketOption.RcvTimeo, ioTimeoutMs);
 
             Len32StopTokenParser stopParser = new Len32StopTokenParser();
-            StreamDispatchMode dispatchMode =
-                serverMode == StreamServerMode.CallbackLen32Be
-                    ? StreamDispatchMode.Len32Be
-                    : StreamDispatchMode.None;
-            server.AttachStream((rid, payload) =>
+            bool len32beMode = serverMode == StreamServerMode.CallbackLen32Be;
+            StreamPacketHandler handler = (rid, payload) =>
             {
                 if (payload.Length == 1
                     && (payload[0] == 0x00 || payload[0] == 0x01))
@@ -84,7 +81,7 @@ internal static partial class PerfRunner
                     return 0;
                 }
 
-                bool isStop = dispatchMode == StreamDispatchMode.Len32Be
+                bool isStop = len32beMode
                     ? payload.SequenceEqual(StreamStopToken)
                     : stopParser.Consume(payload);
                 if (isStop)
@@ -103,7 +100,12 @@ internal static partial class PerfRunner
                     Interlocked.Exchange(ref stopRequested, 1);
                 }
                 return 0;
-            }, dispatchMode);
+            };
+
+            if (len32beMode)
+                server.AttachStreamLen32Be(handler);
+            else
+                server.AttachStreamRaw(handler);
 
             server.Bind(endpoint);
 

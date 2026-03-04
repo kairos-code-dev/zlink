@@ -178,14 +178,15 @@ public sealed class test_stream_socket
         using var ctx = new Context();
         using var stream = new Socket(ctx, SocketType.Stream);
 
-        Span<byte> probe = stackalloc byte[16];
-        Assert.False(stream.TryReceive(probe, out _, out _,
-            ReceiveFlags.DontWait));
+        byte[] probe = new byte[16];
+        var idleEx = Assert.Throws<ZlinkException>(() =>
+            stream.Receive(probe, ReceiveFlags.DontWait));
+        Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(idleEx.Errno));
 
         stream.AttachStreamRaw((_, _) => 0);
-        Assert.False(stream.TryReceive(probe, out _, out int busyErrno,
-            ReceiveFlags.DontWait));
-        Assert.NotEqual(0, busyErrno);
+        var busyEx = Assert.Throws<ZlinkException>(() =>
+            stream.Receive(probe, ReceiveFlags.DontWait));
+        Assert.NotEqual(0, busyEx.Errno);
         stream.DetachStream();
     }
 

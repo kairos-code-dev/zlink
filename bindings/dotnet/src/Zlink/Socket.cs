@@ -129,61 +129,6 @@ public sealed class Socket : IDisposable
         return rc;
     }
 
-    public bool TrySend(ReadOnlySpan<byte> buffer, out int bytesSent,
-        SendFlags flags = SendFlags.DontWait)
-    {
-        return TrySend(buffer, out bytesSent, out _, flags);
-    }
-
-    public bool TrySendWithCode(ReadOnlySpan<byte> buffer, out int bytesSent,
-        out ErrorCode? errorCode, SendFlags flags = SendFlags.DontWait)
-    {
-        bool ok = TrySend(buffer, out bytesSent, out int errno, flags);
-        errorCode = ZlinkException.TryMapErrorCode(errno, out var code)
-            ? code
-            : null;
-        return ok;
-    }
-
-    public bool TrySend(byte[] buffer, out int bytesSent,
-        SendFlags flags = SendFlags.DontWait)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return TrySend(buffer.AsSpan(), out bytesSent, flags);
-    }
-
-    public bool TrySendWithCode(byte[] buffer, out int bytesSent,
-        out ErrorCode? errorCode, SendFlags flags = SendFlags.DontWait)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return TrySendWithCode(buffer.AsSpan(), out bytesSent, out errorCode,
-            flags);
-    }
-
-    public unsafe bool TrySend(ReadOnlySpan<byte> buffer, out int bytesSent,
-        out int errno, SendFlags flags = SendFlags.DontWait)
-    {
-        EnsureNotDisposed();
-        int rc;
-        fixed (byte* ptr = buffer)
-        {
-            rc = NativeMethods.zlink_send(_handle, ptr, (nuint)buffer.Length,
-                (int)flags);
-        }
-        if (rc >= 0)
-        {
-            bytesSent = rc;
-            errno = 0;
-            return true;
-        }
-
-        bytesSent = 0;
-        errno = NativeMethods.zlink_errno();
-        return false;
-    }
-
     public int SendConst(byte[] buffer, SendFlags flags = SendFlags.None)
     {
         if (buffer == null)
@@ -449,61 +394,6 @@ public sealed class Socket : IDisposable
         }
         ZlinkException.ThrowIfError(rc);
         return rc;
-    }
-
-    public bool TryReceive(Span<byte> buffer, out int bytesReceived,
-        ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        return TryReceive(buffer, out bytesReceived, out _, flags);
-    }
-
-    public bool TryReceiveWithCode(Span<byte> buffer, out int bytesReceived,
-        out ErrorCode? errorCode, ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        bool ok = TryReceive(buffer, out bytesReceived, out int errno, flags);
-        errorCode = ZlinkException.TryMapErrorCode(errno, out var code)
-            ? code
-            : null;
-        return ok;
-    }
-
-    public bool TryReceive(byte[] buffer, out int bytesReceived,
-        ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return TryReceive(buffer.AsSpan(), out bytesReceived, flags);
-    }
-
-    public bool TryReceiveWithCode(byte[] buffer, out int bytesReceived,
-        out ErrorCode? errorCode, ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        if (buffer == null)
-            throw new ArgumentNullException(nameof(buffer));
-        return TryReceiveWithCode(buffer.AsSpan(), out bytesReceived, out errorCode,
-            flags);
-    }
-
-    public unsafe bool TryReceive(Span<byte> buffer, out int bytesReceived,
-        out int errno, ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        EnsureNotDisposed();
-        int rc;
-        fixed (byte* ptr = buffer)
-        {
-            rc = NativeMethods.zlink_recv(_handle, ptr, (nuint)buffer.Length,
-                (int)flags);
-        }
-        if (rc >= 0)
-        {
-            bytesReceived = rc;
-            errno = 0;
-            return true;
-        }
-
-        bytesReceived = 0;
-        errno = NativeMethods.zlink_errno();
-        return false;
     }
 
     /// <summary>

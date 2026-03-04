@@ -118,8 +118,14 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (socket.TrySend(payload, out _, out _, flags | SendFlags.DontWait))
+            try
+            {
+                socket.Send(payload, flags | SendFlags.DontWait);
                 return;
+            }
+            catch (ZlinkException ex) when (IsRetryable(ex))
+            {
+            }
             Thread.Sleep(10);
         }
         throw new TimeoutException("send timeout");
@@ -151,13 +157,16 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (socket.TryReceive(buffer, out int bytes, out _,
-                ReceiveFlags.DontWait))
+            try
             {
+                int bytes = socket.Receive(buffer, ReceiveFlags.DontWait);
                 byte[] result = new byte[bytes];
                 if (bytes > 0)
                     Buffer.BlockCopy(buffer, 0, result, 0, bytes);
                 return result;
+            }
+            catch (ZlinkException ex) when (IsRetryable(ex))
+            {
             }
             Thread.Sleep(10);
         }
@@ -196,7 +205,12 @@ internal static class CoreTestSupport
         int maxSize, out byte[] lastPart)
     {
         byte[] buffer = new byte[maxSize];
-        if (!socket.TryReceive(buffer, out int bytes, out _, ReceiveFlags.DontWait))
+        int bytes;
+        try
+        {
+            bytes = socket.Receive(buffer, ReceiveFlags.DontWait);
+        }
+        catch (ZlinkException ex) when (IsRetryable(ex))
         {
             lastPart = Array.Empty<byte>();
             return false;
@@ -217,8 +231,14 @@ internal static class CoreTestSupport
         DateTime deadline = DateTime.UtcNow.AddMilliseconds(probeMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (socket.TryReceive(buffer, out _, out _, ReceiveFlags.DontWait))
+            try
+            {
+                _ = socket.Receive(buffer, ReceiveFlags.DontWait);
                 return false;
+            }
+            catch (ZlinkException ex) when (IsRetryable(ex))
+            {
+            }
             Thread.Sleep(5);
         }
         return true;
@@ -275,6 +295,12 @@ internal static class CoreTestSupport
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private static bool IsRetryable(ZlinkException ex)
+    {
+        ErrorCode code = ZlinkException.MapErrorCode(ex.Errno);
+        return code == ErrorCode.EAgain || code == ErrorCode.EIntr;
     }
 
     private static string? FindCoreHeader()

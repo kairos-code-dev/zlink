@@ -4,9 +4,10 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Text;
+using Zlink;
 using Zlink.Native;
 
-namespace Zlink;
+namespace Zlink.Service;
 
 public sealed class Gateway : IDisposable
 {
@@ -229,54 +230,6 @@ public sealed class Gateway : IDisposable
             if (parts != IntPtr.Zero && count > 0)
                 NativeMethods.zlink_multipart_close(parts, count);
         }
-    }
-
-    public bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
-        out int payloadSize, ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        return TryReceiveSinglePayload(payloadBuffer, out payloadSize, out _,
-            flags);
-    }
-
-    public unsafe bool TryReceiveSinglePayload(Span<byte> payloadBuffer,
-        out int payloadSize, out int errno,
-        ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        EnsureNotDisposed();
-        byte* nameBuf = stackalloc byte[256];
-        int rc = NativeMethods.zlink_gateway_recv(_handle, out var parts,
-            out var count, (int)flags, nameBuf);
-        if (rc != 0)
-        {
-            payloadSize = 0;
-            errno = NativeMethods.zlink_errno();
-            return false;
-        }
-
-        try
-        {
-            payloadSize = Message.CopySinglePartPayload(parts, count,
-                payloadBuffer);
-            errno = 0;
-            return true;
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero && count > 0)
-                NativeMethods.zlink_multipart_close(parts, count);
-        }
-    }
-
-    public bool TryReceiveSinglePayloadWithCode(Span<byte> payloadBuffer,
-        out int payloadSize, out ErrorCode? errorCode,
-        ReceiveFlags flags = ReceiveFlags.DontWait)
-    {
-        bool ok = TryReceiveSinglePayload(payloadBuffer, out payloadSize,
-            out int errno, flags);
-        errorCode = ZlinkException.TryMapErrorCode(errno, out var code)
-            ? code
-            : null;
-        return ok;
     }
 
     public void SetLoadBalancing(string serviceName,

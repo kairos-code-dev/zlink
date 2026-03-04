@@ -2,9 +2,10 @@
 
 using System;
 using System.Buffers;
+using Zlink;
 using Zlink.Native;
 
-namespace Zlink;
+namespace Zlink.Service;
 
 public enum DiscoveryServiceType : ushort
 {

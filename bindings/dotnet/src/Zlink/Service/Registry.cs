@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using Zlink;
 using Zlink.Native;
 
-namespace Zlink;
+namespace Zlink.Service;
 
 public sealed class Registry : IDisposable
 {

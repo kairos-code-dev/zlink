@@ -41,4 +41,19 @@ public sealed class test_system
         Runtime.SleepSeconds(0);
         Runtime.Sleep(TimeSpan.Zero);
     }
+
+    [Fact]
+    public void error_code_mapping_covers_posix_and_zlink_ranges()
+    {
+        const int zlinkHausnumero = 156384712;
+
+        Assert.Equal(ErrorCode.None, ZlinkException.MapErrorCode(0));
+        Assert.Equal(ErrorCode.EAgain, ZlinkException.MapErrorCode(11));
+        Assert.Equal(ErrorCode.ENotSup, ZlinkException.MapErrorCode(95));
+        Assert.Equal(ErrorCode.ENotSup,
+            ZlinkException.MapErrorCode(zlinkHausnumero + 1));
+        Assert.Equal(ErrorCode.Eterm,
+            ZlinkException.MapErrorCode(zlinkHausnumero + 53));
+        Assert.Equal(ErrorCode.Unknown, ZlinkException.MapErrorCode(123456789));
+    }
 }

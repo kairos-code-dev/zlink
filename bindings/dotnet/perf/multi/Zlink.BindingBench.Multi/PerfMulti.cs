@@ -57,14 +57,14 @@ internal static partial class PerfRunner
         return EndpointFor(transport, name);
     }
 
-    private static bool IsMonitorReady(ulong eventValue, bool acceptFallback)
+    private static bool IsMonitorReady(SocketEvent eventValue, bool acceptFallback)
     {
-        if (eventValue == (ulong)SocketEvent.ConnectionReady)
+        if (eventValue == SocketEvent.ConnectionReady)
             return true;
         if (!acceptFallback)
             return false;
-        return eventValue == (ulong)SocketEvent.Accepted
-            || eventValue == (ulong)SocketEvent.Connected;
+        return eventValue == SocketEvent.Accepted
+            || eventValue == SocketEvent.Connected;
     }
 
     private static bool WaitMonitorReady(MonitorSocket monitor, int timeoutMs,
@@ -145,11 +145,9 @@ internal static partial class PerfRunner
                 int callbackFailed = 0;
                 long payloadSeen = 0;
                 long lastActivityTicks = Stopwatch.GetTimestamp();
-                StreamDispatchMode dispatchMode = IsMultiLen32BePattern(pattern)
-                    ? StreamDispatchMode.Len32Be
-                    : StreamDispatchMode.None;
+                bool len32beMode = IsMultiLen32BePattern(pattern);
                 var stopParser = new Len32StopTokenParser();
-                server.AttachStream((rid, payload) =>
+                StreamPacketHandler handler = (rid, payload) =>
                 {
                     if (payload.Length == 1
                         && (payload[0] == 0x00 || payload[0] == 0x01))
@@ -157,7 +155,7 @@ internal static partial class PerfRunner
                         return 0;
                     }
 
-                    bool stopDetected = dispatchMode == StreamDispatchMode.Len32Be
+                    bool stopDetected = len32beMode
                         ? payload.SequenceEqual(MultiStopToken)
                         : stopParser.Consume(payload);
                     if (stopDetected)
@@ -179,7 +177,12 @@ internal static partial class PerfRunner
                         Interlocked.Exchange(ref stopRequested, 1);
                     }
                     return 0;
-                }, dispatchMode);
+                };
+
+                if (len32beMode)
+                    server.AttachStreamLen32Be(handler);
+                else
+                    server.AttachStreamRaw(handler);
 
                 server.Bind(endpoint);
                 Console.WriteLine($"READY,{endpoint}");

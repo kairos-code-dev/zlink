@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.receiver;
+
 
 public enum ReceiverSocketRole {
     ROUTER(1), DEALER(2);

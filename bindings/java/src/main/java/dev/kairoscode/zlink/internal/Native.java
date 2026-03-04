@@ -1,7 +1,6 @@
 package dev.kairoscode.zlink.internal;
 
 import dev.kairoscode.zlink.MonitorEvent;
-import dev.kairoscode.zlink.Poller;
 import dev.kairoscode.zlink.ZlinkException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -10,8 +9,6 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.util.ArrayList;
-import java.util.List;
 
 public final class Native {
     private static final Linker LINKER = Linker.nativeLinker();
@@ -467,7 +464,7 @@ public final class Native {
             MemorySegment evt = arena.allocate(NativeLayouts.MONITOR_EVENT_LAYOUT);
             int rc = (int) MH_MONITOR_RECV.invokeExact(socket, evt, flags);
             if (rc != 0)
-                throw new RuntimeException("zlink_monitor_recv failed");
+                throw ZlinkException.fromLastError("zlink_monitor_recv");
             long event = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_EVENT_OFFSET);
             long value = evt.get(ValueLayout.JAVA_LONG, NativeLayouts.MONITOR_VALUE_OFFSET);
             int routingSize = evt.get(ValueLayout.JAVA_BYTE, NativeLayouts.MONITOR_ROUTING_OFFSET) & 0xFF;
@@ -479,6 +476,8 @@ public final class Native {
             String local = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_LOCAL_OFFSET, 256), 256);
             String remote = NativeHelpers.fromCString(evt.asSlice(NativeLayouts.MONITOR_REMOTE_OFFSET, 256), 256);
             return new MonitorEvent(event, value, routing, local, remote);
+        } catch (ZlinkException ex) {
+            throw ex;
         } catch (Throwable t) {
             throw new RuntimeException("monitor recv failed", t);
         }
@@ -516,42 +515,6 @@ public final class Native {
             MH_SLEEP.invokeExact(seconds);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_sleep failed", t);
-        }
-    }
-
-    public static List<Poller.PollEvent> poll(List<Poller.PollItem> items, int timeoutMs) {
-        if (items.isEmpty())
-            return List.of();
-        try (Arena arena = Arena.ofConfined()) {
-            long itemSize = 24;
-            MemorySegment arr = arena.allocate(itemSize * items.size());
-            for (int i = 0; i < items.size(); i++) {
-                Poller.PollItem it = items.get(i);
-                long base = i * itemSize;
-                MemorySegment sock = it.socket == null ? MemorySegment.NULL : it.socket.handle();
-                arr.set(ValueLayout.ADDRESS, base, sock);
-                arr.set(ValueLayout.JAVA_INT, base + 8, it.fd);
-                arr.set(ValueLayout.JAVA_SHORT, base + 12, (short) it.events);
-                arr.set(ValueLayout.JAVA_SHORT, base + 14, (short) 0);
-            }
-            int rc = pollRaw(arr, items.size(), timeoutMs);
-            if (rc < 0)
-                throw ZlinkException.fromLastError("zlink_poll");
-            List<Poller.PollEvent> out = new ArrayList<>();
-            for (int i = 0; i < items.size(); i++) {
-                long base = i * itemSize;
-                short revents = arr.get(ValueLayout.JAVA_SHORT, base + 14);
-                if (revents != 0) {
-                    Poller.PollItem item = items.get(i);
-                    out.add(new Poller.PollEvent(item.socket, revents, item.fd,
-                        item.tag, item.events));
-                }
-            }
-            return out;
-        } catch (RuntimeException ex) {
-            throw ex;
-        } catch (Throwable t) {
-            throw new RuntimeException("poll failed", t);
         }
     }
 

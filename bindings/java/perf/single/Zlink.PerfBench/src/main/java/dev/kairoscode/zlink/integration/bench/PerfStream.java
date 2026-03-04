@@ -11,7 +11,6 @@ import dev.kairoscode.zlink.SocketType;
 import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 final class PerfStream {
@@ -184,7 +183,7 @@ final class PerfStream {
     private static byte[] waitPeerRoutingId(Socket socket, int timeoutMs) {
         long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 1);
         while (System.currentTimeMillis() < deadline) {
-            byte[] rid = socket.streamPeerRoutingId(0);
+            byte[] rid = socket.streamPeerRoutingIdBytes(0);
             if (rid != null && rid.length == 4)
                 return rid;
             PerfUtil.sleep(1);
@@ -314,7 +313,7 @@ final class PerfStream {
                 socket.attachStreamRaw(this::onPacket);
         }
 
-        private int onPackets(int rid, List<Message> packets) {
+        private int onPackets(long rid, Message[] packets) {
             for (Message payload : packets) {
                 if (payload == null)
                     continue;
@@ -336,7 +335,7 @@ final class PerfStream {
             return 0;
         }
 
-        private int onPacket(int rid, Message payload) {
+        private int onPacket(long rid, Message payload) {
             try (payload) {
                 int payloadSize = payload.size();
                 if (payloadSize <= 0)

@@ -9,4 +9,12 @@ public enum SocketType {
     private final int value;
     SocketType(int v) { this.value = v; }
     public int getValue() { return value; }
+
+    public static SocketType fromValue(int value) {
+        for (SocketType type : values()) {
+            if (type.value == value)
+                return type;
+        }
+        return null;
+    }
 }

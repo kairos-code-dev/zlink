@@ -195,7 +195,7 @@ class socket_t
         }
 
         message_t msg;
-        if (msg.init_data (data_, len_, ffn_, hint_) != 0)
+        if (msg.init (data_, len_, ffn_, hint_) != 0)
             return -1;
 
         const int rc =
@@ -270,7 +270,7 @@ class socket_t
      * @param on_raw_ Callback for raw bytes.
      * @return 0 on success, -1 on failure.
      */
-    ZLINK_CPP_NODISCARD int stream_attach_raw (zlink_stream_on_raw_fn on_raw_)
+    ZLINK_CPP_NODISCARD int stream_attach (zlink_stream_on_raw_fn on_raw_)
     {
         return zlink_stream_attach_raw (_socket, on_raw_);
     }
@@ -380,9 +380,9 @@ class socket_t
      * @note `msg_` ownership is transferred and it is closed regardless of result.
      */
     ZLINK_CPP_NODISCARD int
-    stream_send_msg (uint32_t routing_id_,
-                     message_t &msg_,
-                     send_flag flags_ = send_flag::none)
+    stream_send (uint32_t routing_id_,
+                 message_t &msg_,
+                 send_flag flags_ = send_flag::none)
     {
         if (!msg_.valid ()) {
             errno = EINVAL;
@@ -752,7 +752,7 @@ class socket_t
     peer_info (const std::string &routing_id_, zlink_peer_info_t *info_) const
     {
         zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
+        if (routing_id_from (routing_id_, &rid) != 0)
             return -1;
         return zlink_socket_peer_info (_socket, &rid, info_);
     }

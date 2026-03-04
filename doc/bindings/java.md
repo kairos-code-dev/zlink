@@ -64,7 +64,7 @@ try (var ctx = new Context();
 - Gateway/SPOT low-copy path
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
-  - `Gateway.sendToRoutingId(..., String routingId, ...)` (Java-friendly routing id path)
+  - `Gateway.sendTo(..., String routingId, ...)` (Java-friendly routing id path)
   - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (reused send vector)
   - `Gateway.send/sendMove(PreparedService, Message part, SendFlag, SendContext)` (single-part fast path)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)

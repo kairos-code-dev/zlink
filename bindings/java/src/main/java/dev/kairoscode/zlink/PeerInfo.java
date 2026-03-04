@@ -16,7 +16,16 @@ public record PeerInfo(
   long sndPendingMsgs,
   long rcvPendingMsgs
 ) {
-    static PeerInfo fromNative(MemorySegment segment) {
+    public PeerInfo {
+        routingId = routingId == null ? new byte[0] : routingId.clone();
+    }
+
+    @Override
+    public byte[] routingId() {
+        return routingId.clone();
+    }
+
+    public static PeerInfo fromNative(MemorySegment segment) {
         int ridSize = segment.get(ValueLayout.JAVA_BYTE,
           NativeLayouts.PEER_ROUTING_OFFSET) & 0xFF;
         byte[] rid = new byte[ridSize];

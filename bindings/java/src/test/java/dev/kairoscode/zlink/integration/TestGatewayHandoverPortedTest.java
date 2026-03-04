@@ -1,11 +1,11 @@
 package dev.kairoscode.zlink.integration;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Discovery;
-import dev.kairoscode.zlink.Gateway;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.Message;
-import dev.kairoscode.zlink.Receiver;
-import dev.kairoscode.zlink.Registry;
+import dev.kairoscode.zlink.service.receiver.Receiver;
+import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.Socket;
@@ -165,7 +165,7 @@ public class TestGatewayHandoverPortedTest {
         ZlinkException last = null;
         while (System.currentTimeMillis() < deadline) {
             try (Message msg = Message.fromBytes(bytes)) {
-                gateway.send(service, msg, SendFlag.DONTWAIT);
+                gateway.sendTo(service, msg, SendFlag.DONTWAIT);
                 return;
             } catch (ZlinkException ex) {
                 int errno = ex.errno();

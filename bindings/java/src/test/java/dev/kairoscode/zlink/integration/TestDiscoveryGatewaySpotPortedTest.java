@@ -1,18 +1,19 @@
 package dev.kairoscode.zlink.integration;
 
 import dev.kairoscode.zlink.Context;
-import dev.kairoscode.zlink.Discovery;
-import dev.kairoscode.zlink.Gateway;
+import dev.kairoscode.zlink.service.discovery.Discovery;
+import dev.kairoscode.zlink.service.gateway.Gateway;
 import dev.kairoscode.zlink.Message;
 import dev.kairoscode.zlink.ReceiveFlag;
-import dev.kairoscode.zlink.Receiver;
-import dev.kairoscode.zlink.ReceiverInfo;
-import dev.kairoscode.zlink.Registry;
+import dev.kairoscode.zlink.service.receiver.Receiver;
+import dev.kairoscode.zlink.service.receiver.ReceiverInfo;
+import dev.kairoscode.zlink.service.registry.Registry;
 import dev.kairoscode.zlink.SendFlag;
 import dev.kairoscode.zlink.ServiceType;
 import dev.kairoscode.zlink.Socket;
-import dev.kairoscode.zlink.Spot;
-import dev.kairoscode.zlink.SpotNode;
+import dev.kairoscode.zlink.SocketOption;
+import dev.kairoscode.zlink.service.spot.Spot;
+import dev.kairoscode.zlink.service.spot.SpotNode;
 import dev.kairoscode.zlink.TestSupport;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +21,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -70,9 +72,9 @@ public class TestDiscoveryGatewaySpotPortedTest {
                         () -> discovery.receiverCount("svc") > 0,
                         TestSupport.DEFAULT_TIMEOUT_MS,
                         "discovery did not resolve service");
-                    ReceiverInfo[] providerInfos = discovery.getReceivers("svc");
-                    assertTrue(providerInfos.length > 0);
-                    byte[] providerRoutingId = providerInfos[0].routingId();
+                    List<ReceiverInfo> providerInfos = discovery.getReceivers("svc");
+                    assertTrue(providerInfos.size() > 0);
+                    byte[] providerRoutingId = providerInfos.get(0).routingId();
                     assertTrue(providerRoutingId.length > 0);
                     assertEquals(receiverRoutingId, new String(providerRoutingId,
                         StandardCharsets.UTF_8));
@@ -84,7 +86,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                     try (Message msg = Message.fromBytes(
                         "hello".getBytes(StandardCharsets.UTF_8))) {
-                        gateway.send("svc", msg, SendFlag.NONE);
+                        gateway.sendTo("svc", msg, SendFlag.NONE);
                     }
                     ProviderFrame helloFrame = recvProviderFrame(
                         providerRouter);
@@ -92,7 +94,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                     try (Message directRid = Message.fromBytes(
                         "hello-rid".getBytes(StandardCharsets.UTF_8))) {
-                        gateway.sendToRoutingId("svc", receiverRoutingId,
+                        gateway.sendTo("svc", receiverRoutingId,
                             directRid, SendFlag.NONE);
                     }
                     ProviderFrame ridFrame = recvProviderFrame(providerRouter);
@@ -103,8 +105,8 @@ public class TestDiscoveryGatewaySpotPortedTest {
                          Message ridMulti2 = Message.fromBytes(
                              "hello-rid-list-b".getBytes(
                                  StandardCharsets.UTF_8))) {
-                        gateway.sendToRoutingId("svc", receiverRoutingId,
-                            java.util.List.of(ridMulti1, ridMulti2),
+                        gateway.sendTo("svc", receiverRoutingId,
+                            new Message[] {ridMulti1, ridMulti2},
                             SendFlag.NONE);
                     }
                     ProviderFrame ridListFrame = recvProviderFrame(providerRouter);
@@ -114,7 +116,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
                         "hello-list-a".getBytes(StandardCharsets.UTF_8));
                          Message list2 = Message.fromBytes(
                              "hello-list-b".getBytes(StandardCharsets.UTF_8))) {
-                        gateway.send("svc", java.util.List.of(list1, list2),
+                        gateway.sendTo("svc", new Message[] {list1, list2},
                             SendFlag.NONE);
                     }
                     ProviderFrame listFrame = recvProviderFrame(providerRouter);
@@ -125,12 +127,16 @@ public class TestDiscoveryGatewaySpotPortedTest {
                             "hello-const", StandardCharsets.UTF_8);
                         try (Message constMsg = Message.fromMemorySegment(
                             constPayload, 0, "hello-const".length())) {
-                            gateway.send("svc", constMsg, SendFlag.NONE);
+                            gateway.sendTo("svc", constMsg, SendFlag.NONE);
                         }
                     }
                     ProviderFrame constFrame = recvProviderFrame(
                         providerRouter);
                     assertEquals("hello-const", constFrame.payloadText());
+
+                    // Explicitly deregister before teardown to avoid carrying
+                    // transient routing state into following integration tests.
+                    receiver.unregister("svc");
                 }
 
                 runSpotScenario(ctx, regRouter);
@@ -159,21 +165,21 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                 try (Message m = Message.fromBytes(
                     "spot-msg".getBytes(StandardCharsets.UTF_8))) {
-                    spot.publish(topic, new Message[]{m}, SendFlag.NONE);
+                    spot.publish(topic, new Message[] {m}, SendFlag.NONE);
                 }
                 Spot.SpotMessage msg = TestSupport.spotRecvWithTimeout(spot,
                     TestSupport.DEFAULT_TIMEOUT_MS);
                 assertEquals("topic", msg.topicId());
                 assertEquals(1, msg.parts().length);
                 assertEquals("spot-msg",
-                    new String(msg.parts()[0], StandardCharsets.UTF_8));
+                    new String(msg.parts()[0].data(), StandardCharsets.UTF_8));
 
                 try (Message move = Message.fromBytes(
                     "spot-move".getBytes(StandardCharsets.UTF_8))) {
-                    spot.publishMove(topic, new Message[]{move}, SendFlag.NONE);
+                    spot.publishMove(topic, new Message[] {move}, SendFlag.NONE);
                 }
-                try (Spot.SpotMessages moved = TestSupport.waitFor(
-                    () -> spot.recvMessages(ReceiveFlag.DONTWAIT),
+                try (Spot.SpotMessage moved = TestSupport.waitFor(
+                    () -> spot.recv(ReceiveFlag.DONTWAIT),
                     TestSupport.DEFAULT_TIMEOUT_MS)) {
                     assertEquals("topic", moved.topicId());
                     assertEquals(1, moved.parts().length);
@@ -185,8 +191,8 @@ public class TestDiscoveryGatewaySpotPortedTest {
                     "spot-move-ctx".getBytes(StandardCharsets.UTF_8))) {
                     spot.publishMove(topic, move, SendFlag.NONE, publishContext);
                 }
-                try (Spot.SpotMessages movedCtx = TestSupport.waitFor(
-                    () -> spot.recvMessages(ReceiveFlag.DONTWAIT),
+                try (Spot.SpotMessage movedCtx = TestSupport.waitFor(
+                    () -> spot.recv(ReceiveFlag.DONTWAIT),
                     TestSupport.DEFAULT_TIMEOUT_MS)) {
                     assertEquals("spot-move-ctx", new String(
                         movedCtx.parts()[0].data(), StandardCharsets.UTF_8));
@@ -197,12 +203,12 @@ public class TestDiscoveryGatewaySpotPortedTest {
                         "spot-const-ctx", StandardCharsets.UTF_8);
                     try (Message constMsg = Message.fromMemorySegment(constPayload, 0,
                         "spot-const-ctx".length())) {
-                        spot.publish(topic, new Message[]{constMsg}, SendFlag.NONE,
+                        spot.publish(topic, new Message[] {constMsg}, SendFlag.NONE,
                             publishContext);
                     }
                 }
-                try (Spot.SpotMessages constMsg = TestSupport.waitFor(
-                    () -> spot.recvMessages(ReceiveFlag.DONTWAIT),
+                try (Spot.SpotMessage constMsg = TestSupport.waitFor(
+                    () -> spot.recv(ReceiveFlag.DONTWAIT),
                     TestSupport.DEFAULT_TIMEOUT_MS)) {
                     assertEquals("spot-const-ctx", new String(
                         constMsg.parts()[0].data(), StandardCharsets.UTF_8));
@@ -211,7 +217,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
                 try (Spot.RecvContext recvContext = spot.createRecvContext()) {
                     try (Message raw = Message.fromBytes(
                         "spot-raw-1".getBytes(StandardCharsets.UTF_8))) {
-                        spot.publishMove(topic, new Message[]{raw},
+                        spot.publishMove(topic, new Message[] {raw},
                             SendFlag.NONE);
                     }
                     Spot.SpotRawMessage raw1 = TestSupport.waitFor(
@@ -225,7 +231,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                     try (Message raw = Message.fromBytes(
                         "spot-raw-2".getBytes(StandardCharsets.UTF_8))) {
-                        spot.publishMove(topic, new Message[]{raw},
+                        spot.publishMove(topic, new Message[] {raw},
                             SendFlag.NONE);
                     }
                     Spot.SpotRawMessage raw2 = TestSupport.waitFor(
@@ -237,7 +243,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                     try (Message raw = Message.fromBytes(
                         "spot-borrowed-1".getBytes(StandardCharsets.UTF_8))) {
-                        spot.publishMove(topic, new Message[]{raw},
+                        spot.publishMove(topic, new Message[] {raw},
                             SendFlag.NONE);
                     }
                     Spot.SpotRawBorrowed borrowed1 = TestSupport.waitFor(
@@ -249,7 +255,7 @@ public class TestDiscoveryGatewaySpotPortedTest {
 
                     try (Message raw = Message.fromBytes(
                         "spot-borrowed-2".getBytes(StandardCharsets.UTF_8))) {
-                        spot.publishMove(topic, new Message[]{raw},
+                        spot.publishMove(topic, new Message[] {raw},
                             SendFlag.NONE);
                     }
                     Spot.SpotRawBorrowed borrowed2 = TestSupport.waitFor(
@@ -261,6 +267,9 @@ public class TestDiscoveryGatewaySpotPortedTest {
                     assertEquals("spot-borrowed-2", new String(
                         borrowed2.parts()[0].data(), StandardCharsets.UTF_8));
                 }
+
+                peerNode.disconnectPeerPub(spotEp);
+                node.unregister("spot");
             }
         }
     }
@@ -268,12 +277,11 @@ public class TestDiscoveryGatewaySpotPortedTest {
     private static ProviderFrame recvProviderFrame(Socket providerRouter) {
         byte[] rid = TestSupport.recvWithTimeout(providerRouter, 256,
             TestSupport.DEFAULT_TIMEOUT_MS);
-        byte[] payload = new byte[0];
-        for (int i = 0; i < 4; i++) {
+        byte[] payload = TestSupport.recvWithTimeout(providerRouter, 256,
+            TestSupport.DEFAULT_TIMEOUT_MS);
+        while (providerRouter.getSockOptInt(SocketOption.RCVMORE) != 0) {
             payload = TestSupport.recvWithTimeout(providerRouter, 256,
                 TestSupport.DEFAULT_TIMEOUT_MS);
-            if (payload.length > 0)
-                break;
         }
         return new ProviderFrame(rid, payload);
     }

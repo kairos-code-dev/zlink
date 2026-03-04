@@ -1,0 +1,24 @@
+## PATTERN: STREAM (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     13.10 Kmsg/s |      0.8 MB/s |     35.27 us |  0.0 |    8.4 |
+
+===============================================================================
+
+## PATTERN: STREAM_CALLBACK (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     13.37 Kmsg/s |      0.9 MB/s |     31.85 us |  0.0 |    8.4 |
+
+===============================================================================
+
+## PATTERN: STREAM_LEN32BE (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |     13.25 Kmsg/s |      0.8 MB/s |     38.26 us |  0.0 |    8.4 |

@@ -4,6 +4,7 @@
 
 #include "../context.hpp"
 #include "../types.hpp"
+#include <cerrno>
 #include <type_traits>
 
 namespace zlink
@@ -24,18 +25,23 @@ class discovery_t
      */
     discovery_t (context_t &ctx_, service_type service_type_)
         : _disc (zlink_discovery_new_typed (
-            ctx_.handle (), static_cast<uint16_t> (service_type_)))
+            ctx_.handle (), static_cast<uint16_t> (service_type_))),
+          _last_error (0)
     {
+        if (!_disc)
+            _last_error = errno != 0 ? errno : EFAULT;
     }
 
     /**
      * @brief Destroy discovery handle.
      */
-    ~discovery_t () { destroy (); }
+    ~discovery_t () { (void) destroy (); }
 
-    discovery_t (discovery_t &&other) noexcept : _disc (other._disc)
+    discovery_t (discovery_t &&other) noexcept
+        : _disc (other._disc), _last_error (other._last_error)
     {
         other._disc = NULL;
+        other._last_error = 0;
     }
 
     discovery_t &operator= (discovery_t &&other) noexcept
@@ -43,9 +49,11 @@ class discovery_t
         if (this == &other)
             return *this;
 
-        destroy ();
+        (void) destroy ();
         _disc = other._disc;
+        _last_error = other._last_error;
         other._disc = NULL;
+        other._last_error = 0;
         return *this;
     }
 
@@ -53,11 +61,23 @@ class discovery_t
     discovery_t &operator= (const discovery_t &) = delete;
 
     /**
+     * @brief Check whether discovery handle was created.
+     * @return `true` when handle is valid.
+     */
+    bool valid () const noexcept { return _disc != NULL; }
+
+    /**
+     * @brief Return constructor-time initialization error.
+     * @return Error number, or 0 when initialized successfully.
+     */
+    int last_error () const noexcept { return _last_error; }
+
+    /**
      * @brief Connect to registry PUB endpoint.
      * @param pub_ Registry PUB endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_registry (const std::string &pub_)
+    ZLINK_CPP_NODISCARD int connect_registry (const std::string &pub_)
     {
         return zlink_discovery_connect_registry (_disc, pub_.c_str ());
     }
@@ -67,7 +87,7 @@ class discovery_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int subscribe (const std::string &service_)
+    ZLINK_CPP_NODISCARD int subscribe (const std::string &service_)
     {
         return zlink_discovery_subscribe (_disc, service_.c_str ());
     }
@@ -77,7 +97,7 @@ class discovery_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int unsubscribe (const std::string &service_)
+    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &service_)
     {
         return zlink_discovery_unsubscribe (_disc, service_.c_str ());
     }
@@ -87,7 +107,7 @@ class discovery_t
      * @param service_ Service name.
      * @return Receiver count, or -1 on failure.
      */
-    int receiver_count (const std::string &service_)
+    ZLINK_CPP_NODISCARD int receiver_count (const std::string &service_)
     {
         return zlink_discovery_receiver_count (_disc, service_.c_str ());
     }
@@ -97,7 +117,7 @@ class discovery_t
      * @param service_ Service name.
      * @return 1 when available, 0 when unavailable, -1 on failure.
      */
-    int service_available (const std::string &service_)
+    ZLINK_CPP_NODISCARD int service_available (const std::string &service_)
     {
         return zlink_discovery_service_available (_disc, service_.c_str ());
     }
@@ -110,10 +130,11 @@ class discovery_t
      * @param len_ Buffer length in bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (discovery_socket_role role_,
-                     socket_option option_,
-                     const void *value_,
-                     size_t len_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (discovery_socket_role role_,
+                 socket_option option_,
+                 const void *value_,
+                 size_t len_)
     {
         return zlink_discovery_setsockopt (
           _disc, static_cast<int> (role_), static_cast<int> (option_), value_, len_);
@@ -127,6 +148,7 @@ class discovery_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set_sockopt (discovery_socket_role role_,
                  socket_option_key_t<T> key_,
@@ -142,9 +164,10 @@ class discovery_t
      * @param value_ Option value bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (discovery_socket_role role_,
-                     socket_option_key_t<std::string> key_,
-                     const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (discovery_socket_role role_,
+                 socket_option_key_t<std::string> key_,
+                 const std::string &value_)
     {
         return set_sockopt (role_, key_.option, value_.data (), value_.size ());
     }
@@ -156,9 +179,10 @@ class discovery_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int get_receivers (const std::string &service_,
-                       zlink_receiver_info_t *providers_,
-                       size_t *count_)
+    ZLINK_CPP_NODISCARD int
+    get_receivers (const std::string &service_,
+                   zlink_receiver_info_t *providers_,
+                   size_t *count_)
     {
         return zlink_discovery_get_receivers (
           _disc, service_.c_str (), providers_, count_);
@@ -168,7 +192,7 @@ class discovery_t
      * @brief Explicitly destroy discovery handle.
      * @return 0 on success, -1 on failure.
      */
-    int destroy ()
+    ZLINK_CPP_NODISCARD int destroy ()
     {
         if (!_disc)
             return 0;
@@ -186,6 +210,7 @@ class discovery_t
 
   private:
     void *_disc;
+    int _last_error;
 };
 
 } // namespace service

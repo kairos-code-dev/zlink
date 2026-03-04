@@ -28,6 +28,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * High-level Gateway service client.
+ *
+ * This type is thread-affine. Use a single thread per instance, or provide
+ * external synchronization for every call, including close().
+ */
 public final class Gateway implements AutoCloseable {
     private MemorySegment handle;
     private static final long MSG_SIZE = NativeLayouts.MSG_LAYOUT.byteSize();
@@ -522,10 +528,6 @@ public final class Gateway implements AutoCloseable {
         return new GatewayMessage(serviceName, parts[0]);
     }
 
-    public GatewayMessages recvMany(ReceiveFlag flags) {
-        return recvMessages(flags);
-    }
-
     public GatewayMessages recvMessages(ReceiveFlag flags) {
         RecvContext context = recvScratch.get();
         int rc = Native.gatewayRecv(handle, context.partsPtr(), context.partCount(),
@@ -540,39 +542,9 @@ public final class Gateway implements AutoCloseable {
         return new GatewayMessages(serviceName, parts);
     }
 
-    private RecvContext createRecvContext() {
-        return new RecvContext();
-    }
-
-    private GatewayRawMessage recvRaw(ReceiveFlag flags, RecvContext context) {
-        Objects.requireNonNull(context, "context");
-        context.ensureOpen();
-        int serviceLen = recvRawIntoContext(flags, context);
-        MemorySegment serviceRaw = context.serviceName().asSlice(0, serviceLen);
-        return new GatewayRawMessage(serviceRaw, context.reusableParts());
-    }
-
-    private GatewayRawBorrowed recvRawBorrowed(ReceiveFlag flags,
-                                              RecvContext context) {
-        Objects.requireNonNull(context, "context");
-        context.ensureOpen();
-        recvRawIntoContext(flags, context);
-        GatewayRawBorrowed out = context.borrowedRaw();
-        out.update(context.serviceName(), context.serviceNameLength(),
-            context.reusableParts());
-        return out;
-    }
-
     public void setLoadBalancing(String serviceName, GatewayLbStrategy strategy) {
         int rc = Native.gatewaySetLbStrategy(handle, serviceNameCString(serviceName),
             strategy.getValue());
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_gateway_set_lb_strategy");
-    }
-
-    private void setLoadBalancing(PreparedService service, GatewayLbStrategy strategy) {
-        Objects.requireNonNull(service, "service");
-        int rc = Native.gatewaySetLbStrategy(handle, service.cString(), strategy.getValue());
         if (rc != 0)
             throw ZlinkException.fromLastError("zlink_gateway_set_lb_strategy");
     }
@@ -588,14 +560,6 @@ public final class Gateway implements AutoCloseable {
 
     public int connectionCount(String serviceName) {
         int rc = Native.gatewayConnectionCount(handle, serviceNameCString(serviceName));
-        if (rc < 0)
-            throw ZlinkException.fromLastError("zlink_gateway_connection_count");
-        return rc;
-    }
-
-    private int connectionCount(PreparedService service) {
-        Objects.requireNonNull(service, "service");
-        int rc = Native.gatewayConnectionCount(handle, service.cString());
         if (rc < 0)
             throw ZlinkException.fromLastError("zlink_gateway_connection_count");
         return rc;
@@ -640,14 +604,6 @@ public final class Gateway implements AutoCloseable {
             }
             return out;
         }
-    }
-
-    private PreparedService prepareService(String serviceName) {
-        return new PreparedService(serviceName);
-    }
-
-    private SendContext createSendContext() {
-        return new SendContext();
     }
 
     public void setSockOpt(SocketOption option, byte[] value) {
@@ -735,44 +691,6 @@ public final class Gateway implements AutoCloseable {
         @Override
         public void close() {
             message.close();
-        }
-    }
-
-    private record GatewayRawMessage(MemorySegment serviceName, Message[] parts) {}
-
-    private static final class GatewayRawBorrowed {
-        private MemorySegment serviceNameBuffer = MemorySegment.NULL;
-        private int serviceNameLength = 0;
-        private Message[] parts = new Message[0];
-
-        private GatewayRawBorrowed() {
-        }
-
-        public MemorySegment serviceName() {
-            if (serviceNameBuffer.address() == 0 || serviceNameLength <= 0)
-                return MemorySegment.NULL;
-            return serviceNameBuffer.asSlice(0, serviceNameLength);
-        }
-
-        public MemorySegment serviceNameBuffer() {
-            return serviceNameBuffer;
-        }
-
-        public int serviceNameLength() {
-            return serviceNameLength;
-        }
-
-        public Message[] parts() {
-            return parts;
-        }
-
-        void update(MemorySegment serviceNameBuffer,
-                    int serviceNameLength,
-                    Message[] parts) {
-            this.serviceNameBuffer = serviceNameBuffer == null
-                ? MemorySegment.NULL : serviceNameBuffer;
-            this.serviceNameLength = Math.max(serviceNameLength, 0);
-            this.parts = parts == null ? new Message[0] : parts;
         }
     }
 
@@ -898,18 +816,12 @@ public final class Gateway implements AutoCloseable {
         private final MemorySegment partsPtr;
         private final MemorySegment partCount;
         private final MemorySegment serviceName;
-        private int serviceNameLength;
-        private Message[] reusableParts;
-        private final GatewayRawBorrowed borrowedRaw;
 
         RecvContext() {
             this.arena = Arena.ofShared();
             this.partsPtr = arena.allocate(ValueLayout.ADDRESS);
             this.partCount = arena.allocate(ValueLayout.JAVA_LONG);
             this.serviceName = arena.allocate(SERVICE_NAME_CAPACITY);
-            this.serviceNameLength = 0;
-            this.reusableParts = new Message[0];
-            this.borrowedRaw = new GatewayRawBorrowed();
         }
 
         void ensureOpen() {
@@ -932,37 +844,8 @@ public final class Gateway implements AutoCloseable {
             return serviceName;
         }
 
-        int serviceNameLength() {
-            ensureOpen();
-            return serviceNameLength;
-        }
-
-        Message[] reusableParts() {
-            ensureOpen();
-            return reusableParts;
-        }
-
-        void setServiceNameLength(int length) {
-            ensureOpen();
-            serviceNameLength = Math.max(length, 0);
-        }
-
-        void setReusableParts(Message[] parts) {
-            ensureOpen();
-            reusableParts = parts == null ? new Message[0] : parts;
-        }
-
-        GatewayRawBorrowed borrowedRaw() {
-            ensureOpen();
-            return borrowedRaw;
-        }
-
         @Override
         public void close() {
-            Message.closeAll(reusableParts);
-            reusableParts = new Message[0];
-            serviceNameLength = 0;
-            borrowedRaw.update(MemorySegment.NULL, 0, reusableParts);
             if (arena != null && arena.scope().isAlive())
                 arena.close();
             arena = null;
@@ -1169,26 +1052,6 @@ public final class Gateway implements AutoCloseable {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
             NativeMsg.msgClose(msg);
         }
-    }
-
-    private int recvRawIntoContext(ReceiveFlag flags,
-                                   RecvContext context) {
-        int rc = Native.gatewayRecv(handle,
-            context.partsPtr(),
-            context.partCount(),
-            flags.getValue(),
-            context.serviceName());
-        if (rc != 0)
-            throw ZlinkException.fromLastError("zlink_gateway_recv");
-        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
-        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
-        Message[] reusable = Message.fromMsgVector(partsAddr, partCount,
-            context.reusableParts());
-        context.setReusableParts(reusable);
-        int serviceLen = NativeHelpers.cStringLength(context.serviceName(),
-            SERVICE_NAME_CAPACITY);
-        context.setServiceNameLength(serviceLen);
-        return serviceLen;
     }
 
     private MemorySegment serviceNameCString(String serviceName) {

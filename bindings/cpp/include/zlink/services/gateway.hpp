@@ -161,10 +161,10 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      */
     ZLINK_CPP_NODISCARD int
-    send_bytes (const std::string &service_,
-                const void *data_,
-                size_t size_,
-                send_flag flags_ = send_flag::none)
+    send (const std::string &service_,
+          const void *data_,
+          size_t size_,
+          send_flag flags_ = send_flag::none)
     {
         return zlink_gateway_send_bytes (
           _gw, service_.c_str (), data_, size_, static_cast<int> (flags_));
@@ -228,7 +228,7 @@ class gateway_t
         }
 
         zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
+        if (routing_id_from (routing_id_, &rid) != 0)
             return -1;
 
         _send_parts_scratch.resize (parts_.size ());
@@ -261,14 +261,14 @@ class gateway_t
      * @return 0 on success, -1 on failure.
      */
     ZLINK_CPP_NODISCARD int
-    send_rid_bytes (const std::string &service_,
-                    const std::string &routing_id_,
-                    const void *data_,
-                    size_t size_,
-                    send_flag flags_ = send_flag::none)
+    send_rid (const std::string &service_,
+              const std::string &routing_id_,
+              const void *data_,
+              size_t size_,
+              send_flag flags_ = send_flag::none)
     {
         zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
+        if (routing_id_from (routing_id_, &rid) != 0)
             return -1;
         return zlink_gateway_send_rid_bytes (
           _gw, service_.c_str (), &rid, data_, size_, static_cast<int> (flags_));
@@ -301,7 +301,7 @@ class gateway_t
         }
 
         zlink_routing_id_t rid;
-        if (routing_id_from_string (routing_id_, &rid) != 0)
+        if (routing_id_from (routing_id_, &rid) != 0)
             return -1;
 
         zlink_msg_t part;

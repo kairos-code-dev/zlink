@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.gateway;
+
 
 public enum GatewayLbStrategy {
     ROUND_ROBIN(0), WEIGHTED(1);

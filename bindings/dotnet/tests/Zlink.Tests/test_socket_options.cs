@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using Xunit;
 
@@ -69,15 +68,6 @@ public sealed class test_socket_options
     }
 
     [Fact]
-    public void socket_option_aliases_share_native_ids()
-    {
-        Assert.Equal(SocketOptions.RoutingId.Option,
-            SocketOptions.RoutingIdBytes.Option);
-        Assert.Equal(SocketOptions.ConnectRoutingId.Option,
-            SocketOptions.ConnectRoutingIdBytes.Option);
-    }
-
-    [Fact]
     public void socket_options_runtime_int_and_long_roundtrip()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -93,10 +83,8 @@ public sealed class test_socket_options
         stream.SetOption(SocketOptions.MaxMsgSize, 1024L);
         Assert.Equal(1024L, stream.GetOption(SocketOptions.MaxMsgSize));
 
-        dealer.SetOption(SocketOptions.RoutingIdBytes, "RID-OPT"u8.ToArray());
-        byte[] rid = dealer.GetOption(SocketOptions.RoutingIdBytes);
-        Assert.True(rid.Length >= 7);
-        Assert.Equal("RID-OPT"u8.ToArray(), rid.Take(7).ToArray());
+        dealer.SetOption(SocketOptions.RoutingId, "RID-OPT");
+        Assert.Equal("RID-OPT", dealer.GetOption(SocketOptions.RoutingId));
     }
 
     [Fact]

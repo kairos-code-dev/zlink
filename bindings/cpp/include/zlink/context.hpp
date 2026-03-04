@@ -74,7 +74,7 @@ class context_t
      * @brief Request asynchronous context shutdown.
      * @return 0 on success, -1 on failure.
      */
-    int shutdown ()
+    ZLINK_CPP_NODISCARD int shutdown ()
     {
         return _ctx ? zlink_ctx_shutdown (_ctx) : -1;
     }
@@ -85,7 +85,7 @@ class context_t
      * @param value_ Option value.
      * @return 0 on success, -1 on failure.
      */
-    int set (context_option option_, int value_)
+    ZLINK_CPP_NODISCARD int set (context_option option_, int value_)
     {
         return _ctx ? zlink_ctx_set (_ctx, static_cast<int> (option_), value_)
                     : -1;
@@ -97,7 +97,7 @@ class context_t
      * @param value_ Output pointer for the value.
      * @return 0 on success, -1 on failure.
      */
-    int get (context_option option_, int *value_) const
+    ZLINK_CPP_NODISCARD int get (context_option option_, int *value_) const
     {
         if (!_ctx || !value_)
             return -1;
@@ -115,7 +115,7 @@ class context_t
      * @param value_ Output reference for the value.
      * @return 0 on success, -1 on failure.
      */
-    int get (context_option option_, int &value_) const
+    ZLINK_CPP_NODISCARD int get (context_option option_, int &value_) const
     {
         return get (option_, &value_);
     }

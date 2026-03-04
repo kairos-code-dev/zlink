@@ -8,6 +8,7 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public final class Poller {
     private static final long POLL_ITEM_SIZE = 24;
@@ -22,26 +23,76 @@ public final class Poller {
     private int nativeItemsCapacity = 0;
 
     public void add(Socket socket, int events) {
-        items.add(new PollItem(socket, 0, events));
+        add(socket, events, null);
+    }
+
+    public void add(Socket socket, int events, Object tag) {
+        Objects.requireNonNull(socket, "socket");
+        items.add(new PollItem(socket, 0, events, tag));
     }
 
     public void add(Socket socket, PollEventType... events) {
-        items.add(new PollItem(socket, 0, PollEventType.combine(events)));
+        add(socket, PollEventType.combine(events), null);
+    }
+
+    public void add(Socket socket, Object tag, PollEventType... events) {
+        add(socket, PollEventType.combine(events), tag);
     }
 
     public void addFd(int fd, int events) {
-        items.add(new PollItem(null, fd, events));
+        addFd(fd, events, null);
+    }
+
+    public void addFd(int fd, int events, Object tag) {
+        items.add(new PollItem(null, fd, events, tag));
     }
 
     public void addFd(int fd, PollEventType... events) {
-        items.add(new PollItem(null, fd, PollEventType.combine(events)));
+        addFd(fd, PollEventType.combine(events), null);
+    }
+
+    public void addFd(int fd, Object tag, PollEventType... events) {
+        addFd(fd, PollEventType.combine(events), tag);
+    }
+
+    public boolean remove(Socket socket) {
+        Objects.requireNonNull(socket, "socket");
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).socket == socket) {
+                items.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean removeFd(int fd) {
+        for (int i = 0; i < items.size(); i++) {
+            PollItem item = items.get(i);
+            if (item.socket == null && item.fd == fd) {
+                items.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void clear() {
+        items.clear();
+    }
+
+    public int size() {
+        return items.size();
     }
 
     public int pollCount(int timeoutMs) {
         if (items.isEmpty())
             return 0;
         MemorySegment arr = prepareNativeItems();
-        return Native.pollRaw(arr, items.size(), timeoutMs);
+        int rc = Native.pollRaw(arr, items.size(), timeoutMs);
+        if (rc < 0)
+            throw ZlinkException.fromLastError("zlink_poll");
+        return rc;
     }
 
     public boolean pollAny(int timeoutMs) {
@@ -54,6 +105,8 @@ public final class Poller {
 
         MemorySegment arr = prepareNativeItems();
         int readyCount = Native.pollRaw(arr, items.size(), timeoutMs);
+        if (readyCount < 0)
+            throw ZlinkException.fromLastError("zlink_poll");
         if (readyCount == 0)
             return List.of();
 
@@ -61,8 +114,11 @@ public final class Poller {
         for (int i = 0; i < items.size(); i++) {
             long base = (long) i * POLL_ITEM_SIZE;
             short revents = arr.get(ValueLayout.JAVA_SHORT, base + POLL_REVENTS_OFFSET);
-            if (revents != 0)
-                out.add(new PollEvent(items.get(i).socket, revents));
+            if (revents != 0) {
+                PollItem item = items.get(i);
+                out.add(new PollEvent(item.socket, revents, item.fd, item.tag,
+                    item.events));
+            }
         }
         return out;
     }
@@ -97,13 +153,20 @@ public final class Poller {
         public final Socket socket;
         public final int fd;
         public final int events;
+        public final Object tag;
 
-        PollItem(Socket socket, int fd, int events) {
+        PollItem(Socket socket, int fd, int events, Object tag) {
             this.socket = socket;
             this.fd = fd;
             this.events = events;
+            this.tag = tag;
         }
     }
 
-    public record PollEvent(Socket socket, int revents) {}
+    public record PollEvent(Socket socket, int revents, int fd, Object tag,
+                            int events) {
+        public PollEvent(Socket socket, int revents) {
+            this(socket, revents, 0, null, 0);
+        }
+    }
 }

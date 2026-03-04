@@ -1,6 +1,11 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import dev.kairoscode.zlink.service.discovery.*;
+import dev.kairoscode.zlink.service.gateway.*;
+import dev.kairoscode.zlink.service.receiver.*;
+import dev.kairoscode.zlink.service.registry.*;
+import dev.kairoscode.zlink.service.spot.*;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
@@ -61,7 +66,7 @@ final class PerfMulti {
         long deadlineNs = System.nanoTime() + Math.max(1, timeoutMs) * 1_000_000L;
         while (System.nanoTime() < deadlineNs) {
             try {
-                MonitorEvent evt = monitor.recv(ReceiveFlag.DONTWAIT.getValue());
+                MonitorEvent evt = monitor.recv(ReceiveFlag.DONTWAIT);
                 if (isMonitorReady(evt.event(), acceptFallback)) {
                     return true;
                 }
@@ -76,18 +81,27 @@ final class PerfMulti {
         return payloadLen == 1 && (payload[0] == 0x00 || payload[0] == 0x01);
     }
 
-    private static boolean isStreamEventPayload(ByteSpan payload) {
-        return payload.length() == 1
-          && (payload.segment().get(ValueLayout.JAVA_BYTE, 0) == 0x00
-          || payload.segment().get(ValueLayout.JAVA_BYTE, 0) == 0x01);
+    private static boolean isStreamEventPayload(Message payload) {
+        int size = payload.size();
+        if (size != 1)
+            return false;
+        MemorySegment data = payload.dataSegment();
+        if (data.address() == 0)
+            return false;
+        byte b = data.get(ValueLayout.JAVA_BYTE, 0);
+        return b == 0x00 || b == 0x01;
     }
 
-    private static boolean equalsStop(ByteSpan payload) {
-        if (payload.length() != STOP_TOKEN.length) {
+    private static boolean equalsStop(Message payload) {
+        int size = payload.size();
+        if (size != STOP_TOKEN.length) {
             return false;
         }
+        MemorySegment data = payload.dataSegment();
+        if (data.address() == 0)
+            return false;
         for (int i = 0; i < STOP_TOKEN.length; i++) {
-            if (payload.segment().get(ValueLayout.JAVA_BYTE, i) != STOP_TOKEN[i]) {
+            if (data.get(ValueLayout.JAVA_BYTE, i) != STOP_TOKEN[i]) {
                 return false;
             }
         }
@@ -99,13 +113,16 @@ final class PerfMulti {
         private int start = 0;
         private int end = 0;
 
-        boolean consume(ByteSpan payload) {
-            int len = payload.length();
+        boolean consume(Message payload) {
+            int len = payload.size();
             if (len <= 0) {
                 return false;
             }
+            MemorySegment data = payload.dataSegment();
+            if (data.address() == 0)
+                return false;
             ensureCapacity(len);
-            MemorySegment.copy(payload.segment(), 0, MemorySegment.ofArray(buffer), end, len);
+            MemorySegment.copy(data, 0, MemorySegment.ofArray(buffer), end, len);
             end += len;
 
             boolean foundStop = false;
@@ -189,34 +206,58 @@ final class PerfMulti {
         AtomicBoolean stopRequested = new AtomicBoolean(false);
         AtomicBoolean callbackFailed = new AtomicBoolean(false);
         Len32StopTokenParser stopParser = new Len32StopTokenParser();
-        StreamDispatchMode mode = isStreamLen32bePattern(pattern)
-          ? StreamDispatchMode.LEN32BE
-          : StreamDispatchMode.NONE;
-
-        server.attachStream((rid, payload) -> {
-            if (payload.length() <= 0 || isStreamEventPayload(payload)) {
-                return 0;
-            }
-            if (equalsStop(payload)) {
-                stopRequested.set(true);
-                return 0;
-            }
-            try {
-                server.streamSend(rid, payload);
-            } catch (Exception ex) {
-                System.err.println("PerfMulti stream callback send failed: " + ex.getMessage());
-                callbackFailed.set(true);
-                stopRequested.set(true);
-            }
-            if (isStreamLen32bePattern(pattern)) {
-                if (equalsStop(payload)) {
-                    stopRequested.set(true);
+        if (isStreamLen32bePattern(pattern)) {
+            server.attachStreamLen32be((rid, packets) -> {
+                for (Message payload : packets) {
+                    if (payload == null)
+                        continue;
+                    try (payload) {
+                        if (payload.size() <= 0 || isStreamEventPayload(payload))
+                            continue;
+                        if (equalsStop(payload)) {
+                            stopRequested.set(true);
+                            continue;
+                        }
+                        try {
+                            server.streamSend(rid, payload, SendFlag.NONE);
+                        } catch (Exception ex) {
+                            System.err.println(
+                              "PerfMulti stream callback send failed: "
+                                + ex.getMessage());
+                            callbackFailed.set(true);
+                            stopRequested.set(true);
+                            return 0;
+                        }
+                    }
                 }
-            } else if (stopParser.consume(payload)) {
-                stopRequested.set(true);
-            }
-            return 0;
-        }, mode);
+                return 0;
+            });
+        } else {
+            server.attachStreamRaw((rid, payload) -> {
+                try (payload) {
+                    if (payload.size() <= 0 || isStreamEventPayload(payload))
+                        return 0;
+                    if (equalsStop(payload)) {
+                        stopRequested.set(true);
+                        return 0;
+                    }
+                    boolean stop = stopParser.consume(payload);
+                    try {
+                        server.streamSend(rid, payload, SendFlag.NONE);
+                    } catch (Exception ex) {
+                        System.err.println(
+                          "PerfMulti stream callback send failed: "
+                            + ex.getMessage());
+                        callbackFailed.set(true);
+                        stopRequested.set(true);
+                        return 0;
+                    }
+                    if (stop)
+                        stopRequested.set(true);
+                    return 0;
+                }
+            });
+        }
 
         try {
             // Advertise READY only after callback dispatch is fully attached

@@ -1,6 +1,11 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import dev.kairoscode.zlink.service.discovery.*;
+import dev.kairoscode.zlink.service.gateway.*;
+import dev.kairoscode.zlink.service.receiver.*;
+import dev.kairoscode.zlink.service.registry.*;
+import dev.kairoscode.zlink.service.spot.*;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 
@@ -182,7 +187,7 @@ final class PerfGateway {
                                     String service,
                                     MemorySegment payload) {
         try (Message msg = Message.fromNativeData(payload)) {
-            gateway.send(service, msg, SendFlag.NONE);
+            gateway.sendTo(service, msg, SendFlag.NONE);
         }
     }
 

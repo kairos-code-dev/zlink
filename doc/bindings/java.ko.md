@@ -64,7 +64,7 @@ try (var ctx = new Context();
 - Gateway/SPOT 저복사 경로
   - `Gateway.sendMove(String service, Message[] parts, SendFlag flags)`
   - `Gateway.prepareService(String service)` + `send/sendMove(PreparedService, ...)`
-  - `Gateway.sendToRoutingId(..., String routingId, ...)` (Java 친화 routing id 경로)
+  - `Gateway.sendTo(..., String routingId, ...)` (Java 친화 routing id 경로)
   - `Gateway.createSendContext()` + `send/sendMove(PreparedService, ..., SendContext)` (send vector 재사용)
   - `Gateway.send/sendMove(PreparedService, Message part, SendFlag, SendContext)` (단일 part fast path)
   - `Gateway.recvMessages(ReceiveFlag flags)` (`Gateway.GatewayMessages`, `AutoCloseable`)

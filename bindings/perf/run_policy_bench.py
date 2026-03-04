@@ -127,10 +127,124 @@ SINGLE_TO_MULTI_STREAM_PATTERN = {
     "STREAM_LEN32BE": "MULTI_STREAM_LEN32BE",
 }
 
-STREAM_CLIENT_DIR = BINDINGS_DIR / "bench" / "stream_client"
+STREAM_CLIENT_DIR = CORE_PERF_DIR / "common" / "streamclient"
 STREAM_CLIENT_BUILD_SCRIPT = STREAM_CLIENT_DIR / "build.sh"
 STREAM_CLIENT_BIN = STREAM_CLIENT_DIR / "build" / (
-    "bench_stream_client.exe" if IS_WINDOWS else "bench_stream_client"
+    "perf_stream_client.exe" if IS_WINDOWS else "perf_stream_client"
+)
+
+CPP_SINGLE_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
+    "PAIR": ("perf_pair.cpp", "run_pattern_pair", "perf_pair"),
+    "PUBSUB": ("perf_pubsub.cpp", "run_pattern_pubsub", "perf_pubsub"),
+    "DEALER_DEALER": (
+        "perf_dealer_dealer.cpp",
+        "run_pattern_dealer_dealer",
+        "perf_dealer_dealer",
+    ),
+    "DEALER_ROUTER": (
+        "perf_dealer_router.cpp",
+        "run_pattern_dealer_router",
+        "perf_dealer_router",
+    ),
+    "ROUTER_ROUTER": (
+        "perf_router_router.cpp",
+        "run_pattern_router_router",
+        "perf_router_router",
+    ),
+    "ROUTER_ROUTER_POLL": (
+        "perf_router_router_poll.cpp",
+        "run_pattern_router_router_poll",
+        "perf_router_router_poll",
+    ),
+    "GATEWAY": ("perf_gateway.cpp", "run_pattern_gateway", "perf_gateway"),
+    "SPOT": ("perf_spot.cpp", "run_pattern_spot", "perf_spot"),
+}
+
+CPP_MULTI_SERVER_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
+    "MULTI_DEALER_DEALER": (
+        "perf_multi_dealer_dealer_server.cpp",
+        "perf_multi_dealer_dealer_server",
+        "perf_multi_dealer_dealer_server",
+    ),
+    "MULTI_DEALER_ROUTER": (
+        "perf_multi_dealer_router_server.cpp",
+        "perf_multi_dealer_router_server",
+        "perf_multi_dealer_router_server",
+    ),
+    "MULTI_ROUTER_ROUTER": (
+        "perf_multi_router_router_server.cpp",
+        "perf_multi_router_router_server",
+        "perf_multi_router_router_server",
+    ),
+    "MULTI_PUBSUB": (
+        "perf_multi_pubsub_server.cpp",
+        "perf_multi_pubsub_server",
+        "perf_multi_pubsub_server",
+    ),
+    "MULTI_GATEWAY": (
+        "perf_multi_gateway_server.cpp",
+        "perf_multi_gateway_server",
+        "perf_multi_gateway_server",
+    ),
+    "MULTI_SPOT": (
+        "perf_multi_spot_server.cpp",
+        "perf_multi_spot_server",
+        "perf_multi_spot_server",
+    ),
+    "MULTI_STREAM": (
+        "perf_multi_stream_server.cpp",
+        "perf_multi_stream_server",
+        "perf_multi_stream_server",
+    ),
+    "MULTI_STREAM_CALLBACK": (
+        "perf_multi_stream_callback_server.cpp",
+        "perf_multi_stream_callback_server",
+        "perf_multi_stream_callback_server",
+    ),
+    "MULTI_STREAM_LEN32BE": (
+        "perf_multi_stream_len32be_server.cpp",
+        "perf_multi_stream_len32be_server",
+        "perf_multi_stream_len32be_server",
+    ),
+}
+
+CPP_MULTI_CLIENT_PATTERN_SPECS: Dict[str, Tuple[str, str, str]] = {
+    "MULTI_DEALER_DEALER": (
+        "perf_multi_dealer_dealer_client.cpp",
+        "perf_multi_dealer_dealer_client",
+        "perf_multi_dealer_dealer_client",
+    ),
+    "MULTI_DEALER_ROUTER": (
+        "perf_multi_dealer_router_client.cpp",
+        "perf_multi_dealer_router_client",
+        "perf_multi_dealer_router_client",
+    ),
+    "MULTI_ROUTER_ROUTER": (
+        "perf_multi_router_router_client.cpp",
+        "perf_multi_router_router_client",
+        "perf_multi_router_router_client",
+    ),
+    "MULTI_PUBSUB": (
+        "perf_multi_pubsub_client.cpp",
+        "perf_multi_pubsub_client",
+        "perf_multi_pubsub_client",
+    ),
+    "MULTI_GATEWAY": (
+        "perf_multi_gateway_client.cpp",
+        "perf_multi_gateway_client",
+        "perf_multi_gateway_client",
+    ),
+    "MULTI_SPOT": (
+        "perf_multi_spot_client.cpp",
+        "perf_multi_spot_client",
+        "perf_multi_spot_client",
+    ),
+}
+
+CPP_STREAM_SERVER_PATTERNS = (
+    "MULTI_STREAM",
+    "MULTI_STREAM_CALLBACK",
+    "MULTI_STREAM_LEN32BE",
 )
 
 DEFAULT_THRESHOLDS = {
@@ -467,6 +581,10 @@ def detect_zlink_version(lib_path: Path) -> Optional[str]:
         return None
 
 
+def cpp_binary_name(stem: str) -> str:
+    return f"{stem}.exe" if IS_WINDOWS else stem
+
+
 def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
     perf_dir = binding_perf_dir(cfg.binding)
 
@@ -477,15 +595,55 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
 
     artifact_exists = True
     if cfg.binding == "cpp":
+        def cpp_artifacts_fresh(
+            outputs: Sequence[Path], source_dirs: Sequence[Path]
+        ) -> bool:
+            if not outputs or any(not out.exists() for out in outputs):
+                return False
+
+            newest_source_mtime = 0.0
+            for src_dir in source_dirs:
+                if not src_dir.exists():
+                    continue
+                for src in src_dir.rglob("*"):
+                    if not src.is_file():
+                        continue
+                    if src.suffix not in {".cpp", ".hpp", ".h", ".ipp"}:
+                        continue
+                    newest_source_mtime = max(
+                        newest_source_mtime, src.stat().st_mtime
+                    )
+
+            oldest_output_mtime = min(out.stat().st_mtime for out in outputs)
+            return oldest_output_mtime >= newest_source_mtime
+
+        single_build_dir = perf_dir / "single" / "build"
+        multi_build_dir = perf_dir / "multi" / "build"
         if cfg.suite == "multi":
-            artifact = perf_dir / "multi" / "build" / (
-                "perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main"
-            )
+            expected_bins: List[Path] = []
+            for _, _, bin_stem in CPP_MULTI_SERVER_PATTERN_SPECS.values():
+                expected_bins.append(multi_build_dir / cpp_binary_name(bin_stem))
+            for _, _, bin_stem in CPP_MULTI_CLIENT_PATTERN_SPECS.values():
+                expected_bins.append(multi_build_dir / cpp_binary_name(bin_stem))
+            source_dirs = [
+                perf_dir / "multi" / "common",
+                perf_dir / "multi" / "current",
+            ]
         else:
-            artifact = perf_dir / "single" / "build" / (
-                "perf_main.exe" if IS_WINDOWS else "perf_main"
-            )
-        artifact_exists = artifact.exists()
+            expected_bins = []
+            for _, _, bin_stem in CPP_SINGLE_PATTERN_SPECS.values():
+                expected_bins.append(single_build_dir / cpp_binary_name(bin_stem))
+            # Single stream patterns use split multi stream servers.
+            for pattern in CPP_STREAM_SERVER_PATTERNS:
+                _, _, bin_stem = CPP_MULTI_SERVER_PATTERN_SPECS[pattern]
+                expected_bins.append(multi_build_dir / cpp_binary_name(bin_stem))
+            source_dirs = [
+                perf_dir / "single" / "common",
+                perf_dir / "single" / "current",
+                perf_dir / "multi" / "common",
+                perf_dir / "multi" / "current",
+            ]
+        artifact_exists = cpp_artifacts_fresh(expected_bins, source_dirs)
     elif cfg.binding == "dotnet":
         if cfg.suite == "multi":
             artifact = (
@@ -544,69 +702,87 @@ def build_binding_if_needed(cfg: SuiteConfig, logger: Tee) -> None:
     logger.print(f"  > Building binding runner for {cfg.binding}...")
 
     if cfg.binding == "cpp":
-        out = perf_dir / cfg.suite / "build"
-        out.mkdir(parents=True, exist_ok=True)
+        single_out = perf_dir / "single" / "build"
+        multi_out = perf_dir / "multi" / "build"
+        single_out.mkdir(parents=True, exist_ok=True)
+        multi_out.mkdir(parents=True, exist_ok=True)
         cpp_native = binding_native_dir("cpp")
+        cxx = os.environ.get("CXX") or "c++"
+
+        def compile_cpp(
+            *,
+            out_path: Path,
+            include_dirs: Sequence[Path],
+            sources: Sequence[Path],
+            defines: Optional[Sequence[str]] = None,
+        ) -> None:
+            cmd: List[str] = [cxx, "-O3", "-std=c++17", "-pthread"]
+            cmd.extend(f"-I{inc}" for inc in include_dirs)
+            if defines:
+                cmd.extend(f"-D{define}" for define in defines)
+            cmd.extend(str(src) for src in sources)
+            cmd.extend(
+                [
+                    f"-L{cpp_native}",
+                    "-lzlink",
+                    f"-Wl,-rpath,{cpp_native}",
+                    "-o",
+                    str(out_path),
+                ]
+            )
+            run_checked(cmd)
+
+        core_include = ROOT_DIR / "core" / "include"
+        binding_include = BINDINGS_DIR / "cpp" / "include"
+
+        single_common = perf_dir / "single" / "common"
+        single_current = perf_dir / "single" / "current"
+        single_common_sources = [
+            single_common / "perf_single_common.cpp",
+            single_common / "perf_single_runner.cpp",
+        ]
+        single_includes = [core_include, binding_include, single_common]
+
+        multi_common = perf_dir / "multi" / "common"
+        multi_current = perf_dir / "multi" / "current"
+        multi_server_runner = multi_common / "perf_multi_server_runner.cpp"
+        multi_client_runner = multi_common / "perf_multi_client_runner.cpp"
+        multi_includes = [core_include, binding_include, multi_common]
+
+        def build_cpp_single_patterns() -> None:
+            for src_name, run_fn, bin_stem in CPP_SINGLE_PATTERN_SPECS.values():
+                compile_cpp(
+                    out_path=single_out / cpp_binary_name(bin_stem),
+                    include_dirs=single_includes,
+                    sources=single_common_sources + [single_current / src_name],
+                    defines=[f"RUN_PATTERN_FN={run_fn}"],
+                )
+
+        def build_cpp_multi_servers(patterns: Sequence[str]) -> None:
+            for pattern in patterns:
+                src_name, run_fn, bin_stem = CPP_MULTI_SERVER_PATTERN_SPECS[pattern]
+                compile_cpp(
+                    out_path=multi_out / cpp_binary_name(bin_stem),
+                    include_dirs=multi_includes,
+                    sources=[multi_server_runner, multi_current / src_name],
+                    defines=[f"RUN_MULTI_SERVER_FN={run_fn}"],
+                )
+
+        def build_cpp_multi_clients() -> None:
+            for src_name, run_fn, bin_stem in CPP_MULTI_CLIENT_PATTERN_SPECS.values():
+                compile_cpp(
+                    out_path=multi_out / cpp_binary_name(bin_stem),
+                    include_dirs=multi_includes,
+                    sources=[multi_client_runner, multi_current / src_name],
+                    defines=[f"RUN_MULTI_CLIENT_FN={run_fn}"],
+                )
+
         if cfg.suite == "multi":
-            multi_sources = [
-                perf_dir / "multi" / "perf_multi_main.cpp",
-                perf_dir / "multi" / "perf_multi_dealer_dealer_server.cpp",
-                perf_dir / "multi" / "perf_multi_dealer_dealer_client.cpp",
-                perf_dir / "multi" / "perf_multi_dealer_router_server.cpp",
-                perf_dir / "multi" / "perf_multi_dealer_router_client.cpp",
-                perf_dir / "multi" / "perf_multi_router_router_server.cpp",
-                perf_dir / "multi" / "perf_multi_router_router_client.cpp",
-                perf_dir / "multi" / "perf_multi_pubsub_server.cpp",
-                perf_dir / "multi" / "perf_multi_pubsub_client.cpp",
-                perf_dir / "multi" / "perf_multi_gateway_server.cpp",
-                perf_dir / "multi" / "perf_multi_gateway_client.cpp",
-                perf_dir / "multi" / "perf_multi_spot_server.cpp",
-                perf_dir / "multi" / "perf_multi_spot_client.cpp",
-                perf_dir / "multi" / "perf_multi_stream_server.cpp",
-                perf_dir / "multi" / "perf_multi_stream_client.cpp",
-                perf_dir / "multi" / "perf_multi_stream_callback_server.cpp",
-                perf_dir / "multi" / "perf_multi_stream_callback_client.cpp",
-                perf_dir / "multi" / "perf_multi_stream_len32be_server.cpp",
-                perf_dir / "multi" / "perf_multi_stream_len32be_client.cpp",
-            ]
-            cmd = [
-                "c++",
-                "-O3",
-                "-std=c++17",
-                f"-I{ROOT_DIR / 'core' / 'include'}",
-                f"-I{BINDINGS_DIR / 'cpp' / 'include'}",
-                f"-L{cpp_native}",
-                "-lzlink",
-                f"-Wl,-rpath,{cpp_native}",
-                "-o",
-                str(out / ("perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main")),
-            ]
-            cmd[5:5] = [str(src) for src in multi_sources]
+            build_cpp_multi_servers(tuple(CPP_MULTI_SERVER_PATTERN_SPECS.keys()))
+            build_cpp_multi_clients()
         else:
-            cmd = [
-                "c++",
-                "-O3",
-                "-std=c++17",
-                f"-I{ROOT_DIR / 'core' / 'include'}",
-                f"-I{BINDINGS_DIR / 'cpp' / 'include'}",
-                str(perf_dir / "single" / "perf_main.cpp"),
-                str(perf_dir / "single" / "perf_pair.cpp"),
-                str(perf_dir / "single" / "perf_pubsub.cpp"),
-                str(perf_dir / "single" / "perf_dealer_dealer.cpp"),
-                str(perf_dir / "single" / "perf_dealer_router.cpp"),
-                str(perf_dir / "single" / "perf_router_router.cpp"),
-                str(perf_dir / "single" / "perf_router_router_poll.cpp"),
-                str(perf_dir / "single" / "perf_stream.cpp"),
-                str(perf_dir / "single" / "perf_stream_callback.cpp"),
-                str(perf_dir / "single" / "perf_gateway.cpp"),
-                str(perf_dir / "single" / "perf_spot.cpp"),
-                f"-L{cpp_native}",
-                "-lzlink",
-                f"-Wl,-rpath,{cpp_native}",
-                "-o",
-                str(out / ("perf_main.exe" if IS_WINDOWS else "perf_main")),
-            ]
-        run_checked(cmd)
+            build_cpp_single_patterns()
+            build_cpp_multi_servers(CPP_STREAM_SERVER_PATTERNS)
     elif cfg.binding == "dotnet":
         dotnet_project = perf_dir / "single" / "Zlink.BindingBench" / "Zlink.BindingBench.csproj"
         if cfg.suite == "multi":
@@ -686,9 +862,21 @@ def binding_cmd_prefix(cfg: SuiteConfig, requested_pattern: str) -> Tuple[List[s
         )
         cmd = [java, "-cp", cp, "dev.kairoscode.zlink.integration.bench.PerfMain", base_pattern]
     elif cfg.binding == "cpp":
-        bin_name = "perf_main.exe" if IS_WINDOWS else "perf_main"
-        runner = BINDINGS_DIR / "cpp" / "perf" / "single" / "build" / bin_name
-        cmd = [str(runner), base_pattern]
+        single_spec = CPP_SINGLE_PATTERN_SPECS.get(base_pattern)
+        if not single_spec:
+            raise RuntimeError(
+                f"single runner is not defined for cpp pattern={base_pattern}"
+            )
+        _, _, bin_stem = single_spec
+        runner = (
+            BINDINGS_DIR
+            / "cpp"
+            / "perf"
+            / "single"
+            / "build"
+            / cpp_binary_name(bin_stem)
+        )
+        cmd = [str(runner)]
     else:
         raise RuntimeError(f"unsupported binding: {cfg.binding}")
 
@@ -728,7 +916,7 @@ def binding_split_multi_script(binding: str, role: str, pattern: str) -> Optiona
 def supports_split_multi(binding: str) -> bool:
     if binding in {"cpp", "dotnet", "java"}:
         return True
-    probe_pattern = "MULTI_STREAM"
+    probe_pattern = "MULTI_DEALER_DEALER"
     return (
         binding_split_multi_script(binding, "server", probe_pattern) is not None
         and binding_split_multi_script(binding, "client", probe_pattern) is not None
@@ -768,22 +956,44 @@ def binding_multi_role_command(
             transport,
         ]
     elif cfg.binding == "cpp":
-        runner = BINDINGS_DIR / "cpp" / "perf" / "multi" / "build" / (
-            "perf_multi_main.exe" if IS_WINDOWS else "perf_multi_main"
-        )
+        pattern_key = pattern.strip().upper()
         if role == "server":
+            server_spec = CPP_MULTI_SERVER_PATTERN_SPECS.get(pattern_key)
+            if not server_spec:
+                raise RuntimeError(
+                    f"multi server runner is not defined for cpp pattern={pattern}"
+                )
+            _, _, bin_stem = server_spec
+            runner = (
+                BINDINGS_DIR
+                / "cpp"
+                / "perf"
+                / "multi"
+                / "build"
+                / cpp_binary_name(bin_stem)
+            )
             cmd = [
                 str(runner),
-                "--multi-server",
-                pattern,
                 transport,
                 str(size if size is not None else 64),
             ]
         else:
+            client_spec = CPP_MULTI_CLIENT_PATTERN_SPECS.get(pattern_key)
+            if not client_spec:
+                raise RuntimeError(
+                    f"multi client runner is not defined for cpp pattern={pattern}"
+                )
+            _, _, bin_stem = client_spec
+            runner = (
+                BINDINGS_DIR
+                / "cpp"
+                / "perf"
+                / "multi"
+                / "build"
+                / cpp_binary_name(bin_stem)
+            )
             cmd = [
                 str(runner),
-                "--multi-client",
-                pattern,
                 transport,
                 str(size if size is not None else 64),
             ]

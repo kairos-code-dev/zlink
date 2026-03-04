@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.spot;
 
+import dev.kairoscode.zlink.Message;
+import dev.kairoscode.zlink.ReceiveFlag;
+import dev.kairoscode.zlink.SendFlag;
+import dev.kairoscode.zlink.ZlinkException;
 import dev.kairoscode.zlink.internal.Native;
 import dev.kairoscode.zlink.internal.NativeHelpers;
 import dev.kairoscode.zlink.internal.NativeLayouts;
@@ -13,6 +17,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * High-level Spot pub/sub facade.
+ *
+ * This type is thread-affine. Use a single thread per instance, or provide
+ * external synchronization for every call, including close().
+ */
 public final class Spot implements AutoCloseable {
     private MemorySegment pubHandle;
     private MemorySegment subHandle;
@@ -28,13 +38,15 @@ public final class Spot implements AutoCloseable {
         TOPIC_SCRATCH_INITIAL_CAPACITY));
     private final ThreadLocal<Integer> topicScratchCapacity =
       ThreadLocal.withInitial(() -> TOPIC_SCRATCH_INITIAL_CAPACITY);
+    private final ThreadLocal<RecvContext> recvScratch =
+      ThreadLocal.withInitial(RecvContext::new);
 
     public Spot(SpotNode node) {
         this.pubHandle = Native.spotPubNew(node.handle());
         this.subHandle = Native.spotSubNew(node.handle());
         if (pubHandle == null || pubHandle.address() == 0 || subHandle == null || subHandle.address() == 0) {
             close();
-            throw new RuntimeException("zlink_spot_pub_new/zlink_spot_sub_new failed");
+            throw ZlinkException.fromLastError("zlink_spot_pub_new/zlink_spot_sub_new");
         }
     }
 
@@ -43,6 +55,16 @@ public final class Spot implements AutoCloseable {
         MemorySegment topic = topicCString(topicId);
         try (Arena arena = Arena.ofConfined()) {
             publishInternal(arena, topic, parts, flags, false);
+        }
+    }
+
+    public void publish(String topicId, Message part, SendFlag flags) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(part, "part");
+        MemorySegment topic = topicCString(topicId);
+        try (Arena arena = Arena.ofConfined()) {
+            publishSingleInternal(arena.allocate(NativeLayouts.MSG_LAYOUT), topic,
+                part, flags, false);
         }
     }
 
@@ -76,6 +98,16 @@ public final class Spot implements AutoCloseable {
         }
     }
 
+    public void publishMove(String topicId, Message part, SendFlag flags) {
+        Objects.requireNonNull(topicId, "topicId");
+        Objects.requireNonNull(part, "part");
+        MemorySegment topic = topicCString(topicId);
+        try (Arena arena = Arena.ofConfined()) {
+            publishSingleInternal(arena.allocate(NativeLayouts.MSG_LAYOUT), topic,
+                part, flags, true);
+        }
+    }
+
     public void publishMove(PreparedTopic topic, Message[] parts, SendFlag flags) {
         Objects.requireNonNull(topic, "topic");
         try (Arena arena = Arena.ofConfined()) {
@@ -101,34 +133,34 @@ public final class Spot implements AutoCloseable {
     public void subscribe(String topicId) {
         int rc = Native.spotSubSubscribe(subHandle, topicCString(topicId));
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_subscribe failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_subscribe");
     }
 
     public void subscribe(PreparedTopic topic) {
         Objects.requireNonNull(topic, "topic");
         int rc = Native.spotSubSubscribe(subHandle, topic.cString());
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_subscribe failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_subscribe");
     }
 
     public void subscribePattern(String pattern) {
         int rc = Native.spotSubSubscribePattern(subHandle, topicCString(pattern));
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_subscribe_pattern failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_subscribe_pattern");
     }
 
     public void unsubscribe(String topicIdOrPattern) {
         int rc = Native.spotSubUnsubscribe(subHandle,
             topicCString(topicIdOrPattern));
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_unsubscribe failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_unsubscribe");
     }
 
     public void unsubscribe(PreparedTopic topic) {
         Objects.requireNonNull(topic, "topic");
         int rc = Native.spotSubUnsubscribe(subHandle, topic.cString());
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_unsubscribe failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_unsubscribe");
     }
 
     public PreparedTopic prepareTopic(String topicId) {
@@ -140,40 +172,28 @@ public final class Spot implements AutoCloseable {
     }
 
     public SpotMessage recv(ReceiveFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment topic = arena.allocate(TOPIC_CAPACITY);
-            MemorySegment topicLen = arena.allocate(ValueLayout.JAVA_LONG);
-            topicLen.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-            int rc = Native.spotSubRecv(subHandle, partsPtr, count, flags.getValue(), topic, topicLen);
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_sub_recv failed");
-            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
-            byte[][] messages = NativeMsg.readMsgVector(partsAddr, partCount);
-            String topicId = NativeHelpers.fromCString(topic, TOPIC_CAPACITY);
-            return new SpotMessage(topicId, messages);
+        RecvContext context = recvScratch.get();
+        context.topicLength().set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
+        int rc = Native.spotSubRecv(subHandle, context.partsPtr(),
+            context.partCount(), flags.getValue(), context.topicId(),
+            context.topicLength());
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_spot_sub_recv");
+        long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
+        MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
+        Message[] parts = Message.fromMsgVector(partsAddr, partCount);
+        int topicLen = normalizeTopicLength(context.topicId(), TOPIC_CAPACITY,
+            context.topicLength().get(ValueLayout.JAVA_LONG, 0));
+        String topicId;
+        if (topicLen <= 0) {
+            topicId = "";
+        } else {
+            byte[] topicBytes = new byte[topicLen];
+            MemorySegment.copy(context.topicId(), 0, MemorySegment.ofArray(
+                topicBytes), 0, topicLen);
+            topicId = new String(topicBytes, StandardCharsets.UTF_8);
         }
-    }
-
-    public SpotMessages recvMessages(ReceiveFlag flags) {
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment partsPtr = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment count = arena.allocate(ValueLayout.JAVA_LONG);
-            MemorySegment topic = arena.allocate(TOPIC_CAPACITY);
-            MemorySegment topicLen = arena.allocate(ValueLayout.JAVA_LONG);
-            topicLen.set(ValueLayout.JAVA_LONG, 0, TOPIC_CAPACITY);
-            int rc = Native.spotSubRecv(subHandle, partsPtr, count, flags.getValue(),
-                topic, topicLen);
-            if (rc != 0)
-                throw new RuntimeException("zlink_spot_sub_recv failed");
-            long partCount = count.get(ValueLayout.JAVA_LONG, 0);
-            MemorySegment partsAddr = partsPtr.get(ValueLayout.ADDRESS, 0);
-            Message[] parts = Message.fromMsgVector(partsAddr, partCount);
-            String topicId = NativeHelpers.fromCString(topic, TOPIC_CAPACITY);
-            return new SpotMessages(topicId, parts);
-        }
+        return new SpotMessage(topicId, parts);
     }
 
     public RecvContext createRecvContext() {
@@ -212,11 +232,12 @@ public final class Spot implements AutoCloseable {
         topicCache.clear();
         topicScratch.remove();
         topicScratchCapacity.remove();
+        RecvContext recvContext = recvScratch.get();
+        recvContext.close();
+        recvScratch.remove();
         if (topicCacheArena.scope().isAlive())
             topicCacheArena.close();
     }
-
-    public record SpotMessage(String topicId, byte[][] parts) {}
 
     public record SpotRawMessage(MemorySegment topicId, Message[] parts) {}
 
@@ -322,13 +343,15 @@ public final class Spot implements AutoCloseable {
         }
     }
 
-    public static final class SpotMessages implements AutoCloseable {
+    public static final class SpotMessage implements AutoCloseable {
         private final String topicId;
         private final Message[] parts;
+        private boolean closed;
 
-        SpotMessages(String topicId, Message[] parts) {
+        SpotMessage(String topicId, Message[] parts) {
             this.topicId = topicId == null ? "" : topicId;
             this.parts = parts == null ? new Message[0] : parts;
+            this.closed = false;
         }
 
         public String topicId() {
@@ -341,6 +364,9 @@ public final class Spot implements AutoCloseable {
 
         @Override
         public void close() {
+            if (closed)
+                return;
+            closed = true;
             Message.closeAll(parts);
         }
     }
@@ -433,9 +459,8 @@ public final class Spot implements AutoCloseable {
                                  Message[] parts,
                                  SendFlag flags,
                                  boolean move) {
-        if (parts == null || parts.length == 0)
-            throw new IllegalArgumentException("parts required");
-        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, parts.length);
+        int partCount = validateMessageArray(parts, "parts");
+        MemorySegment vec = arena.allocate(NativeLayouts.MSG_LAYOUT, partCount);
         publishInternal(vec, topicId, parts, flags, move);
     }
 
@@ -444,9 +469,8 @@ public final class Spot implements AutoCloseable {
                                  Message[] parts,
                                  SendFlag flags,
                                  boolean move) {
-        if (parts == null || parts.length == 0)
-            throw new IllegalArgumentException("parts required");
-        MemorySegment vec = context.ensureVector(parts.length);
+        int partCount = validateMessageArray(parts, "parts");
+        MemorySegment vec = context.ensureVector(partCount);
         publishInternal(vec, topicId, parts, flags, move);
     }
 
@@ -455,32 +479,34 @@ public final class Spot implements AutoCloseable {
                                  Message[] parts,
                                  SendFlag flags,
                                  boolean move) {
-        if (parts == null || parts.length == 0)
+        int partCount = validateMessageArray(parts, "parts");
+        if (partCount <= 0)
             throw new IllegalArgumentException("parts required");
-        if (parts.length == 1) {
-            publishSingleInternal(vec, topicId, parts[0], flags, move);
+        if (partCount == 1) {
+            Message part = parts[0];
+            publishSingleInternal(vec, topicId, part, flags, move);
             return;
         }
         int initialized = 0;
         try {
-            for (int i = 0; i < parts.length; i++) {
-                Message part = parts[i];
+            for (int index = 0; index < parts.length; index++) {
+                Message part = parts[index];
                 if (part == null)
-                    throw new IllegalArgumentException("parts[" + i + "] is null");
-                MemorySegment dest = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
+                    throw new IllegalArgumentException("parts[" + index + "] is null");
+                MemorySegment dest = vec.asSlice((long) index * MSG_SIZE, MSG_SIZE);
                 int rc = NativeMsg.msgInit(dest);
                 if (rc != 0)
-                    throw new RuntimeException("zlink_msg_init failed");
+                    throw ZlinkException.fromLastError("zlink_msg_init");
                 initialized++;
                 if (move)
                     part.moveTo(dest);
                 else
                     part.copyTo(dest);
             }
-            int rc = Native.spotPubPublish(pubHandle, topicId, vec, parts.length,
+            int rc = Native.spotPubPublish(pubHandle, topicId, vec, partCount,
                 flags.getValue());
             if (rc != 0)
-                throw new RuntimeException("zlink_spot_pub_publish failed");
+                throw ZlinkException.fromLastError("zlink_spot_pub_publish");
         } catch (RuntimeException ex) {
             closeMsgVector(vec, initialized);
             throw ex;
@@ -507,7 +533,7 @@ public final class Spot implements AutoCloseable {
         try {
             int rc = NativeMsg.msgInit(vec);
             if (rc != 0)
-                throw new RuntimeException("zlink_msg_init failed");
+                throw ZlinkException.fromLastError("zlink_msg_init");
             initialized = 1;
             if (move)
                 part.moveTo(vec);
@@ -516,7 +542,7 @@ public final class Spot implements AutoCloseable {
             rc = Native.spotPubPublish(pubHandle, topicId, vec, 1,
                 flags.getValue());
             if (rc != 0)
-                throw new RuntimeException("zlink_spot_pub_publish failed");
+                throw ZlinkException.fromLastError("zlink_spot_pub_publish");
         } catch (RuntimeException ex) {
             closeMsgVector(vec, initialized);
             throw ex;
@@ -528,6 +554,14 @@ public final class Spot implements AutoCloseable {
             MemorySegment msg = vec.asSlice((long) i * MSG_SIZE, MSG_SIZE);
             NativeMsg.msgClose(msg);
         }
+    }
+
+    private static int validateMessageArray(Message[] messages, String name) {
+        Objects.requireNonNull(messages, name);
+        int size = messages.length;
+        if (size <= 0)
+            throw new IllegalArgumentException(name + " required");
+        return size;
     }
 
     private static int normalizeTopicLength(MemorySegment topic,
@@ -554,7 +588,7 @@ public final class Spot implements AutoCloseable {
             context.topicId(),
             context.topicLength());
         if (rc != 0)
-            throw new RuntimeException("zlink_spot_sub_recv failed");
+            throw ZlinkException.fromLastError("zlink_spot_sub_recv");
         long partCount = context.partCount().get(ValueLayout.JAVA_LONG, 0);
         MemorySegment partsAddr = context.partsPtr().get(ValueLayout.ADDRESS, 0);
         Message[] reusable = Message.fromMsgVector(partsAddr, partCount,

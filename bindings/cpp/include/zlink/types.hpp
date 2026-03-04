@@ -500,9 +500,9 @@ enum class spot_socket_role : int
  * @param out_ Output routing id.
  * @return 0 on success, -1 on failure.
  */
-inline int routing_id_from_bytes (const void *bytes_,
-                                  size_t size_,
-                                  zlink_routing_id_t *out_)
+inline int routing_id_from (const void *bytes_,
+                            size_t size_,
+                            zlink_routing_id_t *out_)
 {
     if (!out_) {
         errno = EINVAL;
@@ -530,10 +530,10 @@ inline int routing_id_from_bytes (const void *bytes_,
  * @param out_ Output routing id.
  * @return 0 on success, -1 on failure.
  */
-inline int routing_id_from_string (const std::string &bytes_,
-                                   zlink_routing_id_t *out_)
+inline int routing_id_from (const std::string &bytes_,
+                            zlink_routing_id_t *out_)
 {
-    return routing_id_from_bytes (bytes_.data (), bytes_.size (), out_);
+    return routing_id_from (bytes_.data (), bytes_.size (), out_);
 }
 
 /**

@@ -1,6 +1,11 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import dev.kairoscode.zlink.service.discovery.*;
+import dev.kairoscode.zlink.service.gateway.*;
+import dev.kairoscode.zlink.service.receiver.*;
+import dev.kairoscode.zlink.service.registry.*;
+import dev.kairoscode.zlink.service.spot.*;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 

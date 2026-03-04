@@ -66,11 +66,16 @@ set(tests
   discovery/test_service_discovery
   spot/test_spot_pubsub_scenario
   spot/test_spot_send_blocking_wakeup
-  scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect
   ${STREAM_SCENARIO_ROOT}/client/test_scenario_stream_client
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink
   ${STREAM_SCENARIO_ROOT}/zlink/test_scenario_stream_zlink_len32be
   ${STREAM_SCENARIO_ROOT}/asio/test_scenario_stream_asio)
+
+set(ROUTER_ROUTER_ZLINK_CONNECT_TEST
+    "scenario/router_router/zlink-connect/test_scenario_router_router_zlink_connect")
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/${ROUTER_ROUTER_ZLINK_CONNECT_TEST}.cpp")
+  list(APPEND tests ${ROUTER_ROUTER_ZLINK_CONNECT_TEST})
+endif()
 
 set(STREAM_SCENARIO_ZMQ_DIST_ROOT_DEFAULT
     "${STREAM_SCENARIO_ROOT}/zmq/libzmq_dist")
@@ -368,8 +373,10 @@ set_tests_properties(test_gateway PROPERTIES TIMEOUT 30)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES TIMEOUT 300)
 set_tests_properties(test_spot_pubsub_scenario PROPERTIES LABELS "spot;spot_scenario")
 set_tests_properties(test_gateway_handover PROPERTIES TIMEOUT 30)
-set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
-set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
+if(TARGET test_scenario_router_router_zlink_connect)
+  set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES TIMEOUT 180)
+  set_tests_properties(test_scenario_router_router_zlink_connect PROPERTIES LABELS "scenario;router_router;zlink_connect")
+endif()
 set_tests_properties(test_scenario_stream_client PROPERTIES TIMEOUT 120)
 set_tests_properties(test_scenario_stream_client PROPERTIES LABELS "scenario;stream;client")
 set_tests_properties(test_scenario_stream_zlink PROPERTIES TIMEOUT 120)

@@ -1,6 +1,11 @@
 package dev.kairoscode.zlink.integration.bench;
 
 import dev.kairoscode.zlink.*;
+import dev.kairoscode.zlink.service.discovery.*;
+import dev.kairoscode.zlink.service.gateway.*;
+import dev.kairoscode.zlink.service.receiver.*;
+import dev.kairoscode.zlink.service.registry.*;
+import dev.kairoscode.zlink.service.spot.*;
 
 import java.lang.foreign.MemorySegment;
 import java.util.Arrays;
@@ -40,8 +45,8 @@ final class PerfUtil {
             byte[] rid;
             byte[] payload;
             try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
-                ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
-                payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+                ridMsg.recv(socket, ReceiveFlag.NONE);
+                payloadMsg.recv(socket, ReceiveFlag.NONE);
                 rid = ridMsg.data();
                 payload = payloadMsg.data();
             }
@@ -68,8 +73,8 @@ final class PerfUtil {
 
     static StreamFrame streamRecv(Socket socket, int cap) {
         try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
-            ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
-            payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+            ridMsg.recv(socket, ReceiveFlag.NONE);
+            payloadMsg.recv(socket, ReceiveFlag.NONE);
             byte[] rid = ridMsg.data();
             byte[] payload = payloadMsg.data();
             if (payload.length > cap) {
@@ -85,8 +90,8 @@ final class PerfUtil {
                           MemorySegment payload,
                           int payloadCap) {
         try (Message ridMsg = new Message(); Message payloadMsg = new Message()) {
-            ridMsg.recv(socket, ReceiveFlag.NONE.getValue());
-            payloadMsg.recv(socket, ReceiveFlag.NONE.getValue());
+            ridMsg.recv(socket, ReceiveFlag.NONE);
+            payloadMsg.recv(socket, ReceiveFlag.NONE);
 
             int ridLen = ridMsg.size();
             if (ridCap > 0 && ridLen > 0) {
@@ -182,7 +187,7 @@ final class PerfUtil {
         try (Message msg = Message.fromBytes(payload)) {
             while (System.currentTimeMillis() < deadline) {
                 try {
-                    gateway.send(service, msg, SendFlag.NONE);
+                    gateway.sendTo(service, msg, SendFlag.NONE);
                     return;
                 } catch (Exception ignored) {
                     sleep(10);
@@ -204,11 +209,11 @@ final class PerfUtil {
         throw new RuntimeException("timeout");
     }
 
-    static Spot.SpotMessages spotRecvMessagesWithTimeout(Spot spot, int timeoutMs) {
+    static Spot.SpotMessage spotRecvMessagesWithTimeout(Spot spot, int timeoutMs) {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             try {
-                return spot.recvMessages(ReceiveFlag.DONTWAIT);
+                return spot.recv(ReceiveFlag.DONTWAIT);
             } catch (Exception ignored) {
                 LockSupport.parkNanos(100_000L);
             }
@@ -216,8 +221,8 @@ final class PerfUtil {
         throw new RuntimeException("timeout");
     }
 
-    static Spot.SpotMessages spotRecvMessagesBlocking(Spot spot) {
-        return spot.recvMessages(ReceiveFlag.NONE);
+    static Spot.SpotMessage spotRecvMessagesBlocking(Spot spot) {
+        return spot.recv(ReceiveFlag.NONE);
     }
 
     static Spot.SpotRawBorrowed spotRecvRawWithTimeout(

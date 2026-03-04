@@ -1,6 +1,0 @@
-## PATTERN: MULTI_STREAM (echo)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------|----------|--------|----------|
-| 64B |      6.82 Kops/s |      0.4 MB/s |     61.52 us |    1.1 |      6.6 |    1.1 |      6.7 |

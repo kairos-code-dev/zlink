@@ -2,9 +2,7 @@
 
 package dev.kairoscode.zlink;
 
-import java.util.List;
-
 @FunctionalInterface
 public interface StreamPacketBatchHandler {
-    int onPackets(int routingIdU32, List<Message> packets);
+    int onPackets(long routingId, Message[] packets);
 }

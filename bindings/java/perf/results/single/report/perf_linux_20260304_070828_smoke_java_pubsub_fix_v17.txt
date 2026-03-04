@@ -1,0 +1,6 @@
+## PATTERN: PUBSUB (one-way)
+
+### Transport: tcp
+| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
+|----------|------------------|-----------|--------------|------|--------|
+| 64B |   3753.49 Kmsg/s |    240.2 MB/s |      0.27 us |  4.8 |   87.2 |

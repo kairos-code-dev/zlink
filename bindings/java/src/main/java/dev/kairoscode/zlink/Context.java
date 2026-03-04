@@ -10,12 +10,11 @@ public final class Context implements AutoCloseable {
 
     public Context() {
         this.handle = Native.ctxNew();
-        if (handle == null || handle.address() == 0) {
-            throw new RuntimeException("zlink_ctx_new failed");
-        }
+        if (handle == null || handle.address() == 0)
+            throw ZlinkException.fromLastError("zlink_ctx_new");
     }
 
-    MemorySegment handle() {
+    public MemorySegment handle() {
         return handle;
     }
 
@@ -24,7 +23,25 @@ public final class Context implements AutoCloseable {
             throw new IllegalStateException("context is closed");
         int rc = Native.ctxSet(handle, option.getValue(), value);
         if (rc != 0)
-            throw new RuntimeException("zlink_ctx_set failed");
+            throw ZlinkException.fromLastError("zlink_ctx_set");
+    }
+
+    public int getOption(ContextOption option) {
+        if (handle == null || handle.address() == 0)
+            throw new IllegalStateException("context is closed");
+        int rc = Native.ctxGet(handle, option.getValue());
+        if (rc < 0 && option != ContextOption.THREAD_PRIORITY
+            && option != ContextOption.THREAD_SCHED_POLICY)
+            throw ZlinkException.fromLastError("zlink_ctx_get");
+        return rc;
+    }
+
+    public void shutdown() {
+        if (handle == null || handle.address() == 0)
+            throw new IllegalStateException("context is closed");
+        int rc = Native.ctxShutdown(handle);
+        if (rc != 0)
+            throw ZlinkException.fromLastError("zlink_ctx_shutdown");
     }
 
     @Override

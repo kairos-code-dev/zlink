@@ -32,7 +32,7 @@ public class TestStreamSocketPortedTest {
             stream.bind(endpoint);
 
             CountDownLatch called = new CountDownLatch(1);
-            AtomicReference<Integer> seenRoutingId = new AtomicReference<>();
+            AtomicReference<Long> seenRoutingId = new AtomicReference<>();
             AtomicReference<byte[]> seenPayload = new AtomicReference<>();
 
             stream.attachStreamRaw((routingId, payload) -> {
@@ -65,11 +65,11 @@ public class TestStreamSocketPortedTest {
             assertEquals("hello", new String(seenPayload.get(),
                 StandardCharsets.UTF_8));
 
-            byte[] peerRid = stream.streamPeerRoutingId();
+            byte[] peerRid = stream.streamPeerRoutingIdBytes();
             assertTrue(peerRid == null || peerRid.length > 0);
-            Long peerRidU32 = stream.streamPeerRoutingIdU32();
-            assertTrue(peerRidU32 == null || (peerRidU32 >= 0
-                && peerRidU32 <= 0xFFFF_FFFFL));
+            Long peerRidValue = stream.streamPeerRoutingId();
+            assertTrue(peerRidValue == null || (peerRidValue >= 0
+                && peerRidValue <= 0xFFFF_FFFFL));
             stream.detachStream();
         }
     }

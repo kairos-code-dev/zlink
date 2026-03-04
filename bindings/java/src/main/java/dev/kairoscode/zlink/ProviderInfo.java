@@ -9,6 +9,15 @@ import java.lang.foreign.ValueLayout;
 
 public record ProviderInfo(String serviceName, String endpoint, byte[] routingId,
                            int weight, long registeredAt) {
+    public ProviderInfo {
+        routingId = routingId == null ? new byte[0] : routingId.clone();
+    }
+
+    @Override
+    public byte[] routingId() {
+        return routingId.clone();
+    }
+
     static ProviderInfo from(MemorySegment segment) {
         MemorySegment name = segment.asSlice(NativeLayouts.PROVIDER_SERVICE_OFFSET, 256);
         MemorySegment endpointSeg = segment.asSlice(NativeLayouts.PROVIDER_ENDPOINT_OFFSET, 256);

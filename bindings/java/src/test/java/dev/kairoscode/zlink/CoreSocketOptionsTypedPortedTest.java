@@ -57,4 +57,26 @@ public class CoreSocketOptionsTypedPortedTest {
                 () -> socket.getOption(SocketOptions.SUBSCRIBE));
         }
     }
+
+    @Test
+    public void testOption98RejectsTlsKeyOnXpub() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Socket socket = new Socket(ctx, SocketType.XPUB)) {
+            assertThrows(IllegalArgumentException.class,
+                () -> socket.setOption(SocketOptions.TLS_VERIFY, 1));
+        }
+    }
+
+    @Test
+    public void testOption98RejectsXpubKeyOnNonXpub() {
+        TestSupport.assumeNative();
+
+        try (Context ctx = new Context();
+             Socket socket = new Socket(ctx, SocketType.PAIR)) {
+            assertThrows(IllegalArgumentException.class,
+                () -> socket.setOption(SocketOptions.XPUB_MANUAL_LAST_VALUE, 1));
+        }
+    }
 }

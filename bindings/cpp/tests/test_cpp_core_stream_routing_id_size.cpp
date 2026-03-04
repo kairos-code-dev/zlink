@@ -147,7 +147,7 @@ int main ()
     const int zero = 0;
     assert (server.set (zlink::socket_option::linger, zero) == 0);
 
-    assert (server.stream_attach_raw (&on_stream_packet) == 0);
+    assert (server.stream_attach (&on_stream_packet) == 0);
 
     assert (server.bind ("tcp://127.0.0.1:*") == 0);
     const std::string endpoint = bound_endpoint (server);

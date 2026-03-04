@@ -3,14 +3,34 @@ package dev.kairoscode.zlink.internal;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 
 public final class NativeMsg {
     private static final Linker LINKER = Linker.nativeLinker();
+    private static final SymbolLookup LOOKUP = LibraryLoader.lookup();
+
+    private static MemorySegment requireSymbol(String name) {
+        return LOOKUP.find(name).orElseThrow(
+          () -> new IllegalStateException(
+            "Missing native symbol '" + name
+              + "'. Loaded libzlink is incompatible with this Java binding."));
+    }
 
     private static MethodHandle downcall(String name, FunctionDescriptor fd) {
-        return LINKER.downcallHandle(LibraryLoader.lookup().find(name).orElseThrow(), fd);
+        return LINKER.downcallHandle(requireSymbol(name), fd);
+    }
+
+    private static MethodHandle downcallAny(String[] names, FunctionDescriptor fd) {
+        for (String name : names) {
+            if (LOOKUP.find(name).isPresent()) {
+                return LINKER.downcallHandle(requireSymbol(name), fd);
+            }
+        }
+        throw new IllegalStateException(
+          "Missing native symbol. Expected one of: " + String.join(", ", names)
+            + ". Loaded libzlink is incompatible with this Java binding.");
     }
 
     private static final MethodHandle MH_MSG_INIT = downcall("zlink_msg_init",
@@ -35,7 +55,8 @@ public final class NativeMsg {
             FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));
     private static final MethodHandle MH_MSG_MORE = downcall("zlink_msg_more",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_MSGV_CLOSE = downcall("zlink_multipart_close",
+    private static final MethodHandle MH_MSGV_CLOSE = downcallAny(
+            new String[] {"zlink_multipart_close", "zlink_msgv_close"},
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
 
     private NativeMsg() {}
@@ -137,24 +158,4 @@ public final class NativeMsg {
         }
     }
 
-    public static byte[][] readMsgVector(MemorySegment partsAddr, long count) {
-        if (partsAddr == null || partsAddr.address() == 0 || count <= 0)
-            return new byte[0][];
-        long msgSize = NativeLayouts.MSG_LAYOUT.byteSize();
-        byte[][] out = new byte[(int) count][];
-        try {
-            MemorySegment parts = MemorySegment.ofAddress(partsAddr.address()).reinterpret(msgSize * count);
-            for (int i = 0; i < count; i++) {
-                MemorySegment msg = parts.asSlice((long) i * msgSize, msgSize);
-                long size = msgSize(msg);
-                MemorySegment data = msgData(msg).reinterpret(size);
-                byte[] buf = new byte[(int) size];
-                MemorySegment.copy(data, 0, MemorySegment.ofArray(buf), 0, size);
-                out[i] = buf;
-            }
-        } finally {
-            msgvClose(partsAddr, count);
-        }
-        return out;
-    }
 }

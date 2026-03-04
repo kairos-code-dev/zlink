@@ -72,10 +72,10 @@ inline int proxy (socket_t &frontend_,
  * @param control_ Control socket for commands.
  * @return 0 on success, -1 on failure.
  */
-inline int proxy_steerable (socket_t &frontend_,
-                            socket_t &backend_,
-                            socket_t *capture_,
-                            socket_t &control_)
+inline int proxy (socket_t &frontend_,
+                  socket_t &backend_,
+                  socket_t *capture_,
+                  socket_t &control_)
 {
     return zlink_proxy_steerable (
       frontend_.handle (),

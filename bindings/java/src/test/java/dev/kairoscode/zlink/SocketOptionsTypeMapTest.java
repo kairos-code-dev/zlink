@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class SocketOptionsTypeMapTest {
     @Test
@@ -20,10 +21,13 @@ public class SocketOptionsTypeMapTest {
         assertFalse(keys.isEmpty());
 
         Map<Integer, Integer> idCounts = new HashMap<>();
+        Map<Integer, Set<String>> idToNames = new HashMap<>();
         Set<String> names = new HashSet<>();
         for (SocketOptionKey<?> key : keys) {
             assertTrue(names.add(key.name()), "duplicate key name: " + key.name());
             idCounts.merge(key.optionId(), 1, Integer::sum);
+            idToNames.computeIfAbsent(key.optionId(), ignored -> new HashSet<>())
+                .add(key.name());
             assertTrue(key.readable() || key.writable(),
                 "invalid key access mode: " + key.name());
         }
@@ -31,6 +35,22 @@ public class SocketOptionsTypeMapTest {
         for (SocketOption option : SocketOption.values()) {
             assertTrue(idCounts.containsKey(option.getValue()),
                 "missing mapping for enum option: " + option.name());
+        }
+
+        int aliasId = SocketOption.TLS_VERIFY.getValue();
+        for (Map.Entry<Integer, Set<String>> entry : idToNames.entrySet()) {
+            Set<String> mapped = entry.getValue();
+            if (mapped.size() <= 1)
+                continue;
+            if (entry.getKey() == aliasId) {
+                assertEquals(Set.of("TLS_VERIFY", "XPUB_MANUAL_LAST_VALUE"),
+                    mapped, "unexpected alias mapping for option id 98");
+                continue;
+            }
+            if (isStringBytesTwin(mapped))
+                continue;
+            fail("unexpected duplicate option id " + entry.getKey()
+                + ": " + mapped);
         }
     }
 
@@ -51,5 +71,19 @@ public class SocketOptionsTypeMapTest {
         assertEquals(byte[].class, SocketOptions.SUBSCRIBE_BYTES.valueClass());
         assertEquals(SocketOptions.SUBSCRIBE.optionId(),
             SocketOptions.SUBSCRIBE_BYTES.optionId());
+    }
+
+    private static boolean isStringBytesTwin(Set<String> mapped) {
+        if (mapped.size() != 2)
+            return false;
+        String[] names = mapped.toArray(String[]::new);
+        return isBytesTwin(names[0], names[1]) || isBytesTwin(names[1], names[0]);
+    }
+
+    private static boolean isBytesTwin(String maybeBase, String maybeBytes) {
+        if (!maybeBytes.endsWith("_BYTES"))
+            return false;
+        String base = maybeBytes.substring(0, maybeBytes.length() - "_BYTES".length());
+        return base.equals(maybeBase);
     }
 }

@@ -1,8 +1,7 @@
 package dev.kairoscode.zlink;
 
+import dev.kairoscode.zlink.service.gateway.Gateway;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
@@ -11,14 +10,15 @@ public class CoreGatewayApiSurfacePortedTest {
     public void testHighLevelGatewayApiSurface() {
         Class<Gateway> cls = Gateway.class;
 
-        assertDoesNotThrow(() -> cls.getMethod("send",
+        assertDoesNotThrow(() -> cls.getMethod("sendTo",
             String.class, Message.class, SendFlag.class));
-        assertDoesNotThrow(() -> cls.getMethod("send",
-            String.class, List.class, SendFlag.class));
-        assertDoesNotThrow(() -> cls.getMethod("sendToRoutingId",
+        assertDoesNotThrow(() -> cls.getMethod("sendTo",
+            String.class, Message[].class, SendFlag.class));
+        assertDoesNotThrow(() -> cls.getMethod("sendTo",
             String.class, String.class, Message.class, SendFlag.class));
-        assertDoesNotThrow(() -> cls.getMethod("sendToRoutingId",
-            String.class, String.class, List.class, SendFlag.class));
-        assertDoesNotThrow(() -> cls.getMethod("recvMany", ReceiveFlag.class));
+        assertDoesNotThrow(() -> cls.getMethod("sendTo",
+            String.class, String.class, Message[].class, SendFlag.class));
+        assertDoesNotThrow(() -> cls.getMethod("recvMessages",
+            ReceiveFlag.class));
     }
 }

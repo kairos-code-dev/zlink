@@ -169,27 +169,9 @@ private:
 
 ---
 
-## multipart_t (멀티파트 수신 관리)
-```cpp
-namespace zlink {
-
-class multipart_t {
-public:
-    multipart_t();
-    ~multipart_t();
-
-    multipart_t(multipart_t&&) noexcept;
-    multipart_t& operator=(multipart_t&&) noexcept;
-
-    zlink_msg_t* data();
-    size_t size() const;
-    zlink_msg_t& operator[](size_t idx);
-
-    void adopt(zlink_msg_t* parts, size_t count);
-};
-
-} // namespace zlink
-```
+## 멀티파트 수신 타입
+멀티파트 수신 컨테이너는 별도 `multipart_t` 대신
+`std::vector<message_t>`를 사용한다.
 
 ---
 
@@ -218,7 +200,7 @@ class stopwatch_t { /* zlink_stopwatch_* */ };
 class thread_t { /* zlink_thread_start/close */ };
 
 int proxy(socket_t&, socket_t&, socket_t* capture = nullptr);
-int proxy_steerable(socket_t&, socket_t&, socket_t* capture, socket_t& control);
+int proxy(socket_t&, socket_t&, socket_t* capture, socket_t& control);
 bool has(const char* capability);
 
 } // namespace zlink

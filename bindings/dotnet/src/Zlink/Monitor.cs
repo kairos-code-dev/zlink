@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 using System;
+using System.Buffers.Binary;
 using Zlink.Native;
 
 namespace Zlink;
@@ -36,12 +37,14 @@ public sealed class MonitorSocket : IDisposable
 
 public readonly struct MonitorEvent
 {
-    public MonitorEvent(SocketEvent @event, ulong value, byte[] routingId,
+    public MonitorEvent(SocketEvent @event, ulong value, string routingId,
+        uint? streamRoutingId,
         string localAddress, string remoteAddress, ulong rawEvent)
     {
         Event = @event;
         Value = value;
         RoutingId = routingId;
+        StreamRoutingId = streamRoutingId;
         LocalAddress = localAddress;
         RemoteAddress = remoteAddress;
         RawEvent = rawEvent;
@@ -49,7 +52,8 @@ public readonly struct MonitorEvent
 
     public SocketEvent Event { get; }
     public ulong Value { get; }
-    public byte[] RoutingId { get; }
+    public string RoutingId { get; }
+    public uint? StreamRoutingId { get; }
     public string LocalAddress { get; }
     public string RemoteAddress { get; }
     public ulong RawEvent { get; }
@@ -57,6 +61,10 @@ public readonly struct MonitorEvent
     internal static MonitorEvent FromNative(ref ZlinkMonitorEvent evt)
     {
         byte[] routing = NativeHelpers.ReadRoutingId(ref evt.RoutingId);
+        string routingId = RoutingIdCodec.ToPublicString(routing);
+        uint? streamRoutingId = routing.Length == sizeof(uint)
+            ? BinaryPrimitives.ReadUInt32BigEndian(routing)
+            : null;
         string local;
         string remote;
         unsafe
@@ -69,7 +77,7 @@ public readonly struct MonitorEvent
             }
         }
         SocketEvent @event = (SocketEvent)(evt.Event & 0xFFFFFFFFuL);
-        return new MonitorEvent(@event, evt.Value, routing, local,
-            remote, evt.Event);
+        return new MonitorEvent(@event, evt.Value, routingId, streamRoutingId,
+            local, remote, evt.Event);
     }
 }

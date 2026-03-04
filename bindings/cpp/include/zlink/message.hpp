@@ -104,7 +104,7 @@ class message_t
      * @param size_ Payload size in bytes.
      * @return 0 on success, -1 on failure.
      */
-    int init_size (size_t size_)
+    int init (size_t size_)
     {
         close ();
         if (zlink_msg_init_size (&_msg, size_) != 0)
@@ -121,10 +121,10 @@ class message_t
      * @param hint_ Optional callback context pointer.
      * @return 0 on success, -1 on failure.
      */
-    int init_data (void *data_,
-                   size_t size_,
-                   zlink_free_fn *ffn_ = NULL,
-                   void *hint_ = NULL)
+    int init (void *data_,
+              size_t size_,
+              zlink_free_fn *ffn_ = NULL,
+              void *hint_ = NULL)
     {
         close ();
         if (zlink_msg_init_data (&_msg, data_, size_, ffn_, hint_) != 0)

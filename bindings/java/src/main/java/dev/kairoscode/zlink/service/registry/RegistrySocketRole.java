@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.registry;
+
 
 public enum RegistrySocketRole {
     PUB(1), ROUTER(2), PEER_SUB(3);

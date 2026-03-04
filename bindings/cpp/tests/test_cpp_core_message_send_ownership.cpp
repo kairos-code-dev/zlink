@@ -1,8 +1,18 @@
 #include "test_helpers.hpp"
 
 #include <cassert>
+#include <cstdlib>
+#include <cstring>
 
 namespace {
+
+void counting_free_fn (void *data_, void *hint_) noexcept
+{
+    int *count = static_cast<int *> (hint_);
+    if (count)
+        ++(*count);
+    std::free (data_);
+}
 
 void test_socket_send_msg_consumes_on_failure ()
 {
@@ -24,8 +34,36 @@ void test_stream_send_msg_consumes_on_failure ()
     zlink::message_t msg (3);
     assert (msg.valid ());
 
-    assert (stream.stream_send_msg (1u, msg, zlink::send_flag::dontwait) == -1);
+    assert (stream.stream_send (1u, msg, zlink::send_flag::dontwait) == -1);
     assert (!msg.valid ());
+}
+
+void test_socket_send_zero_consumes_on_failure ()
+{
+    zlink::context_t ctx;
+    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+
+    int free_count = 0;
+    char *payload = static_cast<char *> (std::malloc (4));
+    assert (payload != NULL);
+    std::memcpy (payload, "ping", 4);
+
+    assert (sender.send_zero (payload, 4, &counting_free_fn, &free_count,
+                              zlink::send_flag::dontwait)
+            == -1);
+    assert (free_count == 1);
+}
+
+void test_socket_send_zero_invalid_input_does_not_consume ()
+{
+    zlink::context_t ctx;
+    zlink::socket_t sender (ctx, zlink::socket_type::pair);
+
+    int free_count = 0;
+    assert (sender.send_zero (NULL, 1, &counting_free_fn, &free_count,
+                              zlink::send_flag::dontwait)
+            == -1);
+    assert (free_count == 0);
 }
 
 } // namespace
@@ -34,5 +72,7 @@ int main ()
 {
     test_socket_send_msg_consumes_on_failure ();
     test_stream_send_msg_consumes_on_failure ();
+    test_socket_send_zero_consumes_on_failure ();
+    test_socket_send_zero_invalid_input_does_not_consume ();
     return 0;
 }

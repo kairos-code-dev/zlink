@@ -172,6 +172,22 @@ public sealed class Message : IDisposable
         _valid = true;
     }
 
+    /// <summary>
+    /// Moves native ownership to a new <see cref="Message"/> instance.
+    /// </summary>
+    /// <returns>The destination message that now owns the payload.</returns>
+    /// <remarks>
+    /// After a successful move, this instance becomes invalid and any further
+    /// access throws <see cref="ObjectDisposedException"/>.
+    /// </remarks>
+    public Message Move()
+    {
+        var moved = new Message(false);
+        MoveTo(ref moved._msg);
+        moved._valid = true;
+        return moved;
+    }
+
     internal void MoveTo(ref ZlinkMsg dest)
     {
         EnsureValid();

@@ -12,8 +12,10 @@ public final class MonitorSocket implements AutoCloseable {
         this.socket = socket;
     }
 
-    public MonitorEvent recv(int flags) {
-        return Native.monitorRecv(socket.handle(), flags);
+    public MonitorEvent recv(ReceiveFlag flag) {
+        if (flag == null)
+            throw new IllegalArgumentException("flag is null");
+        return Native.monitorRecv(socket.handle(), flag.getValue());
     }
 
     @Override

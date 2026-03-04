@@ -32,7 +32,7 @@ class spot_node_t
     /**
      * @brief Destroy node handle.
      */
-    ~spot_node_t () { destroy (); }
+    ~spot_node_t () { (void) destroy (); }
 
     spot_node_t (spot_node_t &&other) noexcept : _node (other._node)
     {
@@ -44,7 +44,7 @@ class spot_node_t
         if (this == &other)
             return *this;
 
-        destroy ();
+        (void) destroy ();
         _node = other._node;
         other._node = NULL;
         return *this;
@@ -58,7 +58,7 @@ class spot_node_t
      * @param endpoint_ Bind endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int bind (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int bind (const std::string &endpoint_)
     {
         return zlink_spot_node_bind (_node, endpoint_.c_str ());
     }
@@ -68,7 +68,7 @@ class spot_node_t
      * @param endpoint_ Registry endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_registry (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int connect_registry (const std::string &endpoint_)
     {
         return zlink_spot_node_connect_registry (_node, endpoint_.c_str ());
     }
@@ -78,7 +78,7 @@ class spot_node_t
      * @param endpoint_ Peer PUB endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int connect_peer_pub (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int connect_peer_pub (const std::string &endpoint_)
     {
         return zlink_spot_node_connect_peer_pub (_node, endpoint_.c_str ());
     }
@@ -88,7 +88,7 @@ class spot_node_t
      * @param endpoint_ Peer PUB endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int disconnect_peer_pub (const std::string &endpoint_)
+    ZLINK_CPP_NODISCARD int disconnect_peer_pub (const std::string &endpoint_)
     {
         return zlink_spot_node_disconnect_peer_pub (_node, endpoint_.c_str ());
     }
@@ -99,8 +99,9 @@ class spot_node_t
      * @param advertise_ Advertised endpoint.
      * @return 0 on success, -1 on failure.
      */
-    int register_service (const std::string &service_,
-                          const std::string &advertise_)
+    ZLINK_CPP_NODISCARD int
+    register_service (const std::string &service_,
+                      const std::string &advertise_)
     {
         return zlink_spot_node_register (
           _node, service_.c_str (), advertise_.c_str ());
@@ -111,7 +112,7 @@ class spot_node_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int unregister_service (const std::string &service_)
+    ZLINK_CPP_NODISCARD int unregister_service (const std::string &service_)
     {
         return zlink_spot_node_unregister (_node, service_.c_str ());
     }
@@ -122,7 +123,8 @@ class spot_node_t
      * @param service_ Service name.
      * @return 0 on success, -1 on failure.
      */
-    int set_discovery (void *discovery_, const std::string &service_)
+    ZLINK_CPP_NODISCARD int
+    set_discovery (void *discovery_, const std::string &service_)
     {
         return zlink_spot_node_set_discovery (
           _node, discovery_, service_.c_str ());
@@ -134,7 +136,8 @@ class spot_node_t
      * @param key_ Private key file path.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_server (const std::string &cert_, const std::string &key_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_server (const std::string &cert_, const std::string &key_)
     {
         return zlink_spot_node_set_tls_server (
           _node, cert_.c_str (), key_.c_str ());
@@ -147,9 +150,10 @@ class spot_node_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const std::string &ca_,
-                        const std::string &hostname_,
-                        int trust_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_client (const std::string &ca_,
+                    const std::string &hostname_,
+                    int trust_)
     {
         const char *ca = ca_.empty () ? NULL : ca_.c_str ();
         const char *hostname = hostname_.empty () ? NULL : hostname_.c_str ();
@@ -164,9 +168,10 @@ class spot_node_t
      * @param trust_ Trust-system flag.
      * @return 0 on success, -1 on failure.
      */
-    int set_tls_client (const std::string &ca_,
-                        const std::string &hostname_,
-                        bool trust_)
+    ZLINK_CPP_NODISCARD int
+    set_tls_client (const std::string &ca_,
+                    const std::string &hostname_,
+                    bool trust_)
     {
         return set_tls_client (ca_, hostname_, trust_ ? 1 : 0);
     }
@@ -179,10 +184,11 @@ class spot_node_t
      * @param len_ Buffer length in bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (spot_node_socket_role role_,
-                     socket_option option_,
-                     const void *value_,
-                     size_t len_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (spot_node_socket_role role_,
+                 socket_option option_,
+                 const void *value_,
+                 size_t len_)
     {
         return zlink_spot_node_setsockopt (
           _node, static_cast<int> (role_), static_cast<int> (option_), value_,
@@ -197,6 +203,7 @@ class spot_node_t
      * @return 0 on success, -1 on failure.
      */
     template<typename T>
+    ZLINK_CPP_NODISCARD
     typename std::enable_if<!std::is_same<T, std::string>::value, int>::type
     set_sockopt (spot_node_socket_role role_,
                  socket_option_key_t<T> key_,
@@ -212,9 +219,10 @@ class spot_node_t
      * @param value_ Option value bytes.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (spot_node_socket_role role_,
-                     socket_option_key_t<std::string> key_,
-                     const std::string &value_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (spot_node_socket_role role_,
+                 socket_option_key_t<std::string> key_,
+                 const std::string &value_)
     {
         return set_sockopt (role_, key_.option, value_.data (), value_.size ());
     }
@@ -226,9 +234,10 @@ class spot_node_t
      * @param value_ Integer option value.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (spot_node_socket_role role_,
-                     socket_option option_,
-                     int value_)
+    ZLINK_CPP_NODISCARD int
+    set_sockopt (spot_node_socket_role role_,
+                 socket_option option_,
+                 int value_)
     {
         return set_sockopt (role_, option_, &value_, sizeof (value_));
     }
@@ -239,7 +248,7 @@ class spot_node_t
      * @param value_ Integer option value.
      * @return 0 on success, -1 on failure.
      */
-    int set_sockopt (spot_node_option option_, int value_)
+    ZLINK_CPP_NODISCARD int set_sockopt (spot_node_option option_, int value_)
     {
         return zlink_spot_node_setsockopt (
           _node, static_cast<int> (spot_node_socket_role::node),
@@ -270,7 +279,8 @@ class spot_node_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int pub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    ZLINK_CPP_NODISCARD int
+    pub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
         return zlink_spot_node_pub_peers (_node, peers_, count_);
     }
@@ -281,7 +291,8 @@ class spot_node_t
      * @param count_ In/out capacity and written count.
      * @return 0 on success, -1 on failure.
      */
-    int sub_peers (zlink_peer_info_t *peers_, size_t *count_)
+    ZLINK_CPP_NODISCARD int
+    sub_peers (zlink_peer_info_t *peers_, size_t *count_)
     {
         return zlink_spot_node_sub_peers (_node, peers_, count_);
     }
@@ -290,7 +301,7 @@ class spot_node_t
      * @brief Explicitly destroy node handle.
      * @return 0 on success, -1 on failure.
      */
-    int destroy ()
+    ZLINK_CPP_NODISCARD int destroy ()
     {
         if (!_node)
             return 0;
@@ -348,12 +359,12 @@ class spot_t
     /**
      * @brief Destroy pub/sub handles.
      */
-    ~spot_t () { destroy (); }
+    ~spot_t () { (void) destroy (); }
 
     spot_t (spot_t &&other) noexcept
         : _node (NULL), _pub (NULL), _sub (NULL), _last_error (0)
     {
-        other.set_handler (handler_fn ());
+        (void) other.set_handler (handler_fn ());
         _node = other._node;
         _pub = other._pub;
         _sub = other._sub;
@@ -369,9 +380,9 @@ class spot_t
         if (this == &other)
             return *this;
 
-        set_handler (handler_fn ());
-        destroy ();
-        other.set_handler (handler_fn ());
+        (void) set_handler (handler_fn ());
+        (void) destroy ();
+        (void) other.set_handler (handler_fn ());
         _node = other._node;
         _pub = other._pub;
         _sub = other._sub;
@@ -405,9 +416,10 @@ class spot_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int publish (const std::string &topic_,
-                 std::vector<message_t> &parts_,
-                 send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    publish (const std::string &topic_,
+             std::vector<message_t> &parts_,
+             send_flag flags_ = send_flag::none)
     {
         if (!_pub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -430,8 +442,11 @@ class spot_t
           _pub, topic_.c_str (), _publish_parts_scratch.data (),
           _publish_parts_scratch.size (),
           static_cast<int> (flags_));
-        if (rc != 0)
+        if (rc != 0) {
+            const int err = errno;
             close_native_parts (_publish_parts_scratch, moved);
+            errno = err;
+        }
         _publish_parts_scratch.clear ();
         return rc;
     }
@@ -444,10 +459,11 @@ class spot_t
      * @param flags_ Send flags.
      * @return 0 on success, -1 on failure.
      */
-    int publish_bytes (const std::string &topic_,
-                       const void *data_,
-                       size_t size_,
-                       send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    publish (const std::string &topic_,
+             const void *data_,
+             size_t size_,
+             send_flag flags_ = send_flag::none)
     {
         if (!_pub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -468,12 +484,13 @@ class spot_t
      * @return 0 on success, -1 on failure.
      * @note Once initialized, ownership of `data_` is consumed regardless of publish result.
      */
-    int publish_zero (const std::string &topic_,
-                      void *data_,
-                      size_t size_,
-                      zlink_free_fn *ffn_,
-                      void *hint_ = NULL,
-                      send_flag flags_ = send_flag::none)
+    ZLINK_CPP_NODISCARD int
+    publish_zero (const std::string &topic_,
+                  void *data_,
+                  size_t size_,
+                  zlink_free_fn *ffn_,
+                  void *hint_ = NULL,
+                  send_flag flags_ = send_flag::none)
     {
         if (!_pub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -503,7 +520,7 @@ class spot_t
      * @param topic_ Topic string.
      * @return 0 on success, -1 on failure.
      */
-    int subscribe (const std::string &topic_)
+    ZLINK_CPP_NODISCARD int subscribe (const std::string &topic_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -517,7 +534,7 @@ class spot_t
      * @param pattern_ Pattern string.
      * @return 0 on success, -1 on failure.
      */
-    int subscribe_pattern (const std::string &pattern_)
+    ZLINK_CPP_NODISCARD int subscribe_pattern (const std::string &pattern_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -531,7 +548,7 @@ class spot_t
      * @param topic_or_pattern_ Topic or pattern string.
      * @return 0 on success, -1 on failure.
      */
-    int unsubscribe (const std::string &topic_or_pattern_)
+    ZLINK_CPP_NODISCARD int unsubscribe (const std::string &topic_or_pattern_)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -545,24 +562,28 @@ class spot_t
      * @param fn_ Handler function. Empty function disables callbacks.
      * @return 0 on success, -1 on failure.
      */
-    int set_handler (handler_fn fn_)
+    ZLINK_CPP_NODISCARD int set_handler (handler_fn fn_)
     {
         const bool enable = static_cast<bool> (fn_);
-        {
-            std::lock_guard<std::mutex> lock (_handler_sync);
-            _handler_fn = std::move (fn_);
-        }
-
         if (!_sub) {
             if (enable) {
                 errno = _last_error != 0 ? _last_error : EFAULT;
                 return -1;
             }
+
+            std::lock_guard<std::mutex> lock (_handler_sync);
+            _handler_fn = handler_fn ();
             return 0;
         }
 
-        return zlink_spot_sub_set_handler (
+        const int rc = zlink_spot_sub_set_handler (
           _sub, enable ? &spot_t::handler_trampoline : NULL, this);
+        if (rc != 0)
+            return -1;
+
+        std::lock_guard<std::mutex> lock (_handler_sync);
+        _handler_fn = std::move (fn_);
+        return 0;
     }
 
     /**
@@ -574,11 +595,12 @@ class spot_t
      * @param truncated_out_ Optional output for topic truncation flag.
      * @return 0 on success, -1 on failure.
      */
-    int recv (std::vector<message_t> &out_,
-              std::string &topic_,
-              recv_flag flags_ = recv_flag::none,
-              size_t *topic_len_out_ = NULL,
-              bool *truncated_out_ = NULL)
+    ZLINK_CPP_NODISCARD int
+    recv (std::vector<message_t> &out_,
+          std::string &topic_,
+          recv_flag flags_ = recv_flag::none,
+          size_t *topic_len_out_ = NULL,
+          bool *truncated_out_ = NULL)
     {
         if (!_sub) {
             errno = _last_error != 0 ? _last_error : EFAULT;
@@ -615,11 +637,11 @@ class spot_t
      * @brief Explicitly destroy pub/sub handles.
      * @return 0 on success, -1 on failure.
      */
-    int destroy ()
+    ZLINK_CPP_NODISCARD int destroy ()
     {
         int rc = 0;
         if (_sub)
-            set_handler (handler_fn ());
+            (void) set_handler (handler_fn ());
 
         if (_pub) {
             void *tmp = _pub;
@@ -680,9 +702,11 @@ class spot_t
         moved_ = 0;
         for (size_t i = 0; i < parts_.size (); ++i) {
             if (parts_[i].move_to (&native_parts_[i]) != 0) {
+                const int err = errno;
                 close_native_parts (native_parts_, moved_);
                 for (size_t j = i; j < parts_.size (); ++j)
                     parts_[j].close ();
+                errno = err;
                 return -1;
             }
             ++moved_;

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-package dev.kairoscode.zlink;
+package dev.kairoscode.zlink.service.spot;
+
 
 public enum SpotNodeSocketRole {
     NODE(0), PUB(1), SUB(2), DEALER(3);

@@ -102,6 +102,9 @@ class gateway_t : public discovery_observer_t
     std::map<std::string, std::string> _endpoint_to_service;
     std::map<std::string, std::string> _routing_id_to_service;
     std::set<std::string> _ready_endpoints;
+    std::set<std::string> _inflight_endpoints;
+    std::map<std::string, std::string> _inflight_rid_by_endpoint;
+    std::map<std::string, uint64_t> _rid_connect_not_before_ms;
     std::set<std::string> _down_endpoints;
     std::map<std::string, uint64_t> _down_until_ms;
     bool _force_refresh_all;

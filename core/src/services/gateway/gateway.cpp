@@ -113,6 +113,11 @@ static bool routing_id_equals (const zlink_routing_id_t &a_,
     return memcmp (a_.data, b_.data, a_.size) == 0;
 }
 
+static uint64_t rid_handover_guard_ms ()
+{
+    return 50;
+}
+
 static void close_msg_parts (std::vector<zlink_msg_t> *parts_)
 {
     if (!parts_)
@@ -350,17 +355,10 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
          it != routing_map.end (); ++it) {
         const std::string &endpoint = it->first;
         const zlink_routing_id_t &rid = it->second.rid;
+        const std::string rid_key = routing_id_key (rid);
         const uint32_t weight = it->second.weight == 0 ? 1 : it->second.weight;
-        if (rid.size == 0)
+        if (rid.size == 0 || rid_key.empty ())
             continue;
-        // Only attempt a new connect if not already connected.
-        if (std::find (pool_->endpoints.begin (), pool_->endpoints.end (),
-                       endpoint)
-            == pool_->endpoints.end ()) {
-            _router_socket->setsockopt (ZLINK_CONNECT_ROUTING_ID, rid.data,
-                                        rid.size);
-            _router_socket->connect (endpoint.c_str ());
-        }
         std::map<std::string, uint64_t>::iterator dit =
           _down_until_ms.find (endpoint);
         if (dit != _down_until_ms.end ()) {
@@ -369,11 +367,69 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
             _down_until_ms.erase (dit);
             _down_endpoints.erase (endpoint);
         }
+        // Only attempt a new connect when there is no active or inflight
+        // connection for this endpoint. This prevents duplicate connect()
+        // calls with the same CONNECT_ROUTING_ID while handshake/monitor
+        // updates are still pending.
+        const bool connected =
+          std::find (pool_->endpoints.begin (), pool_->endpoints.end (),
+                     endpoint)
+          != pool_->endpoints.end ();
+        bool inflight =
+          _inflight_endpoints.find (endpoint) != _inflight_endpoints.end ();
+        if (!connected && !inflight) {
+            std::map<std::string, uint64_t>::iterator rit =
+              _rid_connect_not_before_ms.find (rid_key);
+            if (rit != _rid_connect_not_before_ms.end ()) {
+                if (_clock.now_ms () < rit->second)
+                    continue;
+                _rid_connect_not_before_ms.erase (rit);
+            }
+
+            bool rid_conflict_connected = false;
+            for (size_t pi = 0;
+                 pi < pool_->routing_ids.size () && pi < pool_->endpoints.size ();
+                 ++pi) {
+                if (pool_->endpoints[pi] != endpoint
+                    && routing_id_equals (pool_->routing_ids[pi], rid)) {
+                    rid_conflict_connected = true;
+                    break;
+                }
+            }
+            if (rid_conflict_connected)
+                continue;
+
+            bool rid_conflict_inflight = false;
+            for (std::map<std::string, std::string>::const_iterator fit =
+                   _inflight_rid_by_endpoint.begin ();
+                 fit != _inflight_rid_by_endpoint.end (); ++fit) {
+                if (fit->first != endpoint && fit->second == rid_key) {
+                    rid_conflict_inflight = true;
+                    break;
+                }
+            }
+            if (rid_conflict_inflight)
+                continue;
+
+            _router_socket->setsockopt (ZLINK_CONNECT_ROUTING_ID, rid.data,
+                                        rid.size);
+            if (_router_socket->connect (endpoint.c_str ()) == 0) {
+                _inflight_endpoints.insert (endpoint);
+                _inflight_rid_by_endpoint[endpoint] = rid_key;
+                inflight = true;
+            } else {
+                continue;
+            }
+        }
+        if (!connected && !inflight)
+            continue;
         if (_ready_endpoints.find (endpoint) == _ready_endpoints.end ()) {
             const int state = _router_socket->get_peer_state (rid.data,
                                                              rid.size);
             if (state >= 0 && (state & ZLINK_POLLOUT)) {
                 _ready_endpoints.insert (endpoint);
+                _inflight_endpoints.erase (endpoint);
+                _inflight_rid_by_endpoint.erase (endpoint);
                 next_endpoints.push_back (endpoint);
                 next_routing_ids.push_back (rid);
                 next_weights.push_back (weight);
@@ -381,6 +437,8 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
             // Not ready yet: do not add to pool, but also do not term.
             continue;
         }
+        _inflight_endpoints.erase (endpoint);
+        _inflight_rid_by_endpoint.erase (endpoint);
         next_endpoints.push_back (endpoint);
         next_routing_ids.push_back (rid);
         next_weights.push_back (weight);
@@ -391,7 +449,18 @@ void gateway_t::refresh_pool (service_pool_t *pool_,
     for (size_t i = 0; i < pool_->endpoints.size (); ++i) {
         const std::string &endpoint = pool_->endpoints[i];
         if (routing_map.find (endpoint) == routing_map.end ()) {
+            if (i < pool_->routing_ids.size ()) {
+                const std::string removed_rid_key =
+                  routing_id_key (pool_->routing_ids[i]);
+                if (!removed_rid_key.empty ()) {
+                    _rid_connect_not_before_ms[removed_rid_key] =
+                      _clock.now_ms () + rid_handover_guard_ms ();
+                }
+            }
             _router_socket->term_endpoint (endpoint.c_str ());
+            _inflight_endpoints.erase (endpoint);
+            _inflight_rid_by_endpoint.erase (endpoint);
+            _ready_endpoints.erase (endpoint);
         }
     }
 
@@ -828,6 +897,9 @@ int gateway_t::destroy ()
     _endpoint_to_service.clear ();
     _routing_id_to_service.clear ();
     _ready_endpoints.clear ();
+    _inflight_endpoints.clear ();
+    _inflight_rid_by_endpoint.clear ();
+    _rid_connect_not_before_ms.clear ();
     _down_endpoints.clear ();
     _down_until_ms.clear ();
     _force_refresh_all = false;
@@ -863,10 +935,14 @@ void gateway_t::process_monitor_events ()
             _down_endpoints.erase (endpoint);
             _down_until_ms.erase (endpoint);
             _ready_endpoints.insert (endpoint);
+            _inflight_endpoints.erase (endpoint);
+            _inflight_rid_by_endpoint.erase (endpoint);
         } else if (event.event == ZLINK_EVENT_DISCONNECTED
                    || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL
                    || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL
                    || event.event == ZLINK_EVENT_HANDSHAKE_FAILED_AUTH) {
+            _inflight_endpoints.erase (endpoint);
+            _inflight_rid_by_endpoint.erase (endpoint);
             _ready_endpoints.erase (endpoint);
             _down_endpoints.insert (endpoint);
             _down_until_ms[endpoint] = _clock.now_ms () + 500;

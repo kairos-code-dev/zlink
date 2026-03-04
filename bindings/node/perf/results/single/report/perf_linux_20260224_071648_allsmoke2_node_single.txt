@@ -1,6 +1,0 @@
-## PATTERN: PAIR (echo)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | CPU% | Mem MB |
-|----------|------------------|-----------|--------------|------|--------|
-| 64B |   3254.38 Kops/s |    416.6 MB/s |     70.41 us |  1.9 |   94.6 |

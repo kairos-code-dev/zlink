@@ -1,6 +1,0 @@
-## PATTERN: MULTI_DEALER_DEALER (echo)
-
-### Transport: tcp
-| Size     |       Throughput | Bandwidth |      Latency | C.CPU% | C.Mem MB | S.CPU% | S.Mem MB |
-|----------|------------------|-----------|--------------|--------|----------|--------|----------|
-| 64B |      5.56 Kops/s |      0.7 MB/s |     98.66 us |    1.4 |     20.2 |    1.4 |     24.5 |
